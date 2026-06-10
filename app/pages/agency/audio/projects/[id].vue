@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
 import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipInspector'
+import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { VideoAsset } from '~~/server/utils/video/assets'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -98,6 +99,12 @@ function onLibraryAddToTimeline(p: { assetId: string; r2Key: string; durationSec
   editor.mergeSource(p.r2Key, p.streamUrl, { durationSec: p.durationSec, assetId: p.assetId, title: p.title, format: p.format })
   editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', editor.currentTime.value, p.assetId)
   toast.add({ title: 'Added to timeline', color: 'success' })
+}
+
+function onHarnessAddToTimeline(p: AiAssemblyTimelinePayload) {
+  const streamUrl = p.assetId ? `/api/agency/video/assets/${encodeURIComponent(p.assetId)}/stream` : p.r2Key
+  editor.mergeSource(p.r2Key, streamUrl, { durationSec: p.durationSec, assetId: p.assetId, title: p.title, format: p.format })
+  editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', p.startSec, p.assetId)
 }
 
 async function refreshVideoAssets() {
@@ -455,6 +462,7 @@ const saveStatusColor = computed(() => {
         <MediaAssetHarness
           v-if="isAv && videoAssetHarnessEnabled"
           :project-id="projectId"
+          @add-to-timeline="onHarnessAddToTimeline"
         />
 
         <!-- AV preview (frame-accurate compositor) -->

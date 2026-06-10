@@ -6,6 +6,7 @@ g.defineEventHandler = (fn: any) => fn
 g.getRouterParam = (event: TestEvent, name: string) => event.params?.[name]
 g.getQuery = (event: TestEvent) => event.query ?? {}
 g.readBody = async (event: TestEvent) => event.body ?? {}
+g.readMultipartFormData = vi.fn()
 g.createError = (input: any) => Object.assign(new Error(input.statusMessage), input)
 g.setResponseStatus = vi.fn()
 
@@ -17,6 +18,17 @@ vi.mock('~~/server/utils/auth', () => ({
 const mockGetProject = vi.fn()
 vi.mock('~~/server/utils/audio/projects', () => ({
   getProjectWithCurrentTimeline: (...args: unknown[]) => mockGetProject(...args)
+}))
+
+const mockUploadFile = vi.fn()
+const mockGetPresignedDownloadUrl = vi.fn()
+const mockGetPublicUrl = vi.fn()
+const mockIsStorageConfigured = vi.fn()
+vi.mock('~~/server/utils/storage', () => ({
+  uploadFile: (...args: unknown[]) => mockUploadFile(...args),
+  getPresignedDownloadUrl: (...args: unknown[]) => mockGetPresignedDownloadUrl(...args),
+  getPublicUrl: (...args: unknown[]) => mockGetPublicUrl(...args),
+  isStorageConfigured: (...args: unknown[]) => mockIsStorageConfigured(...args),
 }))
 
 const mockEnsureBuckets = vi.fn()
@@ -39,6 +51,7 @@ vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
 const bucketsHandler = (await import('~~/server/api/agency/video/projects/[id]/buckets/index.get')).default
 const directiveHandler = (await import('~~/server/api/agency/video/bucket-items/[id]/directive.post')).default
 const extractHandler = (await import('~~/server/api/agency/video/assets/[id]/extract.post')).default
+const maskHandler = (await import('~~/server/api/agency/video/assets/[id]/masks.post')).default
 const derivativesHandler = (await import('~~/server/api/agency/video/assets/[id]/derivatives.get')).default
 const assembleHandler = (await import('~~/server/api/agency/video/projects/[id]/assemble.post')).default
 
@@ -54,6 +67,11 @@ describe('video asset harness API', () => {
     mockCreateOrUpdateDirective.mockResolvedValue({ id: 'i1', directive: { prompt: 'lift logo' } })
     mockCreateBlockedExtractionJob.mockResolvedValue({ id: 'j1', status: 'blocked', action: 'mask-lift' })
     mockListDerivatives.mockResolvedValue([{ id: 'd1', kind: 'foreground-png' }])
+    mockUploadFile.mockResolvedValue({ key: 'video-asset-masks/p1/a1/mask.png', url: '/api/_uploads/video-asset-masks/p1/a1/mask.png', size: 4 })
+    mockGetPresignedDownloadUrl.mockResolvedValue('/signed-mask-url')
+    mockGetPublicUrl.mockReturnValue(null)
+    mockIsStorageConfigured.mockReturnValue(false)
+    g.readMultipartFormData.mockResolvedValue([])
   })
 
   it('ensures default buckets before listing project buckets', async () => {
@@ -80,6 +98,32 @@ describe('video asset harness API', () => {
       createdBy: 'user-1'
     }))
     expect(res.job.status).toBe('blocked')
+  })
+
+  it('uploads a brush mask for a selected asset', async () => {
+    g.readMultipartFormData.mockResolvedValue([
+      { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') },
+      { name: 'file', filename: 'mask.png', type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
+    ])
+
+    const res = await maskHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
+
+    expect(mockGetProject).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
+    expect(mockUploadFile).toHaveBeenCalledWith(
+      Buffer.from([1, 2, 3, 4]),
+      expect.stringMatching(/^video-asset-masks\/11111111-1111-4111-8111-111111111111\/22222222-2222-4222-8222-222222222222\/\d+-[a-f0-9-]+\.png$/),
+      'image/png',
+      expect.objectContaining({
+        projectId: '11111111-1111-4111-8111-111111111111',
+        sourceAssetId: '22222222-2222-4222-8222-222222222222',
+        kind: 'brush-mask',
+      })
+    )
+    expect(res).toMatchObject({
+      maskKey: expect.stringContaining('video-asset-masks/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/'),
+      url: '/api/_uploads/video-asset-masks/p1/a1/mask.png',
+      size: 4,
+    })
   })
 
   it('lists derivatives for an asset', async () => {
