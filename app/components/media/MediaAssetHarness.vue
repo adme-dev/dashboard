@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
 import { assemblyPlanToTimelinePayloads, type AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 
@@ -96,6 +97,10 @@ const hasMaskStroke = ref(false)
 const uploadingMask = ref(false)
 const maskPreviewFailed = ref(false)
 
+// Collapsed by default — the harness is a power tool and shouldn't push the
+// preview + timeline below the fold. Choice persists across sessions.
+const harnessOpen = useLocalStorage('media-asset-harness-open', false)
+
 const selectedItem = computed(() => items.value.find(item => item.id === selectedItemId.value) ?? null)
 const selectedActionModels = computed(() => models.value.filter(model => model.actions.includes(selectedAction.value)))
 const selectedItemJobs = computed(() => {
@@ -122,6 +127,9 @@ const itemsByBucket = computed(() => {
   }
   return grouped
 })
+// Only buckets with assets get a row — nine empty folders are noise, not signal.
+const visibleBuckets = computed(() => buckets.value.filter(bucket => (itemsByBucket.value[bucket.id] || []).length > 0))
+const emptyBucketCount = computed(() => buckets.value.length - visibleBuckets.value.length)
 
 function maskCanvasPoint(event: PointerEvent) {
   const canvas = maskCanvasRef.value
@@ -415,21 +423,39 @@ onMounted(() => { void loadHarness() })
 <template>
   <section class="rounded-lg border border-default bg-elevated p-3">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <p class="text-sm font-semibold text-highlighted">AI Producer</p>
-        <p class="text-xs text-muted">Bucket assets, lift masks/layers, erase embedded graphics, and draft social edits.</p>
-      </div>
-      <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" :loading="loading" aria-label="Refresh AI Producer" @click="loadHarness" />
+      <button
+        type="button"
+        class="flex min-w-0 flex-1 items-start gap-2 text-left"
+        :aria-expanded="harnessOpen"
+        @click="harnessOpen = !harnessOpen"
+      >
+        <UIcon
+          name="i-lucide-chevron-right"
+          class="mt-0.5 size-4 shrink-0 text-muted transition-transform"
+          :class="harnessOpen && 'rotate-90'"
+        />
+        <span class="min-w-0">
+          <span class="flex items-center gap-2">
+            <span class="text-sm font-semibold text-highlighted">AI Producer</span>
+            <UBadge v-if="!harnessOpen && items.length" :label="`${items.length} assets`" size="xs" variant="subtle" color="neutral" />
+          </span>
+          <span class="block text-xs text-muted">Bucket assets, lift masks/layers, erase embedded graphics, and draft social edits.</span>
+        </span>
+      </button>
+      <UButton v-if="harnessOpen" icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" :loading="loading" aria-label="Refresh AI Producer" @click="loadHarness" />
     </div>
 
-    <div class="mt-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_1fr]">
+    <div v-show="harnessOpen" class="mt-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_1fr]">
       <div class="min-w-0 rounded-md border border-default bg-default/30 p-3">
         <div class="mb-2 flex items-center justify-between gap-2">
           <p class="text-xs font-medium uppercase text-muted">Project buckets</p>
           <UBadge :label="`${items.length} assets`" size="xs" variant="subtle" color="neutral" />
         </div>
         <div class="max-h-72 space-y-2 overflow-y-auto pr-1">
-          <div v-for="bucket in buckets" :key="bucket.id" class="space-y-1">
+          <div v-if="!items.length" class="rounded-md border border-dashed border-default px-3 py-4 text-center text-xs text-muted">
+            No assets bucketed yet — generate a video or save a derivative to get started.
+          </div>
+          <div v-for="bucket in visibleBuckets" :key="bucket.id" class="space-y-1">
             <div class="flex items-center gap-2 text-xs text-muted">
               <UIcon name="i-lucide-folder" class="size-3.5" />
               <span>{{ bucket.name }}</span>
@@ -450,6 +476,9 @@ onMounted(() => { void loadHarness() })
               </span>
             </button>
           </div>
+          <p v-if="items.length && emptyBucketCount" class="text-[11px] text-muted">
+            {{ emptyBucketCount }} empty {{ emptyBucketCount === 1 ? 'bucket' : 'buckets' }} hidden
+          </p>
         </div>
       </div>
 
@@ -478,6 +507,12 @@ onMounted(() => { void loadHarness() })
                 class="absolute inset-0 size-full object-cover opacity-80"
                 @error="maskPreviewFailed = true"
               >
+              <p
+                v-if="!selectedAssetThumbnailUrl && !hasMaskStroke"
+                class="absolute inset-0 flex items-center justify-center px-4 text-center text-[11px] text-white/50"
+              >
+                No preview for this asset — draw over the frame to mark the area
+              </p>
               <canvas
                 ref="maskCanvasRef"
                 width="540"
@@ -604,7 +639,7 @@ onMounted(() => { void loadHarness() })
       </div>
     </div>
 
-    <div class="mt-3 rounded-md border border-default bg-default/30 p-3">
+    <div v-show="harnessOpen" class="mt-3 rounded-md border border-default bg-default/30 p-3">
       <div class="mb-2 flex items-center justify-between gap-2">
         <p class="text-xs font-medium uppercase text-muted">AI activity</p>
         <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" aria-label="Refresh AI activity" @click="refreshActivity" />

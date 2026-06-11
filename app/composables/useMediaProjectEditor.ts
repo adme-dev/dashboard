@@ -8,6 +8,7 @@ import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/au
 import { createAudioEngine, type AudioEngine, type LoadResult } from '~~/app/composables/useAudioEngine'
 import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/app/utils/audio/audioContextFactory'
 import { createUndoStack } from '~~/app/composables/useTimelineUndo'
+import { resolveClipStartSec } from '~~/app/utils/video/timelinePlacement'
 import {
   cloneState,
   addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt,
@@ -313,13 +314,16 @@ export function useMediaProjectEditor(projectId: string) {
     return { r2Key: res.r2_key, url: res.url, durationSec }
   }
 
-  /** Add a video clip (footage or still). Ensures a video track exists. One undo step. */
+  /** Add a video clip (footage or still). Ensures a video track exists. One undo step.
+   * If the desired start would overlap an existing clip, appends after the last clip
+   * instead of stacking (every add path defaults to the playhead, usually 0s). */
   function addVideoClipAction(r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns', startSec: number, assetId: string | null = null) {
     if (!timeline.value) return
     let next = timeline.value
     let track = next.tracks.find(t => t.kind === 'video')
     if (!track) { const tid = crypto.randomUUID(); next = addTrack(next, { id: tid, kind: 'video' }); track = next.tracks.find(t => t.id === tid)! }
-    applyEdit(addVideoClip(next, { trackId: track.id, id: crypto.randomUUID(), assetId, r2Key, startSec: Math.max(0, startSec), durationSec, baseSource }))
+    const placedStart = resolveClipStartSec(next, 'video', startSec, durationSec)
+    applyEdit(addVideoClip(next, { trackId: track.id, id: crypto.randomUUID(), assetId, r2Key, startSec: placedStart, durationSec, baseSource }))
   }
 
   /** Add an overlay clip from a Banner project + format. Ensures an overlay track exists. */
@@ -328,7 +332,8 @@ export function useMediaProjectEditor(projectId: string) {
     let next = timeline.value
     let track = next.tracks.find(t => t.kind === 'overlay')
     if (!track) { const tid = crypto.randomUUID(); next = addTrack(next, { id: tid, kind: 'overlay' }); track = next.tracks.find(t => t.id === tid)! }
-    applyEdit(addOverlayClip(next, { trackId: track.id, id: crypto.randomUUID(), gsapProjectId, gsapFormatKey, startSec: Math.max(0, startSec), durationSec }))
+    const placedStart = resolveClipStartSec(next, 'overlay', startSec, durationSec)
+    applyEdit(addOverlayClip(next, { trackId: track.id, id: crypto.randomUUID(), gsapProjectId, gsapFormatKey, startSec: placedStart, durationSec }))
   }
 
   // ─── Render jobs ────────────────────────────────────────────────────────────

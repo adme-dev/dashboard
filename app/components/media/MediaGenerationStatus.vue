@@ -3,6 +3,7 @@
 // elapsed timer + spinner, and surfaces failures so the user is never left guessing.
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
+import { visibleGenerationJobs } from '~~/app/utils/video/generationStatusVisibility'
 
 const props = defineProps<{ jobs: VideoGenerationJobView[] }>()
 
@@ -12,13 +13,12 @@ let timer: ReturnType<typeof setInterval> | null = null
 onMounted(() => { timer = setInterval(() => { now.value = Date.now() }, 1000) })
 onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 
-// Show active jobs always; show finished (succeeded/failed) until dismissed.
+// Show active jobs always; finished (succeeded/failed) jobs only while fresh —
+// without the recency window every page load resurrected days-old failure cards.
 const visible = computed(() => {
   const raw: any = props.jobs
   const list: VideoGenerationJobView[] = Array.isArray(raw) ? raw : Array.isArray(raw?.value) ? raw.value : []
-  return list
-    .filter((j) => ['queued', 'running', 'succeeded', 'failed'].includes(j.status) && !dismissed.value.has(j.id))
-    .slice(0, 4)
+  return visibleGenerationJobs(list, dismissed.value, now.value)
 })
 
 function elapsed(j: VideoGenerationJobView): string {
