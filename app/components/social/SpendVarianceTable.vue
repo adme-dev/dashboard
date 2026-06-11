@@ -2,20 +2,29 @@
 import type { BudgetEditTarget } from './SpendBudgetEditModal.vue'
 import {
   SOCIAL_SPEND_OPTIONAL_COLUMNS,
+  SOCIAL_SPEND_VIEW_PRESETS,
   defaultSocialSpendColumnVisibility,
   normalizeSocialSpendColumnVisibility,
   socialSpendColumnCount,
+  socialSpendPresetVisibility,
+  type SocialSpendViewPresetId,
   type SocialSpendOptionalColumnId,
 } from '~/utils/socialSpendColumnVisibility'
-import { pacingItemsForSpendRow } from '~/utils/socialSpendPacingTable'
+import {
+  healthForSpendRow,
+  lastActionForSpendRow,
+  pacingItemsForSpendRow,
+  projectedMonthEndForSpendRow,
+  type SpendRowHealthTone,
+} from '~/utils/socialSpendPacingTable'
 
 interface PacingReviewItem {
   mediaSpendId: string
   clientName: string
   platform: 'meta' | 'google'
-  campaignName: string
-  campaignStatus: string | null
-  issueType: string
+    campaignName: string
+    campaignStatus: string | null
+    issueType: string
   severity: 'critical' | 'warning' | 'info'
   budget: number
   mtdSpend: number
@@ -83,6 +92,7 @@ const sortKey = ref<string>('spend')
 const sortDir = ref<'asc' | 'desc'>('desc')
 const COLUMN_STORAGE_KEY = 'agency:social:spend:client-columns'
 const columnVisibility = ref(defaultSocialSpendColumnVisibility())
+const activePreset = ref<SocialSpendViewPresetId>('pacing')
 
 // Active pacing alerts, matched to rows by media_spend id.
 const { alertsFor } = useSpendAlerts()
@@ -113,6 +123,18 @@ function openBudgetModal(item: typeof props.items[0]) {
 
 function pacingRecommendationsForItem(item: typeof props.items[0]) {
   return pacingItemsForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function healthForItem(item: typeof props.items[0]) {
+  return healthForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function projectionForItem(item: typeof props.items[0]) {
+  return projectedMonthEndForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function actionForItem(item: typeof props.items[0]) {
+  return lastActionForSpendRow(item, props.pacingReviewItems ?? [])
 }
 
 function openPacingHistory(item: PacingReviewItem) {
@@ -168,10 +190,16 @@ function isColumnVisible(columnId: SocialSpendOptionalColumnId): boolean {
 }
 
 function setColumnVisible(columnId: SocialSpendOptionalColumnId, visible: boolean) {
+  activePreset.value = 'pacing'
   columnVisibility.value = {
     ...columnVisibility.value,
     [columnId]: visible,
   }
+}
+
+function applyViewPreset(preset: SocialSpendViewPresetId) {
+  activePreset.value = preset
+  columnVisibility.value = socialSpendPresetVisibility(preset)
 }
 
 onMounted(() => {
@@ -296,6 +324,25 @@ function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(val)
 }
 
+function formatSignedCurrency(val: number) {
+  const formatted = formatCurrency(Math.abs(val))
+  if (val > 0) return `+${formatted}`
+  if (val < 0) return `-${formatted}`
+  return formatted
+}
+
+function healthColor(tone: SpendRowHealthTone) {
+  if (tone === 'critical') return 'error'
+  if (tone === 'warning') return 'warning'
+  if (tone === 'healthy') return 'success'
+  return 'neutral'
+}
+
+function projectionClass(variance: number) {
+  if (Math.abs(variance) < 1) return 'text-muted'
+  return variance > 0 ? 'text-error' : 'text-success'
+}
+
 function varianceClass(pct: number) {
   if (Math.abs(pct) < 5) return 'text-muted'
   return pct > 0 ? 'text-error' : 'text-success'
@@ -355,7 +402,18 @@ const totalColSpan = computed(() => socialSpendColumnCount({
 
 <template>
   <div class="space-y-2">
-    <div class="flex justify-end">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex flex-wrap items-center gap-1">
+        <UButton
+          v-for="preset in SOCIAL_SPEND_VIEW_PRESETS"
+          :key="preset.id"
+          :label="preset.label"
+          size="xs"
+          :color="activePreset === preset.id ? 'primary' : 'neutral'"
+          :variant="activePreset === preset.id ? 'soft' : 'ghost'"
+          @click="applyViewPreset(preset.id)"
+        />
+      </div>
       <UDropdownMenu :items="columnMenuItems" :content="{ align: 'end' }">
         <UButton
           label="Display"
@@ -385,6 +443,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
             Spend
             <UIcon v-if="sortKey === 'spend'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
+          <th v-if="isColumnVisible('health')" class="py-2 px-3 font-medium text-muted">Health</th>
           <!-- Bank Charged column -->
           <th v-if="isColumnVisible('bankCharged')" class="py-2 px-3 font-medium text-muted text-right">
             <UTooltip text="Actual charges from Xero bank/CC transactions + Meta Billing API, proportionally split by client spend share">
@@ -393,6 +452,8 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           </th>
           <th v-if="isColumnVisible('aiPacing')" class="py-2 px-3 font-medium text-muted">AI pacing</th>
           <th v-if="isColumnVisible('pacing')" class="py-2 px-3 font-medium text-muted text-center w-28">Pacing</th>
+          <th v-if="isColumnVisible('projectedMonthEnd')" class="py-2 px-3 font-medium text-muted text-right">Projected</th>
+          <th v-if="isColumnVisible('lastAction')" class="py-2 px-3 font-medium text-muted">Last action</th>
           <th v-if="isColumnVisible('commission')" class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('commission')">
             Commission
             <UIcon v-if="sortKey === 'commission'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
@@ -439,6 +500,13 @@ const totalColSpan = computed(() => socialSpendColumnCount({
             </div>
           </td>
           <td class="py-2 px-3 text-right font-medium">{{ formatCurrency(item.spend) }}</td>
+          <td v-if="isColumnVisible('health')" class="py-2 px-3">
+            <UTooltip :text="healthForItem(item).reason">
+              <UBadge :color="healthColor(healthForItem(item).tone) as any" variant="subtle" size="xs">
+                {{ healthForItem(item).label }}
+              </UBadge>
+            </UTooltip>
+          </td>
           <!-- Bank Charged cell -->
           <td v-if="isColumnVisible('bankCharged')" class="py-2 px-3 text-right">
             <template v-if="bankChargeForItem(item) != null">
@@ -513,6 +581,25 @@ const totalColSpan = computed(() => socialSpendColumnCount({
             </template>
             <span v-else class="text-muted text-center block">-</span>
           </td>
+          <td v-if="isColumnVisible('projectedMonthEnd')" class="py-2 px-3 text-right">
+            <div class="flex flex-col items-end gap-0.5">
+              <span>{{ projectionForItem(item).source === 'none' ? '-' : formatCurrency(projectionForItem(item).value) }}</span>
+              <span
+                v-if="projectionForItem(item).source !== 'none' && item.budget > 0"
+                class="text-[10px] font-medium"
+                :class="projectionClass(projectionForItem(item).variance)"
+              >
+                {{ formatSignedCurrency(projectionForItem(item).variance) }}
+              </span>
+            </div>
+          </td>
+          <td v-if="isColumnVisible('lastAction')" class="py-2 px-3">
+            <UTooltip :text="actionForItem(item).detail">
+              <UBadge :color="healthColor(actionForItem(item).tone) as any" variant="soft" size="xs">
+                {{ actionForItem(item).label }}
+              </UBadge>
+            </UTooltip>
+          </td>
           <td v-if="isColumnVisible('commission')" class="py-2 px-3 text-right">
             <div class="flex flex-col items-end gap-0.5">
               <span v-if="item.commission > 0">{{ formatCurrency(item.commission) }}</span>
@@ -536,6 +623,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           <td class="py-2 px-3" colspan="2">Totals</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.budget) }}</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.spend) }}</td>
+          <td v-if="isColumnVisible('health')" class="py-2 px-3"></td>
           <td v-if="isColumnVisible('bankCharged')" class="py-2 px-3 text-right">
             <div class="flex flex-col items-end gap-0.5">
               <span>{{ formatCurrency(combinedBankTotal) }}</span>
@@ -550,6 +638,8 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           </td>
           <td v-if="isColumnVisible('aiPacing')" class="py-2 px-3"></td>
           <td v-if="isColumnVisible('pacing')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('projectedMonthEnd')" class="py-2 px-3 text-right"></td>
+          <td v-if="isColumnVisible('lastAction')" class="py-2 px-3"></td>
           <td v-if="isColumnVisible('commission')" class="py-2 px-3 text-right">{{ formatCurrency(totals.commission) }}</td>
           <td v-if="isColumnVisible('variance')" class="py-2 px-3 text-right" :class="varianceClass(totals.budget > 0 ? ((totals.spend - totals.budget) / totals.budget) * 100 : 0)">
             {{ formatCurrency(totals.variance) }}

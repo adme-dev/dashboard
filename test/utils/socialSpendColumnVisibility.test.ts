@@ -2,14 +2,18 @@ import { describe, expect, it } from 'vitest'
 import {
   defaultSocialSpendColumnVisibility,
   socialSpendColumnCount,
+  socialSpendPresetVisibility,
   socialSpendVisibleColumnIds,
 } from '~~/app/utils/socialSpendColumnVisibility'
 
 describe('socialSpendColumnVisibility', () => {
   it('hides commission by default while keeping pacing and variance visible', () => {
     expect(defaultSocialSpendColumnVisibility()).toMatchObject({
+      health: true,
       aiPacing: true,
       pacing: true,
+      projectedMonthEnd: true,
+      lastAction: true,
       commission: false,
       variance: true,
       variancePercent: true,
@@ -32,9 +36,12 @@ describe('socialSpendColumnVisibility', () => {
       'platform',
       'budget',
       'spend',
+      'health',
       'bankCharged',
       'aiPacing',
       'pacing',
+      'projectedMonthEnd',
+      'lastAction',
       'commission',
       'variance',
     ])
@@ -45,10 +52,25 @@ describe('socialSpendColumnVisibility', () => {
       hasBankData: false,
       visibility: {
         ...defaultSocialSpendColumnVisibility(),
+        health: false,
         aiPacing: false,
         pacing: false,
+        projectedMonthEnd: false,
+        lastAction: false,
         commission: false,
       },
     })).toBe(6)
+  })
+
+  it('provides a finance preset that restores commission and hides operational AI columns', () => {
+    expect(socialSpendPresetVisibility('finance')).toMatchObject({
+      bankCharged: true,
+      aiPacing: false,
+      pacing: false,
+      projectedMonthEnd: true,
+      lastAction: false,
+      commission: true,
+      variance: true,
+    })
   })
 })
