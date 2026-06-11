@@ -5,6 +5,7 @@
 import { ref, computed, watch } from 'vue'
 import { modelsForMode, validateGenerationForm, costPreviewCents } from '~~/app/utils/videoGenerationForm'
 import { videoModelPresentation, type VideoModelOption } from '~~/app/utils/video/modelPresentation'
+import { VIDEO_GENERATION_TEMPLATES, type VideoGenerationTemplate } from '~~/app/utils/video/generationTemplates'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 
 const props = defineProps<{
@@ -59,6 +60,22 @@ const modelItems = computed(() => models.value.map((m) => {
 }))
 const selectedModelIcon = computed(() => (model.value ? videoModelPresentation(model.value).icon : 'i-lucide-box'))
 const costChipLabel = computed(() => `~$${(estCostCents.value / 100).toFixed(2)} · ${durationSeconds.value}s`)
+
+// Templates gallery shows while the prompt is empty (the blank-page moment);
+// clearing the prompt brings it back. Applying one prefills mode + prompt +
+// duration — everything stays editable before Generate.
+const templatesVisible = computed(() => !prompt.value.trim())
+
+function applyTemplate(template: VideoGenerationTemplate) {
+  if (mode.value !== template.mode) {
+    mode.value = template.mode
+    onModeChange()
+  }
+  prompt.value = template.prompt
+  if (model.value?.durationsSeconds.includes(template.durationSeconds)) {
+    durationSeconds.value = template.durationSeconds
+  }
+}
 
 function onModeChange() {
   modelId.value = models.value[0]?.id ?? ''
@@ -200,6 +217,31 @@ async function submit() {
              stacked form. The prompt is the primary object; everything else is a
              setting hanging off it. -->
         <template v-if="hasModels">
+          <!-- Start from a template — visible while the prompt is blank -->
+          <div v-if="templatesVisible" class="space-y-2">
+            <p class="text-xs font-semibold uppercase tracking-widest text-muted">
+              Start from a template
+            </p>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                v-for="template in VIDEO_GENERATION_TEMPLATES"
+                :key="template.id"
+                type="button"
+                class="group flex items-start gap-2.5 rounded-lg border border-default bg-elevated/60 p-2.5 text-left transition hover:border-primary/50 hover:bg-primary/5"
+                @click="applyTemplate(template)"
+              >
+                <UIcon :name="template.icon" class="mt-0.5 size-4 shrink-0 text-muted transition-colors group-hover:text-primary" />
+                <span class="min-w-0">
+                  <span class="block truncate text-xs font-medium text-highlighted">{{ template.title }}</span>
+                  <span class="mt-0.5 block text-[11px] leading-snug text-muted">{{ template.tagline }}</span>
+                </span>
+              </button>
+            </div>
+            <p class="text-[11px] text-muted">
+              Templates prefill the prompt — edit anything before generating.
+            </p>
+          </div>
+
           <div class="rounded-xl border border-default bg-elevated/60 transition-colors focus-within:border-primary/50">
             <UTextarea
               v-model="prompt"
