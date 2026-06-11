@@ -96,6 +96,7 @@ const emit = defineEmits<{
 const sortKey = ref<string>('spend')
 const sortDir = ref<'asc' | 'desc'>('desc')
 const COLUMN_STORAGE_KEY = 'agency:social:spend:client-columns'
+const READABLE_BADGE_CLASS = 'text-[11px] leading-4 font-semibold'
 const columnVisibility = ref(defaultSocialSpendColumnVisibility())
 const activePreset = ref<SocialSpendViewPresetId>('pacing')
 const ownerFilter = ref('all')
@@ -481,7 +482,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
       <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-default text-left">
-          <th class="py-2 px-3 font-medium text-muted cursor-pointer" @click="toggleSort('clientName')">
+          <th class="py-2 px-3 font-medium text-muted cursor-pointer w-[28rem] max-w-[28rem]" @click="toggleSort('clientName')">
             Client
             <UIcon v-if="sortKey === 'clientName'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
@@ -521,14 +522,20 @@ const totalColSpan = computed(() => socialSpendColumnCount({
       </thead>
       <tbody>
         <tr v-for="item in filtered" :key="itemKey(item)" class="border-b border-default/50 hover:bg-elevated/50 group">
-          <td class="py-2 px-3 font-medium">
-            <span>{{ item.clientName }}</span>
-            <UTooltip v-if="isStale(item.lastSyncedAt)" :text="staleTooltip(item.lastSyncedAt)">
-              <UBadge color="warning" variant="subtle" size="xs" icon="i-lucide-clock" class="ml-2 align-middle">
-                stale
-              </UBadge>
-            </UTooltip>
-            <SocialSpendAlertBadge :alerts="alertsFor(item.spendIds)" class="ml-2" />
+          <td class="py-2 px-3 font-medium w-[28rem] max-w-[28rem]">
+            <div class="flex items-start gap-1.5">
+              <span class="block min-w-0 flex-1 max-w-[24rem] line-clamp-2 leading-snug [overflow-wrap:anywhere]">
+                {{ item.clientName }}
+              </span>
+              <div class="flex shrink-0 flex-wrap items-center gap-1 pt-0.5">
+                <UTooltip v-if="isStale(item.lastSyncedAt)" :text="staleTooltip(item.lastSyncedAt)">
+                  <UBadge color="warning" variant="subtle" size="sm" icon="i-lucide-clock" :class="READABLE_BADGE_CLASS">
+                    stale
+                  </UBadge>
+                </UTooltip>
+                <SocialSpendAlertBadge :alerts="alertsFor(item.spendIds)" />
+              </div>
+            </div>
           </td>
           <td class="py-2 px-3">
             <div class="flex items-center gap-1">
@@ -547,7 +554,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
                 <span v-else class="text-muted/50 text-xs">Set budget</span>
                 <UIcon name="i-lucide-pencil" class="size-3 opacity-0 group-hover:opacity-50" />
               </button>
-              <UBadge v-if="item.rolling" size="xs" color="info" variant="subtle" class="gap-0.5">
+              <UBadge v-if="item.rolling" size="sm" color="info" variant="subtle" class="gap-0.5" :class="READABLE_BADGE_CLASS">
                 <UIcon name="i-lucide-repeat" class="size-3" />
                 Rolling
               </UBadge>
@@ -556,7 +563,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           <td class="py-2 px-3 text-right font-medium">{{ formatCurrency(item.spend) }}</td>
           <td v-if="isColumnVisible('health')" class="py-2 px-3">
             <UTooltip :text="healthForItem(item).reason">
-              <UBadge :color="healthColor(healthForItem(item).tone) as any" variant="subtle" size="xs">
+              <UBadge :color="healthColor(healthForItem(item).tone) as any" variant="subtle" size="sm" :class="READABLE_BADGE_CLASS">
                 {{ healthForItem(item).label }}
               </UBadge>
             </UTooltip>
@@ -566,7 +573,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           </td>
           <td v-if="isColumnVisible('budgetControl')" class="py-2 px-3">
             <UTooltip :text="budgetControlForItem(item).detail">
-              <UBadge :color="healthColor(budgetControlForItem(item).tone) as any" variant="soft" size="xs">
+              <UBadge :color="healthColor(budgetControlForItem(item).tone) as any" variant="soft" size="sm" :class="READABLE_BADGE_CLASS">
                 {{ budgetControlForItem(item).label }}
               </UBadge>
             </UTooltip>
@@ -578,8 +585,9 @@ const totalColSpan = computed(() => socialSpendColumnCount({
                 :key="reason"
                 color="neutral"
                 variant="subtle"
-                size="xs"
+                size="sm"
                 class="whitespace-nowrap"
+                :class="READABLE_BADGE_CLASS"
               >
                 {{ reason }}
               </UBadge>
@@ -623,7 +631,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
                   class="flex items-center justify-between gap-2"
                 >
                   <div class="min-w-0">
-                    <UBadge :color="severityColor(recommendation.severity) as any" variant="soft" size="xs">
+                    <UBadge :color="severityColor(recommendation.severity) as any" variant="soft" size="sm" :class="READABLE_BADGE_CLASS">
                       {{ issueLabel(recommendation.issueType) }}
                     </UBadge>
                   </div>
@@ -648,7 +656,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           <td v-if="isColumnVisible('pacing')" class="py-2 px-3">
             <template v-if="pacingInfo(item)">
               <div class="flex flex-col items-center gap-0.5">
-                <span class="text-[10px] font-medium" :class="pacingTextColor(pacingInfo(item)!.ratio)">
+                <span class="text-[11px] leading-4 font-semibold" :class="pacingTextColor(pacingInfo(item)!.ratio)">
                   {{ pacingInfo(item)!.spentPct }}%
                 </span>
                 <div class="w-full h-1.5 bg-elevated rounded-full overflow-hidden relative">
@@ -677,7 +685,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           </td>
           <td v-if="isColumnVisible('lastAction')" class="py-2 px-3">
             <UTooltip :text="actionForItem(item).detail">
-              <UBadge :color="healthColor(actionForItem(item).tone) as any" variant="soft" size="xs">
+              <UBadge :color="healthColor(actionForItem(item).tone) as any" variant="soft" size="sm" :class="READABLE_BADGE_CLASS">
                 {{ actionForItem(item).label }}
               </UBadge>
             </UTooltip>

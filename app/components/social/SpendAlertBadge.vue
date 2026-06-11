@@ -17,8 +17,8 @@ const tooltip = computed(() => props.alerts.map(a => a.title).join(' · '))
     <UBadge
       :color="worst === 'critical' ? 'error' : 'warning'"
       variant="subtle"
-      size="xs"
-      class="gap-0.5 cursor-help align-middle"
+      size="sm"
+      class="gap-0.5 cursor-help align-middle text-[11px] leading-4 font-semibold"
     >
       <UIcon name="i-lucide-triangle-alert" class="size-3" />
       {{ alerts.length }}
