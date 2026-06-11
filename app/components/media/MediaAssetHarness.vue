@@ -101,6 +101,19 @@ const maskPreviewFailed = ref(false)
 // preview + timeline below the fold. Choice persists across sessions.
 const harnessOpen = useLocalStorage('media-asset-harness-open', false)
 
+// Quick-create bar (shown while collapsed): typing a request expands the
+// harness, sets it as the assembly brief, and builds a draft plan in one step.
+const quickBrief = ref('')
+
+async function submitQuickBrief() {
+  const text = quickBrief.value.trim()
+  if (!text || assembling.value) return
+  brief.value = text
+  harnessOpen.value = true
+  quickBrief.value = ''
+  await assemblePlan()
+}
+
 const selectedItem = computed(() => items.value.find(item => item.id === selectedItemId.value) ?? null)
 const selectedActionModels = computed(() => models.value.filter(model => model.actions.includes(selectedAction.value)))
 const selectedItemJobs = computed(() => {
@@ -443,6 +456,30 @@ onMounted(() => { void loadHarness() })
         </span>
       </button>
       <UButton v-if="harnessOpen" icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" :loading="loading" aria-label="Refresh AI Producer" @click="loadHarness" />
+    </div>
+
+    <!-- Quick-create bar (collapsed state): one-line entry into agentic assembly -->
+    <div
+      v-if="!harnessOpen"
+      class="mt-3 flex items-center gap-2 rounded-lg border border-default bg-default/40 py-1 pl-3 pr-1.5 transition-colors focus-within:border-primary/50"
+    >
+      <UIcon name="i-lucide-sparkles" class="size-4 shrink-0 text-muted" />
+      <UInput
+        v-model="quickBrief"
+        variant="none"
+        placeholder="What do you want to create?"
+        class="flex-1"
+        @keydown.enter="submitQuickBrief"
+      />
+      <UButton
+        icon="i-lucide-arrow-up"
+        size="xs"
+        color="primary"
+        :loading="assembling"
+        :disabled="!quickBrief.trim()"
+        aria-label="Build draft plan from this brief"
+        @click="submitQuickBrief"
+      />
     </div>
 
     <div v-show="harnessOpen" class="mt-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_1fr]">
