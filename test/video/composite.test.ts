@@ -30,7 +30,11 @@ describe('activeVisualClipAt', () => {
   it('picks the clip whose [start,end) contains t', () => {
     expect(activeVisualClipAt(clips as any, 1)?.id).toBe('a')
     expect(activeVisualClipAt(clips as any, 3)?.id).toBe('b')
-    expect(activeVisualClipAt(clips as any, 6)).toBeNull()
+    expect(activeVisualClipAt(clips as any, 7)).toBeNull()
+  })
+
+  it('holds the final visual clip at its exact end time', () => {
+    expect(activeVisualClipAt(clips as any, 6)?.id).toBe('b')
   })
 })
 

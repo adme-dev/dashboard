@@ -6,8 +6,11 @@ const selectable = listSelectableVideoGenerationModels()
 
 describe('videoGenerationForm', () => {
   it('filters models by mode', () => {
-    // No production video model is selectable until the account has a verified provider.
-    expect(modelsForMode(selectable, 'image-to-video')).toHaveLength(0)
+    expect(modelsForMode(selectable, 'image-to-video').map((m) => m.id)).toEqual([
+      'aigateway/seedance-i2v',
+      'aigateway/wan-i2v',
+      'aigateway/hailuo-i2v',
+    ])
     const t2v = modelsForMode(selectable, 'text-to-video').map((m) => m.id)
     expect(t2v).toHaveLength(0)
     expect(t2v).not.toContain('aigateway/veo-t2v-internal')

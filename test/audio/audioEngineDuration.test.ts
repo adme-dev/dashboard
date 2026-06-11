@@ -44,4 +44,25 @@ describe('audio engine duration floor', () => {
     await engine.load(state)
     expect(engine.duration()).toBe(10)
   })
+
+  it('advances a video-only AV transport from wall time when AudioContext time is stuck', async () => {
+    let now = 100
+    const engine = createAudioEngine({
+      ctx: mockCtx() as any,
+      resolveBuffer: async () => ({ duration: 0 }),
+      setTimer: () => () => {},
+      now: () => now
+    })
+    const state = {
+      schema_version: 2, media_type: 'av', sample_rate: 48000, fps: 30, width: 1080, height: 1920,
+      duration_sec: 8, ducking: [],
+      tracks: [{ id: 'vid', name: 'Video', kind: 'video', gain_db: 0, muted: false, locked: false, hidden: false, clips: [
+        { type: 'video', id: 'v1', asset_id: null, r2_key: 'f.mp4', timeline_start_sec: 0, source_in_sec: 0, source_out_sec: null, duration_sec: 8, base_source: 'uploaded_footage', kenburns: null, audio_mode: 'mute' }
+      ] }]
+    } as unknown as TimelineState
+    await engine.load(state)
+    engine.play()
+    now = 102.25
+    expect(engine.currentTime()).toBeCloseTo(2.25, 5)
+  })
 })

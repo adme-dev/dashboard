@@ -13,6 +13,12 @@ import {
   addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt,
   addVideoClip, addOverlayClip, trimVisualClip
 } from '~~/app/utils/audio/timelineEdit'
+import {
+  createVideoSourceRegistry,
+  mergeVideoSource,
+  videoSourceRecord,
+  type VideoSourceInput,
+} from '~~/app/utils/video/videoSourceRegistry'
 import type { Track } from '~~/server/utils/audio/timelineSchema'
 import type { MediaRenderJob } from '~~/app/types'
 
@@ -146,6 +152,7 @@ export function useMediaProjectEditor(projectId: string) {
   // the resolver.  sourcesRef is a reactive snapshot of the map — passed as the
   // :sources prop to MediaTimeline so wavesurfer waveforms update when new clips
   // are added.
+  const sourcesRegistry = createVideoSourceRegistry()
   const sourcesMap = new Map<string, string>()
   const sourcesRef = ref<Record<string, string>>({})
 
@@ -236,10 +243,11 @@ export function useMediaProjectEditor(projectId: string) {
 
   /** Merge a presigned URL into the live sources map so the resolver + waveform
    * prop see it immediately. Call this BEFORE addClipAction when you have a URL. */
-  function mergeSource(r2Key: string, url: string) {
+  function mergeSource(r2Key: string, url: string, metadata: Partial<Omit<VideoSourceInput, 'r2Key' | 'url'>> = {}) {
     sourcesMap.set(r2Key, url)
+    mergeVideoSource(sourcesRegistry, { r2Key, url, ...metadata })
     // Bump sourcesRef so watchers / MediaTimeline :sources prop update
-    sourcesRef.value = Object.fromEntries(sourcesMap)
+    sourcesRef.value = videoSourceRecord(sourcesRegistry)
   }
 
   function addClipAction(
@@ -301,17 +309,17 @@ export function useMediaProjectEditor(projectId: string) {
     fd.append('file', file)
     fd.append('kind', kind)
     const res = await $fetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, { method: 'POST', body: fd })
-    mergeSource(res.r2_key, res.url)
+    mergeSource(res.r2_key, res.url, { durationSec })
     return { r2Key: res.r2_key, url: res.url, durationSec }
   }
 
   /** Add a video clip (footage or still). Ensures a video track exists. One undo step. */
-  function addVideoClipAction(r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns', startSec: number) {
+  function addVideoClipAction(r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns', startSec: number, assetId: string | null = null) {
     if (!timeline.value) return
     let next = timeline.value
     let track = next.tracks.find(t => t.kind === 'video')
     if (!track) { const tid = crypto.randomUUID(); next = addTrack(next, { id: tid, kind: 'video' }); track = next.tracks.find(t => t.id === tid)! }
-    applyEdit(addVideoClip(next, { trackId: track.id, id: crypto.randomUUID(), r2Key, startSec: Math.max(0, startSec), durationSec, baseSource }))
+    applyEdit(addVideoClip(next, { trackId: track.id, id: crypto.randomUUID(), assetId, r2Key, startSec: Math.max(0, startSec), durationSec, baseSource }))
   }
 
   /** Add an overlay clip from a Banner project + format. Ensures an overlay track exists. */
@@ -366,6 +374,11 @@ export function useMediaProjectEditor(projectId: string) {
     return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/publish-social`, {
       method: 'POST', body: { format }
     })
+  }
+
+  /** Draft a social post from a saved/generated video asset. */
+  async function publishVideoAssetToSocial(assetId: string): Promise<{ postId: string; clientId: string }> {
+    return await $fetch(`/api/agency/video/assets/${assetId}/publish-social`, { method: 'POST' })
   }
 
   /** Send a rendered variant to the client portal for review. Returns the created review or throws. */
@@ -459,8 +472,7 @@ export function useMediaProjectEditor(projectId: string) {
       if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
       timeline.value = state
       // Populate the live sources map from the initial presigned URLs
-      for (const [k, v] of Object.entries(src.sources)) sourcesMap.set(k, v)
-      sourcesRef.value = Object.fromEntries(sourcesMap)
+      for (const [k, v] of Object.entries(src.sources)) mergeSource(k, v)
       const plan = planTimeline(state)
       clips.value = plan.clips
       tracks.value = plan.tracks
@@ -469,7 +481,7 @@ export function useMediaProjectEditor(projectId: string) {
         ctx: ctx as any,
         resolveBuffer: makeR2Resolver(sourcesMap, ctx),
         setTimer: browserSetTimer,
-        now: () => ctx.currentTime
+        now: () => performance.now() / 1000
       })
       // Bind the serialized reload orchestrator to this engine + reactive sink.
       runReload = makeEngineReloader(
@@ -547,7 +559,7 @@ export function useMediaProjectEditor(projectId: string) {
     undoAction, redoAction,
     // AV actions
     uploadMedia, addVideoClipAction, addOverlayClipAction,
-    renderVideoAction, refreshRenderJobs, renderJobs, rendering, publishToSocial, sendToPortal,
+    renderVideoAction, refreshRenderJobs, renderJobs, rendering, publishToSocial, publishVideoAssetToSocial, sendToPortal,
     saveAsset, listVideoAssets,
     /** Merge a new presigned URL into the live sources map (called before addClipAction). */
     mergeSource,

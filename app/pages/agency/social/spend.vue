@@ -4,7 +4,13 @@ definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
-const { fetchSpendSummary, syncSpend } = useSocialConnections()
+const {
+  fetchSpendSummary,
+  fetchPacingReview,
+  fetchBudgetControlSettings,
+  updateBudgetControlSettings,
+  syncSpend,
+} = useSocialConnections()
 
 const now = new Date()
 const selectedMonth = ref(parseInt(String(route.query.month || now.getMonth() + 1), 10))
@@ -17,6 +23,15 @@ const searchQuery = ref('')
 
 const spendData = ref<any>(null)
 const bankCharges = ref<any>(null)
+const pacingReview = ref<any>(null)
+const pacingReviewLoading = ref(false)
+const budgetControlSettings = ref({
+  liveBudgetChangesEnabled: false,
+  metaBudgetWritesEnabled: false,
+  googleBudgetWritesEnabled: false,
+})
+const budgetControlLoading = ref(false)
+const budgetControlSaving = ref(false)
 const bankLoading = ref(false)
 
 const platformOptions = [
@@ -46,6 +61,59 @@ async function loadSpend(refresh = false) {
     toast.add({ title: 'Error loading spend', description: e.message, color: 'error' })
   } finally {
     loading.value = false
+  }
+}
+
+async function loadPacingReview() {
+  if (!showPacingReview.value) {
+    pacingReview.value = null
+    return
+  }
+  pacingReviewLoading.value = true
+  try {
+    pacingReview.value = await fetchPacingReview(selectedMonth.value, selectedYear.value, selectedPlatform.value)
+  } catch (e: any) {
+    pacingReview.value = null
+    toast.add({ title: 'Error loading pacing review', description: e.message, color: 'error' })
+  } finally {
+    pacingReviewLoading.value = false
+  }
+}
+
+async function loadBudgetControlSettings() {
+  budgetControlLoading.value = true
+  try {
+    budgetControlSettings.value = await fetchBudgetControlSettings()
+  } catch (e: any) {
+    toast.add({ title: 'Error loading budget control', description: e.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    budgetControlLoading.value = false
+  }
+}
+
+async function setLiveBudgetChanges(enabled: boolean) {
+  const previous = { ...budgetControlSettings.value }
+  budgetControlSaving.value = true
+  budgetControlSettings.value = {
+    liveBudgetChangesEnabled: enabled,
+    metaBudgetWritesEnabled: enabled,
+    googleBudgetWritesEnabled: enabled,
+  }
+  try {
+    const result = await updateBudgetControlSettings(budgetControlSettings.value)
+    budgetControlSettings.value = result.config
+    toast.add({
+      title: enabled ? 'Live budget changes armed' : 'Recommend-only mode enabled',
+      description: enabled
+        ? 'Meta and Google budget changes are armed, but platform execution still requires the server write layer.'
+        : 'AI pacing recommendations will stay in review and audit history only.',
+      color: enabled ? 'warning' : 'success',
+    })
+  } catch (e: any) {
+    budgetControlSettings.value = previous
+    toast.add({ title: 'Could not update budget control', description: e.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    budgetControlSaving.value = false
   }
 }
 
@@ -210,7 +278,7 @@ async function finishSync(statuses: SyncStatusResponse[]) {
 
 // Re-fetch summary + bank charges, bypassing the KV cache.
 async function refreshAfterSync() {
-  await loadSpend(true)
+  await Promise.all([loadSpend(true), loadPacingReview()])
   loadBankCharges(true)
 }
 
@@ -251,6 +319,7 @@ function exportCSV() {
 
 watch([selectedMonth, selectedYear, selectedPlatform], () => {
   loadSpend()
+  loadPacingReview()
   loadBankCharges()
 
   // Sync URL query string so the current view is linkable
@@ -264,6 +333,8 @@ watch([selectedMonth, selectedYear, selectedPlatform], () => {
 
 onMounted(() => {
   loadSpend()
+  loadPacingReview()
+  loadBudgetControlSettings()
   loadBankCharges()
 })
 
@@ -304,6 +375,10 @@ const hasBankData = computed(() => {
   return bankCharges.value.total > 0 || (bankCharges.value.metaBilling?.total ?? 0) > 0
 })
 
+const showPacingReview = computed(() => ['all', 'meta', 'google'].includes(selectedPlatform.value))
+const liveBudgetChangesEnabled = computed(() => Boolean(budgetControlSettings.value.liveBudgetChangesEnabled))
+const pacingReviewItems = computed(() => pacingReview.value?.items ?? [])
+
 /** Combined: Xero bank/CC + Meta billing (for platforms not matched in Xero) */
 const combinedBankTotal = computed(() => {
   if (!bankCharges.value) return 0
@@ -323,6 +398,7 @@ const bankDiscrepancy = computed(() => {
     : 0
   return { diff: Math.round(diff * 100) / 100, pct }
 })
+
 </script>
 
 <template>
@@ -509,24 +585,84 @@ const bankDiscrepancy = computed(() => {
 
       <!-- Spend Table -->
       <div v-else-if="spendData?.items?.length" class="rounded-xl border border-default overflow-hidden">
-        <div class="flex items-center justify-between px-4 py-3 border-b border-default bg-elevated/30 gap-3">
-          <div>
-            <h2 class="text-sm font-semibold">Spend by Client</h2>
-            <p class="text-xs text-muted mt-0.5">{{ spendData.items.length }} {{ spendData.items.length === 1 ? 'client' : 'clients' }} this period</p>
+        <div class="flex flex-col gap-3 px-4 py-3 border-b border-default bg-elevated/30">
+          <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-sm font-semibold">Spend by Client</h2>
+                <UBadge v-if="showPacingReview" :color="liveBudgetChangesEnabled ? 'warning' : 'neutral'" variant="soft" size="xs">
+                  {{ liveBudgetChangesEnabled ? 'Live budget changes armed' : 'Recommend only' }}
+                </UBadge>
+              </div>
+              <p class="text-xs text-muted mt-0.5">
+                {{ spendData.items.length }} {{ spendData.items.length === 1 ? 'client' : 'clients' }} this period
+                <template v-if="showPacingReview"> · AI pacing merged into this view</template>
+              </p>
+            </div>
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div v-if="showPacingReview" class="flex items-center gap-2 rounded-lg border border-default bg-default/40 px-3 py-2">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <UIcon
+                      :name="liveBudgetChangesEnabled ? 'i-lucide-zap' : 'i-lucide-shield-check'"
+                      class="size-4"
+                      :class="liveBudgetChangesEnabled ? 'text-warning' : 'text-muted'"
+                    />
+                    <span class="text-xs font-medium">Live budget changes</span>
+                  </div>
+                  <p class="text-[11px] text-muted">Meta and Google</p>
+                </div>
+                <USwitch
+                  :model-value="liveBudgetChangesEnabled"
+                  :loading="budgetControlLoading || budgetControlSaving"
+                  :disabled="budgetControlLoading || budgetControlSaving"
+                  @update:model-value="setLiveBudgetChanges(Boolean($event))"
+                />
+              </div>
+              <UInput
+                v-model="searchQuery"
+                icon="i-lucide-search"
+                placeholder="Search clients..."
+                size="sm"
+                class="w-full sm:w-56"
+              />
+            </div>
           </div>
-          <UInput
-            v-model="searchQuery"
-            icon="i-lucide-search"
-            placeholder="Search clients..."
-            size="sm"
-            class="w-56"
-          />
+
+          <div v-if="showPacingReview" class="grid grid-cols-2 lg:grid-cols-5 gap-2">
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Critical</p>
+              <p class="text-base font-semibold text-error">{{ pacingReviewLoading ? '-' : (pacingReview?.summary?.criticalCount ?? 0) }}</p>
+            </div>
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Warnings</p>
+              <p class="text-base font-semibold text-warning">{{ pacingReviewLoading ? '-' : (pacingReview?.summary?.warningCount ?? 0) }}</p>
+            </div>
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Recommendations</p>
+              <p class="text-base font-semibold">{{ pacingReviewLoading ? '-' : pacingReviewItems.length }}</p>
+            </div>
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Projected over</p>
+              <p class="text-base font-semibold">{{ pacingReviewLoading ? '-' : formatCurrency(pacingReview?.summary?.projectedOverspend ?? 0) }}</p>
+            </div>
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Projected under</p>
+              <p class="text-base font-semibold">{{ pacingReviewLoading ? '-' : formatCurrency(pacingReview?.summary?.projectedUnderspend ?? 0) }}</p>
+            </div>
+          </div>
+
+          <div v-if="showPacingReview && pacingReview?.aiSummary" class="rounded-lg bg-primary/5 px-3 py-2 text-xs text-default">
+            {{ pacingReview.aiSummary }}
+          </div>
         </div>
         <SocialSpendVarianceTable
           :items="spendData.items"
           :totals="spendData.totals"
           :search="searchQuery"
           :month-progress="monthProgress"
+          :pacing-review-items="pacingReviewItems"
+          :budget-control-settings="budgetControlSettings"
           :bank-charges="bankCharges"
           @budget-updated="loadSpend"
         />

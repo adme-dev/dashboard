@@ -22,6 +22,19 @@ describe('addVideoClip', () => {
     expect(next.duration_sec).toBe(8)
   })
 
+  it('preserves the source video asset id for library/generated clips', () => {
+    const next = addVideoClip(avState(), {
+      trackId: 'vid',
+      id: 'v1',
+      assetId: 'asset-1',
+      r2Key: 'media/p/generated.mp4',
+      startSec: 0,
+      durationSec: 5,
+      baseSource: 'uploaded_footage'
+    })
+    expect((next.tracks[0].clips[0] as any).asset_id).toBe('asset-1')
+  })
+
   it('adds a still_kenburns clip with a default kenburns object', () => {
     const next = addVideoClip(avState(), { trackId: 'vid', id: 's1', r2Key: 'media/p/i.jpg', startSec: 0, durationSec: 5, baseSource: 'still_kenburns' })
     const clip: any = next.tracks[0].clips[0]

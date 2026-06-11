@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { cachedFetch } from '~~/server/utils/kv'
+import { getSelectedTenant } from '~~/server/utils/session'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -11,10 +12,11 @@ export default eventHandler(async (event) => {
   const period = `${year}-${String(month).padStart(2, '0')}`
   const rawPlatform = query.platform ? String(query.platform) : null
   const platform = rawPlatform === 'google' ? 'google_ads' : rawPlatform
+  const tenantId = await getSelectedTenant(event)
 
   const emptyResult = { month, year, platform: platform || 'all', items: [], totals: { budget: 0, spend: 0, commission: 0, variance: 0 } }
 
-  const cacheKey = `spend:summary:${period}:${platform || 'all'}`
+  const cacheKey = `spend:summary:${tenantId || 'no-tenant'}:${period}:${platform || 'all'}`
 
   return cachedFetch(event, cacheKey, 300, async () => {
   try {
@@ -23,6 +25,8 @@ export default eventHandler(async (event) => {
         ms.platform,
         COALESCE(ac.name, ms.campaign_name, 'Unknown') as client_name,
         ac.xero_contact_id as client_ref,
+        MAX(cf.account_manager_id::text) as owner_id,
+        MAX(tm.name) as owner_name,
         SUM(ms.budget_allocated) as total_budget,
         SUM(ms.actual_spend) as total_spend,
         SUM(ms.commission_amount) as total_commission,
@@ -36,9 +40,11 @@ export default eventHandler(async (event) => {
         MAX(ms.commission_rate) as commission_rate
       FROM media_spend ms
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
+      LEFT JOIN customer_finance cf ON cf.contact_id = ac.xero_contact_id AND cf.tenant_id = $2
+      LEFT JOIN team_members tm ON tm.id = cf.account_manager_id
       WHERE ms.period = $1
     `
-    const params: any[] = [period]
+    const params: any[] = [period, tenantId]
 
     if (platform && platform !== 'all') {
       sql += ` AND ms.platform = $${params.length + 1}`
@@ -59,6 +65,7 @@ export default eventHandler(async (event) => {
         platform: r.platform,
         clientName: r.client_name,
         clientCode: r.client_ref || null,
+        owner: r.owner_id ? { id: r.owner_id, name: r.owner_name || null } : null,
         budget,
         spend,
         commission: parseFloat(r.total_commission) || 0,

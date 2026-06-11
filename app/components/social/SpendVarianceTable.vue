@@ -1,11 +1,67 @@
 <script setup lang="ts">
 import type { BudgetEditTarget } from './SpendBudgetEditModal.vue'
+import {
+  SOCIAL_SPEND_OPTIONAL_COLUMNS,
+  SOCIAL_SPEND_VIEW_PRESETS,
+  defaultSocialSpendColumnVisibility,
+  normalizeSocialSpendColumnVisibility,
+  socialSpendColumnCount,
+  socialSpendPresetVisibility,
+  type SocialSpendViewPresetId,
+  type SocialSpendOptionalColumnId,
+} from '~/utils/socialSpendColumnVisibility'
+import {
+  budgetControlForSpendRow,
+  healthForSpendRow,
+  lastActionForSpendRow,
+  pacingItemsForSpendRow,
+  projectedMonthEndForSpendRow,
+  reasonCodesForSpendRow,
+  type SpendBudgetControlSettings,
+  type SpendRowHealthTone,
+} from '~/utils/socialSpendPacingTable'
+
+interface PacingReviewItem {
+  mediaSpendId: string
+  clientName: string
+  platform: 'meta' | 'google'
+    campaignName: string
+    campaignStatus: string | null
+    issueType: string
+  severity: 'critical' | 'warning' | 'info'
+  budget: number
+  mtdSpend: number
+  expectedToDate: number
+  projectedMonthEnd: number
+  currentDailyBudget: number
+  recommendedDailyBudget: number
+  pacingRatio: number
+  performance: {
+    impressions: number
+    clicks: number
+    conversions: number
+    ctr: number | null
+    cpc: number | null
+    costPerConversion: number | null
+    conversionRate: number | null
+    reach: number | null
+    frequency: number | null
+    impressionShare: number | null
+    lostImpressionShareBudget: number | null
+    lostImpressionShareRank: number | null
+    bidStrategy: string | null
+    budgetType: string | null
+  }
+  syncedAt: string | null
+  recommendedAction: string
+}
 
 const props = defineProps<{
   items: Array<{
     platform: string
     clientName: string
     clientCode: string | null
+    owner?: { id: string; name: string | null } | null
     budget: number
     spend: number
     commission: number
@@ -23,6 +79,8 @@ const props = defineProps<{
   totals: { budget: number; spend: number; commission: number; variance: number }
   search?: string
   monthProgress?: number
+  pacingReviewItems?: PacingReviewItem[]
+  budgetControlSettings?: SpendBudgetControlSettings
   bankCharges?: {
     byPlatform: Record<string, { total: number }>
     total: number
@@ -37,6 +95,11 @@ const emit = defineEmits<{
 
 const sortKey = ref<string>('spend')
 const sortDir = ref<'asc' | 'desc'>('desc')
+const COLUMN_STORAGE_KEY = 'agency:social:spend:client-columns'
+const READABLE_BADGE_CLASS = 'text-[11px] leading-4 font-semibold'
+const columnVisibility = ref(defaultSocialSpendColumnVisibility())
+const activePreset = ref<SocialSpendViewPresetId>('pacing')
+const ownerFilter = ref('all')
 
 // Active pacing alerts, matched to rows by media_spend id.
 const { alertsFor } = useSpendAlerts()
@@ -44,6 +107,8 @@ const { alertsFor } = useSpendAlerts()
 // Budget edit modal
 const budgetModalOpen = ref(false)
 const budgetModalTarget = ref<BudgetEditTarget | null>(null)
+const historyOpen = ref(false)
+const selectedHistoryItem = ref<PacingReviewItem | null>(null)
 
 function openBudgetModal(item: typeof props.items[0]) {
   budgetModalTarget.value = {
@@ -63,10 +128,126 @@ function openBudgetModal(item: typeof props.items[0]) {
   budgetModalOpen.value = true
 }
 
+function pacingRecommendationsForItem(item: typeof props.items[0]) {
+  return pacingItemsForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function healthForItem(item: typeof props.items[0]) {
+  return healthForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function projectionForItem(item: typeof props.items[0]) {
+  return projectedMonthEndForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function actionForItem(item: typeof props.items[0]) {
+  return lastActionForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function budgetControlForItem(item: typeof props.items[0]) {
+  return budgetControlForSpendRow(item, props.budgetControlSettings)
+}
+
+function reasonCodesForItem(item: typeof props.items[0]) {
+  return reasonCodesForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function openPacingHistory(item: PacingReviewItem) {
+  selectedHistoryItem.value = item
+  historyOpen.value = true
+}
+
+function issueLabel(issue: string) {
+  return issue.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+}
+
+function severityColor(severity: string) {
+  if (severity === 'critical') return 'error'
+  if (severity === 'warning') return 'warning'
+  return 'info'
+}
+
 const hasBankData = computed(() => {
   if (!props.bankCharges?.connected) return false
   return props.bankCharges.total > 0 || (props.bankCharges.metaBilling?.total ?? 0) > 0
 })
+
+const columnOptions = computed(() =>
+  SOCIAL_SPEND_OPTIONAL_COLUMNS.filter(column => column.id !== 'bankCharged' || hasBankData.value)
+)
+
+const columnMenuItems = computed(() => [
+  columnOptions.value.map(column => ({
+    label: column.label,
+    type: 'checkbox' as const,
+    checked: columnVisibility.value[column.id],
+    onUpdateChecked(checked: boolean) {
+      setColumnVisible(column.id, checked)
+    },
+    onSelect(e?: Event) {
+      e?.preventDefault()
+    },
+  })),
+  [
+    {
+      label: 'Reset columns',
+      icon: 'i-lucide-rotate-ccw',
+      onSelect() {
+        columnVisibility.value = defaultSocialSpendColumnVisibility()
+      },
+    },
+  ],
+])
+
+function isColumnVisible(columnId: SocialSpendOptionalColumnId): boolean {
+  if (columnId === 'bankCharged' && !hasBankData.value) return false
+  return columnVisibility.value[columnId]
+}
+
+function setColumnVisible(columnId: SocialSpendOptionalColumnId, visible: boolean) {
+  activePreset.value = 'pacing'
+  columnVisibility.value = {
+    ...columnVisibility.value,
+    [columnId]: visible,
+  }
+}
+
+function applyViewPreset(preset: SocialSpendViewPresetId) {
+  activePreset.value = preset
+  columnVisibility.value = socialSpendPresetVisibility(preset)
+}
+
+const ownerOptions = computed(() => {
+  const owners = new Map<string, string>()
+  let hasUnassigned = false
+  for (const item of props.items) {
+    if (item.owner?.id) owners.set(item.owner.id, item.owner.name || 'Unknown owner')
+    else hasUnassigned = true
+  }
+  return [
+    { label: 'All owners', value: 'all' },
+    ...Array.from(owners.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ label, value })),
+    ...(hasUnassigned ? [{ label: 'Unassigned', value: '__unassigned__' }] : []),
+  ]
+})
+
+onMounted(() => {
+  if (!import.meta.client) return
+  const stored = localStorage.getItem(COLUMN_STORAGE_KEY)
+  if (!stored) return
+  try {
+    columnVisibility.value = normalizeSocialSpendColumnVisibility(JSON.parse(stored))
+  } catch {
+    columnVisibility.value = defaultSocialSpendColumnVisibility()
+  }
+})
+
+watch(columnVisibility, (value) => {
+  if (!import.meta.client) return
+  localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(value))
+}, { deep: true })
 
 // Pre-compute platform spend totals for proportional bank charge calculation
 const platformSpendTotals = computed(() => {
@@ -137,11 +318,18 @@ function toggleSort(key: string) {
 
 const filtered = computed(() => {
   let items = [...props.items]
+  if (ownerFilter.value !== 'all') {
+    items = items.filter((item) => {
+      if (ownerFilter.value === '__unassigned__') return !item.owner?.id
+      return item.owner?.id === ownerFilter.value
+    })
+  }
   if (props.search) {
     const q = props.search.toLowerCase()
     items = items.filter(i =>
       i.clientName.toLowerCase().includes(q) ||
       (i.clientCode && i.clientCode.toLowerCase().includes(q)) ||
+      (i.owner?.name && i.owner.name.toLowerCase().includes(q)) ||
       platformLabel(i.platform).toLowerCase().includes(q)
     )
   }
@@ -172,6 +360,29 @@ function staleTooltip(lastSyncedAt: string | null | undefined): string {
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(val)
+}
+
+function formatSignedCurrency(val: number) {
+  const formatted = formatCurrency(Math.abs(val))
+  if (val > 0) return `+${formatted}`
+  if (val < 0) return `-${formatted}`
+  return formatted
+}
+
+function healthColor(tone: SpendRowHealthTone) {
+  if (tone === 'critical') return 'error'
+  if (tone === 'warning') return 'warning'
+  if (tone === 'healthy') return 'success'
+  return 'neutral'
+}
+
+function ownerLabel(item: { owner?: { name: string | null } | null }) {
+  return item.owner?.name || 'Unassigned'
+}
+
+function projectionClass(variance: number) {
+  if (Math.abs(variance) < 1) return 'text-muted'
+  return variance > 0 ? 'text-error' : 'text-success'
 }
 
 function varianceClass(pct: number) {
@@ -225,15 +436,53 @@ const combinedBankTotal = computed(() => {
   return Math.round(total * 100) / 100
 })
 
-const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
+const totalColSpan = computed(() => socialSpendColumnCount({
+  hasBankData: hasBankData.value,
+  visibility: columnVisibility.value,
+}))
 </script>
 
 <template>
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+  <div class="space-y-2">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex flex-wrap items-center gap-1">
+        <UButton
+          v-for="preset in SOCIAL_SPEND_VIEW_PRESETS"
+          :key="preset.id"
+          :label="preset.label"
+          size="xs"
+          :color="activePreset === preset.id ? 'primary' : 'neutral'"
+          :variant="activePreset === preset.id ? 'soft' : 'ghost'"
+          @click="applyViewPreset(preset.id)"
+        />
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <USelect
+          v-model="ownerFilter"
+          :items="ownerOptions"
+          size="sm"
+          value-key="value"
+          class="w-40"
+          icon="i-lucide-user-round"
+        />
+        <UDropdownMenu :items="columnMenuItems" :content="{ align: 'end' }">
+          <UButton
+            label="Display"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            icon="i-lucide-columns-3"
+            trailing-icon="i-lucide-chevron-down"
+          />
+        </UDropdownMenu>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-default text-left">
-          <th class="py-2 px-3 font-medium text-muted cursor-pointer" @click="toggleSort('clientName')">
+          <th class="py-2 px-3 font-medium text-muted cursor-pointer w-80 min-w-80 max-w-80" @click="toggleSort('clientName')">
             Client
             <UIcon v-if="sortKey === 'clientName'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
@@ -246,34 +495,47 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
             Spend
             <UIcon v-if="sortKey === 'spend'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
+          <th v-if="isColumnVisible('health')" class="py-2 px-3 font-medium text-muted">Health</th>
+          <th v-if="isColumnVisible('owner')" class="py-2 px-3 font-medium text-muted">Owner</th>
+          <th v-if="isColumnVisible('budgetControl')" class="py-2 px-3 font-medium text-muted">Budget control</th>
+          <th v-if="isColumnVisible('reasonCodes')" class="py-2 px-3 font-medium text-muted">Reason codes</th>
           <!-- Bank Charged column -->
-          <th v-if="hasBankData" class="py-2 px-3 font-medium text-muted text-right">
+          <th v-if="isColumnVisible('bankCharged')" class="py-2 px-3 font-medium text-muted text-right">
             <UTooltip text="Actual charges from Xero bank/CC transactions + Meta Billing API, proportionally split by client spend share">
               <span class="border-b border-dashed border-current cursor-help">Bank Charged</span>
             </UTooltip>
           </th>
-          <th class="py-2 px-3 font-medium text-muted text-center w-28">Pacing</th>
-          <th class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('commission')">
+          <th v-if="isColumnVisible('aiPacing')" class="py-2 px-3 font-medium text-muted">AI pacing</th>
+          <th v-if="isColumnVisible('pacing')" class="py-2 px-3 font-medium text-muted text-center w-28">Pacing</th>
+          <th v-if="isColumnVisible('projectedMonthEnd')" class="py-2 px-3 font-medium text-muted text-right">Projected</th>
+          <th v-if="isColumnVisible('lastAction')" class="py-2 px-3 font-medium text-muted">Last action</th>
+          <th v-if="isColumnVisible('commission')" class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('commission')">
             Commission
             <UIcon v-if="sortKey === 'commission'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
-          <th class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('variance')">
+          <th v-if="isColumnVisible('variance')" class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('variance')">
             Variance
             <UIcon v-if="sortKey === 'variance'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
-          <th class="py-2 px-3 font-medium text-muted text-right">Var %</th>
+          <th v-if="isColumnVisible('variancePercent')" class="py-2 px-3 font-medium text-muted text-right">Var %</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="item in filtered" :key="itemKey(item)" class="border-b border-default/50 hover:bg-elevated/50 group">
-          <td class="py-2 px-3 font-medium">
-            <span>{{ item.clientName }}</span>
-            <UTooltip v-if="isStale(item.lastSyncedAt)" :text="staleTooltip(item.lastSyncedAt)">
-              <UBadge color="warning" variant="subtle" size="xs" icon="i-lucide-clock" class="ml-2 align-middle">
-                stale
-              </UBadge>
-            </UTooltip>
-            <SocialSpendAlertBadge :alerts="alertsFor(item.spendIds)" class="ml-2" />
+          <td class="py-2 px-3 font-medium w-80 min-w-80 max-w-80">
+            <div class="flex items-start gap-1.5">
+              <span class="min-w-0 flex-1 max-w-[15rem] overflow-hidden leading-snug [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [overflow-wrap:anywhere]">
+                {{ item.clientName }}
+              </span>
+              <div class="flex shrink-0 flex-wrap items-center gap-1 pt-0.5">
+                <UTooltip v-if="isStale(item.lastSyncedAt)" :text="staleTooltip(item.lastSyncedAt)">
+                  <UBadge color="warning" variant="subtle" size="sm" icon="i-lucide-clock" :class="READABLE_BADGE_CLASS">
+                    stale
+                  </UBadge>
+                </UTooltip>
+                <SocialSpendAlertBadge :alerts="alertsFor(item.spendIds)" />
+              </div>
+            </div>
           </td>
           <td class="py-2 px-3">
             <div class="flex items-center gap-1">
@@ -292,15 +554,51 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
                 <span v-else class="text-muted/50 text-xs">Set budget</span>
                 <UIcon name="i-lucide-pencil" class="size-3 opacity-0 group-hover:opacity-50" />
               </button>
-              <UBadge v-if="item.rolling" size="xs" color="info" variant="subtle" class="gap-0.5">
+              <UBadge v-if="item.rolling" size="sm" color="info" variant="subtle" class="gap-0.5" :class="READABLE_BADGE_CLASS">
                 <UIcon name="i-lucide-repeat" class="size-3" />
                 Rolling
               </UBadge>
             </div>
           </td>
           <td class="py-2 px-3 text-right font-medium">{{ formatCurrency(item.spend) }}</td>
+          <td v-if="isColumnVisible('health')" class="py-2 px-3">
+            <UTooltip :text="healthForItem(item).reason">
+              <UBadge :color="healthColor(healthForItem(item).tone) as any" variant="subtle" size="sm" :class="READABLE_BADGE_CLASS">
+                {{ healthForItem(item).label }}
+              </UBadge>
+            </UTooltip>
+          </td>
+          <td v-if="isColumnVisible('owner')" class="py-2 px-3">
+            <span :class="item.owner?.id ? 'text-default' : 'text-muted'">{{ ownerLabel(item) }}</span>
+          </td>
+          <td v-if="isColumnVisible('budgetControl')" class="py-2 px-3">
+            <UTooltip :text="budgetControlForItem(item).detail">
+              <UBadge :color="healthColor(budgetControlForItem(item).tone) as any" variant="soft" size="sm" :class="READABLE_BADGE_CLASS">
+                {{ budgetControlForItem(item).label }}
+              </UBadge>
+            </UTooltip>
+          </td>
+          <td v-if="isColumnVisible('reasonCodes')" class="py-2 px-3 max-w-40">
+            <div v-if="reasonCodesForItem(item).length" class="flex flex-wrap gap-1">
+              <UBadge
+                v-for="reason in reasonCodesForItem(item).slice(0, 2)"
+                :key="reason"
+                color="neutral"
+                variant="subtle"
+                size="sm"
+                class="whitespace-nowrap"
+                :class="READABLE_BADGE_CLASS"
+              >
+                {{ reason }}
+              </UBadge>
+              <span v-if="reasonCodesForItem(item).length > 2" class="text-[11px] text-muted">
+                +{{ reasonCodesForItem(item).length - 2 }}
+              </span>
+            </div>
+            <span v-else class="text-muted">-</span>
+          </td>
           <!-- Bank Charged cell -->
-          <td v-if="hasBankData" class="py-2 px-3 text-right">
+          <td v-if="isColumnVisible('bankCharged')" class="py-2 px-3 text-right">
             <template v-if="bankChargeForItem(item) != null">
               <div class="flex flex-col items-end gap-0.5">
                 <div class="flex items-center gap-1 justify-end">
@@ -323,11 +621,42 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
             </template>
             <span v-else class="text-muted">-</span>
           </td>
+          <!-- AI pacing recommendation cell -->
+          <td v-if="isColumnVisible('aiPacing')" class="py-2 px-3 min-w-48">
+            <template v-if="pacingRecommendationsForItem(item).length">
+              <div class="flex flex-col gap-1.5">
+                <div
+                  v-for="recommendation in pacingRecommendationsForItem(item).slice(0, 2)"
+                  :key="recommendation.mediaSpendId"
+                  class="flex items-center justify-between gap-2"
+                >
+                  <div class="min-w-0">
+                    <UBadge :color="severityColor(recommendation.severity) as any" variant="soft" size="sm" :class="READABLE_BADGE_CLASS">
+                      {{ issueLabel(recommendation.issueType) }}
+                    </UBadge>
+                  </div>
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-history"
+                    @click="openPacingHistory(recommendation)"
+                  >
+                    Review
+                  </UButton>
+                </div>
+                <p v-if="pacingRecommendationsForItem(item).length > 2" class="text-[11px] text-muted">
+                  +{{ pacingRecommendationsForItem(item).length - 2 }} more recommendation{{ pacingRecommendationsForItem(item).length - 2 === 1 ? '' : 's' }}
+                </p>
+              </div>
+            </template>
+            <span v-else class="text-muted">-</span>
+          </td>
           <!-- Pacing cell -->
-          <td class="py-2 px-3">
+          <td v-if="isColumnVisible('pacing')" class="py-2 px-3">
             <template v-if="pacingInfo(item)">
               <div class="flex flex-col items-center gap-0.5">
-                <span class="text-[10px] font-medium" :class="pacingTextColor(pacingInfo(item)!.ratio)">
+                <span class="text-[11px] leading-4 font-semibold" :class="pacingTextColor(pacingInfo(item)!.ratio)">
                   {{ pacingInfo(item)!.spentPct }}%
                 </span>
                 <div class="w-full h-1.5 bg-elevated rounded-full overflow-hidden relative">
@@ -342,17 +671,36 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
             </template>
             <span v-else class="text-muted text-center block">-</span>
           </td>
-          <td class="py-2 px-3 text-right">
+          <td v-if="isColumnVisible('projectedMonthEnd')" class="py-2 px-3 text-right">
+            <div class="flex flex-col items-end gap-0.5">
+              <span>{{ projectionForItem(item).source === 'none' ? '-' : formatCurrency(projectionForItem(item).value) }}</span>
+              <span
+                v-if="projectionForItem(item).source !== 'none' && item.budget > 0"
+                class="text-[10px] font-medium"
+                :class="projectionClass(projectionForItem(item).variance)"
+              >
+                {{ formatSignedCurrency(projectionForItem(item).variance) }}
+              </span>
+            </div>
+          </td>
+          <td v-if="isColumnVisible('lastAction')" class="py-2 px-3">
+            <UTooltip :text="actionForItem(item).detail">
+              <UBadge :color="healthColor(actionForItem(item).tone) as any" variant="soft" size="sm" :class="READABLE_BADGE_CLASS">
+                {{ actionForItem(item).label }}
+              </UBadge>
+            </UTooltip>
+          </td>
+          <td v-if="isColumnVisible('commission')" class="py-2 px-3 text-right">
             <div class="flex flex-col items-end gap-0.5">
               <span v-if="item.commission > 0">{{ formatCurrency(item.commission) }}</span>
               <span v-else class="text-muted">-</span>
               <span v-if="(item.commissionRate ?? 0) > 0" class="text-[10px] text-muted">{{ item.commissionRate }}%</span>
             </div>
           </td>
-          <td class="py-2 px-3 text-right" :class="varianceClass(item.variancePercent)">
+          <td v-if="isColumnVisible('variance')" class="py-2 px-3 text-right" :class="varianceClass(item.variancePercent)">
             {{ item.budget > 0 ? formatCurrency(item.variance) : '-' }}
           </td>
-          <td class="py-2 px-3 text-right" :class="varianceClass(item.variancePercent)">
+          <td v-if="isColumnVisible('variancePercent')" class="py-2 px-3 text-right" :class="varianceClass(item.variancePercent)">
             {{ item.budget > 0 ? `${item.variancePercent > 0 ? '+' : ''}${item.variancePercent}%` : '-' }}
           </td>
         </tr>
@@ -365,7 +713,11 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
           <td class="py-2 px-3" colspan="2">Totals</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.budget) }}</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.spend) }}</td>
-          <td v-if="hasBankData" class="py-2 px-3 text-right">
+          <td v-if="isColumnVisible('health')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('owner')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('budgetControl')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('reasonCodes')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('bankCharged')" class="py-2 px-3 text-right">
             <div class="flex flex-col items-end gap-0.5">
               <span>{{ formatCurrency(combinedBankTotal) }}</span>
               <span
@@ -377,15 +729,19 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
               </span>
             </div>
           </td>
-          <td class="py-2 px-3"></td>
-          <td class="py-2 px-3 text-right">{{ formatCurrency(totals.commission) }}</td>
-          <td class="py-2 px-3 text-right" :class="varianceClass(totals.budget > 0 ? ((totals.spend - totals.budget) / totals.budget) * 100 : 0)">
+          <td v-if="isColumnVisible('aiPacing')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('pacing')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('projectedMonthEnd')" class="py-2 px-3 text-right"></td>
+          <td v-if="isColumnVisible('lastAction')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('commission')" class="py-2 px-3 text-right">{{ formatCurrency(totals.commission) }}</td>
+          <td v-if="isColumnVisible('variance')" class="py-2 px-3 text-right" :class="varianceClass(totals.budget > 0 ? ((totals.spend - totals.budget) / totals.budget) * 100 : 0)">
             {{ formatCurrency(totals.variance) }}
           </td>
-          <td class="py-2 px-3 text-right"></td>
+          <td v-if="isColumnVisible('variancePercent')" class="py-2 px-3 text-right"></td>
         </tr>
       </tfoot>
-    </table>
+      </table>
+    </div>
 
     <SocialSpendBudgetEditModal
       v-model:open="budgetModalOpen"
@@ -393,5 +749,7 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
       :month-progress="monthProgress"
       @saved="$emit('budget-updated')"
     />
+
+    <SocialSpendCampaignHistorySlideover v-model:open="historyOpen" :item="selectedHistoryItem" />
   </div>
 </template>

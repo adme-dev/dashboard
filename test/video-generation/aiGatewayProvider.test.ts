@@ -4,7 +4,7 @@ import { makeAiGatewayProvider } from '~~/server/utils/video-generation/provider
 const i2vReq = {
   jobId: 'job-1', modelId: 'aigateway/seedance-i2v', mode: 'image-to-video' as const,
   prompt: 'slow pan', sourceAssetUrls: ['https://r2/still.png'], durationSeconds: 5,
-  aspectRatio: '9:16', resolution: '720p', tenantId: 'dealer-1',
+  aspectRatio: '9:16', resolution: '720p', tenantId: 'dealer-1', projectId: 'project-1', userId: 'user-1',
 }
 
 const completedResponse = { state: 'Completed', result: { video: 'https://cf/out.mp4' }, gatewayMetadata: { keySource: 'Unified' } }
@@ -25,7 +25,7 @@ describe('aiGateway provider (synchronous partner video models)', () => {
     // rejected by these models with 7003: User Input Error.
     expect(inputs).toEqual({ prompt: 'slow pan', image: 'https://r2/still.png', duration: 5, aspect_ratio: '9:16', resolution: '720p' })
     expect((inputs as any).requests).toBeUndefined()
-    expect(options).toMatchObject({ gateway: { metadata: { tenantId: 'dealer-1', jobId: 'job-1' } } })
+    expect(options).toMatchObject({ gateway: { metadata: { tenantId: 'dealer-1', projectId: 'project-1', userId: 'user-1', jobId: 'job-1', modelId: 'aigateway/seedance-i2v' } } })
     expect((options as any).queueRequest).toBeUndefined()
   })
 

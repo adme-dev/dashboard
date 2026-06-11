@@ -6,6 +6,7 @@ describe('mediaTypeForUrl', () => {
     expect(mediaTypeForUrl('https://x/y.mp4')).toBe('video')
     expect(mediaTypeForUrl('https://x/y.mov')).toBe('video')
     expect(mediaTypeForUrl('https://x/api/public/renders/abc.def')).toBe('video')
+    expect(mediaTypeForUrl('https://x/api/public/video-assets/abc.def')).toBe('video')
   })
   it('classifies images as image', () => {
     expect(mediaTypeForUrl('https://x/y.jpg')).toBe('image')
