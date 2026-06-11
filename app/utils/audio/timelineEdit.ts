@@ -181,6 +181,19 @@ export function addVideoClip(
   return next
 }
 
+/** Replace the effect preset list on a video clip. No-op (original reference) for
+ * unknown clips or non-video clips, so callers can detect "no change". */
+export function setClipEffects(state: TimelineState, { clipId, effects }: { clipId: string, effects: string[] }): TimelineState {
+  const found = findClip(state, clipId)
+  if (!found || (found.clip as { type?: string }).type !== 'video') return state
+  const next = cloneState(state)
+  for (const track of next.tracks) {
+    const clip = track.clips.find(c => c.id === clipId)
+    if (clip) (clip as { effects?: string[] }).effects = [...effects]
+  }
+  return next
+}
+
 /** Append an overlay clip (a Banner Studio project + format key) to an overlay track. */
 export function addOverlayClip(
   state: TimelineState,

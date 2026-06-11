@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
 import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipInspector'
+import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import type { VideoAsset } from '~~/server/utils/video/assets'
@@ -127,6 +128,34 @@ function onReusePrompt(p: { prompt: string; modelId: string | null }) {
   generationDraftPrompt.value = p.prompt
   libraryOpen.value = false
   generatePickerOpen.value = true
+}
+
+// Selected video clip (any source) — drives the per-clip effects drawer.
+const selectedVideoClip = computed(() => {
+  const tl = editor.timeline.value
+  if (!tl || !selectedClipId.value) return null
+  for (const track of tl.tracks) {
+    if (track.kind !== 'video') continue
+    const clip = (track.clips as any[]).find(c => c.id === selectedClipId.value)
+    if (clip) {
+      return {
+        clipId: clip.id as string,
+        effects: (clip.effects ?? []) as string[],
+        label: clip.base_source === 'still_kenburns' ? 'Still' : 'Footage',
+        startSec: clip.timeline_start_sec as number
+      }
+    }
+  }
+  return null
+})
+
+function toggleClipEffect(presetId: string) {
+  const selected = selectedVideoClip.value
+  if (!selected) return
+  const effects = selected.effects.includes(presetId)
+    ? selected.effects.filter(id => id !== presetId)
+    : [...selected.effects, presetId]
+  editor.setClipEffectsAction(selected.clipId, effects)
 }
 
 const selectedGeneratedClip = computed(() => resolveGeneratedClipInspector({
@@ -497,6 +526,42 @@ const saveStatusColor = computed(() => {
           @slice="(p) => editor.sliceAction(p.clipId, p.timeSec)"
           @delete-clip="(p) => editor.deleteClipAction(p.clipId)"
         />
+
+        <!-- Per-clip effects drawer — shows for any selected video clip -->
+        <div v-if="isAv && selectedVideoClip" class="rounded-lg border border-default bg-elevated p-3">
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <p class="text-xs font-medium uppercase text-muted">
+              Effects — {{ selectedVideoClip.label }} @ {{ Math.round(selectedVideoClip.startSec) }}s
+            </p>
+            <UButton
+              v-if="selectedVideoClip.effects.length"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              label="Clear all"
+              @click="editor.setClipEffectsAction(selectedVideoClip.clipId, [])"
+            />
+          </div>
+          <div class="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            <button
+              v-for="preset in CLIP_EFFECT_PRESET_UI"
+              :key="preset.id"
+              type="button"
+              class="flex flex-col items-center gap-1.5 rounded-lg border p-2.5 text-center transition"
+              :class="selectedVideoClip.effects.includes(preset.id)
+                ? 'border-primary bg-primary/10 text-highlighted'
+                : 'border-default bg-default/30 text-default hover:border-primary/40 hover:bg-primary/5'"
+              :title="preset.hint"
+              @click="toggleClipEffect(preset.id)"
+            >
+              <UIcon :name="preset.icon" class="size-4" :class="selectedVideoClip.effects.includes(preset.id) ? 'text-primary' : 'text-muted'" />
+              <span class="text-[11px] font-medium leading-none">{{ preset.label }}</span>
+            </button>
+          </div>
+          <p class="mt-2 text-[11px] text-muted">
+            Effects are applied at render time — the editor preview shows the unprocessed clip.
+          </p>
+        </div>
 
         <div v-if="isAv && selectedGeneratedClip.kind === 'generated-video'" class="rounded-lg border border-default bg-elevated p-3">
           <div class="flex items-start gap-3">

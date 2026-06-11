@@ -12,7 +12,7 @@ import { resolveClipStartSec } from '~~/app/utils/video/timelinePlacement'
 import {
   cloneState,
   addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt,
-  addVideoClip, addOverlayClip, trimVisualClip
+  addVideoClip, addOverlayClip, trimVisualClip, setClipEffects
 } from '~~/app/utils/audio/timelineEdit'
 import {
   createVideoSourceRegistry,
@@ -218,6 +218,13 @@ export function useMediaProjectEditor(projectId: string) {
   function moveClipAction(clipId: string, toTrackId: string, newStartSec: number) {
     if (!timeline.value) return
     applyEdit(moveClip(timeline.value, { clipId, toTrackId, newStartSec }))
+  }
+
+  /** Replace the effect presets on a video clip. One undo step; no-op for non-video clips. */
+  function setClipEffectsAction(clipId: string, effects: string[]) {
+    if (!timeline.value) return
+    const next = setClipEffects(timeline.value, { clipId, effects })
+    if (next !== timeline.value) applyEdit(next)
   }
 
   function trimClipAction(clipId: string, edge: 'start' | 'end', newTimeSec: number) {
@@ -559,7 +566,7 @@ export function useMediaProjectEditor(projectId: string) {
     // Transport
     play, pause, seek,
     // Edit actions
-    moveClipAction, trimClipAction, sliceAction,
+    moveClipAction, trimClipAction, sliceAction, setClipEffectsAction,
     addClipAction, addTrackAction, addClipToKindTrackAction, deleteClipAction,
     undoAction, redoAction,
     // AV actions
