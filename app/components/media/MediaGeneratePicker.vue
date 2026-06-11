@@ -4,7 +4,7 @@
 // page can start polling; the finished asset surfaces in the Video Library.
 import { ref, computed, watch } from 'vue'
 import { modelsForMode, validateGenerationForm, costPreviewCents } from '~~/app/utils/videoGenerationForm'
-import type { VideoModelOption } from '~~/app/utils/video/modelPresentation'
+import { videoModelPresentation, type VideoModelOption } from '~~/app/utils/video/modelPresentation'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 
 const props = defineProps<{
@@ -51,6 +51,14 @@ const SUBJECT_OPTIONS = [
 
 const validation = computed(() => validateGenerationForm({ mode: mode.value, model: model.value, prompt: prompt.value, sourceAssetId: sourceAssetId.value, durationSeconds: durationSeconds.value }))
 const estCostCents = computed(() => (model.value ? costPreviewCents(model.value, durationSeconds.value) : 0))
+
+// Rich composer-bar presentation: provider icon + capability sublabel + cost per row.
+const modelItems = computed(() => models.value.map((m) => {
+  const presentation = videoModelPresentation(m)
+  return { label: m.label, value: m.id, ...presentation }
+}))
+const selectedModelIcon = computed(() => (model.value ? videoModelPresentation(model.value).icon : 'i-lucide-box'))
+const costChipLabel = computed(() => `~$${(estCostCents.value / 100).toFixed(2)} · ${durationSeconds.value}s`)
 
 function onModeChange() {
   modelId.value = models.value[0]?.id ?? ''
@@ -181,108 +189,139 @@ async function submit() {
           description="No runnable video models are configured for this Cloudflare account."
         />
 
-        <!-- Mode + Model row -->
+        <!-- Loading skeleton while the model list fetches -->
         <div v-if="modelsPending && !hasModels" class="space-y-3">
           <USkeleton class="h-10 w-full rounded-md" />
           <USkeleton class="h-24 w-full rounded-md" />
         </div>
 
-        <div v-if="hasModels" class="flex flex-col gap-4">
-          <p class="text-xs font-semibold uppercase tracking-widest text-muted">Source &amp; model</p>
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="Mode">
-              <USelect v-model="mode" :items="MODE_OPTIONS" value-key="value" @update:model-value="onModeChange" />
-            </UFormField>
-            <UFormField label="Model">
-              <USelectMenu v-model="modelId" :items="models.map((m) => ({ label: m.label, value: m.id }))" value-key="value" />
-            </UFormField>
-          </div>
-          <UFormField v-if="mode === 'image-to-video'" label="Source image" help="Pick a still already in this project, or upload a new one.">
-            <!-- Hidden file input — triggered by the upload button below -->
-            <input
-              ref="fileInputRef"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              class="sr-only"
-              tabindex="-1"
-              aria-hidden="true"
-              @change="onFileSelected"
+        <!-- Prompt-first composer: big prompt card with a control bar along the
+             bottom (mode ▾ / model ▾ / advanced params / cost chip), instead of a
+             stacked form. The prompt is the primary object; everything else is a
+             setting hanging off it. -->
+        <template v-if="hasModels">
+          <div class="rounded-xl border border-default bg-elevated/60 transition-colors focus-within:border-primary/50">
+            <UTextarea
+              v-model="prompt"
+              :rows="5"
+              autoresize
+              variant="none"
+              placeholder="Describe the motion, atmosphere, or scene you want…"
+              class="w-full"
             />
-            <div class="flex flex-col gap-2">
-              <!-- Selected source -->
-              <div v-if="sourceFileName" class="flex items-center gap-2">
+
+            <!-- i2v source image attachment -->
+            <div v-if="mode === 'image-to-video'" class="px-3 pb-2.5">
+              <!-- Hidden file input — triggered by the upload button below -->
+              <input
+                ref="fileInputRef"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                class="sr-only"
+                tabindex="-1"
+                aria-hidden="true"
+                @change="onFileSelected"
+              />
+              <div v-if="sourceFileName" class="flex items-center gap-2 rounded-lg border border-default bg-default/40 px-2.5 py-1.5">
                 <UIcon name="i-lucide-image" class="size-4 shrink-0 text-muted" />
-                <span class="truncate text-sm text-default">{{ sourceFileName }}</span>
+                <span class="truncate text-xs text-default">{{ sourceFileName }}</span>
                 <UButton
+                  icon="i-lucide-x"
                   size="xs"
                   variant="ghost"
                   color="neutral"
-                  label="Clear"
+                  aria-label="Clear source image"
                   :disabled="uploading"
                   class="ml-auto shrink-0"
                   @click="clearSource"
                 />
               </div>
-              <!-- Pick existing project still, or upload new -->
-              <template v-else>
+              <div v-else class="flex flex-wrap items-center gap-2">
                 <USelectMenu
                   v-if="timelineStills.length"
                   v-model="selectedStillId"
                   :items="timelineStills.map((s) => ({ label: s.label, value: s.assetId }))"
                   value-key="value"
-                  placeholder="Use a still from this project"
+                  size="xs"
+                  placeholder="Use a project still"
                   :disabled="uploading"
                   @update:model-value="onExistingStillSelected"
                 />
                 <UButton
+                  size="xs"
                   variant="outline"
                   color="neutral"
-                  icon="i-lucide-upload"
-                  :label="timelineStills.length ? 'Or upload a new still' : 'Upload source image'"
+                  icon="i-lucide-image-plus"
+                  :label="timelineStills.length ? 'Upload still' : 'Add source image'"
                   :loading="uploading"
                   :disabled="uploading"
                   @click="triggerFileInput"
                 />
-              </template>
+                <span class="text-[11px] text-muted">Required for image → video</span>
+              </div>
             </div>
-          </UFormField>
-        </div>
 
-        <USeparator v-if="hasModels" />
-
-        <!-- Prompt -->
-        <div v-if="hasModels" class="flex flex-col gap-4">
-          <p class="text-xs font-semibold uppercase tracking-widest text-muted">Generation prompt</p>
-          <UFormField label="Prompt" help="Describe the motion, atmosphere, or scene you want.">
-            <UTextarea v-model="prompt" :rows="3" placeholder="Describe the motion / scene…" autoresize />
-          </UFormField>
-        </div>
-
-        <USeparator v-if="hasModels" />
-
-        <!-- Duration + Subject + Cost -->
-        <div v-if="hasModels" class="flex flex-col gap-4">
-          <p class="text-xs font-semibold uppercase tracking-widest text-muted">Output settings</p>
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="Duration (s)">
-              <USelect v-model="durationSeconds" :items="(model?.durationsSeconds ?? [5]).map((d) => ({ label: `${d}s`, value: d }))" value-key="value" />
-            </UFormField>
-            <UFormField label="Subject" help="Helps with compliance routing.">
-              <USelect v-model="subjectType" :items="SUBJECT_OPTIONS" value-key="value" />
-            </UFormField>
+            <!-- Composer bar -->
+            <div class="flex flex-wrap items-center gap-1.5 border-t border-default px-2 py-2">
+              <USelect
+                v-model="mode"
+                :items="MODE_OPTIONS"
+                value-key="value"
+                size="xs"
+                variant="soft"
+                color="neutral"
+                :icon="mode === 'image-to-video' ? 'i-lucide-image-play' : 'i-lucide-type'"
+                aria-label="Generation mode"
+                @update:model-value="onModeChange"
+              />
+              <USelectMenu
+                v-model="modelId"
+                :items="modelItems"
+                value-key="value"
+                size="xs"
+                variant="soft"
+                color="neutral"
+                :icon="selectedModelIcon"
+                :search-input="false"
+                class="min-w-44"
+                aria-label="Model"
+              >
+                <template #item="{ item }">
+                  <div class="flex min-w-0 flex-1 items-center gap-2.5 py-0.5">
+                    <UIcon :name="item.icon" class="size-4 shrink-0 text-muted" />
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-xs font-medium text-highlighted">{{ item.label }}</p>
+                      <p class="truncate text-[11px] text-muted">{{ item.sublabel }}</p>
+                    </div>
+                    <span class="shrink-0 text-[11px] tabular-nums text-muted">{{ item.costLabel }}</span>
+                  </div>
+                </template>
+              </USelectMenu>
+              <UPopover>
+                <UButton icon="i-lucide-sliders-horizontal" size="xs" variant="soft" color="neutral" aria-label="Advanced parameters" />
+                <template #content>
+                  <div class="w-64 space-y-4 p-4">
+                    <p class="text-sm font-medium text-highlighted">Advanced</p>
+                    <UFormField label="Duration">
+                      <USelect v-model="durationSeconds" :items="(model?.durationsSeconds ?? [5]).map((d) => ({ label: `${d}s`, value: d }))" value-key="value" class="w-full" />
+                    </UFormField>
+                    <UFormField label="Subject" help="Helps with compliance routing.">
+                      <USelect v-model="subjectType" :items="SUBJECT_OPTIONS" value-key="value" class="w-full" />
+                    </UFormField>
+                  </div>
+                </template>
+              </UPopover>
+              <UTooltip :text="`Estimated cost for ${durationSeconds}s${model?.costUnit === 'second' ? ' (billed per second)' : ''}`">
+                <UBadge :label="costChipLabel" variant="subtle" color="neutral" class="ml-auto tabular-nums" />
+              </UTooltip>
+            </div>
           </div>
-          <p class="text-xs text-muted">
-            Estimated cost:
-            <span class="font-medium text-default">${{ (estCostCents / 100).toFixed(2) }}</span>
-            <span v-if="model?.costUnit === 'generation'" class="ml-1 opacity-60">/ generation</span>
-            <span v-else-if="model?.costUnit === 'second'" class="ml-1 opacity-60">/ second</span>
-          </p>
-        </div>
 
-        <!-- Validation warning -->
-        <UAlert v-if="hasModels && !validation.valid" color="warning" variant="subtle" icon="i-lucide-info" :title="validation.errors[0]" />
+          <!-- Validation warning -->
+          <UAlert v-if="!validation.valid" color="warning" variant="subtle" icon="i-lucide-info" :title="validation.errors[0]" />
 
-        <UButton v-if="hasModels" block color="primary" icon="i-lucide-sparkles" :loading="submitting" :disabled="!validation.valid" label="Generate" @click="submit" />
+          <UButton block color="primary" icon="i-lucide-sparkles" :loading="submitting" :disabled="!validation.valid" label="Generate" @click="submit" />
+        </template>
       </div>
     </template>
   </USlideover>

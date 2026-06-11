@@ -609,21 +609,28 @@ onMounted(() => { void loadHarness() })
       <div class="rounded-md border border-default bg-default/30 p-3">
         <p class="mb-2 text-xs font-medium uppercase text-muted">Agentic assembly</p>
         <div class="space-y-3">
-          <UFormField label="Brief">
-            <UTextarea v-model="brief" :rows="4" autoresize placeholder="Tell the AI Producer what to make..." />
-          </UFormField>
-          <UFormField label="Format">
-            <USelect
-              v-model="targetFormat"
-              :items="[
-                { label: 'Reels / TikTok 9:16', value: 'reels_9x16' },
-                { label: 'YouTube 16:9', value: 'youtube_16x9' },
-                { label: 'Square 1:1', value: 'square_1x1' },
-              ]"
-              value-key="value"
-            />
-          </UFormField>
-          <UButton icon="i-lucide-wand-sparkles" size="sm" color="primary" label="Build draft plan" :loading="assembling" @click="assemblePlan" />
+          <!-- Brief-first composer: the brief is the primary object; format and the
+               build action live in a control bar along the bottom. -->
+          <div class="rounded-lg border border-default bg-elevated/60 transition-colors focus-within:border-primary/50">
+            <UTextarea v-model="brief" :rows="4" autoresize variant="none" placeholder="Tell the AI Producer what to make…" class="w-full" />
+            <div class="flex flex-wrap items-center gap-1.5 border-t border-default px-2 py-2">
+              <USelect
+                v-model="targetFormat"
+                :items="[
+                  { label: 'Reels / TikTok 9:16', value: 'reels_9x16' },
+                  { label: 'YouTube 16:9', value: 'youtube_16x9' },
+                  { label: 'Square 1:1', value: 'square_1x1' },
+                ]"
+                value-key="value"
+                size="xs"
+                variant="soft"
+                color="neutral"
+                icon="i-lucide-proportions"
+                aria-label="Output format"
+              />
+              <UButton icon="i-lucide-wand-sparkles" size="xs" color="primary" label="Build draft plan" :loading="assembling" class="ml-auto" @click="assemblePlan" />
+            </div>
+          </div>
           <div v-if="assemblyPlan" class="rounded-md border border-default bg-elevated p-2">
             <div class="flex items-center justify-between gap-2">
               <p class="text-xs font-medium text-highlighted">{{ assemblyPlan.steps?.length ?? 0 }} proposed timeline steps</p>
