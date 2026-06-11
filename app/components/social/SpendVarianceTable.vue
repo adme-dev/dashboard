@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import type { BudgetEditTarget } from './SpendBudgetEditModal.vue'
+import {
+  SOCIAL_SPEND_OPTIONAL_COLUMNS,
+  defaultSocialSpendColumnVisibility,
+  normalizeSocialSpendColumnVisibility,
+  socialSpendColumnCount,
+  type SocialSpendOptionalColumnId,
+} from '~/utils/socialSpendColumnVisibility'
 import { pacingItemsForSpendRow } from '~/utils/socialSpendPacingTable'
 
 interface PacingReviewItem {
@@ -74,6 +81,8 @@ const emit = defineEmits<{
 
 const sortKey = ref<string>('spend')
 const sortDir = ref<'asc' | 'desc'>('desc')
+const COLUMN_STORAGE_KEY = 'agency:social:spend:client-columns'
+const columnVisibility = ref(defaultSocialSpendColumnVisibility())
 
 // Active pacing alerts, matched to rows by media_spend id.
 const { alertsFor } = useSpendAlerts()
@@ -125,6 +134,61 @@ const hasBankData = computed(() => {
   if (!props.bankCharges?.connected) return false
   return props.bankCharges.total > 0 || (props.bankCharges.metaBilling?.total ?? 0) > 0
 })
+
+const columnOptions = computed(() =>
+  SOCIAL_SPEND_OPTIONAL_COLUMNS.filter(column => column.id !== 'bankCharged' || hasBankData.value)
+)
+
+const columnMenuItems = computed(() => [
+  columnOptions.value.map(column => ({
+    label: column.label,
+    type: 'checkbox' as const,
+    checked: columnVisibility.value[column.id],
+    onUpdateChecked(checked: boolean) {
+      setColumnVisible(column.id, checked)
+    },
+    onSelect(e?: Event) {
+      e?.preventDefault()
+    },
+  })),
+  [
+    {
+      label: 'Reset columns',
+      icon: 'i-lucide-rotate-ccw',
+      onSelect() {
+        columnVisibility.value = defaultSocialSpendColumnVisibility()
+      },
+    },
+  ],
+])
+
+function isColumnVisible(columnId: SocialSpendOptionalColumnId): boolean {
+  if (columnId === 'bankCharged' && !hasBankData.value) return false
+  return columnVisibility.value[columnId]
+}
+
+function setColumnVisible(columnId: SocialSpendOptionalColumnId, visible: boolean) {
+  columnVisibility.value = {
+    ...columnVisibility.value,
+    [columnId]: visible,
+  }
+}
+
+onMounted(() => {
+  if (!import.meta.client) return
+  const stored = localStorage.getItem(COLUMN_STORAGE_KEY)
+  if (!stored) return
+  try {
+    columnVisibility.value = normalizeSocialSpendColumnVisibility(JSON.parse(stored))
+  } catch {
+    columnVisibility.value = defaultSocialSpendColumnVisibility()
+  }
+})
+
+watch(columnVisibility, (value) => {
+  if (!import.meta.client) return
+  localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(value))
+}, { deep: true })
 
 // Pre-compute platform spend totals for proportional bank charge calculation
 const platformSpendTotals = computed(() => {
@@ -283,12 +347,29 @@ const combinedBankTotal = computed(() => {
   return Math.round(total * 100) / 100
 })
 
-const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
+const totalColSpan = computed(() => socialSpendColumnCount({
+  hasBankData: hasBankData.value,
+  visibility: columnVisibility.value,
+}))
 </script>
 
 <template>
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+  <div class="space-y-2">
+    <div class="flex justify-end">
+      <UDropdownMenu :items="columnMenuItems" :content="{ align: 'end' }">
+        <UButton
+          label="Display"
+          color="neutral"
+          variant="outline"
+          size="sm"
+          icon="i-lucide-columns-3"
+          trailing-icon="i-lucide-chevron-down"
+        />
+      </UDropdownMenu>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-default text-left">
           <th class="py-2 px-3 font-medium text-muted cursor-pointer" @click="toggleSort('clientName')">
@@ -305,22 +386,22 @@ const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
             <UIcon v-if="sortKey === 'spend'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
           <!-- Bank Charged column -->
-          <th v-if="hasBankData" class="py-2 px-3 font-medium text-muted text-right">
+          <th v-if="isColumnVisible('bankCharged')" class="py-2 px-3 font-medium text-muted text-right">
             <UTooltip text="Actual charges from Xero bank/CC transactions + Meta Billing API, proportionally split by client spend share">
               <span class="border-b border-dashed border-current cursor-help">Bank Charged</span>
             </UTooltip>
           </th>
-          <th class="py-2 px-3 font-medium text-muted">AI pacing</th>
-          <th class="py-2 px-3 font-medium text-muted text-center w-28">Pacing</th>
-          <th class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('commission')">
+          <th v-if="isColumnVisible('aiPacing')" class="py-2 px-3 font-medium text-muted">AI pacing</th>
+          <th v-if="isColumnVisible('pacing')" class="py-2 px-3 font-medium text-muted text-center w-28">Pacing</th>
+          <th v-if="isColumnVisible('commission')" class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('commission')">
             Commission
             <UIcon v-if="sortKey === 'commission'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
-          <th class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('variance')">
+          <th v-if="isColumnVisible('variance')" class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('variance')">
             Variance
             <UIcon v-if="sortKey === 'variance'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
-          <th class="py-2 px-3 font-medium text-muted text-right">Var %</th>
+          <th v-if="isColumnVisible('variancePercent')" class="py-2 px-3 font-medium text-muted text-right">Var %</th>
         </tr>
       </thead>
       <tbody>
@@ -359,7 +440,7 @@ const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
           </td>
           <td class="py-2 px-3 text-right font-medium">{{ formatCurrency(item.spend) }}</td>
           <!-- Bank Charged cell -->
-          <td v-if="hasBankData" class="py-2 px-3 text-right">
+          <td v-if="isColumnVisible('bankCharged')" class="py-2 px-3 text-right">
             <template v-if="bankChargeForItem(item) != null">
               <div class="flex flex-col items-end gap-0.5">
                 <div class="flex items-center gap-1 justify-end">
@@ -383,7 +464,7 @@ const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
             <span v-else class="text-muted">-</span>
           </td>
           <!-- AI pacing recommendation cell -->
-          <td class="py-2 px-3 min-w-48">
+          <td v-if="isColumnVisible('aiPacing')" class="py-2 px-3 min-w-48">
             <template v-if="pacingRecommendationsForItem(item).length">
               <div class="flex flex-col gap-1.5">
                 <div
@@ -395,7 +476,6 @@ const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
                     <UBadge :color="severityColor(recommendation.severity) as any" variant="soft" size="xs">
                       {{ issueLabel(recommendation.issueType) }}
                     </UBadge>
-                    <p class="mt-0.5 max-w-40 truncate text-[11px] text-muted">{{ recommendation.campaignName }}</p>
                   </div>
                   <UButton
                     size="xs"
@@ -415,7 +495,7 @@ const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
             <span v-else class="text-muted">-</span>
           </td>
           <!-- Pacing cell -->
-          <td class="py-2 px-3">
+          <td v-if="isColumnVisible('pacing')" class="py-2 px-3">
             <template v-if="pacingInfo(item)">
               <div class="flex flex-col items-center gap-0.5">
                 <span class="text-[10px] font-medium" :class="pacingTextColor(pacingInfo(item)!.ratio)">
@@ -433,17 +513,17 @@ const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
             </template>
             <span v-else class="text-muted text-center block">-</span>
           </td>
-          <td class="py-2 px-3 text-right">
+          <td v-if="isColumnVisible('commission')" class="py-2 px-3 text-right">
             <div class="flex flex-col items-end gap-0.5">
               <span v-if="item.commission > 0">{{ formatCurrency(item.commission) }}</span>
               <span v-else class="text-muted">-</span>
               <span v-if="(item.commissionRate ?? 0) > 0" class="text-[10px] text-muted">{{ item.commissionRate }}%</span>
             </div>
           </td>
-          <td class="py-2 px-3 text-right" :class="varianceClass(item.variancePercent)">
+          <td v-if="isColumnVisible('variance')" class="py-2 px-3 text-right" :class="varianceClass(item.variancePercent)">
             {{ item.budget > 0 ? formatCurrency(item.variance) : '-' }}
           </td>
-          <td class="py-2 px-3 text-right" :class="varianceClass(item.variancePercent)">
+          <td v-if="isColumnVisible('variancePercent')" class="py-2 px-3 text-right" :class="varianceClass(item.variancePercent)">
             {{ item.budget > 0 ? `${item.variancePercent > 0 ? '+' : ''}${item.variancePercent}%` : '-' }}
           </td>
         </tr>
@@ -456,7 +536,7 @@ const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
           <td class="py-2 px-3" colspan="2">Totals</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.budget) }}</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.spend) }}</td>
-          <td v-if="hasBankData" class="py-2 px-3 text-right">
+          <td v-if="isColumnVisible('bankCharged')" class="py-2 px-3 text-right">
             <div class="flex flex-col items-end gap-0.5">
               <span>{{ formatCurrency(combinedBankTotal) }}</span>
               <span
@@ -468,16 +548,17 @@ const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
               </span>
             </div>
           </td>
-          <td class="py-2 px-3"></td>
-          <td class="py-2 px-3"></td>
-          <td class="py-2 px-3 text-right">{{ formatCurrency(totals.commission) }}</td>
-          <td class="py-2 px-3 text-right" :class="varianceClass(totals.budget > 0 ? ((totals.spend - totals.budget) / totals.budget) * 100 : 0)">
+          <td v-if="isColumnVisible('aiPacing')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('pacing')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('commission')" class="py-2 px-3 text-right">{{ formatCurrency(totals.commission) }}</td>
+          <td v-if="isColumnVisible('variance')" class="py-2 px-3 text-right" :class="varianceClass(totals.budget > 0 ? ((totals.spend - totals.budget) / totals.budget) * 100 : 0)">
             {{ formatCurrency(totals.variance) }}
           </td>
-          <td class="py-2 px-3 text-right"></td>
+          <td v-if="isColumnVisible('variancePercent')" class="py-2 px-3 text-right"></td>
         </tr>
       </tfoot>
-    </table>
+      </table>
+    </div>
 
     <SocialSpendBudgetEditModal
       v-model:open="budgetModalOpen"
