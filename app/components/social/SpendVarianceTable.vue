@@ -1,5 +1,41 @@
 <script setup lang="ts">
 import type { BudgetEditTarget } from './SpendBudgetEditModal.vue'
+import { pacingItemsForSpendRow } from '~/utils/socialSpendPacingTable'
+
+interface PacingReviewItem {
+  mediaSpendId: string
+  clientName: string
+  platform: 'meta' | 'google'
+  campaignName: string
+  campaignStatus: string | null
+  issueType: string
+  severity: 'critical' | 'warning' | 'info'
+  budget: number
+  mtdSpend: number
+  expectedToDate: number
+  projectedMonthEnd: number
+  currentDailyBudget: number
+  recommendedDailyBudget: number
+  pacingRatio: number
+  performance: {
+    impressions: number
+    clicks: number
+    conversions: number
+    ctr: number | null
+    cpc: number | null
+    costPerConversion: number | null
+    conversionRate: number | null
+    reach: number | null
+    frequency: number | null
+    impressionShare: number | null
+    lostImpressionShareBudget: number | null
+    lostImpressionShareRank: number | null
+    bidStrategy: string | null
+    budgetType: string | null
+  }
+  syncedAt: string | null
+  recommendedAction: string
+}
 
 const props = defineProps<{
   items: Array<{
@@ -23,6 +59,7 @@ const props = defineProps<{
   totals: { budget: number; spend: number; commission: number; variance: number }
   search?: string
   monthProgress?: number
+  pacingReviewItems?: PacingReviewItem[]
   bankCharges?: {
     byPlatform: Record<string, { total: number }>
     total: number
@@ -44,6 +81,8 @@ const { alertsFor } = useSpendAlerts()
 // Budget edit modal
 const budgetModalOpen = ref(false)
 const budgetModalTarget = ref<BudgetEditTarget | null>(null)
+const historyOpen = ref(false)
+const selectedHistoryItem = ref<PacingReviewItem | null>(null)
 
 function openBudgetModal(item: typeof props.items[0]) {
   budgetModalTarget.value = {
@@ -61,6 +100,25 @@ function openBudgetModal(item: typeof props.items[0]) {
     alerts: alertsFor(item.spendIds)
   }
   budgetModalOpen.value = true
+}
+
+function pacingRecommendationsForItem(item: typeof props.items[0]) {
+  return pacingItemsForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function openPacingHistory(item: PacingReviewItem) {
+  selectedHistoryItem.value = item
+  historyOpen.value = true
+}
+
+function issueLabel(issue: string) {
+  return issue.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+}
+
+function severityColor(severity: string) {
+  if (severity === 'critical') return 'error'
+  if (severity === 'warning') return 'warning'
+  return 'info'
 }
 
 const hasBankData = computed(() => {
@@ -225,7 +283,7 @@ const combinedBankTotal = computed(() => {
   return Math.round(total * 100) / 100
 })
 
-const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
+const totalColSpan = computed(() => hasBankData.value ? 10 : 9)
 </script>
 
 <template>
@@ -252,6 +310,7 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
               <span class="border-b border-dashed border-current cursor-help">Bank Charged</span>
             </UTooltip>
           </th>
+          <th class="py-2 px-3 font-medium text-muted">AI pacing</th>
           <th class="py-2 px-3 font-medium text-muted text-center w-28">Pacing</th>
           <th class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('commission')">
             Commission
@@ -323,6 +382,38 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
             </template>
             <span v-else class="text-muted">-</span>
           </td>
+          <!-- AI pacing recommendation cell -->
+          <td class="py-2 px-3 min-w-48">
+            <template v-if="pacingRecommendationsForItem(item).length">
+              <div class="flex flex-col gap-1.5">
+                <div
+                  v-for="recommendation in pacingRecommendationsForItem(item).slice(0, 2)"
+                  :key="recommendation.mediaSpendId"
+                  class="flex items-center justify-between gap-2"
+                >
+                  <div class="min-w-0">
+                    <UBadge :color="severityColor(recommendation.severity) as any" variant="soft" size="xs">
+                      {{ issueLabel(recommendation.issueType) }}
+                    </UBadge>
+                    <p class="mt-0.5 max-w-40 truncate text-[11px] text-muted">{{ recommendation.campaignName }}</p>
+                  </div>
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-history"
+                    @click="openPacingHistory(recommendation)"
+                  >
+                    Review
+                  </UButton>
+                </div>
+                <p v-if="pacingRecommendationsForItem(item).length > 2" class="text-[11px] text-muted">
+                  +{{ pacingRecommendationsForItem(item).length - 2 }} more recommendation{{ pacingRecommendationsForItem(item).length - 2 === 1 ? '' : 's' }}
+                </p>
+              </div>
+            </template>
+            <span v-else class="text-muted">-</span>
+          </td>
           <!-- Pacing cell -->
           <td class="py-2 px-3">
             <template v-if="pacingInfo(item)">
@@ -378,6 +469,7 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
             </div>
           </td>
           <td class="py-2 px-3"></td>
+          <td class="py-2 px-3"></td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.commission) }}</td>
           <td class="py-2 px-3 text-right" :class="varianceClass(totals.budget > 0 ? ((totals.spend - totals.budget) / totals.budget) * 100 : 0)">
             {{ formatCurrency(totals.variance) }}
@@ -393,5 +485,7 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
       :month-progress="monthProgress"
       @saved="$emit('budget-updated')"
     />
+
+    <SocialSpendCampaignHistorySlideover v-model:open="historyOpen" :item="selectedHistoryItem" />
   </div>
 </template>

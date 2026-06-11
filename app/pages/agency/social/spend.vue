@@ -376,6 +376,8 @@ const hasBankData = computed(() => {
 })
 
 const showPacingReview = computed(() => ['all', 'meta', 'google'].includes(selectedPlatform.value))
+const liveBudgetChangesEnabled = computed(() => Boolean(budgetControlSettings.value.liveBudgetChangesEnabled))
+const pacingReviewItems = computed(() => pacingReview.value?.items ?? [])
 
 /** Combined: Xero bank/CC + Meta billing (for platforms not matched in Xero) */
 const combinedBankTotal = computed(() => {
@@ -396,6 +398,7 @@ const bankDiscrepancy = computed(() => {
     : 0
   return { diff: Math.round(diff * 100) / 100, pct }
 })
+
 </script>
 
 <template>
@@ -572,17 +575,6 @@ const bankDiscrepancy = computed(() => {
         </div>
       </div>
 
-      <SocialSpendPacingReview
-        v-if="showPacingReview"
-        :review="pacingReview"
-        :loading="pacingReviewLoading"
-        :budget-control="budgetControlSettings"
-        :budget-control-loading="budgetControlLoading"
-        :budget-control-saving="budgetControlSaving"
-        @sync="handleSyncAll"
-        @update-live-budget-changes="setLiveBudgetChanges"
-      />
-
       <!-- Loading -->
       <div v-if="loading" class="flex items-center justify-center py-16">
         <div class="flex flex-col items-center gap-3">
@@ -593,24 +585,83 @@ const bankDiscrepancy = computed(() => {
 
       <!-- Spend Table -->
       <div v-else-if="spendData?.items?.length" class="rounded-xl border border-default overflow-hidden">
-        <div class="flex items-center justify-between px-4 py-3 border-b border-default bg-elevated/30 gap-3">
-          <div>
-            <h2 class="text-sm font-semibold">Spend by Client</h2>
-            <p class="text-xs text-muted mt-0.5">{{ spendData.items.length }} {{ spendData.items.length === 1 ? 'client' : 'clients' }} this period</p>
+        <div class="flex flex-col gap-3 px-4 py-3 border-b border-default bg-elevated/30">
+          <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-sm font-semibold">Spend by Client</h2>
+                <UBadge v-if="showPacingReview" :color="liveBudgetChangesEnabled ? 'warning' : 'neutral'" variant="soft" size="xs">
+                  {{ liveBudgetChangesEnabled ? 'Live budget changes armed' : 'Recommend only' }}
+                </UBadge>
+              </div>
+              <p class="text-xs text-muted mt-0.5">
+                {{ spendData.items.length }} {{ spendData.items.length === 1 ? 'client' : 'clients' }} this period
+                <template v-if="showPacingReview"> · AI pacing merged into this view</template>
+              </p>
+            </div>
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div v-if="showPacingReview" class="flex items-center gap-2 rounded-lg border border-default bg-default/40 px-3 py-2">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <UIcon
+                      :name="liveBudgetChangesEnabled ? 'i-lucide-zap' : 'i-lucide-shield-check'"
+                      class="size-4"
+                      :class="liveBudgetChangesEnabled ? 'text-warning' : 'text-muted'"
+                    />
+                    <span class="text-xs font-medium">Live budget changes</span>
+                  </div>
+                  <p class="text-[11px] text-muted">Meta and Google</p>
+                </div>
+                <USwitch
+                  :model-value="liveBudgetChangesEnabled"
+                  :loading="budgetControlLoading || budgetControlSaving"
+                  :disabled="budgetControlLoading || budgetControlSaving"
+                  @update:model-value="setLiveBudgetChanges(Boolean($event))"
+                />
+              </div>
+              <UInput
+                v-model="searchQuery"
+                icon="i-lucide-search"
+                placeholder="Search clients..."
+                size="sm"
+                class="w-full sm:w-56"
+              />
+            </div>
           </div>
-          <UInput
-            v-model="searchQuery"
-            icon="i-lucide-search"
-            placeholder="Search clients..."
-            size="sm"
-            class="w-56"
-          />
+
+          <div v-if="showPacingReview" class="grid grid-cols-2 lg:grid-cols-5 gap-2">
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Critical</p>
+              <p class="text-base font-semibold text-error">{{ pacingReviewLoading ? '-' : (pacingReview?.summary?.criticalCount ?? 0) }}</p>
+            </div>
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Warnings</p>
+              <p class="text-base font-semibold text-warning">{{ pacingReviewLoading ? '-' : (pacingReview?.summary?.warningCount ?? 0) }}</p>
+            </div>
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Recommendations</p>
+              <p class="text-base font-semibold">{{ pacingReviewLoading ? '-' : pacingReviewItems.length }}</p>
+            </div>
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Projected over</p>
+              <p class="text-base font-semibold">{{ pacingReviewLoading ? '-' : formatCurrency(pacingReview?.summary?.projectedOverspend ?? 0) }}</p>
+            </div>
+            <div class="rounded-lg bg-default/40 px-3 py-2">
+              <p class="text-[10px] uppercase text-muted font-medium">Projected under</p>
+              <p class="text-base font-semibold">{{ pacingReviewLoading ? '-' : formatCurrency(pacingReview?.summary?.projectedUnderspend ?? 0) }}</p>
+            </div>
+          </div>
+
+          <div v-if="showPacingReview && pacingReview?.aiSummary" class="rounded-lg bg-primary/5 px-3 py-2 text-xs text-default">
+            {{ pacingReview.aiSummary }}
+          </div>
         </div>
         <SocialSpendVarianceTable
           :items="spendData.items"
           :totals="spendData.totals"
           :search="searchQuery"
           :month-progress="monthProgress"
+          :pacing-review-items="pacingReviewItems"
           :bank-charges="bankCharges"
           @budget-updated="loadSpend"
         />
