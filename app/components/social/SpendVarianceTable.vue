@@ -482,7 +482,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
       <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-default text-left">
-          <th class="py-2 px-3 font-medium text-muted cursor-pointer w-[28rem] max-w-[28rem]" @click="toggleSort('clientName')">
+          <th class="py-2 px-3 font-medium text-muted cursor-pointer w-80 min-w-80 max-w-80" @click="toggleSort('clientName')">
             Client
             <UIcon v-if="sortKey === 'clientName'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
@@ -522,9 +522,9 @@ const totalColSpan = computed(() => socialSpendColumnCount({
       </thead>
       <tbody>
         <tr v-for="item in filtered" :key="itemKey(item)" class="border-b border-default/50 hover:bg-elevated/50 group">
-          <td class="py-2 px-3 font-medium w-[28rem] max-w-[28rem]">
+          <td class="py-2 px-3 font-medium w-80 min-w-80 max-w-80">
             <div class="flex items-start gap-1.5">
-              <span class="block min-w-0 flex-1 max-w-[24rem] line-clamp-2 leading-snug [overflow-wrap:anywhere]">
+              <span class="min-w-0 flex-1 max-w-[15rem] overflow-hidden leading-snug [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [overflow-wrap:anywhere]">
                 {{ item.clientName }}
               </span>
               <div class="flex shrink-0 flex-wrap items-center gap-1 pt-0.5">
