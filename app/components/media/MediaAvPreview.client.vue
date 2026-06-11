@@ -9,6 +9,7 @@ import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 import { buildBannerHTML } from '~~/app/utils/banner-html-builder'
 import { fitRect, kenBurnsTransformAt, activeVisualClipAt, extractBannerLayers } from '~~/app/utils/video/composite'
 import { isSamePreviewSourceUrl, resolveVideoPreviewState, type VideoPreviewMediaStatus } from '~~/app/utils/video/videoPreviewState'
+import { effectPreviewPlan, shakeOffsetAt } from '~~/app/utils/video/effectPreview'
 
 const props = defineProps<{
   timeline: TimelineState
@@ -90,6 +91,28 @@ function getImgEl(clip: any): HTMLImageElement | null {
   return el
 }
 
+// Animated noise tile for grain/VHS preview — generated once, offset per frame.
+let noisePattern: CanvasPattern | null = null
+function getNoisePattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
+  if (noisePattern) return noisePattern
+  const tile = document.createElement('canvas')
+  tile.width = 128
+  tile.height = 128
+  const tctx = tile.getContext('2d')
+  if (!tctx) return null
+  const image = tctx.createImageData(128, 128)
+  for (let i = 0; i < image.data.length; i += 4) {
+    const v = Math.floor(Math.random() * 256)
+    image.data[i] = v
+    image.data[i + 1] = v
+    image.data[i + 2] = v
+    image.data[i + 3] = 255
+  }
+  tctx.putImageData(image, 0, 0)
+  noisePattern = ctx.createPattern(tile, 'repeat')
+  return noisePattern
+}
+
 function draw() {
   const canvas = canvasRef.value
   if (!canvas) return
@@ -102,9 +125,22 @@ function draw() {
   if (!active) return
   const local = props.currentTime - active.timeline_start_sec
 
+  // Cheap approximation of the clip's render-time effects. The server render
+  // stays authoritative for final pixels; fisheye has no preview.
+  const fx = effectPreviewPlan(active.effects ?? [])
+  ctx.save()
+  if (fx.ctxFilter) ctx.filter = fx.ctxFilter
+  if (fx.shake) {
+    const { dx, dy } = shakeOffsetAt(props.currentTime)
+    ctx.translate(dx, dy)
+  }
+
   if (active.base_source === 'still_kenburns') {
     const img = getImgEl(active)
-    if (!img || !img.complete || img.naturalWidth === 0) return
+    if (!img || !img.complete || img.naturalWidth === 0) {
+      ctx.restore()
+      return
+    }
     const kb = active.kenburns ?? { zoom_from: 1, zoom_to: 1.1, pan_from: [0, 0], pan_to: [0, 0] }
     const { zoom, panX, panY } = kenBurnsTransformAt(kb, local, active.duration_sec)
     const base = fitRect(img.naturalWidth, img.naturalHeight, W.value, H.value)
@@ -114,9 +150,26 @@ function draw() {
     ctx.drawImage(img, dx, dy, dw, dh)
   } else {
     const v = getVideoEl(active)
-    if (!v || v.readyState < 2 || v.videoWidth === 0) return
+    if (!v || v.readyState < 2 || v.videoWidth === 0) {
+      ctx.restore()
+      return
+    }
     const r = fitRect(v.videoWidth, v.videoHeight, W.value, H.value)
     ctx.drawImage(v, r.x, r.y, r.width, r.height)
+  }
+  ctx.restore()
+
+  if (fx.noiseAlpha > 0) {
+    const pattern = getNoisePattern(ctx)
+    if (pattern) {
+      ctx.save()
+      ctx.globalAlpha = fx.noiseAlpha
+      // Deterministic offset animates the grain without regenerating the tile
+      ctx.translate((props.currentTime * 61) % 128, (props.currentTime * 47) % 128)
+      ctx.fillStyle = pattern
+      ctx.fillRect(-256, -256, W.value + 512, H.value + 512)
+      ctx.restore()
+    }
   }
 }
 

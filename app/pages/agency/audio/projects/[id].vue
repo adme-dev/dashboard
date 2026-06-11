@@ -559,7 +559,7 @@ const saveStatusColor = computed(() => {
             </button>
           </div>
           <p class="mt-2 text-[11px] text-muted">
-            Effects are applied at render time — the editor preview shows the unprocessed clip.
+            The preview shows a quick approximation — final quality comes from the render. Fisheye is render-only.
           </p>
         </div>
 
