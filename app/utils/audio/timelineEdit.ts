@@ -174,7 +174,8 @@ export function addVideoClip(
     duration_sec: Math.max(0.1, durationSec),
     base_source: baseSource,
     kenburns: baseSource === 'still_kenburns' ? { ...DEFAULT_KENBURNS } : null,
-    audio_mode: 'mute'
+    audio_mode: 'mute',
+    effects: []
   } as unknown as Clip)
   next.duration_sec = computeDuration(next)
   return next

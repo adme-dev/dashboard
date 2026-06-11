@@ -42,7 +42,10 @@ export const VideoClipSchema = z.object({
   duration_sec: z.number(),
   base_source: z.enum(['uploaded_footage', 'still_kenburns']),
   kenburns: KenBurnsSchema.nullable().default(null),
-  audio_mode: z.enum(['mute', 'source', 'duck_under_vo']).default('mute')
+  audio_mode: z.enum(['mute', 'source', 'duck_under_vo']).default('mute'),
+  // Per-clip effect preset ids (e.g. 'film_grain', 'vhs') — mapped to ffmpeg
+  // filters at render time by videoCompositeGraph. Unknown ids are ignored.
+  effects: z.array(z.string()).default([])
 })
 
 // ── GSAP overlay clip ─────────────────────────────────────────────────────────

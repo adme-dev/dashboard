@@ -26,6 +26,22 @@ export interface CompositePlan {
 
 const AUDIO_KINDS = ['voiceover', 'music', 'sfx']
 
+// Per-clip effect presets → ffmpeg filter strings. Inserted into the clip chain
+// after scaling, before the timeline-offset setpts. Unknown ids are ignored so a
+// newer editor can save presets an older renderer doesn't know without breaking.
+export const CLIP_EFFECT_PRESETS: Record<string, string> = {
+  film_grain: 'noise=alls=12:allf=t+u',
+  motion_blur: 'tmix=frames=4',
+  vhs: 'noise=c0s=14:c0f=t+u,eq=saturation=1.3:contrast=0.92:brightness=0.02',
+  shake: 'crop=in_w-16:in_h-16:8+6*sin(t*13):8+6*cos(t*17),scale=iw+16:ih+16',
+  bloom: 'eq=brightness=0.06:saturation=1.12,gblur=sigma=0.6',
+  fisheye: 'lenscorrection=k1=0.32:k2=0.12'
+}
+
+export function clipEffectFilters(effects?: string[] | null): string[] {
+  return (effects ?? []).map(id => CLIP_EFFECT_PRESETS[id]).filter((f): f is string => Boolean(f))
+}
+
 function kenburnsExpr(k: any, W: number, H: number, fps: number, dur: number): string {
   const zf = k?.zoom_from ?? 1, zt = k?.zoom_to ?? 1.1
   const frames = Math.max(1, Math.round(dur * fps))
@@ -58,6 +74,7 @@ export function buildCompositePlan(state: TimelineState, profile: VideoFormat, o
           `scale=${W}:${H}:force_original_aspect_ratio=decrease`, `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`
         )
       }
+      parts.push(...clipEffectFilters(clip.effects))
       parts.push(`setpts=PTS-STARTPTS+${start.toFixed(3)}/TB`)
       const clipLabel = `vc${i}`
       vChains.push(`[${i}:v]${parts.join(',')}[${clipLabel}]`)

@@ -33,4 +33,10 @@ describe('videoCompositeGraph .ts ↔ .mjs parity', () => {
     const p = ts(av(), profile, overlays)
     expect(mjsArgs(p, ['a', 'b'], 'o.mp4')).toEqual(tsArgs(p, ['a', 'b'], 'o.mp4'))
   })
+  it('produces identical plans with clip effects', () => {
+    const state = av()
+    const clip = state.tracks[0]!.clips[0]!
+    if (clip.type === 'video') clip.effects = ['film_grain', 'vhs', 'unknown_preset']
+    expect(mjs(state, profile)).toEqual(ts(state, profile))
+  })
 })
