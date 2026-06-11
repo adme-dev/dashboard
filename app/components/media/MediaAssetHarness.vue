@@ -673,6 +673,9 @@ onMounted(() => { void loadHarness() })
               <p class="text-xs font-medium text-highlighted">{{ assemblyPlan.steps?.length ?? 0 }} proposed timeline steps</p>
               <UButton icon="i-lucide-list-plus" size="xs" variant="soft" color="primary" label="Apply" @click="applyAssemblyPlan" />
             </div>
+            <p v-if="assemblyPlan.rationale" class="mt-1 text-xs leading-snug text-default">
+              {{ assemblyPlan.rationale }}
+            </p>
             <ol class="mt-1 max-h-24 space-y-1 overflow-y-auto text-xs text-muted">
               <li v-for="step in assemblyPlan.steps" :key="step.bucketItemId" class="truncate">
                 {{ step.title || step.r2Key || step.assetId }} · {{ step.durationSec }}s
