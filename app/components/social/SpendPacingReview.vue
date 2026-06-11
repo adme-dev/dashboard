@@ -234,7 +234,7 @@ function openHistory(item: PacingReviewItem) {
               </UBadge>
               <span v-if="item.campaignStatus" class="text-xs text-muted">{{ item.campaignStatus }}</span>
             </div>
-            <p class="font-medium mt-2 truncate">{{ item.clientName }} · {{ item.campaignName }}</p>
+            <p class="font-medium mt-2 line-clamp-2 max-w-80">{{ item.clientName }} · {{ item.campaignName }}</p>
             <p class="text-sm text-muted mt-1">{{ item.recommendedAction }}</p>
             <div class="mt-3">
               <UButton

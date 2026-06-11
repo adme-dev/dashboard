@@ -1,5 +1,7 @@
 export const SOCIAL_SPEND_OPTIONAL_COLUMNS = [
   { id: 'health', label: 'Health' },
+  { id: 'budgetControl', label: 'Budget control' },
+  { id: 'reasonCodes', label: 'Reason codes' },
   { id: 'bankCharged', label: 'Bank charged' },
   { id: 'aiPacing', label: 'AI pacing' },
   { id: 'pacing', label: 'Pacing' },
@@ -27,6 +29,8 @@ export const SOCIAL_SPEND_VIEW_PRESETS: Array<{ id: SocialSpendViewPresetId, lab
 export function defaultSocialSpendColumnVisibility(): SocialSpendColumnVisibility {
   return {
     health: true,
+    budgetControl: true,
+    reasonCodes: true,
     bankCharged: true,
     aiPacing: true,
     pacing: true,
@@ -44,6 +48,8 @@ export function socialSpendPresetVisibility(preset: SocialSpendViewPresetId): So
     return {
       ...defaults,
       health: true,
+      budgetControl: false,
+      reasonCodes: false,
       bankCharged: true,
       aiPacing: false,
       pacing: false,
@@ -58,6 +64,8 @@ export function socialSpendPresetVisibility(preset: SocialSpendViewPresetId): So
     return {
       ...defaults,
       health: true,
+      budgetControl: false,
+      reasonCodes: true,
       bankCharged: false,
       aiPacing: true,
       pacing: true,
@@ -72,6 +80,8 @@ export function socialSpendPresetVisibility(preset: SocialSpendViewPresetId): So
     return {
       ...defaults,
       health: true,
+      budgetControl: true,
+      reasonCodes: true,
       bankCharged: false,
       aiPacing: true,
       pacing: false,

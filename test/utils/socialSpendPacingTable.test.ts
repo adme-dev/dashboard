@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  budgetControlForSpendRow,
   healthForSpendRow,
   lastActionForSpendRow,
   pacingItemsForSpendRow,
   pacingSeverityRank,
   pacingSummaryForSpendRow,
   projectedMonthEndForSpendRow,
+  reasonCodesForSpendRow,
 } from '~~/app/utils/socialSpendPacingTable'
 
 const reviewItems = [
@@ -92,7 +94,7 @@ describe('socialSpendPacingTable', () => {
     }, reviewItems)).toEqual({
       label: 'Action needed',
       tone: 'critical',
-      reason: 'Overpacing',
+      reason: 'Overspending',
     })
   })
 
@@ -132,5 +134,88 @@ describe('socialSpendPacingTable', () => {
       tone: 'critical',
       detail: 'Reduce daily budget.',
     })
+  })
+
+  it('shows live budget control only when global and platform writers are enabled', () => {
+    expect(budgetControlForSpendRow({
+      platform: 'google_ads',
+      clientName: 'Acme',
+      budget: 1200,
+      spendIds: ['spend-1'],
+    }, {
+      liveBudgetChangesEnabled: true,
+      metaBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true,
+    })).toEqual({
+      label: 'Live armed',
+      tone: 'warning',
+      detail: 'Google Ads budget writes are enabled for mapped campaigns.',
+    })
+  })
+
+  it('keeps supported platforms in recommend-only mode when live writes are disabled', () => {
+    expect(budgetControlForSpendRow({
+      platform: 'meta',
+      clientName: 'Acme',
+      budget: 1200,
+      spendIds: ['spend-1'],
+    }, {
+      liveBudgetChangesEnabled: false,
+      metaBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true,
+    })).toEqual({
+      label: 'Recommend only',
+      tone: 'neutral',
+      detail: 'AI can recommend changes, but live budget writes are off.',
+    })
+  })
+
+  it('flags rows where budget control cannot be applied', () => {
+    expect(budgetControlForSpendRow({
+      platform: 'google_ads',
+      clientName: 'Acme',
+      budget: 0,
+      spendIds: ['spend-1'],
+    }, {
+      liveBudgetChangesEnabled: true,
+      metaBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true,
+    }).label).toBe('No budget')
+
+    expect(budgetControlForSpendRow({
+      platform: 'google_ads',
+      clientName: 'Acme',
+      budget: 1200,
+      spendIds: [],
+    }, {
+      liveBudgetChangesEnabled: true,
+      metaBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true,
+    }).label).toBe('No mapping')
+
+    expect(budgetControlForSpendRow({
+      platform: 'linkedin',
+      clientName: 'Acme',
+      budget: 1200,
+      spendIds: ['spend-1'],
+    }, {
+      liveBudgetChangesEnabled: true,
+      metaBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true,
+    }).label).toBe('Blocked')
+  })
+
+  it('returns compact reason codes from matched recommendations or row health', () => {
+    expect(reasonCodesForSpendRow({
+      platform: 'google_ads',
+      clientName: 'Acme',
+    }, reviewItems)).toEqual(['Overspending', 'Under-delivering'])
+
+    expect(reasonCodesForSpendRow({
+      platform: 'meta',
+      clientName: 'Clean',
+      budget: 0,
+      spend: 50,
+    }, [])).toEqual(['Missing budget'])
   })
 })

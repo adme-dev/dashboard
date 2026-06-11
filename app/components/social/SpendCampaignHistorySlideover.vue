@@ -285,7 +285,7 @@ function summarizeValue(value: Record<string, unknown>) {
               <UBadge color="primary" variant="soft" size="sm">{{ issueLabel(item.issueType) }}</UBadge>
               <span v-if="item.campaignStatus" class="text-xs text-muted">{{ item.campaignStatus }}</span>
             </div>
-            <h3 class="mt-2 truncate text-base font-semibold">{{ item.campaignName }}</h3>
+            <h3 class="mt-2 line-clamp-2 max-w-md text-base font-semibold leading-snug">{{ item.campaignName }}</h3>
             <p class="mt-0.5 text-xs text-muted">{{ item.clientName }} · campaign history</p>
           </div>
           <UButton color="neutral" variant="ghost" icon="i-lucide-x" size="xs" @click="open = false" />

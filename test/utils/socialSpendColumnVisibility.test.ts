@@ -10,6 +10,8 @@ describe('socialSpendColumnVisibility', () => {
   it('hides commission by default while keeping pacing and variance visible', () => {
     expect(defaultSocialSpendColumnVisibility()).toMatchObject({
       health: true,
+      budgetControl: true,
+      reasonCodes: true,
       aiPacing: true,
       pacing: true,
       projectedMonthEnd: true,
@@ -37,6 +39,8 @@ describe('socialSpendColumnVisibility', () => {
       'budget',
       'spend',
       'health',
+      'budgetControl',
+      'reasonCodes',
       'bankCharged',
       'aiPacing',
       'pacing',
@@ -53,6 +57,8 @@ describe('socialSpendColumnVisibility', () => {
       visibility: {
         ...defaultSocialSpendColumnVisibility(),
         health: false,
+        budgetControl: false,
+        reasonCodes: false,
         aiPacing: false,
         pacing: false,
         projectedMonthEnd: false,
@@ -65,6 +71,8 @@ describe('socialSpendColumnVisibility', () => {
   it('provides a finance preset that restores commission and hides operational AI columns', () => {
     expect(socialSpendPresetVisibility('finance')).toMatchObject({
       bankCharged: true,
+      budgetControl: false,
+      reasonCodes: false,
       aiPacing: false,
       pacing: false,
       projectedMonthEnd: true,

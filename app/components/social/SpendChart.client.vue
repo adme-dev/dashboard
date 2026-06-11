@@ -386,7 +386,7 @@ function segmentOpacity(_seg: { campaignId: string }, barIdx: number): number {
         @click="toggleCampaign(camp.campaignId)"
       >
         <span class="block w-3 h-1.5 rounded-sm shrink-0" :style="{ backgroundColor: camp.color }"></span>
-        <span class="truncate max-w-[140px]">{{ camp.campaignName }}</span>
+        <span class="line-clamp-2 max-w-[120px] leading-snug text-left">{{ camp.campaignName }}</span>
         <UBadge
           v-if="getCampaignTypeBadge(camp.campaignType)"
           :color="(getCampaignTypeBadge(camp.campaignType)!.color as any)"

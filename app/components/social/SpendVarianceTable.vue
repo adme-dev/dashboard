@@ -11,10 +11,13 @@ import {
   type SocialSpendOptionalColumnId,
 } from '~/utils/socialSpendColumnVisibility'
 import {
+  budgetControlForSpendRow,
   healthForSpendRow,
   lastActionForSpendRow,
   pacingItemsForSpendRow,
   projectedMonthEndForSpendRow,
+  reasonCodesForSpendRow,
+  type SpendBudgetControlSettings,
   type SpendRowHealthTone,
 } from '~/utils/socialSpendPacingTable'
 
@@ -76,6 +79,7 @@ const props = defineProps<{
   search?: string
   monthProgress?: number
   pacingReviewItems?: PacingReviewItem[]
+  budgetControlSettings?: SpendBudgetControlSettings
   bankCharges?: {
     byPlatform: Record<string, { total: number }>
     total: number
@@ -135,6 +139,14 @@ function projectionForItem(item: typeof props.items[0]) {
 
 function actionForItem(item: typeof props.items[0]) {
   return lastActionForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function budgetControlForItem(item: typeof props.items[0]) {
+  return budgetControlForSpendRow(item, props.budgetControlSettings)
+}
+
+function reasonCodesForItem(item: typeof props.items[0]) {
+  return reasonCodesForSpendRow(item, props.pacingReviewItems ?? [])
 }
 
 function openPacingHistory(item: PacingReviewItem) {
@@ -444,6 +456,8 @@ const totalColSpan = computed(() => socialSpendColumnCount({
             <UIcon v-if="sortKey === 'spend'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
           <th v-if="isColumnVisible('health')" class="py-2 px-3 font-medium text-muted">Health</th>
+          <th v-if="isColumnVisible('budgetControl')" class="py-2 px-3 font-medium text-muted">Budget control</th>
+          <th v-if="isColumnVisible('reasonCodes')" class="py-2 px-3 font-medium text-muted">Reason codes</th>
           <!-- Bank Charged column -->
           <th v-if="isColumnVisible('bankCharged')" class="py-2 px-3 font-medium text-muted text-right">
             <UTooltip text="Actual charges from Xero bank/CC transactions + Meta Billing API, proportionally split by client spend share">
@@ -506,6 +520,31 @@ const totalColSpan = computed(() => socialSpendColumnCount({
                 {{ healthForItem(item).label }}
               </UBadge>
             </UTooltip>
+          </td>
+          <td v-if="isColumnVisible('budgetControl')" class="py-2 px-3">
+            <UTooltip :text="budgetControlForItem(item).detail">
+              <UBadge :color="healthColor(budgetControlForItem(item).tone) as any" variant="soft" size="xs">
+                {{ budgetControlForItem(item).label }}
+              </UBadge>
+            </UTooltip>
+          </td>
+          <td v-if="isColumnVisible('reasonCodes')" class="py-2 px-3 max-w-40">
+            <div v-if="reasonCodesForItem(item).length" class="flex flex-wrap gap-1">
+              <UBadge
+                v-for="reason in reasonCodesForItem(item).slice(0, 2)"
+                :key="reason"
+                color="neutral"
+                variant="subtle"
+                size="xs"
+                class="whitespace-nowrap"
+              >
+                {{ reason }}
+              </UBadge>
+              <span v-if="reasonCodesForItem(item).length > 2" class="text-[11px] text-muted">
+                +{{ reasonCodesForItem(item).length - 2 }}
+              </span>
+            </div>
+            <span v-else class="text-muted">-</span>
           </td>
           <!-- Bank Charged cell -->
           <td v-if="isColumnVisible('bankCharged')" class="py-2 px-3 text-right">
@@ -624,6 +663,8 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.budget) }}</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.spend) }}</td>
           <td v-if="isColumnVisible('health')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('budgetControl')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('reasonCodes')" class="py-2 px-3"></td>
           <td v-if="isColumnVisible('bankCharged')" class="py-2 px-3 text-right">
             <div class="flex flex-col items-end gap-0.5">
               <span>{{ formatCurrency(combinedBankTotal) }}</span>

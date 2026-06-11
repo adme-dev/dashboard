@@ -40,6 +40,18 @@ export interface SpendRowActionState {
   detail: string
 }
 
+export interface SpendBudgetControlSettings {
+  liveBudgetChangesEnabled: boolean
+  metaBudgetWritesEnabled: boolean
+  googleBudgetWritesEnabled: boolean
+}
+
+export interface SpendBudgetControlState {
+  label: 'Live armed' | 'Recommend only' | 'Blocked' | 'No mapping' | 'No budget'
+  tone: SpendRowHealthTone
+  detail: string
+}
+
 export function pacingSeverityRank(severity: string) {
   if (severity === 'critical') return 0
   if (severity === 'warning') return 1
@@ -121,7 +133,76 @@ export function lastActionForSpendRow(row: SpendPacingRow, items: readonly Spend
   }
 }
 
+export function budgetControlForSpendRow(
+  row: SpendPacingRow,
+  settings: SpendBudgetControlSettings | null | undefined,
+): SpendBudgetControlState {
+  if ((row.budget ?? 0) <= 0) {
+    return {
+      label: 'No budget',
+      tone: 'warning',
+      detail: 'Set a campaign budget before AI can recommend or apply budget changes.',
+    }
+  }
+  if (!(row.spendIds ?? []).length) {
+    return {
+      label: 'No mapping',
+      tone: 'warning',
+      detail: 'Map this spend row to source campaigns before live budget changes can be applied.',
+    }
+  }
+
+  const platform = normalizePacingPlatform(row.platform)
+  const platformLabel = platform === 'google' ? 'Google Ads' : platform === 'meta' ? 'Meta' : row.platform
+  const platformEnabled = platform === 'meta'
+    ? Boolean(settings?.metaBudgetWritesEnabled)
+    : platform === 'google'
+      ? Boolean(settings?.googleBudgetWritesEnabled)
+      : false
+
+  if (platform !== 'meta' && platform !== 'google') {
+    return {
+      label: 'Blocked',
+      tone: 'neutral',
+      detail: `${platformLabel} budget writes are not supported yet.`,
+    }
+  }
+  if (!settings?.liveBudgetChangesEnabled) {
+    return {
+      label: 'Recommend only',
+      tone: 'neutral',
+      detail: 'AI can recommend changes, but live budget writes are off.',
+    }
+  }
+  if (!platformEnabled) {
+    return {
+      label: 'Blocked',
+      tone: 'warning',
+      detail: `${platformLabel} budget writes are disabled in budget control settings.`,
+    }
+  }
+  return {
+    label: 'Live armed',
+    tone: 'warning',
+    detail: `${platformLabel} budget writes are enabled for mapped campaigns.`,
+  }
+}
+
+export function reasonCodesForSpendRow(row: SpendPacingRow, items: readonly SpendPacingReviewItem[]): string[] {
+  const matches = pacingItemsForSpendRow(row, items)
+  if (matches.length) return unique(matches.map(item => issueLabel(item.issueType)))
+
+  const health = healthForSpendRow(row, items)
+  return health.reason === 'On track' ? [] : [health.reason]
+}
+
 function issueLabel(issue: string | null | undefined) {
+  if (issue === 'overpacing') return 'Overspending'
+  if (issue === 'underpacing') return 'Under-delivering'
+  if (issue === 'zero_conversion') return 'No conversions'
+  if (issue === 'stale_sync') return 'Stale data'
+  if (issue === 'paused_with_budget') return 'Paused with budget'
+  if (issue === 'no_spend') return 'No spend'
   if (!issue) return 'Pacing issue'
   return issue.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
 }
@@ -137,4 +218,8 @@ function money(value: number) {
 
 function normalizePacingPlatform(platform: string) {
   return platform === 'google_ads' ? 'google' : platform
+}
+
+function unique(values: string[]) {
+  return Array.from(new Set(values))
 }

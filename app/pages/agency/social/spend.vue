@@ -662,6 +662,7 @@ const bankDiscrepancy = computed(() => {
           :search="searchQuery"
           :month-progress="monthProgress"
           :pacing-review-items="pacingReviewItems"
+          :budget-control-settings="budgetControlSettings"
           :bank-charges="bankCharges"
           @budget-updated="loadSpend"
         />
