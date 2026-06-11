@@ -4,6 +4,7 @@ interface SpendSummaryItem {
   platform: string
   clientName: string
   clientCode: string | null
+  owner?: { id: string; name: string | null } | null
   budget: number
   spend: number
   commission: number

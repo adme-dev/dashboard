@@ -61,6 +61,7 @@ const props = defineProps<{
     platform: string
     clientName: string
     clientCode: string | null
+    owner?: { id: string; name: string | null } | null
     budget: number
     spend: number
     commission: number
@@ -97,6 +98,7 @@ const sortDir = ref<'asc' | 'desc'>('desc')
 const COLUMN_STORAGE_KEY = 'agency:social:spend:client-columns'
 const columnVisibility = ref(defaultSocialSpendColumnVisibility())
 const activePreset = ref<SocialSpendViewPresetId>('pacing')
+const ownerFilter = ref('all')
 
 // Active pacing alerts, matched to rows by media_spend id.
 const { alertsFor } = useSpendAlerts()
@@ -214,6 +216,22 @@ function applyViewPreset(preset: SocialSpendViewPresetId) {
   columnVisibility.value = socialSpendPresetVisibility(preset)
 }
 
+const ownerOptions = computed(() => {
+  const owners = new Map<string, string>()
+  let hasUnassigned = false
+  for (const item of props.items) {
+    if (item.owner?.id) owners.set(item.owner.id, item.owner.name || 'Unknown owner')
+    else hasUnassigned = true
+  }
+  return [
+    { label: 'All owners', value: 'all' },
+    ...Array.from(owners.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ label, value })),
+    ...(hasUnassigned ? [{ label: 'Unassigned', value: '__unassigned__' }] : []),
+  ]
+})
+
 onMounted(() => {
   if (!import.meta.client) return
   const stored = localStorage.getItem(COLUMN_STORAGE_KEY)
@@ -299,11 +317,18 @@ function toggleSort(key: string) {
 
 const filtered = computed(() => {
   let items = [...props.items]
+  if (ownerFilter.value !== 'all') {
+    items = items.filter((item) => {
+      if (ownerFilter.value === '__unassigned__') return !item.owner?.id
+      return item.owner?.id === ownerFilter.value
+    })
+  }
   if (props.search) {
     const q = props.search.toLowerCase()
     items = items.filter(i =>
       i.clientName.toLowerCase().includes(q) ||
       (i.clientCode && i.clientCode.toLowerCase().includes(q)) ||
+      (i.owner?.name && i.owner.name.toLowerCase().includes(q)) ||
       platformLabel(i.platform).toLowerCase().includes(q)
     )
   }
@@ -348,6 +373,10 @@ function healthColor(tone: SpendRowHealthTone) {
   if (tone === 'warning') return 'warning'
   if (tone === 'healthy') return 'success'
   return 'neutral'
+}
+
+function ownerLabel(item: { owner?: { name: string | null } | null }) {
+  return item.owner?.name || 'Unassigned'
 }
 
 function projectionClass(variance: number) {
@@ -426,16 +455,26 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           @click="applyViewPreset(preset.id)"
         />
       </div>
-      <UDropdownMenu :items="columnMenuItems" :content="{ align: 'end' }">
-        <UButton
-          label="Display"
-          color="neutral"
-          variant="outline"
+      <div class="flex flex-wrap items-center gap-2">
+        <USelect
+          v-model="ownerFilter"
+          :items="ownerOptions"
           size="sm"
-          icon="i-lucide-columns-3"
-          trailing-icon="i-lucide-chevron-down"
+          value-key="value"
+          class="w-40"
+          icon="i-lucide-user-round"
         />
-      </UDropdownMenu>
+        <UDropdownMenu :items="columnMenuItems" :content="{ align: 'end' }">
+          <UButton
+            label="Display"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            icon="i-lucide-columns-3"
+            trailing-icon="i-lucide-chevron-down"
+          />
+        </UDropdownMenu>
+      </div>
     </div>
 
     <div class="overflow-x-auto">
@@ -456,6 +495,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
             <UIcon v-if="sortKey === 'spend'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
           <th v-if="isColumnVisible('health')" class="py-2 px-3 font-medium text-muted">Health</th>
+          <th v-if="isColumnVisible('owner')" class="py-2 px-3 font-medium text-muted">Owner</th>
           <th v-if="isColumnVisible('budgetControl')" class="py-2 px-3 font-medium text-muted">Budget control</th>
           <th v-if="isColumnVisible('reasonCodes')" class="py-2 px-3 font-medium text-muted">Reason codes</th>
           <!-- Bank Charged column -->
@@ -520,6 +560,9 @@ const totalColSpan = computed(() => socialSpendColumnCount({
                 {{ healthForItem(item).label }}
               </UBadge>
             </UTooltip>
+          </td>
+          <td v-if="isColumnVisible('owner')" class="py-2 px-3">
+            <span :class="item.owner?.id ? 'text-default' : 'text-muted'">{{ ownerLabel(item) }}</span>
           </td>
           <td v-if="isColumnVisible('budgetControl')" class="py-2 px-3">
             <UTooltip :text="budgetControlForItem(item).detail">
@@ -663,6 +706,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.budget) }}</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.spend) }}</td>
           <td v-if="isColumnVisible('health')" class="py-2 px-3"></td>
+          <td v-if="isColumnVisible('owner')" class="py-2 px-3"></td>
           <td v-if="isColumnVisible('budgetControl')" class="py-2 px-3"></td>
           <td v-if="isColumnVisible('reasonCodes')" class="py-2 px-3"></td>
           <td v-if="isColumnVisible('bankCharged')" class="py-2 px-3 text-right">

@@ -1,5 +1,6 @@
 export const SOCIAL_SPEND_OPTIONAL_COLUMNS = [
   { id: 'health', label: 'Health' },
+  { id: 'owner', label: 'Owner' },
   { id: 'budgetControl', label: 'Budget control' },
   { id: 'reasonCodes', label: 'Reason codes' },
   { id: 'bankCharged', label: 'Bank charged' },
@@ -29,6 +30,7 @@ export const SOCIAL_SPEND_VIEW_PRESETS: Array<{ id: SocialSpendViewPresetId, lab
 export function defaultSocialSpendColumnVisibility(): SocialSpendColumnVisibility {
   return {
     health: true,
+    owner: true,
     budgetControl: true,
     reasonCodes: true,
     bankCharged: true,
@@ -48,6 +50,7 @@ export function socialSpendPresetVisibility(preset: SocialSpendViewPresetId): So
     return {
       ...defaults,
       health: true,
+      owner: false,
       budgetControl: false,
       reasonCodes: false,
       bankCharged: true,
@@ -64,6 +67,7 @@ export function socialSpendPresetVisibility(preset: SocialSpendViewPresetId): So
     return {
       ...defaults,
       health: true,
+      owner: false,
       budgetControl: false,
       reasonCodes: true,
       bankCharged: false,
@@ -80,6 +84,7 @@ export function socialSpendPresetVisibility(preset: SocialSpendViewPresetId): So
     return {
       ...defaults,
       health: true,
+      owner: true,
       budgetControl: true,
       reasonCodes: true,
       bankCharged: false,
