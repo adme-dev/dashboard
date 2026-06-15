@@ -64,7 +64,11 @@ export default eventHandler(async (event) => {
   const platform = row.platform === 'google_ads' ? 'google' : 'meta'
   const tenantId = await getSelectedTenant(event)
   const cfg = await getSocialBudgetControlConfig(tenantId || '')
-  const flagEnabled = platform === 'meta' ? cfg.metaBudgetWritesEnabled : cfg.googleBudgetWritesEnabled
+  // Require BOTH the master switch and the per-platform flag — mirrors the UI's
+  // "armed" gating (app/utils/socialSpendPacingTable.ts) so the master Off switch
+  // is authoritative and cannot be bypassed by a stray per-platform flag.
+  const platformFlag = platform === 'meta' ? cfg.metaBudgetWritesEnabled : cfg.googleBudgetWritesEnabled
+  const flagEnabled = cfg.liveBudgetChangesEnabled && platformFlag
 
   // Hard fail-safe: when platform writes are disabled, never touch the platform API or
   // mutate action state — return before resolving Meta CBO/ABO targets.
