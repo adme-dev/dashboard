@@ -36,6 +36,7 @@ const SECONDARY_PLATFORMS: PlatformDef[] = [
 export interface SpendSyncKickoffResult {
   period: string
   meta: 'queued' | 'background' | 'error'
+  google: 'queued' | 'background' | 'error'
   secondary: string[]
 }
 
@@ -96,6 +97,7 @@ export async function startSpendSyncAllPlatforms(
 
   // Google — per-account queue fan-out (same durable path as Meta). The old
   // single-waitUntil loop was killed by Cloudflare's time budget at ~100 accounts.
+  let google: SpendSyncKickoffResult['google'] = 'background'
   try {
     const gqueue = getQueue(event)
     const googleIds = gqueue ? await listGoogleConnectionIds() : []
@@ -106,15 +108,18 @@ export async function startSpendSyncAllPlatforms(
       await Promise.all(googleIds.map(connectionId =>
         gqueue!.send({ type: 'spend.sync.google.account', payload: { connectionId, month, year, jobId }, enqueuedAt }, { contentType: 'json' })
       ))
+      google = 'queued'
     } else {
       runSpendSyncInBackground(event, {
         label: `cron google sync-spend ${period}`,
         sync: () => syncGoogleSpend(month, year),
         kvKeys: [`spend:summary:${period}:all`, `spend:summary:${period}:google_ads`, `spend:google:accounts:${period}`, `spend:daily:google:${period}`],
       })
+      google = 'background'
     }
   } catch (err) {
     console.error('[cron sync-spend] google kickoff failed:', err)
+    google = 'error'
   }
 
   const secondary: string[] = []
@@ -136,5 +141,5 @@ export async function startSpendSyncAllPlatforms(
     }
   }
 
-  return { period, meta, secondary }
+  return { period, meta, google, secondary }
 }

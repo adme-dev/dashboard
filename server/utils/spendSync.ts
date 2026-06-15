@@ -513,7 +513,13 @@ export async function syncGoogleSpendByConnectionId(connectionId: string, month:
   } else {
     try {
       const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
-      mccId = resolveGoogleManagerId({ accessibleIds, connectionAccountIds: new Set([conn.account_id.replace(/-/g, '')]) })
+      // Exclude ALL connected google accounts (not just this one) so the detected
+      // manager matches what syncGoogleSpend's bulk path resolves — otherwise a
+      // sibling client account could be mistaken for the manager (wrong header → 403).
+      const allGoogle = await queryRows<{ account_id: string }>(
+        `SELECT account_id FROM social_connections WHERE platform = 'google' AND status = 'active'`
+      )
+      mccId = resolveGoogleManagerId({ accessibleIds, connectionAccountIds: new Set(allGoogle.map(r => r.account_id.replace(/-/g, ''))) })
     } catch { /* leave undefined; processGoogleConnection retries without mcc on 403 */ }
   }
 
