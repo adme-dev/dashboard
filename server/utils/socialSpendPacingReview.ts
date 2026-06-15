@@ -34,6 +34,35 @@ export interface PacingReviewRow {
   end_date: string | null
 }
 
+/**
+ * The exact `media_spend` column projection that maps onto `PacingReviewRow`.
+ * Shared by every endpoint that builds a pacing review (the list at
+ * pacing-review.get.ts and the single-campaign ai-analysis.post.ts) so the two
+ * SELECTs can't drift. Assumes `media_spend ms LEFT JOIN agency_clients ac`.
+ */
+export const PACING_REVIEW_SELECT_COLUMNS = `
+  ms.id::text AS media_spend_id,
+  COALESCE(ac.name, ms.campaign_name, 'Unknown') AS client_name,
+  ms.platform,
+  ms.campaign_id,
+  ms.campaign_name,
+  ms.campaign_status,
+  ms.budget_allocated,
+  ms.actual_spend,
+  ms.impressions,
+  ms.clicks,
+  ms.conversions,
+  ms.reach,
+  ms.frequency,
+  ms.impression_share,
+  ms.lost_impression_share_budget,
+  ms.lost_impression_share_rank,
+  ms.bid_strategy,
+  ms.budget_type,
+  ms.period,
+  ms.synced_at,
+  ms.end_date`
+
 export interface PacingReviewPerformance {
   impressions: number
   clicks: number
