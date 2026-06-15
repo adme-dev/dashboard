@@ -18,11 +18,16 @@ compatibility_date = "2025-12-01"
 
 [[queues.consumers]]
 queue = "agency-jobs"
-# Each message is one unit of work (e.g. one Meta ad account). The handler fans
-# the batch out to the Pages endpoint concurrently, so a modest batch keeps the
-# job row's fan-in moving without overwhelming Pages.
-max_batch_size = 10
-max_batch_timeout = 10
+# Each message is one unit of work (e.g. one Meta ad account). THROTTLED on
+# purpose: the daily Meta spend sync fans out ~113 per-account messages, and
+# processing them in a concurrent burst makes Meta's Graph API return empty
+# insights (rate-limited) — the sync then silently writes $0. A near-sequential
+# run is what Meta tolerates (proven: a fully sequential run synced all 113
+# cleanly, ~$30k). max_batch_size=1 + max_concurrency=2 keeps at most 2 accounts
+# in flight at once. If $0 syncs ever recur, drop max_concurrency to 1.
+max_batch_size = 1
+max_concurrency = 2
+max_batch_timeout = 5
 max_retries = 3
 dead_letter_queue = "agency-jobs-dlq"
 
