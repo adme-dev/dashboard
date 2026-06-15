@@ -681,6 +681,10 @@ export async function updateGoogleCampaignDailyBudget(opts: {
   loginCustomerId?: string
 }): Promise<{ readBackDailyMajor: number }> {
   const cid = opts.customerId.replace(/-/g, '')
+  // Sanitize the campaign id to digits before interpolating into GAQL (matches
+  // the hardened pattern used elsewhere in this client; ids are numeric).
+  const cleanCampaignId = String(opts.campaignId).replace(/[^0-9]/g, '')
+  if (!cleanCampaignId) throw new Error('Google: invalid campaign id')
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${opts.token}`,
     'developer-token': opts.developerToken,
@@ -691,7 +695,7 @@ export async function updateGoogleCampaignDailyBudget(opts: {
   // Resolve the campaign's budget resource name.
   const search = await ofetch<any[]>(`${GOOGLE_ADS_BASE}/customers/${cid}/googleAds:searchStream`, {
     method: 'POST', headers,
-    body: { query: `SELECT campaign_budget.resource_name FROM campaign WHERE campaign.id = ${opts.campaignId}` },
+    body: { query: `SELECT campaign_budget.resource_name FROM campaign WHERE campaign.id = ${cleanCampaignId}` },
   })
   const resourceName: string | undefined = search?.[0]?.results?.[0]?.campaignBudget?.resourceName
   if (!resourceName) throw new Error('Google: campaign budget resource not found')
@@ -704,7 +708,7 @@ export async function updateGoogleCampaignDailyBudget(opts: {
 
   const back = await ofetch<any[]>(`${GOOGLE_ADS_BASE}/customers/${cid}/googleAds:searchStream`, {
     method: 'POST', headers,
-    body: { query: `SELECT campaign_budget.amount_micros FROM campaign WHERE campaign.id = ${opts.campaignId}` },
+    body: { query: `SELECT campaign_budget.amount_micros FROM campaign WHERE campaign.id = ${cleanCampaignId}` },
   })
   const micros = back?.[0]?.results?.[0]?.campaignBudget?.amountMicros
   return { readBackDailyMajor: Number(micros || '0') / 1_000_000 }

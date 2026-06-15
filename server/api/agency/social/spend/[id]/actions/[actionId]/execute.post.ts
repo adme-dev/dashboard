@@ -28,6 +28,7 @@ export default eventHandler(async (event) => {
     recommended_daily: string
     budget_allocated: string
     actual_spend: string
+    period: string | null
     applied_today: boolean
   }>(
     `SELECT cal.platform,
@@ -39,6 +40,7 @@ export default eventHandler(async (event) => {
             COALESCE((cal.new_value->>'dailyBudget')::numeric, 0)::text       AS recommended_daily,
             COALESCE(ms.budget_allocated, 0)::text AS budget_allocated,
             COALESCE(ms.actual_spend, 0)::text     AS actual_spend,
+            ms.period,
             EXISTS (
               SELECT 1 FROM campaign_action_log x
               WHERE x.media_spend_id = cal.media_spend_id
@@ -53,10 +55,22 @@ export default eventHandler(async (event) => {
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Approved action not found' })
 
+  // NOTE (Phase 1 limitations, accepted for the admin-manual flag-gated rollout):
+  // - No row lock / atomic claim: two simultaneous Apply clicks on the same approved
+  //   action could both POST to the platform before either writes 'applied'. Very low
+  //   probability in manual admin use; harden with a status claim before broad rollout.
+  // - media_spend is not tenant-scoped, so the write-enable flag/caps come from the
+  //   acting user's selected tenant while the action row is global. Single-tenant in prod.
   const platform = row.platform === 'google_ads' ? 'google' : 'meta'
   const tenantId = await getSelectedTenant(event)
   const cfg = await getSocialBudgetControlConfig(tenantId || '')
   const flagEnabled = platform === 'meta' ? cfg.metaBudgetWritesEnabled : cfg.googleBudgetWritesEnabled
+
+  // Hard fail-safe: when platform writes are disabled, never touch the platform API or
+  // mutate action state — return before resolving Meta CBO/ABO targets.
+  if (!flagEnabled) {
+    return { status: 'blocked', reason: 'writes_disabled', clampReasons: [] }
+  }
 
   const now = new Date()
   const monthDaysRemaining = Math.max(1, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1)
@@ -128,10 +142,15 @@ export default eventHandler(async (event) => {
     )
 
     if (verified) {
-      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+      const nowPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
       const tenantSeg = tenantId || 'no-tenant'
-      await kvDelete(event, `spend:summary:${tenantSeg}:${period}:all`)
-      await kvDelete(event, `spend:summary:${tenantSeg}:${period}:${row.platform}`)
+      // Bust the spend row's actual period (and the current month, if different) so the
+      // cached summary the slideover reads from reflects the new budget immediately.
+      const periods = Array.from(new Set([row.period, nowPeriod].filter(Boolean) as string[]))
+      for (const period of periods) {
+        await kvDelete(event, `spend:summary:${tenantSeg}:${period}:all`)
+        await kvDelete(event, `spend:summary:${tenantSeg}:${period}:${row.platform}`)
+      }
     }
     return verified
       ? { status: 'applied', appliedDailyBudget: decision.finalDaily, clamped: decision.clamped, clampReasons: decision.clampReasons }
