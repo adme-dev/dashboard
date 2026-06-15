@@ -8,6 +8,7 @@ import { resolveMetaBudgetTarget, updateMetaDailyBudget } from '~~/server/utils/
 import { updateGoogleCampaignDailyBudget } from '~~/server/utils/googleAdsClient'
 import { resolveGoogleWriteAuth } from '~~/server/utils/googleWriteAuth'
 import { claimApprovedAction, releaseActionClaim } from '~~/server/utils/campaignActionClaim'
+import { splitDailyBudget } from '~~/server/utils/budgetSplit'
 import { kvDelete } from '~~/server/utils/kv'
 
 export default eventHandler(async (event) => {
@@ -92,6 +93,18 @@ export default eventHandler(async (event) => {
   const now = new Date()
   const monthDaysRemaining = Math.max(1, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1)
 
+  // Bust the spend row's actual period (and the current month, if different) so the
+  // cached summary the slideover reads from reflects the new budget immediately.
+  const bustSpendCache = async () => {
+    const nowPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const tenantSeg = tenantId || 'no-tenant'
+    const periods = Array.from(new Set([row.period, nowPeriod].filter(Boolean) as string[]))
+    for (const period of periods) {
+      await kvDelete(event, `spend:summary:${tenantSeg}:${period}:all`)
+      await kvDelete(event, `spend:summary:${tenantSeg}:${period}:${row.platform}`)
+    }
+  }
+
   // For Meta, resolve CBO/ABO BEFORE deciding (need optimization goal + manual gate).
   // This is the only async between the claim and the write try/catch — a throw here
   // (stale Meta token, network) must release the claim, or the row is stuck 'executing'
@@ -114,12 +127,25 @@ export default eventHandler(async (event) => {
       )
       return { status: 'skipped', reason: 'abo_multi_adset_manual', adSetCount: metaTarget.adSetCount }
     }
-    platformMinimum = platformDailyMinimum(metaTarget.optimizationGoal)
+    if (metaTarget.level === 'adset_split') {
+      // Each ad set must clear its own platform minimum, so the campaign total
+      // must clear (per-ad-set min × participant count) for a clean split.
+      const perAdsetMin = Math.max(...metaTarget.splitAdSets!.map(a => platformDailyMinimum(a.optimizationGoal)))
+      platformMinimum = perAdsetMin * metaTarget.splitAdSets!.length
+    } else {
+      platformMinimum = platformDailyMinimum(metaTarget.optimizationGoal)
+    }
   }
+
+  // For an ABO split the "current daily" is the live sum of the participating ad
+  // sets, not the campaign-level value recorded when the action was planned.
+  const currentDailyForDecision = metaTarget?.level === 'adset_split'
+    ? metaTarget.splitAdSets!.reduce((s, a) => s + a.currentDailyMajor, 0)
+    : Number(row.current_daily)
 
   const decision = decideExecution({
     platform, flagEnabled,
-    currentDaily: Number(row.current_daily),
+    currentDaily: currentDailyForDecision,
     recommendedDaily: Number(row.recommended_daily),
     platformMinimum,
     maxMultiple: cfg.maxMultiple,
@@ -141,6 +167,59 @@ export default eventHandler(async (event) => {
   // Apply to the platform with read-back verification.
   try {
     let readBack: number
+
+    // Multi-ABO: split the clamped campaign total across the participating ad sets.
+    if (platform === 'meta' && metaTarget!.level === 'adset_split') {
+      const perAdsetMin = Math.max(...metaTarget!.splitAdSets!.map(a => platformDailyMinimum(a.optimizationGoal)))
+      const split = splitDailyBudget(
+        metaTarget!.splitAdSets!.map(a => ({ id: a.id, currentDailyMajor: a.currentDailyMajor })),
+        decision.finalDaily,
+        perAdsetMin,
+      )
+      if (!split.ok) {
+        // Pre-write block — release so the approval stays retryable.
+        await releaseActionClaim({ execute }, actionId)
+        return { status: 'blocked', reason: split.reason, clampReasons: decision.clampReasons }
+      }
+
+      const splitResults: Array<{ adSetId: string; requested: number; readBack: number | null; verified: boolean; error?: string }> = []
+      let allVerified = true
+      for (const s of split.splits) {
+        try {
+          const res = await updateMetaDailyBudget(s.id, s.newDailyMajor, row.access_token)
+          const ok = Math.abs(res.readBackDailyMajor - s.newDailyMajor) < 0.01
+          splitResults.push({ adSetId: s.id, requested: s.newDailyMajor, readBack: res.readBackDailyMajor, verified: ok })
+          if (!ok) { allVerified = false; break }
+        } catch (err: any) {
+          splitResults.push({ adSetId: s.id, requested: s.newDailyMajor, readBack: null, verified: false, error: (err?.data?.error?.message || err?.message || 'write failed').slice(0, 300) })
+          allVerified = false
+          break
+        }
+      }
+
+      const failedIds = splitResults.filter(r => !r.verified).map(r => r.adSetId)
+      await execute(
+        `UPDATE campaign_action_log
+           SET action_status = $2, executed_at = NOW(),
+               new_value = COALESCE(new_value,'{}'::jsonb) || $3::jsonb,
+               error_message = $4,
+               metadata = COALESCE(metadata,'{}'::jsonb) || $5::jsonb
+         WHERE id = $1`,
+        [
+          actionId,
+          allVerified ? 'applied' : 'failed',
+          JSON.stringify({ totalDailyBudget: decision.finalDaily, splits: splitResults }),
+          allVerified ? null : `ABO split partial: ${failedIds.length}/${split.splits.length} ad sets failed: ${failedIds.join(',')}`,
+          JSON.stringify({ clamped: decision.clamped, clampReasons: decision.clampReasons, override, appliedBy: user.id, splitResults }),
+        ]
+      )
+
+      if (allVerified) await bustSpendCache()
+      return allVerified
+        ? { status: 'applied', appliedDailyBudget: decision.finalDaily, clamped: decision.clamped, clampReasons: decision.clampReasons, splitResults }
+        : { status: 'failed', reason: 'split_partial', splitResults }
+    }
+
     if (platform === 'meta') {
       const res = await updateMetaDailyBudget(metaTarget!.targetId!, decision.finalDaily, row.access_token)
       readBack = res.readBackDailyMajor
@@ -201,15 +280,7 @@ export default eventHandler(async (event) => {
     )
 
     if (verified) {
-      const nowPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-      const tenantSeg = tenantId || 'no-tenant'
-      // Bust the spend row's actual period (and the current month, if different) so the
-      // cached summary the slideover reads from reflects the new budget immediately.
-      const periods = Array.from(new Set([row.period, nowPeriod].filter(Boolean) as string[]))
-      for (const period of periods) {
-        await kvDelete(event, `spend:summary:${tenantSeg}:${period}:all`)
-        await kvDelete(event, `spend:summary:${tenantSeg}:${period}:${row.platform}`)
-      }
+      await bustSpendCache()
     }
     return verified
       ? { status: 'applied', appliedDailyBudget: decision.finalDaily, clamped: decision.clamped, clampReasons: decision.clampReasons }
