@@ -8,6 +8,7 @@ import {
   pacingSignalRows,
   type BudgetHistoryTone,
 } from '~/utils/socialSpendHistory'
+import { useAuth } from '~/composables/useAuth'
 
 interface PacingReviewItem {
   mediaSpendId: string
@@ -87,6 +88,10 @@ const props = defineProps<{
 
 const open = defineModel<boolean>('open', { default: false })
 const toast = useToast()
+const { isAdmin } = useAuth()
+
+// Live budget writes are restricted to admin/owner (PERMISSIONS.ADMIN).
+const canApplyLive = computed(() => isAdmin.value)
 
 const history = ref<BudgetAuditEntry[]>([])
 const platformActions = ref<CampaignActionEntry[]>([])
@@ -94,6 +99,7 @@ const loading = ref(false)
 const planning = ref(false)
 const approvingActionId = ref<string | null>(null)
 const cancellingActionId = ref<string | null>(null)
+const applyingActionId = ref<string | null>(null)
 const loadedSpendId = ref<string | null>(null)
 
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
@@ -220,6 +226,50 @@ async function approvePlannedAction(action: CampaignActionEntry) {
     })
   } finally {
     approvingActionId.value = null
+  }
+}
+
+async function applyApprovedAction(action: CampaignActionEntry) {
+  if (!props.item || action.actionStatus !== 'approved' || applyingActionId.value) return
+  applyingActionId.value = action.id
+  try {
+    const res = await $fetch<{
+      status: 'applied' | 'blocked' | 'skipped' | 'failed'
+      appliedDailyBudget?: number
+      clamped?: boolean
+      clampReasons?: string[]
+      reason?: string
+      adSetCount?: number
+      message?: string
+    }>(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${action.id}/execute`, {
+      method: 'POST',
+    })
+    if (res.status === 'applied') {
+      toast.add({
+        title: `Applied ${formatCurrency(res.appliedDailyBudget || 0)}/day`,
+        description: res.clamped ? `Clamped: ${(res.clampReasons || []).join(', ')}` : 'Live budget updated',
+        color: 'success',
+      })
+    } else if (res.status === 'blocked') {
+      toast.add({ title: 'Blocked by guardrail', description: res.reason, color: 'warning' })
+    } else if (res.status === 'skipped') {
+      toast.add({
+        title: 'Manual change needed',
+        description: `ABO campaign with ${res.adSetCount} active ad sets — adjust each ad set manually.`,
+        color: 'info',
+      })
+    } else {
+      toast.add({ title: 'Apply failed', description: res.message || res.reason || 'Platform write failed', color: 'error' })
+    }
+    await loadHistory(props.item.mediaSpendId, true)
+  } catch (e: any) {
+    toast.add({
+      title: 'Apply failed',
+      description: e.data?.statusMessage || e.message || 'The budget change could not be applied',
+      color: 'error',
+    })
+  } finally {
+    applyingActionId.value = null
   }
 }
 
@@ -444,6 +494,17 @@ function summarizeValue(value: Record<string, unknown>) {
                       @click="approvePlannedAction(action)"
                     >
                       Approve
+                    </UButton>
+                    <UButton
+                      v-if="canApplyLive && action.actionStatus === 'approved'"
+                      size="xs"
+                      variant="solid"
+                      color="warning"
+                      icon="i-lucide-zap"
+                      :loading="applyingActionId === action.id"
+                      @click="applyApprovedAction(action)"
+                    >
+                      Apply to {{ platformLabel(action.platform) }}
                     </UButton>
                     <UButton
                       v-if="isCancellableAction(action)"
