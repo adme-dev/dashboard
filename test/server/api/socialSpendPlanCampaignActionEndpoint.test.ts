@@ -69,6 +69,7 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
       reason: 'Projected overspend',
       metadata: {
         source: 'ai_pacing_review',
+        recommendationResourceName: null,
         issueType: 'overpacing',
         pacingRatio: 1.45,
         projectedMonthEnd: 5400,
@@ -86,6 +87,18 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         actionStatus: 'planned',
       },
     })
+  })
+
+  it('records a provided source (google_recommendation) + rec resource name, and dedupes on that source', async () => {
+    mockBody = { currentDailyBudget: 120, recommendedDailyBudget: 95, source: 'google_recommendation', recommendationResourceName: 'customers/9/recommendations/abc' }
+    const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/plan.post')).default
+    await handler({ params: { id: 'spend-1' } } as any)
+
+    // Dedupe query (2nd queryOne call) keys on the provided source.
+    expect(mockQueryOne.mock.calls[1][1]).toContain('google_recommendation')
+    const recordedMeta = (mockRecordCampaignAction.mock.calls[0][0] as any).metadata
+    expect(recordedMeta.source).toBe('google_recommendation')
+    expect(recordedMeta.recommendationResourceName).toBe('customers/9/recommendations/abc')
   })
 
   it('returns an existing planned or approved action instead of creating a duplicate', async () => {

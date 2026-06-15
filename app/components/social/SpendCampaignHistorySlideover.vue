@@ -103,6 +103,10 @@ const cancellingActionId = ref<string | null>(null)
 const applyingActionId = ref<string | null>(null)
 const loadedSpendId = ref<string | null>(null)
 
+// Google optimization recommendations (Google rows only; fetched on open).
+const googleRecs = ref<{ optimizationScore: number | null; recommendations: any[]; campaignId: string | null }>({ optimizationScore: null, recommendations: [], campaignId: null })
+const applyingRec = ref<string | null>(null)
+
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
 const performanceSignals = computed(() => props.item ? performanceSignalRows(props.item.performance) : [])
 const matchingPlannedAction = computed(() => props.item ? matchingPlannedBudgetAction(platformActions.value, props.item.recommendedDailyBudget) : null)
@@ -134,6 +138,8 @@ async function loadHistory(spendId: string, force = false) {
     history.value = budgetHistory
     platformActions.value = actionHistory
     loadedSpendId.value = spendId
+    // Non-blocking: surface Google's native recommendations for this campaign.
+    void loadGoogleRecs(spendId)
   } catch (e: any) {
     toast.add({
       title: 'History unavailable',
@@ -175,6 +181,61 @@ async function planCurrentRecommendation() {
     })
   } finally {
     planning.value = false
+  }
+}
+
+async function loadGoogleRecs(spendId: string) {
+  if (props.item?.platform !== 'google') {
+    googleRecs.value = { optimizationScore: null, recommendations: [], campaignId: null }
+    return
+  }
+  try {
+    googleRecs.value = await $fetch(`/api/agency/social/spend/${spendId}/google-recommendations`)
+  } catch {
+    googleRecs.value = { optimizationScore: null, recommendations: [], campaignId: null }
+  }
+}
+
+async function applyGoogleRec(rec: any) {
+  const spendId = props.item?.mediaSpendId
+  if (!spendId || rec?.recommendedDailyMajor == null || applyingRec.value) return
+  applyingRec.value = rec.resourceName
+  try {
+    const planned = await $fetch(`/api/agency/social/spend/${spendId}/actions/plan`, {
+      method: 'POST',
+      body: {
+        currentDailyBudget: rec.currentDailyMajor ?? props.item?.currentDailyBudget ?? 0,
+        recommendedDailyBudget: rec.recommendedDailyMajor,
+        source: 'google_recommendation',
+        recommendationResourceName: rec.resourceName,
+        reason: rec.title,
+      },
+    }) as any
+    const action = planned?.action
+    if (!action?.id) throw new Error('Could not record the recommendation')
+    // The plan endpoint dedupes on planned-OR-approved, so a repeat click (common
+    // while the write flags are OFF — execute returns 'blocked' without consuming
+    // the approval) returns an already-approved action. approve only matches
+    // 'planned', so re-approving would 404 — only approve when not yet approved.
+    if (action.actionStatus !== 'approved') {
+      await $fetch(`/api/agency/social/spend/${spendId}/actions/${action.id}/approve`, { method: 'POST' })
+    }
+    const res = await $fetch<{ status: string; appliedDailyBudget?: number; clamped?: boolean; clampReasons?: string[]; reason?: string; adSetCount?: number; message?: string }>(
+      `/api/agency/social/spend/${spendId}/actions/${action.id}/execute`, { method: 'POST', body: {} })
+    if (res.status === 'applied') {
+      toast.add({ title: `Applied ${formatCurrency(res.appliedDailyBudget || 0)}/day`, description: res.clamped ? `Clamped: ${(res.clampReasons || []).join(', ')}` : 'Live budget updated', color: 'success' })
+    } else if (res.status === 'blocked') {
+      toast.add({ title: 'Blocked by guardrail', description: res.reason === 'writes_disabled' ? 'Live budget changes are off (recommend-only).' : res.reason, color: 'warning' })
+    } else if (res.status === 'skipped') {
+      toast.add({ title: 'Manual change needed', description: `ABO campaign with ${res.adSetCount} active ad sets — adjust each ad set manually.`, color: 'info' })
+    } else {
+      toast.add({ title: 'Apply failed', description: res.message || res.reason || 'Platform write failed', color: 'error' })
+    }
+    await loadHistory(spendId, true)
+  } catch (e: any) {
+    toast.add({ title: 'Apply failed', description: e?.data?.statusMessage || e?.message || 'Error', color: 'error' })
+  } finally {
+    applyingRec.value = null
   }
 }
 
@@ -571,6 +632,20 @@ function summarizeValue(value: Record<string, unknown>) {
               </UButton>
             </div>
           </div>
+          </section>
+
+          <section
+            v-if="googleRecs.recommendations.length || googleRecs.optimizationScore != null"
+            class="border-b border-default p-4 sm:p-5"
+          >
+            <SpendGoogleRecommendations
+              :optimization-score="googleRecs.optimizationScore"
+              :recommendations="googleRecs.recommendations"
+              :campaign-id="googleRecs.campaignId"
+              :armed="canApplyLive"
+              :applying="applyingRec"
+              @apply="applyGoogleRec"
+            />
           </section>
 
           <section class="border-b border-default p-4 sm:p-5">

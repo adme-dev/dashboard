@@ -13,6 +13,8 @@ export default eventHandler(async (event) => {
   const body = await readBody(event)
   const currentDailyBudget = parseBudgetNumber(body?.currentDailyBudget, 'currentDailyBudget')
   const recommendedDailyBudget = parseBudgetNumber(body?.recommendedDailyBudget, 'recommendedDailyBudget')
+  const source = typeof body?.source === 'string' && body.source.trim() ? body.source.trim() : 'ai_pacing_review'
+  const recommendationResourceName = typeof body?.recommendationResourceName === 'string' ? body.recommendationResourceName : null
 
   const spend = await queryOne<{
     id: string
@@ -53,12 +55,12 @@ export default eventHandler(async (event) => {
          action_status = 'planned'
          OR action_status = 'approved'
        )
-       AND metadata->>'source' = 'ai_pacing_review'
+       AND metadata->>'source' = $3
        AND (new_value->>'dailyBudget')::numeric = $2
      ORDER BY CASE WHEN action_status = 'approved' THEN 0 ELSE 1 END,
               COALESCE(approved_at, requested_at) DESC
      LIMIT 1`,
-    [id, recommendedDailyBudget]
+    [id, recommendedDailyBudget, source]
   )
   if (existing) {
     return { planned: false, existing: true, action: normalizePlannedAction(existing) }
@@ -74,7 +76,8 @@ export default eventHandler(async (event) => {
     newValue: { dailyBudget: recommendedDailyBudget },
     reason: typeof body?.reason === 'string' && body.reason.trim() ? body.reason.trim() : null,
     metadata: {
-      source: 'ai_pacing_review',
+      source,
+      recommendationResourceName,
       issueType: typeof body?.issueType === 'string' ? body.issueType : null,
       pacingRatio: numberOrNull(body?.pacingRatio),
       projectedMonthEnd: numberOrNull(body?.projectedMonthEnd),
