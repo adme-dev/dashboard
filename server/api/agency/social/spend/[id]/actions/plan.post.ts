@@ -80,6 +80,18 @@ export default eventHandler(async (event) => {
       projectedMonthEnd: numberOrNull(body?.projectedMonthEnd),
       monthlyBudget: numberOrNull(body?.budget),
       campaignName: spend.campaign_name,
+      ...(typeof body?.chosenSource === 'string'
+        ? {
+            aiAnalysis: {
+              chosenSource: body.chosenSource,
+              aiProposedDaily: numberOrNull(body?.aiProposedDaily),
+              deterministicDaily: numberOrNull(body?.deterministicDaily),
+              confidence: typeof body?.confidence === 'string' ? body.confidence : null,
+              riskFlags: Array.isArray(body?.riskFlags) ? body.riskFlags.filter((x: unknown) => typeof x === 'string') : [],
+              modelId: typeof body?.modelId === 'string' ? body.modelId : null,
+            },
+          }
+        : {}),
     },
   })
 
