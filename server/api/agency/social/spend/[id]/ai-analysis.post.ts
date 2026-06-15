@@ -1,6 +1,6 @@
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
-import { buildPacingReview, type PacingReviewRow } from '~~/server/utils/socialSpendPacingReview'
+import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS, type PacingReviewRow } from '~~/server/utils/socialSpendPacingReview'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { buildAnalysisPrompt, parseAnalysisResult, buildAnalysisResponse, type AiAnalysisResult } from '~~/server/utils/spendAiAnalysis'
 
@@ -27,28 +27,7 @@ export default eventHandler(async (event) => {
   }
 
   const row = await queryOne<PacingReviewRow & { synced_at: string | null }>(
-    `SELECT
-       ms.id::text AS media_spend_id,
-       COALESCE(ac.name, ms.campaign_name, 'Unknown') AS client_name,
-       ms.platform,
-       ms.campaign_id,
-       ms.campaign_name,
-       ms.campaign_status,
-       ms.budget_allocated,
-       ms.actual_spend,
-       ms.impressions,
-       ms.clicks,
-       ms.conversions,
-       ms.reach,
-       ms.frequency,
-       ms.impression_share,
-       ms.lost_impression_share_budget,
-       ms.lost_impression_share_rank,
-       ms.bid_strategy,
-       ms.budget_type,
-       ms.period,
-       ms.synced_at,
-       ms.end_date
+    `SELECT ${PACING_REVIEW_SELECT_COLUMNS}
      FROM media_spend ms
      LEFT JOIN agency_clients ac ON ac.id = ms.client_id
      WHERE ms.id = $1`,

@@ -9,6 +9,7 @@ import {
   type BudgetHistoryTone,
 } from '~/utils/socialSpendHistory'
 import { useAuth } from '~/composables/useAuth'
+import type { AnalysisResponse } from '~~/server/utils/spendAiAnalysis'
 
 interface PacingReviewItem {
   mediaSpendId: string
@@ -277,16 +278,9 @@ async function applyApprovedAction(action: CampaignActionEntry) {
   }
 }
 
-interface AiAnalysisResponse {
-  deterministic: { dailyBudget: number, action: string }
-  ai: { proposedDailyBudget: number, rationale: string, confidence: 'low' | 'medium' | 'high', riskFlags: string[] } | null
-  dataFreshness: { syncedAt: string | null, refreshed: boolean, refreshError?: string }
-  modelId: string
-}
-
 const analyzing = ref(false)
 const refreshFromPlatform = ref(false)
-const aiAnalysis = ref<AiAnalysisResponse | null>(null)
+const aiAnalysis = ref<AnalysisResponse | null>(null)
 const chosenSource = ref<'ai' | 'deterministic'>('ai')
 const approvingAdjustment = ref(false)
 
@@ -305,7 +299,7 @@ async function analyzeWithAi() {
   if (!props.item || analyzing.value) return
   analyzing.value = true
   try {
-    const res = await $fetch<AiAnalysisResponse>(`/api/agency/social/spend/${props.item.mediaSpendId}/ai-analysis`, {
+    const res = await $fetch<AnalysisResponse>(`/api/agency/social/spend/${props.item.mediaSpendId}/ai-analysis`, {
       method: 'POST',
       body: { issueType: props.item.issueType, refresh: refreshFromPlatform.value },
     })
