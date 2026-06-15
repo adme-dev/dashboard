@@ -16,7 +16,8 @@ id = "7d5db1c489cb40f4b809d611e1408acd"
 
 # Queues — reliable background job processing with retry and dead-letter
 # Create with: npx wrangler queues create agency-jobs
-# NOTE: consumers must be configured on a separate Worker, not on Pages
+# NOTE: consumers must be configured on a separate Worker, not on Pages.
+# Consumer: workers/jobs-consumer (bridges each message → /api/internal/process-job).
 [[queues.producers]]
 binding = "JOBS_QUEUE"
 queue = "agency-jobs"

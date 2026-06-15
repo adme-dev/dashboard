@@ -1,0 +1,33 @@
+name = "jobs-consumer"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+# Consumes the `agency-jobs` queue (the Pages app's JOBS_QUEUE producer binding).
+#
+# Why a standalone Worker: Cloudflare Pages projects can't declare
+# [[queues.consumers]], and the Nitro `cloudflare:queue` hook
+# (server/plugins/queue.ts) never fires on the deployed Pages worker. So every
+# message produced to `agency-jobs` (spend.sync.meta.account, board.notify,
+# eom.generate, embed.*) sat unconsumed — which left the daily ad-spend sync
+# stuck "running" with 0 accounts processed.
+#
+# This Worker is a thin bridge: it POSTs each message to the Pages app's
+# /api/internal/process-job route, which runs processJob() inside a real request
+# context (fast pooled DB + reachable bindings). Same pattern as workers/pages-cron.
+# Mirrors leads-delivery-worker / audio-jobs (both standalone queue consumers).
+
+[[queues.consumers]]
+queue = "agency-jobs"
+# Each message is one unit of work (e.g. one Meta ad account). The handler fans
+# the batch out to the Pages endpoint concurrently, so a modest batch keeps the
+# job row's fan-in moving without overwhelming Pages.
+max_batch_size = 10
+max_batch_timeout = 10
+max_retries = 3
+dead_letter_queue = "agency-jobs-dlq"
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# CRON_SECRET is a secret (must match the Pages project's CRON_SECRET):
+#   wrangler secret put CRON_SECRET --name jobs-consumer   (run from a non-Pages cwd)

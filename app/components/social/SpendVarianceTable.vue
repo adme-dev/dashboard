@@ -634,12 +634,16 @@ const totalColSpan = computed(() => socialSpendColumnCount({
                     <UBadge :color="severityColor(recommendation.severity) as any" variant="soft" size="sm" :class="READABLE_BADGE_CLASS">
                       {{ issueLabel(recommendation.issueType) }}
                     </UBadge>
+                    <p v-if="recommendation.campaignName" class="text-[11px] text-muted truncate mt-0.5">
+                      {{ recommendation.campaignName }}
+                    </p>
                   </div>
                   <UButton
                     size="xs"
                     variant="ghost"
                     color="neutral"
                     icon="i-lucide-history"
+                    :aria-label="`Review ${recommendation.campaignName || issueLabel(recommendation.issueType)}`"
                     @click="openPacingHistory(recommendation)"
                   >
                     Review
