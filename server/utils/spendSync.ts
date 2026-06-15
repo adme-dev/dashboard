@@ -246,6 +246,178 @@ export function resolveGoogleManagerId(opts: {
   return accessible.find(id => !connected.has(id)) || accessible[0] || undefined
 }
 
+interface GoogleConnRow {
+  id: string
+  account_id: string
+  account_name: string
+  access_token: string
+  refresh_token: string | null
+  token_expires_at: string | null
+  metadata: any
+}
+
+interface GoogleSyncCtx {
+  month: number
+  year: number
+  period: string
+  mccId: string | undefined
+  mappings: Array<{ connection_id: string; campaign_id: string | null; campaign_name_pattern: string | null; xero_client_name: string; xero_client_code: string | null }>
+  config: { googleClientId: string; googleClientSecret: string; googleDeveloperToken: string }
+}
+
+/**
+ * Sync ONE Google connection's spend. This is the per-account loop body lifted
+ * out of syncGoogleSpend so a single account can run as its own queue chunk.
+ * Per-account errors are caught into `failures` (never thrown) so the queue
+ * fan-in stays exactly-once.
+ */
+async function processGoogleConnection(
+  conn: GoogleConnRow,
+  ctx: GoogleSyncCtx,
+  deps: { refreshGoogleToken: any; getMonthlySpend: any; getDailySpend: any }
+): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
+  const failures: Array<{ account: string; reason: string }> = []
+  let synced = 0
+  let totalSpend = 0
+  const { config, mccId, month, year, period, mappings } = ctx
+  const { refreshGoogleToken, getMonthlySpend, getDailySpend } = deps
+
+  let accessToken = conn.access_token
+  if (conn.refresh_token && conn.token_expires_at) {
+    const expiresAt = new Date(conn.token_expires_at)
+    if (expiresAt.getTime() < Date.now() + 5 * 60 * 1000) {
+      try {
+        const refreshed = await refreshGoogleToken(conn.refresh_token, config.googleClientId, config.googleClientSecret)
+        accessToken = refreshed.access_token
+        const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000)
+        await queryOne(
+          `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
+          [accessToken, newExpiry, conn.id]
+        )
+      } catch (err: any) {
+        console.error(`[GoogleSync] Failed to refresh token for ${conn.account_name}:`, err.message)
+        failures.push({ account: conn.account_name, reason: `Token refresh failed: ${err?.message || 'unknown'}` })
+        return { synced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
+      }
+    }
+  }
+
+  let campaigns
+  let effectiveMccId = mccId
+  try {
+    try {
+      campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, mccId)
+    } catch (err: any) {
+      const status = err?.status || err?.statusCode
+      // A 403 under a manager context can also mean this account is directly
+      // owned (not a child of the MCC) — retry once without the manager
+      // header before recording a failure.
+      if (status === 403 && mccId) {
+        campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, undefined)
+        effectiveMccId = undefined
+      } else {
+        throw err
+      }
+    }
+  } catch (err: any) {
+    console.error(`[GoogleSync] Failed to fetch spend for ${conn.account_name}:`, err.message)
+    const status = err?.status || err?.statusCode
+    const reason = status === 403 ? 'Access denied (403) — check ad-account access / manager link'
+      : status === 400 ? 'Bad request (400)'
+      : status ? `Error ${status}`
+      : (err?.message || 'Unknown error')
+    failures.push({ account: conn.account_name, reason })
+    return { synced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
+  }
+
+  for (const campaign of campaigns) {
+    if (campaign.spend === 0) continue
+    totalSpend += campaign.spend
+
+    let clientId: string | null = null
+    let commissionRate = 0
+    const mapping = findMapping(mappings, conn.id, campaign.campaignId, campaign.campaignName)
+    if (mapping) {
+      const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
+        `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
+        [mapping.xero_client_name, mapping.xero_client_code]
+      )
+      clientId = client?.id || null
+      commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
+    }
+
+    const existing = await queryOne<{ id: string }>(
+      `SELECT id FROM media_spend
+       WHERE connection_id = $1 AND platform = 'google_ads' AND period = $2 AND campaign_id = $3`,
+      [conn.id, period, campaign.campaignId]
+    )
+
+    if (existing) {
+      await queryOne(
+        `UPDATE media_spend SET
+           actual_spend = $1, campaign_name = $2, impressions = $3, clicks = $4,
+           conversions = $5, client_id = COALESCE($6, media_spend.client_id),
+           campaign_type = $7, campaign_status = $8,
+           commission_rate = CASE WHEN $10 > 0 THEN $10 ELSE media_spend.commission_rate END,
+           revenue = $11,
+           end_date = COALESCE($12, media_spend.end_date),
+           bid_strategy = COALESCE($13, media_spend.bid_strategy),
+           budget_type = COALESCE($14, media_spend.budget_type),
+           synced_at = NOW(), updated_at = NOW()
+         WHERE id = $9`,
+        [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, 'daily']
+      )
+    } else {
+      // Check for rolling budget from previous month
+      const rolled = await getRollingBudget(clientId, 'google_ads', period)
+      const budgetVal = rolled ? rolled.budget : 0
+      const rollingVal = rolled ? rolled.rolling : false
+
+      await queryOne(
+        `INSERT INTO media_spend (
+           client_id, platform, period, budget_allocated, actual_spend,
+           commission_rate, connection_id, campaign_id, campaign_name,
+           impressions, clicks, conversions, campaign_type, campaign_status, budget_rolling, revenue, end_date, bid_strategy, budget_type, synced_at
+         ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, $15, $16, $17, $18, NOW())
+         RETURNING id`,
+        [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, 'daily']
+      )
+    }
+
+    synced++
+  }
+
+  // Daily spend pass
+  try {
+    const dailyRows = await getDailySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, effectiveMccId)
+    if (dailyRows.length > 0) {
+      const spendRows = await queryRows<{ id: string; campaign_id: string }>(
+        `SELECT id, campaign_id FROM media_spend
+         WHERE connection_id = $1 AND platform = 'google_ads' AND period = $2 AND campaign_id IS NOT NULL`,
+        [conn.id, period]
+      )
+      const campaignToSpendId = new Map(spendRows.map(r => [r.campaign_id, r.id]))
+
+      for (const day of dailyRows) {
+        const mediaSpendId = campaignToSpendId.get(day.campaignId)
+        if (!mediaSpendId) continue
+
+        await queryOne(
+          `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions, revenue)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (media_spend_id, spend_date)
+           DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6, revenue = $7`,
+          [mediaSpendId, day.date, day.spend, day.impressions, day.clicks, day.conversions, day.conversionsValue || 0]
+        )
+      }
+    }
+  } catch (err: any) {
+    console.error(`[GoogleSync] Daily spend failed for ${conn.account_name}:`, err.message)
+  }
+
+  return { synced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
+}
+
 export async function syncGoogleSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
   const { getMonthlySpend, getDailySpend, refreshGoogleToken, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
   const failures: Array<{ account: string; reason: string }> = []
@@ -298,144 +470,69 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
   let totalSynced = 0
   let totalSpend = 0
 
+  const deps = { refreshGoogleToken, getMonthlySpend, getDailySpend }
+  const ctx: GoogleSyncCtx = { month, year, period, mccId, mappings, config: config as any }
   for (const conn of connections) {
-    let accessToken = conn.access_token
-    if (conn.refresh_token && conn.token_expires_at) {
-      const expiresAt = new Date(conn.token_expires_at)
-      if (expiresAt.getTime() < Date.now() + 5 * 60 * 1000) {
-        try {
-          const refreshed = await refreshGoogleToken(conn.refresh_token, config.googleClientId, config.googleClientSecret)
-          accessToken = refreshed.access_token
-          const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000)
-          await queryOne(
-            `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
-            [accessToken, newExpiry, conn.id]
-          )
-        } catch (err: any) {
-          console.error(`[GoogleSync] Failed to refresh token for ${conn.account_name}:`, err.message)
-          failures.push({ account: conn.account_name, reason: `Token refresh failed: ${err?.message || 'unknown'}` })
-          continue
-        }
-      }
-    }
-
-    let campaigns
-    let effectiveMccId = mccId
-    try {
-      try {
-        campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, mccId)
-      } catch (err: any) {
-        const status = err?.status || err?.statusCode
-        // A 403 under a manager context can also mean this account is directly
-        // owned (not a child of the MCC) — retry once without the manager
-        // header before recording a failure.
-        if (status === 403 && mccId) {
-          campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, undefined)
-          effectiveMccId = undefined
-        } else {
-          throw err
-        }
-      }
-    } catch (err: any) {
-      console.error(`[GoogleSync] Failed to fetch spend for ${conn.account_name}:`, err.message)
-      const status = err?.status || err?.statusCode
-      const reason = status === 403 ? 'Access denied (403) — check ad-account access / manager link'
-        : status === 400 ? 'Bad request (400)'
-        : status ? `Error ${status}`
-        : (err?.message || 'Unknown error')
-      failures.push({ account: conn.account_name, reason })
-      continue
-    }
-
-    for (const campaign of campaigns) {
-      if (campaign.spend === 0) continue
-      totalSpend += campaign.spend
-
-      let clientId: string | null = null
-      let commissionRate = 0
-      const mapping = findMapping(mappings, conn.id, campaign.campaignId, campaign.campaignName)
-      if (mapping) {
-        const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
-          [mapping.xero_client_name, mapping.xero_client_code]
-        )
-        clientId = client?.id || null
-        commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
-      }
-
-      const existing = await queryOne<{ id: string }>(
-        `SELECT id FROM media_spend
-         WHERE connection_id = $1 AND platform = 'google_ads' AND period = $2 AND campaign_id = $3`,
-        [conn.id, period, campaign.campaignId]
-      )
-
-      if (existing) {
-        await queryOne(
-          `UPDATE media_spend SET
-             actual_spend = $1, campaign_name = $2, impressions = $3, clicks = $4,
-             conversions = $5, client_id = COALESCE($6, media_spend.client_id),
-             campaign_type = $7, campaign_status = $8,
-             commission_rate = CASE WHEN $10 > 0 THEN $10 ELSE media_spend.commission_rate END,
-             revenue = $11,
-             end_date = COALESCE($12, media_spend.end_date),
-             bid_strategy = COALESCE($13, media_spend.bid_strategy),
-             budget_type = COALESCE($14, media_spend.budget_type),
-             synced_at = NOW(), updated_at = NOW()
-           WHERE id = $9`,
-          [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, 'daily']
-        )
-      } else {
-        // Check for rolling budget from previous month
-        const rolled = await getRollingBudget(clientId, 'google_ads', period)
-        const budgetVal = rolled ? rolled.budget : 0
-        const rollingVal = rolled ? rolled.rolling : false
-
-        await queryOne(
-          `INSERT INTO media_spend (
-             client_id, platform, period, budget_allocated, actual_spend,
-             commission_rate, connection_id, campaign_id, campaign_name,
-             impressions, clicks, conversions, campaign_type, campaign_status, budget_rolling, revenue, end_date, bid_strategy, budget_type, synced_at
-           ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, $15, $16, $17, $18, NOW())
-           RETURNING id`,
-          [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, 'daily']
-        )
-      }
-
-      totalSynced++
-    }
-
-    // Daily spend pass
-    try {
-      const dailyRows = await getDailySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, effectiveMccId)
-      if (dailyRows.length > 0) {
-        const spendRows = await queryRows<{ id: string; campaign_id: string }>(
-          `SELECT id, campaign_id FROM media_spend
-           WHERE connection_id = $1 AND platform = 'google_ads' AND period = $2 AND campaign_id IS NOT NULL`,
-          [conn.id, period]
-        )
-        const campaignToSpendId = new Map(spendRows.map(r => [r.campaign_id, r.id]))
-
-        for (const day of dailyRows) {
-          const mediaSpendId = campaignToSpendId.get(day.campaignId)
-          if (!mediaSpendId) continue
-
-          await queryOne(
-            `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions, revenue)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (media_spend_id, spend_date)
-             DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6, revenue = $7`,
-            [mediaSpendId, day.date, day.spend, day.impressions, day.clicks, day.conversions, day.conversionsValue || 0]
-          )
-        }
-      }
-    } catch (err: any) {
-      console.error(`[GoogleSync] Daily spend failed for ${conn.account_name}:`, err.message)
-    }
+    const r = await processGoogleConnection(conn, ctx, deps)
+    totalSynced += r.synced
+    totalSpend += r.totalSpend
+    failures.push(...r.failures)
   }
 
   // Breakdowns + creatives are now fetched on-demand (see onDemandSync.ts)
 
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
+}
+
+/**
+ * Sync ONE Google connection's spend — the per-account queue chunk. Mirrors
+ * syncMetaSpendByConnectionId. Catches per-account errors into `failures` so the
+ * queue fan-in stays exactly-once (rarely throws).
+ */
+export async function syncGoogleSpendByConnectionId(connectionId: string, month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
+  const { refreshGoogleToken, getMonthlySpend, getDailySpend, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
+  const period = `${year}-${String(month).padStart(2, '0')}`
+  const config = useRuntimeConfig()
+
+  const conn = await queryOne<GoogleConnRow>(
+    `SELECT id, account_id, account_name, access_token, refresh_token, token_expires_at, metadata
+     FROM social_connections WHERE id = $1 AND platform = 'google' AND status = 'active'`,
+    [connectionId]
+  )
+  if (!conn) return { synced: 0, totalSpend: 0, failures: [{ account: connectionId, reason: 'connection not found' }] }
+
+  const mappings = await queryRows<GoogleSyncCtx['mappings'][number]>(
+    `SELECT connection_id, campaign_id, campaign_name_pattern, xero_client_name, xero_client_code FROM ad_account_client_map`
+  )
+
+  // Resolve the manager id once for this account (configured MCC wins, else detect).
+  const configuredMcc = (config.googleAdsLoginCustomerId as string) || ''
+  let mccId: string | undefined
+  if (configuredMcc) {
+    mccId = resolveGoogleManagerId({ configured: configuredMcc })
+  } else {
+    try {
+      const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
+      // Exclude ALL connected google accounts (not just this one) so the detected
+      // manager matches what syncGoogleSpend's bulk path resolves — otherwise a
+      // sibling client account could be mistaken for the manager (wrong header → 403).
+      const allGoogle = await queryRows<{ account_id: string }>(
+        `SELECT account_id FROM social_connections WHERE platform = 'google' AND status = 'active'`
+      )
+      mccId = resolveGoogleManagerId({ accessibleIds, connectionAccountIds: new Set(allGoogle.map(r => r.account_id.replace(/-/g, ''))) })
+    } catch { /* leave undefined; processGoogleConnection retries without mcc on 403 */ }
+  }
+
+  const ctx: GoogleSyncCtx = { month, year, period, mccId, mappings, config: config as any }
+  return processGoogleConnection(conn, ctx, { refreshGoogleToken, getMonthlySpend, getDailySpend })
+}
+
+/** Active Google connection ids — mirror of listMetaConnectionIds. */
+export async function listGoogleConnectionIds(): Promise<string[]> {
+  const rows = await queryRows<{ id: string }>(
+    `SELECT id FROM social_connections WHERE platform = 'google' AND status = 'active'`
+  )
+  return rows.map(r => r.id)
 }
 
 // ─── TikTok Spend Sync ──────────────────────────────────────────

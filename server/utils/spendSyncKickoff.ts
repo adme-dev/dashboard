@@ -2,6 +2,7 @@ import type { H3Event } from 'h3'
 import {
   syncMetaSpend,
   listMetaConnectionIds,
+  listGoogleConnectionIds,
   syncGoogleSpend,
   syncMicrosoftSpend,
   syncPinterestSpend,
@@ -24,7 +25,6 @@ interface PlatformDef {
 // manual UI endpoints use). `short` matches the KV cache key namespace each
 // platform's spend reads from, so the cache is busted on completion.
 const SECONDARY_PLATFORMS: PlatformDef[] = [
-  { platform: 'google_ads', short: 'google', fn: syncGoogleSpend },
   { platform: 'microsoft_ads', short: 'microsoft_ads', fn: syncMicrosoftSpend },
   { platform: 'pinterest', short: 'pinterest', fn: syncPinterestSpend },
   { platform: 'tiktok', short: 'tiktok', fn: syncTikTokSpend },
@@ -36,6 +36,7 @@ const SECONDARY_PLATFORMS: PlatformDef[] = [
 export interface SpendSyncKickoffResult {
   period: string
   meta: 'queued' | 'background' | 'error'
+  google: 'queued' | 'background' | 'error'
   secondary: string[]
 }
 
@@ -94,6 +95,33 @@ export async function startSpendSyncAllPlatforms(
     meta = 'error'
   }
 
+  // Google — per-account queue fan-out (same durable path as Meta). The old
+  // single-waitUntil loop was killed by Cloudflare's time budget at ~100 accounts.
+  let google: SpendSyncKickoffResult['google'] = 'background'
+  try {
+    const gqueue = getQueue(event)
+    const googleIds = gqueue ? await listGoogleConnectionIds() : []
+    if (gqueue && googleIds.length > 0) {
+      const jobId = await createSpendSyncJob('google', period, null)
+      await setSyncJobTotalAccounts(jobId, googleIds.length)
+      const enqueuedAt = new Date().toISOString()
+      await Promise.all(googleIds.map(connectionId =>
+        gqueue!.send({ type: 'spend.sync.google.account', payload: { connectionId, month, year, jobId }, enqueuedAt }, { contentType: 'json' })
+      ))
+      google = 'queued'
+    } else {
+      runSpendSyncInBackground(event, {
+        label: `cron google sync-spend ${period}`,
+        sync: () => syncGoogleSpend(month, year),
+        kvKeys: [`spend:summary:${period}:all`, `spend:summary:${period}:google_ads`, `spend:google:accounts:${period}`, `spend:daily:google:${period}`],
+      })
+      google = 'background'
+    }
+  } catch (err) {
+    console.error('[cron sync-spend] google kickoff failed:', err)
+    google = 'error'
+  }
+
   const secondary: string[] = []
   for (const p of SECONDARY_PLATFORMS) {
     try {
@@ -113,5 +141,5 @@ export async function startSpendSyncAllPlatforms(
     }
   }
 
-  return { period, meta, secondary }
+  return { period, meta, google, secondary }
 }

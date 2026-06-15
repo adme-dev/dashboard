@@ -10,6 +10,7 @@ export type JobType =
   | 'spend.sync.meta'
   | 'spend.sync.meta.account'
   | 'spend.sync.google'
+  | 'spend.sync.google.account'
   | 'spend.sync.tiktok'
   | 'embed.task'
   | 'embed.brief'
