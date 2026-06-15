@@ -94,7 +94,7 @@ export default eventHandler(async (event) => {
       maxTokens: 800,
       systemPrompt: 'You are a senior paid-media strategist. Respond ONLY with valid JSON and no prose.',
     })
-    aiResult = parseAnalysisResult(raw, { currentDailyBudget: item.currentDailyBudget })
+    aiResult = parseAnalysisResult(raw, { currentDailyBudget: item.currentDailyBudget, monthlyBudget: item.budget })
   } catch (err: any) {
     console.warn('[ai-analysis] groq failed:', err?.message || err)
   }

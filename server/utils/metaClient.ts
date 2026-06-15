@@ -246,6 +246,30 @@ export async function getCampaignInsights(
   return insights
 }
 
+/**
+ * Month-to-date insights for a SINGLE campaign — one Graph call to
+ * `/{campaignId}/insights`, no account-wide fan-out or pagination. Uses the
+ * campaign node directly so no ad-account id (or metadata.actId) is needed.
+ */
+export async function getCampaignInsightsById(
+  campaignId: string,
+  token: string,
+  month: number,
+  year: number
+): Promise<MetaInsight | null> {
+  const { since, until } = getMonthRange(month, year)
+  const res = await metaFetch<{ data: MetaInsight[] }>(
+    `${META_GRAPH_BASE}/${campaignId}/insights`,
+    token,
+    {
+      fields: 'campaign_id,spend,impressions,clicks',
+      time_range: JSON.stringify({ since, until }),
+      level: 'campaign'
+    }
+  )
+  return res.data?.[0] ?? null
+}
+
 // ============================================
 // Helpers
 // ============================================

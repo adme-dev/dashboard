@@ -71,6 +71,12 @@ describe('parseAnalysisResult', () => {
     expect(r.proposedDailyBudget).toBe(1100)
   })
 
+  it('does not floor a ramp-up to $10 when current daily is 0 (uses monthly budget for the ceiling)', () => {
+    const r = parseAnalysisResult('{"proposedDailyBudget": 120, "rationale": "ramp up", "confidence": "medium"}', { currentDailyBudget: 0, monthlyBudget: 1000 })
+    expect(r.ok).toBe(true)
+    expect(r.proposedDailyBudget).toBe(120)
+  })
+
   it('defaults an invalid confidence to medium', () => {
     const r = parseAnalysisResult('{"proposedDailyBudget": 90, "rationale": "x", "confidence": "banana"}', baseline)
     expect(r.confidence).toBe('medium')
