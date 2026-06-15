@@ -1,4 +1,35 @@
-# Meta Spend Sync Returns $0 — Diagnosis & Pacing Fix (design)
+# Meta Spend Sync Returns $0 — Diagnosis & Fix (design)
+
+**Date:** 2026-06-15
+**Status:** ✅ DIAGNOSED 2026-06-15 — root cause is the Meta app's **`development_access` API tier** (NOT pacing/SDK/code). Fix is an operator tier-upgrade. See "RESOLVED DIAGNOSIS" below; the pacing-hypothesis sections are kept for history but are superseded.
+
+---
+
+## ✅ RESOLVED DIAGNOSIS (Phase-1 measurement, 2026-06-15)
+
+A temporary cron-gated probe (`/api/internal/meta-usage-probe`, since removed) replicated the sync's exact per-account insights call from **Cloudflare egress** and compared to the same call from a **local/residential IP**, for 3 known-good accounts:
+
+| Account | Cloudflare egress | Local |
+|---|---|---|
+| Knox GWM | empty (no `data`) | 6 campaigns |
+| Frankston Ford | empty | 3 campaigns |
+| Courtney & Patterson Ford | empty | 4 campaigns |
+
+Every response: **HTTP 2xx, NOT rate-limited** (`x-business-use-case-usage` → `call_count: 1`, `estimated_time_to_regain_access: 0`, `x-app-usage.call_count: 0`), and tagged **`ads_api_access_tier: "development_access"`**.
+
+**Root cause:** the Meta app is on the Marketing API **Development Access** tier. On that tier, insights calls from **datacenter/cloud egress IPs (Cloudflare Pages)** return empty `data` — while the identical call from a residential IP returns real campaigns. This is why every production sync (Pages) writes $0, but manual local `syncMetaSpend` backfills work. It is **not** concurrency, **not** the per-account vs bulk code (identical `syncMetaSpendAccount`), **not** a call-count rate limit, and **not** the Graph API version / a missing SDK.
+
+**THE FIX (operator action — no code change resolves this):** upgrade the Meta app's Marketing API access from **Development Access → Standard/Advanced Access** for `ads_read` (and `ads_management` if writes are needed), via the Meta App Dashboard → App Review / API Setup. Standard/Advanced access removes the dev-tier datacenter-IP empty-data behavior. (Likely requires Business Verification + App Review if not already done.)
+
+**Code follow-ups (small, do regardless — so this can never silently recur):**
+1. **Fail loud, never silent $0:** in `syncMetaSpendAccount` / the job finaliser, if an account that has prior `media_spend` returns empty insights, record a real `failure` (not a clean 0) — and have the daily sync alert/log when a Meta job completes `synced_count=0` while connections exist. (Today it completed "successfully" with $0.)
+2. Optionally surface the `ads_api_access_tier` from `x-business-use-case-usage` in logs so a future tier regression is obvious.
+
+**Interim until the tier is upgraded:** Meta data can only be refreshed by running the bulk `syncMetaSpend(month, year)` from a **residential IP** (local tsx against prod DB) + busting the KV summary cache — the existing manual-recovery recipe.
+
+---
+
+## (Superseded) Original pacing hypotheses — kept for history
 
 **Date:** 2026-06-15
 **Status:** Design / next task (not yet implemented)

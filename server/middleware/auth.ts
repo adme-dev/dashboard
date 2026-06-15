@@ -40,7 +40,6 @@ const publicRoutes = [
   // agency-jobs queue bridge — workers/jobs-consumer POSTs each queue message
   // here; verifies x-cron-secret inline (no session cookie from the Worker).
   '/api/internal/process-job',
-  '/api/internal/meta-usage-probe',
   '/api/leads/_internal/',
   '/api/cron/', // anomaly-detection cron + future cron handlers; each verifies x-cron-secret inline
   // Public webhook endpoints — auth via per-endpoint secret in the request
