@@ -685,31 +685,82 @@ export async function updateGoogleCampaignDailyBudget(opts: {
   // the hardened pattern used elsewhere in this client; ids are numeric).
   const cleanCampaignId = String(opts.campaignId).replace(/[^0-9]/g, '')
   if (!cleanCampaignId) throw new Error('Google: invalid campaign id')
-  const headers: Record<string, string> = {
-    'Authorization': `Bearer ${opts.token}`,
-    'developer-token': opts.developerToken,
-    'Content-Type': 'application/json',
-  }
-  if (opts.loginCustomerId) headers['login-customer-id'] = opts.loginCustomerId.replace(/-/g, '')
-
-  // Resolve the campaign's budget resource name.
-  const search = await ofetch<any[]>(`${GOOGLE_ADS_BASE}/customers/${cid}/googleAds:searchStream`, {
-    method: 'POST', headers,
-    body: { query: `SELECT campaign_budget.resource_name FROM campaign WHERE campaign.id = ${cleanCampaignId}` },
-  })
-  const resourceName: string | undefined = search?.[0]?.results?.[0]?.campaignBudget?.resourceName
-  if (!resourceName) throw new Error('Google: campaign budget resource not found')
-
   const amountMicros = String(Math.round(opts.dailyMajor * 1_000_000))
-  await ofetch(`${GOOGLE_ADS_BASE}/customers/${cid}/campaignBudgets:mutate`, {
-    method: 'POST', headers,
-    body: { operations: [{ updateMask: 'amount_micros', update: { resourceName, amount_micros: amountMicros } }] },
-  })
 
-  const back = await ofetch<any[]>(`${GOOGLE_ADS_BASE}/customers/${cid}/googleAds:searchStream`, {
-    method: 'POST', headers,
-    body: { query: `SELECT campaign_budget.amount_micros FROM campaign WHERE campaign.id = ${cleanCampaignId}` },
-  })
-  const micros = back?.[0]?.results?.[0]?.campaignBudget?.amountMicros
-  return { readBackDailyMajor: Number(micros || '0') / 1_000_000 }
+  const attempt = async (loginCustomerId?: string): Promise<{ readBackDailyMajor: number }> => {
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${opts.token}`,
+      'developer-token': opts.developerToken,
+      'Content-Type': 'application/json',
+    }
+    if (loginCustomerId) headers['login-customer-id'] = loginCustomerId.replace(/-/g, '')
+
+    // Resolve the campaign's budget resource name.
+    const search = await ofetch<any[]>(`${GOOGLE_ADS_BASE}/customers/${cid}/googleAds:searchStream`, {
+      method: 'POST', headers,
+      body: { query: `SELECT campaign_budget.resource_name FROM campaign WHERE campaign.id = ${cleanCampaignId}` },
+    })
+    const resourceName: string | undefined = search?.[0]?.results?.[0]?.campaignBudget?.resourceName
+    if (!resourceName) throw new Error('Google: campaign budget resource not found')
+
+    await ofetch(`${GOOGLE_ADS_BASE}/customers/${cid}/campaignBudgets:mutate`, {
+      method: 'POST', headers,
+      body: { operations: [{ updateMask: 'amount_micros', update: { resourceName, amount_micros: amountMicros } }] },
+    })
+
+    const back = await ofetch<any[]>(`${GOOGLE_ADS_BASE}/customers/${cid}/googleAds:searchStream`, {
+      method: 'POST', headers,
+      body: { query: `SELECT campaign_budget.amount_micros FROM campaign WHERE campaign.id = ${cleanCampaignId}` },
+    })
+    const micros = back?.[0]?.results?.[0]?.campaignBudget?.amountMicros
+    return { readBackDailyMajor: Number(micros || '0') / 1_000_000 }
+  }
+
+  try {
+    return await attempt(opts.loginCustomerId)
+  } catch (err: any) {
+    // A 403 under a manager context can also mean this account is directly
+    // owned (not a child of the MCC) — retry once without the manager header,
+    // exactly like the spend read path (processGoogleConnection).
+    const status = err?.status || err?.statusCode
+    if (status === 403 && opts.loginCustomerId) {
+      return await attempt(undefined)
+    }
+    throw err
+  }
+}
+
+/**
+ * Fetch ONE campaign's month-to-date core metrics directly (single GAQL filtered
+ * by campaign.id) for an on-demand refresh. Returns null when the campaign has
+ * no rows in the window. Used by refreshSingleCampaignSpend for Google.
+ */
+export async function getCampaignSpendById(
+  customerId: string,
+  token: string,
+  developerToken: string,
+  campaignId: string,
+  month: number,
+  year: number,
+  loginCustomerId?: string,
+): Promise<{ spend: number; impressions: number; clicks: number } | null> {
+  const cleanCampaignId = String(campaignId).replace(/[^0-9]/g, '')
+  if (!cleanCampaignId) return null
+  const { since, until } = getMonthRange(month, year)
+  const query = `
+    SELECT campaign.id, metrics.cost_micros, metrics.impressions, metrics.clicks
+    FROM campaign
+    WHERE campaign.id = ${cleanCampaignId}
+      AND segments.date BETWEEN '${since}' AND '${until}'
+  `
+  const results = await gaqlQuery(customerId, token, developerToken, query, loginCustomerId)
+  if (!results.length) return null
+  // searchStream returns one row per matching day-segment — aggregate.
+  let costMicros = 0, impressions = 0, clicks = 0
+  for (const r of results) {
+    costMicros += parseInt(r.metrics?.costMicros || '0', 10)
+    impressions += parseInt(r.metrics?.impressions || '0', 10)
+    clicks += parseInt(r.metrics?.clicks || '0', 10)
+  }
+  return { spend: costMicros / 1_000_000, impressions, clicks }
 }
