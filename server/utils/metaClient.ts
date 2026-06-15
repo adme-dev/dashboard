@@ -1104,7 +1104,7 @@ export async function resolveMetaBudgetTarget(
   const active = adSets.filter(a => (a.status || '').toUpperCase() === 'ACTIVE')
   // Only ad sets with their own daily_budget can be split; lifetime-budget ad sets
   // are left untouched.
-  const participants = active.filter(a => a.daily_budget != null && Number(a.daily_budget) > 0)
+  const participants = active.filter(a => a.daily_budget != null && Number(a.daily_budget) >= 1)
 
   if (participants.length === 1) {
     return { level: 'adset', targetId: participants[0].id, optimizationGoal: participants[0].optimization_goal ?? null, adSetCount: 1 }

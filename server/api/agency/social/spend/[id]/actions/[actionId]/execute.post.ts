@@ -171,33 +171,62 @@ export default eventHandler(async (event) => {
     // Multi-ABO: split the clamped campaign total across the participating ad sets.
     if (platform === 'meta' && metaTarget!.level === 'adset_split') {
       const perAdsetMin = Math.max(...metaTarget!.splitAdSets!.map(a => platformDailyMinimum(a.optimizationGoal)))
+      // The "current" basis for this split is the LIVE sum of the participating ad
+      // sets (recorded in the audit alongside the planned campaign-level previous_value
+      // so a clamp computed against the live sum is reconstructable).
+      const currentDailyTotal = metaTarget!.splitAdSets!.reduce((s, a) => s + a.currentDailyMajor, 0)
       const split = splitDailyBudget(
         metaTarget!.splitAdSets!.map(a => ({ id: a.id, currentDailyMajor: a.currentDailyMajor })),
         decision.finalDaily,
         perAdsetMin,
       )
       if (!split.ok) {
-        // Pre-write block — release so the approval stays retryable.
-        await releaseActionClaim({ execute }, actionId)
-        return { status: 'blocked', reason: split.reason, clampReasons: decision.clampReasons }
+        // Structurally impossible to split (a share would fall below the per-ad-set
+        // minimum). Terminal 'skipped' with a clear reason — releasing to 'approved'
+        // would falsely imply a retry could succeed (the recommendation + ad-set
+        // weights are fixed on this action). Operator must adjust on-platform.
+        await execute(
+          `UPDATE campaign_action_log SET action_status='skipped', executed_at=NOW(), error_message=$2, metadata = COALESCE(metadata,'{}'::jsonb) || $3::jsonb WHERE id=$1`,
+          [actionId, `ABO split not possible (${split.reason}) — adjust ad-set budgets manually`, JSON.stringify({ reason: split.reason, perAdsetMin, currentDailyTotal, finalDailyTotal: decision.finalDaily })],
+        )
+        return { status: 'skipped', reason: split.reason, clampReasons: decision.clampReasons }
       }
 
-      const splitResults: Array<{ adSetId: string; requested: number; readBack: number | null; verified: boolean; error?: string }> = []
-      let allVerified = true
-      for (const s of split.splits) {
+      // Defense-in-depth for live money: the split must sum to the guardrail-approved
+      // total to the cent. splitDailyBudget guarantees this; fail closed if it ever doesn't.
+      const splitSum = Math.round(split.splits.reduce((s, x) => s + x.newDailyMajor, 0) * 100) / 100
+      if (Math.abs(splitSum - decision.finalDaily) >= 0.01) {
+        await execute(
+          `UPDATE campaign_action_log SET action_status='failed', executed_at=NOW(), error_message=$2 WHERE id=$1`,
+          [actionId, `Split sum ${splitSum} != approved total ${decision.finalDaily}`],
+        )
+        return { status: 'failed', reason: 'split_sum_mismatch' }
+      }
+
+      // Pre-populate every ad set so the audit records the ones we never attempted
+      // after a mid-loop failure (the campaign is then left in a mixed state).
+      type SplitResult = { adSetId: string; requested: number; readBack: number | null; status: 'applied' | 'failed' | 'not_attempted'; error?: string }
+      const splitResults: SplitResult[] = split.splits.map(s => ({ adSetId: s.id, requested: s.newDailyMajor, readBack: null, status: 'not_attempted' }))
+      let allApplied = true
+      for (let i = 0; i < split.splits.length; i++) {
+        const s = split.splits[i]!
         try {
           const res = await updateMetaDailyBudget(s.id, s.newDailyMajor, row.access_token)
           const ok = Math.abs(res.readBackDailyMajor - s.newDailyMajor) < 0.01
-          splitResults.push({ adSetId: s.id, requested: s.newDailyMajor, readBack: res.readBackDailyMajor, verified: ok })
-          if (!ok) { allVerified = false; break }
+          splitResults[i]!.readBack = res.readBackDailyMajor
+          splitResults[i]!.status = ok ? 'applied' : 'failed'
+          if (!ok) { allApplied = false; break }
         } catch (err: any) {
-          splitResults.push({ adSetId: s.id, requested: s.newDailyMajor, readBack: null, verified: false, error: (err?.data?.error?.message || err?.message || 'write failed').slice(0, 300) })
-          allVerified = false
+          splitResults[i]!.status = 'failed'
+          splitResults[i]!.error = (err?.data?.error?.message || err?.message || 'write failed').slice(0, 300)
+          allApplied = false
           break
         }
       }
 
-      const failedIds = splitResults.filter(r => !r.verified).map(r => r.adSetId)
+      const appliedCount = splitResults.filter(r => r.status === 'applied').length
+      const failedIds = splitResults.filter(r => r.status === 'failed').map(r => r.adSetId)
+      const notAttempted = splitResults.filter(r => r.status === 'not_attempted').length
       await execute(
         `UPDATE campaign_action_log
            SET action_status = $2, executed_at = NOW(),
@@ -207,15 +236,15 @@ export default eventHandler(async (event) => {
          WHERE id = $1`,
         [
           actionId,
-          allVerified ? 'applied' : 'failed',
-          JSON.stringify({ totalDailyBudget: decision.finalDaily, splits: splitResults }),
-          allVerified ? null : `ABO split partial: ${failedIds.length}/${split.splits.length} ad sets failed: ${failedIds.join(',')}`,
-          JSON.stringify({ clamped: decision.clamped, clampReasons: decision.clampReasons, override, appliedBy: user.id, splitResults }),
+          allApplied ? 'applied' : 'failed',
+          JSON.stringify({ totalDailyBudget: decision.finalDaily, currentDailyTotal, splits: splitResults }),
+          allApplied ? null : `ABO split incomplete: ${appliedCount} applied, ${failedIds.length} failed (${failedIds.join(',')}), ${notAttempted} not attempted — campaign left in mixed state`,
+          JSON.stringify({ clamped: decision.clamped, clampReasons: decision.clampReasons, override, appliedBy: user.id }),
         ]
       )
 
-      if (allVerified) await bustSpendCache()
-      return allVerified
+      if (allApplied) await bustSpendCache()
+      return allApplied
         ? { status: 'applied', appliedDailyBudget: decision.finalDaily, clamped: decision.clamped, clampReasons: decision.clampReasons, splitResults }
         : { status: 'failed', reason: 'split_partial', splitResults }
     }

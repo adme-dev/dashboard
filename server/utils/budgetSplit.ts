@@ -33,7 +33,8 @@ export function splitDailyBudget(
     newDailyMajor: round2(finalDailyTotal * (p.currentDailyMajor / sumCurrent)),
   }))
 
-  // Exact-sum reconciliation: push the rounding drift onto the largest-current ad set.
+  // Exact-sum reconciliation: push the rounding drift onto the largest-current ad
+  // set (ties resolve to the first such ad set by index — deterministic).
   const drift = round2(finalDailyTotal - splits.reduce((s, x) => s + x.newDailyMajor, 0))
   if (drift !== 0) {
     let largestIdx = 0
