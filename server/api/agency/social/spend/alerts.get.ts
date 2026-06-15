@@ -3,7 +3,7 @@
 // surface them inline on each campaign. Media-accessible (plain requireAuth,
 // same as the other /api/agency/social/spend/* reads) — the central anomalies
 // API is FINANCE-gated, which media buyers may not have.
-import { defineEventHandler, createError } from 'h3'
+import { defineEventHandler } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { queryRows } from '~~/server/utils/db'
@@ -28,7 +28,9 @@ function mediaSpendIdFromFingerprint(fp: string): string | null {
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const tenantId = await getSelectedTenant(event)
-  if (!tenantId) throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
+  // No Xero org connected → no tenant to scope anomalies to. Return no alerts
+  // instead of 400ing, so the spend page loads clean before Xero is connected.
+  if (!tenantId) return { items: [] }
 
   const rows = await queryRows<Row>(
     `SELECT id, severity, title, description, recommendation, fingerprint, context
