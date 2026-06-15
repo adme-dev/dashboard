@@ -6,7 +6,7 @@
  * `claimApprovedAction` flips approved → executing in a single guarded UPDATE;
  * Postgres row-locks the row so exactly one concurrent caller sees a returned
  * row (true). The loser gets false and must abort without touching the platform.
- * `releaseClaim` puts a still-held row back to 'approved' when execution is
+ * `releaseActionClaim` puts a still-held row back to 'approved' when execution is
  * abandoned before any platform write (e.g. a guardrail block), so the approval
  * can be retried. Requires migration 179 (the 'executing' status value).
  */
@@ -25,7 +25,7 @@ export async function claimApprovedAction(
   return !!claimed
 }
 
-export async function releaseClaim(
+export async function releaseActionClaim(
   db: { execute: (sql: string, params?: any[]) => Promise<number> },
   actionId: string,
 ): Promise<void> {

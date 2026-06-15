@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { claimApprovedAction, releaseClaim } from '~~/server/utils/campaignActionClaim'
+import { claimApprovedAction, releaseActionClaim } from '~~/server/utils/campaignActionClaim'
 
 describe('claimApprovedAction', () => {
   it('claims an approved action and returns true (guards on action_status = approved)', async () => {
@@ -21,10 +21,10 @@ describe('claimApprovedAction', () => {
   })
 })
 
-describe('releaseClaim', () => {
+describe('releaseActionClaim', () => {
   it('releases only a row we still hold (executing → approved)', async () => {
     const execute = vi.fn().mockResolvedValue(1)
-    await releaseClaim({ execute }, 'a1')
+    await releaseActionClaim({ execute }, 'a1')
     const [sql, params] = execute.mock.calls[0]
     expect(sql).toMatch(/SET\s+action_status\s*=\s*'approved'/i)
     expect(sql).toMatch(/WHERE\s+id\s*=\s*\$1\s+AND\s+action_status\s*=\s*'executing'/i)
