@@ -6,6 +6,8 @@ import { decideExecution } from '~~/server/utils/budgetExecution'
 import { platformDailyMinimum } from '~~/server/utils/budgetGuardrails'
 import { resolveMetaBudgetTarget, updateMetaDailyBudget } from '~~/server/utils/metaClient'
 import { updateGoogleCampaignDailyBudget } from '~~/server/utils/googleAdsClient'
+import { resolveGoogleWriteAuth } from '~~/server/utils/googleWriteAuth'
+import { claimApprovedAction, releaseClaim } from '~~/server/utils/campaignActionClaim'
 import { kvDelete } from '~~/server/utils/kv'
 
 export default eventHandler(async (event) => {
@@ -24,6 +26,8 @@ export default eventHandler(async (event) => {
     campaign_id: string
     account_id: string
     access_token: string
+    refresh_token: string | null
+    token_expires_at: string | null
     current_daily: string
     recommended_daily: string
     budget_allocated: string
@@ -36,6 +40,8 @@ export default eventHandler(async (event) => {
             ms.campaign_id,
             sc.account_id,
             sc.access_token,
+            sc.refresh_token,
+            sc.token_expires_at,
             COALESCE((cal.previous_value->>'dailyBudget')::numeric, 0)::text AS current_daily,
             COALESCE((cal.new_value->>'dailyBudget')::numeric, 0)::text       AS recommended_daily,
             COALESCE(ms.budget_allocated, 0)::text AS budget_allocated,
@@ -55,12 +61,10 @@ export default eventHandler(async (event) => {
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Approved action not found' })
 
-  // NOTE (Phase 1 limitations, accepted for the admin-manual flag-gated rollout):
-  // - No row lock / atomic claim: two simultaneous Apply clicks on the same approved
-  //   action could both POST to the platform before either writes 'applied'. Very low
-  //   probability in manual admin use; harden with a status claim before broad rollout.
+  // NOTE (Phase 1 limitation, accepted for the admin-manual flag-gated rollout):
   // - media_spend is not tenant-scoped, so the write-enable flag/caps come from the
   //   acting user's selected tenant while the action row is global. Single-tenant in prod.
+  // Concurrency is now handled by the atomic claim below (IM-01, migration 179).
   const platform = row.platform === 'google_ads' ? 'google' : 'meta'
   const tenantId = await getSelectedTenant(event)
   const cfg = await getSocialBudgetControlConfig(tenantId || '')
@@ -76,14 +80,33 @@ export default eventHandler(async (event) => {
     return { status: 'blocked', reason: 'writes_disabled', clampReasons: [] }
   }
 
+  // Atomic claim (IM-01): flip approved → executing so two simultaneous Apply
+  // clicks on the same action can't both reach the platform. Only one concurrent
+  // request wins the row-locked UPDATE; the loser aborts before any platform call.
+  // Released back to 'approved' below if a guardrail blocks the write.
+  const claimed = await claimApprovedAction({ queryOne }, actionId)
+  if (!claimed) {
+    return { status: 'blocked', reason: 'already_executing', clampReasons: [] }
+  }
+
   const now = new Date()
   const monthDaysRemaining = Math.max(1, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1)
 
   // For Meta, resolve CBO/ABO BEFORE deciding (need optimization goal + manual gate).
+  // This is the only async between the claim and the write try/catch — a throw here
+  // (stale Meta token, network) must release the claim, or the row is stuck 'executing'
+  // forever with no recovery path (IM-01 / C-1).
   let metaTarget: Awaited<ReturnType<typeof resolveMetaBudgetTarget>> | null = null
   let platformMinimum = 5
   if (platform === 'meta') {
-    metaTarget = await resolveMetaBudgetTarget(`act_${row.account_id}`, row.campaign_id, row.access_token)
+    try {
+      metaTarget = await resolveMetaBudgetTarget(`act_${row.account_id}`, row.campaign_id, row.access_token)
+    } catch (err) {
+      // releaseClaim only touches rows still in 'executing', so this is a no-op
+      // if anything already moved the row to a terminal state.
+      await releaseClaim({ execute }, actionId).catch(() => {})
+      throw err
+    }
     if (metaTarget.level === 'manual') {
       await execute(
         `UPDATE campaign_action_log SET action_status='skipped', metadata = COALESCE(metadata,'{}'::jsonb) || $2::jsonb WHERE id=$1`,
@@ -109,6 +132,9 @@ export default eventHandler(async (event) => {
   })
 
   if (!decision.proceed) {
+    // Guardrail block before any platform write — release the claim so the
+    // approval can be retried (e.g. with override).
+    await releaseClaim({ execute }, actionId)
     return { status: 'blocked', reason: decision.reason, clampReasons: decision.clampReasons }
   }
 
@@ -120,10 +146,39 @@ export default eventHandler(async (event) => {
       readBack = res.readBackDailyMajor
     } else {
       const config = useRuntimeConfig()
+      // The stored access_token is almost always stale (Google tokens expire
+      // hourly), and client accounts under a manager need the login-customer-id
+      // header — resolve both exactly like the working spend-sync read path.
+      const { refreshGoogleToken, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
+      const { accessToken, loginCustomerId } = await resolveGoogleWriteAuth(
+        {
+          id: row.connection_id,
+          account_id: row.account_id,
+          access_token: row.access_token,
+          refresh_token: row.refresh_token,
+          token_expires_at: row.token_expires_at,
+        },
+        {
+          googleClientId: config.googleClientId as string,
+          googleClientSecret: config.googleClientSecret as string,
+          googleDeveloperToken: config.googleDeveloperToken as string,
+          googleAdsLoginCustomerId: (config.googleAdsLoginCustomerId as string) || '',
+        },
+        {
+          refreshGoogleToken,
+          listAccessibleCustomers,
+          updateToken: async (cid, tok, exp) => {
+            await execute(
+              `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
+              [tok, exp, cid],
+            )
+          },
+        },
+      )
       const res = await updateGoogleCampaignDailyBudget({
         customerId: row.account_id, campaignId: row.campaign_id, dailyMajor: decision.finalDaily,
-        token: row.access_token, developerToken: config.googleDeveloperToken as string,
-        loginCustomerId: (config.googleAdsLoginCustomerId as string) || undefined,
+        token: accessToken, developerToken: config.googleDeveloperToken as string,
+        loginCustomerId,
       })
       readBack = res.readBackDailyMajor
     }

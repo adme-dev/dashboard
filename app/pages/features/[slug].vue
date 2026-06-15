@@ -2423,7 +2423,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-chart-area',
     categoryIconBg: 'bg-cyan-50',
     categoryIconColor: 'text-cyan-600',
-    description: 'Detects ad-spend pacing problems — underspend, overspend, stopped, paused-with-budget, stale-sync and zero-conversion — then adds a recommend-only AI pacing review for Meta and Google budget decisions.',
+    description: 'Detects ad-spend pacing problems — underspend, overspend, stopped, paused-with-budget, stale-sync and zero-conversion — then adds an AI pacing review for Meta and Google, with an on-demand per-campaign analysis that proposes a daily budget you compare against the rule-based number before deciding.',
     details: [
       {
         title: 'The Gap This Closes',
@@ -2435,7 +2435,15 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'AI Pacing Review',
-        content: 'The Ad Spend page turns those same deterministic pacing checks into a recommend-only review queue for Meta and Google. Media buyers see critical and warning counts, projected over- or under-spend, stale-sync flags, and suggested daily budget targets. AI summarizes which campaigns to inspect first, but it never changes platform budgets or statuses in this version.'
+        content: 'The Ad Spend page turns those same deterministic pacing checks into a review queue for Meta and Google. Media buyers see critical and warning counts, projected over- or under-spend, stale-sync flags, and suggested daily budget targets. AI summarizes which campaigns to inspect first so the team knows where to start each day.'
+      },
+      {
+        title: 'Analyze With AI, Side By Side',
+        content: 'Open any flagged campaign and click "Analyze with AI" for an on-demand, real-time read. The AI proposes a specific daily budget with a short rationale, a confidence level, and risk flags — shown directly alongside the rule-based pacing number so you can compare the two and pick whichever you trust for that campaign. Optionally tick "Refresh from platform first" to re-pull the campaign\'s latest spend from Meta or Google before the analysis runs, so the recommendation is based on up-to-the-minute numbers rather than the last scheduled sync. If the AI is unavailable the panel quietly falls back to the deterministic recommendation — it never blocks the workflow.'
+      },
+      {
+        title: 'Human In The Loop, Always',
+        content: 'The analysis is read-only: nothing changes on the ad platform from this screen. When you choose a budget and approve the adjustment, it is recorded as an audited, planned-then-approved action — a clear paper trail of what was recommended, what was chosen, and by whom. Applying a change to a live platform budget is a separate, permission-gated step that an admin performs deliberately, so an AI suggestion can never move client money on its own.'
       },
       {
         title: 'Daily Slack Budget Review',
