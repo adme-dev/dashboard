@@ -40,6 +40,10 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processGoogleSpendSync(job.payload)
         break
 
+      case 'spend.sync.google.account':
+        await processGoogleAccountSpendSync(job.payload)
+        break
+
       case 'spend.sync.tiktok':
         await processTikTokSpendSync(job.payload)
         break
@@ -149,6 +153,14 @@ async function processMetaAccountSpendSync(payload: Record<string, any>): Promis
 async function processGoogleSpendSync(payload: Record<string, any>): Promise<void> {
   const { syncGoogleSpend } = await import('~~/server/utils/spendSync')
   await syncGoogleSpend(payload.month, payload.year)
+}
+
+async function processGoogleAccountSpendSync(payload: Record<string, any>): Promise<void> {
+  const { syncGoogleSpendByConnectionId } = await import('~~/server/utils/spendSync')
+  const { recordSyncJobAccountResult } = await import('~~/server/utils/spendSyncJobs')
+  const jobId = payload.jobId as string | undefined
+  const result = await syncGoogleSpendByConnectionId(payload.connectionId, payload.month, payload.year)
+  if (jobId) await recordSyncJobAccountResult(jobId, result)
 }
 
 async function processTikTokSpendSync(payload: Record<string, any>): Promise<void> {
