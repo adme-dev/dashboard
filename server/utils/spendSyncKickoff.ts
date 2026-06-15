@@ -2,6 +2,7 @@ import type { H3Event } from 'h3'
 import {
   syncMetaSpend,
   listMetaConnectionIds,
+  listGoogleConnectionIds,
   syncGoogleSpend,
   syncMicrosoftSpend,
   syncPinterestSpend,
@@ -24,7 +25,6 @@ interface PlatformDef {
 // manual UI endpoints use). `short` matches the KV cache key namespace each
 // platform's spend reads from, so the cache is busted on completion.
 const SECONDARY_PLATFORMS: PlatformDef[] = [
-  { platform: 'google_ads', short: 'google', fn: syncGoogleSpend },
   { platform: 'microsoft_ads', short: 'microsoft_ads', fn: syncMicrosoftSpend },
   { platform: 'pinterest', short: 'pinterest', fn: syncPinterestSpend },
   { platform: 'tiktok', short: 'tiktok', fn: syncTikTokSpend },
@@ -92,6 +92,29 @@ export async function startSpendSyncAllPlatforms(
   } catch (err) {
     console.error('[cron sync-spend] meta kickoff failed:', err)
     meta = 'error'
+  }
+
+  // Google — per-account queue fan-out (same durable path as Meta). The old
+  // single-waitUntil loop was killed by Cloudflare's time budget at ~100 accounts.
+  try {
+    const gqueue = getQueue(event)
+    const googleIds = gqueue ? await listGoogleConnectionIds() : []
+    if (gqueue && googleIds.length > 0) {
+      const jobId = await createSpendSyncJob('google', period, null)
+      await setSyncJobTotalAccounts(jobId, googleIds.length)
+      const enqueuedAt = new Date().toISOString()
+      await Promise.all(googleIds.map(connectionId =>
+        gqueue!.send({ type: 'spend.sync.google.account', payload: { connectionId, month, year, jobId }, enqueuedAt }, { contentType: 'json' })
+      ))
+    } else {
+      runSpendSyncInBackground(event, {
+        label: `cron google sync-spend ${period}`,
+        sync: () => syncGoogleSpend(month, year),
+        kvKeys: [`spend:summary:${period}:all`, `spend:summary:${period}:google_ads`, `spend:google:accounts:${period}`, `spend:daily:google:${period}`],
+      })
+    }
+  } catch (err) {
+    console.error('[cron sync-spend] google kickoff failed:', err)
   }
 
   const secondary: string[] = []
