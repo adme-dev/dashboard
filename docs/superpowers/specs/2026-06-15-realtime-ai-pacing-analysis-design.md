@@ -35,7 +35,7 @@ A thin per-campaign analysis endpoint orchestrates: (optional single-campaign re
 - `requireWriteAccess(event)` (media role — same as `plan`; analysis is read-only, no money moves here).
 - Body: `{ refresh?: boolean }`.
 - Load the campaign's pacing row (reuse the query/shape behind `pacing-review.get` / `socialSpendPacingReview`).
-- If `refresh`: re-pull this single campaign from the platform (extend/reuse `onDemandSync`'s per-campaign path) and update `media_spend`; on error, continue with synced data and set `dataFreshness.refreshed = false` + `refreshError`.
+- If `refresh`: re-pull this single campaign's core metrics from the platform and update `media_spend`; on error, continue with synced data and set `dataFreshness.refreshed = false` + `refreshError`. **Note (verified):** `onDemandSync` only exposes per-campaign *breakdown*/*creative* sync, not core spend/budget refresh — so this needs a **new minimal single-campaign refetch helper** (Meta insights / Google GAQL for one campaign), not a reuse. It is an **independently deferrable** task: the default (synced data) analysis ships without it.
 - Compute deterministic pacing (`computeCampaignBudgetPacing`).
 - Call Groq via `groqClient` (`generateGroqInsight` or a structured variant) with `buildAnalysisPrompt`, parse with `parseAnalysisResult`.
 - **Response:**
