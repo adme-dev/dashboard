@@ -99,12 +99,25 @@ plan ──> approve ──> (admin) Apply
 Convergence to a large target happens across days: the daily pacing review
 re-recommends the remaining gap, the admin applies another ≤20% step.
 
-### Audit-log additions
+### Audit-log table (validated against migrations 177/178 + prod DB)
 
-`campaign_action_log` already stores plan/approve/cancel. Add on execute:
-`action_status` `applied`/`failed`/`manual_required`, `executed_at`, `applied_value`,
-`clamped` (bool), `clamp_reasons` (jsonb), `error_message`, `overridden_by`. (Confirm
-which columns already exist vs. need a migration during planning.)
+`campaign_action_log` (migration `177_social_campaign_action_log.sql`) already has
+every column the execute step needs — **no new migration for columns**:
+- `executed_at`, `error_message`, `external_request_id` (store the platform
+  trace id — Meta `fbtrace_id` / Google request id — for debugging + idempotency).
+- `previous_value` (jsonb) → the pre-change daily budget (rollback reference).
+- `new_value` (jsonb) → `{ recommendedDailyBudget, appliedDailyBudget }`.
+- `metadata` (jsonb) → `{ clamped, clampReasons, overriddenBy, override }`.
+- `action_status` valid values are fixed by a CHECK constraint:
+  `planned | pending | approved | applied | failed | skipped | cancelled`.
+  **`manual_required` is NOT allowed** — multi-ad-set ABO is recorded as
+  `skipped` with `metadata.reason = 'abo_multi_adset_manual'` (or surfaced
+  UI-only, no row). Do not invent a new status without altering the constraint.
+
+⚠️ **Prerequisite:** migrations **177 + 178 are not applied to the prod DB** —
+the table does not exist there, so the *existing* plan/approve/cancel flow is
+currently dormant/broken in prod. The plan's first step is to apply 177 + 178
+and verify the existing plan→approve→cancel chain works before adding execute.
 
 ### Error handling
 
@@ -132,9 +145,22 @@ which columns already exist vs. need a migration during planning.)
 3. Broaden once confident.
 4. Phase 1.5: multi-ad-set ABO proportional distribution.
 
-## Open items for planning
+## Resolved during spec review (validated against code + prod DB)
 
-- Confirm `campaign_action_log` columns vs. migration need.
-- Confirm `requireRole` admin/owner values match the RBAC enum.
-- Confirm where global cap defaults (`maxMultiple`, `monthlyMarginPct`) live —
-  extend `socialBudgetControlConfig` vs. new settings key.
+- **Audit columns:** no migration needed — use existing jsonb fields (see above).
+- **Apply RBAC:** `PERMISSIONS.ADMIN = ['owner','admin']` (`server/utils/permissions.ts`).
+  Apply = `requireRole(event, ['owner','admin'])`; plan/approve stay MEDIA_BUYING.
+- **Cap defaults home:** extend `SocialBudgetControlConfig` /
+  `socialBudgetControlConfig.ts` (stored in `agency_settings.social_budget_control`
+  jsonb) with `maxMultiple`, `monthlyMarginPct`, optional `perCampaignOverrides`.
+  No new table.
+- **CBO/ABO detection:** `getCampaigns` (metaClient:628) + `getAdSets` (metaClient:657)
+  exist. Account currency for minor-unit conversion is in connection
+  `metadata.currency` (set in meta callback).
+- **`manual_required` is not a valid status** — use `skipped` + metadata reason.
+
+## Prerequisite (must precede execute work)
+
+Apply migrations **177 + 178** to prod and verify the existing
+plan → approve → cancel flow works end-to-end. The audit table does not exist in
+prod today, so that flow is currently dormant there.
