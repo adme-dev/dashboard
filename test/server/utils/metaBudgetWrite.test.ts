@@ -25,16 +25,43 @@ describe('resolveMetaBudgetTarget', () => {
     expect(r.optimizationGoal).toBe('OFFSITE_CONVERSIONS')
   })
 
-  it('flags ABO with multiple active ad sets as manual', async () => {
+  it('returns adset_split for ABO with multiple active ad sets that have daily budgets', async () => {
     ofetchMock
       .mockResolvedValueOnce({ data: [{ id: 'c1', name: 'C', status: 'ACTIVE', objective: 'OUTCOME_LEADS' }] })
       .mockResolvedValueOnce({ data: [
-        { id: 'as1', name: 'A', status: 'ACTIVE', daily_budget: '10000' },
-        { id: 'as2', name: 'B', status: 'ACTIVE', daily_budget: '10000' },
+        { id: 'as1', name: 'A', status: 'ACTIVE', optimization_goal: 'OFFSITE_CONVERSIONS', daily_budget: '30000' },
+        { id: 'as2', name: 'B', status: 'ACTIVE', optimization_goal: 'OFFSITE_CONVERSIONS', daily_budget: '10000' },
+      ] })
+    const r = await resolveMetaBudgetTarget('act_1', 'c1', 'tok')
+    expect(r.level).toBe('adset_split')
+    expect(r.adSetCount).toBe(2)
+    expect(r.splitAdSets).toEqual([
+      { id: 'as1', currentDailyMajor: 300, optimizationGoal: 'OFFSITE_CONVERSIONS' },
+      { id: 'as2', currentDailyMajor: 100, optimizationGoal: 'OFFSITE_CONVERSIONS' },
+    ])
+  })
+
+  it('excludes lifetime-budget ad sets; a single daily-budget ad set falls back to adset', async () => {
+    ofetchMock
+      .mockResolvedValueOnce({ data: [{ id: 'c1', name: 'C', status: 'ACTIVE', objective: 'OUTCOME_LEADS' }] })
+      .mockResolvedValueOnce({ data: [
+        { id: 'as1', name: 'A', status: 'ACTIVE', optimization_goal: 'LINK_CLICKS', daily_budget: '10000' },
+        { id: 'as2', name: 'B', status: 'ACTIVE', optimization_goal: 'LINK_CLICKS' }, // lifetime, no daily_budget
+      ] })
+    const r = await resolveMetaBudgetTarget('act_1', 'c1', 'tok')
+    expect(r.level).toBe('adset')
+    expect(r.targetId).toBe('as1')
+  })
+
+  it('flags as manual when no active ad set carries a daily budget', async () => {
+    ofetchMock
+      .mockResolvedValueOnce({ data: [{ id: 'c1', name: 'C', status: 'ACTIVE', objective: 'OUTCOME_LEADS' }] })
+      .mockResolvedValueOnce({ data: [
+        { id: 'as1', name: 'A', status: 'ACTIVE', optimization_goal: 'LINK_CLICKS' },
+        { id: 'as2', name: 'B', status: 'ACTIVE', optimization_goal: 'LINK_CLICKS' },
       ] })
     const r = await resolveMetaBudgetTarget('act_1', 'c1', 'tok')
     expect(r.level).toBe('manual')
-    expect(r.adSetCount).toBe(2)
   })
 })
 

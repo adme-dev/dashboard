@@ -1073,17 +1073,22 @@ export async function listMetaPageLeadForms(
 // ============================================
 
 export interface MetaBudgetTarget {
-  level: 'campaign' | 'adset' | 'manual'
+  level: 'campaign' | 'adset' | 'adset_split' | 'manual'
   targetId: string | null
   optimizationGoal: string | null
   adSetCount: number
+  // Populated only for level === 'adset_split': the active ad sets that carry a
+  // daily_budget and will share the campaign-level recommendation.
+  splitAdSets?: Array<{ id: string; currentDailyMajor: number; optimizationGoal: string | null }>
 }
 
 /**
  * Decide where a campaign-level daily-budget recommendation should be written:
  * - CBO: the campaign carries daily_budget → write the campaign.
- * - ABO single active ad set → write that ad set.
- * - ABO multiple active ad sets → 'manual' (Phase 1 does not auto-split).
+ * - ABO single active ad set with a daily_budget → write that ad set.
+ * - ABO ≥2 active ad sets with daily_budgets → 'adset_split' (split proportionally).
+ * - No active ad set carries a daily_budget (e.g. all lifetime) → 'manual'.
+ * Lifetime-budget ad sets are excluded from the split and left untouched.
  */
 export async function resolveMetaBudgetTarget(
   accountId: string,
@@ -1097,8 +1102,25 @@ export async function resolveMetaBudgetTarget(
   }
   const adSets = await getAdSets(campaignId, token)
   const active = adSets.filter(a => (a.status || '').toUpperCase() === 'ACTIVE')
-  if (active.length === 1) {
-    return { level: 'adset', targetId: active[0].id, optimizationGoal: active[0].optimization_goal ?? null, adSetCount: 1 }
+  // Only ad sets with their own daily_budget can be split; lifetime-budget ad sets
+  // are left untouched.
+  const participants = active.filter(a => a.daily_budget != null && Number(a.daily_budget) >= 1)
+
+  if (participants.length === 1) {
+    return { level: 'adset', targetId: participants[0].id, optimizationGoal: participants[0].optimization_goal ?? null, adSetCount: 1 }
+  }
+  if (participants.length >= 2) {
+    return {
+      level: 'adset_split',
+      targetId: null,
+      optimizationGoal: null,
+      adSetCount: participants.length,
+      splitAdSets: participants.map(a => ({
+        id: a.id,
+        currentDailyMajor: Number(a.daily_budget) / 100,
+        optimizationGoal: a.optimization_goal ?? null,
+      })),
+    }
   }
   return { level: 'manual', targetId: null, optimizationGoal: null, adSetCount: active.length }
 }
