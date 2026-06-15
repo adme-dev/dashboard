@@ -82,3 +82,32 @@ export function parseAnalysisResult(raw: string, baseline: { currentDailyBudget:
 
   return { ok: true, proposedDailyBudget, rationale, confidence, riskFlags }
 }
+
+export interface AnalysisResponse {
+  deterministic: { dailyBudget: number, action: string }
+  ai: { proposedDailyBudget: number, rationale: string, confidence: AiConfidence, riskFlags: string[] } | null
+  dataFreshness: { syncedAt: string | null, refreshed: boolean, refreshError?: string }
+  modelId: string
+}
+
+export function buildAnalysisResponse(args: {
+  deterministicDaily: number
+  deterministicAction: string
+  ai: AiAnalysisResult
+  syncedAt: string | null
+  refreshed: boolean
+  refreshError?: string
+  modelId: string
+}): AnalysisResponse {
+  const ai = args.ai.ok && args.ai.proposedDailyBudget != null
+    ? { proposedDailyBudget: args.ai.proposedDailyBudget, rationale: args.ai.rationale, confidence: args.ai.confidence, riskFlags: args.ai.riskFlags }
+    : null
+  const dataFreshness: AnalysisResponse['dataFreshness'] = { syncedAt: args.syncedAt, refreshed: args.refreshed }
+  if (args.refreshError) dataFreshness.refreshError = args.refreshError
+  return {
+    deterministic: { dailyBudget: args.deterministicDaily, action: args.deterministicAction },
+    ai,
+    dataFreshness,
+    modelId: args.modelId,
+  }
+}

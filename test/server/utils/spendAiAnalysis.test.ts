@@ -81,3 +81,30 @@ describe('parseAnalysisResult', () => {
     expect(r.riskFlags).toEqual([])
   })
 })
+
+import { buildAnalysisResponse } from '~~/server/utils/spendAiAnalysis'
+
+describe('buildAnalysisResponse', () => {
+  const okAi = { ok: true, proposedDailyBudget: 95, rationale: 'r', confidence: 'high' as const, riskFlags: ['x'] }
+  const failAi = { ok: false, proposedDailyBudget: null, rationale: '', confidence: 'low' as const, riskFlags: [] }
+
+  it('includes the AI block when the result is ok', () => {
+    const res = buildAnalysisResponse({ deterministicDaily: 80, deterministicAction: 'Trim spend', ai: okAi, syncedAt: '2026-06-15T03:00:00Z', refreshed: false, modelId: 'm1' })
+    expect(res.deterministic).toEqual({ dailyBudget: 80, action: 'Trim spend' })
+    expect(res.ai).toEqual({ proposedDailyBudget: 95, rationale: 'r', confidence: 'high', riskFlags: ['x'] })
+    expect(res.dataFreshness).toEqual({ syncedAt: '2026-06-15T03:00:00Z', refreshed: false })
+    expect(res.modelId).toBe('m1')
+  })
+
+  it('nulls the AI block when the result failed', () => {
+    const res = buildAnalysisResponse({ deterministicDaily: 80, deterministicAction: 'a', ai: failAi, syncedAt: null, refreshed: false, modelId: 'm1' })
+    expect(res.ai).toBe(null)
+  })
+
+  it('includes refreshError only when present', () => {
+    const withErr = buildAnalysisResponse({ deterministicDaily: 80, deterministicAction: 'a', ai: okAi, syncedAt: null, refreshed: false, refreshError: 'boom', modelId: 'm1' })
+    expect(withErr.dataFreshness.refreshError).toBe('boom')
+    const without = buildAnalysisResponse({ deterministicDaily: 80, deterministicAction: 'a', ai: okAi, syncedAt: null, refreshed: true, modelId: 'm1' })
+    expect('refreshError' in without.dataFreshness).toBe(false)
+  })
+})
