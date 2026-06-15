@@ -54,7 +54,7 @@ export function buildAnalysisPrompt(input: AiAnalysisInput): string {
   ].join('\n')
 }
 
-export function parseAnalysisResult(raw: string, baseline: { currentDailyBudget: number }): AiAnalysisResult {
+export function parseAnalysisResult(raw: string, baseline: { currentDailyBudget: number, monthlyBudget?: number }): AiAnalysisResult {
   const fail: AiAnalysisResult = { ok: false, proposedDailyBudget: null, rationale: '', confidence: 'low', riskFlags: [] }
   if (!raw || typeof raw !== 'string') return fail
 
@@ -71,7 +71,10 @@ export function parseAnalysisResult(raw: string, baseline: { currentDailyBudget:
   const num = Number(parsed.proposedDailyBudget ?? parsed.proposed_daily_budget)
   if (!Number.isFinite(num) || num < 0) return fail
 
-  const ceiling = Math.max(1, baseline.currentDailyBudget) * 10
+  // Defense-in-depth ceiling (the real ±20%/cap guardrails run at Apply). Base it
+  // on the larger of current daily and monthly budget so a 0-current campaign
+  // (e.g. no_spend) doesn't floor a legitimate ramp-up to $10.
+  const ceiling = Math.max(baseline.currentDailyBudget, baseline.monthlyBudget ?? 0, 1) * 10
   const proposedDailyBudget = round2(Math.min(num, ceiling))
 
   const rationale = typeof parsed.rationale === 'string' ? parsed.rationale.slice(0, 2000) : ''

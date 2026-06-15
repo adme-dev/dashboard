@@ -122,6 +122,10 @@ async function loadHistory(spendId: string, force = false) {
   try {
     history.value = []
     platformActions.value = []
+    // Reset AI-analysis state so a stale card can't bleed into a different campaign.
+    aiAnalysis.value = null
+    chosenSource.value = 'ai'
+    refreshFromPlatform.value = false
     const [budgetHistory, actionHistory] = await Promise.all([
       $fetch<BudgetAuditEntry[]>(`/api/agency/social/spend/${spendId}/history`),
       $fetch<CampaignActionEntry[]>(`/api/agency/social/spend/${spendId}/actions`),
