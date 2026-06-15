@@ -12,8 +12,24 @@ Google Ads already computes high-quality optimization recommendations (budget, t
 - **Budget recommendations apply through OUR guard-railed write**, not Google's `ApplyRecommendation`: we extract Google's recommended daily budget and feed it into the existing plan→approve→`execute.post.ts` chain (±20% clamp, max-multiple, monthly-margin, per-platform min, read-back, audit). Our guardrails always win.
 - **v1 surfaces ALL recommendation types** (+ optimization score) but **applies only the safe subset**: budget recs (via our guardrails). All other types render with impact + a **"Review in Google Ads" deep-link**.
 - **Tracking-health (#4):** `IMPROVE_GOOGLE_TAG_COVERAGE` + low optimization score are surfaced as a read-only "tracking health" signal alongside our existing zero-conversion detector. No auto-apply.
-- **Google only** (Meta's recommendations API is thin). **Reads are unflagged** (read-only is safe); **applying a budget rec still requires the existing `liveBudgetChangesEnabled + googleBudgetWritesEnabled` flags.**
-- **Deferred (out of scope for v1):** `RecommendationSubscriptionService` autopilot, a scheduled recommendations sync table, native `ApplyRecommendation` for non-budget types, Meta recommendations.
+- **The native-recommendations passthrough is Google-only by necessity** (see "Network coverage" below — Meta has no API equivalent). **Reads are unflagged** (read-only is safe); **applying a budget rec still requires the existing `liveBudgetChangesEnabled + googleBudgetWritesEnabled` flags.**
+- **Deferred (out of scope for v1):** `RecommendationSubscriptionService` autopilot, a scheduled recommendations sync table, native `ApplyRecommendation` for non-budget types, a Meta-native-recommendations surface (blocked — see below).
+
+## Network coverage (Meta + Google)
+
+This was reviewed explicitly. The two networks are covered by **two complementary surfaces**, not one:
+
+| Surface | Meta | Google | Notes |
+|---|---|---|---|
+| **Pacing recommendations** (our deterministic detectors + "Analyze with AI") | ✅ | ✅ | Already shipped; both networks. Feeds the guard-railed write. |
+| **Guard-railed budget write** (apply) | ✅ (CBO/ABO + split) | ✅ | Already shipped; both networks. |
+| **Native platform optimization recommendations** (this feature) | ❌ no API | ✅ `RecommendationService` | Google-only |
+
+**Why Google-only for native recs:** Verified against the Meta Marketing API — it exposes campaign lifecycle, Insights, and the Conversions API, but **no list-and-apply recommendations service** comparable to Google's `RecommendationService`. Meta's "recommendations"/Opportunity Score are surfaced in Ads Manager UI only, not programmatically queryable/applyable. (Meta reads are also dev-tier-blocked from our prod egress until the app-tier upgrade — a second blocker.)
+
+**So Meta is NOT left out:** it is fully covered by the existing cross-network **pacing-review + AI-analysis recommend** surface and the **guard-railed write** (both Meta + Google). This feature *adds* the Google-specific richness Google exposes that our pacing engine doesn't compute (keyword, tCPA/tROAS, PMax ad-strength, tag-coverage). A **Meta-native-recommendations surface is deferred** and gated on (a) Meta exposing such an API and (b) the Meta app-tier upgrade.
+
+**UI labeling (avoid concept blur):** the spend page already shows a "Recommendations" count for *our pacing* items. To prevent confusion between the two notions, this feature's panel is titled **"Google optimization recommendations"** (explicitly Google + "optimization", Google's own term), kept visually distinct from the pacing-review strip. Code is namespaced `googleRecommendations` / `SpendGoogleRecommendations` to avoid collision with the unrelated **Financial Advisor `recommendations` table** (migration 068).
 
 ## Architecture
 
@@ -53,7 +69,7 @@ Google Ads already computes high-quality optimization recommendations (budget, t
 - `IMPROVE_GOOGLE_TAG_COVERAGE` is tagged `review_only` and additionally flagged as a tracking-health item via a `trackingHealth: true` boolean on the normalized object (so the UI can group it).
 - Returns `{ optimizationScore: number|null, recommendations: NormalizedRecommendation[] }`.
 
-### 2. Endpoint — `server/api/agency/social/spend/google-recommendations.get.ts` (new)
+### 2. Endpoint — `server/api/agency/social/google/recommendations.get.ts` (new)
 - `requireAuth` + `requireRole(['owner','admin'])`. Query param `connectionId` (or `customerId`).
 - Loads the Google `social_connections` row, resolves auth (`resolveGoogleWriteAuth`), calls `fetchGoogleRecommendations`, normalizes, returns `{ optimizationScore, recommendations }`.
 - **Fail-safe:** any Google/network error → `{ optimizationScore: null, recommendations: [], error: <message> }` with HTTP 200. Never blocks the spend page.
@@ -83,7 +99,7 @@ Google Ads already computes high-quality optimization recommendations (budget, t
 - Apply path is already covered by existing budget-write / execute tests; add one `plan.post.ts` assertion that a provided `source` is recorded + used in dedupe.
 
 ## Files
-- Create: `server/utils/googleRecommendations.ts`, `server/api/agency/social/spend/google-recommendations.get.ts`, `app/components/social/SpendGoogleRecommendations.vue`, `test/server/utils/googleRecommendations.test.ts`.
+- Create: `server/utils/googleRecommendations.ts`, `server/api/agency/social/google/recommendations.get.ts`, `app/components/social/SpendGoogleRecommendations.vue`, `test/server/utils/googleRecommendations.test.ts`.
 - Modify: `server/api/agency/social/spend/[id]/actions/plan.post.ts` (optional `source` + rec metadata), `app/pages/agency/social/spend.vue` (mount the panel + fetch).
 - Marketing: extend the `campaign-alerts` feature entry to mention surfacing Google's optimization recommendations.
 
