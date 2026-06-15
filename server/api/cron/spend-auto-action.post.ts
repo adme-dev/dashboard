@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
 
   // Notify recipients: owner/admin team members (the surface that can act).
   const recipients = await queryRows<{ id: string }>(
-    `SELECT id::text AS id FROM team_members WHERE role IN ('owner','admin') AND is_active = true`,
+    `SELECT id::text AS id FROM team_members WHERE user_role IN ('owner','admin') AND is_active = true`,
   ).catch(() => [])
 
   const result = await executeAutoActions(decisions, {

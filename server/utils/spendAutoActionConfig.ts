@@ -4,7 +4,6 @@ export type AutoActionMode = 'off' | 'notify' | 'propose'
 export interface AutoActionPolicy {
   enabled: boolean
   perSeverity: { critical: AutoActionMode; warning: AutoActionMode; info: AutoActionMode }
-  clientOverrides?: Record<string, { perSeverity?: Partial<Record<'critical' | 'warning' | 'info', AutoActionMode>> }>
 }
 
 export const DEFAULT_AUTO_ACTION_POLICY: AutoActionPolicy = {
@@ -17,7 +16,6 @@ export function mergeAutoActionPolicy(stored: Partial<AutoActionPolicy> | null |
   return {
     enabled: stored.enabled ?? DEFAULT_AUTO_ACTION_POLICY.enabled,
     perSeverity: { ...DEFAULT_AUTO_ACTION_POLICY.perSeverity, ...(stored.perSeverity ?? {}) },
-    clientOverrides: stored.clientOverrides,
   }
 }
 

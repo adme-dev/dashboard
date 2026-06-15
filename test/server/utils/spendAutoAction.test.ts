@@ -13,10 +13,6 @@ describe('decideAutoActions', () => {
   it('returns nothing when policy disabled', () => {
     expect(decideAutoActions([item()] as any, policy({ enabled: false }))).toEqual([])
   })
-  it('applies a per-client override', () => {
-    const p = policy({ clientOverrides: { c1: { perSeverity: { critical: 'notify' } } } })
-    expect(decideAutoActions([item()] as any, p)[0].mode).toBe('notify')
-  })
   it('downgrades stale_sync from propose to notify', () => {
     const d = decideAutoActions([item({ issueType: 'stale_sync' })] as any, policy())
     expect(d[0].mode).toBe('notify')
