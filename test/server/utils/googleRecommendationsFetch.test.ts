@@ -13,7 +13,7 @@ describe('fetchGoogleRecommendations', () => {
         { recommendation: { type: 'CAMPAIGN_BUDGET', resourceName: 'rn1', campaign: 'customers/9/campaigns/55', campaignBudgetRecommendation: { recommendedBudgetAmountMicros: '24000000', currentBudgetAmountMicros: '20000000' } } },
       ] }])
       // optimization score searchStream
-      .mockResolvedValueOnce([{ results: [{ customer: { optimizationScore: 0.77 }, metrics: { optimizationScoreUrl: 'https://ads.google.com/x' } }] }])
+      .mockResolvedValueOnce([{ results: [{ customer: { optimizationScore: 0.77, optimizationScoreUrl: 'https://ads.google.com/x' } }] }])
     const r = await fetchGoogleRecommendations('9', 'tok', 'dev', '5250473322')
     expect(r.optimizationScore).toBe(0.77)
     expect(r.recommendations[0].recommendedDailyMajor).toBe(24)

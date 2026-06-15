@@ -211,15 +211,25 @@ async function applyGoogleRec(rec: any) {
         reason: rec.title,
       },
     }) as any
-    const actionId = planned?.action?.id
-    if (!actionId) throw new Error('Could not record the recommendation')
-    await $fetch(`/api/agency/social/spend/${spendId}/actions/${actionId}/approve`, { method: 'POST' })
-    const result = await $fetch(`/api/agency/social/spend/${spendId}/actions/${actionId}/execute`, { method: 'POST', body: {} }) as any
-    if (result?.status === 'applied') {
-      toast.add({ title: 'Applied', description: 'Recommendation written through the guard-railed budget update.', color: 'success' })
+    const action = planned?.action
+    if (!action?.id) throw new Error('Could not record the recommendation')
+    // The plan endpoint dedupes on planned-OR-approved, so a repeat click (common
+    // while the write flags are OFF — execute returns 'blocked' without consuming
+    // the approval) returns an already-approved action. approve only matches
+    // 'planned', so re-approving would 404 — only approve when not yet approved.
+    if (action.actionStatus !== 'approved') {
+      await $fetch(`/api/agency/social/spend/${spendId}/actions/${action.id}/approve`, { method: 'POST' })
+    }
+    const res = await $fetch<{ status: string; appliedDailyBudget?: number; clamped?: boolean; clampReasons?: string[]; reason?: string; adSetCount?: number; message?: string }>(
+      `/api/agency/social/spend/${spendId}/actions/${action.id}/execute`, { method: 'POST', body: {} })
+    if (res.status === 'applied') {
+      toast.add({ title: `Applied ${formatCurrency(res.appliedDailyBudget || 0)}/day`, description: res.clamped ? `Clamped: ${(res.clampReasons || []).join(', ')}` : 'Live budget updated', color: 'success' })
+    } else if (res.status === 'blocked') {
+      toast.add({ title: 'Blocked by guardrail', description: res.reason === 'writes_disabled' ? 'Live budget changes are off (recommend-only).' : res.reason, color: 'warning' })
+    } else if (res.status === 'skipped') {
+      toast.add({ title: 'Manual change needed', description: `ABO campaign with ${res.adSetCount} active ad sets — adjust each ad set manually.`, color: 'info' })
     } else {
-      // Server enforces the live-write flags + guardrails; surface why it didn't apply.
-      toast.add({ title: 'Not applied', description: `Status: ${result?.status || 'unknown'}${result?.reason ? ` (${result.reason})` : ''}`, color: 'warning' })
+      toast.add({ title: 'Apply failed', description: res.message || res.reason || 'Platform write failed', color: 'error' })
     }
     await loadHistory(spendId, true)
   } catch (e: any) {

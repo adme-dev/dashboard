@@ -112,14 +112,15 @@ export async function fetchGoogleRecommendations(
     try {
       const scoreRows = await gaqlQuery(
         customerId, token, developerToken,
-        `SELECT customer.optimization_score, metrics.optimization_score_url FROM customer`,
+        // optimization_score_url is a field on the `customer` resource, not `metrics`.
+        `SELECT customer.optimization_score, customer.optimization_score_url FROM customer`,
         loginCustomerId,
       )
       const c = scoreRows?.[0]
       const s = Number(c?.customer?.optimizationScore)
       optimizationScore = Number.isFinite(s) ? s : null
-      if (typeof c?.metrics?.optimizationScoreUrl === 'string' && c.metrics.optimizationScoreUrl) {
-        deepLink = c.metrics.optimizationScoreUrl
+      if (typeof c?.customer?.optimizationScoreUrl === 'string' && c.customer.optimizationScoreUrl) {
+        deepLink = c.customer.optimizationScoreUrl
       }
     } catch {
       // score is best-effort; recommendations still return
