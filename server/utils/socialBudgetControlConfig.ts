@@ -4,12 +4,21 @@ export interface SocialBudgetControlConfig {
   liveBudgetChangesEnabled: boolean
   metaBudgetWritesEnabled: boolean
   googleBudgetWritesEnabled: boolean
+  maxMultiple: number          // new daily <= maxMultiple * current daily
+  monthlyMarginPct: number     // allowed overshoot of monthly budget
 }
 
 export const DEFAULT_SOCIAL_BUDGET_CONTROL_CONFIG: SocialBudgetControlConfig = {
   liveBudgetChangesEnabled: false,
   metaBudgetWritesEnabled: false,
   googleBudgetWritesEnabled: false,
+  maxMultiple: 2,
+  monthlyMarginPct: 0.1,
+}
+
+/** Pure merge of a stored partial config over defaults. */
+export function mergeBudgetControlConfig(stored: Partial<SocialBudgetControlConfig> | null | undefined): SocialBudgetControlConfig {
+  return { ...DEFAULT_SOCIAL_BUDGET_CONTROL_CONFIG, ...(stored ?? {}) }
 }
 
 export async function getSocialBudgetControlConfig(tenantId: string): Promise<SocialBudgetControlConfig> {
@@ -18,7 +27,7 @@ export async function getSocialBudgetControlConfig(tenantId: string): Promise<So
     [tenantId]
   )
 
-  return { ...DEFAULT_SOCIAL_BUDGET_CONTROL_CONFIG, ...(row?.value ?? {}) }
+  return mergeBudgetControlConfig(row?.value)
 }
 
 export async function saveSocialBudgetControlConfig(

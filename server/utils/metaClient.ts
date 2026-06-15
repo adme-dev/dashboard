@@ -1043,3 +1043,50 @@ export async function listMetaPageLeadForms(
   await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
   return { forms: out, permission_denied_count: permissionDenied, pages_checked: pages.length }
 }
+
+// ============================================
+// Budget Writes (pacing execution)
+// ============================================
+
+export interface MetaBudgetTarget {
+  level: 'campaign' | 'adset' | 'manual'
+  targetId: string | null
+  optimizationGoal: string | null
+  adSetCount: number
+}
+
+/**
+ * Decide where a campaign-level daily-budget recommendation should be written:
+ * - CBO: the campaign carries daily_budget → write the campaign.
+ * - ABO single active ad set → write that ad set.
+ * - ABO multiple active ad sets → 'manual' (Phase 1 does not auto-split).
+ */
+export async function resolveMetaBudgetTarget(
+  accountId: string,
+  campaignId: string,
+  token: string
+): Promise<MetaBudgetTarget> {
+  const campaigns = await getCampaigns(accountId, token)
+  const campaign = campaigns.find(c => c.id === campaignId)
+  if (campaign?.daily_budget && Number(campaign.daily_budget) > 0) {
+    return { level: 'campaign', targetId: campaign.id, optimizationGoal: null, adSetCount: 0 }
+  }
+  const adSets = await getAdSets(campaignId, token)
+  const active = adSets.filter(a => (a.status || '').toUpperCase() === 'ACTIVE')
+  if (active.length === 1) {
+    return { level: 'adset', targetId: active[0].id, optimizationGoal: active[0].optimization_goal ?? null, adSetCount: 1 }
+  }
+  return { level: 'manual', targetId: null, optimizationGoal: null, adSetCount: active.length }
+}
+
+/** Write a daily budget (major units) to a Meta campaign or ad set. Returns the read-back daily (major units). */
+export async function updateMetaDailyBudget(
+  objectId: string,
+  dailyMajor: number,
+  token: string
+): Promise<{ readBackDailyMajor: number }> {
+  const cents = String(Math.round(dailyMajor * 100))
+  await metaFetch(`${META_GRAPH_BASE}/${objectId}`, token, { daily_budget: cents }, 3, 'POST')
+  const back = await metaFetch<{ daily_budget?: string }>(`${META_GRAPH_BASE}/${objectId}`, token, { fields: 'daily_budget' })
+  return { readBackDailyMajor: Number(back.daily_budget || '0') / 100 }
+}
