@@ -53,6 +53,23 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
     return { synced: 0, totalSpend: 0, failures }
   }
 
+  // Fail loud on the empty-throttle case: if Graph returns no campaigns for an
+  // account that already has prior Meta spend recorded, that's almost certainly an
+  // empty-data block (e.g. Marketing API development_access tier from a datacenter
+  // egress IP — see docs/superpowers/specs/2026-06-15-meta-spend-zero-sync-pacing.md),
+  // NOT a genuine $0. Record a failure so the job surfaces it instead of silently
+  // "completing" with synced_count=0.
+  if (!campaigns || campaigns.length === 0) {
+    const prior = await queryOne<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM media_spend WHERE connection_id = $1 AND platform = 'meta'`,
+      [conn.id]
+    )
+    if (prior && prior.n > 0) {
+      failures.push({ account: conn.account_name, reason: 'Empty insights for an account with prior spend — likely access-tier/egress block, not a genuine $0' })
+    }
+    return { synced: 0, totalSpend: 0, failures }
+  }
+
   // Enrich with campaign-level metadata (status, end date, bid strategy, budget type).
   // One call per account; non-fatal on failure.
   const campaignMetaById = new Map<string, ReturnType<typeof mapMetaCampaignMeta>>()

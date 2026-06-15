@@ -66,7 +66,7 @@ export async function setSyncJobTotalAccounts(jobId: string, total: number): Pro
  * UPDATE that reaches total_accounts.
  */
 export async function recordSyncJobAccountResult(jobId: string, result: SyncJobResult): Promise<void> {
-  await execute(
+  const row = await queryOne<{ platform: string; status: string; synced_count: number; total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
        SET processed_accounts = processed_accounts + 1,
            synced_count = synced_count + $2,
@@ -76,9 +76,16 @@ export async function recordSyncJobAccountResult(jobId: string, result: SyncJobR
                          THEN 'completed' ELSE status END,
            finished_at = CASE WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
                               THEN NOW() ELSE finished_at END
-     WHERE id = $1`,
+     WHERE id = $1
+     RETURNING platform, status, synced_count, total_accounts`,
     [jobId, result.synced, result.totalSpend, JSON.stringify(result.failures || [])]
   )
+  // Fail loud: a job that completes with 0 synced across N accounts is almost never
+  // a genuine $0 — it signals an empty-throttle / access-tier / egress block (e.g.
+  // the Meta Marketing API development_access tier from Cloudflare egress).
+  if (row && row.status === 'completed' && Number(row.synced_count) === 0 && Number(row.total_accounts) > 0) {
+    console.error(`[SpendSync] ⚠️ ${row.platform} job ${jobId} COMPLETED with synced_count=0 across ${row.total_accounts} accounts — likely an access-tier/egress empty-throttle, NOT a genuine $0. Investigate before trusting the data.`)
+  }
 }
 
 /** Mark a job failed with an error message. */
