@@ -7,7 +7,7 @@ import { platformDailyMinimum } from '~~/server/utils/budgetGuardrails'
 import { resolveMetaBudgetTarget, updateMetaDailyBudget } from '~~/server/utils/metaClient'
 import { updateGoogleCampaignDailyBudget } from '~~/server/utils/googleAdsClient'
 import { resolveGoogleWriteAuth } from '~~/server/utils/googleWriteAuth'
-import { claimApprovedAction, releaseClaim } from '~~/server/utils/campaignActionClaim'
+import { claimApprovedAction, releaseActionClaim } from '~~/server/utils/campaignActionClaim'
 import { kvDelete } from '~~/server/utils/kv'
 
 export default eventHandler(async (event) => {
@@ -102,9 +102,9 @@ export default eventHandler(async (event) => {
     try {
       metaTarget = await resolveMetaBudgetTarget(`act_${row.account_id}`, row.campaign_id, row.access_token)
     } catch (err) {
-      // releaseClaim only touches rows still in 'executing', so this is a no-op
+      // releaseActionClaim only touches rows still in 'executing', so this is a no-op
       // if anything already moved the row to a terminal state.
-      await releaseClaim({ execute }, actionId).catch(() => {})
+      await releaseActionClaim({ execute }, actionId).catch(() => {})
       throw err
     }
     if (metaTarget.level === 'manual') {
@@ -134,7 +134,7 @@ export default eventHandler(async (event) => {
   if (!decision.proceed) {
     // Guardrail block before any platform write — release the claim so the
     // approval can be retried (e.g. with override).
-    await releaseClaim({ execute }, actionId)
+    await releaseActionClaim({ execute }, actionId)
     return { status: 'blocked', reason: decision.reason, clampReasons: decision.clampReasons }
   }
 
