@@ -656,6 +656,7 @@ const bankDiscrepancy = computed(() => {
             {{ pacingReview.aiSummary }}
           </div>
         </div>
+        <SpendAutoActionSettings v-if="showPacingReview" class="mb-3" />
         <SocialSpendVarianceTable
           :items="spendData.items"
           :totals="spendData.totals"

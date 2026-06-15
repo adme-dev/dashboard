@@ -709,6 +709,9 @@ function summarizeValue(value: Record<string, unknown>) {
                       <UBadge :color="actionStatusColor(action.actionStatus) as any" variant="soft" size="sm">
                         {{ actionLabel(action.actionStatus) }}
                       </UBadge>
+                      <UBadge v-if="(action as any).metadata?.source === 'auto_action'" color="info" variant="subtle" size="xs">
+                        Auto-proposed
+                      </UBadge>
                     </div>
                     <p class="mt-0.5 text-xs text-muted">
                       {{ action.requestedByName || 'System' }} · {{ formatBudgetHistoryTime(actionDisplayTime(action)) }}
