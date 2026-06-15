@@ -69,10 +69,12 @@ This was reviewed explicitly. The two networks are covered by **two complementar
 - `IMPROVE_GOOGLE_TAG_COVERAGE` is tagged `review_only` and additionally flagged as a tracking-health item via a `trackingHealth: true` boolean on the normalized object (so the UI can group it).
 - Returns `{ optimizationScore: number|null, recommendations: NormalizedRecommendation[] }`.
 
-### 2. Endpoint — `server/api/agency/social/google/recommendations.get.ts` (new)
-- `requireAuth` + `requireRole(['owner','admin'])`. Query param `connectionId` (or `customerId`).
-- Loads the Google `social_connections` row, resolves auth (`resolveGoogleWriteAuth`), calls `fetchGoogleRecommendations`, normalizes, returns `{ optimizationScore, recommendations }`.
-- **Fail-safe:** any Google/network error → `{ optimizationScore: null, recommendations: [], error: <message> }` with HTTP 200. Never blocks the spend page.
+### 2. Endpoint — `server/api/agency/social/spend/[id]/google-recommendations.get.ts` (new)
+- **Spend-scoped** (keyed by `media_spend.id`, matching the slideover's data model — the spend page is cross-account, so there is no page-level "selected account").
+- `requireAuth` + `requireRole(['owner','admin'])`. Resolves the connection **and** `campaign_id` server-side from `media_spend(id) JOIN social_connections` (so the UI never threads a connectionId). Google rows only; for a Meta spend row it returns an empty result.
+- Resolves auth (`resolveGoogleWriteAuth`), calls `fetchGoogleRecommendations` for that one account, normalizes, and returns `{ optimizationScore, recommendations, campaignId }` — `recommendations` includes that account's recs; the UI highlights the one whose `campaignId` matches this campaign.
+- **One API call per campaign-open** (no 100-account fan-out).
+- **Fail-safe:** any Google/network error → `{ optimizationScore: null, recommendations: [], campaignId: null, error: <message> }` with HTTP 200. Never blocks the slideover.
 - Unflagged (read-only).
 
 ### 3. Apply (budget recs) — reuse existing chain, one additive change
@@ -81,12 +83,12 @@ This was reviewed explicitly. The two networks are covered by **two complementar
 - Approve + apply then flow through the **unchanged** approve endpoint and `execute.post.ts` → guard-railed Google write. **No new write code.**
 - Applying our *clamped* value (not Google's exact number) means the Google rec stays "open" in Google's UI — acceptable; we do **not** call Google's `ApplyRecommendation` or dismiss it.
 
-### 4. UI — `app/components/social/SpendGoogleRecommendations.vue` (new)
-- A panel in the spend view: optimization-score header, then a list of recs.
-- `budget_guardrailed` rows: current → recommended daily + impact, with an **"Apply (guardrailed)"** button (only enabled when the budget-write flags are armed; otherwise shows "recommend-only", mirroring the existing pacing-review gating in `app/utils/socialSpendPacingTable.ts`).
-- `review_only` rows: type label + impact + **"Review in Google Ads"** deep-link (`deepLink`).
-- Tracking-health items grouped under a small "Tracking health" subsection alongside a reference to the existing zero-conversion signal.
-- Reuses existing card/badge/button patterns (Nuxt UI v4). No new visual system.
+### 4. UI — inside `app/components/social/SpendCampaignHistorySlideover.vue` (the per-campaign Review slideover)
+- Recs are fetched **on slideover open** (in the existing `loadHistory(spendId)` flow) via the spend-scoped endpoint — 1 call per campaign-open. Rendered through a small presentational child `SpendGoogleRecommendations.vue`.
+- **The matching campaign budget rec** (`campaignId` == this campaign) is shown next to the existing pacing / "Analyze with AI" numbers, with an **"Apply (guardrailed)"** button — enabled only when the budget-write flags are armed (otherwise "recommend-only", mirroring `app/utils/socialSpendPacingTable.ts`). Apply reuses the slideover's existing plan→approve→apply path (just with `source: 'google_recommendation'`).
+- `review_only` recs for the account: type label + impact + **"Review in Google Ads"** deep-link.
+- Tracking-health items grouped under a small "Tracking health" subsection alongside the existing zero-conversion signal.
+- Titled **"Google optimization recommendations"** to stay distinct from the pacing "Recommendations" count. Reuses existing card/badge/button patterns (Nuxt UI v4). No spend-page panel; no new visual system.
 
 ## Error handling
 - Fetch: fail-safe to empty + error flag (endpoint never throws to the page).
@@ -99,8 +101,8 @@ This was reviewed explicitly. The two networks are covered by **two complementar
 - Apply path is already covered by existing budget-write / execute tests; add one `plan.post.ts` assertion that a provided `source` is recorded + used in dedupe.
 
 ## Files
-- Create: `server/utils/googleRecommendations.ts`, `server/api/agency/social/google/recommendations.get.ts`, `app/components/social/SpendGoogleRecommendations.vue`, `test/server/utils/googleRecommendations.test.ts`.
-- Modify: `server/api/agency/social/spend/[id]/actions/plan.post.ts` (optional `source` + rec metadata), `app/pages/agency/social/spend.vue` (mount the panel + fetch).
+- Create: `server/utils/googleRecommendations.ts`, `server/api/agency/social/spend/[id]/google-recommendations.get.ts`, `app/components/social/SpendGoogleRecommendations.vue`, `test/server/utils/googleRecommendations.test.ts`.
+- Modify: `server/api/agency/social/spend/[id]/actions/plan.post.ts` (optional `source` + rec metadata), `app/components/social/SpendCampaignHistorySlideover.vue` (fetch on open + render the recs child + apply).
 - Marketing: extend the `campaign-alerts` feature entry to mention surfacing Google's optimization recommendations.
 
 ## Safety
