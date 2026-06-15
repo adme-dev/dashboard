@@ -281,6 +281,7 @@ interface AiAnalysisResponse {
 }
 
 const analyzing = ref(false)
+const refreshFromPlatform = ref(false)
 const aiAnalysis = ref<AiAnalysisResponse | null>(null)
 const chosenSource = ref<'ai' | 'deterministic'>('ai')
 const approvingAdjustment = ref(false)
@@ -302,7 +303,7 @@ async function analyzeWithAi() {
   try {
     const res = await $fetch<AiAnalysisResponse>(`/api/agency/social/spend/${props.item.mediaSpendId}/ai-analysis`, {
       method: 'POST',
-      body: { issueType: props.item.issueType },
+      body: { issueType: props.item.issueType, refresh: refreshFromPlatform.value },
     })
     aiAnalysis.value = res
     chosenSource.value = res.ai ? 'ai' : 'deterministic'
@@ -508,6 +509,13 @@ function summarizeValue(value: Record<string, unknown>) {
               Analyze with AI
             </UButton>
           </div>
+
+          <UCheckbox
+            v-model="refreshFromPlatform"
+            label="Refresh from platform first"
+            size="xs"
+            class="mt-2"
+          />
 
           <div v-if="aiAnalysis" class="mt-3 rounded-lg border border-default p-3">
             <p class="mb-2 text-[11px] uppercase text-muted font-medium">
