@@ -273,6 +273,89 @@ async function applyApprovedAction(action: CampaignActionEntry) {
   }
 }
 
+interface AiAnalysisResponse {
+  deterministic: { dailyBudget: number, action: string }
+  ai: { proposedDailyBudget: number, rationale: string, confidence: 'low' | 'medium' | 'high', riskFlags: string[] } | null
+  dataFreshness: { syncedAt: string | null, refreshed: boolean, refreshError?: string }
+  modelId: string
+}
+
+const analyzing = ref(false)
+const aiAnalysis = ref<AiAnalysisResponse | null>(null)
+const chosenSource = ref<'ai' | 'deterministic'>('ai')
+const approvingAdjustment = ref(false)
+
+const chosenDailyBudget = computed(() => {
+  if (!aiAnalysis.value) return props.item?.recommendedDailyBudget ?? 0
+  if (chosenSource.value === 'ai' && aiAnalysis.value.ai) return aiAnalysis.value.ai.proposedDailyBudget
+  return aiAnalysis.value.deterministic.dailyBudget
+})
+
+function freshnessLabel(syncedAt: string | null) {
+  if (!syncedAt) return 'no sync timestamp'
+  return `synced ${formatBudgetHistoryTime(syncedAt)}`
+}
+
+async function analyzeWithAi() {
+  if (!props.item || analyzing.value) return
+  analyzing.value = true
+  try {
+    const res = await $fetch<AiAnalysisResponse>(`/api/agency/social/spend/${props.item.mediaSpendId}/ai-analysis`, {
+      method: 'POST',
+      body: {},
+    })
+    aiAnalysis.value = res
+    chosenSource.value = res.ai ? 'ai' : 'deterministic'
+    if (!res.ai) {
+      toast.add({ title: 'AI analysis unavailable', description: 'Showing the deterministic recommendation only.', color: 'warning' })
+    }
+  } catch (e: any) {
+    toast.add({ title: 'Analysis failed', description: e.data?.statusMessage || e.message || 'Could not analyze this campaign', color: 'error' })
+  } finally {
+    analyzing.value = false
+  }
+}
+
+async function approveAdjustment() {
+  if (!props.item || approvingAdjustment.value || !aiAnalysis.value) return
+  approvingAdjustment.value = true
+  try {
+    const chosen = chosenDailyBudget.value
+    const plan = await $fetch<{ action: { id: string, actionStatus: string } }>(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/plan`, {
+      method: 'POST',
+      body: {
+        currentDailyBudget: props.item.currentDailyBudget,
+        recommendedDailyBudget: chosen,
+        reason: aiAnalysis.value.ai?.rationale || props.item.recommendedAction,
+        issueType: props.item.issueType,
+        pacingRatio: props.item.pacingRatio,
+        projectedMonthEnd: props.item.projectedMonthEnd,
+        budget: props.item.budget,
+        aiProposedDaily: aiAnalysis.value.ai?.proposedDailyBudget ?? null,
+        deterministicDaily: aiAnalysis.value.deterministic.dailyBudget,
+        chosenSource: chosenSource.value,
+        confidence: aiAnalysis.value.ai?.confidence ?? null,
+        riskFlags: aiAnalysis.value.ai?.riskFlags ?? [],
+        modelId: aiAnalysis.value.modelId,
+      },
+    })
+    if (plan?.action?.id && plan.action.actionStatus === 'planned') {
+      await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${plan.action.id}/approve`, { method: 'POST' })
+    }
+    toast.add({ title: 'Adjustment approved', description: 'Ready for an admin to apply to the platform.', color: 'success' })
+    aiAnalysis.value = null
+    await loadHistory(props.item.mediaSpendId, true)
+  } catch (e: any) {
+    toast.add({ title: 'Could not approve adjustment', description: e.data?.statusMessage || e.message || 'The adjustment was not recorded', color: 'error' })
+  } finally {
+    approvingAdjustment.value = false
+  }
+}
+
+function confidenceColor(c: 'low' | 'medium' | 'high') {
+  return c === 'high' ? 'success' : c === 'medium' ? 'warning' : 'neutral'
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-AU', {
     style: 'currency',
@@ -412,6 +495,76 @@ function summarizeValue(value: Record<string, unknown>) {
               </UButton>
             </div>
             <p class="text-sm text-default">{{ item.recommendedAction }}</p>
+
+          <div class="mt-3">
+            <UButton
+              size="xs"
+              variant="soft"
+              color="primary"
+              icon="i-lucide-sparkles"
+              :loading="analyzing"
+              @click="analyzeWithAi"
+            >
+              Analyze with AI
+            </UButton>
+          </div>
+
+          <div v-if="aiAnalysis" class="mt-3 rounded-lg border border-default p-3">
+            <p class="mb-2 text-[11px] uppercase text-muted font-medium">
+              Recommended daily budget · {{ freshnessLabel(aiAnalysis.dataFreshness.syncedAt) }}
+            </p>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                class="rounded-lg border p-3 text-left transition"
+                :class="chosenSource === 'deterministic' ? 'border-primary bg-primary/5' : 'border-default'"
+                @click="chosenSource = 'deterministic'"
+              >
+                <p class="text-xs text-muted">Rule-based</p>
+                <p class="mt-0.5 text-base font-semibold tabular-nums">{{ formatCurrency(aiAnalysis.deterministic.dailyBudget) }}/day</p>
+              </button>
+              <button
+                v-if="aiAnalysis.ai"
+                type="button"
+                class="rounded-lg border p-3 text-left transition"
+                :class="chosenSource === 'ai' ? 'border-primary bg-primary/5' : 'border-default'"
+                @click="chosenSource = 'ai'"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-xs text-muted">AI proposed</p>
+                  <UBadge :color="confidenceColor(aiAnalysis.ai.confidence) as any" variant="subtle" size="xs">
+                    {{ aiAnalysis.ai.confidence }}
+                  </UBadge>
+                </div>
+                <p class="mt-0.5 text-base font-semibold tabular-nums">{{ formatCurrency(aiAnalysis.ai.proposedDailyBudget) }}/day</p>
+              </button>
+              <div v-else class="rounded-lg border border-dashed border-default p-3 text-xs text-muted">
+                AI analysis unavailable
+              </div>
+            </div>
+
+            <p v-if="aiAnalysis.ai" class="mt-2 text-xs text-muted">{{ aiAnalysis.ai.rationale }}</p>
+            <div v-if="aiAnalysis.ai && aiAnalysis.ai.riskFlags.length" class="mt-2 flex flex-wrap gap-1">
+              <UBadge v-for="flag in aiAnalysis.ai.riskFlags" :key="flag" color="warning" variant="subtle" size="xs">
+                {{ flag }}
+              </UBadge>
+            </div>
+            <p v-if="aiAnalysis.dataFreshness.refreshError" class="mt-2 text-xs text-amber-500">
+              Live refresh failed — using last-synced data.
+            </p>
+
+            <div class="mt-3 flex justify-end">
+              <UButton
+                size="xs"
+                color="primary"
+                icon="i-lucide-clipboard-check"
+                :loading="approvingAdjustment"
+                @click="approveAdjustment"
+              >
+                Approve {{ formatCurrency(chosenDailyBudget) }}/day adjustment
+              </UButton>
+            </div>
+          </div>
           </section>
 
           <section class="border-b border-default p-4 sm:p-5">
