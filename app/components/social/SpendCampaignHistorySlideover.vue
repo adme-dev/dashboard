@@ -302,7 +302,7 @@ async function analyzeWithAi() {
   try {
     const res = await $fetch<AiAnalysisResponse>(`/api/agency/social/spend/${props.item.mediaSpendId}/ai-analysis`, {
       method: 'POST',
-      body: {},
+      body: { issueType: props.item.issueType },
     })
     aiAnalysis.value = res
     chosenSource.value = res.ai ? 'ai' : 'deterministic'

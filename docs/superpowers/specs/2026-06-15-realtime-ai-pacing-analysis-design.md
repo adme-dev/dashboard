@@ -53,12 +53,12 @@ A thin per-campaign analysis endpoint orchestrates: (optional single-campaign re
 - In the **Current recommendation** section: an **"Analyze with AI"** button + a small **"Refresh from platform"** toggle (off by default).
 - On click → loading state → render a **comparison card**: Deterministic `$X/day` vs AI `$Y/day`, the AI rationale, a confidence badge, risk-flag chips, and a "synced Nh ago" freshness line (with a refreshed/failed indicator).
 - A segmented control (Deterministic | AI) lets the human pick the number to approve; defaults to AI when present, else deterministic.
-- **"Approve this adjustment"** → POST the existing `plan` endpoint with the chosen `recommendedDailyBudget` and `metadata.source = 'ai_analysis'`, carrying `{ aiProposedDaily, deterministicDaily, chosenSource, rationale, confidence, riskFlags, modelId, dataFreshness }`; then approve it (existing `approve` endpoint), so the row lands `approved`.
+- **"Approve this adjustment"** → POST the existing `plan` endpoint with the chosen `recommendedDailyBudget`, keeping `metadata.source = 'ai_pacing_review'` (so the existing dedupe query + active-index still match) and carrying the AI provenance under a nested `metadata.aiAnalysis = { chosenSource, aiProposedDaily, deterministicDaily, confidence, riskFlags, modelId }`; then approve it (existing `approve` endpoint), so the row lands `approved`.
 - The already-shipped admin-only **"Apply to Meta/Google"** button performs the guard-railed live write. No change to that path.
 
 ### Data Flow
 
-click Analyze → [optional single-campaign refresh] → deterministic pacing + Groq reasoning → comparison card → human picks # → **Approve this adjustment** (plan+approve, audited, `source: ai_analysis`) → admin **Apply** (guardrails → write → read-back → audit) .
+click Analyze → [optional single-campaign refresh] → deterministic pacing + Groq reasoning → comparison card → human picks # → **Approve this adjustment** (plan+approve, audited, `source: ai_pacing_review` + nested `metadata.aiAnalysis`) → admin **Apply** (guardrails → write → read-back → audit) .
 
 ### Error Handling / Fail-safe
 

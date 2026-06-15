@@ -9,6 +9,12 @@ export default eventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id is required' })
 
+  // The operator clicked Review on a specific issue; analyze that one. A campaign
+  // can surface multiple pacing issues, so match the requested type rather than
+  // taking whichever item sorted first.
+  const body = await readBody(event).catch(() => ({})) as { issueType?: string }
+  const requestedIssue = typeof body?.issueType === 'string' ? body.issueType : null
+
   const row = await queryOne<PacingReviewRow & { synced_at: string | null }>(
     `SELECT
        ms.id::text AS media_spend_id,
@@ -41,7 +47,7 @@ export default eventHandler(async (event) => {
 
   const now = new Date()
   const review = buildPacingReview([row], { now, period: row.period })
-  const item = review.items[0]
+  const item = (requestedIssue && review.items.find(i => i.issueType === requestedIssue)) || review.items[0]
   if (!item) throw createError({ statusCode: 422, statusMessage: 'Campaign is not currently flagged for pacing review' })
 
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
