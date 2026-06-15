@@ -9,6 +9,7 @@ import { updateGoogleCampaignDailyBudget } from '~~/server/utils/googleAdsClient
 import { resolveGoogleWriteAuth } from '~~/server/utils/googleWriteAuth'
 import { claimApprovedAction, releaseActionClaim } from '~~/server/utils/campaignActionClaim'
 import { splitDailyBudget } from '~~/server/utils/budgetSplit'
+import { executeAdSetSplitWrites } from '~~/server/utils/budgetSplitExecutor'
 import { kvDelete } from '~~/server/utils/kv'
 
 export default eventHandler(async (event) => {
@@ -203,26 +204,13 @@ export default eventHandler(async (event) => {
         return { status: 'failed', reason: 'split_sum_mismatch' }
       }
 
-      // Pre-populate every ad set so the audit records the ones we never attempted
-      // after a mid-loop failure (the campaign is then left in a mixed state).
-      type SplitResult = { adSetId: string; requested: number; readBack: number | null; status: 'applied' | 'failed' | 'not_attempted'; error?: string }
-      const splitResults: SplitResult[] = split.splits.map(s => ({ adSetId: s.id, requested: s.newDailyMajor, readBack: null, status: 'not_attempted' }))
-      let allApplied = true
-      for (let i = 0; i < split.splits.length; i++) {
-        const s = split.splits[i]!
-        try {
-          const res = await updateMetaDailyBudget(s.id, s.newDailyMajor, row.access_token)
-          const ok = Math.abs(res.readBackDailyMajor - s.newDailyMajor) < 0.01
-          splitResults[i]!.readBack = res.readBackDailyMajor
-          splitResults[i]!.status = ok ? 'applied' : 'failed'
-          if (!ok) { allApplied = false; break }
-        } catch (err: any) {
-          splitResults[i]!.status = 'failed'
-          splitResults[i]!.error = (err?.data?.error?.message || err?.message || 'write failed').slice(0, 300)
-          allApplied = false
-          break
-        }
-      }
+      // Write each ad set sequentially with read-back; stops at the first failure so
+      // later ad sets stay 'not_attempted' (campaign left in a mixed state — Meta has
+      // no cross-ad-set transaction). Pure loop extracted + unit-tested.
+      const { allApplied, results: splitResults } = await executeAdSetSplitWrites(
+        split.splits,
+        (adSetId, dailyMajor) => updateMetaDailyBudget(adSetId, dailyMajor, row.access_token),
+      )
 
       const appliedCount = splitResults.filter(r => r.status === 'applied').length
       const failedIds = splitResults.filter(r => r.status === 'failed').map(r => r.adSetId)
