@@ -12,8 +12,19 @@ export default eventHandler(async (event) => {
   // The operator clicked Review on a specific issue; analyze that one. A campaign
   // can surface multiple pacing issues, so match the requested type rather than
   // taking whichever item sorted first.
-  const body = await readBody(event).catch(() => ({})) as { issueType?: string }
+  const body = await readBody(event).catch(() => ({})) as { issueType?: string, refresh?: boolean }
   const requestedIssue = typeof body?.issueType === 'string' ? body.issueType : null
+
+  // Optional: re-pull this single campaign's metrics from the platform before
+  // analyzing (fail-safe — falls back to synced data on any error).
+  let refreshed = false
+  let refreshError: string | undefined
+  if (body?.refresh === true) {
+    const { refreshSingleCampaignSpend } = await import('~~/server/utils/spendCampaignRefresh')
+    const r = await refreshSingleCampaignSpend(id)
+    refreshed = r.refreshed
+    refreshError = r.error
+  }
 
   const row = await queryOne<PacingReviewRow & { synced_at: string | null }>(
     `SELECT
@@ -93,7 +104,8 @@ export default eventHandler(async (event) => {
     deterministicAction: item.recommendedAction,
     ai: aiResult,
     syncedAt: row.synced_at,
-    refreshed: false,
+    refreshed,
+    refreshError,
     modelId,
   })
 })
