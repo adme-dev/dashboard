@@ -103,6 +103,10 @@ const cancellingActionId = ref<string | null>(null)
 const applyingActionId = ref<string | null>(null)
 const loadedSpendId = ref<string | null>(null)
 
+// Google optimization recommendations (Google rows only; fetched on open).
+const googleRecs = ref<{ optimizationScore: number | null; recommendations: any[]; campaignId: string | null }>({ optimizationScore: null, recommendations: [], campaignId: null })
+const applyingRec = ref<string | null>(null)
+
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
 const performanceSignals = computed(() => props.item ? performanceSignalRows(props.item.performance) : [])
 const matchingPlannedAction = computed(() => props.item ? matchingPlannedBudgetAction(platformActions.value, props.item.recommendedDailyBudget) : null)
@@ -134,6 +138,8 @@ async function loadHistory(spendId: string, force = false) {
     history.value = budgetHistory
     platformActions.value = actionHistory
     loadedSpendId.value = spendId
+    // Non-blocking: surface Google's native recommendations for this campaign.
+    void loadGoogleRecs(spendId)
   } catch (e: any) {
     toast.add({
       title: 'History unavailable',
@@ -175,6 +181,51 @@ async function planCurrentRecommendation() {
     })
   } finally {
     planning.value = false
+  }
+}
+
+async function loadGoogleRecs(spendId: string) {
+  if (props.item?.platform !== 'google') {
+    googleRecs.value = { optimizationScore: null, recommendations: [], campaignId: null }
+    return
+  }
+  try {
+    googleRecs.value = await $fetch(`/api/agency/social/spend/${spendId}/google-recommendations`)
+  } catch {
+    googleRecs.value = { optimizationScore: null, recommendations: [], campaignId: null }
+  }
+}
+
+async function applyGoogleRec(rec: any) {
+  const spendId = props.item?.mediaSpendId
+  if (!spendId || rec?.recommendedDailyMajor == null || applyingRec.value) return
+  applyingRec.value = rec.resourceName
+  try {
+    const planned = await $fetch(`/api/agency/social/spend/${spendId}/actions/plan`, {
+      method: 'POST',
+      body: {
+        currentDailyBudget: rec.currentDailyMajor ?? props.item?.currentDailyBudget ?? 0,
+        recommendedDailyBudget: rec.recommendedDailyMajor,
+        source: 'google_recommendation',
+        recommendationResourceName: rec.resourceName,
+        reason: rec.title,
+      },
+    }) as any
+    const actionId = planned?.action?.id
+    if (!actionId) throw new Error('Could not record the recommendation')
+    await $fetch(`/api/agency/social/spend/${spendId}/actions/${actionId}/approve`, { method: 'POST' })
+    const result = await $fetch(`/api/agency/social/spend/${spendId}/actions/${actionId}/execute`, { method: 'POST', body: {} }) as any
+    if (result?.status === 'applied') {
+      toast.add({ title: 'Applied', description: 'Recommendation written through the guard-railed budget update.', color: 'success' })
+    } else {
+      // Server enforces the live-write flags + guardrails; surface why it didn't apply.
+      toast.add({ title: 'Not applied', description: `Status: ${result?.status || 'unknown'}${result?.reason ? ` (${result.reason})` : ''}`, color: 'warning' })
+    }
+    await loadHistory(spendId, true)
+  } catch (e: any) {
+    toast.add({ title: 'Apply failed', description: e?.data?.statusMessage || e?.message || 'Error', color: 'error' })
+  } finally {
+    applyingRec.value = null
   }
 }
 
@@ -571,6 +622,20 @@ function summarizeValue(value: Record<string, unknown>) {
               </UButton>
             </div>
           </div>
+          </section>
+
+          <section
+            v-if="googleRecs.recommendations.length || googleRecs.optimizationScore != null"
+            class="border-b border-default p-4 sm:p-5"
+          >
+            <SpendGoogleRecommendations
+              :optimization-score="googleRecs.optimizationScore"
+              :recommendations="googleRecs.recommendations"
+              :campaign-id="googleRecs.campaignId"
+              :armed="canApplyLive"
+              :applying="applyingRec"
+              @apply="applyGoogleRec"
+            />
           </section>
 
           <section class="border-b border-default p-4 sm:p-5">
