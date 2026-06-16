@@ -24,7 +24,7 @@ export default eventHandler(async (event) => {
   // Validate the token by calling /me
   let me: { id: string; name: string }
   try {
-    me = await ofetch('https://graph.facebook.com/v22.0/me', {
+    me = await ofetch('https://graph.facebook.com/v25.0/me', {
       query: { access_token: token, fields: 'id,name' }
     })
   } catch (err: any) {

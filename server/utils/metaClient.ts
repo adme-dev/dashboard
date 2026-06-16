@@ -1,13 +1,13 @@
 /**
  * Meta (Facebook/Instagram) Marketing API Client
  * Lightweight client using ofetch (matches mondayClient.ts pattern)
- * API v22.0 — https://developers.facebook.com/docs/marketing-apis
+ * API v25.0 — https://developers.facebook.com/docs/marketing-apis
  */
 
 import { ofetch } from 'ofetch'
 import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
 
-const META_GRAPH_BASE = 'https://graph.facebook.com/v22.0'
+const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
 
 // ============================================
 // Types
@@ -115,7 +115,7 @@ export function getMetaAuthUrl(appId: string, redirectUri: string, state: string
     scope: 'ads_management,ads_read,pages_show_list,pages_read_engagement,pages_manage_ads,pages_manage_metadata,leads_retrieval,business_management',
     response_type: 'code'
   })
-  return `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`
+  return `https://www.facebook.com/v25.0/dialog/oauth?${params.toString()}`
 }
 
 /**

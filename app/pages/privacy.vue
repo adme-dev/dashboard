@@ -19,7 +19,7 @@
 
         <!-- Intro -->
         <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-12">
-          This Privacy Policy explains how ADME Digital Pty Ltd (ABN XX XXX XXX XXX), trading as <strong class="text-[#121317] dark:text-white font-[450]">XeroFlow</strong> ("we", "us", "our"), collects, uses, discloses, and protects personal information through the XeroFlow platform and related services (collectively, the "Service"). By using the Service you acknowledge that you have read and understood this policy.
+          This Privacy Policy explains how ADME Advertising Pty Ltd (ABN 46 613 333 592), trading as <strong class="text-[#121317] dark:text-white font-[450]">XeroFlow</strong> ("we", "us", "our"), collects, uses, discloses, and protects personal information through the XeroFlow platform and related services (collectively, the "Service"). By using the Service you acknowledge that you have read and understood this policy.
         </p>
 
         <div class="flex flex-col gap-12">
@@ -239,7 +239,8 @@
               If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact:
             </p>
             <div class="mt-4 p-5 rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
-              <p class="font-[450] text-[#121317] dark:text-white">ADME Digital Pty Ltd</p>
+              <p class="font-[450] text-[#121317] dark:text-white">ADME Advertising Pty Ltd</p>
+              <p class="mt-1">ABN 46 613 333 592</p>
               <p class="mt-1">Privacy Officer</p>
               <p class="mt-1">
                 Email: <a href="mailto:privacy@xeroflow.agency" class="text-[#121317] dark:text-white underline underline-offset-2">privacy@xeroflow.agency</a>
@@ -260,8 +261,8 @@ definePageMeta({ layout: false })
 
 useSeoMeta({
   title: 'Privacy Policy — XeroFlow',
-  description: 'How ADME Digital (XeroFlow) collects, uses, and protects your data. Covers lawful basis, data retention, AI processing, international transfers, sub-processors, and your rights under the Privacy Act and GDPR.',
+  description: 'How ADME Advertising Pty Ltd (XeroFlow) collects, uses, and protects your data. Covers lawful basis, data retention, AI processing, international transfers, sub-processors, and your rights under the Privacy Act and GDPR.',
   ogTitle: 'Privacy Policy — XeroFlow',
-  ogDescription: 'How ADME Digital (XeroFlow) collects, uses, and protects your data. Covers lawful basis, data retention, AI processing, international transfers, sub-processors, and your rights under the Privacy Act and GDPR.',
+  ogDescription: 'How ADME Advertising Pty Ltd (XeroFlow) collects, uses, and protects your data. Covers lawful basis, data retention, AI processing, international transfers, sub-processors, and your rights under the Privacy Act and GDPR.',
 })
 </script>

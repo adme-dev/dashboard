@@ -12,7 +12,7 @@ import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaIt
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { mapFbPostInsights, mapFbAccountInsights } from '~~/server/utils/socialReporting/normalize'
 
-const GRAPH_API_BASE = 'https://graph.facebook.com/v20.0'
+const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 
 // ── Error helpers ──────────────────────────────────────────────
 

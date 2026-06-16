@@ -18,7 +18,7 @@ import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaIt
 import { buildMessengerSend } from './facebook'
 import { mapIgMediaInsights, mapIgAccountInsights } from '~~/server/utils/socialReporting/normalize'
 
-const GRAPH_API_BASE = 'https://graph.facebook.com/v20.0'
+const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 
 /** Max time (ms) to wait for video container processing */
 const VIDEO_POLL_TIMEOUT_MS = 60_000

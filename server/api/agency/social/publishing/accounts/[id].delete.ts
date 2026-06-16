@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
   if (row?.platform === 'facebook' && row.access_token && row.metadata?.webhook_subscribed) {
     try {
       await fetch(
-        `https://graph.facebook.com/v22.0/${row.platform_account_id}/subscribed_apps?access_token=${encodeURIComponent(row.access_token)}`,
+        `https://graph.facebook.com/v25.0/${row.platform_account_id}/subscribed_apps?access_token=${encodeURIComponent(row.access_token)}`,
         { method: 'DELETE' })
     } catch { /* ignore — the row is being deleted regardless */ }
   }

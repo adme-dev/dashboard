@@ -335,7 +335,7 @@ async function fetchMetaBreakdowns(
   const { since, until } = getMonthRange(month, year)
   const { ofetch } = await import('ofetch')
 
-  const META_GRAPH_BASE = 'https://graph.facebook.com/v22.0'
+  const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
   const dimensionMap: Record<string, string> = {
     age: 'age', gender: 'gender', device: 'impression_device', geo: 'country',
     placement: 'publisher_platform',
@@ -625,7 +625,7 @@ async function fetchMetaScalarMetrics(
   const { getMonthRange } = await import('~~/server/utils/metaClient')
   const { since, until } = getMonthRange(month, year)
   const { ofetch } = await import('ofetch')
-  const META_GRAPH_BASE = 'https://graph.facebook.com/v22.0'
+  const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
 
   // Campaign-level insights: frequency, reach, actions, video metrics, engagement
   try {

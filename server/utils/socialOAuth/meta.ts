@@ -4,7 +4,7 @@
 // (listManagedPages, subscribePageWebhook) so everything is unit-testable.
 import type { AccountRow } from './store'
 
-const GRAPH = 'https://graph.facebook.com/v22.0'
+const GRAPH = 'https://graph.facebook.com/v25.0'
 
 // Page + IG comment/publish/insights scopes — all standard (NO App Review; App Review is DMs/mentions,
 // Slice 2d). FB post/page insights ride `pages_read_engagement` (already present); IG insights need
@@ -42,7 +42,7 @@ export function buildMetaAuthUrl(appId: string, redirectUri: string, state: stri
   const params = new URLSearchParams({
     client_id: appId, redirect_uri: redirectUri, state, scope: metaScopeSet(includeMessaging), response_type: 'code',
   })
-  return `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`
+  return `https://www.facebook.com/v25.0/dialog/oauth?${params.toString()}`
 }
 
 export interface ManagedPage {
