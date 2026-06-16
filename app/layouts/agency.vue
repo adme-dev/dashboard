@@ -13,6 +13,7 @@ const showActivityHub = computed(() => !route.path.startsWith('/agency/chat'))
 
 // RBAC: permission-gated navigation
 const {
+  isReadOnly,
   canAccessClients,
   canAccessMediaBuying,
   canAccessFinance,
@@ -28,6 +29,23 @@ const {
 const close = () => {
   open.value = false
 }
+
+// A read-only account whose ONLY capability is media buying (e.g. the Meta App
+// Review reviewer account) gets a stripped-down sidebar showing just Ad Spend.
+// It must not browse clients, boards, financials, leads, settings, etc. Any
+// normal staff role (members, real media buyers — none of which are read-only)
+// is unaffected; this matches only the read-only spend-reviewer profile.
+const isSpendOnlyReviewer = computed(() =>
+  isReadOnly.value &&
+  canAccessMediaBuying.value &&
+  !canAccessClients.value &&
+  !canAccessFinance.value &&
+  !canAccessInvoices.value &&
+  !canAccessSales.value &&
+  !canAccessCreative.value &&
+  !canAccessReports.value &&
+  !canAccessAdmin.value
+)
 
 // Fetch workspaces
 const { data: workspacesData } = useLazyFetch('/api/agency/workspaces')
@@ -52,6 +70,8 @@ interface AgencyWorkspace {
 
 // Build navigation from workspaces
 const workspaceNav = computed(() => {
+  // Spend-only reviewer never sees the client workspace list.
+  if (isSpendOnlyReviewer.value) return [] as NavigationMenuItem[]
   return (workspaces.value as AgencyWorkspace[]).map(ws => ({
     label: ws.name,
     icon: `i-lucide-${ws.icon || 'briefcase'}`,
@@ -101,6 +121,14 @@ const xeroConnected = computed(() => xeroStatus.value?.connected ?? false)
 
 // Main navigation — organized by feature groups, gated by RBAC
 const mainNav = computed<NavigationMenuItem[]>(() => {
+  // Spend-only reviewer: only the Ad Spend route, nothing else.
+  if (isSpendOnlyReviewer.value) {
+    return [
+      { type: 'label', label: 'Ad Spend' },
+      { label: 'Ad Spend', icon: 'i-lucide-megaphone', to: '/agency/social/spend', onSelect: close }
+    ]
+  }
+
   const items: NavigationMenuItem[] = [
     // Main — visible to all authenticated users
     { type: 'label', label: 'Main' },
@@ -297,6 +325,9 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
 const footerNav = computed<NavigationMenuItem[]>(() => {
   const items: NavigationMenuItem[] = []
 
+  // Spend-only reviewer: no settings/admin/integrations in the footer.
+  if (isSpendOnlyReviewer.value) return items
+
   // Monday — admin only
   if (canAccessAdmin.value) {
     items.push({
@@ -416,21 +447,22 @@ watch([() => route.path, () => mainNav.value.length], () => {
       <template #header="{ collapsed }">
         <div class="flex items-center gap-2 px-2">
           <UButton
+            v-if="!isSpendOnlyReviewer"
             to="/agency/boards"
             variant="ghost"
             color="neutral"
             icon="i-lucide-arrow-left"
             size="sm"
           />
-          <span v-if="!collapsed" class="font-semibold">Workspaces</span>
+          <span v-if="!collapsed" class="font-semibold">{{ isSpendOnlyReviewer ? 'Ad Spend' : 'Workspaces' }}</span>
         </div>
       </template>
 
       <template #default="{ collapsed }">
-        <UDashboardSearchButton :collapsed="collapsed" class="bg-transparent ring-default" />
+        <UDashboardSearchButton v-if="!isSpendOnlyReviewer" :collapsed="collapsed" class="bg-transparent ring-default" />
 
         <!-- New Board Button -->
-        <div class="px-2 py-2">
+        <div v-if="!isSpendOnlyReviewer" class="px-2 py-2">
           <UButton
             v-if="!collapsed"
             color="primary"
