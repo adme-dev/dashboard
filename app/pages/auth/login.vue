@@ -37,7 +37,7 @@
 
         <!-- Sign In Form -->
         <div v-if="!linkSent">
-          <form @submit.prevent="requestMagicLink" class="space-y-4">
+          <form v-if="!passwordMode" @submit.prevent="requestMagicLink" class="space-y-4">
             <div>
               <label class="block text-[13px] font-medium text-[#121317] dark:text-white mb-2">Email address</label>
               <input
@@ -63,13 +63,60 @@
             </button>
           </form>
 
+          <!-- Password Sign In Form -->
+          <form v-else @submit.prevent="signInWithPassword" class="space-y-4">
+            <div>
+              <label class="block text-[13px] font-medium text-[#121317] dark:text-white mb-2">Email address</label>
+              <input
+                v-model="email"
+                type="email"
+                placeholder="you@company.com"
+                class="w-full px-4 py-3 rounded-xl border border-[#121317]/10 dark:border-white/10 bg-white dark:bg-white/[0.04] text-[15px] text-[#121317] dark:text-white placeholder:text-[#45474D]/50 dark:placeholder:text-white/30 focus:outline-none focus:border-[#121317]/30 dark:focus:border-white/20 focus:ring-2 focus:ring-[#121317]/5 dark:focus:ring-white/10 transition-all"
+                :disabled="loading"
+                autofocus
+              />
+            </div>
+
+            <div>
+              <label class="block text-[13px] font-medium text-[#121317] dark:text-white mb-2">Password</label>
+              <input
+                v-model="password"
+                type="password"
+                placeholder="Enter your password"
+                class="w-full px-4 py-3 rounded-xl border border-[#121317]/10 dark:border-white/10 bg-white dark:bg-white/[0.04] text-[15px] text-[#121317] dark:text-white placeholder:text-[#45474D]/50 dark:placeholder:text-white/30 focus:outline-none focus:border-[#121317]/30 dark:focus:border-white/20 focus:ring-2 focus:ring-[#121317]/5 dark:focus:ring-white/10 transition-all"
+                :disabled="loading"
+              />
+            </div>
+
+            <button
+              type="submit"
+              class="w-full py-3 px-4 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[15px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              :disabled="loading || !isValidEmail || !password"
+            >
+              <svg v-if="loading" class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              {{ loading ? 'Signing in...' : 'Sign in' }}
+            </button>
+          </form>
+
           <!-- Error message -->
           <div v-if="errorMsg" class="mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
             <p class="text-[13px] text-red-600 dark:text-red-400">{{ errorMsg }}</p>
           </div>
 
-          <p class="mt-6 text-center text-[13px] text-[#45474D]/70 dark:text-white/40">
+          <p v-if="!passwordMode" class="mt-6 text-center text-[13px] text-[#45474D]/70 dark:text-white/40">
             We'll send you a secure link to sign in instantly — no password needed.
+            <br>
+            <button type="button" class="mt-1 text-[#121317] dark:text-white hover:underline font-medium" @click="passwordMode = true; errorMsg = ''">
+              Sign in with a password instead
+            </button>
+          </p>
+          <p v-else class="mt-6 text-center text-[13px] text-[#45474D]/70 dark:text-white/40">
+            <button type="button" class="text-[#121317] dark:text-white hover:underline font-medium" @click="passwordMode = false; errorMsg = ''">
+              Use a magic link instead
+            </button>
           </p>
 
           <!-- Dev Mode Notice -->
@@ -203,6 +250,8 @@ definePageMeta({
 
 const route = useRoute()
 const email = ref('')
+const password = ref('')
+const passwordMode = ref(false)
 const loading = ref(false)
 const linkSent = ref(false)
 const devLink = ref('')
@@ -255,6 +304,33 @@ async function requestMagicLink() {
       // Still show success to prevent email enumeration
       linkSent.value = true
     }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function signInWithPassword() {
+  if (!isValidEmail.value || !password.value) return
+
+  loading.value = true
+  errorMsg.value = ''
+
+  try {
+    const response = await $fetch<{ success?: boolean }>('/api/auth/login', {
+      method: 'POST',
+      body: { email: email.value, password: password.value },
+      credentials: 'include'
+    })
+
+    if (response?.success) {
+      // Hard navigation so the auth middleware re-runs with the freshly-set cookie
+      window.location.href = '/agency'
+    } else {
+      errorMsg.value = 'Invalid email or password'
+    }
+  } catch (error: any) {
+    console.error('Password sign-in failed:', error)
+    errorMsg.value = error.data?.statusMessage || 'Invalid email or password'
   } finally {
     loading.value = false
   }
