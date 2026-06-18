@@ -6,6 +6,11 @@ import {
   type AiAssemblyTimelinePayload,
 } from '~~/app/utils/video/aiAssemblyTimeline'
 import { apiErrorDescription } from '~~/app/utils/apiError'
+import {
+  VIDEO_PRODUCER_RECIPES,
+  findVideoProducerRecipe,
+  type VideoProducerTargetFormat,
+} from '~~/app/utils/video/producerRecipes'
 import type { VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
 
 const props = withDefaults(defineProps<{
@@ -28,17 +33,31 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const selectedRecipeId = ref(VIDEO_PRODUCER_RECIPES[0]?.id ?? null)
 const brief = ref('Create a punchy vertical social edit using the strongest project assets.')
-const targetFormat = ref('reels_9x16')
+const targetFormat = ref<VideoProducerTargetFormat>('reels_9x16')
 const assembling = ref(false)
 const assemblyPlan = ref<AiAssemblyPlan | null>(props.initialPlan)
 
+const selectedRecipe = computed(() => findVideoProducerRecipe(selectedRecipeId.value))
+const recipeOptions = computed(() => VIDEO_PRODUCER_RECIPES.map(recipe => ({
+  label: recipe.label,
+  value: recipe.id,
+})))
 const timelinePayloads = computed(() => assemblyPlanToTimelinePayloads(assemblyPlan.value))
 const hasManualLaneAssets = computed(() => props.voiceAssetCount > 0 || props.overlayAssetCount > 0)
 
 watch(() => props.initialPlan, (plan) => {
   assemblyPlan.value = plan
 })
+
+function applyRecipe(recipeId: string | null | undefined = selectedRecipeId.value) {
+  const recipe = findVideoProducerRecipe(recipeId)
+  if (!recipe) return
+  selectedRecipeId.value = recipe.id
+  brief.value = recipe.brief
+  targetFormat.value = recipe.targetFormat
+}
 
 async function assemblePlan() {
   assembling.value = true
@@ -112,6 +131,40 @@ function durationLabel(seconds: number | null | undefined) {
         </div>
       </div>
       <p v-else class="mt-1 text-xs text-muted">Select an item in the library rail to anchor the brief.</p>
+    </div>
+
+    <div class="mt-3 rounded-md border border-default bg-default/30 p-2">
+      <div class="flex items-center gap-1.5">
+        <USelect
+          v-model="selectedRecipeId"
+          :items="recipeOptions"
+          value-key="value"
+          size="xs"
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-clipboard-list"
+          aria-label="Producer recipe"
+          class="min-w-0 flex-1"
+        />
+        <UButton
+          icon="i-lucide-check"
+          size="xs"
+          variant="soft"
+          color="primary"
+          label="Use"
+          @click="applyRecipe()"
+        />
+      </div>
+      <p v-if="selectedRecipe" class="mt-2 text-xs leading-snug text-muted">{{ selectedRecipe.description }}</p>
+      <div v-if="selectedRecipe" class="mt-2 flex flex-wrap gap-1">
+        <span
+          v-for="assetType in selectedRecipe.preferredAssetTypes"
+          :key="assetType"
+          class="rounded border border-default bg-elevated px-1.5 py-0.5 text-[10px] uppercase text-muted"
+        >
+          {{ assetType }}
+        </span>
+      </div>
     </div>
 
     <div class="mt-3 rounded-md border border-default bg-default/30 transition-colors focus-within:border-primary/50">

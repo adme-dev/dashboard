@@ -21,7 +21,7 @@
 - [ ] Confirm PRD scope.
 - [ ] Decide whether caption generation is first-slice or later.
 - [ ] Decide whether inline text overlay templates are first-slice or later.
-- [ ] Pick first producer recipe defaults.
+- [x] Pick first producer recipe defaults.
 
 **Verification:** Human approval before implementation.
 
@@ -383,15 +383,15 @@
 
 **Acceptance criteria:**
 
-- [ ] Recipe changes brief/format/asset filters predictably.
-- [ ] Recipe does not bypass policy gates.
-- [ ] Recipe is editable before execution.
+- [x] Recipe changes brief/format/asset filters predictably.
+- [x] Recipe does not bypass policy gates.
+- [x] Recipe is editable before execution.
 
 **Verification:**
 
-- [ ] Unit tests for recipe defaults.
+- [x] Unit tests for recipe defaults.
 - [ ] Manual: select recipe, build plan.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 11.
 

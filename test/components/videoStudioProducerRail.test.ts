@@ -59,6 +59,8 @@ describe('VideoStudioProducerRail', () => {
     })
 
     expect(html).toContain('AI Producer')
+    expect(html).toContain('Dealer offer')
+    expect(html).toContain('Fast vertical offer cut')
     expect(html).toContain('Generated drive-by')
     expect(html).toContain('Build draft plan')
     expect(html).toContain('Voice')
