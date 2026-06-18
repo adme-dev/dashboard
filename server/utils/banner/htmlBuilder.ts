@@ -98,14 +98,17 @@ function buildKeyframeAnimLines(l: Layer): string[] {
     if (skipXY && (prop === 'x' || prop === 'y')) continue
     const sorted = [...keyframes].sort((a, b) => a.time - b.time)
     const gProp = kfGsapProp(prop as KeyframeProperty, isBg)
+    const first = sorted[0]
+    if (!first) continue
 
     // Set initial value
-    lines.push(`  tl.set(${sel}, { ${gProp}: ${sorted[0].value} }, ${sorted[0].time});`)
+    lines.push(`  tl.set(${sel}, { ${gProp}: ${first.value} }, ${first.time});`)
 
     // Tweens between keyframes
     for (let i = 0; i < sorted.length - 1; i++) {
       const from = sorted[i]
       const to = sorted[i + 1]
+      if (!from || !to) continue
       const dur = to.time - from.time
       if (dur <= 0) continue
       const ease = from.easing || 'power2.out'

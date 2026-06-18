@@ -89,6 +89,9 @@ export default defineEventHandler(async (event) => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       const dim = dimensions[i]
+      if (!file || !dim) {
+        throw createError({ statusCode: 400, statusMessage: 'Dimensions count must match file count' })
+      }
       const fileName = file.filename || `image-${i}`
       const mimeType = file.type || 'image/png'
       // Upload to R2

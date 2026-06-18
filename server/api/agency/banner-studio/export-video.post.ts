@@ -96,7 +96,7 @@ export default defineEventHandler(async (event) => {
         let duration = 5
         try {
           duration = await page.evaluate(() => {
-            const g = (window as any).gsap
+            const g = (globalThis as typeof globalThis & { gsap?: any }).gsap
             if (!g) return 5
             const children = g.globalTimeline.getChildren(false)
             if (children.length > 0) return children[0].duration()
@@ -119,7 +119,7 @@ export default defineEventHandler(async (event) => {
             const seekTime = (f / validFps)
 
             await page.evaluate((t: number) => {
-              const g = (window as any).gsap
+              const g = (globalThis as typeof globalThis & { gsap?: any }).gsap
               if (!g) return
               const children = g.globalTimeline.getChildren(false)
               if (children.length > 0) {

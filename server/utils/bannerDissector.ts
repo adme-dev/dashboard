@@ -471,11 +471,12 @@ export async function analyzeImage(
     const resolvedBindings: string[] = []
     for (const rawBinding of layer.token_bindings) {
       // Find token whose type matches the raw binding
-      const matchingTokenId = Object.keys(tokens).find(tid => tokens[tid].type === rawBinding)
-      if (matchingTokenId) {
+      const matchingTokenId = Object.keys(tokens).find(tid => tokens[tid]?.type === rawBinding)
+      const matchingToken = matchingTokenId ? tokens[matchingTokenId] : undefined
+      if (matchingTokenId && matchingToken) {
         resolvedBindings.push(matchingTokenId)
-        if (!tokens[matchingTokenId].affects_layers.includes(layer.id)) {
-          tokens[matchingTokenId].affects_layers.push(layer.id)
+        if (!matchingToken.affects_layers.includes(layer.id)) {
+          matchingToken.affects_layers.push(layer.id)
         }
       }
     }
@@ -575,7 +576,7 @@ async function removeBackground(
         headers: {
           'Authorization': `Bearer ${hfApiToken}`,
         },
-        body: croppedPng,
+        body: new Uint8Array(croppedPng),
       }
     )
 

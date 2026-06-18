@@ -59,7 +59,11 @@ export default defineEventHandler(async (event) => {
       }
       return row
     })
-    const colNames = Object.keys(parsed[0])
+    const firstRow = parsed[0]
+    if (!firstRow || typeof firstRow !== 'object') {
+      throw createError({ statusCode: 400, statusMessage: 'JSON rows must be objects' })
+    }
+    const colNames = Object.keys(firstRow)
     columns = colNames.map(n => ({ name: n, type: detectColumnType(rows, n) }))
   } else {
     // Parse CSV
@@ -68,6 +72,9 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'CSV must have a header row and at least one data row' })
     }
     const headers = lines[0]
+    if (!headers) {
+      throw createError({ statusCode: 400, statusMessage: 'CSV header row is required' })
+    }
     rows = lines.slice(1).map(fields => {
       const row: Record<string, string> = {}
       headers.forEach((h, i) => { row[h] = fields[i] || '' })
@@ -148,7 +155,7 @@ function parseCSV(content: string): string[][] {
 }
 
 function detectColumnType(rows: Record<string, string>[], columnName: string): string {
-  const sample = rows.slice(0, 20).map(r => r[columnName]).filter(v => v && v.trim())
+  const sample = rows.slice(0, 20).map(r => r[columnName]).filter((v): v is string => Boolean(v && v.trim()))
   if (sample.length === 0) return 'text'
 
   const urlPattern = /^https?:\/\//i

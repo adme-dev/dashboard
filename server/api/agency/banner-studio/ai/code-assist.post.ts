@@ -162,7 +162,7 @@ function extractCodeBlocks(text: string): CodeBlock[] {
 
   while ((match = regex.exec(text)) !== null) {
     const lang = (match[1] || '').toLowerCase()
-    const code = match[2].trim()
+    const code = match[2]?.trim()
     if (!code) continue
 
     let language: CodeBlock['language'] = 'unknown'
