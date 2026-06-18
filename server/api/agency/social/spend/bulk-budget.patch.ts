@@ -13,7 +13,7 @@ export default eventHandler(async (event) => {
   const { spendIds, budgetAllocated, rolling, note, commissionRate } = body as {
     spendIds: string[]
     budgetAllocated: number
-    rolling?: boolean
+    rolling?: boolean | string
     note?: string
     commissionRate?: number
   }

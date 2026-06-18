@@ -79,7 +79,11 @@ export default defineEventHandler(async (event) => {
   }
 
   // Parse header to find column indices
-  const header = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, '_'))
+  const headerLine = lines[0]
+  if (!headerLine) {
+    throw createError({ statusCode: 400, statusMessage: 'CSV must contain a header row' })
+  }
+  const header = parseCSVLine(headerLine).map(h => h.toLowerCase().replace(/\s+/g, '_'))
   const colIdx = {
     date: header.indexOf('date'),
     campaign_name: header.indexOf('campaign_name'),
@@ -98,7 +102,9 @@ export default defineEventHandler(async (event) => {
   const errors: string[] = []
 
   for (let i = 1; i < lines.length; i++) {
-    const fields = parseCSVLine(lines[i])
+    const line = lines[i]
+    if (!line) continue
+    const fields = parseCSVLine(line)
     const row = {
       date: fields[colIdx.date] || '',
       campaignName: fields[colIdx.campaign_name] || '',

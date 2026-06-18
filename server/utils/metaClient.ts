@@ -13,6 +13,12 @@ const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
 // Types
 // ============================================
 
+function bufferToBlobPart(buffer: Buffer): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(buffer.length)
+  bytes.set(buffer)
+  return bytes
+}
+
 export interface MetaAdAccount {
   account_id: string
   id: string // act_XXXXXXX format
@@ -727,7 +733,7 @@ export async function uploadAdImage(
   imageBuffer: Buffer
 ): Promise<{ hash: string; url: string }> {
   const formData = new FormData()
-  const blob = new Blob([imageBuffer], { type: 'image/png' })
+  const blob = new Blob([bufferToBlobPart(imageBuffer)], { type: 'image/png' })
   formData.set('bytes', blob, 'banner.png')
 
   const res = await metaFetch<{ images: Record<string, { hash: string; url: string }> }>(
@@ -913,6 +919,15 @@ interface PageEntry {
   access_token: string
 }
 
+interface MetaPageAccountsResponse {
+  data?: any[]
+  paging?: { next?: string }
+}
+
+async function fetchMetaPageAccounts(url: string): Promise<MetaPageAccountsResponse> {
+  return await ofetch<MetaPageAccountsResponse>(url)
+}
+
 const META_PAGE_LIMIT = 200 // safety cap on page traversal per token
 
 /**
@@ -1006,7 +1021,7 @@ export async function listMetaPageLeadForms(
   let traversed = 0
   while (nextUrl && traversed < META_PAGE_LIMIT) {
     try {
-      const r = await ofetch<{ data?: any[]; paging?: { next?: string } }>(nextUrl)
+      const r = await fetchMetaPageAccounts(nextUrl)
       for (const p of r.data ?? []) {
         if (p?.id && p?.access_token) {
           pages.push({ id: String(p.id), name: String(p.name ?? p.id), access_token: String(p.access_token) })
@@ -1107,7 +1122,10 @@ export async function resolveMetaBudgetTarget(
   const participants = active.filter(a => a.daily_budget != null && Number(a.daily_budget) >= 1)
 
   if (participants.length === 1) {
-    return { level: 'adset', targetId: participants[0].id, optimizationGoal: participants[0].optimization_goal ?? null, adSetCount: 1 }
+    const participant = participants[0]
+    if (participant) {
+      return { level: 'adset', targetId: participant.id, optimizationGoal: participant.optimization_goal ?? null, adSetCount: 1 }
+    }
   }
   if (participants.length >= 2) {
     return {

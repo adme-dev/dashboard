@@ -121,7 +121,7 @@ export default eventHandler(async (event) => {
   let tenantId: string | null = null
   try {
     token = await getActiveTokenForSession(event)
-    tenantId = await getSelectedTenant(event)
+    tenantId = await getSelectedTenant(event) ?? null
   } catch {
     // Xero not connected — graceful degradation
     return { period, byPlatform: {}, total: 0, unmatchedTotal: 0, unmatched: [], connected: false }
@@ -130,6 +130,7 @@ export default eventHandler(async (event) => {
   if (!token || !tenantId) {
     return { period, byPlatform: {}, total: 0, unmatchedTotal: 0, unmatched: [], connected: false }
   }
+  const scopedTenantId = tenantId
 
   // Bank Charged is an expensive, rate-limit-prone live Xero crawl (it's what
   // trips the 'concurrent' 429s). Cache the computed result per tenant+period in
@@ -220,14 +221,14 @@ export default eventHandler(async (event) => {
         return
       }
       const account = accountQueue.shift()
-      if (!account) return
-      try {
-        const txBody = await dedupedXeroCall(
-          `bank-charges-tx:${tenantId}:${account.accountID}`,
+        if (!account) return
+        try {
+          const txBody = await dedupedXeroCall(
+          `bank-charges-tx:${scopedTenantId}:${account.accountID}`,
           'bank-charges-tx',
           async () => {
             const { body } = await client.accountingApi.getBankTransactions(
-              tenantId,
+              scopedTenantId,
               undefined,
               `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(endDate)}`,
               'Date ASC',

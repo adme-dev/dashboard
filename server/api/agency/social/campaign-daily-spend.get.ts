@@ -279,9 +279,11 @@ export default eventHandler(async (event) => {
     for (const camp of campaigns) {
       for (const d of camp.daily) {
         if (!totalsByDate[d.date]) totalsByDate[d.date] = { spend: 0, impressions: 0, clicks: 0 }
-        totalsByDate[d.date].spend += d.spend
-        totalsByDate[d.date].impressions += d.impressions
-        totalsByDate[d.date].clicks += d.clicks
+        const total = totalsByDate[d.date]
+        if (!total) continue
+        total.spend += d.spend
+        total.impressions += d.impressions
+        total.clicks += d.clicks
       }
     }
     totals = Object.entries(totalsByDate)

@@ -22,7 +22,7 @@ interface Row {
 // Fingerprint shape: `adspend:<kind>-<mediaSpendId>-<YYYY-MM>`.
 function mediaSpendIdFromFingerprint(fp: string): string | null {
   const m = fp.match(/^adspend:[a-z]+-(.+)-\d{4}-\d{2}$/)
-  return m ? m[1] : null
+  return m?.[1] ?? null
 }
 
 export default defineEventHandler(async (event) => {
