@@ -484,13 +484,20 @@ const saveStatusColor = computed(() => {
     default: return 'text-muted'
   }
 })
+
+const pageTitle = computed(() => isAv.value ? 'Video Studio' : 'Timeline editor')
+const pageDescription = computed(() => isAv.value
+  ? 'Create and render social video from footage, stills, overlays, voiceover and music.'
+  : 'Multitrack editor — drag, trim, slice, and layer your clips.'
+)
+const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av' : '/agency/audio/projects')
 </script>
 
 <template>
   <div class="flex-1 min-h-0 overflow-y-auto">
     <div
-      class="mx-auto p-6 space-y-4"
-      :class="isAv ? 'max-w-none 2xl:max-w-[1800px]' : 'max-w-5xl'"
+      class="mx-auto w-full space-y-4 p-6"
+      :class="isAv ? 'max-w-none' : 'max-w-5xl'"
     >
 
       <!-- Header -->
@@ -499,12 +506,12 @@ const saveStatusColor = computed(() => {
           icon="i-lucide-arrow-left"
           variant="ghost"
           color="neutral"
-          to="/agency/audio/projects"
+          :to="backTo"
           aria-label="Back to projects"
         />
         <div class="space-y-0.5 flex-1">
-          <h1 class="text-2xl font-semibold tracking-tight">Timeline editor</h1>
-          <p class="text-sm text-muted">{{ isAv ? 'Video editor — assemble footage, stills, overlays and audio, then render.' : 'Multitrack editor — drag, trim, slice, and layer your clips.' }}</p>
+          <h1 class="text-2xl font-semibold tracking-tight">{{ pageTitle }}</h1>
+          <p class="text-sm text-muted">{{ pageDescription }}</p>
         </div>
         <!-- Save status pill -->
         <span
@@ -543,38 +550,12 @@ const saveStatusColor = computed(() => {
 
         <div class="h-5 w-px bg-default mx-1" />
 
-        <!-- Add (audio: single button; AV: menu) -->
+        <!-- Add clips in audio mode. AV project creation actions live inside Video Studio. -->
         <UButton
           v-if="!isAv"
           icon="i-lucide-plus-circle" size="sm" variant="soft" color="primary" label="Add clip"
           @click="pickerOpen = true"
         />
-        <UDropdownMenu
-          v-else
-          :items="[[
-            { label: 'Audio clip', icon: 'i-lucide-music', onSelect: () => { pickerOpen = true } },
-            { label: 'Footage / still', icon: 'i-lucide-film', onSelect: () => { mediaPickerOpen = true } },
-            { label: 'Overlay', icon: 'i-lucide-shapes', onSelect: () => { overlayPickerOpen = true } },
-            ...(videoGenerationEnabled && videoGenerationModelsAvailable ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen = true } }] : []),
-            ...(videoGenerationEnabled && !videoGenerationModelsAvailable ? [{ label: 'Generate (AI unavailable)', icon: 'i-lucide-sparkles', disabled: true }] : []),
-          ]]"
-        >
-          <UButton icon="i-lucide-plus-circle" size="sm" variant="soft" color="primary" label="Add" trailing-icon="i-lucide-chevron-down" />
-        </UDropdownMenu>
-
-        <!-- Render video (AV only; gated) -->
-        <UButton
-          v-if="isAv && videoStudioEnabled"
-          icon="i-lucide-clapperboard" size="sm" variant="soft" color="primary" label="Render video"
-          :loading="editor.rendering.value"
-          @click="onRenderVideo"
-        />
-        <UTooltip v-else-if="isAv" text="Video rendering is disabled (VIDEO_STUDIO_ENABLED off)">
-          <UButton icon="i-lucide-clapperboard" size="sm" variant="ghost" color="neutral" label="Render video" disabled />
-        </UTooltip>
-
-        <!-- Video library (AV only) -->
-        <UButton v-if="isAv" icon="i-lucide-clapperboard" size="sm" variant="ghost" color="neutral" label="Library" @click="libraryOpen = true" />
 
         <!-- Save version -->
         <UButton
@@ -701,6 +682,18 @@ const saveStatusColor = computed(() => {
                 :is-playing="editor.isPlaying.value"
                 :sources="editor.sources.value"
               />
+              <div v-if="videoAssetHarnessEnabled" class="mt-3 rounded-md border border-default bg-elevated p-3">
+                <div class="mb-3 flex items-center gap-2">
+                  <UIcon name="i-lucide-bot" class="size-4 text-muted" />
+                  <h4 class="text-xs font-medium uppercase text-muted">Prepare + Activity</h4>
+                </div>
+                <MediaAssetHarness
+                  :project-id="projectId"
+                  embedded
+                  @add-to-timeline="onHarnessAddToTimeline"
+                  @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
+                />
+              </div>
             </main>
 
             <aside class="min-w-0 rounded-md border border-default bg-default/30 p-3">
@@ -745,14 +738,6 @@ const saveStatusColor = computed(() => {
             </aside>
           </div>
 
-          <div v-if="videoAssetHarnessEnabled" class="border-t border-default p-3">
-            <MediaAssetHarness
-              :project-id="projectId"
-              embedded
-              @add-to-timeline="onHarnessAddToTimeline"
-              @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
-            />
-          </div>
         </section>
 
         <!-- Timeline with full SP2c interaction layer -->
