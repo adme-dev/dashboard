@@ -1,6 +1,6 @@
 # Implementation Plan: Video Studio Unified Producer
 
-**Status:** Draft for review - 2026-06-18
+**Status:** First implementation slice shipped - 2026-06-18; manual QA and approval-gated spikes remain open.
 **PRD:** `docs/superpowers/specs/2026-06-18-video-studio-unified-producer-prd.md`
 **Goal:** Merge library filters, AI Producer, Cloudflare video generation, voiceover, text/overlay, and timeline assembly into one coherent Video Studio workspace.
 
@@ -497,14 +497,14 @@
 - [ ] Audio project create/open/edit still works.
 - [ ] AV project create/open/edit still works.
 - [ ] Existing render flow still works.
-- [ ] No build errors.
+- [x] No build errors.
 
 **Verification:**
 
-- [ ] `pnpm exec vitest run test/app/videoGenerationForm.test.ts test/app/videoAssetHarnessDerivatives.test.ts`
-- [ ] Additional new focused tests.
-- [ ] `pnpm run build`
-- [ ] `git diff --check`
+- [x] `pnpm exec vitest run test/app/videoGenerationForm.test.ts test/app/videoAssetHarnessDerivatives.test.ts`
+- [x] Additional new focused tests.
+- [x] `pnpm run build`
+- [x] `git diff --check`
 
 **Dependencies:** All implementation tasks.
 
@@ -518,14 +518,14 @@
 
 **Acceptance criteria:**
 
-- [ ] PRD status updated.
-- [ ] Implementation plan checkboxes reflect completed work.
-- [ ] Handoff notes include remaining deferred items.
+- [x] PRD status updated.
+- [x] Implementation plan checkboxes reflect completed work.
+- [x] Handoff notes include remaining deferred items.
 
 **Verification:**
 
-- [ ] Docs reviewed.
-- [ ] Links point to actual files.
+- [x] Docs reviewed.
+- [x] Links point to actual files.
 
 **Dependencies:** Task 16.
 

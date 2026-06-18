@@ -1,10 +1,12 @@
 # Video Studio Unified Producer PRD
 
-**Status:** Draft for review - 2026-06-18
+**Status:** First implementation slice shipped - 2026-06-18
 **Owner:** Product/Engineering
 **Feature area:** Creative > Video Studio
 **Builds on:** AV timeline editor, AI video generation via Cloudflare AI Gateway, AI Producer asset intelligence, Audio Studio voice generation, Banner Studio overlays, social publishing/export flow.
 **Reference inputs:** Open Generative AI repo R&D, Runway/CapCut/Canva market scan, current codebase inspection.
+
+**Implementation note:** The first shipped slice delivers the unified workbench shell, filtered asset library, native voice composer, Banner overlay composer, producer recipes, draft-plan rail, caption visibility, and render job actions inside the Video Studio workspace. Manual end-to-end browser checks and optional inline overlay/caption-generation spikes remain deferred.
 
 ---
 
