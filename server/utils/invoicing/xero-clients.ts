@@ -21,6 +21,16 @@ export interface XeroContact {
   contactId: string  // Xero contact UUID
 }
 
+interface XeroContactsResponse {
+  body?: {
+    contacts?: Array<{
+      name?: string
+      accountNumber?: string
+      contactID?: string
+    }>
+  }
+}
+
 // ── Dealer Groups (shared code prefix = same ownership group) ──────────────
 // Business logic: which entities belong to which dealer group
 export const DEALER_GROUPS: Record<string, string[]> = {
@@ -86,7 +96,7 @@ export async function fetchXeroContacts(event: H3Event): Promise<XeroContact[]> 
   const maxPages = 10
 
   while (page <= maxPages) {
-    const response = await dedupedXeroCall(
+    const response = await dedupedXeroCall<XeroContactsResponse>(
       `xero-clients:${tenantId}:p${page}`,
       'xero-clients',
       () => (client.accountingApi.getContacts as any)(

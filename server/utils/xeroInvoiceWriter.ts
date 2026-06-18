@@ -133,7 +133,10 @@ export async function buildXeroPayload(
   const invoices: XeroAPIInvoice[] = []
 
   for (const [invoiceNumber, lineItems] of grouped) {
-    const clientName = lineItems[0].client_name
+    const firstLineItem = lineItems[0]
+    if (!firstLineItem) continue
+
+    const clientName = firstLineItem.client_name
     const paymentTermDays = getPaymentTermDays(clientName)
     const dueDate = getDueDate(invoiceDate, paymentTermDays)
 
