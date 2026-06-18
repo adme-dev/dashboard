@@ -20,7 +20,7 @@ export default defineNuxtPlugin(() => {
       if (!response.ok) return
 
       const html = await response.text()
-      const match = html.match(/"buildId":"([^"]+)"/)
+      const match = html.match(/"?buildId"?\s*:\s*"([^"]+)"/)
       const nextBuildId = match?.[1]
 
       if (!nextBuildId || nextBuildId === currentBuildId || nextBuildId === promptedForBuildId) return
