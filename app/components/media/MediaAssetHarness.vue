@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 import { assemblyPlanToTimelinePayloads, type AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
@@ -101,6 +101,7 @@ const isDrawingMask = ref(false)
 const hasMaskStroke = ref(false)
 const uploadingMask = ref(false)
 const maskPreviewFailed = ref(false)
+let activityRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
 // Open by default in the AV editor. This is a core production workspace, not a
 // secondary drawer, while the user's collapsed choice still persists.
@@ -310,6 +311,21 @@ async function refreshActivity() {
   await Promise.all([loadJobs(), loadSelectedDerivatives()])
 }
 
+function clearActivityRefreshTimer() {
+  if (!activityRefreshTimer) return
+  clearTimeout(activityRefreshTimer)
+  activityRefreshTimer = null
+}
+
+function scheduleActivityRefresh() {
+  clearActivityRefreshTimer()
+  if (!activeJobCount.value) return
+  activityRefreshTimer = setTimeout(async () => {
+    await refreshActivity()
+    scheduleActivityRefresh()
+  }, 3000)
+}
+
 async function saveDirective(item: BucketItem) {
   try {
     const directive = {
@@ -441,12 +457,18 @@ function derivativeLabel(derivative: AssetDerivative) {
 }
 
 watch(() => props.projectId, () => { void loadHarness() })
+watch(activeJobCount, () => {
+  scheduleActivityRefresh()
+})
 watch(selectedItemId, () => {
   clearMask()
   maskPreviewFailed.value = false
   void loadSelectedDerivatives()
 })
 onMounted(() => { void loadHarness() })
+onBeforeUnmount(() => {
+  clearActivityRefreshTimer()
+})
 </script>
 
 <template>

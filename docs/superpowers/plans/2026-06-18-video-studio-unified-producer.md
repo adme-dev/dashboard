@@ -186,7 +186,7 @@
 **Acceptance criteria:**
 
 - [ ] Mask canvas remains usable.
-- [ ] Run action still creates/refreshes jobs.
+- [x] Run action still creates/refreshes jobs.
 - [ ] Derivatives can be added to timeline or bucket.
 - [x] Available model messaging handles unmapped actions.
 
