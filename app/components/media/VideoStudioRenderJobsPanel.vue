@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MediaRenderJob, MediaRenderJobStatus } from '~~/app/types'
+import { renderVariantFormats, renderVariantUrl } from '~~/app/utils/video/renderJobSummary'
 
 const props = withDefaults(defineProps<{
   projectId: string
@@ -33,11 +34,11 @@ function dateLabel(iso: string) {
 }
 
 function variantFormats(job: MediaRenderJob) {
-  return Object.keys(job.variants || {})
+  return renderVariantFormats(job)
 }
 
 function variantUrl(job: MediaRenderJob, format: string) {
-  return `/api/agency/audio/projects/${encodeURIComponent(props.projectId)}/renders/${encodeURIComponent(job.id)}/${encodeURIComponent(format)}`
+  return renderVariantUrl(props.projectId, job.id, format)
 }
 
 function variantItems(job: MediaRenderJob, label: string, icon: string, event: 'publish' | 'send-to-portal' | 'save-asset') {

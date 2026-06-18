@@ -11,6 +11,7 @@ import VideoStudioLibraryRail from '~~/app/components/media/VideoStudioLibraryRa
 import VideoStudioOverlayComposer from '~~/app/components/media/VideoStudioOverlayComposer.vue'
 import VideoStudioProducerRail from '~~/app/components/media/VideoStudioProducerRail.vue'
 import VideoStudioRenderJobsPanel from '~~/app/components/media/VideoStudioRenderJobsPanel.vue'
+import VideoStudioRenderStatusStrip from '~~/app/components/media/VideoStudioRenderStatusStrip.vue'
 import VideoStudioSelectedAssetPanel from '~~/app/components/media/VideoStudioSelectedAssetPanel.vue'
 import VideoStudioVoiceComposer from '~~/app/components/media/VideoStudioVoiceComposer.vue'
 import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.vue'
@@ -1012,6 +1013,13 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
         </VideoStudioWorkbench>
 
         <!-- Timeline with full SP2c interaction layer -->
+        <VideoStudioRenderStatusStrip
+          v-if="isAv"
+          :project-id="projectId"
+          :jobs="editor.renderJobs.value"
+          :rendering="editor.rendering.value"
+        />
+
         <MediaTimeline
           :timeline="editor.timeline.value"
           :clips="editor.clips.value"
