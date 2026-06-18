@@ -124,7 +124,7 @@
 - [x] Filters include type, source, status, and model.
 - [x] Search matches title, prompt, role, filename, model, and format.
 - [x] Selecting an asset updates the workbench selected asset.
-- [ ] Bucket grouping remains available.
+- [x] Bucket grouping remains available.
 
 **Verification:**
 

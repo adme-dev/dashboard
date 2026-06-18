@@ -30,6 +30,7 @@ const source = ref<VideoStudioAssetSource | 'all'>('all')
 const status = ref<VideoStudioAssetStatus | 'all'>('all')
 const model = ref<string | 'all'>('all')
 const captions = ref<'all' | 'with' | 'without'>('all')
+const bucketId = ref<string | 'all'>('all')
 
 const TYPE_OPTIONS = [
   { label: 'All types', value: 'all' },
@@ -76,16 +77,46 @@ const modelOptions = computed(() => {
   return [{ label: 'All models', value: 'all' }, ...models.map(value => ({ label: value, value }))]
 })
 
+const bucketOptions = computed(() => {
+  const buckets = Array.from(new Set(props.assets.map(asset => asset.bucketId).filter(Boolean) as string[])).sort()
+  return [{ label: 'All buckets', value: 'all' }, ...buckets.map(value => ({ label: value, value }))]
+})
+
 const filters = computed<VideoStudioAssetFilters>(() => ({
   search: search.value,
   type: type.value,
   source: source.value,
   status: status.value,
   model: model.value,
+  bucketId: bucketId.value,
   captions: captions.value,
 }))
 
 const filteredAssets = computed(() => filterVideoStudioAssets(props.assets, filters.value))
+const groupedAssets = computed(() => {
+  if (bucketOptions.value.length <= 1) return [{ key: 'all', label: null as string | null, assets: filteredAssets.value }]
+
+  const groups = new Map<string, VideoStudioAsset[]>()
+  const order: string[] = []
+  for (const asset of filteredAssets.value) {
+    const key = asset.bucketId ? `bucket:${asset.bucketId}` : `source:${asset.source}`
+    if (!groups.has(key)) {
+      groups.set(key, [])
+      order.push(key)
+    }
+    groups.get(key)!.push(asset)
+  }
+
+  return order.map((key) => {
+    const assets = groups.get(key) ?? []
+    const first = assets[0]
+    return {
+      key,
+      label: first?.bucketId ? `Bucket ${first.bucketId}` : sourceLabel(first?.source ?? 'library'),
+      assets,
+    }
+  })
+})
 
 function iconFor(asset: VideoStudioAsset) {
   if (asset.type === 'audio') return asset.role === 'music' ? 'i-lucide-music' : 'i-lucide-mic'
@@ -116,6 +147,18 @@ function addLabel(asset: VideoStudioAsset) {
   if (asset.status === 'failed') return 'Failed'
   return 'Unavailable'
 }
+
+function sourceLabel(value: VideoStudioAssetSource) {
+  const labels: Record<VideoStudioAssetSource, string> = {
+    audio: 'Audio assets',
+    banner: 'Banner overlays',
+    bucket: 'Buckets',
+    derivative: 'Derivatives',
+    generation: 'Generated media',
+    library: 'Library media',
+  }
+  return labels[value]
+}
 </script>
 
 <template>
@@ -145,6 +188,7 @@ function addLabel(asset: VideoStudioAsset) {
       <USelect v-model="status" :items="STATUS_OPTIONS" value-key="value" size="xs" aria-label="Filter asset status" />
       <USelect v-model="model" :items="modelOptions" value-key="value" size="xs" aria-label="Filter model" />
       <USelect v-model="captions" :items="CAPTION_OPTIONS" value-key="value" size="xs" aria-label="Filter captions" />
+      <USelect v-if="bucketOptions.length > 1" v-model="bucketId" :items="bucketOptions" value-key="value" size="xs" aria-label="Filter bucket" />
     </div>
 
     <div class="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
@@ -158,65 +202,73 @@ function addLabel(asset: VideoStudioAsset) {
         <p class="mt-1 text-[11px] text-muted">Adjust filters or generate/upload source media.</p>
       </div>
 
-      <div
-        v-for="asset in filteredAssets"
-        :key="asset.id"
-        class="w-full rounded-md border p-2 text-left transition"
-        :class="props.selectedId === asset.id ? 'border-primary bg-primary/10' : 'border-default bg-elevated hover:border-primary/50'"
-      >
-        <div class="flex items-start gap-2">
-          <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
-            <UIcon :name="iconFor(asset)" class="size-4 text-primary" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5">
-              <button
-                type="button"
-                class="min-w-0 flex-1 truncate text-left text-xs font-medium text-highlighted hover:text-primary"
-                @click="emit('update:selected-id', asset.id)"
-              >
-                {{ asset.title }}
-              </button>
-              <UBadge :label="asset.status" size="xs" :color="statusColor(asset.status)" variant="subtle" />
+      <div v-for="group in groupedAssets" :key="group.key" class="space-y-2">
+        <div v-if="group.label" class="flex items-center gap-2 px-1 text-[11px] font-medium uppercase text-muted">
+          <UIcon name="i-lucide-folder-open" class="size-3.5" />
+          <span>{{ group.label }}</span>
+          <span class="ml-auto tabular-nums">{{ group.assets.length }}</span>
+        </div>
+
+        <div
+          v-for="asset in group.assets"
+          :key="asset.id"
+          class="w-full rounded-md border p-2 text-left transition"
+          :class="props.selectedId === asset.id ? 'border-primary bg-primary/10' : 'border-default bg-elevated hover:border-primary/50'"
+        >
+          <div class="flex items-start gap-2">
+            <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
+              <UIcon :name="iconFor(asset)" class="size-4 text-primary" />
             </div>
-            <p class="mt-0.5 truncate text-[11px] text-muted">
-              {{ asset.source }}<span v-if="asset.subtitle"> · {{ asset.subtitle }}</span><span v-if="durationLabel(asset.durationSec)"> · {{ durationLabel(asset.durationSec) }}</span>
-            </p>
-            <p v-if="asset.prompt" class="mt-1 line-clamp-2 text-[11px] leading-snug text-muted">{{ asset.prompt }}</p>
-            <p v-else-if="asset.modelId" class="mt-1 truncate text-[11px] text-muted">{{ asset.modelId }}</p>
-            <audio
-              v-if="asset.type === 'audio' && asset.previewUrl"
-              :src="asset.previewUrl"
-              controls
-              preload="none"
-              class="mt-2 h-8 w-full"
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  class="min-w-0 flex-1 truncate text-left text-xs font-medium text-highlighted hover:text-primary"
+                  @click="emit('update:selected-id', asset.id)"
+                >
+                  {{ asset.title }}
+                </button>
+                <UBadge :label="asset.status" size="xs" :color="statusColor(asset.status)" variant="subtle" />
+              </div>
+              <p class="mt-0.5 truncate text-[11px] text-muted">
+                {{ asset.source }}<span v-if="asset.subtitle"> · {{ asset.subtitle }}</span><span v-if="durationLabel(asset.durationSec)"> · {{ durationLabel(asset.durationSec) }}</span>
+              </p>
+              <p v-if="asset.prompt" class="mt-1 line-clamp-2 text-[11px] leading-snug text-muted">{{ asset.prompt }}</p>
+              <p v-else-if="asset.modelId" class="mt-1 truncate text-[11px] text-muted">{{ asset.modelId }}</p>
+              <audio
+                v-if="asset.type === 'audio' && asset.previewUrl"
+                :src="asset.previewUrl"
+                controls
+                preload="none"
+                class="mt-2 h-8 w-full"
+              />
+            </div>
+          </div>
+          <div class="mt-2 flex items-center justify-between gap-2">
+            <div class="flex min-w-0 flex-wrap items-center gap-1">
+              <UBadge :label="asset.type" size="xs" variant="subtle" color="neutral" />
+              <UBadge v-if="asset.captionVttUrl" label="Captions" size="xs" variant="subtle" color="primary" />
+              <a
+                v-if="asset.captionVttUrl"
+                :href="asset.captionVttUrl"
+                target="_blank"
+                rel="noopener"
+                class="text-[11px] font-medium text-primary hover:underline"
+                @click.stop
+              >
+                Open VTT
+              </a>
+            </div>
+            <UButton
+              icon="i-lucide-list-plus"
+              size="xs"
+              variant="ghost"
+              color="primary"
+              :label="addLabel(asset)"
+              :disabled="!asset.timelineReady"
+              @click.stop="emit('add-asset', asset)"
             />
           </div>
-        </div>
-        <div class="mt-2 flex items-center justify-between gap-2">
-          <div class="flex min-w-0 flex-wrap items-center gap-1">
-            <UBadge :label="asset.type" size="xs" variant="subtle" color="neutral" />
-            <UBadge v-if="asset.captionVttUrl" label="Captions" size="xs" variant="subtle" color="primary" />
-            <a
-              v-if="asset.captionVttUrl"
-              :href="asset.captionVttUrl"
-              target="_blank"
-              rel="noopener"
-              class="text-[11px] font-medium text-primary hover:underline"
-              @click.stop
-            >
-              Open VTT
-            </a>
-          </div>
-          <UButton
-            icon="i-lucide-list-plus"
-            size="xs"
-            variant="ghost"
-            color="primary"
-            :label="addLabel(asset)"
-            :disabled="!asset.timelineReady"
-            @click.stop="emit('add-asset', asset)"
-          />
         </div>
       </div>
     </div>

@@ -79,6 +79,44 @@ describe('VideoStudioLibraryRail', () => {
     expect(html).toContain('/api/agency/video/assets/asset-1/captions.vtt')
   })
 
+  it('keeps bucket context available in the unified rail', async () => {
+    const html = await render({
+      assets: [
+        asset({
+          id: 'bucket:hero',
+          rawId: 'hero',
+          type: 'bucket',
+          source: 'bucket',
+          title: 'Hero still',
+          subtitle: 'hero',
+          bucketId: 'bucket-hero',
+          modelId: null,
+          role: 'hero',
+          r2Key: 'source/hero.png',
+        }),
+        asset({
+          id: 'bucket:generated',
+          rawId: 'generated',
+          type: 'bucket',
+          source: 'bucket',
+          title: 'Generated option',
+          subtitle: 'generated',
+          bucketId: 'bucket-generated',
+          modelId: null,
+          role: 'generated',
+          r2Key: 'source/generated.png',
+        }),
+      ],
+      selectedId: null,
+      loading: false
+    })
+
+    expect(html).toContain('All buckets')
+    expect(html).toContain('bucket-generated')
+    expect(html).toContain('Bucket bucket-hero')
+    expect(html).toContain('Bucket bucket-generated')
+  })
+
   it('renders an empty state when no assets are available', async () => {
     const html = await render({ assets: [], selectedId: null, loading: false })
     expect(html).toContain('No assets match')
