@@ -122,13 +122,15 @@ Decision: first caption pass stores a single-cue VTT plus transcript on `video_a
 - [x] Add recipe selection: dealer promo, product reveal, offer ad, testimonial, event recap.
 - [x] Build draft timeline plan.
 - [x] Apply visual plan to timeline.
-- [ ] Extend plan to include voiceover placement.
-- [ ] Extend plan to include overlay placement.
-- [ ] Extend plan to include caption requirement.
+- [x] Extend plan to include voiceover placement.
+- [x] Extend plan to include overlay placement.
+- [x] Extend plan to include caption requirement.
 - [x] Add plan validation before applying.
 - [x] Add `Undo applied plan` or checkpoint prompt.
 
 Decision: producer apply is now guarded by a reusable plan validator. It only applies timeline-ready visual clips, explains skipped draft steps, and tells the user to use the editor Undo control after inserts instead of creating a separate producer-local rollback path.
+
+Decision: assembly plans now append explicit review-only `place-voiceover`, `place-overlay`, and `create-caption` steps when the brief or selected asset calls for them. Visual `place-asset` steps remain the only auto-applied plan steps until lane-specific apply controls are added.
 
 ## Phase 10: Timeline Editing
 

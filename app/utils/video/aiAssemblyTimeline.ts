@@ -40,11 +40,20 @@ function stepTitle(step: AiAssemblyPlanStep, index: number): string {
 }
 
 function skippedStepReason(step: AiAssemblyPlanStep): string | null {
-  if (step?.type !== 'place-asset') {
-    return `${step?.type || 'unknown'} steps are reviewed but not auto-applied from producer plans yet`
+  switch (step?.type) {
+    case 'place-asset':
+      if (typeof step.r2Key !== 'string' || step.r2Key.length === 0) return 'missing r2 key'
+      return null
+    case 'place-voiceover':
+      return 'voiceover placement is reviewed before audio lane insertion'
+    case 'place-overlay':
+      return 'overlay placement is reviewed before overlay lane insertion'
+    case 'create-caption':
+    case 'caption':
+      return 'caption requirements are reviewed before caption lane insertion'
+    default:
+      return `${step?.type || 'unknown'} steps are reviewed but not auto-applied from producer plans yet`
   }
-  if (typeof step.r2Key !== 'string' || step.r2Key.length === 0) return 'missing r2 key'
-  return null
 }
 
 export function assemblyPlanToTimelinePayloads(plan: AiAssemblyPlan | null | undefined): AiAssemblyTimelinePayload[] {

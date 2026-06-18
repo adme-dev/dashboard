@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAssemblyPrompt, parseAssemblyAiResponse, planFromAiAssembly, usableBucketItems } from '~~/server/utils/video-asset-intelligence/aiAssembly'
+import { buildAssemblyPrompt, parseAssemblyAiResponse, planFromAiAssembly, usableBucketItems, withProducerLaneSteps } from '~~/server/utils/video-asset-intelligence/aiAssembly'
 import type { VideoBucketItem } from '~~/server/utils/video-asset-intelligence/buckets'
 
 function item(over: Partial<VideoBucketItem>): VideoBucketItem {
@@ -120,5 +120,52 @@ describe('planFromAiAssembly', () => {
       { id: 'a', start: 0, dur: 4 },
       { id: 'b', start: 4, dur: 2 }
     ])
+  })
+})
+
+describe('withProducerLaneSteps', () => {
+  it('adds review-only voiceover, overlay, and caption requirements after visual steps', () => {
+    const plan = planFromAiAssembly({
+      projectId: 'p1',
+      brief: 'Add a voiceover with captions and a logo overlay.',
+      targetFormat: 'reels_9x16',
+      items: [
+        item({ id: 'a', title: 'Hero footage', role: 'hero-footage' }),
+        item({ id: 'logo', title: 'Dealer logo', role: 'hero-overlay', r2Key: 'logo.png' }),
+      ],
+      ai: { rationale: 'Hero first.', steps: [{ bucketItemId: 'a', durationSec: 4 }] }
+    })
+
+    const enriched = withProducerLaneSteps(plan, {
+      brief: 'Add a voiceover with captions and a logo overlay.',
+      items: [
+        item({ id: 'a', title: 'Hero footage', role: 'hero-footage' }),
+        item({ id: 'logo', title: 'Dealer logo', role: 'hero-overlay', r2Key: 'logo.png' }),
+      ],
+      selectedAsset: { transcript: 'Drive away today' },
+    })
+
+    expect(enriched.steps.map(step => step.type)).toEqual(['place-asset', 'place-voiceover', 'place-overlay', 'create-caption'])
+    expect(enriched.steps[1]).toMatchObject({ title: 'Voiceover placement', startSec: 0, durationSec: 4 })
+    expect(enriched.steps[2]).toMatchObject({ title: 'Dealer logo', bucketItemId: 'logo', r2Key: 'logo.png' })
+    expect(enriched.steps[3]).toMatchObject({ title: 'Caption requirement', directive: { source: 'selected-asset-transcript' } })
+  })
+
+  it('does not add duplicate lane requirements when the brief does not ask for them', () => {
+    const plan = planFromAiAssembly({
+      projectId: 'p1',
+      brief: 'Simple visual montage.',
+      targetFormat: 'reels_9x16',
+      items: [item({ id: 'a', title: 'Hero footage', role: 'hero-footage' })],
+      ai: { rationale: 'Hero first.', steps: [{ bucketItemId: 'a', durationSec: 4 }] }
+    })
+
+    const enriched = withProducerLaneSteps(plan, {
+      brief: 'Simple visual montage.',
+      items: [item({ id: 'a', title: 'Hero footage', role: 'hero-footage' })],
+      selectedAsset: null,
+    })
+
+    expect(enriched.steps.map(step => step.type)).toEqual(['place-asset'])
   })
 })

@@ -61,6 +61,7 @@ vi.mock('~~/server/utils/socialVideoDraft', () => ({
 
 const mockGenerateGroqInsight = vi.fn()
 vi.mock('~~/server/utils/groqClient', () => ({
+  GROQ_MODELS: { LLAMA_70B: 'llama-test' },
   generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
@@ -770,6 +771,32 @@ describe('video asset harness API', () => {
     const res = await assembleHandler({ params: { id: '11111111-1111-4111-8111-111111111111' }, body: { brief: 'Create a TikTok edit', targetFormat: 'tiktok_9x16' } } as any)
     expect(res.plan).toMatchObject({ projectId: '11111111-1111-4111-8111-111111111111', status: 'draft', brief: 'Create a TikTok edit' })
     expect(res.plan.steps[0]).toMatchObject({ type: 'place-asset', assetId: 'a1' })
+  })
+
+  it('adds review-only voiceover, overlay, and caption steps to assemble plans', async () => {
+    mockListBucketItems.mockResolvedValueOnce([
+      { id: 'i1', bucketId: 'b1', assetId: 'a1', r2Key: 'car.mp4', title: 'Car', role: 'hero', directive: {}, status: 'ready', createdAt: 'now', updatedAt: 'now' },
+      { id: 'i2', bucketId: 'b2', assetId: 'logo-1', r2Key: 'logo.png', title: 'Dealer logo', role: 'hero-overlay', directive: {}, status: 'ready', createdAt: 'now', updatedAt: 'now' },
+    ])
+
+    const res = await assembleHandler({
+      params: { id: '11111111-1111-4111-8111-111111111111' },
+      body: {
+        brief: 'Create a TikTok edit with voiceover, captions, and a logo overlay',
+        targetFormat: 'tiktok_9x16',
+        selectedAsset: { id: 'video:asset-1', title: 'Hero', type: 'video', source: 'generation', transcript: 'Drive away today' },
+      },
+    } as any)
+
+    expect(res.plan.steps.map((step: any) => step.type)).toEqual([
+      'place-asset',
+      'place-asset',
+      'place-voiceover',
+      'place-overlay',
+      'create-caption',
+    ])
+    expect(res.plan.steps.find((step: any) => step.type === 'place-overlay')).toMatchObject({ title: 'Dealer logo', r2Key: 'logo.png' })
+    expect(res.plan.steps.find((step: any) => step.type === 'create-caption')).toMatchObject({ directive: { source: 'selected-asset-transcript' } })
   })
 
   it('rejects assemble when a writable user cannot mutate the project', async () => {

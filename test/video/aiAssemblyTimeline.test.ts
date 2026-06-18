@@ -25,6 +25,8 @@ describe('AI assembly timeline payloads', () => {
       steps: [
         { type: 'place-asset', assetId: 'a1', r2Key: 'hero.mp4', title: 'Hero', startSec: 0, durationSec: 5 },
         { type: 'caption', title: 'Hook', startSec: 1, durationSec: 2 },
+        { type: 'place-voiceover', title: 'Voiceover placement', startSec: 0, durationSec: 5 },
+        { type: 'place-overlay', title: 'Logo overlay', startSec: 2, durationSec: 3 },
         { type: 'place-asset', assetId: 'a2', r2Key: '', title: 'Missing media', startSec: 5, durationSec: 3 },
       ]
     })
@@ -32,13 +34,15 @@ describe('AI assembly timeline payloads', () => {
     expect(validation).toEqual({
       canApply: true,
       timelineReadyCount: 1,
-      skippedCount: 2,
+      skippedCount: 4,
       warnings: [
-        '2 draft steps need manual placement or generation.',
+        '4 draft steps need manual placement or generation.',
       ],
       skippedSteps: [
-        { index: 1, title: 'Hook', reason: 'caption steps are reviewed but not auto-applied from producer plans yet' },
-        { index: 2, title: 'Missing media', reason: 'missing r2 key' },
+        { index: 1, title: 'Hook', reason: 'caption requirements are reviewed before caption lane insertion' },
+        { index: 2, title: 'Voiceover placement', reason: 'voiceover placement is reviewed before audio lane insertion' },
+        { index: 3, title: 'Logo overlay', reason: 'overlay placement is reviewed before overlay lane insertion' },
+        { index: 4, title: 'Missing media', reason: 'missing r2 key' },
       ],
     })
   })

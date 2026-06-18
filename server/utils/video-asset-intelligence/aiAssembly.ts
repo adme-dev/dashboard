@@ -18,6 +18,9 @@ export interface AiAssemblyResult {
 const MAX_STEPS = 12
 const MIN_DURATION = 1
 const MAX_DURATION = 10
+const VOICEOVER_INTENT_RE = /\b(voiceover|voice over|voice|narrat|script|read|spoken|announcer)\b/i
+const OVERLAY_INTENT_RE = /\b(overlay|logo|graphic|lower third|lower-third|cta|call to action|offer badge|badge)\b/i
+const CAPTION_INTENT_RE = /\b(caption|captions|subtitle|subtitles|burn[- ]?in text|on[- ]?screen text)\b/i
 
 export function usableBucketItems(items: VideoBucketItem[]): VideoBucketItem[] {
   return items.filter(item => item.status !== 'blocked' && (item.assetId || item.r2Key))
@@ -30,6 +33,17 @@ export interface AssemblySelectedAssetContext {
   source?: string | null
   prompt?: string | null
   transcript?: string | null
+}
+
+function timelineDurationSec(plan: ReviewableAssemblyPlan): number {
+  return plan.steps.reduce((max, step) => Math.max(max, (step.startSec ?? 0) + (step.durationSec ?? 0)), 0)
+}
+
+function overlayCandidate(items: VideoBucketItem[]): VideoBucketItem | null {
+  return usableBucketItems(items).find((item) => {
+    const text = `${item.role ?? ''} ${item.title ?? ''} ${item.r2Key ?? ''}`
+    return /\b(overlay|logo|brand|graphic|lower|cta|badge)\b/i.test(text)
+  }) ?? null
 }
 
 export function buildAssemblyPrompt(input: { brief: string, targetFormat: string, items: VideoBucketItem[], selectedAsset?: AssemblySelectedAssetContext | null }): string {
@@ -135,4 +149,69 @@ export function planFromAiAssembly(input: {
     rationale: input.ai.rationale,
     steps
   }
+}
+
+export function withProducerLaneSteps(plan: ReviewableAssemblyPlan & { rationale?: string }, input: {
+  brief: string
+  items: VideoBucketItem[]
+  selectedAsset?: AssemblySelectedAssetContext | null
+}): ReviewableAssemblyPlan & { rationale?: string } {
+  const existingTypes = new Set(plan.steps.map(step => step.type))
+  const durationSec = Math.max(3, timelineDurationSec(plan))
+  const steps = [...plan.steps]
+
+  if (!existingTypes.has('place-voiceover') && VOICEOVER_INTENT_RE.test(input.brief)) {
+    steps.push({
+      type: 'place-voiceover',
+      assetId: null,
+      bucketItemId: null,
+      r2Key: null,
+      title: 'Voiceover placement',
+      role: 'voiceover',
+      directive: {
+        instruction: 'Place or generate a voiceover against the visual draft.',
+        source: input.selectedAsset?.transcript ? 'selected-asset-transcript' : 'producer-brief',
+      },
+      startSec: 0,
+      durationSec,
+    })
+  }
+
+  const overlayItem = overlayCandidate(input.items)
+  if (!existingTypes.has('place-overlay') && OVERLAY_INTENT_RE.test(input.brief)) {
+    steps.push({
+      type: 'place-overlay',
+      assetId: overlayItem?.assetId ?? null,
+      bucketItemId: overlayItem?.id ?? null,
+      r2Key: overlayItem?.r2Key ?? null,
+      title: overlayItem?.title ?? 'Overlay placement',
+      role: overlayItem?.role ?? 'overlay',
+      directive: {
+        instruction: 'Place a brand, offer, or CTA overlay above the visual draft.',
+        source: overlayItem ? 'project-bucket' : 'producer-brief',
+      },
+      startSec: Math.max(0, durationSec - Math.min(3, durationSec)),
+      durationSec: Math.min(3, durationSec),
+    })
+  }
+
+  const captionRequested = CAPTION_INTENT_RE.test(input.brief) || Boolean(input.selectedAsset?.transcript && VOICEOVER_INTENT_RE.test(input.brief))
+  if (!existingTypes.has('create-caption') && captionRequested) {
+    steps.push({
+      type: 'create-caption',
+      assetId: input.selectedAsset?.id ?? null,
+      bucketItemId: null,
+      r2Key: null,
+      title: 'Caption requirement',
+      role: 'captions',
+      directive: {
+        instruction: 'Create burn-in captions or subtitles for the final render.',
+        source: input.selectedAsset?.transcript ? 'selected-asset-transcript' : 'producer-brief',
+      },
+      startSec: 0,
+      durationSec,
+    })
+  }
+
+  return { ...plan, steps }
 }

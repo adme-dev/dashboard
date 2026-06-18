@@ -76,9 +76,9 @@ export interface ReviewableAssemblyPlan {
   targetFormat: string
   brief: string
   steps: Array<{
-    type: 'place-asset' | 'generate-asset' | 'create-caption' | 'create-thumbnail'
+    type: 'place-asset' | 'place-voiceover' | 'place-overlay' | 'generate-asset' | 'create-caption' | 'create-thumbnail'
     assetId: string | null
-    bucketItemId: string
+    bucketItemId: string | null
     r2Key: string | null
     title: string | null
     role: string | null

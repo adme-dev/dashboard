@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { requireVideoProjectWriteAccess } from '~~/server/utils/video-asset-intelligence/access'
 import { buildReviewableAssemblyPlan } from '~~/server/utils/video-asset-intelligence/buckets'
-import { buildAssemblyPrompt, parseAssemblyAiResponse, planFromAiAssembly, usableBucketItems } from '~~/server/utils/video-asset-intelligence/aiAssembly'
+import { buildAssemblyPrompt, parseAssemblyAiResponse, planFromAiAssembly, usableBucketItems, withProducerLaneSteps } from '~~/server/utils/video-asset-intelligence/aiAssembly'
 import { ensureDefaultBuckets, listBucketItemsForProject } from '~~/server/utils/video-asset-intelligence/db'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 
@@ -45,12 +45,14 @@ export default defineEventHandler(async (event) => {
       )
       const ai = parseAssemblyAiResponse(response, bucketItems)
       if (ai) {
-        return { plan: planFromAiAssembly({ projectId, brief: body.brief, targetFormat: body.targetFormat, items: usable, ai }) }
+        const plan = planFromAiAssembly({ projectId, brief: body.brief, targetFormat: body.targetFormat, items: usable, ai })
+        return { plan: withProducerLaneSteps(plan, { brief: body.brief, items: bucketItems, selectedAsset: body.selectedAsset }) }
       }
     } catch (error) {
       console.error('AI assembly fell back to mechanical plan:', error)
     }
   }
 
-  return { plan: buildReviewableAssemblyPlan({ projectId, brief: body.brief, targetFormat: body.targetFormat, bucketItems }) }
+  const plan = buildReviewableAssemblyPlan({ projectId, brief: body.brief, targetFormat: body.targetFormat, bucketItems })
+  return { plan: withProducerLaneSteps(plan, { brief: body.brief, items: bucketItems, selectedAsset: body.selectedAsset }) }
 })
