@@ -36,19 +36,19 @@
 
 ## Phase 3: Library Rail
 
-- [ ] Replace compact select-heavy filters with scan-friendly controls.
-- [ ] Add asset type filter chips: footage, still, generated, derivative, voiceover, music, overlay, caption.
+- [x] Replace compact select-heavy filters with scan-friendly controls.
+- [x] Add asset type filter chips: footage, still, generated, derivative, voiceover, music, overlay, caption.
 - [ ] Add source filters: upload, generation, Audio Studio, Banner Studio, render, derivative.
-- [ ] Add status filters: ready, queued, running, failed, blocked.
-- [ ] Add model/provider filter.
-- [ ] Add aspect ratio filter.
-- [ ] Add bucket/group filter.
-- [ ] Add search across title, prompt, filename, transcript, model, format.
-- [ ] Add sort: newest, oldest, duration, status.
-- [ ] Show thumbnails/previews for video and image assets.
-- [ ] Show playable previews for audio.
-- [ ] Add inline actions per asset: preview, add to timeline, generate from this, publish, inspect.
-- [ ] Hide empty bucket noise by default.
+- [x] Add status filters: ready, queued, running, failed, blocked.
+- [x] Add model/provider filter.
+- [x] Add aspect ratio filter.
+- [x] Add bucket/group filter.
+- [x] Add search across title, prompt, filename, transcript, model, format.
+- [x] Add sort: newest, oldest, duration, status.
+- [x] Show thumbnails/previews for video and image assets.
+- [x] Show playable previews for audio.
+- [x] Add inline actions per asset: preview, add to timeline, generate from this, publish, inspect.
+- [x] Hide empty bucket noise by default.
 - [ ] Consider backend `GET /api/agency/video/projects/:id/studio-assets` aggregation endpoint if frontend aggregation gets brittle.
 
 ## Phase 4: Preview + Prepare Panel

@@ -2,11 +2,11 @@
 import { computed, ref } from 'vue'
 import {
   filterVideoStudioAssets,
+  videoStudioAssetImageSource,
   type VideoStudioAsset,
   type VideoStudioAssetFilters,
   type VideoStudioAssetSource,
   type VideoStudioAssetStatus,
-  type VideoStudioAssetType,
 } from '~~/app/utils/video/videoStudioAssets'
 
 const props = withDefaults(defineProps<{
@@ -21,55 +21,56 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (event: 'update:selected-id', value: string | null): void
   (event: 'add-asset', asset: VideoStudioAsset): void
+  (event: 'generate-from-asset', asset: VideoStudioAsset): void
+  (event: 'inspect-asset', asset: VideoStudioAsset): void
+  (event: 'publish-asset', asset: VideoStudioAsset): void
   (event: 'refresh'): void
 }>()
 
 const search = ref('')
-const type = ref<VideoStudioAssetType | 'all'>('all')
-const source = ref<VideoStudioAssetSource | 'all'>('all')
-const status = ref<VideoStudioAssetStatus | 'all'>('all')
+const category = ref<'all' | 'footage' | 'still' | 'generated' | 'derivative' | 'voiceover' | 'music' | 'overlay' | 'caption'>('all')
+const source = ref<'all' | 'upload' | 'generation' | 'audio' | 'banner' | 'derivative'>('all')
+const statusBucket = ref<'all' | 'ready' | 'running' | 'failed' | 'blocked' | 'unknown'>('all')
 const model = ref<string | 'all'>('all')
-const captions = ref<'all' | 'with' | 'without'>('all')
+const aspect = ref<string | 'all'>('all')
 const bucketId = ref<string | 'all'>('all')
+const sort = ref<'newest' | 'oldest' | 'duration' | 'status'>('newest')
 
-const TYPE_OPTIONS = [
-  { label: 'All types', value: 'all' },
-  { label: 'Video', value: 'video' },
-  { label: 'Audio', value: 'audio' },
-  { label: 'Overlay', value: 'overlay' },
-  { label: 'AI job', value: 'job' },
-  { label: 'Bucket', value: 'bucket' },
-  { label: 'Derivative', value: 'derivative' },
+const CATEGORY_FILTERS = [
+  { label: 'All', value: 'all', icon: 'i-lucide-library' },
+  { label: 'Footage', value: 'footage', icon: 'i-lucide-film' },
+  { label: 'Stills', value: 'still', icon: 'i-lucide-image' },
+  { label: 'Generated', value: 'generated', icon: 'i-lucide-sparkles' },
+  { label: 'Derivatives', value: 'derivative', icon: 'i-lucide-layers' },
+  { label: 'Voiceover', value: 'voiceover', icon: 'i-lucide-mic' },
+  { label: 'Music', value: 'music', icon: 'i-lucide-music' },
+  { label: 'Overlays', value: 'overlay', icon: 'i-lucide-shapes' },
+  { label: 'Captions', value: 'caption', icon: 'i-lucide-subtitles' },
 ]
 
-const SOURCE_OPTIONS = [
+const SOURCE_FILTERS = [
   { label: 'All sources', value: 'all' },
-  { label: 'Library', value: 'library' },
-  { label: 'Generation', value: 'generation' },
-  { label: 'Audio', value: 'audio' },
-  { label: 'Banner', value: 'banner' },
-  { label: 'Bucket', value: 'bucket' },
-  { label: 'Derivative', value: 'derivative' },
+  { label: 'Uploads', value: 'upload' },
+  { label: 'AI', value: 'generation' },
+  { label: 'Audio Studio', value: 'audio' },
+  { label: 'Banner Studio', value: 'banner' },
+  { label: 'Derivatives', value: 'derivative' },
 ]
 
-const STATUS_OPTIONS = [
-  { label: 'All statuses', value: 'all' },
+const STATUS_FILTERS = [
+  { label: 'All status', value: 'all' },
   { label: 'Ready', value: 'ready' },
-  { label: 'Done', value: 'done' },
-  { label: 'Succeeded', value: 'succeeded' },
-  { label: 'Queued', value: 'queued' },
-  { label: 'Processing', value: 'processing' },
-  { label: 'Rendering', value: 'rendering' },
   { label: 'Running', value: 'running' },
-  { label: 'Blocked', value: 'blocked' },
   { label: 'Failed', value: 'failed' },
+  { label: 'Blocked', value: 'blocked' },
   { label: 'Unknown', value: 'unknown' },
 ]
 
-const CAPTION_OPTIONS = [
-  { label: 'All captions', value: 'all' },
-  { label: 'With captions', value: 'with' },
-  { label: 'No captions', value: 'without' },
+const SORT_OPTIONS = [
+  { label: 'Newest first', value: 'newest' },
+  { label: 'Oldest first', value: 'oldest' },
+  { label: 'Duration', value: 'duration' },
+  { label: 'Status', value: 'status' },
 ]
 
 const modelOptions = computed(() => {
@@ -82,17 +83,33 @@ const bucketOptions = computed(() => {
   return [{ label: 'All buckets', value: 'all' }, ...buckets.map(value => ({ label: value, value }))]
 })
 
+const aspectOptions = computed(() => {
+  const aspects = Array.from(new Set(props.assets.map(asset => asset.format).filter(Boolean) as string[])).sort()
+  return [{ label: 'All aspect ratios', value: 'all' }, ...aspects.map(value => ({ label: value, value }))]
+})
+
 const filters = computed<VideoStudioAssetFilters>(() => ({
   search: search.value,
-  type: type.value,
-  source: source.value,
-  status: status.value,
+  source: source.value === 'upload' ? 'all' : source.value,
   model: model.value,
   bucketId: bucketId.value,
-  captions: captions.value,
 }))
 
-const filteredAssets = computed(() => filterVideoStudioAssets(props.assets, filters.value))
+const filteredAssets = computed(() => {
+  const base = filterVideoStudioAssets(props.assets, filters.value)
+    .filter(asset => matchesCategory(asset))
+    .filter(asset => matchesSource(asset))
+    .filter(asset => matchesStatusBucket(asset))
+    .filter(asset => aspect.value === 'all' || asset.format === aspect.value)
+
+  return [...base].sort((a, b) => {
+    if (sort.value === 'oldest') return timeValue(a) - timeValue(b)
+    if (sort.value === 'duration') return (b.durationSec ?? 0) - (a.durationSec ?? 0)
+    if (sort.value === 'status') return a.status.localeCompare(b.status)
+    return timeValue(b) - timeValue(a)
+  })
+})
+
 const groupedAssets = computed(() => {
   if (bucketOptions.value.length <= 1) return [{ key: 'all', label: null as string | null, assets: filteredAssets.value }]
 
@@ -125,6 +142,55 @@ function iconFor(asset: VideoStudioAsset) {
   if (asset.type === 'bucket') return 'i-lucide-folder'
   if (asset.type === 'derivative') return 'i-lucide-layers'
   return 'i-lucide-film'
+}
+
+function imageR2Key(r2Key: string | null): boolean {
+  return Boolean(r2Key && /\.(png|jpe?g|webp)$/i.test(r2Key.split('?')[0] ?? ''))
+}
+
+function matchesCategory(asset: VideoStudioAsset) {
+  if (category.value === 'all') return true
+  if (category.value === 'footage') return asset.type === 'video' && asset.source !== 'generation'
+  if (category.value === 'still') return imageR2Key(asset.r2Key) || (asset.type === 'bucket' && Boolean(asset.thumbnailUrl))
+  if (category.value === 'generated') return asset.source === 'generation' || asset.type === 'job'
+  if (category.value === 'derivative') return asset.type === 'derivative'
+  if (category.value === 'voiceover') return asset.type === 'audio' && asset.role === 'voiceover'
+  if (category.value === 'music') return asset.type === 'audio' && asset.role === 'music'
+  if (category.value === 'overlay') return asset.type === 'overlay'
+  if (category.value === 'caption') return Boolean(asset.captionVttUrl)
+  return true
+}
+
+function matchesSource(asset: VideoStudioAsset) {
+  if (source.value === 'all') return true
+  if (source.value === 'upload') return asset.source === 'library' || asset.source === 'bucket'
+  return asset.source === source.value
+}
+
+function matchesStatusBucket(asset: VideoStudioAsset) {
+  if (statusBucket.value === 'all') return true
+  if (statusBucket.value === 'ready') return asset.status === 'ready' || asset.status === 'done' || asset.status === 'succeeded'
+  if (statusBucket.value === 'running') return asset.status === 'queued' || asset.status === 'processing' || asset.status === 'rendering' || asset.status === 'running'
+  return asset.status === statusBucket.value
+}
+
+function timeValue(asset: VideoStudioAsset) {
+  const parsed = asset.createdAt ? Date.parse(asset.createdAt) : 0
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function previewKind(asset: VideoStudioAsset): 'image' | 'video' | 'icon' {
+  if (asset.thumbnailUrl || imageR2Key(asset.r2Key)) return 'image'
+  if ((asset.type === 'video' || asset.type === 'job') && asset.previewUrl) return 'video'
+  return 'icon'
+}
+
+function canGenerateFromAsset(asset: VideoStudioAsset) {
+  return Boolean(videoStudioAssetImageSource(asset))
+}
+
+function canPublishAsset(asset: VideoStudioAsset) {
+  return Boolean(asset.libraryAssetId && (asset.type === 'video' || asset.type === 'job'))
 }
 
 function statusColor(status: VideoStudioAssetStatus): 'primary' | 'success' | 'error' | 'warning' | 'neutral' {
@@ -182,13 +248,51 @@ function sourceLabel(value: VideoStudioAssetSource) {
       />
     </div>
 
-    <div class="grid grid-cols-2 gap-2">
-      <USelect v-model="type" :items="TYPE_OPTIONS" value-key="value" size="xs" aria-label="Filter asset type" />
-      <USelect v-model="source" :items="SOURCE_OPTIONS" value-key="value" size="xs" aria-label="Filter asset source" />
-      <USelect v-model="status" :items="STATUS_OPTIONS" value-key="value" size="xs" aria-label="Filter asset status" />
+    <div class="space-y-2">
+      <div class="flex gap-1.5 overflow-x-auto pb-1">
+        <UButton
+          v-for="option in CATEGORY_FILTERS"
+          :key="option.value"
+          :icon="option.icon"
+          :label="option.label"
+          size="xs"
+          :variant="category === option.value ? 'solid' : 'soft'"
+          :color="category === option.value ? 'primary' : 'neutral'"
+          class="shrink-0"
+          @click="category = option.value"
+        />
+      </div>
+
+      <div class="flex flex-wrap gap-1.5">
+        <UButton
+          v-for="option in SOURCE_FILTERS"
+          :key="option.value"
+          :label="option.label"
+          size="xs"
+          :variant="source === option.value ? 'solid' : 'ghost'"
+          :color="source === option.value ? 'primary' : 'neutral'"
+          @click="source = option.value"
+        />
+      </div>
+
+      <div class="flex flex-wrap gap-1.5">
+        <UButton
+          v-for="option in STATUS_FILTERS"
+          :key="option.value"
+          :label="option.label"
+          size="xs"
+          :variant="statusBucket === option.value ? 'solid' : 'ghost'"
+          :color="statusBucket === option.value ? 'primary' : 'neutral'"
+          @click="statusBucket = option.value"
+        />
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <USelect v-model="model" :items="modelOptions" value-key="value" size="xs" aria-label="Filter model" />
-      <USelect v-model="captions" :items="CAPTION_OPTIONS" value-key="value" size="xs" aria-label="Filter captions" />
+      <USelect v-model="aspect" :items="aspectOptions" value-key="value" size="xs" aria-label="Filter aspect ratio" />
       <USelect v-if="bucketOptions.length > 1" v-model="bucketId" :items="bucketOptions" value-key="value" size="xs" aria-label="Filter bucket" />
+      <USelect v-model="sort" :items="SORT_OPTIONS" value-key="value" size="xs" aria-label="Sort assets" />
     </div>
 
     <div class="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
@@ -222,8 +326,23 @@ function sourceLabel(value: VideoStudioAssetSource) {
           :class="props.selectedId === asset.id ? 'border-primary bg-primary/10' : 'border-default bg-elevated hover:border-primary/50'"
         >
           <div class="flex items-start gap-2">
-            <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
-              <UIcon :name="iconFor(asset)" class="size-4 text-primary" />
+            <div class="mt-0.5 flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-default bg-default/40">
+              <img
+                v-if="previewKind(asset) === 'image' && asset.thumbnailUrl"
+                :src="asset.thumbnailUrl"
+                :alt="asset.title"
+                loading="lazy"
+                class="size-full object-cover"
+              >
+              <video
+                v-else-if="previewKind(asset) === 'video' && asset.previewUrl"
+                :src="asset.previewUrl"
+                muted
+                playsinline
+                preload="metadata"
+                class="size-full object-cover"
+              />
+              <UIcon v-else :name="iconFor(asset)" class="size-5 text-primary" />
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
@@ -253,6 +372,7 @@ function sourceLabel(value: VideoStudioAssetSource) {
           <div class="mt-2 flex items-center justify-between gap-2">
             <div class="flex min-w-0 flex-wrap items-center gap-1">
               <UBadge :label="asset.type" size="xs" variant="subtle" color="neutral" />
+              <UBadge v-if="asset.format" :label="asset.format" size="xs" variant="subtle" color="neutral" />
               <UBadge v-if="asset.captionVttUrl" label="Captions" size="xs" variant="subtle" color="primary" />
               <a
                 v-if="asset.captionVttUrl"
@@ -265,15 +385,51 @@ function sourceLabel(value: VideoStudioAssetSource) {
                 Open VTT
               </a>
             </div>
-            <UButton
-              icon="i-lucide-list-plus"
-              size="xs"
-              variant="ghost"
-              color="primary"
-              :label="addLabel(asset)"
-              :disabled="!asset.timelineReady"
-              @click.stop="emit('add-asset', asset)"
-            />
+            <div class="flex shrink-0 items-center gap-1">
+              <UButton
+                icon="i-lucide-eye"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                aria-label="Preview asset"
+                @click.stop="emit('update:selected-id', asset.id)"
+              />
+              <UButton
+                icon="i-lucide-sparkles"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                aria-label="Generate from asset"
+                :disabled="!canGenerateFromAsset(asset)"
+                @click.stop="emit('generate-from-asset', asset)"
+              />
+              <UButton
+                icon="i-lucide-info"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                aria-label="Inspect asset"
+                @click.stop="emit('inspect-asset', asset)"
+              />
+              <UButton
+                icon="i-lucide-share-2"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                aria-label="Publish asset"
+                :disabled="!canPublishAsset(asset)"
+                @click.stop="emit('publish-asset', asset)"
+              />
+              <UButton
+                icon="i-lucide-list-plus"
+                size="xs"
+                variant="ghost"
+                color="primary"
+                :label="addLabel(asset)"
+                :disabled="!asset.timelineReady"
+                @click.stop="emit('add-asset', asset)"
+              />
+            </div>
           </div>
         </div>
       </div>

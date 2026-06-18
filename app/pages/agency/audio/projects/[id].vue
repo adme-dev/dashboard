@@ -240,6 +240,28 @@ function onStudioAssetAdd(asset: VideoStudioAsset) {
   }
 }
 
+function onStudioAssetGenerate(asset: VideoStudioAsset) {
+  selectedStudioAssetId.value = asset.id
+  if (!videoStudioAssetImageSource(asset)) return
+  generationDraftPrompt.value = asset.prompt
+  generatePickerOpen.value = true
+}
+
+function onStudioAssetInspect(asset: VideoStudioAsset) {
+  selectedStudioAssetId.value = asset.id
+}
+
+async function onStudioAssetPublish(asset: VideoStudioAsset) {
+  selectedStudioAssetId.value = asset.id
+  if (!asset.libraryAssetId) return
+  try {
+    const res = await editor.publishVideoAssetToSocial(asset.libraryAssetId)
+    await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not publish asset', description: apiErrorDescription(e, ''), color: 'error' })
+  }
+}
+
 function onVoiceoverGenerated() {
   void refreshStudioAudioAssets()
 }
@@ -626,6 +648,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :loading="studioLibraryLoading"
                 @refresh="refreshStudioLibrary"
                 @add-asset="onStudioAssetAdd"
+                @generate-from-asset="onStudioAssetGenerate"
+                @inspect-asset="onStudioAssetInspect"
+                @publish-asset="onStudioAssetPublish"
               />
           </template>
 

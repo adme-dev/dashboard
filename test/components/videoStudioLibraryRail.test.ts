@@ -10,7 +10,7 @@ const stubs = {
     name: 'UButton',
     props: ['icon', 'label', 'disabled'],
     emits: ['click'],
-    template: '<button :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
+    template: '<button :data-icon="icon" :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
   },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
   UInput: { name: 'UInput', props: ['modelValue', 'placeholder'], emits: ['update:modelValue'], template: '<input :value="modelValue" :placeholder="placeholder" />' },
@@ -56,7 +56,7 @@ describe('VideoStudioLibraryRail', () => {
   it('renders mixed assets with status, metadata, and add actions', async () => {
     const html = await render({
       assets: [
-        asset({ id: 'video:asset-1', title: 'Generated drive-by', durationSec: 5, captionVttKey: 'captions/asset-1.vtt', captionVttUrl: '/api/agency/video/assets/asset-1/captions.vtt' }),
+        asset({ id: 'video:asset-1', title: 'Generated drive-by', durationSec: 5, thumbnailUrl: '/thumb.jpg', captionVttKey: 'captions/asset-1.vtt', captionVttUrl: '/api/agency/video/assets/asset-1/captions.vtt' }),
         asset({ id: 'audio:voice-1', rawId: 'voice-1', type: 'audio', source: 'audio', title: 'Opening voiceover', subtitle: 'voiceover', role: 'voiceover', modelId: null, durationSec: 12, previewUrl: '/voice.mp3' }),
         asset({ id: 'audio:music-1', rawId: 'music-1', type: 'audio', source: 'audio', title: 'Queued music bed', subtitle: 'music', role: 'music', modelId: null, status: 'rendering', durationSec: null, timelineReady: false, previewUrl: '/music.mp3' }),
         asset({ id: 'job:job-1', rawId: 'job-1', type: 'job', source: 'generation', title: 'Smoke reveal', subtitle: 'image-to-video', status: 'running', timelineReady: false, r2Key: null, previewUrl: null }),
@@ -65,6 +65,12 @@ describe('VideoStudioLibraryRail', () => {
       loading: false
     })
 
+    expect(html).toContain('Footage')
+    expect(html).toContain('Stills')
+    expect(html).toContain('Generated')
+    expect(html).toContain('Audio Studio')
+    expect(html).toContain('All aspect ratios')
+    expect(html).toContain('Newest first')
     expect(html).toContain('Generated drive-by')
     expect(html).toContain('Opening voiceover')
     expect(html).toContain('Queued music bed')
@@ -75,7 +81,12 @@ describe('VideoStudioLibraryRail', () => {
     expect(html).toContain('12s')
     expect(html).toContain('Add')
     expect(html).toContain('Generating')
+    expect(html).toContain('/thumb.jpg')
     expect(html).toContain('/voice.mp3')
+    expect(html).toContain('i-lucide-eye')
+    expect(html).toContain('i-lucide-sparkles')
+    expect(html).toContain('i-lucide-share-2')
+    expect(html).toContain('i-lucide-info')
     expect(html).toContain('Captions')
     expect(html).toContain('/api/agency/video/assets/asset-1/captions.vtt')
   })
