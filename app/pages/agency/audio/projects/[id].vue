@@ -723,6 +723,37 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 @add-to-timeline="onStudioAssetAdd"
                 @generate-from-asset="onStudioAssetGenerate"
               />
+              <div v-if="videoGenerationEnabled" class="mt-3 rounded-md border border-default bg-elevated p-3">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <UIcon name="i-lucide-sparkles" class="size-4 text-muted" />
+                    <div class="min-w-0">
+                      <h4 class="text-xs font-medium uppercase text-muted">AI generation</h4>
+                      <p class="truncate text-[11px] text-muted">Cloudflare AI Gateway models only.</p>
+                    </div>
+                  </div>
+                  <UBadge
+                    v-if="activeGenerationJobCount"
+                    :label="`${activeGenerationJobCount} active`"
+                    size="xs"
+                    variant="subtle"
+                    color="primary"
+                  />
+                </div>
+                <MediaGenerateComposer
+                  active
+                  :project-id="projectId"
+                  :timeline-stills="timelineStills"
+                  :default-aspect="projectAspect"
+                  :initial-prompt="generationDraftPrompt"
+                  :initial-source-asset="selectedGenerationSourceAsset"
+                  :recent-jobs="genJobs.jobs.value"
+                  :prepare-timeline-still-source="editor.saveNow"
+                  @submitted="onGenerationSubmitted"
+                  @add-to-timeline="onLibraryAddToTimeline"
+                  @close="generationDraftPrompt = null"
+                />
+              </div>
               <div class="mt-3 mb-2 flex items-center gap-2">
                 <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
                 <div class="min-w-0">

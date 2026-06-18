@@ -65,18 +65,18 @@
 
 ## Phase 5: AI Video Generation
 
-- [ ] Embed AI generation in the workbench instead of relying only on a slideover.
-- [ ] Keep Cloudflare AI Gateway as the only active real provider.
-- [ ] Keep MuAPI dormant/non-selectable.
-- [ ] Surface selectable models only.
-- [ ] Add model capability hints: image-to-video, duration, aspect, source required.
-- [ ] Add prompt templates for agency workflows.
-- [ ] Add regenerate from prior job.
-- [ ] Add generate from timeline still.
-- [ ] Add active job recovery after refresh.
-- [ ] Add failed job retry/prefill.
-- [ ] Add output asset inspection.
-- [ ] Add generated clip duplicate/reuse prompt actions.
+- [x] Embed AI generation in the workbench instead of relying only on a slideover.
+- [x] Keep Cloudflare AI Gateway as the only active real provider.
+- [x] Keep MuAPI dormant/non-selectable.
+- [x] Surface selectable models only.
+- [x] Add model capability hints: image-to-video, duration, aspect, source required.
+- [x] Add prompt templates for agency workflows.
+- [x] Add regenerate from prior job.
+- [x] Add generate from timeline still.
+- [x] Add active job recovery after refresh.
+- [x] Add failed job retry/prefill.
+- [x] Add output asset inspection.
+- [x] Add generated clip duplicate/reuse prompt actions.
 
 ## Phase 6: Voiceover
 
