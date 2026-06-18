@@ -407,7 +407,7 @@
 
 - [x] Operator can produce a draft from assets, voice, overlays, and selected format.
 - [ ] Timeline remains editable after apply.
-- [ ] Jobs/activity are visible.
+- [x] Jobs/activity are visible.
 
 ---
 
@@ -465,21 +465,21 @@
 
 **Acceptance criteria:**
 
-- [ ] Render jobs are visible in workbench or below timeline.
-- [ ] Save/send/publish actions remain available.
-- [ ] Generated social caption flow remains available.
+- [x] Render jobs are visible in workbench or below timeline.
+- [x] Save/send/publish actions remain available.
+- [x] Generated social caption flow remains available.
 
 **Verification:**
 
 - [ ] Manual: render -> save asset -> send/publish path.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 11.
 
 **Files likely touched:**
 
 - `app/pages/agency/audio/projects/[id].vue`
-- `app/components/media/VideoStudioProducerRail.vue`
+- `app/components/media/VideoStudioRenderJobsPanel.vue`
 - Existing render job UI.
 
 **Estimated scope:** Small/Medium.

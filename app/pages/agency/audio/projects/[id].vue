@@ -361,8 +361,6 @@ async function onLibraryPublish(p: { assetId: string; sourceJobId: string | null
   }
 }
 
-function jobStatusColor(s: string) { return s === 'done' ? 'success' : s === 'failed' ? 'error' : 'info' }
-
 // Refresh render jobs once an AV project finishes loading (isAv depends on the
 // async-loaded timeline, so watch it rather than onMounted).
 watch(isAv, (av) => {
@@ -676,6 +674,15 @@ const saveStatusColor = computed(() => {
                 :overlay-asset-count="studioOverlayAssetCount"
                 @add-to-timeline="onHarnessAddToTimeline"
               />
+              <VideoStudioRenderJobsPanel
+                :project-id="projectId"
+                :jobs="editor.renderJobs.value"
+                :rendering="editor.rendering.value"
+                @render="onRenderVideo"
+                @publish="onPublishToSocial"
+                @send-to-portal="onSendToPortal"
+                @save-asset="onSaveAsset"
+              />
               <div class="grid grid-cols-2 gap-2">
                 <UButton icon="i-lucide-music" size="xs" variant="ghost" color="neutral" label="Audio" @click="pickerOpen = true" />
                 <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="onRenderVideo" />
@@ -816,42 +823,6 @@ const saveStatusColor = computed(() => {
             :model-value="editor.currentTime.value"
             @update:model-value="(v: number | number[]) => editor.seek(Array.isArray(v) ? v[0]! : v)"
           />
-        </div>
-
-        <!-- Render jobs (AV) -->
-        <div v-if="isAv && editor.renderJobs.value.length" class="rounded-lg border border-default bg-elevated p-3 space-y-2">
-          <p class="text-xs font-medium text-muted">Render jobs</p>
-          <div v-for="job in editor.renderJobs.value" :key="job.id" class="flex items-center gap-3 text-sm">
-            <UBadge :label="job.status" size="xs" variant="subtle" :color="jobStatusColor(job.status)" />
-            <span class="text-muted tabular-nums">{{ new Date(job.createdAt).toLocaleString() }}</span>
-            <span v-if="job.error" class="text-error truncate">{{ job.error }}</span>
-            <div class="ml-auto flex gap-2">
-              <UButton
-                v-for="(key, fmt) in (job.variants || {})" :key="fmt"
-                :label="String(fmt)" size="xs" variant="soft" color="neutral"
-                :to="`/api/agency/audio/projects/${projectId}/renders/${job.id}/${fmt}`"
-                target="_blank"
-              />
-              <UDropdownMenu
-                v-if="job.status === 'done'"
-                :items="[Object.keys(job.variants || {}).map((fmt) => ({ label: `Publish ${fmt}`, icon: 'i-lucide-share-2', onSelect: () => onPublishToSocial(job, String(fmt)) }))]"
-              >
-                <UButton icon="i-lucide-share-2" size="xs" variant="ghost" color="primary" label="Publish" />
-              </UDropdownMenu>
-              <UDropdownMenu
-                v-if="job.status === 'done'"
-                :items="[Object.keys(job.variants || {}).map((fmt) => ({ label: `Send ${fmt} to portal`, icon: 'i-lucide-send', onSelect: () => onSendToPortal(job, String(fmt)) }))]"
-              >
-                <UButton icon="i-lucide-send" size="xs" variant="ghost" color="neutral" label="To portal" />
-              </UDropdownMenu>
-              <UDropdownMenu
-                v-if="job.status === 'done'"
-                :items="[Object.keys(job.variants || {}).map((fmt) => ({ label: `Save ${fmt} to library`, icon: 'i-lucide-bookmark', onSelect: () => onSaveAsset(job, String(fmt)) }))]"
-              >
-                <UButton icon="i-lucide-bookmark" size="xs" variant="ghost" color="neutral" label="Library" />
-              </UDropdownMenu>
-            </div>
-          </div>
         </div>
       </template>
     </div>
