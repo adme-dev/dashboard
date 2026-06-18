@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ref } from 'vue'
 import { useVideoStudioAssets } from '~~/app/composables/useVideoStudioAssets'
 import { filterVideoStudioAssets, normalizeVideoStudioAssets } from '~~/app/utils/video/videoStudioAssets'
+import { audioStudioTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
 
 describe('videoStudioAssets', () => {
   it('normalizes mixed studio sources into one searchable asset list', () => {
@@ -73,6 +74,61 @@ describe('videoStudioAssets', () => {
     ])
     expect(assets.find(asset => asset.id === 'job:job-2')?.status).toBe('running')
     expect(assets.find(asset => asset.id === 'video:asset-1')?.timelineReady).toBe(true)
+    expect(assets.find(asset => asset.id === 'audio:voice-1')?.previewUrl).toBe('/vo.mp3')
+  })
+
+  it('only marks completed audio assets as timeline-ready', () => {
+    const assets = normalizeVideoStudioAssets({
+      audioAssets: [
+        {
+          id: 'music-queued',
+          title: 'Still rendering music',
+          kind: 'music',
+          status: 'rendering',
+          durationSec: null,
+          r2KeyMaster: 'audio/music.mp3',
+          streamUrl: '/music.mp3'
+        },
+        {
+          id: 'voice-ready',
+          title: 'Ready voice',
+          kind: 'voiceover',
+          status: 'ready',
+          durationSec: 8,
+          r2KeyMaster: 'audio/voice.mp3',
+          streamUrl: '/voice.mp3'
+        }
+      ]
+    })
+
+    expect(assets.find(asset => asset.id === 'audio:music-queued')?.timelineReady).toBe(false)
+    expect(assets.find(asset => asset.id === 'audio:voice-ready')?.timelineReady).toBe(true)
+  })
+
+  it('maps only ready audio assets into timeline payloads', () => {
+    expect(audioStudioTimelinePayload({
+      id: 'voice-ready',
+      title: 'Ready voice',
+      kind: 'voiceover',
+      status: 'ready',
+      r2KeyMaster: 'audio/voice.mp3',
+      streamUrl: '/voice.mp3'
+    })).toEqual({
+      id: 'voice-ready',
+      r2_key_master: 'audio/voice.mp3',
+      title: 'Ready voice',
+      kind: 'voiceover',
+      streamUrl: '/voice.mp3'
+    })
+
+    expect(audioStudioTimelinePayload({
+      id: 'music-queued',
+      title: 'Queued music',
+      kind: 'music',
+      status: 'queued',
+      r2KeyMaster: 'audio/music.mp3',
+      streamUrl: '/music.mp3'
+    })).toBeNull()
   })
 
   it('filters by search, type, status, model, source, and bucket', () => {

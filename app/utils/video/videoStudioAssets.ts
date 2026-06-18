@@ -88,6 +88,7 @@ export interface VideoStudioAsset {
   role: string | null
   prompt: string | null
   r2Key: string | null
+  previewUrl: string | null
   thumbnailUrl: string | null
   durationSec: number | null
   format: string | null
@@ -151,6 +152,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       role: item.role ?? null,
       prompt: directivePrompt(item.directive),
       r2Key: item.r2Key ?? null,
+      previewUrl: null,
       thumbnailUrl: item.assetId ? `/api/agency/video/assets/${encodeURIComponent(item.assetId)}/thumbnail` : null,
       durationSec: null,
       format: null,
@@ -173,6 +175,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       role: null,
       prompt: asset.generationPrompt ?? null,
       r2Key: asset.r2Key ?? null,
+      previewUrl: asset.r2Key ? `/api/agency/video/assets/${encodeURIComponent(asset.id)}/stream` : null,
       thumbnailUrl: asset.thumbnailUrl ?? null,
       durationSec: asset.durationSec ?? null,
       format: asset.format ?? null,
@@ -195,10 +198,11 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       role: asset.kind,
       prompt: null,
       r2Key: asset.r2KeyMaster ?? null,
+      previewUrl: asset.streamUrl ?? null,
       thumbnailUrl: null,
       durationSec: asset.durationSec ?? null,
       format: null,
-      timelineReady: Boolean(asset.r2KeyMaster || asset.streamUrl),
+      timelineReady: Boolean(asset.r2KeyMaster && (asset.status === 'ready' || asset.status === 'done')),
       createdAt: asset.createdAt ?? null,
     })
   }
@@ -217,6 +221,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       role: 'overlay',
       prompt: null,
       r2Key: null,
+      previewUrl: null,
       thumbnailUrl: null,
       durationSec: null,
       format: overlay.formatKey ?? null,
@@ -239,6 +244,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       role: job.mode ?? null,
       prompt: job.prompt ?? null,
       r2Key: job.outputR2Key ?? null,
+      previewUrl: job.outputAssetId ? `/api/agency/video/assets/${encodeURIComponent(job.outputAssetId)}/stream` : null,
       thumbnailUrl: job.outputAssetId ? `/api/agency/video/assets/${encodeURIComponent(job.outputAssetId)}/thumbnail` : null,
       durationSec: null,
       format: null,
@@ -261,6 +267,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       role: derivative.kind,
       prompt: null,
       r2Key: derivative.r2Key ?? null,
+      previewUrl: derivative.r2Key ? `/api/agency/video/derivatives/${encodeURIComponent(derivative.id)}/stream` : null,
       thumbnailUrl: null,
       durationSec: derivative.durationSec ?? null,
       format: null,

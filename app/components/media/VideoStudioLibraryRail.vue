@@ -56,6 +56,8 @@ const STATUS_OPTIONS = [
   { label: 'Done', value: 'done' },
   { label: 'Succeeded', value: 'succeeded' },
   { label: 'Queued', value: 'queued' },
+  { label: 'Processing', value: 'processing' },
+  { label: 'Rendering', value: 'rendering' },
   { label: 'Running', value: 'running' },
   { label: 'Blocked', value: 'blocked' },
   { label: 'Failed', value: 'failed' },
@@ -90,7 +92,7 @@ function statusColor(status: VideoStudioAssetStatus): 'primary' | 'success' | 'e
   if (status === 'ready' || status === 'done' || status === 'succeeded') return 'success'
   if (status === 'failed') return 'error'
   if (status === 'blocked') return 'warning'
-  if (status === 'queued' || status === 'running') return 'primary'
+  if (status === 'queued' || status === 'processing' || status === 'rendering' || status === 'running') return 'primary'
   return 'neutral'
 }
 
@@ -98,6 +100,13 @@ function durationLabel(seconds: number | null) {
   if (!seconds) return null
   const rounded = Number.isInteger(seconds) ? seconds : Number(seconds.toFixed(1))
   return `${rounded}s`
+}
+
+function addLabel(asset: VideoStudioAsset) {
+  if (asset.timelineReady) return 'Add'
+  if (asset.type === 'audio' && (asset.status === 'queued' || asset.status === 'processing' || asset.status === 'rendering')) return 'Generating'
+  if (asset.status === 'failed') return 'Failed'
+  return 'Unavailable'
 }
 </script>
 
@@ -140,13 +149,11 @@ function durationLabel(seconds: number | null) {
         <p class="mt-1 text-[11px] text-muted">Adjust filters or generate/upload source media.</p>
       </div>
 
-      <button
+      <div
         v-for="asset in filteredAssets"
         :key="asset.id"
-        type="button"
         class="w-full rounded-md border p-2 text-left transition"
         :class="props.selectedId === asset.id ? 'border-primary bg-primary/10' : 'border-default bg-elevated hover:border-primary/50'"
-        @click="emit('update:selected-id', asset.id)"
       >
         <div class="flex items-start gap-2">
           <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
@@ -154,7 +161,13 @@ function durationLabel(seconds: number | null) {
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
-              <p class="min-w-0 flex-1 truncate text-xs font-medium text-highlighted">{{ asset.title }}</p>
+              <button
+                type="button"
+                class="min-w-0 flex-1 truncate text-left text-xs font-medium text-highlighted hover:text-primary"
+                @click="emit('update:selected-id', asset.id)"
+              >
+                {{ asset.title }}
+              </button>
               <UBadge :label="asset.status" size="xs" :color="statusColor(asset.status)" variant="subtle" />
             </div>
             <p class="mt-0.5 truncate text-[11px] text-muted">
@@ -162,6 +175,13 @@ function durationLabel(seconds: number | null) {
             </p>
             <p v-if="asset.prompt" class="mt-1 line-clamp-2 text-[11px] leading-snug text-muted">{{ asset.prompt }}</p>
             <p v-else-if="asset.modelId" class="mt-1 truncate text-[11px] text-muted">{{ asset.modelId }}</p>
+            <audio
+              v-if="asset.type === 'audio' && asset.previewUrl"
+              :src="asset.previewUrl"
+              controls
+              preload="none"
+              class="mt-2 h-8 w-full"
+            />
           </div>
         </div>
         <div class="mt-2 flex items-center justify-between gap-2">
@@ -171,12 +191,12 @@ function durationLabel(seconds: number | null) {
             size="xs"
             variant="ghost"
             color="primary"
-            label="Add"
+            :label="addLabel(asset)"
             :disabled="!asset.timelineReady"
             @click.stop="emit('add-asset', asset)"
           />
         </div>
-      </button>
+      </div>
     </div>
   </div>
 </template>

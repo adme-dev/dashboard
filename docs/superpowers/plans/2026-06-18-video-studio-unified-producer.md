@@ -251,16 +251,16 @@
 
 **Acceptance criteria:**
 
-- [ ] Library rail shows ready voiceover/music assets.
-- [ ] Audio assets can be previewed.
-- [ ] Audio assets can be added to correct audio lanes.
-- [ ] Queued/failed music assets show status but cannot be inserted until ready/done.
+- [x] Library rail shows ready voiceover/music assets.
+- [x] Audio assets can be previewed.
+- [x] Audio assets can be added to correct audio lanes.
+- [x] Queued/failed music assets show status but cannot be inserted until ready/done.
 
 **Verification:**
 
-- [ ] Unit test timeline payload mapping.
+- [x] Unit test timeline payload mapping.
 - [ ] Manual: add existing voiceover and music assets.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 3, Task 7.
 
@@ -276,7 +276,7 @@
 
 - [ ] Voice generation works inside Video Studio.
 - [ ] Existing Audio Studio persistence remains unchanged.
-- [ ] Audio assets are discoverable in unified library.
+- [x] Audio assets are discoverable in unified library.
 
 ---
 

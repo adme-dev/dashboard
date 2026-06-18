@@ -32,6 +32,7 @@ function asset(overrides: Partial<VideoStudioAsset>): VideoStudioAsset {
     role: null,
     prompt: 'Slow dolly past the car',
     r2Key: 'generated/drive.mp4',
+    previewUrl: '/api/agency/video/assets/asset-1/stream',
     thumbnailUrl: null,
     durationSec: 5,
     format: '9:16',
@@ -52,8 +53,9 @@ describe('VideoStudioLibraryRail', () => {
     const html = await render({
       assets: [
         asset({ id: 'video:asset-1', title: 'Generated drive-by', durationSec: 5 }),
-        asset({ id: 'audio:voice-1', rawId: 'voice-1', type: 'audio', source: 'audio', title: 'Opening voiceover', subtitle: 'voiceover', role: 'voiceover', modelId: null, durationSec: 12 }),
-        asset({ id: 'job:job-1', rawId: 'job-1', type: 'job', source: 'generation', title: 'Smoke reveal', subtitle: 'image-to-video', status: 'running', timelineReady: false, r2Key: null }),
+        asset({ id: 'audio:voice-1', rawId: 'voice-1', type: 'audio', source: 'audio', title: 'Opening voiceover', subtitle: 'voiceover', role: 'voiceover', modelId: null, durationSec: 12, previewUrl: '/voice.mp3' }),
+        asset({ id: 'audio:music-1', rawId: 'music-1', type: 'audio', source: 'audio', title: 'Queued music bed', subtitle: 'music', role: 'music', modelId: null, status: 'rendering', durationSec: null, timelineReady: false, previewUrl: '/music.mp3' }),
+        asset({ id: 'job:job-1', rawId: 'job-1', type: 'job', source: 'generation', title: 'Smoke reveal', subtitle: 'image-to-video', status: 'running', timelineReady: false, r2Key: null, previewUrl: null }),
       ],
       selectedId: null,
       loading: false
@@ -61,11 +63,15 @@ describe('VideoStudioLibraryRail', () => {
 
     expect(html).toContain('Generated drive-by')
     expect(html).toContain('Opening voiceover')
+    expect(html).toContain('Queued music bed')
     expect(html).toContain('Smoke reveal')
     expect(html).toContain('running')
+    expect(html).toContain('rendering')
     expect(html).toContain('5s')
     expect(html).toContain('12s')
     expect(html).toContain('Add')
+    expect(html).toContain('Generating')
+    expect(html).toContain('/voice.mp3')
   })
 
   it('renders an empty state when no assets are available', async () => {

@@ -11,6 +11,7 @@ import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipI
 import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
+import { audioStudioTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
 import type { AudioAsset, MediaRenderJob } from '~~/app/types'
 import type { VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
 import type { VideoClip } from '~~/server/utils/audio/timelineSchema'
@@ -219,14 +220,10 @@ function onStudioAssetAdd(asset: VideoStudioAsset) {
 
   if (asset.type === 'audio') {
     const audio = studioAudioAssets.value.find(candidate => candidate.id === asset.rawId)
-    if (!audio?.r2KeyMaster) return
-    onPickerPick({
-      id: audio.id,
-      r2_key_master: audio.r2KeyMaster,
-      title: audio.title,
-      kind: audio.kind,
-      streamUrl: audio.streamUrl,
-    })
+    if (!audio) return
+    const payload = audioStudioTimelinePayload(audio)
+    if (!payload) return
+    onPickerPick(payload)
     return
   }
 
@@ -242,14 +239,9 @@ function onVoiceoverGenerated() {
 }
 
 function onVoiceoverAddToTimeline(asset: AudioAsset) {
-  if (!asset.r2KeyMaster) return
-  onPickerPick({
-    id: asset.id,
-    r2_key_master: asset.r2KeyMaster,
-    title: asset.title,
-    kind: asset.kind,
-    streamUrl: asset.streamUrl,
-  })
+  const payload = audioStudioTimelinePayload(asset)
+  if (!payload) return
+  onPickerPick(payload)
 }
 
 function onReusePrompt(p: { prompt: string; modelId: string | null }) {
