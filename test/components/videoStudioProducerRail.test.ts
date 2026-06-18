@@ -92,9 +92,30 @@ describe('VideoStudioProducerRail', () => {
 
     expect(html).toContain('2 proposed steps')
     expect(html).toContain('1 timeline-ready clips')
+    expect(html).toContain('Plan validation')
+    expect(html).toContain('1 draft step needs manual placement or generation.')
+    expect(html).toContain('Apply inserts visual clips only. Use editor Undo to reverse inserts.')
     expect(html).toContain('Lead with motion and finish on offer.')
     expect(html).toContain('Hero drive-by')
     expect(html).toContain('Apply')
+  })
+
+  it('renders a blocked validation state for plans without visual clips', async () => {
+    const html = await render({
+      initialPlan: {
+        targetFormat: 'reels_9x16',
+        rationale: 'Needs a voiceover and caption pass.',
+        steps: [
+          { type: 'voiceover', title: 'Read offer script', startSec: 0, durationSec: 5 },
+          { type: 'caption', title: 'Burn in offer copy', startSec: 1, durationSec: 3 },
+        ],
+      },
+    })
+
+    expect(html).toContain('0 timeline-ready clips')
+    expect(html).toContain('No visual clips are ready to add to the timeline.')
+    expect(html).toContain('2 draft steps need manual placement or generation.')
+    expect(html).toContain('disabled')
   })
 
   it('renders recent generation jobs in producer context', async () => {

@@ -125,8 +125,10 @@ Decision: first caption pass stores a single-cue VTT plus transcript on `video_a
 - [ ] Extend plan to include voiceover placement.
 - [ ] Extend plan to include overlay placement.
 - [ ] Extend plan to include caption requirement.
-- [ ] Add plan validation before applying.
-- [ ] Add `Undo applied plan` or checkpoint prompt.
+- [x] Add plan validation before applying.
+- [x] Add `Undo applied plan` or checkpoint prompt.
+
+Decision: producer apply is now guarded by a reusable plan validator. It only applies timeline-ready visual clips, explains skipped draft steps, and tells the user to use the editor Undo control after inserts instead of creating a separate producer-local rollback path.
 
 ## Phase 10: Timeline Editing
 

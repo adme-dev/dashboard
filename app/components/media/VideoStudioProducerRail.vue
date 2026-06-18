@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import {
   assemblyPlanToTimelinePayloads,
+  validateAssemblyPlanForTimeline,
   type AiAssemblyPlan,
   type AiAssemblyTimelinePayload,
 } from '~~/app/utils/video/aiAssemblyTimeline'
@@ -50,6 +51,7 @@ const recipeOptions = computed(() => VIDEO_PRODUCER_RECIPES.map(recipe => ({
 })))
 const recentGenerationJobs = computed(() => props.recentGenerationJobs.slice(0, 3))
 const timelinePayloads = computed(() => assemblyPlanToTimelinePayloads(assemblyPlan.value))
+const planValidation = computed(() => validateAssemblyPlanForTimeline(assemblyPlan.value))
 const hasManualLaneAssets = computed(() => props.voiceAssetCount > 0 || props.overlayAssetCount > 0)
 const selectedAssetContext = computed(() => props.selectedAsset
   ? {
@@ -116,8 +118,8 @@ const producerSections = computed(() => [
     id: 'render',
     label: 'Render',
     icon: 'i-lucide-clapperboard',
-    ready: timelinePayloads.value.length > 0 || Boolean(assemblyPlan.value?.steps?.length),
-    detail: timelinePayloads.value.length > 0 ? `${timelinePayloads.value.length} clips` : 'After plan',
+    ready: planValidation.value.canApply,
+    detail: planValidation.value.canApply ? `${planValidation.value.timelineReadyCount} clips` : 'After plan',
   },
 ])
 
@@ -158,12 +160,20 @@ async function assemblePlan() {
 }
 
 function applyPlan() {
-  if (!timelinePayloads.value.length) {
-    toast.add({ title: 'No timeline-ready clips', color: 'warning' })
+  if (!planValidation.value.canApply) {
+    toast.add({
+      title: 'Plan needs review',
+      description: planValidation.value.warnings[0] ?? 'No timeline-ready clips.',
+      color: 'warning',
+    })
     return
   }
   for (const payload of timelinePayloads.value) emit('add-to-timeline', payload)
-  toast.add({ title: 'Plan added to timeline', description: `${timelinePayloads.value.length} clips inserted.`, color: 'success' })
+  toast.add({
+    title: 'Plan added to timeline',
+    description: `${timelinePayloads.value.length} clips inserted. Use editor Undo to reverse inserts.`,
+    color: 'success',
+  })
 }
 
 function durationLabel(seconds: number | null | undefined) {
@@ -341,7 +351,7 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
       <div class="flex items-center justify-between gap-2">
         <div class="min-w-0">
           <p class="text-xs font-medium text-highlighted">{{ assemblyPlan.steps?.length ?? 0 }} proposed steps</p>
-          <p class="text-[11px] text-muted">{{ timelinePayloads.length }} timeline-ready clips</p>
+          <p class="text-[11px] text-muted">{{ planValidation.timelineReadyCount }} timeline-ready clips</p>
         </div>
         <UButton
           icon="i-lucide-list-plus"
@@ -349,9 +359,16 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
           variant="soft"
           color="primary"
           label="Apply"
-          :disabled="!timelinePayloads.length"
+          :disabled="!planValidation.canApply"
           @click="applyPlan"
         />
+      </div>
+      <p v-if="planValidation.canApply" class="mt-1 text-[11px] text-muted">Apply inserts visual clips only. Use editor Undo to reverse inserts.</p>
+      <div v-if="planValidation.warnings.length" class="mt-2 rounded border border-default bg-default/30 px-2 py-1.5">
+        <p class="text-[11px] font-medium text-highlighted">Plan validation</p>
+        <ul class="mt-1 space-y-0.5 text-[11px] text-muted">
+          <li v-for="warning in planValidation.warnings" :key="warning">{{ warning }}</li>
+        </ul>
       </div>
       <p v-if="assemblyPlan.rationale" class="mt-2 text-xs leading-snug text-default">{{ assemblyPlan.rationale }}</p>
       <ol class="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-muted">

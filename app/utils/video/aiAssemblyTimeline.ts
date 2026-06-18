@@ -21,6 +21,32 @@ export interface AiAssemblyTimelinePayload {
   format: string | null
 }
 
+export interface AiAssemblyPlanSkippedStep {
+  index: number
+  title: string
+  reason: string
+}
+
+export interface AiAssemblyPlanValidation {
+  canApply: boolean
+  timelineReadyCount: number
+  skippedCount: number
+  warnings: string[]
+  skippedSteps: AiAssemblyPlanSkippedStep[]
+}
+
+function stepTitle(step: AiAssemblyPlanStep, index: number): string {
+  return step.title || step.r2Key || step.assetId || step.type || `Step ${index + 1}`
+}
+
+function skippedStepReason(step: AiAssemblyPlanStep): string | null {
+  if (step?.type !== 'place-asset') {
+    return `${step?.type || 'unknown'} steps are reviewed but not auto-applied from producer plans yet`
+  }
+  if (typeof step.r2Key !== 'string' || step.r2Key.length === 0) return 'missing r2 key'
+  return null
+}
+
 export function assemblyPlanToTimelinePayloads(plan: AiAssemblyPlan | null | undefined): AiAssemblyTimelinePayload[] {
   const steps = Array.isArray(plan?.steps) ? plan.steps : []
   return steps
@@ -33,4 +59,29 @@ export function assemblyPlanToTimelinePayloads(plan: AiAssemblyPlan | null | und
       title: step.title ?? null,
       format: plan?.targetFormat ?? null,
     }))
+}
+
+export function validateAssemblyPlanForTimeline(plan: AiAssemblyPlan | null | undefined): AiAssemblyPlanValidation {
+  const steps = Array.isArray(plan?.steps) ? plan.steps : []
+  const timelineReadyCount = assemblyPlanToTimelinePayloads(plan).length
+  const skippedSteps = steps
+    .map((step, index) => {
+      const reason = skippedStepReason(step)
+      return reason ? { index, title: stepTitle(step, index), reason } : null
+    })
+    .filter((step): step is AiAssemblyPlanSkippedStep => Boolean(step))
+
+  const warnings: string[] = []
+  if (timelineReadyCount === 0) warnings.push('No visual clips are ready to add to the timeline.')
+  if (skippedSteps.length > 0) {
+    warnings.push(`${skippedSteps.length} draft ${skippedSteps.length === 1 ? 'step needs' : 'steps need'} manual placement or generation.`)
+  }
+
+  return {
+    canApply: timelineReadyCount > 0,
+    timelineReadyCount,
+    skippedCount: skippedSteps.length,
+    warnings,
+    skippedSteps,
+  }
 }
