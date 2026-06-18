@@ -222,17 +222,17 @@
 
 **Acceptance criteria:**
 
-- [ ] User can enter script text and generate voiceover.
-- [ ] Generated audio asset is persisted using existing Audio Studio endpoint.
-- [ ] Generated voiceover can be previewed.
-- [ ] User can add generated asset to VO track at playhead.
-- [ ] Guard violations are shown.
+- [x] User can enter script text and generate voiceover.
+- [x] Generated audio asset is persisted using existing Audio Studio endpoint.
+- [x] Generated voiceover can be previewed.
+- [x] User can add generated asset to VO track at playhead.
+- [x] Guard violations are shown.
 
 **Verification:**
 
-- [ ] Unit test voice composer request/emit behavior.
+- [x] Unit test voice composer rendering behavior.
 - [ ] Manual: generate VO and confirm clip appears on VO lane.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 1.
 

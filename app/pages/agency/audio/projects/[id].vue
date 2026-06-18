@@ -237,6 +237,21 @@ function onStudioAssetAdd(asset: VideoStudioAsset) {
   }
 }
 
+function onVoiceoverGenerated() {
+  void refreshStudioAudioAssets()
+}
+
+function onVoiceoverAddToTimeline(asset: AudioAsset) {
+  if (!asset.r2KeyMaster) return
+  onPickerPick({
+    id: asset.id,
+    r2_key_master: asset.r2KeyMaster,
+    title: asset.title,
+    kind: asset.kind,
+    streamUrl: asset.streamUrl,
+  })
+}
+
 function onReusePrompt(p: { prompt: string; modelId: string | null }) {
   generationDraftPrompt.value = p.prompt
   libraryOpen.value = false
@@ -647,6 +662,10 @@ const saveStatusColor = computed(() => {
 
           <template #producer>
             <div class="space-y-3">
+              <VideoStudioVoiceComposer
+                @generated="onVoiceoverGenerated"
+                @add-to-timeline="onVoiceoverAddToTimeline"
+              />
               <div class="rounded-md border border-default bg-elevated p-3">
                 <div class="flex items-start gap-2">
                   <UIcon name="i-lucide-wand-sparkles" class="mt-0.5 size-4 shrink-0 text-primary" />
