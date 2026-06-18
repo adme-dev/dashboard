@@ -134,6 +134,9 @@ const { assets: studioAssets } = useVideoStudioAssets(computed(() => ({
   generationJobs: genJobs.jobs.value,
 })))
 const videoStudioAssetCount = computed(() => studioAssets.value.length)
+const selectedStudioAsset = computed(() => studioAssets.value.find(asset => asset.id === selectedStudioAssetId.value) ?? null)
+const studioVoiceAssetCount = computed(() => studioAssets.value.filter(asset => asset.type === 'audio' && asset.role === 'voiceover').length)
+const studioOverlayAssetCount = computed(() => studioAssets.value.filter(asset => asset.type === 'overlay').length)
 const studioLibraryLoading = computed(() => studioAudioPending.value || studioBannerPending.value)
 
 // Stills already on the timeline that can be registered as i2v source assets.
@@ -665,17 +668,14 @@ const saveStatusColor = computed(() => {
                 @refresh="refreshStudioBannerProjects"
                 @add-overlay="onOverlayPick"
               />
-              <div class="rounded-md border border-default bg-elevated p-3">
-                <div class="flex items-start gap-2">
-                  <UIcon name="i-lucide-wand-sparkles" class="mt-0.5 size-4 shrink-0 text-primary" />
-                  <div class="min-w-0">
-                    <p class="text-sm font-medium text-highlighted">AI Producer</p>
-                    <p class="mt-1 text-xs leading-snug text-muted">
-                      Asset prep, masking, derivatives, and draft assembly stay expanded below until the producer tools are split into this rail.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <VideoStudioProducerRail
+                :project-id="projectId"
+                :selected-asset="selectedStudioAsset"
+                :asset-count="videoStudioAssetCount"
+                :voice-asset-count="studioVoiceAssetCount"
+                :overlay-asset-count="studioOverlayAssetCount"
+                @add-to-timeline="onHarnessAddToTimeline"
+              />
               <div class="grid grid-cols-2 gap-2">
                 <UButton icon="i-lucide-music" size="xs" variant="ghost" color="neutral" label="Audio" @click="pickerOpen = true" />
                 <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="onRenderVideo" />

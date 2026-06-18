@@ -347,17 +347,17 @@
 
 **Acceptance criteria:**
 
-- [ ] Brief and target format remain.
-- [ ] Selected assets are visible to the producer rail.
-- [ ] Draft plan output clearly shows clips/steps.
-- [ ] Apply adds visual clips to timeline.
-- [ ] Voice/overlay additions are represented or queued for manual insert if not yet plan-supported.
+- [x] Brief and target format remain.
+- [x] Selected assets are visible to the producer rail.
+- [x] Draft plan output clearly shows clips/steps.
+- [x] Apply adds visual clips to timeline.
+- [x] Voice/overlay additions are represented or queued for manual insert if not yet plan-supported.
 
 **Verification:**
 
-- [ ] Existing assembly plan tests pass or are added.
+- [x] Existing assembly plan tests pass or are added.
 - [ ] Manual: build and apply draft plan.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 4, Task 6, Task 7.
 
@@ -405,7 +405,7 @@
 
 ### Checkpoint: Producer Workflow
 
-- [ ] Operator can produce a draft from assets, voice, overlays, and selected format.
+- [x] Operator can produce a draft from assets, voice, overlays, and selected format.
 - [ ] Timeline remains editable after apply.
 - [ ] Jobs/activity are visible.
 
