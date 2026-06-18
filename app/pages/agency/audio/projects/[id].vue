@@ -11,6 +11,7 @@ import { canReplaceVideoStudioClip } from '~~/app/utils/video/assetReplacement'
 import { resolveVideoStudioClipInspector } from '~~/app/utils/video/clipInspector'
 import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipInspector'
 import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
+import { effectPreviewPlan } from '~~/app/utils/video/effectPreview'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import { audioStudioTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
@@ -525,6 +526,11 @@ const selectedGeneratedClip = computed(() => resolveGeneratedClipInspector({
   timeline: editor.timeline.value,
   assets: videoAssets.value,
 }))
+const selectedVideoEffectPlan = computed(() => effectPreviewPlan(selectedVideoClip.value?.effects ?? []))
+const selectedVideoEffectLabels = computed(() => {
+  const selected = new Set(selectedVideoClip.value?.effects ?? [])
+  return CLIP_EFFECT_PRESET_UI.filter(preset => selected.has(preset.id)).map(preset => preset.label)
+})
 
 async function copySelectedPrompt() {
   if (selectedGeneratedClip.value.kind !== 'generated-video' || !selectedGeneratedClip.value.prompt) return
@@ -1009,10 +1015,15 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
 
         <!-- Per-clip effects drawer — shows for any selected video clip -->
         <div v-if="isAv && selectedVideoClip" class="rounded-lg border border-default bg-elevated p-3">
-          <div class="mb-2 flex items-center justify-between gap-2">
-            <p class="text-xs font-medium uppercase text-muted">
-              Effects — {{ selectedVideoClip.label }} @ {{ Math.round(selectedVideoClip.startSec) }}s
-            </p>
+          <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-xs font-medium uppercase text-muted">
+                Effects — {{ selectedVideoClip.label }} @ {{ Math.round(selectedVideoClip.startSec) }}s
+              </p>
+              <p class="mt-0.5 text-[11px] text-muted">
+                {{ selectedVideoClip.effects.length ? selectedVideoEffectLabels.join(', ') : 'No effects selected' }}
+              </p>
+            </div>
             <UButton
               v-if="selectedVideoClip.effects.length"
               size="xs"
@@ -1022,24 +1033,56 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               @click="editor.setClipEffectsAction(selectedVideoClip.clipId, [])"
             />
           </div>
-          <div class="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <div class="mb-3 flex flex-wrap gap-1.5">
+            <UBadge
+              :label="`${selectedVideoEffectPlan.approximated.length} previewed`"
+              size="xs"
+              variant="subtle"
+              color="primary"
+            />
+            <UBadge
+              v-if="selectedVideoEffectPlan.unpreviewable.length"
+              :label="`${selectedVideoEffectPlan.unpreviewable.length} render-only`"
+              size="xs"
+              variant="subtle"
+              color="warning"
+            />
+            <UBadge
+              v-if="selectedVideoEffectPlan.shake"
+              label="Motion preview"
+              size="xs"
+              variant="subtle"
+              color="neutral"
+            />
+          </div>
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
             <button
               v-for="preset in CLIP_EFFECT_PRESET_UI"
               :key="preset.id"
               type="button"
-              class="flex flex-col items-center gap-1.5 rounded-lg border p-2.5 text-center transition"
+              role="switch"
+              :aria-checked="selectedVideoClip.effects.includes(preset.id)"
+              class="flex min-h-24 flex-col items-start gap-2 rounded-lg border p-2.5 text-left transition"
               :class="selectedVideoClip.effects.includes(preset.id)
                 ? 'border-primary bg-primary/10 text-highlighted'
                 : 'border-default bg-default/30 text-default hover:border-primary/40 hover:bg-primary/5'"
               :title="preset.hint"
               @click="toggleClipEffect(preset.id)"
             >
-              <UIcon :name="preset.icon" class="size-4" :class="selectedVideoClip.effects.includes(preset.id) ? 'text-primary' : 'text-muted'" />
-              <span class="text-[11px] font-medium leading-none">{{ preset.label }}</span>
+              <span class="flex w-full items-center gap-2">
+                <UIcon :name="preset.icon" class="size-4" :class="selectedVideoClip.effects.includes(preset.id) ? 'text-primary' : 'text-muted'" />
+                <UIcon
+                  :name="selectedVideoClip.effects.includes(preset.id) ? 'i-lucide-check-circle-2' : 'i-lucide-circle'"
+                  class="ml-auto size-3.5"
+                  :class="selectedVideoClip.effects.includes(preset.id) ? 'text-primary' : 'text-muted'"
+                />
+              </span>
+              <span class="text-xs font-semibold leading-tight">{{ preset.label }}</span>
+              <span class="line-clamp-2 text-[11px] leading-snug text-muted">{{ preset.hint }}</span>
             </button>
           </div>
-          <p class="mt-2 text-[11px] text-muted">
-            The preview shows a quick approximation — final quality comes from the render. Fisheye is render-only.
+          <p class="mt-3 text-[11px] text-muted">
+            Preview approximates {{ selectedVideoEffectPlan.approximated.length || 'no' }} selected effects; {{ selectedVideoEffectPlan.unpreviewable.length || 'no' }} selected effects are render-only.
           </p>
         </div>
 
