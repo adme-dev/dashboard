@@ -6,10 +6,13 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
+import { apiErrorDescription } from '~~/app/utils/apiError'
 import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipInspector'
 import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
+import type { MediaRenderJob } from '~~/app/types'
+import type { VideoClip } from '~~/server/utils/audio/timelineSchema'
 import type { VideoAsset } from '~~/server/utils/video/assets'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -53,8 +56,13 @@ const toast = useToast()
 // Everything below is AV-only; audio projects (`!isAv`) keep the original behavior.
 
 const config = useRuntimeConfig()
-const videoStudioEnabled = computed(() => Boolean((config.public as any).videoStudioEnabled))
-const videoAssetHarnessEnabled = computed(() => Boolean((config.public as any).videoAssetHarnessEnabled))
+const publicConfig = config.public as {
+  videoStudioEnabled?: boolean
+  videoAssetHarnessEnabled?: boolean
+  videoGenerationEnabled?: boolean
+}
+const videoStudioEnabled = computed(() => Boolean(publicConfig.videoStudioEnabled))
+const videoAssetHarnessEnabled = computed(() => Boolean(publicConfig.videoAssetHarnessEnabled))
 const isAv = computed(() => editor.mediaType.value === 'av')
 
 // AV pickers
@@ -70,7 +78,7 @@ function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'u
 
 // ─── Video generation wiring ──────────────────────────────────────────────────
 
-const videoGenerationEnabled = computed(() => Boolean((config.public as any).videoGenerationEnabled))
+const videoGenerationEnabled = computed(() => Boolean(publicConfig.videoGenerationEnabled))
 const videoGenerationModelsAvailable = computed(() => videoGenerationEnabled.value)
 const generatePickerOpen = ref(false)
 const generationDraftPrompt = ref<string | null>(null)
@@ -83,7 +91,8 @@ const timelineStills = computed(() => {
   const tl = editor.timeline.value
   if (!tl) return [] as { clipId: string; label: string }[]
   const out: { clipId: string; label: string }[] = []
-  for (const t of tl.tracks) if (t.kind === 'video') for (const c of (t.clips as any[])) {
+  for (const t of tl.tracks) if (t.kind === 'video') for (const c of t.clips) {
+    if (c.type !== 'video') continue
     if (c.base_source === 'still_kenburns' && c.r2_key) out.push({ clipId: c.id, label: `Still @ ${Math.round(c.timeline_start_sec)}s` })
   }
   return out
@@ -134,13 +143,13 @@ const selectedVideoClip = computed(() => {
   if (!tl || !selectedClipId.value) return null
   for (const track of tl.tracks) {
     if (track.kind !== 'video') continue
-    const clip = (track.clips as any[]).find(c => c.id === selectedClipId.value)
+    const clip = track.clips.find((candidate): candidate is VideoClip => candidate.type === 'video' && candidate.id === selectedClipId.value)
     if (clip) {
       return {
-        clipId: clip.id as string,
-        effects: (clip.effects ?? []) as string[],
+        clipId: clip.id,
+        effects: clip.effects ?? [],
         label: clip.base_source === 'still_kenburns' ? 'Still' : 'Footage',
-        startSec: clip.timeline_start_sec as number
+        startSec: clip.timeline_start_sec
       }
     }
   }
@@ -183,8 +192,8 @@ async function publishSelectedGeneratedClip() {
   try {
     const res = await editor.publishVideoAssetToSocial(selectedGeneratedClip.value.assetId)
     await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
-  } catch (e: any) {
-    toast.add({ title: 'Could not publish selected clip', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not publish selected clip', description: apiErrorDescription(e, ''), color: 'error' })
   }
 }
 
@@ -196,31 +205,31 @@ async function onRenderVideo() {
   else toast.add({ title: 'Failed to queue render', color: 'error' })
 }
 
-async function onPublishToSocial(job: any, format: string) {
+async function onPublishToSocial(job: MediaRenderJob, format: string) {
   try {
     const res = await editor.publishToSocial(job.id, format)
     await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
-  } catch (e: any) {
-    toast.add({ title: 'Could not publish to social', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not publish to social', description: apiErrorDescription(e, ''), color: 'error' })
   }
 }
 
-async function onSendToPortal(job: any, format: string) {
+async function onSendToPortal(job: MediaRenderJob, format: string) {
   try {
     await editor.sendToPortal(job.id, String(format))
     toast.add({ title: 'Sent to client portal', description: 'The client can review it in their portal.', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'Could not send to portal', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not send to portal', description: apiErrorDescription(e, ''), color: 'error' })
   }
 }
 
-async function onSaveAsset(job: any, format: string) {
+async function onSaveAsset(job: MediaRenderJob, format: string) {
   try {
     await editor.saveAsset(job.id, String(format))
     await refreshVideoAssets()
     toast.add({ title: 'Saved to library', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'Could not save to library', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not save to library', description: apiErrorDescription(e, ''), color: 'error' })
   }
 }
 
@@ -230,8 +239,8 @@ async function onLibraryPublish(p: { assetId: string; sourceJobId: string | null
   try {
     const res = await editor.publishVideoAssetToSocial(p.assetId)
     await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
-  } catch (e: any) {
-    toast.add({ title: 'Could not publish from library', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not publish from library', description: apiErrorDescription(e, ''), color: 'error' })
   }
 }
 

@@ -7,6 +7,7 @@ import { modelsForMode, validateGenerationForm, costPreviewCents, draftFromGener
 import { videoModelPresentation, type VideoModelOption } from '~~/app/utils/video/modelPresentation'
 import { VIDEO_GENERATION_TEMPLATES, type VideoGenerationTemplate } from '~~/app/utils/video/generationTemplates'
 import { videoGenerationJobTimelinePayload, type VideoLibraryTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
+import { apiErrorDescription, apiErrorReasons } from '~~/app/utils/apiError'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
 
@@ -28,12 +29,12 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
-const { data: modelData, pending: modelsPending, refresh: refreshModels } = useFetch('/api/agency/video/generation/models', {
+const { data: modelData, pending: modelsPending, refresh: refreshModels } = useFetch<{ models: VideoModelOption[] }>('/api/agency/video/generation/models', {
   lazy: true,
   immediate: false,
   query: computed(() => ({ projectId: props.projectId })),
 })
-const allModels = computed((): VideoModelOption[] => (modelData.value as any)?.models ?? [])
+const allModels = computed((): VideoModelOption[] => modelData.value?.models ?? [])
 const hasModels = computed(() => allModels.value.length > 0)
 
 const mode = ref<VideoGenerationMode>('image-to-video')
@@ -174,10 +175,6 @@ function triggerFileInput() {
   fileInputRef.value?.click()
 }
 
-function errorDescription(error: any, fallback = 'Failed'): string {
-  return error?.data?.statusMessage ?? error?.message ?? fallback
-}
-
 // Register a still already in this project timeline as the i2v source — reuses
 // media the user already uploaded instead of requiring another image upload.
 async function onExistingStillSelected(clipId: string | null) {
@@ -191,8 +188,8 @@ async function onExistingStillSelected(clipId: string | null) {
     })
     sourceAssetId.value = res.id
     sourceFileName.value = props.timelineStills.find((s) => s.clipId === clipId)?.label ?? 'Project still'
-  } catch (e: any) {
-    toast.add({ title: 'Could not use still', description: errorDescription(e), color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not use still', description: apiErrorDescription(e), color: 'error' })
     clearSource()
   } finally {
     uploading.value = false
@@ -218,8 +215,8 @@ async function onFileSelected(event: Event) {
 
     sourceAssetId.value = res.id
     sourceFileName.value = file.name
-  } catch (e: any) {
-    toast.add({ title: 'Upload failed', description: errorDescription(e), color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Upload failed', description: apiErrorDescription(e), color: 'error' })
     // Reset so the user can retry
     sourceAssetId.value = null
     sourceFileName.value = null
@@ -251,9 +248,9 @@ async function submit() {
     toast.add({ title: 'Generation queued', description: 'Your clip will appear in the Library when ready.', color: 'success' })
     emit('submitted', res.job.id)
     emit('update:open', false)
-  } catch (e: any) {
-    const reasons = e?.data?.data?.reasons as string[] | undefined
-    toast.add({ title: 'Could not start generation', description: reasons?.join(' ') ?? errorDescription(e), color: 'error' })
+  } catch (e: unknown) {
+    const reasons = apiErrorReasons(e)
+    toast.add({ title: 'Could not start generation', description: reasons?.join(' ') ?? apiErrorDescription(e), color: 'error' })
   } finally {
     submitting.value = false
   }

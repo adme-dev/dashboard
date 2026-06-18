@@ -5,9 +5,10 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/audio/audioSchedulePlanner'
-import { createAudioEngine, type AudioEngine, type LoadResult } from '~~/app/composables/useAudioEngine'
+import { createAudioEngine, type AudioEngine, type AudioEngineDeps, type LoadResult } from '~~/app/composables/useAudioEngine'
 import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/app/utils/audio/audioContextFactory'
 import { createUndoStack } from '~~/app/composables/useTimelineUndo'
+import { apiErrorDescription, apiErrorStatus } from '~~/app/utils/apiError'
 import { resolveClipStartSec } from '~~/app/utils/video/timelinePlacement'
 import {
   cloneState,
@@ -22,6 +23,7 @@ import {
 } from '~~/app/utils/video/videoSourceRegistry'
 import type { Track } from '~~/server/utils/audio/timelineSchema'
 import type { MediaRenderJob } from '~~/app/types'
+import type { VideoAsset } from '~~/server/utils/video/assets'
 
 export type EditorStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -105,7 +107,7 @@ export function makeEngineReloader(
 /** Resolve a clip's kind from the timeline. Missing `type` === audio (addClip omits it). */
 export function clipKindOf(state: TimelineState, clipId: string): 'audio' | 'video' | 'overlay' | null {
   for (const t of state.tracks) {
-    const c = t.clips.find((x: any) => x.id === clipId) as any
+    const c = t.clips.find(x => x.id === clipId)
     if (c) return c.type === 'video' ? 'video' : c.type === 'overlay' ? 'overlay' : 'audio'
   }
   return null
@@ -379,8 +381,8 @@ export function useMediaProjectEditor(projectId: string) {
       await refreshRenderJobs()
       scheduleJobPoll()
       return { ok: true }
-    } catch (e: any) {
-      if (e?.statusCode === 404 || e?.response?.status === 404) return { ok: false, flagOff: true }
+    } catch (e: unknown) {
+      if (apiErrorStatus(e) === 404) return { ok: false, flagOff: true }
       return { ok: false }
     } finally {
       rendering.value = false
@@ -400,21 +402,21 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   /** Send a rendered variant to the client portal for review. Returns the created review or throws. */
-  async function sendToPortal(jobId: string, format: string): Promise<{ review: any }> {
+  async function sendToPortal(jobId: string, format: string): Promise<{ review: unknown }> {
     return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/send-to-portal`, {
       method: 'POST', body: { format }
     })
   }
 
   /** Save a rendered variant to the reusable video library. */
-  async function saveAsset(jobId: string, format: string, title?: string | null): Promise<{ asset: any }> {
+  async function saveAsset(jobId: string, format: string, title?: string | null): Promise<{ asset: VideoAsset }> {
     return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/save-asset`, {
       method: 'POST', body: { format, title: title ?? null }
     })
   }
 
   /** List saved video assets (for the library). */
-  async function listVideoAssets(): Promise<{ assets: any[] }> {
+  async function listVideoAssets(): Promise<{ assets: VideoAsset[] }> {
     return await $fetch('/api/agency/video/assets')
   }
 
@@ -496,7 +498,7 @@ export function useMediaProjectEditor(projectId: string) {
       tracks.value = plan.tracks
       const ctx = createBrowserAudioContext(state.sample_rate)
       engine = createAudioEngine({
-        ctx: ctx as any,
+        ctx: ctx as AudioEngineDeps['ctx'],
         resolveBuffer: makeR2Resolver(sourcesMap, ctx),
         setTimer: browserSetTimer,
         now: () => performance.now() / 1000
@@ -517,9 +519,9 @@ export function useMediaProjectEditor(projectId: string) {
       missingClipIds.value = result.missingClipIds
       duration.value = engine.duration()
       status.value = 'ready'
-    } catch (e: any) {
+    } catch (e: unknown) {
       status.value = 'error'
-      error.value = e?.message ?? 'Failed to load the project audio.'
+      error.value = apiErrorDescription(e, 'Failed to load the project audio.')
     }
   }
 
