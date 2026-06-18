@@ -106,7 +106,7 @@ Decision: inline overlay templates should create or reuse Banner Studio projects
 - [x] Keep existing caption VTT visibility/filtering.
 - [x] Add `Generate captions` action using Workers AI Whisper.
 - [x] Generate captions from uploaded/generated video.
-- [ ] Generate captions from voiceover asset.
+- [x] Generate captions from voiceover asset.
 - [x] Store generated VTT against video asset or caption asset.
 - [x] Add caption preview/download.
 - [ ] Add captions as overlay/render input.

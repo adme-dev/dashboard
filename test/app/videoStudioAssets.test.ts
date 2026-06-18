@@ -181,6 +181,31 @@ describe('videoStudioAssets', () => {
     expect(filterVideoStudioAssets(assets, { captions: 'without' }).map(asset => asset.id)).toEqual(['bucket:bucket-item-1', 'job:job-2'])
   })
 
+  it('exposes voiceover scripts as downloadable caption tracks', () => {
+    const assets = normalizeVideoStudioAssets({
+      audioAssets: [{
+        id: 'voice-1',
+        kind: 'voiceover',
+        status: 'ready',
+        title: 'Opening VO',
+        prompt: 'This is the spoken voiceover line.',
+        durationSec: 4,
+        r2KeyMaster: 'audio/org/voice-1/master.mp3',
+        streamUrl: '/api/agency/audio/assets/voice-1/stream',
+        createdAt: 'now',
+      }],
+    })
+
+    expect(assets[0]).toMatchObject({
+      id: 'audio:voice-1',
+      captionVttKey: 'audio-script:voice-1',
+      captionVttUrl: '/api/agency/audio/assets/voice-1/captions.vtt',
+      transcript: 'This is the spoken voiceover line.',
+      prompt: 'This is the spoken voiceover line.',
+    })
+    expect(filterVideoStudioAssets(assets, { captions: 'with' }).map(asset => asset.id)).toEqual(['audio:voice-1'])
+  })
+
   it('exposes selected image assets as generation source candidates', () => {
     const assets = normalizeVideoStudioAssets({
       videoAssets: [

@@ -29,6 +29,7 @@ const emit = defineEmits<{
 
 const canGenerate = computed(() => Boolean(videoStudioAssetImageSource(props.asset)))
 const canGenerateCaptions = computed(() => Boolean(props.asset?.libraryAssetId && (props.asset.type === 'video' || props.asset.type === 'job')))
+const showCaptionAction = computed(() => Boolean(props.asset && props.asset.type !== 'audio'))
 
 function previewKind(asset: VideoStudioAsset): 'image' | 'video' | 'audio' | 'empty' {
   if (asset.thumbnailUrl) return 'image'
@@ -99,6 +100,7 @@ function activityTimeLabel(value: string | null) {
           @click="emit('generate-from-asset', props.asset)"
         />
         <UButton
+          v-if="showCaptionAction"
           icon="i-lucide-subtitles"
           size="xs"
           variant="ghost"

@@ -34,6 +34,7 @@ interface AudioAssetInput {
   title?: string | null
   kind: 'voiceover' | 'music' | string
   status?: string | null
+  prompt?: string | null
   durationSec?: number | null
   r2KeyMaster?: string | null
   streamUrl?: string | null
@@ -212,6 +213,8 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
   }
 
   for (const asset of input.audioAssets ?? []) {
+    const isVoiceover = asset.kind === 'voiceover'
+    const voiceoverTranscript = isVoiceover && asset.prompt?.trim() ? asset.prompt.trim() : null
     assets.push({
       id: `audio:${asset.id}`,
       rawId: asset.id,
@@ -224,13 +227,13 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       modelId: null,
       bucketId: null,
       role: asset.kind,
-      prompt: null,
+      prompt: voiceoverTranscript,
       r2Key: asset.r2KeyMaster ?? null,
       previewUrl: asset.streamUrl ?? null,
       thumbnailUrl: null,
-      captionVttKey: null,
-      captionVttUrl: null,
-      transcript: null,
+      captionVttKey: voiceoverTranscript ? `audio-script:${asset.id}` : null,
+      captionVttUrl: voiceoverTranscript ? `/api/agency/audio/assets/${encodeURIComponent(asset.id)}/captions.vtt` : null,
+      transcript: voiceoverTranscript,
       durationSec: asset.durationSec ?? null,
       format: null,
       timelineReady: Boolean(asset.r2KeyMaster && (asset.status === 'ready' || asset.status === 'done')),
