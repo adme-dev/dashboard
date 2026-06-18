@@ -33,7 +33,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid render-video request',
       data: { errors: bodyResult.error.issues.map((i) => i.message) } })
   }
-  const formats: VideoFormatKey[] = bodyResult.data.formats ?? [...ALL_FORMATS]
+  const formats = (bodyResult.data.formats?.length ? bodyResult.data.formats : [...ALL_FORMATS]) as [
+    VideoFormatKey,
+    ...VideoFormatKey[]
+  ]
 
   const existing = await getProjectWithCurrentTimeline(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
