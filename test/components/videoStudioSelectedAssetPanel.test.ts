@@ -8,8 +8,8 @@ const stubs = {
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   UButton: {
     name: 'UButton',
-    props: ['icon', 'label', 'disabled'],
-    template: '<button :data-icon="icon" :disabled="disabled"><slot />{{ label }}</button>'
+    props: ['icon', 'label', 'disabled', 'loading', 'to'],
+    template: '<a v-if="to" :href="to" :data-icon="icon"><slot />{{ label }}</a><button v-else :data-icon="icon" :disabled="disabled" :data-loading="loading"><slot />{{ label }}</button>'
   },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
   UAlert: { name: 'UAlert', props: ['title', 'description'], template: '<section><strong>{{ title }}</strong><p>{{ description }}</p></section>' }
@@ -70,6 +70,7 @@ describe('VideoStudioSelectedAssetPanel', () => {
     expect(html).toContain('/api/agency/video/assets/asset-1/thumbnail')
     expect(html).toContain('Add to timeline')
     expect(html).toContain('Generate from asset')
+    expect(html).toContain('Generate captions')
     expect(html).toContain('replicate/wan-2.2')
     expect(html).toContain('5s')
     expect(html).toContain('9:16')
@@ -87,6 +88,21 @@ describe('VideoStudioSelectedAssetPanel', () => {
     expect(html).toContain('Asset failed')
     expect(html).toContain('Retry generation')
     expect(html).toContain('No preview available')
+  })
+
+  it('shows attached captions with transcript preview and VTT download', async () => {
+    const html = await render({
+      asset: asset({
+        captionVttKey: 'video-captions/project/asset/captions.vtt',
+        captionVttUrl: '/api/agency/video/assets/asset-1/captions.vtt',
+        transcript: 'This is the generated subtitle text.',
+      }),
+    })
+
+    expect(html).toContain('Regenerate captions')
+    expect(html).toContain('Download VTT')
+    expect(html).toContain('/api/agency/video/assets/asset-1/captions.vtt')
+    expect(html).toContain('This is the generated subtitle text.')
   })
 
   it('renders an empty selection state', async () => {

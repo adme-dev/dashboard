@@ -18,14 +18,17 @@ export interface VideoStudioSelectedAssetActivity {
 const props = defineProps<{
   asset: VideoStudioAsset | null
   activity?: VideoStudioSelectedAssetActivity[]
+  captionGenerating?: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'add-to-timeline', asset: VideoStudioAsset): void
   (event: 'generate-from-asset', asset: VideoStudioAsset): void
+  (event: 'generate-captions', asset: VideoStudioAsset): void
 }>()
 
 const canGenerate = computed(() => Boolean(videoStudioAssetImageSource(props.asset)))
+const canGenerateCaptions = computed(() => Boolean(props.asset?.libraryAssetId && (props.asset.type === 'video' || props.asset.type === 'job')))
 
 function previewKind(asset: VideoStudioAsset): 'image' | 'video' | 'audio' | 'empty' {
   if (asset.thumbnailUrl) return 'image'
@@ -94,6 +97,16 @@ function activityTimeLabel(value: string | null) {
           label="Generate from asset"
           :disabled="!canGenerate"
           @click="emit('generate-from-asset', props.asset)"
+        />
+        <UButton
+          icon="i-lucide-subtitles"
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          :label="props.asset.captionVttUrl ? 'Regenerate captions' : 'Generate captions'"
+          :disabled="!canGenerateCaptions || props.captionGenerating"
+          :loading="props.captionGenerating"
+          @click="emit('generate-captions', props.asset)"
         />
       </div>
     </div>
@@ -171,6 +184,27 @@ function activityTimeLabel(value: string | null) {
         <div v-if="props.asset.prompt" class="rounded-md bg-default/40 px-2 py-1.5">
           <p class="text-[11px] text-muted">Prompt</p>
           <p class="mt-1 line-clamp-3 text-xs leading-snug text-highlighted">{{ props.asset.prompt }}</p>
+        </div>
+
+        <div class="rounded-md bg-default/40 px-2 py-1.5">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-subtitles" class="size-3.5 text-muted" />
+            <p class="text-[11px] font-medium uppercase text-muted">Captions</p>
+            <UButton
+              v-if="props.asset.captionVttUrl"
+              class="ml-auto"
+              icon="i-lucide-download"
+              size="2xs"
+              variant="ghost"
+              color="neutral"
+              label="Download VTT"
+              :to="props.asset.captionVttUrl"
+              target="_blank"
+            />
+          </div>
+          <p v-if="props.asset.transcript" class="mt-2 line-clamp-3 text-xs leading-snug text-highlighted">{{ props.asset.transcript }}</p>
+          <p v-else-if="props.asset.captionVttUrl" class="mt-2 text-[11px] text-muted">Caption file is attached. Transcript preview is not available.</p>
+          <p v-else class="mt-2 text-[11px] text-muted">No caption track has been generated for this asset.</p>
         </div>
 
         <div class="rounded-md bg-default/40 px-2 py-1.5">

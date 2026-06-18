@@ -32,14 +32,21 @@ vi.mock('~~/server/utils/audio/projects', () => ({
 }))
 
 const mockUploadFile = vi.fn()
+const mockDownloadFileBuffer = vi.fn()
 const mockGetPresignedDownloadUrl = vi.fn()
 const mockGetPublicUrl = vi.fn()
 const mockIsStorageConfigured = vi.fn()
 vi.mock('~~/server/utils/storage', () => ({
   uploadFile: (...args: unknown[]) => mockUploadFile(...args),
+  downloadFileBuffer: (...args: unknown[]) => mockDownloadFileBuffer(...args),
   getPresignedDownloadUrl: (...args: unknown[]) => mockGetPresignedDownloadUrl(...args),
   getPublicUrl: (...args: unknown[]) => mockGetPublicUrl(...args),
   isStorageConfigured: (...args: unknown[]) => mockIsStorageConfigured(...args),
+}))
+
+const mockSpeechToText = vi.fn()
+vi.mock('~~/server/utils/aiVoice', () => ({
+  speechToText: (...args: unknown[]) => mockSpeechToText(...args),
 }))
 
 const mockVideoAssetPublicUrl = vi.fn()
@@ -102,6 +109,7 @@ const listAssetsHandler = (await import('~~/server/api/agency/video/assets/index
 const assetStreamHandler = (await import('~~/server/api/agency/video/assets/[id]/stream.get')).default
 const publishSocialHandler = (await import('~~/server/api/agency/video/assets/[id]/publish-social.post')).default
 const maskHandler = (await import('~~/server/api/agency/video/assets/[id]/masks.post')).default
+const generateCaptionsHandler = (await import('~~/server/api/agency/video/assets/[id]/captions.post')).default
 const derivativesHandler = (await import('~~/server/api/agency/video/assets/[id]/derivatives.get')).default
 const addDerivativeToBucketHandler = (await import('~~/server/api/agency/video/derivatives/[id]/add-to-bucket.post')).default
 const derivativeStreamHandler = (await import('~~/server/api/agency/video/derivatives/[id]/stream.get')).default
@@ -161,6 +169,8 @@ describe('video asset harness API', () => {
       updatedAt: 'now',
     })
     mockUploadFile.mockResolvedValue({ key: 'video-asset-masks/p1/a1/mask.png', url: '/api/_uploads/video-asset-masks/p1/a1/mask.png', size: 4 })
+    mockDownloadFileBuffer.mockResolvedValue(Buffer.from('video bytes'))
+    mockSpeechToText.mockResolvedValue({ text: 'Generated subtitle copy', durationMs: 123 })
     mockGetPresignedDownloadUrl.mockResolvedValue('/signed-mask-url')
     mockGetPublicUrl.mockReturnValue(null)
     mockIsStorageConfigured.mockReturnValue(false)
@@ -793,5 +803,22 @@ describe('video asset harness API', () => {
 
     expect(mockQueryOne).not.toHaveBeenCalled()
     expect(g.sendRedirect).not.toHaveBeenCalled()
+  })
+
+  it('generates captions for an accessible saved video asset', async () => {
+    const res = await generateCaptionsHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
+
+    expect(mockDownloadFileBuffer).toHaveBeenCalledWith('asset.mp4')
+    expect(mockSpeechToText).toHaveBeenCalledWith(expect.anything(), Buffer.from('video bytes'))
+    expect(mockUploadFile).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      expect.stringMatching(/^video-captions\/11111111-1111-4111-8111-111111111111\/22222222-2222-4222-8222-222222222222\//),
+      'text/vtt; charset=utf-8',
+      expect.objectContaining({ kind: 'caption-vtt' })
+    )
+    expect(String(mockQueryOne.mock.calls.at(-1)?.[0])).toContain('UPDATE video_assets')
+    expect(mockQueryOne.mock.calls.at(-1)?.[1][2]).toBe('Generated subtitle copy')
+    expect(res.transcript).toBe('Generated subtitle copy')
+    expect(res.captionVttUrl).toBe('/api/agency/video/assets/22222222-2222-4222-8222-222222222222/captions.vtt')
   })
 })

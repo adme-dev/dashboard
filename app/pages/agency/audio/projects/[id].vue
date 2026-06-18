@@ -88,6 +88,7 @@ const generationDraftPrompt = ref<string | null>(null)
 const genJobs = useVideoGenerationJobs(projectId.value)
 const videoAssets = ref<VideoAsset[]>([])
 const selectedClipId = ref<string | null>(null)
+const captionGeneratingAssetId = ref<string | null>(null)
 const activeGenerationJobCount = computed(() => genJobs.jobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
 const selectedStudioAssetId = ref<string | null>(null)
 const producerRailCollapsed = ref(false)
@@ -329,6 +330,21 @@ async function onStudioAssetPublish(asset: VideoStudioAsset) {
     await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
   } catch (e: unknown) {
     toast.add({ title: 'Could not publish asset', description: apiErrorDescription(e, ''), color: 'error' })
+  }
+}
+
+async function onGenerateCaptions(asset: VideoStudioAsset) {
+  selectedStudioAssetId.value = asset.id
+  if (!asset.libraryAssetId || captionGeneratingAssetId.value) return
+  captionGeneratingAssetId.value = asset.id
+  try {
+    await $fetch(`/api/agency/video/assets/${encodeURIComponent(asset.libraryAssetId)}/captions`, { method: 'POST' })
+    await refreshVideoAssets()
+    toast.add({ title: 'Captions generated', description: 'A VTT caption track is attached to the selected asset.', color: 'success' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not generate captions', description: apiErrorDescription(e, ''), color: 'error' })
+  } finally {
+    captionGeneratingAssetId.value = null
   }
 }
 
@@ -761,8 +777,10 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               <VideoStudioSelectedAssetPanel
                 :asset="selectedStudioAsset"
                 :activity="selectedStudioAssetActivity"
+                :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
                 @add-to-timeline="onStudioAssetAdd"
                 @generate-from-asset="onStudioAssetGenerate"
+                @generate-captions="onGenerateCaptions"
               />
               <div v-if="videoGenerationEnabled" class="mt-3 rounded-md border border-default bg-elevated p-3">
                 <div class="mb-3 flex items-center justify-between gap-3">

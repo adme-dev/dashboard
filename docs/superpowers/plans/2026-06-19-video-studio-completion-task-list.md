@@ -103,14 +103,16 @@ Decision: inline overlay templates should create or reuse Banner Studio projects
 
 ## Phase 8: Captions
 
-- [ ] Keep existing caption VTT visibility/filtering.
-- [ ] Add `Generate captions` action using Workers AI Whisper.
-- [ ] Generate captions from uploaded/generated video.
+- [x] Keep existing caption VTT visibility/filtering.
+- [x] Add `Generate captions` action using Workers AI Whisper.
+- [x] Generate captions from uploaded/generated video.
 - [ ] Generate captions from voiceover asset.
-- [ ] Store generated VTT against video asset or caption asset.
-- [ ] Add caption preview/download.
+- [x] Store generated VTT against video asset or caption asset.
+- [x] Add caption preview/download.
 - [ ] Add captions as overlay/render input.
 - [ ] Add caption style presets later: platform default, bold social, subtitle-safe.
+
+Decision: first caption pass stores a single-cue VTT plus transcript on `video_assets`; segmented/styled caption overlays remain a follow-up once the render path consumes caption tracks.
 
 ## Phase 9: AI Producer
 
