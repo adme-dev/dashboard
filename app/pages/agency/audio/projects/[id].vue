@@ -11,7 +11,8 @@ import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipI
 import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
-import type { MediaRenderJob } from '~~/app/types'
+import type { AudioAsset, MediaRenderJob } from '~~/app/types'
+import type { VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
 import type { VideoClip } from '~~/server/utils/audio/timelineSchema'
 import type { VideoAsset } from '~~/server/utils/video/assets'
 
@@ -86,7 +87,52 @@ const genJobs = useVideoGenerationJobs(projectId.value)
 const videoAssets = ref<VideoAsset[]>([])
 const selectedClipId = ref<string | null>(null)
 const activeGenerationJobCount = computed(() => genJobs.jobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
-const videoStudioAssetCount = computed(() => videoAssets.value.length)
+const selectedStudioAssetId = ref<string | null>(null)
+
+interface StudioBannerProject {
+  id: string
+  name: string
+  canvasData: Record<string, unknown>
+  status?: string | null
+}
+
+const {
+  data: studioAudioData,
+  pending: studioAudioPending,
+  refresh: refreshStudioAudioAssets,
+} = useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
+  query: { limit: 100 },
+  lazy: true,
+  immediate: false,
+})
+const {
+  data: studioBannerData,
+  pending: studioBannerPending,
+  refresh: refreshStudioBannerProjects,
+} = useFetch<StudioBannerProject[]>('/api/agency/banner-studio/projects', {
+  query: { limit: 100 },
+  lazy: true,
+  immediate: false,
+})
+
+const studioAudioAssets = computed(() => studioAudioData.value?.assets ?? [])
+const studioBannerProjects = computed(() => studioBannerData.value ?? [])
+const studioOverlayAssets = computed(() => studioBannerProjects.value.flatMap(project =>
+  Object.keys(project.canvasData ?? {}).map(formatKey => ({
+    id: `${project.id}:${formatKey}`,
+    title: project.name,
+    formatKey,
+    status: project.status ?? 'ready',
+  }))
+))
+const { assets: studioAssets } = useVideoStudioAssets(computed(() => ({
+  videoAssets: videoAssets.value,
+  audioAssets: studioAudioAssets.value,
+  overlays: studioOverlayAssets.value,
+  generationJobs: genJobs.jobs.value,
+})))
+const videoStudioAssetCount = computed(() => studioAssets.value.length)
+const studioLibraryLoading = computed(() => studioAudioPending.value || studioBannerPending.value)
 
 // Stills already on the timeline that can be registered as i2v source assets.
 const timelineStills = computed(() => {
@@ -130,6 +176,64 @@ async function refreshVideoAssets() {
     videoAssets.value = res.assets ?? []
   } catch {
     videoAssets.value = []
+  }
+}
+
+async function refreshStudioLibrary() {
+  await Promise.all([
+    refreshVideoAssets(),
+    genJobs.refresh(),
+    refreshStudioAudioAssets(),
+    refreshStudioBannerProjects(),
+  ])
+}
+
+function onStudioAssetAdd(asset: VideoStudioAsset) {
+  if (asset.type === 'video') {
+    const video = videoAssets.value.find(candidate => candidate.id === asset.rawId)
+    if (!video?.r2Key) return
+    onLibraryAddToTimeline({
+      assetId: video.id,
+      r2Key: video.r2Key,
+      durationSec: video.durationSec ?? 5,
+      streamUrl: `/api/agency/video/assets/${encodeURIComponent(video.id)}/stream`,
+      title: video.title,
+      format: video.format,
+    })
+    return
+  }
+
+  if (asset.type === 'job') {
+    const job = genJobs.jobs.value.find(candidate => candidate.id === asset.rawId)
+    if (!job?.outputAssetId || !job.outputR2Key) return
+    onLibraryAddToTimeline({
+      assetId: job.outputAssetId,
+      r2Key: job.outputR2Key,
+      durationSec: job.durationSeconds ?? 5,
+      streamUrl: `/api/agency/video/assets/${encodeURIComponent(job.outputAssetId)}/stream`,
+      title: job.prompt,
+      format: job.aspectRatio,
+    })
+    return
+  }
+
+  if (asset.type === 'audio') {
+    const audio = studioAudioAssets.value.find(candidate => candidate.id === asset.rawId)
+    if (!audio?.r2KeyMaster) return
+    onPickerPick({
+      id: audio.id,
+      r2_key_master: audio.r2KeyMaster,
+      title: audio.title,
+      kind: audio.kind,
+      streamUrl: audio.streamUrl,
+    })
+    return
+  }
+
+  if (asset.type === 'overlay' && asset.format) {
+    const [projectIdForOverlay] = asset.rawId.split(':')
+    if (!projectIdForOverlay) return
+    onOverlayPick({ gsapProjectId: projectIdForOverlay, gsapFormatKey: asset.format })
   }
 }
 
@@ -253,7 +357,7 @@ function jobStatusColor(s: string) { return s === 'done' ? 'success' : s === 'fa
 watch(isAv, (av) => {
   if (!av) return
   void editor.refreshRenderJobs()
-  void refreshVideoAssets()
+  void refreshStudioLibrary()
 }, { immediate: true })
 
 watch(() => genJobs.jobs.value.map((job) => `${job.id}:${job.status}:${job.outputAssetId ?? ''}`).join('|'), () => {
@@ -523,20 +627,13 @@ const saveStatusColor = computed(() => {
           @render="onRenderVideo"
         >
           <template #library>
-            <div class="space-y-3">
-              <div class="grid grid-cols-2 gap-2 xl:grid-cols-1">
-                <UButton icon="i-lucide-film" size="xs" variant="soft" color="neutral" label="Upload footage" block @click="mediaPickerOpen = true" />
-                <UButton icon="i-lucide-shapes" size="xs" variant="soft" color="neutral" label="Add overlay" block @click="overlayPickerOpen = true" />
-                <UButton icon="i-lucide-sparkles" size="xs" variant="soft" color="neutral" label="Generate video" block :disabled="!videoGenerationEnabled" @click="generatePickerOpen = true" />
-                <UButton icon="i-lucide-library" size="xs" variant="soft" color="neutral" label="Open library" block @click="libraryOpen = true" />
-              </div>
-              <div class="rounded-md border border-default bg-elevated p-2">
-                <p class="text-xs font-medium text-highlighted">Filters are moving here</p>
-                <p class="mt-1 text-[11px] leading-snug text-muted">
-                  Next slice merges bucketed assets, generated clips, audio, overlays, jobs, and derivatives into this rail.
-                </p>
-              </div>
-            </div>
+            <VideoStudioLibraryRail
+              v-model:selected-id="selectedStudioAssetId"
+              :assets="studioAssets"
+              :loading="studioLibraryLoading"
+              @refresh="refreshStudioLibrary"
+              @add-asset="onStudioAssetAdd"
+            />
           </template>
 
           <template #preview>

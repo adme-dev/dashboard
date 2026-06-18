@@ -1,6 +1,6 @@
 export type VideoStudioAssetType = 'bucket' | 'video' | 'audio' | 'overlay' | 'job' | 'derivative'
 export type VideoStudioAssetSource = 'bucket' | 'library' | 'generation' | 'audio' | 'banner' | 'derivative'
-export type VideoStudioAssetStatus = 'ready' | 'done' | 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'unknown'
+export type VideoStudioAssetStatus = 'ready' | 'done' | 'queued' | 'processing' | 'rendering' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'unknown'
 
 interface BucketItemInput {
   id: string
@@ -105,7 +105,7 @@ export interface VideoStudioAssetFilters {
 }
 
 function normalizeStatus(status: string | null | undefined): VideoStudioAssetStatus {
-  if (status === 'ready' || status === 'done' || status === 'queued' || status === 'running' || status === 'succeeded' || status === 'failed' || status === 'blocked') {
+  if (status === 'ready' || status === 'done' || status === 'queued' || status === 'processing' || status === 'rendering' || status === 'running' || status === 'succeeded' || status === 'failed' || status === 'blocked') {
     return status
   }
   return 'unknown'

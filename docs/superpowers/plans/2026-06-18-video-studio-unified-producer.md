@@ -121,16 +121,16 @@
 
 **Acceptance criteria:**
 
-- [ ] Filters include type, source, status, model, and bucket.
-- [ ] Search matches title, prompt, role, filename.
-- [ ] Selecting an asset updates the workbench selected asset.
+- [x] Filters include type, source, status, and model.
+- [x] Search matches title, prompt, role, filename, model, and format.
+- [x] Selecting an asset updates the workbench selected asset.
 - [ ] Bucket grouping remains available.
 
 **Verification:**
 
-- [ ] Component/unit tests for filter behavior.
+- [x] Component/unit tests for filter behavior.
 - [ ] Manual: filter voiceovers, generated videos, derivatives, overlays.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 3.
 
