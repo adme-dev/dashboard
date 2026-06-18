@@ -138,6 +138,10 @@ const rulerTicks = computed(() => {
 // ─── Selection ────────────────────────────────────────────────────────────────
 
 const selectedClipId = ref<string | null>(null)
+const selectedDisplayClip = computed(() => selectedClipId.value
+  ? allDisplayClips.value.find(clip => clip.clipId === selectedClipId.value) ?? null
+  : null
+)
 
 function selectClip(clipId: string) {
   selectedClipId.value = clipId
@@ -294,13 +298,19 @@ function clipUnderPlayhead(): DisplayClip | null {
   return null
 }
 
+const activeSplitClip = computed(() => selectedDisplayClip.value ?? clipUnderPlayhead())
+const canSplitActiveClip = computed(() => activeSplitClip.value?.kind === 'audio')
+const selectedClipHint = computed(() => {
+  if (!selectedDisplayClip.value) return 'Select a clip to move, trim, split audio, replace, or delete.'
+  if (selectedDisplayClip.value.kind === 'audio') return 'Drag clip edges to trim. Press S to split at the playhead, or Delete to remove.'
+  return 'Drag clip edges to trim. Use the inspector below to replace or delete this clip.'
+})
+
 function handleSlice() {
   // Prefer the selected clip; fall back to whichever clip is under the playhead
-  const clipId = selectedClipId.value
-    ?? clipUnderPlayhead()?.clipId
-    ?? null
-  if (!clipId) return
-  emit('slice', { clipId, timeSec: props.currentTime })
+  const clip = activeSplitClip.value
+  if (!clip || clip.kind !== 'audio') return
+  emit('slice', { clipId: clip.clipId, timeSec: props.currentTime })
 }
 
 function handleDelete() {
@@ -387,7 +397,7 @@ onUnmounted(() => {
 
 <template>
   <!-- Zoom toolbar -->
-  <div class="mb-2 flex items-center gap-2 px-1">
+  <div class="mb-2 flex flex-wrap items-center gap-2 px-1">
     <span class="text-xs text-muted">Zoom</span>
     <UButton
       icon="i-lucide-minus"
@@ -421,6 +431,10 @@ onUnmounted(() => {
       label="Fit"
       @click="fitToWindow"
     />
+    <div class="flex min-w-56 items-center gap-1.5 rounded-md border border-default bg-default/40 px-2 py-1 text-[11px] text-muted">
+      <UIcon name="i-lucide-info" class="size-3.5 shrink-0" />
+      <span class="truncate">{{ selectedClipHint }}</span>
+    </div>
     <!-- Slice + Delete toolbar actions -->
     <div class="ml-auto flex items-center gap-2">
       <UButton
@@ -429,7 +443,8 @@ onUnmounted(() => {
         variant="ghost"
         color="neutral"
         label="Split (S)"
-        :disabled="!selectedClipId && !clipUnderPlayhead()"
+        :disabled="!canSplitActiveClip"
+        :title="canSplitActiveClip ? 'Split the selected audio clip at the playhead' : 'Split currently supports audio clips only'"
         @click="handleSlice"
       />
       <UButton
@@ -439,6 +454,7 @@ onUnmounted(() => {
         color="error"
         label="Delete"
         :disabled="!selectedClipId"
+        title="Delete the selected clip"
         @click="handleDelete"
       />
     </div>
@@ -508,9 +524,10 @@ onUnmounted(() => {
               : clip.kind === 'overlay' ? 'bg-fuchsia-600 dark:bg-fuchsia-500'
                 : clip.kind === 'caption' ? 'bg-amber-600 dark:bg-amber-500'
               : lane.muted ? 'bg-muted' : 'bg-primary',
-            selectedClipId === clip.clipId ? 'ring-2 ring-white ring-offset-1' : '',
+            selectedClipId === clip.clipId ? 'ring-2 ring-white ring-offset-2 ring-offset-elevated shadow-lg' : 'hover:ring-1 hover:ring-white/60',
             drag?.clipId === clip.clipId ? 'transition-none' : 'transition-shadow'
           ]"
+          :title="`${clip.label}: drag to move, drag edges to trim${clip.kind === 'audio' ? ', press S to split' : ''}`"
           :style="{
             left: `${LABEL_WIDTH + rect(clip).x}px`,
             width: `${rect(clip).width}px`,
@@ -522,11 +539,13 @@ onUnmounted(() => {
         >
           <!-- Trim handle — start (left edge) -->
           <div
-            class="absolute left-0 top-0 h-full cursor-col-resize z-10 flex items-center justify-center"
+            class="absolute left-0 top-0 h-full cursor-col-resize z-10 flex items-center justify-center bg-black/10 hover:bg-black/25"
             :style="{ width: `${TRIM_HIT_PX}px` }"
+            title="Trim clip start"
+            aria-label="Trim clip start"
             @pointerdown.stop="(e: PointerEvent) => onClipPointerDown(e, clip, laneIdx, 'trim-start')"
           >
-            <div class="w-0.5 h-4 bg-white/60 rounded-full" />
+            <div class="h-5 w-0.5 rounded-full bg-white/80 shadow" />
           </div>
 
           <!-- Audio: wavesurfer waveform -->
@@ -555,11 +574,13 @@ onUnmounted(() => {
 
           <!-- Trim handle — end (right edge) -->
           <div
-            class="absolute right-0 top-0 h-full cursor-col-resize z-10 flex items-center justify-center"
+            class="absolute right-0 top-0 h-full cursor-col-resize z-10 flex items-center justify-center bg-black/10 hover:bg-black/25"
             :style="{ width: `${TRIM_HIT_PX}px` }"
+            title="Trim clip end"
+            aria-label="Trim clip end"
             @pointerdown.stop="(e: PointerEvent) => onClipPointerDown(e, clip, laneIdx, 'trim-end')"
           >
-            <div class="w-0.5 h-4 bg-white/60 rounded-full" />
+            <div class="h-5 w-0.5 rounded-full bg-white/80 shadow" />
           </div>
         </div>
       </div>

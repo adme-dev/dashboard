@@ -138,7 +138,7 @@ Decision: assembly plans now append explicit review-only `place-voiceover`, `pla
 - [x] Improve clip selection affordance.
 - [x] Add clip inspector panel.
 - [x] Add selected clip replace action.
-- [ ] Add split/delete/trim discoverability.
+- [x] Add split/delete/trim discoverability.
 - [ ] Improve effect controls for selected video clips.
 - [ ] Add per-clip effect preview clarity.
 - [ ] Add fit/fill/crop controls for video/still clips.
@@ -148,6 +148,8 @@ Decision: assembly plans now append explicit review-only `place-voiceover`, `pla
 Decision: selected clips now show a compact inspector below the timeline with track, timing, source, effects/style details, and explicit Split/Delete actions. Split is only enabled for audio clips because the current editor slice action is audio-only; trim discoverability and video/overlay/caption split remain future work.
 
 Decision: selected library assets can now replace compatible selected timeline clips from the selected asset panel. Video/generated/derivative assets replace video clips, audio assets replace audio clips, Banner Studio assets replace overlays, and captioned assets replace caption clips while preserving the selected clip start time.
+
+Decision: timeline controls now explain selected-clip actions inline, make trim handles visibly draggable, improve selected/hover clip affordance, and only enable Split when the active clip is audio to match the current editor capability.
 
 ## Phase 11: Render + Distribution
 
