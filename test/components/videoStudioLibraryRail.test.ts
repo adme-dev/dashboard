@@ -22,6 +22,7 @@ function asset(overrides: Partial<VideoStudioAsset>): VideoStudioAsset {
   return {
     id: 'video:asset-1',
     rawId: 'asset-1',
+    libraryAssetId: null,
     type: 'video',
     source: 'generation',
     title: 'Generated drive-by',

@@ -81,6 +81,7 @@ export interface NormalizeVideoStudioAssetsInput {
 export interface VideoStudioAsset {
   id: string
   rawId: string
+  libraryAssetId: string | null
   type: VideoStudioAssetType
   source: VideoStudioAssetSource
   title: string
@@ -144,6 +145,15 @@ function matchesText(asset: VideoStudioAsset, query: string) {
   return haystack.includes(query)
 }
 
+function imageR2Key(r2Key: string | null): boolean {
+  return Boolean(r2Key && /\.(png|jpe?g|webp)$/i.test(r2Key.split('?')[0] ?? ''))
+}
+
+export function videoStudioAssetImageSource(asset: VideoStudioAsset | null | undefined): { assetId: string; title: string } | null {
+  if (!asset?.libraryAssetId || !imageR2Key(asset.r2Key)) return null
+  return { assetId: asset.libraryAssetId, title: asset.title }
+}
+
 export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInput): VideoStudioAsset[] {
   const assets: VideoStudioAsset[] = []
 
@@ -151,6 +161,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
     assets.push({
       id: `bucket:${item.id}`,
       rawId: item.id,
+      libraryAssetId: item.assetId ?? null,
       type: 'bucket',
       source: 'bucket',
       title: item.title || item.r2Key || 'Untitled bucket asset',
@@ -177,6 +188,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
     assets.push({
       id: `video:${asset.id}`,
       rawId: asset.id,
+      libraryAssetId: asset.id,
       type: 'video',
       source: asset.sourceJobId ? 'generation' : 'library',
       title: asset.title || asset.r2Key || 'Untitled video',
@@ -203,6 +215,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
     assets.push({
       id: `audio:${asset.id}`,
       rawId: asset.id,
+      libraryAssetId: null,
       type: 'audio',
       source: 'audio',
       title: asset.title || `${asset.kind} audio`,
@@ -229,6 +242,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
     assets.push({
       id: `overlay:${overlay.id}`,
       rawId: overlay.id,
+      libraryAssetId: null,
       type: 'overlay',
       source: 'banner',
       title: overlay.title || 'Untitled overlay',
@@ -255,6 +269,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
     assets.push({
       id: `job:${job.id}`,
       rawId: job.id,
+      libraryAssetId: job.outputAssetId ?? null,
       type: 'job',
       source: 'generation',
       title: job.prompt || job.modelId || 'Generation job',
@@ -281,6 +296,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
     assets.push({
       id: `derivative:${derivative.id}`,
       rawId: derivative.id,
+      libraryAssetId: null,
       type: 'derivative',
       source: 'derivative',
       title: metadataTitle(derivative.metadata) || `${derivative.kind} derivative`,

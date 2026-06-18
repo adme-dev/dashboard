@@ -39,6 +39,7 @@ describe('VideoStudioProducerRail', () => {
       selectedAsset: {
         id: 'video:asset-1',
         rawId: 'asset-1',
+        libraryAssetId: 'asset-1',
         type: 'video',
         source: 'generation',
         title: 'Generated drive-by',

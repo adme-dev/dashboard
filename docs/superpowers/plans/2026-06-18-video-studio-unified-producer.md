@@ -158,16 +158,16 @@
 
 **Acceptance criteria:**
 
-- [ ] Image-to-video can be started from a selected source asset.
-- [ ] Text-to-video remains hidden unless selectable models allow it.
-- [ ] Model capability controls still match registry constraints.
+- [x] Image-to-video can be started from a selected source asset.
+- [x] Text-to-video remains hidden unless selectable models allow it.
+- [x] Model capability controls still match registry constraints.
 - [ ] Recent jobs still visible.
 
 **Verification:**
 
-- [ ] `pnpm exec vitest run test/app/videoGenerationForm.test.ts`
+- [x] `pnpm exec vitest run test/app/videoGenerationForm.test.ts`
 - [ ] Manual: selected source image pre-fills image-to-video.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 4.
 

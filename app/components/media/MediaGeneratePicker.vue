@@ -19,6 +19,7 @@ const props = defineProps<{
   /** default aspect from the project format, e.g. '9:16' */
   defaultAspect: string
   initialPrompt?: string | null
+  initialSourceAsset?: { assetId: string; title: string } | null
   recentJobs?: VideoGenerationJobView[]
   prepareTimelineStillSource?: () => Promise<void>
 }>()
@@ -49,6 +50,7 @@ const subjectType = ref<'vehicle' | 'non_vehicle' | 'unknown'>('unknown')
 const durationSeconds = ref<number>(model.value?.durationsSeconds[0] ?? 5)
 const submitting = ref(false)
 const uploading = ref(false)
+const registeredInitialSource = ref<{ assetId: string; sourceId: string } | null>(null)
 
 // Hidden file input ref — triggered programmatically via the upload button
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -163,12 +165,49 @@ watch(() => props.open, (isOpen) => {
   if (!isOpen) return
   void refreshModels()
   if (props.initialPrompt) prompt.value = props.initialPrompt
+  void applyInitialSourceAsset()
+})
+
+watch(() => props.initialSourceAsset?.assetId ?? null, () => {
+  registeredInitialSource.value = null
 })
 
 function clearSource() {
   sourceAssetId.value = null
   sourceFileName.value = null
   selectedStillId.value = null
+}
+
+async function applyInitialSourceAsset() {
+  const source = props.initialSourceAsset
+  if (!source) return
+  mode.value = 'image-to-video'
+  onModeChange()
+  selectedStillId.value = null
+
+  if (registeredInitialSource.value?.assetId === source.assetId) {
+    sourceAssetId.value = registeredInitialSource.value.sourceId
+    sourceFileName.value = source.title
+    return
+  }
+
+  uploading.value = true
+  sourceAssetId.value = null
+  sourceFileName.value = `Preparing ${source.title}`
+  try {
+    const res = await $fetch<{ id: string }>('/api/agency/video/generation/source-assets/from-asset', {
+      method: 'POST',
+      body: { assetId: source.assetId, subjectType: subjectType.value },
+    })
+    registeredInitialSource.value = { assetId: source.assetId, sourceId: res.id }
+    sourceAssetId.value = res.id
+    sourceFileName.value = source.title
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not use selected asset', description: apiErrorDescription(e), color: 'error' })
+    clearSource()
+  } finally {
+    uploading.value = false
+  }
 }
 
 function triggerFileInput() {

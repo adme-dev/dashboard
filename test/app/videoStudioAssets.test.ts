@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ref } from 'vue'
 import { useVideoStudioAssets } from '~~/app/composables/useVideoStudioAssets'
-import { filterVideoStudioAssets, normalizeVideoStudioAssets } from '~~/app/utils/video/videoStudioAssets'
+import { filterVideoStudioAssets, normalizeVideoStudioAssets, videoStudioAssetImageSource } from '~~/app/utils/video/videoStudioAssets'
 import { audioStudioTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
 
 describe('videoStudioAssets', () => {
@@ -76,6 +76,8 @@ describe('videoStudioAssets', () => {
     ])
     expect(assets.find(asset => asset.id === 'job:job-2')?.status).toBe('running')
     expect(assets.find(asset => asset.id === 'video:asset-1')?.timelineReady).toBe(true)
+    expect(assets.find(asset => asset.id === 'video:asset-1')?.libraryAssetId).toBe('asset-1')
+    expect(assets.find(asset => asset.id === 'bucket:bucket-item-1')?.libraryAssetId).toBe('asset-1')
     expect(assets.find(asset => asset.id === 'video:asset-1')?.captionVttUrl).toBe('/api/agency/video/assets/asset-1/captions.vtt')
     expect(assets.find(asset => asset.id === 'bucket:bucket-item-1')?.captionVttUrl).toBeNull()
     expect(assets.find(asset => asset.id === 'audio:voice-1')?.previewUrl).toBe('/vo.mp3')
@@ -177,6 +179,29 @@ describe('videoStudioAssets', () => {
     expect(filterVideoStudioAssets(assets, { source: 'bucket', bucketId: 'bucket-generated' }).map(asset => asset.id)).toEqual(['bucket:bucket-item-1'])
     expect(filterVideoStudioAssets(assets, { captions: 'with' }).map(asset => asset.id)).toEqual(['video:asset-1'])
     expect(filterVideoStudioAssets(assets, { captions: 'without' }).map(asset => asset.id)).toEqual(['bucket:bucket-item-1', 'job:job-2'])
+  })
+
+  it('exposes selected image assets as generation source candidates', () => {
+    const assets = normalizeVideoStudioAssets({
+      videoAssets: [
+        {
+          id: 'asset-image',
+          title: 'Vehicle still',
+          r2Key: 'source/vehicle.webp'
+        },
+        {
+          id: 'asset-video',
+          title: 'Generated drive-by',
+          r2Key: 'generated/drive.mp4'
+        }
+      ]
+    })
+
+    expect(videoStudioAssetImageSource(assets[0])).toEqual({
+      assetId: 'asset-image',
+      title: 'Vehicle still'
+    })
+    expect(videoStudioAssetImageSource(assets[1])).toBeNull()
   })
 
   it('keeps normalized assets and filters reactive through the composable', () => {

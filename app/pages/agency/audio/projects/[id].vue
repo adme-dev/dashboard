@@ -13,7 +13,7 @@ import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTim
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import { audioStudioTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
 import type { AudioAsset, MediaRenderJob } from '~~/app/types'
-import type { VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
+import { videoStudioAssetImageSource, type VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
 import type { VideoClip } from '~~/server/utils/audio/timelineSchema'
 import type { VideoAsset } from '~~/server/utils/video/assets'
 
@@ -135,6 +135,7 @@ const { assets: studioAssets } = useVideoStudioAssets(computed(() => ({
 })))
 const videoStudioAssetCount = computed(() => studioAssets.value.length)
 const selectedStudioAsset = computed(() => studioAssets.value.find(asset => asset.id === selectedStudioAssetId.value) ?? null)
+const selectedGenerationSourceAsset = computed(() => videoStudioAssetImageSource(selectedStudioAsset.value))
 const studioVoiceAssetCount = computed(() => studioAssets.value.filter(asset => asset.type === 'audio' && asset.role === 'voiceover').length)
 const studioOverlayAssetCount = computed(() => studioAssets.value.filter(asset => asset.type === 'overlay').length)
 const studioLibraryLoading = computed(() => studioAudioPending.value || studioBannerPending.value)
@@ -849,6 +850,7 @@ const saveStatusColor = computed(() => {
     :timeline-stills="timelineStills"
     :default-aspect="projectAspect"
     :initial-prompt="generationDraftPrompt"
+    :initial-source-asset="selectedGenerationSourceAsset"
     :recent-jobs="genJobs.jobs.value"
     :prepare-timeline-still-source="editor.saveNow"
     @submitted="onGenerationSubmitted"
