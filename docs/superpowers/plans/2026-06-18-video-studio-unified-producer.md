@@ -188,13 +188,14 @@
 - [ ] Mask canvas remains usable.
 - [ ] Run action still creates/refreshes jobs.
 - [ ] Derivatives can be added to timeline or bucket.
-- [ ] Available model messaging handles unmapped actions.
+- [x] Available model messaging handles unmapped actions.
 
 **Verification:**
 
-- [ ] `pnpm exec vitest run test/app/videoAssetHarnessDerivatives.test.ts`
+- [x] `pnpm exec vitest run test/app/videoAssetHarnessDerivatives.test.ts`
+- [x] `pnpm exec vitest run test/components/mediaAssetHarnessEmbedded.test.ts`
 - [ ] Manual: select asset, draw mask, run action, view activity.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 2, Task 4.
 

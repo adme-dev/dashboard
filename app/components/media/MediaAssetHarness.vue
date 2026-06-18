@@ -156,6 +156,9 @@ const itemsByBucket = computed(() => {
 // Only buckets with assets get a row — nine empty folders are noise, not signal.
 const visibleBuckets = computed(() => buckets.value.filter(bucket => (itemsByBucket.value[bucket.id] || []).length > 0))
 const emptyBucketCount = computed(() => buckets.value.length - visibleBuckets.value.length)
+const contentGridClass = computed(() => props.embedded
+  ? 'grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)]'
+  : 'grid gap-3 p-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]')
 
 function maskCanvasPoint(event: PointerEvent) {
   const canvas = maskCanvasRef.value
@@ -544,10 +547,7 @@ onMounted(() => { void loadHarness() })
 
     <div
       v-show="contentOpen"
-      :class="[
-        'grid gap-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]',
-        embedded ? '' : 'p-3'
-      ]"
+      :class="contentGridClass"
     >
       <div class="min-w-0 rounded-md border border-default bg-default/30 p-3">
         <div class="mb-2 flex items-center justify-between gap-2">
@@ -725,7 +725,7 @@ onMounted(() => { void loadHarness() })
         </div>
       </div>
 
-      <div class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+      <div v-if="!embedded" class="min-w-0 rounded-md border border-default bg-default/30 p-3">
         <div class="mb-2 flex items-center justify-between gap-2">
           <div>
             <p class="text-xs font-medium uppercase text-muted">Draft assembly</p>
