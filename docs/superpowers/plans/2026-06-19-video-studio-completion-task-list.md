@@ -26,13 +26,13 @@
 
 ## Phase 2: Unified Layout
 
-- [ ] Define final workspace layout: `Library | Preview + Prepare | Producer`, with timeline underneath.
-- [ ] Make Library rail resizable or wider on large screens.
-- [ ] Make Producer rail collapsible.
-- [ ] Keep timeline always visible on desktop.
-- [ ] Add responsive tablet/mobile stacking.
-- [ ] Add a selected asset state that drives the center panel.
-- [ ] Add a selected clip state that drives timeline clip controls.
+- [x] Define final workspace layout: `Library | Preview + Prepare | Producer`, with timeline underneath.
+- [x] Make Library rail resizable or wider on large screens.
+- [x] Make Producer rail collapsible.
+- [x] Keep timeline always visible on desktop.
+- [x] Add responsive tablet/mobile stacking.
+- [x] Add a selected asset state that drives the center panel.
+- [x] Add a selected clip state that drives timeline clip controls.
 
 ## Phase 3: Library Rail
 

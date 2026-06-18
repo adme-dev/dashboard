@@ -89,6 +89,7 @@ const videoAssets = ref<VideoAsset[]>([])
 const selectedClipId = ref<string | null>(null)
 const activeGenerationJobCount = computed(() => genJobs.jobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
 const selectedStudioAssetId = ref<string | null>(null)
+const producerRailCollapsed = ref(false)
 
 interface StudioBannerProject {
   id: string
@@ -602,66 +603,23 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           description="Their source files couldn't be loaded — they may have been deleted. These clips appear on the timeline but produce no sound. Remove or replace them, then save."
         />
 
-        <section
+        <VideoStudioWorkbench
           v-if="isAv"
-          class="overflow-hidden rounded-lg border border-default bg-elevated"
+          v-model:producer-collapsed="producerRailCollapsed"
+          :current-time-sec="editor.currentTime.value"
+          :duration-sec="editor.duration.value"
+          :asset-count="videoStudioAssetCount"
+          :generation-job-count="activeGenerationJobCount"
+          :render-job-count="editor.renderJobs.value.length"
+          :generation-enabled="videoGenerationEnabled && videoGenerationModelsAvailable"
+          :rendering="editor.rendering.value"
+          @add-footage="mediaPickerOpen = true"
+          @add-overlay="overlayPickerOpen = true"
+          @generate="generatePickerOpen = true"
+          @open-library="libraryOpen = true"
+          @render="onRenderVideo"
         >
-          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-3">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <h2 class="text-sm font-semibold text-highlighted">Video Studio</h2>
-                <UBadge :label="`${videoStudioAssetCount} assets`" size="xs" variant="subtle" color="neutral" />
-                <UBadge
-                  v-if="activeGenerationJobCount"
-                  :label="`${activeGenerationJobCount} AI jobs`"
-                  size="xs"
-                  variant="subtle"
-                  color="primary"
-                />
-                <UBadge
-                  v-if="editor.renderJobs.value.length"
-                  :label="`${editor.renderJobs.value.length} ${editor.renderJobs.value.length === 1 ? 'render' : 'renders'}`"
-                  size="xs"
-                  variant="subtle"
-                  color="neutral"
-                />
-              </div>
-              <p class="mt-0.5 text-xs text-muted">
-                {{ fmt(editor.currentTime.value) }} / {{ fmt(editor.duration.value) }}
-              </p>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-1.5">
-              <UButton icon="i-lucide-film" size="xs" variant="ghost" color="neutral" label="Footage" @click="mediaPickerOpen = true" />
-              <UButton icon="i-lucide-shapes" size="xs" variant="ghost" color="neutral" label="Overlay" @click="overlayPickerOpen = true" />
-              <UButton
-                icon="i-lucide-sparkles"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                label="Generate"
-                :disabled="!(videoGenerationEnabled && videoGenerationModelsAvailable)"
-                @click="generatePickerOpen = true"
-              />
-              <UButton icon="i-lucide-library" size="xs" variant="ghost" color="neutral" label="Library" @click="libraryOpen = true" />
-              <UButton
-                icon="i-lucide-clapperboard"
-                size="xs"
-                variant="soft"
-                color="primary"
-                label="Render"
-                :loading="editor.rendering.value"
-                @click="onRenderVideo"
-              />
-            </div>
-          </header>
-
-          <div class="grid gap-3 p-3 xl:grid-cols-[280px_minmax(0,1fr)_360px]">
-            <aside class="min-w-0 rounded-md border border-default bg-default/30 p-3">
-              <div class="mb-3 flex items-center gap-2">
-                <UIcon name="i-lucide-sliders-horizontal" class="size-4 text-muted" />
-                <h3 class="text-xs font-medium uppercase text-muted">Library</h3>
-              </div>
+          <template #library>
               <VideoStudioLibraryRail
                 v-model:selected-id="selectedStudioAssetId"
                 :assets="studioAssets"
@@ -669,12 +627,39 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 @refresh="refreshStudioLibrary"
                 @add-asset="onStudioAssetAdd"
               />
-            </aside>
+          </template>
 
-            <main class="min-w-0 rounded-md border border-default bg-default/30 p-3">
-              <div class="mb-3 flex items-center gap-2">
-                <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
-                <h3 class="text-xs font-medium uppercase text-muted">Preview + Prepare</h3>
+          <template #preview>
+              <div
+                v-if="selectedStudioAsset"
+                class="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-default bg-default/30 px-3 py-2"
+              >
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-xs font-medium text-highlighted">{{ selectedStudioAsset.title }}</p>
+                  <p class="mt-0.5 truncate text-[11px] text-muted">
+                    {{ selectedStudioAsset.type }} · {{ selectedStudioAsset.source }}<span v-if="selectedStudioAsset.subtitle"> · {{ selectedStudioAsset.subtitle }}</span>
+                  </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <UButton
+                    icon="i-lucide-list-plus"
+                    size="xs"
+                    variant="soft"
+                    color="primary"
+                    label="Add to timeline"
+                    :disabled="!selectedStudioAsset.timelineReady"
+                    @click="onStudioAssetAdd(selectedStudioAsset)"
+                  />
+                  <UButton
+                    icon="i-lucide-sparkles"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    label="Generate from asset"
+                    :disabled="!selectedGenerationSourceAsset"
+                    @click="generatePickerOpen = true"
+                  />
+                </div>
               </div>
               <MediaAvPreview
                 :timeline="editor.timeline.value"
@@ -694,13 +679,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
                 />
               </div>
-            </main>
+          </template>
 
-            <aside class="min-w-0 rounded-md border border-default bg-default/30 p-3">
-              <div class="mb-3 flex items-center gap-2">
-                <UIcon name="i-lucide-wand-sparkles" class="size-4 text-muted" />
-                <h3 class="text-xs font-medium uppercase text-muted">Producer</h3>
-              </div>
+          <template #producer>
               <div class="space-y-3">
                 <VideoStudioVoiceComposer
                   @generated="onVoiceoverGenerated"
@@ -735,10 +716,8 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="onRenderVideo" />
                 </div>
               </div>
-            </aside>
-          </div>
-
-        </section>
+          </template>
+        </VideoStudioWorkbench>
 
         <!-- Timeline with full SP2c interaction layer -->
         <MediaTimeline

@@ -46,4 +46,21 @@ describe('VideoStudioWorkbench', () => {
     expect(html).toContain('2 AI jobs')
     expect(html).toContain('1 render')
   })
+
+  it('can collapse the producer rail while keeping library and preview visible', async () => {
+    const html = await render({
+      currentTimeSec: 0,
+      durationSec: 12,
+      producerCollapsed: true
+    }, {
+      library: () => h('p', 'Library rail'),
+      preview: () => h('p', 'Preview panel'),
+      producer: () => h('p', 'Producer content')
+    })
+
+    expect(html).toContain('Library rail')
+    expect(html).toContain('Preview panel')
+    expect(html).toContain('Producer rail collapsed')
+    expect(html).not.toContain('Producer content')
+  })
 })
