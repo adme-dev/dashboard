@@ -3,11 +3,15 @@ import type { VideoGenerationTenantPolicy } from '~~/server/utils/video-generati
 
 export async function loadTenantVideoGenerationPolicy(tenantId: string): Promise<VideoGenerationTenantPolicy> {
   if (process.env.VIDEO_GENERATION_TEST_TENANT_ENABLED === 'true') {
+    const testTenantId = process.env.VIDEO_GENERATION_TEST_TENANT_ID
+    if (!testTenantId || tenantId !== testTenantId) {
+      return { enabled: false, monthlyCapCents: 0, allowedModelIds: [] }
+    }
     return {
       enabled: true,
       monthlyCapCents: Number(process.env.VIDEO_GENERATION_TEST_TENANT_CAP_CENTS ?? 1000),
-      // No allow-list → every registered, selectable model is permitted under the test
-      // tenant (there is no DB-backed per-client policy yet — this flag is the only path).
+      // No allow-list -> every registered, selectable model is permitted under the
+      // configured test tenant (there is no DB-backed per-client policy yet).
     }
   }
   return { enabled: false, monthlyCapCents: 0, allowedModelIds: [] }

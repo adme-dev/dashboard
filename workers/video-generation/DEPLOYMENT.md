@@ -11,13 +11,18 @@ It is not required for Video Studio V1 render/export flows.
 - Worker: `workers/video-generation`
 
 The Pages app creates `video_generation_jobs` rows and sends queue messages only
-when both flags are enabled:
+when generation is enabled:
 
-- `VIDEO_STUDIO_ENABLED=true`
 - `VIDEO_GENERATION_ENABLED=true`
+- `VIDEO_GENERATION_TEST_TENANT_ENABLED=true`
+- `VIDEO_GENERATION_TEST_TENANT_ID=<client id or agency>`
 
-Tenant policy still defaults disabled in code, so enabling the flags alone does
-not expose unmanaged generation.
+`VIDEO_STUDIO_ENABLED` gates the separate composite render/export path; it is
+not required for AI generation jobs to enqueue.
+
+Tenant policy still defaults disabled in code. The test-tenant flag is
+fail-closed unless `VIDEO_GENERATION_TEST_TENANT_ID` exactly matches the AV
+project `clientId` (or `agency` for internal projects).
 
 ## One-Time Cloudflare Setup
 
@@ -40,6 +45,15 @@ The worker `wrangler.toml` declares the consumer and Hyperdrive binding.
 
 ```bash
 pnpm --dir workers/video-generation deploy
+```
+
+If a prior Pages deploy created `.wrangler/deploy/config.json`, move it aside
+before deploying this nested Worker and restore it afterwards:
+
+```bash
+mv .wrangler/deploy/config.json /tmp/dashboard-wrangler-pages-config.json
+pnpm --dir workers/video-generation exec wrangler deploy
+mv /tmp/dashboard-wrangler-pages-config.json .wrangler/deploy/config.json
 ```
 
 ## Current Provider State
