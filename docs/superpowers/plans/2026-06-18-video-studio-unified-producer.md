@@ -35,14 +35,14 @@
 
 **Acceptance criteria:**
 
-- [ ] AV projects render the workbench above the timeline.
-- [ ] Audio projects remain unchanged.
-- [ ] Existing `MediaAssetHarness` functionality is not removed yet.
-- [ ] Workbench has clear regions for Library, Preview/Prepare, and Producer.
+- [x] AV projects render the workbench above the timeline.
+- [x] Audio projects remain unchanged.
+- [x] Existing `MediaAssetHarness` functionality is not removed yet.
+- [x] Workbench has clear regions for Library, Preview/Prepare, and Producer.
 
 **Verification:**
 
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 - [ ] Manual: open AV project and audio project.
 
 **Dependencies:** PRD approval.
@@ -96,15 +96,15 @@
 
 **Acceptance criteria:**
 
-- [ ] Normalized asset shape supports type, source, status, model, bucket, duration, thumbnails, and timeline payload availability.
-- [ ] Uses existing endpoints only.
-- [ ] Failed/blocked/queued/running assets appear with useful status.
+- [x] Normalized asset shape supports type, source, status, model, bucket, duration, thumbnails, and timeline payload availability.
+- [x] Uses existing endpoints only.
+- [x] Failed/blocked/queued/running assets appear with useful status.
 
 **Verification:**
 
-- [ ] Add unit tests for normalization/filtering.
-- [ ] `pnpm exec vitest run test/app/videoStudioAssets.test.ts`
-- [ ] `pnpm run build`
+- [x] Add unit tests for normalization/filtering.
+- [x] `pnpm exec vitest run test/app/videoStudioAssets.test.ts`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 1.
 

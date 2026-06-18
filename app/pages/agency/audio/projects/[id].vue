@@ -85,6 +85,8 @@ const generationDraftPrompt = ref<string | null>(null)
 const genJobs = useVideoGenerationJobs(projectId.value)
 const videoAssets = ref<VideoAsset[]>([])
 const selectedClipId = ref<string | null>(null)
+const activeGenerationJobCount = computed(() => genJobs.jobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
+const videoStudioAssetCount = computed(() => videoAssets.value.length)
 
 // Stills already on the timeline that can be registered as i2v source assets.
 const timelineStills = computed(() => {
@@ -374,7 +376,7 @@ const saveStatusColor = computed(() => {
   <div class="flex-1 min-h-0 overflow-y-auto">
     <div
       class="mx-auto p-6 space-y-4"
-      :class="isAv ? 'max-w-[1440px]' : 'max-w-5xl'"
+      :class="isAv ? 'max-w-none 2xl:max-w-[1800px]' : 'max-w-5xl'"
     >
 
       <!-- Header -->
@@ -505,21 +507,75 @@ const saveStatusColor = computed(() => {
           description="Their source files couldn't be loaded — they may have been deleted. These clips appear on the timeline but produce no sound. Remove or replace them, then save."
         />
 
-        <MediaAssetHarness
-          v-if="isAv && videoAssetHarnessEnabled"
-          :project-id="projectId"
-          @add-to-timeline="onHarnessAddToTimeline"
-          @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
-        />
-
-        <!-- AV preview (frame-accurate compositor) -->
-        <MediaAvPreview
+        <VideoStudioWorkbench
           v-if="isAv"
-          :timeline="editor.timeline.value"
-          :current-time="editor.currentTime.value"
-          :is-playing="editor.isPlaying.value"
-          :sources="editor.sources.value"
-        />
+          :current-time-sec="editor.currentTime.value"
+          :duration-sec="editor.duration.value"
+          :asset-count="videoStudioAssetCount"
+          :generation-job-count="activeGenerationJobCount"
+          :render-job-count="editor.renderJobs.value.length"
+          :generation-enabled="videoGenerationEnabled && videoGenerationModelsAvailable"
+          :rendering="editor.rendering.value"
+          @open-library="libraryOpen = true"
+          @add-footage="mediaPickerOpen = true"
+          @add-overlay="overlayPickerOpen = true"
+          @generate="generatePickerOpen = true"
+          @render="onRenderVideo"
+        >
+          <template #library>
+            <div class="space-y-3">
+              <div class="grid grid-cols-2 gap-2 xl:grid-cols-1">
+                <UButton icon="i-lucide-film" size="xs" variant="soft" color="neutral" label="Upload footage" block @click="mediaPickerOpen = true" />
+                <UButton icon="i-lucide-shapes" size="xs" variant="soft" color="neutral" label="Add overlay" block @click="overlayPickerOpen = true" />
+                <UButton icon="i-lucide-sparkles" size="xs" variant="soft" color="neutral" label="Generate video" block :disabled="!videoGenerationEnabled" @click="generatePickerOpen = true" />
+                <UButton icon="i-lucide-library" size="xs" variant="soft" color="neutral" label="Open library" block @click="libraryOpen = true" />
+              </div>
+              <div class="rounded-md border border-default bg-elevated p-2">
+                <p class="text-xs font-medium text-highlighted">Filters are moving here</p>
+                <p class="mt-1 text-[11px] leading-snug text-muted">
+                  Next slice merges bucketed assets, generated clips, audio, overlays, jobs, and derivatives into this rail.
+                </p>
+              </div>
+            </div>
+          </template>
+
+          <template #preview>
+            <MediaAvPreview
+              :timeline="editor.timeline.value"
+              :current-time="editor.currentTime.value"
+              :is-playing="editor.isPlaying.value"
+              :sources="editor.sources.value"
+            />
+          </template>
+
+          <template #producer>
+            <div class="space-y-3">
+              <div class="rounded-md border border-default bg-elevated p-3">
+                <div class="flex items-start gap-2">
+                  <UIcon name="i-lucide-wand-sparkles" class="mt-0.5 size-4 shrink-0 text-primary" />
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-highlighted">AI Producer</p>
+                    <p class="mt-1 text-xs leading-snug text-muted">
+                      Asset prep, masking, derivatives, and draft assembly stay expanded below until the producer tools are split into this rail.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <UButton icon="i-lucide-music" size="xs" variant="ghost" color="neutral" label="Audio" @click="pickerOpen = true" />
+                <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="onRenderVideo" />
+              </div>
+            </div>
+          </template>
+
+          <template v-if="videoAssetHarnessEnabled" #details>
+            <MediaAssetHarness
+              :project-id="projectId"
+              @add-to-timeline="onHarnessAddToTimeline"
+              @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
+            />
+          </template>
+        </VideoStudioWorkbench>
 
         <!-- Timeline with full SP2c interaction layer -->
         <MediaTimeline

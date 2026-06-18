@@ -1,0 +1,151 @@
+import { describe, expect, it } from 'vitest'
+import { ref } from 'vue'
+import { useVideoStudioAssets } from '~~/app/composables/useVideoStudioAssets'
+import { filterVideoStudioAssets, normalizeVideoStudioAssets } from '~~/app/utils/video/videoStudioAssets'
+
+describe('videoStudioAssets', () => {
+  it('normalizes mixed studio sources into one searchable asset list', () => {
+    const assets = normalizeVideoStudioAssets({
+      bucketItems: [{
+        id: 'bucket-item-1',
+        bucketId: 'bucket-generated',
+        assetId: 'asset-1',
+        r2Key: 'source/car.png',
+        title: 'Hero car still',
+        role: 'hero',
+        status: 'ready',
+        directive: { prompt: 'Use as opening shot' }
+      }],
+      videoAssets: [{
+        id: 'asset-1',
+        title: 'Generated drive-by',
+        sourceJobId: 'job-1',
+        r2Key: 'generated/drive.mp4',
+        format: '9:16',
+        durationSec: 5,
+        thumbnailUrl: '/thumb.jpg',
+        generationPrompt: 'Slow dolly past the car',
+        generationModelId: 'replicate/wan-2.2'
+      }],
+      audioAssets: [{
+        id: 'voice-1',
+        title: 'Opening voiceover',
+        kind: 'voiceover',
+        status: 'ready',
+        durationSec: 12,
+        r2KeyMaster: 'audio/vo.mp3',
+        streamUrl: '/vo.mp3'
+      }],
+      overlays: [{
+        id: 'overlay-1',
+        title: 'EOFY lower third',
+        formatKey: 'reels_9x16',
+        status: 'ready'
+      }],
+      generationJobs: [{
+        id: 'job-2',
+        status: 'running',
+        mode: 'image-to-video',
+        modelId: 'replicate/seedance',
+        prompt: 'Smoke reveal',
+        outputAssetId: null,
+        outputR2Key: null,
+        createdAt: '2026-06-18T00:00:00Z'
+      }],
+      derivatives: [{
+        id: 'derivative-1',
+        sourceAssetId: 'asset-1',
+        kind: 'mask-png',
+        r2Key: 'derivatives/mask.png',
+        metadata: { title: 'Lifted badge' },
+        createdAt: '2026-06-18T00:00:00Z',
+        durationSec: null
+      }]
+    })
+
+    expect(assets.map(asset => asset.id)).toEqual([
+      'bucket:bucket-item-1',
+      'video:asset-1',
+      'audio:voice-1',
+      'overlay:overlay-1',
+      'job:job-2',
+      'derivative:derivative-1'
+    ])
+    expect(assets.find(asset => asset.id === 'job:job-2')?.status).toBe('running')
+    expect(assets.find(asset => asset.id === 'video:asset-1')?.timelineReady).toBe(true)
+  })
+
+  it('filters by search, type, status, model, source, and bucket', () => {
+    const assets = normalizeVideoStudioAssets({
+      bucketItems: [{
+        id: 'bucket-item-1',
+        bucketId: 'bucket-generated',
+        assetId: 'asset-1',
+        r2Key: 'source/car.png',
+        title: 'Hero car still',
+        role: 'hero',
+        status: 'ready',
+        directive: { prompt: 'Use as opening shot' }
+      }],
+      videoAssets: [{
+        id: 'asset-1',
+        title: 'Generated drive-by',
+        sourceJobId: 'job-1',
+        r2Key: 'generated/drive.mp4',
+        format: '9:16',
+        durationSec: 5,
+        thumbnailUrl: null,
+        generationPrompt: 'Slow dolly past the car',
+        generationModelId: 'replicate/wan-2.2'
+      }],
+      generationJobs: [{
+        id: 'job-2',
+        status: 'failed',
+        mode: 'image-to-video',
+        modelId: 'replicate/seedance',
+        prompt: 'Smoke reveal',
+        outputAssetId: null,
+        outputR2Key: null,
+        createdAt: '2026-06-18T00:00:00Z'
+      }]
+    })
+
+    expect(filterVideoStudioAssets(assets, { search: 'dolly' }).map(asset => asset.id)).toEqual(['video:asset-1'])
+    expect(filterVideoStudioAssets(assets, { type: 'job', status: 'failed' }).map(asset => asset.id)).toEqual(['job:job-2'])
+    expect(filterVideoStudioAssets(assets, { model: 'replicate/wan-2.2' }).map(asset => asset.id)).toEqual(['video:asset-1'])
+    expect(filterVideoStudioAssets(assets, { source: 'bucket', bucketId: 'bucket-generated' }).map(asset => asset.id)).toEqual(['bucket:bucket-item-1'])
+  })
+
+  it('keeps normalized assets and filters reactive through the composable', () => {
+    const input = ref({
+      videoAssets: [{
+        id: 'asset-1',
+        title: 'Generated drive-by',
+        sourceJobId: 'job-1',
+        r2Key: 'generated/drive.mp4',
+        format: '9:16',
+        durationSec: 5,
+        thumbnailUrl: null,
+        generationPrompt: 'Slow dolly past the car',
+        generationModelId: 'replicate/wan-2.2'
+      }],
+      audioAssets: [{
+        id: 'voice-1',
+        title: 'Opening voiceover',
+        kind: 'voiceover',
+        status: 'ready',
+        durationSec: 12,
+        r2KeyMaster: 'audio/vo.mp3',
+        streamUrl: '/vo.mp3'
+      }]
+    })
+    const filters = ref({ type: 'video' as const })
+    const { assets, filteredAssets } = useVideoStudioAssets(input, filters)
+
+    expect(assets.value).toHaveLength(2)
+    expect(filteredAssets.value.map(asset => asset.id)).toEqual(['video:asset-1'])
+
+    filters.value = { type: 'audio' }
+    expect(filteredAssets.value.map(asset => asset.id)).toEqual(['audio:voice-1'])
+  })
+})
