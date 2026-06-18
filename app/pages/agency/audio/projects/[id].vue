@@ -93,6 +93,7 @@ const selectedStudioAssetId = ref<string | null>(null)
 interface StudioBannerProject {
   id: string
   name: string
+  clientName?: string | null
   canvasData: Record<string, unknown>
   status?: string | null
 }
@@ -657,6 +658,12 @@ const saveStatusColor = computed(() => {
               <VideoStudioVoiceComposer
                 @generated="onVoiceoverGenerated"
                 @add-to-timeline="onVoiceoverAddToTimeline"
+              />
+              <VideoStudioOverlayComposer
+                :projects="studioBannerProjects"
+                :loading="studioBannerPending"
+                @refresh="refreshStudioBannerProjects"
+                @add-overlay="onOverlayPick"
               />
               <div class="rounded-md border border-default bg-elevated p-3">
                 <div class="flex items-start gap-2">

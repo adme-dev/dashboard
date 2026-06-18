@@ -288,15 +288,15 @@
 
 **Acceptance criteria:**
 
-- [ ] User can search/select Banner Studio project and format from Video Studio.
-- [ ] Overlay clip is added to the `overlay` lane.
-- [ ] Existing render-video overlay resolution still works.
+- [x] User can search/select Banner Studio project and format from Video Studio.
+- [x] Overlay clip is added to the `overlay` lane.
+- [x] Existing render-video overlay resolution still works.
 
 **Verification:**
 
 - [ ] Manual: add overlay and preview overlay.
 - [ ] Manual: render video with overlay.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 1.
 
@@ -333,8 +333,8 @@
 
 ### Checkpoint: Overlay Path
 
-- [ ] Existing Banner overlays are easy to add from Video Studio.
-- [ ] Render path remains unchanged.
+- [x] Existing Banner overlays are easy to add from Video Studio.
+- [x] Render path remains unchanged.
 - [ ] Inline overlay template decision recorded.
 
 ---
