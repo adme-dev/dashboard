@@ -555,7 +555,7 @@ const saveStatusColor = computed(() => {
             { label: 'Audio clip', icon: 'i-lucide-music', onSelect: () => { pickerOpen = true } },
             { label: 'Footage / still', icon: 'i-lucide-film', onSelect: () => { mediaPickerOpen = true } },
             { label: 'Overlay', icon: 'i-lucide-shapes', onSelect: () => { overlayPickerOpen = true } },
-            ...(videoGenerationEnabled && videoGenerationModelsAvailable ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen.value = true } }] : []),
+            ...(videoGenerationEnabled && videoGenerationModelsAvailable ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen = true } }] : []),
             ...(videoGenerationEnabled && !videoGenerationModelsAvailable ? [{ label: 'Generate (AI unavailable)', icon: 'i-lucide-sparkles', disabled: true }] : []),
           ]]"
         >
@@ -621,86 +621,139 @@ const saveStatusColor = computed(() => {
           description="Their source files couldn't be loaded — they may have been deleted. These clips appear on the timeline but produce no sound. Remove or replace them, then save."
         />
 
-        <VideoStudioWorkbench
+        <section
           v-if="isAv"
-          :current-time-sec="editor.currentTime.value"
-          :duration-sec="editor.duration.value"
-          :asset-count="videoStudioAssetCount"
-          :generation-job-count="activeGenerationJobCount"
-          :render-job-count="editor.renderJobs.value.length"
-          :generation-enabled="videoGenerationEnabled && videoGenerationModelsAvailable"
-          :rendering="editor.rendering.value"
-          @open-library="libraryOpen = true"
-          @add-footage="mediaPickerOpen = true"
-          @add-overlay="overlayPickerOpen = true"
-          @generate="generatePickerOpen = true"
-          @render="onRenderVideo"
+          class="overflow-hidden rounded-lg border border-default bg-elevated"
         >
-          <template #library>
-            <VideoStudioLibraryRail
-              v-model:selected-id="selectedStudioAssetId"
-              :assets="studioAssets"
-              :loading="studioLibraryLoading"
-              @refresh="refreshStudioLibrary"
-              @add-asset="onStudioAssetAdd"
-            />
-          </template>
-
-          <template #preview>
-            <MediaAvPreview
-              :timeline="editor.timeline.value"
-              :current-time="editor.currentTime.value"
-              :is-playing="editor.isPlaying.value"
-              :sources="editor.sources.value"
-            />
-          </template>
-
-          <template #producer>
-            <div class="space-y-3">
-              <VideoStudioVoiceComposer
-                @generated="onVoiceoverGenerated"
-                @add-to-timeline="onVoiceoverAddToTimeline"
-              />
-              <VideoStudioOverlayComposer
-                :projects="studioBannerProjects"
-                :loading="studioBannerPending"
-                @refresh="refreshStudioBannerProjects"
-                @add-overlay="onOverlayPick"
-              />
-              <VideoStudioProducerRail
-                :project-id="projectId"
-                :selected-asset="selectedStudioAsset"
-                :asset-count="videoStudioAssetCount"
-                :voice-asset-count="studioVoiceAssetCount"
-                :overlay-asset-count="studioOverlayAssetCount"
-                :recent-generation-jobs="genJobs.jobs.value"
-                @add-to-timeline="onHarnessAddToTimeline"
-              />
-              <VideoStudioRenderJobsPanel
-                :project-id="projectId"
-                :jobs="editor.renderJobs.value"
-                :rendering="editor.rendering.value"
-                @render="onRenderVideo"
-                @publish="onPublishToSocial"
-                @send-to-portal="onSendToPortal"
-                @save-asset="onSaveAsset"
-              />
-              <div class="grid grid-cols-2 gap-2">
-                <UButton icon="i-lucide-music" size="xs" variant="ghost" color="neutral" label="Audio" @click="pickerOpen = true" />
-                <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="onRenderVideo" />
+          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-3">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-sm font-semibold text-highlighted">Video Studio</h2>
+                <UBadge :label="`${videoStudioAssetCount} assets`" size="xs" variant="subtle" color="neutral" />
+                <UBadge
+                  v-if="activeGenerationJobCount"
+                  :label="`${activeGenerationJobCount} AI jobs`"
+                  size="xs"
+                  variant="subtle"
+                  color="primary"
+                />
+                <UBadge
+                  v-if="editor.renderJobs.value.length"
+                  :label="`${editor.renderJobs.value.length} ${editor.renderJobs.value.length === 1 ? 'render' : 'renders'}`"
+                  size="xs"
+                  variant="subtle"
+                  color="neutral"
+                />
               </div>
+              <p class="mt-0.5 text-xs text-muted">
+                {{ fmt(editor.currentTime.value) }} / {{ fmt(editor.duration.value) }}
+              </p>
             </div>
-          </template>
 
-          <template v-if="videoAssetHarnessEnabled" #details>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <UButton icon="i-lucide-film" size="xs" variant="ghost" color="neutral" label="Footage" @click="mediaPickerOpen = true" />
+              <UButton icon="i-lucide-shapes" size="xs" variant="ghost" color="neutral" label="Overlay" @click="overlayPickerOpen = true" />
+              <UButton
+                icon="i-lucide-sparkles"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                label="Generate"
+                :disabled="!(videoGenerationEnabled && videoGenerationModelsAvailable)"
+                @click="generatePickerOpen = true"
+              />
+              <UButton icon="i-lucide-library" size="xs" variant="ghost" color="neutral" label="Library" @click="libraryOpen = true" />
+              <UButton
+                icon="i-lucide-clapperboard"
+                size="xs"
+                variant="soft"
+                color="primary"
+                label="Render"
+                :loading="editor.rendering.value"
+                @click="onRenderVideo"
+              />
+            </div>
+          </header>
+
+          <div class="grid gap-3 p-3 xl:grid-cols-[280px_minmax(0,1fr)_360px]">
+            <aside class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+              <div class="mb-3 flex items-center gap-2">
+                <UIcon name="i-lucide-sliders-horizontal" class="size-4 text-muted" />
+                <h3 class="text-xs font-medium uppercase text-muted">Library</h3>
+              </div>
+              <VideoStudioLibraryRail
+                v-model:selected-id="selectedStudioAssetId"
+                :assets="studioAssets"
+                :loading="studioLibraryLoading"
+                @refresh="refreshStudioLibrary"
+                @add-asset="onStudioAssetAdd"
+              />
+            </aside>
+
+            <main class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+              <div class="mb-3 flex items-center gap-2">
+                <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
+                <h3 class="text-xs font-medium uppercase text-muted">Preview + Prepare</h3>
+              </div>
+              <MediaAvPreview
+                :timeline="editor.timeline.value"
+                :current-time="editor.currentTime.value"
+                :is-playing="editor.isPlaying.value"
+                :sources="editor.sources.value"
+              />
+            </main>
+
+            <aside class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+              <div class="mb-3 flex items-center gap-2">
+                <UIcon name="i-lucide-wand-sparkles" class="size-4 text-muted" />
+                <h3 class="text-xs font-medium uppercase text-muted">Producer</h3>
+              </div>
+              <div class="space-y-3">
+                <VideoStudioVoiceComposer
+                  @generated="onVoiceoverGenerated"
+                  @add-to-timeline="onVoiceoverAddToTimeline"
+                />
+                <VideoStudioOverlayComposer
+                  :projects="studioBannerProjects"
+                  :loading="studioBannerPending"
+                  @refresh="refreshStudioBannerProjects"
+                  @add-overlay="onOverlayPick"
+                />
+                <VideoStudioProducerRail
+                  :project-id="projectId"
+                  :selected-asset="selectedStudioAsset"
+                  :asset-count="videoStudioAssetCount"
+                  :voice-asset-count="studioVoiceAssetCount"
+                  :overlay-asset-count="studioOverlayAssetCount"
+                  :recent-generation-jobs="genJobs.jobs.value"
+                  @add-to-timeline="onHarnessAddToTimeline"
+                />
+                <VideoStudioRenderJobsPanel
+                  :project-id="projectId"
+                  :jobs="editor.renderJobs.value"
+                  :rendering="editor.rendering.value"
+                  @render="onRenderVideo"
+                  @publish="onPublishToSocial"
+                  @send-to-portal="onSendToPortal"
+                  @save-asset="onSaveAsset"
+                />
+                <div class="grid grid-cols-2 gap-2">
+                  <UButton icon="i-lucide-music" size="xs" variant="ghost" color="neutral" label="Audio" @click="pickerOpen = true" />
+                  <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="onRenderVideo" />
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div v-if="videoAssetHarnessEnabled" class="border-t border-default p-3">
             <MediaAssetHarness
               :project-id="projectId"
               embedded
               @add-to-timeline="onHarnessAddToTimeline"
               @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
             />
-          </template>
-        </VideoStudioWorkbench>
+          </div>
+        </section>
 
         <!-- Timeline with full SP2c interaction layer -->
         <MediaTimeline
