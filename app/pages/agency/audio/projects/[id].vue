@@ -91,6 +91,7 @@ const selectedClipId = ref<string | null>(null)
 const activeGenerationJobCount = computed(() => genJobs.jobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
 const selectedStudioAssetId = ref<string | null>(null)
 const producerRailCollapsed = ref(false)
+const producerBrief = ref('Create a punchy vertical social edit using the strongest project assets.')
 
 interface StudioBannerProject {
   id: string
@@ -137,6 +138,13 @@ const { assets: studioAssets } = useVideoStudioAssets(computed(() => ({
 })))
 const videoStudioAssetCount = computed(() => studioAssets.value.length)
 const selectedStudioAsset = computed(() => studioAssets.value.find(asset => asset.id === selectedStudioAssetId.value) ?? null)
+const existingVoiceoverClipIds = computed(() => {
+  const timeline = editor.timeline.value
+  if (!timeline) return []
+  return timeline.tracks
+    .filter(track => track.kind === 'voiceover')
+    .flatMap(track => track.clips.map(clip => clip.id))
+})
 const selectedGenerationSourceAsset = computed(() => videoStudioAssetImageSource(selectedStudioAsset.value))
 const selectedStudioAssetActivity = computed<VideoStudioSelectedAssetActivity[]>(() => {
   const asset = selectedStudioAsset.value
@@ -332,6 +340,11 @@ function onVoiceoverAddToTimeline(asset: AudioAsset) {
   const payload = audioStudioTimelinePayload(asset)
   if (!payload) return
   onPickerPick(payload)
+}
+
+function onVoiceoverReplaceTimeline(asset: AudioAsset) {
+  for (const clipId of existingVoiceoverClipIds.value) editor.deleteClipAction(clipId)
+  onVoiceoverAddToTimeline(asset)
 }
 
 function onReusePrompt(p: { prompt: string; modelId: string | null }) {
@@ -784,8 +797,11 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           <template #producer>
               <div class="space-y-3">
                 <VideoStudioVoiceComposer
+                  :producer-brief="producerBrief"
+                  :existing-voiceover-count="existingVoiceoverClipIds.length"
                   @generated="onVoiceoverGenerated"
                   @add-to-timeline="onVoiceoverAddToTimeline"
+                  @replace-with-generated="onVoiceoverReplaceTimeline"
                 />
                 <VideoStudioOverlayComposer
                   :projects="studioBannerProjects"
@@ -801,6 +817,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   :overlay-asset-count="studioOverlayAssetCount"
                   :recent-generation-jobs="genJobs.jobs.value"
                   @add-to-timeline="onHarnessAddToTimeline"
+                  @brief-change="producerBrief = $event"
                 />
                 <VideoStudioRenderJobsPanel
                   :project-id="projectId"

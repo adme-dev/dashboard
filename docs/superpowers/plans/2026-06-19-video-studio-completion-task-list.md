@@ -80,14 +80,14 @@
 
 ## Phase 6: Voiceover
 
-- [ ] Keep voice generation inside Video Studio.
-- [ ] Add script field connected to producer brief.
-- [ ] Add generated voice preview before timeline insertion.
-- [ ] Add voiceover lane insertion.
-- [ ] Add voiceover asset reuse from library.
-- [ ] Show voice guard/policy violations clearly.
-- [ ] Add voice duration estimate or post-generation duration display.
-- [ ] Add `Replace existing voiceover` action.
+- [x] Keep voice generation inside Video Studio.
+- [x] Add script field connected to producer brief.
+- [x] Add generated voice preview before timeline insertion.
+- [x] Add voiceover lane insertion.
+- [x] Add voiceover asset reuse from library.
+- [x] Show voice guard/policy violations clearly.
+- [x] Add voice duration estimate or post-generation duration display.
+- [x] Add `Replace existing voiceover` action.
 
 ## Phase 7: Overlays
 

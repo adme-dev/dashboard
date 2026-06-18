@@ -33,6 +33,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (event: 'add-to-timeline', payload: AiAssemblyTimelinePayload): void
+  (event: 'brief-change', brief: string): void
 }>()
 
 const toast = useToast()
@@ -54,6 +55,10 @@ const hasManualLaneAssets = computed(() => props.voiceAssetCount > 0 || props.ov
 watch(() => props.initialPlan, (plan) => {
   assemblyPlan.value = plan
 })
+
+watch(brief, (next) => {
+  emit('brief-change', next)
+}, { immediate: true })
 
 function applyRecipe(recipeId: string | null | undefined = selectedRecipeId.value) {
   const recipe = findVideoProducerRecipe(recipeId)

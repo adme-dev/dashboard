@@ -29,16 +29,21 @@ describe('VideoStudioVoiceComposer', () => {
   })
 
   it('renders script, title, and generation controls', async () => {
-    const html = await render()
+    const html = await render({
+      producerBrief: 'Open with a confident hook, then mention the weekend offer.'
+    })
 
     expect(html).toContain('Voiceover')
     expect(html).toContain('Script')
     expect(html).toContain('Title')
     expect(html).toContain('Generate')
+    expect(html).toContain('Script duration appears after you write.')
+    expect(html).toContain('Use producer brief')
   })
 
   it('renders a generated asset preview when provided', async () => {
     const html = await render({
+      existingVoiceoverCount: 1,
       initialAsset: {
         id: 'voice-1',
         title: 'Opening voiceover',
@@ -53,5 +58,6 @@ describe('VideoStudioVoiceComposer', () => {
     expect(html).toContain('Opening voiceover')
     expect(html).toContain('8s')
     expect(html).toContain('Add to timeline')
+    expect(html).toContain('Replace')
   })
 })

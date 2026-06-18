@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AudioAsset } from '~~/app/types'
 import { apiErrorDescription } from '~~/app/utils/apiError'
 
 const props = defineProps<{
   initialAsset?: Partial<AudioAsset> | null
+  producerBrief?: string | null
+  existingVoiceoverCount?: number
 }>()
 
 const emit = defineEmits<{
   (event: 'generated', asset: AudioAsset): void
   (event: 'add-to-timeline', asset: AudioAsset): void
+  (event: 'replace-with-generated', asset: AudioAsset): void
 }>()
 
 const toast = useToast()
@@ -18,6 +21,11 @@ const script = ref('')
 const generating = ref(false)
 const generatedAsset = ref<Partial<AudioAsset> | null>(props.initialAsset ?? null)
 const violations = ref<string[]>([])
+const producerBrief = computed(() => props.producerBrief?.trim() ?? '')
+const estimatedScriptDurationSec = computed(() => {
+  const words = script.value.trim().split(/\s+/).filter(Boolean).length
+  return words ? Math.max(1, Math.round(words / 2.6)) : null
+})
 
 watch(() => props.initialAsset, (next) => {
   generatedAsset.value = next ?? null
@@ -29,6 +37,11 @@ function durationLabel(seconds?: number | null) {
   if (!seconds) return null
   const rounded = Number.isInteger(seconds) ? seconds : Number(seconds.toFixed(1))
   return `${rounded}s`
+}
+
+function applyProducerBrief() {
+  if (!producerBrief.value) return
+  script.value = producerBrief.value
 }
 
 async function generateVoiceover() {
@@ -64,6 +77,11 @@ function addGeneratedToTimeline() {
   if (!generatedAsset.value?.id || !generatedAsset.value.r2KeyMaster) return
   emit('add-to-timeline', generatedAsset.value as AudioAsset)
 }
+
+function replaceExistingVoiceover() {
+  if (!generatedAsset.value?.id || !generatedAsset.value.r2KeyMaster) return
+  emit('replace-with-generated', generatedAsset.value as AudioAsset)
+}
 </script>
 
 <template>
@@ -90,6 +108,21 @@ function addGeneratedToTimeline() {
           autoresize
           placeholder="Write the spoken script for this edit..."
         />
+        <div class="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+          <span class="text-[11px] text-muted">
+            <template v-if="estimatedScriptDurationSec">Estimated {{ durationLabel(estimatedScriptDurationSec) }}</template>
+            <template v-else>Script duration appears after you write.</template>
+          </span>
+          <UButton
+            v-if="producerBrief"
+            icon="i-lucide-clipboard-check"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            label="Use producer brief"
+            @click="applyProducerBrief"
+          />
+        </div>
       </UFormField>
 
       <div class="flex items-center justify-between gap-2">
@@ -129,6 +162,16 @@ function addGeneratedToTimeline() {
             label="Add to timeline"
             :disabled="!generatedAsset.r2KeyMaster"
             @click="addGeneratedToTimeline"
+          />
+          <UButton
+            v-if="props.existingVoiceoverCount"
+            icon="i-lucide-replace"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            label="Replace"
+            :disabled="!generatedAsset.r2KeyMaster"
+            @click="replaceExistingVoiceover"
           />
         </div>
         <audio
