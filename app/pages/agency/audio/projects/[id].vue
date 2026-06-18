@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
 import { apiErrorDescription } from '~~/app/utils/apiError'
+import { canReplaceVideoStudioClip } from '~~/app/utils/video/assetReplacement'
 import { resolveVideoStudioClipInspector } from '~~/app/utils/video/clipInspector'
 import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipInspector'
 import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
@@ -422,6 +423,10 @@ const selectedClipInspector = computed(() => resolveVideoStudioClipInspector({
   timeline: editor.timeline.value,
   selectedClipId: selectedClipId.value,
 }))
+const canReplaceSelectedClipWithAsset = computed(() => canReplaceVideoStudioClip({
+  clip: selectedClipInspector.value,
+  asset: selectedStudioAsset.value,
+}))
 
 function splitSelectedClip() {
   const selected = selectedClipInspector.value
@@ -434,6 +439,64 @@ function deleteSelectedClip() {
   if (!selected) return
   editor.deleteClipAction(selected.clipId)
   selectedClipId.value = null
+}
+
+function imageR2Key(r2Key: string | null): boolean {
+  return Boolean(r2Key && /\.(png|jpe?g|webp)$/i.test(r2Key.split('?')[0] ?? ''))
+}
+
+function replaceSelectedClipWithAsset(asset: VideoStudioAsset) {
+  const selected = selectedClipInspector.value
+  if (!selected || !canReplaceVideoStudioClip({ clip: selected, asset })) return
+  const startSec = selected.startSec
+  const durationSec = selected.durationSec ?? asset.durationSec ?? 5
+  let applyReplacement: (() => void) | null = null
+
+  if (selected.kind === 'video' && asset.r2Key) {
+    applyReplacement = () => {
+      const streamUrl = asset.previewUrl ?? asset.r2Key!
+      editor.mergeSource(asset.r2Key!, streamUrl, {
+        durationSec,
+        assetId: asset.libraryAssetId,
+        title: asset.title,
+        format: asset.format,
+      })
+      editor.addVideoClipAction(
+        asset.r2Key!,
+        durationSec,
+        imageR2Key(asset.r2Key) ? 'still_kenburns' : 'uploaded_footage',
+        startSec,
+        asset.libraryAssetId
+      )
+    }
+  } else if (selected.kind === 'audio') {
+    const audio = studioAudioAssets.value.find(candidate => candidate.id === asset.rawId)
+    const payload = audio ? audioStudioTimelinePayload(audio) : null
+    if (payload) {
+      applyReplacement = () => editor.addClipToKindTrackAction(payload, startSec, payload.streamUrl)
+    }
+  } else if (selected.kind === 'overlay' && asset.format) {
+    const [projectIdForOverlay] = asset.rawId.split(':')
+    if (projectIdForOverlay) {
+      applyReplacement = () => editor.addOverlayClipAction(projectIdForOverlay, asset.format!, durationSec, startSec)
+    }
+  } else if (selected.kind === 'caption' && asset.transcript?.trim()) {
+    applyReplacement = () => {
+      editor.addCaptionClipAction(
+        asset.transcript!.trim(),
+        startSec,
+        durationSec,
+        asset.libraryAssetId ?? asset.rawId,
+        asset.captionVttUrl
+      )
+    }
+  }
+
+  if (!applyReplacement) return
+  editor.deleteClipAction(selected.clipId)
+  applyReplacement()
+  selectedClipId.value = null
+  toast.add({ title: 'Selected clip replaced', color: 'success' })
 }
 
 function onReplaceSelectedOverlay(p: { gsapProjectId: string; gsapFormatKey: string; durationSec?: number; startSec?: number }) {
@@ -810,7 +873,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :asset="selectedStudioAsset"
                 :activity="selectedStudioAssetActivity"
                 :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
+                :can-replace-selected-clip="canReplaceSelectedClipWithAsset"
                 @add-to-timeline="onStudioAssetAdd"
+                @replace-selected-clip="replaceSelectedClipWithAsset"
                 @add-captions-to-timeline="onStudioAssetAddCaptions"
                 @generate-from-asset="onStudioAssetGenerate"
                 @generate-captions="onGenerateCaptions"

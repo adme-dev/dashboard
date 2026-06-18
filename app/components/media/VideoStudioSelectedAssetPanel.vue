@@ -19,10 +19,12 @@ const props = defineProps<{
   asset: VideoStudioAsset | null
   activity?: VideoStudioSelectedAssetActivity[]
   captionGenerating?: boolean
+  canReplaceSelectedClip?: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'add-to-timeline', asset: VideoStudioAsset): void
+  (event: 'replace-selected-clip', asset: VideoStudioAsset): void
   (event: 'add-captions-to-timeline', asset: VideoStudioAsset): void
   (event: 'generate-from-asset', asset: VideoStudioAsset): void
   (event: 'generate-captions', asset: VideoStudioAsset): void
@@ -91,6 +93,15 @@ function activityTimeLabel(value: string | null) {
           label="Add to timeline"
           :disabled="!props.asset.timelineReady"
           @click="emit('add-to-timeline', props.asset)"
+        />
+        <UButton
+          icon="i-lucide-replace"
+          size="xs"
+          variant="soft"
+          color="neutral"
+          label="Replace selected"
+          :disabled="!props.canReplaceSelectedClip"
+          @click="emit('replace-selected-clip', props.asset)"
         />
         <UButton
           icon="i-lucide-sparkles"

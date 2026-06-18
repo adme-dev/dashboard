@@ -69,6 +69,7 @@ describe('VideoStudioSelectedAssetPanel', () => {
     expect(html).toContain('Generated walkaround')
     expect(html).toContain('/api/agency/video/assets/asset-1/thumbnail')
     expect(html).toContain('Add to timeline')
+    expect(html).toContain('Replace selected')
     expect(html).toContain('Generate from asset')
     expect(html).toContain('Generate captions')
     expect(html).toContain('replicate/wan-2.2')
