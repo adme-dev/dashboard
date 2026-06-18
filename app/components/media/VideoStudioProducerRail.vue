@@ -11,6 +11,7 @@ import {
   findVideoProducerRecipe,
   type VideoProducerTargetFormat,
 } from '~~/app/utils/video/producerRecipes'
+import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
 import type { VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
 
 const props = withDefaults(defineProps<{
@@ -19,12 +20,14 @@ const props = withDefaults(defineProps<{
   assetCount?: number
   voiceAssetCount?: number
   overlayAssetCount?: number
+  recentGenerationJobs?: VideoGenerationJobView[]
   initialPlan?: AiAssemblyPlan | null
 }>(), {
   selectedAsset: null,
   assetCount: 0,
   voiceAssetCount: 0,
   overlayAssetCount: 0,
+  recentGenerationJobs: () => [],
   initialPlan: null,
 })
 
@@ -44,6 +47,7 @@ const recipeOptions = computed(() => VIDEO_PRODUCER_RECIPES.map(recipe => ({
   label: recipe.label,
   value: recipe.id,
 })))
+const recentGenerationJobs = computed(() => props.recentGenerationJobs.slice(0, 3))
 const timelinePayloads = computed(() => assemblyPlanToTimelinePayloads(assemblyPlan.value))
 const hasManualLaneAssets = computed(() => props.voiceAssetCount > 0 || props.overlayAssetCount > 0)
 
@@ -91,6 +95,16 @@ function durationLabel(seconds: number | null | undefined) {
   if (!seconds) return null
   const rounded = Number.isInteger(seconds) ? seconds : Number(seconds.toFixed(1))
   return `${rounded}s`
+}
+
+function generationJobColor(status: VideoGenerationJobView['status']) {
+  switch (status) {
+    case 'succeeded': return 'success'
+    case 'failed': return 'error'
+    case 'blocked': return 'warning'
+    case 'running': return 'primary'
+    default: return 'neutral'
+  }
 }
 </script>
 
@@ -207,6 +221,26 @@ function durationLabel(seconds: number | null | undefined) {
       <p class="text-[11px] leading-snug text-muted">
         Voice and overlays are available as lane inserts. Add them before or after applying the visual draft.
       </p>
+    </div>
+
+    <div v-if="recentGenerationJobs.length" class="mt-3 rounded-md border border-default bg-default/30 p-2">
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-[11px] font-medium uppercase text-muted">Recent generations</p>
+        <UBadge :label="String(recentGenerationJobs.length)" size="xs" variant="soft" color="neutral" />
+      </div>
+      <div class="mt-2 space-y-1.5">
+        <div
+          v-for="job in recentGenerationJobs"
+          :key="job.id"
+          class="flex items-center gap-2 rounded border border-default bg-elevated/70 px-2 py-1"
+        >
+          <UBadge :label="job.status" :color="generationJobColor(job.status)" size="xs" variant="soft" />
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-xs text-highlighted">{{ job.prompt || job.modelId }}</p>
+            <p class="truncate text-[11px] text-muted">{{ job.mode }}<span v-if="job.aspectRatio"> · {{ job.aspectRatio }}</span></p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-if="assemblyPlan" class="mt-3 rounded-md border border-default bg-default/30 p-2">

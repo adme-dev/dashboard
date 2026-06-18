@@ -13,6 +13,7 @@ const stubs = {
   },
   USelect: { name: 'USelect', props: ['modelValue', 'items'], emits: ['update:modelValue'], template: '<select :value="modelValue"><option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option></select>' },
   UTextarea: { name: 'UTextarea', props: ['modelValue', 'placeholder'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" :placeholder="placeholder" />' },
+  UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
 }
 
 async function render(props: Record<string, unknown> = {}) {
@@ -88,5 +89,54 @@ describe('VideoStudioProducerRail', () => {
     expect(html).toContain('Lead with motion and finish on offer.')
     expect(html).toContain('Hero drive-by')
     expect(html).toContain('Apply')
+  })
+
+  it('renders recent generation jobs in producer context', async () => {
+    const html = await render({
+      recentGenerationJobs: [
+        {
+          id: 'job-1',
+          status: 'running',
+          mode: 'image-to-video',
+          modelId: 'aigateway/seedance-i2v',
+          prompt: 'Smoke reveal hero clip',
+          sourceAssetIds: ['asset-1'],
+          durationSeconds: 5,
+          aspectRatio: '9:16',
+          resolution: null,
+          subjectType: 'vehicle',
+          outputAssetId: null,
+          outputR2Key: null,
+          errorMessage: null,
+          createdAt: '2026-06-18T05:00:00.000Z',
+          startedAt: '2026-06-18T05:00:01.000Z',
+          completedAt: null,
+        },
+        {
+          id: 'job-2',
+          status: 'succeeded',
+          mode: 'text-to-video',
+          modelId: 'aigateway/wan-t2v',
+          prompt: 'Night showroom pass',
+          sourceAssetIds: [],
+          durationSeconds: 5,
+          aspectRatio: '16:9',
+          resolution: '720p',
+          subjectType: 'non_vehicle',
+          outputAssetId: 'asset-2',
+          outputR2Key: 'generated/night.mp4',
+          errorMessage: null,
+          createdAt: '2026-06-18T04:00:00.000Z',
+          startedAt: '2026-06-18T04:00:01.000Z',
+          completedAt: '2026-06-18T04:00:20.000Z',
+        },
+      ],
+    })
+
+    expect(html).toContain('Recent generations')
+    expect(html).toContain('Smoke reveal hero clip')
+    expect(html).toContain('Night showroom pass')
+    expect(html).toContain('running')
+    expect(html).toContain('succeeded')
   })
 })

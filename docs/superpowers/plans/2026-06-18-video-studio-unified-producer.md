@@ -161,7 +161,7 @@
 - [x] Image-to-video can be started from a selected source asset.
 - [x] Text-to-video remains hidden unless selectable models allow it.
 - [x] Model capability controls still match registry constraints.
-- [ ] Recent jobs still visible.
+- [x] Recent jobs still visible.
 
 **Verification:**
 

@@ -673,6 +673,7 @@ const saveStatusColor = computed(() => {
                 :asset-count="videoStudioAssetCount"
                 :voice-asset-count="studioVoiceAssetCount"
                 :overlay-asset-count="studioOverlayAssetCount"
+                :recent-generation-jobs="genJobs.jobs.value"
                 @add-to-timeline="onHarnessAddToTimeline"
               />
               <VideoStudioRenderJobsPanel
