@@ -23,16 +23,35 @@ export function usableBucketItems(items: VideoBucketItem[]): VideoBucketItem[] {
   return items.filter(item => item.status !== 'blocked' && (item.assetId || item.r2Key))
 }
 
-export function buildAssemblyPrompt(input: { brief: string, targetFormat: string, items: VideoBucketItem[] }): string {
+export interface AssemblySelectedAssetContext {
+  id?: string | null
+  title?: string | null
+  type?: string | null
+  source?: string | null
+  prompt?: string | null
+  transcript?: string | null
+}
+
+export function buildAssemblyPrompt(input: { brief: string, targetFormat: string, items: VideoBucketItem[], selectedAsset?: AssemblySelectedAssetContext | null }): string {
   const lines = input.items.map(item =>
     `- id=${item.id} title=${JSON.stringify(item.title ?? item.r2Key ?? 'untitled')} role=${item.role ?? 'none'}`
   )
+  const selectedAssetLines = input.selectedAsset
+    ? [
+        '',
+        'Selected editor asset to consider as the anchor:',
+        `- id=${input.selectedAsset.id ?? 'unknown'} title=${JSON.stringify(input.selectedAsset.title ?? 'untitled')} type=${input.selectedAsset.type ?? 'unknown'} source=${input.selectedAsset.source ?? 'unknown'}`,
+        ...(input.selectedAsset.prompt ? [`- prompt=${JSON.stringify(input.selectedAsset.prompt.slice(0, 500))}`] : []),
+        ...(input.selectedAsset.transcript ? [`- transcript=${JSON.stringify(input.selectedAsset.transcript.slice(0, 500))}`] : []),
+      ]
+    : []
   return [
     `Brief: ${input.brief}`,
     `Output format: ${input.targetFormat}`,
     '',
     'Available project assets:',
     ...lines,
+    ...selectedAssetLines,
     '',
     'Select and order the assets that best serve the brief (you may omit weak ones,',
     `use at most ${MAX_STEPS}), give each a duration in seconds (${MIN_DURATION}-${MAX_DURATION}),`,

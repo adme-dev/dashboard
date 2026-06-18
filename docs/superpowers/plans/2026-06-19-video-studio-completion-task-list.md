@@ -116,12 +116,12 @@ Decision: first caption pass stores a single-cue VTT plus transcript on `video_a
 
 ## Phase 9: AI Producer
 
-- [ ] Redesign Producer rail as guided command surface.
-- [ ] Sections: brief, format, script, voice, overlays, captions, draft plan, render.
-- [ ] Make selected asset influence producer brief/plan.
-- [ ] Add recipe selection: dealer promo, product reveal, offer ad, testimonial, event recap.
-- [ ] Build draft timeline plan.
-- [ ] Apply visual plan to timeline.
+- [x] Redesign Producer rail as guided command surface.
+- [x] Sections: brief, format, script, voice, overlays, captions, draft plan, render.
+- [x] Make selected asset influence producer brief/plan.
+- [x] Add recipe selection: dealer promo, product reveal, offer ad, testimonial, event recap.
+- [x] Build draft timeline plan.
+- [x] Apply visual plan to timeline.
 - [ ] Extend plan to include voiceover placement.
 - [ ] Extend plan to include overlay placement.
 - [ ] Extend plan to include caption requirement.

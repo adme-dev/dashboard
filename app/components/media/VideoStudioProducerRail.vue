@@ -51,6 +51,75 @@ const recipeOptions = computed(() => VIDEO_PRODUCER_RECIPES.map(recipe => ({
 const recentGenerationJobs = computed(() => props.recentGenerationJobs.slice(0, 3))
 const timelinePayloads = computed(() => assemblyPlanToTimelinePayloads(assemblyPlan.value))
 const hasManualLaneAssets = computed(() => props.voiceAssetCount > 0 || props.overlayAssetCount > 0)
+const selectedAssetContext = computed(() => props.selectedAsset
+  ? {
+      id: props.selectedAsset.rawId,
+      title: props.selectedAsset.title,
+      type: props.selectedAsset.type,
+      source: props.selectedAsset.source,
+      prompt: props.selectedAsset.prompt,
+      transcript: props.selectedAsset.transcript,
+    }
+  : null)
+const captionReady = computed(() => Boolean(props.selectedAsset?.captionVttUrl || props.selectedAsset?.transcript || /caption|subtitle/i.test(brief.value)))
+const producerSections = computed(() => [
+  {
+    id: 'brief',
+    label: 'Brief',
+    icon: 'i-lucide-scroll-text',
+    ready: brief.value.trim().length >= 12,
+    detail: brief.value.trim().length >= 12 ? 'Ready' : 'Needs direction',
+  },
+  {
+    id: 'format',
+    label: 'Format',
+    icon: 'i-lucide-proportions',
+    ready: Boolean(targetFormat.value),
+    detail: targetFormat.value.replace(/_/g, ' / '),
+  },
+  {
+    id: 'script',
+    label: 'Script',
+    icon: 'i-lucide-file-text',
+    ready: Boolean(props.selectedAsset?.transcript || brief.value.trim().length >= 60),
+    detail: props.selectedAsset?.transcript ? 'Transcript available' : 'Brief-led',
+  },
+  {
+    id: 'voice',
+    label: 'Voice',
+    icon: 'i-lucide-mic-2',
+    ready: props.voiceAssetCount > 0,
+    detail: props.voiceAssetCount > 0 ? `${props.voiceAssetCount} assets` : 'Optional',
+  },
+  {
+    id: 'overlays',
+    label: 'Overlays',
+    icon: 'i-lucide-shapes',
+    ready: props.overlayAssetCount > 0,
+    detail: props.overlayAssetCount > 0 ? `${props.overlayAssetCount} assets` : 'Optional',
+  },
+  {
+    id: 'captions',
+    label: 'Captions',
+    icon: 'i-lucide-subtitles',
+    ready: captionReady.value,
+    detail: captionReady.value ? 'Requested' : 'Optional',
+  },
+  {
+    id: 'plan',
+    label: 'Draft plan',
+    icon: 'i-lucide-list-checks',
+    ready: Boolean(assemblyPlan.value?.steps?.length),
+    detail: assemblyPlan.value?.steps?.length ? `${assemblyPlan.value.steps.length} steps` : 'Not built',
+  },
+  {
+    id: 'render',
+    label: 'Render',
+    icon: 'i-lucide-clapperboard',
+    ready: timelinePayloads.value.length > 0 || Boolean(assemblyPlan.value?.steps?.length),
+    detail: timelinePayloads.value.length > 0 ? `${timelinePayloads.value.length} clips` : 'After plan',
+  },
+])
 
 watch(() => props.initialPlan, (plan) => {
   assemblyPlan.value = plan
@@ -76,6 +145,7 @@ async function assemblePlan() {
       body: {
         brief: brief.value,
         targetFormat: targetFormat.value,
+        selectedAsset: selectedAssetContext.value,
       },
     })
     assemblyPlan.value = res.plan
@@ -135,6 +205,25 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
       <div class="px-2 py-1.5">
         <p class="text-[10px] uppercase text-muted">Overlays</p>
         <p class="text-sm font-medium text-highlighted">{{ props.overlayAssetCount }}</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-1.5">
+      <div
+        v-for="section in producerSections"
+        :key="section.id"
+        class="flex min-w-0 items-center gap-2 rounded-md border border-default bg-default/30 px-2 py-1.5"
+      >
+        <UIcon :name="section.icon" class="size-3.5 shrink-0" :class="section.ready ? 'text-primary' : 'text-muted'" />
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-[11px] font-medium text-highlighted">{{ section.label }}</p>
+          <p class="truncate text-[10px] text-muted">{{ section.detail }}</p>
+        </div>
+        <UIcon
+          :name="section.ready ? 'i-lucide-check-circle-2' : 'i-lucide-circle'"
+          class="size-3.5 shrink-0"
+          :class="section.ready ? 'text-primary' : 'text-muted'"
+        />
       </div>
     </div>
 

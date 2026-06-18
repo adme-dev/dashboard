@@ -42,6 +42,26 @@ describe('buildAssemblyPrompt', () => {
     expect(prompt).toContain('id=b')
     expect(prompt).toContain('"bucketItemId"')
   })
+
+  it('includes selected editor asset context when supplied', () => {
+    const prompt = buildAssemblyPrompt({
+      brief: 'Use the selected shot as the hero',
+      targetFormat: 'reels_9x16',
+      items: usableBucketItems(ITEMS),
+      selectedAsset: {
+        id: 'video:asset-1',
+        title: 'Hero drive-by',
+        type: 'video',
+        source: 'generation',
+        prompt: 'Slow smoke reveal',
+        transcript: 'Drive away today',
+      },
+    })
+    expect(prompt).toContain('Selected editor asset')
+    expect(prompt).toContain('Hero drive-by')
+    expect(prompt).toContain('Slow smoke reveal')
+    expect(prompt).toContain('Drive away today')
+  })
 })
 
 describe('parseAssemblyAiResponse', () => {

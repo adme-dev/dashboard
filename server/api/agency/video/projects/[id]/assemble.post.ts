@@ -9,6 +9,14 @@ import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 const BodySchema = z.object({
   brief: z.string().min(1).max(4000),
   targetFormat: z.string().min(1).max(80).default('reels_9x16'),
+  selectedAsset: z.object({
+    id: z.string().max(200).optional().nullable(),
+    title: z.string().max(500).optional().nullable(),
+    type: z.string().max(80).optional().nullable(),
+    source: z.string().max(80).optional().nullable(),
+    prompt: z.string().max(2000).optional().nullable(),
+    transcript: z.string().max(4000).optional().nullable(),
+  }).optional().nullable(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -27,7 +35,7 @@ export default defineEventHandler(async (event) => {
   if (usable.length) {
     try {
       const response = await generateGroqInsight(
-        buildAssemblyPrompt({ brief: body.brief, targetFormat: body.targetFormat, items: usable }),
+        buildAssemblyPrompt({ brief: body.brief, targetFormat: body.targetFormat, items: usable, selectedAsset: body.selectedAsset }),
         {
           model: GROQ_MODELS.LLAMA_70B,
           temperature: 0.2,
