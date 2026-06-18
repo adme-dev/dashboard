@@ -2,8 +2,8 @@
 // MediaTimeline.client.vue — SP2b read-only lane view PLUS SP2c interaction layer.
 // SP2b read path (lanes, ruler, clip blocks via clipRect, playhead via playheadX) is
 // preserved intact. SP2c adds: zoom control, click-to-select (ring highlight), drag-to-
-// move with snap, trim handles, "Split at playhead" + Delete keyboard shortcuts, and
-// per-clip wavesurfer.js waveform render (render-only — engine remains the clock).
+// move with snap, trim handles, zoom/split/delete keyboard shortcuts, and per-clip
+// wavesurfer.js waveform render (render-only — engine remains the clock).
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import WaveSurfer from 'wavesurfer.js'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
@@ -11,6 +11,7 @@ import type { ScheduledClip, TrackBus } from '~~/app/utils/audio/audioSchedulePl
 import { clipRect, playheadX, timeAtX } from '~~/app/utils/audio/timelineGeometry'
 import { snapTime } from '~~/app/utils/audio/timelineEdit'
 import { toDisplayLanes, type DisplayClip } from '~~/app/utils/audio/timelineDisplay'
+import { TIMELINE_ZOOM_OPTIONS, fitTimelineZoom, stepTimelineZoom } from '~~/app/utils/audio/timelineZoom'
 
 // ─── Props & Emits ────────────────────────────────────────────────────────────
 
@@ -55,26 +56,18 @@ const RULER_HEIGHT = 24
 
 const containerRef = ref<HTMLElement | null>(null)
 const containerWidth = ref(800)
+const shortcutHelpOpen = ref(false)
 
 const internalPxPerSec = ref(props.pxPerSec)
 
-// Zoom levels available in the USelect
-const ZOOM_OPTIONS = [
-  { label: '25 px/s', value: 25 },
-  { label: '50 px/s', value: 50 },
-  { label: '100 px/s', value: 100 },
-  { label: '200 px/s', value: 200 },
-  { label: '400 px/s', value: 400 },
-]
-
 function fitToWindow() {
-  const dur = Math.max(props.duration, 1)
-  const usable = Math.max(containerWidth.value - LABEL_WIDTH, 100)
-  internalPxPerSec.value = Math.max(10, Math.floor(usable / dur))
+  internalPxPerSec.value = fitTimelineZoom(props.duration, containerWidth.value, LABEL_WIDTH)
 }
 
-function zoomIn() { internalPxPerSec.value = Math.min(800, internalPxPerSec.value * 1.5) }
-function zoomOut() { internalPxPerSec.value = Math.max(10, internalPxPerSec.value / 1.5) }
+function zoomIn() { internalPxPerSec.value = stepTimelineZoom(internalPxPerSec.value, 'in') }
+function zoomOut() { internalPxPerSec.value = stepTimelineZoom(internalPxPerSec.value, 'out') }
+function toggleShortcutHelp() { shortcutHelpOpen.value = !shortcutHelpOpen.value }
+function closeShortcutHelp() { shortcutHelpOpen.value = false }
 
 // Sync if the parent changes the prop after mount
 watch(() => props.pxPerSec, (v) => { internalPxPerSec.value = v })
@@ -322,6 +315,26 @@ function handleDelete() {
 function onKeyDown(event: KeyboardEvent) {
   // Don't intercept while user is typing in an input
   if ((event.target as HTMLElement)?.closest('input, textarea, [contenteditable]')) return
+  if (event.key === '?' || (event.shiftKey && event.key === '/')) {
+    event.preventDefault()
+    toggleShortcutHelp()
+    return
+  }
+  if (event.key === '+' || event.key === '=') {
+    event.preventDefault()
+    zoomIn()
+    return
+  }
+  if (event.key === '-' || event.key === '_') {
+    event.preventDefault()
+    zoomOut()
+    return
+  }
+  if (event.key === '0') {
+    event.preventDefault()
+    fitToWindow()
+    return
+  }
   if (event.key === 's' || event.key === 'S') {
     event.preventDefault()
     handleSlice()
@@ -397,19 +410,26 @@ onUnmounted(() => {
 
 <template>
   <!-- Zoom toolbar -->
-  <div class="mb-2 flex flex-wrap items-center gap-2 px-1">
-    <span class="text-xs text-muted">Zoom</span>
+  <div class="relative mb-2 flex flex-wrap items-center gap-2 px-1">
+    <div class="flex items-center gap-1.5">
+      <UIcon name="i-lucide-zoom-in" class="size-3.5 text-muted" />
+      <span class="text-xs font-medium text-muted">Zoom</span>
+      <span class="rounded border border-default bg-default/40 px-1.5 py-0.5 text-[11px] leading-none text-muted">
+        {{ Math.round(internalPxPerSec) }} px/s
+      </span>
+    </div>
     <UButton
       icon="i-lucide-minus"
       size="xs"
       variant="ghost"
       color="neutral"
       aria-label="Zoom out"
+      title="Zoom out (-)"
       @click="zoomOut"
     />
     <USelect
       :model-value="internalPxPerSec"
-      :items="ZOOM_OPTIONS"
+      :items="TIMELINE_ZOOM_OPTIONS"
       value-key="value"
       size="xs"
       class="w-28"
@@ -421,6 +441,7 @@ onUnmounted(() => {
       variant="ghost"
       color="neutral"
       aria-label="Zoom in"
+      title="Zoom in (+)"
       @click="zoomIn"
     />
     <UButton
@@ -428,9 +449,36 @@ onUnmounted(() => {
       size="xs"
       variant="ghost"
       color="neutral"
-      label="Fit"
+      label="Fit timeline"
+      title="Fit timeline (0)"
       @click="fitToWindow"
     />
+    <UButton
+      icon="i-lucide-keyboard"
+      size="xs"
+      variant="ghost"
+      color="neutral"
+      label="Shortcuts"
+      title="Show timeline shortcuts (?)"
+      @click="toggleShortcutHelp"
+    />
+    <div
+      v-if="shortcutHelpOpen"
+      class="absolute left-1 top-9 z-40 w-72 rounded-lg border border-default bg-elevated p-3 shadow-xl"
+    >
+      <div class="mb-2 flex items-center justify-between gap-3">
+        <p class="text-xs font-medium uppercase text-muted">Timeline shortcuts</p>
+        <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" aria-label="Close shortcuts" @click="closeShortcutHelp" />
+      </div>
+      <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
+        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">+</kbd><span class="text-muted">Zoom in</span>
+        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">-</kbd><span class="text-muted">Zoom out</span>
+        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">0</kbd><span class="text-muted">Fit timeline</span>
+        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">S</kbd><span class="text-muted">Split selected audio at playhead</span>
+        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">Del</kbd><span class="text-muted">Delete selected clip</span>
+        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">?</kbd><span class="text-muted">Show or hide shortcuts</span>
+      </div>
+    </div>
     <div class="flex min-w-56 items-center gap-1.5 rounded-md border border-default bg-default/40 px-2 py-1 text-[11px] text-muted">
       <UIcon name="i-lucide-info" class="size-3.5 shrink-0" />
       <span class="truncate">{{ selectedClipHint }}</span>

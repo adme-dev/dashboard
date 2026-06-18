@@ -142,8 +142,8 @@ Decision: assembly plans now append explicit review-only `place-voiceover`, `pla
 - [x] Improve effect controls for selected video clips.
 - [x] Add per-clip effect preview clarity.
 - [x] Add fit/fill/crop controls for video/still clips.
-- [ ] Add timeline zoom polish.
-- [ ] Add keyboard shortcut help.
+- [x] Add timeline zoom polish.
+- [x] Add keyboard shortcut help.
 
 Decision: selected clips now show a compact inspector below the timeline with track, timing, source, effects/style details, and explicit Split/Delete actions. Split is only enabled for audio clips because the current editor slice action is audio-only; trim discoverability and video/overlay/caption split remain future work.
 
@@ -154,6 +154,8 @@ Decision: timeline controls now explain selected-clip actions inline, make trim 
 Decision: selected video effects now render as switch-like cards with active state, effect hints, selected-effect summary, previewed/render-only badges, and a clearer note that the editor preview is approximate while server render remains authoritative.
 
 Decision: video clips now support an optional `fit` framing field (`fit`, `fill`, `crop`) with renderer fallbacks that preserve legacy footage/still behavior. The selected clip panel exposes framing as a segmented control that saves through the same undo/autosave path as effects.
+
+Decision: timeline zoom math is now shared and unit-tested. The timeline toolbar shows current pixels-per-second, explicit zoom in/out controls, fit-to-window, and a shortcut help panel available from the toolbar or `?`; the Video Studio route imports its media workspace components explicitly so local dev renders without unresolved-component warnings.
 
 ## Phase 11: Render + Distribution
 
