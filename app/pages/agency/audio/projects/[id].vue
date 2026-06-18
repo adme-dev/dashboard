@@ -372,7 +372,10 @@ const saveStatusColor = computed(() => {
 
 <template>
   <div class="flex-1 min-h-0 overflow-y-auto">
-    <div class="max-w-5xl mx-auto p-6 space-y-4">
+    <div
+      class="mx-auto p-6 space-y-4"
+      :class="isAv ? 'max-w-[1440px]' : 'max-w-5xl'"
+    >
 
       <!-- Header -->
       <header class="flex items-center gap-2">

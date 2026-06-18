@@ -97,9 +97,9 @@ const hasMaskStroke = ref(false)
 const uploadingMask = ref(false)
 const maskPreviewFailed = ref(false)
 
-// Collapsed by default — the harness is a power tool and shouldn't push the
-// preview + timeline below the fold. Choice persists across sessions.
-const harnessOpen = useLocalStorage('media-asset-harness-open', false)
+// Open by default in the AV editor. This is a core production workspace, not a
+// secondary drawer, while the user's collapsed choice still persists.
+const harnessOpen = useLocalStorage('media-asset-harness-open', true)
 
 // Quick-create bar (shown while collapsed): typing a request expands the
 // harness, sets it as the assembly brief, and builds a draft plan in one step.
@@ -115,7 +115,14 @@ async function submitQuickBrief() {
 }
 
 const selectedItem = computed(() => items.value.find(item => item.id === selectedItemId.value) ?? null)
+const selectedItemTitle = computed(() => selectedItem.value?.title || selectedItem.value?.r2Key || 'No asset selected')
+const actionOptions = computed(() => actions.value
+  .filter(action => ['mask-lift', 'erase-fill', 'mask-only', 'layer-decomposition', 'background-removal'].includes(action.id))
+  .map(action => ({ label: action.label, value: action.id })))
 const selectedActionModels = computed(() => models.value.filter(model => model.actions.includes(selectedAction.value)))
+const readyModelCount = computed(() => models.value.filter(model => model.defaultEnabled).length)
+const activeJobCount = computed(() => intelligenceJobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
+const completedJobCount = computed(() => intelligenceJobs.value.filter(job => job.status === 'succeeded').length)
 const selectedItemJobs = computed(() => {
   const item = selectedItem.value
   if (!item) return []
@@ -434,8 +441,8 @@ onMounted(() => { void loadHarness() })
 </script>
 
 <template>
-  <section class="rounded-lg border border-default bg-elevated p-3">
-    <div class="flex flex-wrap items-start justify-between gap-3">
+  <section class="rounded-lg border border-default bg-elevated">
+    <div class="flex flex-wrap items-start justify-between gap-3 border-b border-default px-4 py-3">
       <button
         type="button"
         class="flex min-w-0 flex-1 items-start gap-2 text-left"
@@ -448,20 +455,41 @@ onMounted(() => { void loadHarness() })
           :class="harnessOpen && 'rotate-90'"
         />
         <span class="min-w-0">
-          <span class="flex items-center gap-2">
-            <span class="text-sm font-semibold text-highlighted">AI Producer</span>
-            <UBadge v-if="!harnessOpen && items.length" :label="`${items.length} assets`" size="xs" variant="subtle" color="neutral" />
+          <span class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-semibold text-highlighted">AI Producer workspace</span>
+            <UBadge :label="`${items.length} assets`" size="xs" variant="subtle" color="neutral" />
+            <UBadge :label="`${readyModelCount}/${models.length} models ready`" size="xs" :color="readyModelCount ? 'primary' : 'neutral'" variant="subtle" />
+            <UBadge v-if="activeJobCount" :label="`${activeJobCount} active`" size="xs" color="primary" variant="subtle" />
           </span>
-          <span class="block text-xs text-muted">Bucket assets, lift masks/layers, erase embedded graphics, and draft social edits.</span>
+          <span class="block text-xs text-muted">Prepare clean layers, reuse derivatives, and assemble draft edits from the project media library.</span>
         </span>
       </button>
-      <UButton v-if="harnessOpen" icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" :loading="loading" aria-label="Refresh AI Producer" @click="loadHarness" />
+      <div class="flex items-center gap-1">
+        <UButton
+          v-if="harnessOpen"
+          icon="i-lucide-refresh-cw"
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          :loading="loading"
+          aria-label="Refresh AI Producer"
+          @click="loadHarness"
+        />
+        <UButton
+          :icon="harnessOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          :aria-label="harnessOpen ? 'Collapse AI Producer' : 'Expand AI Producer'"
+          @click="harnessOpen = !harnessOpen"
+        />
+      </div>
     </div>
 
     <!-- Quick-create bar (collapsed state): one-line entry into agentic assembly -->
     <div
       v-if="!harnessOpen"
-      class="mt-3 flex items-center gap-2 rounded-lg border border-default bg-default/40 py-1 pl-3 pr-1.5 transition-colors focus-within:border-primary/50"
+      class="m-3 flex items-center gap-2 rounded-lg border border-default bg-default/40 py-1 pl-3 pr-1.5 transition-colors focus-within:border-primary/50"
     >
       <UIcon name="i-lucide-sparkles" class="size-4 shrink-0 text-muted" />
       <UInput
@@ -482,13 +510,16 @@ onMounted(() => { void loadHarness() })
       />
     </div>
 
-    <div v-show="harnessOpen" class="mt-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_1fr]">
+    <div v-show="harnessOpen" class="grid gap-3 p-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]">
       <div class="min-w-0 rounded-md border border-default bg-default/30 p-3">
         <div class="mb-2 flex items-center justify-between gap-2">
-          <p class="text-xs font-medium uppercase text-muted">Project buckets</p>
-          <UBadge :label="`${items.length} assets`" size="xs" variant="subtle" color="neutral" />
+          <div>
+            <p class="text-xs font-medium uppercase text-muted">Project assets</p>
+            <p class="text-[11px] text-muted">Bucketed media available to this edit</p>
+          </div>
+          <UBadge :label="`${items.length}`" size="xs" variant="subtle" color="neutral" />
         </div>
-        <div class="max-h-72 space-y-2 overflow-y-auto pr-1">
+        <div class="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
           <div v-if="!items.length" class="rounded-md border border-dashed border-default px-3 py-4 text-center text-xs text-muted">
             No assets bucketed yet — generate a video or save a derivative to get started.
           </div>
@@ -519,15 +550,32 @@ onMounted(() => { void loadHarness() })
         </div>
       </div>
 
-      <div class="rounded-md border border-default bg-default/30 p-3">
-        <p class="mb-2 text-xs font-medium uppercase text-muted">Lift / erase / mask</p>
+      <div class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+        <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div class="min-w-0">
+            <p class="text-xs font-medium uppercase text-muted">Prepare asset</p>
+            <p class="truncate text-sm font-medium text-highlighted">{{ selectedItemTitle }}</p>
+          </div>
+          <UButton
+            icon="i-lucide-highlighter"
+            size="xs"
+            color="primary"
+            variant="soft"
+            label="Run"
+            :loading="runningExtraction"
+            :disabled="!selectedItem?.assetId"
+            @click="runExtraction"
+          />
+        </div>
         <div class="space-y-3">
-          <UFormField label="Tool">
-            <USelect v-model="selectedAction" :items="actions.filter(a => ['mask-lift', 'erase-fill', 'mask-only', 'layer-decomposition', 'background-removal'].includes(a.id)).map(a => ({ label: a.label, value: a.id }))" value-key="value" />
-          </UFormField>
-          <UFormField label="Instruction">
-            <UTextarea v-model="toolPrompt" :rows="3" autoresize placeholder="Describe what to lift, erase, or preserve..." />
-          </UFormField>
+          <div class="grid gap-2 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <UFormField label="Tool">
+              <USelect v-model="selectedAction" :items="actionOptions" value-key="value" />
+            </UFormField>
+            <UFormField label="Instruction">
+              <UTextarea v-model="toolPrompt" :rows="2" autoresize placeholder="Describe what to lift, erase, or preserve..." />
+            </UFormField>
+          </div>
           <div v-if="maskToolEnabled" class="rounded-md border border-default bg-elevated p-2">
             <div class="mb-2 flex items-center justify-between gap-2">
               <p class="text-xs font-medium text-muted">Highlighter mask</p>
@@ -536,7 +584,7 @@ onMounted(() => { void loadHarness() })
                 <UButton icon="i-lucide-upload-cloud" size="xs" variant="ghost" color="neutral" aria-label="Save mask" :loading="uploadingMask" :disabled="!hasMaskStroke || !selectedItem?.assetId" @click="uploadMask" />
               </div>
             </div>
-            <div class="relative mx-auto aspect-[9/16] max-h-64 overflow-hidden rounded-md border border-default bg-black">
+            <div class="relative mx-auto aspect-[9/16] min-h-[360px] max-h-[520px] overflow-hidden rounded-md border border-default bg-black">
               <img
                 v-if="selectedAssetThumbnailUrl"
                 :src="selectedAssetThumbnailUrl"
@@ -574,7 +622,10 @@ onMounted(() => { void loadHarness() })
             <UInput v-model="brushMaskKey" placeholder="Optional R2 mask key" />
           </UFormField>
           <div class="rounded-md border border-default bg-elevated p-2">
-            <p class="text-xs font-medium text-muted">Available models</p>
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs font-medium text-muted">Available models</p>
+              <UBadge :label="`${selectedActionModels.length}`" size="xs" variant="subtle" color="neutral" />
+            </div>
             <div class="mt-1 flex flex-wrap gap-1">
               <UBadge
                 v-for="model in selectedActionModels"
@@ -585,6 +636,9 @@ onMounted(() => { void loadHarness() })
                 variant="subtle"
               />
             </div>
+            <p v-if="!selectedActionModels.length" class="mt-1 text-[11px] text-muted">
+              No gateway model is mapped to this action yet.
+            </p>
           </div>
           <div v-if="selectedAssetActivityVisible" class="rounded-md border border-default bg-elevated p-2">
             <p class="text-xs font-medium text-muted">Selected asset activity</p>
@@ -630,21 +684,17 @@ onMounted(() => { void loadHarness() })
               </div>
             </div>
           </div>
-          <UButton
-            icon="i-lucide-highlighter"
-            size="sm"
-            color="primary"
-            variant="soft"
-            label="Run on selected asset"
-            :loading="runningExtraction"
-            :disabled="!selectedItem?.assetId"
-            @click="runExtraction"
-          />
         </div>
       </div>
 
-      <div class="rounded-md border border-default bg-default/30 p-3">
-        <p class="mb-2 text-xs font-medium uppercase text-muted">Agentic assembly</p>
+      <div class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <p class="text-xs font-medium uppercase text-muted">Draft assembly</p>
+            <p class="text-[11px] text-muted">Plan a timeline from prepared assets</p>
+          </div>
+          <UBadge v-if="completedJobCount" :label="`${completedJobCount} ready`" size="xs" color="primary" variant="subtle" />
+        </div>
         <div class="space-y-3">
           <!-- Brief-first composer: the brief is the primary object; format and the
                build action live in a control bar along the bottom. -->
@@ -686,7 +736,7 @@ onMounted(() => { void loadHarness() })
       </div>
     </div>
 
-    <div v-show="harnessOpen" class="mt-3 rounded-md border border-default bg-default/30 p-3">
+    <div v-show="harnessOpen" class="mx-3 mb-3 rounded-md border border-default bg-default/30 p-3">
       <div class="mb-2 flex items-center justify-between gap-2">
         <p class="text-xs font-medium uppercase text-muted">AI activity</p>
         <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" aria-label="Refresh AI activity" @click="refreshActivity" />
