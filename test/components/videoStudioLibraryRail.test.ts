@@ -34,6 +34,9 @@ function asset(overrides: Partial<VideoStudioAsset>): VideoStudioAsset {
     r2Key: 'generated/drive.mp4',
     previewUrl: '/api/agency/video/assets/asset-1/stream',
     thumbnailUrl: null,
+    captionVttKey: null,
+    captionVttUrl: null,
+    transcript: null,
     durationSec: 5,
     format: '9:16',
     timelineReady: true,
@@ -52,7 +55,7 @@ describe('VideoStudioLibraryRail', () => {
   it('renders mixed assets with status, metadata, and add actions', async () => {
     const html = await render({
       assets: [
-        asset({ id: 'video:asset-1', title: 'Generated drive-by', durationSec: 5 }),
+        asset({ id: 'video:asset-1', title: 'Generated drive-by', durationSec: 5, captionVttKey: 'captions/asset-1.vtt', captionVttUrl: '/api/agency/video/assets/asset-1/captions.vtt' }),
         asset({ id: 'audio:voice-1', rawId: 'voice-1', type: 'audio', source: 'audio', title: 'Opening voiceover', subtitle: 'voiceover', role: 'voiceover', modelId: null, durationSec: 12, previewUrl: '/voice.mp3' }),
         asset({ id: 'audio:music-1', rawId: 'music-1', type: 'audio', source: 'audio', title: 'Queued music bed', subtitle: 'music', role: 'music', modelId: null, status: 'rendering', durationSec: null, timelineReady: false, previewUrl: '/music.mp3' }),
         asset({ id: 'job:job-1', rawId: 'job-1', type: 'job', source: 'generation', title: 'Smoke reveal', subtitle: 'image-to-video', status: 'running', timelineReady: false, r2Key: null, previewUrl: null }),
@@ -72,6 +75,8 @@ describe('VideoStudioLibraryRail', () => {
     expect(html).toContain('Add')
     expect(html).toContain('Generating')
     expect(html).toContain('/voice.mp3')
+    expect(html).toContain('Captions')
+    expect(html).toContain('/api/agency/video/assets/asset-1/captions.vtt')
   })
 
   it('renders an empty state when no assets are available', async () => {

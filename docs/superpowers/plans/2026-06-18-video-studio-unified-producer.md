@@ -419,14 +419,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Assets with captions show a caption badge/filter.
-- [ ] Caption VTT can be opened/downloaded where available.
-- [ ] Caption absence is not treated as an error.
+- [x] Assets with captions show a caption badge/filter.
+- [x] Caption VTT can be opened/downloaded where available.
+- [x] Caption absence is not treated as an error.
 
 **Verification:**
 
 - [ ] Manual: generated asset with captions shows caption status.
-- [ ] `pnpm run build`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 3.
 

@@ -21,6 +21,9 @@ interface VideoAssetInput {
   format?: string | null
   durationSec?: number | null
   thumbnailUrl?: string | null
+  captionVttKey?: string | null
+  captionVttUrl?: string | null
+  transcript?: string | null
   generationPrompt?: string | null
   generationModelId?: string | null
   createdAt?: string | null
@@ -90,6 +93,9 @@ export interface VideoStudioAsset {
   r2Key: string | null
   previewUrl: string | null
   thumbnailUrl: string | null
+  captionVttKey: string | null
+  captionVttUrl: string | null
+  transcript: string | null
   durationSec: number | null
   format: string | null
   timelineReady: boolean
@@ -103,6 +109,7 @@ export interface VideoStudioAssetFilters {
   model?: string | 'all'
   source?: VideoStudioAssetSource | 'all'
   bucketId?: string | 'all'
+  captions?: 'all' | 'with' | 'without'
 }
 
 function normalizeStatus(status: string | null | undefined): VideoStudioAssetStatus {
@@ -131,6 +138,8 @@ function matchesText(asset: VideoStudioAsset, query: string) {
     asset.r2Key,
     asset.modelId,
     asset.format,
+    asset.captionVttKey,
+    asset.transcript,
   ].filter(Boolean).join(' ').toLowerCase()
   return haystack.includes(query)
 }
@@ -154,6 +163,9 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       r2Key: item.r2Key ?? null,
       previewUrl: null,
       thumbnailUrl: item.assetId ? `/api/agency/video/assets/${encodeURIComponent(item.assetId)}/thumbnail` : null,
+      captionVttKey: null,
+      captionVttUrl: null,
+      transcript: null,
       durationSec: null,
       format: null,
       timelineReady: Boolean(item.assetId || item.r2Key),
@@ -177,6 +189,9 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       r2Key: asset.r2Key ?? null,
       previewUrl: asset.r2Key ? `/api/agency/video/assets/${encodeURIComponent(asset.id)}/stream` : null,
       thumbnailUrl: asset.thumbnailUrl ?? null,
+      captionVttKey: asset.captionVttKey ?? null,
+      captionVttUrl: asset.captionVttUrl ?? (asset.captionVttKey ? `/api/agency/video/assets/${encodeURIComponent(asset.id)}/captions.vtt` : null),
+      transcript: asset.transcript ?? null,
       durationSec: asset.durationSec ?? null,
       format: asset.format ?? null,
       timelineReady: Boolean(asset.r2Key),
@@ -200,6 +215,9 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       r2Key: asset.r2KeyMaster ?? null,
       previewUrl: asset.streamUrl ?? null,
       thumbnailUrl: null,
+      captionVttKey: null,
+      captionVttUrl: null,
+      transcript: null,
       durationSec: asset.durationSec ?? null,
       format: null,
       timelineReady: Boolean(asset.r2KeyMaster && (asset.status === 'ready' || asset.status === 'done')),
@@ -223,6 +241,9 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       r2Key: null,
       previewUrl: null,
       thumbnailUrl: null,
+      captionVttKey: null,
+      captionVttUrl: null,
+      transcript: null,
       durationSec: null,
       format: overlay.formatKey ?? null,
       timelineReady: Boolean(overlay.formatKey),
@@ -246,6 +267,9 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       r2Key: job.outputR2Key ?? null,
       previewUrl: job.outputAssetId ? `/api/agency/video/assets/${encodeURIComponent(job.outputAssetId)}/stream` : null,
       thumbnailUrl: job.outputAssetId ? `/api/agency/video/assets/${encodeURIComponent(job.outputAssetId)}/thumbnail` : null,
+      captionVttKey: null,
+      captionVttUrl: null,
+      transcript: null,
       durationSec: null,
       format: null,
       timelineReady: Boolean(job.outputAssetId && job.outputR2Key),
@@ -269,6 +293,9 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       r2Key: derivative.r2Key ?? null,
       previewUrl: derivative.r2Key ? `/api/agency/video/derivatives/${encodeURIComponent(derivative.id)}/stream` : null,
       thumbnailUrl: null,
+      captionVttKey: null,
+      captionVttUrl: null,
+      transcript: null,
       durationSec: derivative.durationSec ?? null,
       format: null,
       timelineReady: Boolean(derivative.r2Key),
@@ -288,6 +315,8 @@ export function filterVideoStudioAssets(assets: VideoStudioAsset[], filters: Vid
     if (filters.model && filters.model !== 'all' && asset.modelId !== filters.model) return false
     if (filters.source && filters.source !== 'all' && asset.source !== filters.source) return false
     if (filters.bucketId && filters.bucketId !== 'all' && asset.bucketId !== filters.bucketId) return false
+    if (filters.captions === 'with' && !asset.captionVttUrl) return false
+    if (filters.captions === 'without' && asset.captionVttUrl) return false
     return true
   })
 }

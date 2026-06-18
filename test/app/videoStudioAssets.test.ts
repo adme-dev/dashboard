@@ -25,6 +25,8 @@ describe('videoStudioAssets', () => {
         format: '9:16',
         durationSec: 5,
         thumbnailUrl: '/thumb.jpg',
+        captionVttKey: 'captions/asset-1.vtt',
+        transcript: 'Special finance offer',
         generationPrompt: 'Slow dolly past the car',
         generationModelId: 'replicate/wan-2.2'
       }],
@@ -74,6 +76,8 @@ describe('videoStudioAssets', () => {
     ])
     expect(assets.find(asset => asset.id === 'job:job-2')?.status).toBe('running')
     expect(assets.find(asset => asset.id === 'video:asset-1')?.timelineReady).toBe(true)
+    expect(assets.find(asset => asset.id === 'video:asset-1')?.captionVttUrl).toBe('/api/agency/video/assets/asset-1/captions.vtt')
+    expect(assets.find(asset => asset.id === 'bucket:bucket-item-1')?.captionVttUrl).toBeNull()
     expect(assets.find(asset => asset.id === 'audio:voice-1')?.previewUrl).toBe('/vo.mp3')
   })
 
@@ -151,6 +155,7 @@ describe('videoStudioAssets', () => {
         format: '9:16',
         durationSec: 5,
         thumbnailUrl: null,
+        captionVttUrl: '/api/agency/video/assets/asset-1/captions.vtt',
         generationPrompt: 'Slow dolly past the car',
         generationModelId: 'replicate/wan-2.2'
       }],
@@ -170,6 +175,8 @@ describe('videoStudioAssets', () => {
     expect(filterVideoStudioAssets(assets, { type: 'job', status: 'failed' }).map(asset => asset.id)).toEqual(['job:job-2'])
     expect(filterVideoStudioAssets(assets, { model: 'replicate/wan-2.2' }).map(asset => asset.id)).toEqual(['video:asset-1'])
     expect(filterVideoStudioAssets(assets, { source: 'bucket', bucketId: 'bucket-generated' }).map(asset => asset.id)).toEqual(['bucket:bucket-item-1'])
+    expect(filterVideoStudioAssets(assets, { captions: 'with' }).map(asset => asset.id)).toEqual(['video:asset-1'])
+    expect(filterVideoStudioAssets(assets, { captions: 'without' }).map(asset => asset.id)).toEqual(['bucket:bucket-item-1', 'job:job-2'])
   })
 
   it('keeps normalized assets and filters reactive through the composable', () => {

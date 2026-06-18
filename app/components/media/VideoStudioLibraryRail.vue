@@ -29,6 +29,7 @@ const type = ref<VideoStudioAssetType | 'all'>('all')
 const source = ref<VideoStudioAssetSource | 'all'>('all')
 const status = ref<VideoStudioAssetStatus | 'all'>('all')
 const model = ref<string | 'all'>('all')
+const captions = ref<'all' | 'with' | 'without'>('all')
 
 const TYPE_OPTIONS = [
   { label: 'All types', value: 'all' },
@@ -64,6 +65,12 @@ const STATUS_OPTIONS = [
   { label: 'Unknown', value: 'unknown' },
 ]
 
+const CAPTION_OPTIONS = [
+  { label: 'All captions', value: 'all' },
+  { label: 'With captions', value: 'with' },
+  { label: 'No captions', value: 'without' },
+]
+
 const modelOptions = computed(() => {
   const models = Array.from(new Set(props.assets.map(asset => asset.modelId).filter(Boolean) as string[])).sort()
   return [{ label: 'All models', value: 'all' }, ...models.map(value => ({ label: value, value }))]
@@ -75,6 +82,7 @@ const filters = computed<VideoStudioAssetFilters>(() => ({
   source: source.value,
   status: status.value,
   model: model.value,
+  captions: captions.value,
 }))
 
 const filteredAssets = computed(() => filterVideoStudioAssets(props.assets, filters.value))
@@ -136,6 +144,7 @@ function addLabel(asset: VideoStudioAsset) {
       <USelect v-model="source" :items="SOURCE_OPTIONS" value-key="value" size="xs" aria-label="Filter asset source" />
       <USelect v-model="status" :items="STATUS_OPTIONS" value-key="value" size="xs" aria-label="Filter asset status" />
       <USelect v-model="model" :items="modelOptions" value-key="value" size="xs" aria-label="Filter model" />
+      <USelect v-model="captions" :items="CAPTION_OPTIONS" value-key="value" size="xs" aria-label="Filter captions" />
     </div>
 
     <div class="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
@@ -185,7 +194,20 @@ function addLabel(asset: VideoStudioAsset) {
           </div>
         </div>
         <div class="mt-2 flex items-center justify-between gap-2">
-          <UBadge :label="asset.type" size="xs" variant="subtle" color="neutral" />
+          <div class="flex min-w-0 flex-wrap items-center gap-1">
+            <UBadge :label="asset.type" size="xs" variant="subtle" color="neutral" />
+            <UBadge v-if="asset.captionVttUrl" label="Captions" size="xs" variant="subtle" color="primary" />
+            <a
+              v-if="asset.captionVttUrl"
+              :href="asset.captionVttUrl"
+              target="_blank"
+              rel="noopener"
+              class="text-[11px] font-medium text-primary hover:underline"
+              @click.stop
+            >
+              Open VTT
+            </a>
+          </div>
           <UButton
             icon="i-lucide-list-plus"
             size="xs"
