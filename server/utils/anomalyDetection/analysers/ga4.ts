@@ -69,11 +69,16 @@ export function detectGa4Anomalies(rows: Ga4ChannelRow[]): DetectedAnomaly[] {
     if (days.length < MIN_BASELINE_DAYS) continue
 
     const latestDate = days[0]
-    const latest = perDay.get(latestDate)!
+    if (!latestDate) continue
+    const latest = perDay.get(latestDate)
+    if (!latest) continue
     const baselineDates = days.slice(1, 31)
     if (baselineDates.length === 0) continue
 
-    const baselineSessions = baselineDates.map(d => perDay.get(d)!.sessions)
+    const baselineSessions = baselineDates
+      .map(d => perDay.get(d)?.sessions)
+      .filter((sessions): sessions is number => typeof sessions === 'number')
+    if (baselineSessions.length === 0) continue
     const avgSessions = baselineSessions.reduce((s, v) => s + v, 0) / baselineSessions.length
     if (avgSessions < MIN_BASELINE_AVG_SESSIONS) continue // too low-volume to judge
 

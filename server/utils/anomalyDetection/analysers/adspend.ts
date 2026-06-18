@@ -39,6 +39,7 @@ export const adspendAnalyser: Analyser = async (ctx) => {
 
     const todayRow = gRows[0]
     const baseline = gRows.slice(1, 31)
+    if (!todayRow) continue
     if (baseline.length === 0) continue
 
     const todaySpend = Number(todayRow.spend)

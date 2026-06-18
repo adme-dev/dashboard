@@ -17,7 +17,9 @@ export const clientsAnalyser: Analyser = async (ctx) => {
 
   const out: DetectedAnomaly[] = []
   const totalInvoiced = rows.reduce((s, r) => s + Number(r.invoiced || 0), 0)
-  const periodLabel = `${rows[0].period_start} → ${rows[0].period_end}`
+  const firstRow = rows[0]
+  if (!firstRow) return []
+  const periodLabel = `${firstRow.period_start} → ${firstRow.period_end}`
 
   for (const r of rows) {
     const invoiced = Number(r.invoiced || 0)

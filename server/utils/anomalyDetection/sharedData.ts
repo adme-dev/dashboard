@@ -15,6 +15,9 @@ import { queryRows } from '~~/server/utils/db'
 export async function fetchSharedData(event: H3Event | null): Promise<SharedData> {
   const headers = event?.headers ?? new Headers()
 
+  const fetchInternal = (path: string, options: Record<string, unknown> = {}): Promise<any> =>
+    $fetch(path as any, options as any) as Promise<any>
+
   const safe = async <T>(promise: Promise<T>): Promise<T | null> => {
     try { return await promise } catch (err) {
       console.warn('[anomalies] shared data fetch failed:', err)
@@ -24,12 +27,12 @@ export async function fetchSharedData(event: H3Event | null): Promise<SharedData
 
   const [pnl, expenses, bankMonitoring, cashForecast, aging, budgetVariance] =
     await Promise.all([
-      safe($fetch<any>('/api/xero/reports/pnl', { headers, query: { periods: 13, timeframe: 'MONTH' } })),
-      safe($fetch<any>('/api/xero/expenses', { headers })),
-      safe($fetch<any>('/api/xero/bank-monitoring', { headers })),
-      safe($fetch<any>('/api/xero/reports/cash-flow-forecast', { headers })),
-      safe($fetch<any>('/api/xero/reports/aging', { headers, query: { type: 'receivables' } })),
-      safe($fetch<any>('/api/xero/reports/budget-variance', { headers })),
+      safe(fetchInternal('/api/xero/reports/pnl', { headers, query: { periods: 13, timeframe: 'MONTH' } })),
+      safe(fetchInternal('/api/xero/expenses', { headers })),
+      safe(fetchInternal('/api/xero/bank-monitoring', { headers })),
+      safe(fetchInternal('/api/xero/reports/cash-flow-forecast', { headers })),
+      safe(fetchInternal('/api/xero/reports/aging', { headers, query: { type: 'receivables' } })),
+      safe(fetchInternal('/api/xero/reports/budget-variance', { headers })),
     ])
 
   let mediaSpend: any = null

@@ -82,7 +82,7 @@ export async function queueAnomalyNotification(anomalyId: string): Promise<void>
       permissionGroups = undefined
     }
     const synthetic = { role: m.role, permissionGroups } as { role: string; permissionGroups?: string[] }
-    if (hasRole(synthetic as any, PERMISSIONS.FINANCE)) {
+    if (hasRole(synthetic as any, [...PERMISSIONS.FINANCE])) {
       recipients.push({ id: m.id, email: m.email, name: m.name })
     }
   }

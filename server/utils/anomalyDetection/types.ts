@@ -27,6 +27,7 @@ export interface AnomalyContext {
   vendor?: string
   client?: string
   account?: string
+  mediaSpendId?: string
 }
 
 export interface DetectedAnomaly {
