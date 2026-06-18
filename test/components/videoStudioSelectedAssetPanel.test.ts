@@ -51,7 +51,19 @@ async function render(props: Record<string, unknown>) {
 
 describe('VideoStudioSelectedAssetPanel', () => {
   it('renders selected asset preview, metadata, prompt, and actions', async () => {
-    const html = await render({ asset: asset() })
+    const html = await render({
+      asset: asset(),
+      activity: [
+        {
+          id: 'generation:job-1',
+          label: 'Generated video asset',
+          detail: 'Slow push around the vehicle',
+          status: 'succeeded',
+          source: 'replicate/wan-2.2',
+          createdAt: '2026-06-18T08:00:00.000Z',
+        },
+      ],
+    })
 
     expect(html).toContain('Selected asset')
     expect(html).toContain('Generated walkaround')
@@ -62,6 +74,9 @@ describe('VideoStudioSelectedAssetPanel', () => {
     expect(html).toContain('5s')
     expect(html).toContain('9:16')
     expect(html).toContain('Slow push around the vehicle')
+    expect(html).toContain('Asset activity')
+    expect(html).toContain('Generated video asset')
+    expect(html).toContain('replicate/wan-2.2')
   })
 
   it('shows failed asset context in-place', async () => {

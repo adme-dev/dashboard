@@ -6,8 +6,18 @@ import {
   type VideoStudioAssetStatus,
 } from '~~/app/utils/video/videoStudioAssets'
 
+export interface VideoStudioSelectedAssetActivity {
+  id: string
+  label: string
+  detail: string | null
+  status: VideoStudioAssetStatus
+  source: string
+  createdAt: string | null
+}
+
 const props = defineProps<{
   asset: VideoStudioAsset | null
+  activity?: VideoStudioSelectedAssetActivity[]
 }>()
 
 const emit = defineEmits<{
@@ -42,6 +52,18 @@ function statusMessage(status: VideoStudioAssetStatus) {
   if (status === 'failed') return 'This asset failed upstream. Retry generation or inspect the source job before using it.'
   if (status === 'blocked') return 'This asset is blocked by policy or missing source data. Inspect it before adding it to the edit.'
   return null
+}
+
+function activityTimeLabel(value: string | null) {
+  if (!value) return null
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed)) return null
+  return new Intl.DateTimeFormat('en-AU', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
 }
 </script>
 
@@ -149,6 +171,30 @@ function statusMessage(status: VideoStudioAssetStatus) {
         <div v-if="props.asset.prompt" class="rounded-md bg-default/40 px-2 py-1.5">
           <p class="text-[11px] text-muted">Prompt</p>
           <p class="mt-1 line-clamp-3 text-xs leading-snug text-highlighted">{{ props.asset.prompt }}</p>
+        </div>
+
+        <div class="rounded-md bg-default/40 px-2 py-1.5">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-activity" class="size-3.5 text-muted" />
+            <p class="text-[11px] font-medium uppercase text-muted">Asset activity</p>
+            <span v-if="props.activity?.length" class="ml-auto text-[11px] tabular-nums text-muted">{{ props.activity.length }}</span>
+          </div>
+          <div v-if="props.activity?.length" class="mt-2 space-y-1.5">
+            <div
+              v-for="item in props.activity"
+              :key="item.id"
+              class="rounded-md border border-default bg-elevated px-2 py-1.5"
+            >
+              <div class="flex items-center gap-2">
+                <UBadge :label="item.status" size="xs" :color="statusColor(item.status)" variant="subtle" />
+                <p class="min-w-0 flex-1 truncate text-xs font-medium text-highlighted">{{ item.label }}</p>
+                <span v-if="activityTimeLabel(item.createdAt)" class="shrink-0 text-[10px] text-muted">{{ activityTimeLabel(item.createdAt) }}</span>
+              </div>
+              <p v-if="item.detail" class="mt-1 line-clamp-2 text-[11px] leading-snug text-muted">{{ item.detail }}</p>
+              <p class="mt-1 text-[10px] uppercase text-muted">{{ item.source }}</p>
+            </div>
+          </div>
+          <p v-else class="mt-2 text-[11px] text-muted">No activity has been recorded for this asset yet.</p>
         </div>
       </div>
     </div>

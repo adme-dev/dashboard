@@ -12,6 +12,7 @@ import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import { audioStudioTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
+import type { VideoStudioSelectedAssetActivity } from '~~/app/components/media/VideoStudioSelectedAssetPanel.vue'
 import type { AudioAsset, MediaRenderJob } from '~~/app/types'
 import { videoStudioAssetImageSource, type VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
 import type { VideoClip } from '~~/server/utils/audio/timelineSchema'
@@ -137,6 +138,67 @@ const { assets: studioAssets } = useVideoStudioAssets(computed(() => ({
 const videoStudioAssetCount = computed(() => studioAssets.value.length)
 const selectedStudioAsset = computed(() => studioAssets.value.find(asset => asset.id === selectedStudioAssetId.value) ?? null)
 const selectedGenerationSourceAsset = computed(() => videoStudioAssetImageSource(selectedStudioAsset.value))
+const selectedStudioAssetActivity = computed<VideoStudioSelectedAssetActivity[]>(() => {
+  const asset = selectedStudioAsset.value
+  if (!asset) return []
+
+  const ids = new Set([asset.rawId, asset.libraryAssetId, asset.id].filter(Boolean) as string[])
+  const activity: VideoStudioSelectedAssetActivity[] = []
+
+  for (const job of genJobs.jobs.value) {
+    const matched = job.id === asset.rawId
+      || (job.outputAssetId ? ids.has(job.outputAssetId) : false)
+      || job.sourceAssetIds.some(sourceId => ids.has(sourceId))
+    if (!matched) continue
+    activity.push({
+      id: `generation:${job.id}`,
+      label: job.status === 'succeeded' ? 'Generated video asset' : 'Generation job',
+      detail: job.errorMessage || job.prompt || job.modelId,
+      status: job.status,
+      source: job.modelId,
+      createdAt: job.completedAt ?? job.startedAt ?? job.createdAt,
+    })
+  }
+
+  if (asset.captionVttUrl) {
+    activity.push({
+      id: `caption:${asset.id}`,
+      label: 'Caption file attached',
+      detail: asset.captionVttKey,
+      status: 'ready',
+      source: 'Captions',
+      createdAt: asset.createdAt,
+    })
+  }
+
+  if (asset.transcript) {
+    activity.push({
+      id: `transcript:${asset.id}`,
+      label: 'Transcript available',
+      detail: asset.transcript,
+      status: 'ready',
+      source: 'Speech intelligence',
+      createdAt: asset.createdAt,
+    })
+  }
+
+  if (asset.type === 'derivative') {
+    activity.push({
+      id: `derivative:${asset.id}`,
+      label: 'Derivative generated',
+      detail: asset.r2Key,
+      status: asset.status,
+      source: asset.subtitle ?? 'Derivative',
+      createdAt: asset.createdAt,
+    })
+  }
+
+  return activity.sort((a, b) => {
+    const at = a.createdAt ? Date.parse(a.createdAt) : 0
+    const bt = b.createdAt ? Date.parse(b.createdAt) : 0
+    return bt - at
+  }).slice(0, 6)
+})
 const studioVoiceAssetCount = computed(() => studioAssets.value.filter(asset => asset.type === 'audio' && asset.role === 'voiceover').length)
 const studioOverlayAssetCount = computed(() => studioAssets.value.filter(asset => asset.type === 'overlay').length)
 const studioLibraryLoading = computed(() => studioAudioPending.value || studioBannerPending.value)
@@ -657,6 +719,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           <template #preview>
               <VideoStudioSelectedAssetPanel
                 :asset="selectedStudioAsset"
+                :activity="selectedStudioAssetActivity"
                 @add-to-timeline="onStudioAssetAdd"
                 @generate-from-asset="onStudioAssetGenerate"
               />

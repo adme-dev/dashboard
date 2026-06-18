@@ -59,7 +59,7 @@
 - [x] Add `Generate from selected still/image`.
 - [x] Add derivative preview support.
 - [x] Move mask/lift/background/erase tools into this panel.
-- [ ] Show asset intelligence activity for selected asset.
+- [x] Show asset intelligence activity for selected asset.
 - [x] Show failed/blocked AI job messages in-context.
 - [x] Keep server render as source of truth, with preview labelled as assembly preview.
 
