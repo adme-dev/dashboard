@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // SP2c projects list + create. Lists media_projects, lets users open the editor,
 // duplicate, delete, and create new projects.
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { navigateTo } from '#app'
 import type { MediaProject } from '~~/app/types'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
@@ -9,6 +9,7 @@ import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const toast = useToast()
+const route = useRoute()
 
 // A fresh project seeds two empty lanes so "Add clip" has somewhere to land
 // (index.post defaults to tracks:[], which would dead-end the picker).
@@ -28,8 +29,29 @@ function defaultTimelineState(): TimelineState {
 
 // ─── Projects list ────────────────────────────────────────────────────────────
 
-const { data, refresh, pending } = useFetch('/api/agency/audio/projects', { lazy: true })
-const projects = computed((): MediaProject[] => (data.value as any)?.projects ?? [])
+const { data, refresh, pending } = useFetch<{ projects: MediaProject[] }>('/api/agency/audio/projects', { lazy: true })
+const allProjects = computed((): MediaProject[] => data.value?.projects ?? [])
+const mediaTypeFilter = computed<'all' | 'audio' | 'av'>(() => {
+  if (route.query.mediaType === 'av') return 'av'
+  if (route.query.mediaType === 'audio') return 'audio'
+  return 'all'
+})
+const isVideoStudio = computed(() => mediaTypeFilter.value === 'av')
+const projects = computed((): MediaProject[] => {
+  if (mediaTypeFilter.value === 'all') return allProjects.value
+  return allProjects.value.filter(project => project.mediaType === mediaTypeFilter.value)
+})
+const pageTitle = computed(() => isVideoStudio.value ? 'Video Studio' : 'Audio & video projects')
+const pageDescription = computed(() =>
+  isVideoStudio.value
+    ? 'Video timeline sessions for generated clips, footage, overlays, and edits.'
+    : 'Multitrack audio + video timeline sessions - open any project to edit it in the editor.'
+)
+const emptyDescription = computed(() =>
+  isVideoStudio.value
+    ? 'Create your first video project using the button above.'
+    : 'Create your first multitrack audio project using the button above.'
+)
 
 // ─── Table columns ────────────────────────────────────────────────────────────
 
@@ -70,7 +92,7 @@ async function duplicateProject(project: MediaProject) {
   try {
     // Fetch the source project's current timeline so the copy is a REAL copy
     // (not an empty project). Fall back to default lanes if it has no timeline.
-    const src = await $fetch<{ project: MediaProject; timeline: { state: TimelineState } | null }>(
+    const src = await $fetch<{ project: MediaProject, timeline: { state: TimelineState } | null }>(
       `/api/agency/audio/projects/${project.id}`
     )
     const initialState = src.timeline?.state ?? defaultTimelineState()
@@ -120,8 +142,17 @@ async function confirmDelete() {
 
 const createOpen = ref(false)
 const newTitle = ref('')
-const newKind = ref<'audio' | 'av'>('audio')
+const newKind = ref<'audio' | 'av'>(isVideoStudio.value ? 'av' : 'audio')
 const creating = ref(false)
+
+watch(mediaTypeFilter, () => {
+  if (!createOpen.value) newKind.value = isVideoStudio.value ? 'av' : 'audio'
+})
+
+function openCreateProject() {
+  newKind.value = isVideoStudio.value ? 'av' : 'audio'
+  createOpen.value = true
+}
 
 async function createProject() {
   if (creating.value) return
@@ -132,10 +163,15 @@ async function createProject() {
     if (newKind.value === 'audio') body.initialState = defaultTimelineState()
     const res = await $fetch<{ project: MediaProject }>('/api/agency/audio/projects', { method: 'POST', body })
     toast.add({ title: 'Project created', color: 'success' })
-    createOpen.value = false; newTitle.value = ''; newKind.value = 'audio'
+    createOpen.value = false
+    newTitle.value = ''
+    newKind.value = isVideoStudio.value ? 'av' : 'audio'
     await navigateTo(`/agency/audio/projects/${res.project.id}`)
-  } catch (e: any) {
-    toast.add({ title: 'Failed to create project', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } catch (e: unknown) {
+    const description = e && typeof e === 'object' && 'data' in e
+      ? (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? ''
+      : ''
+    toast.add({ title: 'Failed to create project', description, color: 'error' })
   } finally {
     creating.value = false
   }
@@ -145,18 +181,21 @@ async function createProject() {
 <template>
   <div class="flex-1 min-h-0 overflow-y-auto">
     <div class="max-w-4xl mx-auto p-6 space-y-6">
-
       <!-- Header -->
       <header class="flex items-center justify-between gap-2">
         <div>
-          <h1 class="text-2xl font-semibold tracking-tight">Audio &amp; video projects</h1>
-          <p class="text-sm text-muted">Multitrack audio + video timeline sessions — open any project to edit it in the editor.</p>
+          <h1 class="text-2xl font-semibold tracking-tight">
+            {{ pageTitle }}
+          </h1>
+          <p class="text-sm text-muted">
+            {{ pageDescription }}
+          </p>
         </div>
         <UButton
           icon="i-lucide-plus"
           color="primary"
           label="New project"
-          @click="createOpen = true"
+          @click="openCreateProject"
         />
       </header>
 
@@ -171,7 +210,7 @@ async function createProject() {
         variant="subtle"
         icon="i-lucide-folder-open"
         title="No projects yet"
-        description="Create your first multitrack audio project using the button above."
+        :description="emptyDescription"
       />
 
       <div v-else class="rounded-lg border border-default overflow-hidden">
@@ -186,7 +225,12 @@ async function createProject() {
           </template>
 
           <template #mediaType-cell="{ row }">
-            <UBadge :label="asProject(row).mediaType" size="xs" variant="subtle" color="neutral" />
+            <UBadge
+              :label="asProject(row).mediaType"
+              size="xs"
+              variant="subtle"
+              color="neutral"
+            />
           </template>
 
           <template #status-cell="{ row }">
@@ -233,7 +277,6 @@ async function createProject() {
           </template>
         </UTable>
       </div>
-
     </div>
   </div>
 
