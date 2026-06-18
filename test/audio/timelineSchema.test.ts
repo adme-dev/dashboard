@@ -302,8 +302,39 @@ describe('migrateTimeline + emptyAvTimeline', () => {
     const s = emptyAvTimeline()
     expect(s.schema_version).toBe(2)
     expect(s.media_type).toBe('av')
-    expect(s.tracks.map(t => t.kind)).toEqual(['video', 'overlay', 'voiceover', 'music'])
+    expect(s.tracks.map(t => t.kind)).toEqual(['video', 'overlay', 'caption', 'voiceover', 'music'])
     expect(validateTimeline(s).ok).toBe(true)
+  })
+})
+
+describe('CaptionClip', () => {
+  it('parses and validates caption clips on caption tracks', () => {
+    const s = TimelineStateSchema.parse({
+      schema_version: 2,
+      media_type: 'av',
+      tracks: [
+        { id: 'cap', name: 'Captions', kind: 'caption', clips: [
+          { type: 'caption', id: 'cap1', timeline_start_sec: 1, duration_sec: 4, text: 'Drive away today' }
+        ] }
+      ]
+    })
+    const clip = s.tracks[0].clips[0] as any
+    expect(clip.style).toBe('platform_default')
+    expect(computeDuration(s)).toBe(5)
+    expect(validateTimeline(s)).toEqual({ ok: true })
+  })
+
+  it('rejects caption clips with blank text', () => {
+    const s = TimelineStateSchema.parse({
+      schema_version: 2,
+      media_type: 'av',
+      tracks: [
+        { id: 'cap', name: 'Captions', kind: 'caption', clips: [
+          { type: 'caption', id: 'cap1', timeline_start_sec: 1, duration_sec: 4, text: ' ' }
+        ] }
+      ]
+    })
+    expect(validateTimeline(s).ok).toBe(false)
   })
 })
 

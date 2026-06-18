@@ -6,7 +6,7 @@ import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 export function resolveClipStartSec(
   timeline: TimelineState | null | undefined,
-  kind: 'video' | 'overlay',
+  kind: 'video' | 'overlay' | 'caption',
   desiredStartSec: number,
   durationSec: number
 ): number {

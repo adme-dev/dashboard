@@ -100,6 +100,7 @@ describe('VideoStudioSelectedAssetPanel', () => {
     })
 
     expect(html).toContain('Regenerate captions')
+    expect(html).toContain('Add captions')
     expect(html).toContain('Download VTT')
     expect(html).toContain('/api/agency/video/assets/asset-1/captions.vtt')
     expect(html).toContain('This is the generated subtitle text.')

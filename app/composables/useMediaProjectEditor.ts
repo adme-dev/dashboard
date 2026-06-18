@@ -13,7 +13,7 @@ import { resolveClipStartSec } from '~~/app/utils/video/timelinePlacement'
 import {
   cloneState,
   addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt,
-  addVideoClip, addOverlayClip, trimVisualClip, setClipEffects
+  addVideoClip, addOverlayClip, addCaptionClip, trimVisualClip, setClipEffects
 } from '~~/app/utils/audio/timelineEdit'
 import {
   createVideoSourceRegistry,
@@ -105,10 +105,10 @@ export function makeEngineReloader(
 // ---------------------------------------------------------------------------
 
 /** Resolve a clip's kind from the timeline. Missing `type` === audio (addClip omits it). */
-export function clipKindOf(state: TimelineState, clipId: string): 'audio' | 'video' | 'overlay' | null {
+export function clipKindOf(state: TimelineState, clipId: string): 'audio' | 'video' | 'overlay' | 'caption' | null {
   for (const t of state.tracks) {
     const c = t.clips.find(x => x.id === clipId)
-    if (c) return c.type === 'video' ? 'video' : c.type === 'overlay' ? 'overlay' : 'audio'
+    if (c) return c.type === 'video' ? 'video' : c.type === 'overlay' ? 'overlay' : c.type === 'caption' ? 'caption' : 'audio'
   }
   return null
 }
@@ -238,7 +238,7 @@ export function useMediaProjectEditor(projectId: string) {
   function trimClipAction(clipId: string, edge: 'start' | 'end', newTimeSec: number) {
     if (!timeline.value) return
     const kind = clipKindOf(timeline.value, clipId)
-    if (kind === 'video' || kind === 'overlay') {
+    if (kind === 'video' || kind === 'overlay' || kind === 'caption') {
       applyEdit(trimVisualClip(timeline.value, { clipId, edge, newTimeSec }))
       return
     }
@@ -349,6 +349,24 @@ export function useMediaProjectEditor(projectId: string) {
     if (!track) { const tid = crypto.randomUUID(); next = addTrack(next, { id: tid, kind: 'overlay' }); track = next.tracks.find(t => t.id === tid)! }
     const placedStart = resolveClipStartSec(next, 'overlay', startSec, durationSec)
     applyEdit(addOverlayClip(next, { trackId: track.id, id: crypto.randomUUID(), gsapProjectId, gsapFormatKey, startSec: placedStart, durationSec }))
+  }
+
+  /** Add burn-in captions to the AV timeline. Ensures a caption track exists. */
+  function addCaptionClipAction(text: string, startSec: number, durationSec: number, sourceAssetId: string | null = null, captionVttUrl: string | null = null) {
+    if (!timeline.value || !text.trim()) return
+    let next = timeline.value
+    let track = next.tracks.find(t => t.kind === 'caption')
+    if (!track) { const tid = crypto.randomUUID(); next = addTrack(next, { id: tid, kind: 'caption', name: 'Captions' }); track = next.tracks.find(t => t.id === tid)! }
+    const placedStart = resolveClipStartSec(next, 'caption', startSec, durationSec)
+    applyEdit(addCaptionClip(next, {
+      trackId: track.id,
+      id: crypto.randomUUID(),
+      text,
+      sourceAssetId,
+      captionVttUrl,
+      startSec: placedStart,
+      durationSec
+    }))
   }
 
   // ─── Render jobs ────────────────────────────────────────────────────────────
@@ -579,6 +597,7 @@ export function useMediaProjectEditor(projectId: string) {
     undoAction, redoAction,
     // AV actions
     uploadMedia, addVideoClipAction, addOverlayClipAction,
+    addCaptionClipAction,
     renderVideoAction, refreshRenderJobs, renderJobs, rendering, publishToSocial, publishVideoAssetToSocial, sendToPortal,
     saveAsset, listVideoAssets,
     /** Merge a new presigned URL into the live sources map (called before addClipAction). */

@@ -11,6 +11,9 @@ const state = {
     ] },
     { id: 'vo', name: 'VO', kind: 'voiceover', gain_db: 0, muted: false, locked: false, hidden: false, clips: [
       { id: 'a1', r2_key: 'vo.mp3', timeline_start_sec: 0, source_in_sec: 0, source_out_sec: 3, gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear' }
+    ] },
+    { id: 'cap', name: 'Captions', kind: 'caption', gain_db: 0, muted: false, locked: false, hidden: false, clips: [
+      { type: 'caption', id: 'cap1', timeline_start_sec: 0, duration_sec: 3, text: 'Hello' }
     ] }
   ]
 } as unknown as TimelineState
@@ -19,6 +22,7 @@ describe('clipKindOf', () => {
   it('returns video for a video clip, audio for a legacy untyped audio clip, null when not found', () => {
     expect(clipKindOf(state, 'v1')).toBe('video')
     expect(clipKindOf(state, 'a1')).toBe('audio')
+    expect(clipKindOf(state, 'cap1')).toBe('caption')
     expect(clipKindOf(state, 'nope')).toBeNull()
   })
 })

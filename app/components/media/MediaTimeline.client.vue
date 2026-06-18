@@ -506,6 +506,7 @@ onUnmounted(() => {
           :class="[
             clip.kind === 'video' ? 'bg-blue-600 dark:bg-blue-500'
               : clip.kind === 'overlay' ? 'bg-fuchsia-600 dark:bg-fuchsia-500'
+                : clip.kind === 'caption' ? 'bg-amber-600 dark:bg-amber-500'
               : lane.muted ? 'bg-muted' : 'bg-primary',
             selectedClipId === clip.clipId ? 'ring-2 ring-white ring-offset-1' : '',
             drag?.clipId === clip.clipId ? 'transition-none' : 'transition-shadow'
@@ -539,8 +540,12 @@ onUnmounted(() => {
             <UIcon :name="clip.baseSource === 'still_kenburns' ? 'i-lucide-image' : 'i-lucide-film'" class="size-3.5 text-inverted/80" />
           </div>
           <!-- Overlay: badge -->
-          <div v-else class="absolute inset-0 flex items-center gap-1 px-2 pointer-events-none">
+          <div v-else-if="clip.kind === 'overlay'" class="absolute inset-0 flex items-center gap-1 px-2 pointer-events-none">
             <UIcon name="i-lucide-shapes" class="size-3.5 text-inverted/80" />
+          </div>
+          <!-- Captions: badge -->
+          <div v-else class="absolute inset-0 flex items-center gap-1 px-2 pointer-events-none">
+            <UIcon name="i-lucide-subtitles" class="size-3.5 text-inverted/80" />
           </div>
 
           <!-- Clip label -->

@@ -215,6 +215,31 @@ export function addOverlayClip(
   return next
 }
 
+/** Append a caption clip to a caption track. The renderer burns this text into
+ * the final composite; caption style presets are intentionally narrow for now. */
+export function addCaptionClip(
+  state: TimelineState,
+  { trackId, id, text, sourceAssetId = null, captionVttUrl = null, startSec, durationSec, style = 'platform_default' }:
+    { trackId: string; id: string; text: string; sourceAssetId?: string | null; captionVttUrl?: string | null; startSec: number; durationSec: number; style?: 'platform_default' | 'bold_social' | 'subtitle_safe' }
+): TimelineState {
+  const next = cloneState(state)
+  const track = next.tracks.find(t => t.id === trackId)
+  const captionText = text.trim()
+  if (!track || !captionText) return state
+  track.clips.push({
+    type: 'caption',
+    id,
+    timeline_start_sec: Math.max(0, startSec),
+    duration_sec: Math.max(0.1, durationSec),
+    text: captionText,
+    source_asset_id: sourceAssetId,
+    caption_vtt_url: captionVttUrl,
+    style
+  } as unknown as Clip)
+  next.duration_sec = computeDuration(next)
+  return next
+}
+
 /** Trim a VIDEO or OVERLAY clip. Overlays + stills resize duration only; footage also
  * shifts source_in_sec on a start-trim so the visible window stays consistent. Audio
  * clips must go through trimClip (this returns state unchanged for them). */
@@ -225,7 +250,7 @@ export function trimVisualClip(
   const found = findClip(state, clipId)
   if (!found) return state
   const c = found.clip as any
-  if (c.type !== 'video' && c.type !== 'overlay') return state
+  if (c.type !== 'video' && c.type !== 'overlay' && c.type !== 'caption') return state
   const MIN = 0.1
   const next = cloneState(state)
   const clip = findClip(next, clipId)!.clip as any

@@ -9,7 +9,7 @@ export interface DisplayClip {
   trackId: string
   timelineStartSec: number
   durationSec: number | null
-  kind: 'audio' | 'video' | 'overlay'
+  kind: 'audio' | 'video' | 'overlay' | 'caption'
   /** audio + video clips carry an r2_key (waveform / poster). Overlay clips do not. */
   r2_key?: string
   baseSource?: 'uploaded_footage' | 'still_kenburns'
@@ -38,19 +38,20 @@ export function toDisplayLanes(timeline: TimelineState, scheduled: ScheduledClip
   return timeline.tracks.map((t) => {
     const isVideo = t.kind === 'video'
     const isOverlay = t.kind === 'overlay'
+    const isCaption = t.kind === 'caption'
     let clips: DisplayClip[]
-    if (isVideo || isOverlay) {
+    if (isVideo || isOverlay || isCaption) {
       clips = t.clips.map((c: any): DisplayClip => ({
         clipId: c.id,
         trackId: t.id,
         timelineStartSec: c.timeline_start_sec,
         durationSec: c.duration_sec ?? null,
-        kind: isVideo ? 'video' : 'overlay',
+        kind: isVideo ? 'video' : isOverlay ? 'overlay' : 'caption',
         r2_key: c.r2_key,
         baseSource: c.base_source,
         label: isVideo
           ? (c.base_source === 'still_kenburns' ? 'Still' : 'Footage')
-          : 'Overlay'
+          : isOverlay ? 'Overlay' : 'Captions'
       }))
     } else {
       clips = (byTrack.get(t.id) ?? []).map((sc): DisplayClip => ({

@@ -311,6 +311,19 @@ function onStudioAssetAdd(asset: VideoStudioAsset) {
   }
 }
 
+function onStudioAssetAddCaptions(asset: VideoStudioAsset) {
+  const text = asset.transcript?.trim()
+  if (!text || !asset.captionVttUrl) return
+  editor.addCaptionClipAction(
+    text,
+    editor.currentTime.value,
+    asset.durationSec ?? Math.max(editor.duration.value - editor.currentTime.value, 5),
+    asset.libraryAssetId ?? asset.rawId,
+    asset.captionVttUrl
+  )
+  toast.add({ title: 'Captions added to timeline', color: 'success' })
+}
+
 function onStudioAssetGenerate(asset: VideoStudioAsset) {
   selectedStudioAssetId.value = asset.id
   if (!videoStudioAssetImageSource(asset)) return
@@ -779,6 +792,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :activity="selectedStudioAssetActivity"
                 :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
                 @add-to-timeline="onStudioAssetAdd"
+                @add-captions-to-timeline="onStudioAssetAddCaptions"
                 @generate-from-asset="onStudioAssetGenerate"
                 @generate-captions="onGenerateCaptions"
               />

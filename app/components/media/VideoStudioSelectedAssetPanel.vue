@@ -23,6 +23,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'add-to-timeline', asset: VideoStudioAsset): void
+  (event: 'add-captions-to-timeline', asset: VideoStudioAsset): void
   (event: 'generate-from-asset', asset: VideoStudioAsset): void
   (event: 'generate-captions', asset: VideoStudioAsset): void
 }>()
@@ -30,6 +31,7 @@ const emit = defineEmits<{
 const canGenerate = computed(() => Boolean(videoStudioAssetImageSource(props.asset)))
 const canGenerateCaptions = computed(() => Boolean(props.asset?.libraryAssetId && (props.asset.type === 'video' || props.asset.type === 'job')))
 const showCaptionAction = computed(() => Boolean(props.asset && props.asset.type !== 'audio'))
+const canAddCaptions = computed(() => Boolean(props.asset?.captionVttUrl && props.asset?.transcript?.trim()))
 
 function previewKind(asset: VideoStudioAsset): 'image' | 'video' | 'audio' | 'empty' {
   if (asset.thumbnailUrl) return 'image'
@@ -109,6 +111,15 @@ function activityTimeLabel(value: string | null) {
           :disabled="!canGenerateCaptions || props.captionGenerating"
           :loading="props.captionGenerating"
           @click="emit('generate-captions', props.asset)"
+        />
+        <UButton
+          v-if="canAddCaptions"
+          icon="i-lucide-captions"
+          size="xs"
+          variant="soft"
+          color="neutral"
+          label="Add captions"
+          @click="emit('add-captions-to-timeline', props.asset)"
         />
       </div>
     </div>

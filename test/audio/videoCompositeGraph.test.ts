@@ -94,3 +94,34 @@ describe('buildCompositePlan with overlays', () => {
     expect(a).toEqual(b)
   })
 })
+
+describe('buildCompositePlan with captions', () => {
+  it('burns caption clips into the video chain without adding media inputs', () => {
+    const state = avState()
+    state.tracks.push({
+      id: 'cap',
+      name: 'Captions',
+      kind: 'caption',
+      gain_db: 0,
+      muted: false,
+      locked: false,
+      hidden: false,
+      clips: [
+        {
+          type: 'caption',
+          id: 'cap1',
+          timeline_start_sec: 1,
+          duration_sec: 4,
+          text: 'Big offer this weekend only',
+          source_asset_id: 'asset-1',
+          caption_vtt_url: '/captions.vtt',
+          style: 'platform_default',
+        } as any
+      ]
+    } as any)
+    const p = buildCompositePlan(state, profile)
+    expect(p.inputs.map(i => i.r2_key)).toEqual(['media/f1.mp4', 'media/s1.jpg', 'audio/vo.mp3', 'audio/music.mp3'])
+    expect(p.filterComplex).toContain('drawtext=')
+    expect(p.filterComplex).toContain("enable='between(t,1.000,5.000)'")
+  })
+})

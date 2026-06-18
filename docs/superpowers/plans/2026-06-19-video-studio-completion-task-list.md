@@ -109,10 +109,10 @@ Decision: inline overlay templates should create or reuse Banner Studio projects
 - [x] Generate captions from voiceover asset.
 - [x] Store generated VTT against video asset or caption asset.
 - [x] Add caption preview/download.
-- [ ] Add captions as overlay/render input.
+- [x] Add captions as overlay/render input.
 - [ ] Add caption style presets later: platform default, bold social, subtitle-safe.
 
-Decision: first caption pass stores a single-cue VTT plus transcript on `video_assets`; segmented/styled caption overlays remain a follow-up once the render path consumes caption tracks.
+Decision: first caption pass stores a single-cue VTT plus transcript on `video_assets`; caption clips now burn transcript text into the composite render with a default FFmpeg text style. Segmented VTT parsing and richer style presets remain follow-up work.
 
 ## Phase 9: AI Producer
 

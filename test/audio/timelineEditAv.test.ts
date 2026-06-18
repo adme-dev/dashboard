@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { reactive } from 'vue'
-import { addVideoClip, addOverlayClip, trimVisualClip, cloneState } from '~~/app/utils/audio/timelineEdit'
+import { addVideoClip, addOverlayClip, addCaptionClip, trimVisualClip, cloneState } from '~~/app/utils/audio/timelineEdit'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 function avState(): TimelineState {
@@ -9,7 +9,8 @@ function avState(): TimelineState {
     duration_sec: 0, ducking: [],
     tracks: [
       { id: 'vid', name: 'Video', kind: 'video', gain_db: 0, muted: false, locked: false, hidden: false, clips: [] },
-      { id: 'ov', name: 'Overlay', kind: 'overlay', gain_db: 0, muted: false, locked: false, hidden: false, clips: [] }
+      { id: 'ov', name: 'Overlay', kind: 'overlay', gain_db: 0, muted: false, locked: false, hidden: false, clips: [] },
+      { id: 'cap', name: 'Captions', kind: 'caption', gain_db: 0, muted: false, locked: false, hidden: false, clips: [] }
     ]
   } as unknown as TimelineState
 }
@@ -52,7 +53,7 @@ describe('cloneState', () => {
     const reactiveState = reactive(avState()) as unknown as TimelineState
     expect(() => cloneState(reactiveState)).not.toThrow()
     const copy = cloneState(reactiveState)
-    expect(copy.tracks).toHaveLength(2)
+    expect(copy.tracks).toHaveLength(3)
     // the clone is a plain (non-reactive) snapshot detached from the source
     copy.tracks[0]!.name = 'changed'
     expect(reactiveState.tracks[0]!.name).toBe('Video')
@@ -71,6 +72,32 @@ describe('addOverlayClip', () => {
     const clip: any = next.tracks[1].clips[0]
     expect(clip).toMatchObject({ type: 'overlay', id: 'o1', gsap_project_id: 'b1', gsap_format_key: 'fb_story', timeline_start_sec: 1, duration_sec: 4, opacity: 1 })
     expect(next.duration_sec).toBe(5)
+  })
+})
+
+describe('addCaptionClip', () => {
+  it('adds a caption clip with source metadata', () => {
+    const next = addCaptionClip(avState(), {
+      trackId: 'cap',
+      id: 'cap1',
+      text: 'This deal ends Saturday.',
+      sourceAssetId: 'asset-1',
+      captionVttUrl: '/captions.vtt',
+      startSec: 2,
+      durationSec: 4,
+    })
+    const clip: any = next.tracks[2].clips[0]
+    expect(clip).toMatchObject({
+      type: 'caption',
+      id: 'cap1',
+      text: 'This deal ends Saturday.',
+      source_asset_id: 'asset-1',
+      caption_vtt_url: '/captions.vtt',
+      timeline_start_sec: 2,
+      duration_sec: 4,
+      style: 'platform_default',
+    })
+    expect(next.duration_sec).toBe(6)
   })
 })
 
@@ -94,6 +121,12 @@ describe('trimVisualClip', () => {
     let s = addOverlayClip(avState(), { trackId: 'ov', id: 'o1', gsapProjectId: 'b1', gsapFormatKey: 'fb_story', startSec: 1, durationSec: 5 })
     s = trimVisualClip(s, { clipId: 'o1', edge: 'end', newTimeSec: 0 })
     expect((s.tracks[1].clips[0] as any).duration_sec).toBeCloseTo(0.1, 5)
+  })
+
+  it('trims a caption clip duration', () => {
+    let s = addCaptionClip(avState(), { trackId: 'cap', id: 'cap1', text: 'Hello', startSec: 0, durationSec: 5 })
+    s = trimVisualClip(s, { clipId: 'cap1', edge: 'end', newTimeSec: 3 })
+    expect((s.tracks[2].clips[0] as any).duration_sec).toBe(3)
   })
 
   it('returns the same reference when the clip id is unknown', () => {

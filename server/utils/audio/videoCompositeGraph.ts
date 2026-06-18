@@ -25,6 +25,7 @@ export interface CompositePlan {
 }
 
 const AUDIO_KINDS = ['voiceover', 'music', 'sfx']
+const CAPTION_KINDS = ['caption']
 
 // Per-clip effect presets → ffmpeg filter strings. Inserted into the clip chain
 // after scaling, before the timeline-offset setpts. Unknown ids are ignored so a
@@ -40,6 +41,41 @@ export const CLIP_EFFECT_PRESETS: Record<string, string> = {
 
 export function clipEffectFilters(effects?: string[] | null): string[] {
   return (effects ?? []).map(id => CLIP_EFFECT_PRESETS[id]).filter((f): f is string => Boolean(f))
+}
+
+function wrapCaptionText(value: string, maxLineLength = 30, maxLines = 3): string {
+  const words = value.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)
+  const lines: string[] = []
+  let line = ''
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word
+    if (next.length > maxLineLength && line) {
+      lines.push(line)
+      line = word
+    } else {
+      line = next
+    }
+    if (lines.length >= maxLines) break
+  }
+  if (line && lines.length < maxLines) lines.push(line)
+  return lines.join('\n')
+}
+
+function escapeDrawtext(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+}
+
+function captionDrawtextFilter(clip: any, W: number, H: number): string {
+  const start = Number(clip.timeline_start_sec ?? 0)
+  const end = start + Number(clip.duration_sec ?? 0)
+  const text = escapeDrawtext(wrapCaptionText(String(clip.text ?? '')))
+  const safeMargin = Math.max(48, Math.round(H * 0.055))
+  const fontSize = clip.style === 'bold_social' ? Math.round(H * 0.052) : Math.round(H * 0.043)
+  return `drawtext=text='${text}':fontcolor=white:fontsize=${fontSize}:line_spacing=10:box=1:boxcolor=black@0.62:boxborderw=24:x=(w-text_w)/2:y=h-text_h-${safeMargin}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'`
 }
 
 function kenburnsExpr(k: any, W: number, H: number, fps: number, dur: number): string {
@@ -105,6 +141,15 @@ export function buildCompositePlan(state: TimelineState, profile: VideoFormat, o
       // The overlay frame-sequence input is referenced by its input index as a video stream
       vChains.push(`[${inputIdx}:v]setpts=PTS-STARTPTS+${ov.timeline_start_sec.toFixed(3)}/TB[${ovLabel}]`)
       vChains.push(`[${baseLabel}][${ovLabel}]overlay=enable='between(t,${ov.timeline_start_sec.toFixed(3)},${(ov.timeline_start_sec + ov.duration_sec).toFixed(3)})'[${nextLabel}]`)
+      baseLabel = nextLabel
+    }
+  }
+
+  for (const track of state.tracks.filter(t => CAPTION_KINDS.includes(t.kind) && !t.muted)) {
+    for (const clip of track.clips as any[]) {
+      if (clip.type !== 'caption' || !String(clip.text ?? '').trim()) continue
+      const nextLabel = `vb${++baseN}`
+      vChains.push(`[${baseLabel}]${captionDrawtextFilter(clip, W, H)}[${nextLabel}]`)
       baseLabel = nextLabel
     }
   }

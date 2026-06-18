@@ -59,19 +59,31 @@ export const OverlayClipSchema = z.object({
   opacity: z.number().default(1)
 })
 
+// ── Caption clip ──────────────────────────────────────────────────────────────
+export const CaptionClipSchema = z.object({
+  type: z.literal('caption'),
+  id: z.string().min(1),
+  timeline_start_sec: z.number(),
+  duration_sec: z.number(),
+  text: z.string().min(1),
+  source_asset_id: z.string().nullable().default(null),
+  caption_vtt_url: z.string().nullable().default(null),
+  style: z.enum(['platform_default', 'bold_social', 'subtitle_safe']).default('platform_default')
+})
+
 // ── Discriminated union — legacy audio clips have no `type`; inject 'audio'
 //    before discriminating so shipped v1 documents parse unchanged. ───────────
 export const ClipSchema = z.preprocess(
   (v) => (v && typeof v === 'object' && !Array.isArray(v) && !('type' in (v as any)))
     ? { ...(v as any), type: 'audio' }
     : v,
-  z.discriminatedUnion('type', [AudioClipSchema, VideoClipSchema, OverlayClipSchema])
+  z.discriminatedUnion('type', [AudioClipSchema, VideoClipSchema, OverlayClipSchema, CaptionClipSchema])
 )
 
 export const TrackSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
-  kind: z.enum(['voiceover', 'music', 'sfx', 'video', 'overlay']),
+  kind: z.enum(['voiceover', 'music', 'sfx', 'video', 'overlay', 'caption']),
   gain_db: z.number().default(0),
   muted: z.boolean().default(false),
   locked: z.boolean().default(false),  // lane control reserved for SP3
@@ -104,6 +116,7 @@ export const TimelineStateSchema = z.object({
 export type AudioClip = z.infer<typeof AudioClipSchema>
 export type VideoClip = z.infer<typeof VideoClipSchema>
 export type OverlayClip = z.infer<typeof OverlayClipSchema>
+export type CaptionClip = z.infer<typeof CaptionClipSchema>
 export type Clip = z.infer<typeof ClipSchema>
 export type Track = z.infer<typeof TrackSchema>
 export type DuckingRule = z.infer<typeof DuckingRuleSchema>
@@ -116,8 +129,8 @@ export function validateTimeline(state: TimelineState): ValidateResult {
   const errors: string[] = []
   const trackIds = new Set<string>()
 
-  const expectedClipType: Record<string, 'audio' | 'video' | 'overlay'> = {
-    voiceover: 'audio', music: 'audio', sfx: 'audio', video: 'video', overlay: 'overlay'
+  const expectedClipType: Record<string, 'audio' | 'video' | 'overlay' | 'caption'> = {
+    voiceover: 'audio', music: 'audio', sfx: 'audio', video: 'video', overlay: 'overlay', caption: 'caption'
   }
 
   for (const track of state.tracks) {
@@ -151,9 +164,12 @@ export function validateTimeline(state: TimelineState): ValidateResult {
         if (c.base_source === 'still_kenburns' && !c.kenburns) {
           errors.push(`clip ${c.id}: still_kenburns requires kenburns params`)
         }
-      } else if (got === 'overlay') {
+      } else if (got === 'overlay' || got === 'caption') {
         if (c.timeline_start_sec < 0) errors.push(`clip ${c.id}: timeline_start_sec must be >= 0`)
         if (c.duration_sec <= 0) errors.push(`clip ${c.id}: duration_sec must be > 0`)
+        if (got === 'caption' && !String(c.text ?? '').trim()) {
+          errors.push(`clip ${c.id}: caption text is required`)
+        }
       }
     }
   }
@@ -214,6 +230,7 @@ export function emptyAvTimeline(): TimelineState {
     tracks: [
       { id: 'video', name: 'Video', kind: 'video', clips: [] },
       { id: 'overlay', name: 'Overlay', kind: 'overlay', clips: [] },
+      { id: 'captions', name: 'Captions', kind: 'caption', clips: [] },
       { id: 'vo', name: 'Voiceover', kind: 'voiceover', clips: [] },
       { id: 'music', name: 'Music', kind: 'music', clips: [] }
     ]
