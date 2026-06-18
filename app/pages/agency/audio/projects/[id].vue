@@ -23,6 +23,7 @@ import { effectPreviewPlan } from '~~/app/utils/video/effectPreview'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import { audioStudioTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
+import type { VideoRenderFormatId } from '~~/app/utils/video/renderFormats'
 import type { VideoStudioSelectedAssetActivity } from '~~/app/components/media/VideoStudioSelectedAssetPanel.vue'
 import type { AudioAsset, MediaRenderJob } from '~~/app/types'
 import { videoStudioAssetImageSource, type VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
@@ -580,8 +581,8 @@ async function publishSelectedGeneratedClip() {
 }
 
 // Render
-async function onRenderVideo() {
-  const res = await editor.renderVideoAction()
+async function onRenderVideo(formats?: VideoRenderFormatId[]) {
+  const res = await editor.renderVideoAction(formats)
   if (res.ok) toast.add({ title: 'Render queued', description: 'Your video is rendering.', color: 'success' })
   else if (res.flagOff) toast.add({ title: 'Video rendering is disabled', description: 'Ask an admin to enable VIDEO_STUDIO_ENABLED.', color: 'warning' })
   else toast.add({ title: 'Failed to queue render', color: 'error' })

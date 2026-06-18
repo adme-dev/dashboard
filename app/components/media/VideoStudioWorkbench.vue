@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import {
+  DEFAULT_VIDEO_RENDER_FORMATS,
+  VIDEO_RENDER_FORMATS,
+  normalizeVideoRenderFormats,
+  type VideoRenderFormatId,
+} from '~~/app/utils/video/renderFormats'
 
 const props = withDefaults(defineProps<{
   currentTimeSec: number
@@ -24,13 +30,27 @@ const emit = defineEmits<{
   (event: 'add-footage'): void
   (event: 'add-overlay'): void
   (event: 'generate'): void
-  (event: 'render'): void
+  (event: 'render', formats: VideoRenderFormatId[]): void
   (event: 'update:producer-collapsed', value: boolean): void
 }>()
 
 const workspaceGridClass = computed(() => props.producerCollapsed
   ? 'grid divide-y divide-default lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0'
   : 'grid divide-y divide-default lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0 2xl:grid-cols-[minmax(340px,420px)_minmax(0,1fr)_minmax(340px,380px)]')
+
+const selectedFormats = ref<VideoRenderFormatId[]>([...DEFAULT_VIDEO_RENDER_FORMATS])
+const selectedFormatCount = computed(() => selectedFormats.value.length)
+
+function toggleFormat(format: VideoRenderFormatId, enabled: boolean) {
+  const next = new Set(selectedFormats.value)
+  if (enabled) next.add(format)
+  else next.delete(format)
+  selectedFormats.value = [...next]
+}
+
+function renderSelectedFormats() {
+  emit('render', normalizeVideoRenderFormats(selectedFormats.value))
+}
 
 function fmt(sec: number) {
   const safe = Math.max(0, Math.floor(sec))
@@ -79,14 +99,51 @@ function fmt(sec: number) {
           @click="emit('generate')"
         />
         <UButton icon="i-lucide-library" size="xs" variant="ghost" color="neutral" label="Library" @click="emit('open-library')" />
+        <UPopover :content="{ align: 'end' }">
+          <UButton
+            icon="i-lucide-sliders-horizontal"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            :label="selectedFormatCount === 1 ? '1 format' : `${selectedFormatCount} formats`"
+            title="Choose render formats"
+          />
+          <template #content>
+            <div class="w-72 space-y-3 p-3">
+              <div>
+                <p class="text-xs font-medium uppercase text-muted">Render formats</p>
+                <p class="mt-0.5 text-[11px] text-muted">Choose the export variants for the next render.</p>
+              </div>
+              <div class="grid gap-1.5">
+                <label
+                  v-for="format in VIDEO_RENDER_FORMATS"
+                  :key="format.id"
+                  class="flex cursor-pointer items-center gap-2 rounded-md border border-default bg-elevated px-2 py-1.5"
+                >
+                  <UCheckbox
+                    :model-value="selectedFormats.includes(format.id)"
+                    :aria-label="`Render ${format.label}`"
+                    @update:model-value="(checked: boolean | 'indeterminate') => toggleFormat(format.id, checked === true)"
+                  />
+                  <UIcon :name="format.icon" class="size-3.5 shrink-0 text-muted" />
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-xs font-medium text-highlighted">{{ format.label }}</span>
+                    <span class="block truncate text-[11px] text-muted">{{ format.detail }}</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </template>
+        </UPopover>
         <UButton
           icon="i-lucide-clapperboard"
           size="xs"
           variant="soft"
           color="primary"
-          label="Render"
+          :label="selectedFormatCount === 1 ? 'Render 1 format' : `Render ${selectedFormatCount} formats`"
+          :disabled="selectedFormatCount === 0"
           :loading="props.rendering"
-          @click="emit('render')"
+          @click="renderSelectedFormats"
         />
       </div>
     </header>

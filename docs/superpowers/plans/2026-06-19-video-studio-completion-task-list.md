@@ -159,7 +159,7 @@ Decision: timeline zoom math is now shared and unit-tested. The timeline toolbar
 
 ## Phase 11: Render + Distribution
 
-- [ ] Add render format selector in the workbench.
+- [x] Add render format selector in the workbench.
 - [ ] Show render queue state near timeline.
 - [ ] Show completed renders with direct download.
 - [ ] Save render to video library.
@@ -170,6 +170,8 @@ Decision: timeline zoom math is now shared and unit-tested. The timeline toolbar
 - [ ] Add retry render action.
 - [ ] Confirm overlay resolution works per format.
 - [ ] Fix known limitation: mixed-aspect multi-format overlay resolution currently reuses first overlay aspect.
+
+Decision: render format selection now lives in the always-visible Video Studio workbench header beside the primary Render action. The selector uses the backend-supported format keys (`reels_9x16`, `square_1x1`, `youtube_16x9`) and passes only the selected formats into the existing render-video endpoint; the render jobs rail remains focused on queue history and completed-render actions.
 
 ## Phase 12: QA + Reliability
 
