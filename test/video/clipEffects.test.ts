@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clipEffectFilters, CLIP_EFFECT_PRESETS, buildCompositePlan } from '~~/server/utils/audio/videoCompositeGraph'
+import { clipEffectFilters, CLIP_EFFECT_PRESETS, buildCompositePlan, resolveVideoClipFit, videoClipFitFilters } from '~~/server/utils/audio/videoCompositeGraph'
 import { TimelineStateSchema } from '~~/server/utils/audio/timelineSchema'
 import { videoFormatFor } from '~~/server/utils/audio/videoProfiles'
 
@@ -73,5 +73,47 @@ describe('effects in the composite plan', () => {
     const plain = buildCompositePlan(avState(), profile)
     const unknown = buildCompositePlan(avState(['not_a_preset']), profile)
     expect(unknown.filterComplex).toBe(plain.filterComplex)
+  })
+})
+
+describe('clip framing in the composite plan', () => {
+  it('preserves legacy defaults for missing fit values', () => {
+    expect(resolveVideoClipFit({ base_source: 'uploaded_footage' })).toBe('fit')
+    expect(resolveVideoClipFit({ base_source: 'still_kenburns' })).toBe('crop')
+  })
+
+  it('maps framing modes to ffmpeg scale filters', () => {
+    expect(videoClipFitFilters({ fit: 'fit' }, 1080, 1920)).toEqual([
+      'scale=1080:1920:force_original_aspect_ratio=decrease',
+      'pad=1080:1920:(ow-iw)/2:(oh-ih)/2',
+    ])
+    expect(videoClipFitFilters({ fit: 'crop' }, 1080, 1920)).toEqual([
+      'scale=1080:1920:force_original_aspect_ratio=increase',
+      'crop=1080:1920',
+    ])
+    expect(videoClipFitFilters({ fit: 'fill' }, 1080, 1920)).toEqual(['scale=1080:1920'])
+  })
+
+  it('injects crop framing into the clip chain', () => {
+    const state = TimelineStateSchema.parse({
+      schema_version: 2,
+      media_type: 'av',
+      tracks: [{
+        id: 'vid',
+        name: 'V',
+        kind: 'video',
+        clips: [{
+          type: 'video',
+          id: 'f1',
+          r2_key: 'm/f.mp4',
+          timeline_start_sec: 0,
+          duration_sec: 5,
+          base_source: 'uploaded_footage',
+          fit: 'crop',
+        }]
+      }]
+    })
+    const plan = buildCompositePlan(state, profile)
+    expect(plan.filterComplex).toContain('scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920')
   })
 })

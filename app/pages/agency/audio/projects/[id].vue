@@ -26,6 +26,18 @@ definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
 const editor = useMediaProjectEditor(projectId.value)
+type VideoClipFit = 'fit' | 'fill' | 'crop'
+
+const CLIP_FIT_OPTIONS: Array<{ id: VideoClipFit; label: string; icon: string; hint: string }> = [
+  { id: 'fit', label: 'Fit', icon: 'i-lucide-minimize-2', hint: 'Keep the whole frame visible with padding when needed.' },
+  { id: 'fill', label: 'Fill', icon: 'i-lucide-stretch-horizontal', hint: 'Stretch the source to the output frame.' },
+  { id: 'crop', label: 'Crop', icon: 'i-lucide-scan', hint: 'Fill the frame and crop excess edges.' },
+]
+
+function resolvedClipFit(clip: VideoClip): VideoClipFit {
+  if (clip.fit === 'fit' || clip.fit === 'fill' || clip.fit === 'crop') return clip.fit
+  return clip.base_source === 'still_kenburns' ? 'crop' : 'fit'
+}
 
 // ─── Time format helper ───────────────────────────────────────────────────────
 
@@ -396,6 +408,7 @@ const selectedVideoClip = computed(() => {
       return {
         clipId: clip.id,
         effects: clip.effects ?? [],
+        fit: resolvedClipFit(clip),
         label: clip.base_source === 'still_kenburns' ? 'Still' : 'Footage',
         startSec: clip.timeline_start_sec
       }
@@ -1054,6 +1067,35 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               variant="subtle"
               color="neutral"
             />
+          </div>
+          <div class="mb-4">
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <p class="text-xs font-medium uppercase text-muted">Framing</p>
+              <p class="text-[11px] text-muted">
+                {{ CLIP_FIT_OPTIONS.find(option => option.id === selectedVideoClip.fit)?.hint }}
+              </p>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                v-for="option in CLIP_FIT_OPTIONS"
+                :key="option.id"
+                type="button"
+                role="switch"
+                :aria-checked="selectedVideoClip.fit === option.id"
+                class="flex min-h-16 items-center gap-2 rounded-lg border px-3 py-2 text-left transition"
+                :class="selectedVideoClip.fit === option.id
+                  ? 'border-primary bg-primary/10 text-highlighted'
+                  : 'border-default bg-default/30 text-default hover:border-primary/40 hover:bg-primary/5'"
+                :title="option.hint"
+                @click="editor.setClipFitAction(selectedVideoClip.clipId, option.id)"
+              >
+                <UIcon :name="option.icon" class="size-4 shrink-0" :class="selectedVideoClip.fit === option.id ? 'text-primary' : 'text-muted'" />
+                <span class="min-w-0">
+                  <span class="block text-xs font-semibold leading-tight">{{ option.label }}</span>
+                  <span class="block truncate text-[11px] text-muted">{{ option.id }}</span>
+                </span>
+              </button>
+            </div>
           </div>
           <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
             <button

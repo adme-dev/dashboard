@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { setClipEffects } from '~~/app/utils/audio/timelineEdit'
+import { addVideoClip, setClipEffects, setClipFit } from '~~/app/utils/audio/timelineEdit'
 import { TimelineStateSchema } from '~~/server/utils/audio/timelineSchema'
 import { CLIP_EFFECT_PRESETS } from '~~/server/utils/audio/videoCompositeGraph'
 import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
@@ -50,6 +50,44 @@ describe('setClipEffects', () => {
     const cleared = setClipEffects(withFx, { clipId: 'v1', effects: [] })
     const clip = cleared.tracks[0]!.clips[0]!
     expect(clip.type === 'video' && clip.effects).toEqual([])
+  })
+})
+
+describe('setClipFit', () => {
+  it('replaces the fit mode on a video clip without mutating the input', () => {
+    const before = state()
+    const next = setClipFit(before, { clipId: 'v1', fit: 'crop' })
+    const clip = next.tracks[0]!.clips[0]!
+    expect(clip.type === 'video' && clip.fit).toBe('crop')
+    const original = before.tracks[0]!.clips[0]!
+    expect(original.type === 'video' && original.fit).toBeUndefined()
+  })
+
+  it('returns the original reference for unknown clips and non-video clips', () => {
+    const before = state()
+    expect(setClipFit(before, { clipId: 'missing', fit: 'crop' })).toBe(before)
+    expect(setClipFit(before, { clipId: 'a1', fit: 'crop' })).toBe(before)
+  })
+
+  it('defaults new footage to fit and stills to crop', () => {
+    const footage = addVideoClip(state(), {
+      trackId: 'vid',
+      id: 'v2',
+      r2Key: 'm/f2.mp4',
+      startSec: 6,
+      durationSec: 5,
+      baseSource: 'uploaded_footage',
+    })
+    const still = addVideoClip(state(), {
+      trackId: 'vid',
+      id: 's1',
+      r2Key: 'm/s1.png',
+      startSec: 6,
+      durationSec: 5,
+      baseSource: 'still_kenburns',
+    })
+    expect((footage.tracks[0]!.clips[1] as any).fit).toBe('fit')
+    expect((still.tracks[0]!.clips[1] as any).fit).toBe('crop')
   })
 })
 

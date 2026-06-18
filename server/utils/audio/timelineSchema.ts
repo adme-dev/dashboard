@@ -41,6 +41,7 @@ export const VideoClipSchema = z.object({
   source_out_sec: z.number().nullable().default(null),
   duration_sec: z.number(),
   base_source: z.enum(['uploaded_footage', 'still_kenburns']),
+  fit: z.enum(['fit', 'fill', 'crop']).optional(),
   kenburns: KenBurnsSchema.nullable().default(null),
   audio_mode: z.enum(['mute', 'source', 'duck_under_vo']).default('mute'),
   // Per-clip effect preset ids (e.g. 'film_grain', 'vhs') — mapped to ffmpeg

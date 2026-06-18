@@ -5,6 +5,7 @@ import type { TimelineState, Track, Clip } from '~~/server/utils/audio/timelineS
 import { computeDuration } from '~~/server/utils/audio/timelineSchema'
 
 export type EditableState = TimelineState
+export type VideoClipFit = 'fit' | 'fill' | 'crop'
 
 /** Deep clone + recompute duration_sec. sourceDurations lets play-to-end clips
  * (source_out_sec === null) contribute their decoded length. */
@@ -173,6 +174,7 @@ export function addVideoClip(
     source_in_sec: 0, source_out_sec: null,
     duration_sec: Math.max(0.1, durationSec),
     base_source: baseSource,
+    fit: baseSource === 'still_kenburns' ? 'crop' : 'fit',
     kenburns: baseSource === 'still_kenburns' ? { ...DEFAULT_KENBURNS } : null,
     audio_mode: 'mute',
     effects: []
@@ -190,6 +192,20 @@ export function setClipEffects(state: TimelineState, { clipId, effects }: { clip
   for (const track of next.tracks) {
     const clip = track.clips.find(c => c.id === clipId)
     if (clip) (clip as { effects?: string[] }).effects = [...effects]
+  }
+  return next
+}
+
+/** Replace the framing mode on a video clip. No-op (original reference) for
+ * unknown clips, non-video clips, or unsupported modes. */
+export function setClipFit(state: TimelineState, { clipId, fit }: { clipId: string, fit: VideoClipFit }): TimelineState {
+  if (fit !== 'fit' && fit !== 'fill' && fit !== 'crop') return state
+  const found = findClip(state, clipId)
+  if (!found || (found.clip as { type?: string }).type !== 'video') return state
+  const next = cloneState(state)
+  for (const track of next.tracks) {
+    const clip = track.clips.find(c => c.id === clipId)
+    if (clip) (clip as { fit?: VideoClipFit }).fit = fit
   }
   return next
 }

@@ -141,7 +141,7 @@ Decision: assembly plans now append explicit review-only `place-voiceover`, `pla
 - [x] Add split/delete/trim discoverability.
 - [x] Improve effect controls for selected video clips.
 - [x] Add per-clip effect preview clarity.
-- [ ] Add fit/fill/crop controls for video/still clips.
+- [x] Add fit/fill/crop controls for video/still clips.
 - [ ] Add timeline zoom polish.
 - [ ] Add keyboard shortcut help.
 
@@ -152,6 +152,8 @@ Decision: selected library assets can now replace compatible selected timeline c
 Decision: timeline controls now explain selected-clip actions inline, make trim handles visibly draggable, improve selected/hover clip affordance, and only enable Split when the active clip is audio to match the current editor capability.
 
 Decision: selected video effects now render as switch-like cards with active state, effect hints, selected-effect summary, previewed/render-only badges, and a clearer note that the editor preview is approximate while server render remains authoritative.
+
+Decision: video clips now support an optional `fit` framing field (`fit`, `fill`, `crop`) with renderer fallbacks that preserve legacy footage/still behavior. The selected clip panel exposes framing as a segmented control that saves through the same undo/autosave path as effects.
 
 ## Phase 11: Render + Distribution
 
