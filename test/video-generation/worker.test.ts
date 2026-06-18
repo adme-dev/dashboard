@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import workerEntrypoint from '../../workers/video-generation/src/index'
 import { processVideoGenerationJob } from '../../workers/video-generation/src/worker'
 import type { VideoGenerationJob } from '~~/server/utils/video-generation/types'
 
@@ -53,6 +54,13 @@ function deps(job: VideoGenerationJob, overrides: Record<string, any> = {}) {
 }
 
 describe('video generation worker orchestration', () => {
+  it('returns 404 for direct HTTP requests', async () => {
+    const response = await workerEntrypoint.fetch()
+
+    expect(response.status).toBe(404)
+    await expect(response.text()).resolves.toBe('Not found')
+  })
+
   it('skips succeeded jobs', async () => {
     const d = deps({ ...baseJob, status: 'succeeded' })
 

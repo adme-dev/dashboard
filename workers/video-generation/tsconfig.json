@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "types": ["@cloudflare/workers-types"],
     "baseUrl": ".",
     "paths": {

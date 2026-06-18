@@ -41,6 +41,13 @@ async function createOutputAsset(job: VideoGenerationJob, result: VideoGeneratio
 }
 
 export default {
+  async fetch(): Promise<Response> {
+    return new Response('Not found', {
+      status: 404,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+    })
+  },
+
   async queue(batch: MessageBatch<VideoGenerationMessage>, env: Env): Promise<void> {
     if (env.HYPERDRIVE?.connectionString) {
       ;(globalThis as any).__HYPERDRIVE_CS = env.HYPERDRIVE.connectionString

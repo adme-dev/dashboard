@@ -44,10 +44,10 @@ pnpm --dir workers/video-generation deploy
 
 ## Current Provider State
 
-The committed provider is a mock adapter and exists to lock the provider
-contract and queue orchestration. Do not enable `VIDEO_GENERATION_ENABLED` for
-operator use until a real provider adapter has been live-verified and tenant
-generation policy is configured.
+The worker registers the mock adapter for test/local flows and the Cloudflare AI
+Gateway adapter for production generation. Do not expose tenant generation until
+the selected AI Gateway model IDs have been live-verified against the current
+Cloudflare account and tenant generation policy is configured.
 
 ## Safety Contract
 
