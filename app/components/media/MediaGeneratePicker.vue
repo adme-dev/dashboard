@@ -28,7 +28,11 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
-const { data: modelData, pending: modelsPending, refresh: refreshModels } = useFetch('/api/agency/video/generation/models', { lazy: true, immediate: false })
+const { data: modelData, pending: modelsPending, refresh: refreshModels } = useFetch('/api/agency/video/generation/models', {
+  lazy: true,
+  immediate: false,
+  query: computed(() => ({ projectId: props.projectId })),
+})
 const allModels = computed((): VideoModelOption[] => (modelData.value as any)?.models ?? [])
 const hasModels = computed(() => allModels.value.length > 0)
 
