@@ -53,15 +53,15 @@
 
 ## Phase 4: Preview + Prepare Panel
 
-- [ ] Show selected library asset preview, not just timeline preview.
-- [ ] Add selected asset metadata: source, model, prompt, duration, aspect, status.
-- [ ] Add `Add to timeline` from selected asset.
-- [ ] Add `Generate from selected still/image`.
-- [ ] Add derivative preview support.
-- [ ] Move mask/lift/background/erase tools into this panel.
+- [x] Show selected library asset preview, not just timeline preview.
+- [x] Add selected asset metadata: source, model, prompt, duration, aspect, status.
+- [x] Add `Add to timeline` from selected asset.
+- [x] Add `Generate from selected still/image`.
+- [x] Add derivative preview support.
+- [x] Move mask/lift/background/erase tools into this panel.
 - [ ] Show asset intelligence activity for selected asset.
-- [ ] Show failed/blocked AI job messages in-context.
-- [ ] Keep server render as source of truth, with preview labelled as assembly preview.
+- [x] Show failed/blocked AI job messages in-context.
+- [x] Keep server render as source of truth, with preview labelled as assembly preview.
 
 ## Phase 5: AI Video Generation
 

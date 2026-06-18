@@ -655,35 +655,16 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           </template>
 
           <template #preview>
-              <div
-                v-if="selectedStudioAsset"
-                class="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-default bg-default/30 px-3 py-2"
-              >
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-xs font-medium text-highlighted">{{ selectedStudioAsset.title }}</p>
-                  <p class="mt-0.5 truncate text-[11px] text-muted">
-                    {{ selectedStudioAsset.type }} · {{ selectedStudioAsset.source }}<span v-if="selectedStudioAsset.subtitle"> · {{ selectedStudioAsset.subtitle }}</span>
-                  </p>
-                </div>
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <UButton
-                    icon="i-lucide-list-plus"
-                    size="xs"
-                    variant="soft"
-                    color="primary"
-                    label="Add to timeline"
-                    :disabled="!selectedStudioAsset.timelineReady"
-                    @click="onStudioAssetAdd(selectedStudioAsset)"
-                  />
-                  <UButton
-                    icon="i-lucide-sparkles"
-                    size="xs"
-                    variant="ghost"
-                    color="neutral"
-                    label="Generate from asset"
-                    :disabled="!selectedGenerationSourceAsset"
-                    @click="generatePickerOpen = true"
-                  />
+              <VideoStudioSelectedAssetPanel
+                :asset="selectedStudioAsset"
+                @add-to-timeline="onStudioAssetAdd"
+                @generate-from-asset="onStudioAssetGenerate"
+              />
+              <div class="mt-3 mb-2 flex items-center gap-2">
+                <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
+                <div class="min-w-0">
+                  <h4 class="text-xs font-medium uppercase text-muted">Assembly preview</h4>
+                  <p class="text-[11px] text-muted">Server render remains the source of truth.</p>
                 </div>
               </div>
               <MediaAvPreview
