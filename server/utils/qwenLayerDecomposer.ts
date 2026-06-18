@@ -3,6 +3,12 @@ const SPACE_BASE = 'https://qwen-qwen-image-layered.hf.space'
 // Trusted domains for layer download URLs returned by the Space
 const TRUSTED_HOSTS = ['.hf.space', '.huggingface.co']
 
+function bufferToBlobPart(buffer: Buffer): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(buffer.length)
+  bytes.set(buffer)
+  return bytes
+}
+
 interface DecomposeLayerResult {
   index: number
   label: string
@@ -66,6 +72,7 @@ export async function decomposeImageLayers(
     const layers: DecomposeLayerResult[] = []
     for (let i = 0; i < result.layerUrls.length; i++) {
       const url = result.layerUrls[i]
+      if (!url) continue
       try {
         const resp = await fetch(url, { headers, signal: controller.signal })
         if (!resp.ok) {
@@ -114,7 +121,7 @@ async function uploadToSpace(
   signal: AbortSignal
 ): Promise<string | null> {
   try {
-    const blob = new Blob([imageBuffer], { type: 'image/png' })
+    const blob = new Blob([bufferToBlobPart(imageBuffer)], { type: 'image/png' })
     const formData = new FormData()
     formData.append('files', blob, 'input.png')
 

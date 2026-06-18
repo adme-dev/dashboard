@@ -98,8 +98,7 @@ export function buildCompositePlan(state: TimelineState, profile: VideoFormat, o
   // Input index for overlay N = V + audioInputs.length + N
   const A = audioPlan.inputs.length
   if (overlays.length > 0) {
-    for (let ovIdx = 0; ovIdx < overlays.length; ovIdx++) {
-      const ov = overlays[ovIdx]
+    for (const [ovIdx, ov] of overlays.entries()) {
       const inputIdx = V + A + ovIdx
       const ovLabel = `ov${ovIdx}`
       const nextLabel = `vb${++baseN}`

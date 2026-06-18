@@ -4,6 +4,12 @@ const API_PREFIX = '/gradio_api'
 // Trusted domains for output image URLs returned by the Space
 const TRUSTED_HOSTS = ['.hf.space', '.huggingface.co']
 
+function bufferToBlobPart(buffer: Buffer): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(buffer.length)
+  bytes.set(buffer)
+  return bytes
+}
+
 export interface EditResult {
   buffer: Buffer
   seed: number | null
@@ -90,7 +96,7 @@ async function uploadToSpace(
   signal: AbortSignal
 ): Promise<string | null> {
   try {
-    const blob = new Blob([imageBuffer], { type: 'image/png' })
+    const blob = new Blob([bufferToBlobPart(imageBuffer)], { type: 'image/png' })
     const formData = new FormData()
     formData.append('files', blob, 'input.png')
 

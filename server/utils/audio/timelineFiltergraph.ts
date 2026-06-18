@@ -4,7 +4,7 @@
 // imported by Nitro (~~/) and ported (kept in sync) into the audio-jobs Container —
 // exactly the render.ts ↔ container/render.mjs convention. Validation/duration math
 // live in timelineSchema.ts; this file compiles a *validated* state to ffmpeg args.
-import type { TimelineState } from './timelineSchema'
+import type { AudioClip, TimelineState } from './timelineSchema'
 import { computeDuration } from './timelineSchema'
 
 export interface FiltergraphInput {
@@ -36,6 +36,10 @@ interface BuildAccum {
   busLabels: string[]
 }
 
+function isAudioClip(clip: TimelineState['tracks'][number]['clips'][number]): clip is AudioClip {
+  return clip.type === 'audio'
+}
+
 /** Build per-clip chains + per-track buses. Mutates `acc`. Exported-internal for Task 2. */
 export function buildClipAndTrackChains(state: TimelineState): BuildAccum {
   const acc: BuildAccum = { inputs: [], chains: [], busLabels: [] }
@@ -44,7 +48,7 @@ export function buildClipAndTrackChains(state: TimelineState): BuildAccum {
 
   for (const track of activeTracks) {
     const clipLabels: string[] = []
-    for (const clip of track.clips) {
+    for (const clip of track.clips.filter(isAudioClip)) {
       const i = inputIdx++
       acc.inputs.push({ clipId: clip.id, r2_key: clip.r2_key })
       // aformat FIRST — normalise rate/layout before any amix (prior-art: the #1
