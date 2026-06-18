@@ -82,8 +82,8 @@ function fmt(sec: number) {
       </div>
     </header>
 
-    <div class="grid gap-3 p-3 xl:grid-cols-[280px_minmax(0,1fr)_360px]">
-      <aside class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+    <div class="grid divide-y divide-default xl:grid-cols-[280px_minmax(0,1fr)_360px] xl:divide-x xl:divide-y-0">
+      <aside class="min-w-0 p-3">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-sliders-horizontal" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Library</h3>
@@ -91,7 +91,7 @@ function fmt(sec: number) {
         <slot name="library" />
       </aside>
 
-      <main class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+      <main class="min-w-0 p-3">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Preview + Prepare</h3>
@@ -99,7 +99,7 @@ function fmt(sec: number) {
         <slot name="preview" />
       </main>
 
-      <aside class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+      <aside class="min-w-0 p-3">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-wand-sparkles" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Producer</h3>

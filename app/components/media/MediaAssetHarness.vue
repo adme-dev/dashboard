@@ -158,8 +158,14 @@ const itemsByBucket = computed(() => {
 const visibleBuckets = computed(() => buckets.value.filter(bucket => (itemsByBucket.value[bucket.id] || []).length > 0))
 const emptyBucketCount = computed(() => buckets.value.length - visibleBuckets.value.length)
 const contentGridClass = computed(() => props.embedded
-  ? 'grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)]'
+  ? 'grid divide-y divide-default xl:grid-cols-[280px_minmax(0,1fr)] xl:divide-x xl:divide-y-0'
   : 'grid gap-3 p-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]')
+const workspacePanelClass = computed(() => props.embedded
+  ? 'min-w-0 p-3'
+  : 'min-w-0 rounded-md border border-default bg-default/30 p-3')
+const activityPanelClass = computed(() => props.embedded
+  ? 'border-t border-default p-3'
+  : 'mx-3 mb-3 rounded-md border border-default bg-default/30 p-3')
 
 function maskCanvasPoint(event: PointerEvent) {
   const canvas = maskCanvasRef.value
@@ -571,7 +577,7 @@ onBeforeUnmount(() => {
       v-show="contentOpen"
       :class="contentGridClass"
     >
-      <div class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+      <div :class="workspacePanelClass">
         <div class="mb-2 flex items-center justify-between gap-2">
           <div>
             <p class="text-xs font-medium uppercase text-muted">Project assets</p>
@@ -580,8 +586,10 @@ onBeforeUnmount(() => {
           <UBadge :label="`${items.length}`" size="xs" variant="subtle" color="neutral" />
         </div>
         <div class="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
-          <div v-if="!items.length" class="rounded-md border border-dashed border-default px-3 py-4 text-center text-xs text-muted">
-            No assets bucketed yet — generate a video or save a derivative to get started.
+          <div v-if="!items.length" class="rounded-md border border-dashed border-default px-3 py-4 text-center">
+            <UIcon name="i-lucide-library" class="mx-auto size-5 text-muted" />
+            <p class="mt-2 text-xs font-medium text-highlighted">No prepared assets yet</p>
+            <p class="mt-1 text-[11px] text-muted">Select media in the Library rail, generate a clip, or save a derivative to start preparing assets.</p>
           </div>
           <div v-for="bucket in visibleBuckets" :key="bucket.id" class="space-y-1">
             <div class="flex items-center gap-2 text-xs text-muted">
@@ -610,7 +618,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+      <div :class="workspacePanelClass">
         <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
           <div class="min-w-0">
             <p class="text-xs font-medium uppercase text-muted">Prepare asset</p>
@@ -747,7 +755,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="!embedded" class="min-w-0 rounded-md border border-default bg-default/30 p-3">
+      <div v-if="!embedded" :class="workspacePanelClass">
         <div class="mb-2 flex items-center justify-between gap-2">
           <div>
             <p class="text-xs font-medium uppercase text-muted">Draft assembly</p>
@@ -798,10 +806,7 @@ onBeforeUnmount(() => {
 
     <div
       v-show="contentOpen"
-      :class="[
-        'rounded-md border border-default bg-default/30 p-3',
-        embedded ? '' : 'mx-3 mb-3'
-      ]"
+      :class="activityPanelClass"
     >
       <div class="mb-2 flex items-center justify-between gap-2">
         <p class="text-xs font-medium uppercase text-muted">AI activity</p>

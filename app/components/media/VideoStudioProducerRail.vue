@@ -109,7 +109,7 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
 </script>
 
 <template>
-  <div class="rounded-md border border-default bg-elevated p-3">
+  <div class="space-y-3">
     <div class="flex items-start gap-2">
       <UIcon name="i-lucide-wand-sparkles" class="mt-0.5 size-4 shrink-0 text-primary" />
       <div class="min-w-0 flex-1">
@@ -118,22 +118,22 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
       </div>
     </div>
 
-    <div class="mt-3 grid grid-cols-3 gap-1.5">
-      <div class="rounded-md border border-default bg-default/30 px-2 py-1.5">
+    <div class="grid grid-cols-3 divide-x divide-default rounded-md border border-default bg-default/30">
+      <div class="px-2 py-1.5">
         <p class="text-[10px] uppercase text-muted">Assets</p>
         <p class="text-sm font-medium text-highlighted">{{ props.assetCount }}</p>
       </div>
-      <div class="rounded-md border border-default bg-default/30 px-2 py-1.5">
+      <div class="px-2 py-1.5">
         <p class="text-[10px] uppercase text-muted">Voice</p>
         <p class="text-sm font-medium text-highlighted">{{ props.voiceAssetCount }}</p>
       </div>
-      <div class="rounded-md border border-default bg-default/30 px-2 py-1.5">
+      <div class="px-2 py-1.5">
         <p class="text-[10px] uppercase text-muted">Overlays</p>
         <p class="text-sm font-medium text-highlighted">{{ props.overlayAssetCount }}</p>
       </div>
     </div>
 
-    <div class="mt-3 rounded-md border border-default bg-default/30 p-2">
+    <div class="border-t border-default pt-3">
       <p class="text-[11px] font-medium uppercase text-muted">Selected asset</p>
       <div v-if="props.selectedAsset" class="mt-1 flex items-start gap-2">
         <UIcon name="i-lucide-library" class="mt-0.5 size-3.5 shrink-0 text-primary" />
@@ -147,7 +147,7 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
       <p v-else class="mt-1 text-xs text-muted">Select an item in the library rail to anchor the brief.</p>
     </div>
 
-    <div class="mt-3 rounded-md border border-default bg-default/30 p-2">
+    <div class="border-t border-default pt-3">
       <div class="flex items-center gap-1.5">
         <USelect
           v-model="selectedRecipeId"
@@ -181,7 +181,7 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
       </div>
     </div>
 
-    <div class="mt-3 rounded-md border border-default bg-default/30 transition-colors focus-within:border-primary/50">
+    <div class="rounded-md border border-default bg-default/30 transition-colors focus-within:border-primary/50">
       <UTextarea
         v-model="brief"
         :rows="4"
@@ -217,13 +217,13 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
       </div>
     </div>
 
-    <div v-if="hasManualLaneAssets" class="mt-2 rounded-md border border-default bg-default/30 px-2 py-1.5">
+    <div v-if="hasManualLaneAssets" class="rounded-md border border-default bg-default/30 px-2 py-1.5">
       <p class="text-[11px] leading-snug text-muted">
         Voice and overlays are available as lane inserts. Add them before or after applying the visual draft.
       </p>
     </div>
 
-    <div v-if="recentGenerationJobs.length" class="mt-3 rounded-md border border-default bg-default/30 p-2">
+    <div v-if="recentGenerationJobs.length" class="border-t border-default pt-3">
       <div class="flex items-center justify-between gap-2">
         <p class="text-[11px] font-medium uppercase text-muted">Recent generations</p>
         <UBadge :label="String(recentGenerationJobs.length)" size="xs" variant="soft" color="neutral" />
@@ -243,7 +243,7 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
       </div>
     </div>
 
-    <div v-if="assemblyPlan" class="mt-3 rounded-md border border-default bg-default/30 p-2">
+    <div v-if="assemblyPlan" class="border-t border-default pt-3">
       <div class="flex items-center justify-between gap-2">
         <div class="min-w-0">
           <p class="text-xs font-medium text-highlighted">{{ assemblyPlan.steps?.length ?? 0 }} proposed steps</p>

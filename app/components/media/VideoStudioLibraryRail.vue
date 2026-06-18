@@ -196,6 +196,12 @@ function sourceLabel(value: VideoStudioAssetSource) {
         <USkeleton v-for="n in 5" :key="n" class="h-20 w-full rounded-md" />
       </div>
 
+      <div v-else-if="!props.assets.length" class="rounded-md border border-dashed border-default px-3 py-5 text-center">
+        <UIcon name="i-lucide-film" class="mx-auto size-5 text-muted" />
+        <p class="mt-2 text-xs font-medium text-highlighted">No media in this project yet</p>
+        <p class="mx-auto mt-1 max-w-52 text-[11px] text-muted">Add footage or stills, generate an AI clip, create a voiceover, or attach an overlay to start the edit.</p>
+      </div>
+
       <div v-else-if="!filteredAssets.length" class="rounded-md border border-dashed border-default px-3 py-5 text-center">
         <UIcon name="i-lucide-inbox" class="mx-auto size-5 text-muted" />
         <p class="mt-2 text-xs font-medium text-highlighted">No assets match</p>

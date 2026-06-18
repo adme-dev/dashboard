@@ -19,10 +19,10 @@
 - [x] Keep audio projects labelled as `Timeline editor` or `Audio editor`.
 - [x] Remove duplicate top-level actions between the page toolbar and Video Studio toolbar.
 - [x] Make the Video Studio layout properly full width on desktop.
-- [ ] Replace nested card/accordion feel with a single editor workspace.
+- [x] Replace nested card/accordion feel with a single editor workspace.
 - [x] Move the old `MediaAssetHarness` content out of the bottom accordion and into proper prepare/activity panels.
 - [x] Make the sidebar Creative link clearly open the AV Video Studio project list.
-- [ ] Add clearer empty states for new AV projects.
+- [x] Add clearer empty states for new AV projects.
 
 ## Phase 2: Unified Layout
 

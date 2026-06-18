@@ -120,6 +120,7 @@ describe('VideoStudioLibraryRail', () => {
 
   it('renders an empty state when no assets are available', async () => {
     const html = await render({ assets: [], selectedId: null, loading: false })
-    expect(html).toContain('No assets match')
+    expect(html).toContain('No media in this project yet')
+    expect(html).toContain('Add footage or stills')
   })
 })
