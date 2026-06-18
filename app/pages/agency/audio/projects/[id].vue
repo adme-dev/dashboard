@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
 import { apiErrorDescription } from '~~/app/utils/apiError'
+import { resolveVideoStudioClipInspector } from '~~/app/utils/video/clipInspector'
 import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipInspector'
 import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
@@ -416,6 +417,24 @@ const selectedOverlayClip = computed(() => {
   }
   return null
 })
+
+const selectedClipInspector = computed(() => resolveVideoStudioClipInspector({
+  timeline: editor.timeline.value,
+  selectedClipId: selectedClipId.value,
+}))
+
+function splitSelectedClip() {
+  const selected = selectedClipInspector.value
+  if (!selected || selected.kind !== 'audio') return
+  editor.sliceAction(selected.clipId, editor.currentTime.value)
+}
+
+function deleteSelectedClip() {
+  const selected = selectedClipInspector.value
+  if (!selected) return
+  editor.deleteClipAction(selected.clipId)
+  selectedClipId.value = null
+}
 
 function onReplaceSelectedOverlay(p: { gsapProjectId: string; gsapFormatKey: string; durationSec?: number; startSec?: number }) {
   const selected = selectedOverlayClip.value
@@ -913,6 +932,14 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           @trim-clip="(p) => editor.trimClipAction(p.clipId, p.edge, p.newTimeSec)"
           @slice="(p) => editor.sliceAction(p.clipId, p.timeSec)"
           @delete-clip="(p) => editor.deleteClipAction(p.clipId)"
+        />
+
+        <VideoStudioClipInspector
+          v-if="isAv && selectedClipInspector"
+          :clip="selectedClipInspector"
+          :can-split="selectedClipInspector.kind === 'audio'"
+          @split="splitSelectedClip"
+          @delete="deleteSelectedClip"
         />
 
         <!-- Per-clip effects drawer — shows for any selected video clip -->

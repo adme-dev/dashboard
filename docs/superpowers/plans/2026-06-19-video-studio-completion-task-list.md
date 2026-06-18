@@ -134,9 +134,9 @@ Decision: assembly plans now append explicit review-only `place-voiceover`, `pla
 
 ## Phase 10: Timeline Editing
 
-- [ ] Keep current video/overlay/voice/music lanes.
-- [ ] Improve clip selection affordance.
-- [ ] Add clip inspector panel.
+- [x] Keep current video/overlay/voice/music lanes.
+- [x] Improve clip selection affordance.
+- [x] Add clip inspector panel.
 - [ ] Add selected clip replace action.
 - [ ] Add split/delete/trim discoverability.
 - [ ] Improve effect controls for selected video clips.
@@ -144,6 +144,8 @@ Decision: assembly plans now append explicit review-only `place-voiceover`, `pla
 - [ ] Add fit/fill/crop controls for video/still clips.
 - [ ] Add timeline zoom polish.
 - [ ] Add keyboard shortcut help.
+
+Decision: selected clips now show a compact inspector below the timeline with track, timing, source, effects/style details, and explicit Split/Delete actions. Split is only enabled for audio clips because the current editor slice action is audio-only; trim discoverability and video/overlay/caption split remain future work.
 
 ## Phase 11: Render + Distribution
 
