@@ -13,6 +13,7 @@ const stubs = {
   },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
   UInput: { name: 'UInput', props: ['modelValue', 'placeholder'], emits: ['update:modelValue'], template: '<input :value="modelValue" :placeholder="placeholder" />' },
+  UFormField: { name: 'UFormField', props: ['label'], template: '<label><span>{{ label }}</span><slot /></label>' },
   USkeleton: { name: 'USkeleton', template: '<div />' },
 }
 
@@ -43,7 +44,26 @@ describe('VideoStudioOverlayComposer', () => {
     expect(html).toContain('Knox GWM')
     expect(html).toContain('2 formats')
     expect(html).toContain('reels_9x16')
+    expect(html).toContain('reels_9x16 · 0 layers')
+    expect(html).toContain('Start')
+    expect(html).toContain('Duration')
     expect(html).toContain('Add overlay')
+  })
+
+  it('renders replacement action for a selected overlay clip', async () => {
+    const html = await render({
+      selectedOverlayClip: { clipId: 'overlay-1', startSec: 1, durationSec: 4 },
+      projects: [{
+        id: 'banner-1',
+        name: 'Lower third',
+        status: 'ready',
+        canvasData: { reels_9x16: { layers: [{ type: 'text' }] } },
+      }],
+      loading: false,
+    })
+
+    expect(html).toContain('Replace selected overlay')
+    expect(html).toContain('reels_9x16 · 1 layers')
   })
 
   it('renders an empty state without projects', async () => {

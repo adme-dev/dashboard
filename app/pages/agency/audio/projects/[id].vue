@@ -73,7 +73,7 @@ const overlayPickerOpen = ref(false)
 const mediaPickerOpen = ref(false)
 
 function onOverlayPick(p: { gsapProjectId: string; gsapFormatKey: string }) {
-  editor.addOverlayClipAction(p.gsapProjectId, p.gsapFormatKey, 5, editor.currentTime.value)
+  editor.addOverlayClipAction(p.gsapProjectId, p.gsapFormatKey, p.durationSec ?? 5, p.startSec ?? editor.currentTime.value)
 }
 function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'uploaded_footage' | 'still_kenburns' }) {
   editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value)
@@ -371,6 +371,34 @@ const selectedVideoClip = computed(() => {
   }
   return null
 })
+
+const selectedOverlayClip = computed(() => {
+  const tl = editor.timeline.value
+  if (!tl || !selectedClipId.value) return null
+  for (const track of tl.tracks) {
+    if (track.kind !== 'overlay') continue
+    const clip = track.clips.find(candidate => candidate.type === 'overlay' && candidate.id === selectedClipId.value)
+    if (!clip || clip.type !== 'overlay') continue
+    return {
+      clipId: clip.id,
+      startSec: clip.timeline_start_sec,
+      durationSec: clip.duration_sec,
+    }
+  }
+  return null
+})
+
+function onReplaceSelectedOverlay(p: { gsapProjectId: string; gsapFormatKey: string; durationSec?: number; startSec?: number }) {
+  const selected = selectedOverlayClip.value
+  if (!selected) return
+  editor.deleteClipAction(selected.clipId)
+  editor.addOverlayClipAction(
+    p.gsapProjectId,
+    p.gsapFormatKey,
+    p.durationSec ?? selected.durationSec,
+    p.startSec ?? selected.startSec
+  )
+}
 
 function toggleClipEffect(presetId: string) {
   const selected = selectedVideoClip.value
@@ -806,8 +834,11 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 <VideoStudioOverlayComposer
                   :projects="studioBannerProjects"
                   :loading="studioBannerPending"
+                  :current-time-sec="editor.currentTime.value"
+                  :selected-overlay-clip="selectedOverlayClip"
                   @refresh="refreshStudioBannerProjects"
                   @add-overlay="onOverlayPick"
+                  @replace-overlay="onReplaceSelectedOverlay"
                 />
                 <VideoStudioProducerRail
                   :project-id="projectId"

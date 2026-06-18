@@ -91,13 +91,15 @@
 
 ## Phase 7: Overlays
 
-- [ ] Keep Banner Studio overlay path as authoritative short-term.
-- [ ] Improve overlay picker inside Video Studio.
-- [ ] Add overlay preview thumbnail or format preview.
-- [ ] Add overlay lane insertion with duration/start controls.
-- [ ] Add `Replace selected overlay` action.
-- [ ] Spike inline overlay templates: title card, lower third, offer card, CTA, caption-safe title.
-- [ ] Decide whether inline templates become Banner Studio projects or a new overlay subtype.
+- [x] Keep Banner Studio overlay path as authoritative short-term.
+- [x] Improve overlay picker inside Video Studio.
+- [x] Add overlay preview thumbnail or format preview.
+- [x] Add overlay lane insertion with duration/start controls.
+- [x] Add `Replace selected overlay` action.
+- [x] Spike inline overlay templates: title card, lower third, offer card, CTA, caption-safe title.
+- [x] Decide whether inline templates become Banner Studio projects or a new overlay subtype.
+
+Decision: inline overlay templates should create or reuse Banner Studio projects before timeline insertion; do not introduce a second overlay subtype until Banner Studio cannot cover the workflow.
 
 ## Phase 8: Captions
 
