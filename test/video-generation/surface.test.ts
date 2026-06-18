@@ -3,11 +3,13 @@ import { isTenantModel } from '~~/server/utils/video-generation/surface'
 import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 
 describe('isTenantModel', () => {
-  it('allows tenant-surface and unmarked models', () => {
+  it('allows active tenant Cloudflare models', () => {
     expect(isTenantModel(getVideoGenerationModel('aigateway/seedance-i2v')!)).toBe(true)
-    expect(isTenantModel(getVideoGenerationModel('mock/i2v-safe')!)).toBe(true) // no surface field → allowed
   })
-  it('rejects internal-surface models', () => {
+  it('rejects hidden, mock, disabled, and internal models', () => {
+    expect(isTenantModel(getVideoGenerationModel('mock/i2v-safe')!)).toBe(false)
+    expect(isTenantModel(getVideoGenerationModel('aigateway/runway-i2v')!)).toBe(false)
+    expect(isTenantModel(getVideoGenerationModel('gateway/i2v-dormant')!)).toBe(false)
     expect(isTenantModel(getVideoGenerationModel('aigateway/veo-t2v-internal')!)).toBe(false)
   })
 })

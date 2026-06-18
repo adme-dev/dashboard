@@ -4,6 +4,15 @@ export type VideoGenerationSubjectType = 'vehicle' | 'non_vehicle' | 'unknown'
 
 export type VideoGenerationCostUnit = 'generation' | 'second' | 'clip'
 
+export interface VideoGenerationCapabilities {
+  /** Continue a finished or source video beyond its current end frame. */
+  extendVideo: boolean
+  /** Generate from both an explicit start frame and an explicit end frame. */
+  endFrame: boolean
+  /** Transform an existing video into a new video, preserving temporal structure. */
+  videoToVideo: boolean
+}
+
 export type VideoGenerationSafetyClass =
   | 'vehicle_i2v_safe'
   | 'non_vehicle_t2v'
@@ -23,9 +32,10 @@ export interface VideoGenerationModel {
   resolutions: string[]
   estimatedCostCents: number
   costUnit: VideoGenerationCostUnit
+  capabilities: VideoGenerationCapabilities
   safetyClass: VideoGenerationSafetyClass
   defaultEnabled: boolean
-  /** muapi gateway mapping — present only for provider==='muapi' models. */
+  /** Legacy-only MuAPI mapping. The active model registry is Cloudflare AI Gateway only. */
   muapi?: {
     endpoint: string            // muapi model endpoint slug, e.g. 'generate_kling_i2v'
   }

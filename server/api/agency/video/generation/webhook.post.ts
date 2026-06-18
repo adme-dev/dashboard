@@ -21,9 +21,10 @@ export default defineEventHandler(async (event) => {
   const requestId = payload.request_id ?? payload.id
   if (!requestId) throw createError({ statusCode: 400, statusMessage: 'Missing request id' })
 
-  const row = await queryOne(`SELECT * FROM video_generation_jobs WHERE provider_request_id = $1`, [String(requestId)])
+  const row = await queryOne(`SELECT * FROM video_generation_jobs WHERE provider_request_id = $1 AND provider = 'muapi'`, [String(requestId)])
   if (!row) return { ok: true, ignored: 'unknown_request' }
   const job = mapVideoGenerationJobRow(row)
+  if (job.provider !== 'muapi') return { ok: true, ignored: 'wrong_provider' }
   if (job.status === 'succeeded' || job.status === 'failed') return { ok: true, ignored: 'already_terminal' }
 
   const decision = classifyMuapiWebhook(payload)

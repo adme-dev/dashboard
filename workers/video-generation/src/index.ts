@@ -16,9 +16,6 @@ import { processVideoGenerationJob } from './worker'
 interface Env {
   DATABASE_URL?: string
   HYPERDRIVE?: { connectionString: string }
-  MUAPI_API_KEY?: string
-  MUAPI_BASE_URL?: string
-  MUAPI_WEBHOOK_URL?: string
   AI: { run(model: string, inputs: Record<string, unknown>, options?: any): Promise<any> }
   AUDIO_BUCKET: { put(key: string, value: ArrayBuffer | Uint8Array, options?: any): Promise<unknown> }
 }
@@ -61,7 +58,7 @@ export default {
           providers: {
             mock: mockVideoGenerationProvider,
             aigateway: makeAiGatewayProvider({
-              // Faithful passthrough — the provider builds the queueRequest + gateway-metadata options.
+              // Faithful passthrough — the provider builds flat model inputs plus gateway metadata.
               run: (model, inputs, options) => env.AI.run(model, inputs as any, options as any),
             }),
           },

@@ -39,7 +39,7 @@ describe('aiGateway provider (synchronous partner video models)', () => {
 
   it('submit() throws if the model has no cfModel mapping', async () => {
     const provider = makeAiGatewayProvider({ run: vi.fn() })
-    await expect(provider.submit({ ...i2vReq, modelId: 'muapi/i2v-kling' })).rejects.toThrow(/no cfModel/)
+    await expect(provider.submit({ ...i2vReq, modelId: 'mock/i2v-safe' })).rejects.toThrow(/no cfModel/)
   })
 
   it('poll() right after submit() returns the completed result (same-invocation handoff)', async () => {
@@ -80,6 +80,27 @@ describe('aiGateway provider (synchronous partner video models)', () => {
     const sub = await provider.submit({ ...i2vReq, jobId: 'job-alt' })
     const res = await provider.poll(sub)
     expect(res.outputUrl).toBe('https://cf/a.mp4')
+  })
+
+  it('poll() tolerates output_url result field names', async () => {
+    const run = vi.fn(async () => ({ state: 'Completed', result: { output_url: 'https://cf/output-url.mp4' } }))
+    const provider = makeAiGatewayProvider({ run })
+    const sub = await provider.submit({ ...i2vReq, jobId: 'job-output-url' })
+    const res = await provider.poll(sub)
+    expect(res.outputUrl).toBe('https://cf/output-url.mp4')
+  })
+
+  it('poll() includes Cloudflare error details when no video url is returned', async () => {
+    const run = vi.fn(async () => ({
+      success: false,
+      errors: [{ code: 7003, message: 'User Input Error' }],
+      result: { state: 'Failed' },
+    }))
+    const provider = makeAiGatewayProvider({ run })
+    const sub = await provider.submit({ ...i2vReq, jobId: 'job-error-detail' })
+    const res = await provider.poll(sub)
+    expect(res.status).toBe('failed')
+    expect(res.errorMessage).toContain('User Input Error')
   })
 
   it('cross-process poll() (reconcile cron, no cached result) reports running for the reaper', async () => {

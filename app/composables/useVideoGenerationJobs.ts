@@ -6,6 +6,11 @@ export interface VideoGenerationJobView {
   mode: string
   modelId: string
   prompt: string
+  sourceAssetIds: string[]
+  durationSeconds: number
+  aspectRatio: string
+  resolution: string | null
+  subjectType: 'vehicle' | 'non_vehicle' | 'unknown'
   outputAssetId: string | null
   outputR2Key: string | null
   errorMessage: string | null

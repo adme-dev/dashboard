@@ -166,8 +166,8 @@ export function useMediaProjectEditor(projectId: string) {
   // ---------------------------------------------------------------------------
   // Autosave wiring
   // ---------------------------------------------------------------------------
-  async function doSave() {
-    if (!timeline.value) return
+  async function doSave(): Promise<boolean> {
+    if (!timeline.value) return false
     saveStatus.value = 'saving'
     try {
       await $fetch(`/api/agency/audio/projects/${projectId}/timeline`, {
@@ -175,13 +175,19 @@ export function useMediaProjectEditor(projectId: string) {
         body: { state: timeline.value }
       })
       saveStatus.value = 'saved'
+      return true
     } catch {
       saveStatus.value = 'error'
+      return false
     }
   }
 
-  const saver = makeDebouncedSaver(doSave, 1500)
+  const saver = makeDebouncedSaver(async () => { await doSave() }, 1500)
   function scheduleAutosave() { saver.trigger() }
+  async function saveNow() {
+    const saved = await doSave()
+    if (!saved) throw new Error('Could not save timeline')
+  }
 
   // ---------------------------------------------------------------------------
   // Engine reload — re-plans and re-loads the engine after an edit
@@ -368,7 +374,7 @@ export function useMediaProjectEditor(projectId: string) {
     if (rendering.value) return { ok: false }
     rendering.value = true
     try {
-      await doSave()
+      if (!await doSave()) return { ok: false }
       await $fetch(`/api/agency/audio/projects/${projectId}/render-video`, { method: 'POST', body: formats?.length ? { formats } : {} })
       await refreshRenderJobs()
       scheduleJobPoll()
@@ -447,7 +453,7 @@ export function useMediaProjectEditor(projectId: string) {
   async function saveVersion(label: string) {
     // versions.post reads body: { label?: string | null }
     // It snapshots the server's current draft timeline; save first so it's up to date.
-    await doSave()
+    await saveNow()
     return $fetch(`/api/agency/audio/projects/${projectId}/versions`, {
       method: 'POST',
       body: { label }
@@ -557,7 +563,7 @@ export function useMediaProjectEditor(projectId: string) {
     // State
     timeline, clips, tracks, status, error,
     isPlaying, currentTime, duration,
-    canUndo, canRedo, saveStatus,
+    canUndo, canRedo, saveStatus, saveNow,
     /** Clip ids whose source couldn't be loaded (deleted/404). Non-fatal warning. */
     missingClipIds,
     mediaType,

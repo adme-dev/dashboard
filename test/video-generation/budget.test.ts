@@ -178,4 +178,42 @@ describe('reserveAndCreateVideoGenerationJob', () => {
     expect(fake.insertCalls).toHaveLength(0)
     expect(fake.calls).not.toContain('spend')
   })
+
+  it('rejects reused idempotency keys for a different project without reserving', async () => {
+    const fake = makeFakeTransaction({
+      spendCents: 999,
+      existingRow: {
+        id: 'job-existing',
+        tenant_id: 'tenant-1',
+        project_id: 'other-project',
+        timeline_id: 'timeline-1',
+        created_by: 'user-1',
+        status: 'queued',
+        mode: 'image-to-video',
+        model_id: 'aigateway/seedance-i2v',
+        provider: 'aigateway',
+        prompt: 'subtle reveal',
+        source_asset_ids: ['asset-1'],
+        duration_seconds: 5,
+        aspect_ratio: '16:9',
+        resolution: '720p',
+        subject_type: 'vehicle',
+        compliance_status: 'vehicle_i2v',
+        compliance_reasons: [],
+        estimated_cost_cents: 50,
+        actual_cost_cents: null,
+        idempotency_key: 'idem-1',
+        created_at: '2026-06-10T00:00:00.000Z',
+        updated_at: '2026-06-10T00:00:00.000Z',
+      },
+    })
+
+    const result = await reserveAndCreateVideoGenerationJob(baseInput(), enabledPolicy, {
+      transaction: fake.transaction as any,
+    })
+
+    expect(result).toEqual({ ok: false, reason: 'idempotency_key_conflict' })
+    expect(fake.insertCalls).toHaveLength(0)
+    expect(fake.calls).not.toContain('spend')
+  })
 })

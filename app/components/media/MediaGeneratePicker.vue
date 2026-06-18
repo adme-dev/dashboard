@@ -3,21 +3,29 @@
 // or image-to-video) via the gated generation API. Emits `submitted(jobId)` so the
 // page can start polling; the finished asset surfaces in the Video Library.
 import { ref, computed, watch } from 'vue'
-import { modelsForMode, validateGenerationForm, costPreviewCents } from '~~/app/utils/videoGenerationForm'
+import { modelsForMode, validateGenerationForm, costPreviewCents, draftFromGenerationJob } from '~~/app/utils/videoGenerationForm'
 import { videoModelPresentation, type VideoModelOption } from '~~/app/utils/video/modelPresentation'
 import { VIDEO_GENERATION_TEMPLATES, type VideoGenerationTemplate } from '~~/app/utils/video/generationTemplates'
+import { videoGenerationJobTimelinePayload, type VideoLibraryTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
+import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
 
 const props = defineProps<{
   open: boolean
   projectId: string
-  /** stills already on the timeline: { assetId, label } — assetId must be a video_assets id */
-  timelineStills: { assetId: string; label: string }[]
+  /** stills already on the timeline that can be registered as i2v source assets */
+  timelineStills: { clipId: string; label: string }[]
   /** default aspect from the project format, e.g. '9:16' */
   defaultAspect: string
   initialPrompt?: string | null
+  recentJobs?: VideoGenerationJobView[]
+  prepareTimelineStillSource?: () => Promise<void>
 }>()
-const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'submitted', jobId: string): void }>()
+const emit = defineEmits<{
+  (e: 'update:open', v: boolean): void
+  (e: 'submitted', jobId: string): void
+  (e: 'add-to-timeline', payload: VideoLibraryTimelinePayload): void
+}>()
 
 const toast = useToast()
 const { data: modelData, pending: modelsPending, refresh: refreshModels } = useFetch('/api/agency/video/generation/models', { lazy: true, immediate: false })
@@ -60,6 +68,7 @@ const modelItems = computed(() => models.value.map((m) => {
 }))
 const selectedModelIcon = computed(() => (model.value ? videoModelPresentation(model.value).icon : 'i-lucide-box'))
 const costChipLabel = computed(() => `~$${(estCostCents.value / 100).toFixed(2)} · ${durationSeconds.value}s`)
+const recentJobs = computed(() => (props.recentJobs ?? []).slice(0, 5))
 
 // Templates gallery shows while the prompt is empty (the blank-page moment);
 // clearing the prompt brings it back. Applying one prefills mode + prompt +
@@ -75,6 +84,54 @@ function applyTemplate(template: VideoGenerationTemplate) {
   if (model.value?.durationsSeconds.includes(template.durationSeconds)) {
     durationSeconds.value = template.durationSeconds
   }
+}
+
+function applyJobDraft(job: VideoGenerationJobView) {
+  const draft = draftFromGenerationJob(job, allModels.value)
+  if (!draft) {
+    toast.add({ title: 'Cannot reuse this generation', description: 'The model or mode is no longer available.', color: 'warning' })
+    return
+  }
+
+  mode.value = draft.mode
+  modelId.value = draft.modelId
+  prompt.value = draft.prompt
+  durationSeconds.value = draft.durationSeconds
+  subjectType.value = draft.subjectType
+  selectedStillId.value = null
+
+  if (draft.sourceAssetId) {
+    sourceAssetId.value = draft.sourceAssetId
+    sourceFileName.value = 'Previous source image'
+  } else {
+    clearSource()
+  }
+}
+
+function jobModelLabel(job: VideoGenerationJobView): string {
+  return allModels.value.find((candidate) => candidate.id === job.modelId)?.label ?? job.modelId
+}
+
+function jobStatusColor(job: VideoGenerationJobView): 'primary' | 'success' | 'error' | 'warning' | 'neutral' {
+  if (job.status === 'succeeded') return 'success'
+  if (job.status === 'failed') return 'error'
+  if (job.status === 'blocked') return 'warning'
+  if (job.status === 'running') return 'primary'
+  return 'neutral'
+}
+
+function canReuseJob(job: VideoGenerationJobView): boolean {
+  return job.status === 'succeeded' || job.status === 'failed' || job.status === 'blocked'
+}
+
+function canAddJobToTimeline(job: VideoGenerationJobView): boolean {
+  return job.status === 'succeeded' && Boolean(job.outputAssetId && job.outputR2Key)
+}
+
+function addJobToTimeline(job: VideoGenerationJobView) {
+  const payload = videoGenerationJobTimelinePayload(job)
+  if (!payload) return
+  emit('add-to-timeline', payload)
 }
 
 function onModeChange() {
@@ -113,20 +170,25 @@ function triggerFileInput() {
   fileInputRef.value?.click()
 }
 
-// Register a still already in this project (on the timeline) as the i2v source —
-// reuses media the user already uploaded instead of a fresh upload.
-async function onExistingStillSelected(assetId: string | null) {
-  if (!assetId) return
+function errorDescription(error: any, fallback = 'Failed'): string {
+  return error?.data?.statusMessage ?? error?.message ?? fallback
+}
+
+// Register a still already in this project timeline as the i2v source — reuses
+// media the user already uploaded instead of requiring another image upload.
+async function onExistingStillSelected(clipId: string | null) {
+  if (!clipId) return
   uploading.value = true
   try {
-    const res = await $fetch<{ id: string }>('/api/agency/video/generation/source-assets/from-asset', {
+    await props.prepareTimelineStillSource?.()
+    const res = await $fetch<{ id: string }>('/api/agency/video/generation/source-assets/from-timeline-still', {
       method: 'POST',
-      body: { assetId, subjectType: subjectType.value },
+      body: { projectId: props.projectId, clipId, subjectType: subjectType.value },
     })
     sourceAssetId.value = res.id
-    sourceFileName.value = props.timelineStills.find((s) => s.assetId === assetId)?.label ?? 'Project still'
+    sourceFileName.value = props.timelineStills.find((s) => s.clipId === clipId)?.label ?? 'Project still'
   } catch (e: any) {
-    toast.add({ title: 'Could not use still', description: e?.data?.statusMessage ?? 'Failed', color: 'error' })
+    toast.add({ title: 'Could not use still', description: errorDescription(e), color: 'error' })
     clearSource()
   } finally {
     uploading.value = false
@@ -142,6 +204,7 @@ async function onFileSelected(event: Event) {
   try {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('projectId', props.projectId)
     formData.append('subjectType', subjectType.value)
 
     const res = await $fetch<{ id: string }>('/api/agency/video/generation/source-assets', {
@@ -152,7 +215,7 @@ async function onFileSelected(event: Event) {
     sourceAssetId.value = res.id
     sourceFileName.value = file.name
   } catch (e: any) {
-    toast.add({ title: 'Upload failed', description: e?.data?.statusMessage ?? 'Failed', color: 'error' })
+    toast.add({ title: 'Upload failed', description: errorDescription(e), color: 'error' })
     // Reset so the user can retry
     sourceAssetId.value = null
     sourceFileName.value = null
@@ -186,7 +249,7 @@ async function submit() {
     emit('update:open', false)
   } catch (e: any) {
     const reasons = e?.data?.data?.reasons as string[] | undefined
-    toast.add({ title: 'Could not start generation', description: reasons?.join(' ') ?? e?.data?.statusMessage ?? 'Failed', color: 'error' })
+    toast.add({ title: 'Could not start generation', description: reasons?.join(' ') ?? errorDescription(e), color: 'error' })
   } finally {
     submitting.value = false
   }
@@ -282,7 +345,7 @@ async function submit() {
                 <USelectMenu
                   v-if="timelineStills.length"
                   v-model="selectedStillId"
-                  :items="timelineStills.map((s) => ({ label: s.label, value: s.assetId }))"
+                  :items="timelineStills.map((s) => ({ label: s.label, value: s.clipId }))"
                   value-key="value"
                   size="xs"
                   placeholder="Use a project still"
@@ -356,6 +419,54 @@ async function submit() {
               <UTooltip :text="`Estimated cost for ${durationSeconds}s${model?.costUnit === 'second' ? ' (billed per second)' : ''}`">
                 <UBadge :label="costChipLabel" variant="subtle" color="neutral" class="ml-auto tabular-nums" />
               </UTooltip>
+            </div>
+          </div>
+
+          <div v-if="recentJobs.length" class="space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-xs font-semibold uppercase tracking-widest text-muted">
+                Recent generations
+              </p>
+              <span class="text-[11px] text-muted">{{ recentJobs.length }} latest</span>
+            </div>
+            <div class="space-y-2">
+              <div
+                v-for="job in recentJobs"
+                :key="job.id"
+                class="flex items-center gap-3 rounded-lg border border-default bg-default/30 px-3 py-2.5"
+              >
+                <UIcon
+                  :name="job.status === 'succeeded' ? 'i-lucide-circle-check' : job.status === 'failed' || job.status === 'blocked' ? 'i-lucide-circle-alert' : 'i-lucide-loader-circle'"
+                  class="size-4 shrink-0 text-muted"
+                />
+                <div class="min-w-0 flex-1">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <p class="truncate text-xs font-medium text-highlighted">{{ jobModelLabel(job) }}</p>
+                    <UBadge :label="job.status" :color="jobStatusColor(job)" variant="subtle" size="xs" class="shrink-0 capitalize" />
+                  </div>
+                  <p class="mt-0.5 truncate text-[11px] text-muted">{{ job.prompt }}</p>
+                </div>
+                <div class="flex shrink-0 items-center gap-1">
+                  <UButton
+                    v-if="canAddJobToTimeline(job)"
+                    size="xs"
+                    variant="soft"
+                    color="neutral"
+                    icon="i-lucide-plus-circle"
+                    label="Add"
+                    @click="addJobToTimeline(job)"
+                  />
+                  <UButton
+                    v-if="canReuseJob(job)"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-rotate-ccw"
+                    :label="job.status === 'failed' || job.status === 'blocked' ? 'Retry' : 'Reuse'"
+                    @click="applyJobDraft(job)"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 

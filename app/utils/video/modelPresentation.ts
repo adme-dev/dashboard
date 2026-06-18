@@ -17,6 +17,7 @@ export function selectableVideoModelOptions(models: VideoGenerationModel[]): Vid
       ...model,
       modes: [...model.modes],
       allowedSubjectTypes: [...model.allowedSubjectTypes],
+      capabilities: { ...model.capabilities },
       label: model.displayName
     }))
 }
@@ -32,7 +33,6 @@ export interface VideoModelRowPresentation {
 
 const PROVIDER_ICONS: Record<string, string> = {
   aigateway: 'i-lucide-cloud',
-  muapi: 'i-lucide-zap'
 }
 
 const MODE_LABELS: Record<string, string> = {

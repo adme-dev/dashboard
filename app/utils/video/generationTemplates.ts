@@ -45,28 +45,28 @@ export const VIDEO_GENERATION_TEMPLATES: VideoGenerationTemplate[] = [
   {
     id: 'brand-story-broll',
     title: 'Brand story b-roll',
-    tagline: 'Warm lifestyle montage for brand films',
+    tagline: 'Animate a brand still with quiet atmosphere',
     icon: 'i-lucide-clapperboard',
-    mode: 'text-to-video',
-    prompt: 'Warm cinematic lifestyle b-roll: morning light through a window, hands at work on a craft, slow dolly across a workspace with soft bokeh. Natural color grade with gentle film grain, authentic documentary feel, no on-screen text.',
+    mode: 'image-to-video',
+    prompt: 'Subtle cinematic movement from the source image: slow dolly drift, warm morning light, soft bokeh, gentle environmental motion in the background. Keep the subject and brand details stable while adding an authentic documentary feel.',
     durationSeconds: 10
   },
   {
-    id: 'city-walk',
-    title: 'City walk',
-    tagline: 'Urban energy for socials',
-    icon: 'i-lucide-footprints',
-    mode: 'text-to-video',
-    prompt: 'Steadicam follow shot through a lively city street at dusk. Neon signs reflecting on wet pavement, anonymous passers-by in motion blur, vertical-friendly framing, energetic but smooth camera movement, moody cinematic grade.',
+    id: 'offer-background-loop',
+    title: 'Offer background',
+    tagline: 'Motion bed for price or offer overlays',
+    icon: 'i-lucide-badge-percent',
+    mode: 'image-to-video',
+    prompt: 'Create a clean advertising background loop from the source image. Slow parallax, soft light movement, premium but restrained motion, clear negative space for price or offer graphics. Do not add text; preserve product shape and brand details.',
     durationSeconds: 5
   },
   {
-    id: 'product-ad-vo-bed',
-    title: 'Voiceover ad bed',
-    tagline: 'Clean b-roll to sit under a VO',
-    icon: 'i-lucide-mic',
-    mode: 'text-to-video',
-    prompt: 'Clean minimal product-commercial b-roll: slow panning shots over neutral textured backgrounds, soft gradients of light, unhurried pacing with long takes designed to sit under a voiceover. No text, no people, calm premium tone.',
+    id: 'showroom-walkaround',
+    title: 'Showroom walkaround',
+    tagline: 'Dealer-style walkaround motion',
+    icon: 'i-lucide-route',
+    mode: 'image-to-video',
+    prompt: 'Smooth handheld showroom walkaround from the source image. Gentle camera move along the vehicle or product, realistic reflections, polished dealership lighting, natural depth, steady professional pacing. Keep logos, bodywork and proportions consistent.',
     durationSeconds: 10
   }
 ]

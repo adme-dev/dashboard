@@ -86,6 +86,31 @@ describe('POST /agency/video/generation/source-assets/from-asset', () => {
     expect(mockCreateSourceAsset).not.toHaveBeenCalled()
   })
 
+  it('rejects accessible video_assets whose R2 key is not an image', async () => {
+    mockQueryOne.mockResolvedValueOnce({
+      id: assetId,
+      client_id: 'dealer-1',
+      created_by: 'user-1',
+      title: 'Clip',
+      source_project_id: null,
+      source_job_id: null,
+      r2_key: 'media/dealer-1/clip.mp4',
+      format: 'mp4',
+      width: 1200,
+      height: 800,
+      duration_sec: 6,
+      thumbnail_key: null,
+      caption_vtt_key: null,
+      transcript: null,
+      metadata: {},
+      created_at: 'now',
+      updated_at: 'now',
+    })
+
+    await expect(handler({ body: { assetId } } as any)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mockCreateSourceAsset).not.toHaveBeenCalled()
+  })
+
   it('404s when the editor cannot access the existing video_asset', async () => {
     mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
     mockQueryOne.mockResolvedValue(null)

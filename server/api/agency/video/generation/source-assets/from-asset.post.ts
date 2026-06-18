@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { createSourceAsset } from '~~/server/utils/video-generation/sourceAssetStore'
 import { getAccessibleVideoAsset } from '~~/server/utils/video/assets'
+import { imageContentTypeForR2Key } from '~~/server/utils/video-generation/sourceContentTypes'
 
 // Register an existing project video_asset (a still already on the timeline / in the
 // library) as an approved i2v source — so users animate stills they already uploaded
@@ -10,10 +11,6 @@ const BodySchema = z.object({
   assetId: z.string().uuid(),
   subjectType: z.enum(['vehicle', 'non_vehicle', 'unknown']).default('unknown'),
 })
-
-const IMAGE_CONTENT_TYPE: Record<string, string> = {
-  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
-}
 
 export default defineEventHandler(async (event) => {
   if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
@@ -26,8 +23,8 @@ export default defineEventHandler(async (event) => {
   const asset = await getAccessibleVideoAsset(parsed.data.assetId, user)
   if (!asset?.r2Key) throw createError({ statusCode: 404, statusMessage: 'Asset not found' })
 
-  const ext = (asset.r2Key.split('.').pop() || 'jpg').toLowerCase()
-  const contentType = IMAGE_CONTENT_TYPE[ext] ?? 'image/jpeg'
+  const contentType = imageContentTypeForR2Key(asset.r2Key)
+  if (!contentType) throw createError({ statusCode: 400, statusMessage: 'Source asset must be an image' })
 
   const source = await createSourceAsset({
     clientId: asset.clientId ?? null,

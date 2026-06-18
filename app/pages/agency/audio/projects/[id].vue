@@ -78,15 +78,13 @@ const genJobs = useVideoGenerationJobs(projectId.value)
 const videoAssets = ref<VideoAsset[]>([])
 const selectedClipId = ref<string | null>(null)
 
-// Stills already on the timeline that have a backing video_assets id (i2v source).
-// NOTE: clips added via addVideoClip have asset_id=null, so this is usually empty in
-// slice 1 — i2v source-still selection is a documented follow-up. Kept so the prop is wired.
+// Stills already on the timeline that can be registered as i2v source assets.
 const timelineStills = computed(() => {
   const tl = editor.timeline.value
-  if (!tl) return [] as { assetId: string; label: string }[]
-  const out: { assetId: string; label: string }[] = []
+  if (!tl) return [] as { clipId: string; label: string }[]
+  const out: { clipId: string; label: string }[] = []
   for (const t of tl.tracks) if (t.kind === 'video') for (const c of (t.clips as any[])) {
-    if (c.base_source === 'still_kenburns' && c.asset_id) out.push({ assetId: c.asset_id, label: `Still @ ${Math.round(c.timeline_start_sec)}s` })
+    if (c.base_source === 'still_kenburns' && c.r2_key) out.push({ clipId: c.id, label: `Still @ ${Math.round(c.timeline_start_sec)}s` })
   }
   return out
 })
@@ -429,7 +427,7 @@ const saveStatusColor = computed(() => {
             { label: 'Audio clip', icon: 'i-lucide-music', onSelect: () => { pickerOpen = true } },
             { label: 'Footage / still', icon: 'i-lucide-film', onSelect: () => { mediaPickerOpen = true } },
             { label: 'Overlay', icon: 'i-lucide-shapes', onSelect: () => { overlayPickerOpen = true } },
-            ...(videoGenerationEnabled && videoGenerationModelsAvailable ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen = true } }] : []),
+            ...(videoGenerationEnabled && videoGenerationModelsAvailable ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen.value = true } }] : []),
             ...(videoGenerationEnabled && !videoGenerationModelsAvailable ? [{ label: 'Generate (AI unavailable)', icon: 'i-lucide-sparkles', disabled: true }] : []),
           ]]"
         >
@@ -696,7 +694,10 @@ const saveStatusColor = computed(() => {
     :timeline-stills="timelineStills"
     :default-aspect="projectAspect"
     :initial-prompt="generationDraftPrompt"
+    :recent-jobs="genJobs.jobs.value"
+    :prepare-timeline-still-source="editor.saveNow"
     @submitted="onGenerationSubmitted"
+    @add-to-timeline="onLibraryAddToTimeline"
   />
 
   <!-- AI video generation progress/status (queued/running/failed) -->

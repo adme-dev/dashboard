@@ -9,7 +9,7 @@ export interface VideoGenerationProviderRequest {
   durationSeconds: number
   aspectRatio: string
   resolution: string | null
-  /** Tenant id, for AI Gateway per-tenant metadata tagging. Optional (mock/muapi ignore it). */
+  /** Tenant id, for AI Gateway per-tenant metadata tagging. Optional for mock providers. */
   tenantId?: string
   projectId?: string
   userId?: string

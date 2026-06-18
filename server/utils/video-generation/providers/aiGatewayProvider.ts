@@ -64,8 +64,25 @@ function extractState(raw: any): string | null {
  *  inner { state, result: { video } } — handle both, plus tolerant fallbacks. */
 function extractVideoUrl(raw: any): string | null {
   const r = raw?.result?.result ?? raw?.result ?? raw?.responses?.[0]?.result ?? raw
-  const url = r?.video ?? r?.output ?? r?.url ?? r?.videos?.[0] ?? null
+  const url = r?.video ?? r?.output_url ?? r?.outputUrl ?? r?.output ?? r?.url ?? r?.videos?.[0] ?? null
   return typeof url === 'string' ? url : null
+}
+
+function extractProviderError(raw: any): string | null {
+  const candidates = [
+    raw?.error,
+    raw?.result?.error,
+    raw?.result?.result?.error,
+    raw?.errors?.[0],
+    raw?.result?.errors?.[0],
+  ]
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    if (typeof candidate === 'string') return candidate
+    if (typeof candidate.message === 'string') return candidate.message
+    if (typeof candidate.code !== 'undefined') return `Cloudflare error ${candidate.code}`
+  }
+  return null
 }
 
 /** Completed generations, keyed by jobId, handed from submit() to the immediate poll()
@@ -97,10 +114,11 @@ export function makeAiGatewayProvider(deps: AiGatewayDeps): VideoGenerationProvi
         }
       )
       const outputUrl = extractVideoUrl(raw)
+      const providerError = extractProviderError(raw)
       // CF bills via unified billing (dashboard); no per-call cost is returned → null.
       completedResults.set(request.jobId, outputUrl
         ? { status: 'succeeded', outputUrl, actualCostCents: null, errorMessage: null }
-        : { status: 'failed', outputUrl: null, actualCostCents: null, errorMessage: `model returned no video url (state=${extractState(raw) ?? 'unknown'})` })
+        : { status: 'failed', outputUrl: null, actualCostCents: null, errorMessage: providerError || `model returned no video url (state=${extractState(raw) ?? 'unknown'})` })
       return { providerRequestId: request.jobId, status: 'completed', modelId: request.modelId }
     },
 

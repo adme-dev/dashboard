@@ -123,9 +123,9 @@ describe('video generation worker orchestration', () => {
   })
 
   it('leaves async jobs running (no finalize) when poll returns running', async () => {
-    const d = deps({ ...baseJob, provider: 'muapi', modelId: 'muapi/i2v-kling' }, {
+    const d = deps({ ...baseJob, provider: 'aigateway', modelId: 'aigateway/seedance-i2v' }, {
       providers: {
-        muapi: {
+        aigateway: {
           submit: vi.fn().mockResolvedValue({ providerRequestId: 'req-9', status: 'submitted' }),
           poll: vi.fn().mockResolvedValue({ status: 'running', outputUrl: null, actualCostCents: null }),
         },
@@ -139,14 +139,14 @@ describe('video generation worker orchestration', () => {
   })
 
   it('selects the provider by job.provider', async () => {
-    const d = deps({ ...baseJob, provider: 'muapi', modelId: 'muapi/i2v-kling' }, {
+    const d = deps({ ...baseJob, provider: 'aigateway', modelId: 'aigateway/seedance-i2v' }, {
       providers: {
         mock: { submit: vi.fn(), poll: vi.fn() },
-        muapi: { submit: vi.fn().mockResolvedValue({ providerRequestId: 'req-9', status: 'submitted' }), poll: vi.fn().mockResolvedValue({ status: 'running', outputUrl: null, actualCostCents: null }) },
+        aigateway: { submit: vi.fn().mockResolvedValue({ providerRequestId: 'req-9', status: 'submitted' }), poll: vi.fn().mockResolvedValue({ status: 'running', outputUrl: null, actualCostCents: null }) },
       },
     })
     await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)
-    expect(d.providers.muapi.submit).toHaveBeenCalled()
+    expect(d.providers.aigateway.submit).toHaveBeenCalled()
     expect(d.providers.mock.submit).not.toHaveBeenCalled()
   })
 

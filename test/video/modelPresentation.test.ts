@@ -16,7 +16,8 @@ describe('video model presentation', () => {
       label: getVideoGenerationModel('aigateway/seedance-i2v')!.displayName,
       modes: ['image-to-video'],
       provider: 'aigateway',
-      supportsNativeAudio: false
+      supportsNativeAudio: false,
+      capabilities: { extendVideo: false, endFrame: false, videoToVideo: false }
     })
     expect(options.some(option => option.id === 'aigateway/veo-t2v-internal')).toBe(false)
   })
@@ -34,12 +35,14 @@ describe('videoModelPresentation', () => {
 
   it('marks native-audio models and per-second pricing', () => {
     const p = videoModelPresentation({
-      id: 'x', provider: 'muapi', displayName: 'X', modes: ['text-to-video'],
+      id: 'x', provider: 'aigateway', displayName: 'X', modes: ['text-to-video'],
       allowedSubjectTypes: ['unknown'], requiresApprovedSourceAsset: false,
       supportsNativeAudio: true, durationsSeconds: [5, 10], aspectRatios: [], resolutions: [],
-      estimatedCostCents: 25, costUnit: 'second', safetyClass: 'experimental', defaultEnabled: true
+      estimatedCostCents: 25, costUnit: 'second',
+      capabilities: { extendVideo: false, endFrame: false, videoToVideo: false },
+      safetyClass: 'experimental', defaultEnabled: true
     })
-    expect(p.icon).toBe('i-lucide-zap')
+    expect(p.icon).toBe('i-lucide-cloud')
     expect(p.sublabel).toContain('Text → video')
     expect(p.sublabel).toContain('Audio')
     expect(p.sublabel).toContain('5–10s')
@@ -51,7 +54,9 @@ describe('videoModelPresentation', () => {
       id: 'x', provider: 'other', displayName: 'X', modes: ['image-to-video', 'text-to-video'],
       allowedSubjectTypes: ['unknown'], requiresApprovedSourceAsset: false,
       supportsNativeAudio: false, durationsSeconds: [8], aspectRatios: [], resolutions: [],
-      estimatedCostCents: 120, costUnit: 'clip', safetyClass: 'experimental', defaultEnabled: true
+      estimatedCostCents: 120, costUnit: 'clip',
+      capabilities: { extendVideo: false, endFrame: false, videoToVideo: false },
+      safetyClass: 'experimental', defaultEnabled: true
     })
     expect(p.icon).toBe('i-lucide-box')
     expect(p.sublabel).toContain('8s')

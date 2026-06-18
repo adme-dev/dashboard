@@ -1,4 +1,14 @@
-import type { VideoGenerationModel } from '~~/server/utils/video-generation/types'
+import type { VideoGenerationCapabilities, VideoGenerationModel } from '~~/server/utils/video-generation/types'
+
+const CONSERVATIVE_CAPABILITIES: VideoGenerationCapabilities = {
+  extendVideo: false,
+  endFrame: false,
+  videoToVideo: false,
+}
+
+function conservativeCapabilities(): VideoGenerationCapabilities {
+  return { ...CONSERVATIVE_CAPABILITIES }
+}
 
 const MODELS: VideoGenerationModel[] = [
   {
@@ -14,6 +24,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720p'],
     estimatedCostCents: 50,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'vehicle_i2v_safe',
     // Mock provider returns a fake mock.local URL that can't be downloaded — not selectable
     // in the picker (would always fail at finalize). Kept for tests/policy allow-lists.
@@ -32,6 +43,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720p'],
     estimatedCostCents: 200,
     costUnit: 'generation',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'non_vehicle_t2v',
     defaultEnabled: false,
   },
@@ -48,6 +60,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720p', '1080p'],
     estimatedCostCents: 30,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'vehicle_i2v_safe',
     defaultEnabled: true,
     cfModel: 'bytedance/seedance-2.0-fast',
@@ -67,6 +80,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720P', '1080P'],
     estimatedCostCents: 30,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'vehicle_i2v_safe',
     defaultEnabled: true,
     cfModel: 'alibaba/wan-2.7-i2v',
@@ -86,6 +100,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['768P', '1080P'],
     estimatedCostCents: 30,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'vehicle_i2v_safe',
     defaultEnabled: true,
     cfModel: 'minimax/hailuo-2.3-fast',
@@ -105,6 +120,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720p', '1080p'],
     estimatedCostCents: 50,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'vehicle_i2v_safe',
     defaultEnabled: false,
     cfModel: 'runwayml/gen-4.5',
@@ -124,6 +140,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720p', '1080p'],
     estimatedCostCents: 25,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'vehicle_i2v_safe',
     defaultEnabled: false,
     cfModel: 'vidu/q3-pro',
@@ -143,6 +160,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['540p', '720p', '1080p'],
     estimatedCostCents: 25,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'vehicle_i2v_safe',
     defaultEnabled: false,
     cfModel: 'pixverse/v5.6',
@@ -162,6 +180,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720p', '1080p'],
     estimatedCostCents: 50,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'non_vehicle_t2v',
     defaultEnabled: false,
     cfModel: 'google/veo-3.1-fast',
@@ -181,6 +200,7 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720p', '1080p'],
     estimatedCostCents: 30,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'non_vehicle_t2v',
     defaultEnabled: false,
     cfModel: 'minimax/hailuo-2.3',
@@ -200,45 +220,12 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720p'],
     estimatedCostCents: 200,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'non_vehicle_t2v',
     defaultEnabled: false,
     cfModel: 'google/veo-3.1',
     surface: 'internal',
     modality: 't2v',
-  },
-  {
-    id: 'muapi/i2v-kling',
-    provider: 'muapi',
-    displayName: 'Kling Image-to-Video',
-    modes: ['image-to-video'],
-    allowedSubjectTypes: ['vehicle', 'non_vehicle'],
-    requiresApprovedSourceAsset: true,
-    supportsNativeAudio: false,
-    durationsSeconds: [5, 10],
-    aspectRatios: ['16:9', '9:16', '1:1'],
-    resolutions: ['720p', '1080p'],
-    estimatedCostCents: 45,
-    costUnit: 'second',
-    safetyClass: 'vehicle_i2v_safe',
-    defaultEnabled: false,
-    muapi: { endpoint: 'generate_kling_i2v' },
-  },
-  {
-    id: 'muapi/t2v-wan',
-    provider: 'muapi',
-    displayName: 'Wan Text-to-Video',
-    modes: ['text-to-video'],
-    allowedSubjectTypes: ['non_vehicle'],
-    requiresApprovedSourceAsset: false,
-    supportsNativeAudio: false,
-    durationsSeconds: [5],
-    aspectRatios: ['16:9', '9:16'],
-    resolutions: ['720p'],
-    estimatedCostCents: 180,
-    costUnit: 'generation',
-    safetyClass: 'non_vehicle_t2v',
-    defaultEnabled: false,
-    muapi: { endpoint: 'generate_wan_t2v' },
   },
   {
     id: 'gateway/i2v-dormant',
@@ -253,13 +240,19 @@ const MODELS: VideoGenerationModel[] = [
     resolutions: ['720p', '1080p'],
     estimatedCostCents: 500,
     costUnit: 'second',
+    capabilities: conservativeCapabilities(),
     safetyClass: 'disabled',
     defaultEnabled: false,
   },
 ]
 
 export function listVideoGenerationModels(): VideoGenerationModel[] {
-  return MODELS.map((model) => ({ ...model, modes: [...model.modes], allowedSubjectTypes: [...model.allowedSubjectTypes] }))
+  return MODELS.map((model) => ({
+    ...model,
+    modes: [...model.modes],
+    allowedSubjectTypes: [...model.allowedSubjectTypes],
+    capabilities: { ...model.capabilities },
+  }))
 }
 
 export function listSelectableVideoGenerationModels(): VideoGenerationModel[] {
@@ -268,5 +261,12 @@ export function listSelectableVideoGenerationModels(): VideoGenerationModel[] {
 
 export function getVideoGenerationModel(id: string): VideoGenerationModel | null {
   const model = MODELS.find((candidate) => candidate.id === id)
-  return model ? { ...model, modes: [...model.modes], allowedSubjectTypes: [...model.allowedSubjectTypes] } : null
+  return model
+    ? {
+        ...model,
+        modes: [...model.modes],
+        allowedSubjectTypes: [...model.allowedSubjectTypes],
+        capabilities: { ...model.capabilities },
+      }
+    : null
 }

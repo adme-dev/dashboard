@@ -15,6 +15,7 @@ import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelR
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { loadVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssets'
+import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
 
 const BodySchema = z.object({
   projectId: z.string().uuid(),
@@ -32,6 +33,27 @@ const BodySchema = z.object({
 function assertEnabled() {
   if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
+  }
+}
+
+function assertModelSupportsRequest(model: NonNullable<ReturnType<typeof getVideoGenerationModel>>, body: z.infer<typeof BodySchema>) {
+  if (!model.modes.includes(body.mode)) {
+    throw createError({ statusCode: 400, statusMessage: 'Model does not support the requested generation mode' })
+  }
+  if (!model.durationsSeconds.includes(body.durationSeconds)) {
+    throw createError({ statusCode: 400, statusMessage: 'Model does not support the requested duration' })
+  }
+  if (!model.aspectRatios.includes(body.aspectRatio)) {
+    throw createError({ statusCode: 400, statusMessage: 'Model does not support the requested aspect ratio' })
+  }
+  if (body.resolution && !model.resolutions.includes(body.resolution)) {
+    throw createError({ statusCode: 400, statusMessage: 'Model does not support the requested resolution' })
+  }
+  if (body.subjectType !== 'unknown' && !model.allowedSubjectTypes.includes(body.subjectType)) {
+    throw createError({ statusCode: 400, statusMessage: 'Model does not support the requested subject type' })
+  }
+  if (model.requiresApprovedSourceAsset && body.sourceAssetIds.length === 0) {
+    throw createError({ statusCode: 400, statusMessage: 'A source image is required for this model' })
   }
 }
 
@@ -53,10 +75,16 @@ export default defineEventHandler(async (event) => {
   if (existing.project.mediaType !== 'av') {
     throw createError({ statusCode: 400, statusMessage: 'Video generation requires an AV project' })
   }
+  if (!canUseVideoGenerationProject(user, existing.project)) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
+  }
 
   const tenantId = existing.project.clientId ?? 'agency'
   const duplicate = await getVideoGenerationJobByIdempotencyKey(tenantId, body.idempotencyKey)
   if (duplicate) {
+    if (duplicate.projectId !== body.projectId) {
+      throw createError({ statusCode: 409, statusMessage: 'Idempotency key is already used for another project' })
+    }
     setResponseStatus(event, 202)
     return { job: duplicate, reused: true }
   }
@@ -66,11 +94,18 @@ export default defineEventHandler(async (event) => {
   if (!isTenantModel(model)) {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
+  assertModelSupportsRequest(model, body)
 
-  const [tenantPolicy, sourceAssets] = await Promise.all([
-    loadTenantVideoGenerationPolicy(tenantId),
-    loadVideoGenerationSourceAssets(body.sourceAssetIds),
-  ])
+  let sourceAssets = []
+  try {
+    sourceAssets = await loadVideoGenerationSourceAssets(
+      body.sourceAssetIds,
+      body.mode === 'image-to-video' ? tenantId : undefined
+    )
+  } catch (e: any) {
+    throw createError({ statusCode: 400, statusMessage: `Source image unavailable: ${e?.message ?? 'unresolved'}` })
+  }
+  const tenantPolicy = await loadTenantVideoGenerationPolicy(tenantId)
 
   const compliance = evaluateVideoGenerationCompliance({
     mode: body.mode,
@@ -134,6 +169,9 @@ export default defineEventHandler(async (event) => {
   )
 
   if (!reservation.ok || !reservation.job) {
+    if (reservation.reason === 'idempotency_key_conflict') {
+      throw createError({ statusCode: 409, statusMessage: 'Idempotency key is already used for another project' })
+    }
     throw createError({
       statusCode: 402,
       statusMessage: 'Video generation budget unavailable',

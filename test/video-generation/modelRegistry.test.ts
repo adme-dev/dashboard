@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  listVideoGenerationModels,
   getVideoGenerationModel,
   listSelectableVideoGenerationModels,
 } from '~~/server/utils/video-generation/modelRegistry'
@@ -28,26 +29,17 @@ describe('video generation model registry', () => {
     expect(model?.safetyClass).toBe('vehicle_i2v_safe')
   })
 
-  it('exposes a real muapi i2v model with an endpoint mapping', () => {
-    const m = getVideoGenerationModel('muapi/i2v-kling')
-    expect(m).toBeTruthy()
-    expect(m!.provider).toBe('muapi')
-    expect(m!.modes).toContain('image-to-video')
-    expect(m!.muapi?.endpoint).toBe('generate_kling_i2v')
-  })
-
-  it('exposes a real muapi t2v model (retired from selectable — kept in registry)', () => {
-    const t = getVideoGenerationModel('muapi/t2v-wan')
-    expect(t!.provider).toBe('muapi')
-    expect(t!.modes).toContain('text-to-video')
-    // muapi models are retired (defaultEnabled: false) — they exist in the registry but are
-    // no longer in the selectable set.
+  it('does not register MuAPI models in the active model registry', () => {
+    expect(getVideoGenerationModel('muapi/i2v-kling')).toBeNull()
+    expect(getVideoGenerationModel('muapi/t2v-wan')).toBeNull()
     const ids = listSelectableVideoGenerationModels().map((x) => x.id)
+    expect(ids).not.toContain('muapi/i2v-kling')
     expect(ids).not.toContain('muapi/t2v-wan')
   })
 
-  it('does not set muapi mapping on non-muapi models', () => {
+  it('does not set MuAPI mapping on Cloudflare or mock models', () => {
     expect(getVideoGenerationModel('mock/i2v-safe')!.muapi).toBeUndefined()
+    expect(getVideoGenerationModel('aigateway/seedance-i2v')!.muapi).toBeUndefined()
   })
 
   it('keeps verified CF AI Gateway image-to-video models selectable', () => {
@@ -77,5 +69,22 @@ describe('video generation model registry', () => {
       'aigateway/wan-i2v',
       'aigateway/hailuo-i2v',
     ])
+  })
+
+  it('defaults every current model to conservative advanced edit capabilities', () => {
+    for (const model of listVideoGenerationModels()) {
+      expect(model.capabilities).toEqual({
+        extendVideo: false,
+        endFrame: false,
+        videoToVideo: false,
+      })
+    }
+  })
+
+  it('returns copied capability metadata instead of shared mutable registry state', () => {
+    const first = getVideoGenerationModel('aigateway/seedance-i2v')!
+    first.capabilities.extendVideo = true
+
+    expect(getVideoGenerationModel('aigateway/seedance-i2v')!.capabilities.extendVideo).toBe(false)
   })
 })

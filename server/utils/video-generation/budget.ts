@@ -8,7 +8,7 @@ export interface ReserveVideoGenerationResult {
   ok: boolean
   job?: VideoGenerationJob
   reused?: boolean
-  reason?: 'allowed' | 'tenant_generation_disabled' | 'tenant_cap_exceeded'
+  reason?: 'allowed' | 'tenant_generation_disabled' | 'tenant_cap_exceeded' | 'idempotency_key_conflict'
   remainingCents?: number
 }
 
@@ -50,6 +50,9 @@ export async function reserveAndCreateVideoGenerationJob(
       [input.tenantId, input.idempotencyKey]
     )
     if (existing.rows?.[0]) {
+      if (existing.rows[0].project_id !== input.projectId) {
+        return { ok: false, reason: 'idempotency_key_conflict' }
+      }
       return { ok: true, reused: true, job: mapVideoGenerationJobRow(existing.rows[0]) }
     }
 
