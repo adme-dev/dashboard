@@ -60,14 +60,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Existing mask, extraction, derivative, and assembly actions still work.
-- [ ] Header/accordion state no longer controls the primary AV workspace.
-- [ ] Component boundaries are clear enough to replace sections independently.
+- [x] Existing mask, extraction, derivative, and assembly actions still work.
+- [x] Header/accordion state no longer controls the primary AV workspace.
+- [x] Component boundaries are clear enough to replace sections independently.
 
 **Verification:**
 
-- [ ] `pnpm exec vitest run test/app/videoAssetHarnessDerivatives.test.ts`
-- [ ] `pnpm run build`
+- [x] `pnpm exec vitest run test/app/videoAssetHarnessDerivatives.test.ts`
+- [x] `pnpm run build`
 
 **Dependencies:** Task 1.
 

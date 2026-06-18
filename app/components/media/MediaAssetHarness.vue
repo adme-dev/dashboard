@@ -4,7 +4,12 @@ import { useLocalStorage } from '@vueuse/core'
 import { assemblyPlanToTimelinePayloads, type AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 
-const props = defineProps<{ projectId: string }>()
+const props = withDefaults(defineProps<{
+  projectId: string
+  embedded?: boolean
+}>(), {
+  embedded: false,
+})
 const emit = defineEmits<{
   (event: 'add-to-timeline', payload: AiAssemblyTimelinePayload): void
   (event: 'add-derivative-to-timeline', payload: ReturnType<typeof derivativeTimelinePayload>): void
@@ -100,6 +105,7 @@ const maskPreviewFailed = ref(false)
 // Open by default in the AV editor. This is a core production workspace, not a
 // secondary drawer, while the user's collapsed choice still persists.
 const harnessOpen = useLocalStorage('media-asset-harness-open', true)
+const contentOpen = computed(() => props.embedded || harnessOpen.value)
 
 // Quick-create bar (shown while collapsed): typing a request expands the
 // harness, sets it as the assembly brief, and builds a draft plan in one step.
@@ -441,8 +447,34 @@ onMounted(() => { void loadHarness() })
 </script>
 
 <template>
-  <section class="rounded-lg border border-default bg-elevated">
-    <div class="flex flex-wrap items-start justify-between gap-3 border-b border-default px-4 py-3">
+  <section :class="embedded ? 'space-y-3' : 'rounded-lg border border-default bg-elevated'">
+    <div
+      v-if="embedded"
+      class="flex flex-wrap items-start justify-between gap-3"
+    >
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-sm font-semibold text-highlighted">AI Producer workspace</span>
+          <UBadge :label="`${items.length} assets`" size="xs" variant="subtle" color="neutral" />
+          <UBadge :label="`${readyModelCount}/${models.length} models ready`" size="xs" :color="readyModelCount ? 'primary' : 'neutral'" variant="subtle" />
+          <UBadge v-if="activeJobCount" :label="`${activeJobCount} active`" size="xs" color="primary" variant="subtle" />
+        </div>
+        <p class="mt-0.5 text-xs text-muted">
+          Prepare clean layers, reuse derivatives, and assemble draft edits from the project media library.
+        </p>
+      </div>
+      <UButton
+        icon="i-lucide-refresh-cw"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        :loading="loading"
+        aria-label="Refresh AI Producer"
+        @click="loadHarness"
+      />
+    </div>
+
+    <div v-else class="flex flex-wrap items-start justify-between gap-3 border-b border-default px-4 py-3">
       <button
         type="button"
         class="flex min-w-0 flex-1 items-start gap-2 text-left"
@@ -488,7 +520,7 @@ onMounted(() => { void loadHarness() })
 
     <!-- Quick-create bar (collapsed state): one-line entry into agentic assembly -->
     <div
-      v-if="!harnessOpen"
+      v-if="!contentOpen"
       class="m-3 flex items-center gap-2 rounded-lg border border-default bg-default/40 py-1 pl-3 pr-1.5 transition-colors focus-within:border-primary/50"
     >
       <UIcon name="i-lucide-sparkles" class="size-4 shrink-0 text-muted" />
@@ -510,7 +542,13 @@ onMounted(() => { void loadHarness() })
       />
     </div>
 
-    <div v-show="harnessOpen" class="grid gap-3 p-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]">
+    <div
+      v-show="contentOpen"
+      :class="[
+        'grid gap-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]',
+        embedded ? '' : 'p-3'
+      ]"
+    >
       <div class="min-w-0 rounded-md border border-default bg-default/30 p-3">
         <div class="mb-2 flex items-center justify-between gap-2">
           <div>
@@ -736,7 +774,13 @@ onMounted(() => { void loadHarness() })
       </div>
     </div>
 
-    <div v-show="harnessOpen" class="mx-3 mb-3 rounded-md border border-default bg-default/30 p-3">
+    <div
+      v-show="contentOpen"
+      :class="[
+        'rounded-md border border-default bg-default/30 p-3',
+        embedded ? '' : 'mx-3 mb-3'
+      ]"
+    >
       <div class="mb-2 flex items-center justify-between gap-2">
         <p class="text-xs font-medium uppercase text-muted">AI activity</p>
         <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" aria-label="Refresh AI activity" @click="refreshActivity" />

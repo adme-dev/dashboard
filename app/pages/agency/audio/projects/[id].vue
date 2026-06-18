@@ -693,6 +693,7 @@ const saveStatusColor = computed(() => {
           <template v-if="videoAssetHarnessEnabled" #details>
             <MediaAssetHarness
               :project-id="projectId"
+              embedded
               @add-to-timeline="onHarnessAddToTimeline"
               @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
             />
