@@ -1,66 +1,114 @@
 <script setup lang="ts">
 /**
- * In-chat confirmation card for an AI-proposed action (Option B). The assistant only PROPOSES;
- * the user confirms here, which calls the confirm-action endpoint that executes the real write.
+ * In-chat confirmation card for an AI-proposed action (Option B). The assistant only PROPOSES; the
+ * user confirms here, which calls the confirm-action endpoint that executes the real write. The card
+ * shape is driven by `proposal.toolName`:
+ *   - create_task            → task summary (board/project/assignee/due)
+ *   - propose_budget_change  → RICH confirm: current→proposed/day, %, counter-model note, rollback;
+ *                              sends richConfirmAck so the server's rich_confirm gate lets it through
+ *   - propose_schedule_post  → social post summary (client / status / content)
+ *   - propose_budget_alert   → budget-alert summary (client / severity / threshold)
+ *   - anything else          → generic key/value summary
  */
-interface ResolvedTask {
-  title: string
-  departmentName?: string | null
-  projectName?: string | null
-  assigneeName?: string | null
-  dueDate?: string | null
-  description?: string | null
-}
 interface ProposedAction {
   proposalId: string
   toolName?: string
-  resolved: ResolvedTask
+  resolved: Record<string, any>
 }
 
 const props = defineProps<{ conversationId: string, proposal: ProposedAction }>()
-const emit = defineEmits<{ confirmed: [taskId: string], cancelled: [] }>()
+const emit = defineEmits<{ confirmed: [resultRef: string], cancelled: [] }>()
 
 const toast = useToast()
 const status = ref<'idle' | 'submitting' | 'done' | 'cancelled'>('idle')
 const errorMsg = ref('')
 
-const r = computed(() => props.proposal.resolved)
+const r = computed(() => props.proposal.resolved ?? {})
+const toolName = computed(() => props.proposal.toolName ?? 'create_task')
+const isBudgetChange = computed(() => toolName.value === 'propose_budget_change')
 
-const meta = computed(() => [
-  { label: 'Board', value: r.value.departmentName },
-  { label: 'Project', value: r.value.projectName },
-  { label: 'Assignee', value: r.value.assigneeName },
-  { label: 'Due', value: formatDue(r.value.dueDate) },
-].filter(m => m.value))
-
+const fmtMoney = (n: unknown) => (typeof n === 'number' ? `$${n.toLocaleString()}` : String(n ?? ''))
 function formatDue(d?: string | null): string | null {
   if (!d) return null
   const parsed = new Date(d)
   return Number.isNaN(+parsed) ? d : parsed.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
+// Per-tool presentation: header icon/label + the confirm button verb. Budget change is rendered
+// with a dedicated rich body below rather than the generic meta list.
+const view = computed(() => {
+  switch (toolName.value) {
+    case 'propose_budget_change':
+      return { icon: 'i-lucide-dollar-sign', label: 'Proposed budget change · needs your explicit confirmation', cta: 'Confirm budget change', doneLabel: 'Budget change planned' }
+    case 'propose_schedule_post':
+      return { icon: 'i-lucide-calendar-clock', label: 'Proposed social post · awaiting your confirmation', cta: 'Confirm post', doneLabel: 'Post created' }
+    case 'propose_budget_alert':
+      return { icon: 'i-lucide-bell-ring', label: 'Proposed budget alert · awaiting your confirmation', cta: 'Confirm alert', doneLabel: 'Alert created' }
+    default:
+      return { icon: 'i-lucide-list-todo', label: 'Proposed task · awaiting your confirmation', cta: 'Create task', doneLabel: 'Task created' }
+  }
+})
+
+// Generic title + meta rows for the non-rich cards.
+const title = computed(() => {
+  switch (toolName.value) {
+    case 'propose_schedule_post': return r.value.content || 'Social post'
+    case 'propose_budget_alert': return r.value.title || 'Budget alert'
+    default: return r.value.title || 'Action'
+  }
+})
+const meta = computed(() => {
+  const rows: Array<{ label: string, value: any }> = []
+  switch (toolName.value) {
+    case 'propose_schedule_post':
+      rows.push({ label: 'Client', value: r.value.clientName })
+      rows.push({ label: 'Status', value: r.value.status })
+      rows.push({ label: 'Platforms', value: Array.isArray(r.value.platforms) && r.value.platforms.length ? r.value.platforms.join(', ') : null })
+      rows.push({ label: 'When', value: formatDue(r.value.scheduledAt) })
+      break
+    case 'propose_budget_alert':
+      rows.push({ label: 'Client', value: r.value.clientName })
+      rows.push({ label: 'Severity', value: r.value.severity })
+      rows.push({ label: 'Type', value: r.value.alertType })
+      rows.push({ label: 'Threshold', value: typeof r.value.thresholdValue === 'number' ? r.value.thresholdValue : null })
+      break
+    default: // create_task
+      rows.push({ label: 'Board', value: r.value.departmentName })
+      rows.push({ label: 'Project', value: r.value.projectName })
+      rows.push({ label: 'Assignee', value: r.value.assigneeName })
+      rows.push({ label: 'Due', value: formatDue(r.value.dueDate) })
+  }
+  return rows.filter(m => m.value != null && m.value !== '')
+})
+
+// Rich budget-change fields.
+const sanity = computed(() => r.value.sanityCheck as { sane?: boolean, concern?: string | null } | undefined)
+const sanityConcern = computed(() => (sanity.value && sanity.value.sane === false && sanity.value.concern) ? sanity.value.concern : null)
+
 async function confirm() {
   if (status.value === 'submitting' || status.value === 'done') return
   status.value = 'submitting'
   errorMsg.value = ''
   try {
-    const res = await $fetch<{ ok: boolean, taskId?: string, error?: string }>(
+    const res = await $fetch<{ ok: boolean, taskId?: string, resultRef?: string, error?: string, requiresRichConfirm?: boolean }>(
       `/api/agency/ai/chat/conversations/${props.conversationId}/confirm-action`,
-      { method: 'POST', body: { proposalId: props.proposal.proposalId } },
+      // rich_confirm writes (budget change) must send the explicit acknowledgement the server gate requires.
+      { method: 'POST', body: { proposalId: props.proposal.proposalId, ...(isBudgetChange.value ? { richConfirmAck: true } : {}) } },
     )
-    if (res.ok && res.taskId) {
+    const ref = res.resultRef || res.taskId
+    if (res.ok && ref) {
       status.value = 'done'
-      toast.add({ title: 'Task created', description: r.value.title, color: 'success' })
-      emit('confirmed', res.taskId)
+      toast.add({ title: view.value.doneLabel, color: 'success' })
+      emit('confirmed', ref)
     } else {
       status.value = 'idle'
-      errorMsg.value = res.error || 'Could not create the task.'
-      toast.add({ title: 'Could not create task', description: errorMsg.value, color: 'error' })
+      errorMsg.value = res.error || 'Could not complete the action.'
+      toast.add({ title: 'Could not complete the action', description: errorMsg.value, color: 'error' })
     }
   } catch (e: any) {
     status.value = 'idle'
     errorMsg.value = e?.data?.statusMessage || e?.message || 'Something went wrong.'
-    toast.add({ title: 'Could not create task', description: errorMsg.value, color: 'error' })
+    toast.add({ title: 'Could not complete the action', description: errorMsg.value, color: 'error' })
   }
 }
 
@@ -73,23 +121,65 @@ function cancel() {
 <template>
   <div
     class="my-2 max-w-md overflow-hidden rounded-xl border border-default bg-elevated/60 shadow-sm"
-    :class="status === 'done' ? 'border-l-2 border-l-success' : status === 'cancelled' ? 'opacity-60' : 'border-l-2 border-l-warning'"
+    :class="status === 'done' ? 'border-l-2 border-l-success' : status === 'cancelled' ? 'opacity-60' : isBudgetChange ? 'border-l-2 border-l-error' : 'border-l-2 border-l-warning'"
   >
     <!-- Header -->
     <div class="flex items-center gap-2 px-4 pt-3">
-      <span class="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
-        <UIcon name="i-lucide-list-todo" class="size-3.5" />
+      <span
+        class="flex size-6 items-center justify-center rounded-md"
+        :class="isBudgetChange ? 'bg-error/10 text-error' : 'bg-primary/10 text-primary'"
+      >
+        <UIcon :name="view.icon" class="size-3.5" />
       </span>
       <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">
-        <template v-if="status === 'done'">Task created</template>
+        <template v-if="status === 'done'">{{ view.doneLabel }}</template>
         <template v-else-if="status === 'cancelled'">Proposal dismissed</template>
-        <template v-else>Proposed task · awaiting your confirmation</template>
+        <template v-else>{{ view.label }}</template>
       </span>
     </div>
 
-    <!-- Body -->
-    <div class="px-4 pb-3 pt-2">
-      <p class="text-sm font-medium text-highlighted">{{ r.title }}</p>
+    <!-- Body: rich budget-change layout -->
+    <div v-if="isBudgetChange" class="px-4 pb-3 pt-2">
+      <p class="text-sm font-medium text-highlighted">{{ r.campaignName }}<span v-if="r.platform" class="ml-1 text-xs font-normal text-muted">· {{ r.platform }}</span></p>
+
+      <div class="mt-2.5 flex items-center gap-3">
+        <div>
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-muted">Current</p>
+          <p class="text-sm text-default">{{ fmtMoney(r.currentDailyBudget) }}<span class="text-xs text-muted">/day</span></p>
+        </div>
+        <UIcon name="i-lucide-arrow-right" class="size-4 text-muted" />
+        <div>
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-muted">Proposed</p>
+          <p class="text-sm font-semibold text-highlighted">{{ fmtMoney(r.newDailyBudget) }}<span class="text-xs text-muted">/day</span></p>
+        </div>
+        <UBadge
+          v-if="typeof r.pctChange === 'number'"
+          :color="r.pctChange >= 0 ? 'warning' : 'success'" variant="soft" size="sm" class="ml-auto"
+        >
+          {{ r.pctChange >= 0 ? '+' : '' }}{{ r.pctChange }}%
+        </UBadge>
+      </div>
+
+      <p v-if="r.reason" class="mt-2.5 text-xs text-muted">{{ r.reason }}</p>
+
+      <!-- Counter-model advisory (never blocks; just warns) -->
+      <UAlert
+        v-if="sanityConcern"
+        class="mt-3" color="warning" variant="soft" icon="i-lucide-triangle-alert"
+        :title="'Sanity check'" :description="sanityConcern"
+      />
+
+      <p class="mt-3 flex items-center gap-1 text-[11px] text-muted">
+        <UIcon name="i-lucide-undo-2" class="size-3" />
+        Applies only after approval in the spend review — reverts to {{ fmtMoney(r.currentDailyBudget) }}/day anytime. Nothing changes on the platform yet.
+      </p>
+
+      <p v-if="errorMsg" class="mt-2 text-xs text-error">{{ errorMsg }}</p>
+    </div>
+
+    <!-- Body: generic layout (task / post / alert) -->
+    <div v-else class="px-4 pb-3 pt-2">
+      <p class="text-sm font-medium text-highlighted line-clamp-2">{{ title }}</p>
 
       <dl v-if="meta.length" class="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
         <div v-for="m in meta" :key="m.label" class="min-w-0">
@@ -99,7 +189,6 @@ function cancel() {
       </dl>
 
       <p v-if="r.description" class="mt-2.5 line-clamp-3 text-xs text-muted">{{ r.description }}</p>
-
       <p v-if="errorMsg" class="mt-2 text-xs text-error">{{ errorMsg }}</p>
     </div>
 
@@ -112,10 +201,10 @@ function cancel() {
         Cancel
       </UButton>
       <UButton
-        color="primary" size="sm" icon="i-lucide-check"
+        :color="isBudgetChange ? 'error' : 'primary'" size="sm" icon="i-lucide-check"
         :loading="status === 'submitting'" @click="confirm"
       >
-        Create task
+        {{ view.cta }}
       </UButton>
     </div>
   </div>

@@ -10,8 +10,8 @@ import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 export interface ChatResponse {
   message: AiMessage
   contextSources: AiContextSource[]
-  /** Present when the assistant proposed a guarded write (create_task) awaiting user confirmation. */
-  proposedAction?: { proposalId: string, resolved: unknown } | null
+  /** Present when the assistant proposed a guarded write awaiting user confirmation; toolName drives the confirm-card shape. */
+  proposedAction?: { proposalId: string, resolved: unknown, toolName?: string } | null
 }
 
 // Multi-model routing: pick the best model based on intent complexity
@@ -471,7 +471,7 @@ export async function processUserMessage(
   // the existing fast path; data/action intents route through the agentic loop. Failures degrade
   // to the existing single-shot path below.
   const cfg = useRuntimeConfig() as any
-  let proposedAction: { proposalId: string, resolved: unknown } | null = null
+  let proposedAction: { proposalId: string, resolved: unknown, toolName?: string } | null = null
   let toolTrace: Array<{ name: string, args: unknown }> = []
   let usedToolLoop = false
   // Tool-loop cost/usage — persisted so Groq spend is queryable (estimateCostUsd from real token usage).
