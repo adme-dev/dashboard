@@ -17,6 +17,8 @@ const props = withDefaults(defineProps<{
   generationJobCount?: number
   renderJobCount?: number
   generationEnabled?: boolean
+  generationStatusLabel?: string
+  generationStatusDetail?: string
   rendering?: boolean
   producerCollapsed?: boolean
 }>(), {
@@ -25,6 +27,8 @@ const props = withDefaults(defineProps<{
   generationJobCount: 0,
   renderJobCount: 0,
   generationEnabled: false,
+  generationStatusLabel: '',
+  generationStatusDetail: '',
   rendering: false,
   producerCollapsed: false,
 })
@@ -82,7 +86,7 @@ const statusItems = computed(() => [
   },
   {
     icon: props.generationEnabled ? 'i-lucide-sparkles' : 'i-lucide-sparkles',
-    label: props.generationEnabled ? 'AI ready' : 'AI unavailable',
+    label: generationStatusLabel.value,
     tone: props.generationEnabled ? 'text-primary' : 'text-warning',
   },
   {
@@ -94,6 +98,11 @@ const statusItems = computed(() => [
     label: `${fmt(props.currentTimeSec)} / ${fmt(props.durationSec)}`,
   },
 ])
+
+const generationStatusLabel = computed(() => props.generationStatusLabel || (props.generationEnabled ? 'AI ready' : 'AI unavailable'))
+const generationStatusDetail = computed(() => props.generationStatusDetail || (props.generationEnabled
+  ? 'Cloudflare AI Gateway video models are available for this project.'
+  : 'Video generation is disabled by account policy or no runnable models are configured.'))
 
 const workspaceGridClass = computed(() => props.producerCollapsed
   ? 'grid min-h-0 divide-y divide-default lg:h-[min(48vh,540px)] lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0'
@@ -172,6 +181,7 @@ watch(() => props.mode, (mode) => {
             color="neutral"
             label="Generate"
             :disabled="!props.generationEnabled"
+            :title="generationStatusDetail"
             @click="emit('generate')"
           />
           <UButton icon="i-lucide-library" size="xs" variant="ghost" color="neutral" label="Library" @click="emit('open-library')" />
@@ -306,7 +316,8 @@ watch(() => props.mode, (mode) => {
               </div>
               <div>
                 <p class="text-[11px] uppercase text-muted">AI state</p>
-                <p class="mt-0.5 font-medium text-highlighted">{{ props.generationEnabled ? 'Ready' : 'Unavailable' }}</p>
+                <p class="mt-0.5 font-medium text-highlighted">{{ generationStatusLabel }}</p>
+                <p class="mt-0.5 text-[11px] leading-snug text-muted">{{ generationStatusDetail }}</p>
               </div>
               <div>
                 <p class="text-[11px] uppercase text-muted">Sequence</p>

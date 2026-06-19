@@ -729,9 +729,10 @@ Never:
 
 ### Phase 6: Governance and Agency Polish
 
-- [ ] Surface model availability and disabled states consistently.
+- [x] Surface model availability and disabled states consistently.
   - Acceptance: unavailable models are shown as platform policy/account state, not broken UI.
   - Verify: component tests for unavailable state.
+  - Implementation: workbench and inspector now share explicit AI status label/detail copy for ready, policy-disabled, and no-model states.
 
 - [ ] Add provenance/licensing indicators.
   - Acceptance: generated, uploaded, render, audio, overlay, and derivative assets have clear provenance.

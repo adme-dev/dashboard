@@ -82,6 +82,8 @@ describe('VideoStudioInspector', () => {
     const { app, host, events } = await mount({
       renderJobCount: 2,
       modelReady: false,
+      modelStatusLabel: 'No video models',
+      modelStatusDetail: 'No runnable video models are configured for this Cloudflare account.',
     }, {
       details: () => h('p', 'Details panel'),
       produce: () => h('p', 'Produce panel'),
@@ -96,7 +98,8 @@ describe('VideoStudioInspector', () => {
       await nextTick()
 
       expect(host.textContent).toContain('Produce panel')
-      expect(host.textContent).toContain('AI unavailable')
+      expect(host.textContent).toContain('No video models')
+      expect(host.textContent).toContain('No runnable video models are configured for this Cloudflare account.')
       expect(events).toContainEqual({ name: 'update:tab', payload: 'produce' })
 
       ;([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Review 2')) as HTMLButtonElement).click()

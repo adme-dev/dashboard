@@ -199,6 +199,8 @@ describe('VideoStudioWorkbench', () => {
       durationSec: 24,
       renderJobCount: 3,
       generationEnabled: false,
+      generationStatusLabel: 'AI disabled by policy',
+      generationStatusDetail: 'Video generation is disabled for this workspace.',
     }, {
       library: () => h('p', 'Library rail'),
       preview: () => h('p', 'Preview panel'),
@@ -208,6 +210,7 @@ describe('VideoStudioWorkbench', () => {
 
     expect(html).toContain('Review 3')
     expect(html).toContain('Review fallback content')
-    expect(html).toContain('AI unavailable')
+    expect(html).toContain('AI disabled by policy')
+    expect(html).toContain('Video generation is disabled for this workspace.')
   })
 })

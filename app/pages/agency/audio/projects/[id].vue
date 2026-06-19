@@ -112,6 +112,17 @@ function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'u
 
 const videoGenerationEnabled = computed(() => Boolean(publicConfig.videoGenerationEnabled))
 const videoGenerationModelsAvailable = computed(() => videoGenerationEnabled.value)
+const videoGenerationReady = computed(() => videoGenerationEnabled.value && videoGenerationModelsAvailable.value)
+const videoGenerationStatusLabel = computed(() => {
+  if (videoGenerationReady.value) return 'AI ready'
+  if (!videoGenerationEnabled.value) return 'AI disabled by policy'
+  return 'No video models'
+})
+const videoGenerationStatusDetail = computed(() => {
+  if (videoGenerationReady.value) return 'Cloudflare AI Gateway video models are available for this project.'
+  if (!videoGenerationEnabled.value) return 'Video generation is disabled for this workspace. Ask an admin to enable the Video Studio generation policy.'
+  return 'No runnable video models are configured for this Cloudflare account.'
+})
 const generatePickerOpen = ref(false)
 const generationDraftPrompt = ref<string | null>(null)
 const genJobs = useVideoGenerationJobs(projectId.value)
@@ -926,7 +937,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           :asset-count="videoStudioAssetCount"
           :generation-job-count="activeGenerationJobCount"
           :render-job-count="editor.renderJobs.value.length"
-          :generation-enabled="videoGenerationEnabled && videoGenerationModelsAvailable"
+          :generation-enabled="videoGenerationReady"
+          :generation-status-label="videoGenerationStatusLabel"
+          :generation-status-detail="videoGenerationStatusDetail"
           :rendering="editor.rendering.value"
           @add-footage="mediaPickerOpen = true"
           @add-overlay="overlayPickerOpen = true"
@@ -1029,7 +1042,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :voice-asset-count="studioVoiceAssetCount"
                 :overlay-asset-count="studioOverlayAssetCount"
                 :render-job-count="editor.renderJobs.value.length"
-                :model-ready="videoGenerationEnabled && videoGenerationModelsAvailable"
+                :model-ready="videoGenerationReady"
+                :model-status-label="videoGenerationStatusLabel"
+                :model-status-detail="videoGenerationStatusDetail"
               >
                 <template #details>
                   <VideoStudioClipInspector

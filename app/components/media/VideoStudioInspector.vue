@@ -10,6 +10,8 @@ const props = withDefaults(defineProps<{
   overlayAssetCount?: number
   renderJobCount?: number
   modelReady?: boolean
+  modelStatusLabel?: string
+  modelStatusDetail?: string
 }>(), {
   tab: 'details',
   assetCount: 0,
@@ -17,6 +19,8 @@ const props = withDefaults(defineProps<{
   overlayAssetCount: 0,
   renderJobCount: 0,
   modelReady: false,
+  modelStatusLabel: '',
+  modelStatusDetail: '',
 })
 
 const emit = defineEmits<{
@@ -58,6 +62,11 @@ const summaryItems = computed(() => [
   { label: 'Overlays', value: props.overlayAssetCount, icon: 'i-lucide-shapes' },
 ])
 
+const modelStatusLabel = computed(() => props.modelStatusLabel || (props.modelReady ? 'AI ready' : 'AI unavailable'))
+const modelStatusDetail = computed(() => props.modelStatusDetail || (props.modelReady
+  ? 'Cloudflare AI Gateway video models are available.'
+  : 'Video generation is disabled by account policy or no runnable models are configured.'))
+
 watch(() => props.tab, (tab) => {
   localTab.value = tab
 })
@@ -76,11 +85,18 @@ watch(() => props.tab, (tab) => {
         </p>
       </div>
       <UBadge
-        :label="props.modelReady ? 'AI ready' : 'AI unavailable'"
+        :label="modelStatusLabel"
         :color="props.modelReady ? 'primary' : 'warning'"
         size="xs"
         variant="subtle"
       />
+    </div>
+    <div
+      v-if="!props.modelReady"
+      class="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] leading-snug text-warning"
+    >
+      <UIcon name="i-lucide-info" class="mt-0.5 size-3.5 shrink-0" />
+      <p>{{ modelStatusDetail }}</p>
     </div>
 
     <UTabs
