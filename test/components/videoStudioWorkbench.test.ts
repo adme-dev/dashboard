@@ -14,6 +14,24 @@ const stubs = {
     template: '<button :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
   },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
+  UTabs: {
+    name: 'UTabs',
+    props: ['modelValue', 'items', 'content'],
+    emits: ['update:modelValue'],
+    template: `
+      <nav>
+        <button
+          v-for="item in items"
+          :key="item.value"
+          type="button"
+          :aria-pressed="modelValue === item.value"
+          @click="$emit('update:modelValue', item.value)"
+        >
+          {{ item.label }}{{ item.badge ? ' ' + item.badge : '' }}
+        </button>
+      </nav>
+    `
+  },
   UPopover: { name: 'UPopover', template: '<div><slot /><slot name="content" /></div>' },
   UCheckbox: {
     name: 'UCheckbox',
@@ -131,6 +149,36 @@ describe('VideoStudioWorkbench', () => {
       ])
       expect(events.find(event => event.name === 'render')?.payload).toEqual(['reels_9x16', 'square_1x1', 'youtube_16x9'])
       expect(events.find(event => event.name === 'update:producer-collapsed')?.payload).toBe(true)
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('exposes stage navigation and expands producer when the producer stage is selected', async () => {
+    const { app, host, events } = await mount({
+      currentTimeSec: 4,
+      durationSec: 16,
+      assetCount: 12,
+      generationJobCount: 1,
+      renderJobCount: 2,
+      generationEnabled: true,
+      rendering: false,
+      producerCollapsed: true,
+    }, {
+      library: () => h('p', 'Library rail'),
+      preview: () => h('p', 'Preview panel'),
+      producer: () => h('p', 'Producer content'),
+    })
+
+    try {
+      expect(host.textContent).toContain('Assets 12')
+      expect(host.textContent).toContain('Edit 1')
+      expect(host.textContent).toContain('Producer 2')
+
+      buttonByText(host, 'Producer 2').click()
+      await nextTick()
+
+      expect(events.find(event => event.name === 'update:producer-collapsed')?.payload).toBe(false)
     } finally {
       app.unmount()
     }
