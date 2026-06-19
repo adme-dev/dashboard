@@ -980,14 +980,10 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :is-playing="editor.isPlaying.value"
                 :sources="editor.sources.value"
               />
-              <div v-if="videoAssetHarnessEnabled" class="mt-3 rounded-md border border-default bg-elevated p-3">
-                <div class="mb-3 flex items-center gap-2">
-                  <UIcon name="i-lucide-bot" class="size-4 text-muted" />
-                  <h4 class="text-xs font-medium uppercase text-muted">Prepare + Activity</h4>
-                </div>
+              <div v-if="videoAssetHarnessEnabled" class="mt-3">
                 <MediaAssetHarness
                   :project-id="projectId"
-                  embedded
+                  studio
                   @add-to-timeline="onHarnessAddToTimeline"
                   @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
                 />

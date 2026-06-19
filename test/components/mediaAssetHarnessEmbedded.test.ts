@@ -48,4 +48,20 @@ describe('MediaAssetHarness embedded mode', () => {
     expect(html).not.toContain('aria-expanded')
     expect(html).not.toContain('Build draft plan from this brief')
   })
+
+  it('renders studio-native prepare modules without full producer workspace chrome', async () => {
+    const html = await render({ projectId: 'project-1', studio: true })
+
+    expect(html).toContain('Project assets')
+    expect(html).toContain('Prepare asset')
+    expect(html).toContain('Highlighter mask')
+    expect(html).toContain('Available models')
+    expect(html).toContain('AI activity')
+    expect(html).toContain('xl:grid-cols-[260px_minmax(0,1fr)]')
+    expect(html).not.toContain('AI Producer workspace')
+    expect(html).not.toContain('Prepare clean layers, reuse derivatives, and assemble draft edits')
+    expect(html).not.toContain('aria-expanded')
+    expect(html).not.toContain('Draft assembly')
+    expect(html).not.toContain('Build draft plan from this brief')
+  })
 })

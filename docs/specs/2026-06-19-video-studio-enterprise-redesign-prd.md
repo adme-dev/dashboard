@@ -619,9 +619,10 @@ Never:
   - Verify: new component test.
   - Files: new component, harness/page integration.
 
-- [ ] Keep full `MediaAssetHarness` available only as advanced/debug workspace if still required.
+- [x] Keep full `MediaAssetHarness` available only as advanced/debug workspace if still required.
   - Acceptance: normal Video Studio no longer embeds the full harness as a long page section.
   - Verify: browser screenshot and test for absence of full harness chrome in main editor.
+  - Implementation: normal Video Studio uses the `studio` variant; the default harness chrome remains available for advanced/debug use.
 
 ### Phase 4: Asset Rail Professionalization
 

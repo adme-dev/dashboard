@@ -9,8 +9,10 @@ import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTim
 const props = withDefaults(defineProps<{
   projectId: string
   embedded?: boolean
+  studio?: boolean
 }>(), {
   embedded: false,
+  studio: false,
 })
 const emit = defineEmits<{
   (event: 'add-to-timeline', payload: AiAssemblyTimelinePayload): void
@@ -108,7 +110,7 @@ let activityRefreshTimer: ReturnType<typeof setTimeout> | null = null
 // Open by default in the AV editor. This is a core production workspace, not a
 // secondary drawer, while the user's collapsed choice still persists.
 const harnessOpen = useLocalStorage('media-asset-harness-open', true)
-const contentOpen = computed(() => props.embedded || harnessOpen.value)
+const contentOpen = computed(() => props.studio || props.embedded || harnessOpen.value)
 
 // Quick-create bar (shown while collapsed): typing a request expands the
 // harness, sets it as the assembly brief, and builds a draft plan in one step.
@@ -165,12 +167,18 @@ const recentActivityJobs = computed(() => intelligenceJobs.value.map(job => ({
 })))
 const contentGridClass = computed(() => props.embedded
   ? 'grid min-h-0 divide-y divide-default xl:grid-cols-[280px_minmax(0,1fr)] xl:divide-x xl:divide-y-0'
+  : props.studio
+    ? 'grid min-h-0 gap-3 xl:grid-cols-[260px_minmax(0,1fr)]'
   : 'grid gap-3 p-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]')
 const workspacePanelClass = computed(() => props.embedded
   ? 'min-h-0 min-w-0 p-3'
+  : props.studio
+    ? 'min-w-0 rounded-md border border-default bg-elevated p-3'
   : 'min-w-0 rounded-md border border-default bg-default/30 p-3')
 const activityPanelClass = computed(() => props.embedded
   ? 'border-t border-default p-3'
+  : props.studio
+    ? 'rounded-md border border-default bg-elevated p-3'
   : 'mx-3 mb-3 rounded-md border border-default bg-default/30 p-3')
 
 function maskCanvasPoint(event: PointerEvent) {
@@ -464,7 +472,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section :class="embedded ? 'space-y-3' : 'rounded-lg border border-default bg-elevated'">
+  <section :class="studio || embedded ? 'space-y-3' : 'rounded-lg border border-default bg-elevated'">
     <div
       v-if="embedded"
       class="flex flex-wrap items-start justify-between gap-3"
@@ -491,7 +499,7 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <div v-else class="flex flex-wrap items-start justify-between gap-3 border-b border-default px-4 py-3">
+    <div v-else-if="!studio" class="flex flex-wrap items-start justify-between gap-3 border-b border-default px-4 py-3">
       <button
         type="button"
         class="flex min-w-0 flex-1 items-start gap-2 text-left"
@@ -639,7 +647,7 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <div v-if="!embedded" :class="workspacePanelClass">
+      <div v-if="!embedded && !studio" :class="workspacePanelClass">
         <div class="mb-2 flex items-center justify-between gap-2">
           <div>
             <p class="text-xs font-medium uppercase text-muted">Draft assembly</p>
