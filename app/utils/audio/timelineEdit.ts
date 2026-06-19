@@ -6,6 +6,7 @@ import { computeDuration } from '~~/server/utils/audio/timelineSchema'
 
 export type EditableState = TimelineState
 export type VideoClipFit = 'fit' | 'fill' | 'crop'
+export type CaptionStylePreset = 'platform_default' | 'bold_social' | 'subtitle_safe'
 
 /** Deep clone + recompute duration_sec. sourceDurations lets play-to-end clips
  * (source_out_sec === null) contribute their decoded length. */
@@ -210,6 +211,20 @@ export function setClipFit(state: TimelineState, { clipId, fit }: { clipId: stri
   return next
 }
 
+/** Replace the caption burn-in style preset on a caption clip. No-op (original
+ * reference) for unknown clips, non-caption clips, or unsupported styles. */
+export function setCaptionStyle(state: TimelineState, { clipId, style }: { clipId: string, style: CaptionStylePreset }): TimelineState {
+  if (style !== 'platform_default' && style !== 'bold_social' && style !== 'subtitle_safe') return state
+  const found = findClip(state, clipId)
+  if (!found || (found.clip as { type?: string }).type !== 'caption') return state
+  const next = cloneState(state)
+  for (const track of next.tracks) {
+    const clip = track.clips.find(c => c.id === clipId)
+    if (clip) (clip as { style?: CaptionStylePreset }).style = style
+  }
+  return next
+}
+
 /** Append an overlay clip (a Banner Studio project + format key) to an overlay track. */
 export function addOverlayClip(
   state: TimelineState,
@@ -236,7 +251,7 @@ export function addOverlayClip(
 export function addCaptionClip(
   state: TimelineState,
   { trackId, id, text, sourceAssetId = null, captionVttUrl = null, startSec, durationSec, style = 'platform_default' }:
-    { trackId: string; id: string; text: string; sourceAssetId?: string | null; captionVttUrl?: string | null; startSec: number; durationSec: number; style?: 'platform_default' | 'bold_social' | 'subtitle_safe' }
+    { trackId: string; id: string; text: string; sourceAssetId?: string | null; captionVttUrl?: string | null; startSec: number; durationSec: number; style?: CaptionStylePreset }
 ): TimelineState {
   const next = cloneState(state)
   const track = next.tracks.find(t => t.id === trackId)

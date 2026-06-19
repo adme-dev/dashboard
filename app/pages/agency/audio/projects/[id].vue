@@ -21,6 +21,7 @@ import { resolveVideoStudioClipInspector } from '~~/app/utils/video/clipInspecto
 import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipInspector'
 import { CLIP_EFFECT_PRESET_UI } from '~~/app/utils/video/clipEffectPresets'
 import { effectPreviewPlan } from '~~/app/utils/video/effectPreview'
+import type { CaptionStylePreset } from '~~/app/utils/audio/timelineEdit'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import { audioStudioTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
@@ -463,6 +464,12 @@ function deleteSelectedClip() {
   if (!selected) return
   editor.deleteClipAction(selected.clipId)
   selectedClipId.value = null
+}
+
+function setSelectedCaptionStyle(style: CaptionStylePreset) {
+  const selected = selectedClipInspector.value
+  if (!selected || selected.kind !== 'caption') return
+  editor.setCaptionStyleAction(selected.clipId, style)
 }
 
 function imageR2Key(r2Key: string | null): boolean {
@@ -1046,6 +1053,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           :can-split="selectedClipInspector.kind === 'audio'"
           @split="splitSelectedClip"
           @delete="deleteSelectedClip"
+          @set-caption-style="setSelectedCaptionStyle"
         />
 
         <!-- Per-clip effects drawer — shows for any selected video clip -->

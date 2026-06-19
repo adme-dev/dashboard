@@ -1,4 +1,5 @@
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
+import type { CaptionStylePreset } from '~~/app/utils/audio/timelineEdit'
 
 export interface VideoStudioClipInspectorSummary {
   clipId: string
@@ -11,6 +12,7 @@ export interface VideoStudioClipInspectorSummary {
   startSec: number
   durationSec: number | null
   endSec: number | null
+  captionStyle?: CaptionStylePreset
   details: Array<{ label: string; value: string }>
 }
 
@@ -86,6 +88,7 @@ export function resolveVideoStudioClipInspector(input: {
       startSec,
       durationSec,
       endSec,
+      captionStyle: kind === 'caption' ? (c.style ?? 'platform_default') : undefined,
       details,
     }
   }

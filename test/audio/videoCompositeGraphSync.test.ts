@@ -39,4 +39,16 @@ describe('videoCompositeGraph .ts ↔ .mjs parity', () => {
     if (clip.type === 'video') clip.effects = ['film_grain', 'vhs', 'unknown_preset']
     expect(mjs(state, profile)).toEqual(ts(state, profile))
   })
+  it('produces identical plans with caption style presets', () => {
+    const state = av()
+    state.tracks.push({
+      id: 'captions',
+      name: 'Captions',
+      kind: 'caption',
+      clips: [
+        { type: 'caption', id: 'cap1', timeline_start_sec: 1, duration_sec: 3, text: 'Drive away today', style: 'subtitle_safe' }
+      ]
+    } as any)
+    expect(mjs(state, profile)).toEqual(ts(state, profile))
+  })
 })

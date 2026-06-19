@@ -112,9 +112,11 @@ Decision: inline overlay templates should create or reuse Banner Studio projects
 - [x] Store generated VTT against video asset or caption asset.
 - [x] Add caption preview/download.
 - [x] Add captions as overlay/render input.
-- [ ] Add caption style presets later: platform default, bold social, subtitle-safe.
+- [x] Add caption style presets later: platform default, bold social, subtitle-safe.
 
 Decision: first caption pass stores a single-cue VTT plus transcript on `video_assets`; caption clips now burn transcript text into the composite render with a default FFmpeg text style. Segmented VTT parsing and richer style presets remain follow-up work.
+
+Decision: caption clips now expose three burn-in presets from the selected clip inspector. `platform_default`, `bold_social`, and `subtitle_safe` save through the existing undo/autosave edit flow and map to distinct FFmpeg drawtext size, box, border, and safe-margin settings in both the Nitro renderer and audio-jobs container renderer.
 
 ## Phase 9: AI Producer
 

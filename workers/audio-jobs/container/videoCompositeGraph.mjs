@@ -67,13 +67,50 @@ function escapeDrawtext(value) {
     .replace(/\n/g, '\\n')
 }
 
+function resolveCaptionStyle(style) {
+  return style === 'bold_social' || style === 'subtitle_safe' || style === 'platform_default'
+    ? style
+    : 'platform_default'
+}
+
+function captionStyleOptions(style, H) {
+  if (style === 'bold_social') {
+    return {
+      fontSize: Math.round(H * 0.056),
+      lineSpacing: 12,
+      boxColor: 'black@0.70',
+      boxBorderW: 28,
+      safeMargin: Math.max(72, Math.round(H * 0.09)),
+      borderW: 2
+    }
+  }
+  if (style === 'subtitle_safe') {
+    return {
+      fontSize: Math.round(H * 0.036),
+      lineSpacing: 8,
+      boxColor: 'black@0.50',
+      boxBorderW: 18,
+      safeMargin: Math.max(96, Math.round(H * 0.12)),
+      borderW: 0
+    }
+  }
+  return {
+    fontSize: Math.round(H * 0.043),
+    lineSpacing: 10,
+    boxColor: 'black@0.62',
+    boxBorderW: 24,
+    safeMargin: Math.max(48, Math.round(H * 0.055)),
+    borderW: 0
+  }
+}
+
 function captionDrawtextFilter(clip, W, H) {
   const start = Number(clip.timeline_start_sec ?? 0)
   const end = start + Number(clip.duration_sec ?? 0)
   const text = escapeDrawtext(wrapCaptionText(String(clip.text ?? '')))
-  const safeMargin = Math.max(48, Math.round(H * 0.055))
-  const fontSize = clip.style === 'bold_social' ? Math.round(H * 0.052) : Math.round(H * 0.043)
-  return `drawtext=text='${text}':fontcolor=white:fontsize=${fontSize}:line_spacing=10:box=1:boxcolor=black@0.62:boxborderw=24:x=(w-text_w)/2:y=h-text_h-${safeMargin}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'`
+  const style = captionStyleOptions(resolveCaptionStyle(clip.style), H)
+  const border = style.borderW > 0 ? `:borderw=${style.borderW}:bordercolor=black@0.80` : ''
+  return `drawtext=text='${text}':fontcolor=white:fontsize=${style.fontSize}:line_spacing=${style.lineSpacing}:box=1:boxcolor=${style.boxColor}:boxborderw=${style.boxBorderW}${border}:x=(w-text_w)/2:y=h-text_h-${style.safeMargin}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'`
 }
 
 function kenburnsExpr(k, W, H, fps, dur) {

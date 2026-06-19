@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { reactive } from 'vue'
-import { addVideoClip, addOverlayClip, addCaptionClip, trimVisualClip, cloneState } from '~~/app/utils/audio/timelineEdit'
+import { addVideoClip, addOverlayClip, addCaptionClip, trimVisualClip, cloneState, setCaptionStyle } from '~~/app/utils/audio/timelineEdit'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 function avState(): TimelineState {
@@ -98,6 +98,16 @@ describe('addCaptionClip', () => {
       style: 'platform_default',
     })
     expect(next.duration_sec).toBe(6)
+  })
+
+  it('updates caption style presets without touching non-caption clips', () => {
+    let s = addVideoClip(avState(), { trackId: 'vid', id: 'v1', r2Key: 'media/p/f.mp4', startSec: 0, durationSec: 5, baseSource: 'uploaded_footage' })
+    s = addCaptionClip(s, { trackId: 'cap', id: 'cap1', text: 'Drive away today', startSec: 0, durationSec: 3 })
+
+    const styled = setCaptionStyle(s, { clipId: 'cap1', style: 'subtitle_safe' })
+    expect((styled.tracks[2].clips[0] as any).style).toBe('subtitle_safe')
+    expect(setCaptionStyle(styled, { clipId: 'missing', style: 'bold_social' })).toBe(styled)
+    expect(setCaptionStyle(styled, { clipId: 'v1', style: 'bold_social' })).toBe(styled)
   })
 })
 

@@ -96,7 +96,7 @@ describe('buildCompositePlan with overlays', () => {
 })
 
 describe('buildCompositePlan with captions', () => {
-  it('burns caption clips into the video chain without adding media inputs', () => {
+  function withCaption(style: 'platform_default' | 'bold_social' | 'subtitle_safe' = 'platform_default') {
     const state = avState()
     state.tracks.push({
       id: 'cap',
@@ -115,13 +115,35 @@ describe('buildCompositePlan with captions', () => {
           text: 'Big offer this weekend only',
           source_asset_id: 'asset-1',
           caption_vtt_url: '/captions.vtt',
-          style: 'platform_default',
+          style,
         } as any
       ]
     } as any)
+    return state
+  }
+
+  it('burns caption clips into the video chain without adding media inputs', () => {
+    const state = withCaption()
     const p = buildCompositePlan(state, profile)
     expect(p.inputs.map(i => i.r2_key)).toEqual(['media/f1.mp4', 'media/s1.jpg', 'audio/vo.mp3', 'audio/music.mp3'])
     expect(p.filterComplex).toContain('drawtext=')
     expect(p.filterComplex).toContain("enable='between(t,1.000,5.000)'")
+  })
+
+  it('maps caption style presets to distinct drawtext settings', () => {
+    const platform = buildCompositePlan(withCaption('platform_default'), profile).filterComplex
+    const bold = buildCompositePlan(withCaption('bold_social'), profile).filterComplex
+    const safe = buildCompositePlan(withCaption('subtitle_safe'), profile).filterComplex
+
+    expect(platform).toContain('fontsize=83')
+    expect(platform).toContain('boxcolor=black@0.62')
+    expect(platform).toContain('y=h-text_h-106')
+    expect(bold).toContain('fontsize=108')
+    expect(bold).toContain('boxcolor=black@0.70')
+    expect(bold).toContain('borderw=2')
+    expect(bold).toContain('y=h-text_h-173')
+    expect(safe).toContain('fontsize=69')
+    expect(safe).toContain('boxcolor=black@0.50')
+    expect(safe).toContain('y=h-text_h-230')
   })
 })

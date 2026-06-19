@@ -13,7 +13,8 @@ import { resolveClipStartSec } from '~~/app/utils/video/timelinePlacement'
 import {
   cloneState,
   addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt,
-  addVideoClip, addOverlayClip, addCaptionClip, trimVisualClip, setClipEffects, setClipFit,
+  addVideoClip, addOverlayClip, addCaptionClip, trimVisualClip, setClipEffects, setClipFit, setCaptionStyle,
+  type CaptionStylePreset,
   type VideoClipFit
 } from '~~/app/utils/audio/timelineEdit'
 import {
@@ -240,6 +241,13 @@ export function useMediaProjectEditor(projectId: string) {
   function setClipFitAction(clipId: string, fit: VideoClipFit) {
     if (!timeline.value) return
     const next = setClipFit(timeline.value, { clipId, fit })
+    if (next !== timeline.value) applyEdit(next)
+  }
+
+  /** Replace the burn-in caption style preset. One undo step; no-op for non-caption clips. */
+  function setCaptionStyleAction(clipId: string, style: CaptionStylePreset) {
+    if (!timeline.value) return
+    const next = setCaptionStyle(timeline.value, { clipId, style })
     if (next !== timeline.value) applyEdit(next)
   }
 
@@ -600,7 +608,7 @@ export function useMediaProjectEditor(projectId: string) {
     // Transport
     play, pause, seek,
     // Edit actions
-    moveClipAction, trimClipAction, sliceAction, setClipEffectsAction, setClipFitAction,
+    moveClipAction, trimClipAction, sliceAction, setClipEffectsAction, setClipFitAction, setCaptionStyleAction,
     addClipAction, addTrackAction, addClipToKindTrackAction, deleteClipAction,
     undoAction, redoAction,
     // AV actions
