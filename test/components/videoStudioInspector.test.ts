@@ -34,12 +34,18 @@ async function render(props: Record<string, unknown> = {}, slots: Record<string,
 }
 
 async function mount(props: Record<string, unknown> = {}, slots: Record<string, () => unknown> = {}) {
+  const events: Array<{ name: string, payload: unknown }> = []
   const host = document.createElement('div')
-  const app = createApp({ render: () => h(VideoStudioInspector, props, slots) })
+  const app = createApp({
+    render: () => h(VideoStudioInspector, {
+      ...props,
+      'onUpdate:tab': (value: string) => events.push({ name: 'update:tab', payload: value }),
+    }, slots)
+  })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
   app.mount(host)
   await nextTick()
-  return { app, host }
+  return { app, host, events }
 }
 
 describe('VideoStudioInspector', () => {
@@ -73,7 +79,7 @@ describe('VideoStudioInspector', () => {
   })
 
   it('switches between produce and review panels', async () => {
-    const { app, host } = await mount({
+    const { app, host, events } = await mount({
       renderJobCount: 2,
       modelReady: false,
     }, {
@@ -91,14 +97,35 @@ describe('VideoStudioInspector', () => {
 
       expect(host.textContent).toContain('Produce panel')
       expect(host.textContent).toContain('AI unavailable')
+      expect(events).toContainEqual({ name: 'update:tab', payload: 'produce' })
 
       ;([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Review 2')) as HTMLButtonElement).click()
       await nextTick()
 
       expect(host.textContent).toContain('Review panel')
       expect(host.textContent).not.toContain('Produce panel')
+      expect(events).toContainEqual({ name: 'update:tab', payload: 'review' })
     } finally {
       app.unmount()
     }
+  })
+
+  it('can open directly on the produce or review tab from page mode', async () => {
+    const produceHtml = await render({ tab: 'produce' }, {
+      details: () => h('p', 'Details panel'),
+      produce: () => h('p', 'Produce panel'),
+      review: () => h('p', 'Review panel'),
+    })
+    const reviewHtml = await render({ tab: 'review', renderJobCount: 1 }, {
+      details: () => h('p', 'Details panel'),
+      produce: () => h('p', 'Produce panel'),
+      review: () => h('p', 'Review panel'),
+    })
+
+    expect(produceHtml).toContain('Produce panel')
+    expect(produceHtml).not.toContain('Details panel')
+    expect(reviewHtml).toContain('Review panel')
+    expect(reviewHtml).toContain('Review 1')
+    expect(reviewHtml).not.toContain('Produce panel')
   })
 })

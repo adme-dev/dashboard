@@ -582,25 +582,30 @@ Never:
   - Verify: component test renders tab labels and active panel.
   - Files: new inspector component, workbench/page integration tests.
 
-- [ ] Move voiceover composer into Produce inspector.
+- [x] Move voiceover composer into Produce inspector.
   - Acceptance: voiceover generation remains usable and emits existing events.
   - Verify: existing voice composer test plus inspector integration test.
   - Files: `VideoStudioInspector.vue`, page integration.
 
-- [ ] Move overlay composer into Produce inspector.
+- [x] Move overlay composer into Produce inspector.
   - Acceptance: overlay project search, format selection, start/duration, add/replace still work.
   - Verify: existing overlay composer tests plus inspector integration.
   - Files: `VideoStudioInspector.vue`, page integration.
 
-- [ ] Move AI Producer rail into Produce inspector.
+- [x] Move AI Producer rail into Produce inspector.
   - Acceptance: recipes, brief, format, build plan, apply plan remain available.
   - Verify: producer rail test plus inspector integration.
   - Files: `VideoStudioInspector.vue`, `VideoStudioProducerRail.vue` if needed.
 
-- [ ] Move render jobs into Review inspector.
+- [x] Move render jobs into Review inspector.
   - Acceptance: retry, publish, portal, library, download remain available.
   - Verify: render jobs panel tests and browser check.
   - Files: `VideoStudioInspector.vue`, `VideoStudioRenderJobsPanel.vue`.
+
+- [x] Sync workbench mode navigation with inspector tabs.
+  - Acceptance: Produce and Review modes open the matching inspector context; inspector tab clicks keep mode state aligned.
+  - Verify: workbench and inspector component tests.
+  - Files: `VideoStudioWorkbench.vue`, `VideoStudioInspector.vue`, page integration.
 
 ### Phase 3: Prepare/AI Harness Split
 

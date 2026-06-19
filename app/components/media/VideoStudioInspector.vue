@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+
+type InspectorTab = 'details' | 'produce' | 'review'
 
 const props = withDefaults(defineProps<{
+  tab?: InspectorTab
   assetCount?: number
   voiceAssetCount?: number
   overlayAssetCount?: number
   renderJobCount?: number
   modelReady?: boolean
 }>(), {
+  tab: 'details',
   assetCount: 0,
   voiceAssetCount: 0,
   overlayAssetCount: 0,
@@ -15,9 +19,19 @@ const props = withDefaults(defineProps<{
   modelReady: false,
 })
 
-type InspectorTab = 'details' | 'produce' | 'review'
+const emit = defineEmits<{
+  (event: 'update:tab', value: InspectorTab): void
+}>()
 
-const activeTab = ref<InspectorTab>('details')
+const localTab = ref<InspectorTab>(props.tab)
+
+const activeTab = computed({
+  get: () => localTab.value,
+  set: (value: InspectorTab) => {
+    localTab.value = value
+    emit('update:tab', value)
+  },
+})
 
 const tabItems = computed(() => [
   {
@@ -43,6 +57,10 @@ const summaryItems = computed(() => [
   { label: 'Voice', value: props.voiceAssetCount, icon: 'i-lucide-mic-2' },
   { label: 'Overlays', value: props.overlayAssetCount, icon: 'i-lucide-shapes' },
 ])
+
+watch(() => props.tab, (tab) => {
+  localTab.value = tab
+})
 </script>
 
 <template>

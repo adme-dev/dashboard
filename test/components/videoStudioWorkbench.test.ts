@@ -58,6 +58,7 @@ async function mount(props: Record<string, unknown>, slots: Record<string, () =>
       onAddOverlay: () => events.push({ name: 'add-overlay', payload: null }),
       onGenerate: () => events.push({ name: 'generate', payload: null }),
       onRender: (formats: VideoRenderFormatId[]) => events.push({ name: 'render', payload: formats }),
+      'onUpdate:mode': (value: string) => events.push({ name: 'update:mode', payload: value }),
       'onUpdate:producerCollapsed': (value: boolean) => events.push({ name: 'update:producer-collapsed', payload: value }),
     }, slots)
   })
@@ -184,9 +185,29 @@ describe('VideoStudioWorkbench', () => {
       buttonByText(host, 'Produce').click()
       await nextTick()
 
+      expect(events).toContainEqual({ name: 'update:mode', payload: 'produce' })
       expect(events.find(event => event.name === 'update:producer-collapsed')?.payload).toBe(false)
     } finally {
       app.unmount()
     }
+  })
+
+  it('can render directly in review mode for the mobile review fallback', async () => {
+    const html = await render({
+      mode: 'review',
+      currentTimeSec: 0,
+      durationSec: 24,
+      renderJobCount: 3,
+      generationEnabled: false,
+    }, {
+      library: () => h('p', 'Library rail'),
+      preview: () => h('p', 'Preview panel'),
+      producer: () => h('p', 'Producer content'),
+      review: () => h('p', 'Review fallback content'),
+    })
+
+    expect(html).toContain('Review 3')
+    expect(html).toContain('Review fallback content')
+    expect(html).toContain('AI unavailable')
   })
 })

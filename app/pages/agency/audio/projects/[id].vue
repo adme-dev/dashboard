@@ -39,6 +39,8 @@ const route = useRoute()
 const projectId = computed(() => String(route.params.id))
 const editor = useMediaProjectEditor(projectId.value)
 type VideoClipFit = 'fit' | 'fill' | 'crop'
+type VideoStudioMode = 'assets' | 'edit' | 'produce' | 'review'
+type VideoStudioInspectorTab = 'details' | 'produce' | 'review'
 
 const CLIP_FIT_OPTIONS: Array<{ id: VideoClipFit; label: string; icon: string; hint: string }> = [
   { id: 'fit', label: 'Fit', icon: 'i-lucide-minimize-2', hint: 'Keep the whole frame visible with padding when needed.' },
@@ -119,7 +121,19 @@ const captionGeneratingAssetId = ref<string | null>(null)
 const activeGenerationJobCount = computed(() => genJobs.jobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
 const selectedStudioAssetId = ref<string | null>(null)
 const producerRailCollapsed = ref(false)
+const videoStudioMode = ref<VideoStudioMode>('edit')
 const producerBrief = ref('Create a punchy vertical social edit using the strongest project assets.')
+
+const videoStudioInspectorTab = computed<VideoStudioInspectorTab>({
+  get: () => {
+    if (videoStudioMode.value === 'produce') return 'produce'
+    if (videoStudioMode.value === 'review') return 'review'
+    return 'details'
+  },
+  set: (tab) => {
+    videoStudioMode.value = tab === 'details' ? 'edit' : tab
+  },
+})
 
 interface StudioBannerProject {
   id: string
@@ -882,6 +896,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
 
         <VideoStudioWorkbench
           v-if="isAv"
+          v-model:mode="videoStudioMode"
           v-model:producer-collapsed="producerRailCollapsed"
           :current-time-sec="editor.currentTime.value"
           :duration-sec="editor.duration.value"
@@ -981,6 +996,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
 
           <template #producer>
               <VideoStudioInspector
+                v-model:tab="videoStudioInspectorTab"
                 :asset-count="videoStudioAssetCount"
                 :voice-asset-count="studioVoiceAssetCount"
                 :overlay-asset-count="studioOverlayAssetCount"

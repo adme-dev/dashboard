@@ -7,7 +7,10 @@ import {
   type VideoRenderFormatId,
 } from '~~/app/utils/video/renderFormats'
 
+type StudioMode = 'assets' | 'edit' | 'produce' | 'review'
+
 const props = withDefaults(defineProps<{
+  mode?: StudioMode
   currentTimeSec: number
   durationSec: number
   assetCount?: number
@@ -17,6 +20,7 @@ const props = withDefaults(defineProps<{
   rendering?: boolean
   producerCollapsed?: boolean
 }>(), {
+  mode: 'edit',
   assetCount: 0,
   generationJobCount: 0,
   renderJobCount: 0,
@@ -31,12 +35,19 @@ const emit = defineEmits<{
   (event: 'add-overlay'): void
   (event: 'generate'): void
   (event: 'render', formats: VideoRenderFormatId[]): void
+  (event: 'update:mode', value: StudioMode): void
   (event: 'update:producer-collapsed', value: boolean): void
 }>()
 
-type StudioMode = 'assets' | 'edit' | 'produce' | 'review'
+const localMode = ref<StudioMode>(props.mode)
 
-const activeMode = ref<StudioMode>('edit')
+const activeMode = computed({
+  get: () => localMode.value,
+  set: (value: StudioMode) => {
+    localMode.value = value
+    emit('update:mode', value)
+  },
+})
 
 const modeItems = computed(() => [
   {
@@ -116,6 +127,10 @@ watch(activeMode, (mode) => {
   if (mode === 'produce' && props.producerCollapsed) {
     emit('update:producer-collapsed', false)
   }
+})
+
+watch(() => props.mode, (mode) => {
+  localMode.value = mode
 })
 </script>
 
