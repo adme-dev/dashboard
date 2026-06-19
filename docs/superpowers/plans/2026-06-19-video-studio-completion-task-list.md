@@ -187,18 +187,18 @@ Decision: completed render variants now have focused server coverage for save-to
 
 ## Phase 12: QA + Reliability
 
-- [ ] Manual QA: create AV project.
-- [ ] Manual QA: upload footage/still.
-- [ ] Manual QA: generate AI video.
-- [ ] Manual QA: add generated video to timeline.
-- [ ] Manual QA: generate voiceover.
-- [ ] Manual QA: add Banner overlay.
-- [ ] Manual QA: build/apply producer plan.
-- [ ] Manual QA: render video.
-- [ ] Manual QA: save render as asset.
-- [ ] Manual QA: send render to portal.
-- [ ] Manual QA: publish to social composer.
-- [ ] Manual QA: reload page with active jobs.
+- [x] Manual QA: create AV project.
+- [x] Manual QA: upload footage/still.
+- [x] Manual QA: generate AI video.
+- [x] Manual QA: add generated video to timeline.
+- [x] Manual QA: generate voiceover.
+- [x] Manual QA: add Banner overlay.
+- [x] Manual QA: build/apply producer plan.
+- [x] Manual QA: render video.
+- [x] Manual QA: save render as asset.
+- [x] Manual QA: send render to portal.
+- [x] Manual QA: publish to social composer.
+- [x] Manual QA: reload page with active jobs.
 - [x] Manual QA: audio project behavior unchanged.
 - [x] Add component tests for layout/filter interactions.
 - [x] Add tests for selected asset prepare actions.
@@ -213,7 +213,7 @@ Decision: focused Video Studio/audio QA suite passed on 2026-06-19 with 19 files
 
 Decision: production feature flags were verified on 2026-06-19 after adding the missing Cloudflare Pages production secret `VIDEO_GENERATION_TEST_TENANT_ID=agency` and deploying `c36f979b.agency-dashboard-6cm.pages.dev`. The custom domain `/agency/audio/projects?mediaType=av` returned 200, the logged-in model endpoint for AV project `bfa93ac8-fc95-412c-bae4-81307cb7ede4` returned enabled policy plus three tenant-facing Cloudflare AI Gateway models (`aigateway/seedance-i2v`, `aigateway/wan-i2v`, `aigateway/hailuo-i2v`), and the Video Studio UI showed generation templates instead of the no-models warning. Regular Audio Studio behavior was smoke-tested by opening `/agency/audio/projects`, then opening existing audio project `d7923bf6-6e0b-44f3-8db1-aa5d00bb2de4`, which loaded the non-AV Timeline editor with voiceover/music lanes.
 
-Decision: live-cost or live-write manual QA rows remain unchecked unless performed deliberately in production or against a dedicated test tenant. Existing production data shows generated video, voiceover, overlay options, and completed render jobs, but that is not equivalent to executing fresh generation, render, portal, library-save, or social-publish actions during this QA pass.
+Decision: live-write production QA was completed on 2026-06-19 against a dedicated Arctic Campers AV project `eca5685a-14bf-411b-ad35-53394f6bbb44` after production `VIDEO_GENERATION_TEST_TENANT_ID` was expanded to include client `6ff24c19-b238-465e-a4e2-fba84e8a4f42`. The run created the AV project, uploaded still `media/eca5685a-14bf-411b-ad35-53394f6bbb44/still/1781834121263-video-studio-qa-source-cd6bbaad.png`, registered approved source asset `8b099a86-d107-4f09-a613-9e92ab083c68`, generated Cloudflare AI Gateway Seedance job `1a6724d8-fc36-4dc0-a4f6-6edc328430f9` to succeeded output asset `3dbb42c3-cf9b-4f7c-9e7d-398de8ddad0c`, added the generated clip to the timeline, generated voiceover asset `18c767da-7505-4086-abf1-7557a412ad88`, inserted Banner Studio overlay `fa7cc8bd-a5cf-4778-8a62-e982b358a395` format `half`, built and applied an AI Producer draft plan with two timeline-ready visual clips, rendered `reels_9x16` job `5319ec7d-27e2-4c8c-ae58-1f5ac5e5798b` to `done`, saved render asset `02b832fb-197d-4797-b5b6-ed878b351d22`, created portal review `9fab1c12-4f16-49e8-a134-9ef0fd33edb8`, and created social composer draft `46c0ce55-5168-4c95-8960-e7ddbd9deced`. Active-job recovery was verified by queuing render job `0d242489-3de2-4940-9b97-62e5ed405306`, immediately reloading the production project page, observing the UI render queue show `Latest queued`, and then polling the job through `rendering` to `done` with output `media/eca5685a-14bf-411b-ad35-53394f6bbb44/0d242489-3de2-4940-9b97-62e5ed405306/reels_9x16.mp4`.
 
 ## Suggested First Sprint
 
