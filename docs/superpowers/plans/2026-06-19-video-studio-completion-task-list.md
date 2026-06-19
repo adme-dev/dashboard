@@ -49,9 +49,11 @@
 - [x] Show playable previews for audio.
 - [x] Add inline actions per asset: preview, add to timeline, generate from this, publish, inspect.
 - [x] Hide empty bucket noise by default.
-- [ ] Consider backend `GET /api/agency/video/projects/:id/studio-assets` aggregation endpoint if frontend aggregation gets brittle.
+- [x] Consider backend `GET /api/agency/video/projects/:id/studio-assets` aggregation endpoint if frontend aggregation gets brittle.
 
 Decision: Library source filters now include rendered exports as a first-class source. Saved render assets are normalized as `render` when they come from a media render job, while Cloudflare AI Gateway outputs remain under `generation`; the filter rows wrap into stable scan-friendly grids instead of clipping source chips.
+
+Decision: do not add a backend `studio-assets` aggregation endpoint in this completion pass. The existing frontend aggregation is covered by focused component tests and survived the 2026-06-19 production QA project with uploaded stills, generated video, voiceover, Banner overlay, render outputs, and saved library assets. Keep the endpoint as a future extraction only if the aggregation becomes brittle or shared by another surface.
 
 ## Phase 4: Preview + Prepare Panel
 
