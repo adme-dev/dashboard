@@ -104,7 +104,7 @@ watch(() => props.selectedOverlayClip, (clip) => {
 </script>
 
 <template>
-  <div class="rounded-md border border-default bg-elevated p-3">
+  <div class="rounded-md border border-default bg-elevated p-4">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
         <p class="text-sm font-medium text-highlighted">Overlay</p>
@@ -125,8 +125,9 @@ watch(() => props.selectedOverlayClip, (clip) => {
       <UInput
         v-model="search"
         icon="i-lucide-search"
-        size="xs"
+        size="sm"
         placeholder="Search Banner projects"
+        class="w-full"
       />
 
       <div v-if="props.loading && !props.projects.length" class="space-y-2">
@@ -190,16 +191,16 @@ watch(() => props.selectedOverlayClip, (clip) => {
 
       <div class="grid grid-cols-2 gap-2">
         <UFormField label="Start">
-          <UInput v-model.number="startSec" type="number" min="0" step="0.1" size="xs" />
+          <UInput v-model.number="startSec" type="number" min="0" step="0.1" size="sm" class="w-full" />
         </UFormField>
         <UFormField label="Duration">
-          <UInput v-model.number="durationSec" type="number" min="1" step="0.5" size="xs" />
+          <UInput v-model.number="durationSec" type="number" min="1" step="0.5" size="sm" class="w-full" />
         </UFormField>
       </div>
 
       <UButton
         icon="i-lucide-list-plus"
-        size="xs"
+        size="sm"
         color="primary"
         variant="soft"
         label="Add overlay"
@@ -210,7 +211,7 @@ watch(() => props.selectedOverlayClip, (clip) => {
       <UButton
         v-if="props.selectedOverlayClip"
         icon="i-lucide-replace"
-        size="xs"
+        size="sm"
         color="neutral"
         variant="ghost"
         label="Replace selected overlay"

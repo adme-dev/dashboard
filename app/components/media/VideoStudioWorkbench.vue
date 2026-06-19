@@ -105,8 +105,8 @@ const generationStatusDetail = computed(() => props.generationStatusDetail || (p
   : 'Video generation is disabled by account policy or no runnable models are configured.'))
 
 const workspaceGridClass = computed(() => props.producerCollapsed
-  ? 'grid min-h-0 divide-y divide-default lg:h-[min(48vh,540px)] lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0'
-  : 'grid min-h-0 divide-y divide-default lg:h-[min(48vh,540px)] lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0 2xl:grid-cols-[minmax(340px,420px)_minmax(0,1fr)_minmax(340px,380px)]')
+  ? 'grid min-h-0 divide-y divide-default lg:min-h-[calc(100vh-16rem)] lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0'
+  : 'grid min-h-0 divide-y divide-default lg:min-h-[calc(100vh-16rem)] lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0 2xl:grid-cols-[minmax(340px,420px)_minmax(0,1fr)_minmax(360px,420px)]')
 
 const selectedFormats = ref<VideoRenderFormatId[]>([...DEFAULT_VIDEO_RENDER_FORMATS])
 const selectedFormatCount = computed(() => selectedFormats.value.length)
