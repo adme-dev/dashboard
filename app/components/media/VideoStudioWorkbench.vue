@@ -34,28 +34,53 @@ const emit = defineEmits<{
   (event: 'update:producer-collapsed', value: boolean): void
 }>()
 
-type StudioStage = 'library' | 'prepare' | 'producer'
+type StudioMode = 'assets' | 'edit' | 'produce' | 'review'
 
-const activeStage = ref<StudioStage>('prepare')
+const activeMode = ref<StudioMode>('edit')
 
-const stageItems = computed(() => [
+const modeItems = computed(() => [
   {
     label: 'Assets',
     icon: 'i-lucide-library',
-    value: 'library',
+    value: 'assets',
     badge: props.assetCount ? String(props.assetCount) : undefined,
   },
   {
     label: 'Edit',
     icon: 'i-lucide-monitor-play',
-    value: 'prepare',
+    value: 'edit',
     badge: props.generationJobCount ? String(props.generationJobCount) : undefined,
   },
   {
-    label: 'Producer',
+    label: 'Produce',
     icon: 'i-lucide-wand-sparkles',
-    value: 'producer',
+    value: 'produce',
+  },
+  {
+    label: 'Review',
+    icon: 'i-lucide-list-checks',
+    value: 'review',
     badge: props.renderJobCount ? String(props.renderJobCount) : undefined,
+  },
+])
+
+const statusItems = computed(() => [
+  {
+    icon: 'i-lucide-sliders-horizontal',
+    label: selectedFormatCount.value === 1 ? '1 format' : `${selectedFormatCount.value} formats`,
+  },
+  {
+    icon: props.generationEnabled ? 'i-lucide-sparkles' : 'i-lucide-sparkles',
+    label: props.generationEnabled ? 'AI ready' : 'AI unavailable',
+    tone: props.generationEnabled ? 'text-primary' : 'text-warning',
+  },
+  {
+    icon: 'i-lucide-clapperboard',
+    label: props.renderJobCount === 1 ? '1 render' : `${props.renderJobCount} renders`,
+  },
+  {
+    icon: 'i-lucide-timer',
+    label: `${fmt(props.currentTimeSec)} / ${fmt(props.durationSec)}`,
   },
 ])
 
@@ -77,8 +102,8 @@ function renderSelectedFormats() {
   emit('render', normalizeVideoRenderFormats(selectedFormats.value))
 }
 
-function stagePanelClass(stage: StudioStage) {
-  return activeStage.value === stage ? 'block' : 'hidden lg:block'
+function modePanelClass(mode: StudioMode) {
+  return activeMode.value === mode ? 'block' : 'hidden lg:block'
 }
 
 function fmt(sec: number) {
@@ -87,8 +112,8 @@ function fmt(sec: number) {
   return `${min}:${String(safe % 60).padStart(2, '0')}`
 }
 
-watch(activeStage, (stage) => {
-  if (stage === 'producer' && props.producerCollapsed) {
+watch(activeMode, (mode) => {
+  if (mode === 'produce' && props.producerCollapsed) {
     emit('update:producer-collapsed', false)
   }
 })
@@ -191,8 +216,8 @@ watch(activeStage, (stage) => {
     <div class="border-b border-default px-4 py-2">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <UTabs
-          v-model="activeStage"
-          :items="stageItems"
+          v-model="activeMode"
+          :items="modeItems"
           :content="false"
           size="sm"
           variant="link"
@@ -200,19 +225,22 @@ watch(activeStage, (stage) => {
           class="min-w-0"
           aria-label="Video Studio workspace"
         />
-        <div class="hidden items-center gap-2 text-[11px] text-muted md:flex">
-          <span class="inline-flex items-center gap-1">
-            <UIcon name="i-lucide-timer" class="size-3.5" />
-            {{ fmt(props.currentTimeSec) }}
+        <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+          <span
+            v-for="item in statusItems"
+            :key="item.label"
+            class="inline-flex min-w-0 items-center gap-1"
+            :class="item.tone"
+          >
+            <UIcon :name="item.icon" class="size-3.5 shrink-0" />
+            <span class="truncate">{{ item.label }}</span>
           </span>
-          <span class="h-3 w-px bg-border" />
-          <span>{{ fmt(props.durationSec) }} sequence</span>
         </div>
       </div>
     </div>
 
     <div :class="workspaceGridClass">
-      <aside :class="['min-h-0 min-w-[18rem] resize-x overflow-auto p-3 lg:max-w-[32rem]', stagePanelClass('library')]">
+      <aside :class="['min-h-0 min-w-[18rem] resize-x overflow-auto p-3 lg:max-w-[32rem]', modePanelClass('assets')]">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-sliders-horizontal" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Assets</h3>
@@ -220,7 +248,7 @@ watch(activeStage, (stage) => {
         <slot name="library" />
       </aside>
 
-      <main :class="['min-h-0 min-w-0 overflow-y-auto p-3', stagePanelClass('prepare')]">
+      <main :class="['min-h-0 min-w-0 overflow-y-auto p-3', modePanelClass('edit')]">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Edit</h3>
@@ -228,7 +256,7 @@ watch(activeStage, (stage) => {
         <slot name="preview" />
       </main>
 
-      <aside v-if="!props.producerCollapsed" :class="['min-h-0 min-w-0 overflow-y-auto p-3', stagePanelClass('producer')]">
+      <aside v-if="!props.producerCollapsed" :class="['min-h-0 min-w-0 overflow-y-auto p-3', modePanelClass('produce')]">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-wand-sparkles" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Producer</h3>
@@ -244,6 +272,35 @@ watch(activeStage, (stage) => {
         </div>
         <slot name="producer" />
       </aside>
+
+      <section :class="['min-h-0 min-w-0 overflow-y-auto p-3', activeMode === 'review' ? 'block lg:hidden' : 'hidden']">
+        <div class="mb-3 flex items-center gap-2">
+          <UIcon name="i-lucide-list-checks" class="size-4 text-muted" />
+          <h3 class="text-xs font-medium uppercase text-muted">Review</h3>
+        </div>
+        <slot name="review">
+          <div class="rounded-md border border-default bg-default/30 p-3">
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p class="text-[11px] uppercase text-muted">Render queue</p>
+                <p class="mt-0.5 font-medium text-highlighted">{{ props.renderJobCount }} {{ props.renderJobCount === 1 ? 'job' : 'jobs' }}</p>
+              </div>
+              <div>
+                <p class="text-[11px] uppercase text-muted">Formats</p>
+                <p class="mt-0.5 font-medium text-highlighted">{{ selectedFormatCount }}</p>
+              </div>
+              <div>
+                <p class="text-[11px] uppercase text-muted">AI state</p>
+                <p class="mt-0.5 font-medium text-highlighted">{{ props.generationEnabled ? 'Ready' : 'Unavailable' }}</p>
+              </div>
+              <div>
+                <p class="text-[11px] uppercase text-muted">Sequence</p>
+                <p class="mt-0.5 font-medium text-highlighted">{{ fmt(props.durationSec) }}</p>
+              </div>
+            </div>
+          </div>
+        </slot>
+      </section>
     </div>
 
     <div v-if="props.producerCollapsed" class="flex items-center justify-between gap-3 border-t border-default px-4 py-2">

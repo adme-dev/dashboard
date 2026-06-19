@@ -156,7 +156,7 @@ describe('VideoStudioWorkbench', () => {
     }
   })
 
-  it('exposes stage navigation and expands producer when the producer stage is selected', async () => {
+  it('exposes final mode navigation, compact status, and expands producer for produce mode', async () => {
     const { app, host, events } = await mount({
       currentTimeSec: 4,
       durationSec: 16,
@@ -175,9 +175,13 @@ describe('VideoStudioWorkbench', () => {
     try {
       expect(host.textContent).toContain('Assets 12')
       expect(host.textContent).toContain('Edit 1')
-      expect(host.textContent).toContain('Producer 2')
+      expect(host.textContent).toContain('Produce')
+      expect(host.textContent).toContain('Review 2')
+      expect(host.textContent).toContain('3 formats')
+      expect(host.textContent).toContain('AI ready')
+      expect(host.textContent).toContain('2 renders')
 
-      buttonByText(host, 'Producer 2').click()
+      buttonByText(host, 'Produce').click()
       await nextTick()
 
       expect(events.find(event => event.name === 'update:producer-collapsed')?.payload).toBe(false)

@@ -572,8 +572,8 @@ Never:
 
 - [x] Add stage navigation to current workbench.
 - [x] Bound workbench height and pane scrolling so timeline remains visible.
-- [ ] Convert stage language to final modes: Assets, Edit, Produce, Review.
-- [ ] Add a compact status bar for model availability, render queue, save state, and selected formats.
+- [x] Convert stage language to final modes: Assets, Edit, Produce, Review.
+- [x] Add a compact status bar for model availability, render queue, save state, and selected formats.
 
 ### Phase 2: Inspector Consolidation
 
