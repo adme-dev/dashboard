@@ -16,6 +16,7 @@ import { overServicingTool } from './overServicing'
 import { revenueForecastTool } from './revenueForecast'
 import { createTaskTool } from './createTask'
 import { scheduleSocialPostTool } from './scheduleSocialPost'
+import { budgetAlertTool } from './proposeBudgetAlert'
 import { rememberTool } from './remember'
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
@@ -37,5 +38,6 @@ export const registry: AiTool<any>[] = [
   revenueForecastTool,
   createTaskTool,
   scheduleSocialPostTool,
+  budgetAlertTool,
   rememberTool,
 ]

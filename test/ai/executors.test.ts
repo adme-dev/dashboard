@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { getExecutor, executors } from '~~/server/utils/ai/executors'
 import { makeCreateTaskExecutor } from '~~/server/utils/ai/executors/createTask'
 import { makeScheduleSocialPostExecutor } from '~~/server/utils/ai/executors/scheduleSocialPost'
+import { makeBudgetAlertExecutor } from '~~/server/utils/ai/executors/proposeBudgetAlert'
 import { effectiveRiskTier } from '~~/server/utils/ai/toolRegistry'
 
 const ctx = (userId = 'u1') => ({ userId, userRole: 'account_manager', conversationId: 'c1', event: { headers: {} } as any })
@@ -45,6 +46,25 @@ describe('scheduleSocialPost executor', () => {
   it('propagates a failed post (so executeProposal can revert)', async () => {
     const exec = makeScheduleSocialPostExecutor(vi.fn().mockRejectedValue(new Error('insert failed')))
     await expect(exec.execute({ clientId: 'cl1', content: 'x', status: 'draft' }, ctx() as any)).rejects.toThrow('insert failed')
+  })
+})
+
+describe('budgetAlert executor', () => {
+  it('maps the proposal to the budget-alerts body, posts it, and returns resultRef + summary', async () => {
+    const post = vi.fn().mockResolvedValue({ id: 'alert-3' })
+    const exec = makeBudgetAlertExecutor(post)
+    const res = await exec.execute(
+      { clientId: 'cl1', clientName: 'Acme', alertType: 'budget_threshold', severity: 'warning', title: 'Watch Acme', message: null, thresholdValue: 90 },
+      ctx() as any,
+    )
+    expect(res.resultRef).toBe('alert-3')
+    expect(res.summary).toContain('Acme')
+    expect(res.summary).toContain('90')
+    expect(post.mock.calls[0][0]).toMatchObject({ clientId: 'cl1', alertType: 'budget_threshold', severity: 'warning', title: 'Watch Acme', thresholdValue: 90 })
+  })
+
+  it('declares the confirm risk tier', () => {
+    expect(getExecutor('propose_budget_alert')?.riskTier).toBe('confirm')
   })
 })
 
