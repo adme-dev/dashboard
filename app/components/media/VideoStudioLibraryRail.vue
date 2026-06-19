@@ -56,22 +56,22 @@ const CATEGORY_FILTERS = [
 ]
 
 const SOURCE_FILTERS = [
-  { label: 'All sources', value: 'all' },
-  { label: 'Uploads', value: 'upload' },
-  { label: 'AI', value: 'generation' },
-  { label: 'Renders', value: 'render' },
-  { label: 'Audio Studio', value: 'audio' },
-  { label: 'Banner Studio', value: 'banner' },
-  { label: 'Derivatives', value: 'derivative' },
+  { label: 'All sources', value: 'all', icon: 'i-lucide-database' },
+  { label: 'Uploads', value: 'upload', icon: 'i-lucide-upload' },
+  { label: 'AI', value: 'generation', icon: 'i-lucide-sparkles' },
+  { label: 'Renders', value: 'render', icon: 'i-lucide-clapperboard' },
+  { label: 'Audio Studio', value: 'audio', icon: 'i-lucide-waveform' },
+  { label: 'Banner Studio', value: 'banner', icon: 'i-lucide-panels-top-left' },
+  { label: 'Derivatives', value: 'derivative', icon: 'i-lucide-layers' },
 ]
 
 const STATUS_FILTERS = [
-  { label: 'All status', value: 'all' },
-  { label: 'Ready', value: 'ready' },
-  { label: 'Running', value: 'running' },
-  { label: 'Failed', value: 'failed' },
-  { label: 'Blocked', value: 'blocked' },
-  { label: 'Unknown', value: 'unknown' },
+  { label: 'All status', value: 'all', icon: 'i-lucide-list-filter' },
+  { label: 'Ready', value: 'ready', icon: 'i-lucide-circle-check' },
+  { label: 'Running', value: 'running', icon: 'i-lucide-loader-circle' },
+  { label: 'Failed', value: 'failed', icon: 'i-lucide-circle-x' },
+  { label: 'Blocked', value: 'blocked', icon: 'i-lucide-octagon-alert' },
+  { label: 'Unknown', value: 'unknown', icon: 'i-lucide-circle-help' },
 ]
 
 const SORT_OPTIONS = [
@@ -322,10 +322,12 @@ function sourceLabel(value: VideoStudioAssetSource) {
           v-for="option in SOURCE_FILTERS"
           :key="option.value"
           :label="option.label"
+          :icon="option.icon"
           size="xs"
           :variant="source === option.value ? 'solid' : 'ghost'"
           :color="source === option.value ? 'primary' : 'neutral'"
-          class="min-w-0 justify-start"
+          class="min-w-0 justify-start rounded-md border"
+          :class="source === option.value ? 'border-primary' : 'border-transparent hover:border-default'"
           @click="source = option.value"
         />
       </div>
@@ -335,10 +337,12 @@ function sourceLabel(value: VideoStudioAssetSource) {
           v-for="option in STATUS_FILTERS"
           :key="option.value"
           :label="option.label"
+          :icon="option.icon"
           size="xs"
           :variant="statusBucket === option.value ? 'solid' : 'ghost'"
           :color="statusBucket === option.value ? 'primary' : 'neutral'"
-          class="min-w-0 justify-start"
+          class="min-w-0 justify-start rounded-md border"
+          :class="statusBucket === option.value ? 'border-primary' : 'border-transparent hover:border-default'"
           @click="statusBucket = option.value"
         />
       </div>
@@ -378,10 +382,12 @@ function sourceLabel(value: VideoStudioAssetSource) {
         <div
           v-for="asset in group.assets"
           :key="asset.id"
-          class="grid w-full grid-cols-[44px_minmax(0,1fr)_auto] items-start gap-2 rounded-md border px-2 py-1.5 text-left transition"
-          :class="props.selectedId === asset.id ? 'border-primary bg-primary/10' : 'border-default bg-elevated hover:border-primary/50'"
+          class="grid w-full grid-cols-[44px_minmax(0,1fr)_auto] items-start gap-2 rounded-lg border px-2.5 py-2 text-left shadow-sm ring-1 transition"
+          :class="props.selectedId === asset.id
+            ? 'border-primary bg-primary/10 ring-primary/30'
+            : 'border-default bg-default/60 ring-default/70 hover:border-primary/50 hover:bg-elevated hover:ring-primary/20'"
         >
-          <div class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-default bg-default/40">
+          <div class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-default bg-elevated">
             <img
               v-if="previewKind(asset) === 'image' && asset.thumbnailUrl"
               :src="asset.thumbnailUrl"
