@@ -3,8 +3,11 @@ import type { VideoGenerationTenantPolicy } from '~~/server/utils/video-generati
 
 export async function loadTenantVideoGenerationPolicy(tenantId: string): Promise<VideoGenerationTenantPolicy> {
   if (process.env.VIDEO_GENERATION_TEST_TENANT_ENABLED === 'true') {
-    const testTenantId = process.env.VIDEO_GENERATION_TEST_TENANT_ID
-    if (!testTenantId || tenantId !== testTenantId) {
+    const testTenantIds = (process.env.VIDEO_GENERATION_TEST_TENANT_ID ?? '')
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean)
+    if (!testTenantIds.includes(tenantId)) {
       return { enabled: false, monthlyCapCents: 0, allowedModelIds: [] }
     }
     return {

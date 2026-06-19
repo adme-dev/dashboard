@@ -41,4 +41,24 @@ describe('video generation tenant policy', () => {
       monthlyCapCents: 2500,
     })
   })
+
+  it('supports a comma-separated test tenant allowlist', async () => {
+    process.env.VIDEO_GENERATION_TEST_TENANT_ENABLED = 'true'
+    process.env.VIDEO_GENERATION_TEST_TENANT_ID = 'agency, dealer-1'
+    process.env.VIDEO_GENERATION_TEST_TENANT_CAP_CENTS = '1500'
+
+    await expect(loadTenantVideoGenerationPolicy('agency')).resolves.toMatchObject({
+      enabled: true,
+      monthlyCapCents: 1500,
+    })
+    await expect(loadTenantVideoGenerationPolicy('dealer-1')).resolves.toMatchObject({
+      enabled: true,
+      monthlyCapCents: 1500,
+    })
+    await expect(loadTenantVideoGenerationPolicy('dealer-2')).resolves.toEqual({
+      enabled: false,
+      monthlyCapCents: 0,
+      allowedModelIds: [],
+    })
+  })
 })
