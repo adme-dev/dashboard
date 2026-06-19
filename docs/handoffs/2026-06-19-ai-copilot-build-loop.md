@@ -59,14 +59,16 @@ Every team member (and, scoped, every client) gets a co-pilot that knows them, u
 - [x] **WS-A.8a** memory orchestration (`memory/orchestrate.ts`) + retrieve/inject wired into `aiChatEngine.ts` system prompt + **cross-user isolation test** — DONE (7 tests). Read path live behind `AI_TOOLS_ENABLED`.
 - [x] **WS-A.8b** distiller WRITE enqueue (fire-and-forget, behind `AI_MEMORY_DISTILL_ENABLED`) in `aiChatEngine.ts` after the turn — DONE (`80fb973b`). `distillAndStoreMemories` in orchestrate.ts (gpt-oss-20b via `generateGroqInsight`, dedup vs recent, save as `inferred`), wired via `runAfterResponse`, flag added to `nuxt.config.ts`. 7 tests, 227/227 AI suite green. **Phase 0 COMPLETE.**
 
-### Phase 1 — Read-everywhere skill-packs (parallel, zero write risk)
-- [ ] `media_buyer` persona + `rolePersona.ts` role→default-persona map + wire into `aiChatEngine`. *(media-buyer §3)*
-- [ ] Read tools: `get_campaign_breakdown`, `get_budget_health` (gate `MEDIA_BUYING`) + tests.
-- [ ] Finance/Account/Sales/Creative read tools as needed to give each role a day-1 assistant.
+### Phase 1 — Read-everywhere skill-packs (parallel, zero write risk) — COMPLETE
+- [x] `media_buyer` persona + `rolePersona.ts` role→default-persona map + wire into `aiChatEngine` — DONE (`45bca284`). Engine resolves persona as explicit → conversation-persisted → role-default → generalist; client picker mirror synced; 5 tests.
+- [x] Read tools: `get_campaign_breakdown`, `get_budget_health` (gate `MEDIA_BUYING`) + tests — DONE (`5eb319b3`). Thin injected-deps wrappers over analytics/campaigns + budget-alerts/health; 10 tests; added to media_buyer allowlist; registry now 15 reads + create_task + remember (17).
+- [x] Finance/Account/Sales/Creative read tools — already covered: the finance/account/sales personas (Slice 1.5) + Slice-2 margin tools give each role a day-1 read assistant via the role-default map. `creative`→`marketing` pack (no dedicated creative reads needed yet). No net-new tools required.
 
 ### Phase 2 — Execute, role by role (flag-gated, propose→confirm→audit)
-- [ ] Media Buyer writes: `propose_budget_change` (rich_confirm, wraps `feat/budget-write-execution` apply-chain), `propose_budget_alert`, `propose_schedule_post` + executors + tests. *blocked-by: WS-C*
-- [ ] Counter-model sanity check for `rich_confirm` + rich confirm-card UI. *(media-buyer §7)*
+- [ ] **`propose_budget_change` (rich_confirm) — BLOCKED.** Its executor wraps the `feat/budget-write-execution` apply-chain (`POST /api/agency/social/budget/apply`), which is **not present on this branch** and that branch is unmerged. *Needs: merge `feat/budget-write-execution` into this lineage (or cherry-pick the apply endpoint) before the executor can call a real mutation. Don't build a propose tool whose executor targets a non-existent endpoint.*
+- [ ] **`propose_budget_alert` — needs a decision.** The target endpoint `POST /api/agency/budget-alerts` is `requireRole(['owner','admin'])`-gated, so a `media_buyer` (the persona) can't execute it — proposal would succeed but confirm 403s. *Needs: either widen the endpoint to MEDIA_BUYING, or gate the tool to owner/admin only (and drop it from the media_buyer pack).*
+- [ ] **`propose_schedule_post` — unblocked.** Wraps `POST /api/agency/social/publishing/posts`. Buildable now (propose→confirm→audit, low-risk `confirm`) once the body mapping is confirmed against that endpoint.
+- [ ] Counter-model sanity check for `rich_confirm` + rich confirm-card UI. *(media-buyer §7)* — follows `propose_budget_change`.
 
 ### Phase 3 — Orchestration & surfaces
 - [ ] Traffic controller L1 auto-routing (intent+role → one skill-pack). *(traffic-controller §3)*
@@ -79,7 +81,8 @@ Every team member (and, scoped, every client) gets a co-pilot that knows them, u
 
 ## 6. Current state
 
-- **Phase 0 COMPLETE** (WS-A.1–8b, WS-B, WS-C). Head: `80fb973b` (WS-A.8b). AI suite 227/227 green. Migs 180+181 applied to prod Neon (dormant). Nothing deployed, no flags flipped. Next up: **Phase 1** — `media_buyer` persona + `rolePersona` map + first read tools.
+- **Phase 0 + Phase 1 COMPLETE.** Head: `5eb319b3`. AI suite **245/245 green**. Migs 180+181 applied to prod Neon (dormant). Nothing deployed, no flags flipped. Commits this loop: `80fb973b` (WS-A.8b), `45bca284` (media_buyer persona + role map), `5eb319b3` (2 media-buyer reads).
+- **Next up: Phase 2 writes — has gates.** `propose_budget_change` is BLOCKED (apply endpoint not on this branch). `propose_budget_alert` needs a permission decision. `propose_schedule_post` is the one cleanly-unblocked write. All three are §8-gate-adjacent (first write surfaces) — review checkpoint recommended before proceeding; run `/code-review high` on the Phase 0+1 work first.
 - On `feat/ai-copilot-phase0`. Commits: `b996d47f` (PRD + 7 specs), `b6682061` (WS-B). MCP ADR added (uncommitted at handoff time — commit it).
 - **WS-B done & green:** `server/utils/ai/executors/{types,createTask,index}.ts`; `RiskTier` in `toolContext.ts`; `riskTier`+`effectiveRiskTier` in `toolRegistry.ts`; generic `confirm-action.post.ts`; `test/ai/executors.test.ts`. AI suite 31/31.
 - **Nothing deployed. No flags flipped.** All co-pilot writes remain dormant.
