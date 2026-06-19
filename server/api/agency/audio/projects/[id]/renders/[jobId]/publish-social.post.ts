@@ -37,6 +37,7 @@ export default defineEventHandler(async (event) => {
     format,
     projectId: id,
     jobId,
+    prompt: project.project.title,
     captionGenerator: async ({ topic, platform, tone }) => generateGroqInsight(
       [
         `Write a ${tone} organic social media post for ${platform}.`,

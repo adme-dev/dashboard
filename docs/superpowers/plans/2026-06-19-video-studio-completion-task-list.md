@@ -164,10 +164,10 @@ Decision: timeline zoom math is now shared and unit-tested. The timeline toolbar
 - [x] Add render format selector in the workbench.
 - [x] Show render queue state near timeline.
 - [x] Show completed renders with direct download.
-- [ ] Save render to video library.
-- [ ] Send render to client portal.
-- [ ] Publish render to social composer.
-- [ ] Generate social caption from rendered video/brief.
+- [x] Save render to video library.
+- [x] Send render to client portal.
+- [x] Publish render to social composer.
+- [x] Generate social caption from rendered video/brief.
 - [x] Add render failure details.
 - [x] Add retry render action.
 - [x] Confirm overlay resolution works per format.
@@ -180,6 +180,8 @@ Decision: a compact render queue strip now sits directly above the timeline for 
 Decision: failed render jobs now show full failure details in the Producer render panel instead of a clipped error line. Failed jobs also expose a Retry action that queues a fresh render through the existing render flow, using the current default render format behavior rather than adding a second backend retry endpoint.
 
 Decision: mixed-aspect render requests now resolve Banner Studio overlay HTML separately for each requested output format. The Pages producer enqueues `resolvedOverlaysByFormat`, keyed by render format, while the video render worker keeps the legacy `resolvedOverlays` fallback for older queue messages already in flight.
+
+Decision: completed render variants now have focused server coverage for save-to-library, client-portal review creation, and social composer draft creation. Social drafts use the stable signed public render URL and pass the project title into the AI caption generator so the generated caption is project-specific instead of format-only.
 
 ## Phase 12: QA + Reliability
 
