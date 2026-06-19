@@ -734,9 +734,10 @@ Never:
   - Verify: component tests for unavailable state.
   - Implementation: workbench and inspector now share explicit AI status label/detail copy for ready, policy-disabled, and no-model states.
 
-- [ ] Add provenance/licensing indicators.
+- [x] Add provenance/licensing indicators.
   - Acceptance: generated, uploaded, render, audio, overlay, and derivative assets have clear provenance.
   - Verify: asset normalization and UI tests.
+  - Implementation: asset rail rows now show derived origin and rights badges for uploads, AI generations, renders, voice/music, banner overlays, and derivatives.
 
 - [ ] Prepare approval/review hooks.
   - Acceptance: Review mode has a place for comments/approval state without implementing full approval workflow yet.

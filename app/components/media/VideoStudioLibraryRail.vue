@@ -9,6 +9,7 @@ import {
   type VideoStudioAssetSource,
   type VideoStudioAssetStatus,
 } from '~~/app/utils/video/videoStudioAssets'
+import { videoStudioAssetGovernanceBadges } from '~~/app/utils/video/videoStudioAssetGovernance'
 
 const props = withDefaults(defineProps<{
   assets: VideoStudioAsset[]
@@ -413,6 +414,14 @@ function sourceLabel(value: VideoStudioAssetSource) {
               <UBadge :label="sourceChipLabel(asset.source)" size="xs" variant="subtle" color="neutral" />
               <UBadge :label="typeLabel(asset)" size="xs" variant="subtle" color="neutral" />
               <UBadge :label="readinessLabel(asset)" size="xs" :color="readinessColor(asset)" variant="subtle" />
+              <UBadge
+                v-for="badge in videoStudioAssetGovernanceBadges(asset)"
+                :key="badge.label"
+                :label="badge.label"
+                size="xs"
+                variant="subtle"
+                :color="badge.color"
+              />
               <UBadge v-if="asset.format" :label="asset.format" size="xs" variant="subtle" color="neutral" />
               <UBadge v-if="asset.captionVttUrl" label="Captions" size="xs" variant="subtle" color="primary" />
             </div>
