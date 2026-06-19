@@ -739,9 +739,10 @@ Never:
   - Verify: asset normalization and UI tests.
   - Implementation: asset rail rows now show derived origin and rights badges for uploads, AI generations, renders, voice/music, banner overlays, and derivatives.
 
-- [ ] Prepare approval/review hooks.
+- [x] Prepare approval/review hooks.
   - Acceptance: Review mode has a place for comments/approval state without implementing full approval workflow yet.
   - Verify: spec/task update.
+  - Implementation: Review mode now includes a reserved workflow panel for draft approval state, comments, render queue status, and future client sign-off/handoff integration.
 
 ## Risks and Mitigations
 

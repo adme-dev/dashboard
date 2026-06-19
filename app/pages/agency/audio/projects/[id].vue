@@ -13,6 +13,7 @@ import VideoStudioOverlayComposer from '~~/app/components/media/VideoStudioOverl
 import VideoStudioProducerRail from '~~/app/components/media/VideoStudioProducerRail.vue'
 import VideoStudioRenderJobsPanel from '~~/app/components/media/VideoStudioRenderJobsPanel.vue'
 import VideoStudioRenderStatusStrip from '~~/app/components/media/VideoStudioRenderStatusStrip.vue'
+import VideoStudioReviewStatusPanel from '~~/app/components/media/VideoStudioReviewStatusPanel.vue'
 import VideoStudioSelectedAssetPanel from '~~/app/components/media/VideoStudioSelectedAssetPanel.vue'
 import VideoStudioVoiceComposer from '~~/app/components/media/VideoStudioVoiceComposer.vue'
 import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.vue'
@@ -130,6 +131,7 @@ const videoAssets = ref<VideoAsset[]>([])
 const selectedClipId = ref<string | null>(null)
 const captionGeneratingAssetId = ref<string | null>(null)
 const activeGenerationJobCount = computed(() => genJobs.jobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
+const latestRenderJobStatus = computed(() => editor.renderJobs.value[0]?.status ?? null)
 const selectedStudioAssetId = ref<string | null>(null)
 const producerRailCollapsed = ref(false)
 const videoStudioMode = ref<VideoStudioMode>('edit')
@@ -1103,6 +1105,11 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 </template>
 
                 <template #review>
+                  <VideoStudioReviewStatusPanel
+                    class="mb-3"
+                    :render-job-count="editor.renderJobs.value.length"
+                    :latest-render-status="latestRenderJobStatus"
+                  />
                   <VideoStudioRenderJobsPanel
                     :project-id="projectId"
                     :jobs="editor.renderJobs.value"
