@@ -3,6 +3,7 @@ import { getExecutor, executors } from '~~/server/utils/ai/executors'
 import { makeCreateTaskExecutor } from '~~/server/utils/ai/executors/createTask'
 import { makeScheduleSocialPostExecutor } from '~~/server/utils/ai/executors/scheduleSocialPost'
 import { makeBudgetAlertExecutor } from '~~/server/utils/ai/executors/proposeBudgetAlert'
+import { makeBudgetChangeExecutor } from '~~/server/utils/ai/executors/proposeBudgetChange'
 import { effectiveRiskTier } from '~~/server/utils/ai/toolRegistry'
 
 const ctx = (userId = 'u1') => ({ userId, userRole: 'account_manager', conversationId: 'c1', event: { headers: {} } as any })
@@ -65,6 +66,27 @@ describe('budgetAlert executor', () => {
 
   it('declares the confirm risk tier', () => {
     expect(getExecutor('propose_budget_alert')?.riskTier).toBe('confirm')
+  })
+})
+
+describe('budgetChange executor (plans, never executes a live write)', () => {
+  it('PLANS the change via the spend-actions endpoint and summarises current→proposed', async () => {
+    const post = vi.fn().mockResolvedValue({ planned: true, action: { id: 'act-9' } })
+    const exec = makeBudgetChangeExecutor(post)
+    const res = await exec.execute(
+      { mediaSpendId: 'ms1', campaignName: 'Acme Retargeting', currentDailyBudget: 50, newDailyBudget: 40, pctChange: -20, reason: 'overpacing', issueType: 'overpacing' },
+      ctx() as any,
+    )
+    expect(res.resultRef).toBe('act-9')
+    expect(res.summary).toContain('50→40/day')
+    expect(res.summary).toContain('nothing has changed on the platform yet')
+    // delegates to the plan endpoint with the mediaSpendId in the path + ai_copilot source
+    expect(post.mock.calls[0][0]).toBe('ms1')
+    expect(post.mock.calls[0][1]).toMatchObject({ currentDailyBudget: 50, recommendedDailyBudget: 40, source: 'ai_copilot' })
+  })
+
+  it('is rich_confirm tier (gated by the confirm endpoint)', () => {
+    expect(getExecutor('propose_budget_change')?.riskTier).toBe('rich_confirm')
   })
 })
 

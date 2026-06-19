@@ -76,10 +76,9 @@ export const PERSONAS: Record<string, Persona> = {
       + 'always state the current vs proposed daily budget, the % change, the campaign, and the expected pacing '
       + 'effect, and make clear it will only apply after the user confirms. Never imply a change is already live. '
       + 'For questions outside paid media, answer briefly and suggest the relevant assistant.',
-    // Phase 1: reads. The Phase-2 propose_* writes are appended as they land. (get_adspend_pacing is
-    // FINANCE-gated and dropped by RBAC for a pure media_buyer; the MEDIA_BUYING reads below are their
-    // day-1 surface.)
-    toolAllowlist: ['get_adspend_pacing', 'get_campaign_breakdown', 'get_budget_health', 'get_social_performance', 'get_project_status', ...COMMON],
+    // Reads + the media-buyer write (propose_budget_change, MEDIA_BUYING, rich_confirm). (get_adspend_pacing
+    // is FINANCE-gated and dropped by RBAC for a pure media_buyer; the MEDIA_BUYING tools are their surface.)
+    toolAllowlist: ['get_adspend_pacing', 'get_campaign_breakdown', 'get_budget_health', 'get_social_performance', 'get_project_status', 'propose_budget_change', ...COMMON],
   },
 }
 

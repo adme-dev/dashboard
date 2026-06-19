@@ -2,6 +2,7 @@ import type { ActionExecutor } from './types'
 import { createTaskExecutor } from './createTask'
 import { scheduleSocialPostExecutor } from './scheduleSocialPost'
 import { budgetAlertExecutor } from './proposeBudgetAlert'
+import { budgetChangeExecutor } from './proposeBudgetChange'
 
 /**
  * The action-executor registry, keyed by tool name. The confirm endpoint dispatches a confirmed
@@ -13,6 +14,7 @@ export const executors: Record<string, ActionExecutor> = {
   [createTaskExecutor.toolName]: createTaskExecutor,
   [scheduleSocialPostExecutor.toolName]: scheduleSocialPostExecutor,
   [budgetAlertExecutor.toolName]: budgetAlertExecutor,
+  [budgetChangeExecutor.toolName]: budgetChangeExecutor,
 }
 
 /** Look up the executor for a proposed action's tool_name; null when unsupported (fail-safe). */
