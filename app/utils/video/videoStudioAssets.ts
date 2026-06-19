@@ -1,5 +1,5 @@
 export type VideoStudioAssetType = 'bucket' | 'video' | 'audio' | 'overlay' | 'job' | 'derivative'
-export type VideoStudioAssetSource = 'bucket' | 'library' | 'generation' | 'audio' | 'banner' | 'derivative'
+export type VideoStudioAssetSource = 'bucket' | 'library' | 'generation' | 'render' | 'audio' | 'banner' | 'derivative'
 export type VideoStudioAssetStatus = 'ready' | 'done' | 'queued' | 'processing' | 'rendering' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'unknown'
 
 interface BucketItemInput {
@@ -16,6 +16,7 @@ interface BucketItemInput {
 interface VideoAssetInput {
   id: string
   title?: string | null
+  sourceProjectId?: string | null
   sourceJobId?: string | null
   r2Key?: string | null
   format?: string | null
@@ -150,6 +151,12 @@ function imageR2Key(r2Key: string | null): boolean {
   return Boolean(r2Key && /\.(png|jpe?g|webp)$/i.test(r2Key.split('?')[0] ?? ''))
 }
 
+function videoAssetSource(asset: VideoAssetInput): VideoStudioAssetSource {
+  if (asset.sourceJobId && (asset.generationModelId || asset.generationPrompt)) return 'generation'
+  if (asset.sourceProjectId && asset.sourceJobId) return 'render'
+  return 'library'
+}
+
 export function videoStudioAssetImageSource(asset: VideoStudioAsset | null | undefined): { assetId: string; title: string } | null {
   if (!asset?.libraryAssetId || !imageR2Key(asset.r2Key)) return null
   return { assetId: asset.libraryAssetId, title: asset.title }
@@ -191,7 +198,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       rawId: asset.id,
       libraryAssetId: asset.id,
       type: 'video',
-      source: asset.sourceJobId ? 'generation' : 'library',
+      source: videoAssetSource(asset),
       title: asset.title || asset.r2Key || 'Untitled video',
       subtitle: asset.format ?? null,
       status: 'ready',

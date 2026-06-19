@@ -29,7 +29,7 @@ const emit = defineEmits<{
 
 const search = ref('')
 const category = ref<'all' | 'footage' | 'still' | 'generated' | 'derivative' | 'voiceover' | 'music' | 'overlay' | 'caption'>('all')
-const source = ref<'all' | 'upload' | 'generation' | 'audio' | 'banner' | 'derivative'>('all')
+const source = ref<'all' | 'upload' | 'generation' | 'render' | 'audio' | 'banner' | 'derivative'>('all')
 const statusBucket = ref<'all' | 'ready' | 'running' | 'failed' | 'blocked' | 'unknown'>('all')
 const model = ref<string | 'all'>('all')
 const aspect = ref<string | 'all'>('all')
@@ -52,6 +52,7 @@ const SOURCE_FILTERS = [
   { label: 'All sources', value: 'all' },
   { label: 'Uploads', value: 'upload' },
   { label: 'AI', value: 'generation' },
+  { label: 'Renders', value: 'render' },
   { label: 'Audio Studio', value: 'audio' },
   { label: 'Banner Studio', value: 'banner' },
   { label: 'Derivatives', value: 'derivative' },
@@ -222,6 +223,7 @@ function sourceLabel(value: VideoStudioAssetSource) {
     derivative: 'Derivatives',
     generation: 'Generated media',
     library: 'Library media',
+    render: 'Rendered exports',
   }
   return labels[value]
 }
@@ -249,7 +251,7 @@ function sourceLabel(value: VideoStudioAssetSource) {
     </div>
 
     <div class="space-y-2">
-      <div class="flex gap-1.5 overflow-x-auto pb-1">
+      <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         <UButton
           v-for="option in CATEGORY_FILTERS"
           :key="option.value"
@@ -258,12 +260,12 @@ function sourceLabel(value: VideoStudioAssetSource) {
           size="xs"
           :variant="category === option.value ? 'solid' : 'soft'"
           :color="category === option.value ? 'primary' : 'neutral'"
-          class="shrink-0"
+          class="min-w-0 justify-start"
           @click="category = option.value"
         />
       </div>
 
-      <div class="flex flex-wrap gap-1.5">
+      <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         <UButton
           v-for="option in SOURCE_FILTERS"
           :key="option.value"
@@ -271,11 +273,12 @@ function sourceLabel(value: VideoStudioAssetSource) {
           size="xs"
           :variant="source === option.value ? 'solid' : 'ghost'"
           :color="source === option.value ? 'primary' : 'neutral'"
+          class="min-w-0 justify-start"
           @click="source = option.value"
         />
       </div>
 
-      <div class="flex flex-wrap gap-1.5">
+      <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         <UButton
           v-for="option in STATUS_FILTERS"
           :key="option.value"
@@ -283,6 +286,7 @@ function sourceLabel(value: VideoStudioAssetSource) {
           size="xs"
           :variant="statusBucket === option.value ? 'solid' : 'ghost'"
           :color="statusBucket === option.value ? 'primary' : 'neutral'"
+          class="min-w-0 justify-start"
           @click="statusBucket = option.value"
         />
       </div>

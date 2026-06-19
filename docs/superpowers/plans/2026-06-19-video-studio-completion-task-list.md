@@ -38,7 +38,7 @@
 
 - [x] Replace compact select-heavy filters with scan-friendly controls.
 - [x] Add asset type filter chips: footage, still, generated, derivative, voiceover, music, overlay, caption.
-- [ ] Add source filters: upload, generation, Audio Studio, Banner Studio, render, derivative.
+- [x] Add source filters: upload, generation, Audio Studio, Banner Studio, render, derivative.
 - [x] Add status filters: ready, queued, running, failed, blocked.
 - [x] Add model/provider filter.
 - [x] Add aspect ratio filter.
@@ -50,6 +50,8 @@
 - [x] Add inline actions per asset: preview, add to timeline, generate from this, publish, inspect.
 - [x] Hide empty bucket noise by default.
 - [ ] Consider backend `GET /api/agency/video/projects/:id/studio-assets` aggregation endpoint if frontend aggregation gets brittle.
+
+Decision: Library source filters now include rendered exports as a first-class source. Saved render assets are normalized as `render` when they come from a media render job, while Cloudflare AI Gateway outputs remain under `generation`; the filter rows wrap into stable scan-friendly grids instead of clipping source chips.
 
 ## Phase 4: Preview + Prepare Panel
 

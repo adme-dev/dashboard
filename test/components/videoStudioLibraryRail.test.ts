@@ -69,6 +69,7 @@ describe('VideoStudioLibraryRail', () => {
     expect(html).toContain('Stills')
     expect(html).toContain('Generated')
     expect(html).toContain('Audio Studio')
+    expect(html).toContain('Renders')
     expect(html).toContain('All aspect ratios')
     expect(html).toContain('Newest first')
     expect(html).toContain('Generated drive-by')

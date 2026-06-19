@@ -29,6 +29,15 @@ describe('videoStudioAssets', () => {
         transcript: 'Special finance offer',
         generationPrompt: 'Slow dolly past the car',
         generationModelId: 'replicate/wan-2.2'
+      }, {
+        id: 'render-asset-1',
+        title: 'Saved render reels',
+        sourceProjectId: 'project-1',
+        sourceJobId: 'render-job-1',
+        r2Key: 'renders/project-1/render-job-1/reels_9x16.mp4',
+        format: 'reels_9x16',
+        durationSec: 15,
+        thumbnailUrl: null
       }],
       audioAssets: [{
         id: 'voice-1',
@@ -69,6 +78,7 @@ describe('videoStudioAssets', () => {
     expect(assets.map(asset => asset.id)).toEqual([
       'bucket:bucket-item-1',
       'video:asset-1',
+      'video:render-asset-1',
       'audio:voice-1',
       'overlay:overlay-1',
       'job:job-2',
@@ -76,6 +86,7 @@ describe('videoStudioAssets', () => {
     ])
     expect(assets.find(asset => asset.id === 'job:job-2')?.status).toBe('running')
     expect(assets.find(asset => asset.id === 'video:asset-1')?.timelineReady).toBe(true)
+    expect(assets.find(asset => asset.id === 'video:render-asset-1')?.source).toBe('render')
     expect(assets.find(asset => asset.id === 'video:asset-1')?.libraryAssetId).toBe('asset-1')
     expect(assets.find(asset => asset.id === 'bucket:bucket-item-1')?.libraryAssetId).toBe('asset-1')
     expect(assets.find(asset => asset.id === 'video:asset-1')?.captionVttUrl).toBe('/api/agency/video/assets/asset-1/captions.vtt')
@@ -160,6 +171,15 @@ describe('videoStudioAssets', () => {
         captionVttUrl: '/api/agency/video/assets/asset-1/captions.vtt',
         generationPrompt: 'Slow dolly past the car',
         generationModelId: 'replicate/wan-2.2'
+      }, {
+        id: 'render-asset-1',
+        title: 'Saved render reels',
+        sourceProjectId: 'project-1',
+        sourceJobId: 'render-job-1',
+        r2Key: 'renders/project-1/render-job-1/reels_9x16.mp4',
+        format: 'reels_9x16',
+        durationSec: 15,
+        thumbnailUrl: null
       }],
       generationJobs: [{
         id: 'job-2',
@@ -176,9 +196,11 @@ describe('videoStudioAssets', () => {
     expect(filterVideoStudioAssets(assets, { search: 'dolly' }).map(asset => asset.id)).toEqual(['video:asset-1'])
     expect(filterVideoStudioAssets(assets, { type: 'job', status: 'failed' }).map(asset => asset.id)).toEqual(['job:job-2'])
     expect(filterVideoStudioAssets(assets, { model: 'replicate/wan-2.2' }).map(asset => asset.id)).toEqual(['video:asset-1'])
+    expect(filterVideoStudioAssets(assets, { source: 'generation' }).map(asset => asset.id)).toEqual(['video:asset-1', 'job:job-2'])
+    expect(filterVideoStudioAssets(assets, { source: 'render' }).map(asset => asset.id)).toEqual(['video:render-asset-1'])
     expect(filterVideoStudioAssets(assets, { source: 'bucket', bucketId: 'bucket-generated' }).map(asset => asset.id)).toEqual(['bucket:bucket-item-1'])
     expect(filterVideoStudioAssets(assets, { captions: 'with' }).map(asset => asset.id)).toEqual(['video:asset-1'])
-    expect(filterVideoStudioAssets(assets, { captions: 'without' }).map(asset => asset.id)).toEqual(['bucket:bucket-item-1', 'job:job-2'])
+    expect(filterVideoStudioAssets(assets, { captions: 'without' }).map(asset => asset.id)).toEqual(['bucket:bucket-item-1', 'video:render-asset-1', 'job:job-2'])
   })
 
   it('exposes voiceover scripts as downloadable caption tracks', () => {
