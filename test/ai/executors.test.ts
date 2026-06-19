@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { getExecutor, executors } from '~~/server/utils/ai/executors'
 import { makeCreateTaskExecutor } from '~~/server/utils/ai/executors/createTask'
+import { makeScheduleSocialPostExecutor } from '~~/server/utils/ai/executors/scheduleSocialPost'
 import { effectiveRiskTier } from '~~/server/utils/ai/toolRegistry'
 
 const ctx = (userId = 'u1') => ({ userId, userRole: 'account_manager', conversationId: 'c1', event: { headers: {} } as any })
@@ -13,6 +14,37 @@ describe('executor registry', () => {
 
   it('returns null for an unregistered action (fail-safe)', () => {
     expect(getExecutor('definitely_not_a_tool')).toBeNull()
+  })
+
+  it('resolves the propose_schedule_post executor (Phase 2)', () => {
+    expect(getExecutor('propose_schedule_post')?.toolName).toBe('propose_schedule_post')
+    expect(getExecutor('propose_schedule_post')?.riskTier).toBe('confirm')
+  })
+})
+
+describe('scheduleSocialPost executor', () => {
+  it('maps the proposal to the publishing body, posts it, and returns resultRef + summary', async () => {
+    const post = vi.fn().mockResolvedValue({ id: 'post-7' })
+    const exec = makeScheduleSocialPostExecutor(post)
+    const res = await exec.execute(
+      { clientId: 'cl1', clientName: 'Acme', content: 'Launch day', platforms: ['facebook'], scheduledAt: '2026-07-01T09:00:00Z', status: 'scheduled', linkUrl: null, firstComment: null },
+      ctx() as any,
+    )
+    expect(res.resultRef).toBe('post-7')
+    expect(res.summary).toContain('Acme')
+    expect(res.summary).toContain('2026-07-01T09:00:00Z')
+    expect(post.mock.calls[0][0]).toMatchObject({ clientId: 'cl1', content: 'Launch day', status: 'scheduled', platforms: ['facebook'] })
+  })
+
+  it('summarises a draft when there is no scheduledAt', async () => {
+    const exec = makeScheduleSocialPostExecutor(vi.fn().mockResolvedValue({ id: 'p1' }))
+    const res = await exec.execute({ clientId: 'cl1', clientName: 'Acme', content: 'x', status: 'draft' }, ctx() as any)
+    expect(res.summary).toContain('draft')
+  })
+
+  it('propagates a failed post (so executeProposal can revert)', async () => {
+    const exec = makeScheduleSocialPostExecutor(vi.fn().mockRejectedValue(new Error('insert failed')))
+    await expect(exec.execute({ clientId: 'cl1', content: 'x', status: 'draft' }, ctx() as any)).rejects.toThrow('insert failed')
   })
 })
 

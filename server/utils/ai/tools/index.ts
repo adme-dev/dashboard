@@ -15,6 +15,7 @@ import { retainerBurnTool } from './retainerBurn'
 import { overServicingTool } from './overServicing'
 import { revenueForecastTool } from './revenueForecast'
 import { createTaskTool } from './createTask'
+import { scheduleSocialPostTool } from './scheduleSocialPost'
 import { rememberTool } from './remember'
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
@@ -35,5 +36,6 @@ export const registry: AiTool<any>[] = [
   overServicingTool,
   revenueForecastTool,
   createTaskTool,
+  scheduleSocialPostTool,
   rememberTool,
 ]

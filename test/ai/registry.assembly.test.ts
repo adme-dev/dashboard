@@ -12,11 +12,13 @@ const SLICE2_TOOLS = [
 ]
 // Phase-1 media-buyer read skill-pack (MEDIA_BUYING-gated).
 const MEDIA_BUYER_TOOLS = ['get_campaign_breakdown', 'get_budget_health']
+// Phase-2 write tools (propose→confirm→audit).
+const WRITE_TOOLS = ['create_task', 'propose_schedule_post']
 // remember = personal-memory capture (non-mutating; available to every authed role).
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, 'create_task', 'remember']
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, 'remember']
 
-describe('assembled tool registry (Slices 1–2 + memory + media-buyer)', () => {
-  it('contains the 15 read tools + create_task + remember', () => {
+describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
+  it('contains the 15 read tools + the write tools + remember', () => {
     expect(registry.map(t => t.name).sort()).toEqual([...ALL].sort())
   })
 
@@ -28,8 +30,8 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer)', () => 
     }
   })
 
-  it('exactly one tool (create_task) is mutating', () => {
-    expect(registry.filter(t => t.mutates).map(t => t.name)).toEqual(['create_task'])
+  it('the mutating tools are exactly the propose→confirm writes', () => {
+    expect(registry.filter(t => t.mutates).map(t => t.name).sort()).toEqual(['create_task', 'propose_schedule_post'])
   })
 
   it('RBAC filter hides FINANCE/CLIENTS tools from a low-privilege role but keeps create_task', () => {
@@ -45,8 +47,8 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer)', () => 
     expect(filterToolsForUser(registry, 'guest').map(t => t.name)).not.toContain('create_task')
   })
 
-  it('owner sees all 17', () => {
-    expect(filterToolsForUser(registry, 'owner')).toHaveLength(17)
+  it('owner sees all 18', () => {
+    expect(filterToolsForUser(registry, 'owner')).toHaveLength(18)
   })
 
   it('the media-buyer reads are MEDIA_BUYING-gated read tools (not mutating)', () => {

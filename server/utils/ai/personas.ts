@@ -48,7 +48,7 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Ad-spend pacing, social performance, briefs and delivery.',
     instructionsPreamble:
       'You are the agency\'s Marketing assistant. Focus on campaign delivery — ad-spend pacing, social performance, creative briefs, and project status. Tie observations to outcomes and call out under-delivery or pacing issues. For questions outside marketing, answer briefly and suggest the relevant assistant.',
-    toolAllowlist: ['get_adspend_pacing', 'get_social_performance', 'get_briefs', 'get_project_status', ...COMMON],
+    toolAllowlist: ['get_adspend_pacing', 'get_social_performance', 'get_briefs', 'get_project_status', 'propose_schedule_post', ...COMMON],
   },
   sales: {
     key: 'sales',
