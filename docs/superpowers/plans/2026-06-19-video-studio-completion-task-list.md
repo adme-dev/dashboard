@@ -1,9 +1,9 @@
 # Video Studio Completion Task List
 
 **Date:** 2026-06-19
-**Status:** Working backlog
+**Status:** Complete
 **Feature area:** Creative > Video Studio
-**Context:** Video Studio foundations are shipped. This list tracks the remaining cleanup, UX consolidation, AI Producer improvements, and QA work needed to move from foundation to complete editor.
+**Context:** Video Studio foundations and completion backlog are shipped. This record captures the cleanup, UX consolidation, AI Producer improvements, production verification, and QA evidence used to move from foundation to complete editor.
 
 ## Current State
 
@@ -11,7 +11,7 @@
 - Timeline supports video, overlay, voiceover, and music lanes.
 - Cloudflare AI Gateway video generation is active; MuAPI remains non-selectable for tenant-facing flows.
 - Voiceover, Banner Studio overlays, render jobs, video library, portal handoff, and social publishing hooks are wired.
-- The main remaining work is product consolidation, UX cleanup, caption/overlay enhancements, and manual QA.
+- The completion pass covered product consolidation, UX cleanup, caption/overlay enhancements, AI Producer flow, render/distribution, and production manual QA.
 
 ## Phase 1: Product Cleanup
 
@@ -217,10 +217,10 @@ Decision: production feature flags were verified on 2026-06-19 after adding the 
 
 Decision: live-write production QA was completed on 2026-06-19 against a dedicated Arctic Campers AV project `eca5685a-14bf-411b-ad35-53394f6bbb44` after production `VIDEO_GENERATION_TEST_TENANT_ID` was expanded to include client `6ff24c19-b238-465e-a4e2-fba84e8a4f42`. The run created the AV project, uploaded still `media/eca5685a-14bf-411b-ad35-53394f6bbb44/still/1781834121263-video-studio-qa-source-cd6bbaad.png`, registered approved source asset `8b099a86-d107-4f09-a613-9e92ab083c68`, generated Cloudflare AI Gateway Seedance job `1a6724d8-fc36-4dc0-a4f6-6edc328430f9` to succeeded output asset `3dbb42c3-cf9b-4f7c-9e7d-398de8ddad0c`, added the generated clip to the timeline, generated voiceover asset `18c767da-7505-4086-abf1-7557a412ad88`, inserted Banner Studio overlay `fa7cc8bd-a5cf-4778-8a62-e982b358a395` format `half`, built and applied an AI Producer draft plan with two timeline-ready visual clips, rendered `reels_9x16` job `5319ec7d-27e2-4c8c-ae58-1f5ac5e5798b` to `done`, saved render asset `02b832fb-197d-4797-b5b6-ed878b351d22`, created portal review `9fab1c12-4f16-49e8-a134-9ef0fd33edb8`, and created social composer draft `46c0ce55-5168-4c95-8960-e7ddbd9deced`. Active-job recovery was verified by queuing render job `0d242489-3de2-4940-9b97-62e5ed405306`, immediately reloading the production project page, observing the UI render queue show `Latest queued`, and then polling the job through `rendering` to `done` with output `media/eca5685a-14bf-411b-ad35-53394f6bbb44/0d242489-3de2-4940-9b97-62e5ed405306/reels_9x16.mp4`.
 
-## Suggested First Sprint
+## Completed Sequence
 
 1. UI cleanup and full-width layout.
 2. Library filter redesign.
 3. Move old AI Producer/harness out of accordion into proper panels.
 4. Selected asset preview/prep panel.
-5. Manual QA pass on current flow.
+5. Production manual QA pass on the completed flow.
