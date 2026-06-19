@@ -52,7 +52,7 @@ Every team member (and, scoped, every client) gets a co-pilot that knows them, u
 - [x] **WS-A.1** mig 180 `ai_user_memory` — DONE (`5318e414`, applied to prod Neon).
 - [x] **WS-A.2** `memory/{types,store}.ts` (injected db) + `memoryStore.test.ts` — DONE (`b41a81d2`, 9 tests).
 - [x] **WS-A.3** `memory/retrieve.ts` pure scoring + `memoryRetrieve.test.ts` — DONE (7 tests).
-- [ ] **WS-A.4** `aiVectorize.searchSimilar` optional metadata `filter` (additive) + test.
+- [x] **WS-A.4** `aiVectorize.searchSimilar` optional metadata `filter` + pure `resolveSearchArgs` + test — DONE (6 tests, 194/194 regression).
 - [ ] **WS-A.5** `memory/render.ts` (≤200-token block) + test.
 - [ ] **WS-A.6** `tools/remember.ts` (explicit capture) + register + test.
 - [ ] **WS-A.7** `memory/distill.ts` async inferred (gpt-oss-20b, behind `AI_MEMORY_DISTILL_ENABLED`) + test.
