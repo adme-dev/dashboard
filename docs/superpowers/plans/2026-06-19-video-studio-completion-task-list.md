@@ -199,17 +199,21 @@ Decision: completed render variants now have focused server coverage for save-to
 - [ ] Manual QA: send render to portal.
 - [ ] Manual QA: publish to social composer.
 - [ ] Manual QA: reload page with active jobs.
-- [ ] Manual QA: audio project behavior unchanged.
+- [x] Manual QA: audio project behavior unchanged.
 - [x] Add component tests for layout/filter interactions.
 - [x] Add tests for selected asset prepare actions.
 - [x] Add tests for producer plan with voice/overlay once implemented.
 - [x] Run focused video/audio test suite.
 - [x] Run production build.
-- [ ] Deploy and verify production feature flags.
+- [x] Deploy and verify production feature flags.
 
 Decision: Phase 12 component coverage now includes runtime interaction tests for Library filtering/search/action emits, Workbench toolbar/render/collapse emits, and Selected Asset prepare actions including add, replace, generate-from-asset, caption generation, and add-caption flows. Producer rail tests already cover voice/overlay/caption draft-plan validation states.
 
 Decision: focused Video Studio/audio QA suite passed on 2026-06-19 with 19 files and 101 tests covering workbench, library, selected asset, producer, voice, overlay, render jobs, timeline edit/render, distribution, clip inspector/effects, timeline placement, video library insertion, and social draft creation. Production `pnpm run build` also passed; warnings remain the known local `JWT_SECRET`, third-party ESM top-level `this`, VueUse annotation, and large chunk warnings.
+
+Decision: production feature flags were verified on 2026-06-19 after adding the missing Cloudflare Pages production secret `VIDEO_GENERATION_TEST_TENANT_ID=agency` and deploying `c36f979b.agency-dashboard-6cm.pages.dev`. The custom domain `/agency/audio/projects?mediaType=av` returned 200, the logged-in model endpoint for AV project `bfa93ac8-fc95-412c-bae4-81307cb7ede4` returned enabled policy plus three tenant-facing Cloudflare AI Gateway models (`aigateway/seedance-i2v`, `aigateway/wan-i2v`, `aigateway/hailuo-i2v`), and the Video Studio UI showed generation templates instead of the no-models warning. Regular Audio Studio behavior was smoke-tested by opening `/agency/audio/projects`, then opening existing audio project `d7923bf6-6e0b-44f3-8db1-aa5d00bb2de4`, which loaded the non-AV Timeline editor with voiceover/music lanes.
+
+Decision: live-cost or live-write manual QA rows remain unchecked unless performed deliberately in production or against a dedicated test tenant. Existing production data shows generated video, voiceover, overlay options, and completed render jobs, but that is not equivalent to executing fresh generation, render, portal, library-save, or social-publish actions during this QA pass.
 
 ## Suggested First Sprint
 
