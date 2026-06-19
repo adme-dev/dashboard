@@ -418,13 +418,25 @@ export async function processUserMessage(
   const pinnedIds = mentionedEntities?.length
     ? new Set(mentionedEntities.map(e => e.id))
     : undefined
-  const systemPrompt = buildSystemPrompt(
+  let systemPrompt = buildSystemPrompt(
     userRole,
     contextSources,
     learnedPatternStrings,
     contextBundle.intent,
     pinnedIds,
   )
+
+  // 4b. Personal memory (Phase-0 WS-A): prepend the user's recalled facts/routines/preferences.
+  // Strictly user-scoped (cross-user isolation enforced in orchestrate.ts) and best-effort — any
+  // failure leaves the prompt unchanged so a turn never breaks on memory. Flows into BOTH the tool
+  // loop and the fast path below since they read `systemPrompt`.
+  try {
+    const { buildUserMemoryBlock } = await import('~~/server/utils/ai/memory/orchestrate')
+    const memoryBlock = await buildUserMemoryBlock({ userId, query: content, event })
+    if (memoryBlock) systemPrompt = `${systemPrompt}\n\n${memoryBlock}`
+  } catch {
+    // memory is non-essential context; ignore and proceed
+  }
 
   // 5. Build the messages array for the LLM
   const messagesForPrompt = history.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')
