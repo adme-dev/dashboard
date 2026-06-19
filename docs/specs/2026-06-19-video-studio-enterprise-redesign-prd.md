@@ -626,11 +626,11 @@ Never:
 
 ### Phase 4: Asset Rail Professionalization
 
-- [ ] Tighten asset row layout.
+- [x] Tighten asset row layout.
   - Acceptance: rows are denser, action icons align, long titles truncate predictably.
   - Verify: component test and browser screenshot.
 
-- [ ] Add consistent source/provenance/license/status chips.
+- [x] Add consistent source/provenance/license/status chips.
   - Acceptance: source, model/provider, captions, timeline readiness and status are scannable.
   - Verify: asset normalization tests and component tests.
 

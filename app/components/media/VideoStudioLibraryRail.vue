@@ -194,6 +194,49 @@ function canPublishAsset(asset: VideoStudioAsset) {
   return Boolean(asset.libraryAssetId && (asset.type === 'video' || asset.type === 'job'))
 }
 
+function typeLabel(asset: VideoStudioAsset) {
+  if (asset.type === 'audio') return asset.role === 'music' ? 'music' : 'voice'
+  if (asset.type === 'job') return 'AI job'
+  return asset.type
+}
+
+function sourceChipLabel(value: VideoStudioAssetSource) {
+  const labels: Record<VideoStudioAssetSource, string> = {
+    audio: 'Audio',
+    banner: 'Banner',
+    bucket: 'Bucket',
+    derivative: 'Derivative',
+    generation: 'AI',
+    library: 'Upload',
+    render: 'Render',
+  }
+  return labels[value]
+}
+
+function readinessLabel(asset: VideoStudioAsset) {
+  if (asset.timelineReady) return 'Timeline ready'
+  if (asset.status === 'failed') return 'Failed'
+  if (asset.status === 'blocked') return 'Blocked'
+  if (asset.status === 'queued' || asset.status === 'processing' || asset.status === 'rendering' || asset.status === 'running') return 'Processing'
+  return 'Not ready'
+}
+
+function readinessColor(asset: VideoStudioAsset): 'primary' | 'success' | 'error' | 'warning' | 'neutral' {
+  if (asset.timelineReady) return 'success'
+  if (asset.status === 'failed') return 'error'
+  if (asset.status === 'blocked') return 'warning'
+  if (asset.status === 'queued' || asset.status === 'processing' || asset.status === 'rendering' || asset.status === 'running') return 'primary'
+  return 'neutral'
+}
+
+function metadataLine(asset: VideoStudioAsset) {
+  return [
+    asset.subtitle,
+    durationLabel(asset.durationSec),
+    asset.modelId,
+  ].filter(Boolean).join(' · ')
+}
+
 function statusColor(status: VideoStudioAssetStatus): 'primary' | 'success' | 'error' | 'warning' | 'neutral' {
   if (status === 'ready' || status === 'done' || status === 'succeeded') return 'success'
   if (status === 'failed') return 'error'
@@ -326,58 +369,53 @@ function sourceLabel(value: VideoStudioAssetSource) {
         <div
           v-for="asset in group.assets"
           :key="asset.id"
-          class="w-full rounded-md border p-2 text-left transition"
+          class="grid w-full grid-cols-[44px_minmax(0,1fr)_auto] items-start gap-2 rounded-md border px-2 py-1.5 text-left transition"
           :class="props.selectedId === asset.id ? 'border-primary bg-primary/10' : 'border-default bg-elevated hover:border-primary/50'"
         >
-          <div class="flex items-start gap-2">
-            <div class="mt-0.5 flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-default bg-default/40">
-              <img
-                v-if="previewKind(asset) === 'image' && asset.thumbnailUrl"
-                :src="asset.thumbnailUrl"
-                :alt="asset.title"
-                loading="lazy"
-                class="size-full object-cover"
-              >
-              <video
-                v-else-if="previewKind(asset) === 'video' && asset.previewUrl"
-                :src="asset.previewUrl"
-                muted
-                playsinline
-                preload="metadata"
-                class="size-full object-cover"
-              />
-              <UIcon v-else :name="iconFor(asset)" class="size-5 text-primary" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  class="min-w-0 flex-1 truncate text-left text-xs font-medium text-highlighted hover:text-primary"
-                  @click="emit('update:selected-id', asset.id)"
-                >
-                  {{ asset.title }}
-                </button>
-                <UBadge :label="asset.status" size="xs" :color="statusColor(asset.status)" variant="subtle" />
-              </div>
-              <p class="mt-0.5 truncate text-[11px] text-muted">
-                {{ asset.source }}<span v-if="asset.subtitle"> · {{ asset.subtitle }}</span><span v-if="durationLabel(asset.durationSec)"> · {{ durationLabel(asset.durationSec) }}</span>
-              </p>
-              <p v-if="asset.prompt" class="mt-1 line-clamp-2 text-[11px] leading-snug text-muted">{{ asset.prompt }}</p>
-              <p v-else-if="asset.modelId" class="mt-1 truncate text-[11px] text-muted">{{ asset.modelId }}</p>
-              <audio
-                v-if="asset.type === 'audio' && asset.previewUrl"
-                :src="asset.previewUrl"
-                controls
-                preload="none"
-                class="mt-2 h-8 w-full"
-              />
-            </div>
+          <div class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-default bg-default/40">
+            <img
+              v-if="previewKind(asset) === 'image' && asset.thumbnailUrl"
+              :src="asset.thumbnailUrl"
+              :alt="asset.title"
+              loading="lazy"
+              class="size-full object-cover"
+            >
+            <video
+              v-else-if="previewKind(asset) === 'video' && asset.previewUrl"
+              :src="asset.previewUrl"
+              muted
+              playsinline
+              preload="metadata"
+              class="size-full object-cover"
+            />
+            <UIcon v-else :name="iconFor(asset)" class="size-4 text-primary" />
           </div>
-          <div class="mt-2 flex items-center justify-between gap-2">
-            <div class="flex min-w-0 flex-wrap items-center gap-1">
-              <UBadge :label="asset.type" size="xs" variant="subtle" color="neutral" />
+
+          <div class="min-w-0">
+            <div class="flex min-w-0 items-center gap-1.5">
+              <button
+                type="button"
+                class="min-w-0 flex-1 truncate text-left text-xs font-medium leading-5 text-highlighted hover:text-primary"
+                @click="emit('update:selected-id', asset.id)"
+              >
+                {{ asset.title }}
+              </button>
+              <UBadge :label="asset.status" size="xs" :color="statusColor(asset.status)" variant="subtle" />
+            </div>
+
+            <div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-1">
+              <UBadge :label="sourceChipLabel(asset.source)" size="xs" variant="subtle" color="neutral" />
+              <UBadge :label="typeLabel(asset)" size="xs" variant="subtle" color="neutral" />
+              <UBadge :label="readinessLabel(asset)" size="xs" :color="readinessColor(asset)" variant="subtle" />
               <UBadge v-if="asset.format" :label="asset.format" size="xs" variant="subtle" color="neutral" />
               <UBadge v-if="asset.captionVttUrl" label="Captions" size="xs" variant="subtle" color="primary" />
+            </div>
+
+            <p v-if="metadataLine(asset)" class="mt-0.5 truncate text-[11px] text-muted">
+              {{ metadataLine(asset) }}
+            </p>
+            <p v-if="asset.prompt" class="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted">{{ asset.prompt }}</p>
+            <div v-if="asset.captionVttUrl || (asset.type === 'audio' && asset.previewUrl)" class="mt-1 flex min-w-0 items-center gap-2">
               <a
                 v-if="asset.captionVttUrl"
                 :href="asset.captionVttUrl"
@@ -388,52 +426,61 @@ function sourceLabel(value: VideoStudioAssetSource) {
               >
                 Open VTT
               </a>
-            </div>
-            <div class="flex shrink-0 items-center gap-1">
-              <UButton
-                icon="i-lucide-eye"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                aria-label="Preview asset"
-                @click.stop="emit('update:selected-id', asset.id)"
-              />
-              <UButton
-                icon="i-lucide-sparkles"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                aria-label="Generate from asset"
-                :disabled="!canGenerateFromAsset(asset)"
-                @click.stop="emit('generate-from-asset', asset)"
-              />
-              <UButton
-                icon="i-lucide-info"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                aria-label="Inspect asset"
-                @click.stop="emit('inspect-asset', asset)"
-              />
-              <UButton
-                icon="i-lucide-share-2"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                aria-label="Publish asset"
-                :disabled="!canPublishAsset(asset)"
-                @click.stop="emit('publish-asset', asset)"
-              />
-              <UButton
-                icon="i-lucide-list-plus"
-                size="xs"
-                variant="ghost"
-                color="primary"
-                :label="addLabel(asset)"
-                :disabled="!asset.timelineReady"
-                @click.stop="emit('add-asset', asset)"
+              <audio
+                v-if="asset.type === 'audio' && asset.previewUrl"
+                :src="asset.previewUrl"
+                controls
+                preload="none"
+                class="h-7 min-w-0 flex-1"
               />
             </div>
+          </div>
+
+          <div class="flex w-8 shrink-0 flex-col items-center gap-0.5">
+            <UButton
+              icon="i-lucide-eye"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              aria-label="Preview asset"
+              @click.stop="emit('update:selected-id', asset.id)"
+            />
+            <UButton
+              icon="i-lucide-sparkles"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              aria-label="Generate from asset"
+              :disabled="!canGenerateFromAsset(asset)"
+              @click.stop="emit('generate-from-asset', asset)"
+            />
+            <UButton
+              icon="i-lucide-info"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              aria-label="Inspect asset"
+              @click.stop="emit('inspect-asset', asset)"
+            />
+            <UButton
+              icon="i-lucide-share-2"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              aria-label="Publish asset"
+              :disabled="!canPublishAsset(asset)"
+              @click.stop="emit('publish-asset', asset)"
+            />
+            <UButton
+              icon="i-lucide-list-plus"
+              size="xs"
+              variant="ghost"
+              color="primary"
+              :aria-label="addLabel(asset)"
+              :title="addLabel(asset)"
+              :disabled="!asset.timelineReady"
+              @click.stop="emit('add-asset', asset)"
+            />
           </div>
         </div>
       </div>

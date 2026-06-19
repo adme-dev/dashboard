@@ -89,6 +89,12 @@ function buttonByText(host: HTMLElement, text: string) {
   return button as HTMLButtonElement
 }
 
+function buttonByLabel(host: HTMLElement, label: string) {
+  const button = [...host.querySelectorAll('button')].find(el => el.getAttribute('aria-label') === label || el.getAttribute('title') === label)
+  if (!button) throw new Error(`Button not found: ${label}`)
+  return button as HTMLButtonElement
+}
+
 describe('VideoStudioLibraryRail', () => {
   it('renders mixed assets with status, metadata, and add actions', async () => {
     const html = await render({
@@ -113,6 +119,10 @@ describe('VideoStudioLibraryRail', () => {
     expect(html).toContain('Opening voiceover')
     expect(html).toContain('Queued music bed')
     expect(html).toContain('Smoke reveal')
+    expect(html).toContain('Timeline ready')
+    expect(html).toContain('Processing')
+    expect(html).toContain('AI')
+    expect(html).toContain('Audio')
     expect(html).toContain('running')
     expect(html).toContain('rendering')
     expect(html).toContain('5s')
@@ -220,7 +230,7 @@ describe('VideoStudioLibraryRail', () => {
       ;(host.querySelector('button[aria-label="Refresh library assets"]') as HTMLButtonElement).click()
       buttonByText(host, 'Offer lower third').click()
       ;(host.querySelector('button[aria-label="Inspect asset"]') as HTMLButtonElement).click()
-      buttonByText(host, 'Add').click()
+      buttonByLabel(host, 'Add').click()
       await nextTick()
 
       expect(events.map(event => event.name)).toEqual(expect.arrayContaining([
