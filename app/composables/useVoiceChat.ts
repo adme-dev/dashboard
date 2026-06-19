@@ -8,7 +8,8 @@ interface VoiceResponse {
   audioFormat: string | null
   sttLatencyMs: number
   // Present when the agent proposed a guarded write (the endpoint returns it; voice mode acts on it).
-  proposedAction?: { proposalId: string, resolved: unknown } | null
+  // toolName drives the rich-confirm ack + the spoken confirmation copy in useVoiceSession.
+  proposedAction?: { proposalId: string, resolved: unknown, toolName?: string } | null
 }
 
 const MAX_RECORDING_DURATION = 60_000 // 60 seconds

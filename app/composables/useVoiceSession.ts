@@ -8,7 +8,19 @@ import {
 } from '~~/app/utils/voiceSessionMachine'
 import type { AiMessage } from '~/types'
 
-type Proposal = { proposalId: string, resolved: unknown }
+type Proposal = { proposalId: string, resolved: unknown, toolName?: string }
+
+// rich_confirm tools must send an explicit ack at confirm (the server gate rejects otherwise).
+const RICH_CONFIRM_TOOLS = new Set(['propose_budget_change'])
+// Spoken confirmation copy per tool — the generic "task created" lies for non-task writes.
+function confirmNote(toolName?: string): string {
+  switch (toolName) {
+    case 'propose_budget_change': return 'Done — the budget change has been planned for the spend review.'
+    case 'propose_schedule_post': return 'Done — the post has been created.'
+    case 'propose_budget_alert': return 'Done — the budget alert has been created.'
+    default: return 'Done — the task has been created.'
+  }
+}
 
 export interface UseVoiceSessionOptions {
   /** Returns the active conversation id, creating one if needed. */
@@ -38,6 +50,9 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
   let bargeStream: MediaStream | null = null
   let bargeCtx: AudioContext | null = null
   let confirmTimer: ReturnType<typeof setTimeout> | null = null
+  // The full pending proposal (the state machine tracks only its id) — needed at confirm time to
+  // pick the right tool's richConfirmAck + spoken note.
+  let pendingProposal: Proposal | null = null
   const detector = createBargeInDetector()
 
   function dispatch(e: VoiceEvent) {
@@ -93,6 +108,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
       const result = await voice.sendVoiceMessage(convId, blob)
       if (state.value.phase !== 'processing') return // stop() fired mid-request
       const proposal = result.proposedAction ?? null
+      pendingProposal = proposal
       opts.onTurn(result.transcribedText, result.message, proposal)
       dispatch({ type: 'RESPONSE', proposalId: proposal?.proposalId ?? null })
       await speakThenAdvance(result.audioBase64, result.audioFormat, proposal)
@@ -156,6 +172,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
       if (state.value.phase === 'listening') void runListen()
     } else if (intent === 'negative') {
       opts.onProposalResolved()
+      pendingProposal = null
       await speakText('Cancelled.')
       if (state.value.phase === 'listening') void runListen()
     } else if (intent === 'stop') {
@@ -171,13 +188,16 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
   }
 
   async function executeProposal(convId: string, proposalId: string) {
+    const toolName = pendingProposal?.toolName
     try {
-      const res = await $fetch<{ ok: boolean, taskId?: string, error?: string }>(
+      const res = await $fetch<{ ok: boolean, taskId?: string, resultRef?: string, error?: string }>(
         `/api/agency/ai/chat/conversations/${convId}/confirm-action`,
-        { method: 'POST', body: { proposalId } }
+        // rich_confirm writes (budget change) must send the ack the server gate requires.
+        { method: 'POST', body: { proposalId, ...(toolName && RICH_CONFIRM_TOOLS.has(toolName) ? { richConfirmAck: true } : {}) } }
       )
       opts.onProposalResolved()
-      const note = res.ok ? 'Done — the task has been created.' : (res.error || 'I could not complete that action.')
+      pendingProposal = null
+      const note = res.ok ? confirmNote(toolName) : (res.error || 'I could not complete that action.')
       opts.onAssistantNote(note)
       await speakText(note)
     } catch {

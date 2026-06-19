@@ -20,7 +20,8 @@ interface ConversationDetail {
 interface ChatMessageResponse {
   message: AiMessage
   contextSources: AiContextSource[]
-  proposedAction?: { proposalId: string, resolved: any } | null
+  // toolName selects the confirm-card shape (rich budget card vs task/post/alert) — must not be dropped.
+  proposedAction?: { proposalId: string, resolved: any, toolName?: string } | null
 }
 
 export function useAiChat() {
