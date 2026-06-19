@@ -51,8 +51,9 @@ describe('scheduleSocialPost executor', () => {
 })
 
 describe('budgetAlert executor', () => {
-  it('maps the proposal to the budget-alerts body, posts it, and returns resultRef + summary', async () => {
-    const post = vi.fn().mockResolvedValue({ id: 'alert-3' })
+  it('maps the proposal to the budget-alerts body, posts it, and reads the nested alert.id', async () => {
+    // The endpoint returns { success, alert: { id } } — id is nested, not top-level.
+    const post = vi.fn().mockResolvedValue({ success: true, alert: { id: 'alert-3' } })
     const exec = makeBudgetAlertExecutor(post)
     const res = await exec.execute(
       { clientId: 'cl1', clientName: 'Acme', alertType: 'budget_threshold', severity: 'warning', title: 'Watch Acme', message: null, thresholdValue: 90 },
@@ -62,6 +63,11 @@ describe('budgetAlert executor', () => {
     expect(res.summary).toContain('Acme')
     expect(res.summary).toContain('90')
     expect(post.mock.calls[0][0]).toMatchObject({ clientId: 'cl1', alertType: 'budget_threshold', severity: 'warning', title: 'Watch Acme', thresholdValue: 90 })
+  })
+
+  it('throws when the create returns no id (so executeProposal surfaces a failure, not a phantom success)', async () => {
+    const exec = makeBudgetAlertExecutor(vi.fn().mockResolvedValue({ success: true }))
+    await expect(exec.execute({ clientId: 'cl1', clientName: 'Acme', title: 't' }, ctx() as any)).rejects.toThrow(/no id/)
   })
 
   it('declares the confirm risk tier', () => {
@@ -118,6 +124,22 @@ describe('createTask executor', () => {
 
   it('declares the confirm risk tier', () => {
     expect(getExecutor('create_task')?.riskTier).toBe('confirm')
+  })
+})
+
+describe('executor ↔ tool gating parity (no silent gate downgrade)', () => {
+  it('every mutating tool has an executor whose riskTier + requiredPermission match the tool', async () => {
+    const { registry } = await import('~~/server/utils/ai/tools')
+    const writeTools = registry.filter((t: any) => t.mutates)
+    expect(writeTools.length).toBeGreaterThanOrEqual(4)
+    for (const t of writeTools) {
+      const ex = getExecutor(t.name)
+      expect(ex, `no executor registered for write tool ${t.name}`).toBeTruthy()
+      // The confirm endpoint enforces the gate off the EXECUTOR's tiers — they must equal the tool's,
+      // or a rich_confirm / permission gate could be silently bypassed at confirm time.
+      expect(ex!.riskTier, `${t.name} riskTier drift`).toBe(effectiveRiskTier(t))
+      expect(ex!.requiredPermission, `${t.name} permission drift`).toBe(t.requiredPermission)
+    }
   })
 })
 

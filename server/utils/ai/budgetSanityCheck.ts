@@ -14,7 +14,8 @@ export interface BudgetChangeForCheck {
   platform: 'meta' | 'google'
   currentDailyBudget: number
   newDailyBudget: number
-  pctChange: number
+  /** Percentage change, or null for a from-$0 turn-on (no meaningful percentage). */
+  pctChange: number | null
   /** Optional pacing context to sharpen the check (e.g. 'overpacing'). */
   issueType?: string | null
 }
@@ -37,7 +38,9 @@ export function buildSanityPrompt(c: BudgetChangeForCheck): string {
     '',
     `Campaign: ${c.campaignName} (${c.platform})`,
     `Current daily budget: ${c.currentDailyBudget}`,
-    `Proposed daily budget: ${c.newDailyBudget} (${c.pctChange >= 0 ? '+' : ''}${c.pctChange}%)`,
+    c.pctChange === null
+      ? `Proposed daily budget: ${c.newDailyBudget} (turning on spend from $0 — scrutinise the absolute amount)`
+      : `Proposed daily budget: ${c.newDailyBudget} (${c.pctChange >= 0 ? '+' : ''}${c.pctChange}%)`,
     c.issueType ? `Pacing issue: ${c.issueType}` : '',
   ].filter(Boolean).join('\n')
 }
@@ -52,7 +55,7 @@ export function parseSanityResult(text: string): SanityResult {
     const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>
     const sane = obj.sane !== false // default to sane unless explicitly false
     const rawConcern = typeof obj.concern === 'string' ? obj.concern.trim() : ''
-    return { sane, concern: !sane && rawConcern ? rawConcern : (rawConcern || null) }
+    return { sane, concern: rawConcern || null }
   } catch {
     return { sane: true, concern: null }
   }

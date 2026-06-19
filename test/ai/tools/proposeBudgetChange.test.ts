@@ -39,6 +39,14 @@ describe('proposeBudgetChange', () => {
     expect(out.resolved.pctChange).toBe(900)
   })
 
+  it('represents a from-$0 turn-on as pctChange null (not a misleading 0%)', async () => {
+    const d = deps({ resolveCampaign: vi.fn().mockResolvedValue([cand({ currentDailyBudget: 0 })]) })
+    const out = data(await proposeBudgetChange({ campaignName: 'Acme Retargeting', newDailyBudget: 5000 }, ctx(), d))
+    expect(out.resolved.pctChange).toBeNull()
+    // the sanity check is told the real from-zero shape, not (+0%)
+    expect((d.sanityCheck as any).mock.calls[0][0]).toMatchObject({ currentDailyBudget: 0, newDailyBudget: 5000, pctChange: null })
+  })
+
   it('disambiguates when several flagged campaigns match (no proposal)', async () => {
     const d = deps({ resolveCampaign: vi.fn().mockResolvedValue([cand({ mediaSpendId: 'a', campaignName: 'Acme Retargeting AU' }), cand({ mediaSpendId: 'b', campaignName: 'Acme Retargeting NZ' })]) })
     const out = data(await proposeBudgetChange({ campaignName: 'Acme Retargeting', newDailyBudget: 40 }, ctx(), d))

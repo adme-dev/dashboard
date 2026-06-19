@@ -22,6 +22,7 @@ export function makeBudgetChangeExecutor(post: BudgetPlanPoster = defaultPoster)
     toolName: 'propose_budget_change',
     label: 'budget change',
     riskTier: 'rich_confirm',
+    requiredPermission: 'MEDIA_BUYING',
     async execute(payload: any, ctx: ToolContext): Promise<ExecutorResult> {
       const r = await post(payload?.mediaSpendId, proposalToBudgetPlanBody(payload), ctx)
       const pct = typeof payload?.pctChange === 'number' ? `${payload.pctChange >= 0 ? '+' : ''}${payload.pctChange}%` : ''

@@ -13,6 +13,7 @@
 // Executors use Nitro's global $fetch internally so internal relative routes resolve on the CF runtime.
 import { queryOne, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { roleHasPermission } from '~~/server/utils/permissions'
 import { executeProposal, terminalError, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
 import { getExecutor, type ActionExecutor } from '~~/server/utils/ai/executors'
 import { recordAudit } from '~~/server/utils/ai/audit'
@@ -94,6 +95,11 @@ export default defineEventHandler(async (event) => {
   )
   if (peek) {
     const peekExecutor = getExecutor(peek.tool_name)
+    // Defense in depth: re-verify the tool's permission as the CONFIRMER (the propose-time check ran
+    // as the proposer; a role downgraded between propose and confirm must not still execute).
+    if (peekExecutor?.requiredPermission && !roleHasPermission(user.role, peekExecutor.requiredPermission)) {
+      return { ok: false, error: 'You do not have permission to confirm this action.' }
+    }
     if (peekExecutor?.riskTier === 'rich_confirm' && body?.richConfirmAck !== true) {
       return { ok: false, requiresRichConfirm: true, error: 'This change needs explicit confirmation before it can be applied.' }
     }

@@ -1,6 +1,8 @@
 import { z } from 'zod'
+import { queryRows } from '~~/server/utils/db'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS } from '~~/server/utils/socialSpendPacingReview'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { proposeAction } from '../pendingActions'
@@ -36,8 +38,6 @@ const defaultDeps: ProposeBudgetChangeDeps = {
     // Source current daily budgets from the canonical pacing-review builder (same data the spend
     // Review UI + the budget-write chain use). Only campaigns currently flagged for review are
     // adjustable here — that's the supported, guardrailed surface for budget writes.
-    const { queryRows } = await import('~~/server/utils/db')
-    const { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS } = await import('~~/server/utils/socialSpendPacingReview')
     const now = new Date()
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     const rows = await queryRows<any>(
@@ -49,8 +49,9 @@ const defaultDeps: ProposeBudgetChangeDeps = {
     )
     const review = buildPacingReview(rows, { now, period })
     const needle = clientName?.trim().toLowerCase()
+    // Filter on the item's own clientName (buildPacingReview already carries it) — no O(n²) row re-scan.
     return review.items
-      .filter(i => !needle || (rows.find(r => r.media_spend_id === i.mediaSpendId)?.client_name ?? '').toLowerCase().includes(needle))
+      .filter(i => !needle || (i.clientName ?? '').toLowerCase().includes(needle))
       .map(i => ({ mediaSpendId: i.mediaSpendId, campaignName: i.campaignName, platform: i.platform, currentDailyBudget: i.currentDailyBudget, issueType: i.issueType }))
   },
   sanityCheck: change => sanityCheckBudgetChange(change, {
@@ -91,9 +92,12 @@ export async function proposeBudgetChange(args: Args, ctx: ToolContext, deps: Pr
     return ok({ disambiguation: { field: 'campaignName', options: matches.map(m => ({ id: m.mediaSpendId, name: m.campaignName })) } })
   }
   const c = matches[0]!
+  // pctChange is null when the current budget is 0 — there's no meaningful percentage for a
+  // from-zero turn-on, and forcing 0 would hide the riskiest change class (0 → large) from both
+  // the sanity check and the confirm card. Null signals "from $0" so they can flag it honestly.
   const pctChange = c.currentDailyBudget > 0
     ? Math.round(((args.newDailyBudget - c.currentDailyBudget) / c.currentDailyBudget) * 100)
-    : 0
+    : null
 
   const sanity = await deps.sanityCheck({
     campaignName: c.campaignName, platform: c.platform,

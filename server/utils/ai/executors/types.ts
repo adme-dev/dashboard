@@ -1,4 +1,5 @@
 import type { ToolContext, RiskTier } from '../toolContext'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 
 /**
  * Phase-0 WS-B: the executor registry generalizes the confirm step.
@@ -25,6 +26,13 @@ export interface ActionExecutor {
   label: string
   /** Gating tier — mirrors the tool's effectiveRiskTier; the endpoint can demand richer confirm. */
   riskTier: RiskTier
+  /**
+   * The permission the confirmer must hold, RE-CHECKED at execute time (must match the proposing
+   * tool's `requiredPermission`). Defense in depth: the propose-time check + registry filter both run
+   * as the proposer, but a role downgraded between propose and confirm would otherwise still execute.
+   * Undefined = any write-capable role (the create_task default; still blocked for read-only roles).
+   */
+  requiredPermission?: PermissionGroup
   /** Run the real mutation from a confirmed, resolved payload. Throws on failure (caller reverts). */
   execute: (payload: any, ctx: ToolContext) => Promise<ExecutorResult>
 }

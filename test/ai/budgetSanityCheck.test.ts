@@ -13,6 +13,12 @@ describe('buildSanityPrompt', () => {
     expect(p).toContain('Current daily budget: 50')
     expect(p).toContain('Proposed daily budget: 60 (+20%)')
   })
+
+  it('flags a from-$0 turn-on instead of a meaningless 0% (pctChange null)', () => {
+    const p = buildSanityPrompt({ ...change, currentDailyBudget: 0, newDailyBudget: 5000, pctChange: null })
+    expect(p).toContain('turning on spend from $0')
+    expect(p).not.toContain('+0%')
+  })
 })
 
 describe('parseSanityResult', () => {
