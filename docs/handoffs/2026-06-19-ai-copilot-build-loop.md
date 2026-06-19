@@ -55,7 +55,7 @@ Every team member (and, scoped, every client) gets a co-pilot that knows them, u
 - [x] **WS-A.4** `aiVectorize.searchSimilar` optional metadata `filter` + pure `resolveSearchArgs` + test — DONE (6 tests, 194/194 regression).
 - [x] **WS-A.5** `memory/render.ts` (≤200-token block) + test — DONE (4 tests).
 - [x] **WS-A.6** `tools/remember.ts` (explicit capture, non-mutating) + registered + in persona COMMON + test — DONE (203/203).
-- [ ] **WS-A.7** `memory/distill.ts` async inferred (gpt-oss-20b, behind `AI_MEMORY_DISTILL_ENABLED`) + test.
+- [x] **WS-A.7** `memory/distill.ts` (pure prompt + tolerant parser + injected gpt-oss-20b, dedup, cap 3, fail-safe) + test — DONE (10 tests). Flag check lives in WS-A.8.
 - [ ] **WS-A.8** wire retrieve+inject+distill into `aiChatEngine.ts` + cross-user isolation test. *blocked-by: WS-A.2..7*
 
 ### Phase 1 — Read-everywhere skill-packs (parallel, zero write risk)
