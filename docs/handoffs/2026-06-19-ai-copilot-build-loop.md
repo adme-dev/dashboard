@@ -49,9 +49,9 @@ Every team member (and, scoped, every client) gets a co-pilot that knows them, u
 - [x] **WS-B** executor registry + generic confirm dispatch + `riskTier`/`effectiveRiskTier` — DONE (`b6682061`, 31/31 AI tests green).
 - [x] **WS-C.1** mig 181 `ai_action_audit` (ledger) — DONE (`cc4d356a`, applied to prod Neon).
 - [x] **WS-C.2** audit row written in the confirm path (proposer/confirmer/tool/risk_tier/client_scope/result_ref/outcome), pure mapper + fail-safe writer — DONE (`4f55589d`, 36/36 AI tests green).
-- [ ] **WS-A.1** mig 180 `ai_user_memory` — apply. *(spec: memory-architecture §3)*
-- [ ] **WS-A.2** `memory/{types,store}.ts` (injected db) + `store.test.ts`. *blocked-by: WS-A.1*
-- [ ] **WS-A.3** `memory/retrieve.ts` pure scoring (recency × type_weight × salience, top-5/≤200tok) + test.
+- [x] **WS-A.1** mig 180 `ai_user_memory` — DONE (`5318e414`, applied to prod Neon).
+- [x] **WS-A.2** `memory/{types,store}.ts` (injected db) + `memoryStore.test.ts` — DONE (`b41a81d2`, 9 tests).
+- [x] **WS-A.3** `memory/retrieve.ts` pure scoring + `memoryRetrieve.test.ts` — DONE (7 tests).
 - [ ] **WS-A.4** `aiVectorize.searchSimilar` optional metadata `filter` (additive) + test.
 - [ ] **WS-A.5** `memory/render.ts` (≤200-token block) + test.
 - [ ] **WS-A.6** `tools/remember.ts` (explicit capture) + register + test.
