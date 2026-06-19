@@ -576,6 +576,18 @@ export async function processUserMessage(
     completionTokens,
   ])
 
+  // 10b. Inferred memory distillation (Phase-0 WS-A.8b) — fire-and-forget AFTER the response, gated
+  // by AI_MEMORY_DISTILL_ENABLED (dormant by default). Distils ≤3 durable `inferred` memories from
+  // this turn for future recall. Strictly user-scoped, fully fail-safe (never throws), and registered
+  // via runAfterResponse so it survives on Cloudflare without blocking the reply.
+  if (event && cfg.aiMemoryDistillEnabled && !isError && aiContent.trim()) {
+    const distillWork = import('~~/server/utils/ai/memory/orchestrate')
+      .then(({ distillAndStoreMemories }) =>
+        distillAndStoreMemories({ userId, turn: { userMessage: content, assistantMessage: aiContent } }))
+    const { runAfterResponse } = await import('~~/server/utils/asyncBackground')
+    runAfterResponse(event, distillWork, 'ai-memory-distill')
+  }
+
   // 11. Update conversation metadata
   const isFirstMessage = history.length === 0
 

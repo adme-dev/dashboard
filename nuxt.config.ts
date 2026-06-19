@@ -92,6 +92,9 @@ export default defineNuxtConfig({
     aiLoopModel: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b',           // Option 2: Groq open-source default
     // Fallback was kimi-k2 but Groq returns 404 for it (not on the account) — gpt-oss-20b is the valid sibling.
     aiLoopFallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/openai/gpt-oss-20b',
+    // Inferred personal-memory distillation (Phase-0 WS-A.8b) — OFF by default. When enabled, the
+    // chat engine distils ≤3 durable memories per turn fire-and-forget. Hard gate per the build loop.
+    aiMemoryDistillEnabled: process.env.AI_MEMORY_DISTILL_ENABLED === 'true',
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 

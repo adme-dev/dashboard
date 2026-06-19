@@ -1,9 +1,11 @@
 import type { H3Event } from 'h3'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
-import { getMemoriesByIds, listRecentMemories, stampUsed } from './store'
+import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { getMemoriesByIds, listRecentMemories, stampUsed, upsertMemory } from './store'
 import { selectTopMemories, type RetrieveCandidate } from './retrieve'
 import { renderMemoryBlock } from './render'
-import type { UserMemory } from './types'
+import { distill, type TurnForDistill } from './distill'
+import type { UserMemory, UpsertMemoryInput } from './types'
 
 /**
  * Memory orchestration (Phase-0 WS-A.8): turn a user's message into a ≤200-token memory block for
@@ -69,4 +71,59 @@ export async function buildUserMemoryBlock(
   void deps.stamp(selected.map(s => s.memory.id)).catch(() => {})
 
   return renderMemoryBlock(selected)
+}
+
+/**
+ * Inferred-memory WRITE path (Phase-0 WS-A.8b). After a turn, distill ≤3 durable memories with a
+ * cheap model and persist them as `inferred`. Called fire-and-forget AFTER the response (via
+ * `runAfterResponse`) and gated by `AI_MEMORY_DISTILL_ENABLED` at the engine — this function holds
+ * the logic only. Fail-safe end to end: no userId or empty turn → 0 (model never called); any model
+ * or save error is swallowed so a turn is never affected. Deps injected for unit-testing without a
+ * model or DB. Returns the number of memories actually saved.
+ */
+export interface DistillStoreDeps {
+  /** Single-shot completion (gpt-oss-20b). */
+  complete: (prompt: string) => Promise<string>
+  /** Existing memory contents for dedup (most-recent slice). */
+  recentContents: (userId: string) => Promise<string[]>
+  save: (input: UpsertMemoryInput) => Promise<string>
+}
+
+const DISTILL_SYSTEM = 'You extract durable, reusable facts about a user from a chat turn and reply with ONLY a JSON array.'
+
+const defaultDistillStoreDeps: DistillStoreDeps = {
+  complete: prompt => generateGroqInsight(prompt, {
+    model: GROQ_MODELS.REASONING_20B,
+    temperature: 0.2,
+    maxTokens: 400,
+    systemPrompt: DISTILL_SYSTEM,
+  }),
+  recentContents: async userId => (await listRecentMemories(userId, 50)).map(m => m.content),
+  save: input => upsertMemory(input),
+}
+
+export async function distillAndStoreMemories(
+  opts: { userId: string, turn: TurnForDistill },
+  deps: DistillStoreDeps = defaultDistillStoreDeps,
+): Promise<number> {
+  const { userId, turn } = opts
+  if (!userId || !turn?.userMessage?.trim() || !turn?.assistantMessage?.trim()) return 0
+
+  try {
+    const existing = await deps.recentContents(userId).catch(() => [] as string[])
+    const candidates = await distill(turn, existing, { complete: deps.complete })
+
+    let saved = 0
+    for (const c of candidates) {
+      try {
+        await deps.save({ userId, memType: c.memType, content: c.content, source: 'inferred', salience: c.salience })
+        saved++
+      } catch {
+        // one bad candidate (e.g. constraint race) must not abort the rest
+      }
+    }
+    return saved
+  } catch {
+    return 0
+  }
 }
