@@ -47,8 +47,8 @@ Every team member (and, scoped, every client) gets a co-pilot that knows them, u
 
 ### Phase 0 — Foundations
 - [x] **WS-B** executor registry + generic confirm dispatch + `riskTier`/`effectiveRiskTier` — DONE (`b6682061`, 31/31 AI tests green).
-- [ ] **WS-C.1** mig 181 `ai_action_audit` (ledger) — apply. *(spec: phase-0 §WS-C)*
-- [ ] **WS-C.2** write an audit row in the executor/confirm path (proposer, confirmer, tool, risk_tier, result_ref, outcome). Test. *blocked-by: WS-C.1*
+- [x] **WS-C.1** mig 181 `ai_action_audit` (ledger) — DONE (`cc4d356a`, applied to prod Neon).
+- [x] **WS-C.2** audit row written in the confirm path (proposer/confirmer/tool/risk_tier/client_scope/result_ref/outcome), pure mapper + fail-safe writer — DONE (`4f55589d`, 36/36 AI tests green).
 - [ ] **WS-A.1** mig 180 `ai_user_memory` — apply. *(spec: memory-architecture §3)*
 - [ ] **WS-A.2** `memory/{types,store}.ts` (injected db) + `store.test.ts`. *blocked-by: WS-A.1*
 - [ ] **WS-A.3** `memory/retrieve.ts` pure scoring (recency × type_weight × salience, top-5/≤200tok) + test.
