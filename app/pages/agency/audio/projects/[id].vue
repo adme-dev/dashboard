@@ -1027,14 +1027,6 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :is-playing="editor.isPlaying.value"
                 :sources="editor.sources.value"
               />
-              <div v-if="videoAssetHarnessEnabled" class="mt-3">
-                <MediaAssetHarness
-                  :project-id="projectId"
-                  studio
-                  @add-to-timeline="onHarnessAddToTimeline"
-                  @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
-                />
-              </div>
           </template>
 
           <template #producer>
@@ -1088,6 +1080,25 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                     @add-overlay="onOverlayPick"
                     @replace-overlay="onReplaceSelectedOverlay"
                   />
+                  <div v-if="videoAssetHarnessEnabled" class="space-y-3">
+                    <div class="mb-3 flex items-start gap-2">
+                      <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                        <UIcon name="i-lucide-eraser" class="size-4 text-primary" />
+                      </div>
+                      <div class="min-w-0">
+                        <h4 class="text-sm font-medium text-highlighted">Prepare / erase asset</h4>
+                        <p class="mt-0.5 text-xs leading-snug text-muted">
+                          Lift, erase, mask, remove backgrounds, or decompose selected project assets.
+                        </p>
+                      </div>
+                    </div>
+                    <MediaAssetHarness
+                      :project-id="projectId"
+                      studio
+                      @add-to-timeline="onHarnessAddToTimeline"
+                      @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
+                    />
+                  </div>
                   <VideoStudioProducerRail
                     :project-id="projectId"
                     :selected-asset="selectedStudioAsset"

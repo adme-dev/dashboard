@@ -85,7 +85,7 @@ function replaceExistingVoiceover() {
 </script>
 
 <template>
-  <section class="rounded-md border border-default bg-elevated p-3">
+  <section class="rounded-md border border-default bg-elevated p-4">
     <div class="mb-3 flex items-start gap-2">
       <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
         <UIcon name="i-lucide-mic-2" class="size-4 text-primary" />
@@ -98,15 +98,16 @@ function replaceExistingVoiceover() {
 
     <div class="space-y-3">
       <UFormField label="Title">
-        <UInput v-model="title" size="xs" placeholder="Opening voiceover" />
+        <UInput v-model="title" size="sm" placeholder="Opening voiceover" class="w-full" />
       </UFormField>
 
       <UFormField label="Script">
         <UTextarea
           v-model="script"
-          :rows="4"
+          :rows="5"
           autoresize
           placeholder="Write the spoken script for this edit..."
+          class="min-h-32 w-full"
         />
         <div class="mt-1.5 flex flex-wrap items-center justify-between gap-2">
           <span class="text-[11px] text-muted">
@@ -125,14 +126,14 @@ function replaceExistingVoiceover() {
         </div>
       </UFormField>
 
-      <div class="flex items-center justify-between gap-2">
+      <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex flex-wrap gap-1">
           <UBadge label="Cloudflare Workers AI" size="xs" variant="subtle" color="neutral" />
           <UBadge label="voiceover lane" size="xs" variant="subtle" color="neutral" />
         </div>
         <UButton
           icon="i-lucide-sparkles"
-          size="xs"
+          size="sm"
           color="primary"
           label="Generate"
           :loading="generating"

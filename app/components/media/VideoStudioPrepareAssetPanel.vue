@@ -105,21 +105,24 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
     </div>
 
     <div class="space-y-3">
-      <div class="grid gap-2 lg:grid-cols-[220px_minmax(320px,1fr)]">
+      <div class="grid gap-2 xl:grid-cols-[220px_minmax(0,1fr)]">
         <UFormField label="Tool">
           <USelect
             :model-value="props.selectedAction"
             :items="props.actionOptions"
             value-key="value"
+            size="sm"
+            class="w-full"
             @update:model-value="value => emit('update:selectedAction', String(value))"
           />
         </UFormField>
         <UFormField label="Instruction">
           <UTextarea
             :model-value="props.toolPrompt"
-            :rows="2"
+            :rows="3"
             autoresize
             placeholder="Describe what to lift, erase, or preserve..."
+            class="w-full"
             @update:model-value="value => emit('update:toolPrompt', String(value))"
           />
         </UFormField>
@@ -150,7 +153,7 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
             />
           </div>
         </div>
-        <div class="relative mx-auto aspect-[9/16] h-[min(52vh,420px)] min-h-[300px] overflow-hidden rounded-md border border-default bg-black">
+        <div class="relative mx-auto aspect-[9/16] h-[min(64vh,620px)] min-h-[360px] overflow-hidden rounded-md border border-default bg-black">
           <img
             v-if="props.selectedAssetThumbnailUrl"
             :src="props.selectedAssetThumbnailUrl"
@@ -196,6 +199,8 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
         <UInput
           :model-value="props.brushMaskKey"
           placeholder="Optional R2 mask key"
+          size="sm"
+          class="w-full"
           @update:model-value="value => emit('update:brushMaskKey', String(value))"
         />
       </UFormField>

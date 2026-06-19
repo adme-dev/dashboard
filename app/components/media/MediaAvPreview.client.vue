@@ -251,8 +251,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative mx-auto bg-black rounded-lg overflow-hidden border border-default"
-       :style="{ aspectRatio: aspect, maxHeight: '60vh' }">
+  <div
+    class="relative mx-auto h-[min(72vh,780px)] min-h-[520px] max-w-full overflow-hidden rounded-lg border border-default bg-black"
+    :style="{ aspectRatio: aspect, width: 'auto' }"
+  >
     <canvas
       ref="canvasRef"
       :width="W"

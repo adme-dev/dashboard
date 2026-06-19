@@ -301,18 +301,20 @@ function sourceLabel(value: VideoStudioAssetSource) {
     </div>
 
     <div class="space-y-2">
-      <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-        <UButton
+      <div class="grid grid-cols-3 gap-1.5">
+        <button
           v-for="option in CATEGORY_FILTERS"
           :key="option.value"
-          :icon="option.icon"
-          :label="option.label"
-          size="xs"
-          :variant="category === option.value ? 'solid' : 'soft'"
-          :color="category === option.value ? 'primary' : 'neutral'"
-          class="min-w-0 justify-start"
+          type="button"
+          class="flex aspect-square min-w-0 flex-col items-center justify-center gap-1 rounded-md border px-1.5 text-center transition"
+          :class="category === option.value
+            ? 'border-primary bg-primary text-inverted'
+            : 'border-default bg-default/40 text-muted hover:border-primary/50 hover:bg-elevated hover:text-highlighted'"
           @click="category = option.value"
-        />
+        >
+          <UIcon :name="option.icon" class="size-4 shrink-0" />
+          <span class="max-w-full truncate text-[10px] font-medium leading-none">{{ option.label }}</span>
+        </button>
       </div>
 
       <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
