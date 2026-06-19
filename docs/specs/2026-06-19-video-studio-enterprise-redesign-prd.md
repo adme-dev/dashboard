@@ -369,6 +369,77 @@ Requirements:
   - selected clip inspector binding
   - render readiness indicators per segment
 
+### Timeline Track Affordance Plan
+
+Track controls should be compact, lane-local, and predictable. They belong in the sticky track label column, not in a separate settings drawer, because operators need to scan state while trimming and moving clips.
+
+#### Track Header Controls
+
+Each timeline track header should support:
+
+- **Mute**
+  - Audio, voiceover, and music tracks: mutes playback/render contribution for the full track.
+  - Video and overlay tracks: not shown unless we later support embedded source audio on video tracks separately.
+  - State should render as a muted icon and reduced track opacity.
+
+- **Hide**
+  - Video, overlay, and caption tracks: hides preview/render contribution for the full track.
+  - Audio-only tracks: not shown.
+  - State should render as an eye-off icon and reduced clip contrast.
+
+- **Lock**
+  - All tracks: prevents move, trim, split, delete, replace, and add-to-track operations for that lane.
+  - Locked tracks remain selectable for inspection, but edit actions should be disabled with clear button labels/tooltips.
+  - State should render as a lock icon and disabled clip handles.
+
+- **Solo** (later, optional)
+  - Audio-family tracks only.
+  - Useful for reviewing voice/music mix, but not required for the first implementation.
+
+#### Clip-Level Inspector Rules
+
+The selected clip inspector should read track affordance state from the parent track:
+
+- If the track is locked, destructive actions are disabled.
+- If an audio track is muted, gain controls remain visible but render/playback state is clearly marked as muted.
+- If a visual track is hidden, replacement and timing controls remain visible, but preview-dependent actions should disclose that the track is hidden.
+
+#### Auto-Ducking Rules
+
+Auto-ducking should be governed at the music-track level:
+
+- Default trigger: voiceover clips duck music tracks.
+- First implementation should expose a simple per-music-track toggle, not per-clip automation curves.
+- Ducking metadata should remain timeline-level (`ducking`) so render workers and preview stay aligned.
+- Future inspector controls can expose duck amount and fade duration after the basic toggle is stable.
+
+#### Caption Lane Rules
+
+Caption tracks should behave as first-class timeline lanes:
+
+- Caption lane visibility uses the same Hide affordance as visual tracks.
+- Caption clips remain editable when hidden, but preview is suppressed.
+- Caption style remains clip-level because campaign cuts can mix hook captions and subtitle-safe captions.
+- If a caption clip references a VTT source, the selected clip inspector should keep the VTT link visible in Details.
+
+#### Implementation Sequence
+
+1. Extend timeline state types to support `hidden` and `locked` on tracks while preserving existing `muted`.
+2. Add pure helpers for deriving track affordance state and determining whether an operation is allowed.
+3. Update `MediaTimeline.client.vue` sticky track labels with icon buttons for supported affordances.
+4. Gate move, trim, split, delete, replace, and add-to-track operations through the helper.
+5. Surface locked/hidden/muted state inside `VideoStudioClipInspector`.
+6. Add a later server/render check so hidden/muted tracks affect render output consistently.
+
+#### Acceptance For Implementation
+
+- Operators can see track state without opening a drawer.
+- Locked tracks cannot be edited by drag, shortcut, toolbar, or inspector action.
+- Hidden visual/caption tracks do not appear in preview/render once render support lands.
+- Muted audio-family tracks do not contribute to playback/render.
+- Caption style remains clip-level.
+- Existing timelines without `hidden` or `locked` fields load with safe defaults.
+
 ## Visual Design Direction
 
 Use a quiet, dense, enterprise SaaS aesthetic:
@@ -646,9 +717,10 @@ Never:
   - Verify: timeline editor component/composable tests.
   - Implementation: timeline clip selection clears asset selection, opens Edit mode, and renders the clip inspector in the workbench preview and inspector Details context.
 
-- [ ] Add track affordance plan.
+- [x] Add track affordance plan.
   - Acceptance: spec/update for hide, lock, mute, auto-ducking, caption lane behavior.
   - Verify: design-only until implementation task.
+  - Implementation: added `Timeline Track Affordance Plan` with track header controls, clip inspector rules, auto-ducking rules, caption lane rules, implementation order, and acceptance criteria.
 
 - [ ] Improve render queue strip.
   - Acceptance: queue summary is compact, failed jobs expose details/retry, completed variants expose output actions.
