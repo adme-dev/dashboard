@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
 import VideoStudioClipInspector from '~~/app/components/media/VideoStudioClipInspector.vue'
+import VideoStudioInspector from '~~/app/components/media/VideoStudioInspector.vue'
 import VideoStudioLibraryRail from '~~/app/components/media/VideoStudioLibraryRail.vue'
 import VideoStudioOverlayComposer from '~~/app/components/media/VideoStudioOverlayComposer.vue'
 import VideoStudioProducerRail from '~~/app/components/media/VideoStudioProducerRail.vue'
@@ -979,48 +980,73 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           </template>
 
           <template #producer>
-              <div class="space-y-3">
-                <VideoStudioVoiceComposer
-                  :producer-brief="producerBrief"
-                  :existing-voiceover-count="existingVoiceoverClipIds.length"
-                  @generated="onVoiceoverGenerated"
-                  @add-to-timeline="onVoiceoverAddToTimeline"
-                  @replace-with-generated="onVoiceoverReplaceTimeline"
-                />
-                <VideoStudioOverlayComposer
-                  :projects="studioBannerProjects"
-                  :loading="studioBannerPending"
-                  :current-time-sec="editor.currentTime.value"
-                  :selected-overlay-clip="selectedOverlayClip"
-                  @refresh="refreshStudioBannerProjects"
-                  @add-overlay="onOverlayPick"
-                  @replace-overlay="onReplaceSelectedOverlay"
-                />
-                <VideoStudioProducerRail
-                  :project-id="projectId"
-                  :selected-asset="selectedStudioAsset"
-                  :asset-count="videoStudioAssetCount"
-                  :voice-asset-count="studioVoiceAssetCount"
-                  :overlay-asset-count="studioOverlayAssetCount"
-                  :recent-generation-jobs="genJobs.jobs.value"
-                  @add-to-timeline="onHarnessAddToTimeline"
-                  @brief-change="producerBrief = $event"
-                />
-                <VideoStudioRenderJobsPanel
-                  :project-id="projectId"
-                  :jobs="editor.renderJobs.value"
-                  :rendering="editor.rendering.value"
-                  @render="onRenderVideo"
-                  @retry="onRetryRender"
-                  @publish="onPublishToSocial"
-                  @send-to-portal="onSendToPortal"
-                  @save-asset="onSaveAsset"
-                />
-                <div class="grid grid-cols-2 gap-2">
-                  <UButton icon="i-lucide-music" size="xs" variant="ghost" color="neutral" label="Audio" @click="pickerOpen = true" />
-                  <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="onRenderVideo" />
-                </div>
-              </div>
+              <VideoStudioInspector
+                :asset-count="videoStudioAssetCount"
+                :voice-asset-count="studioVoiceAssetCount"
+                :overlay-asset-count="studioOverlayAssetCount"
+                :render-job-count="editor.renderJobs.value.length"
+                :model-ready="videoGenerationEnabled && videoGenerationModelsAvailable"
+              >
+                <template #details>
+                  <VideoStudioSelectedAssetPanel
+                    :asset="selectedStudioAsset"
+                    :activity="selectedStudioAssetActivity"
+                    :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
+                    :can-replace-selected-clip="canReplaceSelectedClipWithAsset"
+                    @add-to-timeline="onStudioAssetAdd"
+                    @replace-selected-clip="replaceSelectedClipWithAsset"
+                    @add-captions-to-timeline="onStudioAssetAddCaptions"
+                    @generate-from-asset="onStudioAssetGenerate"
+                    @generate-captions="onGenerateCaptions"
+                  />
+                </template>
+
+                <template #produce>
+                  <VideoStudioVoiceComposer
+                    :producer-brief="producerBrief"
+                    :existing-voiceover-count="existingVoiceoverClipIds.length"
+                    @generated="onVoiceoverGenerated"
+                    @add-to-timeline="onVoiceoverAddToTimeline"
+                    @replace-with-generated="onVoiceoverReplaceTimeline"
+                  />
+                  <VideoStudioOverlayComposer
+                    :projects="studioBannerProjects"
+                    :loading="studioBannerPending"
+                    :current-time-sec="editor.currentTime.value"
+                    :selected-overlay-clip="selectedOverlayClip"
+                    @refresh="refreshStudioBannerProjects"
+                    @add-overlay="onOverlayPick"
+                    @replace-overlay="onReplaceSelectedOverlay"
+                  />
+                  <VideoStudioProducerRail
+                    :project-id="projectId"
+                    :selected-asset="selectedStudioAsset"
+                    :asset-count="videoStudioAssetCount"
+                    :voice-asset-count="studioVoiceAssetCount"
+                    :overlay-asset-count="studioOverlayAssetCount"
+                    :recent-generation-jobs="genJobs.jobs.value"
+                    @add-to-timeline="onHarnessAddToTimeline"
+                    @brief-change="producerBrief = $event"
+                  />
+                  <div class="grid grid-cols-2 gap-2">
+                    <UButton icon="i-lucide-music" size="xs" variant="ghost" color="neutral" label="Audio" @click="pickerOpen = true" />
+                    <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="onRenderVideo" />
+                  </div>
+                </template>
+
+                <template #review>
+                  <VideoStudioRenderJobsPanel
+                    :project-id="projectId"
+                    :jobs="editor.renderJobs.value"
+                    :rendering="editor.rendering.value"
+                    @render="onRenderVideo"
+                    @retry="onRetryRender"
+                    @publish="onPublishToSocial"
+                    @send-to-portal="onSendToPortal"
+                    @save-asset="onSaveAsset"
+                  />
+                </template>
+              </VideoStudioInspector>
           </template>
         </VideoStudioWorkbench>
 

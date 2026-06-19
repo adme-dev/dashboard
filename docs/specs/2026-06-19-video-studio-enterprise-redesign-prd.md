@@ -577,7 +577,7 @@ Never:
 
 ### Phase 2: Inspector Consolidation
 
-- [ ] Create `VideoStudioInspector.vue`.
+- [x] Create `VideoStudioInspector.vue`.
   - Acceptance: right rail has Details, Produce, Review tabs.
   - Verify: component test renders tab labels and active panel.
   - Files: new inspector component, workbench/page integration tests.
