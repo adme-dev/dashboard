@@ -131,7 +131,7 @@ Wiring point: `server/utils/aiChatEngine.ts` — where it already loads last-10 
 
 1. Vectorize-only vs temporal graph (Zep/Graphiti) for episodic ordering? **Decision: Vectorize-only for v1**; revisit only if recall quality demands graph traversal.
 2. Procedural capture — infer from repetition vs explicit definition? **Hybrid; ship inferred-from-repetition as fast-follow.**
-3. Memory store residency constraints? **Open — confirm before enabling distillation in prod.**
+3. Memory store residency constraints? **RESOLVED 2026-06-19: store per-user memory in the existing Neon + Vectorize (same region/provider as today's data) — no separate residency constraint. The distiller is cleared to build; flipping `AI_MEMORY_DISTILL_ENABLED` in prod remains a separate go-ahead.**
 
 ## 9a. Graph cross-check (graphify, 2026-06-15)
 
