@@ -58,4 +58,22 @@ describe('VideoStudioRenderJobsPanel', () => {
     expect(html).toContain('No render jobs yet')
     expect(html).toContain('Render')
   })
+
+  it('renders failed render details and retry action', async () => {
+    const html = await render({
+      jobs: [job({
+        id: 'failed-render',
+        status: 'failed',
+        variants: {},
+        error: 'FFmpeg exited with code 1\nOverlay source was missing.',
+      })],
+    })
+
+    expect(html).toContain('failed')
+    expect(html).toContain('Failure details')
+    expect(html).toContain('FFmpeg exited with code 1')
+    expect(html).toContain('Overlay source was missing.')
+    expect(html).toContain('Retry')
+    expect(html).not.toContain('/api/agency/audio/projects/project-1/renders/failed-render')
+  })
 })

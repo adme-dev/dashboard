@@ -13,6 +13,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (event: 'render'): void
+  (event: 'retry', job: MediaRenderJob): void
   (event: 'publish', job: MediaRenderJob, format: string): void
   (event: 'send-to-portal', job: MediaRenderJob, format: string): void
   (event: 'save-asset', job: MediaRenderJob, format: string): void
@@ -78,8 +79,15 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
           <UBadge :label="job.status" size="xs" variant="subtle" :color="statusColor(job.status)" />
           <div class="min-w-0 flex-1">
             <p class="truncate text-xs text-muted">{{ dateLabel(job.createdAt) }}</p>
-            <p v-if="job.error" class="mt-1 line-clamp-2 text-[11px] text-error">{{ job.error }}</p>
           </div>
+        </div>
+
+        <div v-if="job.status === 'failed' && job.error" class="mt-2 rounded-md border border-error/30 bg-error/5 p-2">
+          <div class="flex items-center gap-1.5 text-[11px] font-medium text-error">
+            <UIcon name="i-lucide-triangle-alert" class="size-3.5" />
+            <span>Failure details</span>
+          </div>
+          <p class="mt-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-error">{{ job.error }}</p>
         </div>
 
         <div class="mt-2 flex flex-wrap items-center gap-1.5">
@@ -92,6 +100,16 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
             color="neutral"
             :to="variantUrl(job, format)"
             target="_blank"
+          />
+          <UButton
+            v-if="job.status === 'failed'"
+            icon="i-lucide-refresh-cw"
+            size="xs"
+            variant="soft"
+            color="primary"
+            label="Retry"
+            :loading="props.rendering"
+            @click="emit('retry', job)"
           />
           <UDropdownMenu
             v-if="job.status === 'done' && variantFormats(job).length"

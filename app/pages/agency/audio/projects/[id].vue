@@ -589,6 +589,10 @@ async function onRenderVideo(formats?: VideoRenderFormatId[]) {
   else toast.add({ title: 'Failed to queue render', color: 'error' })
 }
 
+async function onRetryRender() {
+  await onRenderVideo()
+}
+
 async function onPublishToSocial(job: MediaRenderJob, format: string) {
   try {
     const res = await editor.publishToSocial(job.id, format)
@@ -1000,6 +1004,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   :jobs="editor.renderJobs.value"
                   :rendering="editor.rendering.value"
                   @render="onRenderVideo"
+                  @retry="onRetryRender"
                   @publish="onPublishToSocial"
                   @send-to-portal="onSendToPortal"
                   @save-asset="onSaveAsset"
