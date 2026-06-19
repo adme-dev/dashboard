@@ -76,21 +76,22 @@ function activityTimeLabel(value: string | null) {
 </script>
 
 <template>
-  <section class="rounded-md border border-default bg-elevated">
-    <div class="flex flex-wrap items-start gap-3 border-b border-default px-3 py-2">
+  <section class="min-w-0 overflow-hidden rounded-md border border-default bg-elevated">
+    <div class="flex min-w-0 flex-wrap items-start gap-3 border-b border-default px-3 py-2">
       <div class="min-w-0 flex-1">
         <p class="text-xs font-medium uppercase text-muted">Selected asset</p>
         <h3 class="truncate text-sm font-semibold text-highlighted">
           {{ props.asset?.title ?? 'No asset selected' }}
         </h3>
       </div>
-      <div v-if="props.asset" class="flex shrink-0 flex-wrap items-center gap-1.5">
+      <div v-if="props.asset" class="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
         <UButton
           icon="i-lucide-list-plus"
           size="xs"
           variant="soft"
           color="primary"
           label="Add to timeline"
+          class="min-w-0"
           :disabled="!props.asset.timelineReady"
           @click="emit('add-to-timeline', props.asset)"
         />
@@ -100,6 +101,7 @@ function activityTimeLabel(value: string | null) {
           variant="soft"
           color="neutral"
           label="Replace selected"
+          class="min-w-0"
           :disabled="!props.canReplaceSelectedClip"
           @click="emit('replace-selected-clip', props.asset)"
         />
@@ -109,6 +111,7 @@ function activityTimeLabel(value: string | null) {
           variant="ghost"
           color="neutral"
           label="Generate from asset"
+          class="min-w-0"
           :disabled="!canGenerate"
           @click="emit('generate-from-asset', props.asset)"
         />
@@ -119,6 +122,7 @@ function activityTimeLabel(value: string | null) {
           variant="ghost"
           color="neutral"
           :label="props.asset.captionVttUrl ? 'Regenerate captions' : 'Generate captions'"
+          class="min-w-0"
           :disabled="!canGenerateCaptions || props.captionGenerating"
           :loading="props.captionGenerating"
           @click="emit('generate-captions', props.asset)"
@@ -130,6 +134,7 @@ function activityTimeLabel(value: string | null) {
           variant="soft"
           color="neutral"
           label="Add captions"
+          class="min-w-0"
           @click="emit('add-captions-to-timeline', props.asset)"
         />
       </div>
@@ -141,8 +146,8 @@ function activityTimeLabel(value: string | null) {
       <p class="mx-auto mt-1 max-w-64 text-[11px] text-muted">Preview source media, inspect metadata, then add or generate from it without leaving the editor.</p>
     </div>
 
-    <div v-else class="grid gap-3 p-3 xl:grid-cols-[minmax(15rem,22rem)_minmax(0,1fr)]">
-      <div class="overflow-hidden rounded-md border border-default bg-default/40">
+    <div v-else class="grid min-w-0 gap-3 p-3">
+      <div class="min-w-0 overflow-hidden rounded-md border border-default bg-default/40">
         <img
           v-if="previewKind(props.asset) === 'image'"
           :src="props.asset.thumbnailUrl!"
@@ -168,7 +173,7 @@ function activityTimeLabel(value: string | null) {
         </div>
       </div>
 
-      <div class="min-w-0 space-y-3">
+      <div class="min-w-0 space-y-3 overflow-hidden">
         <UAlert
           v-if="statusMessage(props.asset.status)"
           color="warning"
@@ -178,28 +183,28 @@ function activityTimeLabel(value: string | null) {
           :description="statusMessage(props.asset.status)"
         />
 
-        <dl class="grid grid-cols-2 gap-2 text-[11px]">
-          <div class="rounded-md bg-default/40 px-2 py-1.5">
+        <dl class="grid min-w-0 grid-cols-1 gap-2 text-[11px]">
+          <div class="min-w-0 rounded-md bg-default/40 px-2 py-1.5">
             <dt class="text-muted">Source</dt>
             <dd class="truncate font-medium text-highlighted">{{ props.asset.source }}</dd>
           </div>
-          <div class="rounded-md bg-default/40 px-2 py-1.5">
+          <div class="min-w-0 rounded-md bg-default/40 px-2 py-1.5">
             <dt class="text-muted">Status</dt>
             <dd><UBadge :label="props.asset.status" size="xs" :color="statusColor(props.asset.status)" variant="subtle" /></dd>
           </div>
-          <div class="rounded-md bg-default/40 px-2 py-1.5">
+          <div class="min-w-0 rounded-md bg-default/40 px-2 py-1.5">
             <dt class="text-muted">Model</dt>
             <dd class="truncate font-medium text-highlighted">{{ props.asset.modelId ?? 'None' }}</dd>
           </div>
-          <div class="rounded-md bg-default/40 px-2 py-1.5">
+          <div class="min-w-0 rounded-md bg-default/40 px-2 py-1.5">
             <dt class="text-muted">Duration</dt>
             <dd class="font-medium text-highlighted">{{ durationLabel(props.asset.durationSec) ?? 'Unknown' }}</dd>
           </div>
-          <div class="rounded-md bg-default/40 px-2 py-1.5">
+          <div class="min-w-0 rounded-md bg-default/40 px-2 py-1.5">
             <dt class="text-muted">Aspect</dt>
             <dd class="truncate font-medium text-highlighted">{{ props.asset.format ?? 'Unknown' }}</dd>
           </div>
-          <div class="rounded-md bg-default/40 px-2 py-1.5">
+          <div class="min-w-0 rounded-md bg-default/40 px-2 py-1.5">
             <dt class="text-muted">Bucket</dt>
             <dd class="truncate font-medium text-highlighted">{{ props.asset.bucketId ?? 'None' }}</dd>
           </div>
