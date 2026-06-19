@@ -19,8 +19,8 @@ export interface Persona {
   toolAllowlist?: string[]
 }
 
-// search_knowledge + create_task are useful to every persona, so each focused allowlist includes them.
-const COMMON = ['search_knowledge', 'create_task']
+// search_knowledge + create_task + remember are useful to every persona, so each focused allowlist includes them.
+const COMMON = ['search_knowledge', 'create_task', 'remember']
 
 export const PERSONAS: Record<string, Persona> = {
   general: {

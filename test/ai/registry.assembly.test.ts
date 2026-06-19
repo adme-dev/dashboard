@@ -10,10 +10,11 @@ const READ_TOOLS = [
 const SLICE2_TOOLS = [
   'get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue',
 ]
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, 'create_task']
+// remember = personal-memory capture (non-mutating; available to every authed role).
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, 'create_task', 'remember']
 
-describe('assembled tool registry (Slices 1–2)', () => {
-  it('contains the 13 read tools + create_task', () => {
+describe('assembled tool registry (Slices 1–2 + memory)', () => {
+  it('contains the 13 read tools + create_task + remember', () => {
     expect(registry.map(t => t.name).sort()).toEqual([...ALL].sort())
   })
 
@@ -42,8 +43,8 @@ describe('assembled tool registry (Slices 1–2)', () => {
     expect(filterToolsForUser(registry, 'guest').map(t => t.name)).not.toContain('create_task')
   })
 
-  it('owner sees all 14', () => {
-    expect(filterToolsForUser(registry, 'owner')).toHaveLength(14)
+  it('owner sees all 15', () => {
+    expect(filterToolsForUser(registry, 'owner')).toHaveLength(15)
   })
 
   it('includes the Slice-2 margin & forecasting tools', () => {
