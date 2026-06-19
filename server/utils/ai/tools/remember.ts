@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { upsertMemory } from '../memory/store'
+import { indexMemoryVector } from '../memory/embed'
 import type { UpsertMemoryInput } from '../memory/types'
 
 const params = z.object({
@@ -29,10 +30,23 @@ export async function remember(args: Args, ctx: ToolContext, deps: RememberDeps 
   const content = args.content.trim()
   if (!content) return fail('There is nothing to remember.')
 
-  const id = await deps.save(
-    { userId: ctx.userId, memType: args.memType, content, source: 'explicit', salience: 0.7 },
-    ctx,
-  )
+  let id: string
+  try {
+    id = await deps.save(
+      { userId: ctx.userId, memType: args.memType, content, source: 'explicit', salience: 0.7 },
+      ctx,
+    )
+  } catch {
+    // Fail-safe like every other tool: a transient DB error returns a recoverable message the model
+    // can relay, instead of propagating and breaking the whole turn.
+    return fail('I could not save that just now — please try again in a moment.')
+  }
+
+  // Index for vector recall (best-effort, fully fail-safe inside indexMemoryVector). Without it an
+  // explicit memory is recall-able only via the recency fallback.
+  void indexMemoryVector({ event: ctx.event, id, userId: ctx.userId, scope: 'user', memType: args.memType, content })
+    .catch(() => {})
+
   return ok({ remembered: true, id, content })
 }
 

@@ -152,17 +152,21 @@ export function resolveSearchArgs(
   topKOrFilter?: number | VectorizeFilter,
   filterArg?: VectorizeFilter,
 ): ResolvedSearchArgs {
+  // A positive topK only — a falsy/0 (or non-number) value falls back to 5, preserving the prior
+  // `|| 5` semantics. Otherwise a computed topK of 0 (e.g. search_knowledge with limit:0) would ask
+  // Vectorize for 0 matches and return nothing where it used to return 5 (review finding #10).
+  const posTopK = (v: unknown) => (typeof v === 'number' && v > 0 ? v : 5)
   if (typeof eventOrQuery === 'string') {
     return {
       query: eventOrQuery,
-      topK: typeof queryOrTopK === 'number' ? queryOrTopK : 5,
+      topK: posTopK(queryOrTopK),
       filter: isFilter(topKOrFilter) ? topKOrFilter : undefined,
     }
   }
   return {
     event: eventOrQuery,
     query: queryOrTopK as string,
-    topK: typeof topKOrFilter === 'number' ? topKOrFilter : 5,
+    topK: posTopK(topKOrFilter),
     filter: filterArg,
   }
 }

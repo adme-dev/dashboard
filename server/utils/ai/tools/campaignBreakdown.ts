@@ -23,36 +23,46 @@ export type BreakdownCampaign = {
   cpc: number | null
 }
 
+/** The fetched window plus the endpoint's true total, so the handler can flag a truncated ranking. */
+export type BreakdownResult = { campaigns: BreakdownCampaign[], total: number }
+
 export type CampaignBreakdownDeps = {
-  breakdown: (ctx: ToolContext) => Promise<BreakdownCampaign[]>
+  breakdown: (ctx: ToolContext, platform?: 'meta' | 'google') => Promise<BreakdownResult>
 }
 
 // Real wiring: the analytics/campaigns endpoint is the same source the analytics tab uses. It
-// requires a date window, so we ask for month-to-date. Forward the caller's auth headers so the
-// tenant/session resolves, mirroring adspend.ts. Google is stored as 'google_ads' — normalise to
-// the tool's enum. We fetch all and filter in the handler (consistent with get_adspend_pacing).
+// requires a date window, so we ask for month-to-date. We forward the platform filter so the DB
+// narrows the result instead of shipping every row, and capture the endpoint's `total` so the
+// handler can warn when a ROAS/CPC ranking is computed over a spend-capped window (the endpoint
+// can't sort by ROAS/CPC and hard-caps at 200). Forward the caller's auth headers so the
+// tenant/session resolves, mirroring adspend.ts. Google is stored as 'google_ads' — normalise.
+const PLATFORM_QUERY: Record<'meta' | 'google', string> = { meta: 'meta', google: 'google_ads,google' }
+
 const defaultDeps: CampaignBreakdownDeps = {
-  breakdown: async (ctx) => {
+  breakdown: async (ctx, platform) => {
     const now = new Date()
     const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
     const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const query: Record<string, unknown> = { startDate, endDate, sortBy: 'spend', limit: 200 }
+    if (platform) query.platform = PLATFORM_QUERY[platform]
     const r: any = await $fetch('/api/agency/analytics/campaigns', {
-      query: { startDate, endDate, sortBy: 'spend', limit: 200 },
+      query,
       headers: ctx.event.headers as any,
     })
     const items: any[] = Array.isArray(r?.campaigns) ? r.campaigns : []
-    return items.map((it): BreakdownCampaign => {
+    const campaigns = items.map((it): BreakdownCampaign => {
       const rawPlatform = String(it?.platform ?? '')
-      const platform: 'meta' | 'google' = rawPlatform.startsWith('google') ? 'google' : 'meta'
+      const p: 'meta' | 'google' = rawPlatform.startsWith('google') ? 'google' : 'meta'
       return {
         campaignName: String(it?.campaignName ?? 'Unknown'),
         clientName: String(it?.clientName ?? 'Unassigned'),
-        platform,
+        platform: p,
         spend: Number(it?.spend ?? 0),
         roas: it?.roas == null ? null : Number(it.roas),
         cpc: it?.cpc == null ? null : Number(it.cpc),
       }
     })
+    return { campaigns, total: Number(r?.total ?? campaigns.length) }
   },
 }
 
@@ -71,7 +81,8 @@ function sortCampaigns(rows: BreakdownCampaign[], sortBy: Args['sortBy']): Break
 
 export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: CampaignBreakdownDeps = defaultDeps): Promise<ToolResult> {
   try {
-    const all = await deps.breakdown(ctx)
+    const sortBy = args.sortBy ?? 'spend'
+    const { campaigns: all, total } = await deps.breakdown(ctx, args.platform)
 
     const nameNeedle = args.clientName?.trim().toLowerCase()
     const filtered = all.filter((c) => {
@@ -80,8 +91,13 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       return true
     })
 
-    const { items, more } = capWithMore(sortCampaigns(filtered, args.sortBy ?? 'spend'), 20)
-    return ok({ campaigns: items, more })
+    const { items, more } = capWithMore(sortCampaigns(filtered, sortBy), 20)
+    // The source endpoint ranks by spend and caps at 200, so a ROAS/CPC ranking over a truncated
+    // window may miss high-ROAS low-spend campaigns. Tell the model so it doesn't over-claim "best".
+    const note = (sortBy !== 'spend' && total > all.length)
+      ? `Ranked by ${sortBy} over the ${all.length} highest-spend campaigns (of ${total}); lower-spend campaigns are not included in this ranking.`
+      : undefined
+    return ok({ campaigns: items, more, ...(note ? { note } : {}) })
   } catch {
     return fail('Could not load campaign breakdown — the spend sync may be unavailable or no campaigns have spend this period.')
   }

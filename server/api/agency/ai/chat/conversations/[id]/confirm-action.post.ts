@@ -13,7 +13,7 @@
 // Executors use Nitro's global $fetch internally so internal relative routes resolve on the CF runtime.
 import { queryOne, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { executeProposal, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
+import { executeProposal, terminalError, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
 import { getExecutor, type ActionExecutor } from '~~/server/utils/ai/executors'
 import { recordAudit } from '~~/server/utils/ai/audit'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
@@ -21,7 +21,7 @@ import type { ToolContext } from '~~/server/utils/ai/toolContext'
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const conversationId = getRouterParam(event, 'id')
-  const body = await readBody<{ proposalId?: string }>(event)
+  const body = await readBody<{ proposalId?: string, richConfirmAck?: boolean }>(event)
   const proposalId = body?.proposalId
 
   if (!conversationId || !proposalId) {
@@ -63,7 +63,8 @@ export default defineEventHandler(async (event) => {
     // The generic mutation slot: delegate to the tool_name's executor. An unknown tool throws,
     // which executeProposal catches and reverts (so the row returns to 'proposed' for retry).
     createTask: async (payload, ctx) => {
-      if (!executor) throw new Error('No executor registered for this action.')
+      // Terminal (non-retryable): an unknown tool_name must not revert-and-re-offer (would loop forever).
+      if (!executor) throw terminalError('No executor registered for this action.')
       const res = await executor.execute(payload, ctx)
       summary = res.summary
       return { id: res.resultRef }
@@ -80,6 +81,24 @@ export default defineEventHandler(async (event) => {
   }
 
   const ctx: ToolContext = { userId: user.id, userRole: user.role, conversationId, event }
+
+  // High-risk gate (review finding #3): a `rich_confirm` executor (e.g. a live ad-budget change) must
+  // NOT execute on a plain one-click confirm. Peek the proposal's tool_name (no claim yet) and, if its
+  // executor is rich_confirm, require an explicit acknowledgement in the request body. The Phase-2 rich
+  // confirm card (current→proposed, %, rollback, counter-model) supplies `richConfirmAck: true`. The
+  // claim inside executeProposal stays the atomic, idempotent authority — this is a pre-gate only.
+  const peek = await queryOne<{ tool_name: string }>(
+    `SELECT tool_name FROM ai_pending_actions
+       WHERE id = $1 AND conversation_id = $2 AND user_id = $3 AND status = 'proposed' AND expires_at > NOW()`,
+    [proposalId, conversationId, user.id],
+  )
+  if (peek) {
+    const peekExecutor = getExecutor(peek.tool_name)
+    if (peekExecutor?.riskTier === 'rich_confirm' && body?.richConfirmAck !== true) {
+      return { ok: false, requiresRichConfirm: true, error: 'This change needs explicit confirmation before it can be applied.' }
+    }
+  }
+
   const result = await executeProposal(proposalId, ctx, db)
 
   // Audit every attempt we actually CLAIMED (executed or failed-and-reverted). A no-claim outcome

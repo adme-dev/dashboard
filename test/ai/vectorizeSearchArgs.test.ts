@@ -35,4 +35,10 @@ describe('resolveSearchArgs', () => {
     // (query, topK, <not a filter>) — guards against accidental misuse
     expect(resolveSearchArgs('hello', 2, 99 as any).filter).toBeUndefined()
   })
+
+  it('coerces a falsy/0 or negative topK back to the default 5 (finding #10)', () => {
+    expect(resolveSearchArgs('hello', 0).topK).toBe(5)
+    expect(resolveSearchArgs(fakeEvent, 'hello', 0).topK).toBe(5)
+    expect(resolveSearchArgs('hello', -3).topK).toBe(5)
+  })
 })

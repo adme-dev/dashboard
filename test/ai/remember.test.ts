@@ -29,6 +29,12 @@ describe('remember tool', () => {
     expect(save.mock.calls[0][0].memType).toBe('procedural')
   })
 
+  it('is fail-safe: a throwing save returns a recoverable fail(), never propagates (finding #6)', async () => {
+    const save = vi.fn<RememberDeps['save']>().mockRejectedValue(new Error('neon blip'))
+    const res = await remember({ content: 'reports in AUD', memType: 'semantic' }, ctx() as any, { save })
+    expect(res.ok).toBe(false)
+  })
+
   it('is registered and is not a write/confirm tool', () => {
     expect(registry.find(t => t.name === 'remember')).toBeDefined()
     expect(rememberTool.mutates).toBeUndefined()  // private, low-risk → no confirm card

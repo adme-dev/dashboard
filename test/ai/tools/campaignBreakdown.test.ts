@@ -11,7 +11,7 @@ const rows: BreakdownCampaign[] = [
 ]
 
 const deps = (over: Partial<CampaignBreakdownDeps> = {}): CampaignBreakdownDeps => ({
-  breakdown: vi.fn().mockResolvedValue(rows),
+  breakdown: vi.fn().mockResolvedValue({ campaigns: rows, total: rows.length }),
   ...over,
 })
 
@@ -47,6 +47,25 @@ describe('getCampaignBreakdown', () => {
     const r = await getCampaignBreakdown({ sortBy: 'cpc' }, ctx, deps())
     const d = data(r)
     expect(d.campaigns.map((c: any) => c.campaignName)).toEqual(['Acme Retargeting', 'Acme Prospecting', 'Globex Search'])
+  })
+
+  it('adds a window caveat when ranking by roas/cpc over a truncated set (finding #5)', async () => {
+    const d = deps({ breakdown: vi.fn().mockResolvedValue({ campaigns: rows, total: 250 }) })
+    const r = await getCampaignBreakdown({ sortBy: 'roas' }, ctx, d)
+    expect((r as any).data.note).toMatch(/highest-spend campaigns \(of 250\)/)
+  })
+
+  it('does NOT add a caveat when sorting by spend or the window is complete', async () => {
+    const bySpend = await getCampaignBreakdown({ sortBy: 'spend' }, ctx, deps({ breakdown: vi.fn().mockResolvedValue({ campaigns: rows, total: 250 }) }))
+    expect((bySpend as any).data.note).toBeUndefined()
+    const complete = await getCampaignBreakdown({ sortBy: 'roas' }, ctx, deps())
+    expect((complete as any).data.note).toBeUndefined()
+  })
+
+  it('forwards the platform filter to the data source (server-side narrowing)', async () => {
+    const d = deps()
+    await getCampaignBreakdown({ platform: 'google', sortBy: 'spend' }, ctx, d)
+    expect((d.breakdown as any).mock.calls[0][1]).toBe('google')
   })
 
   it('fails gracefully when the data source throws', async () => {
