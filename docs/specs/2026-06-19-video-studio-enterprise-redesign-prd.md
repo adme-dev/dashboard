@@ -722,9 +722,10 @@ Never:
   - Verify: design-only until implementation task.
   - Implementation: added `Timeline Track Affordance Plan` with track header controls, clip inspector rules, auto-ducking rules, caption lane rules, implementation order, and acceptance criteria.
 
-- [ ] Improve render queue strip.
+- [x] Improve render queue strip.
   - Acceptance: queue summary is compact, failed jobs expose details/retry, completed variants expose output actions.
   - Verify: render jobs panel tests and browser screenshot.
+  - Implementation: render status strip now surfaces latest failed job details/retry and latest completed variant downloads plus publish/portal/library actions.
 
 ### Phase 6: Governance and Agency Polish
 

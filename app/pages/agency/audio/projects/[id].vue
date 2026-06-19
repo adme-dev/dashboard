@@ -1109,6 +1109,10 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           :project-id="projectId"
           :jobs="editor.renderJobs.value"
           :rendering="editor.rendering.value"
+          @retry="onRetryRender"
+          @publish="onPublishToSocial"
+          @send-to-portal="onSendToPortal"
+          @save-asset="onSaveAsset"
         />
 
         <MediaTimeline
