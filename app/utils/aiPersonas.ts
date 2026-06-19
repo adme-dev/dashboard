@@ -15,4 +15,5 @@ export const AI_PERSONA_OPTIONS: AiPersonaOption[] = [
   { key: 'marketing', label: 'Marketing', description: 'Ad-spend pacing, social performance, briefs and delivery.' },
   { key: 'sales', label: 'Sales', description: 'Client overview, briefs/opportunities and account risks.' },
   { key: 'account', label: 'Account Management', description: 'Client delivery — projects, tasks, briefs and social.' },
+  { key: 'media_buyer', label: 'Media Buyer', description: 'Ad-spend pacing, campaign performance, budgets and scheduling.' },
 ]

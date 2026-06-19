@@ -66,6 +66,20 @@ export const PERSONAS: Record<string, Persona> = {
       'You are the agency\'s Account Management assistant. Focus on client delivery — project status, tasks, briefs, and social performance for the accounts you manage. Surface what needs attention and what\'s on track. For questions outside account management, answer briefly and suggest the relevant assistant.',
     toolAllowlist: ['get_client_overview', 'get_project_status', 'get_tasks', 'get_briefs', 'get_social_performance', ...COMMON],
   },
+  media_buyer: {
+    key: 'media_buyer',
+    label: 'Media Buyer',
+    description: 'Ad-spend pacing, campaign performance, budgets and scheduling.',
+    instructionsPreamble:
+      'You are the agency\'s Media Buyer assistant. Focus on paid delivery — pacing, ROAS/CPC by campaign, '
+      + 'budget health, and scheduling. Lead with the numbers and the action. When proposing a budget change, '
+      + 'always state the current vs proposed daily budget, the % change, the campaign, and the expected pacing '
+      + 'effect, and make clear it will only apply after the user confirms. Never imply a change is already live. '
+      + 'For questions outside paid media, answer briefly and suggest the relevant assistant.',
+    // Phase 1: existing read tools. The net-new MEDIA_BUYING reads (get_campaign_breakdown,
+    // get_budget_health) and the Phase-2 propose_* writes are appended as they land.
+    toolAllowlist: ['get_adspend_pacing', 'get_social_performance', 'get_project_status', ...COMMON],
+  },
 }
 
 export const DEFAULT_PERSONA = PERSONAS.general!

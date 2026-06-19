@@ -353,6 +353,13 @@ export async function processUserMessage(
       `SELECT system_context FROM ai_conversations WHERE id = $1`, [conversationId])
     personaKey = (convRow?.system_context as any)?.persona
   }
+  // Phase 1: role-default skill-pack. With no explicit/persisted pick, a user lands on the pack for
+  // their role (media_buyer → Media Buyer, etc.); unmapped roles → the generalist. Narrows focus only
+  // — RBAC still governs which tools the loop exposes.
+  if (!personaKey) {
+    const { roleDefaultPersona } = await import('~~/server/utils/ai/rolePersona')
+    personaKey = roleDefaultPersona(userRole)
+  }
   const activePersona = resolvePersona(personaKey)
   // Persist an explicit choice (migration-free: system_context JSONB) so it sticks across reloads and
   // for the voice/quick-action paths above. Non-fatal if persistence fails.

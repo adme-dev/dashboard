@@ -57,7 +57,7 @@ Every team member (and, scoped, every client) gets a co-pilot that knows them, u
 - [x] **WS-A.6** `tools/remember.ts` (explicit capture, non-mutating) + registered + in persona COMMON + test — DONE (203/203).
 - [x] **WS-A.7** `memory/distill.ts` (pure prompt + tolerant parser + injected gpt-oss-20b, dedup, cap 3, fail-safe) + test — DONE (10 tests). Flag check lives in WS-A.8.
 - [x] **WS-A.8a** memory orchestration (`memory/orchestrate.ts`) + retrieve/inject wired into `aiChatEngine.ts` system prompt + **cross-user isolation test** — DONE (7 tests). Read path live behind `AI_TOOLS_ENABLED`.
-- [ ] **WS-A.8b** distiller WRITE enqueue (fire-and-forget, behind `AI_MEMORY_DISTILL_ENABLED`) in `aiChatEngine.ts` after the turn — small gated follow-up; needs runtime-config flag + a gpt-oss-20b completion helper.
+- [x] **WS-A.8b** distiller WRITE enqueue (fire-and-forget, behind `AI_MEMORY_DISTILL_ENABLED`) in `aiChatEngine.ts` after the turn — DONE (`80fb973b`). `distillAndStoreMemories` in orchestrate.ts (gpt-oss-20b via `generateGroqInsight`, dedup vs recent, save as `inferred`), wired via `runAfterResponse`, flag added to `nuxt.config.ts`. 7 tests, 227/227 AI suite green. **Phase 0 COMPLETE.**
 
 ### Phase 1 — Read-everywhere skill-packs (parallel, zero write risk)
 - [ ] `media_buyer` persona + `rolePersona.ts` role→default-persona map + wire into `aiChatEngine`. *(media-buyer §3)*
@@ -79,6 +79,7 @@ Every team member (and, scoped, every client) gets a co-pilot that knows them, u
 
 ## 6. Current state
 
+- **Phase 0 COMPLETE** (WS-A.1–8b, WS-B, WS-C). Head: `80fb973b` (WS-A.8b). AI suite 227/227 green. Migs 180+181 applied to prod Neon (dormant). Nothing deployed, no flags flipped. Next up: **Phase 1** — `media_buyer` persona + `rolePersona` map + first read tools.
 - On `feat/ai-copilot-phase0`. Commits: `b996d47f` (PRD + 7 specs), `b6682061` (WS-B). MCP ADR added (uncommitted at handoff time — commit it).
 - **WS-B done & green:** `server/utils/ai/executors/{types,createTask,index}.ts`; `RiskTier` in `toolContext.ts`; `riskTier`+`effectiveRiskTier` in `toolRegistry.ts`; generic `confirm-action.post.ts`; `test/ai/executors.test.ts`. AI suite 31/31.
 - **Nothing deployed. No flags flipped.** All co-pilot writes remain dormant.
