@@ -273,7 +273,7 @@ watch(() => props.mode, (mode) => {
         <slot name="library" />
       </aside>
 
-      <main :class="['min-h-0 min-w-0 overflow-y-auto p-3', modePanelClass('edit')]">
+      <main :class="['min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-3', modePanelClass('edit')]">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Edit</h3>
@@ -281,7 +281,7 @@ watch(() => props.mode, (mode) => {
         <slot name="preview" />
       </main>
 
-      <aside v-if="!props.producerCollapsed" :class="['min-h-0 min-w-0 overflow-y-auto p-3', modePanelClass('produce')]">
+      <aside v-if="!props.producerCollapsed" :class="['min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-3', modePanelClass('produce')]">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-wand-sparkles" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Producer</h3>
@@ -298,7 +298,7 @@ watch(() => props.mode, (mode) => {
         <slot name="producer" />
       </aside>
 
-      <section :class="['min-h-0 min-w-0 overflow-y-auto p-3', activeMode === 'review' ? 'block lg:hidden' : 'hidden']">
+      <section :class="['min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-3', activeMode === 'review' ? 'block lg:hidden' : 'hidden']">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-list-checks" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Review</h3>
