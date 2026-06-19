@@ -168,7 +168,11 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
     mockGetProject.mockResolvedValue({ project: avProject, timeline: overlayTimeline })
     mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't1', status: 'queued' })
 
-    const res = await renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any)
+    const res = await renderVideoH({
+      params: { id: 'p1' },
+      body: { formats: ['reels_9x16'] },
+      context: {}
+    } as any)
 
     // loadBannerLayers called with the project id + the gsap_format_key from the clip
     expect(mockLoadBannerLayers).toHaveBeenCalledWith('bp1', 'fb_story')
@@ -179,20 +183,23 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
     // uploadFile called with an html buffer, the expected R2 key, and text/html content-type
     expect(mockUploadFile).toHaveBeenCalledWith(
       expect.any(Buffer),
-      'media/p1/j1/overlay-o1.html',
+      'media/p1/j1/reels_9x16/overlay-o1.html',
       'text/html'
     )
 
-    // enqueueVideoRender message includes resolvedOverlays
+    // enqueueVideoRender message includes per-format resolved overlays.
     const msg = mockEnqueueVideoRender.mock.calls[0][1]
-    expect(msg.resolvedOverlays).toEqual([
-      {
-        clipId: 'o1',
-        htmlKey: 'media/p1/j1/overlay-o1.html',
-        timeline_start_sec: 0,
-        duration_sec: 10,
-      }
-    ])
+    expect(msg.resolvedOverlays).toBeUndefined()
+    expect(msg.resolvedOverlaysByFormat).toEqual({
+      reels_9x16: [
+        {
+          clipId: 'o1',
+          htmlKey: 'media/p1/j1/reels_9x16/overlay-o1.html',
+          timeline_start_sec: 0,
+          duration_sec: 10,
+        }
+      ]
+    })
 
     expect(res.job.id).toBe('j1')
   })
@@ -226,11 +233,87 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
     mockCreateRenderJob.mockResolvedValue({ id: 'j2', timelineId: 't1', status: 'queued' })
     mockResolveOverlayFormatKey.mockReturnValue('fb_story')
 
-    await renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any)
+    await renderVideoH({
+      params: { id: 'p1' },
+      body: { formats: ['reels_9x16'] },
+      context: {}
+    } as any)
 
     // When gsap_format_key is null, resolveOverlayFormatKey is used
     expect(mockResolveOverlayFormatKey).toHaveBeenCalled()
     expect(mockLoadBannerLayers).toHaveBeenCalledWith('bp2', 'fb_story')
+  })
+
+  it('resolves default overlay HTML separately for each requested render format', async () => {
+    const noKeyTimeline = {
+      id: 't1',
+      state: {
+        schema_version: 2,
+        media_type: 'av',
+        tracks: [
+          {
+            id: 'ovl',
+            name: 'Overlay',
+            kind: 'overlay',
+            clips: [
+              {
+                type: 'overlay',
+                id: 'o2',
+                timeline_start_sec: 2,
+                duration_sec: 5,
+                gsap_project_id: 'bp2',
+                gsap_format_key: null,
+              }
+            ]
+          }
+        ]
+      }
+    }
+    mockGetProject.mockResolvedValue({ project: avProject, timeline: noKeyTimeline })
+    mockCreateRenderJob.mockResolvedValue({ id: 'j2', timelineId: 't1', status: 'queued' })
+    mockResolveOverlayFormatKey
+      .mockReturnValueOnce('fb_story')
+      .mockReturnValueOnce('tt_land')
+    mockLoadBannerLayers
+      .mockResolvedValueOnce({ layers: [{ id: 'portrait' }], width: 1080, height: 1920 })
+      .mockResolvedValueOnce({ layers: [{ id: 'landscape' }], width: 1920, height: 1080 })
+    mockBuildBannerHTML
+      .mockReturnValueOnce('<html>portrait</html>')
+      .mockReturnValueOnce('<html>landscape</html>')
+
+    await renderVideoH({
+      params: { id: 'p1' },
+      body: { formats: ['reels_9x16', 'youtube_16x9'] },
+      context: {}
+    } as any)
+
+    expect(mockResolveOverlayFormatKey).toHaveBeenCalledWith(1080, 1920)
+    expect(mockResolveOverlayFormatKey).toHaveBeenCalledWith(1920, 1080)
+    expect(mockLoadBannerLayers).toHaveBeenNthCalledWith(1, 'bp2', 'fb_story')
+    expect(mockLoadBannerLayers).toHaveBeenNthCalledWith(2, 'bp2', 'tt_land')
+    expect(mockBuildBannerHTML).toHaveBeenNthCalledWith(1, 'fb_story', [{ id: 'portrait' }], expect.any(Object))
+    expect(mockBuildBannerHTML).toHaveBeenNthCalledWith(2, 'tt_land', [{ id: 'landscape' }], expect.any(Object))
+
+    const msg = mockEnqueueVideoRender.mock.calls[0][1]
+    expect(msg.resolvedOverlays).toBeUndefined()
+    expect(msg.resolvedOverlaysByFormat).toEqual({
+      reels_9x16: [
+        {
+          clipId: 'o2',
+          htmlKey: 'media/p1/j2/reels_9x16/overlay-o2.html',
+          timeline_start_sec: 2,
+          duration_sec: 5,
+        }
+      ],
+      youtube_16x9: [
+        {
+          clipId: 'o2',
+          htmlKey: 'media/p1/j2/youtube_16x9/overlay-o2.html',
+          timeline_start_sec: 2,
+          duration_sec: 5,
+        }
+      ],
+    })
   })
 
   it('400s when loadBannerLayers throws (missing project/format)', async () => {

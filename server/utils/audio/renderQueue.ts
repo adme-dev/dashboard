@@ -22,6 +22,8 @@ export interface VideoRenderMessage {
   projectId: string
   timelineId: string
   formats: string[]
+  resolvedOverlaysByFormat?: Record<string, ResolvedOverlay[]>
+  /** Legacy V1.2b payload shape. Consumers keep this fallback for older queued messages. */
   resolvedOverlays?: ResolvedOverlay[]
 }
 

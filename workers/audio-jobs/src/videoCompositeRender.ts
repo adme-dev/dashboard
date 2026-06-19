@@ -15,6 +15,8 @@ export interface VideoRenderMessage {
   projectId: string
   timelineId: string
   formats: string[]
+  resolvedOverlaysByFormat?: Record<string, ResolvedOverlay[]>
+  /** Legacy V1.2b payload shape. Keep as a fallback for messages already in the queue. */
   resolvedOverlays?: ResolvedOverlay[]
 }
 
@@ -34,12 +36,13 @@ export async function runVideoCompositeJob(msg: VideoRenderMessage, deps: VideoR
     const state = await deps.loadTimelineState(msg.timelineId)
     const variants: Record<string, string> = {}
     for (const formatKey of msg.formats) {
+      const resolvedOverlays = msg.resolvedOverlaysByFormat?.[formatKey] ?? msg.resolvedOverlays
       const { key } = await deps.renderOne({
         projectId: msg.projectId,
         jobId: msg.jobId,
         state,
         formatKey,
-        resolvedOverlays: msg.resolvedOverlays,
+        resolvedOverlays,
       })
       variants[formatKey] = key
     }

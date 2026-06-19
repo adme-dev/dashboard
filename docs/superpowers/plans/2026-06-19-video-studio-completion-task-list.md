@@ -170,14 +170,16 @@ Decision: timeline zoom math is now shared and unit-tested. The timeline toolbar
 - [ ] Generate social caption from rendered video/brief.
 - [x] Add render failure details.
 - [x] Add retry render action.
-- [ ] Confirm overlay resolution works per format.
-- [ ] Fix known limitation: mixed-aspect multi-format overlay resolution currently reuses first overlay aspect.
+- [x] Confirm overlay resolution works per format.
+- [x] Fix known limitation: mixed-aspect multi-format overlay resolution currently reuses first overlay aspect.
 
 Decision: render format selection now lives in the always-visible Video Studio workbench header beside the primary Render action. The selector uses the backend-supported format keys (`reels_9x16`, `square_1x1`, `youtube_16x9`) and passes only the selected formats into the existing render-video endpoint; the render jobs rail remains focused on queue history and completed-render actions.
 
 Decision: a compact render queue strip now sits directly above the timeline for AV projects. It summarizes queued/rendering/completed/failed jobs and exposes direct download buttons for the latest completed render variants, while the Producer rail keeps the fuller publish/portal/library actions.
 
 Decision: failed render jobs now show full failure details in the Producer render panel instead of a clipped error line. Failed jobs also expose a Retry action that queues a fresh render through the existing render flow, using the current default render format behavior rather than adding a second backend retry endpoint.
+
+Decision: mixed-aspect render requests now resolve Banner Studio overlay HTML separately for each requested output format. The Pages producer enqueues `resolvedOverlaysByFormat`, keyed by render format, while the video render worker keeps the legacy `resolvedOverlays` fallback for older queue messages already in flight.
 
 ## Phase 12: QA + Reliability
 

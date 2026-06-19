@@ -2,8 +2,8 @@
 // Flag-gated composite-video render endpoint. Available only on AV projects and
 // only when VIDEO_STUDIO_ENABLED='true'. Mirrors render.post.ts: snapshot →
 // render-job → enqueue → 202.
-// V1.2b: resolves overlay clips (gsap_project_id → banner layers → server HTML →
-// R2 upload) before enqueuing, so the worker has pre-built HTML to pass to the container.
+// Resolves overlay clips (gsap_project_id → banner layers → server HTML → R2 upload)
+// before enqueuing, so the worker has pre-built HTML to pass to the container.
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline, createRenderJob, markRenderJobFailed } from '~~/server/utils/audio/projects'
@@ -47,14 +47,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, statusMessage: 'Project has no current timeline to render' })
   }
 
-  // Resolve overlay clips → server-built banner HTML → upload to R2.
-  // Uses the first requested format's dimensions to determine the default banner format.
-  // KNOWN LIMITATION (V1.2b): overlay HTML is resolved once from the first format's aspect;
-  // mixed-aspect multi-format requests reuse it. Per-format overlay resolution is a follow-up.
-  const firstFormat = videoFormatFor(formats[0])
-  const profileW = firstFormat?.width ?? 1080
-  const profileH = firstFormat?.height ?? 1920
-
   // Collect all overlay clips from the timeline state.
   const timelineState = existing.timeline.state as any
   const overlayClips: any[] = []
@@ -70,23 +62,36 @@ export default defineEventHandler(async (event) => {
   // video but the row records who triggered it and acts as the durable anchor).
   const job = await createRenderJob({ projectId: id, requestedBy: user.id, channels: [] })
 
-  // Resolve each overlay: load banner layers, build HTML, upload to R2.
+  // Resolve each overlay per requested output format: load banner layers, build HTML,
+  // upload to R2. This avoids reusing portrait overlay HTML for square/landscape
+  // exports when the clip does not pin a specific Banner Studio format.
   // Any error here is a user/config error → 400 (project or format not found).
-  const resolvedOverlays: { clipId: string; htmlKey: string; timeline_start_sec: number; duration_sec: number }[] = []
+  const resolvedOverlaysByFormat: Record<string, { clipId: string; htmlKey: string; timeline_start_sec: number; duration_sec: number }[]> = {}
   try {
-    for (const clip of overlayClips) {
-      const fmtKey: string = clip.gsap_format_key ?? resolveOverlayFormatKey(profileW, profileH)
-      const { layers } = await loadBannerLayers(clip.gsap_project_id, fmtKey)
-      const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? ''
-      const html = buildBannerHTML(fmtKey, layers, { baseUrl })
-      const htmlKey = `media/${id}/${job.id}/overlay-${clip.id}.html`
-      await uploadFile(Buffer.from(html, 'utf8'), htmlKey, 'text/html')
-      resolvedOverlays.push({
-        clipId: clip.id,
-        htmlKey,
-        timeline_start_sec: clip.timeline_start_sec,
-        duration_sec: clip.duration_sec,
-      })
+    for (const format of formats) {
+      const profile = videoFormatFor(format)
+      const profileW = profile?.width ?? 1080
+      const profileH = profile?.height ?? 1920
+      const resolvedForFormat: { clipId: string; htmlKey: string; timeline_start_sec: number; duration_sec: number }[] = []
+
+      for (const clip of overlayClips) {
+        const fmtKey: string = clip.gsap_format_key ?? resolveOverlayFormatKey(profileW, profileH)
+        const { layers } = await loadBannerLayers(clip.gsap_project_id, fmtKey)
+        const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? ''
+        const html = buildBannerHTML(fmtKey, layers, { baseUrl })
+        const htmlKey = `media/${id}/${job.id}/${format}/overlay-${clip.id}.html`
+        await uploadFile(Buffer.from(html, 'utf8'), htmlKey, 'text/html')
+        resolvedForFormat.push({
+          clipId: clip.id,
+          htmlKey,
+          timeline_start_sec: clip.timeline_start_sec,
+          duration_sec: clip.duration_sec,
+        })
+      }
+
+      if (resolvedForFormat.length > 0) {
+        resolvedOverlaysByFormat[format] = resolvedForFormat
+      }
     }
   } catch (e: any) {
     await markRenderJobFailed(job.id, `overlay resolution failed: ${e?.message ?? String(e)}`)
@@ -96,7 +101,7 @@ export default defineEventHandler(async (event) => {
   try {
     await enqueueVideoRender(event, {
       jobId: job.id, projectId: id, timelineId: job.timelineId, formats,
-      ...(resolvedOverlays.length > 0 ? { resolvedOverlays } : {})
+      ...(Object.keys(resolvedOverlaysByFormat).length > 0 ? { resolvedOverlaysByFormat } : {})
     })
   } catch (e: any) {
     await markRenderJobFailed(job.id, `enqueue failed: ${e?.message ?? String(e)}`)

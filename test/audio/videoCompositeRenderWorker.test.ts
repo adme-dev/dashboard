@@ -36,6 +36,25 @@ describe('runVideoCompositeJob', () => {
     expect(d.renderOne).toHaveBeenCalledTimes(1)
     expect(d.renderOne.mock.calls[0][0]).toMatchObject({ formatKey: 'reels_9x16', resolvedOverlays: overlays })
   })
+  it('threads per-format resolved overlays to the matching render only', async () => {
+    const d = deps()
+    const byFormat = {
+      reels_9x16: [
+        { clipId: 'o1', htmlKey: 'media/p/j/reels_9x16/overlay-o1.html', timeline_start_sec: 0, duration_sec: 5 }
+      ],
+      youtube_16x9: [
+        { clipId: 'o1', htmlKey: 'media/p/j/youtube_16x9/overlay-o1.html', timeline_start_sec: 0, duration_sec: 5 }
+      ],
+    }
+    await runVideoCompositeJob(
+      { jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16', 'youtube_16x9'], resolvedOverlaysByFormat: byFormat },
+      d as any
+    )
+
+    expect(d.renderOne).toHaveBeenCalledTimes(2)
+    expect(d.renderOne.mock.calls[0][0]).toMatchObject({ formatKey: 'reels_9x16', resolvedOverlays: byFormat.reels_9x16 })
+    expect(d.renderOne.mock.calls[1][0]).toMatchObject({ formatKey: 'youtube_16x9', resolvedOverlays: byFormat.youtube_16x9 })
+  })
   it('passes undefined resolvedOverlays when the message has none', async () => {
     const d = deps()
     await runVideoCompositeJob(
