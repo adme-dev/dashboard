@@ -1,11 +1,12 @@
 import type { H3Event } from 'h3'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
-import { getMemoriesByIds, listRecentMemories, stampUsed, upsertMemory } from './store'
+import { getMemoriesByIds, listRecentMemories, stampUsed, upsertMemory, markEmbedded } from './store'
 import { selectTopMemories, type RetrieveCandidate } from './retrieve'
 import { renderMemoryBlock } from './render'
 import { distill, type TurnForDistill } from './distill'
-import type { UserMemory, UpsertMemoryInput } from './types'
+import { indexMemoryVector } from './embed'
+import type { UserMemory, UpsertMemoryInput, MemScope, MemType } from './types'
 
 /**
  * Memory orchestration (Phase-0 WS-A.8): turn a user's message into a ≤200-token memory block for
@@ -19,7 +20,7 @@ import type { UserMemory, UpsertMemoryInput } from './types'
 
 export interface MemoryDeps {
   search: (event: H3Event | undefined, query: string, topK: number, filter: Record<string, unknown>) => Promise<Array<{ id: string, score: number, metadata: Record<string, string> }>>
-  byIds: (ids: string[]) => Promise<UserMemory[]>
+  byIds: (ids: string[], userId: string) => Promise<UserMemory[]>
   recent: (userId: string, limit: number) => Promise<UserMemory[]>
   stamp: (ids: string[]) => Promise<void>
   now: () => Date
@@ -27,7 +28,7 @@ export interface MemoryDeps {
 
 const defaultDeps: MemoryDeps = {
   search: (event, query, topK, filter) => event ? searchSimilar(event, query, topK, filter) : searchSimilar(query, topK, filter),
-  byIds: ids => getMemoriesByIds(ids),
+  byIds: (ids, userId) => getMemoriesByIds(ids, userId),
   recent: (userId, limit) => listRecentMemories(userId, limit),
   stamp: ids => stampUsed(ids),
   now: () => new Date(),
@@ -44,10 +45,10 @@ export async function buildUserMemoryBlock(
 
   // 1. Vector recall, scoped to this user.
   try {
-    const matches = await deps.search(event, query, 20, { userId })
+    const matches = await deps.search(event, query, 8, { userId })
     if (matches.length > 0) {
       const scoreById = new Map(matches.map(m => [m.id, m.score]))
-      const rows = (await deps.byIds(matches.map(m => m.id))).filter(r => r.user_id === userId) // isolation
+      const rows = (await deps.byIds(matches.map(m => m.id), userId)).filter(r => r.user_id === userId) // isolation (query already scopes; belt-and-suspenders)
       candidates = rows.map(r => ({ memory: r, vectorScore: scoreById.get(r.id) ?? 0 }))
     }
   } catch {
@@ -87,26 +88,34 @@ export interface DistillStoreDeps {
   /** Existing memory contents for dedup (most-recent slice). */
   recentContents: (userId: string) => Promise<string[]>
   save: (input: UpsertMemoryInput) => Promise<string>
+  /** Index a saved memory for vector recall; returns whether a vector was written. */
+  index: (event: H3Event | undefined, row: { id: string, userId: string, scope: MemScope, memType: MemType, content: string }) => Promise<boolean>
 }
 
-const DISTILL_SYSTEM = 'You extract durable, reusable facts about a user from a chat turn and reply with ONLY a JSON array.'
-
 const defaultDistillStoreDeps: DistillStoreDeps = {
+  // The instruction lives in buildDistillPrompt (single source of truth); the system message just
+  // pins the JSON-array contract for the model.
   complete: prompt => generateGroqInsight(prompt, {
     model: GROQ_MODELS.REASONING_20B,
     temperature: 0.2,
     maxTokens: 400,
-    systemPrompt: DISTILL_SYSTEM,
+    systemPrompt: 'Reply with ONLY a JSON array, exactly as the user instruction specifies.',
   }),
-  recentContents: async userId => (await listRecentMemories(userId, 50)).map(m => m.content),
+  // content only — dedup needs the strings, not whole rows (review finding #9).
+  recentContents: async userId => (await listRecentMemories(userId, 30)).map(m => m.content),
   save: input => upsertMemory(input),
+  index: async (event, row) => {
+    const ok = await indexMemoryVector({ event, ...row })
+    if (ok) await markEmbedded(row.id, row.id).catch(() => {})
+    return ok
+  },
 }
 
 export async function distillAndStoreMemories(
-  opts: { userId: string, turn: TurnForDistill },
+  opts: { userId: string, turn: TurnForDistill, event?: H3Event },
   deps: DistillStoreDeps = defaultDistillStoreDeps,
 ): Promise<number> {
-  const { userId, turn } = opts
+  const { userId, turn, event } = opts
   if (!userId || !turn?.userMessage?.trim() || !turn?.assistantMessage?.trim()) return 0
 
   try {
@@ -116,8 +125,10 @@ export async function distillAndStoreMemories(
     let saved = 0
     for (const c of candidates) {
       try {
-        await deps.save({ userId, memType: c.memType, content: c.content, source: 'inferred', salience: c.salience })
+        const id = await deps.save({ userId, memType: c.memType, content: c.content, source: 'inferred', salience: c.salience })
         saved++
+        // Index for vector recall (fail-safe inside index()); without this the memory is recency-only.
+        void deps.index(event, { id, userId, scope: 'user', memType: c.memType, content: c.content }).catch(() => {})
       } catch {
         // one bad candidate (e.g. constraint race) must not abort the rest
       }

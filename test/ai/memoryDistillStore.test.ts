@@ -7,6 +7,7 @@ const deps = (over: Partial<DistillStoreDeps> = {}): DistillStoreDeps => ({
   complete: vi.fn().mockResolvedValue('[{"memType":"semantic","content":"reports Acme in AUD","salience":0.8}]'),
   recentContents: vi.fn().mockResolvedValue([]),
   save: vi.fn().mockResolvedValue('new-id'),
+  index: vi.fn().mockResolvedValue(true),
   ...over,
 })
 
@@ -22,6 +23,14 @@ describe('distillAndStoreMemories', () => {
       content: 'reports Acme in AUD',
       source: 'inferred',
       salience: 0.8,
+    }))
+  })
+
+  it('indexes each saved memory for vector recall (keyed by the new row id)', async () => {
+    const d = deps({ save: vi.fn().mockResolvedValue('row-9') })
+    await distillAndStoreMemories({ userId: 'u1', turn: TURN }, d)
+    expect(d.index).toHaveBeenCalledWith(undefined, expect.objectContaining({
+      id: 'row-9', userId: 'u1', scope: 'user', memType: 'semantic', content: 'reports Acme in AUD',
     }))
   })
 

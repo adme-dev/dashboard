@@ -13,6 +13,10 @@ import type { MemType } from './types'
  */
 
 export const MAX_CANDIDATES = 3
+/** Upper bound on parsed items — guards against a runaway model response WITHOUT pre-empting dedup.
+ *  The MAX_CANDIDATES yield cap is applied AFTER dedup (in distill) so novel candidates aren't lost
+ *  when earlier ones turn out to be duplicates (review finding #8). */
+export const PARSE_LIMIT = 10
 const MEM_TYPES: MemType[] = ['semantic', 'episodic', 'procedural']
 
 export interface TurnForDistill {
@@ -81,7 +85,7 @@ export function parseDistillResponse(text: string): MemoryCandidate[] {
     salience = Math.max(0, Math.min(1, salience))
 
     out.push({ memType, content, salience })
-    if (out.length >= MAX_CANDIDATES) break
+    if (out.length >= PARSE_LIMIT) break
   }
   return out
 }

@@ -50,10 +50,21 @@ export async function upsertMemory(input: UpsertMemoryInput, db: MemoryDb = defa
   return row.id
 }
 
-/** Fetch memory rows by id (the join-back after a Vectorize search). Empty ids → no query. */
-export async function getMemoriesByIds(ids: string[], db: MemoryDb = defaultDb): Promise<UserMemory[]> {
-  if (ids.length === 0) return []
-  return db.queryRows<UserMemory>(`SELECT * FROM ai_user_memory WHERE id = ANY($1)`, [ids])
+/**
+ * Fetch memory rows by id (the join-back after a Vectorize search), STRICTLY scoped to the owner.
+ * Isolation is enforced in the query (`AND user_id = $2`) — not left to the caller — so a foreign id
+ * returned by the shared vector index can never resolve to another user's row. `$1::uuid[]` casts the
+ * JS string[] to the UUID PK type (a bare `= ANY($1)` would raise `operator does not exist: uuid = text`).
+ * Empty ids → no query.
+ */
+export async function getMemoriesByIds(ids: string[], userId: string, db: MemoryDb = defaultDb): Promise<UserMemory[]> {
+  if (ids.length === 0 || !userId) return []
+  return db.queryRows<UserMemory>(`SELECT * FROM ai_user_memory WHERE id = ANY($1::uuid[]) AND user_id = $2`, [ids, userId])
+}
+
+/** Stamp the Vectorize vector id onto a row after indexing (observability; the vector id IS the row id). */
+export async function markEmbedded(id: string, embeddingId: string, db: MemoryDb = defaultDb): Promise<void> {
+  await db.execute(`UPDATE ai_user_memory SET embedding_id = $2, updated_at = NOW() WHERE id = $1`, [id, embeddingId])
 }
 
 /** Most-recently-used memories for a user — the fallback candidate set when vector recall is empty. */

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  upsertMemory, getMemoriesByIds, listRecentMemories, stampUsed, deleteUserMemory,
+  upsertMemory, getMemoriesByIds, listRecentMemories, stampUsed, deleteUserMemory, markEmbedded,
   REINFORCE_STEP, type MemoryDb,
 } from '~~/server/utils/ai/memory/store'
 
@@ -48,11 +48,19 @@ describe('getMemoriesByIds', () => {
     expect(await getMemoriesByIds([], db)).toEqual([])
     expect(db.queryRows).not.toHaveBeenCalled()
   })
-  it('queries by id array', async () => {
+  it('queries by id array scoped to the owner (uuid-cast + user_id predicate)', async () => {
     const db = fakeDb({ queryRows: vi.fn().mockResolvedValue([{ id: 'm1' }]) })
-    const rows = await getMemoriesByIds(['m1', 'm2'], db)
+    const rows = await getMemoriesByIds(['m1', 'm2'], 'u1', db)
     expect(rows).toHaveLength(1)
-    expect((db.queryRows as any).mock.calls[0][1]).toEqual([['m1', 'm2']])
+    expect((db.queryRows as any).mock.calls[0][0]).toContain('user_id = $2')
+    expect((db.queryRows as any).mock.calls[0][0]).toContain('$1::uuid[]')
+    expect((db.queryRows as any).mock.calls[0][1]).toEqual([['m1', 'm2'], 'u1'])
+  })
+
+  it('returns [] without querying when userId is missing (never an unscoped read)', async () => {
+    const db = fakeDb()
+    expect(await getMemoriesByIds(['m1'], '', db)).toEqual([])
+    expect(db.queryRows).not.toHaveBeenCalled()
   })
 })
 
@@ -75,6 +83,15 @@ describe('stampUsed', () => {
     const db = fakeDb()
     await stampUsed(['m1'], db)
     expect((db.execute as any).mock.calls[0][1]).toEqual([['m1']])
+  })
+})
+
+describe('markEmbedded', () => {
+  it('stamps the embedding_id on the row', async () => {
+    const db = fakeDb()
+    await markEmbedded('m1', 'm1', db)
+    expect((db.execute as any).mock.calls[0][0]).toContain('embedding_id = $2')
+    expect((db.execute as any).mock.calls[0][1]).toEqual(['m1', 'm1'])
   })
 })
 

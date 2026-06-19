@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildDistillPrompt, parseDistillResponse, distill, MAX_CANDIDATES } from '~~/server/utils/ai/memory/distill'
+import { buildDistillPrompt, parseDistillResponse, distill, MAX_CANDIDATES, PARSE_LIMIT } from '~~/server/utils/ai/memory/distill'
 
 const turn = { userMessage: 'I always report Acme in AUD', assistantMessage: 'Noted.' }
 
@@ -40,9 +40,9 @@ describe('parseDistillResponse', () => {
     ])
   })
 
-  it('caps at MAX_CANDIDATES', () => {
-    const many = JSON.stringify(Array.from({ length: 6 }, (_, i) => ({ content: `c${i}` })))
-    expect(parseDistillResponse(many)).toHaveLength(MAX_CANDIDATES)
+  it('bounds runaway output at PARSE_LIMIT (not the post-dedup yield cap)', () => {
+    const many = JSON.stringify(Array.from({ length: 20 }, (_, i) => ({ content: `c${i}` })))
+    expect(parseDistillResponse(many)).toHaveLength(PARSE_LIMIT)
   })
 })
 
@@ -62,5 +62,16 @@ describe('distill', () => {
     const complete = vi.fn().mockResolvedValue('[{"content":"Reports Acme In AUD"},{"content":"prefers ROAS"}]')
     const out = await distill(turn, ['  reports acme in aud '], { complete })
     expect(out.map(c => c.content)).toEqual(['prefers ROAS'])
+  })
+
+  it('yields up to MAX_CANDIDATES NOVEL memories even when earlier ones dedup away (finding #8)', async () => {
+    // 3 of the first items duplicate existing memory; novel #4/#5 must still be kept, not pre-dropped.
+    const complete = vi.fn().mockResolvedValue(JSON.stringify([
+      { content: 'dup a' }, { content: 'dup b' }, { content: 'dup c' },
+      { content: 'novel d' }, { content: 'novel e' },
+    ]))
+    const out = await distill(turn, ['dup a', 'dup b', 'dup c'], { complete })
+    expect(out.map(c => c.content)).toEqual(['novel d', 'novel e'])
+    expect(out.length).toBeLessThanOrEqual(MAX_CANDIDATES)
   })
 })

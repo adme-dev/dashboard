@@ -590,7 +590,7 @@ export async function processUserMessage(
   if (event && cfg.aiMemoryDistillEnabled && !isError && aiContent.trim()) {
     const distillWork = import('~~/server/utils/ai/memory/orchestrate')
       .then(({ distillAndStoreMemories }) =>
-        distillAndStoreMemories({ userId, turn: { userMessage: content, assistantMessage: aiContent } }))
+        distillAndStoreMemories({ userId, turn: { userMessage: content, assistantMessage: aiContent }, event }))
     const { runAfterResponse } = await import('~~/server/utils/asyncBackground')
     runAfterResponse(event, distillWork, 'ai-memory-distill')
   }
