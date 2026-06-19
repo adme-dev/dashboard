@@ -135,6 +135,29 @@ const videoStudioInspectorTab = computed<VideoStudioInspectorTab>({
   },
 })
 
+const selectedStudioAssetModel = computed({
+  get: () => selectedStudioAssetId.value,
+  set: (assetId: string | null) => {
+    selectedStudioAssetId.value = assetId
+    if (assetId) {
+      selectedClipId.value = null
+      videoStudioMode.value = 'edit'
+    }
+  },
+})
+
+function selectStudioAsset(asset: VideoStudioAsset | null) {
+  selectedStudioAssetModel.value = asset?.id ?? null
+}
+
+function selectTimelineClip(clipId: string | null) {
+  selectedClipId.value = clipId
+  if (clipId) {
+    selectedStudioAssetId.value = null
+    videoStudioMode.value = 'edit'
+  }
+}
+
 interface StudioBannerProject {
   id: string
   name: string
@@ -366,18 +389,18 @@ function onStudioAssetAddCaptions(asset: VideoStudioAsset) {
 }
 
 function onStudioAssetGenerate(asset: VideoStudioAsset) {
-  selectedStudioAssetId.value = asset.id
+  selectStudioAsset(asset)
   if (!videoStudioAssetImageSource(asset)) return
   generationDraftPrompt.value = asset.prompt
   generatePickerOpen.value = true
 }
 
 function onStudioAssetInspect(asset: VideoStudioAsset) {
-  selectedStudioAssetId.value = asset.id
+  selectStudioAsset(asset)
 }
 
 async function onStudioAssetPublish(asset: VideoStudioAsset) {
-  selectedStudioAssetId.value = asset.id
+  selectStudioAsset(asset)
   if (!asset.libraryAssetId) return
   try {
     const res = await editor.publishVideoAssetToSocial(asset.libraryAssetId)
@@ -388,7 +411,7 @@ async function onStudioAssetPublish(asset: VideoStudioAsset) {
 }
 
 async function onGenerateCaptions(asset: VideoStudioAsset) {
-  selectedStudioAssetId.value = asset.id
+  selectStudioAsset(asset)
   if (!asset.libraryAssetId || captionGeneratingAssetId.value) return
   captionGeneratingAssetId.value = asset.id
   try {
@@ -913,7 +936,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
         >
           <template #library>
               <VideoStudioLibraryRail
-                v-model:selected-id="selectedStudioAssetId"
+                v-model:selected-id="selectedStudioAssetModel"
                 :assets="studioAssets"
                 :loading="studioLibraryLoading"
                 @refresh="refreshStudioLibrary"
@@ -925,7 +948,16 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           </template>
 
           <template #preview>
+              <VideoStudioClipInspector
+                v-if="selectedClipInspector"
+                :clip="selectedClipInspector"
+                :can-split="selectedClipInspector.kind === 'audio'"
+                @split="splitSelectedClip"
+                @delete="deleteSelectedClip"
+                @set-caption-style="setSelectedCaptionStyle"
+              />
               <VideoStudioSelectedAssetPanel
+                v-else
                 :asset="selectedStudioAsset"
                 :activity="selectedStudioAssetActivity"
                 :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
@@ -1000,7 +1032,16 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :model-ready="videoGenerationEnabled && videoGenerationModelsAvailable"
               >
                 <template #details>
+                  <VideoStudioClipInspector
+                    v-if="selectedClipInspector"
+                    :clip="selectedClipInspector"
+                    :can-split="selectedClipInspector.kind === 'audio'"
+                    @split="splitSelectedClip"
+                    @delete="deleteSelectedClip"
+                    @set-caption-style="setSelectedCaptionStyle"
+                  />
                   <VideoStudioSelectedAssetPanel
+                    v-else
                     :asset="selectedStudioAsset"
                     :activity="selectedStudioAssetActivity"
                     :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
@@ -1077,21 +1118,12 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           :current-time="editor.currentTime.value"
           :duration="editor.duration.value"
           :sources="editor.sources.value"
-          @select="(p) => { selectedClipId = p.clipId }"
+          @select="(p) => selectTimelineClip(p.clipId)"
           @seek="(sec) => editor.seek(sec)"
           @move-clip="(p) => editor.moveClipAction(p.clipId, p.toTrackId, p.newStartSec)"
           @trim-clip="(p) => editor.trimClipAction(p.clipId, p.edge, p.newTimeSec)"
           @slice="(p) => editor.sliceAction(p.clipId, p.timeSec)"
-          @delete-clip="(p) => editor.deleteClipAction(p.clipId)"
-        />
-
-        <VideoStudioClipInspector
-          v-if="isAv && selectedClipInspector"
-          :clip="selectedClipInspector"
-          :can-split="selectedClipInspector.kind === 'audio'"
-          @split="splitSelectedClip"
-          @delete="deleteSelectedClip"
-          @set-caption-style="setSelectedCaptionStyle"
+          @delete-clip="(p) => { editor.deleteClipAction(p.clipId); if (selectedClipId === p.clipId) selectedClipId = null }"
         />
 
         <!-- Per-clip effects drawer — shows for any selected video clip -->

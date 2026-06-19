@@ -641,9 +641,10 @@ Never:
 
 ### Phase 5: Timeline/Review Integration
 
-- [ ] Add selected clip inspector binding.
+- [x] Add selected clip inspector binding.
   - Acceptance: selected timeline clip changes the center/right inspector context.
   - Verify: timeline editor component/composable tests.
+  - Implementation: timeline clip selection clears asset selection, opens Edit mode, and renders the clip inspector in the workbench preview and inspector Details context.
 
 - [ ] Add track affordance plan.
   - Acceptance: spec/update for hide, lock, mute, auto-ducking, caption lane behavior.

@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { createSSRApp, h } from 'vue'
+import { createApp, createSSRApp, h, nextTick } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import VideoStudioClipInspector from '~~/app/components/media/VideoStudioClipInspector.vue'
 
@@ -39,6 +40,24 @@ async function render(clip: any = {
   return renderToString(app)
 }
 
+async function mount(clip: any, canSplit = true) {
+  const events: Array<{ name: string, payload: unknown }> = []
+  const host = document.createElement('div')
+  const app = createApp({
+    render: () => h(VideoStudioClipInspector, {
+      clip,
+      canSplit,
+      onSplit: () => events.push({ name: 'split', payload: null }),
+      onDelete: () => events.push({ name: 'delete', payload: null }),
+      onSetCaptionStyle: (style: string) => events.push({ name: 'set-caption-style', payload: style }),
+    })
+  })
+  Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
+  app.mount(host)
+  await nextTick()
+  return { app, host, events }
+}
+
 describe('VideoStudioClipInspector', () => {
   it('renders selected clip details and edit actions', async () => {
     const html = await render()
@@ -74,5 +93,37 @@ describe('VideoStudioClipInspector', () => {
     expect(html).toContain('Platform')
     expect(html).toContain('Bold social')
     expect(html).toContain('Subtitle-safe')
+  })
+
+  it('emits edit actions for the selected clip context', async () => {
+    const { app, host, events } = await mount({
+      clipId: 'cap1',
+      kind: 'caption',
+      trackId: 'captions',
+      trackName: 'Captions',
+      trackKind: 'caption',
+      label: 'Caption clip',
+      sourceLabel: 'Drive away today',
+      startSec: 0,
+      durationSec: 3,
+      endSec: 3,
+      captionStyle: 'platform_default',
+      details: [{ label: 'Track', value: 'Captions' }],
+    })
+
+    try {
+      ;([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Split')) as HTMLButtonElement).click()
+      ;([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Delete')) as HTMLButtonElement).click()
+      ;([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Bold social')) as HTMLButtonElement).click()
+      await nextTick()
+
+      expect(events).toEqual([
+        { name: 'split', payload: null },
+        { name: 'delete', payload: null },
+        { name: 'set-caption-style', payload: 'bold_social' },
+      ])
+    } finally {
+      app.unmount()
+    }
   })
 })
