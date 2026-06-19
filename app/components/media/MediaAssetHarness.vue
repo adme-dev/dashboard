@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
+import VideoStudioAssetActivityPanel from '~~/app/components/media/VideoStudioAssetActivityPanel.vue'
+import VideoStudioPrepareAssetPanel from '~~/app/components/media/VideoStudioPrepareAssetPanel.vue'
 import { assemblyPlanToTimelinePayloads, type AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 
@@ -157,6 +159,10 @@ const itemsByBucket = computed(() => {
 // Only buckets with assets get a row — nine empty folders are noise, not signal.
 const visibleBuckets = computed(() => buckets.value.filter(bucket => (itemsByBucket.value[bucket.id] || []).length > 0))
 const emptyBucketCount = computed(() => buckets.value.length - visibleBuckets.value.length)
+const recentActivityJobs = computed(() => intelligenceJobs.value.map(job => ({
+  ...job,
+  assetLabel: jobAssetLabel(job),
+})))
 const contentGridClass = computed(() => props.embedded
   ? 'grid min-h-0 divide-y divide-default xl:grid-cols-[280px_minmax(0,1fr)] xl:divide-x xl:divide-y-0'
   : 'grid gap-3 p-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]')
@@ -437,29 +443,9 @@ function applyAssemblyPlan() {
   toast.add({ title: 'Plan added to timeline', description: `${payloads.length} clips inserted.`, color: 'success' })
 }
 
-function jobStatusColor(status: IntelligenceJob['status']) {
-  if (status === 'succeeded') return 'success'
-  if (status === 'failed' || status === 'blocked') return 'error'
-  if (status === 'running') return 'primary'
-  return 'neutral'
-}
-
 function jobAssetLabel(job: IntelligenceJob) {
   const item = items.value.find(candidate => candidate.id === job.bucketItemId || candidate.assetId === job.sourceAssetId)
   return item?.title || item?.r2Key || job.sourceAssetId || 'Project asset'
-}
-
-function fmtJobDate(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
-  } catch {
-    return iso
-  }
-}
-
-function derivativeLabel(derivative: AssetDerivative) {
-  const title = derivative.metadata?.title
-  return typeof title === 'string' && title.trim() ? title.trim() : derivative.r2Key
 }
 
 watch(() => props.projectId, () => { void loadHarness() })
@@ -619,140 +605,38 @@ onBeforeUnmount(() => {
       </div>
 
       <div :class="workspacePanelClass">
-        <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
-          <div class="min-w-0">
-            <p class="text-xs font-medium uppercase text-muted">Prepare asset</p>
-            <p class="truncate text-sm font-medium text-highlighted">{{ selectedItemTitle }}</p>
-          </div>
-          <UButton
-            icon="i-lucide-highlighter"
-            size="xs"
-            color="primary"
-            variant="soft"
-            label="Run"
-            :loading="runningExtraction"
-            :disabled="!selectedItem?.assetId"
-            @click="runExtraction"
-          />
-        </div>
-        <div class="space-y-3">
-          <div class="grid gap-2 lg:grid-cols-[220px_minmax(320px,1fr)]">
-            <UFormField label="Tool">
-              <USelect v-model="selectedAction" :items="actionOptions" value-key="value" />
-            </UFormField>
-            <UFormField label="Instruction">
-              <UTextarea v-model="toolPrompt" :rows="2" autoresize placeholder="Describe what to lift, erase, or preserve..." />
-            </UFormField>
-          </div>
-          <div v-if="maskToolEnabled" class="rounded-md border border-default bg-elevated p-2">
-            <div class="mb-2 flex items-center justify-between gap-2">
-              <p class="text-xs font-medium text-muted">Highlighter mask</p>
-              <div class="flex items-center gap-1">
-                <UButton icon="i-lucide-eraser" size="xs" variant="ghost" color="neutral" aria-label="Clear mask" :disabled="!hasMaskStroke && !brushMaskKey" @click="clearMask" />
-                <UButton icon="i-lucide-upload-cloud" size="xs" variant="ghost" color="neutral" aria-label="Save mask" :loading="uploadingMask" :disabled="!hasMaskStroke || !selectedItem?.assetId" @click="uploadMask" />
-              </div>
-            </div>
-            <div class="relative mx-auto aspect-[9/16] h-[min(52vh,420px)] min-h-[300px] overflow-hidden rounded-md border border-default bg-black">
-              <img
-                v-if="selectedAssetThumbnailUrl"
-                :src="selectedAssetThumbnailUrl"
-                alt=""
-                class="absolute inset-0 size-full object-cover opacity-80"
-                @error="maskPreviewFailed = true"
-              >
-              <p
-                v-if="!selectedAssetThumbnailUrl && !hasMaskStroke"
-                class="absolute inset-0 flex items-center justify-center px-4 text-center text-[11px] text-white/50"
-              >
-                No preview for this asset — draw over the frame to mark the area
-              </p>
-              <canvas
-                ref="maskCanvasRef"
-                width="540"
-                height="960"
-                class="absolute inset-0 size-full touch-none cursor-crosshair"
-                @pointerdown="startMaskStroke"
-                @pointermove="moveMaskStroke"
-                @pointerup="endMaskStroke"
-                @pointercancel="endMaskStroke"
-                @pointerleave="endMaskStroke"
-              />
-            </div>
-            <div class="mt-2 flex items-center gap-2">
-              <UIcon name="i-lucide-highlighter" class="size-4 text-muted" />
-              <USlider v-model="brushSize" :min="8" :max="72" :step="2" class="flex-1" />
-              <span class="w-8 text-right text-xs tabular-nums text-muted">{{ brushSize }}</span>
-            </div>
-            <p v-if="brushMaskKey" class="mt-2 truncate text-[11px] text-muted">{{ brushMaskKey }}</p>
-            <img v-if="maskPreviewUrl" :src="maskPreviewUrl" alt="" class="mt-2 h-10 rounded border border-default bg-black object-contain">
-          </div>
-          <UFormField v-else label="Brush mask key">
-            <UInput v-model="brushMaskKey" placeholder="Optional R2 mask key" />
-          </UFormField>
-          <div class="rounded-md border border-default bg-elevated p-2">
-            <div class="flex items-center justify-between gap-2">
-              <p class="text-xs font-medium text-muted">Available models</p>
-              <UBadge :label="`${selectedActionModels.length}`" size="xs" variant="subtle" color="neutral" />
-            </div>
-            <div class="mt-1 flex flex-wrap gap-1">
-              <UBadge
-                v-for="model in selectedActionModels"
-                :key="model.id"
-                :label="model.displayName"
-                size="xs"
-                :color="model.defaultEnabled ? 'primary' : 'neutral'"
-                variant="subtle"
-              />
-            </div>
-            <p v-if="!selectedActionModels.length" class="mt-1 text-[11px] text-muted">
-              No gateway model is mapped to this action yet.
-            </p>
-          </div>
-          <div v-if="selectedAssetActivityVisible" class="rounded-md border border-default bg-elevated p-2">
-            <p class="text-xs font-medium text-muted">Selected asset activity</p>
-            <p v-if="selectedDirectivePrompt" class="mt-1 line-clamp-2 text-xs text-default">{{ selectedDirectivePrompt }}</p>
-            <div v-if="selectedItemJobs.length" class="mt-2 space-y-1">
-              <div v-for="job in selectedItemJobs" :key="job.id" class="flex items-center gap-2 text-xs">
-                <UBadge :label="job.status" size="xs" :color="jobStatusColor(job.status)" variant="subtle" />
-                <span class="min-w-0 flex-1 truncate text-muted">{{ job.action }} · {{ job.modelId }}</span>
-              </div>
-            </div>
-            <div v-if="loadingDerivatives" class="mt-2 space-y-1">
-              <USkeleton v-for="n in 2" :key="n" class="h-7 w-full rounded-md" />
-            </div>
-            <div v-else-if="selectedDerivatives.length" class="mt-2 space-y-1">
-              <div
-                v-for="derivative in selectedDerivatives"
-                :key="derivative.id"
-                class="flex items-center gap-2 rounded-md border border-default bg-default/40 px-2 py-1"
-              >
-                <UBadge :label="derivative.kind" size="xs" variant="subtle" color="neutral" />
-                <span class="min-w-0 flex-1 truncate text-xs text-muted">{{ derivativeLabel(derivative) }}</span>
-                <UTooltip text="Add derivative to timeline">
-                  <UButton
-                    icon="i-lucide-list-plus"
-                    size="xs"
-                    variant="ghost"
-                    color="primary"
-                    aria-label="Add derivative to timeline"
-                    @click="addDerivativeToTimeline(derivative)"
-                  />
-                </UTooltip>
-                <UTooltip text="Reuse derivative in generated bucket">
-                  <UButton
-                    icon="i-lucide-folder-plus"
-                    size="xs"
-                    variant="ghost"
-                    color="neutral"
-                    :loading="addingDerivativeId === derivative.id"
-                    aria-label="Reuse derivative in generated bucket"
-                    @click="addDerivativeToBucket(derivative)"
-                  />
-                </UTooltip>
-              </div>
-            </div>
-          </div>
-        </div>
+        <VideoStudioPrepareAssetPanel
+          v-model:selected-action="selectedAction"
+          v-model:tool-prompt="toolPrompt"
+          v-model:brush-mask-key="brushMaskKey"
+          v-model:brush-size="brushSize"
+          :selected-item-title="selectedItemTitle"
+          :selected-item-asset-id="selectedItem?.assetId"
+          :action-options="actionOptions"
+          :running-extraction="runningExtraction"
+          :mask-tool-enabled="maskToolEnabled"
+          :selected-asset-thumbnail-url="selectedAssetThumbnailUrl"
+          :has-mask-stroke="hasMaskStroke"
+          :uploading-mask="uploadingMask"
+          :mask-preview-url="maskPreviewUrl"
+          :selected-action-models="selectedActionModels"
+          :selected-asset-activity-visible="selectedAssetActivityVisible"
+          :selected-directive-prompt="selectedDirectivePrompt"
+          :selected-item-jobs="selectedItemJobs"
+          :selected-derivatives="selectedDerivatives"
+          :loading-derivatives="loadingDerivatives"
+          :adding-derivative-id="addingDerivativeId"
+          @run="runExtraction"
+          @clear-mask="clearMask"
+          @upload-mask="uploadMask"
+          @mask-canvas-ready="maskCanvasRef = $event"
+          @mask-preview-error="maskPreviewFailed = true"
+          @start-mask-stroke="startMaskStroke"
+          @move-mask-stroke="moveMaskStroke"
+          @end-mask-stroke="endMaskStroke"
+          @add-derivative-to-timeline="addDerivativeToTimeline"
+          @add-derivative-to-bucket="addDerivativeToBucket"
+        />
       </div>
 
       <div v-if="!embedded" :class="workspacePanelClass">
@@ -808,28 +692,10 @@ onBeforeUnmount(() => {
       v-show="contentOpen"
       :class="activityPanelClass"
     >
-      <div class="mb-2 flex items-center justify-between gap-2">
-        <p class="text-xs font-medium uppercase text-muted">AI activity</p>
-        <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" aria-label="Refresh AI activity" @click="refreshActivity" />
-      </div>
-      <div v-if="intelligenceJobs.length" class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        <div v-for="job in intelligenceJobs.slice(0, 6)" :key="job.id" class="rounded-md border border-default bg-elevated p-2">
-          <div class="flex items-start gap-2">
-            <UBadge :label="job.status" size="xs" :color="jobStatusColor(job.status)" variant="subtle" />
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-xs font-medium text-highlighted">{{ jobAssetLabel(job) }}</p>
-              <p class="mt-0.5 truncate text-[11px] text-muted">{{ job.action }} · {{ job.modelId }}</p>
-            </div>
-            <span class="shrink-0 text-[11px] text-muted">{{ job.provider }}</span>
-          </div>
-          <p v-if="job.prompt" class="mt-2 line-clamp-2 text-xs text-default">{{ job.prompt }}</p>
-          <p v-if="job.errorMessage" class="mt-1 line-clamp-2 text-[11px] text-error">{{ job.errorMessage }}</p>
-          <p class="mt-2 text-[11px] text-muted">{{ fmtJobDate(job.createdAt) }}</p>
-        </div>
-      </div>
-      <div v-else class="rounded-md border border-dashed border-default px-3 py-4 text-center text-xs text-muted">
-        No AI activity yet.
-      </div>
+      <VideoStudioAssetActivityPanel
+        :jobs="recentActivityJobs"
+        @refresh="refreshActivity"
+      />
     </div>
   </section>
 </template>

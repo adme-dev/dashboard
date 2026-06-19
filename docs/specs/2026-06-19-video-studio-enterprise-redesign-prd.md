@@ -609,12 +609,12 @@ Never:
 
 ### Phase 3: Prepare/AI Harness Split
 
-- [ ] Extract `VideoStudioPrepareAssetPanel.vue` from embedded `MediaAssetHarness`.
+- [x] Extract `VideoStudioPrepareAssetPanel.vue` from embedded `MediaAssetHarness`.
   - Acceptance: tool selector, instruction, mask canvas, brush size, model list, derivatives remain usable.
   - Verify: new component test and existing harness test.
   - Files: new component, `MediaAssetHarness.vue`, page integration.
 
-- [ ] Extract `VideoStudioAssetActivityPanel.vue`.
+- [x] Extract `VideoStudioAssetActivityPanel.vue`.
   - Acceptance: selected asset activity and recent AI jobs show without full harness chrome.
   - Verify: new component test.
   - Files: new component, harness/page integration.
