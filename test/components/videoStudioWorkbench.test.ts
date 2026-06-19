@@ -1,7 +1,9 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { createSSRApp, h } from 'vue'
+import { createApp, createSSRApp, h, nextTick } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.vue'
+import type { VideoRenderFormatId } from '~~/app/utils/video/renderFormats'
 
 const stubs = {
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
@@ -11,13 +13,46 @@ const stubs = {
     emits: ['click'],
     template: '<button :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
   },
-  UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' }
+  UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
+  UPopover: { name: 'UPopover', template: '<div><slot /><slot name="content" /></div>' },
+  UCheckbox: {
+    name: 'UCheckbox',
+    props: ['modelValue', 'ariaLabel'],
+    emits: ['update:modelValue'],
+    template: '<input type="checkbox" :checked="modelValue" :aria-label="ariaLabel" @change="$emit(\'update:modelValue\', $event.target.checked)" />'
+  }
 }
 
 async function render(props: Record<string, unknown>, slots: Record<string, () => unknown> = {}) {
   const app = createSSRApp({ render: () => h(VideoStudioWorkbench, props, slots) })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
   return renderToString(app)
+}
+
+async function mount(props: Record<string, unknown>, slots: Record<string, () => unknown> = {}) {
+  const events: Array<{ name: string, payload: unknown }> = []
+  const host = document.createElement('div')
+  const app = createApp({
+    render: () => h(VideoStudioWorkbench, {
+      ...props,
+      onOpenLibrary: () => events.push({ name: 'open-library', payload: null }),
+      onAddFootage: () => events.push({ name: 'add-footage', payload: null }),
+      onAddOverlay: () => events.push({ name: 'add-overlay', payload: null }),
+      onGenerate: () => events.push({ name: 'generate', payload: null }),
+      onRender: (formats: VideoRenderFormatId[]) => events.push({ name: 'render', payload: formats }),
+      'onUpdate:producerCollapsed': (value: boolean) => events.push({ name: 'update:producer-collapsed', payload: value }),
+    }, slots)
+  })
+  Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
+  app.mount(host)
+  await nextTick()
+  return { app, host, events }
+}
+
+function buttonByText(host: HTMLElement, text: string) {
+  const button = [...host.querySelectorAll('button')].find(el => el.textContent?.includes(text))
+  if (!button) throw new Error(`Button not found: ${text}`)
+  return button as HTMLButtonElement
 }
 
 describe('VideoStudioWorkbench', () => {
@@ -62,5 +97,42 @@ describe('VideoStudioWorkbench', () => {
     expect(html).toContain('Preview panel')
     expect(html).toContain('Producer rail collapsed')
     expect(html).not.toContain('Producer content')
+  })
+
+  it('emits toolbar actions, producer collapse, and selected render formats', async () => {
+    const { app, host, events } = await mount({
+      currentTimeSec: 4,
+      durationSec: 16,
+      generationEnabled: true,
+      rendering: false,
+      producerCollapsed: false,
+    }, {
+      library: () => h('p', 'Library rail'),
+      preview: () => h('p', 'Preview panel'),
+      producer: () => h('p', 'Producer content'),
+    })
+
+    try {
+      buttonByText(host, 'Footage').click()
+      buttonByText(host, 'Overlay').click()
+      buttonByText(host, 'Generate').click()
+      buttonByText(host, 'Library').click()
+      buttonByText(host, 'Render 3 formats').click()
+      ;(host.querySelector('button[aria-label="Collapse producer rail"]') as HTMLButtonElement).click()
+      await nextTick()
+
+      expect(events.map(event => event.name)).toEqual([
+        'add-footage',
+        'add-overlay',
+        'generate',
+        'open-library',
+        'render',
+        'update:producer-collapsed',
+      ])
+      expect(events.find(event => event.name === 'render')?.payload).toEqual(['reels_9x16', 'square_1x1', 'youtube_16x9'])
+      expect(events.find(event => event.name === 'update:producer-collapsed')?.payload).toBe(true)
+    } finally {
+      app.unmount()
+    }
   })
 })

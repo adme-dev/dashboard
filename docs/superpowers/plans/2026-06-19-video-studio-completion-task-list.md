@@ -200,12 +200,16 @@ Decision: completed render variants now have focused server coverage for save-to
 - [ ] Manual QA: publish to social composer.
 - [ ] Manual QA: reload page with active jobs.
 - [ ] Manual QA: audio project behavior unchanged.
-- [ ] Add component tests for layout/filter interactions.
-- [ ] Add tests for selected asset prepare actions.
-- [ ] Add tests for producer plan with voice/overlay once implemented.
-- [ ] Run focused video/audio test suite.
-- [ ] Run production build.
+- [x] Add component tests for layout/filter interactions.
+- [x] Add tests for selected asset prepare actions.
+- [x] Add tests for producer plan with voice/overlay once implemented.
+- [x] Run focused video/audio test suite.
+- [x] Run production build.
 - [ ] Deploy and verify production feature flags.
+
+Decision: Phase 12 component coverage now includes runtime interaction tests for Library filtering/search/action emits, Workbench toolbar/render/collapse emits, and Selected Asset prepare actions including add, replace, generate-from-asset, caption generation, and add-caption flows. Producer rail tests already cover voice/overlay/caption draft-plan validation states.
+
+Decision: focused Video Studio/audio QA suite passed on 2026-06-19 with 19 files and 101 tests covering workbench, library, selected asset, producer, voice, overlay, render jobs, timeline edit/render, distribution, clip inspector/effects, timeline placement, video library insertion, and social draft creation. Production `pnpm run build` also passed; warnings remain the known local `JWT_SECRET`, third-party ESM top-level `this`, VueUse annotation, and large chunk warnings.
 
 ## Suggested First Sprint
 

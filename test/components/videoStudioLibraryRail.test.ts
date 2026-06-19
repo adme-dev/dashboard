@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { createSSRApp, h } from 'vue'
+import { createApp, createSSRApp, h, nextTick } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import VideoStudioLibraryRail from '~~/app/components/media/VideoStudioLibraryRail.vue'
 import type { VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
@@ -13,8 +14,18 @@ const stubs = {
     template: '<button :data-icon="icon" :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
   },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
-  UInput: { name: 'UInput', props: ['modelValue', 'placeholder'], emits: ['update:modelValue'], template: '<input :value="modelValue" :placeholder="placeholder" />' },
-  USelect: { name: 'USelect', props: ['modelValue', 'items'], emits: ['update:modelValue'], template: '<select :value="modelValue"><option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option></select>' },
+  UInput: {
+    name: 'UInput',
+    props: ['modelValue', 'placeholder'],
+    emits: ['update:modelValue'],
+    template: '<input :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+  },
+  USelect: {
+    name: 'USelect',
+    props: ['modelValue', 'items'],
+    emits: ['update:modelValue'],
+    template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option></select>'
+  },
   USkeleton: { name: 'USkeleton', template: '<div />' }
 }
 
@@ -50,6 +61,32 @@ async function render(props: Record<string, unknown>) {
   const app = createSSRApp({ render: () => h(VideoStudioLibraryRail, props) })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
   return renderToString(app)
+}
+
+async function mount(props: Record<string, unknown>) {
+  const events: Array<{ name: string, payload: unknown }> = []
+  const host = document.createElement('div')
+  const app = createApp({
+    render: () => h(VideoStudioLibraryRail, {
+      ...props,
+      'onUpdate:selectedId': (value: string | null) => events.push({ name: 'update:selected-id', payload: value }),
+      onAddAsset: (value: VideoStudioAsset) => events.push({ name: 'add-asset', payload: value }),
+      onGenerateFromAsset: (value: VideoStudioAsset) => events.push({ name: 'generate-from-asset', payload: value }),
+      onInspectAsset: (value: VideoStudioAsset) => events.push({ name: 'inspect-asset', payload: value }),
+      onPublishAsset: (value: VideoStudioAsset) => events.push({ name: 'publish-asset', payload: value }),
+      onRefresh: () => events.push({ name: 'refresh', payload: null }),
+    })
+  })
+  Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
+  app.mount(host)
+  await nextTick()
+  return { app, host, events }
+}
+
+function buttonByText(host: HTMLElement, text: string) {
+  const button = [...host.querySelectorAll('button')].find(el => el.textContent?.includes(text))
+  if (!button) throw new Error(`Button not found: ${text}`)
+  return button as HTMLButtonElement
 }
 
 describe('VideoStudioLibraryRail', () => {
@@ -134,5 +171,68 @@ describe('VideoStudioLibraryRail', () => {
     const html = await render({ assets: [], selectedId: null, loading: false })
     expect(html).toContain('No media in this project yet')
     expect(html).toContain('Add footage or stills')
+  })
+
+  it('filters assets by category/source/status/search and emits inline actions', async () => {
+    const { app, host, events } = await mount({
+      assets: [
+        asset({ id: 'video:ready-1', rawId: 'ready-1', title: 'Ready generated video', source: 'generation', status: 'ready', createdAt: '2026-06-18T02:00:00.000Z' }),
+        asset({ id: 'audio:voice-1', rawId: 'voice-1', type: 'audio', source: 'audio', title: 'Opening voiceover', subtitle: 'voiceover', role: 'voiceover', modelId: null, durationSec: 12, previewUrl: '/voice.mp3', createdAt: '2026-06-18T01:00:00.000Z' }),
+        asset({ id: 'job:running-1', rawId: 'running-1', type: 'job', source: 'generation', title: 'Running smoke reveal', status: 'running', timelineReady: false, r2Key: null, previewUrl: null, createdAt: '2026-06-18T03:00:00.000Z' }),
+        asset({ id: 'overlay:banner-1', rawId: 'banner-1', type: 'overlay', source: 'banner', title: 'Offer lower third', status: 'ready', modelId: null, r2Key: 'banner/lower-third.html', createdAt: '2026-06-18T04:00:00.000Z' }),
+      ],
+      selectedId: null,
+      loading: false,
+    })
+
+    try {
+      expect(host.textContent).toContain('Ready generated video')
+      expect(host.textContent).toContain('Opening voiceover')
+      expect(host.textContent).toContain('Running smoke reveal')
+      expect(host.textContent).toContain('Offer lower third')
+
+      buttonByText(host, 'Voiceover').click()
+      await nextTick()
+      expect(host.textContent).toContain('Opening voiceover')
+      expect(host.textContent).not.toContain('Ready generated video')
+
+      buttonByText(host, 'All').click()
+      buttonByText(host, 'AI').click()
+      await nextTick()
+      expect(host.textContent).toContain('Ready generated video')
+      expect(host.textContent).toContain('Running smoke reveal')
+      expect(host.textContent).not.toContain('Offer lower third')
+
+      buttonByText(host, 'All sources').click()
+      buttonByText(host, 'Running').click()
+      await nextTick()
+      expect(host.textContent).toContain('Running smoke reveal')
+      expect(host.textContent).not.toContain('Ready generated video')
+
+      buttonByText(host, 'All status').click()
+      const search = host.querySelector('input[placeholder="Search assets"]') as HTMLInputElement
+      search.value = 'lower third'
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+      await nextTick()
+      expect(host.textContent).toContain('Offer lower third')
+      expect(host.textContent).not.toContain('Opening voiceover')
+
+      ;(host.querySelector('button[aria-label="Refresh library assets"]') as HTMLButtonElement).click()
+      buttonByText(host, 'Offer lower third').click()
+      ;(host.querySelector('button[aria-label="Inspect asset"]') as HTMLButtonElement).click()
+      buttonByText(host, 'Add').click()
+      await nextTick()
+
+      expect(events.map(event => event.name)).toEqual(expect.arrayContaining([
+        'refresh',
+        'update:selected-id',
+        'inspect-asset',
+        'add-asset',
+      ]))
+      expect(events.find(event => event.name === 'update:selected-id')?.payload).toBe('overlay:banner-1')
+      expect((events.find(event => event.name === 'add-asset')?.payload as VideoStudioAsset).id).toBe('overlay:banner-1')
+    } finally {
+      app.unmount()
+    }
   })
 })
