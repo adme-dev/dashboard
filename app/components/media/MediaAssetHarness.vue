@@ -158,10 +158,10 @@ const itemsByBucket = computed(() => {
 const visibleBuckets = computed(() => buckets.value.filter(bucket => (itemsByBucket.value[bucket.id] || []).length > 0))
 const emptyBucketCount = computed(() => buckets.value.length - visibleBuckets.value.length)
 const contentGridClass = computed(() => props.embedded
-  ? 'grid divide-y divide-default xl:grid-cols-[280px_minmax(0,1fr)] xl:divide-x xl:divide-y-0'
+  ? 'grid min-h-0 divide-y divide-default xl:grid-cols-[280px_minmax(0,1fr)] xl:divide-x xl:divide-y-0'
   : 'grid gap-3 p-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]')
 const workspacePanelClass = computed(() => props.embedded
-  ? 'min-w-0 p-3'
+  ? 'min-h-0 min-w-0 p-3'
   : 'min-w-0 rounded-md border border-default bg-default/30 p-3')
 const activityPanelClass = computed(() => props.embedded
   ? 'border-t border-default p-3'
@@ -585,7 +585,7 @@ onBeforeUnmount(() => {
           </div>
           <UBadge :label="`${items.length}`" size="xs" variant="subtle" color="neutral" />
         </div>
-        <div class="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+        <div class="max-h-72 space-y-2 overflow-y-auto pr-1">
           <div v-if="!items.length" class="rounded-md border border-dashed border-default px-3 py-4 text-center">
             <UIcon name="i-lucide-library" class="mx-auto size-5 text-muted" />
             <p class="mt-2 text-xs font-medium text-highlighted">No prepared assets yet</p>
@@ -636,7 +636,7 @@ onBeforeUnmount(() => {
           />
         </div>
         <div class="space-y-3">
-          <div class="grid gap-2 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div class="grid gap-2 lg:grid-cols-[220px_minmax(320px,1fr)]">
             <UFormField label="Tool">
               <USelect v-model="selectedAction" :items="actionOptions" value-key="value" />
             </UFormField>
@@ -652,7 +652,7 @@ onBeforeUnmount(() => {
                 <UButton icon="i-lucide-upload-cloud" size="xs" variant="ghost" color="neutral" aria-label="Save mask" :loading="uploadingMask" :disabled="!hasMaskStroke || !selectedItem?.assetId" @click="uploadMask" />
               </div>
             </div>
-            <div class="relative mx-auto aspect-[9/16] min-h-[360px] max-h-[520px] overflow-hidden rounded-md border border-default bg-black">
+            <div class="relative mx-auto aspect-[9/16] h-[min(52vh,420px)] min-h-[300px] overflow-hidden rounded-md border border-default bg-black">
               <img
                 v-if="selectedAssetThumbnailUrl"
                 :src="selectedAssetThumbnailUrl"

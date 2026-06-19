@@ -91,6 +91,8 @@ describe('VideoStudioWorkbench', () => {
     })
 
     expect(html).toContain('Video Studio')
+    expect(html).toContain('lg:h-[min(48vh,540px)]')
+    expect(html).toContain('overflow-y-auto')
     expect(html).toContain('Library filters')
     expect(html).toContain('Preview canvas')
     expect(html).toContain('Producer rail')

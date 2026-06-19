@@ -60,8 +60,8 @@ const stageItems = computed(() => [
 ])
 
 const workspaceGridClass = computed(() => props.producerCollapsed
-  ? 'grid divide-y divide-default lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0'
-  : 'grid divide-y divide-default lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0 2xl:grid-cols-[minmax(340px,420px)_minmax(0,1fr)_minmax(340px,380px)]')
+  ? 'grid min-h-0 divide-y divide-default lg:h-[min(48vh,540px)] lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0'
+  : 'grid min-h-0 divide-y divide-default lg:h-[min(48vh,540px)] lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0 2xl:grid-cols-[minmax(340px,420px)_minmax(0,1fr)_minmax(340px,380px)]')
 
 const selectedFormats = ref<VideoRenderFormatId[]>([...DEFAULT_VIDEO_RENDER_FORMATS])
 const selectedFormatCount = computed(() => selectedFormats.value.length)
@@ -212,7 +212,7 @@ watch(activeStage, (stage) => {
     </div>
 
     <div :class="workspaceGridClass">
-      <aside :class="['min-w-[18rem] resize-x overflow-auto p-3 lg:max-w-[32rem]', stagePanelClass('library')]">
+      <aside :class="['min-h-0 min-w-[18rem] resize-x overflow-auto p-3 lg:max-w-[32rem]', stagePanelClass('library')]">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-sliders-horizontal" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Assets</h3>
@@ -220,7 +220,7 @@ watch(activeStage, (stage) => {
         <slot name="library" />
       </aside>
 
-      <main :class="['min-w-0 p-3', stagePanelClass('prepare')]">
+      <main :class="['min-h-0 min-w-0 overflow-y-auto p-3', stagePanelClass('prepare')]">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Edit</h3>
@@ -228,7 +228,7 @@ watch(activeStage, (stage) => {
         <slot name="preview" />
       </main>
 
-      <aside v-if="!props.producerCollapsed" :class="['min-w-0 p-3', stagePanelClass('producer')]">
+      <aside v-if="!props.producerCollapsed" :class="['min-h-0 min-w-0 overflow-y-auto p-3', stagePanelClass('producer')]">
         <div class="mb-3 flex items-center gap-2">
           <UIcon name="i-lucide-wand-sparkles" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Producer</h3>

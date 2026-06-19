@@ -42,6 +42,8 @@ describe('MediaAssetHarness embedded mode', () => {
     expect(html).toContain('Available models')
     expect(html).toContain('No gateway model is mapped to this action yet.')
     expect(html).toContain('AI activity')
+    expect(html).toContain('max-h-72')
+    expect(html).toContain('h-[min(52vh,420px)]')
     expect(html).not.toContain('Draft assembly')
     expect(html).not.toContain('aria-expanded')
     expect(html).not.toContain('Build draft plan from this brief')
