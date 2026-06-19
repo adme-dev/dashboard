@@ -15,6 +15,7 @@ import { queryOne, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { executeProposal, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
 import { getExecutor, type ActionExecutor } from '~~/server/utils/ai/executors'
+import { recordAudit } from '~~/server/utils/ai/audit'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 export default defineEventHandler(async (event) => {
@@ -38,6 +39,7 @@ export default defineEventHandler(async (event) => {
 
   // Resolved at claim time from the proposal's tool_name; drives the mutation + thread summary.
   let executor: ActionExecutor | null = null
+  let claimedRow: PendingRow | null = null
   let summary = ''
 
   const db: PendingActionDb = {
@@ -52,7 +54,10 @@ export default defineEventHandler(async (event) => {
          RETURNING id, status, tool_name, resolved_payload, user_id, expires_at`,
         [userId, id, conversationId],
       )
-      if (claimed) executor = getExecutor(claimed.tool_name)
+      if (claimed) {
+        claimedRow = claimed
+        executor = getExecutor(claimed.tool_name)
+      }
       return claimed
     },
     // The generic mutation slot: delegate to the tool_name's executor. An unknown tool throws,
@@ -76,6 +81,23 @@ export default defineEventHandler(async (event) => {
 
   const ctx: ToolContext = { userId: user.id, userRole: user.role, conversationId, event }
   const result = await executeProposal(proposalId, ctx, db)
+
+  // Audit every attempt we actually CLAIMED (executed or failed-and-reverted). A no-claim outcome
+  // (read-only reject / idempotent second click / expired) is not an action, so it is not audited.
+  if (claimedRow) {
+    const row = claimedRow as PendingRow
+    await recordAudit({
+      pendingId: row.id,
+      userId: row.user_id,
+      confirmedBy: user.id,
+      toolName: row.tool_name,
+      riskTier: executor?.riskTier ?? 'confirm',
+      clientScope: ctx.clientScope ?? null,
+      payload: row.resolved_payload,
+      resultRef: result.ok ? ((result.data as any)?.taskId ?? null) : null,
+      outcome: result.ok ? 'executed' : 'failed',
+    })
+  }
 
   if (!result.ok) {
     return { ok: false, error: 'error' in result ? result.error : 'Could not complete the action.' }
