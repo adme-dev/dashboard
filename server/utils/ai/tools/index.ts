@@ -1,6 +1,8 @@
 import type { AiTool } from '../toolRegistry'
 import { financeTool } from './finance'
 import { adspendTool } from './adspend'
+import { campaignBreakdownTool } from './campaignBreakdown'
+import { budgetHealthTool } from './budgetHealth'
 import { tasksTool } from './tasks'
 import { projectsTool } from './projects'
 import { anomaliesTool } from './anomalies'
@@ -19,6 +21,8 @@ import { rememberTool } from './remember'
 export const registry: AiTool<any>[] = [
   financeTool,
   adspendTool,
+  campaignBreakdownTool,
+  budgetHealthTool,
   tasksTool,
   projectsTool,
   anomaliesTool,

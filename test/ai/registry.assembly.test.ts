@@ -10,11 +10,13 @@ const READ_TOOLS = [
 const SLICE2_TOOLS = [
   'get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue',
 ]
+// Phase-1 media-buyer read skill-pack (MEDIA_BUYING-gated).
+const MEDIA_BUYER_TOOLS = ['get_campaign_breakdown', 'get_budget_health']
 // remember = personal-memory capture (non-mutating; available to every authed role).
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, 'create_task', 'remember']
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, 'create_task', 'remember']
 
-describe('assembled tool registry (Slices 1–2 + memory)', () => {
-  it('contains the 13 read tools + create_task + remember', () => {
+describe('assembled tool registry (Slices 1–2 + memory + media-buyer)', () => {
+  it('contains the 15 read tools + create_task + remember', () => {
     expect(registry.map(t => t.name).sort()).toEqual([...ALL].sort())
   })
 
@@ -43,8 +45,17 @@ describe('assembled tool registry (Slices 1–2 + memory)', () => {
     expect(filterToolsForUser(registry, 'guest').map(t => t.name)).not.toContain('create_task')
   })
 
-  it('owner sees all 15', () => {
-    expect(filterToolsForUser(registry, 'owner')).toHaveLength(15)
+  it('owner sees all 17', () => {
+    expect(filterToolsForUser(registry, 'owner')).toHaveLength(17)
+  })
+
+  it('the media-buyer reads are MEDIA_BUYING-gated read tools (not mutating)', () => {
+    const mb = registry.filter(t => MEDIA_BUYER_TOOLS.includes(t.name))
+    expect(mb).toHaveLength(2)
+    for (const t of mb) {
+      expect(t.requiredPermission).toBe('MEDIA_BUYING')
+      expect(t.mutates).toBeFalsy()
+    }
   })
 
   it('includes the Slice-2 margin & forecasting tools', () => {
