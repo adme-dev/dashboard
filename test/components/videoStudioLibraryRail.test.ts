@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { createApp, createSSRApp, h, nextTick } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import VideoStudioLibraryRail from '~~/app/components/media/VideoStudioLibraryRail.vue'
@@ -89,7 +89,17 @@ function buttonByText(host: HTMLElement, text: string) {
   return button as HTMLButtonElement
 }
 
+function buttonByLabel(host: HTMLElement, label: string) {
+  const button = [...host.querySelectorAll('button')].find(el => el.getAttribute('aria-label') === label || el.getAttribute('title') === label)
+  if (!button) throw new Error(`Button not found: ${label}`)
+  return button as HTMLButtonElement
+}
+
 describe('VideoStudioLibraryRail', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   it('renders mixed assets with status, metadata, and add actions', async () => {
     const html = await render({
       assets: [
@@ -113,6 +123,16 @@ describe('VideoStudioLibraryRail', () => {
     expect(html).toContain('Opening voiceover')
     expect(html).toContain('Queued music bed')
     expect(html).toContain('Smoke reveal')
+    expect(html).toContain('Timeline ready')
+    expect(html).toContain('Processing')
+    expect(html).toContain('AI')
+    expect(html).toContain('Audio')
+    expect(html).toContain('Origin: AI')
+    expect(html).toContain('Rights: AI review')
+    expect(html).toContain('Origin: Voice')
+    expect(html).toContain('Rights: Script-owned')
+    expect(html).toContain('Origin: Music')
+    expect(html).toContain('Rights: Music review')
     expect(html).toContain('running')
     expect(html).toContain('rendering')
     expect(html).toContain('5s')
@@ -220,7 +240,7 @@ describe('VideoStudioLibraryRail', () => {
       ;(host.querySelector('button[aria-label="Refresh library assets"]') as HTMLButtonElement).click()
       buttonByText(host, 'Offer lower third').click()
       ;(host.querySelector('button[aria-label="Inspect asset"]') as HTMLButtonElement).click()
-      buttonByText(host, 'Add').click()
+      buttonByLabel(host, 'Add').click()
       await nextTick()
 
       expect(events.map(event => event.name)).toEqual(expect.arrayContaining([
@@ -233,6 +253,33 @@ describe('VideoStudioLibraryRail', () => {
       expect((events.find(event => event.name === 'add-asset')?.payload as VideoStudioAsset).id).toBe('overlay:banner-1')
     } finally {
       app.unmount()
+    }
+  })
+
+  it('persists reusable filter preferences across rail mounts', async () => {
+    const assets = [
+      asset({ id: 'video:ready-1', rawId: 'ready-1', title: 'Ready generated video', source: 'generation', status: 'ready' }),
+      asset({ id: 'audio:voice-1', rawId: 'voice-1', type: 'audio', source: 'audio', title: 'Opening voiceover', subtitle: 'voiceover', role: 'voiceover', modelId: null, durationSec: 12, previewUrl: '/voice.mp3' }),
+    ]
+
+    const first = await mount({ assets, selectedId: null, loading: false })
+    try {
+      buttonByText(first.host, 'Voiceover').click()
+      await nextTick()
+
+      expect(first.host.textContent).toContain('Opening voiceover')
+      expect(first.host.textContent).not.toContain('Ready generated video')
+      expect(localStorage.getItem('video-studio-library-category')).toBe('voiceover')
+    } finally {
+      first.app.unmount()
+    }
+
+    const second = await mount({ assets, selectedId: null, loading: false })
+    try {
+      expect(second.host.textContent).toContain('Opening voiceover')
+      expect(second.host.textContent).not.toContain('Ready generated video')
+    } finally {
+      second.app.unmount()
     }
   })
 })

@@ -14,6 +14,24 @@ const stubs = {
     template: '<button :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
   },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
+  UTabs: {
+    name: 'UTabs',
+    props: ['modelValue', 'items', 'content'],
+    emits: ['update:modelValue'],
+    template: `
+      <nav>
+        <button
+          v-for="item in items"
+          :key="item.value"
+          type="button"
+          :aria-pressed="modelValue === item.value"
+          @click="$emit('update:modelValue', item.value)"
+        >
+          {{ item.label }}{{ item.badge ? ' ' + item.badge : '' }}
+        </button>
+      </nav>
+    `
+  },
   UPopover: { name: 'UPopover', template: '<div><slot /><slot name="content" /></div>' },
   UCheckbox: {
     name: 'UCheckbox',
@@ -40,6 +58,7 @@ async function mount(props: Record<string, unknown>, slots: Record<string, () =>
       onAddOverlay: () => events.push({ name: 'add-overlay', payload: null }),
       onGenerate: () => events.push({ name: 'generate', payload: null }),
       onRender: (formats: VideoRenderFormatId[]) => events.push({ name: 'render', payload: formats }),
+      'onUpdate:mode': (value: string) => events.push({ name: 'update:mode', payload: value }),
       'onUpdate:producerCollapsed': (value: boolean) => events.push({ name: 'update:producer-collapsed', payload: value }),
     }, slots)
   })
@@ -73,6 +92,8 @@ describe('VideoStudioWorkbench', () => {
     })
 
     expect(html).toContain('Video Studio')
+    expect(html).toContain('lg:h-[min(48vh,540px)]')
+    expect(html).toContain('overflow-y-auto')
     expect(html).toContain('Library filters')
     expect(html).toContain('Preview canvas')
     expect(html).toContain('Producer rail')
@@ -134,5 +155,62 @@ describe('VideoStudioWorkbench', () => {
     } finally {
       app.unmount()
     }
+  })
+
+  it('exposes final mode navigation, compact status, and expands producer for produce mode', async () => {
+    const { app, host, events } = await mount({
+      currentTimeSec: 4,
+      durationSec: 16,
+      assetCount: 12,
+      generationJobCount: 1,
+      renderJobCount: 2,
+      generationEnabled: true,
+      rendering: false,
+      producerCollapsed: true,
+    }, {
+      library: () => h('p', 'Library rail'),
+      preview: () => h('p', 'Preview panel'),
+      producer: () => h('p', 'Producer content'),
+    })
+
+    try {
+      expect(host.textContent).toContain('Assets 12')
+      expect(host.textContent).toContain('Edit 1')
+      expect(host.textContent).toContain('Produce')
+      expect(host.textContent).toContain('Review 2')
+      expect(host.textContent).toContain('3 formats')
+      expect(host.textContent).toContain('AI ready')
+      expect(host.textContent).toContain('2 renders')
+
+      buttonByText(host, 'Produce').click()
+      await nextTick()
+
+      expect(events).toContainEqual({ name: 'update:mode', payload: 'produce' })
+      expect(events.find(event => event.name === 'update:producer-collapsed')?.payload).toBe(false)
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('can render directly in review mode for the mobile review fallback', async () => {
+    const html = await render({
+      mode: 'review',
+      currentTimeSec: 0,
+      durationSec: 24,
+      renderJobCount: 3,
+      generationEnabled: false,
+      generationStatusLabel: 'AI disabled by policy',
+      generationStatusDetail: 'Video generation is disabled for this workspace.',
+    }, {
+      library: () => h('p', 'Library rail'),
+      preview: () => h('p', 'Preview panel'),
+      producer: () => h('p', 'Producer content'),
+      review: () => h('p', 'Review fallback content'),
+    })
+
+    expect(html).toContain('Review 3')
+    expect(html).toContain('Review fallback content')
+    expect(html).toContain('AI disabled by policy')
+    expect(html).toContain('Video generation is disabled for this workspace.')
   })
 })

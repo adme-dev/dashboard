@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { MediaRenderJob, MediaRenderJobStatus } from '~~/app/types'
 import {
   renderVariantFormats,
@@ -15,10 +16,23 @@ const props = withDefaults(defineProps<{
   rendering: false,
 })
 
+const emit = defineEmits<{
+  (event: 'retry', job: MediaRenderJob): void
+  (event: 'publish', job: MediaRenderJob, format: string): void
+  (event: 'send-to-portal', job: MediaRenderJob, format: string): void
+  (event: 'save-asset', job: MediaRenderJob, format: string): void
+}>()
+
 const summary = computed(() => summarizeVideoRenderJobs(props.jobs))
-const latestCompleted = computed(() => props.jobs.find(job => job.status === 'done' && renderVariantFormats(job).length) ?? null)
-const latestFailed = computed(() => props.jobs.find(job => job.status === 'failed') ?? null)
+const latestCompleted = computed(() => latestJob(job => job.status === 'done' && renderVariantFormats(job).length > 0))
+const latestFailed = computed(() => latestJob(job => job.status === 'failed'))
 const completedFormats = computed(() => renderVariantFormats(latestCompleted.value))
+
+function latestJob(predicate: (job: MediaRenderJob) => boolean) {
+  return props.jobs
+    .filter(predicate)
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] ?? null
+}
 
 function statusColor(status: MediaRenderJobStatus | 'idle'): 'primary' | 'success' | 'error' | 'neutral' {
   if (status === 'done') return 'success'
@@ -47,6 +61,14 @@ function dateLabel(iso: string | null | undefined) {
   } catch {
     return iso
   }
+}
+
+function variantItems(job: MediaRenderJob, label: string, icon: string, event: 'publish' | 'send-to-portal' | 'save-asset') {
+  return [renderVariantFormats(job).map(format => ({
+    label: `${label} ${format}`,
+    icon,
+    onSelect: () => emit(event, job, format),
+  }))]
 }
 </script>
 
@@ -85,9 +107,33 @@ function dateLabel(iso: string | null | undefined) {
         :to="renderVariantUrl(props.projectId, latestCompleted.id, format)"
         target="_blank"
       />
+      <UDropdownMenu :items="variantItems(latestCompleted, 'Publish', 'i-lucide-share-2', 'publish')">
+        <UButton icon="i-lucide-share-2" size="xs" variant="ghost" color="primary" label="Publish" />
+      </UDropdownMenu>
+      <UDropdownMenu :items="variantItems(latestCompleted, 'Send', 'i-lucide-send', 'send-to-portal')">
+        <UButton icon="i-lucide-send" size="xs" variant="ghost" color="neutral" label="Portal" />
+      </UDropdownMenu>
+      <UDropdownMenu :items="variantItems(latestCompleted, 'Save', 'i-lucide-bookmark', 'save-asset')">
+        <UButton icon="i-lucide-bookmark" size="xs" variant="ghost" color="neutral" label="Library" />
+      </UDropdownMenu>
     </div>
-    <p v-else-if="latestFailed?.error" class="ml-auto max-w-md truncate text-[11px] text-error">
-      {{ latestFailed.error }}
-    </p>
+    <div v-else-if="latestFailed" class="ml-auto flex min-w-0 max-w-xl items-center gap-2">
+      <div v-if="latestFailed.error" class="min-w-0 rounded-md border border-error/30 bg-error/5 px-2 py-1">
+        <div class="flex items-center gap-1.5 text-[11px] font-medium text-error">
+          <UIcon name="i-lucide-triangle-alert" class="size-3.5 shrink-0" />
+          <span class="shrink-0">Failure details</span>
+          <span class="truncate font-normal">{{ latestFailed.error }}</span>
+        </div>
+      </div>
+      <UButton
+        icon="i-lucide-refresh-cw"
+        size="xs"
+        variant="soft"
+        color="primary"
+        label="Retry"
+        :loading="props.rendering"
+        @click="emit('retry', latestFailed)"
+      />
+    </div>
   </section>
 </template>
