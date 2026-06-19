@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
 import {
   filterVideoStudioAssets,
   videoStudioAssetImageSource,
@@ -27,14 +28,19 @@ const emit = defineEmits<{
   (event: 'refresh'): void
 }>()
 
+type CategoryFilter = 'all' | 'footage' | 'still' | 'generated' | 'derivative' | 'voiceover' | 'music' | 'overlay' | 'caption'
+type SourceFilter = 'all' | 'upload' | 'generation' | 'render' | 'audio' | 'banner' | 'derivative'
+type StatusFilter = 'all' | 'ready' | 'running' | 'failed' | 'blocked' | 'unknown'
+type SortFilter = 'newest' | 'oldest' | 'duration' | 'status'
+
 const search = ref('')
-const category = ref<'all' | 'footage' | 'still' | 'generated' | 'derivative' | 'voiceover' | 'music' | 'overlay' | 'caption'>('all')
-const source = ref<'all' | 'upload' | 'generation' | 'render' | 'audio' | 'banner' | 'derivative'>('all')
-const statusBucket = ref<'all' | 'ready' | 'running' | 'failed' | 'blocked' | 'unknown'>('all')
+const category = useLocalStorage<CategoryFilter>('video-studio-library-category', 'all')
+const source = useLocalStorage<SourceFilter>('video-studio-library-source', 'all')
+const statusBucket = useLocalStorage<StatusFilter>('video-studio-library-status', 'all')
 const model = ref<string | 'all'>('all')
 const aspect = ref<string | 'all'>('all')
 const bucketId = ref<string | 'all'>('all')
-const sort = ref<'newest' | 'oldest' | 'duration' | 'status'>('newest')
+const sort = useLocalStorage<SortFilter>('video-studio-library-sort', 'newest')
 
 const CATEGORY_FILTERS = [
   { label: 'All', value: 'all', icon: 'i-lucide-library' },

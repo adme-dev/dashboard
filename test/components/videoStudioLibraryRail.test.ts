@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { createApp, createSSRApp, h, nextTick } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import VideoStudioLibraryRail from '~~/app/components/media/VideoStudioLibraryRail.vue'
@@ -96,6 +96,10 @@ function buttonByLabel(host: HTMLElement, label: string) {
 }
 
 describe('VideoStudioLibraryRail', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   it('renders mixed assets with status, metadata, and add actions', async () => {
     const html = await render({
       assets: [
@@ -243,6 +247,33 @@ describe('VideoStudioLibraryRail', () => {
       expect((events.find(event => event.name === 'add-asset')?.payload as VideoStudioAsset).id).toBe('overlay:banner-1')
     } finally {
       app.unmount()
+    }
+  })
+
+  it('persists reusable filter preferences across rail mounts', async () => {
+    const assets = [
+      asset({ id: 'video:ready-1', rawId: 'ready-1', title: 'Ready generated video', source: 'generation', status: 'ready' }),
+      asset({ id: 'audio:voice-1', rawId: 'voice-1', type: 'audio', source: 'audio', title: 'Opening voiceover', subtitle: 'voiceover', role: 'voiceover', modelId: null, durationSec: 12, previewUrl: '/voice.mp3' }),
+    ]
+
+    const first = await mount({ assets, selectedId: null, loading: false })
+    try {
+      buttonByText(first.host, 'Voiceover').click()
+      await nextTick()
+
+      expect(first.host.textContent).toContain('Opening voiceover')
+      expect(first.host.textContent).not.toContain('Ready generated video')
+      expect(localStorage.getItem('video-studio-library-category')).toBe('voiceover')
+    } finally {
+      first.app.unmount()
+    }
+
+    const second = await mount({ assets, selectedId: null, loading: false })
+    try {
+      expect(second.host.textContent).toContain('Opening voiceover')
+      expect(second.host.textContent).not.toContain('Ready generated video')
+    } finally {
+      second.app.unmount()
     }
   })
 })

@@ -634,9 +634,10 @@ Never:
   - Acceptance: source, model/provider, captions, timeline readiness and status are scannable.
   - Verify: asset normalization tests and component tests.
 
-- [ ] Add saved filter state where appropriate.
+- [x] Add saved filter state where appropriate.
   - Acceptance: operator can keep common asset filters without fighting reset behavior.
   - Verify: component test or composable test.
+  - Implementation: persist reusable category, source, status, and sort preferences; keep project-specific search/model/aspect/bucket filters ephemeral.
 
 ### Phase 5: Timeline/Review Integration
 
