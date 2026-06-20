@@ -76,9 +76,13 @@ scope**, **`VISUALS_TO_KNOWLEDGE_ENABLED` flag (off)**.
   never blocks or breaks the upload.
 - 6 trigger tests (531 AI tests green); lint + server-tsc clean. Dormant until the flag is flipped on the edge.
 
-**Still open (smaller / deferred):** banner-export trigger (same pattern, when banner exports matter);
-DS-2 department-scope routing for managers (org-KB default is fine for v1); operator verify-live (real
-llava output + R2 byte-fetch on the edge — the AI binding is absent in unit tests).
+**Banner image-export trigger also built** (`2b984d3b`): shared `captionAssetsInBackground` core +
+`maybeCaptionBannerExports`, wired into `banner-studio/export-image.post.ts`. Same dormant/fail-safe
+machinery; image exports only (video/gif handlers don't call it).
+
+**Still open (smaller / deferred):** DS-2 department-scope routing for managers (org-KB default is fine for
+v1); operator verify-live (real llava output + R2 byte-fetch on the edge — the AI binding is absent in unit
+tests); video/gif export captioning (out of scope — llava is single-image).
 
 ## 4. Phase 2 (deferred — documented, not built)
 
