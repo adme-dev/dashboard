@@ -6,6 +6,7 @@ import { getMyProjectsTool } from './projects'
 import { getMyBriefsTool } from './briefs'
 import { getMyLeadsTool } from './leads'
 import { getMySocialReportTool } from './socialReport'
+import { respondToApprovalTool } from './respondApproval'
 import { narrowPortalRegistryByApps } from './appAssignment'
 
 export type { PortalAiTool, PortalToolContext }
@@ -19,12 +20,15 @@ export { PORTAL_APP_TOOLS, narrowPortalRegistryByApps, getEnabledPortalApps } fr
  * append here later, each `mutates` + propose→confirm.
  */
 export const portalRegistry: PortalAiTool<any>[] = [
+  // Tier 1 — read-only.
   getMyApprovalsTool,
   getMyInvoicesTool,
   getMyProjectsTool,
   getMyBriefsTool,
   getMyLeadsTool,
   getMySocialReportTool,
+  // Tier 2 — own-data writes (mutates). Only exposed when allowWrites (AI_PORTAL_WRITES_ENABLED).
+  respondToApprovalTool,
 ]
 
 /**
@@ -33,7 +37,14 @@ export const portalRegistry: PortalAiTool<any>[] = [
  * assigned apps (config narrows, never grants). This is the single entry point a portal loop uses;
  * there is no path here that admits an agency tool or an unscoped context.
  */
-export function buildPortalTools(ctx: PortalToolContext, seed: string, enabledApps: string[] | null = null) {
+export function buildPortalTools(
+  ctx: PortalToolContext,
+  seed: string,
+  opts: { enabledApps?: string[] | null, allowWrites?: boolean } = {},
+) {
   assertPortalScope(ctx)
-  return toPortalSdkTools(narrowPortalRegistryByApps(portalRegistry, enabledApps), ctx, seed)
+  let tools = narrowPortalRegistryByApps(portalRegistry, opts.enabledApps ?? null)
+  // Tier 2 writes are doubly dormant: absent unless allowWrites (AI_PORTAL_WRITES_ENABLED) is set.
+  if (!opts.allowWrites) tools = tools.filter(t => !t.mutates)
+  return toPortalSdkTools(tools, ctx, seed)
 }

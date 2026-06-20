@@ -32,6 +32,8 @@ export async function runPortalToolLoop(opts: {
   fallbackSpec?: string
   /** The client's assigned apps (config narrows the toolset; null = default-all). */
   enabledApps?: string[] | null
+  /** Expose Tier-2 write tools (defaults to the AI_PORTAL_WRITES_ENABLED flag). */
+  allowWrites?: boolean
   /** Test injection — bypasses resolveModel. */
   model?: LanguageModel
   fallbackModel?: LanguageModel
@@ -41,7 +43,11 @@ export async function runPortalToolLoop(opts: {
   assertPortalScope(opts.ctx)
   const cfg = useRuntimeConfig() as any
 
-  const sdkTools = buildPortalTools(opts.ctx, opts.seed, opts.enabledApps ?? null)
+  const sdkTools = buildPortalTools(opts.ctx, opts.seed, {
+    enabledApps: opts.enabledApps ?? null,
+    // Tier 2 writes only when the dedicated flag is on (doubly dormant). Caller may also force it in tests.
+    allowWrites: opts.allowWrites ?? !!cfg.aiPortalWritesEnabled,
+  })
   const system = [PORTAL_SYSTEM_PREAMBLE, opts.system, spotlightSystemClause()].filter(Boolean).join('\n\n')
 
   const run = (m: LanguageModel) => generateText({

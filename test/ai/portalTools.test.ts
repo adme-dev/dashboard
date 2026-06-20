@@ -40,8 +40,8 @@ const ARG_PROBES: any[] = [
 ]
 
 describe('portal registry — cross-tenant isolation (fuzz, the §12 gate)', () => {
-  it('every tool binds clientScope as $1 and never touches/returns another tenant', async () => {
-    for (const t of portalRegistry) {
+  it('every read tool binds clientScope as $1 and never touches/returns another tenant', async () => {
+    for (const t of portalRegistry.filter(t => !t.mutates)) {
       for (const probe of ARG_PROBES) {
         const calls: { sql: string, params: any[] }[] = []
         const ctx = ctxFor(TENANT_A, makeFakeDb(calls))
@@ -126,24 +126,32 @@ describe('portal scope guard (§12 #1 — refuses to run without clientScope)', 
     expect(() => buildPortalTools({ clientScope: '', clientUserId: 'x', event: {} as any }, 'seed')).toThrow()
   })
 
-  it('buildPortalTools yields exactly the portal registry tools when scoped', () => {
+  it('buildPortalTools omits Tier-2 writes by default (doubly dormant)', () => {
     const tools = buildPortalTools(ctxFor(TENANT_A, makeFakeDb([])), 'seed')
+    expect(Object.keys(tools).sort()).toEqual(portalRegistry.filter(t => !t.mutates).map(t => t.name).sort())
+    expect(Object.keys(tools)).not.toContain('respond_to_approval')
+  })
+
+  it('buildPortalTools exposes writes only when allowWrites is set', () => {
+    const tools = buildPortalTools(ctxFor(TENANT_A, makeFakeDb([])), 'seed', { allowWrites: true })
     expect(Object.keys(tools).sort()).toEqual(portalRegistry.map(t => t.name).sort())
+    expect(Object.keys(tools)).toContain('respond_to_approval')
   })
 })
 
-describe('portal registry — only portal-safe read tools', () => {
-  it('contains exactly the Tier-1 read tools, no agency tools', () => {
+describe('portal registry — only portal-safe tools', () => {
+  it('contains the Tier-1 reads + the single Tier-2 write, no agency tools', () => {
     const names = portalRegistry.map(t => t.name)
     expect(names).toEqual([
       'get_my_approvals', 'get_my_invoices', 'get_project_status_portal', 'get_my_briefs', 'get_my_leads', 'get_my_social_report',
+      'respond_to_approval',
     ])
     for (const banned of ['get_finance_snapshot', 'get_client_profitability', 'create_task', 'propose_budget_change', 'search_knowledge']) {
       expect(names).not.toContain(banned)
     }
   })
 
-  it('Tier 1 is read-only — no tool mutates', () => {
-    expect(portalRegistry.every(t => !(t as any).mutates)).toBe(true)
+  it('respond_to_approval is the ONLY mutating tool (everything else is read-only)', () => {
+    expect(portalRegistry.filter(t => t.mutates).map(t => t.name)).toEqual(['respond_to_approval'])
   })
 })

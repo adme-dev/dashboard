@@ -40,8 +40,10 @@ export const defaultPortalDb: PortalDb = { queryRows, queryOne }
 export type PortalToolContext = {
   /** REQUIRED tenant key — `agency_clients.id`. Every query filters `WHERE client_id = $1` on this. */
   clientScope: string
-  /** The portal user — `client_users.id`. Used for personal-memory scope only. */
+  /** The portal user — `client_users.id`. Used for personal-memory scope + write-proposal ownership. */
   clientUserId: string
+  /** The portal conversation — required for a write tool to persist its proposal. */
+  conversationId?: string
   event: H3Event
   /** Injected DB (defaults to the real db); lets every handler be unit-tested without a database. */
   db?: PortalDb
@@ -64,6 +66,24 @@ export function portalDb(ctx: PortalToolContext): PortalDb {
 }
 
 /**
+ * Persist a Tier-2 portal write PROPOSAL (Option B: the model proposes, the confirm endpoint executes).
+ * The row is tenant-tagged with `client_scope = clientScope` and owned by `clientUserId`, so the portal
+ * confirm endpoint can only claim it for the same client+user. Never writes the real mutation.
+ */
+export async function proposePortalAction(ctx: PortalToolContext, toolName: string, resolvedPayload: unknown): Promise<string> {
+  assertPortalScope(ctx)
+  if (!ctx.conversationId) throw new Error('Portal write proposal requires a conversation')
+  const row = await portalDb(ctx).queryOne<{ id: string }>(
+    `INSERT INTO ai_pending_actions (conversation_id, user_id, tool_name, resolved_payload, status, client_scope)
+     VALUES ($1, $2, $3, $4, 'proposed', $5)
+     RETURNING id`,
+    [ctx.conversationId, ctx.clientUserId, toolName, JSON.stringify(resolvedPayload), ctx.clientScope],
+  )
+  if (!row) throw new Error('Failed to persist portal proposal')
+  return row.id
+}
+
+/**
  * Portal tool definition. Distinct from the agency `AiTool`: the handler receives a `PortalToolContext`
  * (clientScope REQUIRED) and there is no `requiredPermission`/RBAC slot. Tier 1 is read-only, so
  * `mutates` is intentionally absent here — it arrives with Tier 2 own-data actions.
@@ -74,6 +94,10 @@ export interface PortalAiTool<A> {
   parameters: z.ZodType<A>
   /** true = results contain untrusted text → spotlighted before entering model context. */
   returnsUntrusted?: boolean
+  /** true = write tool (Tier 2) → handler only PROPOSES; the confirm endpoint executes. */
+  mutates?: boolean
+  /** Human-gating tier for a write (defaults to 'confirm'); the confirm endpoint can demand richer. */
+  riskTier?: 'auto' | 'confirm' | 'rich_confirm'
   handler: (args: A, ctx: PortalToolContext) => Promise<ToolResult>
 }
 

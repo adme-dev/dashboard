@@ -101,6 +101,9 @@ export default defineNuxtConfig({
     // Client-portal co-pilot (portal-agent spec) — OFF by default. Its OWN gate so enabling the
     // agency chat (AI_TOOLS_ENABLED) never auto-exposes the customer-facing surface. Hard gate per §8.
     aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true',
+    // Portal Tier 2 own-data WRITES (e.g. respond_to_approval) — OFF by default, DOUBLY dormant
+    // (also needs AI_PORTAL_ENABLED). Write tools are absent from the portal toolset until this is on.
+    aiPortalWritesEnabled: process.env.AI_PORTAL_WRITES_ENABLED === 'true',
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 

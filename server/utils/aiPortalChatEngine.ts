@@ -15,6 +15,8 @@ export interface PortalChatResult {
   conversationId: string
   reply: string
   toolCalls: Array<{ name: string, args: unknown }>
+  /** Present when the assistant proposed a Tier-2 write awaiting the customer's confirmation. */
+  proposedAction?: { proposalId: string, resolved: unknown, toolName: string } | null
 }
 
 /** Load (verifying client-user ownership) or create a portal conversation. */
@@ -70,18 +72,22 @@ export async function processPortalMessage(input: {
   const startedAt = Date.now()
   let reply = ''
   let toolCalls: Array<{ name: string, args: unknown }> = []
+  let proposedAction: { proposalId: string, resolved: unknown, toolName: string } | null = null
   let isError = false
   try {
     // Toolset = the client's assigned apps ∩ portal-safe tools (null = default-all). Fail-safe to all.
     const enabledApps = await getEnabledPortalApps(clientId, { queryOne })
     const loop = await runPortalToolLoop({
-      ctx: { clientScope: clientId, clientUserId, event },
+      ctx: { clientScope: clientId, clientUserId, conversationId, event },
       messages,
       seed: conversationId,
       enabledApps,
     })
-    reply = loop.text?.trim() || 'I looked into that but didn’t find anything to report.'
+    reply = loop.text?.trim() || (loop.proposedAction
+      ? 'I’ve prepared that — please review and confirm below.'
+      : 'I looked into that but didn’t find anything to report.')
     toolCalls = loop.toolCalls
+    proposedAction = loop.proposedAction
   } catch (err) {
     console.error('Portal AI loop failed:', err)
     reply = 'Sorry — I had trouble with that just now. Please try again in a moment.'
@@ -101,5 +107,5 @@ export async function processPortalMessage(input: {
     [conversationId],
   )
 
-  return { conversationId, reply, toolCalls }
+  return { conversationId, reply, toolCalls, proposedAction }
 }
