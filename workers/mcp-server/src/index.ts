@@ -23,12 +23,19 @@
 import { McpAgent } from 'agents/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import OAuthProvider, { type OAuthHelpers } from '@cloudflare/workers-oauth-provider'
 
 interface Env {
   APP_BASE_URL: string
   MCP_INTERNAL_SECRET: string
   MCP_OBJECT: DurableObjectNamespace
+  OAUTH_KV: KVNamespace
+  OAUTH_PROVIDER: OAuthHelpers
 }
+
+/** base64url for round-tripping the OAuth request blob through the app login (URL-safe). */
+const b64urlEncode = (s: string) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const b64urlDecode = (s: string) => atob(s.replace(/-/g, '+').replace(/_/g, '/'))
 
 // Per-session props the OAuth layer puts on the token (TODO A). userId is the validated XeroFlow user.
 type Props = { userId: string }
@@ -80,7 +87,54 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
   }
 }
 
-// TODO (A): wrap with @cloudflare/workers-oauth-provider so `props.userId` is the validated XeroFlow user
-// (reuse the app's identity; audience-bound `mcp:read` token). Until wired, this serves the MCP transport
-// WITHOUT auth and MUST NOT be deployed publicly. See DEPLOYMENT.md §OAuth.
-export default XeroFlowMcpAgent.serve('/mcp')
+// OAuth identity handler (TODO A — reuse app identity). The provider implements /token + /register; this
+// handles /authorize (delegate to the app login) and /callback (verify the app's signed assertion → grant).
+const authHandler = {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url)
+
+    // 1. MCP client starts OAuth → bounce the browser to the app to authenticate the user.
+    if (url.pathname === '/authorize') {
+      const oauthReqInfo = await env.OAUTH_PROVIDER.parseAuthRequest(request)
+      const appAuthorize = new URL('/api/mcp/authorize', env.APP_BASE_URL)
+      appAuthorize.searchParams.set('redirect_uri', `${url.origin}/callback`)
+      appAuthorize.searchParams.set('state', b64urlEncode(JSON.stringify(oauthReqInfo)))
+      return Response.redirect(appAuthorize.toString(), 302)
+    }
+
+    // 2. App redirects back after login+consent with a signed assertion → resolve userId, grant.
+    if (url.pathname === '/callback') {
+      const state = url.searchParams.get('state') || ''
+      const assertion = url.searchParams.get('assertion') || ''
+      const res = await fetch(`${env.APP_BASE_URL}/api/internal/mcp/exchange`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-mcp-secret': env.MCP_INTERNAL_SECRET },
+        body: JSON.stringify({ assertion }),
+      })
+      if (!res.ok) return new Response('Authentication failed', { status: 401 })
+      const { userId } = await res.json() as { userId: string }
+
+      const oauthReqInfo = JSON.parse(b64urlDecode(state))
+      const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
+        request: oauthReqInfo,
+        userId,
+        scope: ['mcp:read'],
+        metadata: {},
+        props: { userId },
+      })
+      return Response.redirect(redirectTo, 302)
+    }
+
+    return new Response('Not found', { status: 404 })
+  },
+}
+
+export default new OAuthProvider({
+  apiRoute: '/mcp',
+  apiHandler: XeroFlowMcpAgent.serve('/mcp'),
+  defaultHandler: authHandler,
+  authorizeEndpoint: '/authorize',
+  tokenEndpoint: '/token',
+  clientRegistrationEndpoint: '/register',
+  scopesSupported: ['mcp:read'],
+})

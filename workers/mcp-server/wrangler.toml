@@ -26,6 +26,13 @@ bindings = [
 tag = "v1"
 new_sqlite_classes = ["XeroFlowMcpAgent"]
 
+# workers-oauth-provider requires a KV namespace bound as OAUTH_KV (token storage).
+# Create it: `wrangler kv namespace create OAUTH_KV` → paste the id below.
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
 # Secrets (set via `wrangler secret put`, NOT vars):
-#   MCP_INTERNAL_SECRET   — must match the Pages project's MCP_INTERNAL_SECRET (Worker→app auth)
-#   OAUTH_* / signing keys — per the chosen IdP (see DEPLOYMENT.md §OAuth)
+#   MCP_INTERNAL_SECRET   — must match the Pages project's MCP_INTERNAL_SECRET (Worker→app auth + exchange)
+#   MCP_HANDSHAKE_SECRET  — must match the Pages project's MCP_HANDSHAKE_SECRET (assertion HMAC)
+# Also set MCP_WORKER_ORIGIN on the PAGES project to this Worker's origin (open-redirect guard).

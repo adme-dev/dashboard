@@ -6,12 +6,22 @@ Thin proxy: it does OAuth + MCP transport, then calls the Pages app's `/api/inte
 
 ## Status: SCAFFOLD — not yet live
 
-One integration point remains before deploy (see `src/index.ts` TODO (A)):
+Both integration points are now scaffolded + verified-to-compile. What remains is **infra config + a live
+connection test** (no more app code).
 
-- **(A) OAuth IdP** — wire `@cloudflare/workers-oauth-provider` so a validated XeroFlow user's `userId`
-  lands in the session `props`. Decision (per spec §10, confirmed): **reuse the app's existing identity**,
-  issue **audience-bound** tokens with the **`mcp:read`** scope. Until this is wired, the Worker serves the
-  MCP transport **without auth — do NOT deploy publicly until (A) is done.**
+- **(A) OAuth IdP — SCAFFOLDED (2026-06-20), reuse-app-identity.** Wired `@cloudflare/workers-oauth-provider@0.8.1`:
+  the Worker is the MCP-facing OAuth server (`/token`, `/register` auto); `/authorize` bounces the browser to
+  the app's `/api/mcp/authorize` (existing login), which mints a short-lived **HMAC-signed assertion** of the
+  userId; the Worker's `/callback` posts it to `/api/internal/mcp/exchange` to resolve `userId`, then
+  `completeAuthorization({ props:{userId}, scope:['mcp:read'] })`. Assertion sign/verify is single-sourced +
+  unit-tested in `server/utils/ai/mcp/assertion.ts` (HMAC-SHA256, 120s TTL, fail-safe). Compiles clean
+  against the real lib. **Remaining = config, not code:**
+  - `wrangler kv namespace create OAUTH_KV` → put the id in `wrangler.toml`.
+  - Set matching secrets on BOTH sides: `MCP_INTERNAL_SECRET`, `MCP_HANDSHAKE_SECRET` (Pages project + this
+    Worker via `wrangler secret put`), and `MCP_WORKER_ORIGIN` (Pages project = this Worker's origin, the
+    open-redirect guard).
+  - **Refinement (optional):** add an explicit consent screen on `/api/mcp/authorize` before minting; the
+    scaffold mints on confirmed login. And `/sign-in?redirect=` round-trip assumes that login route exists.
 
 - **(B) Tool registration — DONE (2026-06-20).** Versions pinned (`agents@0.16.2`,
   `@modelcontextprotocol/sdk@1.29.0`) and the registration verified to **compile against the real SDK

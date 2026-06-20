@@ -6,7 +6,8 @@
   "scripts": { "deploy": "wrangler deploy", "dev": "wrangler dev" },
   "dependencies": {
     "agents": "0.16.2",
-    "@modelcontextprotocol/sdk": "1.29.0"
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@cloudflare/workers-oauth-provider": "0.8.1"
   },
   "devDependencies": { "wrangler": "^4.95.0", "@cloudflare/workers-types": "*", "typescript": "*" }
 }
