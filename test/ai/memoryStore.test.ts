@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   upsertMemory, getMemoriesByIds, listRecentMemories, stampUsed, deleteUserMemory, markEmbedded,
-  REINFORCE_STEP, type MemoryDb,
+  listUserMemoriesBySource, deleteMemoryById,
+  REINFORCE_STEP, type MemoryDb
 } from '~~/server/utils/ai/memory/store'
 
 const fakeDb = (over: Partial<MemoryDb> = {}): MemoryDb => ({
   queryOne: vi.fn().mockResolvedValue({ id: 'm1' }),
   queryRows: vi.fn().mockResolvedValue([]),
   execute: vi.fn().mockResolvedValue(undefined),
-  ...over,
+  ...over
 })
 
 describe('upsertMemory', () => {
@@ -19,13 +20,13 @@ describe('upsertMemory', () => {
     const params = (db.queryOne as any).mock.calls[0][1]
     // [userId, scope, scope_ref, memType, content, source, salience, metadata, reinforceStep]
     expect(params[0]).toBe('u1')
-    expect(params[1]).toBe('user')          // default scope
-    expect(params[2]).toBeNull()            // default scope_ref (personal)
+    expect(params[1]).toBe('user') // default scope
+    expect(params[2]).toBeNull() // default scope_ref (personal)
     expect(params[3]).toBe('semantic')
     expect(params[4]).toBe('prefers ROAS')
-    expect(params[5]).toBe('inferred')      // default source
-    expect(params[6]).toBe(0.5)             // default salience
-    expect(params[8]).toBe(REINFORCE_STEP)  // reinforcement on conflict
+    expect(params[5]).toBe('inferred') // default source
+    expect(params[6]).toBe(0.5) // default salience
+    expect(params[8]).toBe(REINFORCE_STEP) // reinforcement on conflict
   })
 
   it('honors explicit scope/scope_ref/source/salience', async () => {
@@ -33,7 +34,7 @@ describe('upsertMemory', () => {
     await upsertMemory({ userId: 'u1', memType: 'procedural', content: 'team routine', scope: 'department', scopeRef: 'dept-1', source: 'explicit', salience: 0.9 }, db)
     const params = (db.queryOne as any).mock.calls[0][1]
     expect(params[1]).toBe('department')
-    expect(params[2]).toBe('dept-1')        // scope_ref carried for department scope
+    expect(params[2]).toBe('dept-1') // scope_ref carried for department scope
     expect(params[5]).toBe('explicit')
     expect(params[6]).toBe(0.9)
   })
@@ -103,5 +104,36 @@ describe('deleteUserMemory', () => {
     await deleteUserMemory('u1', db)
     expect((db.execute as any).mock.calls[0][0]).toContain('WHERE user_id = $1')
     expect((db.execute as any).mock.calls[0][1]).toEqual(['u1'])
+  })
+})
+
+describe('listUserMemoriesBySource', () => {
+  it('filters by user AND source, user-scoped', async () => {
+    const queryRows = vi.fn().mockResolvedValue([{ id: 'm1' }])
+    const rows = await listUserMemoriesBySource('u1', 'observed', 50, fakeDb({ queryRows }))
+    expect(rows).toEqual([{ id: 'm1' }])
+    const [sql, params] = queryRows.mock.calls[0]!
+    expect(sql).toContain('WHERE user_id = $1 AND source = $2')
+    expect(params).toEqual(['u1', 'observed', 50])
+  })
+})
+
+describe('deleteMemoryById', () => {
+  it('deletes one row scoped to id AND user, returns true when a row was removed', async () => {
+    const execute = vi.fn().mockResolvedValue(1)
+    const ok = await deleteMemoryById('m1', 'u1', fakeDb({ execute }))
+    expect(ok).toBe(true)
+    const [sql, params] = execute.mock.calls[0]!
+    expect(sql).toContain('WHERE id = $1 AND user_id = $2')
+    expect(params).toEqual(['m1', 'u1'])
+  })
+  it('returns false when no row matched (foreign id / wrong user)', async () => {
+    expect(await deleteMemoryById('m1', 'u1', fakeDb({ execute: vi.fn().mockResolvedValue(0) }))).toBe(false)
+  })
+  it('no-ops on missing id or user', async () => {
+    const db = fakeDb()
+    expect(await deleteMemoryById('', 'u1', db)).toBe(false)
+    expect(await deleteMemoryById('m1', '', db)).toBe(false)
+    expect(db.execute).not.toHaveBeenCalled()
   })
 })

@@ -15,7 +15,7 @@ export interface MemoryDb {
 const defaultDb: MemoryDb = {
   queryOne: realQueryOne as MemoryDb['queryOne'],
   queryRows: realQueryRows as MemoryDb['queryRows'],
-  execute: realExecute as MemoryDb['execute'],
+  execute: realExecute as MemoryDb['execute']
 }
 
 /** How much salience a repeat-remember adds (capped at 1.0). */
@@ -44,8 +44,8 @@ export async function upsertMemory(input: UpsertMemoryInput, db: MemoryDb = defa
       input.source ?? 'inferred',
       input.salience ?? 0.5,
       JSON.stringify(input.metadata ?? {}),
-      REINFORCE_STEP,
-    ],
+      REINFORCE_STEP
+    ]
   )
   if (!row) throw new Error('upsertMemory: insert returned no row')
   return row.id
@@ -75,7 +75,7 @@ export async function listRecentMemories(userId: string, limit: number, db: Memo
        WHERE user_id = $1
        ORDER BY last_used_at DESC NULLS LAST, created_at DESC
        LIMIT $2`,
-    [userId, limit],
+    [userId, limit]
   )
 }
 
@@ -91,7 +91,7 @@ export async function listSharedMemories(departmentIds: string[], limit: number,
           OR (scope = 'department' AND scope_ref = ANY($1::uuid[]))
        ORDER BY salience DESC, last_used_at DESC NULLS LAST, created_at DESC
        LIMIT $2`,
-    [departmentIds, limit],
+    [departmentIds, limit]
   )
 }
 
@@ -99,7 +99,7 @@ export async function listSharedMemories(departmentIds: string[], limit: number,
 export async function listUserDepartments(userId: string, db: MemoryDb = defaultDb): Promise<string[]> {
   const rows = await db.queryRows<{ department_id: string }>(
     `SELECT department_id FROM department_members WHERE user_id = $1`,
-    [userId],
+    [userId]
   )
   return rows.map(r => r.department_id)
 }
@@ -113,4 +113,35 @@ export async function stampUsed(ids: string[], db: MemoryDb = defaultDb): Promis
 /** Right-to-forget: delete all of a user's memory (offboarding / "clear my memory"). */
 export async function deleteUserMemory(userId: string, db: MemoryDb = defaultDb): Promise<void> {
   await db.execute(`DELETE FROM ai_user_memory WHERE user_id = $1`, [userId])
+}
+
+/**
+ * A user's own memories of a given source (e.g. 'observed'), most-recent first. STRICTLY user_id-scoped.
+ * Powers the W-3 transparency panel ("What I've learned from your work"). Personal scope only — shared
+ * department/org memories are read via listSharedMemories.
+ */
+export async function listUserMemoriesBySource(
+  userId: string,
+  source: string,
+  limit: number,
+  db: MemoryDb = defaultDb
+): Promise<UserMemory[]> {
+  return db.queryRows<UserMemory>(
+    `SELECT * FROM ai_user_memory
+       WHERE user_id = $1 AND source = $2
+       ORDER BY salience DESC, last_used_at DESC NULLS LAST, created_at DESC
+       LIMIT $3`,
+    [userId, source, limit]
+  )
+}
+
+/**
+ * Delete ONE of a user's own memories by id. The `AND user_id = $2` is the isolation guard — a foreign
+ * id can never delete another user's row (the W-3 panel only ever deletes the caller's own memories).
+ * Returns true if a row was deleted. The db `execute` helper returns the affected-row count.
+ */
+export async function deleteMemoryById(id: string, userId: string, db: MemoryDb = defaultDb): Promise<boolean> {
+  if (!id || !userId) return false
+  const affected = await db.execute(`DELETE FROM ai_user_memory WHERE id = $1 AND user_id = $2`, [id, userId])
+  return typeof affected === 'number' ? affected > 0 : true
 }
