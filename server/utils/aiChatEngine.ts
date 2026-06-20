@@ -489,20 +489,67 @@ export async function processUserMessage(
       const loopMessages = history
         .map(m => ({ role: m.role, content: m.content }))
         .concat([{ role: 'user' as const, content }])
-      const loop = await runToolLoop({
-        ctx: { userId, userRole, conversationId, event },
-        system: systemPrompt,
-        messages: loopMessages,
-        seed: conversationId,
-        persona: activePersona,
-      })
-      aiContent = loop.text
-      toolTrace = loop.toolCalls
-      proposedAction = loop.proposedAction
-      usedToolLoop = true
-      toolCostUsd = loop.costUsd ?? null
-      promptTokens = loop.usage?.inputTokens ?? null
-      completionTokens = loop.usage?.outputTokens ?? null
+
+      // L2 traffic controller (Phase 3, behind AI_CONTROLLER_L2_ENABLED): for a request that provably
+      // spans ≥2 domains the user is entitled to, decompose → delegate to specialist packs in parallel
+      // → synthesize ONE answer. Read-oriented composition; each sub-run is RBAC-filtered inside the
+      // loop (the composed answer can never exceed what the user could get directly). Fail-safe: any
+      // error or <2 entitled packs degrades to the normal L1 single-pack loop below.
+      let l2Answer: string | null = null
+      let l2Cost = 0
+      if (cfg.aiControllerL2Enabled) {
+        try {
+          const [{ classifyRequest }, { planSpecialists }, { delegateToSpecialists }, { synthesizeAnswer }] = await Promise.all([
+            import('~~/server/utils/ai/controller/classify'),
+            import('~~/server/utils/ai/controller/route'),
+            import('~~/server/utils/ai/controller/delegate'),
+            import('~~/server/utils/ai/controller/synthesize'),
+          ])
+          const cls = await classifyRequest(content, {
+            complete: p => generateGroqInsight(p, { model: GROQ_MODELS.REASONING_20B, temperature: 0.1, maxTokens: 200, systemPrompt: 'Reply with ONLY JSON.' }),
+          })
+          const plan = cls.tier === 'L2' ? planSpecialists(cls.domains, userRole) : { personas: [] }
+          if (plan.personas.length >= 2) {
+            const results = await delegateToSpecialists(plan.personas, {
+              runLoop: async (pk) => {
+                const sub = await runToolLoop({
+                  ctx: { userId, userRole, conversationId, event },
+                  system: systemPrompt, messages: loopMessages, seed: `${conversationId}:${pk}`, persona: resolvePersona(pk),
+                })
+                l2Cost += sub.costUsd ?? 0
+                return { text: sub.text }
+              },
+            })
+            l2Answer = await synthesizeAnswer(content, results, {
+              complete: p => generateGroqInsight(p, { model: GROQ_MODELS.REASONING_120B, temperature: 0.2, maxTokens: 1200, systemPrompt: 'Combine the specialist findings into one grounded answer; invent nothing.' }),
+            })
+            toolTrace = [{ name: 'traffic_controller_l2', args: { domains: cls.domains, packs: plan.personas } }]
+          }
+        } catch (err) {
+          console.error('L2 controller failed; falling back to L1:', err)
+        }
+      }
+
+      if (l2Answer) {
+        aiContent = l2Answer
+        usedToolLoop = true
+        toolCostUsd = l2Cost || null
+      } else {
+        const loop = await runToolLoop({
+          ctx: { userId, userRole, conversationId, event },
+          system: systemPrompt,
+          messages: loopMessages,
+          seed: conversationId,
+          persona: activePersona,
+        })
+        aiContent = loop.text
+        toolTrace = loop.toolCalls
+        proposedAction = loop.proposedAction
+        usedToolLoop = true
+        toolCostUsd = loop.costUsd ?? null
+        promptTokens = loop.usage?.inputTokens ?? null
+        completionTokens = loop.usage?.outputTokens ?? null
+      }
       if (!aiContent.trim()) {
         aiContent = proposedAction
           ? 'I’ve prepared this action — please review and confirm below.'

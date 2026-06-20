@@ -95,6 +95,9 @@ export default defineNuxtConfig({
     // Inferred personal-memory distillation (Phase-0 WS-A.8b) — OFF by default. When enabled, the
     // chat engine distils ≤3 durable memories per turn fire-and-forget. Hard gate per the build loop.
     aiMemoryDistillEnabled: process.env.AI_MEMORY_DISTILL_ENABLED === 'true',
+    // L2 traffic-controller supervisor (Phase 3) — OFF by default. When enabled, cross-domain requests
+    // fan out to ≥2 specialist skill-packs and synthesize one answer. Adds latency + cost; hard gate.
+    aiControllerL2Enabled: process.env.AI_CONTROLLER_L2_ENABLED === 'true',
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 

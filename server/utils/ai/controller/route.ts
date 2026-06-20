@@ -1,7 +1,8 @@
 import type { AiIntent } from '~/types'
 import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
 import { roleDefaultPersona } from '../rolePersona'
-import { packForIntent } from './registry'
+import { packForIntent, SKILL_PACKS } from './registry'
+import type { ControllerDomain } from './classify'
 
 /**
  * L1 traffic-controller routing (Phase 3, spec §3/§7-step-2). PURE: given the turn's intent + the
@@ -47,4 +48,29 @@ export function selectSkillPack(
   if (roleDefault) return { persona: roleDefault, reason: 'role-default' }
 
   return { persona: 'general', reason: 'generalist' }
+}
+
+/** Hard cap on L2 fan-out (spec §5.4 cost/latency cap). */
+export const MAX_FANOUT = 3
+
+/**
+ * L2 planning: map classifier domains → the specialist skill-packs to delegate to, RBAC-PRUNED so a
+ * pack the user isn't entitled to is dropped (spec §5.1 — the composed answer can never exceed what
+ * the user could get directly). Deduped, fan-out-capped. The caller degrades to L1 when <2 packs survive.
+ */
+export function planSpecialists(
+  domains: ControllerDomain[],
+  userRole: string,
+  deps: Pick<RouteDeps, 'hasPermission'> = defaultDeps,
+): { personas: string[] } {
+  const picked: string[] = []
+  for (const d of domains) {
+    // 'work' (tasks/boards) is served by the Account pack, which also covers the 'accounts' domain.
+    const pack = SKILL_PACKS.find(p => p.domains.includes(d) || (d === 'work' && p.persona === 'account'))
+    if (!pack) continue
+    if (pack.requiredPermission && !deps.hasPermission(userRole, pack.requiredPermission)) continue // RBAC ceiling
+    if (!picked.includes(pack.persona)) picked.push(pack.persona)
+    if (picked.length >= MAX_FANOUT) break
+  }
+  return { personas: picked }
 }
