@@ -30,6 +30,8 @@ export async function runPortalToolLoop(opts: {
   seed: string
   modelSpec?: string
   fallbackSpec?: string
+  /** The client's assigned apps (config narrows the toolset; null = default-all). */
+  enabledApps?: string[] | null
   /** Test injection — bypasses resolveModel. */
   model?: LanguageModel
   fallbackModel?: LanguageModel
@@ -39,7 +41,7 @@ export async function runPortalToolLoop(opts: {
   assertPortalScope(opts.ctx)
   const cfg = useRuntimeConfig() as any
 
-  const sdkTools = buildPortalTools(opts.ctx, opts.seed)
+  const sdkTools = buildPortalTools(opts.ctx, opts.seed, opts.enabledApps ?? null)
   const system = [PORTAL_SYSTEM_PREAMBLE, opts.system, spotlightSystemClause()].filter(Boolean).join('\n\n')
 
   const run = (m: LanguageModel) => generateText({

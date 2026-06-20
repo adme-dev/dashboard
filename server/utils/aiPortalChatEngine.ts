@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { runPortalToolLoop } from '~~/server/utils/ai/portalLoop'
+import { getEnabledPortalApps } from '~~/server/utils/ai/portalTools'
 
 /**
  * Client-portal chat engine (portal-agent spec §8). The customer-facing analog of aiChatEngine —
@@ -71,10 +72,13 @@ export async function processPortalMessage(input: {
   let toolCalls: Array<{ name: string, args: unknown }> = []
   let isError = false
   try {
+    // Toolset = the client's assigned apps ∩ portal-safe tools (null = default-all). Fail-safe to all.
+    const enabledApps = await getEnabledPortalApps(clientId, { queryOne })
     const loop = await runPortalToolLoop({
       ctx: { clientScope: clientId, clientUserId, event },
       messages,
       seed: conversationId,
+      enabledApps,
     })
     reply = loop.text?.trim() || 'I looked into that but didn’t find anything to report.'
     toolCalls = loop.toolCalls

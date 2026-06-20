@@ -6,9 +6,11 @@ import { getMyProjectsTool } from './projects'
 import { getMyBriefsTool } from './briefs'
 import { getMyLeadsTool } from './leads'
 import { getMySocialReportTool } from './socialReport'
+import { narrowPortalRegistryByApps } from './appAssignment'
 
 export type { PortalAiTool, PortalToolContext }
 export { assertPortalScope } from './portalContext'
+export { PORTAL_APP_TOOLS, narrowPortalRegistryByApps, getEnabledPortalApps } from './appAssignment'
 
 /**
  * The portal registry (portal-agent spec §3, layer 1: SEPARATE registry). ONLY portal-safe, read-only,
@@ -27,10 +29,11 @@ export const portalRegistry: PortalAiTool<any>[] = [
 
 /**
  * Build the SDK toolset for a portal turn. Refuses to run without a clientScope (spec §12 #1) BEFORE
- * any tool is constructed, then converts ONLY the portal registry. This is the single entry point a
- * portal loop uses — there is no path here that admits an agency tool or an unscoped context.
+ * any tool is constructed, then converts ONLY the portal registry — optionally narrowed to the client's
+ * assigned apps (config narrows, never grants). This is the single entry point a portal loop uses;
+ * there is no path here that admits an agency tool or an unscoped context.
  */
-export function buildPortalTools(ctx: PortalToolContext, seed: string) {
+export function buildPortalTools(ctx: PortalToolContext, seed: string, enabledApps: string[] | null = null) {
   assertPortalScope(ctx)
-  return toPortalSdkTools(portalRegistry, ctx, seed)
+  return toPortalSdkTools(narrowPortalRegistryByApps(portalRegistry, enabledApps), ctx, seed)
 }
