@@ -24,6 +24,7 @@ import { assignTaskTool, statusChangeTool, briefConvertTool } from './deliveryAc
 import { capacityTool } from './capacity'
 import { opportunityTool, logActivityTool, quoteTool, draftFollowupTool } from './crmActions'
 import { expenseApprovalTool, eomGenerateTool, expenseClassifyTool } from './financeActions'
+import { creativeQueueTool, proofStatusTool } from './creativeActions'
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
@@ -62,4 +63,7 @@ export const registry: AiTool<any>[] = [
   expenseApprovalTool,
   eomGenerateTool,
   expenseClassifyTool,
+  // Creative: queue read + proof-status write.
+  creativeQueueTool,
+  proofStatusTool,
 ]
