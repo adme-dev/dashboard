@@ -1,0 +1,19 @@
+name = "observe-cron"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+# Observe & Learn W-2 (observe-and-learn spec §4). Fires the Pages app's observed-memory distiller.
+# The endpoint is HARD-gated by AI_OBSERVE_ENABLED and idempotent (per-user watermark + memory upsert),
+# so overlapping ticks are harmless. Daily off-peak is plenty — routines need days to emerge, not minutes.
+[triggers]
+crons = [
+  "20 6 * * *"   # daily at 06:20 UTC
+]
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# CRON_SECRET is a secret (not a var) — must match the Pages project's CRON_SECRET.
+#   wrangler secret put CRON_SECRET
+# Deploy from an isolated copy OUTSIDE the repo tree (root .wrangler/deploy/config.json redirect
+# breaks sub-worker `wrangler deploy`).

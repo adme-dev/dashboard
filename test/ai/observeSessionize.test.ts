@@ -18,8 +18,8 @@ describe('sessionize', () => {
   it('groups events within the gap into one episode, splits on a larger gap', () => {
     const episodes = sessionize([
       ev('2026-06-15T09:00:00Z', 'spend.sync'),
-      ev('2026-06-15T09:10:00Z', 'budget.check'),     // +10m → same episode
-      ev('2026-06-15T11:00:00Z', 'task.status'),       // +110m → new episode
+      ev('2026-06-15T09:10:00Z', 'budget.check'), // +10m → same episode
+      ev('2026-06-15T11:00:00Z', 'task.status') // +110m → new episode
     ], 30)
     expect(episodes).toHaveLength(2)
     expect(episodes[0]!.kinds).toEqual(['spend.sync', 'budget.check'])
@@ -31,7 +31,7 @@ describe('sessionize', () => {
   it('sorts out-of-order events before grouping', () => {
     const episodes = sessionize([
       ev('2026-06-15T09:10:00Z', 'b'),
-      ev('2026-06-15T09:00:00Z', 'a'),
+      ev('2026-06-15T09:00:00Z', 'a')
     ], 30)
     expect(episodes).toHaveLength(1)
     expect(episodes[0]!.kinds).toEqual(['a', 'b'])
@@ -43,7 +43,7 @@ describe('detectRoutines', () => {
   const mondays = ['2026-06-01', '2026-06-08', '2026-06-15'].flatMap(day => [
     ev(`${day}T09:00:00Z`, 'spend.sync'),
     ev(`${day}T09:05:00Z`, 'budget.check'),
-    ev(`${day}T09:10:00Z`, 'recap.draft'),
+    ev(`${day}T09:10:00Z`, 'recap.draft')
   ])
 
   it('promotes a pattern seen on enough distinct days', () => {
@@ -60,7 +60,7 @@ describe('detectRoutines', () => {
 
   it('counts DISTINCT days, not raw episode count (same-day repeats don\'t inflate)', () => {
     const sameDayTwice = [
-      ev('2026-06-01T09:00:00Z', 'a'), ev('2026-06-01T13:00:00Z', 'a'), // two episodes, one day
+      ev('2026-06-01T09:00:00Z', 'a'), ev('2026-06-01T13:00:00Z', 'a') // two episodes, one day
     ]
     expect(detectRoutines(sessionize(sameDayTwice), 2)).toEqual([])
   })
@@ -68,11 +68,11 @@ describe('detectRoutines', () => {
   it('excludes sensitive actions from the routine signature', () => {
     const withSensitive = ['2026-06-01', '2026-06-08', '2026-06-15'].flatMap(day => [
       ev(`${day}T09:00:00Z`, 'expense.approved', { sensitive: true }),
-      ev(`${day}T09:05:00Z`, 'recap.draft'),
+      ev(`${day}T09:05:00Z`, 'recap.draft')
     ])
     const routines = detectRoutines(sessionize(withSensitive), 3)
     expect(routines).toHaveLength(1)
-    expect(routines[0]!.sequence).toEqual(['recap.draft'])     // sensitive kind dropped
+    expect(routines[0]!.sequence).toEqual(['recap.draft']) // sensitive kind dropped
   })
 
   it('an entirely-sensitive episode contributes no routine', () => {

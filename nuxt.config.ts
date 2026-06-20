@@ -98,6 +98,13 @@ export default defineNuxtConfig({
     // L2 traffic-controller supervisor (Phase 3) — OFF by default. When enabled, cross-domain requests
     // fan out to ≥2 specialist skill-packs and synthesize one answer. Adds latency + cost; hard gate.
     aiControllerL2Enabled: process.env.AI_CONTROLLER_L2_ENABLED === 'true',
+    // Observe & Learn W-2 (observe-and-learn spec §4) — OFF by default. When enabled, a daily cron
+    // distils each staff member's OWN recurring routines into source='observed', user-scoped memories.
+    // Read only at the cron boundary (observe-and-learn.post.ts checks process.env directly). Hard gate.
+    aiObserveEnabled: process.env.AI_OBSERVE_ENABLED === 'true',
+    // Observe & Learn W-4 proactive suggestion — HELD for explicit sign-off; DOUBLY dormant (also needs
+    // AI_OBSERVE_ENABLED). No proactive routine suggestion fires until this is on. Hard gate.
+    aiObserveProactiveEnabled: process.env.AI_OBSERVE_PROACTIVE_ENABLED === 'true',
     // Client-portal co-pilot (portal-agent spec) — OFF by default. Its OWN gate so enabling the
     // agency chat (AI_TOOLS_ENABLED) never auto-exposes the customer-facing surface. Hard gate per §8.
     aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true',
