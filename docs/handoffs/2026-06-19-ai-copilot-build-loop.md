@@ -74,17 +74,18 @@ Every team member (and, scoped, every client) gets a co-pilot that knows them, u
 **Phase 2 status:** all four write tools + counter-model + rich card built, 299/299 AI tests green, zero new type errors, **all dormant behind `AI_TOOLS_ENABLED`** and (for budget_change) the existing budget-write flag. No live external writes — budget changes only PLAN into the reviewed chain. Marketing-page sync still deferred to go-live.
 
 ### Phase 3 — Orchestration & surfaces
-- [ ] Traffic controller L1 auto-routing (intent+role → one skill-pack). *(traffic-controller §3)*
+- [x] **Traffic controller L1 auto-routing** (`d1df13ef`) — `controller/{registry,route}.ts`; per-turn skill-pack selection by intent+role (explicit → intent → role-default → generalist), RBAC-bounded, wired into `aiChatEngine` after intent. 10 tests.
+- [x] **Traffic controller L2 supervisor** (`bc2bbc55`) — `controller/{classify,route.planSpecialists,delegate,synthesize}.ts`; cross-domain decompose→delegate(parallel, RBAC-pruned, fan-out≤3)→synthesize, behind `AI_CONTROLLER_L2_ENABLED` (dormant). Composition-escalation-safe. 27 tests. (Note: the controller is **unreviewed** — run `/code-review high` before merge.)
 - [ ] Command Center v1 (Observe: proposals/audit/cost/memory) over existing data. *(command-center §4)*
 - [ ] `propose_knowledge_article` + KB draft review/publish queue + mig 182. *(command-center §3)*
-- [ ] Virtual office Mode A (dock co-pilot, room-scoped `ToolContext`). *blocked-by: ≥1 skill-pack*
+- [ ] Virtual office Mode A (dock co-pilot, room-scoped `ToolContext`). *blocked-by: ≥1 skill-pack — now satisfied*
 - [ ] Portal Tier 1 (separate portal registry, `clientScope` REQUIRED, read tools, cross-tenant fuzz test). *(portal §3)*
 - [ ] Self-service config: `ai_agent_configs` (mig 183) + "My Assistant" personalize + builder (gated). *(command-center §4a)*
-- [ ] Traffic controller L2 supervisor (decompose→delegate→synthesize, behind `AI_CONTROLLER_L2_ENABLED`). *blocked-by: ≥2 skill-packs*
 
 ## 6. Current state
 
-- **Phases 0, 1, 2 COMPLETE + ALL REVIEWED.** Head: `59d88c6b`. AI suite **319/319 green**, zero new type errors, all dormant behind `AI_TOOLS_ENABLED`.
+- **Phases 0, 1, 2 COMPLETE + REVIEWED; Phase 3 traffic controller (L1+L2) BUILT (unreviewed).** Head: `bc2bbc55`. AI suite **330/330 green**, zero new type errors, all dormant behind `AI_TOOLS_ENABLED` / `AI_CONTROLLER_L2_ENABLED`.
+- **Phase 3 controller:** L1 routes every turn to one skill-pack by intent+role; L2 (gated) supervises cross-domain requests. New `server/utils/ai/controller/`. Recommended next: `/code-review high` on the controller, then a Phase-3 surface — Command Center v1 (read-only Observe over proposals/audit/cost/memory) or Virtual Office Mode A (now unblocked).
 - **`/code-review high` ran on the Phase-2 writes (8 angles).** Fixes shipped in `77c0fac7` (server) + `59d88c6b` (voice): budget-alert executor read the wrong id field (`alert.id`) → every confirm showed a false failure (FIXED); `pctChange` forced to 0 on a from-$0 turn-on hid the riskiest change from the counter-model + card (now null + explicit prompt); **confirm-time permission re-check** added (`ActionExecutor.requiredPermission` + endpoint enforces it as the confirmer — closes the role-downgrade window) with a parity test guarding rich_confirm/permission drift; voice mode now sends `richConfirmAck` + per-tool spoken notes (was create_task-only, which broke budget-change voice confirm); dead `parseSanityResult` branch + O(n²) `resolveCampaign` scan cleaned up; `toolName` threaded through the voice/chat proposedAction types.
 - **Deferred (non-blocking) review items:** shared `resolveClientByName` helper + `makePostExecutor` factory + generalize `pickByExactName` (real duplication across the 3 propose tools — a cleanup refactor); the card's triple `switch(toolName)` → a config map; counter-model runs on every budget-change propose (kept always-on: safety > latency for a rare high-risk write); `resolveCampaign`/plan endpoint aren't per-client tenant-scoped (consistent with the existing budget-write chain + the prior "agency staff manage ALL clients" decision).
 - Next: merge (human-gated). Recommended Phase-3 start: Command Center v1 (Observe proposals/audit/cost/memory) or Traffic-controller L1.
