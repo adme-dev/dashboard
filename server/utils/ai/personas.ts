@@ -21,7 +21,7 @@ export interface Persona {
 
 // Useful to every persona, so each focused allowlist includes them: KB search, task creation, personal
 // memory capture, and proposing a KB draft (any agent can contribute knowledge — reviewed before publish).
-const COMMON = ['search_knowledge', 'create_task', 'remember', 'propose_knowledge_article']
+const COMMON = ['search_knowledge', 'create_task', 'remember', 'propose_knowledge_article', 'propose_team_memory']
 
 export const PERSONAS: Record<string, Persona> = {
   general: {

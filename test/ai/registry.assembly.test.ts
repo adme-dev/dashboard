@@ -25,8 +25,10 @@ const FINANCE_WRITES = ['propose_expense_approval', 'propose_eom_generate', 'pro
 // Creative pack (PRD §7): queue read + proof-status write.
 const CREATIVE_READS = ['get_my_creative_queue']
 const CREATIVE_WRITES = ['propose_proof_status']
+// Cross-cutting: promote a fact to department-shared memory (MANAGEMENT-gated).
+const SHARED_MEMORY_WRITES = ['propose_team_memory']
 // remember = personal-memory capture (non-mutating; available to every authed role).
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, 'remember']
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, 'remember']
 
 describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
   it('contains the 15 read tools + the write tools + remember', () => {
@@ -43,7 +45,7 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
 
   it('the mutating tools are exactly the propose→confirm writes', () => {
     expect(registry.filter(t => t.mutates).map(t => t.name).sort()).toEqual(
-      [...WRITE_TOOLS, ...DELIVERY_TOOLS, ...CRM_WRITES, ...FINANCE_WRITES, ...CREATIVE_WRITES].sort())
+      [...WRITE_TOOLS, ...DELIVERY_TOOLS, ...CRM_WRITES, ...FINANCE_WRITES, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES].sort())
   })
 
   it('RBAC filter hides FINANCE/CLIENTS tools from a low-privilege role but keeps create_task', () => {

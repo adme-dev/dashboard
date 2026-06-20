@@ -8,6 +8,7 @@ import { assignTaskExecutor, statusChangeExecutor, briefConvertExecutor } from '
 import { opportunityExecutor, logActivityExecutor, quoteExecutor } from './crmActions'
 import { expenseApprovalExecutor, eomGenerateExecutor, expenseClassifyExecutor } from './financeActions'
 import { proofStatusExecutor } from './creativeActions'
+import { teamMemoryExecutor } from './proposeTeamMemory'
 
 /**
  * The action-executor registry, keyed by tool name. The confirm endpoint dispatches a confirmed
@@ -30,6 +31,7 @@ export const executors: Record<string, ActionExecutor> = {
   [eomGenerateExecutor.toolName]: eomGenerateExecutor,
   [expenseClassifyExecutor.toolName]: expenseClassifyExecutor,
   [proofStatusExecutor.toolName]: proofStatusExecutor,
+  [teamMemoryExecutor.toolName]: teamMemoryExecutor,
 }
 
 /** Look up the executor for a proposed action's tool_name; null when unsupported (fail-safe). */

@@ -52,6 +52,8 @@ const view = computed(() => {
       return { icon: 'i-lucide-book-plus', label: 'Proposed knowledge draft · awaiting your confirmation', cta: 'Save draft', doneLabel: 'Draft saved for review' }
     case 'propose_eom_generate':
       return { icon: 'i-lucide-file-stack', label: 'Proposed EOM invoice run · needs your explicit confirmation', cta: 'Generate EOM run', doneLabel: 'EOM run generated' }
+    case 'propose_team_memory':
+      return { icon: 'i-lucide-users', label: 'Add to your team\'s shared memory · awaiting your confirmation', cta: 'Add to team memory', doneLabel: 'Added to team memory' }
     default:
       return { icon: 'i-lucide-list-todo', label: 'Proposed task · awaiting your confirmation', cta: 'Create task', doneLabel: 'Task created' }
   }
@@ -61,6 +63,7 @@ const view = computed(() => {
 const title = computed(() => {
   switch (toolName.value) {
     case 'propose_schedule_post': return r.value.content || 'Social post'
+    case 'propose_team_memory': return r.value.content || 'Team memory'
     case 'propose_budget_alert': return r.value.title || 'Budget alert'
     default: return r.value.title || 'Action'
   }
@@ -84,6 +87,10 @@ const meta = computed(() => {
       rows.push({ label: 'Month', value: r.value.month })
       rows.push({ label: 'Year', value: r.value.year })
       rows.push({ label: 'Note', value: 'Draft run — does not push to Xero' })
+      break
+    case 'propose_team_memory':
+      rows.push({ label: 'Department', value: r.value.departmentName })
+      rows.push({ label: 'Type', value: r.value.memType })
       break
     case 'propose_knowledge_article':
       rows.push({ label: 'Category', value: r.value.category })
