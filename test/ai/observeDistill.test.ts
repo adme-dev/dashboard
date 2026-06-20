@@ -4,7 +4,9 @@ import {
   parseObserveDistillResponse,
   describeRoutine,
   distillObserved,
-  MAX_OBSERVED
+  prioritizeRoutines,
+  MAX_OBSERVED,
+  MAX_ROUTINES_FED
 } from '~~/server/utils/ai/observe/distill'
 import type { RoutineCandidate } from '~~/server/utils/ai/observe/sessionize'
 
@@ -33,6 +35,34 @@ describe('buildObserveDistillPrompt', () => {
     expect(p).toContain('Monday around 09:00 UTC: spend.sync → budget.check')
     expect(p.toLowerCase()).toContain('invent nothing')
   })
+  it('instructs the model to ignore trivial patterns and drop clock times', () => {
+    const p = buildObserveDistillPrompt([routine()]).toLowerCase()
+    expect(p).toContain('ignore trivial')
+    expect(p).toContain('do not copy precise clock times')
+  })
+})
+
+describe('prioritizeRoutines', () => {
+  const r = (over: Partial<RoutineCandidate>): RoutineCandidate => routine({ sequence: ['a'], occurrences: 3, ...over })
+
+  it('puts multi-step sequences ahead of single-action ones, regardless of occurrences', () => {
+    const single = r({ sequence: ['task.comment'], occurrences: 9 })
+    const multi = r({ sequence: ['spend.sync', 'budget.check'], occurrences: 3 })
+    const out = prioritizeRoutines([single, multi])
+    expect(out[0]).toBe(multi)
+    expect(out[1]).toBe(single)
+  })
+
+  it('orders by occurrences within the same tier', () => {
+    const a = r({ sequence: ['x', 'y'], occurrences: 4 })
+    const b = r({ sequence: ['x', 'y'], occurrences: 7 })
+    expect(prioritizeRoutines([a, b])[0]).toBe(b)
+  })
+
+  it('caps the number of routines fed to the model', () => {
+    const many = Array.from({ length: 30 }, (_, i) => r({ signature: `s${i}`, occurrences: 3 }))
+    expect(prioritizeRoutines(many)).toHaveLength(MAX_ROUTINES_FED)
+  })
 })
 
 describe('parseObserveDistillResponse', () => {
@@ -51,6 +81,12 @@ describe('parseObserveDistillResponse', () => {
   it('returns [] on garbage', () => {
     expect(parseObserveDistillResponse('not json')).toEqual([])
     expect(parseObserveDistillResponse('')).toEqual([])
+  })
+  it('salvages complete objects from a truncated array (no closing bracket)', () => {
+    // A reasoning model cut off mid-array — the first object is complete, the second is partial.
+    const truncated = '[\n  {"memType":"procedural","content":"reviews spend every Monday","salience":0.9},\n  {"memType":"proc'
+    const out = parseObserveDistillResponse(truncated)
+    expect(out).toEqual([{ memType: 'procedural', content: 'reviews spend every Monday', salience: 0.9 }])
   })
 })
 

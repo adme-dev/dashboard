@@ -66,10 +66,12 @@ export default defineEventHandler(async (event) => {
     recentContents: async userId => (await listRecentMemories(userId, 30)).map(m => m.content),
     save: input => upsertMemory(input),
 
+    // maxTokens is generous: gpt-oss-20b is a reasoning model that spends tokens thinking before the
+    // JSON — 400 truncated the array mid-output (dry-run finding), losing good candidates. 1500 leaves room.
     complete: prompt => generateGroqInsight(prompt, {
       model: GROQ_MODELS.REASONING_20B,
       temperature: 0.2,
-      maxTokens: 400,
+      maxTokens: 1500,
       systemPrompt: 'Reply with ONLY a JSON array, exactly as the user instruction specifies.'
     })
   }

@@ -16,6 +16,9 @@ import type { RoutineCandidate } from './sessionize'
 
 export const MAX_OBSERVED = 3
 export const PARSE_LIMIT = 10
+/** Cap on routines fed to the model — keeps the prompt focused on the strongest patterns (dry-run found a
+ *  single user can produce 30+ near-duplicate single-action routines, which is noise, not signal). */
+export const MAX_ROUTINES_FED = 12
 const MEM_TYPES: MemType[] = ['semantic', 'episodic', 'procedural']
 
 export interface ObservedCandidate {
@@ -32,6 +35,15 @@ export interface ObserveDistillDeps {
 const norm = (s: string) => s.trim().toLowerCase()
 const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+/** Parse one JSON object string, or null if malformed (used by the truncation-salvage path). */
+function tryParseObject(s: string): unknown {
+  try {
+    return JSON.parse(s)
+  } catch {
+    return null
+  }
+}
+
 /** Human-readable one-liner for a routine, fed to the model (no raw signatures or ids leak in). */
 export function describeRoutine(r: RoutineCandidate): string {
   const when = r.weekday !== null && r.weekday >= 0 && r.weekday <= 6
@@ -40,12 +52,31 @@ export function describeRoutine(r: RoutineCandidate): string {
   return `${when}: ${r.sequence.join(' → ')} (seen on ${r.occurrences} days)`
 }
 
+/**
+ * Order routines by signal strength for the model: multi-step sequences first (a real workflow), then
+ * single-action ones; within each, by recurrence. Capped — the dry-run showed one user can yield 30+
+ * near-duplicate single-action routines (`task.comment` across every weekday/hour bucket), which drowns
+ * the genuine multi-step patterns. We surface the strongest and let the prompt reject the trivial.
+ */
+export function prioritizeRoutines(routines: RoutineCandidate[], cap = MAX_ROUTINES_FED): RoutineCandidate[] {
+  return [...routines]
+    .sort((a, b) => {
+      const aMulti = a.sequence.length >= 2 ? 1 : 0
+      const bMulti = b.sequence.length >= 2 ? 1 : 0
+      if (aMulti !== bMulti) return bMulti - aMulti
+      return b.occurrences - a.occurrences
+    })
+    .slice(0, cap)
+}
+
 export function buildObserveDistillPrompt(routines: RoutineCandidate[]): string {
   return [
     'You infer durable facts about how ONE employee works, from their recurring activity routines, to help a future assistant anticipate their work.',
     'Each line below is a routine: when it tends to happen and the ordered actions it involves.',
     'Return ONLY a JSON array (max 3) of objects: {"memType":"procedural|semantic","content":"...","salience":0..1}.',
     'procedural = a routine they follow (e.g. "reviews ad spend every Monday morning"); semantic = a stable fact (e.g. "primarily works on creative-proof approvals").',
+    'Quality bar: only surface MEANINGFUL work routines. IGNORE trivial low-signal patterns (e.g. just commenting on or viewing tasks). A multi-step sequence is far more meaningful than a single repeated action.',
+    'Consolidate fragments: if one action recurs across many weekday/hour buckets, describe the cadence generally ("most weekdays", "every Monday morning") — do NOT copy precise clock times or "UTC" into the memory.',
     'Write each content as a short, natural sentence about the person. Infer ONLY from the routines given — invent nothing, add no names, ids, or numbers not present.',
     'If nothing is genuinely worth remembering, return [].',
     '',
@@ -59,17 +90,24 @@ export function buildObserveDistillPrompt(routines: RoutineCandidate[]): string 
  */
 export function parseObserveDistillResponse(text: string): ObservedCandidate[] {
   if (!text) return []
+
+  let arr: unknown[] | null = null
   const start = text.indexOf('[')
   const end = text.lastIndexOf(']')
-  if (start === -1 || end === -1 || end < start) return []
-
-  let arr: unknown
-  try {
-    arr = JSON.parse(text.slice(start, end + 1))
-  } catch {
-    return []
+  if (start !== -1 && end !== -1 && end > start) {
+    try {
+      const parsed = JSON.parse(text.slice(start, end + 1))
+      if (Array.isArray(parsed)) arr = parsed
+    } catch { /* fall through to object salvage */ }
   }
-  if (!Array.isArray(arr)) return []
+
+  // Salvage path: a reasoning model can truncate mid-array (no closing ']') — recover each COMPLETE
+  // top-level {...} object so a good-but-cut-off response isn't lost. Flat objects only (tags are []).
+  if (!arr) {
+    const objs = text.match(/\{[^{}]*\}/g) ?? []
+    arr = objs.map(tryParseObject).filter(Boolean)
+  }
+  if (!arr.length) return []
 
   const out: ObservedCandidate[] = []
   for (const item of arr) {
@@ -107,7 +145,7 @@ export async function distillObserved(
 
   let raw: string
   try {
-    raw = await deps.complete(buildObserveDistillPrompt(routines))
+    raw = await deps.complete(buildObserveDistillPrompt(prioritizeRoutines(routines)))
   } catch {
     return []
   }
