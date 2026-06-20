@@ -30,6 +30,7 @@ const CRON_WORKERS = [
   'social-metrics-cron',
   'social-report-cron',
   'crm-cron',
+  'observe-cron',
 ]
 
 const targets = process.argv.slice(2).length ? process.argv.slice(2) : CRON_WORKERS
