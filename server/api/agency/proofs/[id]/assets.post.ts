@@ -5,8 +5,9 @@
  * Accepts multipart form data with files, or JSON body with pre-uploaded file URLs.
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { maybeCaptionProofAssets } from '~~/server/utils/ai/visuals/trigger'
 
 interface AssetBody {
   fileName: string
@@ -14,7 +15,7 @@ interface AssetBody {
   fileSize: number
   fileUrl: string
   thumbnailUrl?: string
-  dimensions?: { width: number; height: number }
+  dimensions?: { width: number, height: number }
 }
 
 export default defineEventHandler(async (event) => {
@@ -70,6 +71,10 @@ export default defineEventHandler(async (event) => {
       INSERT INTO proof_activities (proof_id, actor_type, team_member_id, activity_type, description)
       VALUES ($1, 'team_member', $2, 'asset_uploaded', $3)
     `, [proofId, user.id, `${created.length} asset(s) uploaded`])
+
+    // Visuals → Knowledge (dormant behind VISUALS_TO_KNOWLEDGE_ENABLED): caption new image assets into
+    // unpublished KB drafts, fire-and-forget so it never blocks or breaks the upload. No-op off-edge.
+    maybeCaptionProofAssets(event, created, user.id)
 
     return {
       success: true,

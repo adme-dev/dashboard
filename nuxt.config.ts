@@ -105,6 +105,9 @@ export default defineNuxtConfig({
     // Observe & Learn W-4 proactive suggestion — HELD for explicit sign-off; DOUBLY dormant (also needs
     // AI_OBSERVE_ENABLED). No proactive routine suggestion fires until this is on. Hard gate.
     aiObserveProactiveEnabled: process.env.AI_OBSERVE_PROACTIVE_ENABLED === 'true',
+    // Visuals → Knowledge trigger — OFF by default. When on, new image proof-assets are captioned (Workers
+    // AI vision) into UNPUBLISHED KB drafts fire-and-forget. Read at the trigger via process.env. Hard gate.
+    visualsToKnowledgeEnabled: process.env.VISUALS_TO_KNOWLEDGE_ENABLED === 'true',
     // Client-portal co-pilot (portal-agent spec) — OFF by default. Its OWN gate so enabling the
     // agency chat (AI_TOOLS_ENABLED) never auto-exposes the customer-facing surface. Hard gate per §8.
     aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true',
