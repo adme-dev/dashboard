@@ -343,6 +343,7 @@ export async function processUserMessage(
   mentionedEntities?: Array<{ type: string; id: string }>,
   boardId?: string,
   persona?: string,
+  room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
 ): Promise<ChatResponse> {
   const startTime = Date.now()
   // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
@@ -452,6 +453,33 @@ export async function processUserMessage(
     }
   }
 
+  // 4c. Virtual Office Mode A (virtual-office-integration spec §3): when the co-pilot is docked in an
+  // office room, enrich the prompt with room-scoped context (who's present, the live meeting, the
+  // transcript tail). Membership-gated — resolveRoomContext returns null for a non-member, so a
+  // foreign officeId never leaks a roster/transcript. Best-effort: any failure leaves the prompt
+  // unchanged. The resolved ids flow into the tool ctx (officeId/meetingId) for room-aware tools.
+  let roomCtx: { officeId: string, meetingId?: string } | undefined
+  if (event && room?.officeId) {
+    try {
+      const { resolveRoomContext, dbRoomContextDeps, renderRoomContext } = await import('~~/server/utils/ai/office/roomContext')
+      const resolved = await resolveRoomContext({
+        userId,
+        officeId: room.officeId,
+        meetingId: room.meetingId,
+        presentUserIds: room.presentUserIds,
+        transcriptTail: room.transcriptTail,
+        deps: dbRoomContextDeps(),
+      })
+      if (resolved) {
+        const block = renderRoomContext(resolved)
+        if (block) systemPrompt = `${systemPrompt}\n\n${block}`
+        roomCtx = { officeId: resolved.officeId, meetingId: resolved.meetingId }
+      }
+    } catch {
+      // room context is non-essential; ignore and proceed with the un-enriched prompt
+    }
+  }
+
   // 5. Build the messages array for the LLM
   const messagesForPrompt = history.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')
   const fullPrompt = messagesForPrompt
@@ -517,7 +545,7 @@ export async function processUserMessage(
             const results = await delegateToSpecialists(plan.personas, {
               runLoop: async (pk) => {
                 const sub = await runToolLoop({
-                  ctx: { userId, userRole, conversationId, event },
+                  ctx: { userId, userRole, conversationId, event, officeId: roomCtx?.officeId, meetingId: roomCtx?.meetingId },
                   system: systemPrompt, messages: loopMessages, seed: `${conversationId}:${pk}`, persona: resolvePersona(pk),
                   readOnly: true, // L2 specialists READ only — never persist a write proposal
                   disabledTools: agentConfig?.disabledTools,
@@ -546,7 +574,7 @@ export async function processUserMessage(
         toolCostUsd = l2Cost || null
       } else {
         const loop = await runToolLoop({
-          ctx: { userId, userRole, conversationId, event },
+          ctx: { userId, userRole, conversationId, event, officeId: roomCtx?.officeId, meetingId: roomCtx?.meetingId },
           system: systemPrompt,
           messages: loopMessages,
           seed: conversationId,

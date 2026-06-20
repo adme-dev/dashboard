@@ -172,6 +172,10 @@ export function useAiChat() {
     content: string,
     mentionedEntities?: Array<{ type: string; id: string }>,
     boardId?: string,
+    // Virtual Office Mode A: when the chat is docked in an office room, pass the room so the engine
+    // can enrich the prompt with who's present / the live meeting / transcript tail (membership-gated
+    // server-side). Omitted by the standalone chat — the engine simply skips room enrichment.
+    room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
   ) {
     if (!activeConversation.value || sending.value) return
 
@@ -199,6 +203,7 @@ export function useAiChat() {
       }
       if (boardId) body.boardId = boardId
       if (selectedPersona.value) body.persona = selectedPersona.value
+      if (room?.officeId) body.room = room
 
       const result = await $fetch<ChatMessageResponse>(
         `/api/agency/ai/chat/conversations/${activeConversation.value.id}/messages`,

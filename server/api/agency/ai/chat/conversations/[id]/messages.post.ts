@@ -63,8 +63,22 @@ export default defineEventHandler(async (event) => {
   // Optional: named persona key (Slice 1.5). Unknown/absent → generalist (validated server-side).
   const persona = typeof body?.persona === 'string' ? body.persona : undefined
 
+  // Optional: virtual office room context (Mode A) — the docked co-pilot supplies the room it's in so
+  // the engine can enrich the prompt with who's present / the live meeting / transcript tail. Tenant
+  // isolation is enforced server-side (membership gate in resolveRoomContext); these are hints only.
+  const room = body?.room && typeof body.room.officeId === 'string'
+    ? {
+        officeId: body.room.officeId,
+        meetingId: typeof body.room.meetingId === 'string' ? body.room.meetingId : undefined,
+        presentUserIds: Array.isArray(body.room.presentUserIds)
+          ? body.room.presentUserIds.filter((x: any) => typeof x === 'string').slice(0, 50)
+          : undefined,
+        transcriptTail: typeof body.room.transcriptTail === 'string' ? body.room.transcriptTail.slice(-4000) : undefined,
+      }
+    : undefined
+
   try {
-    const result = await processUserMessage(id, user.id, user.role, content, event, mentionedEntities, boardId, persona)
+    const result = await processUserMessage(id, user.id, user.role, content, event, mentionedEntities, boardId, persona, room)
     return result
   } catch (err: any) {
     console.error('Failed to process AI message:', err)

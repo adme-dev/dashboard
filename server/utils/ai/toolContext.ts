@@ -14,6 +14,10 @@ export type ToolContext = {
   clientScope?: string
   /** Set by the loop; required for write tools that persist a proposal (create_task). */
   conversationId?: string
+  /** Optional — set when the co-pilot is docked in a virtual office room (Mode A). Read-only context;
+   *  membership is verified server-side before these are populated (see office/roomContext.ts §7). */
+  officeId?: string
+  meetingId?: string
   event: H3Event
 }
 
