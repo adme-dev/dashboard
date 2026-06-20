@@ -89,6 +89,12 @@ watch(
 )
 
 const participantCount = computed(() => connection.participants.value.size)
+// Present STAFF user ids (handles are `user:<id>` / `client:<id>`) for the Mode A co-pilot room context.
+const presentUserIds = computed(() =>
+  [...connection.participants.value.keys()]
+    .filter(h => h.startsWith('user:'))
+    .map(h => h.slice('user:'.length)),
+)
 const officeName = computed(() => detail.value?.office.name ?? '')
 const showSwitcher = computed(() => (listData.value?.offices.length ?? 0) > 1)
 const currentUserHandle = computed(() => user.value?.id ? `user:${user.value.id}` as const : null)
@@ -540,5 +546,8 @@ function openOfficeRecordings(meetingId?: string, recordingId?: string) {
         </div>
       </template>
     </USlideover>
+
+    <!-- Mode A: docked co-pilot, room-scoped to the current office (flag-gated launcher). -->
+    <OfficeCopilot :office-id="selectedId" :present-user-ids="presentUserIds" />
   </div>
 </template>
