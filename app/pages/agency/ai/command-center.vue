@@ -12,7 +12,25 @@ interface Overview {
   memory: { total: number, users: number }
 }
 
+interface Draft { id: string, title: string, preview: string, category: string | null, author: string, createdAt: string }
+
 const { data, pending, error, refresh } = await useFetch<Overview>('/api/agency/ai/command-center/overview')
+const { data: draftsData, refresh: refreshDrafts } = await useFetch<{ drafts: Draft[], count: number }>('/api/agency/ai/command-center/kb-drafts')
+
+const toast = useToast()
+const reviewing = ref<string | null>(null)
+async function reviewDraft(id: string, action: 'publish' | 'reject') {
+  reviewing.value = id
+  try {
+    await $fetch(`/api/agency/ai/knowledge/${id}/${action}`, { method: 'PATCH' })
+    toast.add({ title: action === 'publish' ? 'Published to the knowledge base' : 'Draft rejected', color: action === 'publish' ? 'success' : 'neutral' })
+    await refreshDrafts()
+  } catch (e: any) {
+    toast.add({ title: 'Review action failed', description: e?.data?.statusMessage || 'Try again.', color: 'error' })
+  } finally {
+    reviewing.value = null
+  }
+}
 
 const rel = (d: string) => {
   const t = new Date(d)
@@ -77,6 +95,31 @@ const cards = computed(() => [
               <p class="text-xs text-muted">by {{ p.proposedBy }} · {{ rel(p.createdAt) }}</p>
             </div>
             <UBadge color="warning" variant="soft" size="sm">awaiting confirm</UBadge>
+          </li>
+        </ul>
+      </UCard>
+
+      <!-- KB drafts review queue (agent-proposed, awaiting publish) -->
+      <UCard v-if="draftsData?.count">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-highlighted">Knowledge drafts</h2>
+            <UBadge color="info" variant="soft">{{ draftsData.count }} awaiting review</UBadge>
+          </div>
+        </template>
+        <ul class="divide-y divide-default">
+          <li v-for="d in draftsData.drafts" :key="d.id" class="py-3">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-highlighted">{{ d.title }}<UBadge v-if="d.category" color="neutral" variant="soft" size="sm" class="ml-1.5">{{ d.category }}</UBadge></p>
+                <p class="mt-1 line-clamp-2 text-xs text-muted">{{ d.preview }}</p>
+                <p class="mt-1 text-[11px] text-muted">by {{ d.author }} · {{ rel(d.createdAt) }}</p>
+              </div>
+              <div class="flex shrink-0 items-center gap-1.5">
+                <UButton size="xs" color="neutral" variant="ghost" :loading="reviewing === d.id" @click="reviewDraft(d.id, 'reject')">Reject</UButton>
+                <UButton size="xs" color="primary" icon="i-lucide-check" :loading="reviewing === d.id" @click="reviewDraft(d.id, 'publish')">Publish</UButton>
+              </div>
+            </div>
           </li>
         </ul>
       </UCard>

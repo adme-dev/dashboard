@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  mapProposal, mapAuditRow, payloadSummary, summarizeUsage, auditByTool, buildOverview,
+  mapProposal, mapAuditRow, payloadSummary, summarizeUsage, auditByTool, buildOverview, mapDraft,
   type ProposalRow, type AuditRow,
 } from '~~/server/utils/ai/commandCenter'
 
@@ -61,6 +61,20 @@ describe('auditByTool', () => {
     ])
     expect(out[0]).toEqual({ toolName: 'create_task', executed: 1, failed: 1, total: 2 })
     expect(out[1]).toEqual({ toolName: 'propose_budget_change', executed: 1, failed: 0, total: 1 })
+  })
+})
+
+describe('mapDraft', () => {
+  it('shapes a draft with a truncated preview and resolved author', () => {
+    const d = mapDraft({ id: 'k1', title: 'SOP', content: 'x'.repeat(400), category: 'process', author_id: 'u1', author_name: 'Sam', created_at: 't' })
+    expect(d).toMatchObject({ id: 'k1', title: 'SOP', category: 'process', author: 'Sam' })
+    expect(d.preview.endsWith('…')).toBe(true)
+    expect(d.preview.length).toBe(281)
+  })
+  it('falls back to author_id and keeps short content whole', () => {
+    const d = mapDraft({ id: 'k1', title: 'T', content: 'short', author_id: 'u9', created_at: 't' })
+    expect(d.author).toBe('u9')
+    expect(d.preview).toBe('short')
   })
 })
 

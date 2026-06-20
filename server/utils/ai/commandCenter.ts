@@ -102,6 +102,29 @@ export function auditByTool(rows: AuditRow[]): Array<{ toolName: string, execute
   return [...by.entries()].map(([toolName, v]) => ({ toolName, ...v })).sort((a, b) => b.total - a.total)
 }
 
+export interface DraftRow {
+  id: string
+  title: string
+  content: string
+  category?: string | null
+  author_id: string
+  author_name?: string | null
+  created_at: string
+}
+
+/** Shape an agent-proposed KB draft for the review queue (content truncated to a preview). */
+export function mapDraft(r: DraftRow) {
+  const content = typeof r.content === 'string' ? r.content : ''
+  return {
+    id: r.id,
+    title: r.title,
+    preview: content.length > 280 ? content.slice(0, 280) + '…' : content,
+    category: r.category ?? null,
+    author: r.author_name ?? r.author_id,
+    createdAt: r.created_at,
+  }
+}
+
 export interface OverviewInput {
   proposals: ProposalRow[]
   audit: AuditRow[]
