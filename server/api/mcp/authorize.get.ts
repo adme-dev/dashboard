@@ -9,9 +9,10 @@
 //
 // TODO (refinement, not blocking): render an explicit consent screen ("Allow your AI assistant read-only
 // access to your XeroFlow data?") before minting the assertion. The scaffold mints on confirmed login.
-import { defineEventHandler, getQuery, sendRedirect, createError } from 'h3'
+import { defineEventHandler, getQuery, sendRedirect, getRequestURL, createError } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { signMcpAssertion } from '~~/server/utils/ai/mcp/assertion'
+import { buildConsentHtml } from '~~/server/utils/ai/mcp/consent'
 
 export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
@@ -44,6 +45,18 @@ export default defineEventHandler(async (event) => {
   const allowedOrigin = process.env.MCP_WORKER_ORIGIN
   if (!allowedOrigin || dest.origin !== allowedOrigin) {
     throw createError({ statusCode: 400, statusMessage: 'redirect_uri not allowed' })
+  }
+
+  // Explicit consent: until the user clicks Allow, render the consent screen. Allow re-enters this
+  // endpoint with consent=granted (params preserved); Cancel bounces back with OAuth error=access_denied.
+  if (String(query.consent || '') !== 'granted') {
+    const self = getRequestURL(event)
+    const allowUrl = new URL(self)
+    allowUrl.searchParams.set('consent', 'granted')
+    const cancelUrl = new URL(dest)
+    cancelUrl.searchParams.set('state', state)
+    cancelUrl.searchParams.set('error', 'access_denied')
+    return buildConsentHtml({ userName: user.name || user.email || 'your account', allowUrl: allowUrl.toString(), cancelUrl: cancelUrl.toString() })
   }
 
   const assertion = await signMcpAssertion(user.id, secret)
