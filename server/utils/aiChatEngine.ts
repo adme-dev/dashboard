@@ -6,6 +6,7 @@ import { getRelevantPatterns } from '~~/server/utils/aiFeedbackProcessor'
 import { shouldUseToolLoop } from '~~/server/utils/ai/gate'
 import { resolvePersona } from '~~/server/utils/ai/personas'
 import { selectSkillPack } from '~~/server/utils/ai/controller/route'
+import { getAgentConfig } from '~~/server/utils/ai/agentConfig'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -365,6 +366,10 @@ export async function processUserMessage(
     ).catch(() => {})
   }
 
+  // Self-service config (spec §4a): the user's "My Assistant" settings — disabled tools (subtracted
+  // from the tool set, never added) and a memory on/off toggle. Fail-safe (null when none/on error).
+  const agentConfig = await getAgentConfig(userId)
+
   // 1. Load recent conversation history (last 10 messages)
   const historyRows = await queryRows(`
     SELECT role, content
@@ -437,12 +442,14 @@ export async function processUserMessage(
   // Strictly user-scoped (cross-user isolation enforced in orchestrate.ts) and best-effort — any
   // failure leaves the prompt unchanged so a turn never breaks on memory. Flows into BOTH the tool
   // loop and the fast path below since they read `systemPrompt`.
-  try {
-    const { buildUserMemoryBlock } = await import('~~/server/utils/ai/memory/orchestrate')
-    const memoryBlock = await buildUserMemoryBlock({ userId, query: content, event })
-    if (memoryBlock) systemPrompt = `${systemPrompt}\n\n${memoryBlock}`
-  } catch {
-    // memory is non-essential context; ignore and proceed
+  if (agentConfig?.memoryEnabled !== false) {
+    try {
+      const { buildUserMemoryBlock } = await import('~~/server/utils/ai/memory/orchestrate')
+      const memoryBlock = await buildUserMemoryBlock({ userId, query: content, event })
+      if (memoryBlock) systemPrompt = `${systemPrompt}\n\n${memoryBlock}`
+    } catch {
+      // memory is non-essential context; ignore and proceed
+    }
   }
 
   // 5. Build the messages array for the LLM
@@ -513,6 +520,7 @@ export async function processUserMessage(
                   ctx: { userId, userRole, conversationId, event },
                   system: systemPrompt, messages: loopMessages, seed: `${conversationId}:${pk}`, persona: resolvePersona(pk),
                   readOnly: true, // L2 specialists READ only — never persist a write proposal
+                  disabledTools: agentConfig?.disabledTools,
                 })
                 l2Cost += sub.costUsd ?? 0
                 return { text: sub.text }
@@ -543,6 +551,7 @@ export async function processUserMessage(
           messages: loopMessages,
           seed: conversationId,
           persona: activePersona,
+          disabledTools: agentConfig?.disabledTools,
         })
         aiContent = loop.text
         toolTrace = loop.toolCalls

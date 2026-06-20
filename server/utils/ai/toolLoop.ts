@@ -81,6 +81,8 @@ export async function runToolLoop(opts: {
   /** Exclude mutating (propose) tools — used for L2 controller sub-runs so a delegated specialist
    *  can only READ; it can never stage a write proposal that would persist as an orphan. */
   readOnly?: boolean
+  /** The user's self-disabled tools (config narrows, never grants — applied by subtraction). */
+  disabledTools?: string[]
 }): Promise<LoopOutput> {
   const cfg = useRuntimeConfig() as any
   const persona = opts.persona ?? DEFAULT_PERSONA
@@ -88,6 +90,9 @@ export async function runToolLoop(opts: {
   let tools = filterToolsForUser(registry, opts.ctx.userRole)
   if (persona.toolAllowlist) tools = tools.filter(t => persona.toolAllowlist!.includes(t.name))
   if (opts.readOnly) tools = tools.filter(t => !t.mutates)
+  // Self-service config (spec §4a): subtract the user's disabled tools. Applied LAST, over the
+  // RBAC+persona set, so it can only ever remove — never grant a tool the role lacks.
+  if (opts.disabledTools?.length) tools = tools.filter(t => !opts.disabledTools!.includes(t.name))
   const sdkTools = toSdkTools(tools, opts.ctx, opts.seed)
 
   const system = [opts.system, persona.instructionsPreamble, spotlightSystemClause()]
