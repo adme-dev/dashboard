@@ -5,6 +5,7 @@ import { budgetAlertExecutor } from './proposeBudgetAlert'
 import { budgetChangeExecutor } from './proposeBudgetChange'
 import { knowledgeArticleExecutor } from './proposeKnowledgeArticle'
 import { assignTaskExecutor, statusChangeExecutor, briefConvertExecutor } from './deliveryActions'
+import { opportunityExecutor, logActivityExecutor, quoteExecutor } from './crmActions'
 
 /**
  * The action-executor registry, keyed by tool name. The confirm endpoint dispatches a confirmed
@@ -20,6 +21,9 @@ export const executors: Record<string, ActionExecutor> = {
   [assignTaskExecutor.toolName]: assignTaskExecutor,
   [statusChangeExecutor.toolName]: statusChangeExecutor,
   [briefConvertExecutor.toolName]: briefConvertExecutor,
+  [opportunityExecutor.toolName]: opportunityExecutor,
+  [logActivityExecutor.toolName]: logActivityExecutor,
+  [quoteExecutor.toolName]: quoteExecutor,
 }
 
 /** Look up the executor for a proposed action's tool_name; null when unsupported (fail-safe). */

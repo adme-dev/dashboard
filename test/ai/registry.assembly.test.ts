@@ -17,8 +17,11 @@ const WRITE_TOOLS = ['create_task', 'propose_schedule_post', 'propose_budget_ale
 // Per-department packs (PRD §7): delivery writes (Account/Producer) + capacity read.
 const DELIVERY_TOOLS = ['assign_task', 'propose_status_change', 'propose_brief_convert']
 const DELIVERY_READS = ['get_capacity']
+// Sales/CRM pack (PRD §7 Sales): 3 writes + 1 read (draft_followup).
+const CRM_WRITES = ['propose_opportunity', 'log_crm_activity', 'propose_quote']
+const CRM_READS = ['draft_followup']
 // remember = personal-memory capture (non-mutating; available to every authed role).
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, 'remember']
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, 'remember']
 
 describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
   it('contains the 15 read tools + the write tools + remember', () => {
@@ -35,7 +38,7 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
 
   it('the mutating tools are exactly the propose→confirm writes', () => {
     expect(registry.filter(t => t.mutates).map(t => t.name).sort()).toEqual(
-      [...WRITE_TOOLS, ...DELIVERY_TOOLS].sort())
+      [...WRITE_TOOLS, ...DELIVERY_TOOLS, ...CRM_WRITES].sort())
   })
 
   it('RBAC filter hides FINANCE/CLIENTS tools from a low-privilege role but keeps create_task', () => {

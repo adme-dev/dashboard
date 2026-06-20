@@ -22,6 +22,7 @@ import { knowledgeArticleTool } from './proposeKnowledgeArticle'
 import { rememberTool } from './remember'
 import { assignTaskTool, statusChangeTool, briefConvertTool } from './deliveryActions'
 import { capacityTool } from './capacity'
+import { opportunityTool, logActivityTool, quoteTool, draftFollowupTool } from './crmActions'
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
@@ -51,4 +52,9 @@ export const registry: AiTool<any>[] = [
   statusChangeTool,
   briefConvertTool,
   capacityTool,
+  // Sales / CRM writes + draft.
+  opportunityTool,
+  logActivityTool,
+  quoteTool,
+  draftFollowupTool,
 ]

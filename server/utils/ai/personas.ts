@@ -57,7 +57,8 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Client overview, briefs/opportunities and account risks.',
     instructionsPreamble:
       'You are the agency\'s Sales assistant. Focus on the client relationship — account overviews, incoming briefs/opportunities, and account-level risks. Be concise and action-oriented. For questions outside sales, answer briefly and suggest the relevant assistant.',
-    toolAllowlist: ['get_client_overview', 'get_briefs', 'get_open_anomalies', ...COMMON],
+    toolAllowlist: ['get_client_overview', 'get_briefs', 'get_open_anomalies',
+      'propose_opportunity', 'log_crm_activity', 'propose_quote', 'draft_followup', ...COMMON],
   },
   account: {
     key: 'account',
