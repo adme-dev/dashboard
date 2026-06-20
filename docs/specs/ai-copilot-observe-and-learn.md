@@ -48,9 +48,11 @@ External R&D (Glean, Microsoft CAF/Copilot, mem0/Zep/Letta, Cloudflare) settled 
 **Cloudflare mapping:** Vectorize **namespaces** (`user:<id>` / `dept:<id>` / `org`) for isolation; **Workflows** (GA, durable, free hibernation between steps) for the W-2 batch; Cloudflare's managed **Agent Memory** (private beta) validates the per-scope DO+Vectorize shape but is not required (Neon + Vectorize already matches). No rewrite onto the Agents SDK.
 
 ### Slices (added)
-- **DS-1 — department-scope memory foundation**: `ai_user_memory` gains `scope='department'` + `scope_ref` (the department_id); retrieval merges personal (user-scoped) + department (the user's dept_ids) + org. Cross-user isolation preserved — personal is never shared; department/org are intentionally shared. mig 187.
-- **DS-2 — promote-to-department gate**: human-gated promotion of a personal/observed memory to department scope (never auto). Reuses the propose→review→publish discipline of the KB.
-- **W-2 (revised) — on Workflows**: the per-user observe→sessionize→distil pipeline runs as a Cloudflare Workflow; learned routines land in **personal** memory; team-wide ones are *proposed* to department scope via DS-2.
+- [x] **DS-1 — department-scope memory foundation** (`d620d273`): `ai_user_memory` gains `scope='department'` + `scope_ref` (mig 187, applied); retrieval merges personal (user-scoped) + department (the user's dept_ids) + org; cross-user isolation preserved (the shared path admits only department/org rows).
+- [x] **DS-2 — promote-to-department gate** (`8b5b1818`): `propose_team_memory` (MANAGEMENT-gated, propose→confirm→audit) writes `scope='department'` curated memory; never auto. Card view added.
+- [ ] **W-2 (revised) — on Workflows** *(next, not started)*: implement `WorkEventSource` over the existing activity tables (task_activities / crm_activities / proof_activities / ai_action_audit / client_activity_log) behind a watermark (`ai_observe_state` mig); run per-user observe→`sessionize`→`detectRoutines`→`distill`→`upsertMemory(source='observed', scope='user')` as a Cloudflare **Workflow** (durable steps, free hibernation), gated `AI_OBSERVE_ENABLED`. Team-wide routines surface as DS-2 proposals to a lead — never auto-promoted. W-1 pure core (`sessionize`/`detectRoutines`) is already built + tested (`751dab27`).
+- [ ] **W-3 — transparency panel** in My Assistant (list/delete `source='observed'` + department memories).
+- [ ] **W-4 — proactive suggestion** *(HELD for explicit sign-off + its own flag `AI_OBSERVE_PROACTIVE_ENABLED`)*.
 
 ## 5. Where it lands — the knowledge-graph question
 
