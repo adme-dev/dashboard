@@ -206,7 +206,10 @@ export default defineNuxtConfig({
       videoAssetHarnessEnabled: process.env.VIDEO_ASSET_HARNESS_ENABLED === 'true' || process.env.VIDEO_GENERATION_ENABLED === 'true',
       // Client-visible mirror of GOOGLE_BUSINESS_PUBLISHING_ENABLED. Server endpoints
       // remain the real boundary; this keeps the dormant channel hidden until approval.
-      googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true'
+      googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true',
+      // Client-visible mirror of AI_PORTAL_ENABLED — gates ONLY the portal co-pilot launcher.
+      // The /api/portal/ai/* endpoints 404 when off; this just hides the UI until go-live.
+      aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true'
     }
   },
 
