@@ -98,6 +98,9 @@ export default defineNuxtConfig({
     // L2 traffic-controller supervisor (Phase 3) — OFF by default. When enabled, cross-domain requests
     // fan out to ≥2 specialist skill-packs and synthesize one answer. Adds latency + cost; hard gate.
     aiControllerL2Enabled: process.env.AI_CONTROLLER_L2_ENABLED === 'true',
+    // Client-portal co-pilot (portal-agent spec) — OFF by default. Its OWN gate so enabling the
+    // agency chat (AI_TOOLS_ENABLED) never auto-exposes the customer-facing surface. Hard gate per §8.
+    aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true',
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 
