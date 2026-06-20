@@ -18,6 +18,7 @@ function confirmNote(toolName?: string): string {
     case 'propose_budget_change': return 'Done — the budget change has been planned for the spend review.'
     case 'propose_schedule_post': return 'Done — the post has been created.'
     case 'propose_budget_alert': return 'Done — the budget alert has been created.'
+    case 'propose_knowledge_article': return 'Done — the knowledge article was drafted for review.'
     default: return 'Done — the task has been created.'
   }
 }

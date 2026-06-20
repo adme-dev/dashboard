@@ -44,6 +44,8 @@ const view = computed(() => {
       return { icon: 'i-lucide-calendar-clock', label: 'Proposed social post · awaiting your confirmation', cta: 'Confirm post', doneLabel: 'Post created' }
     case 'propose_budget_alert':
       return { icon: 'i-lucide-bell-ring', label: 'Proposed budget alert · awaiting your confirmation', cta: 'Confirm alert', doneLabel: 'Alert created' }
+    case 'propose_knowledge_article':
+      return { icon: 'i-lucide-book-plus', label: 'Proposed knowledge draft · awaiting your confirmation', cta: 'Save draft', doneLabel: 'Draft saved for review' }
     default:
       return { icon: 'i-lucide-list-todo', label: 'Proposed task · awaiting your confirmation', cta: 'Create task', doneLabel: 'Task created' }
   }
@@ -71,6 +73,10 @@ const meta = computed(() => {
       rows.push({ label: 'Severity', value: r.value.severity })
       rows.push({ label: 'Type', value: r.value.alertType })
       rows.push({ label: 'Threshold', value: typeof r.value.thresholdValue === 'number' ? r.value.thresholdValue : null })
+      break
+    case 'propose_knowledge_article':
+      rows.push({ label: 'Category', value: r.value.category })
+      rows.push({ label: 'Visibility', value: 'Draft — needs review before it’s searchable' })
       break
     default: // create_task
       rows.push({ label: 'Board', value: r.value.departmentName })

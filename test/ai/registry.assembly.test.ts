@@ -12,8 +12,8 @@ const SLICE2_TOOLS = [
 ]
 // Phase-1 media-buyer read skill-pack (MEDIA_BUYING-gated).
 const MEDIA_BUYER_TOOLS = ['get_campaign_breakdown', 'get_budget_health']
-// Phase-2 write tools (propose→confirm→audit).
-const WRITE_TOOLS = ['create_task', 'propose_schedule_post', 'propose_budget_alert', 'propose_budget_change']
+// Phase-2/3 write tools (propose→confirm→audit).
+const WRITE_TOOLS = ['create_task', 'propose_schedule_post', 'propose_budget_alert', 'propose_budget_change', 'propose_knowledge_article']
 // remember = personal-memory capture (non-mutating; available to every authed role).
 const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, 'remember']
 
@@ -31,7 +31,7 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
   })
 
   it('the mutating tools are exactly the propose→confirm writes', () => {
-    expect(registry.filter(t => t.mutates).map(t => t.name).sort()).toEqual(['create_task', 'propose_budget_alert', 'propose_budget_change', 'propose_schedule_post'])
+    expect(registry.filter(t => t.mutates).map(t => t.name).sort()).toEqual(['create_task', 'propose_budget_alert', 'propose_budget_change', 'propose_knowledge_article', 'propose_schedule_post'])
   })
 
   it('RBAC filter hides FINANCE/CLIENTS tools from a low-privilege role but keeps create_task', () => {
@@ -47,8 +47,8 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
     expect(filterToolsForUser(registry, 'guest').map(t => t.name)).not.toContain('create_task')
   })
 
-  it('owner sees all 20', () => {
-    expect(filterToolsForUser(registry, 'owner')).toHaveLength(20)
+  it('owner sees all 21', () => {
+    expect(filterToolsForUser(registry, 'owner')).toHaveLength(21)
   })
 
   it('the media-buyer reads are MEDIA_BUYING-gated read tools (not mutating)', () => {
