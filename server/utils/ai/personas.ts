@@ -65,7 +65,8 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Client delivery — projects, tasks, briefs and social.',
     instructionsPreamble:
       'You are the agency\'s Account Management assistant. Focus on client delivery — project status, tasks, briefs, and social performance for the accounts you manage. Surface what needs attention and what\'s on track. For questions outside account management, answer briefly and suggest the relevant assistant.',
-    toolAllowlist: ['get_client_overview', 'get_project_status', 'get_tasks', 'get_briefs', 'get_social_performance', ...COMMON],
+    toolAllowlist: ['get_client_overview', 'get_project_status', 'get_tasks', 'get_briefs', 'get_social_performance',
+      'get_capacity', 'assign_task', 'propose_status_change', 'propose_brief_convert', ...COMMON],
   },
   media_buyer: {
     key: 'media_buyer',

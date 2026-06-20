@@ -20,6 +20,8 @@ import { budgetAlertTool } from './proposeBudgetAlert'
 import { proposeBudgetChangeTool } from './proposeBudgetChange'
 import { knowledgeArticleTool } from './proposeKnowledgeArticle'
 import { rememberTool } from './remember'
+import { assignTaskTool, statusChangeTool, briefConvertTool } from './deliveryActions'
+import { capacityTool } from './capacity'
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
@@ -44,4 +46,9 @@ export const registry: AiTool<any>[] = [
   proposeBudgetChangeTool,
   knowledgeArticleTool,
   rememberTool,
+  // Delivery writes (Account Manager / Producer) + capacity read.
+  assignTaskTool,
+  statusChangeTool,
+  briefConvertTool,
+  capacityTool,
 ]

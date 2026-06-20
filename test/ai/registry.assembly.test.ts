@@ -14,8 +14,11 @@ const SLICE2_TOOLS = [
 const MEDIA_BUYER_TOOLS = ['get_campaign_breakdown', 'get_budget_health']
 // Phase-2/3 write tools (propose→confirm→audit).
 const WRITE_TOOLS = ['create_task', 'propose_schedule_post', 'propose_budget_alert', 'propose_budget_change', 'propose_knowledge_article']
+// Per-department packs (PRD §7): delivery writes (Account/Producer) + capacity read.
+const DELIVERY_TOOLS = ['assign_task', 'propose_status_change', 'propose_brief_convert']
+const DELIVERY_READS = ['get_capacity']
 // remember = personal-memory capture (non-mutating; available to every authed role).
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, 'remember']
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, 'remember']
 
 describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
   it('contains the 15 read tools + the write tools + remember', () => {
@@ -31,7 +34,8 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
   })
 
   it('the mutating tools are exactly the propose→confirm writes', () => {
-    expect(registry.filter(t => t.mutates).map(t => t.name).sort()).toEqual(['create_task', 'propose_budget_alert', 'propose_budget_change', 'propose_knowledge_article', 'propose_schedule_post'])
+    expect(registry.filter(t => t.mutates).map(t => t.name).sort()).toEqual(
+      [...WRITE_TOOLS, ...DELIVERY_TOOLS].sort())
   })
 
   it('RBAC filter hides FINANCE/CLIENTS tools from a low-privilege role but keeps create_task', () => {
@@ -47,8 +51,9 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
     expect(filterToolsForUser(registry, 'guest').map(t => t.name)).not.toContain('create_task')
   })
 
-  it('owner sees all 21', () => {
-    expect(filterToolsForUser(registry, 'owner')).toHaveLength(21)
+  it('owner sees the whole registry', () => {
+    expect(filterToolsForUser(registry, 'owner')).toHaveLength(registry.length)
+    expect(registry.length).toBe(ALL.length)
   })
 
   it('the media-buyer reads are MEDIA_BUYING-gated read tools (not mutating)', () => {

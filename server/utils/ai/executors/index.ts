@@ -4,12 +4,12 @@ import { scheduleSocialPostExecutor } from './scheduleSocialPost'
 import { budgetAlertExecutor } from './proposeBudgetAlert'
 import { budgetChangeExecutor } from './proposeBudgetChange'
 import { knowledgeArticleExecutor } from './proposeKnowledgeArticle'
+import { assignTaskExecutor, statusChangeExecutor, briefConvertExecutor } from './deliveryActions'
 
 /**
  * The action-executor registry, keyed by tool name. The confirm endpoint dispatches a confirmed
  * proposal's `tool_name` through here, so adding a write tool = register one executor (no endpoint
- * change). Today: create_task (Slices 1–2) + propose_schedule_post (Phase 2). More writes (e.g.
- * propose_budget_change, rich_confirm) register here as they land.
+ * change). Covers the per-department write packs (PRD §7) as they land.
  */
 export const executors: Record<string, ActionExecutor> = {
   [createTaskExecutor.toolName]: createTaskExecutor,
@@ -17,6 +17,9 @@ export const executors: Record<string, ActionExecutor> = {
   [budgetAlertExecutor.toolName]: budgetAlertExecutor,
   [budgetChangeExecutor.toolName]: budgetChangeExecutor,
   [knowledgeArticleExecutor.toolName]: knowledgeArticleExecutor,
+  [assignTaskExecutor.toolName]: assignTaskExecutor,
+  [statusChangeExecutor.toolName]: statusChangeExecutor,
+  [briefConvertExecutor.toolName]: briefConvertExecutor,
 }
 
 /** Look up the executor for a proposed action's tool_name; null when unsupported (fail-safe). */
