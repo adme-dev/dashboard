@@ -42,6 +42,11 @@ const publicRoutes = [
   '/api/internal/process-job',
   '/api/leads/_internal/',
   '/api/cron/', // anomaly-detection cron + future cron handlers; each verifies x-cron-secret inline
+  // MCP server Phase 1: the internal endpoints verify x-mcp-secret inline (called by the mcp-server
+  // Worker, which has no session cookie); /api/mcp/authorize is browser-facing and does its OWN
+  // requireAuth (redirecting to sign-in if needed), so the blanket session-401 must not pre-empt it.
+  '/api/internal/mcp/',
+  '/api/mcp/',
   // Public webhook endpoints — auth via per-endpoint secret in the request
   // body (Meta's verify_token, Google's google_key matched against
   // lead_webhook_endpoints.secret_key). Google + Meta servers don't have
