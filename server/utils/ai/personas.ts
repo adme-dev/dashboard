@@ -40,6 +40,7 @@ export const PERSONAS: Record<string, Persona> = {
     toolAllowlist: [
       'get_finance_snapshot', 'get_adspend_pacing', 'get_open_anomalies', 'get_client_overview',
       'get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue',
+      'propose_expense_approval', 'propose_eom_generate', 'propose_expense_classify',
       ...COMMON,
     ],
   },

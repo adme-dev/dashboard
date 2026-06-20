@@ -23,6 +23,7 @@ import { rememberTool } from './remember'
 import { assignTaskTool, statusChangeTool, briefConvertTool } from './deliveryActions'
 import { capacityTool } from './capacity'
 import { opportunityTool, logActivityTool, quoteTool, draftFollowupTool } from './crmActions'
+import { expenseApprovalTool, eomGenerateTool, expenseClassifyTool } from './financeActions'
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
@@ -57,4 +58,8 @@ export const registry: AiTool<any>[] = [
   logActivityTool,
   quoteTool,
   draftFollowupTool,
+  // Finance / Bookkeeper writes.
+  expenseApprovalTool,
+  eomGenerateTool,
+  expenseClassifyTool,
 ]
