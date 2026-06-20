@@ -5,6 +5,7 @@ import { getMyInvoicesTool } from './invoices'
 import { getMyProjectsTool } from './projects'
 import { getMyBriefsTool } from './briefs'
 import { getMyLeadsTool } from './leads'
+import { getMySocialReportTool } from './socialReport'
 
 export type { PortalAiTool, PortalToolContext }
 export { assertPortalScope } from './portalContext'
@@ -21,6 +22,7 @@ export const portalRegistry: PortalAiTool<any>[] = [
   getMyProjectsTool,
   getMyBriefsTool,
   getMyLeadsTool,
+  getMySocialReportTool,
 ]
 
 /**

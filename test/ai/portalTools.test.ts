@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { portalRegistry, buildPortalTools, assertPortalScope } from '~~/server/utils/ai/portalTools'
 import type { PortalDb, PortalToolContext } from '~~/server/utils/ai/portalTools/portalContext'
+import { getMySocialReport } from '~~/server/utils/ai/portalTools/socialReport'
 
 const TENANT_A = 'client-aaaa'
 const TENANT_B = 'client-bbbb'
@@ -81,6 +82,35 @@ describe('portal registry — cross-tenant isolation (fuzz, the §12 gate)', () 
   })
 })
 
+describe('get_my_social_report', () => {
+  it('scopes the period query to clientScope and rolls up totals + top content', async () => {
+    const calls: { sql: string, params: any[] }[] = []
+    const db: PortalDb = {
+      queryRows: (async (sql: string, params: any[] = []) => {
+        calls.push({ sql, params })
+        return [
+          { post_id: 'p1', platform: 'facebook', published_at: '2026-06-10', content: 'hello world',
+            impressions: 1000, reach: 800, engagements: 80, clicks: 5, likes: 60, comments_count: 10, shares: 5, saves: 5, video_views: 0, reactions: 0 },
+          { post_id: 'p2', platform: 'instagram', published_at: '2026-06-12', content: 'second',
+            impressions: 500, reach: 400, engagements: 200, clicks: 2, likes: 150, comments_count: 30, shares: 10, saves: 10, video_views: 0, reactions: 0 },
+        ]
+      }) as any,
+      queryOne: (async () => null) as any,
+    }
+    const ctx: PortalToolContext = { clientScope: TENANT_A, clientUserId: 'cu', event: {} as any, db }
+    const res: any = await getMySocialReport({ days: 30 } as any, ctx, { now: () => new Date('2026-06-20T00:00:00Z') })
+
+    expect(res.ok).toBe(true)
+    expect(calls[0]!.params[0]).toBe(TENANT_A)              // tenant key bound first
+    expect(calls[0]!.sql).toContain('p.client_id = $1')
+    expect(res.data.postCount).toBe(2)
+    expect(res.data.totals.engagements).toBe(280)          // 80 + 200
+    // p2 has the higher engagement rate (200/400) → ranked first
+    expect(res.data.topContent[0].postId).toBe('p2')
+    expect(res.data.topContent[0].preview).toBe('second')
+  })
+})
+
 describe('portal scope guard (§12 #1 — refuses to run without clientScope)', () => {
   it('assertPortalScope throws on missing/blank clientScope', () => {
     expect(() => assertPortalScope({ clientScope: '' })).toThrow(/refusing to run/)
@@ -106,7 +136,7 @@ describe('portal registry — only portal-safe read tools', () => {
   it('contains exactly the Tier-1 read tools, no agency tools', () => {
     const names = portalRegistry.map(t => t.name)
     expect(names).toEqual([
-      'get_my_approvals', 'get_my_invoices', 'get_project_status_portal', 'get_my_briefs', 'get_my_leads',
+      'get_my_approvals', 'get_my_invoices', 'get_project_status_portal', 'get_my_briefs', 'get_my_leads', 'get_my_social_report',
     ])
     for (const banned of ['get_finance_snapshot', 'get_client_profitability', 'create_task', 'propose_budget_change', 'search_knowledge']) {
       expect(names).not.toContain(banned)
