@@ -17,23 +17,25 @@ describe('upsertMemory', () => {
     const id = await upsertMemory({ userId: 'u1', memType: 'semantic', content: 'prefers ROAS' }, db)
     expect(id).toBe('m1')
     const params = (db.queryOne as any).mock.calls[0][1]
-    // [userId, scope, memType, content, source, salience, metadata, reinforceStep]
+    // [userId, scope, scope_ref, memType, content, source, salience, metadata, reinforceStep]
     expect(params[0]).toBe('u1')
     expect(params[1]).toBe('user')          // default scope
-    expect(params[2]).toBe('semantic')
-    expect(params[3]).toBe('prefers ROAS')
-    expect(params[4]).toBe('inferred')      // default source
-    expect(params[5]).toBe(0.5)             // default salience
-    expect(params[7]).toBe(REINFORCE_STEP)  // reinforcement on conflict
+    expect(params[2]).toBeNull()            // default scope_ref (personal)
+    expect(params[3]).toBe('semantic')
+    expect(params[4]).toBe('prefers ROAS')
+    expect(params[5]).toBe('inferred')      // default source
+    expect(params[6]).toBe(0.5)             // default salience
+    expect(params[8]).toBe(REINFORCE_STEP)  // reinforcement on conflict
   })
 
-  it('honors explicit scope/source/salience', async () => {
+  it('honors explicit scope/scope_ref/source/salience', async () => {
     const db = fakeDb()
-    await upsertMemory({ userId: 'u1', memType: 'procedural', content: 'monday routine', scope: 'org', source: 'explicit', salience: 0.9 }, db)
+    await upsertMemory({ userId: 'u1', memType: 'procedural', content: 'team routine', scope: 'department', scopeRef: 'dept-1', source: 'explicit', salience: 0.9 }, db)
     const params = (db.queryOne as any).mock.calls[0][1]
-    expect(params[1]).toBe('org')
-    expect(params[4]).toBe('explicit')
-    expect(params[5]).toBe(0.9)
+    expect(params[1]).toBe('department')
+    expect(params[2]).toBe('dept-1')        // scope_ref carried for department scope
+    expect(params[5]).toBe('explicit')
+    expect(params[6]).toBe(0.9)
   })
 
   it('throws if the insert returns no row', async () => {

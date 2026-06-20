@@ -28,16 +28,17 @@ export const REINFORCE_STEP = 0.1
  */
 export async function upsertMemory(input: UpsertMemoryInput, db: MemoryDb = defaultDb): Promise<string> {
   const row = await db.queryOne<{ id: string }>(
-    `INSERT INTO ai_user_memory (user_id, scope, mem_type, content, source, salience, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO ai_user_memory (user_id, scope, scope_ref, mem_type, content, source, salience, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (user_id, mem_type, content)
-       DO UPDATE SET salience = LEAST(1.0, ai_user_memory.salience + $8),
+       DO UPDATE SET salience = LEAST(1.0, ai_user_memory.salience + $9),
                      last_used_at = NOW(),
                      updated_at = NOW()
      RETURNING id`,
     [
       input.userId,
       input.scope ?? 'user',
+      input.scopeRef ?? null,
       input.memType,
       input.content,
       input.source ?? 'inferred',
@@ -76,6 +77,31 @@ export async function listRecentMemories(userId: string, limit: number, db: Memo
        LIMIT $2`,
     [userId, limit],
   )
+}
+
+/**
+ * Shared (department + org) memories visible to a user, given their department ids. NOT user_id-scoped
+ * — these tiers are intentionally shared (the curated middle/top tiers). Personal memory is never read
+ * here. Empty department list still returns org-scoped memory. Ordered by salience then recency.
+ */
+export async function listSharedMemories(departmentIds: string[], limit: number, db: MemoryDb = defaultDb): Promise<UserMemory[]> {
+  return db.queryRows<UserMemory>(
+    `SELECT * FROM ai_user_memory
+       WHERE scope = 'org'
+          OR (scope = 'department' AND scope_ref = ANY($1::uuid[]))
+       ORDER BY salience DESC, last_used_at DESC NULLS LAST, created_at DESC
+       LIMIT $2`,
+    [departmentIds, limit],
+  )
+}
+
+/** The department ids a user belongs to (drives shared-memory visibility). */
+export async function listUserDepartments(userId: string, db: MemoryDb = defaultDb): Promise<string[]> {
+  const rows = await db.queryRows<{ department_id: string }>(
+    `SELECT department_id FROM department_members WHERE user_id = $1`,
+    [userId],
+  )
+  return rows.map(r => r.department_id)
 }
 
 /** Stamp last_used_at = NOW() on retrieved rows (recency reinforcement). Empty ids → no-op. */

@@ -5,15 +5,20 @@
  * and is private; the KB is propose→review→publish. Never conflate the two.
  */
 
-export type MemScope = 'user' | 'org'
+// Three tiers (observe-and-learn spec §4b): user (personal, default/auto) → department (shared within a
+// department, curated) → org (shared agency-wide, curated). Sharing is by READ scope; personal is never
+// shared, department/org are intentionally shared and only written via the human-gated promotion (DS-2).
+export type MemScope = 'user' | 'department' | 'org'
 export type MemType = 'semantic' | 'episodic' | 'procedural'
-export type MemSource = 'inferred' | 'explicit' | 'system'
+export type MemSource = 'inferred' | 'explicit' | 'system' | 'observed'
 
 /** A row of ai_user_memory. */
 export interface UserMemory {
   id: string
   user_id: string
   scope: MemScope
+  /** For scope='department', the departments.id this memory is shared within; null for user/org. */
+  scope_ref: string | null
   mem_type: MemType
   content: string
   source: MemSource
@@ -30,6 +35,8 @@ export interface UpsertMemoryInput {
   memType: MemType
   content: string
   scope?: MemScope
+  /** Required when scope='department' — the department this memory is shared within. */
+  scopeRef?: string | null
   source?: MemSource
   /** 0..1; defaults 0.5. Re-remembering the same content reinforces (does not duplicate). */
   salience?: number

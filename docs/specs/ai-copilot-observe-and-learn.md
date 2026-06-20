@@ -38,6 +38,20 @@ existing activity tables ──► observe (adapter, per-user, watermarked)
 - **W-3 — Transparency + control**: "Learned from your work" panel in My Assistant (list / edit / delete observed memories), filtered by `source='observed'`. Admin kill-switch surfaced.
 - **W-4 — Proactive suggestion** *(separate flag `AI_OBSERVE_PROACTIVE_ENABLED`; HELD for sign-off)*: a confidently-learned routine surfaces a suggestion via the existing notification/digest system ("It's Monday — run your usual spend-check and draft the Acme recap?"). The suggestion routes into the **same propose→confirm→audit** spine. Never auto-executes. Completes the office Mode-C idea.
 
+## 4b. Topology + scope (R&D conclusion, 2026-06-20)
+
+External R&D (Glean, Microsoft CAF/Copilot, mem0/Zep/Letta, Cloudflare) settled two things:
+
+- **Keep the personal co-pilot — do NOT build a shared agent instance per department.** "Shared agent ≠ shared knowledge": knowledge sharing is a property of the memory/KB **scope + ACLs**, not the chat instance. A shared instance also breaks per-user RBAC. The enterprise pattern is *shared definition/KB + per-user identity at query time* ([Glean identity schema](https://www.glean.com/blog/using-our-identity-schema-to-deliver-personalized-permissions-aware-results), [MS Copilot share-agents](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/agent-builder-share-manage-agents), [Azure CAF single-vs-multi](https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/ai-agents/single-agent-multiple-agents)).
+- **Add a department memory scope** — the missing middle tier. The standard is **≥3 scopes: personal (`user_id`, default/auto) → department (`scope_ref=department_id`) → org**; shared scope is **curated, never auto-written**, with promotion gated by human/verifier review ([mem0 entity-scoped](https://docs.mem0.ai/platform/features/entity-scoped-memory), [Atlan 2026](https://atlan.com/know/best-ai-agent-memory-frameworks-2026/)). Enforce scope at the **storage layer** (Vectorize namespace per scope + server-side filter injection), not app code.
+
+**Cloudflare mapping:** Vectorize **namespaces** (`user:<id>` / `dept:<id>` / `org`) for isolation; **Workflows** (GA, durable, free hibernation between steps) for the W-2 batch; Cloudflare's managed **Agent Memory** (private beta) validates the per-scope DO+Vectorize shape but is not required (Neon + Vectorize already matches). No rewrite onto the Agents SDK.
+
+### Slices (added)
+- **DS-1 — department-scope memory foundation**: `ai_user_memory` gains `scope='department'` + `scope_ref` (the department_id); retrieval merges personal (user-scoped) + department (the user's dept_ids) + org. Cross-user isolation preserved — personal is never shared; department/org are intentionally shared. mig 187.
+- **DS-2 — promote-to-department gate**: human-gated promotion of a personal/observed memory to department scope (never auto). Reuses the propose→review→publish discipline of the KB.
+- **W-2 (revised) — on Workflows**: the per-user observe→sessionize→distil pipeline runs as a Cloudflare Workflow; learned routines land in **personal** memory; team-wide ones are *proposed* to department scope via DS-2.
+
 ## 5. Where it lands — the knowledge-graph question
 
 | Store | Fed by observe-and-learn? |
