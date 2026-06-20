@@ -43,9 +43,12 @@ const defaultDeps: DeliveryDeps = {
           AND ts.name ILIKE $2
         ORDER BY (lower(ts.name) = lower($3)) DESC, ts.department_id NULLS LAST LIMIT 6`,
       [taskId, ilike(statusName), statusName]),
+  // Only briefs that can actually be converted (briefConversion.ts requires approved/in_progress + not
+  // already converted) — so we never stage a proposal the convert endpoint will 400/409 at confirm.
   resolveBrief: async (title) =>
     queryRows<NamedRef>(
-      `SELECT id, title AS name FROM briefs WHERE title ILIKE $1
+      `SELECT id, title AS name FROM briefs
+        WHERE title ILIKE $1 AND status IN ('approved','in_progress') AND converted_to_project_id IS NULL
         ORDER BY (lower(title) = lower($2)) DESC, created_at DESC LIMIT 6`,
       [ilike(title), title]),
   propose: (ctx, toolName, payload) => proposeAction(ctx, ctx.conversationId!, toolName, payload),

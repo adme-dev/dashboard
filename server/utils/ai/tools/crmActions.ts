@@ -140,8 +140,13 @@ export const logActivityTool: AiTool<ActArgs> = {
 const quoteParams = z.object({ clientName: z.string(), opportunityName: z.string() })
 type QuoteArgs = z.infer<typeof quoteParams>
 
+// The create-quote endpoint uses requirePricingAccess = requireRole(['owner','admin','project_manager']).
+// Gate the tool on the SAME exact roles (MANAGEMENT would include 'lead', causing a propose-then-403).
+const PRICING_ROLES = new Set(['owner', 'admin', 'project_manager'])
+
 export async function proposeQuote(args: QuoteArgs, ctx: ToolContext, deps: CrmDeps = defaultDeps): Promise<ToolResult> {
   const pre = preflight(ctx); if (pre) return pre
+  if (!PRICING_ROLES.has(ctx.userRole)) return fail('You do not have permission to generate quotes (billing access required).')
   const client = one(await deps.resolveClient(args.clientName), args.clientName, 'clientName', `No client matching "${args.clientName}".`)
   if ('result' in client) return client.result
   const opp = one(await deps.resolveOpportunity(client.one.id, args.opportunityName), args.opportunityName, 'opportunityName', `No opportunity matching "${args.opportunityName}" for ${client.one.name}.`)

@@ -26,6 +26,10 @@ const errorMsg = ref('')
 const r = computed(() => props.proposal.resolved ?? {})
 const toolName = computed(() => props.proposal.toolName ?? 'create_task')
 const isBudgetChange = computed(() => toolName.value === 'propose_budget_change')
+// rich_confirm tools (high-risk) must send richConfirmAck so the server's gate lets them through.
+// Keep in sync with the server's rich_confirm tools (toolRegistry effectiveRiskTier).
+const RICH_CONFIRM_TOOLS = new Set(['propose_budget_change', 'propose_eom_generate'])
+const isRichConfirm = computed(() => RICH_CONFIRM_TOOLS.has(toolName.value))
 
 const fmtMoney = (n: unknown) => (typeof n === 'number' ? `$${n.toLocaleString()}` : String(n ?? ''))
 function formatDue(d?: string | null): string | null {
@@ -46,6 +50,8 @@ const view = computed(() => {
       return { icon: 'i-lucide-bell-ring', label: 'Proposed budget alert · awaiting your confirmation', cta: 'Confirm alert', doneLabel: 'Alert created' }
     case 'propose_knowledge_article':
       return { icon: 'i-lucide-book-plus', label: 'Proposed knowledge draft · awaiting your confirmation', cta: 'Save draft', doneLabel: 'Draft saved for review' }
+    case 'propose_eom_generate':
+      return { icon: 'i-lucide-file-stack', label: 'Proposed EOM invoice run · needs your explicit confirmation', cta: 'Generate EOM run', doneLabel: 'EOM run generated' }
     default:
       return { icon: 'i-lucide-list-todo', label: 'Proposed task · awaiting your confirmation', cta: 'Create task', doneLabel: 'Task created' }
   }
@@ -74,6 +80,11 @@ const meta = computed(() => {
       rows.push({ label: 'Type', value: r.value.alertType })
       rows.push({ label: 'Threshold', value: typeof r.value.thresholdValue === 'number' ? r.value.thresholdValue : null })
       break
+    case 'propose_eom_generate':
+      rows.push({ label: 'Month', value: r.value.month })
+      rows.push({ label: 'Year', value: r.value.year })
+      rows.push({ label: 'Note', value: 'Draft run — does not push to Xero' })
+      break
     case 'propose_knowledge_article':
       rows.push({ label: 'Category', value: r.value.category })
       rows.push({ label: 'Visibility', value: 'Draft — needs review before it’s searchable' })
@@ -99,7 +110,7 @@ async function confirm() {
     const res = await $fetch<{ ok: boolean, taskId?: string, resultRef?: string, error?: string, requiresRichConfirm?: boolean }>(
       `/api/agency/ai/chat/conversations/${props.conversationId}/confirm-action`,
       // rich_confirm writes (budget change) must send the explicit acknowledgement the server gate requires.
-      { method: 'POST', body: { proposalId: props.proposal.proposalId, ...(isBudgetChange.value ? { richConfirmAck: true } : {}) } },
+      { method: 'POST', body: { proposalId: props.proposal.proposalId, ...(isRichConfirm.value ? { richConfirmAck: true } : {}) } },
     )
     const ref = res.resultRef || res.taskId
     if (res.ok && ref) {
@@ -127,7 +138,7 @@ function cancel() {
 <template>
   <div
     class="my-2 max-w-md overflow-hidden rounded-xl border border-default bg-elevated/60 shadow-sm"
-    :class="status === 'done' ? 'border-l-2 border-l-success' : status === 'cancelled' ? 'opacity-60' : isBudgetChange ? 'border-l-2 border-l-error' : 'border-l-2 border-l-warning'"
+    :class="status === 'done' ? 'border-l-2 border-l-success' : status === 'cancelled' ? 'opacity-60' : isRichConfirm ? 'border-l-2 border-l-error' : 'border-l-2 border-l-warning'"
   >
     <!-- Header -->
     <div class="flex items-center gap-2 px-4 pt-3">

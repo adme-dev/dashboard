@@ -11,11 +11,12 @@ import type { AiMessage } from '~/types'
 type Proposal = { proposalId: string, resolved: unknown, toolName?: string }
 
 // rich_confirm tools must send an explicit ack at confirm (the server gate rejects otherwise).
-const RICH_CONFIRM_TOOLS = new Set(['propose_budget_change'])
+const RICH_CONFIRM_TOOLS = new Set(['propose_budget_change', 'propose_eom_generate'])
 // Spoken confirmation copy per tool — the generic "task created" lies for non-task writes.
 function confirmNote(toolName?: string): string {
   switch (toolName) {
     case 'propose_budget_change': return 'Done — the budget change has been planned for the spend review.'
+    case 'propose_eom_generate': return 'Done — the end-of-month invoice run has been generated as a draft.'
     case 'propose_schedule_post': return 'Done — the post has been created.'
     case 'propose_budget_alert': return 'Done — the budget alert has been created.'
     case 'propose_knowledge_article': return 'Done — the knowledge article was drafted for review.'

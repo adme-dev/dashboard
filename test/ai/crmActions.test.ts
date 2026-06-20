@@ -45,9 +45,18 @@ describe('log_crm_activity', () => {
 })
 
 describe('propose_quote', () => {
-  it('resolves the opportunity within the client and stages a proposal', async () => {
-    const res: any = await proposeQuote({ clientName: 'Acme', opportunityName: 'Q3 retainer' }, ctx, deps())
+  const pricing = { ...ctx, userRole: 'project_manager' } as ToolContext
+  it('resolves the opportunity for a pricing-access role and stages a proposal', async () => {
+    const res: any = await proposeQuote({ clientName: 'Acme', opportunityName: 'Q3 retainer' }, pricing, deps())
     expect(res.data.resolved).toMatchObject({ client_id: 'cl1', opportunity_id: 'op1' })
+  })
+  it('blocks roles without pricing access (no propose-then-403) — incl. lead', async () => {
+    const propose = vi.fn()
+    for (const role of ['sales', 'lead', 'media_buyer']) {
+      const res: any = await proposeQuote({ clientName: 'Acme', opportunityName: 'Q3 retainer' }, { ...ctx, userRole: role } as ToolContext, deps({ propose }))
+      expect(res.ok).toBe(false)
+    }
+    expect(propose).not.toHaveBeenCalled()
   })
 })
 
