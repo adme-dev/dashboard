@@ -5,16 +5,12 @@
  * Agent-proposed knowledge articles awaiting human review (review_status='draft', is_published=false).
  * MANAGEMENT-gated. Read-only — publishing/rejecting are the separate publish/reject endpoints.
  */
-import { requireAuth } from '~~/server/utils/auth'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import { requirePermission } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { mapDraft, type DraftRow } from '~~/server/utils/ai/commandCenter'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
-  if (!roleHasPermission(user.role, 'MANAGEMENT')) {
-    throw createError({ statusCode: 403, statusMessage: 'Reviewing KB drafts requires a management role' })
-  }
+  await requirePermission(event, 'MANAGEMENT')
 
   const rows = await queryRows<DraftRow>(
     `SELECT a.id, a.title, a.content, a.category, a.author_id, a.created_at,

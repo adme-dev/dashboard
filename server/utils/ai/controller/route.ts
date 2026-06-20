@@ -65,8 +65,7 @@ export function planSpecialists(
 ): { personas: string[] } {
   const picked: string[] = []
   for (const d of domains) {
-    // 'work' (tasks/boards) is served by the Account pack, which also covers the 'accounts' domain.
-    const pack = SKILL_PACKS.find(p => p.domains.includes(d) || (d === 'work' && p.persona === 'account'))
+    const pack = SKILL_PACKS.find(p => p.domains.includes(d))
     if (!pack) continue
     if (pack.requiredPermission && !deps.hasPermission(userRole, pack.requiredPermission)) continue // RBAC ceiling
     if (!picked.includes(pack.persona)) picked.push(pack.persona)

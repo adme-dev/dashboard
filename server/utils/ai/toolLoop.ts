@@ -78,12 +78,16 @@ export async function runToolLoop(opts: {
   model?: LanguageModel
   fallbackModel?: LanguageModel
   signal?: AbortSignal
+  /** Exclude mutating (propose) tools — used for L2 controller sub-runs so a delegated specialist
+   *  can only READ; it can never stage a write proposal that would persist as an orphan. */
+  readOnly?: boolean
 }): Promise<LoopOutput> {
   const cfg = useRuntimeConfig() as any
   const persona = opts.persona ?? DEFAULT_PERSONA
 
   let tools = filterToolsForUser(registry, opts.ctx.userRole)
   if (persona.toolAllowlist) tools = tools.filter(t => persona.toolAllowlist!.includes(t.name))
+  if (opts.readOnly) tools = tools.filter(t => !t.mutates)
   const sdkTools = toSdkTools(tools, opts.ctx, opts.seed)
 
   const system = [opts.system, persona.instructionsPreamble, spotlightSystemClause()]

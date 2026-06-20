@@ -4,15 +4,11 @@
  *
  * Marks a draft rejected (stays is_published=false, so never searchable). MANAGEMENT-gated.
  */
-import { requireAuth } from '~~/server/utils/auth'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import { requirePermission } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
-  if (!roleHasPermission(user.role, 'MANAGEMENT')) {
-    throw createError({ statusCode: 403, statusMessage: 'Reviewing knowledge requires a management role' })
-  }
+  const user = await requirePermission(event, 'MANAGEMENT')
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id is required' })
 

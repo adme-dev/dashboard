@@ -21,7 +21,7 @@ export interface SkillPackCapability {
 
 export const SKILL_PACKS: SkillPackCapability[] = [
   { persona: 'finance', domains: ['finance'], intents: ['financial_query'], requiredPermission: 'FINANCE' },
-  { persona: 'account', domains: ['accounts', 'delivery'], intents: ['task_query', 'project_query', 'brief_query', 'team_query'], requiredPermission: 'CLIENTS' },
+  { persona: 'account', domains: ['accounts', 'delivery', 'work'], intents: ['task_query', 'project_query', 'brief_query', 'team_query'], requiredPermission: 'CLIENTS' },
   { persona: 'sales', domains: ['sales'], intents: ['pricing_query'], requiredPermission: 'SALES' },
   { persona: 'media_buyer', domains: ['media', 'adspend'], intents: [], requiredPermission: 'MEDIA_BUYING' },
   { persona: 'marketing', domains: ['marketing', 'social'], intents: [], requiredPermission: 'CLIENTS' },

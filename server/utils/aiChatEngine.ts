@@ -5,6 +5,7 @@ import { retrieveContext } from '~~/server/utils/aiContextRetriever'
 import { getRelevantPatterns } from '~~/server/utils/aiFeedbackProcessor'
 import { shouldUseToolLoop } from '~~/server/utils/ai/gate'
 import { resolvePersona } from '~~/server/utils/ai/personas'
+import { selectSkillPack } from '~~/server/utils/ai/controller/route'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -389,17 +390,11 @@ export async function processUserMessage(
   }))
 
   // 2a. L1 traffic controller (Phase 3): now that the intent is known, auto-select ONE skill-pack by
-  // intent+role unless the user pinned one. Per-turn routing (a finance question routes to Finance for
-  // this turn); RBAC still governs the actual tools. Best-effort — any failure falls back to the pinned
-  // choice or generalist, never breaking the turn.
-  let activePersona = resolvePersona(explicitOrPersisted)
-  try {
-    const { selectSkillPack } = await import('~~/server/utils/ai/controller/route')
-    const routed = selectSkillPack({ intent: contextBundle.intent, userRole }, explicitOrPersisted)
-    activePersona = resolvePersona(routed.persona)
-  } catch {
-    // keep the pinned/generalist resolution above
-  }
+  // intent+role unless the user pinned one. Pure + total (explicit → intent → role-default → generalist),
+  // so it never throws and the role-default is always honored. Per-turn routing (a finance question
+  // routes to Finance for this turn); RBAC still governs the actual tools.
+  const routed = selectSkillPack({ intent: contextBundle.intent, userRole }, explicitOrPersisted)
+  const activePersona = resolvePersona(routed.persona)
 
   // 2b. Fetch explicitly mentioned entities and pin them to top of context
   if (mentionedEntities && mentionedEntities.length > 0) {
@@ -492,12 +487,14 @@ export async function processUserMessage(
 
       // L2 traffic controller (Phase 3, behind AI_CONTROLLER_L2_ENABLED): for a request that provably
       // spans ≥2 domains the user is entitled to, decompose → delegate to specialist packs in parallel
-      // → synthesize ONE answer. Read-oriented composition; each sub-run is RBAC-filtered inside the
-      // loop (the composed answer can never exceed what the user could get directly). Fail-safe: any
-      // error or <2 entitled packs degrades to the normal L1 single-pack loop below.
+      // → synthesize ONE answer. Sub-runs are READ-ONLY (no mutating tools) so a delegated specialist
+      // can never stage an orphan write proposal, AND each is RBAC-filtered (the composed answer can
+      // never exceed what the user could get directly). Skipped when the user pinned a persona (their
+      // single-pack choice wins). Fail-safe: any error, a pinned persona, <2 entitled packs, or no
+      // specialist findings degrades to the normal L1 single-pack loop below.
       let l2Answer: string | null = null
       let l2Cost = 0
-      if (cfg.aiControllerL2Enabled) {
+      if (cfg.aiControllerL2Enabled && !explicitOrPersisted) {
         try {
           const [{ classifyRequest }, { planSpecialists }, { delegateToSpecialists }, { synthesizeAnswer }] = await Promise.all([
             import('~~/server/utils/ai/controller/classify'),
@@ -515,15 +512,20 @@ export async function processUserMessage(
                 const sub = await runToolLoop({
                   ctx: { userId, userRole, conversationId, event },
                   system: systemPrompt, messages: loopMessages, seed: `${conversationId}:${pk}`, persona: resolvePersona(pk),
+                  readOnly: true, // L2 specialists READ only — never persist a write proposal
                 })
                 l2Cost += sub.costUsd ?? 0
                 return { text: sub.text }
               },
             })
-            l2Answer = await synthesizeAnswer(content, results, {
-              complete: p => generateGroqInsight(p, { model: GROQ_MODELS.REASONING_120B, temperature: 0.2, maxTokens: 1200, systemPrompt: 'Combine the specialist findings into one grounded answer; invent nothing.' }),
-            })
-            toolTrace = [{ name: 'traffic_controller_l2', args: { domains: cls.domains, packs: plan.personas } }]
+            // Only commit to L2 if at least one specialist actually found something — otherwise fall
+            // through to L1 rather than dead-ending on a synthesized "didn't find anything".
+            if (results.some(r => r.text.trim())) {
+              l2Answer = await synthesizeAnswer(content, results, {
+                complete: p => generateGroqInsight(p, { model: GROQ_MODELS.REASONING_120B, temperature: 0.2, maxTokens: 1200, systemPrompt: 'Combine the specialist findings into one grounded answer; invent nothing.' }),
+              })
+              toolTrace = [{ name: 'traffic_controller_l2', args: { domains: cls.domains, packs: plan.personas } }]
+            }
           }
         } catch (err) {
           console.error('L2 controller failed; falling back to L1:', err)

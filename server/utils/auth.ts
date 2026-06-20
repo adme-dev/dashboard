@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { queryOne, queryRows } from './db'
-import { isReadOnlyRole, PERMISSIONS, permissionGroupsForRoles } from './permissions'
+import { isReadOnlyRole, PERMISSIONS, permissionGroupsForRoles, roleHasPermission, type PermissionGroup } from './permissions'
 import { resolveUserPermissions } from './roleResolver'
 
 export interface User {
@@ -227,6 +227,19 @@ export async function requireRole(event: any, roles: readonly string[]): Promise
   }
 
   return user
+}
+
+/**
+ * Require a permission GROUP (e.g. 'MANAGEMENT', 'FINANCE'). Honors both the legacy role→group map
+ * AND a user's dynamic `permissionGroups` (custom roles) — unlike a bare `roleHasPermission(user.role)`
+ * check, which misses custom roles granted the group. Mirrors requireRole's dev-skip.
+ */
+export async function requirePermission(event: any, group: PermissionGroup): Promise<User> {
+  const user = await requireAuth(event)
+  if (import.meta.dev) return user
+  if (roleHasPermission(user.role, group)) return user
+  if (user.permissionGroups?.includes(group)) return user
+  throw createError({ statusCode: 403, statusMessage: 'Forbidden - Insufficient permissions' })
 }
 
 // Require write access - blocks viewer/guest roles and custom read-only roles from mutations

@@ -6,16 +6,12 @@
  * search_knowledge can find it (the fail-closed read only returns is_published=true rows). MANAGEMENT-gated.
  * Idempotent-ish: only a row currently in review_status='draft' is published (re-publishing is a no-op 404).
  */
-import { requireAuth } from '~~/server/utils/auth'
-import { roleHasPermission } from '~~/server/utils/permissions'
+import { requirePermission } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { embedKnowledgeArticle } from '~~/server/utils/aiEmbeddingPipeline'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
-  if (!roleHasPermission(user.role, 'MANAGEMENT')) {
-    throw createError({ statusCode: 403, statusMessage: 'Publishing knowledge requires a management role' })
-  }
+  const user = await requirePermission(event, 'MANAGEMENT')
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id is required' })
 
