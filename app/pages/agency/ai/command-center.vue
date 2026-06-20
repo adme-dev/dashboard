@@ -61,7 +61,10 @@ const cards = computed(() => [
         <h1 class="text-xl font-semibold text-highlighted">AI Command Center</h1>
         <p class="text-sm text-muted">Observe — proposals, action audit, usage and memory across the co-pilot fleet.</p>
       </div>
-      <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" :loading="pending" @click="refresh()">Refresh</UButton>
+      <div class="flex items-center gap-2">
+        <UButton to="/agency/ai/my-assistant" icon="i-lucide-sliders-horizontal" color="neutral" variant="ghost">My Assistant</UButton>
+        <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" :loading="pending" @click="refresh()">Refresh</UButton>
+      </div>
     </header>
 
     <UAlert v-if="error" color="error" variant="soft" icon="i-lucide-triangle-alert"
