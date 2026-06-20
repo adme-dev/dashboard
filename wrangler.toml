@@ -102,6 +102,11 @@ APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 EMAIL_FROM = "notification@adme.net.au"
 # APP_URL is set in CF Pages dashboard to avoid binding conflict
+# MCP server (Phase 1) — non-secret plaintext vars MUST live here, not the CF dashboard:
+# deployConfig bakes [vars] into the Direct-Upload deploy config, which REPLACES dashboard
+# plaintext vars (secrets survive). MCP_INTERNAL_SECRET + MCP_HANDSHAKE_SECRET stay as dashboard secrets.
+MCP_SERVER_ENABLED = "true"
+MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
 
 # Chat — Durable Objects (hosted in separate worker)
 [[durable_objects.bindings]]
