@@ -54,24 +54,43 @@ interface ProofAssetRow {
 }
 
 /**
- * Wire proof-asset creation → visual KB drafts. Flag-gated + off-edge no-op. The AI binding is captured
- * SYNCHRONOUSLY (reaching event.context after the response throws on Cloudflare) then the captioning runs
- * via runAfterResponse. Non-image assets are filtered out. Never throws — safe to call inline in the POST.
+ * Shared background-caption runner: flag-gate + SYNCHRONOUS AI-binding capture (reaching event.context
+ * after the response throws on Cloudflare) + runAfterResponse. Never throws — safe to call inline in a POST.
+ * Returns silently when disabled, off-edge, or there's nothing to caption.
  */
-export function maybeCaptionProofAssets(event: H3Event, created: ProofAssetRow[], authorId: string | null): void {
+function captionAssetsInBackground(event: H3Event, assets: VisualAsset[], authorId: string | null, label: string): void {
   if (!isVisualsToKnowledgeEnabled()) return
+  if (assets.length === 0) return
 
   const ai = ((event.context as { cloudflare?: { env?: { AI?: AiBinding } } }).cloudflare?.env?.AI) ?? null
   if (!ai) return // off-edge / no Workers AI — nothing to caption against
-
-  const assets: VisualAsset[] = created
-    .filter(a => a?.file_url && isCaptionableType(a.file_type))
-    .map(a => ({ id: a.id, kind: 'proof', url: a.file_url, title: a.file_name ?? undefined }))
-  if (assets.length === 0) return
 
   const deps: CaptionDraftDeps = {
     caption: makeWorkersAiVision(ai),
     saveDraft: vk => createVisualKnowledgeDraft(vk, { authorId })
   }
-  runAfterResponse(event, captionAndDraftAssets(assets, deps), 'visuals-caption-proof')
+  runAfterResponse(event, captionAndDraftAssets(assets, deps), label)
+}
+
+/** Wire proof-asset creation → visual KB drafts. Non-image assets are filtered out. */
+export function maybeCaptionProofAssets(event: H3Event, created: ProofAssetRow[], authorId: string | null): void {
+  const assets: VisualAsset[] = created
+    .filter(a => a?.file_url && isCaptionableType(a.file_type))
+    .map(a => ({ id: a.id, kind: 'proof', url: a.file_url, title: a.file_name ?? undefined }))
+  captionAssetsInBackground(event, assets, authorId, 'visuals-caption-proof')
+}
+
+/** A created banner-export row (image exports only — video/gif handlers don't call this). */
+interface BannerExportRow {
+  id: string
+  url: string
+  format_key?: string | null
+}
+
+/** Wire banner image-export creation → visual KB drafts. Same dormant/fail-safe machinery as proofs. */
+export function maybeCaptionBannerExports(event: H3Event, exports: BannerExportRow[], authorId: string | null): void {
+  const assets: VisualAsset[] = exports
+    .filter(e => e?.id && e?.url)
+    .map(e => ({ id: e.id, kind: 'banner', url: e.url, title: e.format_key ?? undefined }))
+  captionAssetsInBackground(event, assets, authorId, 'visuals-caption-banner')
 }

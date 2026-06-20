@@ -1,6 +1,7 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { uploadFile } from '~~/server/utils/storage'
+import { maybeCaptionBannerExports } from '~~/server/utils/ai/visuals/trigger'
 import { randomUUID } from 'crypto'
 
 const MAX_FORMATS = 25
@@ -39,11 +40,12 @@ export default defineEventHandler(async (event) => {
   if (!browser) {
     throw createError({
       statusCode: 503,
-      statusMessage: 'Browser rendering not available. Configure Cloudflare Browser Rendering or install puppeteer.',
+      statusMessage: 'Browser rendering not available. Configure Cloudflare Browser Rendering or install puppeteer.'
     })
   }
 
-  const results: Array<{ formatKey: string; url: string; fileSize: number }> = []
+  const results: Array<{ formatKey: string, url: string, fileSize: number }> = []
+  const exported: Array<{ id: string, url: string, format_key: string }> = []
 
   try {
     for (const fmt of formats) {
@@ -70,7 +72,7 @@ export default defineEventHandler(async (event) => {
 
         const screenshotOptions: any = {
           type: format === 'jpg' ? 'jpeg' : 'png',
-          clip: { x: 0, y: 0, width: viewportWidth, height: viewportHeight },
+          clip: { x: 0, y: 0, width: viewportWidth, height: viewportHeight }
         }
         if (format === 'jpg') {
           screenshotOptions.quality = Math.max(1, Math.min(100, jpgQuality))
@@ -86,13 +88,14 @@ export default defineEventHandler(async (event) => {
         const { url, size } = await uploadFile(buffer, r2Key, mimeType)
 
         // Create export record
-        await queryOne(`
+        const exportRow = await queryOne<{ id: string }>(`
           INSERT INTO banner_exports (project_id, format_key, r2_key, url, file_size, export_type, quality, exported_by)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           RETURNING id
         `, [projectId, formatKey, r2Key, url, size, format, quality, user.id])
 
         results.push({ formatKey, url, fileSize: size })
+        if (exportRow?.id) exported.push({ id: exportRow.id, url, format_key: formatKey })
       } finally {
         await page.close().catch(() => {})
       }
@@ -100,6 +103,10 @@ export default defineEventHandler(async (event) => {
   } finally {
     await browser.close().catch(() => {})
   }
+
+  // Visuals → Knowledge (dormant behind VISUALS_TO_KNOWLEDGE_ENABLED): caption exported banner images
+  // into unpublished KB drafts, fire-and-forget. No-op off-edge / when disabled.
+  maybeCaptionBannerExports(event, exported, user.id)
 
   return results
 })
@@ -121,7 +128,7 @@ async function getBrowser(event: any): Promise<any> {
     const puppeteer = await import('puppeteer' as string)
     return puppeteer.default.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     })
   } catch {
     return null

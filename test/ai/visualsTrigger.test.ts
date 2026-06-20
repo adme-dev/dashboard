@@ -3,6 +3,8 @@ import {
   isVisualsToKnowledgeEnabled,
   isCaptionableType,
   captionAndDraftAssets,
+  maybeCaptionBannerExports,
+  maybeCaptionProofAssets,
   type CaptionDraftDeps
 } from '~~/server/utils/ai/visuals/trigger'
 import type { VisualAsset } from '~~/server/utils/ai/visuals/caption'
@@ -70,5 +72,17 @@ describe('captionAndDraftAssets', () => {
       saveDraft: vi.fn(async () => 'kb')
     }
     expect(await captionAndDraftAssets(assets, deps)).toBe(0)
+  })
+})
+
+describe('background triggers — dormant + off-edge are no-ops (never throw)', () => {
+  // No flag, no AI binding → the trigger must return silently (the dormant default in prod).
+  const eventNoEdge = { context: {} } as unknown as Parameters<typeof maybeCaptionProofAssets>[0]
+
+  it('maybeCaptionProofAssets is a no-op when disabled / off-edge', () => {
+    expect(() => maybeCaptionProofAssets(eventNoEdge, [{ id: 'a', file_url: 'u', file_type: 'image/png' }], 'u1')).not.toThrow()
+  })
+  it('maybeCaptionBannerExports is a no-op when disabled / off-edge', () => {
+    expect(() => maybeCaptionBannerExports(eventNoEdge, [{ id: 'e', url: 'u', format_key: 'fb_feed' }], 'u1')).not.toThrow()
   })
 })
