@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { portalRegistry, buildPortalTools, assertPortalScope } from '~~/server/utils/ai/portalTools'
+import { portalRegistry, buildPortalTools, assertPortalScope, PORTAL_APP_TOOLS } from '~~/server/utils/ai/portalTools'
 import type { PortalDb, PortalToolContext } from '~~/server/utils/ai/portalTools/portalContext'
 import { getMySocialReport } from '~~/server/utils/ai/portalTools/socialReport'
 
@@ -153,5 +153,38 @@ describe('portal registry — only portal-safe tools', () => {
 
   it('respond_to_approval is the ONLY mutating tool (everything else is read-only)', () => {
     expect(portalRegistry.filter(t => t.mutates).map(t => t.name)).toEqual(['respond_to_approval'])
+  })
+})
+
+describe('portal per-user permission enforcement (mirrors REST RBAC)', () => {
+  it('drops tools the user lacks the permission for (writes on)', () => {
+    const ctx = { ...ctxFor(TENANT_A, makeFakeDb([])), permissions: { canViewProjects: true } } as any
+    const names = Object.keys(buildPortalTools(ctx, 'seed', { allowWrites: true }))
+    // permitted: projects (canViewProjects). dropped: invoices/social/respond (perm not granted).
+    expect(names).toContain('get_project_status_portal')
+    expect(names).not.toContain('get_my_invoices')
+    expect(names).not.toContain('get_my_social_report')
+    expect(names).not.toContain('respond_to_approval')
+    // tools without a requiredPermission stay (approvals-read/briefs/leads)
+    expect(names).toContain('get_my_approvals')
+  })
+
+  it('grants permission-gated tools when the flag is true', () => {
+    const ctx = { ...ctxFor(TENANT_A, makeFakeDb([])), permissions: { canViewInvoices: true, canApproveWork: true } } as any
+    const names = Object.keys(buildPortalTools(ctx, 'seed', { allowWrites: true }))
+    expect(names).toContain('get_my_invoices')
+    expect(names).toContain('respond_to_approval')
+  })
+
+  it('no permissions object → no per-user filtering (tenant isolation still applies)', () => {
+    const names = Object.keys(buildPortalTools(ctxFor(TENANT_A, makeFakeDb([])), 'seed', { allowWrites: true }))
+    expect(names).toContain('get_my_invoices')
+  })
+})
+
+describe('app-assignment ↔ registry coverage', () => {
+  it('every registry tool is reachable via at least one app key (no orphaned tool)', () => {
+    const mapped = new Set(Object.values(PORTAL_APP_TOOLS).flat())
+    for (const t of portalRegistry) expect(mapped.has(t.name)).toBe(true)
   })
 })

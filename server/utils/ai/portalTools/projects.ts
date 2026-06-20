@@ -46,5 +46,6 @@ export const getMyProjectsTool: PortalAiTool<Args> = {
     + 'Use for "how is my project going", "what\'s the status of <project>", "what\'s due soon". Optionally filter by status. '
     + 'Returns a project list capped at 25 with a `more` count. Read-only.',
   parameters: params,
+  requiredPermission: 'canViewProjects',
   handler: getMyProjects,
 }

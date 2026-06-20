@@ -39,5 +39,6 @@ export const getMyInvoicesTool: PortalAiTool<Args> = {
     + 'Use for "my invoices", "what do I owe", "which invoices are overdue". Optionally filter by status. '
     + 'Returns an invoice list capped at 25 with a `more` count. Read-only.',
   parameters: params,
+  requiredPermission: 'canViewInvoices',
   handler: getMyInvoices,
 }

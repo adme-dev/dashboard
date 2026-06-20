@@ -49,5 +49,6 @@ export const respondToApprovalTool: PortalAiTool<Args> = {
   parameters: params,
   mutates: true,
   riskTier: 'confirm',
+  requiredPermission: 'canApproveWork',
   handler: proposeRespondToApproval,
 }

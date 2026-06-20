@@ -11,7 +11,9 @@ import type { PortalAiTool } from './portalContext'
 
 /** app key (as used by the portal nav / assignment UI) → the portal tools it unlocks. */
 export const PORTAL_APP_TOOLS: Record<string, string[]> = {
-  approvals: ['get_my_approvals'],
+  // 'approvals' unlocks the read AND the Tier-2 write (the write still needs AI_PORTAL_WRITES_ENABLED
+  // + the user's canApproveWork; mapping it here so an approvals-enabled client can reach it at all).
+  approvals: ['get_my_approvals', 'respond_to_approval'],
   projects: ['get_project_status_portal'],
   invoices: ['get_my_invoices'],
   leads: ['get_my_leads'],

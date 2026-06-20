@@ -57,5 +57,6 @@ export const getMySocialReportTool: PortalAiTool<Args> = {
     + 'Read-only and scoped to the customer\'s own accounts.',
   parameters: params,
   returnsUntrusted: true,
+  requiredPermission: 'canViewAnalytics',
   handler: (a, c) => getMySocialReport(a, c),
 }

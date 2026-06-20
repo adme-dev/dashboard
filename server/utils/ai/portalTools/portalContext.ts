@@ -42,6 +42,13 @@ export type PortalToolContext = {
   clientScope: string
   /** The portal user — `client_users.id`. Used for personal-memory scope + write-proposal ownership. */
   clientUserId: string
+  /**
+   * The portal user's per-user permission flags (client_users.*: canViewInvoices, canViewProjects,
+   * canViewAnalytics, canApproveWork, …). When present, a tool whose `requiredPermission` is not granted
+   * is dropped — so the assistant enforces the SAME per-user RBAC the portal REST endpoints enforce, not
+   * just tenant isolation. Absent (e.g. in unit tests) → no per-user filtering.
+   */
+  permissions?: Record<string, boolean>
   /** The portal conversation — required for a write tool to persist its proposal. */
   conversationId?: string
   event: H3Event
@@ -94,6 +101,9 @@ export interface PortalAiTool<A> {
   parameters: z.ZodType<A>
   /** true = results contain untrusted text → spotlighted before entering model context. */
   returnsUntrusted?: boolean
+  /** A client_users permission flag the portal user must hold (e.g. 'canViewInvoices'); else the tool
+   *  is dropped. Mirrors the per-user checks the portal REST endpoints enforce. */
+  requiredPermission?: string
   /** true = write tool (Tier 2) → handler only PROPOSES; the confirm endpoint executes. */
   mutates?: boolean
   /** Human-gating tier for a write (defaults to 'confirm'); the confirm endpoint can demand richer. */

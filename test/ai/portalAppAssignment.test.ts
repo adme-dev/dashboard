@@ -14,12 +14,13 @@ describe('portal app-assignment (config narrows, never grants)', () => {
 
   it('restricts to exactly the tools unlocked by the enabled apps', () => {
     const tools = narrowPortalRegistryByApps(portalRegistry, ['approvals', 'invoices'])
-    expect(tools.map(t => t.name).sort()).toEqual(['get_my_approvals', 'get_my_invoices'])
+    // 'approvals' unlocks the read + the Tier-2 write; 'invoices' unlocks its read.
+    expect(tools.map(t => t.name).sort()).toEqual(['get_my_approvals', 'get_my_invoices', 'respond_to_approval'])
   })
 
   it('unknown app keys contribute nothing (cannot grant)', () => {
     const tools = narrowPortalRegistryByApps(portalRegistry, ['approvals', 'made-up-app', 'get_finance_snapshot'])
-    expect(tools.map(t => t.name)).toEqual(['get_my_approvals'])
+    expect(tools.map(t => t.name).sort()).toEqual(['get_my_approvals', 'respond_to_approval'])
   })
 
   it('every mapped tool actually exists in the registry (no dangling map entry)', () => {

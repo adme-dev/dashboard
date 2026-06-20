@@ -26,6 +26,7 @@ export default defineEventHandler(async (event) => {
     conversationId,
     clientUserId: clientUser.id,
     clientId: clientUser.clientId,
+    permissions: clientUser.permissions as unknown as Record<string, boolean>,
     content,
     event,
   })

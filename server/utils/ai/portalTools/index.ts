@@ -46,5 +46,11 @@ export function buildPortalTools(
   let tools = narrowPortalRegistryByApps(portalRegistry, opts.enabledApps ?? null)
   // Tier 2 writes are doubly dormant: absent unless allowWrites (AI_PORTAL_WRITES_ENABLED) is set.
   if (!opts.allowWrites) tools = tools.filter(t => !t.mutates)
+  // Per-user RBAC: drop tools the portal user isn't permitted to use (mirrors the REST endpoints'
+  // canViewInvoices/canViewAnalytics/canApproveWork checks). Only applied when permissions are supplied.
+  if (ctx.permissions) {
+    const perms = ctx.permissions
+    tools = tools.filter(t => !t.requiredPermission || perms[t.requiredPermission] === true)
+  }
   return toPortalSdkTools(tools, ctx, seed)
 }

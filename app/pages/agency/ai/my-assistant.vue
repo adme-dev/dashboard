@@ -90,7 +90,7 @@ async function save() {
       <template #header>
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold text-highlighted">Tools</h2>
-          <span class="text-xs text-muted">{{ tools.length - disabled.size }}/{{ tools.length }} on</span>
+          <span class="text-xs text-muted">{{ tools.filter(t => isEnabled(t.name)).length }}/{{ tools.length }} on</span>
         </div>
       </template>
       <p class="mb-3 text-xs text-muted">Turn off any tool you don’t want your assistant to use. Everything here is already permitted by your role.</p>

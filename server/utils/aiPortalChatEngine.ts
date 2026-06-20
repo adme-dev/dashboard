@@ -46,10 +46,12 @@ export async function processPortalMessage(input: {
   conversationId?: string
   clientUserId: string
   clientId: string
+  /** The portal user's per-user permission flags — enforced on the toolset (mirrors the REST RBAC). */
+  permissions?: Record<string, boolean>
   content: string
   event: H3Event
 }): Promise<PortalChatResult> {
-  const { clientUserId, clientId, content, event } = input
+  const { clientUserId, clientId, permissions, content, event } = input
   if (!clientId) throw createError({ statusCode: 403, statusMessage: 'No client scope' })
 
   const conversationId = await resolveConversation(input.conversationId, clientUserId, clientId, content)
@@ -78,7 +80,7 @@ export async function processPortalMessage(input: {
     // Toolset = the client's assigned apps ∩ portal-safe tools (null = default-all). Fail-safe to all.
     const enabledApps = await getEnabledPortalApps(clientId, { queryOne })
     const loop = await runPortalToolLoop({
-      ctx: { clientScope: clientId, clientUserId, conversationId, event },
+      ctx: { clientScope: clientId, clientUserId, permissions, conversationId, event },
       messages,
       seed: conversationId,
       enabledApps,
