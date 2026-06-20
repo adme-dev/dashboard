@@ -63,13 +63,22 @@ The two decision-free I/O pieces are now built (the dormant-core pattern, like W
   (asset creation isn't a chat turn), so it writes the draft directly rather than via a pending-action.
 - 9 unit tests (incl. end-to-end bytes→caption→candidate); lint + server-tsc clean.
 
-**Remaining final step (operator-decision, not built):** the trigger that calls these on proof-asset /
-banner-export creation. Open decisions to make at wiring time: (a) **inline fire-and-forget-after-response**
-(handler has the AI binding; simplest) **vs a `visuals.caption` queue job** (robust vs Worker CPU limits,
-but the queue consumer must be handed the `AI` binding) — recommend inline first; (b) **scope routing** —
-default org **KB draft** (built) vs DS-2 **department** memory for managers; (c) a `VISUALS_TO_KNOWLEDGE_ENABLED`
-flag, off by default. The triggers are ~3–10 lines each in `proofs/[id]/assets.post.ts` and the banner
-export handler. All current pieces are dormant (nothing calls them yet).
+## 3c. V-2 — proof-asset trigger (built, dormant)
+
+The trigger is now built (`02ebef7a`), per the decisions taken: **inline fire-and-forget**, **org-KB-draft
+scope**, **`VISUALS_TO_KNOWLEDGE_ENABLED` flag (off)**.
+
+- **`server/utils/ai/visuals/trigger.ts`** — `captionAndDraftAssets` (testable core: describe each asset →
+  unpublished KB draft, fail-safe per asset) + `maybeCaptionProofAssets` (flag gate + **synchronous**
+  AI-binding capture — reaching `event.context` after the response throws on CF — then `runAfterResponse`).
+  Filters to image assets; no-op off-edge.
+- **`server/api/agency/proofs/[id]/assets.post.ts`** — one fire-and-forget call after the asset insert;
+  never blocks or breaks the upload.
+- 6 trigger tests (531 AI tests green); lint + server-tsc clean. Dormant until the flag is flipped on the edge.
+
+**Still open (smaller / deferred):** banner-export trigger (same pattern, when banner exports matter);
+DS-2 department-scope routing for managers (org-KB default is fine for v1); operator verify-live (real
+llava output + R2 byte-fetch on the edge — the AI binding is absent in unit tests).
 
 ## 4. Phase 2 (deferred — documented, not built)
 
