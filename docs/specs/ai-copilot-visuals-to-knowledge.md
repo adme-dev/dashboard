@@ -48,6 +48,29 @@ asset (proof/banner/image/video frame) ──► vision model (Workers AI, injec
   "shared scope is curated, never auto-written" rule. Personal scope by default.
 - **Asset link preserved** so the assistant cites/links the actual visual.
 
+## 3b. V-1.5 — native vision resolver + KB-draft creator (built, dormant)
+
+The two decision-free I/O pieces are now built (the dormant-core pattern, like W-1→W-2):
+
+- **`server/utils/ai/visuals/vision.ts`** — `makeWorkersAiVision(ai, fetchBytes)` returns the injected
+  `caption` dep backed by **`@cf/llava-hf/llava-1.5-7b-hf`** (the same Workers-AI vision model the banner
+  dissector already runs — id verified in-codebase, no external key). llava takes image **bytes**, so the
+  resolver fetches the asset server-side → **private-R2 assets work with no public/signed URL**. Fully
+  fail-safe: no binding / un-fetchable / model error → `''` → `describeAsset` returns null.
+- **`server/utils/ai/visuals/draft.ts`** — `createVisualKnowledgeDraft(vk, opts, db)` inserts the caption
+  as an **UNPUBLISHED** `ai_knowledge_articles` row (`is_published=FALSE`, `review_status='draft'`, exactly
+  mirroring the `propose_knowledge_article` executor) with the asset URL embedded in the content. Headless
+  (asset creation isn't a chat turn), so it writes the draft directly rather than via a pending-action.
+- 9 unit tests (incl. end-to-end bytes→caption→candidate); lint + server-tsc clean.
+
+**Remaining final step (operator-decision, not built):** the trigger that calls these on proof-asset /
+banner-export creation. Open decisions to make at wiring time: (a) **inline fire-and-forget-after-response**
+(handler has the AI binding; simplest) **vs a `visuals.caption` queue job** (robust vs Worker CPU limits,
+but the queue consumer must be handed the `AI` binding) — recommend inline first; (b) **scope routing** —
+default org **KB draft** (built) vs DS-2 **department** memory for managers; (c) a `VISUALS_TO_KNOWLEDGE_ENABLED`
+flag, off by default. The triggers are ~3–10 lines each in `proofs/[id]/assets.post.ts` and the banner
+export handler. All current pieces are dormant (nothing calls them yet).
+
 ## 4. Phase 2 (deferred — documented, not built)
 
 - Multimodal embedding index (Gemini Embedding 2 *or* native CLIP) for visual-similarity retrieval — separate
