@@ -5,9 +5,8 @@
   "engines": { "node": ">=24.0.0" },
   "scripts": { "deploy": "wrangler deploy", "dev": "wrangler dev" },
   "dependencies": {
-    "agents": "^0.2.0",
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "@cloudflare/workers-oauth-provider": "^0.0.5"
+    "agents": "0.16.2",
+    "@modelcontextprotocol/sdk": "1.29.0"
   },
   "devDependencies": { "wrangler": "^4.95.0", "@cloudflare/workers-types": "*", "typescript": "*" }
 }

@@ -2,21 +2,27 @@
 //
 // MCP Server Phase 1 — SCAFFOLD (mcp-server-phase1 spec §2-§5).
 //
-// ⚠️ This is a deploy-verified scaffold, not a unit-tested module. The security-critical logic
-// (RBAC projection + read-only/write-block guard) lives and is fully tested in the Pages app at
-// server/utils/ai/mcp/project.ts and is reached over HTTP via /api/internal/mcp/{tools,call}. This
-// Worker is the thin transport: OAuth + MCP protocol + proxy. The two integration points that need a
-// live check / your decision are marked TODO:
-//   (A) OAuth IdP wiring — how the user authenticates and how their XeroFlow userId lands in token props
-//   (B) the exact McpAgent/SDK tool-registration call for the installed package versions
+// ⚠️ Deploy-verified scaffold, not a unit-tested module. The security-critical logic (RBAC projection +
+// read-only/write-block guard) lives and is fully tested in the Pages app at server/utils/ai/mcp/project.ts
+// and is reached over HTTP via /api/internal/mcp/{tools,call}. This Worker is the thin transport: MCP
+// protocol + (TODO A) OAuth + proxy. No tool logic or DB here.
 //
-// Architecture (thin proxy — no tool logic or DB here):
+// Architecture (thin proxy):
 //   external host ──OAuth──▶ this Worker ──x-mcp-secret + {userId}──▶ Pages /api/internal/mcp/*
 //
-// Deploy: see DEPLOYMENT.md. DORMANT until MCP_SERVER_ENABLED=true on the Pages app + OAuth wired.
+// API NOTE (resolved TODO B, 2026-06-20): McpAgent mandates the high-level McpServer, whose registerTool
+// takes a Zod shape — but the app already emits JSON-Schema inputSchema (z.toJSONSchema). So we serve
+// tools/list + tools/call on the UNDERLYING low-level server (this.server.server), which carries our
+// JSON Schema through unchanged — exactly what the MCP wire protocol expects of a proxy. Pinned to
+// agents@0.16.2 / @modelcontextprotocol/sdk@1.29.0.
+//
+// Remaining: TODO (A) OAuth IdP wiring (see DEPLOYMENT.md) — until done, do NOT deploy publicly.
+// Verify-on-deploy: that registerCapabilities()+setRequestHandler() in init() take effect before the
+// McpAgent connects its transport (standard McpAgent lifecycle; confirm on first Claude connection).
 
 import { McpAgent } from 'agents/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 
 interface Env {
   APP_BASE_URL: string
@@ -24,12 +30,13 @@ interface Env {
   MCP_OBJECT: DurableObjectNamespace
 }
 
-// Per-session props the OAuth layer puts on the token (see (A)). userId is the validated XeroFlow user.
+// Per-session props the OAuth layer puts on the token (TODO A). userId is the validated XeroFlow user.
 type Props = { userId: string }
 
+// Matches the MCP `Tool` shape — the app's manifest endpoint returns this directly.
 type ToolManifest = { name: string, description: string, inputSchema: Record<string, unknown> }
 
-/** Call the Pages app's internal MCP endpoints (the single execution authority). */
+/** Call the Pages app's internal MCP endpoints (the single, audited, RBAC-enforcing execution authority). */
 async function appFetch(env: Env, path: string, body: unknown): Promise<Response> {
   return fetch(`${env.APP_BASE_URL}${path}`, {
     method: 'POST',
@@ -42,43 +49,38 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
   server = new McpServer({ name: 'xeroflow', version: '1.0.0' })
 
   async init() {
-    const userId = this.props.userId
+    // props are populated by the OAuth layer (TODO A); no validated user → expose nothing.
+    const userId = this.props?.userId
+    if (!userId) throw new Error('unauthenticated: no userId in session props')
 
     // 1. Fetch the read-only toolset this user may call (RBAC enforced server-side in the app).
     const res = await appFetch(this.env, '/api/internal/mcp/tools', { userId })
     if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`)
     const { tools } = await res.json() as { tools: ToolManifest[] }
 
-    // 2. Register each as an MCP tool whose handler proxies execution back to the app.
-    //    TODO (B): confirm the registration signature for the installed @modelcontextprotocol/sdk +
-    //    agents versions. The manifest already carries JSON-Schema inputSchema (pass-through), so this
-    //    Worker never needs to understand the schemas — it's a pure proxy.
-    for (const t of tools) {
-      this.server.registerTool(
-        t.name,
-        { description: t.description, inputSchema: t.inputSchema as never },
-        async (args: unknown) => {
-          const callRes = await appFetch(this.env, '/api/internal/mcp/call', { userId, tool: t.name, args })
-          const outcome = await callRes.json() as { ok: boolean, data?: unknown, error?: string }
-          if (!outcome.ok) {
-            return { content: [{ type: 'text', text: `Error: ${outcome.error ?? 'tool failed'}` }], isError: true }
-          }
-          return { content: [{ type: 'text', text: JSON.stringify(outcome.data) }] }
-        },
-      )
-    }
+    // 2. Serve tools/list + tools/call on the low-level server so our JSON-Schema inputSchema passes
+    //    through verbatim (high-level registerTool would require Zod). Pure proxy — no schema parsing here.
+    const low = this.server.server
+    low.registerCapabilities({ tools: {} })
+
+    low.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }))
+
+    low.setRequestHandler(CallToolRequestSchema, async (req) => {
+      const callRes = await appFetch(this.env, '/api/internal/mcp/call', {
+        userId,
+        tool: req.params.name,
+        args: req.params.arguments ?? {},
+      })
+      const outcome = await callRes.json() as { ok: boolean, data?: unknown, error?: string }
+      if (!outcome.ok) {
+        return { content: [{ type: 'text' as const, text: `Error: ${outcome.error ?? 'tool failed'}` }], isError: true }
+      }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(outcome.data) }] }
+    })
   }
 }
 
-// TODO (A): wrap with the OAuth provider so `props.userId` is the validated XeroFlow user.
-//   Recommended (per ADR + research): @cloudflare/workers-oauth-provider fronting the app's existing
-//   identity, issuing audience-bound tokens with the `mcp:read` scope. Until wired, this default export
-//   serves the MCP transport WITHOUT auth and MUST NOT be deployed publicly.
-//
-//   import { OAuthProvider } from '@cloudflare/workers-oauth-provider'
-//   export default new OAuthProvider({
-//     apiHandler: XeroFlowMcpAgent.serve('/mcp'),
-//     // authorize/token/register endpoints → app identity; set props.userId on success
-//     ...
-//   })
+// TODO (A): wrap with @cloudflare/workers-oauth-provider so `props.userId` is the validated XeroFlow user
+// (reuse the app's identity; audience-bound `mcp:read` token). Until wired, this serves the MCP transport
+// WITHOUT auth and MUST NOT be deployed publicly. See DEPLOYMENT.md §OAuth.
 export default XeroFlowMcpAgent.serve('/mcp')

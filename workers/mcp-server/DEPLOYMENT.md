@@ -6,15 +6,21 @@ Thin proxy: it does OAuth + MCP transport, then calls the Pages app's `/api/inte
 
 ## Status: SCAFFOLD — not yet live
 
-Two integration points must be finished before deploy (see `src/index.ts` TODO (A)/(B)):
+One integration point remains before deploy (see `src/index.ts` TODO (A)):
 
 - **(A) OAuth IdP** — wire `@cloudflare/workers-oauth-provider` so a validated XeroFlow user's `userId`
   lands in the session `props`. Decision (per spec §10, confirmed): **reuse the app's existing identity**,
   issue **audience-bound** tokens with the **`mcp:read`** scope. Until this is wired, the Worker serves the
   MCP transport **without auth — do NOT deploy publicly until (A) is done.**
-- **(B) Tool registration call** — confirm `server.registerTool(...)` matches the installed
-  `@modelcontextprotocol/sdk` + `agents` versions (pin them in `package.json` first; the ^ ranges here are
-  placeholders to verify against current releases).
+
+- **(B) Tool registration — DONE (2026-06-20).** Versions pinned (`agents@0.16.2`,
+  `@modelcontextprotocol/sdk@1.29.0`) and the registration verified to **compile against the real SDK
+  types**. Because McpAgent mandates the high-level `McpServer` (whose `registerTool` wants a Zod shape)
+  but the app emits JSON-Schema `inputSchema`, the Worker serves `tools/list` + `tools/call` on the
+  underlying low-level server (`this.server.server` + `setRequestHandler`), passing JSON Schema through
+  as the wire protocol intends. One thing to confirm on the first live connection: that
+  `registerCapabilities()` in `init()` takes effect before the transport connects (standard McpAgent
+  lifecycle).
 
 ## Prerequisites
 
