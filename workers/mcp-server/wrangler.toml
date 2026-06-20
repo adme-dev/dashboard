@@ -1,0 +1,31 @@
+name = "mcp-server"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# MCP Server Phase 1 (mcp-server-phase1 spec §2). Standalone Worker — the DO-backed McpAgent can't live
+# in the Pages app. Exposes the agency's READ-only tools over MCP (Streamable HTTP + OAuth) to ChatGPT /
+# Claude / Cursor. It is a THIN PROXY: it validates the user's OAuth token, then calls the Pages app's
+# /api/internal/mcp/{tools,call} endpoints (which run the real, audited, RBAC-filtered tools). No tool
+# logic or DB access lives here.
+#
+# DORMANT until: MCP_SERVER_ENABLED=true on the Pages project AND this Worker deployed AND the OAuth IdP
+# wired (see DEPLOYMENT.md). Deploy from a copy OUTSIDE the repo tree (root .wrangler/deploy/config.json
+# redirect breaks sub-worker `wrangler deploy`) — same gotcha as observe-cron.
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# The McpAgent session state lives in a Durable Object (DO free tier covers it).
+[durable_objects]
+bindings = [
+  { name = "MCP_OBJECT", class_name = "XeroFlowMcpAgent" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["XeroFlowMcpAgent"]
+
+# Secrets (set via `wrangler secret put`, NOT vars):
+#   MCP_INTERNAL_SECRET   — must match the Pages project's MCP_INTERNAL_SECRET (Worker→app auth)
+#   OAUTH_* / signing keys — per the chosen IdP (see DEPLOYMENT.md §OAuth)

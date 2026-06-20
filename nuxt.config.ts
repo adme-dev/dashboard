@@ -108,6 +108,10 @@ export default defineNuxtConfig({
     // Visuals → Knowledge trigger — OFF by default. When on, new image proof-assets are captioned (Workers
     // AI vision) into UNPUBLISHED KB drafts fire-and-forget. Read at the trigger via process.env. Hard gate.
     visualsToKnowledgeEnabled: process.env.VISUALS_TO_KNOWLEDGE_ENABLED === 'true',
+    // MCP server expose layer (mcp-server-phase1 spec) — OFF by default. When on, the /api/internal/mcp/*
+    // endpoints serve the standalone mcp-server Worker (read-only tools over MCP to ChatGPT/Claude/Cursor).
+    // Endpoints also require x-mcp-secret == MCP_INTERNAL_SECRET. Read via process.env. Hard gate.
+    mcpServerEnabled: process.env.MCP_SERVER_ENABLED === 'true',
     // Client-portal co-pilot (portal-agent spec) — OFF by default. Its OWN gate so enabling the
     // agency chat (AI_TOOLS_ENABLED) never auto-exposes the customer-facing surface. Hard gate per §8.
     aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true',
