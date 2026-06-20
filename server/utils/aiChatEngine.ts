@@ -343,32 +343,24 @@ export async function processUserMessage(
   persona?: string,
 ): Promise<ChatResponse> {
   const startTime = Date.now()
-  // Slice 1.5: resolve the (optional) named persona — narrows tools (∩ RBAC) + adds a focus preamble.
-  // An explicit arg (from the chat picker) wins; otherwise fall back to the persona persisted on the
-  // conversation so callers that don't pass one (voice, quick-action) still honor the user's choice.
-  // Unknown/absent → the generalist.
-  let personaKey = persona
-  if (!personaKey && event) {
+  // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
+  // picker) or the persona persisted on the conversation wins and sticks; otherwise the L1 traffic
+  // controller auto-selects by intent+role AFTER context retrieval (below). Resolve the pinned choice
+  // here so we can persist an explicit pick; defer the auto-select until the intent is known.
+  let explicitOrPersisted = persona ?? null
+  if (!explicitOrPersisted && event) {
     const convRow = await queryOne<{ system_context: any }>(
       `SELECT system_context FROM ai_conversations WHERE id = $1`, [conversationId])
-    personaKey = (convRow?.system_context as any)?.persona
+    explicitOrPersisted = (convRow?.system_context as any)?.persona ?? null
   }
-  // Phase 1: role-default skill-pack. With no explicit/persisted pick, a user lands on the pack for
-  // their role (media_buyer → Media Buyer, etc.); unmapped roles → the generalist. Narrows focus only
-  // — RBAC still governs which tools the loop exposes.
-  if (!personaKey) {
-    const { roleDefaultPersona } = await import('~~/server/utils/ai/rolePersona')
-    personaKey = roleDefaultPersona(userRole)
-  }
-  const activePersona = resolvePersona(personaKey)
   // Persist an explicit choice (migration-free: system_context JSONB) so it sticks across reloads and
-  // for the voice/quick-action paths above. Non-fatal if persistence fails.
+  // for the voice/quick-action paths. Non-fatal if persistence fails.
   if (persona && event) {
     await execute(
       `UPDATE ai_conversations
        SET system_context = COALESCE(system_context, '{}'::jsonb) || jsonb_build_object('persona', $2::text)
        WHERE id = $1`,
-      [conversationId, activePersona.key],
+      [conversationId, resolvePersona(persona).key],
     ).catch(() => {})
   }
 
@@ -395,6 +387,19 @@ export async function processUserMessage(
     snippet: item.snippet,
     url: item.url,
   }))
+
+  // 2a. L1 traffic controller (Phase 3): now that the intent is known, auto-select ONE skill-pack by
+  // intent+role unless the user pinned one. Per-turn routing (a finance question routes to Finance for
+  // this turn); RBAC still governs the actual tools. Best-effort — any failure falls back to the pinned
+  // choice or generalist, never breaking the turn.
+  let activePersona = resolvePersona(explicitOrPersisted)
+  try {
+    const { selectSkillPack } = await import('~~/server/utils/ai/controller/route')
+    const routed = selectSkillPack({ intent: contextBundle.intent, userRole }, explicitOrPersisted)
+    activePersona = resolvePersona(routed.persona)
+  } catch {
+    // keep the pinned/generalist resolution above
+  }
 
   // 2b. Fetch explicitly mentioned entities and pin them to top of context
   if (mentionedEntities && mentionedEntities.length > 0) {
