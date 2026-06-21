@@ -10,6 +10,8 @@ import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { queryOne, execute } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
 import { executeReadOnlyTool } from '~~/server/utils/ai/mcp/project'
+import { generationTools, executeGenerationTool } from '~~/server/utils/ai/mcp/generationTools'
+import { buildGenerationRunner } from '~~/server/utils/ai/mcp/generationRunner'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 
 export default defineEventHandler(async (event) => {
@@ -33,12 +35,18 @@ export default defineEventHandler(async (event) => {
   if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
 
   const args = (body?.args ?? {}) as Record<string, unknown>
-  const outcome = await executeReadOnlyTool(
-    registry as AiTool<unknown>[],
-    toolName,
-    args,
-    { userId, userRole: user.role ?? '', event }
-  )
+  const ctx = { userId, userRole: user.role ?? '', event }
+
+  // Generation tools (Phase 2a) are a separate, explicitly-gated action group — they bill + persist
+  // assets, so they go through executeGenerationTool (gated by MCP_GEN_TOOLS_ENABLED + CREATIVE), NOT
+  // the read-only guard (which would write_blocked them). Read tools take the Phase-1 path unchanged.
+  const isGeneration = generationTools.some(t => t.name === toolName)
+  const outcome = isGeneration
+    ? await executeGenerationTool(toolName, args, ctx, {
+        enabled: process.env.MCP_GEN_TOOLS_ENABLED === 'true',
+        runner: buildGenerationRunner()
+      })
+    : await executeReadOnlyTool(registry as AiTool<unknown>[], toolName, args, ctx)
 
   // Audit every MCP call — arg keys only (no values). Fail-safe: a logging error never fails the call.
   await execute(

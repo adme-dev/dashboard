@@ -107,6 +107,10 @@ EMAIL_FROM = "notification@adme.net.au"
 # plaintext vars (secrets survive). MCP_INTERNAL_SECRET + MCP_HANDSHAKE_SECRET stay as dashboard secrets.
 MCP_SERVER_ENABLED = "true"
 MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
+# MCP Phase 2a — owned generation tools (generate_voiceover, start_music_generation,
+# get_generation_status). DORMANT: deliberately left UNSET (absent = off). To activate after
+# operator sign-off, uncomment and redeploy (CREATIVE-gated, audited, no platform-state writes):
+# MCP_GEN_TOOLS_ENABLED = "true"
 
 # Chat — Durable Objects (hosted in separate worker)
 [[durable_objects.bindings]]
