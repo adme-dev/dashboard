@@ -51,13 +51,13 @@ const defaultDeps: DeliveryDeps = {
         WHERE title ILIKE $1 AND status IN ('approved','in_progress') AND converted_to_project_id IS NULL
         ORDER BY (lower(title) = lower($2)) DESC, created_at DESC LIMIT 6`,
       [ilike(title), title]),
-  propose: (ctx, toolName, payload) => proposeAction(ctx, ctx.conversationId!, toolName, payload),
+  propose: (ctx, toolName, payload) => proposeAction(ctx, ctx.conversationId ?? null, toolName, payload),
 }
 
-/** Shared preflight: write-capable + inside a conversation. */
+/** Shared preflight: write-capable + inside a conversation (or an MCP call, which has no conversation). */
 function preflight(ctx: ToolContext): ToolResult | null {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to make this change.')
-  if (!ctx.conversationId) return fail('Cannot prepare this action outside a conversation.')
+  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare this action outside a conversation.')
   return null
 }
 

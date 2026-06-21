@@ -111,6 +111,11 @@ MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
 # get_generation_status). ACTIVATED 2026-06-21 (operator sign-off): CREATIVE-gated, audited,
 # no platform-state writes. Per-actor rate limit is a fast-follow.
 MCP_GEN_TOOLS_ENABLED = "true"
+# MCP Phase 2c — confirm-tier WRITE tools (propose_*/confirm_action) over MCP. DORMANT: left UNSET
+# (absent = off). Non-financial writes only (financial held for D4). To activate after sign-off,
+# uncomment + redeploy (each propose persists a HITL pending row; confirm executes via the existing
+# executor registry; rich_confirm needs ack):
+# MCP_WRITE_TOOLS_ENABLED = "true"
 
 # Chat — Durable Objects (hosted in separate worker)
 [[durable_objects.bindings]]

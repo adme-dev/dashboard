@@ -12,6 +12,7 @@ import { queryOne } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
 import { projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
 import { projectGenerationTools } from '~~/server/utils/ai/mcp/generationTools'
+import { projectWriteTools } from '~~/server/utils/ai/mcp/writeTools'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 
 export default defineEventHandler(async (event) => {
@@ -33,12 +34,14 @@ export default defineEventHandler(async (event) => {
   )
   if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
 
-  // Read tools (Phase 1) + generation tools (Phase 2a, only when MCP_GEN_TOOLS_ENABLED).
+  // Read tools (Phase 1) + generation tools (2a, MCP_GEN_TOOLS_ENABLED) + confirm-tier write
+  // propose/confirm tools (2c, MCP_WRITE_TOOLS_ENABLED). Each group flag-gated independently.
   const role = user.role ?? ''
   return {
     tools: [
       ...projectReadOnlyTools(registry as AiTool<unknown>[], role),
-      ...projectGenerationTools(role, process.env.MCP_GEN_TOOLS_ENABLED === 'true')
+      ...projectGenerationTools(role, process.env.MCP_GEN_TOOLS_ENABLED === 'true'),
+      ...projectWriteTools(registry as AiTool<unknown>[], role, process.env.MCP_WRITE_TOOLS_ENABLED === 'true')
     ]
   }
 })

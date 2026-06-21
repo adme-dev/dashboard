@@ -67,7 +67,7 @@ const defaultDeps: CreateTaskDeps = {
     queryRows<NamedRef>('SELECT id, name FROM projects WHERE name ILIKE $1 ORDER BY (lower(name) = lower($2)) DESC, name LIMIT 6', [ilike(name), name]),
   resolveAssignee: async name =>
     queryRows<NamedRef>('SELECT id, name FROM team_members WHERE name ILIKE $1 AND is_active = true ORDER BY (lower(name) = lower($2)) DESC, name LIMIT 6', [ilike(name), name]),
-  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId!, 'create_task', payload),
+  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId ?? null, 'create_task', payload),
 }
 
 /**
@@ -77,7 +77,7 @@ const defaultDeps: CreateTaskDeps = {
  */
 export async function proposeCreateTask(args: Args, ctx: ToolContext, deps: CreateTaskDeps = defaultDeps): Promise<ToolResult> {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to create tasks.')
-  if (!ctx.conversationId) return fail('Cannot prepare a task outside a conversation.')
+  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a task outside a conversation.')
   if (!args.title?.trim()) return fail('A task needs a title.')
 
   // Department/board is REQUIRED to create a task — resolve it or ask. An exact board name wins over

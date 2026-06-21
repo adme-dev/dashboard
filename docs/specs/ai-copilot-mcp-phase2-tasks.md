@@ -42,21 +42,17 @@ operator sign-off.** Order follows the spec's phasing (2a → 2d). Each task not
 - [ ] **B4.** Tests: cap-exceeded + compliance-blocked return terminal explained errors (no enqueue); i2v happy path.
 - [ ] **B5.** Live-verify (operator): i2v from an approved still; confirm budget decrement + asset finalize.
 
-## 2c — Writes (flag: `MCP_WRITE_TOOLS_ENABLED`) — 🛑 BLOCKED (architecture decision needed)
-> **Finding 2026-06-21:** executors do NOT take raw args — they need a **resolved payload** (e.g.
-> `assign_task` reads `payload.taskId`/`assigneeId`/`assigneeName`; `create_task` runs
-> `proposalToTaskBody`). That resolution lives inside the propose-tool handlers, which persist to the
-> **conversation-bound `ai_pending_actions`** (`conversation_id NOT NULL`). So MCP writes need EITHER
-> (a) a **prod migration** (nullable `conversation_id` + MCP-session keying) so handlers can persist MCP
-> proposals, OR (b) a **refactor of ~10 live write tools** to split resolve() from persist() + a KV
-> store. A KV-only path that passes raw args to executors is **broken** (wrong payload shape).
-> **Also:** financial writes (`propose_quote`, `propose_budget_*`, `propose_eom_generate`,
-> `propose_expense_*`) are HELD for **D4** even though some are `confirm`-tier — they move money.
-> **Decision needed:** approve a migration (a) vs the refactor (b); and settle D4.
-- [ ] **C1.** `confirm`-tier pairs first: `propose_task`/`confirm_task`, `propose_schedule_post`/`confirm_…`. Map to existing executors. _(reuse executors)_
-- [ ] **C2.** Lower-risk CRM/finance pairs: `propose_opportunity`, `log_crm_activity`, `propose_proof_status`, `propose_expense_*`. _(reuse)_
-- [ ] **C3.** `rich_confirm` pairs (gated by D4): `propose_budget_change`, `propose_quote`, `propose_eom_generate` — `confirm_*` requires `ack:true`; proposal returns full diff summary. _(reuse staged guardrail chains)_
-- [ ] **C4.** Tests: propose persists no mutation; confirm claims atomically + executes once; rich_confirm without ack → `confirm_required`; expired/duplicate claim safe.
+## 2c — Writes (flag: `MCP_WRITE_TOOLS_ENABLED`) — ✅ BUILT (dormant, non-financial subset)
+> **Migration approach taken (operator-approved 2026-06-21).** Mig 189 made `ai_pending_actions.
+> conversation_id` nullable + added `source`; `proposeAction` accepts null + stamps `ctx.source`; the 7
+> non-financial confirm-tier propose-handlers now run under `source='mcp'` (conv_id NULL) — REUSING
+> their resolution. `writeTools.ts` + `executeWriteConfirm` wired into `/internal/mcp/call` (propose →
+> proposalId; `confirm_action` atomically claims + dispatches to the existing executor). Dormant behind
+> `MCP_WRITE_TOOLS_ENABLED` (off). 13 tests; 577 AI green; no chat regression.
+- [x] **C1.** `create_task`, `propose_schedule_post`, `assign_task`, `propose_status_change`, `propose_brief_convert` — propose/confirm via existing executors.
+- [x] **C2.** CRM/creative/knowledge: `propose_opportunity`, `log_crm_activity`, `propose_proof_status`, `propose_team_memory`, `propose_knowledge_article`.
+- [ ] **C3.** 🛑 `rich_confirm` + financial (`propose_budget_change`, `propose_quote`, `propose_eom_generate`, `propose_budget_alert`, `propose_expense_*`) — EXCLUDED, held for **D4**. (confirm path already enforces `ack` + re-checks permission when these are eventually added.)
+- [x] **C4.** Tests: flag-gating, role-scoping, financial exclusion, atomic single-use claim (`expired`), `confirm_required` for rich_confirm, permission re-check, never-throws.
 - [ ] **C5.** Live-verify (operator): propose→confirm a task + a schedule_post from an external host; confirm single execution + audit.
 
 ## 2d — Banner render (after async-ification; spec §7.1) — 🛑 BLOCKED (changes live behavior + migration)

@@ -14,6 +14,9 @@ export type ToolContext = {
   clientScope?: string
   /** Set by the loop; required for write tools that persist a proposal (create_task). */
   conversationId?: string
+  /** Origin of the call. 'mcp' = an external AI host over the MCP server (no conversation); a write
+   *  tool persists the proposal with conversation_id NULL and source='mcp'. Default (undefined) = chat. */
+  source?: 'chat' | 'mcp'
   /** Optional — set when the co-pilot is docked in a virtual office room (Mode A). Read-only context;
    *  membership is verified server-side before these are populated (see office/roomContext.ts §7). */
   officeId?: string

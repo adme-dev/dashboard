@@ -48,15 +48,15 @@ export interface PendingActionDb {
 /** Persist a proposed action. Returns the proposal id surfaced to the confirmation card. */
 export async function proposeAction(
   ctx: ToolContext,
-  conversationId: string,
+  conversationId: string | null,
   toolName: string,
   resolvedPayload: unknown,
 ): Promise<string> {
   const row = await queryOne<{ id: string }>(
-    `INSERT INTO ai_pending_actions (conversation_id, user_id, tool_name, resolved_payload, status)
-     VALUES ($1, $2, $3, $4, 'proposed')
+    `INSERT INTO ai_pending_actions (conversation_id, user_id, tool_name, resolved_payload, status, source)
+     VALUES ($1, $2, $3, $4, 'proposed', $5)
      RETURNING id`,
-    [conversationId, ctx.userId, toolName, JSON.stringify(resolvedPayload)],
+    [conversationId, ctx.userId, toolName, JSON.stringify(resolvedPayload), ctx.source ?? 'chat'],
   )
   if (!row) throw new Error('Failed to persist proposed action')
   return row.id
