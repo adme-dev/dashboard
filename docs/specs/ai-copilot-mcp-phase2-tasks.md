@@ -20,7 +20,7 @@ operator sign-off.** Order follows the spec's phasing (2a → 2d). Each task not
 - [x] **F2.** Internal surface — **reused existing `/internal/mcp/call`** (routes generation tools to the generation guard) instead of new endpoints; Worker needs no change. Writes (2c) may still want `/action` + `/confirm`.
 - [ ] **F3.** MCP-session pending-action keying — for 2c writes only (gated by D5).
 - [x] **F4.** Per-group flag `MCP_GEN_TOOLS_ENABLED` documented in `wrangler.toml` (left unset = off). `MCP_WRITE_TOOLS_ENABLED` for 2c.
-- [ ] **F5.** Per-MCP-actor rate limit — for 2c writes.
+- [x] **F5.** Per-MCP-actor rate limit — **shipped for generation** (`rateLimit.ts`: 20 calls / 10 min per user via audit-ledger count, `get_generation_status` poll exempt). Reusable for 2c.
 - [x] **F6.** Audit — generation calls audited via the existing `/call` path (`payload.source='mcp'`, arg keys only).
 
 ## 2a — Generation, low-risk subset (flag: `MCP_GEN_TOOLS_ENABLED`) — ✅ BUILT (dormant)
@@ -42,14 +42,26 @@ operator sign-off.** Order follows the spec's phasing (2a → 2d). Each task not
 - [ ] **B4.** Tests: cap-exceeded + compliance-blocked return terminal explained errors (no enqueue); i2v happy path.
 - [ ] **B5.** Live-verify (operator): i2v from an approved still; confirm budget decrement + asset finalize.
 
-## 2c — Writes (flag: `MCP_WRITE_TOOLS_ENABLED`)
+## 2c — Writes (flag: `MCP_WRITE_TOOLS_ENABLED`) — 🛑 BLOCKED (architecture decision needed)
+> **Finding 2026-06-21:** executors do NOT take raw args — they need a **resolved payload** (e.g.
+> `assign_task` reads `payload.taskId`/`assigneeId`/`assigneeName`; `create_task` runs
+> `proposalToTaskBody`). That resolution lives inside the propose-tool handlers, which persist to the
+> **conversation-bound `ai_pending_actions`** (`conversation_id NOT NULL`). So MCP writes need EITHER
+> (a) a **prod migration** (nullable `conversation_id` + MCP-session keying) so handlers can persist MCP
+> proposals, OR (b) a **refactor of ~10 live write tools** to split resolve() from persist() + a KV
+> store. A KV-only path that passes raw args to executors is **broken** (wrong payload shape).
+> **Also:** financial writes (`propose_quote`, `propose_budget_*`, `propose_eom_generate`,
+> `propose_expense_*`) are HELD for **D4** even though some are `confirm`-tier — they move money.
+> **Decision needed:** approve a migration (a) vs the refactor (b); and settle D4.
 - [ ] **C1.** `confirm`-tier pairs first: `propose_task`/`confirm_task`, `propose_schedule_post`/`confirm_…`. Map to existing executors. _(reuse executors)_
 - [ ] **C2.** Lower-risk CRM/finance pairs: `propose_opportunity`, `log_crm_activity`, `propose_proof_status`, `propose_expense_*`. _(reuse)_
 - [ ] **C3.** `rich_confirm` pairs (gated by D4): `propose_budget_change`, `propose_quote`, `propose_eom_generate` — `confirm_*` requires `ack:true`; proposal returns full diff summary. _(reuse staged guardrail chains)_
 - [ ] **C4.** Tests: propose persists no mutation; confirm claims atomically + executes once; rich_confirm without ack → `confirm_required`; expired/duplicate claim safe.
 - [ ] **C5.** Live-verify (operator): propose→confirm a task + a schedule_post from an external host; confirm single execution + audit.
 
-## 2d — Banner render (after async-ification; spec §7.1)
+## 2d — Banner render (after async-ification; spec §7.1) — 🛑 BLOCKED (changes live behavior + migration)
+> Async-ifying `banner-studio/export-video` changes existing sync behavior and needs a status table
+> (migration) — crosses the dormant-build hard-stops. Needs operator go-ahead before building.
 - [ ] **D2a.** Move `banner-studio/export-video` off in-request ffmpeg onto `VIDEO_RENDER_QUEUE` + a status row. _(net-new; prerequisite)_
 - [ ] **D2b.** `start_banner_render` + status routing once async exists. _(reuse new async path)_
 
