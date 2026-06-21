@@ -12,6 +12,7 @@ import { registry } from '~~/server/utils/ai/tools'
 import { executeReadOnlyTool } from '~~/server/utils/ai/mcp/project'
 import { generationTools, executeGenerationTool } from '~~/server/utils/ai/mcp/generationTools'
 import { buildGenerationRunner } from '~~/server/utils/ai/mcp/generationRunner'
+import { isGenerationRateLimited, MCP_GEN_RATE_WINDOW_MIN } from '~~/server/utils/ai/mcp/rateLimit'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 
 export default defineEventHandler(async (event) => {
@@ -41,6 +42,22 @@ export default defineEventHandler(async (event) => {
   // assets, so they go through executeGenerationTool (gated by MCP_GEN_TOOLS_ENABLED + CREATIVE), NOT
   // the read-only guard (which would write_blocked them). Read tools take the Phase-1 path unchanged.
   const isGeneration = generationTools.some(t => t.name === toolName)
+
+  // Per-actor rate limit on generation (it bills, no HITL). Count this user's recent MCP generation
+  // calls from the audit ledger; refuse over the cap. get_generation_status (a cheap poll) is exempt.
+  if (isGeneration && toolName !== 'get_generation_status') {
+    const since = `${MCP_GEN_RATE_WINDOW_MIN} minutes`
+    const recent = await queryOne<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM ai_action_audit
+        WHERE user_id = $1 AND payload->>'source' = 'mcp'
+          AND tool_name = ANY($2) AND created_at > now() - $3::interval`,
+      [userId, generationTools.map(t => t.name), since]
+    ).catch(() => ({ n: 0 }))
+    if (isGenerationRateLimited(recent?.n ?? 0)) {
+      return { ok: false, error: `Rate limit: too many generation requests. Try again in a few minutes.`, code: 'rate_limited' }
+    }
+  }
+
   const outcome = isGeneration
     ? await executeGenerationTool(toolName, args, ctx, {
         enabled: process.env.MCP_GEN_TOOLS_ENABLED === 'true',
