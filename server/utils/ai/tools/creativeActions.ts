@@ -68,12 +68,12 @@ export type ProofStatusDeps = {
 const proofDeps: ProofStatusDeps = {
   resolveProof: (name) =>
     queryRows<NamedRef>(`SELECT id, name FROM creative_proofs WHERE name ILIKE $1 AND status <> 'archived' ORDER BY (lower(name)=lower($2)) DESC, created_at DESC LIMIT 6`, [ilike(name), name]),
-  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId!, 'propose_proof_status', payload),
+  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId ?? null, 'propose_proof_status', payload),
 }
 
 export async function proposeProofStatus(args: StatusArgs, ctx: ToolContext, deps: ProofStatusDeps = proofDeps): Promise<ToolResult> {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to change a proof\'s status.')
-  if (!ctx.conversationId) return fail('Cannot prepare this action outside a conversation.')
+  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare this action outside a conversation.')
   const matches = pickByExactName(await deps.resolveProof(args.proofName), args.proofName)
   if (matches.length === 0) return fail(`No proof matching "${args.proofName}".`)
   if (matches.length > 1) return ok({ disambiguation: { field: 'proofName', options: matches } })

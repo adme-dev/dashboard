@@ -16,7 +16,7 @@ export type KnowledgeArticleDeps = {
 }
 
 const defaultDeps: KnowledgeArticleDeps = {
-  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId!, 'propose_knowledge_article', payload),
+  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId ?? null, 'propose_knowledge_article', payload),
 }
 
 /**
@@ -29,7 +29,7 @@ const defaultDeps: KnowledgeArticleDeps = {
  */
 export async function proposeKnowledgeArticle(args: Args, ctx: ToolContext, deps: KnowledgeArticleDeps = defaultDeps): Promise<ToolResult> {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to contribute knowledge articles.')
-  if (!ctx.conversationId) return fail('Cannot prepare a knowledge article outside a conversation.')
+  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a knowledge article outside a conversation.')
   const title = args.title?.trim()
   const content = args.content?.trim()
   if (!title) return fail('A knowledge article needs a title.')

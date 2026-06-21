@@ -36,13 +36,13 @@ const defaultDeps: TeamMemoryDeps = {
         WHERE dm.user_id = $1 AND d.is_active = true
         ORDER BY d.name`,
       [userId]),
-  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId!, 'propose_team_memory', payload),
+  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId ?? null, 'propose_team_memory', payload),
 }
 
 export async function proposeTeamMemory(args: Args, ctx: ToolContext, deps: TeamMemoryDeps = defaultDeps): Promise<ToolResult> {
   // Curation gate: only management can promote knowledge to the shared department scope.
   if (!roleHasPermission(ctx.userRole, 'MANAGEMENT')) return fail('Only managers/leads can add to the team\'s shared knowledge.')
-  if (!ctx.conversationId) return fail('Cannot prepare this action outside a conversation.')
+  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare this action outside a conversation.')
   const content = args.content.trim()
   if (!content) return fail('What should the team remember?')
 

@@ -32,7 +32,7 @@ const defaultDeps: ScheduleSocialPostDeps = {
         LIMIT 6`,
       [`%${escapeLike(name)}%`, name],
     ),
-  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId!, 'propose_schedule_post', payload),
+  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId ?? null, 'propose_schedule_post', payload),
 }
 
 /**
@@ -43,7 +43,7 @@ const defaultDeps: ScheduleSocialPostDeps = {
  */
 export async function proposeScheduleSocialPost(args: Args, ctx: ToolContext, deps: ScheduleSocialPostDeps = defaultDeps): Promise<ToolResult> {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to schedule posts.')
-  if (!ctx.conversationId) return fail('Cannot prepare a post outside a conversation.')
+  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a post outside a conversation.')
   const content = args.content?.trim()
   if (!content) return fail('A post needs some content.')
 
