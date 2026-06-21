@@ -1,12 +1,22 @@
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { VideoReadRunner } from './videoTools'
 import { filterUsableAvProjects } from './videoTools'
-import { listProjects, getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
-import { listSelectableVideoGenerationModels } from '~~/server/utils/video-generation/modelRegistry'
+import { listProjects, getProjectWithCurrentTimeline, createProject } from '~~/server/utils/audio/projects'
+import { listSelectableVideoGenerationModels, getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { selectableVideoModelOptions } from '~~/app/utils/video/modelPresentation'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
 import { getVideoGenerationJob, listVideoGenerationJobsForProject } from '~~/server/utils/video-generation/jobs'
+import { isTenantModel } from '~~/server/utils/video-generation/surface'
+import { loadVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssets'
+import { evaluateVideoGenerationCompliance } from '~~/server/utils/video-generation/compliance'
+import { estimateVideoGenerationCostCents } from '~~/server/utils/video-generation/costs'
+import { reserveAndCreateVideoGenerationJob } from '~~/server/utils/video-generation/budget'
+import { enqueueVideoGeneration } from '~~/server/utils/video-generation/enqueue'
+import { resolveSourceAssetUrls } from '~~/server/utils/video-generation/resolveSourceUrls'
+import { emptyAvTimeline } from '~~/server/utils/audio/timelineSchema'
+import { proposeAction } from '~~/server/utils/ai/pendingActions'
+import type { VideoConfirmAction } from './videoTools'
 
 /**
  * MCP Phase 2b — the REAL video runner (the binding-dependent half of videoTools.ts). Wraps the exact
@@ -88,6 +98,79 @@ export function buildVideoReadRunner(): VideoReadRunner {
         actualCostCents: job.actualCostCents,
         error: job.errorMessage ?? null
       }
+    }
+  }
+}
+
+/**
+ * Injected engine deps for executeVideoPropose (the propose/preview half). Flags are supplied by the
+ * endpoint. resolveProject reuses the exact authorize gate as the reads. persist stamps source='mcp'
+ * with conversation_id NULL (the proposal lives outside any chat conversation).
+ */
+export function buildVideoProposeDeps() {
+  return {
+    resolveProject: authorizedProject,
+    getModel: getVideoGenerationModel,
+    isTenantModel,
+    loadSources: (ids: string[], tenantId: string | undefined) => loadVideoGenerationSourceAssets(ids, tenantId),
+    loadPolicy: (tenantId: string) => loadTenantVideoGenerationPolicy(tenantId),
+    evaluateCompliance: (input: Parameters<typeof evaluateVideoGenerationCompliance>[0]) => evaluateVideoGenerationCompliance(input),
+    estimateCost: (model: Parameters<typeof estimateVideoGenerationCostCents>[0], secs: number) => estimateVideoGenerationCostCents(model, secs),
+    persist: (ctx: ToolContext, action: VideoConfirmAction, payload: unknown) => proposeAction(ctx, null, action, payload)
+  }
+}
+
+/**
+ * Injected engine deps for dispatchVideoConfirm (the execute half). genEnabled is supplied by the
+ * endpoint. The confirmed payload carries an idempotencyKey injected by the endpoint (derived from the
+ * proposalId) so a double-confirm cannot double-bill — belt-and-braces over the 2c atomic single-use claim.
+ */
+export function buildVideoConfirmDeps() {
+  return {
+    reserve: async (payload: any, ctx: ToolContext) => reserveAndCreateVideoGenerationJob(
+      {
+        tenantId: payload.tenantId,
+        projectId: payload.projectId,
+        timelineId: payload.timelineId,
+        createdBy: ctx.userId,
+        status: 'queued',
+        mode: payload.mode,
+        modelId: payload.modelId,
+        provider: payload.provider,
+        prompt: payload.prompt,
+        sourceAssetIds: payload.sourceAssetIds,
+        durationSeconds: payload.durationSeconds,
+        aspectRatio: payload.aspectRatio,
+        resolution: payload.resolution,
+        subjectType: payload.subjectType,
+        complianceStatus: payload.complianceStatus,
+        complianceReasons: payload.complianceReasons,
+        estimatedCostCents: payload.estimatedCostCents,
+        idempotencyKey: payload.idempotencyKey
+      },
+      await loadTenantVideoGenerationPolicy(payload.tenantId)
+    ),
+    enqueue: async (payload: any, jobId: string, ctx: ToolContext) => {
+      let sourceAssetUrls: string[] = []
+      if (payload.mode === 'image-to-video') {
+        sourceAssetUrls = await resolveSourceAssetUrls(payload.sourceAssetIds, payload.tenantId)
+      }
+      await enqueueVideoGeneration(ctx.event, {
+        jobId,
+        tenantId: payload.tenantId,
+        idempotencyKey: payload.idempotencyKey,
+        sourceAssetUrls
+      })
+    },
+    createProject: async (payload: any, ctx: ToolContext) => {
+      const { project } = await createProject({
+        createdBy: ctx.userId,
+        clientId: payload.clientId ?? null,
+        title: payload.title,
+        mediaType: 'av',
+        initialState: emptyAvTimeline()
+      })
+      return { projectId: project.id }
     }
   }
 }
