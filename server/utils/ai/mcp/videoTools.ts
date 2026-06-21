@@ -119,3 +119,157 @@ export async function executeVideoTool(
     return { ok: false, error: 'Video tool failed.', code: 'handler_error' }
   }
 }
+
+// ── Confirm-tier propose/confirm (Phase 2b §4.2) ───────────────────────────────
+// These BILL and create state, so they are two-step over the dormant 2c machinery: propose_* persists
+// an ai_pending_actions row (source='mcp', conv_id NULL) and previews cost+compliance WITHOUT spending;
+// confirm_action(proposalId) atomically claims it and dispatches (reserve+enqueue / create project).
+// Gated by MCP_VIDEO_TOOLS_ENABLED AND MCP_VIDEO_GEN_ENABLED. The tool_names below are the
+// ai_pending_actions.tool_name values + dispatchVideoConfirm routing keys — deliberately NOT in
+// MCP_WRITE_SAFE_ACTIONS and NOT in the executor registry (video has no in-app chat equivalent).
+
+export const VIDEO_CONFIRM_ACTIONS = ['video_generation', 'video_project_create'] as const
+export type VideoConfirmAction = typeof VIDEO_CONFIRM_ACTIONS[number]
+
+const VideoGenParams = z.object({
+  projectId: UUID,
+  mode: z.enum(['text-to-video', 'image-to-video', 'video-extension', 'lip-sync']),
+  modelId: z.string().min(1),
+  prompt: z.string().min(1).max(4000),
+  sourceAssetIds: z.array(z.string()).default([]),
+  durationSeconds: z.number().int().positive().max(60),
+  aspectRatio: z.string().min(1),
+  resolution: z.string().nullable().optional(),
+  subjectType: z.enum(['vehicle', 'non_vehicle', 'unknown']).default('unknown')
+})
+const VideoProjectParams = z.object({ title: z.string().min(1).max(200), clientId: UUID.nullable().optional() })
+
+export const videoProposeTools: VideoToolDescriptor[] = [
+  {
+    name: 'propose_video_generation',
+    description:
+      'Propose (does NOT spend yet) a video generation into an AV project. Returns a proposalId with the '
+      + 'estimated cost + compliance classification + resolved model/params. Call confirm_action(proposalId) '
+      + 'to reserve budget and start it. Modes: text-to-video needs no source; image-to-video / video-extension '
+      + '/ lip-sync need source asset ids registered in-app.',
+    parameters: VideoGenParams,
+    requiredPermission: 'CREATIVE'
+  },
+  {
+    name: 'create_video_project',
+    description:
+      'Propose creating a new empty AV project to generate video into. Returns a proposalId; call '
+      + 'confirm_action(proposalId) to create it. Use when no suitable project exists (see list_av_projects).',
+    parameters: VideoProjectParams,
+    requiredPermission: 'CREATIVE'
+  }
+]
+
+/** Which confirm-tier video action a propose tool targets; null for anything else. */
+export function resolveVideoProposeAction(name: string): VideoConfirmAction | null {
+  if (name === 'propose_video_generation') return 'video_generation'
+  if (name === 'create_video_project') return 'video_project_create'
+  return null
+}
+
+export type VideoProposeOutcome
+  = | { ok: true, data: unknown }
+    | { ok: false, error: string, code: 'disabled' | 'forbidden' | 'bad_args' | 'blocked' | 'handler_error' }
+
+export interface VideoProposeDeps {
+  suiteEnabled: boolean
+  genEnabled: boolean
+  resolveProject: (projectId: string, ctx: ToolContext) => Promise<{ project: any, timeline: any } | null>
+  getModel: (modelId: string) => any | null
+  isTenantModel: (model: any) => boolean
+  loadSources: (ids: string[], tenantId: string | undefined, mode: string) => Promise<any[]>
+  loadPolicy: (tenantId: string) => Promise<any>
+  evaluateCompliance: (input: any) => { allowed: boolean, classification: string, reasons: string[] }
+  estimateCost: (model: any, durationSeconds: number) => number
+  /** Persist an ai_pending_actions row (tool_name = action) and return its id. */
+  persist: (ctx: ToolContext, action: VideoConfirmAction, payload: unknown) => Promise<string>
+}
+
+function modelSupports(model: any, p: z.infer<typeof VideoGenParams>): boolean {
+  if (!model.modes.includes(p.mode)) return false
+  if (!model.durationsSeconds.includes(p.durationSeconds)) return false
+  if (!model.aspectRatios.includes(p.aspectRatio)) return false
+  if (p.resolution && !model.resolutions.includes(p.resolution)) return false
+  if (p.subjectType !== 'unknown' && !model.allowedSubjectTypes.includes(p.subjectType)) return false
+  if (model.requiresApprovedSourceAsset && p.sourceAssetIds.length === 0) return false
+  return true
+}
+
+/**
+ * Propose a confirm-tier video action. Never throws. Spends nothing — at most persists a pending row.
+ *  - either flag off → disabled · role lacks CREATIVE → forbidden · args fail Zod → bad_args
+ *  - project absent/non-AV/not-owned → forbidden · unknown model or unsupported params → bad_args
+ *  - compliance disallows → blocked (NO confirmable proposal persisted)
+ */
+export async function executeVideoPropose(
+  action: VideoConfirmAction, args: unknown, ctx: ToolContext, deps: VideoProposeDeps
+): Promise<VideoProposeOutcome> {
+  if (!deps.suiteEnabled || !deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'disabled' }
+  if (!roleHasPermission(ctx.userRole, 'CREATIVE')) return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+
+  if (action === 'video_project_create') {
+    const parsed = VideoProjectParams.safeParse(args)
+    if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+    try {
+      const proposalId = await deps.persist(ctx, 'video_project_create', { title: parsed.data.title, clientId: parsed.data.clientId ?? null })
+      return { ok: true, data: { proposalId, kind: 'video_project_create', title: parsed.data.title } }
+    } catch {
+      return { ok: false, error: 'Propose failed.', code: 'handler_error' }
+    }
+  }
+
+  // video_generation
+  const parsed = VideoGenParams.safeParse(args)
+  if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+  const p = parsed.data
+  try {
+    const existing = await deps.resolveProject(p.projectId, ctx)
+    if (!existing) return { ok: false, error: 'Project not found or not an AV project you can use.', code: 'forbidden' }
+
+    const model = deps.getModel(p.modelId)
+    if (!model || !deps.isTenantModel(model)) return { ok: false, error: 'Unknown or unavailable model.', code: 'bad_args' }
+    if (!modelSupports(model, p)) return { ok: false, error: 'Model does not support the requested mode/params.', code: 'bad_args' }
+
+    const tenantId = existing.project.clientId ?? 'agency'
+    let sources: any[] = []
+    try {
+      sources = await deps.loadSources(p.sourceAssetIds, p.mode === 'image-to-video' ? tenantId : undefined, p.mode)
+    } catch {
+      return { ok: false, error: 'Source image unavailable.', code: 'bad_args' }
+    }
+    const policy = await deps.loadPolicy(tenantId)
+
+    const compliance = deps.evaluateCompliance({
+      mode: p.mode, prompt: p.prompt, model, sourceAssets: sources, requestedSubjectType: p.subjectType,
+      tenantPolicy: policy, provenance: { userId: ctx.userId, tenantId, projectId: p.projectId }
+    })
+    if (!compliance.allowed) return { ok: false, error: `Blocked: ${compliance.reasons.join('; ') || 'compliance'}`, code: 'blocked' }
+
+    const estimatedCostCents = deps.estimateCost(model, p.durationSeconds)
+    const payload = {
+      tenantId,
+      projectId: p.projectId,
+      timelineId: existing.timeline?.id ?? existing.project.currentTimelineId ?? null,
+      mode: p.mode, modelId: model.id, provider: model.provider, prompt: p.prompt,
+      sourceAssetIds: p.sourceAssetIds, durationSeconds: p.durationSeconds, aspectRatio: p.aspectRatio,
+      resolution: p.resolution ?? null, subjectType: p.subjectType,
+      complianceStatus: compliance.classification, complianceReasons: compliance.reasons, estimatedCostCents
+    }
+    const proposalId = await deps.persist(ctx, 'video_generation', payload)
+    return {
+      ok: true,
+      data: {
+        proposalId, kind: 'video_generation', estimatedCostCents,
+        complianceClassification: compliance.classification, resolvedModel: model.id,
+        resolvedParams: { mode: p.mode, durationSeconds: p.durationSeconds, aspectRatio: p.aspectRatio }
+      }
+    }
+  } catch {
+    return { ok: false, error: 'Propose failed.', code: 'handler_error' }
+  }
+}

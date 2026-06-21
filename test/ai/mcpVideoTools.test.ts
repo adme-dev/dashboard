@@ -4,6 +4,8 @@ import {
   videoReadTools,
   projectVideoReadTools,
   executeVideoTool,
+  executeVideoPropose,
+  resolveVideoProposeAction,
   filterUsableAvProjects,
   type VideoReadRunner
 } from '~~/server/utils/ai/mcp/videoTools'
@@ -90,5 +92,82 @@ describe('buildVideoReadRunner', () => {
   it('registers a runner for each read tool', () => {
     const r = buildVideoReadRunner()
     expect(Object.keys(r).sort()).toEqual(READ_NAMES.slice().sort())
+  })
+})
+
+const genArgs = {
+  projectId: '11111111-1111-4111-8111-111111111111',
+  mode: 'text-to-video',
+  modelId: 'm1',
+  prompt: 'a calm city street at dawn',
+  durationSeconds: 5,
+  aspectRatio: '16:9',
+  subjectType: 'unknown'
+}
+
+const baseProposeDeps = () => ({
+  suiteEnabled: true,
+  genEnabled: true,
+  resolveProject: vi.fn(async () => ({
+    project: { mediaType: 'av', clientId: 'c1', createdBy: 'u1', currentTimelineId: 't1' },
+    timeline: { id: 't1' }
+  })),
+  getModel: () => ({
+    id: 'm1', provider: 'cf', modes: ['text-to-video'], durationsSeconds: [5],
+    aspectRatios: ['16:9'], resolutions: [], allowedSubjectTypes: ['unknown'], requiresApprovedSourceAsset: false
+  }),
+  isTenantModel: () => true,
+  loadSources: vi.fn(async () => []),
+  loadPolicy: vi.fn(async () => ({ enabled: true, monthlyCapCents: 100000 })),
+  evaluateCompliance: () => ({ allowed: true, classification: 'clear', reasons: [] as string[] }),
+  estimateCost: () => 250,
+  persist: vi.fn(async () => 'prop-123')
+})
+
+describe('resolveVideoProposeAction', () => {
+  it('maps the two propose tools, null otherwise', () => {
+    expect(resolveVideoProposeAction('propose_video_generation')).toBe('video_generation')
+    expect(resolveVideoProposeAction('create_video_project')).toBe('video_project_create')
+    expect(resolveVideoProposeAction('create_task')).toBeNull()
+  })
+})
+
+describe('executeVideoPropose — video_generation', () => {
+  it('disabled when the gen flag is off', async () => {
+    const r = await executeVideoPropose('video_generation', genArgs, ctx('admin'), { ...baseProposeDeps(), genEnabled: false })
+    expect(r).toMatchObject({ ok: false, code: 'disabled' })
+  })
+  it('forbidden for a non-CREATIVE role', async () => {
+    const r = await executeVideoPropose('video_generation', genArgs, ctx('viewer'), baseProposeDeps())
+    expect(r).toMatchObject({ ok: false, code: 'forbidden' })
+  })
+  it('forbidden when the project is not AV / not owned', async () => {
+    const r = await executeVideoPropose('video_generation', genArgs, ctx('admin'), { ...baseProposeDeps(), resolveProject: vi.fn(async () => null) })
+    expect(r).toMatchObject({ ok: false, code: 'forbidden' })
+  })
+  it('bad_args when the model rejects the params', async () => {
+    const r = await executeVideoPropose('video_generation', { ...genArgs, durationSeconds: 999 }, ctx('admin'), baseProposeDeps())
+    expect(r).toMatchObject({ ok: false, code: 'bad_args' })
+  })
+  it('blocked (no proposal persisted) when compliance disallows', async () => {
+    const deps = { ...baseProposeDeps(), evaluateCompliance: () => ({ allowed: false, classification: 'prohibited', reasons: ['x'] }) }
+    const r = await executeVideoPropose('video_generation', genArgs, ctx('admin'), deps)
+    expect(r).toMatchObject({ ok: false, code: 'blocked' })
+    expect(deps.persist).not.toHaveBeenCalled()
+  })
+  it('happy path persists and previews cost + classification', async () => {
+    const r = await executeVideoPropose('video_generation', genArgs, ctx('admin'), baseProposeDeps())
+    expect(r).toEqual({ ok: true, data: expect.objectContaining({ proposalId: 'prop-123', estimatedCostCents: 250, complianceClassification: 'clear' }) })
+  })
+})
+
+describe('executeVideoPropose — video_project_create', () => {
+  it('bad_args on empty title', async () => {
+    const r = await executeVideoPropose('video_project_create', { title: '' }, ctx('admin'), baseProposeDeps())
+    expect(r).toMatchObject({ ok: false, code: 'bad_args' })
+  })
+  it('happy path persists and returns a proposalId', async () => {
+    const r = await executeVideoPropose('video_project_create', { title: 'New AV' }, ctx('admin'), baseProposeDeps())
+    expect(r).toEqual({ ok: true, data: expect.objectContaining({ proposalId: 'prop-123', kind: 'video_project_create', title: 'New AV' }) })
   })
 })
