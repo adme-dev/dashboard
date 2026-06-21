@@ -1,0 +1,121 @@
+import { z } from 'zod'
+import { roleHasPermission } from '~~/server/utils/permissions'
+import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
+import type { ToolContext } from '~~/server/utils/ai/toolContext'
+import type { ActionExecutor } from '~~/server/utils/ai/executors/types'
+import type { McpToolManifest } from './project'
+
+/**
+ * MCP Server Phase 2c — confirm-tier WRITE tools over MCP (spec: ai-copilot-mcp-server-phase2 §5).
+ *
+ * Two-step, host-agnostic: `propose_<action>` runs the SAME registry propose-handler the in-app agent
+ * uses (resolution included; persists an ai_pending_actions row with conversation_id NULL + source
+ * 'mcp') and returns a proposalId; `confirm_action(proposalId, ack?)` atomically claims the row and
+ * dispatches to the existing executor. Dormant behind MCP_WRITE_TOOLS_ENABLED.
+ *
+ * SAFE SET = non-financial, confirm-tier only. Financial writes (quote, budget_*, eom_generate,
+ * expense_*) are EXCLUDED here — held for decision D4 — even where they are technically 'confirm' tier,
+ * because they move money / affect invoicing. The exclusion is enforced at projection AND confirm.
+ */
+export const MCP_WRITE_SAFE_ACTIONS = [
+  'create_task',
+  'assign_task',
+  'propose_status_change',
+  'propose_brief_convert',
+  'propose_opportunity',
+  'log_crm_activity',
+  'propose_proof_status',
+  'propose_team_memory',
+  'propose_knowledge_article',
+  'propose_schedule_post'
+] as const
+
+export const MCP_CONFIRM_TOOL = 'confirm_action'
+const ConfirmParams = z.object({ proposalId: z.string().min(8), ack: z.boolean().optional() })
+
+function isSafeAction(name: string): boolean {
+  return (MCP_WRITE_SAFE_ACTIONS as readonly string[]).includes(name)
+}
+
+/** MCP-facing propose tool name for a registry action (avoids double 'propose_' prefixing). */
+export function mcpProposeName(action: string): string {
+  return action.startsWith('propose_') ? action : `propose_${action}`
+}
+
+/** Reverse: which registry action a propose_<name> MCP tool targets (only within the safe set). */
+export function resolveProposeAction(proposeName: string): string | null {
+  for (const a of MCP_WRITE_SAFE_ACTIONS) if (mcpProposeName(a) === proposeName) return a
+  return null
+}
+
+/** The write tools a role may call, as MCP manifests — empty unless the group flag is on. */
+export function projectWriteTools(registryTools: AiTool<unknown>[], role: string, enabled: boolean): McpToolManifest[] {
+  if (!enabled) return []
+  const allowed = filterToolsForUser(registryTools, role)
+  const picks = MCP_WRITE_SAFE_ACTIONS
+    .map(a => allowed.find(t => t.name === a))
+    .filter((t): t is AiTool<unknown> => !!t && !!t.mutates)
+  if (!picks.length) return []
+  const proposeManifests = picks.map(t => ({
+    name: mcpProposeName(t.name),
+    description: `Propose (does NOT execute yet): ${t.description} Returns a proposalId — call ${MCP_CONFIRM_TOOL} to execute.`,
+    inputSchema: z.toJSONSchema(t.parameters) as Record<string, unknown>
+  }))
+  return [
+    ...proposeManifests,
+    {
+      name: MCP_CONFIRM_TOOL,
+      description: 'Execute a previously proposed write action by its proposalId. Some actions require ack:true.',
+      inputSchema: z.toJSONSchema(ConfirmParams) as Record<string, unknown>
+    }
+  ]
+}
+
+export type WriteConfirmOutcome
+  = | { ok: true, data: unknown }
+    | { ok: false, error: string, code: 'disabled' | 'bad_args' | 'expired' | 'forbidden' | 'not_found' | 'confirm_required' | 'handler_error' }
+
+/** The single row the atomic claim returns (UPDATE … SET status='executed' … RETURNING). */
+export interface ClaimedProposal { tool_name: string, resolved_payload: unknown }
+
+export interface ConfirmDeps {
+  enabled: boolean
+  /** Atomic, MCP+user-scoped claim: UPDATE … WHERE id AND user_id AND status='proposed' AND source='mcp' AND not expired RETURNING tool_name, resolved_payload. Returns null if nothing claimable. */
+  claim: (proposalId: string, userId: string) => Promise<ClaimedProposal | null>
+  getExecutor: (toolName: string) => ActionExecutor | null
+}
+
+/**
+ * Execute a confirmed MCP write proposal. Defense-in-depth, never throws:
+ *  - flag off → disabled · bad args → bad_args · nothing claimable → expired (atomic, single-use)
+ *  - tool not in the safe set → forbidden (belt-and-braces vs a stale/forged id)
+ *  - no executor → not_found · rich_confirm without ack → confirm_required
+ *  - executor permission re-check (role may have changed since propose) → forbidden
+ */
+export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps: ConfirmDeps): Promise<WriteConfirmOutcome> {
+  if (!deps.enabled) return { ok: false, error: 'Write tools are not enabled over MCP.', code: 'disabled' }
+
+  const parsed = ConfirmParams.safeParse(args)
+  if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+
+  const row = await deps.claim(parsed.data.proposalId, ctx.userId)
+  if (!row) return { ok: false, error: 'Proposal not found, already used, expired, or not yours.', code: 'expired' }
+
+  if (!isSafeAction(row.tool_name)) return { ok: false, error: 'This action is not available over MCP.', code: 'forbidden' }
+
+  const ex = deps.getExecutor(row.tool_name)
+  if (!ex) return { ok: false, error: 'No executor registered for this action.', code: 'not_found' }
+  if (ex.riskTier === 'rich_confirm' && !parsed.data.ack) {
+    return { ok: false, error: 'This action requires explicit ack:true.', code: 'confirm_required' }
+  }
+  if (ex.requiredPermission && !roleHasPermission(ctx.userRole, ex.requiredPermission)) {
+    return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+  }
+
+  try {
+    const res = await ex.execute(row.resolved_payload, ctx)
+    return { ok: true, data: { resultRef: res.resultRef, summary: res.summary } }
+  } catch {
+    return { ok: false, error: 'Execution failed.', code: 'handler_error' }
+  }
+}
