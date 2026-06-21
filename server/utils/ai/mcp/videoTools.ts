@@ -273,3 +273,45 @@ export async function executeVideoPropose(
     return { ok: false, error: 'Propose failed.', code: 'handler_error' }
   }
 }
+
+// ── Confirm dispatch ───────────────────────────────────────────────────────────
+// Called by the shared confirm_action path AFTER the atomic single-use claim. Returns null when the
+// claimed tool_name is not a video action (so the 2c safe-action path handles it). Unlike the generic
+// 2c executor (which can only return a result or throw → handler_error), this maps the budget
+// reservation outcome to a clean cap_exceeded, and returns the new jobId / projectId.
+
+export interface ClaimedRow { tool_name: string, resolved_payload: unknown }
+
+export type VideoConfirmOutcome
+  = | { ok: true, data: unknown }
+    | { ok: false, error: string, code: 'forbidden' | 'cap_exceeded' | 'handler_error' }
+
+export interface VideoConfirmDeps {
+  genEnabled: boolean
+  reserve: (payload: any, ctx: ToolContext) => Promise<{ ok: boolean, reason?: string, remainingCents?: number, job?: any, reused?: boolean }>
+  enqueue: (payload: any, jobId: string, ctx: ToolContext) => Promise<void>
+  createProject: (payload: any, ctx: ToolContext) => Promise<{ projectId: string }>
+}
+
+export async function dispatchVideoConfirm(
+  row: ClaimedRow, ctx: ToolContext, deps: VideoConfirmDeps
+): Promise<VideoConfirmOutcome | null> {
+  if (!(VIDEO_CONFIRM_ACTIONS as readonly string[]).includes(row.tool_name)) return null
+  if (!deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'forbidden' }
+  try {
+    if (row.tool_name === 'video_project_create') {
+      const { projectId } = await deps.createProject(row.resolved_payload, ctx)
+      return { ok: true, data: { projectId } }
+    }
+    // video_generation
+    const reservation = await deps.reserve(row.resolved_payload, ctx)
+    if (!reservation.ok || !reservation.job) {
+      return { ok: false, error: `Budget unavailable (${reservation.reason ?? 'cap'}).`, code: 'cap_exceeded' }
+    }
+    // Lost the race to a concurrent same-key request inside the lock → do not re-enqueue.
+    if (!reservation.reused) await deps.enqueue(row.resolved_payload, reservation.job.id, ctx)
+    return { ok: true, data: { jobId: reservation.job.id, status: 'queued' } }
+  } catch {
+    return { ok: false, error: 'Execution failed.', code: 'handler_error' }
+  }
+}

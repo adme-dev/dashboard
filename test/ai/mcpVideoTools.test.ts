@@ -6,6 +6,7 @@ import {
   executeVideoTool,
   executeVideoPropose,
   resolveVideoProposeAction,
+  dispatchVideoConfirm,
   filterUsableAvProjects,
   type VideoReadRunner
 } from '~~/server/utils/ai/mcp/videoTools'
@@ -169,5 +170,61 @@ describe('executeVideoPropose — video_project_create', () => {
   it('happy path persists and returns a proposalId', async () => {
     const r = await executeVideoPropose('video_project_create', { title: 'New AV' }, ctx('admin'), baseProposeDeps())
     expect(r).toEqual({ ok: true, data: expect.objectContaining({ proposalId: 'prop-123', kind: 'video_project_create', title: 'New AV' }) })
+  })
+})
+
+const genPayload = {
+  tenantId: 'c1', projectId: 'p1', mode: 'text-to-video', modelId: 'm1', provider: 'cf', prompt: 'x',
+  sourceAssetIds: [], durationSeconds: 5, aspectRatio: '16:9', resolution: null, subjectType: 'unknown',
+  complianceStatus: 'clear', complianceReasons: [], estimatedCostCents: 250, timelineId: 't1'
+}
+
+describe('dispatchVideoConfirm', () => {
+  const okDeps = () => ({
+    genEnabled: true,
+    reserve: vi.fn(async () => ({ ok: true, reused: false, job: { id: 'job-1' } })),
+    enqueue: vi.fn(async () => {}),
+    createProject: vi.fn(async () => ({ projectId: 'newproj' }))
+  })
+
+  it('returns null for a non-video tool_name (2c falls through)', async () => {
+    expect(await dispatchVideoConfirm({ tool_name: 'create_task', resolved_payload: {} }, ctx('admin'), okDeps())).toBeNull()
+  })
+
+  it('forbidden when gen flag is off', async () => {
+    const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), { ...okDeps(), genEnabled: false })
+    expect(r).toMatchObject({ ok: false, code: 'forbidden' })
+  })
+
+  it('video_generation happy path reserves + enqueues once, returns jobId', async () => {
+    const deps = okDeps()
+    const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
+    expect(r).toEqual({ ok: true, data: { jobId: 'job-1', status: 'queued' } })
+    expect(deps.enqueue).toHaveBeenCalledTimes(1)
+  })
+
+  it('cap_exceeded when reservation fails — no enqueue', async () => {
+    const deps = { ...okDeps(), reserve: vi.fn(async () => ({ ok: false, reason: 'cap_exceeded', remainingCents: 100 })) }
+    const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
+    expect(r).toMatchObject({ ok: false, code: 'cap_exceeded' })
+    expect(deps.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('reused reservation does not re-enqueue', async () => {
+    const deps = { ...okDeps(), reserve: vi.fn(async () => ({ ok: true, reused: true, job: { id: 'job-1' } })) }
+    const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
+    expect(r).toEqual({ ok: true, data: { jobId: 'job-1', status: 'queued' } })
+    expect(deps.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('video_project_create returns the new projectId', async () => {
+    const r = await dispatchVideoConfirm({ tool_name: 'video_project_create', resolved_payload: { title: 'New', clientId: null } }, ctx('admin'), okDeps())
+    expect(r).toEqual({ ok: true, data: { projectId: 'newproj' } })
+  })
+
+  it('handler_error when the executor throws', async () => {
+    const deps = { ...okDeps(), reserve: vi.fn(async () => { throw new Error('boom') }) }
+    const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
+    expect(r).toMatchObject({ ok: false, code: 'handler_error' })
   })
 })
