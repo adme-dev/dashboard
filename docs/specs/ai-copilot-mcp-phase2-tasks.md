@@ -4,29 +4,38 @@ Backlog derived from `ai-copilot-mcp-server-phase2.md`. **Nothing here is enable
 operator sign-off.** Order follows the spec's phasing (2a → 2d). Each task notes what's **reused** vs
 **net-new**.
 
-## Decisions to settle first (spec §10) — blocking
-- [ ] **D1.** Ship generation (2a) before any writes? _(spec recommends yes)_
-- [ ] **D2.** Two-step `propose/confirm` now, elicitation later? _(spec recommends yes)_
-- [ ] **D3.** Per-group enable flags vs. one Phase-2 flag? _(spec recommends per-group)_
-- [ ] **D4.** Do external hosts get `rich_confirm` actions (budget/EOM/e-sign) in 2c, or hold to in-app? _(conservative default: hold)_
-- [ ] **D5.** MCP-session pending-action keying: extend `ai_pending_actions` vs. dedicated table?
+> **STATUS 2026-06-21:** Generation track **2a BUILT + tested, dormant** (branch `feat/mcp-phase2-2a`,
+> merged to main). D1–D3 accepted (recommended answers). **2b/2c/2d remain — see notes; 2c held for
+> sign-off (D4 unsettled), 2d needs banner async-ification.**
 
-## Shared foundation (needed before any group ships)
-- [ ] **F1.** Add `executeActionTool(tools, name, args, ctx)` in `server/utils/ai/mcp/project.ts` — gated path parallel to `executeReadOnlyTool`; per-group flag check, role re-check, riskTier gating, audit. _(net-new, mirrors existing guard)_
-- [ ] **F2.** Internal endpoints behind `x-mcp-secret`: `POST /api/internal/mcp/action`, `/confirm`, `/job-status`. _(net-new; thin proxies)_
-- [ ] **F3.** Pending-action keying for MCP sessions — additive migration on `ai_pending_actions` (nullable `mcp_session_id` / `source='mcp'`), claim scoped to creating actor, keep 30-min TTL. _(net-new, small; gated by D5)_
-- [ ] **F4.** Per-group env flags, default off: `MCP_GEN_TOOLS_ENABLED`, `MCP_WRITE_TOOLS_ENABLED` (in `wrangler.toml [vars]`, per the activation gotcha). _(net-new)_
-- [ ] **F5.** Per-MCP-actor action rate limit on the confirm/start path. _(net-new; spec §7.4)_
-- [ ] **F6.** Audit: every action/generation call → `ai_action_audit`, `payload.source='mcp'`, arg KEYS only. _(reuse Phase-1 audit)_
+## Decisions to settle first (spec §10)
+- [x] **D1.** Ship generation before writes — **YES** (accepted 2026-06-21).
+- [x] **D2.** Two-step `propose/confirm` now, elicitation later — **YES** (accepted).
+- [x] **D3.** Per-group enable flags — **YES** (`MCP_GEN_TOOLS_ENABLED` shipped; `MCP_WRITE_TOOLS_ENABLED` for 2c).
+- [ ] **D4.** Do external hosts get `rich_confirm` actions (budget/EOM/e-sign) in 2c, or hold to in-app? — **OPEN, blocks 2c** _(conservative default: hold)_
+- [ ] **D5.** MCP-session pending-action keying: extend `ai_pending_actions` vs. dedicated table? — blocks 2c
 
-## 2a — Generation, low-risk subset (flag: `MCP_GEN_TOOLS_ENABLED`)
-- [ ] **A1.** `generate_voiceover` tool → proxies `audio/voiceover.post` (sync). Require+validate `clientId`; cap text length; reuse text-sanitize + channel LUFS gates. _(reuse engine)_
-- [ ] **A2.** `start_music_generation` → proxies `audio/music/generate` (async `MUSIC_QUEUE`); returns `{jobId,status,estimateCents}`. Reuse artist-blocklist 422 + idempotency + no-double-bill. _(reuse engine)_
-- [ ] **A3.** `get_generation_status(jobId)` → wrap `audio/music/status/[id]`; normalized shape `{status, assetUrl?, error?, costCents?}`. _(reuse status endpoint)_
-- [ ] **A4.** Tests: projection lists gen tools only when flag on; voiceover sync happy-path; music start→status lifecycle; role-scoping; audit row written.
-- [ ] **A5.** Live-verify in Claude (operator): generate a voiceover + a music track end-to-end; confirm assets land in R2 + audit rows.
+## Shared foundation
+- [x] **F1.** Action guard — shipped as `executeGenerationTool` in `generationTools.ts` (parallels `executeReadOnlyTool`: disabled/not_found/forbidden/bad_args/handler_error, never throws). A generic `executeActionTool` for writes can follow the same shape in 2c.
+- [x] **F2.** Internal surface — **reused existing `/internal/mcp/call`** (routes generation tools to the generation guard) instead of new endpoints; Worker needs no change. Writes (2c) may still want `/action` + `/confirm`.
+- [ ] **F3.** MCP-session pending-action keying — for 2c writes only (gated by D5).
+- [x] **F4.** Per-group flag `MCP_GEN_TOOLS_ENABLED` documented in `wrangler.toml` (left unset = off). `MCP_WRITE_TOOLS_ENABLED` for 2c.
+- [ ] **F5.** Per-MCP-actor rate limit — for 2c writes.
+- [x] **F6.** Audit — generation calls audited via the existing `/call` path (`payload.source='mcp'`, arg keys only).
 
-## 2b — Video generation (same/sub flag)
+## 2a — Generation, low-risk subset (flag: `MCP_GEN_TOOLS_ENABLED`) — ✅ BUILT (dormant)
+- [x] **A1.** `generate_voiceover` (sync) → `generationRunner` wraps `generateVoiceover` + `createVoiceAsset`. CREATIVE-gated.
+- [x] **A2.** `start_music_generation` (async `MUSIC_QUEUE`) → reuses artist-blocklist + idempotency + no-double-bill; returns `{jobId,status}`; copyright/duplicate/unavailable return structured status.
+- [x] **A3.** `get_generation_status(jobId)` → wraps `getAsset` (mints fresh stream URL).
+- [x] **A4.** Tests — 10 unit tests (projection flag-gating + role-scoping; guard disabled/not_found/forbidden/bad_args/handler_error). 561 AI tests green overall.
+- [ ] **A5.** Live-verify in Claude (operator, after flag flip): generate a voiceover + music track; confirm R2 assets + `ai_action_audit` rows.
+
+## 2b — Video generation (same/sub flag) — ⚠️ NOT a clean additive slice
+> Unlike audio, `video/generation/jobs.post` requires a `projectId` + existing AV timeline, is gated by
+> a separate `VIDEO_GENERATION_ENABLED`, and wraps model-registry + tenant-gating + compliance +
+> advisory-locked budget reservation across ~12 deps. Awkward for a conversational MCP host (can't t2v
+> without first setting up a project) and higher-risk to wrap (billing/compliance). **Needs a design
+> decision before building — is video-over-MCP wanted given the project/timeline requirement?**
 - [ ] **B1.** `start_video_generation` → proxies `video/generation/jobs` (async `VIDEO_GENERATION_QUEUE`); pass mode/model/prompt/sourceAssetIds/duration; require `projectId`. _(reuse engine)_
 - [ ] **B2.** Surface existing gates as clean tool errors: compliance `blocked` (422) and **`402 cap_exceeded`** from the atomic per-tenant budget lock (`server/utils/video-generation/budget.ts`). _(reuse gates; new error mapping)_
 - [ ] **B3.** Extend `get_generation_status` to route video jobs (`video/generation/jobs/[id]`). _(reuse)_
