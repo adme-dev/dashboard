@@ -7,6 +7,7 @@ import {
   filterUsableAvProjects,
   type VideoReadRunner
 } from '~~/server/utils/ai/mcp/videoTools'
+import { buildVideoReadRunner } from '~~/server/utils/ai/mcp/videoRunner'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 // Deterministic RBAC: only 'admin' holds any permission (so only admin has CREATIVE).
@@ -82,5 +83,12 @@ describe('executeVideoTool guard (never throws)', () => {
   it('ok passes runner data through', async () => {
     const r = await executeVideoTool('list_av_projects', {}, ctx('admin'), { enabled: true, runner: runner() })
     expect(r).toEqual({ ok: true, data: [{ id: 'a' }] })
+  })
+})
+
+describe('buildVideoReadRunner', () => {
+  it('registers a runner for each read tool', () => {
+    const r = buildVideoReadRunner()
+    expect(Object.keys(r).sort()).toEqual(READ_NAMES.slice().sort())
   })
 })

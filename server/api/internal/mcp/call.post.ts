@@ -12,6 +12,8 @@ import { registry } from '~~/server/utils/ai/tools'
 import { executeReadOnlyTool } from '~~/server/utils/ai/mcp/project'
 import { generationTools, executeGenerationTool } from '~~/server/utils/ai/mcp/generationTools'
 import { buildGenerationRunner } from '~~/server/utils/ai/mcp/generationRunner'
+import { videoReadTools, executeVideoTool } from '~~/server/utils/ai/mcp/videoTools'
+import { buildVideoReadRunner } from '~~/server/utils/ai/mcp/videoRunner'
 import { isGenerationRateLimited, MCP_GEN_RATE_WINDOW_MIN } from '~~/server/utils/ai/mcp/rateLimit'
 import {
   resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal
@@ -51,6 +53,9 @@ export default defineEventHandler(async (event) => {
   const isGeneration = generationTools.some(t => t.name === toolName)
   const writeAction = resolveProposeAction(toolName) // non-null for a safe propose_<action> write tool
   const isConfirm = toolName === MCP_CONFIRM_TOOL
+  // Video suite (Phase 2b): read/discovery tools gated by MCP_VIDEO_TOOLS_ENABLED (no spend, no writes).
+  const videoSuiteEnabled = process.env.MCP_VIDEO_TOOLS_ENABLED === 'true'
+  const isVideoRead = videoReadTools.some(t => t.name === toolName)
 
   // Per-actor rate limit on generation (it bills, no HITL). Count this user's recent MCP generation
   // calls from the audit ledger; refuse over the cap. get_generation_status (a cheap poll) is exempt.
@@ -104,6 +109,12 @@ export default defineEventHandler(async (event) => {
     outcome = await executeGenerationTool(toolName, args, ctx, {
       enabled: process.env.MCP_GEN_TOOLS_ENABLED === 'true',
       runner: buildGenerationRunner()
+    })
+  } else if (isVideoRead) {
+    // Video suite reads (Phase 2b): discovery + status, gated by MCP_VIDEO_TOOLS_ENABLED + CREATIVE.
+    outcome = await executeVideoTool(toolName, args, ctx, {
+      enabled: videoSuiteEnabled,
+      runner: buildVideoReadRunner()
     })
   } else {
     outcome = await executeReadOnlyTool(registry as AiTool<unknown>[], toolName, args, ctx)

@@ -13,6 +13,7 @@ import { registry } from '~~/server/utils/ai/tools'
 import { projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
 import { projectGenerationTools } from '~~/server/utils/ai/mcp/generationTools'
 import { projectWriteTools } from '~~/server/utils/ai/mcp/writeTools'
+import { projectVideoReadTools } from '~~/server/utils/ai/mcp/videoTools'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 
 export default defineEventHandler(async (event) => {
@@ -35,13 +36,17 @@ export default defineEventHandler(async (event) => {
   if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
 
   // Read tools (Phase 1) + generation tools (2a, MCP_GEN_TOOLS_ENABLED) + confirm-tier write
-  // propose/confirm tools (2c, MCP_WRITE_TOOLS_ENABLED). Each group flag-gated independently.
+  // propose/confirm tools (2c, MCP_WRITE_TOOLS_ENABLED) + video suite reads (2b,
+  // MCP_VIDEO_TOOLS_ENABLED). Each group flag-gated independently. Deduped by name so a tool emitted
+  // by more than one group (e.g. confirm_action, once 2b's propose/confirm lands) appears once.
   const role = user.role ?? ''
-  return {
-    tools: [
-      ...projectReadOnlyTools(registry as AiTool<unknown>[], role),
-      ...projectGenerationTools(role, process.env.MCP_GEN_TOOLS_ENABLED === 'true'),
-      ...projectWriteTools(registry as AiTool<unknown>[], role, process.env.MCP_WRITE_TOOLS_ENABLED === 'true')
-    ]
-  }
+  const assembled = [
+    ...projectReadOnlyTools(registry as AiTool<unknown>[], role),
+    ...projectGenerationTools(role, process.env.MCP_GEN_TOOLS_ENABLED === 'true'),
+    ...projectWriteTools(registry as AiTool<unknown>[], role, process.env.MCP_WRITE_TOOLS_ENABLED === 'true'),
+    ...projectVideoReadTools(role, process.env.MCP_VIDEO_TOOLS_ENABLED === 'true')
+  ]
+  const seen = new Set<string>()
+  const tools = assembled.filter(t => (seen.has(t.name) ? false : (seen.add(t.name), true)))
+  return { tools }
 })
