@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { executeProposal, loadOpenProposal, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
+import { executeProposal, loadOpenProposal, terminalError, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
 
 const ctx = (role = 'owner', userId = 'u1') => ({ userId, userRole: role, event: {} as any })
 const row = (): PendingRow => ({
@@ -44,6 +44,18 @@ describe('executeProposal', () => {
     expect(res.ok).toBe(false)
     expect(db.revertToProposed).toHaveBeenCalledWith('p1')
     expect(db.markExecuted).not.toHaveBeenCalled()
+  })
+
+  it('does NOT revert on a terminal error — the proposal stays terminal, not re-confirmable (finding #4)', async () => {
+    const db: PendingActionDb = {
+      claim: vi.fn().mockResolvedValue(row()),
+      createTask: vi.fn().mockRejectedValue(terminalError('No executor registered for this action.')),
+      markExecuted: vi.fn(),
+      revertToProposed: vi.fn().mockResolvedValue(undefined),
+    }
+    const res = await executeProposal('p1', ctx() as any, db)
+    expect(res.ok).toBe(false)
+    expect(db.revertToProposed).not.toHaveBeenCalled()
   })
 
   it('honors the atomic-claim contract: expired / wrong-user → claim returns null → fail (stateful fake)', async () => {

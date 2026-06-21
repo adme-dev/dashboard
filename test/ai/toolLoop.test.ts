@@ -58,11 +58,23 @@ describe('extractLoopOutput (pure)', () => {
       ],
     }
     const out = extractLoopOutput(result)
-    expect(out.proposedAction).toEqual({ proposalId: 'p1', resolved: { title: 'X' } })
+    expect(out.proposedAction).toEqual({ proposalId: 'p1', resolved: { title: 'X' }, toolName: 'create_task' })
     expect(out.toolCalls).toEqual([{ name: 'create_task', args: { title: 'X' } }])
   })
 
-  it('does NOT surface a proposal when create_task failed (ok:false)', () => {
+  it('surfaces a proposal for ANY propose tool, carrying its toolName (e.g. propose_budget_change)', () => {
+    const result = {
+      text: 'Prepared a budget change.',
+      steps: [
+        { toolResults: [{ toolName: 'propose_budget_change', output: { ok: true, data: { proposalId: 'b9', resolved: { campaignName: 'Acme', newDailyBudget: 40 } } } }] },
+      ],
+    }
+    expect(extractLoopOutput(result).proposedAction).toEqual({
+      proposalId: 'b9', resolved: { campaignName: 'Acme', newDailyBudget: 40 }, toolName: 'propose_budget_change',
+    })
+  })
+
+  it('does NOT surface a proposal when the propose tool failed (ok:false)', () => {
     const result = { text: 'x', steps: [{ toolResults: [{ toolName: 'create_task', output: { ok: false, error: 'nope' } }] }] }
     expect(extractLoopOutput(result).proposedAction).toBeNull()
   })

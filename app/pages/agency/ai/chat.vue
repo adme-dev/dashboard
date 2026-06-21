@@ -57,7 +57,7 @@ async function ensureConversationId(): Promise<string | null> {
 function pushVoiceTurn(
   userText: string,
   assistant: AiMessage,
-  proposedAction: { proposalId: string, resolved: unknown } | null,
+  proposedAction: { proposalId: string, resolved: unknown, toolName?: string } | null,
 ) {
   if (!activeConversation.value) return
   messages.value.push({

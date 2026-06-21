@@ -1,7 +1,7 @@
 import type { z } from 'zod'
 import { tool, type Tool } from 'ai'
 import { roleHasPermission, isReadOnlyRole, type PermissionGroup } from '~~/server/utils/permissions'
-import type { ToolContext, ToolResult } from './toolContext'
+import type { ToolContext, ToolResult, RiskTier } from './toolContext'
 import { spotlight } from './spotlight'
 
 /**
@@ -18,9 +18,24 @@ export interface AiTool<A> {
   requiredPermission?: PermissionGroup
   /** true = write tool → handler only PROPOSES (Option B); never writes directly. */
   mutates?: boolean
+  /**
+   * Override the human-gating tier for a write tool. Defaults via effectiveRiskTier():
+   * read tools → 'auto', `mutates` tools → 'confirm'. Set 'rich_confirm' for high-risk writes
+   * (live ad budgets, Xero pushes) so the confirm endpoint can demand a richer card + sanity check.
+   */
+  riskTier?: RiskTier
   /** true = results contain untrusted text → spotlighted before entering model context. */
   returnsUntrusted?: boolean
   handler: (args: A, ctx: ToolContext) => Promise<ToolResult>
+}
+
+/**
+ * Resolve a tool's effective risk tier: explicit `riskTier` wins; otherwise a write (`mutates`)
+ * defaults to 'confirm' and a read defaults to 'auto'. Single source of truth for the confirm
+ * endpoint and the (future) traffic controller.
+ */
+export function effectiveRiskTier(t: Pick<AiTool<any>, 'mutates' | 'riskTier'>): RiskTier {
+  return t.riskTier ?? (t.mutates ? 'confirm' : 'auto')
 }
 
 /**

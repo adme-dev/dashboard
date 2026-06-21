@@ -92,6 +92,32 @@ export default defineNuxtConfig({
     aiLoopModel: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b',           // Option 2: Groq open-source default
     // Fallback was kimi-k2 but Groq returns 404 for it (not on the account) — gpt-oss-20b is the valid sibling.
     aiLoopFallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/openai/gpt-oss-20b',
+    // Inferred personal-memory distillation (Phase-0 WS-A.8b) — OFF by default. When enabled, the
+    // chat engine distils ≤3 durable memories per turn fire-and-forget. Hard gate per the build loop.
+    aiMemoryDistillEnabled: process.env.AI_MEMORY_DISTILL_ENABLED === 'true',
+    // L2 traffic-controller supervisor (Phase 3) — OFF by default. When enabled, cross-domain requests
+    // fan out to ≥2 specialist skill-packs and synthesize one answer. Adds latency + cost; hard gate.
+    aiControllerL2Enabled: process.env.AI_CONTROLLER_L2_ENABLED === 'true',
+    // Observe & Learn W-2 (observe-and-learn spec §4) — OFF by default. When enabled, a daily cron
+    // distils each staff member's OWN recurring routines into source='observed', user-scoped memories.
+    // Read only at the cron boundary (observe-and-learn.post.ts checks process.env directly). Hard gate.
+    aiObserveEnabled: process.env.AI_OBSERVE_ENABLED === 'true',
+    // Observe & Learn W-4 proactive suggestion — HELD for explicit sign-off; DOUBLY dormant (also needs
+    // AI_OBSERVE_ENABLED). No proactive routine suggestion fires until this is on. Hard gate.
+    aiObserveProactiveEnabled: process.env.AI_OBSERVE_PROACTIVE_ENABLED === 'true',
+    // Visuals → Knowledge trigger — OFF by default. When on, new image proof-assets are captioned (Workers
+    // AI vision) into UNPUBLISHED KB drafts fire-and-forget. Read at the trigger via process.env. Hard gate.
+    visualsToKnowledgeEnabled: process.env.VISUALS_TO_KNOWLEDGE_ENABLED === 'true',
+    // MCP server expose layer (mcp-server-phase1 spec) — OFF by default. When on, the /api/internal/mcp/*
+    // endpoints serve the standalone mcp-server Worker (read-only tools over MCP to ChatGPT/Claude/Cursor).
+    // Endpoints also require x-mcp-secret == MCP_INTERNAL_SECRET. Read via process.env. Hard gate.
+    mcpServerEnabled: process.env.MCP_SERVER_ENABLED === 'true',
+    // Client-portal co-pilot (portal-agent spec) — OFF by default. Its OWN gate so enabling the
+    // agency chat (AI_TOOLS_ENABLED) never auto-exposes the customer-facing surface. Hard gate per §8.
+    aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true',
+    // Portal Tier 2 own-data WRITES (e.g. respond_to_approval) — OFF by default, DOUBLY dormant
+    // (also needs AI_PORTAL_ENABLED). Write tools are absent from the portal toolset until this is on.
+    aiPortalWritesEnabled: process.env.AI_PORTAL_WRITES_ENABLED === 'true',
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 
@@ -194,7 +220,10 @@ export default defineNuxtConfig({
       videoAssetHarnessEnabled: process.env.VIDEO_ASSET_HARNESS_ENABLED === 'true' || process.env.VIDEO_GENERATION_ENABLED === 'true',
       // Client-visible mirror of GOOGLE_BUSINESS_PUBLISHING_ENABLED. Server endpoints
       // remain the real boundary; this keeps the dormant channel hidden until approval.
-      googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true'
+      googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true',
+      // Client-visible mirror of AI_PORTAL_ENABLED — gates ONLY the portal co-pilot launcher.
+      // The /api/portal/ai/* endpoints 404 when off; this just hides the UI until go-live.
+      aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true'
     }
   },
 

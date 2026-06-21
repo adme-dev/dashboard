@@ -126,27 +126,64 @@ export async function upsertVector(
   }
 }
 
+/** Vectorize metadata filter (e.g. { userId, scope, memType } for per-user memory recall). */
+export type VectorizeFilter = Record<string, unknown>
+
+export interface ResolvedSearchArgs {
+  event?: H3Event
+  query: string
+  topK: number
+  filter?: VectorizeFilter
+}
+
+function isFilter(v: unknown): v is VectorizeFilter {
+  return typeof v === 'object' && v !== null
+}
+
+/**
+ * PURE arg resolver for searchSimilar's two call forms (kept testable without a binding):
+ *   (query, topK?, filter?)            — no event
+ *   (event, query, topK?, filter?)     — event-bound
+ * The trailing `filter` is additive; existing callers (no filter) are unaffected.
+ */
+export function resolveSearchArgs(
+  eventOrQuery: H3Event | string,
+  queryOrTopK?: string | number,
+  topKOrFilter?: number | VectorizeFilter,
+  filterArg?: VectorizeFilter,
+): ResolvedSearchArgs {
+  // A positive topK only — a falsy/0 (or non-number) value falls back to 5, preserving the prior
+  // `|| 5` semantics. Otherwise a computed topK of 0 (e.g. search_knowledge with limit:0) would ask
+  // Vectorize for 0 matches and return nothing where it used to return 5 (review finding #10).
+  const posTopK = (v: unknown) => (typeof v === 'number' && v > 0 ? v : 5)
+  if (typeof eventOrQuery === 'string') {
+    return {
+      query: eventOrQuery,
+      topK: posTopK(queryOrTopK),
+      filter: isFilter(topKOrFilter) ? topKOrFilter : undefined,
+    }
+  }
+  return {
+    event: eventOrQuery,
+    query: queryOrTopK as string,
+    topK: posTopK(topKOrFilter),
+    filter: filterArg,
+  }
+}
+
 /**
  * Search for similar vectors in the Vectorize index.
  * Returns empty results if the binding or embedding generation is unavailable.
- * Accepts (query, topK?) or (event, query, topK?) for backward compatibility.
+ * Accepts (query, topK?, filter?) or (event, query, topK?, filter?). `filter` scopes by metadata
+ * (e.g. per-user memory recall) and is passed through to vectorize.query when present.
  */
 export async function searchSimilar(
   eventOrQuery: H3Event | string,
   queryOrTopK?: string | number,
-  topKArg?: number
+  topKOrFilter?: number | VectorizeFilter,
+  filterArg?: VectorizeFilter
 ): Promise<Array<{ id: string; score: number; metadata: Record<string, string> }>> {
-  let event: H3Event | undefined
-  let query: string
-  let topK: number
-  if (typeof eventOrQuery === 'string') {
-    query = eventOrQuery
-    topK = (queryOrTopK as number) || 5
-  } else {
-    event = eventOrQuery
-    query = queryOrTopK as string
-    topK = topKArg || 5
-  }
+  const { event, query, topK, filter } = resolveSearchArgs(eventOrQuery, queryOrTopK, topKOrFilter, filterArg)
 
   const vectorize = getVectorizeBinding(event)
   if (!vectorize) {
@@ -159,10 +196,9 @@ export async function searchSimilar(
       return []
     }
 
-    const result = await vectorize.query(queryEmbedding, {
-      topK,
-      returnMetadata: true,
-    })
+    const queryOpts: Record<string, unknown> = { topK, returnMetadata: true }
+    if (filter) queryOpts.filter = filter
+    const result = await vectorize.query(queryEmbedding, queryOpts)
 
     if (!result?.matches) {
       return []

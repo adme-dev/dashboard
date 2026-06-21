@@ -190,6 +190,7 @@ export async function extractChatQAPairs(
     JOIN ai_conversations c ON c.id = u.conversation_id
     LEFT JOIN ai_feedback f ON f.message_id = a.id
     WHERE u.role = 'user'
+      AND c.user_id IS NOT NULL  -- exclude client-portal conversations (mig 184); never train the agency model on customer data
       AND u.is_error = false
       AND a.is_error = false
       AND LENGTH(u.content) >= $1
@@ -372,6 +373,7 @@ export async function extractRAGData(
           AND m2.created_at > u.created_at
       )
     WHERE u.role = 'user'
+      AND EXISTS (SELECT 1 FROM ai_conversations c WHERE c.id = u.conversation_id AND c.user_id IS NOT NULL)  -- exclude client-portal conversations (mig 184)
       AND u.is_error = false
       AND a.is_error = false
       AND LENGTH(u.content) >= $1

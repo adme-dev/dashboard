@@ -10,10 +10,28 @@ const READ_TOOLS = [
 const SLICE2_TOOLS = [
   'get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue',
 ]
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, 'create_task']
+// Phase-1 media-buyer read skill-pack (MEDIA_BUYING-gated).
+const MEDIA_BUYER_TOOLS = ['get_campaign_breakdown', 'get_budget_health']
+// Phase-2/3 write tools (propose→confirm→audit).
+const WRITE_TOOLS = ['create_task', 'propose_schedule_post', 'propose_budget_alert', 'propose_budget_change', 'propose_knowledge_article']
+// Per-department packs (PRD §7): delivery writes (Account/Producer) + capacity read.
+const DELIVERY_TOOLS = ['assign_task', 'propose_status_change', 'propose_brief_convert']
+const DELIVERY_READS = ['get_capacity']
+// Sales/CRM pack (PRD §7 Sales): 3 writes + 1 read (draft_followup).
+const CRM_WRITES = ['propose_opportunity', 'log_crm_activity', 'propose_quote']
+const CRM_READS = ['draft_followup']
+// Finance / Bookkeeper pack (PRD §7): 3 writes (expense approve, EOM generate rich_confirm, expense classify).
+const FINANCE_WRITES = ['propose_expense_approval', 'propose_eom_generate', 'propose_expense_classify']
+// Creative pack (PRD §7): queue read + proof-status write.
+const CREATIVE_READS = ['get_my_creative_queue']
+const CREATIVE_WRITES = ['propose_proof_status']
+// Cross-cutting: promote a fact to department-shared memory (MANAGEMENT-gated).
+const SHARED_MEMORY_WRITES = ['propose_team_memory']
+// remember = personal-memory capture (non-mutating; available to every authed role).
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, 'remember']
 
-describe('assembled tool registry (Slices 1–2)', () => {
-  it('contains the 13 read tools + create_task', () => {
+describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
+  it('contains the 15 read tools + the write tools + remember', () => {
     expect(registry.map(t => t.name).sort()).toEqual([...ALL].sort())
   })
 
@@ -25,8 +43,9 @@ describe('assembled tool registry (Slices 1–2)', () => {
     }
   })
 
-  it('exactly one tool (create_task) is mutating', () => {
-    expect(registry.filter(t => t.mutates).map(t => t.name)).toEqual(['create_task'])
+  it('the mutating tools are exactly the propose→confirm writes', () => {
+    expect(registry.filter(t => t.mutates).map(t => t.name).sort()).toEqual(
+      [...WRITE_TOOLS, ...DELIVERY_TOOLS, ...CRM_WRITES, ...FINANCE_WRITES, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES].sort())
   })
 
   it('RBAC filter hides FINANCE/CLIENTS tools from a low-privilege role but keeps create_task', () => {
@@ -42,8 +61,18 @@ describe('assembled tool registry (Slices 1–2)', () => {
     expect(filterToolsForUser(registry, 'guest').map(t => t.name)).not.toContain('create_task')
   })
 
-  it('owner sees all 14', () => {
-    expect(filterToolsForUser(registry, 'owner')).toHaveLength(14)
+  it('owner sees the whole registry', () => {
+    expect(filterToolsForUser(registry, 'owner')).toHaveLength(registry.length)
+    expect(registry.length).toBe(ALL.length)
+  })
+
+  it('the media-buyer reads are MEDIA_BUYING-gated read tools (not mutating)', () => {
+    const mb = registry.filter(t => MEDIA_BUYER_TOOLS.includes(t.name))
+    expect(mb).toHaveLength(2)
+    for (const t of mb) {
+      expect(t.requiredPermission).toBe('MEDIA_BUYING')
+      expect(t.mutates).toBeFalsy()
+    }
   })
 
   it('includes the Slice-2 margin & forecasting tools', () => {

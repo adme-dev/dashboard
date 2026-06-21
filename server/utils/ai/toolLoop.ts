@@ -9,7 +9,7 @@ import type { ToolContext } from './toolContext'
 export interface LoopOutput {
   text: string
   toolCalls: Array<{ name: string, args: unknown }>
-  proposedAction: { proposalId: string, resolved: unknown } | null
+  proposedAction: { proposalId: string, resolved: unknown, toolName: string } | null
   usage?: { inputTokens?: number, outputTokens?: number, totalTokens?: number }
   /** Estimated turn cost in USD (from usage + the model's price). */
   costUsd?: number
@@ -37,8 +37,11 @@ export function estimateCostUsd(usage: { inputTokens?: number, outputTokens?: nu
 /**
  * PURE extraction of the loop's output from a generateText result. Kept separate so the
  * trace + proposal-detection logic is unit-testable without a live/mock model.
- * Option B: a create_task proposal is read from the tool RESULT (the handler returned
- * { ok, data:{ proposalId, resolved } }) — not from any approval-request part.
+ * Option B: a write proposal is read from the tool RESULT (a propose handler returned
+ * { ok, data:{ proposalId, resolved } }) — not from any approval-request part. ANY propose tool
+ * (create_task, propose_budget_change, …) surfaces this way; we carry the toolName so the confirm
+ * card can render the right shape (e.g. a rich_confirm budget card). The last proposal in the turn
+ * wins (a turn proposes at most one actionable write).
  */
 export function extractLoopOutput(result: any): LoopOutput {
   const steps: any[] = result?.steps ?? []
@@ -50,8 +53,8 @@ export function extractLoopOutput(result: any): LoopOutput {
   for (const s of steps) {
     for (const r of (s?.toolResults ?? [])) {
       const out = r?.output
-      if (r?.toolName === 'create_task' && out?.ok && out?.data?.proposalId) {
-        proposedAction = { proposalId: out.data.proposalId, resolved: out.data.resolved }
+      if (out?.ok && out?.data?.proposalId && r?.toolName) {
+        proposedAction = { proposalId: out.data.proposalId, resolved: out.data.resolved, toolName: r.toolName }
       }
     }
   }
@@ -75,12 +78,21 @@ export async function runToolLoop(opts: {
   model?: LanguageModel
   fallbackModel?: LanguageModel
   signal?: AbortSignal
+  /** Exclude mutating (propose) tools — used for L2 controller sub-runs so a delegated specialist
+   *  can only READ; it can never stage a write proposal that would persist as an orphan. */
+  readOnly?: boolean
+  /** The user's self-disabled tools (config narrows, never grants — applied by subtraction). */
+  disabledTools?: string[]
 }): Promise<LoopOutput> {
   const cfg = useRuntimeConfig() as any
   const persona = opts.persona ?? DEFAULT_PERSONA
 
   let tools = filterToolsForUser(registry, opts.ctx.userRole)
   if (persona.toolAllowlist) tools = tools.filter(t => persona.toolAllowlist!.includes(t.name))
+  if (opts.readOnly) tools = tools.filter(t => !t.mutates)
+  // Self-service config (spec §4a): subtract the user's disabled tools. Applied LAST, over the
+  // RBAC+persona set, so it can only ever remove — never grant a tool the role lacks.
+  if (opts.disabledTools?.length) tools = tools.filter(t => !opts.disabledTools!.includes(t.name))
   const sdkTools = toSdkTools(tools, opts.ctx, opts.seed)
 
   const system = [opts.system, persona.instructionsPreamble, spotlightSystemClause()]

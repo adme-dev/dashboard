@@ -1570,6 +1570,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'ai-connectors': {
+    title: 'AI Assistant Connectors',
+    slug: 'ai-connectors',
+    icon: 'i-lucide-plug',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50',
+    categoryIconColor: 'text-amber-600',
+    description: 'Use XeroFlow from inside the AI assistant you already work in — Claude, Cursor, or ChatGPT. Ask about your agency in plain language and get answers from live data, with read-only, role-scoped access and a full audit trail. Built on the open Model Context Protocol (MCP).',
+    details: [
+      {
+        title: 'Your Agency, From Inside Your Assistant',
+        content: 'Add one connector URL to Claude, Cursor, or ChatGPT and XeroFlow\'s tools appear right in the conversation. Ask "what\'s our finance snapshot this month?", "which campaigns are pacing over budget?", or "show me an overview of this client" and the assistant pulls the real numbers from XeroFlow — no copy-pasting, no switching tabs, no exporting spreadsheets. It works the same way your team already works, just with your operations data one question away.'
+      },
+      {
+        title: 'Your Login, Your Permissions',
+        content: 'The connector signs in with each staff member\'s own XeroFlow account, so an assistant only ever sees what that person is already allowed to see — an account manager and a finance lead get different toolsets, automatically. There are no shared service accounts and no extra access to manage: the same roles and permissions that govern the app govern the assistant. Access is granted through a standard sign-in and consent screen you approve once.'
+      },
+      {
+        title: 'Read-Only by Design',
+        content: 'Connected assistants can look things up but cannot change anything. Only read tools are exposed — finance, ad spend, tasks, projects, clients, briefs, anomalies, knowledge and more — and any tool that would create, edit, send, or delete is blocked at the server, for every role. You get the speed of asking an assistant without the risk of it acting on your behalf.'
+      },
+      {
+        title: 'Audited Today, Actions Later',
+        content: 'Every request an assistant makes is recorded in the AI audit trail — who asked, which tool ran, and when — so external access stays accountable. Connectors work with Claude (Pro, Max, Team, Enterprise) and Cursor today; ChatGPT requires a Team, Business, or Enterprise workspace with Developer Mode. Letting an assistant take actions — like submitting a brief or signing off work — is a separate, opt-in capability with its own confirmation step, coming in a later phase.'
+      }
+    ]
+  },
 
   // ─── Client Portal ────────────────────────────────────────────
   'dedicated-login': {

@@ -5,13 +5,15 @@ import { retrieveContext } from '~~/server/utils/aiContextRetriever'
 import { getRelevantPatterns } from '~~/server/utils/aiFeedbackProcessor'
 import { shouldUseToolLoop } from '~~/server/utils/ai/gate'
 import { resolvePersona } from '~~/server/utils/ai/personas'
+import { selectSkillPack } from '~~/server/utils/ai/controller/route'
+import { getAgentConfig } from '~~/server/utils/ai/agentConfig'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
   message: AiMessage
   contextSources: AiContextSource[]
-  /** Present when the assistant proposed a guarded write (create_task) awaiting user confirmation. */
-  proposedAction?: { proposalId: string, resolved: unknown } | null
+  /** Present when the assistant proposed a guarded write awaiting user confirmation; toolName drives the confirm-card shape. */
+  proposedAction?: { proposalId: string, resolved: unknown, toolName?: string } | null
 }
 
 // Multi-model routing: pick the best model based on intent complexity
@@ -341,29 +343,33 @@ export async function processUserMessage(
   mentionedEntities?: Array<{ type: string; id: string }>,
   boardId?: string,
   persona?: string,
+  room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
 ): Promise<ChatResponse> {
   const startTime = Date.now()
-  // Slice 1.5: resolve the (optional) named persona — narrows tools (∩ RBAC) + adds a focus preamble.
-  // An explicit arg (from the chat picker) wins; otherwise fall back to the persona persisted on the
-  // conversation so callers that don't pass one (voice, quick-action) still honor the user's choice.
-  // Unknown/absent → the generalist.
-  let personaKey = persona
-  if (!personaKey && event) {
+  // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
+  // picker) or the persona persisted on the conversation wins and sticks; otherwise the L1 traffic
+  // controller auto-selects by intent+role AFTER context retrieval (below). Resolve the pinned choice
+  // here so we can persist an explicit pick; defer the auto-select until the intent is known.
+  let explicitOrPersisted = persona ?? null
+  if (!explicitOrPersisted && event) {
     const convRow = await queryOne<{ system_context: any }>(
       `SELECT system_context FROM ai_conversations WHERE id = $1`, [conversationId])
-    personaKey = (convRow?.system_context as any)?.persona
+    explicitOrPersisted = (convRow?.system_context as any)?.persona ?? null
   }
-  const activePersona = resolvePersona(personaKey)
   // Persist an explicit choice (migration-free: system_context JSONB) so it sticks across reloads and
-  // for the voice/quick-action paths above. Non-fatal if persistence fails.
+  // for the voice/quick-action paths. Non-fatal if persistence fails.
   if (persona && event) {
     await execute(
       `UPDATE ai_conversations
        SET system_context = COALESCE(system_context, '{}'::jsonb) || jsonb_build_object('persona', $2::text)
        WHERE id = $1`,
-      [conversationId, activePersona.key],
+      [conversationId, resolvePersona(persona).key],
     ).catch(() => {})
   }
+
+  // Self-service config (spec §4a): the user's "My Assistant" settings — disabled tools (subtracted
+  // from the tool set, never added) and a memory on/off toggle. Fail-safe (null when none/on error).
+  const agentConfig = await getAgentConfig(userId)
 
   // 1. Load recent conversation history (last 10 messages)
   const historyRows = await queryRows(`
@@ -388,6 +394,13 @@ export async function processUserMessage(
     snippet: item.snippet,
     url: item.url,
   }))
+
+  // 2a. L1 traffic controller (Phase 3): now that the intent is known, auto-select ONE skill-pack by
+  // intent+role unless the user pinned one. Pure + total (explicit → intent → role-default → generalist),
+  // so it never throws and the role-default is always honored. Per-turn routing (a finance question
+  // routes to Finance for this turn); RBAC still governs the actual tools.
+  const routed = selectSkillPack({ intent: contextBundle.intent, userRole }, explicitOrPersisted)
+  const activePersona = resolvePersona(routed.persona)
 
   // 2b. Fetch explicitly mentioned entities and pin them to top of context
   if (mentionedEntities && mentionedEntities.length > 0) {
@@ -418,13 +431,54 @@ export async function processUserMessage(
   const pinnedIds = mentionedEntities?.length
     ? new Set(mentionedEntities.map(e => e.id))
     : undefined
-  const systemPrompt = buildSystemPrompt(
+  let systemPrompt = buildSystemPrompt(
     userRole,
     contextSources,
     learnedPatternStrings,
     contextBundle.intent,
     pinnedIds,
   )
+
+  // 4b. Personal memory (Phase-0 WS-A): prepend the user's recalled facts/routines/preferences.
+  // Strictly user-scoped (cross-user isolation enforced in orchestrate.ts) and best-effort — any
+  // failure leaves the prompt unchanged so a turn never breaks on memory. Flows into BOTH the tool
+  // loop and the fast path below since they read `systemPrompt`.
+  if (agentConfig?.memoryEnabled !== false) {
+    try {
+      const { buildUserMemoryBlock } = await import('~~/server/utils/ai/memory/orchestrate')
+      const memoryBlock = await buildUserMemoryBlock({ userId, query: content, event })
+      if (memoryBlock) systemPrompt = `${systemPrompt}\n\n${memoryBlock}`
+    } catch {
+      // memory is non-essential context; ignore and proceed
+    }
+  }
+
+  // 4c. Virtual Office Mode A (virtual-office-integration spec §3): when the co-pilot is docked in an
+  // office room, enrich the prompt with room-scoped context (who's present, the live meeting, the
+  // transcript tail). Membership-gated — resolveRoomContext returns null for a non-member, so a
+  // foreign officeId never leaks a roster/transcript. Best-effort: any failure leaves the prompt
+  // unchanged. The resolved ids flow into the tool ctx (officeId/meetingId) for room-aware tools.
+  let roomCtx: { officeId: string, meetingId?: string } | undefined
+  if (event && room?.officeId) {
+    try {
+      const { resolveRoomContext, dbRoomContextDeps, renderRoomContext } = await import('~~/server/utils/ai/office/roomContext')
+      const resolved = await resolveRoomContext({
+        userId,
+        officeId: room.officeId,
+        meetingId: room.meetingId,
+        presentUserIds: room.presentUserIds,
+        transcriptTail: room.transcriptTail,
+        deps: dbRoomContextDeps(),
+      })
+      if (resolved) {
+        const block = renderRoomContext(resolved)
+        if (block) systemPrompt = `${systemPrompt}\n\n${block}`
+        roomCtx = { officeId: resolved.officeId, meetingId: resolved.meetingId }
+      }
+    } catch {
+      // room context is non-essential; ignore and proceed with the un-enriched prompt
+    }
+  }
 
   // 5. Build the messages array for the LLM
   const messagesForPrompt = history.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')
@@ -452,7 +506,7 @@ export async function processUserMessage(
   // the existing fast path; data/action intents route through the agentic loop. Failures degrade
   // to the existing single-shot path below.
   const cfg = useRuntimeConfig() as any
-  let proposedAction: { proposalId: string, resolved: unknown } | null = null
+  let proposedAction: { proposalId: string, resolved: unknown, toolName?: string } | null = null
   let toolTrace: Array<{ name: string, args: unknown }> = []
   let usedToolLoop = false
   // Tool-loop cost/usage — persisted so Groq spend is queryable (estimateCostUsd from real token usage).
@@ -465,20 +519,76 @@ export async function processUserMessage(
       const loopMessages = history
         .map(m => ({ role: m.role, content: m.content }))
         .concat([{ role: 'user' as const, content }])
-      const loop = await runToolLoop({
-        ctx: { userId, userRole, conversationId, event },
-        system: systemPrompt,
-        messages: loopMessages,
-        seed: conversationId,
-        persona: activePersona,
-      })
-      aiContent = loop.text
-      toolTrace = loop.toolCalls
-      proposedAction = loop.proposedAction
-      usedToolLoop = true
-      toolCostUsd = loop.costUsd ?? null
-      promptTokens = loop.usage?.inputTokens ?? null
-      completionTokens = loop.usage?.outputTokens ?? null
+
+      // L2 traffic controller (Phase 3, behind AI_CONTROLLER_L2_ENABLED): for a request that provably
+      // spans ≥2 domains the user is entitled to, decompose → delegate to specialist packs in parallel
+      // → synthesize ONE answer. Sub-runs are READ-ONLY (no mutating tools) so a delegated specialist
+      // can never stage an orphan write proposal, AND each is RBAC-filtered (the composed answer can
+      // never exceed what the user could get directly). Skipped when the user pinned a persona (their
+      // single-pack choice wins). Fail-safe: any error, a pinned persona, <2 entitled packs, or no
+      // specialist findings degrades to the normal L1 single-pack loop below.
+      let l2Answer: string | null = null
+      let l2Cost = 0
+      if (cfg.aiControllerL2Enabled && !explicitOrPersisted) {
+        try {
+          const [{ classifyRequest }, { planSpecialists }, { delegateToSpecialists }, { synthesizeAnswer }] = await Promise.all([
+            import('~~/server/utils/ai/controller/classify'),
+            import('~~/server/utils/ai/controller/route'),
+            import('~~/server/utils/ai/controller/delegate'),
+            import('~~/server/utils/ai/controller/synthesize'),
+          ])
+          const cls = await classifyRequest(content, {
+            complete: p => generateGroqInsight(p, { model: GROQ_MODELS.REASONING_20B, temperature: 0.1, maxTokens: 200, systemPrompt: 'Reply with ONLY JSON.' }),
+          })
+          const plan = cls.tier === 'L2' ? planSpecialists(cls.domains, userRole) : { personas: [] }
+          if (plan.personas.length >= 2) {
+            const results = await delegateToSpecialists(plan.personas, {
+              runLoop: async (pk) => {
+                const sub = await runToolLoop({
+                  ctx: { userId, userRole, conversationId, event, officeId: roomCtx?.officeId, meetingId: roomCtx?.meetingId },
+                  system: systemPrompt, messages: loopMessages, seed: `${conversationId}:${pk}`, persona: resolvePersona(pk),
+                  readOnly: true, // L2 specialists READ only — never persist a write proposal
+                  disabledTools: agentConfig?.disabledTools,
+                })
+                l2Cost += sub.costUsd ?? 0
+                return { text: sub.text }
+              },
+            })
+            // Only commit to L2 if at least one specialist actually found something — otherwise fall
+            // through to L1 rather than dead-ending on a synthesized "didn't find anything".
+            if (results.some(r => r.text.trim())) {
+              l2Answer = await synthesizeAnswer(content, results, {
+                complete: p => generateGroqInsight(p, { model: GROQ_MODELS.REASONING_120B, temperature: 0.2, maxTokens: 1200, systemPrompt: 'Combine the specialist findings into one grounded answer; invent nothing.' }),
+              })
+              toolTrace = [{ name: 'traffic_controller_l2', args: { domains: cls.domains, packs: plan.personas } }]
+            }
+          }
+        } catch (err) {
+          console.error('L2 controller failed; falling back to L1:', err)
+        }
+      }
+
+      if (l2Answer) {
+        aiContent = l2Answer
+        usedToolLoop = true
+        toolCostUsd = l2Cost || null
+      } else {
+        const loop = await runToolLoop({
+          ctx: { userId, userRole, conversationId, event, officeId: roomCtx?.officeId, meetingId: roomCtx?.meetingId },
+          system: systemPrompt,
+          messages: loopMessages,
+          seed: conversationId,
+          persona: activePersona,
+          disabledTools: agentConfig?.disabledTools,
+        })
+        aiContent = loop.text
+        toolTrace = loop.toolCalls
+        proposedAction = loop.proposedAction
+        usedToolLoop = true
+        toolCostUsd = loop.costUsd ?? null
+        promptTokens = loop.usage?.inputTokens ?? null
+        completionTokens = loop.usage?.outputTokens ?? null
+      }
       if (!aiContent.trim()) {
         aiContent = proposedAction
           ? 'I’ve prepared this action — please review and confirm below.'
@@ -563,6 +673,18 @@ export async function processUserMessage(
     promptTokens,
     completionTokens,
   ])
+
+  // 10b. Inferred memory distillation (Phase-0 WS-A.8b) — fire-and-forget AFTER the response, gated
+  // by AI_MEMORY_DISTILL_ENABLED (dormant by default). Distils ≤3 durable `inferred` memories from
+  // this turn for future recall. Strictly user-scoped, fully fail-safe (never throws), and registered
+  // via runAfterResponse so it survives on Cloudflare without blocking the reply.
+  if (event && cfg.aiMemoryDistillEnabled && !isError && aiContent.trim()) {
+    const distillWork = import('~~/server/utils/ai/memory/orchestrate')
+      .then(({ distillAndStoreMemories }) =>
+        distillAndStoreMemories({ userId, turn: { userMessage: content, assistantMessage: aiContent }, event }))
+    const { runAfterResponse } = await import('~~/server/utils/asyncBackground')
+    runAfterResponse(event, distillWork, 'ai-memory-distill')
+  }
 
   // 11. Update conversation metadata
   const isFirstMessage = history.length === 0

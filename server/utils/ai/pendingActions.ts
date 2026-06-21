@@ -18,6 +18,15 @@ export interface PendingRow {
 }
 
 /**
+ * Throw this from the mutation slot for a non-retryable failure (e.g. no executor registered).
+ * executeProposal will NOT revert the claimed row, so the proposal reaches a terminal state instead
+ * of becoming infinitely re-confirmable.
+ */
+export function terminalError(message: string): Error {
+  return Object.assign(new Error(message), { terminal: true as const })
+}
+
+/**
  * The DB/side-effect surface executeProposal depends on — injected so the logic is unit-testable
  * and so the event-bound wiring (atomic SQL claim, task-create via the real endpoint) lives in the
  * confirm endpoint, not here.
@@ -100,9 +109,16 @@ export async function executeProposal(id: string, ctx: ToolContext, db: PendingA
   let created: { id: string }
   try {
     created = await db.createTask(row.resolved_payload, ctx)
-  } catch {
-    if (db.revertToProposed) await db.revertToProposed(id)
-    return fail('Could not complete the action — the task was not created. Please try again.')
+  } catch (err) {
+    // A TERMINAL error (e.g. no executor registered for this tool_name — a rolled-back/renamed tool)
+    // must NOT revert: reverting returns the row to 'proposed' and the card re-shows, leaving it
+    // infinitely re-confirmable with the same error. Leaving it 'executed' (already claimed) is the
+    // correct terminal state. Only a genuine mutation failure reverts so the user can retry.
+    const terminal = !!(err as { terminal?: boolean } | null)?.terminal
+    if (db.revertToProposed && !terminal) await db.revertToProposed(id)
+    return fail(terminal
+      ? 'This action can no longer be completed and has been dismissed.'
+      : 'Could not complete the action — the task was not created. Please try again.')
   }
 
   try {

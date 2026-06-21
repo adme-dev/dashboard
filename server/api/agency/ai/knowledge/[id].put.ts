@@ -30,9 +30,12 @@ export default defineEventHandler(async (event) => {
 
   const isPublished = body.isPublished !== undefined ? body.isPublished : true
 
+  // Publishing via PUT (the manual editor) must also clear any 'draft' review state, so an
+  // agent-proposed draft can never end up searchable while still labelled 'draft' in the review queue.
   const row = await queryOne<any>(`
     UPDATE ai_knowledge_articles
-    SET title = $2, content = $3, category = $4, tags = $5, is_published = $6, updated_at = NOW()
+    SET title = $2, content = $3, category = $4, tags = $5, is_published = $6, updated_at = NOW(),
+        review_status = CASE WHEN $6 = true AND review_status = 'draft' THEN 'approved' ELSE review_status END
     WHERE id = $1
     RETURNING *
   `, [id, body.title.trim(), body.content.trim(), category, tags, isPublished])

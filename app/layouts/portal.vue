@@ -169,5 +169,7 @@ async function handleLogout() {
       </div>
       <slot />
     </div>
+    <!-- Docked customer co-pilot (flag-gated launcher; server endpoints are the real boundary). -->
+    <PortalCopilot />
   </UDashboardGroup>
 </template>

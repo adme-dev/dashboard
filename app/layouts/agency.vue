@@ -277,7 +277,8 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   items.push(
     { type: 'label', label: 'Tools' },
     { label: 'AI Chat', icon: 'i-lucide-sparkles', to: '/agency/ai/chat', onSelect: close },
-    { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close }
+    { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close },
+    { label: 'Connect AI Assistants', icon: 'i-lucide-plug', to: '/agency/ai/connectors', onSelect: close }
   )
   if (canAccessAdmin.value) {
     items.push(

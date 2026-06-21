@@ -14,11 +14,24 @@ export type ToolContext = {
   clientScope?: string
   /** Set by the loop; required for write tools that persist a proposal (create_task). */
   conversationId?: string
+  /** Optional — set when the co-pilot is docked in a virtual office room (Mode A). Read-only context;
+   *  membership is verified server-side before these are populated (see office/roomContext.ts §7). */
+  officeId?: string
+  meetingId?: string
   event: H3Event
 }
 
 /** Tool results are recoverable: handlers return a typed result, never throw to the loop. */
 export type ToolResult = { ok: true, data: unknown } | { ok: false, error: string }
+
+/**
+ * Risk tier of a write action, governing how much human gating it needs (spec: Phase-0 WS-B/C +
+ * traffic-controller §5). `auto` = execute directly (reads). `confirm` = one-click propose→confirm
+ * (default for any `mutates` tool). `rich_confirm` = high-risk (live ad budgets, Xero pushes): a
+ * richer confirm card + counter-model sanity check. Shared leaf type so toolRegistry + executors
+ * agree without a circular import.
+ */
+export type RiskTier = 'auto' | 'confirm' | 'rich_confirm'
 
 export const ok = (data: unknown): ToolResult => ({ ok: true, data })
 /** error is natural-language + recoverable — the model can read it and adapt. */

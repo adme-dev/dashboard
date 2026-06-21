@@ -8,19 +8,21 @@
  * so resolved fields cannot be tampered with after proposal.
  */
 
-// Use Nitro's global $fetch (NOT raw ofetch): it resolves internal relative routes like
-// '/api/agency/tasks' on the Cloudflare Workers runtime. Raw ofetch has no origin base for a
-// relative URL on the server, so it threw and the task-create silently reverted (Option B).
+// Dispatch is generic (Phase-0 WS-B): the confirmed proposal's tool_name selects an ActionExecutor
+// from the registry, which owns the real mutation (create_task today; budget changes etc. later).
+// Executors use Nitro's global $fetch internally so internal relative routes resolve on the CF runtime.
 import { queryOne, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { executeProposal, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
-import { proposalToTaskBody } from '~~/server/utils/ai/tools/createTask'
+import { roleHasPermission } from '~~/server/utils/permissions'
+import { executeProposal, terminalError, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
+import { getExecutor, type ActionExecutor } from '~~/server/utils/ai/executors'
+import { recordAudit } from '~~/server/utils/ai/audit'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const conversationId = getRouterParam(event, 'id')
-  const body = await readBody<{ proposalId?: string }>(event)
+  const body = await readBody<{ proposalId?: string, richConfirmAck?: boolean }>(event)
   const proposalId = body?.proposalId
 
   if (!conversationId || !proposalId) {
@@ -36,29 +38,37 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Conversation not found' })
   }
 
-  let createdTitle = 'task'
-  let createdAssignee: string | null = null
+  // Resolved at claim time from the proposal's tool_name; drives the mutation + thread summary.
+  let executor: ActionExecutor | null = null
+  let claimedRow: PendingRow | null = null
+  let summary = ''
 
   const db: PendingActionDb = {
     // Atomic claim scoped to this conversation + caller; idempotent + expiry/owner-guarded.
-    claim: (id, userId) =>
-      queryOne<PendingRow>(
+    // We also resolve the executor here, the only point where we have the row's tool_name.
+    claim: async (id, userId) => {
+      const claimed = await queryOne<PendingRow>(
         `UPDATE ai_pending_actions
            SET status = 'executed', confirmed_by = $1, executed_at = NOW()
          WHERE id = $2 AND conversation_id = $3 AND user_id = $1
            AND status = 'proposed' AND expires_at > NOW()
          RETURNING id, status, tool_name, resolved_payload, user_id, expires_at`,
         [userId, id, conversationId],
-      ),
-    createTask: async (payload) => {
-      createdTitle = payload?.title ?? 'task'
-      createdAssignee = payload?.assigneeName ?? null
-      const created = await $fetch<{ id: string }>('/api/agency/tasks', {
-        method: 'POST',
-        body: proposalToTaskBody(payload, user.id),
-        headers: event.headers as any,
-      })
-      return { id: created.id }
+      )
+      if (claimed) {
+        claimedRow = claimed
+        executor = getExecutor(claimed.tool_name)
+      }
+      return claimed
+    },
+    // The generic mutation slot: delegate to the tool_name's executor. An unknown tool throws,
+    // which executeProposal catches and reverts (so the row returns to 'proposed' for retry).
+    createTask: async (payload, ctx) => {
+      // Terminal (non-retryable): an unknown tool_name must not revert-and-re-offer (would loop forever).
+      if (!executor) throw terminalError('No executor registered for this action.')
+      const res = await executor.execute(payload, ctx)
+      summary = res.summary
+      return { id: res.resultRef }
     },
     markExecuted: async (id, resultRef) => {
       await execute(`UPDATE ai_pending_actions SET result_ref = $1 WHERE id = $2`, [resultRef, id])
@@ -72,19 +82,61 @@ export default defineEventHandler(async (event) => {
   }
 
   const ctx: ToolContext = { userId: user.id, userRole: user.role, conversationId, event }
+
+  // High-risk gate (review finding #3): a `rich_confirm` executor (e.g. a live ad-budget change) must
+  // NOT execute on a plain one-click confirm. Peek the proposal's tool_name (no claim yet) and, if its
+  // executor is rich_confirm, require an explicit acknowledgement in the request body. The Phase-2 rich
+  // confirm card (current→proposed, %, rollback, counter-model) supplies `richConfirmAck: true`. The
+  // claim inside executeProposal stays the atomic, idempotent authority — this is a pre-gate only.
+  const peek = await queryOne<{ tool_name: string }>(
+    `SELECT tool_name FROM ai_pending_actions
+       WHERE id = $1 AND conversation_id = $2 AND user_id = $3 AND status = 'proposed' AND expires_at > NOW()`,
+    [proposalId, conversationId, user.id],
+  )
+  if (peek) {
+    const peekExecutor = getExecutor(peek.tool_name)
+    // Defense in depth: re-verify the tool's permission as the CONFIRMER (the propose-time check ran
+    // as the proposer; a role downgraded between propose and confirm must not still execute).
+    if (peekExecutor?.requiredPermission && !roleHasPermission(user.role, peekExecutor.requiredPermission)) {
+      return { ok: false, error: 'You do not have permission to confirm this action.' }
+    }
+    if (peekExecutor?.riskTier === 'rich_confirm' && body?.richConfirmAck !== true) {
+      return { ok: false, requiresRichConfirm: true, error: 'This change needs explicit confirmation before it can be applied.' }
+    }
+  }
+
   const result = await executeProposal(proposalId, ctx, db)
+
+  // Audit every attempt we actually CLAIMED (executed or failed-and-reverted). A no-claim outcome
+  // (read-only reject / idempotent second click / expired) is not an action, so it is not audited.
+  if (claimedRow) {
+    const row = claimedRow as PendingRow
+    await recordAudit({
+      pendingId: row.id,
+      userId: row.user_id,
+      confirmedBy: user.id,
+      toolName: row.tool_name,
+      riskTier: executor?.riskTier ?? 'confirm',
+      clientScope: ctx.clientScope ?? null,
+      payload: row.resolved_payload,
+      resultRef: result.ok ? ((result.data as any)?.taskId ?? null) : null,
+      outcome: result.ok ? 'executed' : 'failed',
+    })
+  }
 
   if (!result.ok) {
     return { ok: false, error: 'error' in result ? result.error : 'Could not complete the action.' }
   }
 
-  const taskId = (result.data as any)?.taskId as string
-  // Post a confirmation message into the thread so the action is visible in history.
-  const content = `✅ Created task “${createdTitle}”${createdAssignee ? ` for ${createdAssignee}` : ''}.`
-  await execute(
-    `INSERT INTO ai_messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)`,
-    [conversationId, content],
-  ).catch(() => { /* non-critical: the task was created regardless */ })
+  const resultRef = (result.data as any)?.taskId as string
+  // Post the executor's confirmation summary into the thread so the action is visible in history.
+  if (summary) {
+    await execute(
+      `INSERT INTO ai_messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)`,
+      [conversationId, summary],
+    ).catch(() => { /* non-critical: the action executed regardless */ })
+  }
 
-  return { ok: true, taskId }
+  // `taskId` kept for backward-compatible clients; `resultRef` is the generic alias.
+  return { ok: true, taskId: resultRef, resultRef }
 })

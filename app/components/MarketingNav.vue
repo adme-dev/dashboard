@@ -630,6 +630,7 @@ const featuresCol4 = [
   { title: 'AI Training', subtitle: 'Your data trains your AI, privately', icon: 'i-lucide-brain', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/ai-training' },
   { title: 'Voice AI', subtitle: 'Talk to your AI by voice', icon: 'i-lucide-mic', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/voice-ai' },
   { title: 'Semantic Search', subtitle: 'Vectorize-powered discovery', icon: 'i-lucide-search', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/platform/ai' },
+  { title: 'AI Assistant Connectors', subtitle: 'Use XeroFlow in Claude, Cursor & ChatGPT', icon: 'i-lucide-plug', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/ai-connectors' },
 ]
 
 const featuresCol5 = [
