@@ -7,6 +7,7 @@ import {
   executeVideoPropose,
   resolveVideoProposeAction,
   dispatchVideoConfirm,
+  projectVideoTools,
   filterUsableAvProjects,
   type VideoReadRunner
 } from '~~/server/utils/ai/mcp/videoTools'
@@ -226,5 +227,22 @@ describe('dispatchVideoConfirm', () => {
     const deps = { ...okDeps(), reserve: vi.fn(async () => { throw new Error('boom') }) }
     const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
     expect(r).toMatchObject({ ok: false, code: 'handler_error' })
+  })
+})
+
+describe('projectVideoTools flag matrix', () => {
+  it('suite off → no tools', () => {
+    expect(projectVideoTools('admin', { suite: false, gen: false })).toEqual([])
+  })
+  it('suite on / gen off → reads only (browse-only)', () => {
+    expect(projectVideoTools('admin', { suite: true, gen: false }).map(t => t.name)).toEqual(READ_NAMES)
+  })
+  it('suite + gen on → reads + propose + create + confirm_action', () => {
+    expect(projectVideoTools('admin', { suite: true, gen: true }).map(t => t.name)).toEqual([
+      ...READ_NAMES, 'propose_video_generation', 'create_video_project', 'confirm_action'
+    ])
+  })
+  it('non-CREATIVE role → no tools even with flags on', () => {
+    expect(projectVideoTools('viewer', { suite: true, gen: true })).toEqual([])
   })
 })

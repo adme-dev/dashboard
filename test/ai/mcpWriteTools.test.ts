@@ -126,4 +126,24 @@ describe('executeWriteConfirm', () => {
       deps({ getExecutor: () => exec({ execute: async () => { throw new Error('boom') } }) }))
     expect(res).toMatchObject({ ok: false, code: 'handler_error' })
   })
+
+  // 2b: the shared confirm gains an optional videoDispatch (handles video tool_names, returns its own
+  // outcome incl. cap_exceeded) and writeEnabled gates the 2c safe-action path independently.
+  it('routes a video tool_name through videoDispatch (write group off)', async () => {
+    const res = await executeWriteConfirm({ proposalId: 'abcd1234' }, ctx('admin'), deps({
+      writeEnabled: false,
+      claim: async () => ({ tool_name: 'video_generation', resolved_payload: {} }),
+      videoDispatch: async () => ({ ok: true, data: { jobId: 'j1' } })
+    }))
+    expect(res).toEqual({ ok: true, data: { jobId: 'j1' } })
+  })
+
+  it('forbids a 2c safe action when writeEnabled is off (video-only mode)', async () => {
+    const res = await executeWriteConfirm({ proposalId: 'abcd1234' }, ctx('admin'), deps({
+      writeEnabled: false,
+      claim: async () => ({ tool_name: 'create_task', resolved_payload: {} }),
+      videoDispatch: async () => null
+    }))
+    expect(res).toMatchObject({ ok: false, code: 'forbidden' })
+  })
 })

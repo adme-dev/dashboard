@@ -3,6 +3,7 @@ import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { McpToolManifest } from './project'
+import { MCP_CONFIRM_TOOL } from './writeTools'
 
 /**
  * MCP Server Phase 2b — owned video-generation suite over MCP (spec:
@@ -314,4 +315,31 @@ export async function dispatchVideoConfirm(
   } catch {
     return { ok: false, error: 'Execution failed.', code: 'handler_error' }
   }
+}
+
+// ── Full suite projection ──────────────────────────────────────────────────────
+// reads (suite flag) + propose/create + confirm_action (suite AND gen flags). The shared confirm_action
+// is emitted here when gen is on; tools.post.ts dedupes by name so it appears once even when 2c also
+// emits it. A non-CREATIVE role gets nothing.
+
+export type VideoFlags = { suite: boolean, gen: boolean }
+
+const ConfirmParams = z.object({ proposalId: z.string().min(8), ack: z.boolean().optional() })
+
+export function projectVideoTools(role: string, flags: VideoFlags): McpToolManifest[] {
+  if (!flags.suite) return []
+  if (!roleHasPermission(role, 'CREATIVE')) return []
+  const reads = projectVideoReadTools(role, true)
+  if (!flags.gen) return reads
+  const proposes = videoProposeTools.map(t => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: z.toJSONSchema(t.parameters) as Record<string, unknown>
+  }))
+  const confirm: McpToolManifest = {
+    name: MCP_CONFIRM_TOOL,
+    description: 'Execute a previously proposed action by its proposalId (e.g. a video generation or project create).',
+    inputSchema: z.toJSONSchema(ConfirmParams) as Record<string, unknown>
+  }
+  return [...reads, ...proposes, confirm]
 }

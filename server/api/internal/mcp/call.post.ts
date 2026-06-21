@@ -12,8 +12,10 @@ import { registry } from '~~/server/utils/ai/tools'
 import { executeReadOnlyTool } from '~~/server/utils/ai/mcp/project'
 import { generationTools, executeGenerationTool } from '~~/server/utils/ai/mcp/generationTools'
 import { buildGenerationRunner } from '~~/server/utils/ai/mcp/generationRunner'
-import { videoReadTools, executeVideoTool } from '~~/server/utils/ai/mcp/videoTools'
-import { buildVideoReadRunner } from '~~/server/utils/ai/mcp/videoRunner'
+import {
+  videoReadTools, executeVideoTool, executeVideoPropose, resolveVideoProposeAction, dispatchVideoConfirm
+} from '~~/server/utils/ai/mcp/videoTools'
+import { buildVideoReadRunner, buildVideoProposeDeps, buildVideoConfirmDeps } from '~~/server/utils/ai/mcp/videoRunner'
 import { isGenerationRateLimited, MCP_GEN_RATE_WINDOW_MIN } from '~~/server/utils/ai/mcp/rateLimit'
 import {
   resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal
@@ -53,19 +55,28 @@ export default defineEventHandler(async (event) => {
   const isGeneration = generationTools.some(t => t.name === toolName)
   const writeAction = resolveProposeAction(toolName) // non-null for a safe propose_<action> write tool
   const isConfirm = toolName === MCP_CONFIRM_TOOL
-  // Video suite (Phase 2b): read/discovery tools gated by MCP_VIDEO_TOOLS_ENABLED (no spend, no writes).
+  // Video suite (Phase 2b): reads gated by MCP_VIDEO_TOOLS_ENABLED; confirm-tier propose/create gated
+  // ALSO by MCP_VIDEO_GEN_ENABLED. Video spend is its own confirm action — never the generic write flag.
   const videoSuiteEnabled = process.env.MCP_VIDEO_TOOLS_ENABLED === 'true'
+  const videoGenEnabled = process.env.MCP_VIDEO_GEN_ENABLED === 'true'
   const isVideoRead = videoReadTools.some(t => t.name === toolName)
+  const videoProposeAction = resolveVideoProposeAction(toolName) // 'video_generation' | 'video_project_create' | null
 
-  // Per-actor rate limit on generation (it bills, no HITL). Count this user's recent MCP generation
-  // calls from the audit ledger; refuse over the cap. get_generation_status (a cheap poll) is exempt.
-  if (isGeneration && toolName !== 'get_generation_status') {
+  // Per-actor rate limit on the billing/state-changing actions (no HITL on the count). Covers audio
+  // generation + video propose/create; cheap polls (get_generation_status, video reads) are exempt.
+  const rateLimited = (isGeneration && toolName !== 'get_generation_status')
+    || toolName === 'propose_video_generation' || toolName === 'create_video_project'
+  if (rateLimited) {
     const since = `${MCP_GEN_RATE_WINDOW_MIN} minutes`
+    const names = [
+      ...generationTools.map(t => t.name).filter(n => n !== 'get_generation_status'),
+      'propose_video_generation', 'create_video_project'
+    ]
     const recent = await queryOne<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM ai_action_audit
         WHERE user_id = $1 AND payload->>'source' = 'mcp'
           AND tool_name = ANY($2) AND created_at > now() - $3::interval`,
-      [userId, generationTools.map(t => t.name), since]
+      [userId, names, since]
     ).catch(() => ({ n: 0 }))
     if (isGenerationRateLimited(recent?.n ?? 0)) {
       return { ok: false, error: `Rate limit: too many generation requests. Try again in a few minutes.`, code: 'rate_limited' }
@@ -74,16 +85,31 @@ export default defineEventHandler(async (event) => {
 
   let outcome: { ok: boolean, data?: unknown, error?: string, code?: string }
   if (isConfirm) {
-    // 2c confirm: atomically claim the MCP+user-scoped pending row, then dispatch to the executor.
+    // Shared confirm: atomically claim the MCP+user-scoped pending row, then dispatch. Available when
+    // EITHER the 2c write group OR the 2b video-gen group is on. videoDispatch handles video tool_names
+    // (returns jobId/projectId/cap_exceeded); non-video rows fall through to the 2c executor (gated by
+    // writeEnabled). The idempotencyKey is derived from the proposalId so a double-confirm can't double-bill.
+    const videoConfirmDeps = buildVideoConfirmDeps()
     outcome = await executeWriteConfirm(args, ctx, {
-      enabled: writeEnabled,
+      enabled: writeEnabled || videoGenEnabled,
+      writeEnabled,
       getExecutor,
       claim: async (proposalId, uid) => queryOne<ClaimedProposal>(
         `UPDATE ai_pending_actions SET status='executed', confirmed_by=$2, executed_at=now()
           WHERE id = $1 AND user_id = $2 AND status='proposed' AND source='mcp' AND expires_at > now()
           RETURNING tool_name, resolved_payload`,
         [proposalId, uid]
-      ).catch(() => null)
+      ).catch(() => null),
+      videoDispatch: async (row, vctx) => {
+        const pid = String((args as { proposalId?: unknown }).proposalId ?? '')
+        const payload = row.tool_name === 'video_generation'
+          ? { ...(row.resolved_payload as Record<string, unknown>), idempotencyKey: `mcp:${pid}` }
+          : row.resolved_payload
+        return dispatchVideoConfirm({ tool_name: row.tool_name, resolved_payload: payload }, vctx, {
+          genEnabled: videoGenEnabled,
+          ...videoConfirmDeps
+        })
+      }
     })
   } else if (writeAction) {
     // 2c propose: run the SAME registry propose-handler (resolution + persists a source='mcp' pending
@@ -105,6 +131,14 @@ export default defineEventHandler(async (event) => {
         }
       }
     }
+  } else if (videoProposeAction) {
+    // 2b propose: validate + preview cost/compliance, persist a source='mcp' pending row (no spend).
+    // Gated by the suite flag AND the video-gen flag; CREATIVE-scoped inside executeVideoPropose.
+    outcome = await executeVideoPropose(videoProposeAction, args, ctx, {
+      suiteEnabled: videoSuiteEnabled,
+      genEnabled: videoGenEnabled,
+      ...buildVideoProposeDeps()
+    })
   } else if (isGeneration) {
     outcome = await executeGenerationTool(toolName, args, ctx, {
       enabled: process.env.MCP_GEN_TOOLS_ENABLED === 'true',

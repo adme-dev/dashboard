@@ -73,16 +73,21 @@ export function projectWriteTools(registryTools: AiTool<unknown>[], role: string
 
 export type WriteConfirmOutcome
   = | { ok: true, data: unknown }
-    | { ok: false, error: string, code: 'disabled' | 'bad_args' | 'expired' | 'forbidden' | 'not_found' | 'confirm_required' | 'handler_error' }
+    | { ok: false, error: string, code: 'disabled' | 'bad_args' | 'expired' | 'forbidden' | 'not_found' | 'confirm_required' | 'handler_error' | 'cap_exceeded' }
 
 /** The single row the atomic claim returns (UPDATE … SET status='executed' … RETURNING). */
 export interface ClaimedProposal { tool_name: string, resolved_payload: unknown }
 
 export interface ConfirmDeps {
+  /** confirm_action is available when ANY confirm-tier group is on (2c writes OR 2b video gen). */
   enabled: boolean
+  /** Gates the 2c safe-action dispatch specifically. Defaults to `enabled` (preserves prior behaviour). */
+  writeEnabled?: boolean
   /** Atomic, MCP+user-scoped claim: UPDATE … WHERE id AND user_id AND status='proposed' AND source='mcp' AND not expired RETURNING tool_name, resolved_payload. Returns null if nothing claimable. */
   claim: (proposalId: string, userId: string) => Promise<ClaimedProposal | null>
   getExecutor: (toolName: string) => ActionExecutor | null
+  /** Optional (2b): handle video confirm-tier tool_names; return null to fall through to the 2c path. */
+  videoDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
 }
 
 /**
@@ -100,6 +105,17 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
 
   const row = await deps.claim(parsed.data.proposalId, ctx.userId)
   if (!row) return { ok: false, error: 'Proposal not found, already used, expired, or not yours.', code: 'expired' }
+
+  // 2b: video confirm-tier actions get their own dispatch (returns jobId / projectId / cap_exceeded).
+  // It returns null for non-video tool_names, so the 2c safe-action path below handles those.
+  if (deps.videoDispatch) {
+    const vo = await deps.videoDispatch(row, ctx)
+    if (vo) return vo
+  }
+
+  // The 2c safe-action path is gated by the WRITE group specifically (a 2b-only deployment leaves it off).
+  const writeEnabled = deps.writeEnabled ?? deps.enabled
+  if (!writeEnabled) return { ok: false, error: 'This action is not available over MCP.', code: 'forbidden' }
 
   if (!isSafeAction(row.tool_name)) return { ok: false, error: 'This action is not available over MCP.', code: 'forbidden' }
 
