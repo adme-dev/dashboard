@@ -1,6 +1,11 @@
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
-import type { VideoReadRunner } from './videoTools'
-import { filterUsableAvProjects } from './videoTools'
+import {
+  filterUsableAvProjects,
+  type VideoReadRunner,
+  type VideoConfirmAction,
+  type VideoGenerationPendingPayload,
+  type VideoProjectPendingPayload
+} from './videoTools'
 import { listProjects, getProjectWithCurrentTimeline, createProject } from '~~/server/utils/audio/projects'
 import { listSelectableVideoGenerationModels, getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { selectableVideoModelOptions } from '~~/app/utils/video/modelPresentation'
@@ -16,7 +21,6 @@ import { enqueueVideoGeneration } from '~~/server/utils/video-generation/enqueue
 import { resolveSourceAssetUrls } from '~~/server/utils/video-generation/resolveSourceUrls'
 import { emptyAvTimeline } from '~~/server/utils/audio/timelineSchema'
 import { proposeAction } from '~~/server/utils/ai/pendingActions'
-import type { VideoConfirmAction } from './videoTools'
 
 /**
  * MCP Phase 2b — the REAL video runner (the binding-dependent half of videoTools.ts). Wraps the exact
@@ -127,30 +131,37 @@ export function buildVideoProposeDeps() {
  */
 export function buildVideoConfirmDeps() {
   return {
-    reserve: async (payload: any, ctx: ToolContext) => reserveAndCreateVideoGenerationJob(
-      {
-        tenantId: payload.tenantId,
-        projectId: payload.projectId,
-        timelineId: payload.timelineId,
-        createdBy: ctx.userId,
-        status: 'queued',
-        mode: payload.mode,
-        modelId: payload.modelId,
-        provider: payload.provider,
-        prompt: payload.prompt,
-        sourceAssetIds: payload.sourceAssetIds,
-        durationSeconds: payload.durationSeconds,
-        aspectRatio: payload.aspectRatio,
-        resolution: payload.resolution,
-        subjectType: payload.subjectType,
-        complianceStatus: payload.complianceStatus,
-        complianceReasons: payload.complianceReasons,
-        estimatedCostCents: payload.estimatedCostCents,
-        idempotencyKey: payload.idempotencyKey
-      },
-      await loadTenantVideoGenerationPolicy(payload.tenantId)
-    ),
-    enqueue: async (payload: any, jobId: string, ctx: ToolContext) => {
+    reserve: async (payload: VideoGenerationPendingPayload, ctx: ToolContext) => {
+      // The endpoint injects idempotencyKey (mcp:<proposalId>) before dispatch; defensive narrow.
+      const idempotencyKey = payload.idempotencyKey
+      if (!idempotencyKey) throw new Error('missing idempotencyKey at confirm')
+      return reserveAndCreateVideoGenerationJob(
+        {
+          tenantId: payload.tenantId,
+          projectId: payload.projectId,
+          timelineId: payload.timelineId,
+          createdBy: ctx.userId,
+          status: 'queued',
+          mode: payload.mode,
+          modelId: payload.modelId,
+          provider: payload.provider,
+          prompt: payload.prompt,
+          sourceAssetIds: payload.sourceAssetIds,
+          durationSeconds: payload.durationSeconds,
+          aspectRatio: payload.aspectRatio,
+          resolution: payload.resolution,
+          subjectType: payload.subjectType,
+          complianceStatus: payload.complianceStatus,
+          complianceReasons: payload.complianceReasons,
+          estimatedCostCents: payload.estimatedCostCents,
+          idempotencyKey
+        },
+        await loadTenantVideoGenerationPolicy(payload.tenantId)
+      )
+    },
+    enqueue: async (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext) => {
+      const idempotencyKey = payload.idempotencyKey
+      if (!idempotencyKey) throw new Error('missing idempotencyKey at confirm')
       let sourceAssetUrls: string[] = []
       if (payload.mode === 'image-to-video') {
         sourceAssetUrls = await resolveSourceAssetUrls(payload.sourceAssetIds, payload.tenantId)
@@ -158,11 +169,11 @@ export function buildVideoConfirmDeps() {
       await enqueueVideoGeneration(ctx.event, {
         jobId,
         tenantId: payload.tenantId,
-        idempotencyKey: payload.idempotencyKey,
+        idempotencyKey,
         sourceAssetUrls
       })
     },
-    createProject: async (payload: any, ctx: ToolContext) => {
+    createProject: async (payload: VideoProjectPendingPayload, ctx: ToolContext) => {
       const { project } = await createProject({
         createdBy: ctx.userId,
         clientId: payload.clientId ?? null,

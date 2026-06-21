@@ -116,6 +116,15 @@ MCP_GEN_TOOLS_ENABLED = "true"
 # uncomment + redeploy (each propose persists a HITL pending row; confirm executes via the existing
 # executor registry; rich_confirm needs ack):
 # MCP_WRITE_TOOLS_ENABLED = "true"
+# MCP Phase 2b — video-generation suite over MCP. DORMANT: left UNSET (absent = off).
+#   MCP_VIDEO_TOOLS_ENABLED  → discovery reads + status (list_av_projects/list_video_models/
+#                              list_video_generations/get_video_generation_status; no spend, no writes)
+#   MCP_VIDEO_GEN_ENABLED    → confirm-tier propose_video_generation + create_video_project (bills;
+#                              HITL propose→confirm; video spend is NOT in the D4 financial set)
+# Doubly-dormant: live-verify ALSO needs base VIDEO_GENERATION_ENABLED baked into these [vars]
+# (currently absent → engine 404s). Activate after sign-off: uncomment + redeploy from clean worktree.
+# MCP_VIDEO_TOOLS_ENABLED = "true"
+# MCP_VIDEO_GEN_ENABLED = "true"
 
 # Chat — Durable Objects (hosted in separate worker)
 [[durable_objects.bindings]]

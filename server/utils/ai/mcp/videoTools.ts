@@ -4,6 +4,45 @@ import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { McpToolManifest } from './project'
 import { MCP_CONFIRM_TOOL } from './writeTools'
+import type {
+  VideoGenerationModel,
+  VideoGenerationMode,
+  VideoGenerationSubjectType,
+  VideoGenerationTenantPolicy,
+  VideoGenerationSourceAsset,
+  VideoGenerationComplianceResult
+} from '~~/server/utils/video-generation/types'
+import type { EvaluateVideoGenerationComplianceInput } from '~~/server/utils/video-generation/compliance'
+
+/** Minimal shape of an authorized AV project + its current timeline (a superset of the real types). */
+export interface ResolvedAvProject {
+  project: { mediaType: string, clientId: string | null, createdBy: string | null, currentTimelineId: string | null }
+  timeline: { id: string } | null
+}
+
+/** The resolved payload a `video_generation` proposal persists (frozen at propose, executed at confirm). */
+export interface VideoGenerationPendingPayload {
+  tenantId: string
+  projectId: string
+  timelineId: string | null
+  mode: VideoGenerationMode
+  modelId: string
+  provider: string
+  prompt: string
+  sourceAssetIds: string[]
+  durationSeconds: number
+  aspectRatio: string
+  resolution: string | null
+  subjectType: VideoGenerationSubjectType
+  complianceStatus: string
+  complianceReasons: string[]
+  estimatedCostCents: number
+  /** Injected at confirm time (derived from the proposalId) so a double-confirm cannot double-bill. */
+  idempotencyKey?: string
+}
+
+/** The resolved payload a `video_project_create` proposal persists. */
+export interface VideoProjectPendingPayload { title: string, clientId: string | null }
 
 /**
  * MCP Server Phase 2b — owned video-generation suite over MCP (spec:
@@ -180,18 +219,18 @@ export type VideoProposeOutcome
 export interface VideoProposeDeps {
   suiteEnabled: boolean
   genEnabled: boolean
-  resolveProject: (projectId: string, ctx: ToolContext) => Promise<{ project: any, timeline: any } | null>
-  getModel: (modelId: string) => any | null
-  isTenantModel: (model: any) => boolean
-  loadSources: (ids: string[], tenantId: string | undefined, mode: string) => Promise<any[]>
-  loadPolicy: (tenantId: string) => Promise<any>
-  evaluateCompliance: (input: any) => { allowed: boolean, classification: string, reasons: string[] }
-  estimateCost: (model: any, durationSeconds: number) => number
+  resolveProject: (projectId: string, ctx: ToolContext) => Promise<ResolvedAvProject | null>
+  getModel: (modelId: string) => VideoGenerationModel | null | undefined
+  isTenantModel: (model: VideoGenerationModel) => boolean
+  loadSources: (ids: string[], tenantId: string | undefined, mode: string) => Promise<VideoGenerationSourceAsset[]>
+  loadPolicy: (tenantId: string) => Promise<VideoGenerationTenantPolicy>
+  evaluateCompliance: (input: EvaluateVideoGenerationComplianceInput) => VideoGenerationComplianceResult
+  estimateCost: (model: VideoGenerationModel, durationSeconds: number) => number
   /** Persist an ai_pending_actions row (tool_name = action) and return its id. */
   persist: (ctx: ToolContext, action: VideoConfirmAction, payload: unknown) => Promise<string>
 }
 
-function modelSupports(model: any, p: z.infer<typeof VideoGenParams>): boolean {
+function modelSupports(model: VideoGenerationModel, p: z.infer<typeof VideoGenParams>): boolean {
   if (!model.modes.includes(p.mode)) return false
   if (!model.durationsSeconds.includes(p.durationSeconds)) return false
   if (!model.aspectRatios.includes(p.aspectRatio)) return false
@@ -237,7 +276,7 @@ export async function executeVideoPropose(
     if (!modelSupports(model, p)) return { ok: false, error: 'Model does not support the requested mode/params.', code: 'bad_args' }
 
     const tenantId = existing.project.clientId ?? 'agency'
-    let sources: any[] = []
+    let sources: VideoGenerationSourceAsset[] = []
     try {
       sources = await deps.loadSources(p.sourceAssetIds, p.mode === 'image-to-video' ? tenantId : undefined, p.mode)
     } catch {
@@ -245,9 +284,12 @@ export async function executeVideoPropose(
     }
     const policy = await deps.loadPolicy(tenantId)
 
+    // Compliance only checks provenance.idempotencyKey for PRESENCE — the real key is derived from the
+    // proposalId at confirm. A stable placeholder here satisfies the gate without affecting the verdict.
     const compliance = deps.evaluateCompliance({
       mode: p.mode, prompt: p.prompt, model, sourceAssets: sources, requestedSubjectType: p.subjectType,
-      tenantPolicy: policy, provenance: { userId: ctx.userId, tenantId, projectId: p.projectId }
+      tenantPolicy: policy,
+      provenance: { userId: ctx.userId, tenantId, projectId: p.projectId, idempotencyKey: 'mcp-preview' }
     })
     if (!compliance.allowed) return { ok: false, error: `Blocked: ${compliance.reasons.join('; ') || 'compliance'}`, code: 'blocked' }
 
@@ -289,9 +331,9 @@ export type VideoConfirmOutcome
 
 export interface VideoConfirmDeps {
   genEnabled: boolean
-  reserve: (payload: any, ctx: ToolContext) => Promise<{ ok: boolean, reason?: string, remainingCents?: number, job?: any, reused?: boolean }>
-  enqueue: (payload: any, jobId: string, ctx: ToolContext) => Promise<void>
-  createProject: (payload: any, ctx: ToolContext) => Promise<{ projectId: string }>
+  reserve: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<{ ok: boolean, reason?: string, remainingCents?: number, job?: { id: string }, reused?: boolean }>
+  enqueue: (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext) => Promise<void>
+  createProject: (payload: VideoProjectPendingPayload, ctx: ToolContext) => Promise<{ projectId: string }>
 }
 
 export async function dispatchVideoConfirm(
@@ -301,16 +343,17 @@ export async function dispatchVideoConfirm(
   if (!deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'forbidden' }
   try {
     if (row.tool_name === 'video_project_create') {
-      const { projectId } = await deps.createProject(row.resolved_payload, ctx)
+      const { projectId } = await deps.createProject(row.resolved_payload as VideoProjectPendingPayload, ctx)
       return { ok: true, data: { projectId } }
     }
     // video_generation
-    const reservation = await deps.reserve(row.resolved_payload, ctx)
+    const payload = row.resolved_payload as VideoGenerationPendingPayload
+    const reservation = await deps.reserve(payload, ctx)
     if (!reservation.ok || !reservation.job) {
       return { ok: false, error: `Budget unavailable (${reservation.reason ?? 'cap'}).`, code: 'cap_exceeded' }
     }
     // Lost the race to a concurrent same-key request inside the lock → do not re-enqueue.
-    if (!reservation.reused) await deps.enqueue(row.resolved_payload, reservation.job.id, ctx)
+    if (!reservation.reused) await deps.enqueue(payload, reservation.job.id, ctx)
     return { ok: true, data: { jobId: reservation.job.id, status: 'queued' } }
   } catch {
     return { ok: false, error: 'Execution failed.', code: 'handler_error' }
