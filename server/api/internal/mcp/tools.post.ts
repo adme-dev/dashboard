@@ -11,6 +11,7 @@ import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
 import { projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
+import { projectGenerationTools } from '~~/server/utils/ai/mcp/generationTools'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 
 export default defineEventHandler(async (event) => {
@@ -32,5 +33,12 @@ export default defineEventHandler(async (event) => {
   )
   if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
 
-  return { tools: projectReadOnlyTools(registry as AiTool<unknown>[], user.role ?? '') }
+  // Read tools (Phase 1) + generation tools (Phase 2a, only when MCP_GEN_TOOLS_ENABLED).
+  const role = user.role ?? ''
+  return {
+    tools: [
+      ...projectReadOnlyTools(registry as AiTool<unknown>[], role),
+      ...projectGenerationTools(role, process.env.MCP_GEN_TOOLS_ENABLED === 'true')
+    ]
+  }
 })
