@@ -1,29 +1,54 @@
-# TODO — MCP + Task Execution (consolidated)
+# TODO / Roadmap — MCP + Task Execution (consolidated)
 
-**Updated:** 2026-06-21 · **Owner legend:** 🧑 operator (Paul) · 🤖 agent (build) · ⛔ blocked
-**Source threads:** MCP Phase 1/2 handoff, MCP 2b build (this session), Cloudflare Workflows direction (this session).
+**Updated:** 2026-06-22 · **Owner legend:** 🧑 operator (Paul) · 🤖 agent (build) · ⛔ blocked
+**Source threads:** MCP Phase 1/2 handoff, MCP 2b build + **Phase-1 go-live** (2026-06-22), Cloudflare Workflows direction, video-gen **payment method**.
 
-> Scannable backlog of everything in flight or decided across MCP and the platform's task-execution layer.
-> Nothing here flips a flag, deploys, or moves money without explicit 🧑 sign-off.
+> Scannable backlog/roadmap of everything in flight or decided across MCP and the platform's task-execution layer.
+> Nothing here flips a financial flag, enables a tenant, or moves money without explicit 🧑 sign-off.
 
 ---
 
-## A. MCP Phase 2b — Video generation suite (IN PROGRESS)
-Spec: `docs/superpowers/specs/2026-06-21-mcp-phase2b-video-generation-design.md` ·
-Plan: `docs/superpowers/plans/2026-06-21-mcp-phase2b-video-generation.md` · Branch: `feat/mcp-phase2b-video`
+## A. MCP Phase 2b — Video generation suite (BUILT ✅ · Phase-1 LIVE 🟢 · Phase-2 staged)
+Spec: `…/specs/2026-06-21-mcp-phase2b-video-generation-design.md` · Plan: `…/plans/2026-06-21-mcp-phase2b-video-generation.md`
+Guide: `docs/mcp-server-guide.md` · Merged to `main` (`a8edd3ac`) · deployed `2026-06-22`.
 
-- [x] 🤖 Task 1 — read tools: descriptors, projection, guard (pure) — *committed `9d13e278`*
-- [x] 🤖 Task 2 — read runner + wire reads into internal endpoints — *committed `6fe5f859`*
-- [x] 🤖 Task 3 — `propose_video_generation` + `create_video_project` validate/preview (no spend) — *committed `894b8421`*
-- [ ] 🤖 Task 4 — `dispatchVideoConfirm` (reserve+enqueue / create project, `cap_exceeded`)
-- [ ] 🤖 Task 5 — propose/confirm binding deps in `videoRunner.ts` (engine wiring)
-- [ ] 🤖 Task 6 — generalize shared confirm + wire propose/confirm into `/call`, manifest, flags, rate-limit
-- [ ] 🤖 Task 7 — dormant flags in `wrangler.toml` + full `test/ai/` run + lint + go-live docs note
-- [ ] 🧑 Open the PR + review once Tasks 4–7 land (then squash-merge to `main`).
-- [ ] 🧑 **Activate (post-merge, needs sign-off):** set `MCP_VIDEO_TOOLS_ENABLED` + `MCP_VIDEO_GEN_ENABLED` in `wrangler.toml [vars]` → deploy from clean worktree.
-- [ ] ⛔🧑 **Dependency:** bake base `VIDEO_GENERATION_ENABLED="true"` into `wrangler.toml [vars]` — currently ABSENT, so the engine 404s. 2b is *doubly-dormant* until this is set. Confirm prod state of base video-gen first.
-- [ ] 🧑 Live-verify (after both flag sets + base flag): `list_video_models` → `propose_video_generation` (t2v) → confirm cost → `confirm_action` → poll status → asset finalize + budget decrement + `ai_action_audit` rows.
-- [ ] 🤖 M1 marketing/docs sync **at go-live**: connector page + `features/ai-connectors` (today say read-only/audio-gen).
+**Build — done.** 7 TDD tasks, 618 `test/ai/` tests green (incl. 7-test integration battle-test of the full
+propose→persist→claim→confirm→dispatch flow), ESLint + tsc clean. No migration.
+
+**Phase 1 (reads) — 🟢 LIVE in prod (2026-06-22).** `MCP_VIDEO_TOOLS_ENABLED="true"` baked + deployed;
+internal endpoints verified 401-gated (server enabled). The 4 discovery/status tools are live; **zero spend path**.
+- [x] 🤖 Build + verify + merge + deploy Phase 1.
+- [ ] 🧑 Confirm the 4 tools render for your role: `/agency/ai/connectors` (browser) **or** `tools/list` from your Claude connector.
+- [ ] 🤖 M1 marketing/docs sync: connector page + `features/ai-connectors` (still say read-only/audio-gen).
+
+**Phase 2 (generation — BILLABLE) — ⛔ blocked on 🧑 decisions + payment (see §A2).** Nothing flipped yet.
+- [ ] ⛔🧑 Choose **which tenant/client** to enable + a **monthly cap** (suggest $20–50 for the first live run).
+- [ ] ⛔🧑 Confirm a **funded payment method / AI Gateway credits** exists (see §A2) — hard prerequisite to actually pay for a generation.
+- [ ] 🤖 Flip `MCP_VIDEO_GEN_ENABLED` + base `VIDEO_GENERATION_ENABLED` + enable the chosen tenant at the cap → redeploy from clean worktree.
+- [ ] 🧑 Live-verify (first real job, watch closely — the engine itself has never had a full live e2e):
+      `list_video_models` → `propose_video_generation` (t2v) → review cost → `confirm_action` → poll
+      `get_video_generation_status` → asset finalize + budget decrement + `ai_action_audit` rows.
+
+## A2. Video generation — PAYMENT METHOD (NEW workstream · 🔬 investigate)
+Two distinct layers — both must be answered before/around Phase 2.
+
+**Layer 1 — Agency → provider (how WE pay for the compute). Hard Phase-2 prerequisite.**
+- Active path: **Cloudflare AI Gateway** (`server/utils/video-generation/providers/aiGatewayProvider.ts`),
+  partner models billed via **AI Gateway Unified Billing credits (prepaid)**. Legacy `muapiProvider.ts` (MuAPI) also present.
+- [ ] 🧑/🔬 **Confirm the CF AI Gateway account is funded** (prepaid credit balance) and which account/key the prod
+      Worker uses — *no credits → the first real generation fails to pay.* This is THE blocker for Phase 2.
+- [ ] 🔬 Confirm whether a **payment method is on file for auto top-up** (so credits don't run dry mid-month), and the burn rate vs the per-tenant caps.
+- [ ] 🔬 Decide active provider for go-live (AI Gateway vs MuAPI) + verify each model's real `estimatedCostCents`/`costUnit` against live provider pricing (`server/utils/video-generation/costs.ts` + `modelRegistry.ts`).
+
+**Layer 2 — Client → agency (how clients pay US for generations). Follow-on feature.**
+- Today: spend is *tracked* per job (`video_generation_jobs.actual_cost_cents`) and capped per tenant, but **nothing
+  bills the client** — no link from video-gen spend to invoices.
+- Existing billing rails to build on: Xero invoicing (`xeroInvoiceWriter/Lines`), **EOM engine** (`eomEngine.ts`),
+  in-progress **PayPal route** (`docs/superpowers/specs/2026-06-11-paypal-finance-route-design.md`, unmerged worktree).
+- [ ] 🔬 Decide the **client-billing model**: passthrough at cost, cost + markup, or included in retainer/credits.
+- [ ] 🤖 (later) Spec a **video-gen spend → EOM/Xero billable line** passthrough (one of the financial pipelines —
+      pairs with the Workflows financial-last sequencing in §B). Held until the model is decided.
+- [ ] 🔬 Note: this is **financial** territory — relates to decision **D4** (§C) on whether external AI hosts ever touch financial actions.
 
 ## B. Cloudflare Workflows — enterprise task-execution backbone (DIRECTION SET)
 Doc: `docs/superpowers/specs/2026-06-21-cloudflare-workflows-enterprise-task-execution-design.md`
@@ -55,4 +80,4 @@ These are the hand-rolled-orchestration weak spots Workflows would consolidate; 
 - [ ] — Keep `AI_TOOLS_ENABLED` ON every deploy (tool-calling agent depends on it).
 
 ---
-**Immediate next action (🤖):** finish 2b Tasks 4–7, then open the PR. **Immediate next decision (🧑):** D4, 2c activation, and go/no-go on the video-gen Workflow migration spec.
+**Immediate next decision (🧑):** (1) **confirm AI Gateway credits / payment method are funded** (§A2 L1) and (2) pick the **tenant + cap** — together they unblock 2b Phase 2. **Then (🤖):** flip the generation flags + enable the tenant + redeploy, and we live-verify the first real job. **Other open 🧑 calls:** D4 (financial-over-MCP), 2c activation, client-billing model (§A2 L2), Workflows go/no-go.
