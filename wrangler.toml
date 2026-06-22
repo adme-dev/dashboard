@@ -50,11 +50,18 @@ queue = "timeline-render"
 binding = "VIDEO_RENDER_QUEUE"
 queue = "video-render"
 
-# Producer binding for Banner Studio MP4 renders. Consumer runs in
+# Producer binding for Banner Studio MP4 renders (#2a). Consumer runs in
 # workers/audio-jobs/ as the `banner-render` queue branch.
-[[queues.producers]]
-binding = "BANNER_RENDER_QUEUE"
-queue = "banner-render"
+# DORMANT: left commented until #2a activation (explicit sign-off). With the binding
+# absent, the in-app export gracefully returns 503 "MP4 export not enabled yet" and the
+# MCP banner-confirm path no-ops (MCP_BANNER_TOOLS_ENABLED is also off). Cloudflare
+# validates queue bindings at publish time, so this binding can only be present once the
+# `banner-render` (+`banner-render-dlq`) queues exist. To ACTIVATE: create the queues
+# (`wrangler queues create banner-render` + `…-dlq`), deploy the workers/audio-jobs/
+# consumer + Chromium container (with bannerCapture.mjs), then uncomment + redeploy.
+# [[queues.producers]]
+# binding = "BANNER_RENDER_QUEUE"
+# queue = "banner-render"
 
 # Producer binding for AI Video Studio generation jobs. Consumer runs in
 # workers/video-generation/ as the `video-generation` queue branch.
