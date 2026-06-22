@@ -361,9 +361,23 @@ async function exportVideos() {
 
     exportProgress.value = 10
 
-    // Poll until all jobs finish
+    // Poll until all jobs finish (max 150 polls ≈ 5 min at 2s intervals)
+    const MAX_POLL_ATTEMPTS = 150
+    let pollAttempts = 0
     await new Promise<void>((resolve, reject) => {
       const poll = async () => {
+        pollAttempts++
+        if (pollAttempts > MAX_POLL_ATTEMPTS) {
+          if (pollTimer) clearTimeout(pollTimer)
+          isExporting.value = false
+          toast.add({
+            title: 'Still processing',
+            description: 'Still processing — check the exports gallery.',
+            color: 'warning',
+          })
+          resolve()
+          return
+        }
         try {
           const { jobs } = await $fetch<{ jobs: ExportJob[] }>(
             `/api/agency/banner-studio/export-video/jobs?ids=${jobIds.join(',')}`,
@@ -418,8 +432,7 @@ async function exportVideos() {
       poll()
     })
   } catch (err: any) {
-    if (pollTimer) clearTimeout(pollTimer)
-    const status = err?.response?.status ?? err?.statusCode
+    const status = err?.statusCode ?? err?.status
     const message = status === 503
       ? 'MP4 export isn\'t enabled yet — the render queue binding is not active'
       : err?.data?.statusMessage || err?.message || 'Video export failed'

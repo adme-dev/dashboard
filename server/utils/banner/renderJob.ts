@@ -19,13 +19,13 @@ export type EnqueueDeps = {
 export const CAPS = { MAX_FORMATS: 10, MAX_DIMENSION: 2000 } as const
 
 export class BannerRenderError extends Error {
-  code: 'bad_request'
-  constructor(message: string) { super(message); this.code = 'bad_request' }
+  code = 'bad_request' as const
+  constructor(message: string) { super(message) }
 }
 
 export function clampRenderParams(fps: number, crf: number, quality: number): { fps: number, crf: number, quality: 1 | 2 } {
   return {
-    fps: Math.min(60, Math.max(12, Math.round(fps || 30))),
+    fps: Math.min(60, Math.max(12, Math.round(fps ?? 30))),
     crf: Math.min(51, Math.max(0, Math.round(crf ?? 23))),
     quality: quality > 1 ? 2 : 1,
   }

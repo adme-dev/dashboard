@@ -85,6 +85,8 @@ export default {
             markDone: db.dbMarkBannerDone,
             markFailed: db.dbMarkBannerFailed,
           })
+          // Cleanup source HTML on success only (keep on failure so retries can re-read).
+          try { await (env.AUDIO_BUCKET as R2Bucket).delete(`banner-render-jobs/${jobId}/source.html`) } catch { /* ignore */ }
           msg.ack()
         } catch (e) {
           console.error('audio-jobs.banner-render.error', jobId, e)

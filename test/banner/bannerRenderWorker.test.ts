@@ -38,6 +38,7 @@ describe('runBannerRenderJob', () => {
     const d2 = deps({ loadJob: vi.fn().mockResolvedValue(job({ status: 'done' })) })
     await runBannerRenderJob({ jobId: 'j1' }, d2)
     expect(d2.render).not.toHaveBeenCalled()
+    expect(d2.markRendering).not.toHaveBeenCalled()
   })
 
   it('marks failed and rethrows when rendering throws (so the queue retries)', async () => {

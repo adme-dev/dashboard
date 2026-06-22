@@ -21,8 +21,9 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
   })
   const tmp = join(tmpdir(), `banner-${randomUUID()}`)
   mkdirSync(tmp, { recursive: true })
+  let page = null
   try {
-    const page = await browser.newPage()
+    page = await browser.newPage()
     await page.setViewport({ width: vpW, height: vpH, deviceScaleFactor: 1 })
 
     // Load the HTML string — networkidle0 ensures fonts + GSAP fully settled.
@@ -84,6 +85,7 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
     })
     return readFileSync(out)
   } finally {
+    await page?.close().catch(() => {})
     await browser.close().catch(() => {})
     try { rmSync(tmp, { recursive: true, force: true }) } catch { /* ignore */ }
   }

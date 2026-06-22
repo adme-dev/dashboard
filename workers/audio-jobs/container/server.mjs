@@ -132,7 +132,6 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/render-banner') {
-    const dir = mkdtempSync(join(tmpdir(), 'banner-'))
     try {
       const { captureBannerMp4 } = await import('./bannerCapture.mjs')
       const body = JSON.parse((await readBody(req)).toString('utf8'))
@@ -142,8 +141,6 @@ const server = createServer(async (req, res) => {
     } catch (e) {
       console.error('render-banner error', e)
       res.writeHead(500); return res.end('render-banner error')
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
     }
   }
 
