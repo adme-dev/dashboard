@@ -6,6 +6,7 @@ import type { H3Event } from 'h3'
 export type JobType =
   | 'board.notify'
   | 'board.automate'
+  | 'lifecycle.evaluate'
   | 'eom.generate'
   | 'spend.sync.meta'
   | 'spend.sync.meta.account'

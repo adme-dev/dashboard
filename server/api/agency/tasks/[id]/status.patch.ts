@@ -7,6 +7,7 @@ import { notifyTaskStatusChanged } from '~~/server/utils/notifications'
 import { emitBoardEvent } from '~~/server/utils/boardEvents'
 import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
 import { evaluateAutomations } from '~~/server/utils/automationEngine'
+import { evaluateLifecycleTransition } from '~~/server/utils/automation/lifecycleGuard'
 import { enqueue } from '~~/server/utils/queue'
 import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
 
@@ -130,6 +131,11 @@ export default defineEventHandler(async (event) => {
 
       // Evaluate board automations (queued with retry, fallback to fire-and-forget)
       enqueue(event, 'board.automate', boardEvent, () => evaluateAutomations(currentTask.department_id, boardEvent))
+
+      // A.3 lifecycle guard: observe the transition; raise an A.1 escalation for 🟡 gate
+      // stages. Read-only to task state (never moves the task) — cannot double-fire vs the
+      // engine above. Inert on generic statuses. (queued with retry, fire-and-forget fallback)
+      enqueue(event, 'lifecycle.evaluate', boardEvent, async () => { await evaluateLifecycleTransition(boardEvent) })
 
       // Post to linked chat channels (fire-and-forget)
       postBoardEventToChat({
