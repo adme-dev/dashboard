@@ -72,14 +72,15 @@ export default defineEventHandler(async (event) => {
   const bannerProposeAction = resolveBannerProposeAction(toolName) // 'banner_render' | null
 
   // Per-actor rate limit on the billing/state-changing actions (no HITL on the count). Covers audio
-  // generation + video propose/create; cheap polls (get_generation_status, video reads) are exempt.
+  // generation + video propose/create + banner propose; cheap polls (get_generation_status, banner/video reads) are exempt.
   const rateLimited = (isGeneration && toolName !== 'get_generation_status')
     || toolName === 'propose_video_generation' || toolName === 'create_video_project'
+    || toolName === 'propose_banner_render'
   if (rateLimited) {
     const since = `${MCP_GEN_RATE_WINDOW_MIN} minutes`
     const names = [
       ...generationTools.map(t => t.name).filter(n => n !== 'get_generation_status'),
-      'propose_video_generation', 'create_video_project'
+      'propose_video_generation', 'create_video_project', 'propose_banner_render'
     ]
     const recent = await queryOne<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM ai_action_audit

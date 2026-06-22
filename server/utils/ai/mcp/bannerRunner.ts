@@ -3,7 +3,7 @@ import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { escapeLike } from '~~/server/utils/ai/toolContext'
 import { loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
 import { buildBannerHTML } from '~~/server/utils/banner/htmlBuilder'
-import { enqueueBannerRender, projectJobStatus, type BannerJobRow } from '~~/server/utils/banner/renderJob'
+import { enqueueBannerRender, projectJobStatus, type BannerJobRow, type BannerRenderInput } from '~~/server/utils/banner/renderJob'
 import { proposeAction } from '~~/server/utils/ai/pendingActions'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { FORMATS } from '~~/app/utils/banner-constants'
@@ -11,28 +11,59 @@ import { uploadFile } from '~~/server/utils/storage'
 import { randomUUID } from 'uncrypto'
 import type { BannerReadRunner, BannerProposeDeps, BannerRenderPendingPayload } from './bannerTools'
 
-/** Resolve a banner project for the actor: name-or-id → { id, name, formats }. Scope: banner studio is staff-wide. */
-async function resolveBannerProject(nameOrId: string): Promise<{ id: string, name: string, formats: string[] } | null> {
-  const row = await queryOne<{ id: string, name: string, canvas_data: any }>(
-    `SELECT id, name, canvas_data FROM banner_projects WHERE id::text = $1 OR name ILIKE $2 ORDER BY (id::text = $1) DESC, name ASC LIMIT 1`,
-    [nameOrId, `%${escapeLike(nameOrId)}%`],
-  )
-  if (!row) return null
-  const artboards = row.canvas_data?.artboards ?? row.canvas_data?.formats ?? {}
-  const formats = Object.keys(artboards).filter(k => k in FORMATS)
-  return { id: row.id, name: row.name, formats }
+/** Parse canvas_data — stored as JSONB (object) or occasionally a JSON string. */
+function parseCanvasData(raw: unknown): Record<string, unknown> {
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw) } catch { return {} }
+  }
+  return (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
 }
 
-export function buildBannerReadRunner(): BannerReadRunner {
+/** Extract valid format keys from a flat canvas_data record (top-level keys that are real FORMATS entries with a layers array). */
+function extractFormats(raw: unknown): string[] {
+  const cd = parseCanvasData(raw)
+  return Object.keys(cd).filter(k => k in FORMATS && cd[k] && Array.isArray((cd[k] as any).layers))
+}
+
+export interface LoadProjectsRow { id: string, name: string, canvas_data: unknown, updated_at: string }
+export interface LoadProjectRow { id: string, name: string, canvas_data: unknown }
+
+/** Injected loaders for banner projects — default implementations reach the DB; override in tests. */
+export interface BannerProjectLoaders {
+  loadProjectsRows: () => Promise<LoadProjectsRow[]>
+  loadProjectRow: (nameOrId: string) => Promise<LoadProjectRow | null>
+}
+
+function defaultLoaders(): BannerProjectLoaders {
+  return {
+    loadProjectsRows: () => queryRows<LoadProjectsRow>(
+      `SELECT id, name, canvas_data, updated_at FROM banner_projects ORDER BY updated_at DESC LIMIT 50`, []),
+    loadProjectRow: (nameOrId: string) => queryOne<LoadProjectRow>(
+      `SELECT id, name, canvas_data FROM banner_projects WHERE id::text = $1 OR name ILIKE $2 ORDER BY (id::text = $1) DESC, name ASC LIMIT 1`,
+      [nameOrId, `%${escapeLike(nameOrId)}%`]),
+  }
+}
+
+/** Resolve a banner project for the actor: name-or-id → { id, name, formats }.
+ * ctx is intentionally unused — banner studio is staff-wide, unscoped lookup. */
+async function resolveBannerProject(nameOrId: string, loaders: BannerProjectLoaders): Promise<{ id: string, name: string, formats: string[] } | null> {
+  const row = await loaders.loadProjectRow(nameOrId)
+  if (!row) return null
+  return { id: row.id, name: row.name, formats: extractFormats(row.canvas_data) }
+}
+
+export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerReadRunner {
+  const l = loaders ?? defaultLoaders()
   return {
     list_banner_projects: async () => {
-      const rows = await queryRows<{ id: string, name: string, canvas_data: any, updated_at: string }>(
-        `SELECT id, name, canvas_data, updated_at FROM banner_projects ORDER BY updated_at DESC LIMIT 50`, [])
+      const rows = await l.loadProjectsRows()
       return {
-        projects: rows.map(r => {
-          const ab = r.canvas_data?.artboards ?? r.canvas_data?.formats ?? {}
-          return { id: r.id, name: r.name, formats: Object.keys(ab).filter(k => k in FORMATS), updatedAt: r.updated_at }
-        }),
+        projects: rows.map(r => ({
+          id: r.id,
+          name: r.name,
+          formats: extractFormats(r.canvas_data),
+          updatedAt: r.updated_at,
+        })),
       }
     },
     get_banner_render_status: async (raw) => {
@@ -48,7 +79,7 @@ export function buildBannerReadRunner(): BannerReadRunner {
 
 export function buildBannerProposeDeps(): BannerProposeDeps {
   return {
-    resolveProject: (project: string) => resolveBannerProject(project),
+    resolveProject: (project: string) => resolveBannerProject(project, defaultLoaders()),
     persist: (ctx, action, payload) => proposeAction(ctx, null, action, payload),
   }
 }
@@ -56,7 +87,7 @@ export function buildBannerProposeDeps(): BannerProposeDeps {
 export interface BannerConfirmDeps {
   loadLayers: (projectId: string, format: string) => Promise<{ layers: any[], width: number, height: number }>
   buildHtml: (format: string, layers: any[], options: { baseUrl: string }) => string
-  enqueue: (input: { projectId: string, formats: { key: string, html: string, width: number, height: number }[], fps: number, crf: number, quality: 1 | 2, userId: string }, deps: any) => Promise<{ jobIds: string[] }>
+  enqueue: (input: BannerRenderInput, deps: any) => Promise<{ jobIds: string[] }>
 }
 
 export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload, ctx: ToolContext, deps: BannerConfirmDeps): Promise<{ ok: true, data: { jobIds: string[] } } | { ok: false, error: string }> {
@@ -93,6 +124,6 @@ export function buildBannerConfirmDeps(): BannerConfirmDeps {
   return {
     loadLayers: loadBannerLayers,
     buildHtml: buildBannerHTML,
-    enqueue: enqueueBannerRender as any,
+    enqueue: enqueueBannerRender,
   }
 }

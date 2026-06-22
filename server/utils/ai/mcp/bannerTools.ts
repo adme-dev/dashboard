@@ -3,6 +3,7 @@ import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { McpToolManifest } from './project'
+import { MCP_CONFIRM_TOOL } from './writeTools'
 
 /**
  * MCP Server Phase 2b — banner-render suite over MCP.
@@ -71,21 +72,30 @@ export const bannerProposeTools: BannerToolDescriptor[] = [
 
 // ── Manifest projection ────────────────────────────────────────────────────────
 
+const ConfirmParams = z.object({ proposalId: z.string().min(8), ack: z.boolean().optional() })
+
 /**
  * The banner tools a role may call, as MCP manifests — empty unless the suite flag is on.
- * Includes read tools + propose tool, all filtered by CREATIVE permission.
+ * Includes read tools + propose tool + confirm_action, all filtered by CREATIVE permission.
+ * tools.post.ts dedupes by name, so co-emission with the write/video confirm is safe.
  */
 export function projectBannerTools(role: string, enabled: boolean): McpToolManifest[] {
   if (!enabled) return []
   if (!roleHasPermission(role, 'CREATIVE')) return []
   const all = [...bannerReadTools, ...bannerProposeTools]
-  return all
+  const tools = all
     .filter(t => roleHasPermission(role, t.requiredPermission))
     .map(t => ({
       name: t.name,
       description: t.description,
       inputSchema: z.toJSONSchema(t.parameters) as Record<string, unknown>,
     }))
+  const confirm: McpToolManifest = {
+    name: MCP_CONFIRM_TOOL,
+    description: 'Execute a previously proposed banner render action by its proposalId.',
+    inputSchema: z.toJSONSchema(ConfirmParams) as Record<string, unknown>,
+  }
+  return [...tools, confirm]
 }
 
 // ── Confirm-action constants ────────────────────────────────────────────────────
@@ -107,7 +117,7 @@ export type BannerExecuteOutcome
 
 export type BannerProposeOutcome
   = | { ok: true, proposalId: string }
-    | { ok: false, error: string, code: 'disabled' | 'forbidden' | 'bad_args' | 'handler_error' }
+    | { ok: false, error: string, code: 'disabled' | 'not_found' | 'forbidden' | 'bad_args' | 'handler_error' }
 
 // ── Read tool execution ────────────────────────────────────────────────────────
 
@@ -183,7 +193,7 @@ export async function executeBannerPropose(
   if (!roleHasPermission(ctx.userRole, 'CREATIVE')) return { ok: false, error: 'Not permitted.', code: 'forbidden' }
 
   if (name !== 'propose_banner_render') {
-    return { ok: false, error: `Unknown banner propose tool: ${name}`, code: 'not_found' as any }
+    return { ok: false, error: `Unknown banner propose tool: ${name}`, code: 'not_found' }
   }
 
   const parsed = BannerRenderParams.safeParse(args)

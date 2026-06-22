@@ -4,6 +4,7 @@ import {
   bannerReadTools, bannerProposeTools, projectBannerTools, resolveBannerProposeAction,
   executeBannerTool, executeBannerPropose, type BannerReadRunner, type BannerProposeDeps,
 } from '~~/server/utils/ai/mcp/bannerTools'
+import { MCP_CONFIRM_TOOL } from '~~/server/utils/ai/mcp/writeTools'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 const ctx: ToolContext = { userId: 'u1', userRole: 'owner', event: {} as any }
@@ -11,10 +12,18 @@ const creativeCtx: ToolContext = { userId: 'u2', userRole: 'creative', event: {}
 const outsiderCtx: ToolContext = { userId: 'u3', userRole: 'finance', event: {} as any }
 
 describe('banner tool manifest', () => {
-  it('is empty when the flag is off, and lists 3 tools (read+propose) for CREATIVE when on', () => {
+  it('is empty when the flag is off, and lists 4 tools (read+propose+confirm) for CREATIVE when on', () => {
     expect(projectBannerTools('owner', false)).toEqual([])
     const names = projectBannerTools('owner', true).map(t => t.name).sort()
-    expect(names).toEqual(['get_banner_render_status', 'list_banner_projects', 'propose_banner_render'])
+    expect(names).toEqual(['confirm_action', 'get_banner_render_status', 'list_banner_projects', 'propose_banner_render'])
+  })
+  it('includes confirm_action when enabled', () => {
+    const names = projectBannerTools('owner', true).map(t => t.name)
+    expect(names).toContain(MCP_CONFIRM_TOOL)
+  })
+  it('does NOT include confirm_action when disabled', () => {
+    const names = projectBannerTools('owner', false).map(t => t.name)
+    expect(names).not.toContain(MCP_CONFIRM_TOOL)
   })
   it('hides all banner tools from a non-CREATIVE role even when enabled', () => {
     expect(projectBannerTools('finance', true)).toEqual([])

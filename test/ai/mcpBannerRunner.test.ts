@@ -1,6 +1,6 @@
 // test/ai/mcpBannerRunner.test.ts
 import { describe, it, expect, vi } from 'vitest'
-import { dispatchBannerConfirm, type BannerConfirmDeps } from '~~/server/utils/ai/mcp/bannerRunner'
+import { dispatchBannerConfirm, buildBannerReadRunner, type BannerConfirmDeps, type BannerProjectLoaders } from '~~/server/utils/ai/mcp/bannerRunner'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 const ctx: ToolContext = { userId: 'u1', userRole: 'creative', event: {} as any }
@@ -14,6 +14,65 @@ function deps(over: Partial<BannerConfirmDeps> = {}): BannerConfirmDeps {
     ...over,
   }
 }
+
+// ── C1: canvas_data flat-parse tests ──────────────────────────────────────────
+
+describe('buildBannerReadRunner — canvas_data flat-parse (C1)', () => {
+  /** Build an injected-loader runner with a controlled project list. */
+  function makeRunner(projects: Array<{ id: string, name: string, canvas_data: unknown, updated_at: string }>) {
+    const loaders: BannerProjectLoaders = {
+      loadProjectsRows: vi.fn().mockResolvedValue(projects),
+      loadProjectRow: vi.fn().mockResolvedValue(projects[0] ?? null),
+    }
+    return { runner: buildBannerReadRunner(loaders), loaders }
+  }
+
+  it('extracts only valid FORMATS keys that have a layers array', async () => {
+    // mrec has layers → included; junk is not a real format key → excluded; leader has layers → included
+    const canvasData = { mrec: { layers: [] }, junk: { layers: [1, 2] }, leader: { layers: [{ id: 'l1' }] } }
+    const { runner } = makeRunner([{ id: 'p1', name: 'Test', canvas_data: canvasData, updated_at: '2024-01-01' }])
+    const result = await runner.list_banner_projects({}, ctx) as any
+    expect(result.projects[0].formats.sort()).toEqual(['leader', 'mrec'])
+  })
+
+  it('excludes a format key whose artboard has no layers array', async () => {
+    // mrec present but no layers array → excluded; fb_feed present and has layers → included
+    const canvasData = { mrec: { layers: [] }, fb_feed: { layers: [{ id: 'l1' }] }, wsky: {} }
+    const { runner } = makeRunner([{ id: 'p2', name: 'Test2', canvas_data: canvasData, updated_at: '2024-01-01' }])
+    const result = await runner.list_banner_projects({}, ctx) as any
+    expect(result.projects[0].formats.sort()).toEqual(['fb_feed', 'mrec'])
+  })
+
+  it('parses a canvas_data JSON string correctly', async () => {
+    const canvasData = JSON.stringify({ mrec: { layers: [] }, junk: {} })
+    const { runner } = makeRunner([{ id: 'p3', name: 'Test3', canvas_data: canvasData, updated_at: '2024-01-01' }])
+    const result = await runner.list_banner_projects({}, ctx) as any
+    expect(result.projects[0].formats).toEqual(['mrec'])
+  })
+
+  it('returns empty formats for null/undefined canvas_data', async () => {
+    const { runner } = makeRunner([{ id: 'p4', name: 'Test4', canvas_data: null, updated_at: '2024-01-01' }])
+    const result = await runner.list_banner_projects({}, ctx) as any
+    expect(result.projects[0].formats).toEqual([])
+  })
+
+  it('resolveBannerProject via injected loader: { mrec: { layers: [] }, junk: {} } → formats ["mrec"]', async () => {
+    // Test via buildBannerProposeDeps-style: use the runner's loadProjectRow path indirectly
+    const canvasData = { mrec: { layers: [] }, junk: {} }
+    const loaders: BannerProjectLoaders = {
+      loadProjectsRows: vi.fn().mockResolvedValue([]),
+      loadProjectRow: vi.fn().mockResolvedValue({ id: 'p1', name: 'Acme', canvas_data: canvasData }),
+    }
+    // buildBannerReadRunner uses loaders for list; we test resolve via the same code path
+    // by importing buildBannerReadRunner — but resolveBannerProject is internal. We cover
+    // the same code via list_banner_projects (same extractFormats call).
+    const runner = buildBannerReadRunner({ ...loaders, loadProjectsRows: vi.fn().mockResolvedValue([
+      { id: 'p1', name: 'Acme', canvas_data: canvasData, updated_at: '2024-01-01' }
+    ]) })
+    const result = await runner.list_banner_projects({}, ctx) as any
+    expect(result.projects[0].formats).toEqual(['mrec'])
+  })
+})
 
 describe('dispatchBannerConfirm', () => {
   it('loads layers, builds HTML (format first), enqueues, returns jobIds', async () => {
