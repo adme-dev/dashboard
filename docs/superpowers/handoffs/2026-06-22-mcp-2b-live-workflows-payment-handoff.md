@@ -47,6 +47,7 @@ var (e.g. `ANOMALY_NOTIFY_ALLOWLIST`) that needs moving into `wrangler.toml`. `A
 - **NOT testable yet:** video *generation* (Phase 2 — needs tenant + cap + flag flip + redeploy).
 
 ## Doc index
+- **Whole-platform verified backlog (start here for "what's left across everything"):** `docs/superpowers/PLATFORM-BACKLOG-2026-06-22.md`
 - Guide: `docs/mcp-server-guide.md` · Roadmap/TODO: `docs/superpowers/TODO-mcp-and-task-execution.md`
 - 2b: `…/specs/2026-06-21-mcp-phase2b-video-generation-design.md` + `…/plans/2026-06-21-mcp-phase2b-video-generation.md`
 - Workflows: `…/specs/2026-06-21-cloudflare-workflows-enterprise-task-execution-design.md` + `…/specs/2026-06-22-video-gen-workflow-migration-design.md`
