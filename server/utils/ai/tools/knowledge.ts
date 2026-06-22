@@ -73,7 +73,15 @@ export type KnowledgeDeps = {
   canSee: (doc: KnowledgeDoc, ctx: ToolContext) => boolean
 }
 
-function defaultCanSee(doc: KnowledgeDoc, ctx: ToolContext): boolean {
+/**
+ * Residual per-doc ACL, applied AFTER the primary boundary (type-filter + published-row re-fetch in
+ * defaultSearch). Deliberately FAIL-OPEN for docs lacking visibility/ownerId metadata: today's KB
+ * articles are staff-shared and carry no such metadata, so a published article with no visibility tag
+ * is correctly visible to any authed staff member. The ONLY things it hides are an explicitly
+ * private+owned doc viewed by a non-owner, and a client-scoped doc viewed under a different client
+ * scope. Exported so the fail-open posture is regression-locked (see knowledge.acl.test.ts).
+ */
+export function defaultCanSee(doc: KnowledgeDoc, ctx: ToolContext): boolean {
   const m = doc.metadata || {}
   // Future-proofing hook: if a KB article is ever flagged private+owned, honor it.
   if (m.visibility === 'private' && m.ownerId && m.ownerId !== ctx.userId) return false
