@@ -7,8 +7,8 @@
 // Open-redirect guard: redirect_uri must match MCP_WORKER_ORIGIN (never hand a valid assertion to an
 // arbitrary host). HARD-gated by MCP_SERVER_ENABLED.
 //
-// TODO (refinement, not blocking): render an explicit consent screen ("Allow your AI assistant read-only
-// access to your XeroFlow data?") before minting the assertion. The scaffold mints on confirmed login.
+// Consent is explicit: an unconsented request renders the consent screen (read-only vs read+write); the
+// chosen scope (mcp:read, optionally mcp:write) is signed INTO the assertion so the Worker mints exactly it.
 import { defineEventHandler, getQuery, sendRedirect, getRequestURL, createError } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { signMcpAssertion } from '~~/server/utils/ai/mcp/assertion'
