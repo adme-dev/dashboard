@@ -18,14 +18,14 @@ function esc(s: string): string {
 }
 
 export function buildAdReportHtml(m: AdReportModel): string {
-  const k = m.kpis
+  const k = m.kpis ?? {} as any
   const cards: Array<[string, string, number | null]> = [
-    ['Spend', fmtMoney(k.spend), m.deltas.spend],
-    ['Budget used', `${k.budgetUtilizationPct.toFixed(0)}%`, null],
-    ['Clicks', fmtNum(k.clicks), m.deltas.clicks],
-    ['Conversions', fmtNum(k.conversions), m.deltas.conversions],
-    ['CTR', `${k.ctr.toFixed(2)}%`, null],
-    ['CPA', fmtMoney(k.cpa), m.deltas.cpa],
+    ['Spend', fmtMoney(k.spend ?? 0), (m.deltas?.spend) ?? null],
+    ['Budget used', `${(k.budgetUtilizationPct ?? 0).toFixed(0)}%`, null],
+    ['Clicks', fmtNum(k.clicks ?? 0), (m.deltas?.clicks) ?? null],
+    ['Conversions', fmtNum(k.conversions ?? 0), (m.deltas?.conversions) ?? null],
+    ['CTR', `${(k.ctr ?? 0).toFixed(2)}%`, null],
+    ['CPA', fmtMoney(k.cpa ?? 0), (m.deltas?.cpa) ?? null],
   ]
   const cardsHtml = cards.map(([label, val, d]) =>
     `<div class="card"><div class="lbl">${label}</div><div class="val">${val}</div>${fmtDelta(d)}</div>`,

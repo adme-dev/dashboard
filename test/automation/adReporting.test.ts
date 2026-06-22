@@ -76,3 +76,85 @@ describe('buildAdReportHtml', () => {
     expect(html).toContain('1,400') // formatted spend
   })
 })
+
+import { isAdReportDue, processDueAdReports } from '~~/server/utils/adReporting/send'
+
+describe('isAdReportDue', () => {
+  const base = { id: 's1', client_id: 'c1', cadence: 'monthly', enabled: true, recipients: ['a@b.com'], last_sent_at: null as string | null }
+  it('due when never sent', () => {
+    expect(isAdReportDue(base, new Date('2026-05-02T00:00:00Z'))).toBe(true)
+  })
+  it('not due when disabled', () => {
+    expect(isAdReportDue({ ...base, enabled: false }, new Date())).toBe(false)
+  })
+  it('not due when sent recently (< ~28d)', () => {
+    expect(isAdReportDue({ ...base, last_sent_at: '2026-05-01T00:00:00Z' }, new Date('2026-05-10T00:00:00Z'))).toBe(false)
+  })
+  it('due when last send is older than a month', () => {
+    expect(isAdReportDue({ ...base, last_sent_at: '2026-04-01T00:00:00Z' }, new Date('2026-05-10T00:00:00Z'))).toBe(true)
+  })
+})
+
+describe('processDueAdReports', () => {
+  function fakes(scheduleRows: any[]) {
+    const execCalls: any[][] = []
+    const sent: any[] = []
+    const db = {
+      queryRows: async (_sql: string) => scheduleRows,
+      execute: async (_sql: string, params: any[]) => { execCalls.push(params); return 1 },
+    }
+    const deps = {
+      now: new Date('2026-05-05T00:00:00Z'),
+      buildModel: async (_s: any) => ({ clientName: 'C', periodLabel: 'Apr 2026', kpis: {} as any, prior: null, deltas: {} as any, topCampaigns: [] }),
+      renderPdf: async (_html: string) => Buffer.from('pdf'),
+      uploadPdf: async (_key: string, _buf: Buffer) => 'https://r2/report.pdf',
+      sendEmail: async (a: any) => { sent.push(a) },
+    }
+    return { db, deps, execCalls, sent }
+  }
+
+  it('is gated off by default (AD_REPORTS_ENABLED unset)', async () => {
+    delete process.env.AD_REPORTS_ENABLED
+    const { db, deps } = fakes([])
+    const r = await processDueAdReports(db as any, deps as any)
+    expect(r.gated).toBe(true)
+    expect(r.sent).toBe(0)
+  })
+
+  it('sends a due schedule and stamps last_sent_at', async () => {
+    process.env.AD_REPORTS_ENABLED = 'true'
+    const { db, deps, sent, execCalls } = fakes([
+      { id: 's1', client_id: 'c1', cadence: 'monthly', enabled: true, recipients: ['a@b.com'], last_sent_at: null },
+    ])
+    const r = await processDueAdReports(db as any, deps as any)
+    expect(r.sent).toBe(1)
+    expect(sent).toHaveLength(1)
+    expect(sent[0].recipients).toEqual(['a@b.com'])
+    expect(execCalls.length).toBe(1) // last_sent_at update
+    delete process.env.AD_REPORTS_ENABLED
+  })
+
+  it('skips schedules with no recipients', async () => {
+    process.env.AD_REPORTS_ENABLED = 'true'
+    const { db, deps, sent } = fakes([
+      { id: 's1', client_id: 'c1', cadence: 'monthly', enabled: true, recipients: [], last_sent_at: null },
+    ])
+    const r = await processDueAdReports(db as any, deps as any)
+    expect(r.sent).toBe(0)
+    expect(r.skipped).toBe(1)
+    expect(sent).toHaveLength(0)
+    delete process.env.AD_REPORTS_ENABLED
+  })
+
+  it('records failure (last_error) when a send throws, without aborting the loop', async () => {
+    process.env.AD_REPORTS_ENABLED = 'true'
+    const { db, deps } = fakes([
+      { id: 's1', client_id: 'c1', cadence: 'monthly', enabled: true, recipients: ['a@b.com'], last_sent_at: null },
+    ])
+    deps.sendEmail = async () => { throw new Error('boom') }
+    const r = await processDueAdReports(db as any, deps as any)
+    expect(r.failed).toBe(1)
+    expect(r.sent).toBe(0)
+    delete process.env.AD_REPORTS_ENABLED
+  })
+})
