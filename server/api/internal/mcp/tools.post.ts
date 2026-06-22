@@ -15,6 +15,7 @@ import { projectGenerationTools } from '~~/server/utils/ai/mcp/generationTools'
 import { projectWriteTools, projectFinancialTools } from '~~/server/utils/ai/mcp/writeTools'
 import { projectVideoTools } from '~~/server/utils/ai/mcp/videoTools'
 import { projectBannerTools } from '~~/server/utils/ai/mcp/bannerTools'
+import { isWriteScopeToolName, parseScopeHeader, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 
 export default defineEventHandler(async (event) => {
@@ -56,5 +57,13 @@ export default defineEventHandler(async (event) => {
   ]
   const seen = new Set<string>()
   const tools = assembled.filter(t => (seen.has(t.name) ? false : (seen.add(t.name), true)))
-  return { tools }
+
+  // CRITICAL-B: when write-scope enforcement is on, a read-only-consented connector (no mcp:write) must
+  // not even SEE write-class tools in its manifest. Flag OFF (default) → manifest unchanged (non-breaking).
+  const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
+  const grantedScopes = parseScopeHeader(getHeader(event, 'x-mcp-scope'))
+  const scopedTools = requireWriteScope && !hasWriteScope(grantedScopes)
+    ? tools.filter(t => !isWriteScopeToolName(t.name))
+    : tools
+  return { tools: scopedTools }
 })

@@ -48,18 +48,30 @@ export default defineEventHandler(async (event) => {
   }
 
   // Explicit consent: until the user clicks Allow, render the consent screen. Allow re-enters this
-  // endpoint with consent=granted (params preserved); Cancel bounces back with OAuth error=access_denied.
+  // endpoint with consent=granted (params preserved); the read+write button also sets write=granted.
+  // Cancel bounces back with OAuth error=access_denied.
   if (String(query.consent || '') !== 'granted') {
     const self = getRequestURL(event)
     const allowUrl = new URL(self)
     allowUrl.searchParams.set('consent', 'granted')
+    const allowWriteUrl = new URL(self)
+    allowWriteUrl.searchParams.set('consent', 'granted')
+    allowWriteUrl.searchParams.set('write', 'granted')
     const cancelUrl = new URL(dest)
     cancelUrl.searchParams.set('state', state)
     cancelUrl.searchParams.set('error', 'access_denied')
-    return buildConsentHtml({ userName: user.name || user.email || 'your account', allowUrl: allowUrl.toString(), cancelUrl: cancelUrl.toString() })
+    return buildConsentHtml({
+      userName: user.name || user.email || 'your account',
+      allowUrl: allowUrl.toString(),
+      allowWriteUrl: allowWriteUrl.toString(),
+      cancelUrl: cancelUrl.toString(),
+    })
   }
 
-  const assertion = await signMcpAssertion(user.id, secret)
+  // The consented scope: read-only by default; the read+write button adds mcp:write. The granted scope is
+  // signed into the assertion (integrity-protected) so the Worker mints the OAuth token with exactly this.
+  const scope = String(query.write || '') === 'granted' ? ['mcp:read', 'mcp:write'] : ['mcp:read']
+  const assertion = await signMcpAssertion(user.id, secret, { scope })
   dest.searchParams.set('state', state)
   dest.searchParams.set('assertion', assertion)
   return sendRedirect(event, dest.toString(), 302)

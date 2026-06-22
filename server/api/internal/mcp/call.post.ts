@@ -28,6 +28,7 @@ import {
 } from '~~/server/utils/ai/mcp/writeTools'
 import { getExecutor } from '~~/server/utils/ai/executors'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
+import { isWriteScopeToolName, parseScopeHeader, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 
 export default defineEventHandler(async (event) => {
@@ -102,8 +103,17 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // CRITICAL-B: OAuth write-scope enforcement. The Worker forwards the session's granted scope. When
+  // MCP_REQUIRE_WRITE_SCOPE is on, any WRITE-class tool (propose_*/confirm_action/generation/banner/
+  // financial) requires mcp:write — so a connector consented as read-only cannot drive writes/money-movers
+  // even if the user's ROLE would allow it. Flag OFF (default) → no scope check (non-breaking rollout).
+  const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
+  const grantedScopes = parseScopeHeader(getHeader(event, 'x-mcp-scope'))
+
   let outcome: { ok: boolean, data?: unknown, error?: string, code?: string }
-  if (isConfirm) {
+  if (requireWriteScope && isWriteScopeToolName(toolName) && !hasWriteScope(grantedScopes)) {
+    outcome = { ok: false, error: 'This action requires write access. Reconnect your AI assistant and grant write (mcp:write) to use it.', code: 'insufficient_scope' }
+  } else if (isConfirm) {
     // Shared confirm: atomically claim the MCP+user-scoped pending row, then dispatch. Available when
     // EITHER the 2c write group OR the 2b video-gen group is on. videoDispatch handles video tool_names
     // (returns jobId/projectId/cap_exceeded); non-video rows fall through to the 2c executor (gated by

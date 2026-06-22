@@ -46,36 +46,46 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 export const MCP_ASSERTION_TTL_SEC = 120
 
-/** Sign `{uid, exp}` for the authenticated user. `now` injected for tests (ms epoch). */
+/** The verified identity + granted OAuth scope carried by an assertion. */
+export interface VerifiedAssertion { uid: string, scope: string[] }
+
+/** Sign `{uid, exp, scp?}` for the authenticated user. `scope` carries the consented OAuth scope (e.g.
+ *  ['mcp:read','mcp:write']) from the app's consent screen to the Worker's grant. `now` injected for tests. */
 export async function signMcpAssertion(
   userId: string,
   secret: string,
-  opts: { ttlSec?: number, now?: number } = {}
+  opts: { scope?: string[], ttlSec?: number, now?: number } = {}
 ): Promise<string> {
   const now = opts.now ?? Date.now()
   const exp = Math.floor(now / 1000) + (opts.ttlSec ?? MCP_ASSERTION_TTL_SEC)
-  const body = b64urlEncodeString(JSON.stringify({ uid: userId, exp }))
+  const payload: { uid: string, exp: number, scp?: string[] } = { uid: userId, exp }
+  if (opts.scope && opts.scope.length) payload.scp = opts.scope
+  const body = b64urlEncodeString(JSON.stringify(payload))
   const sig = await hmac(body, secret)
   return `${body}.${sig}`
 }
 
-/** Verify an assertion → userId, or null if tampered / expired / malformed. Never throws. */
+/** Verify an assertion → { uid, scope }, or null if tampered / expired / malformed. Never throws.
+ *  An assertion with no `scp` (older format) defaults to ['mcp:read'] — read-only, fail-safe. */
 export async function verifyMcpAssertion(
   assertion: string,
   secret: string,
   opts: { now?: number } = {}
-): Promise<string | null> {
+): Promise<VerifiedAssertion | null> {
   try {
     if (!assertion || !secret) return null
     const [body, sig] = assertion.split('.')
     if (!body || !sig) return null
     const expected = await hmac(body, secret)
     if (!timingSafeEqual(sig, expected)) return null
-    const payload = JSON.parse(b64urlDecodeToString(body)) as { uid?: unknown, exp?: unknown }
+    const payload = JSON.parse(b64urlDecodeToString(body)) as { uid?: unknown, exp?: unknown, scp?: unknown }
     if (typeof payload.uid !== 'string' || typeof payload.exp !== 'number') return null
     const nowSec = Math.floor((opts.now ?? Date.now()) / 1000)
     if (payload.exp < nowSec) return null
-    return payload.uid
+    const scope = Array.isArray(payload.scp) && payload.scp.length && payload.scp.every(s => typeof s === 'string')
+      ? payload.scp as string[]
+      : ['mcp:read']
+    return { uid: payload.uid, scope }
   } catch {
     return null
   }

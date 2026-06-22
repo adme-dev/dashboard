@@ -146,6 +146,15 @@ MCP_BANNER_TOOLS_ENABLED = "true"
 #   (money-movers; require ack:true at confirm), propose_quote, propose_expense_classify,
 #   propose_budget_alert — all gated independently from MCP_WRITE_TOOLS_ENABLED.
 MCP_FINANCIAL_TOOLS_ENABLED = "false"
+# MCP CRITICAL-B — OAuth write-scope enforcement. When "true", any WRITE-class tool over MCP
+# (propose_*/confirm_action/generation/banner/financial) requires the connector to hold the mcp:write
+# scope (granted via the "Allow read + write" consent button); read-only-consented connectors are limited
+# to reads. DORMANT ("false") so existing read-only connectors keep working. ⚠️ BREAKING when flipped on:
+# existing connectors must RECONNECT and grant write to regain write/generation. Activation order (after
+# this whole branch deploys): operators reconnect granting write → set "true" → verify a financial
+# propose→confirm works from a Claude host → only THEN set MCP_FINANCIAL_TOOLS_ENABLED="true".
+# Flipping MCP_FINANCIAL_TOOLS_ENABLED without this on would expose money-movers under a read-only consent.
+MCP_REQUIRE_WRITE_SCOPE = "false"
 
 # Chat — Durable Objects (hosted in separate worker)
 [[durable_objects.bindings]]
