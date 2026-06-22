@@ -293,7 +293,8 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   }
   if (canAccessAutomation.value) {
     items.push(
-      { label: 'Automation', icon: 'i-lucide-zap', to: '/agency/automation', onSelect: close }
+      { label: 'Automation', icon: 'i-lucide-zap', to: '/agency/automation', onSelect: close },
+      { label: 'Escalations', icon: 'i-lucide-bell-ring', to: '/agency/automation/escalations', onSelect: close }
     )
   }
 
