@@ -23,7 +23,8 @@ import {
 import { buildBannerReadRunner, buildBannerProposeDeps, buildBannerConfirmDeps } from '~~/server/utils/ai/mcp/bannerRunner'
 import { isGenerationRateLimited, MCP_GEN_RATE_WINDOW_MIN } from '~~/server/utils/ai/mcp/rateLimit'
 import {
-  resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal
+  resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal,
+  isFinancialAction, MCP_FINANCIAL_ACTIONS
 } from '~~/server/utils/ai/mcp/writeTools'
 import { getExecutor } from '~~/server/utils/ai/executors'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
@@ -70,17 +71,22 @@ export default defineEventHandler(async (event) => {
   const bannerEnabled = process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
   const isBannerRead = bannerReadTools.some(t => t.name === toolName)
   const bannerProposeAction = resolveBannerProposeAction(toolName) // 'banner_render' | null
+  // Financial suite (Phase D4): propose_* names routed when MCP_FINANCIAL_TOOLS_ENABLED is on.
+  const financialEnabled = process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true'
+  const isFinancialPropose = isFinancialAction(toolName) // propose_budget_change etc.
 
   // Per-actor rate limit on the billing/state-changing actions (no HITL on the count). Covers audio
-  // generation + video propose/create + banner propose; cheap polls (get_generation_status, banner/video reads) are exempt.
+  // generation + video propose/create + banner propose + financial propose_*; cheap polls are exempt.
   const rateLimited = (isGeneration && toolName !== 'get_generation_status')
     || toolName === 'propose_video_generation' || toolName === 'create_video_project'
     || toolName === 'propose_banner_render'
+    || isFinancialPropose
   if (rateLimited) {
     const since = `${MCP_GEN_RATE_WINDOW_MIN} minutes`
     const names = [
       ...generationTools.map(t => t.name).filter(n => n !== 'get_generation_status'),
-      'propose_video_generation', 'create_video_project', 'propose_banner_render'
+      'propose_video_generation', 'create_video_project', 'propose_banner_render',
+      ...MCP_FINANCIAL_ACTIONS
     ]
     const recent = await queryOne<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM ai_action_audit
@@ -101,8 +107,9 @@ export default defineEventHandler(async (event) => {
     // writeEnabled). The idempotencyKey is derived from the proposalId so a double-confirm can't double-bill.
     const videoConfirmDeps = buildVideoConfirmDeps()
     outcome = await executeWriteConfirm(args, ctx, {
-      enabled: writeEnabled || videoGenEnabled || bannerEnabled,
+      enabled: writeEnabled || videoGenEnabled || bannerEnabled || financialEnabled,
       writeEnabled,
+      financialEnabled,
       getExecutor,
       claim: async (proposalId, uid) => queryOne<ClaimedProposal>(
         `UPDATE ai_pending_actions SET status='executed', confirmed_by=$2, executed_at=now()
@@ -157,6 +164,31 @@ export default defineEventHandler(async (event) => {
     // 2b banner propose: validate + resolve project, persist a source='mcp' pending row (no spend).
     // Gated by the banner flag; CREATIVE-scoped inside executeBannerPropose.
     outcome = await executeBannerPropose(toolName, args, ctx, buildBannerProposeDeps(), bannerEnabled)
+  } else if (isFinancialPropose) {
+    // D4 financial propose: run the registry propose-handler (resolution + persists source='mcp' pending
+    // row) and return a proposalId — identical path to the 2c safe-action propose. Gated by the
+    // independent financial flag. RBAC ceiling enforced by filterToolsForUser inside the handler.
+    if (!financialEnabled) {
+      outcome = { ok: false, error: 'Financial tools are not enabled over MCP.', code: 'disabled' }
+    } else {
+      // The financial propose_* names are already in MCP_FINANCIAL_ACTIONS; derive the underlying
+      // registry action name (strip leading 'propose_' if present — it IS the action name already since
+      // MCP_FINANCIAL_ACTIONS uses the propose_* names directly).
+      const registryActionName = toolName // e.g. 'propose_budget_change' IS the registry name
+      const tool = (registry as AiTool<unknown>[]).find(t => t.name === registryActionName)
+      const allowed = filterToolsForUser(registry as AiTool<unknown>[], ctx.userRole).some(t => t.name === registryActionName)
+      if (!tool || !allowed) {
+        outcome = { ok: false, error: 'Not permitted.', code: 'forbidden' }
+      } else {
+        const parsed = tool.parameters.safeParse(args)
+        if (!parsed.success) {
+          outcome = { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+        } else {
+          const r: ToolResult = await tool.handler(parsed.data, ctx).catch(() => ({ ok: false, error: 'Propose failed.' }))
+          outcome = r.ok ? { ok: true, data: r.data } : { ok: false, error: r.error ?? 'Propose failed.', code: 'handler_error' }
+        }
+      }
+    }
   } else if (isBannerRead) {
     // Banner suite reads (Phase 2b): discovery + status, gated by MCP_BANNER_TOOLS_ENABLED + CREATIVE.
     outcome = await executeBannerTool(buildBannerReadRunner(), toolName, args, ctx, bannerEnabled)

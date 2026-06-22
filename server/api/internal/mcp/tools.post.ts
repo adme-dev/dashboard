@@ -12,7 +12,7 @@ import { queryOne } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
 import { projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
 import { projectGenerationTools } from '~~/server/utils/ai/mcp/generationTools'
-import { projectWriteTools } from '~~/server/utils/ai/mcp/writeTools'
+import { projectWriteTools, projectFinancialTools } from '~~/server/utils/ai/mcp/writeTools'
 import { projectVideoTools } from '~~/server/utils/ai/mcp/videoTools'
 import { projectBannerTools } from '~~/server/utils/ai/mcp/bannerTools'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
@@ -49,7 +49,8 @@ export default defineEventHandler(async (event) => {
       suite: process.env.MCP_VIDEO_TOOLS_ENABLED === 'true',
       gen: process.env.MCP_VIDEO_GEN_ENABLED === 'true'
     }),
-    ...projectBannerTools(role, process.env.MCP_BANNER_TOOLS_ENABLED === 'true')
+    ...projectBannerTools(role, process.env.MCP_BANNER_TOOLS_ENABLED === 'true'),
+    ...projectFinancialTools(registry as AiTool<unknown>[], role, process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true')
   ]
   const seen = new Set<string>()
   const tools = assembled.filter(t => (seen.has(t.name) ? false : (seen.add(t.name), true)))

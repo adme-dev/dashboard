@@ -138,6 +138,11 @@ MCP_VIDEO_TOOLS_ENABLED = "true"
 # MCP_BANNER_TOOLS_ENABLED → banner read tools (list_banner_projects/get_banner_render_status) +
 #   propose_banner_render confirm-tier (HITL propose→confirm_action→dispatch). CREATIVE-gated.
 MCP_BANNER_TOOLS_ENABLED = "false"
+# MCP Phase D4 — financial write tools over MCP. DORMANT: set to "false" until sign-off.
+# MCP_FINANCIAL_TOOLS_ENABLED → propose_budget_change, propose_eom_generate, propose_expense_approval
+#   (money-movers; require ack:true at confirm), propose_quote, propose_expense_classify,
+#   propose_budget_alert — all gated independently from MCP_WRITE_TOOLS_ENABLED.
+MCP_FINANCIAL_TOOLS_ENABLED = "false"
 
 # Chat — Durable Objects (hosted in separate worker)
 [[durable_objects.bindings]]
