@@ -18,9 +18,9 @@ import {
 import { buildVideoReadRunner, buildVideoProposeDeps, buildVideoConfirmDeps } from '~~/server/utils/ai/mcp/videoRunner'
 import {
   bannerReadTools, executeBannerTool, executeBannerPropose, resolveBannerProposeAction,
-  dispatchBannerConfirm, type BannerRenderPendingPayload
+  type BannerRenderPendingPayload
 } from '~~/server/utils/ai/mcp/bannerTools'
-import { buildBannerReadRunner, buildBannerProposeDeps, buildBannerConfirmDeps } from '~~/server/utils/ai/mcp/bannerRunner'
+import { buildBannerReadRunner, buildBannerProposeDeps, buildBannerConfirmDeps, dispatchBannerConfirm } from '~~/server/utils/ai/mcp/bannerRunner'
 import { isGenerationRateLimited, MCP_GEN_RATE_WINDOW_MIN } from '~~/server/utils/ai/mcp/rateLimit'
 import {
   resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal,
