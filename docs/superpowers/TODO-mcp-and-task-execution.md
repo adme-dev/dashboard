@@ -54,7 +54,7 @@ Two distinct layers — both must be answered before/around Phase 2.
 Doc: `docs/superpowers/specs/2026-06-21-cloudflare-workflows-enterprise-task-execution-design.md`
 
 - [x] 🤖 Direction + caveats + rollout documented (verdict: adopt as durable-execution backbone, incremental, off real-time + financial paths until proven).
-- [ ] 🤖 **Next concrete step:** write the **video-generation → Workflow migration spec** (steps as pure fns, companion-Worker `workflows` binding, idempotency, retry/backoff, observability, cutover + rollback, retire `video-generation-reconcile` cron).
+- [x] 🤖 **Migration spec written** → `docs/superpowers/specs/2026-06-22-video-gen-workflow-migration-design.md` (steps as pure fns, companion-Worker `workflows` binding, durable poll-loop replacing the reconcile cron, idempotency, retry/backoff, `VIDEO_GENERATION_USE_WORKFLOW` cutover + rollback, 2b one-line compose). **Awaiting 🧑 go/no-go review.**
 - [ ] 🤖 Validate longest step vs the **30 min/step** ceiling (Chromium render path especially); decompose if needed.
 - [ ] 🧑 Decide go/no-go on the video-gen Workflow migration after reviewing the spec.
 - [ ] 🤖 (later) Then sync pipelines (spend, GA4); **financial pipelines (EOM/invoicing/spend-writes) LAST**, only after the pattern is proven.
