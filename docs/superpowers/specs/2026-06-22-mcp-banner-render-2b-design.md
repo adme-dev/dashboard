@@ -11,10 +11,13 @@ generates the renderable HTML and drives the **#2a** async pipeline (`banner_ren
 (`server/utils/ai/mcp/videoTools.ts` + `videoRunner.ts`): discovery reads + a confirm-tier propose/confirm write +
 a status read.
 
-**Key feasibility fact:** `buildBannerHTML(layers, format, options)` in `server/utils/banner/htmlBuilder.ts` is a
-server-side generator that produces the full GSAP HTML from a
-project's layers (already used by `server/api/agency/audio/projects/[id]/render-video.post.ts`). So the MCP host does
-**not** supply HTML (it can't) — the server builds it from the named project. This is what makes #2b possible.
+**Key feasibility fact (validated):** the server builds the renderable HTML from a named project via two existing
+server-side helpers (already used by `server/api/agency/audio/projects/[id]/render-video.post.ts`):
+- `loadBannerLayers(projectId, formatKey)` → `{ layers, width, height }` (`server/utils/audio/bannerOverlay.ts`) — loads
+  the project's layers for a format from `banner_projects.canvas_data` and supplies dims; throws if the format isn't on the project.
+- `buildBannerHTML(format, layers, options)` (`server/utils/banner/htmlBuilder.ts`) — **note arg order: format FIRST** — produces the GSAP HTML.
+
+So the MCP host does **not** supply HTML (it can't) — the server builds it from the named project. This is what makes #2b possible.
 
 **Scope:** MP4 render of an existing banner-studio project, over MCP. **Non-goals:** GIF/image over MCP; creating/editing
 banner projects over MCP; per-render billing/caps (V1 uses our own container compute — see §4); any new migration.
@@ -31,9 +34,10 @@ All mirror the 2b video tool patterns; descriptors in a new `server/utils/ai/mcp
    proposal (`source='mcp'`, `conversation_id` NULL — reusing mig 189) with the resolved payload `{ projectId, format,
    fps, quality }`. Returns `{ proposalId, summary: { project, format } }`. Does NOT render yet.
 3. **`confirm_action`** (existing tool) → **bannerDispatch** (new hook, parallel to `videoDispatch` in
-   `writeTools.ts`): atomically claims the proposal, loads the project's layers + format dims, calls
-   `buildBannerHTML(layers, format, { baseUrl })`, then `enqueueBannerRender({ projectId, formats:[{key:format, html,
-   width, height}], fps, quality, userId }, deps)` (the #2a Pages-side enqueue) → returns `{ jobIds }`.
+   `writeTools.ts`): atomically claims the proposal, then `const { layers, width, height } = await
+   loadBannerLayers(projectId, format)` → `const html = buildBannerHTML(format, layers, { baseUrl })` →
+   `enqueueBannerRender({ projectId, formats:[{ key: format, html, width, height }], fps, quality, userId }, deps)`
+   (the #2a Pages-side enqueue) → returns `{ jobIds }`.
 4. **`get_banner_render_status`** (read) — args `{ jobIds: string[] }` → reuses `projectJobStatus` over a
    `banner_render_jobs` query → `[{ jobId, formatKey, status, url?, error? }]`. Mirrors `get_video_generation_status`.
 
@@ -83,3 +87,25 @@ All mirror the 2b video tool patterns; descriptors in a new `server/utils/ai/mcp
 No migration, no worker change. Ships behind `MCP_BANNER_TOOLS_ENABLED` (off). Live banner-over-MCP requires: flag on +
 #2a pipeline activated (queues + container deployed). Then verify-live one `propose_banner_render → confirm → poll →
 asset` from a Claude host. Marketing/connector copy + `mcp-server-guide.md` capability list get a follow-up note.
+
+## 8. Implementation map (validated — for the plan)
+Exact building blocks confirmed in-repo (signatures verified):
+- **Mirror:** `server/utils/ai/mcp/videoTools.ts` (descriptors `VideoToolDescriptor`; `projectVideoReadTools(role, suiteEnabled)`
+  + `projectVideoTools(role, flags)` manifests; `executeVideoTool(...)`; `videoProposeTools` + `executeVideoPropose(...)`;
+  `VIDEO_CONFIRM_ACTIONS`/`resolveVideoProposeAction`) and `videoRunner.ts` (`buildVideoReadRunner`, `buildVideoProposeDeps`,
+  `buildVideoConfirmDeps`). New files `bannerTools.ts` + `bannerRunner.ts` mirror these, scaled to 3 tools.
+- **Confirm dispatch chain (banner):**
+  `const { layers, width, height } = await loadBannerLayers(projectId, format)` (`~~/server/utils/audio/bannerOverlay.ts`)
+  → `const html = buildBannerHTML(format, layers, { baseUrl })` (`~~/server/utils/banner/htmlBuilder.ts`, **format first**)
+  → `enqueueBannerRender({ projectId, formats:[{ key: format, html, width, height }], fps, quality, userId }, deps)`
+  (`~~/server/utils/banner/renderJob.ts`, from #2a). `loadBannerLayers` throws if the format isn't on the project → graceful fail.
+- **Dims/format validation:** `FORMATS` (`~~/app/utils/banner-constants.ts`, `Record<string,{key,w,h,name,...}>`) for the
+  `list_banner_projects` formats + propose-time validation; `loadBannerLayers` re-validates at confirm.
+- **Propose persist:** `proposeAction(ctx, null, action, payload)` (`~~/server/utils/ai/pendingActions.ts`) with
+  `action='banner_render'`, payload `{ projectId, format, fps, quality }`, `source='mcp'` (mig 189).
+- **Confirm wiring:** add `bannerDispatch?` to `ConfirmDeps` in `writeTools.ts` (parallel to `videoDispatch`, tried before
+  the 2c safe-action path, returns null for non-banner tool_names); `confirm_action` enabled when ANY confirm group is on.
+- **Status read:** reuse `projectJobStatus` (`~~/server/utils/banner/renderJob.ts`) over a `banner_render_jobs` query by jobIds.
+- **Flag:** `MCP_BANNER_TOOLS_ENABLED` (wrangler.toml `[vars]`, baked at deploy like `MCP_VIDEO_TOOLS_ENABLED`).
+- **Endpoints to edit:** `server/api/internal/mcp/tools.post.ts` (manifest, flag-gated) + `call.post.ts` (route reads/propose;
+  add `bannerDispatch` to the confirm deps). RBAC `CREATIVE` re-checked in tools + at dispatch.
