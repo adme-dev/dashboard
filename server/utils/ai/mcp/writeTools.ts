@@ -88,6 +88,8 @@ export interface ConfirmDeps {
   getExecutor: (toolName: string) => ActionExecutor | null
   /** Optional (2b): handle video confirm-tier tool_names; return null to fall through to the 2c path. */
   videoDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
+  /** Optional (2b): handle banner confirm-tier tool_names; return null to fall through to the 2c path. */
+  bannerDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
 }
 
 /**
@@ -111,6 +113,13 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   if (deps.videoDispatch) {
     const vo = await deps.videoDispatch(row, ctx)
     if (vo) return vo
+  }
+
+  // 2b: banner confirm-tier actions get their own dispatch (returns jobIds).
+  // Returns null for non-banner tool_names, so the 2c safe-action path below handles those.
+  if (deps.bannerDispatch) {
+    const bo = await deps.bannerDispatch(row, ctx)
+    if (bo) return bo
   }
 
   // The 2c safe-action path is gated by the WRITE group specifically (a 2b-only deployment leaves it off).

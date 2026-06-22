@@ -16,6 +16,11 @@ import {
   videoReadTools, executeVideoTool, executeVideoPropose, resolveVideoProposeAction, dispatchVideoConfirm
 } from '~~/server/utils/ai/mcp/videoTools'
 import { buildVideoReadRunner, buildVideoProposeDeps, buildVideoConfirmDeps } from '~~/server/utils/ai/mcp/videoRunner'
+import {
+  bannerReadTools, executeBannerTool, executeBannerPropose, resolveBannerProposeAction,
+  dispatchBannerConfirm, type BannerRenderPendingPayload
+} from '~~/server/utils/ai/mcp/bannerTools'
+import { buildBannerReadRunner, buildBannerProposeDeps, buildBannerConfirmDeps } from '~~/server/utils/ai/mcp/bannerRunner'
 import { isGenerationRateLimited, MCP_GEN_RATE_WINDOW_MIN } from '~~/server/utils/ai/mcp/rateLimit'
 import {
   resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal
@@ -61,6 +66,10 @@ export default defineEventHandler(async (event) => {
   const videoGenEnabled = process.env.MCP_VIDEO_GEN_ENABLED === 'true'
   const isVideoRead = videoReadTools.some(t => t.name === toolName)
   const videoProposeAction = resolveVideoProposeAction(toolName) // 'video_generation' | 'video_project_create' | null
+  // Banner suite (Phase 2b): reads and propose/confirm gated by MCP_BANNER_TOOLS_ENABLED.
+  const bannerEnabled = process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
+  const isBannerRead = bannerReadTools.some(t => t.name === toolName)
+  const bannerProposeAction = resolveBannerProposeAction(toolName) // 'banner_render' | null
 
   // Per-actor rate limit on the billing/state-changing actions (no HITL on the count). Covers audio
   // generation + video propose/create; cheap polls (get_generation_status, video reads) are exempt.
@@ -91,7 +100,7 @@ export default defineEventHandler(async (event) => {
     // writeEnabled). The idempotencyKey is derived from the proposalId so a double-confirm can't double-bill.
     const videoConfirmDeps = buildVideoConfirmDeps()
     outcome = await executeWriteConfirm(args, ctx, {
-      enabled: writeEnabled || videoGenEnabled,
+      enabled: writeEnabled || videoGenEnabled || bannerEnabled,
       writeEnabled,
       getExecutor,
       claim: async (proposalId, uid) => queryOne<ClaimedProposal>(
@@ -109,6 +118,10 @@ export default defineEventHandler(async (event) => {
           genEnabled: videoGenEnabled,
           ...videoConfirmDeps
         })
+      },
+      bannerDispatch: async (row, bctx) => {
+        if (row.tool_name !== 'banner_render') return null
+        return dispatchBannerConfirm(row.resolved_payload as BannerRenderPendingPayload, bctx, buildBannerConfirmDeps())
       }
     })
   } else if (writeAction) {
@@ -139,6 +152,13 @@ export default defineEventHandler(async (event) => {
       genEnabled: videoGenEnabled,
       ...buildVideoProposeDeps()
     })
+  } else if (bannerProposeAction) {
+    // 2b banner propose: validate + resolve project, persist a source='mcp' pending row (no spend).
+    // Gated by the banner flag; CREATIVE-scoped inside executeBannerPropose.
+    outcome = await executeBannerPropose(toolName, args, ctx, buildBannerProposeDeps(), bannerEnabled)
+  } else if (isBannerRead) {
+    // Banner suite reads (Phase 2b): discovery + status, gated by MCP_BANNER_TOOLS_ENABLED + CREATIVE.
+    outcome = await executeBannerTool(buildBannerReadRunner(), toolName, args, ctx, bannerEnabled)
   } else if (isGeneration) {
     outcome = await executeGenerationTool(toolName, args, ctx, {
       enabled: process.env.MCP_GEN_TOOLS_ENABLED === 'true',

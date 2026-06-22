@@ -134,6 +134,10 @@ MCP_GEN_TOOLS_ENABLED = "true"
 MCP_VIDEO_TOOLS_ENABLED = "true"
 # MCP_VIDEO_GEN_ENABLED = "true"
 # VIDEO_GENERATION_ENABLED = "true"
+# MCP Phase 2b — banner-render suite over MCP. DORMANT: set to "false" until sign-off.
+# MCP_BANNER_TOOLS_ENABLED → banner read tools (list_banner_projects/get_banner_render_status) +
+#   propose_banner_render confirm-tier (HITL propose→confirm_action→dispatch). CREATIVE-gated.
+MCP_BANNER_TOOLS_ENABLED = "false"
 
 # Chat — Durable Objects (hosted in separate worker)
 [[durable_objects.bindings]]
