@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { registry } from '~~/server/utils/ai/tools/index'
 import { filterToolsForUser } from '~~/server/utils/ai/toolRegistry'
+import { projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
 
 const READ_TOOLS = [
   'get_finance_snapshot', 'get_adspend_pacing', 'get_tasks', 'get_project_status',
@@ -27,8 +28,10 @@ const CREATIVE_READS = ['get_my_creative_queue']
 const CREATIVE_WRITES = ['propose_proof_status']
 // Cross-cutting: promote a fact to department-shared memory (MANAGEMENT-gated).
 const SHARED_MEMORY_WRITES = ['propose_team_memory']
+// Read-coverage expansion (sub-project 1): CRM/leads/listening/inbox/EDM reads — auto-projected over MCP.
+const READ_COVERAGE_TOOLS = ['search_crm', 'get_crm_pipeline', 'get_leads', 'get_social_listening', 'get_social_inbox', 'get_email_campaign_performance']
 // remember = personal-memory capture (non-mutating; available to every authed role).
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, 'remember']
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, ...READ_COVERAGE_TOOLS, 'remember']
 
 describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
   it('contains the 15 read tools + the write tools + remember', () => {
@@ -89,5 +92,21 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
       expect(t.requiredPermission).toBe('FINANCE')
       expect(t.mutates).toBeFalsy()
     }
+  })
+
+  it('exposes the 6 read-coverage tools over MCP (read-only) with the intended permissions', () => {
+    const names = registry.map(t => t.name)
+    for (const n of READ_COVERAGE_TOOLS) expect(names).toContain(n)
+    // none of them mutate → all projected by projectReadOnlyTools for an owner
+    const projected = projectReadOnlyTools(registry, 'owner').map(t => t.name)
+    for (const n of READ_COVERAGE_TOOLS) expect(projected).toContain(n)
+    const byName = Object.fromEntries(registry.map(t => [t.name, t]))
+    expect(byName['search_crm'].requiredPermission).toBe('CLIENTS')
+    expect(byName['get_crm_pipeline'].requiredPermission).toBe('CLIENTS')
+    expect(byName['get_leads'].requiredPermission).toBeUndefined()
+    expect(byName['get_social_listening'].requiredPermission).toBe('CLIENTS')
+    expect(byName['get_social_inbox'].requiredPermission).toBe('CLIENTS')
+    expect(byName['get_email_campaign_performance'].requiredPermission).toBe('MANAGEMENT')
+    for (const n of READ_COVERAGE_TOOLS) expect(byName[n].mutates).toBeUndefined()
   })
 })
