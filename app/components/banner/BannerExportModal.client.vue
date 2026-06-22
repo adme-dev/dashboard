@@ -3,6 +3,8 @@ import JSZip from 'jszip'
 import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import type { Layer, ImageExportResult } from '~/types/banner-studio'
+import { summarizeExportJobs } from '~/utils/bannerExportPoll'
+import type { ExportJob } from '~/utils/bannerExportPoll'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
@@ -328,6 +330,8 @@ async function exportVideos() {
   isExporting.value = true
   exportProgress.value = 0
 
+  let pollTimer: ReturnType<typeof setTimeout> | null = null
+
   try {
     const formats = keys.map(key => {
       const fmt = FORMATS[key]
@@ -341,9 +345,10 @@ async function exportVideos() {
       return { key, html, width: fmt.w, height: fmt.h }
     }).filter(Boolean)
 
-    exportProgress.value = 10
+    exportProgress.value = 5
 
-    const results = await $fetch<ImageExportResult[]>('/api/agency/banner-studio/export-video', {
+    // Enqueue render jobs
+    const { jobIds } = await $fetch<{ jobIds: string[] }>('/api/agency/banner-studio/export-video', {
       method: 'POST',
       body: {
         projectId: state.project.id,
@@ -354,39 +359,73 @@ async function exportVideos() {
       },
     })
 
-    exportProgress.value = 80
+    exportProgress.value = 10
 
-    if (results.length === 1) {
-      window.open(results[0].url, '_blank')
-    } else if (results.length > 1) {
-      const zip = new JSZip()
-      const projectName = state.project?.name || 'banners'
+    // Poll until all jobs finish
+    await new Promise<void>((resolve, reject) => {
+      const poll = async () => {
+        try {
+          const { jobs } = await $fetch<{ jobs: ExportJob[] }>(
+            `/api/agency/banner-studio/export-video/jobs?ids=${jobIds.join(',')}`,
+          )
+          const summary = summarizeExportJobs(jobs)
+          // Map render progress to 10–95% range
+          exportProgress.value = 10 + Math.round(summary.progress * 0.85)
 
-      for (const result of results) {
-        const fmt = FORMATS[result.formatKey]
-        const filename = `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.mp4`
-        const response = await fetch(result.url)
-        const blob = await response.blob()
-        zip.file(filename, blob)
+          if (summary.finished) {
+            if (summary.failed > 0) {
+              toast.add({
+                title: 'Some exports failed',
+                description: `${summary.failed} of ${summary.total} MP4 render${summary.failed > 1 ? 's' : ''} failed`,
+                color: 'error',
+              })
+            }
+            if (summary.urls.length > 0) {
+              const projectName = state.project?.name || 'banners'
+              if (summary.urls.length === 1) {
+                window.open(summary.urls[0], '_blank')
+              } else {
+                // Download as ZIP using the same downloadBlob helper
+                const zip = new JSZip()
+                const jobsDone = jobs.filter(j => j.status === 'done')
+                for (const job of jobsDone) {
+                  const fmt = FORMATS[job.formatKey]
+                  const filename = `${projectName}_${fmt?.w || 0}x${fmt?.h || 0}.mp4`
+                  const response = await fetch(job.url as string)
+                  const blob = await response.blob()
+                  zip.file(filename, blob)
+                }
+                exportProgress.value = 97
+                const blob = await zip.generateAsync({ type: 'blob' })
+                downloadBlob(blob, `${projectName}_videos.zip`)
+              }
+              exportProgress.value = 100
+              toast.add({
+                title: 'Export complete',
+                description: `${summary.urls.length} MP4 video${summary.urls.length > 1 ? 's' : ''} ready at ${videoFps.value}fps`,
+                color: 'success',
+              })
+              emit('update:open', false)
+            }
+            resolve()
+          } else {
+            pollTimer = setTimeout(poll, 2000)
+          }
+        } catch (pollErr) {
+          reject(pollErr)
+        }
       }
-
-      exportProgress.value = 95
-
-      const blob = await zip.generateAsync({ type: 'blob' })
-      downloadBlob(blob, `${projectName}_videos.zip`)
-    }
-
-    exportProgress.value = 100
-    toast.add({
-      title: 'Export complete',
-      description: `${results.length} MP4 video${results.length > 1 ? 's' : ''} exported at ${videoFps.value}fps`,
-      color: 'success',
+      poll()
     })
-    emit('update:open', false)
   } catch (err: any) {
-    const message = err?.data?.statusMessage || err?.message || 'Video export failed'
+    if (pollTimer) clearTimeout(pollTimer)
+    const status = err?.response?.status ?? err?.statusCode
+    const message = status === 503
+      ? 'MP4 export isn\'t enabled yet — the render queue binding is not active'
+      : err?.data?.statusMessage || err?.message || 'Video export failed'
     toast.add({ title: 'Export failed', description: message, color: 'error' })
   } finally {
+    if (pollTimer) clearTimeout(pollTimer)
     isExporting.value = false
     exportProgress.value = 0
   }
