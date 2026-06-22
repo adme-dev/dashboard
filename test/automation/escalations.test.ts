@@ -65,7 +65,7 @@ describe('escalationNotificationParams', () => {
     expect(p.userId).toBe('u-1')
     expect(p.type).toBe('approval_requested')
     expect(p.message).toBe('Raise daily budget')
-    expect(p.link).toBe('/agency/automation?escalation=e-1')
+    expect(p.link).toBe('/agency/automation/escalations?escalation=e-1')
     expect(p.metadata).toMatchObject({ escalationId: 'e-1', capability: 'budget_pacing', kind: 'automation_escalation' })
   })
 })

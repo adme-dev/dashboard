@@ -79,7 +79,7 @@ export function escalationNotificationParams(args: {
     type: 'approval_requested',
     title: `Automation needs approval: ${args.capability}`,
     message: args.title,
-    link: `/agency/automation?escalation=${args.escalationId}`,
+    link: `/agency/automation/escalations?escalation=${args.escalationId}`,
     metadata: {
       escalationId: args.escalationId,
       capability: args.capability,

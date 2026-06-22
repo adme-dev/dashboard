@@ -28,11 +28,11 @@ interface EscalationListResponse {
  * Loads the pending automation escalations and records human decisions.
  * Read via useFetch (SSR-friendly); decisions via $fetch + toast, then refetch.
  */
-export function useAutomationEscalations() {
+export async function useAutomationEscalations() {
   const toast = useToast()
   const deciding = ref<string | null>(null)
 
-  const { data, pending, error, refresh } = useFetch<EscalationListResponse>(
+  const { data, pending, error, refresh } = await useFetch<EscalationListResponse>(
     '/api/agency/automation/escalations',
     { default: () => ({ groups: [], count: 0 }) },
   )

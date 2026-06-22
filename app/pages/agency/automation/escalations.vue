@@ -7,7 +7,7 @@ definePageMeta({
   middleware: ['role-management'],
 })
 
-const { count, pending, error, refresh, decide, deciding, groups } = useAutomationEscalations()
+const { count, pending, error, refresh, decide, deciding, groups } = await useAutomationEscalations()
 
 // Present by severity (critical → warning → info). The API also groups by client;
 // client-level grouping is deferred until client names are joined into the payload.
