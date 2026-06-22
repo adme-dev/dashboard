@@ -1354,7 +1354,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Role-Focused Assistants',
-        content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Switching is one click in the chat bar, and your choice sticks to the conversation, including on voice.'
+        content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, Media Buyer, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Switching is one click in the chat bar, and your choice sticks to the conversation, including on voice.'
       },
       {
         title: '@Entity Mentions',
