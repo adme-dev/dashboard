@@ -9,7 +9,7 @@
 //
 // Consent is explicit: an unconsented request renders the consent screen (read-only vs read+write); the
 // chosen scope (mcp:read, optionally mcp:write) is signed INTO the assertion so the Worker mints exactly it.
-import { defineEventHandler, getQuery, sendRedirect, getRequestURL, createError } from 'h3'
+import { defineEventHandler, getQuery, sendRedirect, createError } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { signMcpAssertion } from '~~/server/utils/ai/mcp/assertion'
 import { buildConsentHtml } from '~~/server/utils/ai/mcp/consent'
@@ -47,32 +47,30 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'redirect_uri not allowed' })
   }
 
-  // Explicit consent: until the user clicks Allow, render the consent screen. Allow re-enters this
-  // endpoint with consent=granted (params preserved); the read+write button also sets write=granted.
-  // Cancel bounces back with OAuth error=access_denied.
-  if (String(query.consent || '') !== 'granted') {
-    const self = getRequestURL(event)
-    const allowUrl = new URL(self)
-    allowUrl.searchParams.set('consent', 'granted')
-    const allowWriteUrl = new URL(self)
-    allowWriteUrl.searchParams.set('consent', 'granted')
-    allowWriteUrl.searchParams.set('write', 'granted')
-    const cancelUrl = new URL(dest)
-    cancelUrl.searchParams.set('state', state)
-    cancelUrl.searchParams.set('error', 'access_denied')
-    return buildConsentHtml({
-      userName: user.name || user.email || 'your account',
-      allowUrl: allowUrl.toString(),
-      allowWriteUrl: allowWriteUrl.toString(),
-      cancelUrl: cancelUrl.toString(),
-    })
-  }
-
-  // The consented scope: read-only by default; the read+write button adds mcp:write. The granted scope is
-  // signed into the assertion (integrity-protected) so the Worker mints the OAuth token with exactly this.
-  const scope = String(query.write || '') === 'granted' ? ['mcp:read', 'mcp:write'] : ['mcp:read']
-  const assertion = await signMcpAssertion(user.id, secret, { scope })
-  dest.searchParams.set('state', state)
-  dest.searchParams.set('assertion', assertion)
-  return sendRedirect(event, dest.toString(), 302)
+  // Consent is the ONLY way scope is granted, and it is NOT forgeable via query params. We mint two
+  // short-lived, scope-BOUND assertions (the granted scope is signed INTO each via HMAC) and embed one
+  // behind each consent button — the read-only button carries an mcp:read assertion, the read+write button
+  // an mcp:read+mcp:write one. The user's click selects which scoped assertion is handed to the Worker.
+  // A crafted link can neither skip this screen nor pre-elevate to mcp:write: it cannot forge an assertion,
+  // and scope is never derived from a raw `write`/`consent` query param. (Closes the self-elevation defect.)
+  const ttlSec = 300
+  const [readAssertion, writeAssertion] = await Promise.all([
+    signMcpAssertion(user.id, secret, { scope: ['mcp:read'], ttlSec }),
+    signMcpAssertion(user.id, secret, { scope: ['mcp:read', 'mcp:write'], ttlSec }),
+  ])
+  const allowUrl = new URL(dest)
+  allowUrl.searchParams.set('state', state)
+  allowUrl.searchParams.set('assertion', readAssertion)
+  const allowWriteUrl = new URL(dest)
+  allowWriteUrl.searchParams.set('state', state)
+  allowWriteUrl.searchParams.set('assertion', writeAssertion)
+  const cancelUrl = new URL(dest)
+  cancelUrl.searchParams.set('state', state)
+  cancelUrl.searchParams.set('error', 'access_denied')
+  return buildConsentHtml({
+    userName: user.name || user.email || 'your account',
+    allowUrl: allowUrl.toString(),
+    allowWriteUrl: allowWriteUrl.toString(),
+    cancelUrl: cancelUrl.toString(),
+  })
 })
