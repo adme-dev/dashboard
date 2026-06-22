@@ -77,7 +77,40 @@ From the Phase 1/2 handoff; unchanged this session.
 These are the hand-rolled-orchestration weak spots Workflows would consolidate; track independently in case Workflows slips.
 - [ ] 🧑/🤖 Audit companion-Worker queue consumers are all wired (history: agency-jobs had no consumer; crons that never fired).
 - [ ] 🧑/🤖 Confirm cron triggers fire in prod (anomaly/office/tracking/ga4-sync history).
-- [ ] — Keep `AI_TOOLS_ENABLED` ON every deploy (tool-calling agent depends on it).
+- [x] ✅ `AI_TOOLS_ENABLED` is baked at build time from `.env` (`nuxt.config:91`, `.env` has `=true`; verified `aiToolsEnabled:true` in the deployed bundle) — survives deploys. The real gap is dashboard-only vars → see §G.
+
+## F. AI assistance — what's left
+- **Tool-calling agent:** 🟢 live (flag baked on). Polish remaining:
+  - [ ] 🤖 KB-ACL fail-open check — `search_knowledge` should fail-open for docs lacking `visibility`/`ownerId` (validate + harden).
+  - [ ] 🤖 Slice-1.5 **personas** (design-first → brainstorm → build) + marketing sync.
+- **Voice Admin AI** (merged to `main`, so deployed behind `AI_TOOLS_ENABLED`; never had live-mic UAT):
+  - [ ] 🧑 Live-mic UAT on `/agency/ai/chat` (hands-free loop, barge-in, spoken write-confirm).
+  - [ ] 🧑 Go-live decision + marketing sync once UAT passes.
+- **Observe & Learn / proactive AI:** phase-4 built but dormant, operator-gated — [ ] 🧑 decide activation.
+- **AI cost/observability:** [ ] 🤖 (later) surface Groq + AI-Gateway spend in one place (ties into §B Workflows observability).
+
+## G. Deploy hygiene — env-var persistence (NEW · surfaced 2026-06-22)
+The prod deploy uses Direct-Upload `deployConfig`: it bakes `wrangler.toml [vars]` and **REPLACES dashboard
+plaintext env vars** on every deploy (encrypted **secrets survive**). Current baked `[vars]` = 7:
+`APP_NAME, EMAIL_FROM, MCP_GEN_TOOLS_ENABLED, MCP_SERVER_ENABLED, MCP_VIDEO_TOOLS_ENABLED, MCP_WORKER_ORIGIN, NODE_VERSION`.
+- [ ] 🧑 **Audit the CF dashboard env vars** — any operational *plaintext* var set there (e.g. `ANOMALY_NOTIFY_ALLOWLIST`,
+      `EMAIL_SENDING_ENABLED`, `APP_BASE_URL`, `SOCIAL_OAUTH_REDIRECT_BASE`, `META_APP_ID`) was cleared by the
+      last deploy and needs re-adding. (Dormant feature flags being unset = correct.)
+- [ ] 🤖 **Durable fix:** move the operational plaintext vars into `wrangler.toml [vars]` so deploys stop wiping them
+      (needs the var list + values from 🧑). Stops the per-deploy whack-a-mole.
 
 ---
-**Immediate next decision (🧑):** (1) **confirm AI Gateway credits / payment method are funded** (§A2 L1) and (2) pick the **tenant + cap** — together they unblock 2b Phase 2. **Then (🤖):** flip the generation flags + enable the tenant + redeploy, and we live-verify the first real job. **Other open 🧑 calls:** D4 (financial-over-MCP), 2c activation, client-billing model (§A2 L2), Workflows go/no-go.
+## Build order — what I can build now vs what's gated on you
+**🤖 I can build now (safe, reversible, no operator decision):**
+1. **M1** — marketing/connector docs sync to reflect live MCP capabilities incl. 2b video reads (§A).
+2. **Workflows → video-gen migration spec** (§B next step) — design doc.
+3. **KB-ACL fail-open** validation/hardening (§F).
+4. **Deploy-hygiene** wrangler.toml var move (§G) — *once you give me the var list/values.*
+5. Design-first features (**personas** §F, **payment Layer-2 passthrough** §A2) — start with a brainstorm/spec, then build.
+
+**⛔ Needs your decision/credentials (I will not do autonomously):**
+- 2b **Phase 2** flag flip + tenant + cap + deploy (billable) · 2c **activate** · **D4** financial · **Voice AI UAT** ·
+  **client-billing model** (§A2 L2) · **dashboard env audit** (§G) · **Workflows go/no-go**.
+
+**Immediate next decision (🧑):** to make internal video generation real — confirm credits funded + give a **tenant + cap**
+(e.g. "enable agency tenant, $30 cap"); then 🤖 flips the gen flags + enables the tenant + redeploys + we live-verify.
