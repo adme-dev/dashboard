@@ -1578,7 +1578,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Use XeroFlow from inside the AI assistant you already work in — Claude, Cursor, or ChatGPT. Ask about your agency in plain language and get answers from live data, with read-only, role-scoped access and a full audit trail. Built on the open Model Context Protocol (MCP).',
+    description: 'Use XeroFlow from inside the AI assistant you already work in — Claude, Cursor, or ChatGPT. Ask about your agency in plain language and get answers from live data, with role-scoped access and a full audit trail; creative roles can also generate owned, licence-clear voiceover and music. Your platform records stay read-only. Built on the open Model Context Protocol (MCP).',
     details: [
       {
         title: 'Your Agency, From Inside Your Assistant',
@@ -1589,12 +1589,12 @@ const features: Record<string, Feature> = {
         content: 'The connector signs in with each staff member\'s own XeroFlow account, so an assistant only ever sees what that person is already allowed to see — an account manager and a finance lead get different toolsets, automatically. There are no shared service accounts and no extra access to manage: the same roles and permissions that govern the app govern the assistant. Access is granted through a standard sign-in and consent screen you approve once.'
       },
       {
-        title: 'Read-Only by Design',
-        content: 'Connected assistants can look things up but cannot change anything. Only read tools are exposed — finance, ad spend, tasks, projects, clients, briefs, anomalies, knowledge and more — and any tool that would create, edit, send, or delete is blocked at the server, for every role. You get the speed of asking an assistant without the risk of it acting on your behalf.'
+        title: 'Safe by Design — No Platform Writes',
+        content: 'Connected assistants read your data — finance, ad spend, tasks, projects, clients, briefs, anomalies, knowledge and more — and creative roles can also generate owned, licence-clear media (voiceover and music), which is rate-limited and audited. What they cannot do is change your platform records: any tool that would create, edit, send, or delete a task, client, brief, or financial record is blocked at the server, for every role. You get the speed of asking an assistant without the risk of it acting on your records.'
       },
       {
-        title: 'Audited Today, Actions Later',
-        content: 'Every request an assistant makes is recorded in the AI audit trail — who asked, which tool ran, and when — so external access stays accountable. Connectors work with Claude (Pro, Max, Team, Enterprise) and Cursor today; ChatGPT requires a Team, Business, or Enterprise workspace with Developer Mode. Letting an assistant take actions — like submitting a brief or signing off work — is a separate, opt-in capability with its own confirmation step, coming in a later phase.'
+        title: 'Audited, with Actions Behind a Confirmation Step',
+        content: 'Every request an assistant makes is recorded in the AI audit trail — who asked, which tool ran, and when — so external access stays accountable. Connectors work with Claude (Pro, Max, Team, Enterprise) and Cursor today; ChatGPT requires a Team, Business, or Enterprise workspace with Developer Mode. Letting an assistant take a platform action — like creating a task or submitting a brief — is a separate, opt-in capability that always proposes first and runs only after a human confirms, enabled per-agency.'
       }
     ]
   },

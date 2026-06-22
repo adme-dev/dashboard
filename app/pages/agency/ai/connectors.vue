@@ -87,9 +87,11 @@ const steps: Record<string, string[]> = {
             </h1>
             <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed">
               Connect your AI assistant to XeroFlow and ask it about your work in plain language —
-              finance, ad spend, tasks, clients, briefs and more. Your assistant sees
-              <span class="font-medium text-[var(--ui-text)]">read-only</span> data, and only the
-              data your role already lets you see. It can’t change anything.
+              finance, ad spend, tasks, clients, briefs and more. It sees only the data your role
+              already lets you see. Beyond looking things up, creative roles can also
+              <span class="font-medium text-[var(--ui-text)]">generate owned, licence-clear media</span>
+              (voiceover, music) and browse video projects. It can’t edit, send, or delete your
+              platform records — those writing actions aren’t exposed.
             </p>
           </div>
 
@@ -181,8 +183,9 @@ const steps: Record<string, string[]> = {
 
             <div class="space-y-3">
               <p class="text-sm text-[var(--ui-text-muted)]">
-                These are the exact tools available to your role. All of them only read data —
-                there are no tools that create, change, send, or delete anything.
+                These are the exact tools available to your role. Most look up your data; creative
+                roles also get owned-media generation (voiceover, music) and video discovery. None of
+                them edit, send, or delete your platform records (tasks, clients, finances).
               </p>
 
               <div v-if="pending" class="text-sm text-[var(--ui-text-dimmed)]">Loading your tools…</div>
@@ -221,7 +224,7 @@ const steps: Record<string, string[]> = {
               </li>
               <li class="flex gap-2.5">
                 <UIcon name="i-lucide-eye" class="w-4 h-4 mt-0.5 text-[var(--ui-text-muted)] shrink-0" />
-                <span><span class="font-medium">Read-only.</span> It can look things up but can’t make changes — writing actions aren’t exposed.</span>
+                <span><span class="font-medium">No platform writes.</span> It looks things up and (for creative roles) can generate owned, licence-clear media — but it can’t create, edit, send, or delete your tasks, clients, or finances. Generation is rate-limited and audited.</span>
               </li>
               <li class="flex gap-2.5">
                 <UIcon name="i-lucide-scroll-text" class="w-4 h-4 mt-0.5 text-[var(--ui-text-muted)] shrink-0" />

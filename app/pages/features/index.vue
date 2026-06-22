@@ -262,7 +262,7 @@ const categories = [
       { title: 'AI Training Pipeline', slug: 'ai-training-pipeline', icon: 'i-lucide-graduation-cap', description: 'Extract training data from conversations, upload knowledge entries, and manage training datasets.' },
       { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context.' },
       { title: 'LoRA Adapters', slug: 'lora-adapters', icon: 'i-lucide-cpu', description: 'Fine-tune AI models with your agency data. Custom adapters with traffic routing and A/B testing.' },
-      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Use XeroFlow from inside Claude, Cursor, or ChatGPT. Each staff member connects with their own login and gets read-only, role-scoped access to live agency data — finance, ad spend, tasks, clients and more — with every request audited. Built on the Model Context Protocol (MCP).' },
+      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Use XeroFlow from inside Claude, Cursor, or ChatGPT. Each staff member connects with their own login and gets role-scoped access to live agency data — finance, ad spend, tasks, clients and more — plus owned-media generation (voiceover, music) for creative roles, with platform writes blocked and every request audited. Built on the Model Context Protocol (MCP).' },
     ]
   },
   {
