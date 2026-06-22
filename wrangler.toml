@@ -52,16 +52,12 @@ queue = "video-render"
 
 # Producer binding for Banner Studio MP4 renders (#2a). Consumer runs in
 # workers/audio-jobs/ as the `banner-render` queue branch.
-# DORMANT: left commented until #2a activation (explicit sign-off). With the binding
-# absent, the in-app export gracefully returns 503 "MP4 export not enabled yet" and the
-# MCP banner-confirm path no-ops (MCP_BANNER_TOOLS_ENABLED is also off). Cloudflare
-# validates queue bindings at publish time, so this binding can only be present once the
-# `banner-render` (+`banner-render-dlq`) queues exist. To ACTIVATE: create the queues
-# (`wrangler queues create banner-render` + `…-dlq`), deploy the workers/audio-jobs/
-# consumer + Chromium container (with bannerCapture.mjs), then uncomment + redeploy.
-# [[queues.producers]]
-# binding = "BANNER_RENDER_QUEUE"
-# queue = "banner-render"
+# ACTIVATED 2026-06-22 (sign-off): banner-render + banner-render-dlq queues created;
+# audio-jobs Worker + Chromium container (bannerCapture.mjs) deployed with the
+# banner-render consumer attached. In-app MP4 export + MCP banner-confirm enqueue here.
+[[queues.producers]]
+binding = "BANNER_RENDER_QUEUE"
+queue = "banner-render"
 
 # Producer binding for AI Video Studio generation jobs. Consumer runs in
 # workers/video-generation/ as the `video-generation` queue branch.
@@ -141,10 +137,10 @@ MCP_GEN_TOOLS_ENABLED = "true"
 MCP_VIDEO_TOOLS_ENABLED = "true"
 # MCP_VIDEO_GEN_ENABLED = "true"
 # VIDEO_GENERATION_ENABLED = "true"
-# MCP Phase 2b — banner-render suite over MCP. DORMANT: set to "false" until sign-off.
+# MCP Phase 2b — banner-render suite over MCP. ACTIVATED 2026-06-22 (sign-off).
 # MCP_BANNER_TOOLS_ENABLED → banner read tools (list_banner_projects/get_banner_render_status) +
 #   propose_banner_render confirm-tier (HITL propose→confirm_action→dispatch). CREATIVE-gated.
-MCP_BANNER_TOOLS_ENABLED = "false"
+MCP_BANNER_TOOLS_ENABLED = "true"
 # MCP Phase D4 — financial write tools over MCP. DORMANT: set to "false" until sign-off.
 # MCP_FINANCIAL_TOOLS_ENABLED → propose_budget_change, propose_eom_generate, propose_expense_approval
 #   (money-movers; require ack:true at confirm), propose_quote, propose_expense_classify,
