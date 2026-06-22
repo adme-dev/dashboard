@@ -68,6 +68,32 @@ export default {
       return
     }
 
+    if (batch.queue === 'banner-render') {
+      const { runBannerRenderJob } = await import('./bannerRenderWorker')
+      const { renderBanner, getSourceHtml, uploadBannerMp4 } = await import('./bannerRenderContainer')
+      const db = await import('./db')
+      for (const msg of batch.messages) {
+        const { jobId } = msg.body as { jobId: string }
+        try {
+          await runBannerRenderJob({ jobId }, {
+            loadJob: db.dbLoadBannerJob,
+            markRendering: db.dbMarkBannerRendering,
+            getSourceHtml: (key) => getSourceHtml(env as any, key),
+            render: (html, p) => renderBanner(env as any, { jobId, html, ...p }),
+            uploadMp4: (projectId, formatKey, bytes) => uploadBannerMp4(env as any, projectId, formatKey, bytes, jobId),
+            insertExport: db.dbInsertBannerExport,
+            markDone: db.dbMarkBannerDone,
+            markFailed: db.dbMarkBannerFailed,
+          })
+          msg.ack()
+        } catch (e) {
+          console.error('audio-jobs.banner-render.error', jobId, e)
+          msg.retry({ delaySeconds: 30 })
+        }
+      }
+      return
+    }
+
     if (batch.queue === 'timeline-render') {
       const { runTimelineRenderJob } = await import('./timelineRenderWorker')
       const { renderVariants } = await import('./renderVariants')
