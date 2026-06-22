@@ -157,6 +157,9 @@ export interface ConfirmDeps {
   videoDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
   /** Optional (2b): handle banner confirm-tier tool_names; return null to fall through to the next path. */
   bannerDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
+  /** Optional: restore a just-claimed row to 'proposed' when a PRE-execution gate rejects (ack/permission),
+   *  so the proposal isn't burned and the user can retry (e.g. with ack:true). Never called after execution. */
+  revertClaim?: (proposalId: string, userId: string) => Promise<void>
 }
 
 /**
@@ -175,6 +178,14 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
 
   const row = await deps.claim(parsed.data.proposalId, ctx.userId)
   if (!row) return { ok: false, error: 'Proposal not found, already used, expired, or not yours.', code: 'expired' }
+
+  // A pre-execution gate rejected AFTER we atomically claimed the row (which set it to 'executed').
+  // Restore it to 'proposed' so the proposal isn't burned and the caller can retry (e.g. with ack:true).
+  // Only used for gates that run BEFORE ex.execute — never after a (partial) execution.
+  const rejectAndRevert = async (o: WriteConfirmOutcome): Promise<WriteConfirmOutcome> => {
+    await deps.revertClaim?.(parsed.data.proposalId, ctx.userId).catch(() => {})
+    return o
+  }
 
   // 2b: video confirm-tier actions get their own dispatch (returns jobId / projectId / cap_exceeded).
   // It returns null for non-video tool_names, so the financial/2c paths below handle those.
@@ -198,14 +209,14 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
     if (!ex) return { ok: false, error: 'No executor registered for this action.', code: 'not_found' }
     // MCP-boundary ack gate for money-movers (independent of executor riskTier).
     if ((MCP_FINANCIAL_RICH_CONFIRM as readonly string[]).includes(row.tool_name) && !parsed.data.ack) {
-      return { ok: false, error: 'This action requires explicit ack:true.', code: 'confirm_required' }
+      return rejectAndRevert({ ok: false, error: 'This action requires explicit ack:true.', code: 'confirm_required' })
     }
     // Also honour executor-level rich_confirm (covers any executor that opted in to the tier).
     if (ex.riskTier === 'rich_confirm' && !parsed.data.ack) {
-      return { ok: false, error: 'This action requires explicit ack:true.', code: 'confirm_required' }
+      return rejectAndRevert({ ok: false, error: 'This action requires explicit ack:true.', code: 'confirm_required' })
     }
     if (ex.requiredPermission && !roleHasPermission(ctx.userRole, ex.requiredPermission)) {
-      return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+      return rejectAndRevert({ ok: false, error: 'Not permitted.', code: 'forbidden' })
     }
     try {
       const res = await ex.execute(row.resolved_payload, ctx)
@@ -224,10 +235,10 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   const ex = deps.getExecutor(row.tool_name)
   if (!ex) return { ok: false, error: 'No executor registered for this action.', code: 'not_found' }
   if (ex.riskTier === 'rich_confirm' && !parsed.data.ack) {
-    return { ok: false, error: 'This action requires explicit ack:true.', code: 'confirm_required' }
+    return rejectAndRevert({ ok: false, error: 'This action requires explicit ack:true.', code: 'confirm_required' })
   }
   if (ex.requiredPermission && !roleHasPermission(ctx.userRole, ex.requiredPermission)) {
-    return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+    return rejectAndRevert({ ok: false, error: 'Not permitted.', code: 'forbidden' })
   }
 
   try {

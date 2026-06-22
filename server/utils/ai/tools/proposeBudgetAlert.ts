@@ -33,7 +33,7 @@ const defaultDeps: BudgetAlertDeps = {
         LIMIT 6`,
       [`%${escapeLike(name)}%`, name],
     ),
-  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId!, 'propose_budget_alert', payload),
+  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId ?? null, 'propose_budget_alert', payload),
 }
 
 /**
@@ -46,7 +46,7 @@ export async function proposeBudgetAlert(args: Args, ctx: ToolContext, deps: Bud
   // The endpoint is requireRole(['owner','admin']); mirror it here so we never prepare a proposal the
   // proposer can't confirm. (Belt-and-suspenders: the registry already filters by requiredPermission.)
   if (!roleHasPermission(ctx.userRole, 'ADMIN')) return fail('You do not have permission to create budget alerts.')
-  if (!ctx.conversationId) return fail('Cannot prepare a budget alert outside a conversation.')
+  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a budget alert outside a conversation.')
   const title = args.title?.trim()
   if (!title) return fail('A budget alert needs a title.')
 

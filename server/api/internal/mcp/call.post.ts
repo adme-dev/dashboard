@@ -24,7 +24,7 @@ import { buildBannerReadRunner, buildBannerProposeDeps, buildBannerConfirmDeps, 
 import { isGenerationRateLimited, MCP_GEN_RATE_WINDOW_MIN } from '~~/server/utils/ai/mcp/rateLimit'
 import {
   resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal,
-  isFinancialAction, MCP_FINANCIAL_ACTIONS
+  isFinancialAction, MCP_FINANCIAL_ACTIONS, MCP_FINANCIAL_RICH_CONFIRM
 } from '~~/server/utils/ai/mcp/writeTools'
 import { getExecutor } from '~~/server/utils/ai/executors'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
@@ -34,8 +34,11 @@ export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
     throw createError({ statusCode: 503, statusMessage: 'MCP server disabled' })
   }
+  // Always require the shared secret. The previous `!import.meta.dev` bypass was a fail-open gate that
+  // would expose this surface unauthenticated in any non-production build — never skip the check itself.
+  const expectedSecret = process.env.MCP_INTERNAL_SECRET
   const secret = getHeader(event, 'x-mcp-secret')
-  if (!import.meta.dev && secret !== process.env.MCP_INTERNAL_SECRET) {
+  if (!expectedSecret || secret !== expectedSecret) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
@@ -117,6 +120,13 @@ export default defineEventHandler(async (event) => {
           RETURNING tool_name, resolved_payload`,
         [proposalId, uid]
       ).catch(() => null),
+      // Restore a just-claimed row to 'proposed' when a PRE-execution gate (ack/permission) rejects, so a
+      // money-mover proposal isn't burned and the caller can retry with ack:true. Scoped to our own claim.
+      revertClaim: async (proposalId, uid) => { await execute(
+        `UPDATE ai_pending_actions SET status='proposed', confirmed_by=NULL, executed_at=NULL
+          WHERE id = $1 AND user_id = $2 AND status='executed' AND source='mcp'`,
+        [proposalId, uid]
+      ).catch(() => {}) },
       videoDispatch: async (row, vctx) => {
         const pid = String((args as { proposalId?: unknown }).proposalId ?? '')
         const payload = row.tool_name === 'video_generation'
@@ -207,15 +217,35 @@ export default defineEventHandler(async (event) => {
     outcome = await executeReadOnlyTool(registry as AiTool<unknown>[], toolName, args, ctx)
   }
 
-  // Audit every MCP call — arg keys only (no values). Fail-safe: a logging error never fails the call.
+  // Audit every MCP call — arg keys only (no values). Enriched fidelity for the write/confirm surface so
+  // a money-mover can be traced: link the proposal (pending_id), stamp confirmed_by on confirms, record a
+  // real risk_tier, and distinguish a successful PROPOSE ('proposed' — nothing executed) from a CONFIRM
+  // ('executed'). Fail-safe: a logging error never fails the call.
+  const isProposeCall = !!writeAction || !!videoProposeAction || !!bannerProposeAction || isFinancialPropose
+  // pending_id only on success (real, existing row id) to avoid dangling references on failed attempts.
+  const auditPendingId = !outcome.ok
+    ? null
+    : isConfirm
+      ? (String((args as { proposalId?: unknown }).proposalId ?? '') || null)
+      : isProposeCall
+        ? ((outcome.data as { proposalId?: string } | undefined)?.proposalId ?? null)
+        : null
+  const isMoneyMover = (MCP_FINANCIAL_RICH_CONFIRM as readonly string[]).includes(toolName)
+  const auditRiskTier = isMoneyMover ? 'rich_confirm'
+    : (isFinancialPropose || !!writeAction || isConfirm) ? 'confirm'
+      : 'auto'
+  const auditOutcome = !outcome.ok ? 'failed' : (isProposeCall ? 'proposed' : 'executed')
   await execute(
     `INSERT INTO ai_action_audit (pending_id, user_id, confirmed_by, tool_name, risk_tier, client_scope, payload, result_ref, outcome)
-     VALUES (NULL, $1, NULL, $2, 'auto', NULL, $3, NULL, $4)`,
+     VALUES ($1, $2, $3, $4, $5, NULL, $6, NULL, $7)`,
     [
+      auditPendingId,
       userId,
+      isConfirm && outcome.ok ? userId : null,
       toolName,
+      auditRiskTier,
       JSON.stringify({ source: 'mcp', argKeys: Object.keys(args) }),
-      outcome.ok ? 'executed' : 'failed'
+      auditOutcome
     ]
   ).catch(() => {})
 

@@ -62,7 +62,7 @@ const defaultDeps: ProposeBudgetChangeDeps = {
       systemPrompt: 'Reply with ONLY a JSON object {"sane":bool,"concern":string}.',
     }),
   }),
-  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId!, 'propose_budget_change', payload),
+  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId ?? null, 'propose_budget_change', payload),
 }
 
 /** Exact-name-wins over substring matches (mirrors createTask.pickByExactName for campaignName). */
@@ -81,7 +81,7 @@ function pickExactCampaign(cands: PacingCandidate[], name: string): PacingCandid
  */
 export async function proposeBudgetChange(args: Args, ctx: ToolContext, deps: ProposeBudgetChangeDeps = defaultDeps): Promise<ToolResult> {
   if (!roleHasPermission(ctx.userRole, 'MEDIA_BUYING')) return fail('You do not have permission to change budgets.')
-  if (!ctx.conversationId) return fail('Cannot prepare a budget change outside a conversation.')
+  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a budget change outside a conversation.')
   if (!(args.newDailyBudget > 0)) return fail('The new daily budget must be a positive number.')
 
   const matches = pickExactCampaign(await deps.resolveCampaign(args.campaignName, args.clientName, ctx), args.campaignName)

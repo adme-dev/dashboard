@@ -10,8 +10,10 @@ export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
     throw createError({ statusCode: 503, statusMessage: 'MCP server disabled' })
   }
+  // Always require the shared secret (no dev bypass — that was a fail-open gate in non-prod builds).
+  const expectedSecret = process.env.MCP_INTERNAL_SECRET
   const secret = getHeader(event, 'x-mcp-secret')
-  if (!import.meta.dev && secret !== process.env.MCP_INTERNAL_SECRET) {
+  if (!expectedSecret || secret !== expectedSecret) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
