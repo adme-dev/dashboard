@@ -1,6 +1,10 @@
 // server/utils/automation/pacingWatchdog.ts
 import type { PacingReviewItem, PacingReviewIssueType } from '~~/server/utils/socialSpendPacingReview'
 import type { EscalationInput } from '~~/server/utils/automation/escalations'
+import { queryRows } from '~~/server/utils/db'
+import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS, type PacingReviewRow } from '~~/server/utils/socialSpendPacingReview'
+import { raiseEscalation } from '~~/server/utils/automation/escalationsStore'
+import { notifyEscalationApprovers } from '~~/server/utils/automation/notifyEscalation'
 
 const ACTIONABLE_ISSUES: PacingReviewIssueType[] = ['overpacing', 'underpacing', 'no_spend', 'paused_with_budget', 'stale_sync']
 const ACTIONABLE_SEVERITIES = ['critical', 'warning']
@@ -67,4 +71,52 @@ export function filterAlreadyPending(candidates: EscalationInput[], pendingDetai
     const det = (c.detail ?? {}) as Record<string, any>
     return !seen.has(dedupeKey({ platform: det.platform, campaignId: det.campaignId, issueType: det.issueType }))
   })
+}
+
+function periodFor(now: Date): string {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+export async function runPacingWatchdog(opts: { now?: Date } = {}): Promise<{ evaluated: number, raised: number, skipped: number }> {
+  const now = opts.now ?? new Date()
+  const period = periodFor(now)
+
+  const rows = await queryRows<PacingReviewRow>(
+    `SELECT ${PACING_REVIEW_SELECT_COLUMNS}
+       FROM media_spend ms
+       LEFT JOIN agency_clients ac ON ac.id = ms.client_id
+      WHERE ms.period = $1`,
+    [period],
+  )
+
+  const review = buildPacingReview(rows, { now, period })
+  const actionable = review.items.filter(isActionablePacingItem)
+  const evaluated = review.items.length
+
+  // Dedupe against escalations still pending for this capability.
+  const pending = await queryRows<{ detail: Record<string, any> }>(
+    `SELECT detail FROM automation_escalations WHERE capability = 'budget_pacing_watchdog' AND status = 'pending'`,
+  )
+  const candidates = actionable.map(it => pacingItemToEscalation(it, {}))
+  const fresh = filterAlreadyPending(candidates, pending.map(p => p.detail ?? {}))
+
+  let raised = 0
+  for (const input of fresh) {
+    try {
+      const row = await raiseEscalation(input)
+      raised++
+      if (input.severity === 'critical' && row?.id) {
+        await notifyEscalationApprovers({
+          escalationId: row.id,
+          capability: input.capability,
+          title: input.title,
+          severity: 'critical',
+        })
+      }
+    } catch (err) {
+      console.error('[pacing-watchdog] failed to raise escalation', input.title, err)
+    }
+  }
+
+  return { evaluated, raised, skipped: candidates.length - fresh.length }
 }
