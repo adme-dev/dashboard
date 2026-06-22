@@ -7,17 +7,28 @@ import {
   mcpProposeName,
   resolveProposeAction,
   MCP_CONFIRM_TOOL,
+  MCP_FINANCIAL_ACTIONS,
+  MCP_FINANCIAL_RICH_CONFIRM,
+  isFinancialAction,
+  projectFinancialTools,
   type ConfirmDeps
 } from '~~/server/utils/ai/mcp/writeTools'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { ActionExecutor } from '~~/server/utils/ai/executors/types'
+import { registry as REGISTRY } from '~~/server/utils/ai/tools/index'
 
 // admin holds every permission; viewer is read-only with none (mirrors mcpProject.test).
-vi.mock('~~/server/utils/permissions', () => ({
-  roleHasPermission: (role: string) => role === 'admin',
-  isReadOnlyRole: (role: string) => role === 'viewer'
-}))
+// media_buyer additionally holds MEDIA_BUYING (for financial role-filter tests).
+vi.mock('~~/server/utils/permissions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~~/server/utils/permissions')>()
+  return {
+    ...actual,
+    roleHasPermission: (role: string, perm?: string) =>
+      role === 'admin' || role === 'owner' || (role === 'media_buyer' && perm === 'MEDIA_BUYING'),
+    isReadOnlyRole: (role: string) => role === 'viewer'
+  }
+})
 
 const ctx = (role: string): ToolContext => ({ userId: 'u1', userRole: role, source: 'mcp', event: {} as never })
 
@@ -145,5 +156,69 @@ describe('executeWriteConfirm', () => {
       videoDispatch: async () => null
     }))
     expect(res).toMatchObject({ ok: false, code: 'forbidden' })
+  })
+})
+
+describe('financial actions over MCP (#3 / D4)', () => {
+  const ctx = { userId: 'u1', userRole: 'owner', event: {} as any } as any
+
+  it('projectFinancialTools is empty unless the financial flag is on', () => {
+    expect(projectFinancialTools(REGISTRY, 'owner', false)).toEqual([])
+    const names = projectFinancialTools(REGISTRY, 'owner', true).map(t => t.name)
+    for (const a of MCP_FINANCIAL_ACTIONS) expect(names).toContain(a)
+    expect(names).toContain('confirm_action')
+  })
+
+  it('role-filters by each tool\'s own permission (eom_generate is ADMIN-only)', () => {
+    // a MEDIA_BUYING-only role (media_buyer) must NOT see eom_generate/expense_* (ADMIN/FINANCE) but may see budget_change
+    const names = projectFinancialTools(REGISTRY, 'media_buyer', true).map(t => t.name)
+    expect(names).toContain('propose_budget_change')
+    expect(names).not.toContain('propose_eom_generate')
+    expect(names).not.toContain('propose_expense_approval')
+  })
+
+  it('confirm forbids a financial action when financialEnabled is off (even if write flag on)', async () => {
+    const deps = { enabled: true, writeEnabled: true, financialEnabled: false,
+      claim: vi.fn().mockResolvedValue({ tool_name: 'propose_quote', resolved_payload: {} }),
+      getExecutor: vi.fn() } as any
+    const r = await executeWriteConfirm({ proposalId: 'prop12345' }, ctx, deps)
+    expect(r.ok).toBe(false); expect((r as any).code).toBe('forbidden')
+    expect(deps.getExecutor).not.toHaveBeenCalled()
+  })
+
+  it('money-mover requires ack:true', async () => {
+    const exec = { execute: vi.fn().mockResolvedValue({ resultRef: '1', summary: 'ok' }), riskTier: 'rich_confirm' }
+    const deps = { enabled: true, financialEnabled: true,
+      claim: vi.fn().mockResolvedValue({ tool_name: 'propose_budget_change', resolved_payload: {} }),
+      getExecutor: vi.fn().mockReturnValue(exec) } as any
+    const noAck = await executeWriteConfirm({ proposalId: 'prop12345' }, ctx, deps)
+    expect(noAck.ok).toBe(false); expect((noAck as any).code).toBe('confirm_required')
+    const withAck = await executeWriteConfirm({ proposalId: 'prop12345', ack: true }, ctx, deps)
+    expect(withAck.ok).toBe(true)
+  })
+
+  it('expense_approval (executor tier=confirm) STILL requires ack at the MCP boundary (money-mover)', async () => {
+    const exec = { execute: vi.fn(), riskTier: 'confirm' } // executor is only 'confirm'
+    const deps = { enabled: true, financialEnabled: true,
+      claim: vi.fn().mockResolvedValue({ tool_name: 'propose_expense_approval', resolved_payload: {} }),
+      getExecutor: vi.fn().mockReturnValue(exec) } as any
+    const r = await executeWriteConfirm({ proposalId: 'prop12345' }, ctx, deps)
+    expect(r.ok).toBe(false); expect((r as any).code).toBe('confirm_required')
+    expect(exec.execute).not.toHaveBeenCalled()
+  })
+
+  it('low-blast financial (expense_classify) dispatches without ack', async () => {
+    const exec = { execute: vi.fn().mockResolvedValue({ resultRef: '1', summary: 'ok' }), riskTier: 'confirm' }
+    const deps = { enabled: true, financialEnabled: true,
+      claim: vi.fn().mockResolvedValue({ tool_name: 'propose_expense_classify', resolved_payload: {} }),
+      getExecutor: vi.fn().mockReturnValue(exec) } as any
+    const r = await executeWriteConfirm({ proposalId: 'prop12345' }, ctx, deps)
+    expect(r.ok).toBe(true); expect(exec.execute).toHaveBeenCalled()
+  })
+
+  it('isFinancialAction + rich-confirm set are correct', () => {
+    expect(isFinancialAction('propose_quote')).toBe(true)
+    expect(isFinancialAction('create_task')).toBe(false)
+    expect([...MCP_FINANCIAL_RICH_CONFIRM]).toEqual(['propose_budget_change','propose_eom_generate','propose_expense_approval'])
   })
 })
