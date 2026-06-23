@@ -673,7 +673,7 @@ describe('notifications utility', () => {
         'task_overdue',
         'approval_requested',
         'approval_completed',
-        'invitation_received',
+        'approval_response',
         'team_update',
         'system'
       ] as const
