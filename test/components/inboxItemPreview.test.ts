@@ -1,0 +1,46 @@
+// @vitest-environment happy-dom
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import { createSSRApp, h, type Component } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import InboxItemPreview from '~~/app/components/inbox/InboxItemPreview.vue'
+
+// Minimal stubs for the Nuxt-UI components the preview uses.
+const stubs: Record<string, Component> = {
+  USkeleton: { name: 'USkeleton', template: '<div class="skeleton" />' },
+  UAlert: { name: 'UAlert', props: ['title', 'description', 'icon', 'color', 'variant'], template: '<div class="alert">{{ title }} {{ description }}</div>' },
+  UBadge: { name: 'UBadge', props: ['label'], template: '<span class="badge">{{ label }}</span>' },
+  UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' }
+}
+
+async function render(notification: { link: string | null }) {
+  const app = createSSRApp({ render: () => h(InboxItemPreview, { notification }) })
+  for (const [name, c] of Object.entries(stubs)) {
+    app.component(name, c)
+  }
+  return renderToString(app)
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('InboxItemPreview', () => {
+  it('renders the loading state for a task link without throwing', async () => {
+    // $fetch never resolves within renderToString, so we observe the loading state.
+    vi.stubGlobal('$fetch', () => new Promise(() => {}))
+    const html = await render({ link: '/agency/tasks/t1' })
+    expect(html).toContain('skeleton')
+  })
+
+  it('renders the loading state for a brief link without throwing', async () => {
+    vi.stubGlobal('$fetch', () => new Promise(() => {}))
+    const html = await render({ link: '/agency/briefs/b1' })
+    expect(html).toContain('skeleton')
+  })
+
+  it('renders nothing meaningful for an unpreviewable link (parent shows fallback)', async () => {
+    vi.stubGlobal('$fetch', () => new Promise(() => {}))
+    const html = await render({ link: '/agency/boards/x' })
+    expect(html).not.toContain('skeleton')
+  })
+})

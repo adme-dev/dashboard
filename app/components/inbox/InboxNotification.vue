@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { parseInboxEntity } from '~~/app/utils/inboxEntity'
+import InboxItemPreview from '~/components/inbox/InboxItemPreview.vue'
+
 interface NotificationActor {
   id: string
   name: string
@@ -30,6 +33,10 @@ const emit = defineEmits<{
 }>()
 
 const { getNotificationIcon, getNotificationColor, formatRelativeTime } = useNotifications()
+
+// Resolve the underlying item this notification points at (task / brief) so we can
+// render it inline. null → no dedicated preview; fall back to the metadata card.
+const previewEntity = computed(() => parseInboxEntity(props.notification.link))
 
 const badgeColorMap: Record<string, string> = {
   task_assigned: 'info',
@@ -81,7 +88,7 @@ function getTypeLabel(type: string) {
       </template>
 
       <template #right>
-        <UTooltip v-if="notification.link" text="View Task">
+        <UTooltip v-if="notification.link" :text="previewEntity ? `Open ${previewEntity.label}` : 'Open'">
           <UButton
             icon="i-lucide-external-link"
             color="neutral"
@@ -162,8 +169,13 @@ function getTypeLabel(type: string) {
         {{ notification.message }}
       </p>
 
-      <!-- Metadata section -->
-      <div v-if="notification.metadata && Object.keys(notification.metadata).length > 0" class="mt-6">
+      <!-- Inline preview of the underlying item (task / brief) — "view what's inside it" -->
+      <div v-if="previewEntity" class="mt-6 rounded-lg border border-default bg-elevated/30 p-4">
+        <InboxItemPreview :notification="notification" />
+      </div>
+
+      <!-- Metadata fallback — only when there's no rich item preview -->
+      <div v-else-if="notification.metadata && Object.keys(notification.metadata).length > 0" class="mt-6">
         <UCard variant="subtle">
           <template #header>
             <span class="text-xs font-medium text-dimmed uppercase tracking-wider">Details</span>
@@ -186,7 +198,7 @@ function getTypeLabel(type: string) {
     <div class="p-4 sm:px-6 shrink-0 border-t border-default flex items-center gap-2">
       <UButton
         v-if="notification.link"
-        label="View Task"
+        :label="previewEntity ? `Open ${previewEntity.label}` : 'View'"
         icon="i-lucide-external-link"
         color="primary"
         @click="emit('navigate', notification)"
