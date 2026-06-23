@@ -2922,7 +2922,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-file-text',
     categoryIconBg: 'bg-orange-50',
     categoryIconColor: 'text-orange-600',
-    description: 'Build structured intake templates with 30+ field types — text, dropdown, file upload, date pickers, budgets, and more. Define required fields, set defaults, and organize sections with drag-and-drop.',
+    description: 'Build structured intake templates with 30+ field types — text, dropdown, file upload, date pickers, budgets, and more. Start from a ready-made library spanning paid media, creative, print, web, email, and direct response, define required fields, capture offer and compliance details, and organize sections with drag-and-drop.',
     details: [
       {
         title: '30+ Field Types',
@@ -2938,7 +2938,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Template Library',
-        content: 'Save templates for different brief types — campaign briefs, social content requests, video production briefs, website projects. Each template captures the unique information that workflow needs. Duplicate existing templates to create variations without starting from scratch. Templates are versioned so in-progress briefs continue using the version they started with.'
+        content: 'Start from a ready-made library that spans every channel your team briefs — paid media (search, social, performance-max, and inventory-feed campaigns), creative and design, print and out-of-home, web and landing pages, email, and SMS/MMS. Each template captures the unique information that workflow needs. Duplicate existing templates to create variations without starting from scratch. Templates are versioned so in-progress briefs continue using the version they started with.'
+      },
+      {
+        title: 'Offer, Compliance & Accountability',
+        content: 'Campaign and creative templates capture the offer and its legal fine print as structured fields, so the deal, pricing, and required disclaimers travel with every brief — and the disclaimer becomes mandatory the moment a price is entered. An accountability layer records the owner responsible for delivery and the sign-off required before anything goes live, giving every brief a clear chain of who proposed it, who confirmed compliance, and who must approve. The same structured fields make briefs readable by the review automation and AI assistants that route and act on them.'
       }
     ]
   },

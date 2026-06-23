@@ -300,7 +300,7 @@ const categories = [
     iconBg: 'bg-orange-50 dark:bg-orange-500/10',
     iconColor: 'text-orange-600',
     features: [
-      { title: 'Brief Templates', slug: 'brief-templates', icon: 'i-lucide-file-plus', description: 'Build templates with 30+ field types — text, dropdown, file upload, date, budget, and more. Drag-and-drop field ordering.' },
+      { title: 'Brief Templates', slug: 'brief-templates', icon: 'i-lucide-file-plus', description: 'A ready-made library spanning paid media, creative, print, web, email, and direct response — built from 30+ field types with structured offer, compliance, and sign-off fields and drag-and-drop ordering.' },
       { title: 'Template Builder', slug: 'template-builder', icon: 'i-lucide-blocks', description: 'Visual template editor with field configuration, required/optional toggles, section grouping, and default values.' },
       { title: 'AI Brief Tools', slug: 'ai-brief-tools', icon: 'i-lucide-sparkles', description: 'AI-powered field suggestions, brief scoring (completeness + quality), and full brief generation from minimal input.' },
       { title: 'Brief-to-Quote', slug: 'brief-to-quote', icon: 'i-lucide-receipt', description: 'Auto-generate quotes from approved briefs. Rate card matching, Xero push, and quote-to-invoice conversion.' },
