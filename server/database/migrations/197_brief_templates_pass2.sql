@@ -562,3 +562,337 @@ UPDATE brief_templates SET
   require_client_link=true,
   description='Logo & brand identity projects for automotive dealers — OEM compliance, franchise type, revision scope & accountability.'
 WHERE slug='brand-identity';
+
+
+-- ============================================================
+-- REWORK 7: print-collateral  [pass2-b3]
+-- Assembly: 19 base fields (15 original retypes/adds:
+--   size_dimensions text→dropdown, custom_dimensions added,
+--   pages_sides text→number, print_quantity text→number,
+--   colour_mode dropdown added REQUIRED, print_supplier text added,
+--   print_ready_deadline made required, collateral_type options extended,
+--   retain project_name/client/print_finish/key_message/
+--   copy_content_status/content_copy/design_proof_due_date/
+--   design_budget/brand_assets/reference_inspiration/additional_notes)
+-- + full Tier A offer block (9 fields)
+-- + acct_* (3 fields)
+-- = 31 fields total
+-- auto_driveaway_price present → auto_offer_disclaimer + acct_compliance_ack
+-- keep their is_not_empty conditional.
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug='print-collateral';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id=tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text,
+     is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+    -- Step 1: Project Details
+    (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Details','Basic Information','full',1),
+    (tmpl_id,'project_name','Project Name','text','e.g. Toyota EOFY Flyer — June',NULL,true,'[]'::jsonb,NULL,1,'Project Details','Basic Information','full',2),
+    (tmpl_id,'collateral_type','Collateral Type','checkboxgroup',NULL,NULL,true,
+     '[{"label":"Flyer / DL","value":"flyer"},{"label":"Brochure","value":"brochure"},{"label":"Poster","value":"poster"},{"label":"Pull-up Banner","value":"pullup"},{"label":"Business Card","value":"business_card"},{"label":"Postcard","value":"postcard"},{"label":"Catalogue","value":"catalogue"},{"label":"Mirror Hangers","value":"mirror_hangers"},{"label":"Showroom Signage","value":"showroom_signage"},{"label":"Finance & Rate-Card Insert","value":"finance_rate_card"},{"label":"Service Menu","value":"service_menu"},{"label":"Parts Catalogue","value":"parts_catalogue"}]'::jsonb,
+     NULL,1,'Project Details','Type','full',3),
+
+    -- Step 2: Specifications
+    (tmpl_id,'size_dimensions','Size / Dimensions','dropdown',NULL,'Select the common size or choose Custom to specify.',true,
+     '[{"label":"A4 (210 × 297mm)","value":"a4"},{"label":"A5 (148 × 210mm)","value":"a5"},{"label":"DL (99 × 210mm)","value":"dl"},{"label":"A3 (297 × 420mm)","value":"a3"},{"label":"A2 (420 × 594mm)","value":"a2"},{"label":"A1 (594 × 841mm)","value":"a1"},{"label":"A0 (841 × 1189mm)","value":"a0"},{"label":"Custom","value":"custom"}]'::jsonb,
+     NULL,2,'Specifications','Specs','half',1),
+    (tmpl_id,'custom_dimensions','Custom Dimensions','text','e.g. 148 × 420mm','Specify custom width × height with units.',false,'[]'::jsonb,
+     '{"fieldKey":"size_dimensions","operator":"equals","value":"custom","action":"show"}'::jsonb,
+     2,'Specifications','Specs','half',2),
+    (tmpl_id,'pages_sides','Number of Pages / Sides','number',NULL,'e.g. 4 pages, 2 sides.',false,'[]'::jsonb,NULL,2,'Specifications','Specs','half',3),
+    (tmpl_id,'print_quantity','Print Quantity','number',NULL,'Total quantity to print.',false,'[]'::jsonb,NULL,2,'Specifications','Specs','half',4),
+    (tmpl_id,'colour_mode','Colour Mode','dropdown',NULL,'Specify the colour profile required for this print job.',true,
+     '[{"label":"CMYK","value":"cmyk"},{"label":"RGB","value":"rgb"},{"label":"Pantone","value":"pantone"},{"label":"Other","value":"other"}]'::jsonb,
+     NULL,2,'Specifications','Specs','half',5),
+    (tmpl_id,'print_finish','Print Finish','checkboxgroup',NULL,NULL,false,
+     '[{"label":"Gloss laminate","value":"gloss"},{"label":"Matt laminate","value":"matt"},{"label":"Spot UV","value":"spot_uv"},{"label":"Soft-touch laminate","value":"soft_touch"},{"label":"Uncoated","value":"uncoated"}]'::jsonb,
+     NULL,2,'Specifications','Specs','half',6),
+    (tmpl_id,'print_supplier','Print Supplier','text','e.g. PrintingForLess, Snap Print',NULL,false,'[]'::jsonb,NULL,2,'Specifications','Vendor','full',7),
+
+    -- Step 3: Content & Messaging
+    (tmpl_id,'key_message','Key Message','textarea',NULL,NULL,true,'[]'::jsonb,NULL,3,'Content & Messaging','Content','full',1),
+    (tmpl_id,'copy_content_status','Copy / Content Status','dropdown',NULL,NULL,true,
+     '[{"label":"Copy provided — ready to design","value":"provided"},{"label":"Copy in progress","value":"in_progress"},{"label":"ADME to write","value":"agency_write"},{"label":"No copy required","value":"none"}]'::jsonb,
+     NULL,3,'Content & Messaging','Content','half',2),
+    (tmpl_id,'content_copy','Content / Copy','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Content & Messaging','Content','full',3),
+    (tmpl_id,'brand_assets','Brand Assets','files',NULL,NULL,false,'[]'::jsonb,NULL,3,'Content & Messaging','Assets','full',4),
+    (tmpl_id,'reference_inspiration','Reference / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Content & Messaging','Assets','full',5),
+    (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Content & Messaging','Other','full',6),
+
+    -- Step 4: Timeline & Budget
+    (tmpl_id,'design_proof_due_date','Design Proof Due Date','date',NULL,NULL,true,'[]'::jsonb,NULL,4,'Timeline & Budget','Timeline','half',1),
+    (tmpl_id,'print_ready_deadline','Print-Ready Deadline','date',NULL,'Often the binding constraint — material must be at print supplier by this date.',true,'[]'::jsonb,NULL,4,'Timeline & Budget','Timeline','half',2),
+    (tmpl_id,'design_budget','Design Budget','dropdown',NULL,NULL,false,
+     '[{"label":"Under $500","value":"under_500"},{"label":"$500 - $1,500","value":"500_1500"},{"label":"$1,500 - $3,000","value":"1500_3000"},{"label":"$3,000+","value":"3000_plus"},{"label":"TBD","value":"tbd"}]'::jsonb,
+     NULL,4,'Timeline & Budget','Budget','half',3),
+
+    -- Step 5: Offer & Accountability — full Tier A + acct_*
+    (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+     '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+    (tmpl_id,'auto_vehicle_focus','Vehicle(s) Featured','text','e.g. 2024 Mazda CX-5 Touring','Make / model / year being promoted.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',2),
+    (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+     '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+    (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. $500 cashback + 3.9% comparison rate','The specific deal the ad features.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',4),
+    (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear. Text — values are ranges/wording.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',5),
+    (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC).',false,'[]'::jsonb,
+     '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+     5,'Offer & Accountability','Offer & Compliance','full',6),
+    (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply.',false,
+     '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Offer & Compliance','half',7),
+    (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+     '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+     5,'Offer & Accountability','Offer & Compliance','full',8),
+    (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',9),
+    -- acct_* Accountability block
+    (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',10),
+    (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+     '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+     5,'Offer & Accountability','Accountability','half',11),
+    (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+     '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Accountability','full',12)
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET
+  require_client_link=true,
+  description='Print collateral for automotive dealers — structured sizing, CMYK colour mode, offer compliance & accountability.'
+WHERE slug='print-collateral';
+
+
+-- ============================================================
+-- REWORK 8: tv-commercial  [pass2-b3]
+-- Assembly: 25 base fields (24 original + script_storyboard_status;
+--   campaign_objective richtext→dropdown,
+--   target_networks textarea→checkboxgroup,
+--   on_air_date made REQUIRED;
+--   mandatory_inclusions retained as-is — one conditional only on
+--   auto_offer_disclaimer via canonical driveaway trigger)
+-- + full Tier A offer block (9 fields)
+-- + acct_* (3 fields)
+-- = 37 fields total
+-- auto_driveaway_price present → auto_offer_disclaimer + acct_compliance_ack
+-- keep their is_not_empty conditional.
+-- mandatory_inclusions keeps NO conditional (not wired to offer_disclaimer).
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug='tv-commercial';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id=tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text,
+     is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+    -- Step 1: Brief Overview
+    (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Brief Overview','Basic Information','full',1),
+    (tmpl_id,'campaign_name','Campaign / TVC Name','text','e.g. Toyota EOFY TV Campaign',NULL,true,'[]'::jsonb,NULL,1,'Brief Overview','Basic Information','full',2),
+    (tmpl_id,'tvc_type','TVC Type','dropdown',NULL,NULL,true,
+     '[{"label":"Brand TVC","value":"brand"},{"label":"Product / Model Launch","value":"product"},{"label":"Promotional / Offer","value":"promo"},{"label":"Testimonial","value":"testimonial"},{"label":"Corporate / Dealer Awareness","value":"corporate"}]'::jsonb,
+     NULL,1,'Brief Overview','Type','half',3),
+    (tmpl_id,'campaign_objective','Campaign Objective','dropdown',NULL,NULL,true,
+     '[{"label":"Brand Awareness","value":"brand_awareness"},{"label":"New Model Launch","value":"new_model_launch"},{"label":"Clearance — End-of-Run","value":"clearance"},{"label":"Finance Offer","value":"finance_offer"},{"label":"Seasonal Campaign","value":"seasonal"},{"label":"Event Promotion","value":"event"},{"label":"Dealer Awareness","value":"dealer_awareness"},{"label":"Lead Generation","value":"lead_gen"}]'::jsonb,
+     NULL,1,'Brief Overview','Objectives','half',4),
+
+    -- Step 2: Audience & Messaging
+    (tmpl_id,'target_audience','Target Audience','richtext',NULL,NULL,true,'[]'::jsonb,NULL,2,'Audience & Messaging','Audience','full',1),
+    (tmpl_id,'key_message','Key Message / Proposition','textarea',NULL,NULL,true,'[]'::jsonb,NULL,2,'Audience & Messaging','Messaging','full',2),
+    (tmpl_id,'supporting_messages','Supporting Messages','richtext',NULL,NULL,false,'[]'::jsonb,NULL,2,'Audience & Messaging','Messaging','full',3),
+    (tmpl_id,'tone_mood','Tone & Mood','multiselect',NULL,NULL,true,
+     '[{"label":"Exciting","value":"exciting"},{"label":"Inspiring","value":"inspiring"},{"label":"Trustworthy","value":"trustworthy"},{"label":"Urgent","value":"urgent"},{"label":"Humorous","value":"humorous"},{"label":"Emotional","value":"emotional"},{"label":"Premium","value":"premium"},{"label":"Energetic","value":"energetic"},{"label":"Informative","value":"informative"}]'::jsonb,
+     NULL,2,'Audience & Messaging','Tone','full',4),
+
+    -- Step 3: Production
+    (tmpl_id,'tvc_duration','TVC Duration','checkboxgroup',NULL,NULL,true,
+     '[{"label":"15 seconds","value":"15s"},{"label":"30 seconds","value":"30s"},{"label":"45 seconds","value":"45s"},{"label":"60 seconds","value":"60s"},{"label":"90 seconds+","value":"90s_plus"}]'::jsonb,
+     NULL,3,'Production','Format','full',1),
+    (tmpl_id,'production_approach','Production Approach','dropdown',NULL,NULL,true,
+     '[{"label":"Live action — Full production","value":"live_full"},{"label":"Live action — Minimal crew","value":"live_minimal"},{"label":"Animation / Motion graphics","value":"animation"},{"label":"Mixed (live + animation)","value":"mixed"},{"label":"Client-supplied footage edit","value":"supplied_edit"}]'::jsonb,
+     NULL,3,'Production','Approach','half',2),
+    (tmpl_id,'script_storyboard_status','Script / Storyboard Status','dropdown',NULL,NULL,false,
+     '[{"label":"Script TBD","value":"tbd"},{"label":"Draft script","value":"draft"},{"label":"Approved script","value":"approved"},{"label":"Storyboard only","value":"storyboard"}]'::jsonb,
+     NULL,3,'Production','Script','half',3),
+    (tmpl_id,'talent_casting','Talent / Casting','textarea',NULL,NULL,false,'[]'::jsonb,NULL,3,'Production','Talent','full',4),
+    (tmpl_id,'music_audio','Music / Audio','dropdown',NULL,NULL,false,
+     '[{"label":"Original composition","value":"original"},{"label":"Licensed track","value":"licensed"},{"label":"Stock music","value":"stock"},{"label":"Voiceover only (no music)","value":"vo_only"},{"label":"No audio direction","value":"none"}]'::jsonb,
+     NULL,3,'Production','Audio','half',5),
+    (tmpl_id,'shoot_locations','Shoot Locations','textarea',NULL,NULL,false,'[]'::jsonb,NULL,3,'Production','Logistics','full',6),
+
+    -- Step 4: Budget & Distribution
+    (tmpl_id,'production_budget','Production Budget','dropdown',NULL,NULL,true,
+     '[{"label":"Under $20,000","value":"under_20k"},{"label":"$20,000 - $50,000","value":"20k_50k"},{"label":"$50,000 - $150,000","value":"50k_150k"},{"label":"$150,000 - $300,000","value":"150k_300k"},{"label":"$300,000+","value":"300k_plus"},{"label":"TBD","value":"tbd"}]'::jsonb,
+     NULL,4,'Budget & Distribution','Budget','half',1),
+    (tmpl_id,'budget_covers','Budget Should Cover','checkboxgroup',NULL,NULL,false,
+     '[{"label":"Pre-production","value":"pre"},{"label":"Production / shoot","value":"shoot"},{"label":"Post-production / edit","value":"post"},{"label":"Music / licensing","value":"music"},{"label":"Talent","value":"talent"},{"label":"Media buy","value":"media"}]'::jsonb,
+     NULL,4,'Budget & Distribution','Budget','half',2),
+    (tmpl_id,'target_networks','Target Networks / Channels','checkboxgroup',NULL,NULL,false,
+     '[{"label":"Seven","value":"seven"},{"label":"Nine","value":"nine"},{"label":"Ten","value":"ten"},{"label":"Foxtel / BINGE","value":"foxtel_binge"},{"label":"YouTube","value":"youtube"},{"label":"ABC","value":"abc"},{"label":"SBS","value":"sbs"},{"label":"Streaming — SVOD","value":"svod"}]'::jsonb,
+     NULL,4,'Budget & Distribution','Distribution','full',3),
+    (tmpl_id,'online_cutdowns','Online Cutdowns Required?','checkboxgroup',NULL,NULL,false,
+     '[{"label":"15s social cutdown","value":"15s_social"},{"label":"6s bumper","value":"6s_bumper"},{"label":"Square 1:1 version","value":"square"},{"label":"Vertical 9:16 version","value":"vertical"},{"label":"None","value":"none"}]'::jsonb,
+     NULL,4,'Budget & Distribution','Distribution','full',4),
+    (tmpl_id,'mandatory_inclusions','Mandatory Inclusions','checkboxgroup',NULL,NULL,false,
+     '[{"label":"Legal disclaimer","value":"disclaimer"},{"label":"Dealer name / logo","value":"dealer"},{"label":"Phone number","value":"phone"},{"label":"Website URL","value":"website"},{"label":"LMCT number","value":"lmct"},{"label":"OEM branding","value":"oem_branding"}]'::jsonb,
+     NULL,4,'Budget & Distribution','Requirements','full',5),
+
+    -- Step 5: Key Dates
+    (tmpl_id,'concept_presentation_date','Concept Presentation Date','date',NULL,NULL,true,'[]'::jsonb,NULL,5,'Key Dates','Timeline','half',1),
+    (tmpl_id,'final_delivery_date','Final Delivery Date','date',NULL,NULL,true,'[]'::jsonb,NULL,5,'Key Dates','Timeline','half',2),
+    (tmpl_id,'on_air_date','On-Air Date','date',NULL,'Drives the backward schedule from concept to delivery.',true,'[]'::jsonb,NULL,5,'Key Dates','Timeline','half',3),
+    (tmpl_id,'reference_tvcs','Reference TVCs / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,5,'Key Dates','References','full',4),
+    (tmpl_id,'existing_assets','Existing Assets Available','files',NULL,NULL,false,'[]'::jsonb,NULL,5,'Key Dates','Assets','full',5),
+    (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,5,'Key Dates','Other','full',6),
+
+    -- Step 6: Offer & Accountability — full Tier A + acct_*
+    (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+     '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+     NULL,6,'Offer & Accountability','Offer & Compliance','full',1),
+    (tmpl_id,'auto_vehicle_focus','Vehicle(s) Featured','text','e.g. 2024 Mazda CX-5 Touring','Make / model / year being promoted.',false,'[]'::jsonb,NULL,6,'Offer & Accountability','Offer & Compliance','half',2),
+    (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+     '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+     NULL,6,'Offer & Accountability','Offer & Compliance','half',3),
+    (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. $500 cashback + 3.9% comparison rate','The specific deal the ad features.',false,'[]'::jsonb,NULL,6,'Offer & Accountability','Offer & Compliance','full',4),
+    (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear. Text — values are ranges/wording.',false,'[]'::jsonb,NULL,6,'Offer & Accountability','Offer & Compliance','half',5),
+    (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC).',false,'[]'::jsonb,
+     '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+     6,'Offer & Accountability','Offer & Compliance','full',6),
+    (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply.',false,
+     '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+     NULL,6,'Offer & Accountability','Offer & Compliance','half',7),
+    (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+     '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+     6,'Offer & Accountability','Offer & Compliance','full',8),
+    (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this is for.',false,'[]'::jsonb,NULL,6,'Offer & Accountability','Offer & Compliance','full',9),
+    -- acct_* Accountability block
+    (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,6,'Offer & Accountability','Accountability','half',10),
+    (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+     '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+     6,'Offer & Accountability','Accountability','half',11),
+    (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+     '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+     NULL,6,'Offer & Accountability','Accountability','full',12)
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET
+  require_client_link=true,
+  description='TV commercial briefs for automotive dealers — objective dropdown, network checkboxgroup, offer compliance & accountability.'
+WHERE slug='tv-commercial';
+
+
+-- ============================================================
+-- REWORK 9: video-production  [pass2-b3]
+-- Assembly: 22 base fields (18 original + retypes/adds:
+--   preferred_shoot_dates textarea→daterange,
+--   talent_vo dropdown added,
+--   music_required dropdown added,
+--   num_videos number added,
+--   shoot_location dropdown added,
+--   video_type options extended with Dealership Walkthrough + Vehicle Showcase,
+--   target_platforms made REQUIRED)
+-- + full Tier A offer block (9 fields)
+-- + acct_* (3 fields)
+-- = 34 fields total
+-- auto_driveaway_price present → auto_offer_disclaimer + acct_compliance_ack
+-- keep their is_not_empty conditional.
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug='video-production';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id=tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text,
+     is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+    -- Step 1: Project Overview
+    (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Basic Information','full',1),
+    (tmpl_id,'project_name','Project Name','text','e.g. Toyota Camry — Dealership Walkthrough',NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Basic Information','full',2),
+    (tmpl_id,'video_type','Video Type','dropdown',NULL,NULL,true,
+     '[{"label":"Brand / Corporate","value":"brand"},{"label":"Product Showcase","value":"product"},{"label":"Testimonial","value":"testimonial"},{"label":"Tutorial / How-to","value":"tutorial"},{"label":"Event Coverage","value":"event"},{"label":"Social Media Video","value":"social"},{"label":"Dealership Walkthrough","value":"dealership_walkthrough"},{"label":"Vehicle Showcase","value":"vehicle_showcase"}]'::jsonb,
+     NULL,1,'Project Overview','Type','half',3),
+    (tmpl_id,'num_videos','Number of Videos','number',NULL,'For batch productions — e.g. 10 vehicle walkthroughs.',false,'[]'::jsonb,NULL,1,'Project Overview','Type','half',4),
+    (tmpl_id,'project_objective','Project Objective','richtext',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Context','full',5),
+
+    -- Step 2: Audience & Messaging
+    (tmpl_id,'target_audience','Target Audience','textarea',NULL,NULL,true,'[]'::jsonb,NULL,2,'Audience & Messaging','Audience','full',1),
+    (tmpl_id,'key_messages','Key Messages','richtext',NULL,NULL,true,'[]'::jsonb,NULL,2,'Audience & Messaging','Messaging','full',2),
+    (tmpl_id,'tone_mood','Tone & Mood','multiselect',NULL,NULL,true,
+     '[{"label":"Exciting","value":"exciting"},{"label":"Inspiring","value":"inspiring"},{"label":"Professional","value":"professional"},{"label":"Authentic","value":"authentic"},{"label":"Energetic","value":"energetic"},{"label":"Calm","value":"calm"},{"label":"Premium","value":"premium"},{"label":"Informative","value":"informative"}]'::jsonb,
+     NULL,2,'Audience & Messaging','Tone','full',3),
+
+    -- Step 3: Production
+    (tmpl_id,'script_storyboard_status','Script / Storyboard Status','dropdown',NULL,NULL,true,
+     '[{"label":"Script TBD","value":"tbd"},{"label":"Draft script","value":"draft"},{"label":"Approved script","value":"approved"},{"label":"Storyboard only","value":"storyboard"},{"label":"Freestyle / interview","value":"freestyle"}]'::jsonb,
+     NULL,3,'Production','Script','half',1),
+    (tmpl_id,'target_video_length','Target Video Length','dropdown',NULL,NULL,true,
+     '[{"label":"Under 60 seconds","value":"under_60s"},{"label":"60 - 90 seconds","value":"60_90s"},{"label":"2 - 3 minutes","value":"2_3min"},{"label":"3 - 5 minutes","value":"3_5min"},{"label":"5+ minutes","value":"5_plus"}]'::jsonb,
+     NULL,3,'Production','Format','half',2),
+    (tmpl_id,'delivery_formats','Delivery Formats','checkboxgroup',NULL,NULL,true,
+     '[{"label":"MP4 (H.264)","value":"mp4"},{"label":"MOV","value":"mov"},{"label":"Square 1:1","value":"square"},{"label":"Vertical 9:16","value":"vertical"},{"label":"Landscape 16:9","value":"landscape"}]'::jsonb,
+     NULL,3,'Production','Format','full',3),
+    (tmpl_id,'talent_vo','Talent / Voiceover','dropdown',NULL,NULL,false,
+     '[{"label":"No talent","value":"none"},{"label":"On-camera talent","value":"on_camera"},{"label":"Voiceover only","value":"vo_only"},{"label":"Both on-camera + voiceover","value":"both"}]'::jsonb,
+     NULL,3,'Production','Talent','half',4),
+    (tmpl_id,'music_required','Music Required','dropdown',NULL,NULL,false,
+     '[{"label":"No music","value":"none"},{"label":"Stock music","value":"stock"},{"label":"Licensed track","value":"licensed"},{"label":"Original composition","value":"original"}]'::jsonb,
+     NULL,3,'Production','Audio','half',5),
+    (tmpl_id,'shoot_location','Shoot Location','dropdown',NULL,NULL,false,
+     '[{"label":"Dealership","value":"dealership"},{"label":"External location","value":"external"},{"label":"Studio","value":"studio"},{"label":"Multiple locations","value":"multiple"}]'::jsonb,
+     NULL,3,'Production','Logistics','half',6),
+    (tmpl_id,'preferred_shoot_dates','Preferred Shoot Dates','daterange',NULL,'Date range within which filming should occur.',false,'[]'::jsonb,NULL,3,'Production','Logistics','half',7),
+
+    -- Step 4: Distribution & Delivery
+    (tmpl_id,'target_platforms','Target Platforms','checkboxgroup',NULL,'Determines aspect ratio and length requirements.',true,
+     '[{"label":"YouTube","value":"youtube"},{"label":"Facebook","value":"facebook"},{"label":"Instagram","value":"instagram"},{"label":"TikTok","value":"tiktok"},{"label":"Website","value":"website"},{"label":"TV / Broadcast","value":"tv"},{"label":"Digital signage","value":"signage"},{"label":"Email","value":"email"}]'::jsonb,
+     NULL,4,'Distribution & Delivery','Platforms','full',1),
+    (tmpl_id,'subtitles_captions','Subtitles / Captions','dropdown',NULL,NULL,false,
+     '[{"label":"Not required","value":"none"},{"label":"Auto-generated (basic)","value":"auto"},{"label":"Styled captions (branded)","value":"styled"},{"label":"Translated subtitles","value":"translated"}]'::jsonb,
+     NULL,4,'Distribution & Delivery','Delivery','half',2),
+    (tmpl_id,'final_delivery_date','Final Delivery Date','date',NULL,NULL,true,'[]'::jsonb,NULL,4,'Distribution & Delivery','Timeline','half',3),
+    (tmpl_id,'budget','Budget','dropdown',NULL,NULL,true,
+     '[{"label":"Under $2,000","value":"under_2k"},{"label":"$2,000 - $5,000","value":"2k_5k"},{"label":"$5,000 - $15,000","value":"5k_15k"},{"label":"$15,000 - $30,000","value":"15k_30k"},{"label":"$30,000+","value":"30k_plus"},{"label":"TBD","value":"tbd"}]'::jsonb,
+     NULL,4,'Distribution & Delivery','Budget','half',4),
+    (tmpl_id,'brand_assets','Brand Assets','files',NULL,NULL,false,'[]'::jsonb,NULL,4,'Distribution & Delivery','Assets','full',5),
+    (tmpl_id,'reference_videos','Reference Videos','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Distribution & Delivery','References','full',6),
+    (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Distribution & Delivery','Other','full',7),
+
+    -- Step 5: Offer & Accountability — full Tier A + acct_*
+    (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+     '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+    (tmpl_id,'auto_vehicle_focus','Vehicle(s) Featured','text','e.g. 2024 Mazda CX-5 Touring','Make / model / year being promoted.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',2),
+    (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+     '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+    (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. $500 cashback + 3.9% comparison rate','The specific deal the ad features.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',4),
+    (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear. Text — values are ranges/wording.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',5),
+    (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC).',false,'[]'::jsonb,
+     '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+     5,'Offer & Accountability','Offer & Compliance','full',6),
+    (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply.',false,
+     '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Offer & Compliance','half',7),
+    (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+     '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+     5,'Offer & Accountability','Offer & Compliance','full',8),
+    (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',9),
+    -- acct_* Accountability block
+    (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',10),
+    (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+     '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+     5,'Offer & Accountability','Accountability','half',11),
+    (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+     '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Accountability','full',12)
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET
+  require_client_link=true,
+  description='Video production briefs for automotive dealers — vehicle showcase types, shoot location, offer compliance & accountability.'
+WHERE slug='video-production';
