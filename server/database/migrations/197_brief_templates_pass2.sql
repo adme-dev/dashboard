@@ -896,3 +896,279 @@ UPDATE brief_templates SET
   require_client_link=true,
   description='Video production briefs for automotive dealers — vehicle showcase types, shoot location, offer compliance & accountability.'
 WHERE slug='video-production';
+
+
+-- ============================================================
+-- REWORK 10: radio-ad  [pass2-b4]
+-- Assembly: 20 current fields
+--   − offer_details (legacy key; replaced by auto_offer_details from Tier A)
+--   ~ campaign_objective richtext → dropdown (7 options)
+--   ~ target_radio_stations textarea → checkboxgroup (Nova/KIIS/GOLD/Triple M/2GB/SEN/ABC/Other)
+--   + script_author (dropdown, required)
+--   ~ production_budget → required
+--   = 19 kept/modified base fields
+--   + full Tier A 9 (auto_oem_brand…auto_dealer_locations; auto_offer_details replaces legacy)
+--   + acct_* 3 (compliance_ack conditional on auto_driveaway_price is_not_empty)
+--   = 31 fields total
+-- require_client_link=true
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug='radio-ad';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id=tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text,
+     is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+    -- Step 1: Campaign Basics
+    (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Campaign Basics','Basic Information','full',1),
+    (tmpl_id,'campaign_name','Campaign Name','text','e.g. Toyota EOFY Radio — June',NULL,true,'[]'::jsonb,NULL,1,'Campaign Basics','Basic Information','full',2),
+    (tmpl_id,'campaign_objective','Campaign Objective','dropdown',NULL,NULL,true,
+     '[{"label":"Brand Awareness","value":"brand_awareness"},{"label":"Finance Offer","value":"finance_offer"},{"label":"New Model Launch","value":"new_model_launch"},{"label":"Clearance — End-of-Run","value":"clearance"},{"label":"Event Promotion","value":"event_promotion"},{"label":"Seasonal Campaign","value":"seasonal"},{"label":"Dealer Awareness","value":"dealer_awareness"}]'::jsonb,
+     NULL,1,'Campaign Basics','Objective','half',3),
+    (tmpl_id,'target_audience','Target Audience','textarea','e.g. In-market car buyers, 30-55, metro Sydney',NULL,true,'[]'::jsonb,NULL,1,'Campaign Basics','Audience','full',4),
+
+    -- Step 2: Message & Creative
+    (tmpl_id,'key_message','Key Message','textarea','e.g. Drive Away a new Toyota RAV4 from $39,990 this EOFY',NULL,true,'[]'::jsonb,NULL,2,'Message & Creative','Messaging','full',1),
+    (tmpl_id,'call_to_action','Call-to-Action','text','e.g. Visit us at Berwick Toyota today',NULL,true,'[]'::jsonb,NULL,2,'Message & Creative','Messaging','half',2),
+    (tmpl_id,'tone_style','Tone & Style','multiselect',NULL,NULL,true,
+     '[{"label":"Energetic","value":"energetic"},{"label":"Authoritative","value":"authoritative"},{"label":"Friendly","value":"friendly"},{"label":"Urgent","value":"urgent"},{"label":"Conversational","value":"conversational"},{"label":"Professional","value":"professional"},{"label":"Humorous","value":"humorous"}]'::jsonb,
+     NULL,2,'Message & Creative','Tone','half',3),
+    (tmpl_id,'script_author','Script Written By','dropdown',NULL,'Determines copywriting scope — agency writes, client supplies draft, or client writes.',true,
+     '[{"label":"Agency writes","value":"agency_writes"},{"label":"Client supplies draft","value":"client_draft"},{"label":"Client writes","value":"client_writes"}]'::jsonb,
+     NULL,2,'Message & Creative','Script','half',4),
+
+    -- Step 3: Format & Production
+    (tmpl_id,'ad_duration','Ad Duration','checkboxgroup',NULL,NULL,true,
+     '[{"label":"15 seconds","value":"15s"},{"label":"30 seconds","value":"30s"},{"label":"45 seconds","value":"45s"},{"label":"60 seconds","value":"60s"}]'::jsonb,
+     NULL,3,'Format & Production','Format','half',1),
+    (tmpl_id,'num_scripts','Number of Scripts / Versions','dropdown',NULL,NULL,true,
+     '[{"label":"1","value":"1"},{"label":"2","value":"2"},{"label":"3","value":"3"},{"label":"4+","value":"4_plus"}]'::jsonb,
+     NULL,3,'Format & Production','Format','half',2),
+    (tmpl_id,'delivery_format','Delivery Format','checkboxgroup',NULL,NULL,false,
+     '[{"label":"MP3","value":"mp3"},{"label":"WAV","value":"wav"},{"label":"AIFF","value":"aiff"},{"label":"48kHz/16-bit","value":"48khz_16bit"}]'::jsonb,
+     NULL,3,'Format & Production','Format','half',3),
+    (tmpl_id,'voiceover_preference','Voiceover Preference','dropdown',NULL,NULL,false,
+     '[{"label":"Male","value":"male"},{"label":"Female","value":"female"},{"label":"Duo — Male & Female","value":"duo"},{"label":"Client spokesperson","value":"spokesperson"},{"label":"No preference","value":"no_preference"}]'::jsonb,
+     NULL,3,'Format & Production','Production','half',4),
+    (tmpl_id,'music_sound_effects','Music & Sound Effects','dropdown',NULL,NULL,false,
+     '[{"label":"Stock music","value":"stock"},{"label":"Licensed track","value":"licensed"},{"label":"Original composition","value":"original"},{"label":"Sound effects only","value":"sfx"},{"label":"No music","value":"none"}]'::jsonb,
+     NULL,3,'Format & Production','Production','half',5),
+    (tmpl_id,'production_budget','Production Budget','dropdown',NULL,'All radio production has a cost — required for scoping.',true,
+     '[{"label":"Under $1,000","value":"under_1k"},{"label":"$1,000 - $3,000","value":"1k_3k"},{"label":"$3,000 - $5,000","value":"3k_5k"},{"label":"$5,000 - $10,000","value":"5k_10k"},{"label":"$10,000+","value":"10k_plus"},{"label":"TBD — need quote","value":"tbd"}]'::jsonb,
+     NULL,3,'Format & Production','Budget','half',6),
+
+    -- Step 4: Distribution & Timeline
+    (tmpl_id,'target_radio_stations','Target Radio Stations','checkboxgroup',NULL,NULL,false,
+     '[{"label":"Nova","value":"nova"},{"label":"KIIS","value":"kiis"},{"label":"GOLD","value":"gold"},{"label":"Triple M","value":"triple_m"},{"label":"2GB","value":"2gb"},{"label":"SEN","value":"sen"},{"label":"ABC","value":"abc"},{"label":"Other","value":"other"}]'::jsonb,
+     NULL,4,'Distribution & Timeline','Distribution','full',1),
+    (tmpl_id,'campaign_dates','Campaign Dates','daterange',NULL,NULL,true,'[]'::jsonb,NULL,4,'Distribution & Timeline','Schedule','half',2),
+    (tmpl_id,'script_approval_deadline','Script Approval Deadline','date',NULL,NULL,true,'[]'::jsonb,NULL,4,'Distribution & Timeline','Schedule','half',3),
+    (tmpl_id,'final_audio_delivery_date','Final Audio Delivery Date','date',NULL,NULL,true,'[]'::jsonb,NULL,4,'Distribution & Timeline','Schedule','half',4),
+    (tmpl_id,'reference_audio','Reference Audio / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Distribution & Timeline','References','full',5),
+    (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Distribution & Timeline','Other','full',6),
+
+    -- Step 5: Offer & Accountability — full Tier A + acct_*
+    -- auto_offer_details replaces the legacy offer_details field key
+    (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+     '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+    (tmpl_id,'auto_vehicle_focus','Vehicle(s) Featured','text','e.g. 2024 Mazda CX-5 Touring','Make / model / year being promoted.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',2),
+    (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+     '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+    (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. $500 cashback + 3.9% comparison rate','The specific deal featured in the radio ad — replaces the legacy offer_details field.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',4),
+    (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear in the script. ACCC requires exact wording for audio.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',5),
+    (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC). Scriptwriter uses verbatim.',false,'[]'::jsonb,
+     '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+     5,'Offer & Accountability','Offer & Compliance','full',6),
+    (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply.',false,
+     '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Offer & Compliance','half',7),
+    (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+     '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+     5,'Offer & Accountability','Offer & Compliance','full',8),
+    (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',9),
+    -- acct_* Accountability block
+    (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',10),
+    (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+     '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+     5,'Offer & Accountability','Accountability','half',11),
+    (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+     '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+     NULL,5,'Offer & Accountability','Accountability','full',12)
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET
+  require_client_link=true,
+  description='Radio ad production briefs for automotive dealers — script authorship, stations, offer compliance & accountability.'
+WHERE slug='radio-ad';
+
+
+-- ============================================================
+-- REWORK 11: podcast-audio  [pass2-b4]
+-- Assembly: 12 current fields (all retained, keys normalised)
+--   + auto_oem_brand ONLY (no offer Tier A — podcast minimal automotive)
+--   + num_episodes (number, conditional content_type=podcast)
+--   + episode_frequency (dropdown, conditional content_type=podcast_series)
+--   + voiceover_pref (dropdown, conditional content_type=audio_ad)
+--   + music_required (dropdown, conditional content_type=audio_ad)
+--   + recording_location (dropdown, no conditional)
+--   + script_required (radio, no conditional)
+--   ~ tone_style → required
+--   ~ budget → required
+--   + acct_* 3 (acct_compliance_ack conditional_logic=NULL — no auto_driveaway_price)
+--   = 22 fields total
+-- NOTE on conditionals: content_type options in existing template include
+--   podcast, podcast_series, audio_ad, jingle, voiceover, music.
+--   num_episodes → show when content_type=podcast (most relevant single value)
+--   episode_frequency → show when content_type=podcast_series
+--   voiceover_pref → show when content_type=audio_ad
+--   music_required → show when content_type=audio_ad
+-- require_client_link=true
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug='podcast-audio';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id=tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text,
+     is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+    -- Step 1: Project Overview
+    (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Basic Information','full',1),
+    (tmpl_id,'project_name','Project Name','text','e.g. Mazda Dealer Podcast Series',NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Basic Information','full',2),
+    (tmpl_id,'content_type','Content Type','dropdown',NULL,NULL,true,
+     '[{"label":"Podcast (single episode)","value":"podcast"},{"label":"Podcast Series","value":"podcast_series"},{"label":"Audio Ad","value":"audio_ad"},{"label":"Jingle","value":"jingle"},{"label":"Voiceover","value":"voiceover"},{"label":"Music / Underscore","value":"music"}]'::jsonb,
+     NULL,1,'Project Overview','Type','half',3),
+    (tmpl_id,'project_description','Project Description','richtext',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Context','full',4),
+    (tmpl_id,'target_audience','Target Audience','textarea',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Audience','full',5),
+
+    -- Step 2: Content & Format
+    (tmpl_id,'key_messages','Key Messages / Topics','richtext',NULL,NULL,true,'[]'::jsonb,NULL,2,'Content & Format','Content','full',1),
+    (tmpl_id,'target_duration','Target Duration','dropdown',NULL,NULL,true,
+     '[{"label":"Under 5 minutes","value":"under_5"},{"label":"5-10 minutes","value":"5_10"},{"label":"10-20 minutes","value":"10_20"},{"label":"20-45 minutes","value":"20_45"},{"label":"45-60 minutes","value":"45_60"},{"label":"60+ minutes","value":"60_plus"},{"label":"15 seconds (audio ad)","value":"15s"},{"label":"30 seconds (audio ad)","value":"30s"},{"label":"60 seconds (audio ad)","value":"60s"}]'::jsonb,
+     NULL,2,'Content & Format','Format','half',2),
+    (tmpl_id,'tone_style','Tone & Style','multiselect',NULL,NULL,true,
+     '[{"label":"Conversational","value":"conversational"},{"label":"Professional","value":"professional"},{"label":"Educational","value":"educational"},{"label":"Entertaining","value":"entertaining"},{"label":"Authoritative","value":"authoritative"},{"label":"Friendly","value":"friendly"},{"label":"Energetic","value":"energetic"}]'::jsonb,
+     NULL,2,'Content & Format','Tone','half',3),
+    (tmpl_id,'num_episodes','Number of Episodes','number',NULL,'How many episodes in this brief.',false,'[]'::jsonb,
+     '{"fieldKey":"content_type","operator":"equals","value":"podcast","action":"show"}'::jsonb,
+     2,'Content & Format','Series','half',4),
+    (tmpl_id,'episode_frequency','Episode Frequency','dropdown',NULL,NULL,false,
+     '[{"label":"Weekly","value":"weekly"},{"label":"Bi-weekly","value":"biweekly"},{"label":"Monthly","value":"monthly"},{"label":"Ad-hoc","value":"adhoc"}]'::jsonb,
+     '{"fieldKey":"content_type","operator":"equals","value":"podcast_series","action":"show"}'::jsonb,
+     2,'Content & Format','Series','half',5),
+    (tmpl_id,'voiceover_pref','Voiceover Preference','dropdown',NULL,NULL,false,
+     '[{"label":"Male","value":"male"},{"label":"Female","value":"female"},{"label":"Duo","value":"duo"},{"label":"Client spokesperson","value":"spokesperson"}]'::jsonb,
+     '{"fieldKey":"content_type","operator":"equals","value":"audio_ad","action":"show"}'::jsonb,
+     2,'Content & Format','Production','half',6),
+    (tmpl_id,'music_required','Music Required','dropdown',NULL,NULL,false,
+     '[{"label":"No music","value":"none"},{"label":"Stock music","value":"stock"},{"label":"Licensed track","value":"licensed"},{"label":"Original composition","value":"original"}]'::jsonb,
+     '{"fieldKey":"content_type","operator":"equals","value":"audio_ad","action":"show"}'::jsonb,
+     2,'Content & Format','Production','half',7),
+    (tmpl_id,'script_required','Script Required?','radio',NULL,NULL,false,
+     '[{"label":"Yes — agency writes","value":"agency_writes"},{"label":"Yes — client supplies","value":"client_supplies"},{"label":"No (interview / improvised)","value":"no"}]'::jsonb,
+     NULL,2,'Content & Format','Production','half',8),
+    (tmpl_id,'recording_location','Recording Location','dropdown',NULL,NULL,false,
+     '[{"label":"Remote send-in","value":"remote"},{"label":"Studio booking","value":"studio"},{"label":"Client premises","value":"client_premises"}]'::jsonb,
+     NULL,2,'Content & Format','Logistics','half',9),
+
+    -- Step 3: Distribution & Delivery
+    (tmpl_id,'distribution_platforms','Distribution Platforms','checkboxgroup',NULL,NULL,false,
+     '[{"label":"Spotify","value":"spotify"},{"label":"Apple Podcasts","value":"apple"},{"label":"Google Podcasts","value":"google"},{"label":"YouTube","value":"youtube"},{"label":"SoundCloud","value":"soundcloud"},{"label":"Client website","value":"website"},{"label":"Radio station","value":"radio"},{"label":"Other","value":"other"}]'::jsonb,
+     NULL,3,'Distribution & Delivery','Distribution','full',1),
+    (tmpl_id,'delivery_date','Delivery Date','date',NULL,NULL,true,'[]'::jsonb,NULL,3,'Distribution & Delivery','Timeline','half',2),
+    (tmpl_id,'budget','Budget','dropdown',NULL,'Required for production scoping.',true,
+     '[{"label":"Under $1,000","value":"under_1k"},{"label":"$1,000 - $3,000","value":"1k_3k"},{"label":"$3,000 - $5,000","value":"3k_5k"},{"label":"$5,000 - $10,000","value":"5k_10k"},{"label":"$10,000+","value":"10k_plus"},{"label":"TBD — need quote","value":"tbd"}]'::jsonb,
+     NULL,3,'Distribution & Delivery','Budget','half',3),
+    (tmpl_id,'existing_assets','Existing Assets','files',NULL,NULL,false,'[]'::jsonb,NULL,3,'Distribution & Delivery','Assets','full',4),
+    (tmpl_id,'reference_audio','Reference Audio / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Distribution & Delivery','References','full',5),
+    (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Distribution & Delivery','Other','full',6),
+
+    -- Step 4: Automotive & Accountability
+    -- auto_oem_brand ONLY (no offer Tier A — podcast/audio has minimal automotive relevance)
+    -- acct_compliance_ack conditional_logic=NULL (no auto_driveaway_price)
+    (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'OEM brand flag — relevant when content is manufacturer-funded or co-op compliance is required.',false,
+     '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+     NULL,4,'Automotive & Accountability','Automotive','full',1),
+    -- acct_* Accountability block
+    (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,4,'Automotive & Accountability','Accountability','half',2),
+    (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the content brief is accurate and approved for production.',false,'[]'::jsonb,NULL,4,'Automotive & Accountability','Accountability','half',3),
+    (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+     '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+     NULL,4,'Automotive & Accountability','Accountability','full',4)
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET
+  require_client_link=true,
+  description='Podcast, audio ad, jingle and voiceover briefs — content type, production scope, distribution & accountability.'
+WHERE slug='podcast-audio';
+
+
+-- ============================================================
+-- REWORK 12: blog-content  [pass2-b4]
+-- Assembly: 11 current fields (all retained, keys normalised)
+--   + auto_vehicle_focus ONLY (no offer Tier A — blog minimal automotive)
+--   + target_url_slug (text, optional)
+--   + internal_links (textarea, optional)
+--   + publish_date (date, optional — distinct from due date)
+--   ~ target_seo_keywords → required
+--   ~ target_word_count → required
+--   + acct_* 3 (acct_compliance_ack conditional_logic=NULL — no auto_driveaway_price)
+--   = 19 fields total
+-- require_client_link=true
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug='blog-content';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id=tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text,
+     is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+    -- Step 1: Article Overview
+    (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Article Overview','Basic Information','full',1),
+    (tmpl_id,'article_title','Article Title / Topic','text','e.g. Toyota RAV4 vs Mazda CX-5 — Which SUV Wins?',NULL,true,'[]'::jsonb,NULL,1,'Article Overview','Basic Information','full',2),
+    (tmpl_id,'content_type','Content Type','dropdown',NULL,NULL,true,
+     '[{"label":"Buying Guide","value":"buying_guide"},{"label":"Model Review","value":"model_review"},{"label":"Comparison Article","value":"comparison"},{"label":"News / Announcement","value":"news"},{"label":"How-To / Tutorial","value":"howto"},{"label":"Dealership Story / Culture","value":"culture"},{"label":"Finance / Tips","value":"finance"},{"label":"Service / Maintenance","value":"service"},{"label":"General Blog","value":"general"}]'::jsonb,
+     NULL,1,'Article Overview','Type','half',3),
+    (tmpl_id,'target_audience','Target Audience','textarea',NULL,NULL,true,'[]'::jsonb,NULL,1,'Article Overview','Audience','full',4),
+    (tmpl_id,'tone_of_voice','Tone of Voice','dropdown',NULL,NULL,true,
+     '[{"label":"Professional","value":"professional"},{"label":"Conversational","value":"conversational"},{"label":"Educational","value":"educational"},{"label":"Friendly","value":"friendly"},{"label":"Authoritative","value":"authoritative"},{"label":"Enthusiastic","value":"enthusiastic"}]'::jsonb,
+     NULL,1,'Article Overview','Tone','half',5),
+
+    -- Step 2: Content & SEO
+    (tmpl_id,'topic_brief','Topic Brief / Outline','richtext',NULL,NULL,true,'[]'::jsonb,NULL,2,'Content & SEO','Content','full',1),
+    (tmpl_id,'target_seo_keywords','Target SEO Keywords','textarea','e.g. Toyota RAV4 price Melbourne, best SUV under 50000','Primary and secondary keywords the article should rank for — required for SEO content.',true,'[]'::jsonb,NULL,2,'Content & SEO','SEO','full',2),
+    (tmpl_id,'target_url_slug','Target URL / Page Slug','text','e.g. /blog/toyota-rav4-vs-mazda-cx5','Where this article will live — URL structure matters for SEO.',false,'[]'::jsonb,NULL,2,'Content & SEO','SEO','half',3),
+    (tmpl_id,'internal_links','Internal Links Required','textarea','e.g. model pages, stock search, contact, finance calculator','Pages on the dealer site this article should link to — drives on-site engagement and SEO equity.',false,'[]'::jsonb,NULL,2,'Content & SEO','SEO','full',4),
+    (tmpl_id,'target_word_count','Target Word Count','dropdown',NULL,'Required — word count drives production time and SEO strategy.',true,
+     '[{"label":"Under 500 words","value":"under_500"},{"label":"500 - 800 words","value":"500_800"},{"label":"800 - 1,200 words","value":"800_1200"},{"label":"1,200 - 2,000 words","value":"1200_2000"},{"label":"2,000+ words","value":"2000_plus"}]'::jsonb,
+     NULL,2,'Content & SEO','Specs','half',5),
+    (tmpl_id,'reference_inspiration','Reference / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,2,'Content & SEO','References','full',6),
+
+    -- Step 3: Timeline & Delivery
+    (tmpl_id,'due_date','Due Date','date',NULL,'Date content must be delivered to the client or published.',true,'[]'::jsonb,NULL,3,'Timeline & Delivery','Dates','half',1),
+    (tmpl_id,'publish_date','Publish Date','date',NULL,'Planned publication date — distinct from due date. When the article goes live.',false,'[]'::jsonb,NULL,3,'Timeline & Delivery','Dates','half',2),
+    (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Timeline & Delivery','Other','full',3),
+
+    -- Step 4: Automotive & Accountability
+    -- auto_vehicle_focus ONLY (no offer Tier A — blog content minimal automotive)
+    -- acct_compliance_ack conditional_logic=NULL (no auto_driveaway_price)
+    (tmpl_id,'auto_vehicle_focus','Vehicle / Model Focus','text','e.g. 2024 Toyota RAV4 Hybrid','Make / model / year the article is focused on — optional but common for automotive dealer blogs.',false,'[]'::jsonb,NULL,4,'Automotive & Accountability','Automotive','half',1),
+    -- acct_* Accountability block
+    (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,4,'Automotive & Accountability','Accountability','half',2),
+    (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the content brief and topic are accurate and approved for production.',false,'[]'::jsonb,NULL,4,'Automotive & Accountability','Accountability','half',3),
+    (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+     '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+     NULL,4,'Automotive & Accountability','Accountability','full',4)
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET
+  require_client_link=true,
+  description='Blog and article content briefs for automotive dealers — SEO keywords, vehicle focus, URL structure & accountability.'
+WHERE slug='blog-content';
