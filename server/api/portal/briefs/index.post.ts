@@ -5,6 +5,7 @@
 
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
+import { runBriefGatekeeper } from '~~/server/utils/automation/briefGatekeeperRunner'
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -144,6 +145,14 @@ export default defineEventHandler(async (event) => {
         VALUES ($1, $2)
         ON CONFLICT (brief_id, user_id) DO NOTHING
       `, [brief.id, assignedTo])
+    }
+
+    // C5 brief-completeness gatekeeper (DORMANT — only acts when BRIEF_GATEKEEPER_ENABLED).
+    // Portal briefs are always submitted; field values are inserted above. Fail-open.
+    try {
+      await runBriefGatekeeper(brief.id)
+    } catch (gkError) {
+      console.error('[Brief] Gatekeeper failed:', gkError)
     }
 
     return {

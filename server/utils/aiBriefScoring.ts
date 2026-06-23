@@ -15,6 +15,7 @@ export interface BriefCompletenessScore {
     fieldKey: string
     fieldLabel: string
     score: number
+    isRequired: boolean
     recommendation?: string
   }>
   recommendations: string[]
@@ -148,6 +149,7 @@ export async function scoreBriefCompleteness(briefId: string): Promise<BriefComp
       fieldKey: field.field_key,
       fieldLabel: field.field_label,
       score: Math.round(score * 100),
+      isRequired: !!field.is_required,
       recommendation: rec
     })
 

@@ -26,6 +26,8 @@ import { opportunityTool, logActivityTool, quoteTool, draftFollowupTool } from '
 import { expenseApprovalTool, eomGenerateTool, expenseClassifyTool } from './financeActions'
 import { creativeQueueTool, proofStatusTool } from './creativeActions'
 import { teamMemoryTool } from './proposeTeamMemory'
+import { checkPacingTool } from './checkPacing'
+import { checkBriefCompletenessTool } from './checkBriefCompleteness'
 import { searchCrmTool } from './searchCrm'
 import { crmPipelineTool } from './crmPipeline'
 import { leadsTool } from './leads'
@@ -75,6 +77,10 @@ export const registry: AiTool<any>[] = [
   proofStatusTool,
   // Cross-cutting: promote a fact to department-shared memory (MANAGEMENT-gated curation).
   teamMemoryTool,
+  // Ops Autopilot: pacing watchdog read tool.
+  checkPacingTool,
+  // Ops Autopilot: C5 brief-completeness gatekeeper read tool.
+  checkBriefCompletenessTool,
   // Sub-project 1 — broadened read coverage (auto-projects to MCP + in-app chat).
   searchCrmTool,
   crmPipelineTool,
