@@ -7,6 +7,7 @@ import { getAuthUser } from '~~/server/utils/auth'
 import { notifyBriefStatusChanged } from '~~/server/utils/briefNotifications'
 import { convertBriefToProject } from '~~/server/utils/briefConversion'
 import { generateQuoteFromBrief } from '~~/server/utils/briefQuoteGenerator'
+import { runBriefGatekeeper } from '~~/server/utils/automation/briefGatekeeperRunner'
 
 const VALID_STATUSES = [
   'draft', 'submitted', 'under_review', 'needs_info',
@@ -117,6 +118,17 @@ export default defineEventHandler(async (event) => {
         newStatus: status,
         actorId: userId
       }).catch(err => console.error('[Brief] Notification error:', err))
+    }
+
+    // C5 brief-completeness gatekeeper on submission (DORMANT — only acts when
+    // BRIEF_GATEKEEPER_ENABLED). Fail-open: never block the status change.
+    if (status === 'submitted') {
+      try {
+        await runBriefGatekeeper(id)
+      } catch (gkError) {
+        console.error('[Brief] Gatekeeper failed:', gkError)
+        // Don't throw — status change already succeeded
+      }
     }
 
     // Auto-convert to project on approval

@@ -1,6 +1,6 @@
 // test/automation/briefGatekeeper.test.ts
 import { describe, expect, it } from 'vitest'
-import { decideBriefGate, DEFAULT_BRIEF_GATE } from '~~/server/utils/automation/briefGatekeeper'
+import { decideBriefGate, DEFAULT_BRIEF_GATE, planGatekeeperActions } from '~~/server/utils/automation/briefGatekeeper'
 import type { BriefCompletenessScore } from '~~/server/utils/aiBriefScoring'
 
 function score(overrides: Partial<BriefCompletenessScore> = {}): BriefCompletenessScore {
@@ -77,5 +77,56 @@ describe('decideBriefGate', () => {
     }))
     expect(d.missingRequired).toHaveLength(0)
     expect(d.gate).toBe('pass')
+  })
+})
+
+describe('planGatekeeperActions', () => {
+  const needsInfo = decideBriefGate(score({
+    overall: 50,
+    breakdown: { requiredFieldsScore: 50, optionalFieldsScore: 0, contentQualityScore: 40 },
+    fieldScores: [{ fieldKey: 'audience', fieldLabel: 'Target Audience', score: 0, isRequired: true }],
+    recommendations: ['Fill in "Target Audience" to improve brief completeness'],
+  }))
+  const passing = decideBriefGate(score())
+
+  it('on needs_info: sets needs_info, writes a comment, notifies the submitter', () => {
+    const p = planGatekeeperActions({ decision: needsInfo, currentStatus: 'submitted' })
+    expect(p.setStatus).toBe('needs_info')
+    expect(p.comment).toMatch(/Target Audience/)
+    expect(p.comment).toMatch(/Fill in/) // recommendation bullet
+    expect(p.notifySubmitter).toBe(true)
+    expect(p.assignTo).toBeNull()
+    expect(p.noop).toBe(false)
+  })
+
+  it('on needs_info when already needs_info: no redundant status change, still comments', () => {
+    const p = planGatekeeperActions({ decision: needsInfo, currentStatus: 'needs_info' })
+    expect(p.setStatus).toBeNull()
+    expect(p.comment).toBeTruthy()
+    expect(p.notifySubmitter).toBe(true)
+  })
+
+  it('on pass: auto-assigns to the template target when unassigned', () => {
+    const p = planGatekeeperActions({ decision: passing, currentStatus: 'submitted', autoAssignTo: 'tm-1', currentAssignee: null })
+    expect(p.assignTo).toBe('tm-1')
+    expect(p.setStatus).toBeNull()
+    expect(p.comment).toBeNull()
+    expect(p.noop).toBe(false)
+  })
+
+  it('on pass: does not reassign an already-assigned brief', () => {
+    const p = planGatekeeperActions({ decision: passing, currentStatus: 'submitted', autoAssignTo: 'tm-1', currentAssignee: 'tm-9' })
+    expect(p.assignTo).toBeNull()
+    expect(p.noop).toBe(true)
+  })
+
+  it('on pass with no template auto-assign target: full no-op', () => {
+    const p = planGatekeeperActions({ decision: passing, currentStatus: 'submitted' })
+    expect(p).toMatchObject({ setStatus: null, comment: null, notifySubmitter: false, assignTo: null, noop: true })
+  })
+
+  it('never auto-acts on a brief with no scorable fields (vacuous 100%), even with an assign target', () => {
+    const p = planGatekeeperActions({ decision: passing, currentStatus: 'submitted', autoAssignTo: 'tm-1', currentAssignee: null, hasScorableFields: false })
+    expect(p).toMatchObject({ setStatus: null, comment: null, notifySubmitter: false, assignTo: null, noop: true })
   })
 })

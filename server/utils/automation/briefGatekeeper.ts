@@ -63,3 +63,61 @@ export function decideBriefGate(
     message,
   }
 }
+
+// --- Action planner (consumed by the flag-gated briefGatekeeperRunner) ---------
+// Pure: turns a gate decision + brief context into the concrete actions to take.
+// The runner executes these; this stays I/O-free and unit-tested.
+
+export interface GatekeeperPlanInput {
+  decision: BriefGateDecision
+  currentStatus: string
+  /** template auto-assign target (brief_templates.auto_assign_to), if any. */
+  autoAssignTo?: string | null
+  /** brief's current assignee, if any. */
+  currentAssignee?: string | null
+  /**
+   * Whether the brief has any scorable fields. A template with zero real fields scores
+   * 100% by vacuous truth — guard against auto-acting (esp. auto-assigning) an empty brief.
+   * Defaults true for back-compat.
+   */
+  hasScorableFields?: boolean
+}
+
+export interface GatekeeperPlan {
+  /** set the brief to needs_info (null = leave status unchanged). */
+  setStatus: 'needs_info' | null
+  /** a "request more info" comment body (null = no comment). */
+  comment: string | null
+  notifySubmitter: boolean
+  /** team_member id to auto-assign on pass (null = no assignment). */
+  assignTo: string | null
+  /** true = nothing to do. */
+  noop: boolean
+}
+
+const NOOP_PLAN: GatekeeperPlan = { setStatus: null, comment: null, notifySubmitter: false, assignTo: null, noop: true }
+
+export function planGatekeeperActions(input: GatekeeperPlanInput): GatekeeperPlan {
+  const { decision, currentStatus } = input
+
+  // A brief with no scorable fields scores 100% vacuously — never auto-act on it.
+  if (input.hasScorableFields === false) return { ...NOOP_PLAN }
+
+  if (decision.gate === 'needs_info') {
+    const lines = [decision.message]
+    if (decision.recommendations.length) {
+      lines.push('', 'Suggestions:', ...decision.recommendations.slice(0, 8).map(r => `• ${r}`))
+    }
+    return {
+      setStatus: currentStatus === 'needs_info' ? null : 'needs_info',
+      comment: lines.join('\n'),
+      notifySubmitter: true,
+      assignTo: null,
+      noop: false,
+    }
+  }
+
+  // pass: auto-assign to the template target only if the brief is currently unassigned.
+  const assignTo = input.autoAssignTo && !input.currentAssignee ? input.autoAssignTo : null
+  return { setStatus: null, comment: null, notifySubmitter: false, assignTo, noop: assignTo === null }
+}
