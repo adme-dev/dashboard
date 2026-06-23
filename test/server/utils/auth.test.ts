@@ -15,19 +15,15 @@
  *   - Pricing: canAccessPricing(userId,res,action) -> requirePricingAccess(event)
  *       (role gate: owner/admin/project_manager)
  *
- * SECURITY COVERAGE NOTES (behaviour that genuinely changed — flagged, not
- * silently dropped; see the session-handoff summary):
- *   1. No server-side session revocation. The old model stored per-session rows
- *      and could invalidate a single session (`invalidateSession`) or all of a
- *      user's (`invalidateAllSessions`, a real DELETE). The new model is a
- *      stateless JWT: `invalidateSession` no longer exists and
- *      `invalidateAllSessions` is a NO-OP STUB (logs only). A leaked JWT stays
- *      valid until its 7-day expiry; logout is client-side cookie clearing only.
- *   2. `hashToken` is a passthrough stub, so magic-link tokens are stored in
- *      `magic_link_tokens.token_hash` UNHASHED. Mitigated by 1h expiry + atomic
- *      single-use claim, but DB compromise would expose usable links.
- * These are implementation/architecture observations, not test bugs — the tests
- * below assert the current behaviour and document the stubs explicitly.
+ * SECURITY HARDENING (both gaps found during this rewrite are now FIXED in
+ * server/utils/auth.ts + migration 191 — tests below assert the fixed behaviour):
+ *   1. Session revocation. `invalidateAllSessions` was a no-op stub. It now stamps
+ *      team_members.sessions_invalidated_at, and validateSession rejects any JWT
+ *      whose `iat` predates that instant — giving the stateless-JWT model genuine
+ *      "log out everywhere" (used by password reset + user deactivation).
+ *   2. Token-at-rest. `hashToken` was a passthrough, so magic-link / password-reset
+ *      / email-verification tokens were stored UNHASHED. It now SHA-256-digests the
+ *      token, so a DB read can't recover a usable token.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -36,9 +32,11 @@ import { PERMISSIONS } from '../../../server/utils/permissions'
 // Mock the DB layer auth.ts depends on (`./db`).
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
+const mockExecute = vi.fn()
 vi.mock('../../../server/utils/db', () => ({
   queryOne: (...args: any[]) => mockQueryOne(...args),
-  queryRows: (...args: any[]) => mockQueryRows(...args)
+  queryRows: (...args: any[]) => mockQueryRows(...args),
+  execute: (...args: any[]) => mockExecute(...args)
 }))
 
 // Mock the custom-role permission resolver (requireAuth's slow path calls it).
@@ -124,10 +122,13 @@ describe('auth utility', () => {
     })
   })
 
-  describe('hashToken (compatibility stub)', () => {
-    it('is currently a passthrough — returns the token unchanged', () => {
-      // Documents SECURITY NOTE #2: magic-link tokens are stored unhashed.
-      expect(hashToken('test-token')).toBe('test-token')
+  describe('hashToken', () => {
+    it('SHA-256-digests the token (64-char hex, deterministic, not the raw token)', () => {
+      const hash = hashToken('test-token')
+      expect(hash).toMatch(/^[0-9a-f]{64}$/)
+      expect(hash).not.toBe('test-token')
+      expect(hashToken('test-token')).toBe(hash) // deterministic — lookups work
+      expect(hashToken('other-token')).not.toBe(hash)
     })
   })
 
@@ -213,12 +214,37 @@ describe('auth utility', () => {
       mockQueryOne.mockRejectedValueOnce(new Error('fetch failed'))
       await expect(validateSession(token)).rejects.toBeInstanceOf(TransientAuthError)
     })
+
+    it('rejects a token minted before the user revocation cutoff', async () => {
+      const token = await createJwt({ userId: 'user-456' }) // iat = now
+      // Cutoff is 1 minute in the FUTURE relative to the token's iat → revoked.
+      mockQueryOne.mockResolvedValueOnce({
+        id: 'user-456', email: 'e', name: 'n', role: 'admin', is_active: true,
+        sessions_invalidated_at: new Date(Date.now() + 60_000).toISOString()
+      })
+      await expect(validateSession(token)).resolves.toBeNull()
+    })
+
+    it('accepts a token minted after the revocation cutoff', async () => {
+      const token = await createJwt({ userId: 'user-456' }) // iat = now
+      mockQueryOne.mockResolvedValueOnce({
+        id: 'user-456', email: 'e', name: 'n', role: 'admin', is_active: true,
+        sessions_invalidated_at: new Date(Date.now() - 60_000).toISOString() // cutoff in the past
+      })
+      const user = await validateSession(token)
+      expect(user?.id).toBe('user-456')
+      // the internal marker must not leak into the returned User
+      expect(user as any).not.toHaveProperty('sessions_invalidated_at')
+    })
   })
 
-  describe('invalidateAllSessions (compatibility stub)', () => {
-    it('is a no-op in the stateless model — no DB delete (SECURITY NOTE #1)', async () => {
-      await expect(invalidateAllSessions('user-123')).resolves.toBeUndefined()
-      expect(mockQueryOne).not.toHaveBeenCalled()
+  describe('invalidateAllSessions', () => {
+    it('stamps the user revocation cutoff (real UPDATE, not a no-op)', async () => {
+      mockExecute.mockResolvedValueOnce(1)
+      await invalidateAllSessions('user-123')
+      const [sql, params] = mockExecute.mock.calls[0]
+      expect(String(sql)).toMatch(/UPDATE team_members SET sessions_invalidated_at = NOW\(\)/)
+      expect(params).toEqual(['user-123'])
     })
   })
 
@@ -419,8 +445,9 @@ describe('auth utility', () => {
       expect(token).toMatch(/^[0-9a-f]{64}$/i)
       const [sql, params] = mockQueryOne.mock.calls[0]
       expect(String(sql)).toContain('INSERT INTO magic_link_tokens')
-      // SECURITY NOTE #2: token_hash === raw token (hashToken is a passthrough).
-      expect(params[1]).toBe(token)
+      // token_hash is the SHA-256 digest, NOT the raw token (hardening #2).
+      expect(params[1]).toBe(hashToken(token))
+      expect(params[1]).not.toBe(token)
       expect(params[2]).toBe('user@example.com')
     })
 
