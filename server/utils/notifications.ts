@@ -34,6 +34,7 @@ export type NotificationType =
   | 'lead'
   | 'social_assigned'
   | 'social_sla_breach'
+  | 'brief_actioned'
 
 export type NotificationReason =
   | 'mentioned'
