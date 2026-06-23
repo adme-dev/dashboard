@@ -61,7 +61,8 @@ const typeLabelMap: Record<string, string> = {
   approval_requested: 'Approval',
   approval_completed: 'Approved',
   team_update: 'Team Update',
-  system: 'System'
+  system: 'System',
+  brief_actioned: 'Brief'
 }
 
 function getBadgeColor(type: string) {
