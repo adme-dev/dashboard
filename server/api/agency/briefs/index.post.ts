@@ -5,6 +5,7 @@
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { getAuthUser } from '~~/server/utils/auth'
 import { notifyBriefSubmitted, notifyBriefAssigned } from '~~/server/utils/briefNotifications'
+import { runBriefGatekeeper } from '~~/server/utils/automation/briefGatekeeperRunner'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -229,6 +230,17 @@ export default defineEventHandler(async (event) => {
         assigneeId: assignedTo,
         assignerId: submittedBy
       }).catch(err => console.error('[Brief] Assign notification error:', err))
+    }
+
+    // C5 brief-completeness gatekeeper on create-as-submitted (DORMANT — only acts
+    // when BRIEF_GATEKEEPER_ENABLED). Field values are already inserted above, so the
+    // completeness score is accurate. Fail-open: never block brief creation.
+    if (!isDraft) {
+      try {
+        await runBriefGatekeeper(brief.id)
+      } catch (gkError) {
+        console.error('[Brief] Gatekeeper failed:', gkError)
+      }
     }
 
     return {
