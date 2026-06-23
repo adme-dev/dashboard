@@ -227,3 +227,81 @@ UPDATE brief_templates SET
   require_client_link=true,
   description='Display banner campaigns for automotive dealers — specs, Carsales sizes, offer compliance & accountability.'
 WHERE slug='display-banner';
+
+
+-- ============================================================
+-- REWORK 3: media-plan
+-- Assembly: 15 current + Tier C (5 fields) + new additions (4) + acct_* (3) = 27 fields
+-- Tier C applied: auto_oem_brand, auto_dealer_locations, auto_vehicle_category (checkboxgroup
+--   "segments"), auto_oem_incentive_period, auto_inventory_context — NOT full Tier A offer block.
+-- acct_compliance_ack conditional_logic = NULL (no auto_driveaway_price in this template).
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug='media-plan';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id=tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text,
+     is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+    -- Step 1: Plan Overview
+    (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Plan Overview','Basic Information','full',1),
+    (tmpl_id,'project_name','Campaign / Plan Name','text',NULL,NULL,true,'[]'::jsonb,NULL,1,'Plan Overview','Basic Information','full',2),
+    (tmpl_id,'plan_type','Plan Type','dropdown',NULL,NULL,true,
+     '[{"label":"Full Media Plan","value":"full_plan"},{"label":"Digital Media Plan","value":"digital"},{"label":"Channel Recommendation","value":"channel_rec"},{"label":"Budget Reallocation","value":"budget_realloc"},{"label":"Competitor Analysis","value":"competitor"},{"label":"Market Research","value":"market_research"}]'::jsonb,
+     NULL,1,'Plan Overview','Type','half',3),
+    (tmpl_id,'campaign_objective','Business Objective','richtext',NULL,NULL,true,'[]'::jsonb,NULL,1,'Plan Overview','Objectives','full',4),
+    (tmpl_id,'kpis','Key Performance Indicators','textarea',NULL,NULL,true,'[]'::jsonb,NULL,1,'Plan Overview','Objectives','full',5),
+    (tmpl_id,'target_audience','Target Audience','richtext',NULL,NULL,true,'[]'::jsonb,NULL,1,'Plan Overview','Audience','full',6),
+
+    -- Step 2: Market & Channels
+    (tmpl_id,'geographic_market','Geographic Market','textarea',NULL,NULL,true,'[]'::jsonb,NULL,2,'Market & Channels','Market','full',1),
+    (tmpl_id,'campaign_dates','Campaign Dates','daterange',NULL,NULL,true,'[]'::jsonb,NULL,2,'Market & Channels','Timeline','half',2),
+    (tmpl_id,'total_budget','Total Media Budget','dropdown',NULL,NULL,true,
+     '[{"label":"Under $10,000","value":"under_10k"},{"label":"$10,000 - $50,000","value":"10k_50k"},{"label":"$50,000 - $150,000","value":"50k_150k"},{"label":"$150,000 - $500,000","value":"150k_500k"},{"label":"$500,000+","value":"500k_plus"},{"label":"TBD — need recommendation","value":"tbd"}]'::jsonb,
+     NULL,2,'Market & Channels','Budget','half',3),
+    (tmpl_id,'confirmed_budget','Confirmed Budget','currency',NULL,'Actual confirmed budget if known.',false,'[]'::jsonb,NULL,2,'Market & Channels','Budget','half',4),
+    (tmpl_id,'channels','Channels to Consider','checkboxgroup',NULL,NULL,false,
+     '[{"label":"Search (Google/Bing)","value":"search"},{"label":"Social (Meta, LinkedIn, TikTok)","value":"social"},{"label":"Display/Programmatic","value":"display"},{"label":"YouTube/Video","value":"video"},{"label":"TV","value":"tv"},{"label":"Radio","value":"radio"},{"label":"OOH/Billboard","value":"ooh"},{"label":"Print","value":"print"},{"label":"Influencer","value":"influencer"},{"label":"Email","value":"email"},{"label":"SEO/Content","value":"seo"},{"label":"All (full recommendation)","value":"all"}]'::jsonb,
+     NULL,2,'Market & Channels','Channels','full',5),
+    (tmpl_id,'existing_activity','Current / Previous Activity','richtext',NULL,NULL,false,'[]'::jsonb,NULL,2,'Market & Channels','History','full',6),
+    (tmpl_id,'competitors','Key Competitors','textarea',NULL,NULL,false,'[]'::jsonb,NULL,2,'Market & Channels','Competitive','full',7),
+
+    -- Step 3: Deliverables & Planning Context
+    (tmpl_id,'deliverables','Required Deliverables','checkboxgroup',NULL,NULL,true,
+     '[{"label":"Media plan document","value":"plan"},{"label":"Budget breakdown by channel","value":"budget"},{"label":"Media calendar","value":"calendar"},{"label":"Audience strategy","value":"audience"},{"label":"Competitive analysis","value":"competitive"},{"label":"Measurement framework","value":"measurement"},{"label":"Presentation deck","value":"presentation"}]'::jsonb,
+     NULL,3,'Deliverables & Context','Deliverables','full',1),
+    (tmpl_id,'due_date','Plan Due Date','date',NULL,NULL,true,'[]'::jsonb,NULL,3,'Deliverables & Context','Timeline','half',2),
+    (tmpl_id,'creative_lead_time','Creative Production Lead Time','dropdown',NULL,'Time needed for creative assets before campaign launch.',false,
+     '[{"label":"1 week","value":"1_week"},{"label":"2 weeks","value":"2_weeks"},{"label":"3 weeks","value":"3_weeks"},{"label":"4 weeks","value":"4_weeks"}]'::jsonb,
+     NULL,3,'Deliverables & Context','Timeline','half',3),
+    (tmpl_id,'vfacts_market_context','VFACTS / Market Context','textarea',NULL,'Current VFACTS position, market share, competitor context — essential for strategy.',false,'[]'::jsonb,NULL,3,'Deliverables & Context','Context','full',4),
+    (tmpl_id,'seasonality','Seasonality / Key Dates','textarea',NULL,'e.g. EOFY, plate clearance, OEM incentive end dates, public holiday campaigns.',false,'[]'::jsonb,NULL,3,'Deliverables & Context','Context','full',5),
+    (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Deliverables & Context','Other','full',6),
+
+    -- Step 4: Automotive Context & Accountability — Tier C + acct_*
+    -- Tier C: auto_oem_brand, auto_vehicle_category (checkboxgroup segments), auto_dealer_locations,
+    --         auto_oem_incentive_period, auto_inventory_context
+    (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — shapes OEM incentive period and co-op eligibility.',false,
+     '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+     NULL,4,'Automotive Context & Accountability','Automotive Context','full',1),
+    (tmpl_id,'auto_vehicle_category','Vehicle Segments to Focus On','checkboxgroup',NULL,'Which vehicle categories does this plan prioritise?',false,
+     '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+     NULL,4,'Automotive Context & Accountability','Automotive Context','full',2),
+    (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) / suburbs this plan covers.',false,'[]'::jsonb,NULL,4,'Automotive Context & Accountability','Automotive Context','full',3),
+    (tmpl_id,'auto_oem_incentive_period','OEM Incentive / Co-op Period','text',NULL,'EOFY, plate-clearance, OEM bonus periods — these shape the media plan significantly.',false,'[]'::jsonb,NULL,4,'Automotive Context & Accountability','Automotive Context','half',4),
+    (tmpl_id,'auto_inventory_context','Inventory Context','textarea',NULL,'e.g. "Overstocked on SUVs — push SUVs in media mix." Context drives channel allocation.',false,'[]'::jsonb,NULL,4,'Automotive Context & Accountability','Automotive Context','full',5),
+    -- acct_* Accountability block
+    -- acct_compliance_ack: no auto_driveaway_price in media-plan → conditional_logic = NULL
+    (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,4,'Automotive Context & Accountability','Accountability','half',6),
+    (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the strategy and media plan content is accurate and approved for client delivery.',false,'[]'::jsonb,NULL,4,'Automotive Context & Accountability','Accountability','half',7),
+    (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+     '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+     NULL,4,'Automotive Context & Accountability','Accountability','full',8)
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET
+  require_client_link=true,
+  description='Strategy & media planning for automotive dealers — channels, budget, VFACTS context, OEM incentive periods & accountability.'
+WHERE slug='media-plan';
