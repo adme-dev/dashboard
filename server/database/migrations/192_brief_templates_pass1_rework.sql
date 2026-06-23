@@ -145,3 +145,107 @@ WHERE slug = 'facebook-ads';
 
 UPDATE brief_templates SET is_active = false WHERE slug = 'instagram-ads';
 
+-- ============================================================
+-- Task 8: google-ads — Search-focused trim
+-- ============================================================
+-- Starting point: 28 fields. Remove: display_assets (Display/Video only, not Search).
+-- Add: conversion_action (text).
+-- Retype: target_cpa_roas text → number.
+-- Target Languages: drop required flag.
+-- Splice Tier A (9 fields) + acct block (3 fields).
+-- Total: 27 base + 1 conversion_action = 28 base, -1 display_assets = 27,
+--        + Tier A 9 + acct 3 = 39 fields.
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug = 'google-ads';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id = tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+
+  -- ── Step 1: Campaign Setup ──────────────────────────────────────────
+  (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Campaign Setup','Basic Info','full',1),
+  (tmpl_id,'campaign_name','Campaign Name','text','e.g. Google Search — New Cars June',NULL,true,'[]'::jsonb,NULL,1,'Campaign Setup','Basic Info','full',2),
+  (tmpl_id,'campaign_type','Campaign Type','dropdown',NULL,'Select the Search network type for this campaign.',true,
+   '[{"label":"Search","value":"search"},{"label":"Dynamic Search Ads (DSA)","value":"dsa"},{"label":"Call-Only","value":"call_only"}]'::jsonb,
+   NULL,1,'Campaign Setup','Campaign Type','half',3),
+  (tmpl_id,'campaign_goal','Campaign Goal','dropdown',NULL,NULL,true,
+   '[{"label":"Sales / Leads","value":"sales_leads"},{"label":"Website Traffic","value":"traffic"},{"label":"Brand Awareness","value":"awareness"},{"label":"App Promotion","value":"app_promo"},{"label":"Local Store Visits","value":"store_visits"}]'::jsonb,
+   NULL,1,'Campaign Setup','Objectives','half',4),
+  (tmpl_id,'campaign_description','Campaign Description','richtext',NULL,NULL,true,'[]'::jsonb,NULL,1,'Campaign Setup','Objectives','full',5),
+  (tmpl_id,'landing_page_url','Landing Page URL','url','https://',NULL,true,'[]'::jsonb,NULL,1,'Campaign Setup','Destination','full',6),
+  (tmpl_id,'success_metrics','Success Metrics / KPIs','textarea','e.g. CPL < $35, CTR > 5%',NULL,true,'[]'::jsonb,NULL,1,'Campaign Setup','Goals','full',7),
+
+  -- ── Step 2: Targeting ────────────────────────────────────────────────
+  (tmpl_id,'target_keywords','Target Keywords','textarea','One keyword per line, e.g.\nnew mazda cx-5 dealership\nbuy mazda near me',NULL,true,'[]'::jsonb,NULL,2,'Targeting','Keywords','full',1),
+  (tmpl_id,'negative_keywords','Negative Keywords','textarea','One per line, e.g.\nused\ndiy repair',NULL,false,'[]'::jsonb,NULL,2,'Targeting','Keywords','full',2),
+  (tmpl_id,'keyword_match_types','Keyword Match Types','checkboxgroup',NULL,NULL,true,
+   '[{"label":"Broad Match","value":"broad"},{"label":"Phrase Match","value":"phrase"},{"label":"Exact Match","value":"exact"}]'::jsonb,
+   NULL,2,'Targeting','Keywords','full',3),
+  (tmpl_id,'target_locations','Target Locations','textarea','e.g. Melbourne metro, Geelong',NULL,true,'[]'::jsonb,NULL,2,'Targeting','Geography','full',4),
+  (tmpl_id,'languages','Target Languages','multiselect',NULL,'Default: English. Add others only if required.',false,
+   '[{"label":"English","value":"en"},{"label":"Mandarin","value":"zh"},{"label":"Vietnamese","value":"vi"},{"label":"Arabic","value":"ar"},{"label":"Italian","value":"it"},{"label":"Greek","value":"el"},{"label":"Cantonese","value":"yue"},{"label":"Hindi","value":"hi"}]'::jsonb,
+   NULL,2,'Targeting','Geography','half',5),
+  (tmpl_id,'audience_targeting','Audience Targeting','checkboxgroup',NULL,NULL,false,
+   '[{"label":"In-market: Autos","value":"inmarket_autos"},{"label":"In-market: Finance","value":"inmarket_finance"},{"label":"Remarketing","value":"remarketing"},{"label":"Customer Match","value":"customer_match"},{"label":"Similar Audiences","value":"similar"}]'::jsonb,
+   NULL,2,'Targeting','Audiences','full',6),
+  (tmpl_id,'device_targeting','Device Targeting','checkboxgroup',NULL,NULL,false,
+   '[{"label":"Desktop","value":"desktop"},{"label":"Mobile","value":"mobile"},{"label":"Tablet","value":"tablet"}]'::jsonb,
+   NULL,2,'Targeting','Devices','full',7),
+
+  -- ── Step 3: Ad Creative (Search) ─────────────────────────────────────
+  (tmpl_id,'headlines','Headlines','textarea',NULL,'Up to 15 headlines, max 30 characters each. One per line.',true,'[]'::jsonb,NULL,3,'Ad Creative','Search Ads','full',1),
+  (tmpl_id,'descriptions','Descriptions','textarea',NULL,'Up to 4 descriptions, max 90 characters each. One per line.',true,'[]'::jsonb,NULL,3,'Ad Creative','Search Ads','full',2),
+  (tmpl_id,'display_path','Display URL Path','text','e.g. /new-cars/mazda','Up to 2 path fields appended to your domain, 15 chars each.',false,'[]'::jsonb,NULL,3,'Ad Creative','Search Ads','half',3),
+  (tmpl_id,'ad_extensions','Ad Extensions','checkboxgroup',NULL,NULL,false,
+   '[{"label":"Callout","value":"callout"},{"label":"Structured Snippet","value":"structured_snippet"},{"label":"Call","value":"call"},{"label":"Location","value":"location"},{"label":"Image","value":"image"},{"label":"Price","value":"price"},{"label":"Promotion","value":"promotion"},{"label":"Lead Form","value":"lead_form"}]'::jsonb,
+   NULL,3,'Ad Creative','Extensions','full',4),
+  (tmpl_id,'sitelinks_info','Sitelinks Details','textarea','Sitelink 1: Book Test Drive | https://…\nSitelink 2: Finance Calculator | https://…','List each sitelink with headline + URL.',false,'[]'::jsonb,NULL,3,'Ad Creative','Extensions','full',5),
+
+  -- ── Step 4: Budget & Bidding ─────────────────────────────────────────
+  (tmpl_id,'daily_budget','Daily Budget ($)','currency',NULL,NULL,true,'[]'::jsonb,NULL,4,'Budget & Bidding','Budget','half',1),
+  (tmpl_id,'monthly_budget','Monthly Budget Cap ($)','currency',NULL,NULL,false,'[]'::jsonb,NULL,4,'Budget & Bidding','Budget','half',2),
+  (tmpl_id,'bidding_strategy','Bidding Strategy','dropdown',NULL,NULL,true,
+   '[{"label":"Maximise Conversions","value":"max_conversions"},{"label":"Maximise Conversion Value","value":"max_conv_value"},{"label":"Target CPA","value":"target_cpa"},{"label":"Target ROAS","value":"target_roas"},{"label":"Maximise Clicks","value":"max_clicks"},{"label":"Manual CPC","value":"manual_cpc"}]'::jsonb,
+   NULL,4,'Budget & Bidding','Bidding','half',3),
+  (tmpl_id,'target_cpa_roas','Target CPA / ROAS Value','number',NULL,'Enter as a number: CPA in dollars (e.g. 35) or ROAS as multiplier (e.g. 4 for 400%).',false,'[]'::jsonb,NULL,4,'Budget & Bidding','Bidding','half',4),
+  (tmpl_id,'conversion_action','Conversion Action','text','e.g. Lead Form Submit','Name of the Google Ads conversion action to optimise toward.',false,'[]'::jsonb,NULL,4,'Budget & Bidding','Bidding','full',5),
+  (tmpl_id,'start_date','Start Date','date',NULL,NULL,true,'[]'::jsonb,NULL,4,'Budget & Bidding','Schedule','half',6),
+  (tmpl_id,'end_date','End Date','date',NULL,NULL,false,'[]'::jsonb,NULL,4,'Budget & Bidding','Schedule','half',7),
+  (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Budget & Bidding','Notes','full',8),
+
+  -- ── Step 5: Offer & Accountability (Tier A + acct) ───────────────────
+  -- Tier A — Offer block
+  (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+   '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+  (tmpl_id,'auto_vehicle_focus','Vehicle(s) Featured','text','e.g. 2024 Mazda CX-5 Touring','Make / model / year being promoted.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',2),
+  (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+   '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+  (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. $500 cashback + 3.9% comparison rate','The specific deal the ad features.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',4),
+  (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear. Text — values are ranges/wording.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',5),
+  (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC).',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',6),
+  (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply.',false,
+   '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',7),
+  (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',8),
+  (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',9),
+  -- acct block
+  (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',10),
+  (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Accountability','half',11),
+  (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+   '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Accountability','full',12)
+
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET require_client_link = true WHERE slug = 'google-ads';
