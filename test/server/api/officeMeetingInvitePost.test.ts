@@ -45,8 +45,13 @@ vi.mock('~~/server/utils/db', () => ({
 }))
 
 vi.mock('~~/server/utils/email', () => ({
-  getAppUrl: () => 'https://app.example.com',
   sendOfficeMeetingInviteEmail: (...args: unknown[]) => mockSendOfficeMeetingInviteEmail(...args)
+}))
+
+// getAppUrl moved to its own module; the handler imports it from there. Mock it to a
+// stable app domain so the invite-domain check and canonical URL building are deterministic.
+vi.mock('~~/server/utils/appUrl', () => ({
+  getAppUrl: () => 'https://app.example.com'
 }))
 
 vi.mock('~~/server/utils/officeAudit', () => ({

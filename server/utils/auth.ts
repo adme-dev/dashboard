@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
-import { queryOne, queryRows } from './db'
+import { createHash } from 'node:crypto'
+import { queryOne, queryRows, execute } from './db'
 import { isReadOnlyRole, PERMISSIONS, permissionGroupsForRoles, roleHasPermission, type PermissionGroup } from './permissions'
 import { resolveUserPermissions } from './roleResolver'
 
@@ -80,12 +81,26 @@ export async function validateSession(token: string): Promise<User | null> {
 
   // DB lookup — let connection errors propagate as TransientAuthError
   try {
-    return await queryOne<User>(
-      `SELECT id, email, name, user_role as role, is_active, avatar_url, custom_role_id
+    const row = await queryOne<User & { sessions_invalidated_at?: string | null }>(
+      `SELECT id, email, name, user_role as role, is_active, avatar_url, custom_role_id, sessions_invalidated_at
        FROM team_members
        WHERE id = $1 AND is_active = true`,
       [payload.userId]
     )
+    if (!row) return null
+
+    // Stateless-JWT session revocation: invalidateAllSessions() stamps
+    // team_members.sessions_invalidated_at. Reject any token minted before that
+    // instant (e.g. issued under a since-changed password). A token without `iat`
+    // can't be proven newer, so it's rejected once a marker exists.
+    if (row.sessions_invalidated_at) {
+      const invalidatedAt = new Date(row.sessions_invalidated_at).getTime()
+      if (!payload.iat || payload.iat < invalidatedAt) return null
+    }
+
+    // Strip the internal marker — it's not part of the public User shape.
+    const { sessions_invalidated_at: _ignored, ...user } = row
+    return user as User
   } catch (dbError) {
     throw new TransientAuthError('Database unreachable during session validation', dbError)
   }
@@ -320,10 +335,15 @@ export async function logActivity(event: any, action: string, entityType?: strin
   })
 }
 
-// Hash token (stub for compatibility)
+// Hash a bearer/verification token for at-rest storage. Used for the magic-link,
+// password-reset, and email-verification `token_hash` columns — callers store and
+// look up by this digest, never the raw token, so a DB read cannot recover a usable
+// token. SHA-256 (not bcrypt) is correct here: these are high-entropy random tokens
+// (generateToken = 32 random bytes), not low-entropy user passwords, so a fast digest
+// is fine and lets lookups stay deterministic. createHash(node:crypto) runs on the
+// Cloudflare edge (nodejs_compat) — see server/utils/leads/idempotency.ts.
 export function hashToken(token: string): string {
-  // In production, use proper hashing like bcrypt or crypto
-  return token
+  return createHash('sha256').update(token).digest('hex')
 }
 
 // Create session (stub for compatibility)
@@ -331,10 +351,15 @@ export async function createSession(userId: string, event?: any): Promise<string
   return createJwt({ userId })
 }
 
-// Invalidate all sessions for a user (stub for compatibility)
+// Invalidate all of a user's sessions by stamping a revocation cutoff. validateSession
+// rejects any JWT minted before this instant, so issued-but-stolen tokens (and tokens
+// from before a password reset) stop working immediately — the stateless-JWT equivalent
+// of clearing a server-side session store. Called from password reset + user deactivation.
 export async function invalidateAllSessions(userId: string): Promise<void> {
-  // In production, this would clear session cache/DB entries
-  console.log(`[Sessions] Invalidated all sessions for user ${userId}`)
+  await execute(
+    `UPDATE team_members SET sessions_invalidated_at = NOW() WHERE id = $1`,
+    [userId]
+  )
 }
 
 // Require pricing access (stub for compatibility)

@@ -1,14 +1,19 @@
 /**
  * Cache Utility Tests
+ *
+ * Exercises the current in-memory MemoryCache via its public API
+ * (getCached / setCached / invalidatePrefix). The cache keys off Date.now()
+ * for TTL, so expiry is driven with fake timers. (The previous suite tested a
+ * removed useStorage/KV-backed implementation and inspected internal storage.)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mockCacheStorage } from '../../setup'
 import { getCached, setCached, invalidatePrefix } from '../../../server/utils/cache'
 
 describe('cache utility', () => {
-  beforeEach(() => {
-    mockCacheStorage.clear()
+  beforeEach(async () => {
+    // The generic cache is a module-level singleton — reset it between tests.
+    await invalidatePrefix('')
     vi.useFakeTimers()
   })
 
@@ -16,143 +21,72 @@ describe('cache utility', () => {
     vi.useRealTimers()
   })
 
-  describe('setCached', () => {
-    it('should store a value with TTL', async () => {
-      await setCached('test-key', { data: 'value' }, 60000)
-
-      const stored = mockCacheStorage.get('cache:test-key')
-      expect(stored).toBeDefined()
-      expect(stored.value).toEqual({ data: 'value' })
-      expect(stored.expiresAt).toBeGreaterThan(Date.now())
+  describe('setCached / getCached', () => {
+    it('round-trips a stored value', () => {
+      setCached('test-key', { data: 'value' }, 60000)
+      expect(getCached('test-key')).toEqual({ data: 'value' })
     })
 
-    it('should set correct expiration time', async () => {
-      const now = Date.now()
-      vi.setSystemTime(now)
-
-      await setCached('ttl-test', 'value', 5000)
-
-      const stored = mockCacheStorage.get('cache:ttl-test')
-      expect(stored.expiresAt).toBe(now + 5000)
+    it('returns undefined for missing keys', () => {
+      expect(getCached('nonexistent')).toBeUndefined()
     })
 
-    it('should overwrite existing values', async () => {
-      await setCached('overwrite', 'first', 60000)
-      await setCached('overwrite', 'second', 60000)
-
-      const stored = mockCacheStorage.get('cache:overwrite')
-      expect(stored.value).toBe('second')
-    })
-  })
-
-  describe('getCached', () => {
-    it('should return cached value if not expired', async () => {
-      const now = Date.now()
-      vi.setSystemTime(now)
-
-      mockCacheStorage.set('cache:valid', {
-        value: 'cached-data',
-        expiresAt: now + 60000
-      })
-
-      const result = await getCached('valid')
-      expect(result).toBe('cached-data')
+    it('overwrites existing values', () => {
+      setCached('overwrite', 'first', 60000)
+      setCached('overwrite', 'second', 60000)
+      expect(getCached('overwrite')).toBe('second')
     })
 
-    it('should return undefined for missing keys', async () => {
-      const result = await getCached('nonexistent')
-      expect(result).toBeUndefined()
+    it('expires entries after their TTL and deletes them on read', () => {
+      setCached('ttl', 'value', 5000)
+      expect(getCached('ttl')).toBe('value')
+      vi.advanceTimersByTime(5001)
+      expect(getCached('ttl')).toBeUndefined()
     })
 
-    it('should return undefined and delete expired entries', async () => {
-      const now = Date.now()
-      vi.setSystemTime(now)
-
-      mockCacheStorage.set('cache:expired', {
-        value: 'old-data',
-        expiresAt: now - 1000 // Already expired
-      })
-
-      const result = await getCached('expired')
-      expect(result).toBeUndefined()
-      expect(mockCacheStorage.has('cache:expired')).toBe(false)
+    it('keeps entries within their TTL window', () => {
+      setCached('within', 'value', 5000)
+      vi.advanceTimersByTime(4999)
+      expect(getCached('within')).toBe('value')
     })
 
-    it('should handle complex data types', async () => {
-      const complexData = {
-        array: [1, 2, 3],
-        nested: { a: { b: { c: 'deep' } } },
-        date: '2024-01-01T00:00:00Z'
-      }
+    it('handles complex data types', () => {
+      const complex = { array: [1, 2, 3], nested: { a: { b: { c: 'deep' } } }, date: '2024-01-01T00:00:00Z' }
+      setCached('complex', complex, 60000)
+      expect(getCached('complex')).toEqual(complex)
+    })
 
-      await setCached('complex', complexData, 60000)
-      const result = await getCached('complex')
-
-      expect(result).toEqual(complexData)
+    it('stores null and undefined values', () => {
+      setCached('null-value', null, 60000)
+      setCached('undefined-value', undefined, 60000)
+      expect(getCached('null-value')).toBeNull()
+      expect(getCached('undefined-value')).toBeUndefined()
     })
   })
 
   describe('invalidatePrefix', () => {
-    it('should remove all entries with matching prefix', async () => {
-      mockCacheStorage.set('cache:user:1', { value: 'a', expiresAt: Date.now() + 60000 })
-      mockCacheStorage.set('cache:user:2', { value: 'b', expiresAt: Date.now() + 60000 })
-      mockCacheStorage.set('cache:project:1', { value: 'c', expiresAt: Date.now() + 60000 })
-
+    it('removes all entries with a matching prefix, leaving others', async () => {
+      setCached('user:1', 'a', 60000)
+      setCached('user:2', 'b', 60000)
+      setCached('project:1', 'c', 60000)
       await invalidatePrefix('user:')
-
-      expect(mockCacheStorage.has('cache:user:1')).toBe(false)
-      expect(mockCacheStorage.has('cache:user:2')).toBe(false)
-      expect(mockCacheStorage.has('cache:project:1')).toBe(true)
+      expect(getCached('user:1')).toBeUndefined()
+      expect(getCached('user:2')).toBeUndefined()
+      expect(getCached('project:1')).toBe('c')
     })
 
-    it('should handle empty prefix', async () => {
-      mockCacheStorage.set('cache:a', { value: 1, expiresAt: Date.now() + 60000 })
-      mockCacheStorage.set('cache:b', { value: 2, expiresAt: Date.now() + 60000 })
-
-      // Empty prefix should match all cache entries
+    it('empty prefix clears everything', async () => {
+      setCached('a', 1, 60000)
+      setCached('b', 2, 60000)
       await invalidatePrefix('')
-
-      expect(mockCacheStorage.size).toBe(0)
+      expect(getCached('a')).toBeUndefined()
+      expect(getCached('b')).toBeUndefined()
     })
 
-    it('should do nothing if no matches found', async () => {
-      mockCacheStorage.set('cache:existing', { value: 'keep', expiresAt: Date.now() + 60000 })
-
+    it('does nothing when no keys match', async () => {
+      setCached('existing', 'keep', 60000)
       await invalidatePrefix('nonexistent:')
-
-      expect(mockCacheStorage.has('cache:existing')).toBe(true)
-    })
-  })
-
-  describe('edge cases', () => {
-    it('should handle null and undefined values', async () => {
-      await setCached('null-value', null, 60000)
-      await setCached('undefined-value', undefined, 60000)
-
-      const nullResult = await getCached('null-value')
-      const undefinedResult = await getCached('undefined-value')
-
-      expect(nullResult).toBeNull()
-      expect(undefinedResult).toBeUndefined()
-    })
-
-    it('should handle zero TTL correctly', async () => {
-      const now = Date.now()
-      vi.setSystemTime(now)
-
-      await setCached('zero-ttl', 'value', 0)
-
-      // With TTL of 0, expiresAt equals now, which is considered expired
-      const result = await getCached('zero-ttl')
-      expect(result).toBeUndefined()
-    })
-
-    it('should handle very long TTL', async () => {
-      const oneYear = 365 * 24 * 60 * 60 * 1000
-      await setCached('long-ttl', 'value', oneYear)
-
-      const stored = mockCacheStorage.get('cache:long-ttl')
-      expect(stored.expiresAt).toBe(Date.now() + oneYear)
+      expect(getCached('existing')).toBe('keep')
     })
   })
 })
