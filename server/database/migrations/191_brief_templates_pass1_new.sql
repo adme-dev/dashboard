@@ -1,0 +1,6 @@
+-- ============================================
+-- 191 · Brief Templates Pass 1 — NEW templates
+-- Meta AIA, Google PMax, Newspaper Ad, SMS/MMS
+-- Pattern: INSERT template ON CONFLICT DO NOTHING + DO $$ field block.
+-- Idempotent. Spec: docs/superpowers/specs/2026-06-23-brief-templates-automotive-design.md
+-- ============================================
