@@ -55,6 +55,10 @@ rather than overloading `brief_status_changed`. No dedicated inbox tab (shows un
   - `stallEscalation(brief)` — builds the A.1 `EscalationInput` (capability `brief_sla`,
     `warning` severity, proposedAction = none/notify-only) + the briefer notification params.
   - `isC7Enabled()` — `process.env.C7_CONFIRMATION_ENABLED === 'true'`.
+  - **AI seam (forward-only, no AI built in v1):** `ackNotification` and `stallEscalation`
+    accept an optional `suggestion?: string` that, when present, is appended to the message
+    (e.g. *"Suggested next step: …"*). v1 always passes `undefined`. A later KB-AI step can
+    populate it without touching the deterministic core (see §9.5).
 - **Ack hook** — a thin runner `maybeAcknowledgeBrief(briefId)` called (flag-gated, fail-open)
   from the brief **assignment** and **conversion** code paths, mirroring `briefGatekeeperRunner`.
   Stamps `c7_acknowledged_at` then notifies. Never blocks the assignment/conversion.
@@ -90,6 +94,21 @@ Set `OPS_AUTOPILOT_NOTIFY_ALLOWLIST` (owner-only) → `C7_CONFIRMATION_ENABLED=t
 register `/api/cron/ops-autopilot-brief-sla` in `pages-cron` (daily). Verify: assign a test brief
 → briefer gets one ack; leave a test brief un-actioned + force the cron → one escalation + one
 briefer alert, no repeats. Rollback: unset the flag / remove the cron route.
+
+## 9.5 AI composition (separate slices — not built by C7)
+C7's core is deterministic by design (a notification + an SLA check must be reliable, free, and
+not depend on an LLM call). It *composes* with the AI layer without owning it:
+- **Traffic controller (G1)** — capacity-aware auto-routing (`route_to_capacity`: AI proposes the
+  best-fit available person, auto-applies routine, human override always). G1 is what *actions*
+  a brief by assigning it. C7's trigger is `assigned_to` → set **regardless of who set it**, so
+  once G1 ships, C7 confirms G1's assignments for free — no rework. G1 is its own slice (deferred).
+- **KB-corrections AI** — the AI assistant using the Knowledge Base (agency standards/templates)
+  to draft what a brief is missing or got wrong. This belongs to **C5 (the gatekeeper)** /a QA
+  step, not C7. When it exists, it can feed C7's `suggestion` seam (e.g. the stall alert carries
+  an AI next-step). Gated by `AI_TOOLS_ENABLED` + KB-ACL; out of C7's critical path.
+
+The only C7 concession to AI now is the optional `suggestion` field (§5) — an empty seam, no
+AI dependency added.
 
 ## 10. Out of scope / follow-ons
 Completion-confirm; client-facing confirmation; `requested_deadline`-tiered urgency; holiday
