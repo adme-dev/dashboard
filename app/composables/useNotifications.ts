@@ -156,7 +156,8 @@ export function useNotifications() {
       system: 'i-lucide-info',
       ai_digest: 'i-lucide-brain',
       chat_mention: 'i-lucide-at-sign',
-      chat_dm: 'i-lucide-message-circle'
+      chat_dm: 'i-lucide-message-circle',
+      brief_actioned: 'i-lucide-circle-check-big'
     }
     return icons[type] || 'i-lucide-bell'
   }
@@ -178,7 +179,8 @@ export function useNotifications() {
       system: 'text-neutral-500',
       ai_digest: 'text-violet-500',
       chat_mention: 'text-cyan-500',
-      chat_dm: 'text-blue-500'
+      chat_dm: 'text-blue-500',
+      brief_actioned: 'text-emerald-500'
     }
     return colors[type] || 'text-neutral-500'
   }

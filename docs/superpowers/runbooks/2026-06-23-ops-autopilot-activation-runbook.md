@@ -64,6 +64,18 @@ in `pages-cron` ROUTES (monthly cadence) + deploy.
 
 ---
 
+## C7 — Brief actioned-confirmation  *(no platform writes; needs brief adoption)*
+**Prereqs:** §0 allowlist set; briefing actually flowing through the dashboard.
+**Turn on:** set `C7_CONFIRMATION_ENABLED=true` → redeploy; register
+`'/api/cron/ops-autopilot-brief-sla'` in `pages-cron` ROUTES (daily).
+**Verify:** assign a test brief → its submitter gets one "picked up" notification (no repeat on
+re-assign). Leave a test brief un-actioned + force the cron (`?force=true`) → one `brief_sla`
+escalation (allowlisted recipients) + one "not actioned" alert to the submitter; force again →
+no repeat (dedup via `c7_stall_alerted_at`).
+**Rollback:** unset `C7_CONFIRMATION_ENABLED` (and/or remove the cron route) → redeploy.
+
+---
+
 ## Phase 4 — Lifecycle guard  *(do AFTER the pilot statuses have been used for real)*
 This makes 🟡 status transitions raise approval escalations. Prereqs: migration 194 applied
 (done), §0 allowlist set.
