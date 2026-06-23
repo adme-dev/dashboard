@@ -445,3 +445,106 @@ END $$;
 
 UPDATE brief_templates SET require_client_link = true WHERE slug = 'ad-creative';
 
+-- ============================================================
+-- Task 11: landing-page — Full rework
+-- ============================================================
+-- Starting point: batch-3 §2 (17 fields).
+-- ADD: auto_offer_details (required for this template), utm_params (text, R),
+--      campaign_ad_account (text).
+-- MAKE REQUIRED: tracking_requirements.
+-- EXTEND form_fields options: Vehicle of Interest, Trade-In, Preferred Contact Method.
+-- Splice Tier A (9 fields, auto_offer_details REQUIRED here) + Tier B (2 fields) + acct block (3).
+-- UPDATE: require_client_link=true, default_priority='high'.
+-- Steps: 1 Page Basics, 2 Content, 3 Technical & Tracking, 4 Form & Design, 5 Offer & Accountability.
+-- Total estimate: ~34 fields (17 + 3 new + 9 Tier A + 2 Tier B + 3 acct).
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug = 'landing-page';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id = tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+
+  -- ── Step 1: Page Basics ──────────────────────────────────────────────
+  (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Page Basics','Basic Information','full',1),
+  (tmpl_id,'page_name','Page Name','text','e.g. Mazda June EOFY Landing Page',NULL,true,'[]'::jsonb,NULL,1,'Page Basics','Basic Information','full',2),
+  (tmpl_id,'page_purpose','Page Purpose','dropdown',NULL,NULL,true,
+   '[{"label":"Lead Generation","value":"lead_gen"},{"label":"Product / Model Showcase","value":"product_showcase"},{"label":"Event Registration","value":"event_reg"},{"label":"Offer / Promotion","value":"offer"},{"label":"Contact / Enquiry","value":"contact"},{"label":"Service Booking","value":"service_booking"},{"label":"Finance Application","value":"finance"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,1,'Page Basics','Basic Information','half',3),
+  (tmpl_id,'cms_platform','CMS / Platform','dropdown',NULL,NULL,false,
+   '[{"label":"WordPress","value":"wordpress"},{"label":"Custom Build","value":"custom"},{"label":"Unbounce","value":"unbounce"},{"label":"Leadpages","value":"leadpages"},{"label":"Webflow","value":"webflow"},{"label":"Shopify","value":"shopify"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,1,'Page Basics','Basic Information','half',4),
+  (tmpl_id,'launch_date','Launch Date','date',NULL,NULL,true,'[]'::jsonb,NULL,1,'Page Basics','Timeline','half',5),
+  (tmpl_id,'desired_url','Desired URL / Slug','text','e.g. /june-eofy-mazda',NULL,false,'[]'::jsonb,NULL,1,'Page Basics','Technical','half',6),
+
+  -- ── Step 2: Content ───────────────────────────────────────────────────
+  (tmpl_id,'headline','Headline / Value Proposition','textarea','e.g. Drive Away a New Mazda CX-5 from $34,990 this June',NULL,true,'[]'::jsonb,NULL,2,'Content','Content','full',1),
+  (tmpl_id,'page_content','Page Content / Copy','richtext',NULL,NULL,true,'[]'::jsonb,NULL,2,'Content','Content','full',2),
+  (tmpl_id,'primary_cta','Primary Call-to-Action','text','e.g. Get This Deal',NULL,true,'[]'::jsonb,NULL,2,'Content','CTA','half',3),
+  (tmpl_id,'traffic_sources','Traffic Sources','checkboxgroup',NULL,'Which channels will drive traffic to this page?',true,
+   '[{"label":"Meta Ads","value":"meta"},{"label":"Google Search","value":"google_search"},{"label":"Google PMax","value":"google_pmax"},{"label":"TikTok","value":"tiktok"},{"label":"Display","value":"display"},{"label":"Email","value":"email"},{"label":"SMS","value":"sms"},{"label":"Organic / SEO","value":"organic"},{"label":"Direct","value":"direct"}]'::jsonb,
+   NULL,2,'Content','Traffic','full',4),
+  (tmpl_id,'reference_inspiration','Reference / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,2,'Content','References','full',5),
+  (tmpl_id,'assets','Assets','files',NULL,NULL,false,'[]'::jsonb,NULL,2,'Content','Assets','full',6),
+
+  -- ── Step 3: Technical & Tracking ─────────────────────────────────────
+  (tmpl_id,'tracking_requirements','Tracking Requirements','checkboxgroup',NULL,'All tracking that must be installed on this page before launch.',true,
+   '[{"label":"Google Analytics 4 (GA4)","value":"ga4"},{"label":"Google Tag Manager (GTM)","value":"gtm"},{"label":"Meta Pixel","value":"meta_pixel"},{"label":"Google Ads Conversion","value":"google_ads_conv"},{"label":"TikTok Pixel","value":"tiktok_pixel"},{"label":"Call Tracking","value":"call_tracking"},{"label":"Heatmap (Hotjar/CrazyEgg)","value":"heatmap"}]'::jsonb,
+   NULL,3,'Technical & Tracking','Tracking','full',1),
+  (tmpl_id,'utm_params','UTM Parameters','text','e.g. utm_source=meta&utm_medium=paid&utm_campaign=mazda-june-eofy','Required for attribution. Provide the UTM string or campaign naming convention.',true,'[]'::jsonb,NULL,3,'Technical & Tracking','Tracking','full',2),
+  (tmpl_id,'campaign_ad_account','Campaign / Ad Account','text','e.g. Meta Act_123456789 / Google CID 123-456-7890','Which ad account / campaign is this page supporting? Drives attribution setup.',false,'[]'::jsonb,NULL,3,'Technical & Tracking','Tracking','full',3),
+  (tmpl_id,'design_approach','Design Approach','dropdown',NULL,NULL,true,
+   '[{"label":"New custom design","value":"custom"},{"label":"Use existing template","value":"template"},{"label":"Clone / adapt existing page","value":"clone"},{"label":"Landing page builder (Unbounce/Leadpages)","value":"builder"}]'::jsonb,
+   NULL,3,'Technical & Tracking','Design','half',4),
+  (tmpl_id,'budget','Budget','dropdown',NULL,NULL,false,
+   '[{"label":"Under $500","value":"under_500"},{"label":"$500 – $1,500","value":"500_1500"},{"label":"$1,500 – $3,000","value":"1500_3000"},{"label":"Over $3,000","value":"over_3k"}]'::jsonb,
+   NULL,3,'Technical & Tracking','Design','half',5),
+  (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Technical & Tracking','Notes','full',6),
+
+  -- ── Step 4: Form & Design ─────────────────────────────────────────────
+  (tmpl_id,'form_fields','Form Fields Required','checkboxgroup',NULL,'Select all fields the lead capture form should include.',false,
+   '[{"label":"Full Name","value":"full_name"},{"label":"Email","value":"email"},{"label":"Phone","value":"phone"},{"label":"Vehicle of Interest","value":"vehicle_of_interest"},{"label":"Trade-In","value":"trade_in"},{"label":"Preferred Contact Method","value":"preferred_contact"},{"label":"Message / Notes","value":"message"},{"label":"Postcode","value":"postcode"},{"label":"Preferred Test Drive Date","value":"test_drive_date"}]'::jsonb,
+   NULL,4,'Form & Design','Form','full',1),
+
+  -- ── Step 5: Offer & Accountability (Tier A + Tier B + acct) ──────────
+  -- Tier A — Offer block (auto_offer_details is REQUIRED for landing pages)
+  (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+   '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+  (tmpl_id,'auto_vehicle_focus','Vehicle(s) Featured','text','e.g. 2024 Mazda CX-5 Touring','Make / model / year being promoted.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',2),
+  (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+   '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+  -- auto_offer_details is REQUIRED for landing-page
+  (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. $500 cashback + 3.9% comparison rate','The specific offer this landing page is built around. Required — every dealer landing page has an offer.',true,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',4),
+  (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear. Text — values are ranges/wording.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',5),
+  (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC).',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',6),
+  (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply.',false,
+   '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',7),
+  (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',8),
+  (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',9),
+  -- Tier B — feed extension
+  (tmpl_id,'auto_stock_feed_url','Stock / Inventory Feed URL','url','https://feed.autogate.com.au/...','Autogate / dealer DMS export / Merchant Centre feed. For inventory-specific pages.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',10),
+  (tmpl_id,'auto_catalogue_id','Product Catalogue / Feed ID','text',NULL,'Meta vehicle catalogue ID or Google Merchant Centre feed ID.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',11),
+  -- acct block
+  (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',12),
+  (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Accountability','half',13),
+  (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+   '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Accountability','full',14)
+
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates
+SET require_client_link = true,
+    default_priority = 'high'
+WHERE slug = 'landing-page';
