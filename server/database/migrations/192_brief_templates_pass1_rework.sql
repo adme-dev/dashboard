@@ -823,3 +823,303 @@ DO $$ DECLARE tmpl_id UUID; BEGIN
 END $$;
 
 UPDATE brief_templates SET require_client_link = true WHERE slug = 'website-dev';
+
+-- ============================================================
+-- Task 15: seo-audit → "SEO Retainer Brief"
+-- ============================================================
+-- Starting point: batch-3 §5 (12 fields).
+-- ADD "GBP Management" option to scope_of_work checkboxgroup.
+-- ADD: num_locations (number, R), auto_dealer_locations (required, Tier C),
+--      monthly_reporting_format (dropdown), access_checklist (checkboxgroup).
+-- MAKE REQUIRED: target_geo_locations.
+-- Tier C: auto_oem_brand (dropdown), auto_vehicle_category (checkboxgroup — "Vehicle Segments to Focus On"),
+--         auto_oem_incentive_period (text), auto_inventory_context (textarea).
+-- acct block: acct_compliance_ack.conditional_logic = NULL (no driveaway field here).
+-- UPDATE: name, description, require_client_link=true.
+-- Steps: 1 Project Info, 2 Scope & Locations, 3 Keywords & Context, 4 Tools & Access, 5 Offer & Accountability.
+-- Total: ~12 base + 4 new + 4 Tier C + 3 acct = ~23 fields.
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug = 'seo-audit';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id = tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+
+  -- ── Step 1: Project Info ─────────────────────────────────────────────
+  (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Info','Basic Information','full',1),
+  (tmpl_id,'project_name','Project Name','text','e.g. Mazda Berwick SEO Retainer',NULL,true,'[]'::jsonb,NULL,1,'Project Info','Basic Information','full',2),
+  (tmpl_id,'website_url','Website URL','url','https://','The primary domain this retainer covers.',true,'[]'::jsonb,NULL,1,'Project Info','Basic Information','full',3),
+  (tmpl_id,'delivery_date','Delivery / Start Date','date',NULL,'When the retainer commences or the audit is due.',true,'[]'::jsonb,NULL,1,'Project Info','Timeline','half',4),
+  (tmpl_id,'seo_goals','SEO Goals','richtext',NULL,'Business objectives driving this SEO engagement.',true,'[]'::jsonb,NULL,1,'Project Info','Goals','full',5),
+  (tmpl_id,'budget','Budget','dropdown',NULL,NULL,false,
+   '[{"label":"Under $1,000/month","value":"under_1k"},{"label":"$1,000 – $2,000/month","value":"1k_2k"},{"label":"$2,000 – $5,000/month","value":"2k_5k"},{"label":"Over $5,000/month","value":"over_5k"},{"label":"One-off audit — quote required","value":"audit_quote"}]'::jsonb,
+   NULL,1,'Project Info','Budget','half',6),
+  (tmpl_id,'monthly_reporting_format','Monthly Reporting Format','dropdown',NULL,'How results will be reported to the client each month.',false,
+   '[{"label":"Dashboard access","value":"dashboard"},{"label":"Monthly PDF report","value":"monthly_pdf"},{"label":"Quarterly review call","value":"quarterly_call"},{"label":"Monthly PDF + quarterly call","value":"pdf_and_call"}]'::jsonb,
+   NULL,1,'Project Info','Reporting','half',7),
+
+  -- ── Step 2: Scope & Locations ────────────────────────────────────────
+  (tmpl_id,'scope_of_work','Scope of Work','checkboxgroup',NULL,'Select all deliverables included in this retainer.',true,
+   '[{"label":"Full Technical SEO Audit","value":"technical_audit"},{"label":"On-Page Optimisation","value":"on_page"},{"label":"Keyword Research","value":"keyword_research"},{"label":"Content Strategy","value":"content_strategy"},{"label":"Local SEO","value":"local_seo"},{"label":"Link Building Strategy","value":"link_building"},{"label":"Competitor Analysis","value":"competitor_analysis"},{"label":"Monthly SEO Retainer","value":"monthly_retainer"},{"label":"GBP Management","value":"gbp_management"}]'::jsonb,
+   NULL,2,'Scope & Locations','Scope','full',1),
+  (tmpl_id,'num_locations','Number of Locations','number',NULL,'How many dealership rooftops / GBP profiles are covered? Drives Local SEO and GBP management scope.',true,'[]'::jsonb,NULL,2,'Scope & Locations','Locations','half',2),
+  (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Mazda Berwick — 123 High St; Mazda Narre Warren — 456 Main Rd','List each suburb/city + address. Directly drives Local SEO and GBP scope.',true,'[]'::jsonb,NULL,2,'Scope & Locations','Locations','full',3),
+  (tmpl_id,'target_geo_locations','Target Geographic Locations','textarea','e.g. Berwick, Narre Warren, Cranbourne, SE Melbourne suburbs','Priority suburbs and regions to rank for. Required for Local SEO targeting.',true,'[]'::jsonb,NULL,2,'Scope & Locations','Locations','full',4),
+  (tmpl_id,'key_competitors','Key Competitors','textarea','e.g. Mazda Fountain Gate, City Mazda','Competitor dealer sites / GBP listings to benchmark against.',false,'[]'::jsonb,NULL,2,'Scope & Locations','Competitors','full',5),
+
+  -- ── Step 3: Keywords & Context ───────────────────────────────────────
+  (tmpl_id,'target_keywords','Target Keywords (if known)','textarea','e.g. new mazda cx-5 berwick, mazda dealer near me',NULL,false,'[]'::jsonb,NULL,3,'Keywords & Context','Keywords','full',1),
+  (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Keywords & Context','Notes','full',2),
+
+  -- ── Step 4: Tools & Access ───────────────────────────────────────────
+  (tmpl_id,'current_seo_tools','Current SEO Tools','checkboxgroup',NULL,'Which tools does the client currently have access to?',false,
+   '[{"label":"Google Search Console","value":"gsc"},{"label":"Google Analytics","value":"ga"},{"label":"SEMrush","value":"semrush"},{"label":"Ahrefs","value":"ahrefs"},{"label":"Moz","value":"moz"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,4,'Tools & Access','Current Tools','full',1),
+  (tmpl_id,'access_checklist','Access Required','checkboxgroup',NULL,'Confirm which platform access the AM has secured before work commences.',false,
+   '[{"label":"Google Search Console","value":"gsc"},{"label":"Google Analytics","value":"ga"},{"label":"Google Ads","value":"google_ads"},{"label":"GBP Manager","value":"gbp_manager"}]'::jsonb,
+   NULL,4,'Tools & Access','Access','full',2),
+
+  -- ── Step 5: Offer & Accountability (Tier C + acct) ───────────────────
+  -- Tier C: auto_oem_brand (gates keyword frameworks), auto_vehicle_category (as checkboxgroup — segments),
+  --         auto_oem_incentive_period (text), auto_inventory_context (textarea).
+  -- NO auto_vehicle_focus (not Tier A), NO auto_driveaway_price / disclaimer (not creative/paid).
+  -- acct_compliance_ack.conditional_logic = NULL (no driveaway field).
+  (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'OEM brand — some OEMs (Toyota, Kia) have preferred keyword frameworks or co-op SEO programs.',false,
+   '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+  (tmpl_id,'auto_vehicle_category','Vehicle Segments to Focus On','checkboxgroup',NULL,'Which vehicle categories should receive priority SEO coverage? Drives landing page and keyword strategy.',false,
+   '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','full',2),
+  (tmpl_id,'auto_oem_incentive_period','OEM Incentive / Co-op Period','text','e.g. EOFY, plate clearance, OEM bonus periods','OEM incentive periods shape keyword priorities and content calendar. e.g. EOFY, plate clearance, OEM bonus periods.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+  (tmpl_id,'auto_inventory_context','Inventory Context','textarea','e.g. Overstocked on SUVs — push CX-5 and CX-9 content','Current stock situation — informs which models/categories to prioritise in content and on-page work.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',4),
+  -- acct block — acct_compliance_ack cond_logic = NULL (no driveaway field here)
+  (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',5),
+  (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',6),
+  (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+   '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Accountability','full',7)
+
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates
+SET name = 'SEO Retainer Brief',
+    description = 'Ongoing SEO + Google Business Profile retainer — scope, locations, reporting, access.',
+    require_client_link = true
+WHERE slug = 'seo-audit';
+
+-- ============================================================
+-- Task 16: billboard-ooh — Full rework
+-- ============================================================
+-- Starting point: batch-2 §5 (21 fields — note: batch listed 18+3 extras = 21 total rows).
+-- RETYPE: key_visual textarea → files.
+-- RETYPE: print_specifications + digital_billboard_specs textarea → structured dropdowns
+--         with conditional "custom" text field.
+-- ADD Campaign Objective options: "New Model Launch", "Clearance / End-of-Run".
+-- MAKE REQUIRED: production_budget.
+-- ADD: booking_reference (text).
+-- FULL Tier A (9 fields: all auto_* incl driveaway, vehicle_focus) + full acct block (3 fields).
+-- acct_compliance_ack.conditional_logic: require when auto_driveaway_price is_not_empty (field exists).
+-- UPDATE: require_client_link=true.
+-- Steps: 1 Campaign Overview, 2 Format & Technical, 3 Creative, 4 Budget & Schedule, 5 Offer & Accountability.
+-- Total: ~21 base + 1 booking_reference - 0 removals + 9 Tier A + 3 acct = ~34 fields.
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug = 'billboard-ooh';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id = tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+
+  -- ── Step 1: Campaign Overview ────────────────────────────────────────
+  (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Campaign Overview','Basic Information','full',1),
+  (tmpl_id,'campaign_name','Campaign Name','text','e.g. Mazda EOFY OOH — June 2026',NULL,true,'[]'::jsonb,NULL,1,'Campaign Overview','Basic Information','full',2),
+  (tmpl_id,'campaign_objective','Campaign Objective','dropdown',NULL,'Primary objective for this OOH campaign.',true,
+   '[{"label":"Brand Awareness","value":"brand_awareness"},{"label":"New Model Launch","value":"new_model_launch"},{"label":"Clearance / End-of-Run","value":"clearance"},{"label":"Finance Offer","value":"finance_offer"},{"label":"Seasonal Campaign","value":"seasonal"},{"label":"Event Promotion","value":"event"},{"label":"Dealer Awareness","value":"dealer_awareness"},{"label":"Traffic / Directional","value":"traffic_directional"}]'::jsonb,
+   NULL,1,'Campaign Overview','Objectives','half',3),
+  (tmpl_id,'target_locations_markets','Target Locations / Markets','textarea','e.g. Berwick, Narre Warren, SE Melbourne corridors','Specific suburbs, roads, or trade areas where OOH placements will appear.',true,'[]'::jsonb,NULL,1,'Campaign Overview','Locations','full',4),
+  (tmpl_id,'campaign_context','Campaign Context','richtext',NULL,'Relevant background, seasonality, previous campaign results, or messaging context.',true,'[]'::jsonb,NULL,1,'Campaign Overview','Context','full',5),
+
+  -- ── Step 2: Format & Technical ───────────────────────────────────────
+  (tmpl_id,'ooh_format','OOH Format','checkboxgroup',NULL,'Select all formats this campaign uses.',true,
+   '[{"label":"Large Format Billboard (48-sheet / 96-sheet)","value":"large_format"},{"label":"6-Sheet (bus shelter / retail)","value":"6_sheet"},{"label":"Transit / Bus Side","value":"transit"},{"label":"Digital Billboard (DOOH)","value":"digital"},{"label":"Street Furniture","value":"street_furniture"},{"label":"Airport","value":"airport"},{"label":"Shopping Centre","value":"shopping_centre"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,2,'Format & Technical','Formats','full',1),
+  (tmpl_id,'illumination','Illumination','dropdown',NULL,'Required for physical (non-digital) formats only.',false,
+   '[{"label":"Backlit / Illuminated","value":"backlit"},{"label":"Non-illuminated","value":"non_illuminated"},{"label":"Solar-powered","value":"solar"},{"label":"N/A (digital format)","value":"na"}]'::jsonb,
+   NULL,2,'Format & Technical','Formats','half',2),
+  (tmpl_id,'number_of_creative_versions','Number of Creative Versions','dropdown',NULL,NULL,false,
+   '[{"label":"1","value":"1"},{"label":"2","value":"2"},{"label":"3","value":"3"},{"label":"4+","value":"4_plus"}]'::jsonb,
+   NULL,2,'Format & Technical','Versions','half',3),
+  -- Print specs — structured dropdown replacing textarea
+  (tmpl_id,'print_substrate','Print Substrate / Material','dropdown',NULL,'Standard substrate for physical OOH production.',false,
+   '[{"label":"Gloss laminate (standard)","value":"gloss_laminate"},{"label":"Matt laminate","value":"matt_laminate"},{"label":"Vinyl (adhesive)","value":"vinyl_adhesive"},{"label":"Mesh / perforated vinyl","value":"mesh"},{"label":"Fabric / canvas","value":"fabric"},{"label":"Corflute","value":"corflute"},{"label":"Custom / Vendor spec","value":"custom"}]'::jsonb,
+   NULL,2,'Format & Technical','Print Specs','half',4),
+  (tmpl_id,'print_resolution','Print Resolution','dropdown',NULL,'Required print resolution for production files.',false,
+   '[{"label":"100 DPI @ full size (standard large format)","value":"100dpi"},{"label":"150 DPI @ full size","value":"150dpi"},{"label":"300 DPI @ full size (short-run / short-distance)","value":"300dpi"},{"label":"Vendor to specify","value":"vendor_spec"}]'::jsonb,
+   NULL,2,'Format & Technical','Print Specs','half',5),
+  -- Digital billboard specs — structured replacing textarea
+  (tmpl_id,'digital_pixel_dimensions','Digital Billboard Pixel Dimensions','dropdown',NULL,'Standard pixel dimensions for digital OOH formats.',false,
+   '[{"label":"1920 × 1080 (Full HD, landscape)","value":"1920x1080"},{"label":"1080 × 1920 (Full HD, portrait)","value":"1080x1920"},{"label":"1280 × 960","value":"1280x960"},{"label":"960 × 640","value":"960x640"},{"label":"Custom (see notes)","value":"custom"}]'::jsonb,
+   NULL,2,'Format & Technical','Digital Specs','half',6),
+  (tmpl_id,'digital_pixel_custom','Custom Digital Dimensions','text','e.g. 2560 × 1440','Specify custom pixel dimensions if your format is not listed above.',false,'[]'::jsonb,
+   '{"fieldKey":"digital_pixel_dimensions","operator":"equals","value":"custom","action":"show"}'::jsonb,
+   2,'Format & Technical','Digital Specs','half',7),
+  (tmpl_id,'digital_file_format','Digital File Format','dropdown',NULL,'Accepted file formats for digital OOH panels.',false,
+   '[{"label":"JPEG (static)","value":"jpeg"},{"label":"PNG (static)","value":"png"},{"label":"MP4 (animated, ≤15s)","value":"mp4"},{"label":"Vendor to specify","value":"vendor_spec"}]'::jsonb,
+   NULL,2,'Format & Technical','Digital Specs','half',8),
+  (tmpl_id,'vendor_spec_sheet','Vendor Spec Sheet','files',NULL,'Upload the OOH vendor spec sheet if available.',false,'[]'::jsonb,NULL,2,'Format & Technical','Vendor','half',9),
+  (tmpl_id,'ooh_vendor','OOH Vendor / Media Owner','text','e.g. oOh!media, JCDecaux, QMS',NULL,false,'[]'::jsonb,NULL,2,'Format & Technical','Vendor','half',10),
+  (tmpl_id,'booking_reference','Booking Reference','text',NULL,'Media buy / booking reference from the OOH provider.',false,'[]'::jsonb,NULL,2,'Format & Technical','Vendor','half',11),
+
+  -- ── Step 3: Creative ─────────────────────────────────────────────────
+  (tmpl_id,'key_message_headline','Key Message / Headline','textarea','e.g. Drive Away from $34,990 this June',NULL,true,'[]'::jsonb,NULL,3,'Creative','Messaging','full',1),
+  (tmpl_id,'supporting_text','Supporting Text','text',NULL,NULL,false,'[]'::jsonb,NULL,3,'Creative','Messaging','full',2),
+  (tmpl_id,'key_visual','Key Visual / Hero Image','files',NULL,'Upload existing hero imagery or reference images for the creative team.',true,'[]'::jsonb,NULL,3,'Creative','Visual','full',3),
+  (tmpl_id,'brand_assets_guidelines','Brand Assets & Guidelines','files',NULL,NULL,false,'[]'::jsonb,NULL,3,'Creative','Visual','half',4),
+  (tmpl_id,'reference_inspiration','Reference / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Creative','References','half',5),
+  (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Creative','Notes','full',6),
+
+  -- ── Step 4: Budget & Schedule ────────────────────────────────────────
+  (tmpl_id,'production_budget','Production Budget','dropdown',NULL,'Required — OOH production costs vary significantly by format and quantity.',true,
+   '[{"label":"Under $2,000","value":"under_2k"},{"label":"$2,000 – $5,000","value":"2k_5k"},{"label":"$5,000 – $15,000","value":"5k_15k"},{"label":"$15,000 – $30,000","value":"15k_30k"},{"label":"Over $30,000","value":"over_30k"}]'::jsonb,
+   NULL,4,'Budget & Schedule','Budget','half',1),
+  (tmpl_id,'campaign_display_dates','Campaign Display Dates','daterange',NULL,'When the OOH placements will be live.',true,'[]'::jsonb,NULL,4,'Budget & Schedule','Timeline','half',2),
+  (tmpl_id,'artwork_deadline','Artwork Deadline','date',NULL,'Material deadline for submitting print-ready or digital artwork to the vendor.',true,'[]'::jsonb,NULL,4,'Budget & Schedule','Timeline','half',3),
+
+  -- ── Step 5: Offer & Accountability (Full Tier A + acct) ─────────────
+  -- Full Tier A: all 9 auto_* fields incl auto_driveaway_price + vehicle_focus
+  (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+   '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+  (tmpl_id,'auto_vehicle_focus','Vehicle(s) Featured','text','e.g. 2024 Mazda CX-5 Touring','Make / model / year being promoted.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',2),
+  (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+   '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+  (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. Drive Away from $34,990 — June EOFY','The specific deal this OOH campaign features.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',4),
+  (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear on the OOH creative. Text — values are ranges/wording.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',5),
+  (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC). Required on any OOH that features a price.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',6),
+  (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply before production.',false,
+   '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',7),
+  (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',8),
+  (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this OOH campaign is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',9),
+  -- acct block — full conditional logic (auto_driveaway_price exists in this template)
+  (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',10),
+  (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Accountability','half',11),
+  (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+   '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Accountability','full',12)
+
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET require_client_link = true WHERE slug = 'billboard-ooh';
+
+-- ============================================================
+-- Task 17: signage-wraps — Full rework
+-- ============================================================
+-- Starting point: batch-2 §4 (13 unique fields — 15 rows per audit, but actual current DB has 13).
+-- SPLIT: dimensions (textarea) → vehicle_make (text), vehicle_model (text), vehicle_year (text).
+-- ADD: vehicle_vin_stock (text).
+-- ADD: wrap_coverage (dropdown, cond show when signage_type contains "vehicle_full").
+-- ADD: print_install_scope (radio: Design only / Design + print / Design + print + install, R).
+-- RETYPE: quantity text → number.
+-- FULL Tier A EXCEPT OMIT auto_vehicle_focus (structured vehicle_make/model/year replace it semantically).
+-- Full acct block: acct_compliance_ack live conditional (auto_driveaway_price exists here).
+-- UPDATE: require_client_link=true.
+-- Steps: 1 Project Info, 2 Vehicle & Signage Details, 3 Creative & Messaging, 4 Timeline & Budget, 5 Offer & Accountability.
+-- Total: ~13 base - 1 dimensions + 3 (make/model/year) + 2 new (vin, wrap_coverage, print_install) = ~17 base,
+--        + 8 Tier A (no vehicle_focus) + 3 acct = ~28 fields.
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug = 'signage-wraps';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id = tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+
+  -- ── Step 1: Project Info ─────────────────────────────────────────────
+  (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Info','Basic Information','full',1),
+  (tmpl_id,'project_name','Project Name','text','e.g. Mazda Berwick Fleet Wrap — June 2026',NULL,true,'[]'::jsonb,NULL,1,'Project Info','Basic Information','full',2),
+  (tmpl_id,'signage_type','Signage Type','checkboxgroup',NULL,'Select all types included in this brief.',true,
+   '[{"label":"Vehicle Wrap (full)","value":"vehicle_full"},{"label":"Vehicle Wrap (partial)","value":"vehicle_partial"},{"label":"Window Graphics / Frosting","value":"window"},{"label":"Building / Fascia Signage","value":"building"},{"label":"A-Frame / Pavement Sign","value":"a_frame"},{"label":"Trade Show / Exhibition","value":"trade_show"},{"label":"Retail POS / Display","value":"retail_pos"},{"label":"Wayfinding / Directional","value":"wayfinding"},{"label":"Wall Mural / Graphics","value":"wall_mural"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,1,'Project Info','Type','full',3),
+  (tmpl_id,'quantity','Quantity','number',NULL,'How many units / vehicles are included in this order?',false,'[]'::jsonb,NULL,1,'Project Info','Specs','half',4),
+  (tmpl_id,'print_install_scope','Print & Install Scope','radio',NULL,'Determines full scope of production deliverable.',true,
+   '[{"label":"Design only","value":"design_only"},{"label":"Design + print","value":"design_print"},{"label":"Design + print + install","value":"design_print_install"}]'::jsonb,
+   NULL,1,'Project Info','Specs','half',5),
+
+  -- ── Step 2: Vehicle & Signage Details ───────────────────────────────
+  -- Vehicle structured fields (replaces dimensions/vehicle_details textarea for vehicle wraps)
+  (tmpl_id,'vehicle_make','Vehicle Make','text','e.g. Mazda','Make / manufacturer of the vehicle to be wrapped.',false,'[]'::jsonb,NULL,2,'Vehicle & Signage Details','Vehicle','half',1),
+  (tmpl_id,'vehicle_model','Vehicle Model','text','e.g. CX-5','Model name as it appears on the manufacturer site.',false,'[]'::jsonb,NULL,2,'Vehicle & Signage Details','Vehicle','half',2),
+  (tmpl_id,'vehicle_year','Vehicle Year','text','e.g. 2023','Year of manufacture.',false,'[]'::jsonb,NULL,2,'Vehicle & Signage Details','Vehicle','half',3),
+  (tmpl_id,'vehicle_vin_stock','VIN / Stock Number','text',NULL,'Vehicle Identification Number or dealer stock ID — links wrap to inventory for fleet/dealer wraps.',false,'[]'::jsonb,NULL,2,'Vehicle & Signage Details','Vehicle','half',4),
+  -- Wrap coverage — conditional on vehicle wrap signage type
+  (tmpl_id,'wrap_coverage','Wrap Coverage','dropdown',NULL,'How much of the vehicle surface will be wrapped.',false,
+   '[{"label":"Full wrap","value":"full_wrap"},{"label":"3/4 wrap","value":"three_quarter_wrap"},{"label":"Half wrap","value":"half_wrap"},{"label":"Bonnet only","value":"bonnet_only"},{"label":"Rear only","value":"rear_only"},{"label":"Doors only","value":"doors_only"},{"label":"Custom","value":"custom_coverage"}]'::jsonb,
+   '{"fieldKey":"signage_type","operator":"contains","value":"vehicle_full","action":"show"}'::jsonb,
+   2,'Vehicle & Signage Details','Wrap','half',5),
+  (tmpl_id,'production_vendor','Production Vendor','text','e.g. Sign-A-Rama, local wrap shop',NULL,false,'[]'::jsonb,NULL,2,'Vehicle & Signage Details','Vendor','half',6),
+
+  -- ── Step 3: Creative & Messaging ────────────────────────────────────
+  (tmpl_id,'key_message','Key Message','textarea','e.g. Drive Away from $34,990 this June',NULL,true,'[]'::jsonb,NULL,3,'Creative & Messaging','Messaging','full',1),
+  (tmpl_id,'contact_info','Contact Info to Include','textarea','e.g. (03) 9999 0000 | mazdaberwick.com.au | LMCT# 12345','Dealer phone, website, LMCT# or other contact details to appear on the signage.',false,'[]'::jsonb,NULL,3,'Creative & Messaging','Messaging','full',2),
+  (tmpl_id,'brand_assets','Brand Assets','files',NULL,NULL,false,'[]'::jsonb,NULL,3,'Creative & Messaging','Assets','half',3),
+  (tmpl_id,'reference_inspiration','Reference / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Creative & Messaging','References','half',4),
+  (tmpl_id,'project_description','Project Description / Creative Direction','richtext',NULL,NULL,true,'[]'::jsonb,NULL,3,'Creative & Messaging','Context','full',5),
+  (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Creative & Messaging','Notes','full',6),
+
+  -- ── Step 4: Timeline & Budget ────────────────────────────────────────
+  (tmpl_id,'due_date','Design Proof Due Date','date',NULL,NULL,true,'[]'::jsonb,NULL,4,'Timeline & Budget','Timeline','half',1),
+  (tmpl_id,'install_date','Installation Date','date',NULL,NULL,false,'[]'::jsonb,NULL,4,'Timeline & Budget','Timeline','half',2),
+  (tmpl_id,'budget_range','Budget Range','dropdown',NULL,NULL,false,
+   '[{"label":"Under $2,000","value":"under_2k"},{"label":"$2,000 – $5,000","value":"2k_5k"},{"label":"$5,000 – $15,000","value":"5k_15k"},{"label":"$15,000+","value":"15k_plus"},{"label":"TBD","value":"tbd"}]'::jsonb,
+   NULL,4,'Timeline & Budget','Budget','half',3),
+
+  -- ── Step 5: Offer & Accountability (Full Tier A excl auto_vehicle_focus + acct) ─
+  -- Tier A EXCEPT auto_vehicle_focus (structured vehicle_make/model/year fields replace it above).
+  -- Full Tier A fields: auto_oem_brand, auto_vehicle_category, auto_offer_details,
+  --   auto_driveaway_price, auto_offer_disclaimer (cond_logic live), auto_oem_coop,
+  --   auto_oem_assets (cond_logic live), auto_dealer_locations. (8 fields, NOT auto_vehicle_focus.)
+  (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+   '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+  (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+   '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',2),
+  (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. Drive Away from $34,990 — June EOFY','The specific deal or promotion this signage carries.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',3),
+  (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear on the signage. Text — values are ranges/wording.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',4),
+  (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC). Required when a price appears on the signage.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',5),
+  (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply — manufacturer logo placement and colour restrictions on wraps.',false,
+   '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',6),
+  (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',7),
+  (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) these vehicle wraps / signs are for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',8),
+  -- acct block — full conditional logic (auto_driveaway_price exists in this template)
+  (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',9),
+  (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Accountability','half',10),
+  (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+   '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Accountability','full',11)
+
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET require_client_link = true WHERE slug = 'signage-wraps';
