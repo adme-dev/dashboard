@@ -1025,7 +1025,7 @@ END $$;
 UPDATE brief_templates SET require_client_link = true WHERE slug = 'billboard-ooh';
 
 -- ============================================================
--- Task 17: signage-wraps — Full rework
+-- Task 17: signage-wraps — Full rework (Task 17 anchor)
 -- ============================================================
 -- Starting point: batch-2 §4 (13 unique fields — 15 rows per audit, but actual current DB has 13).
 -- SPLIT: dimensions (textarea) → vehicle_make (text), vehicle_model (text), vehicle_year (text).
