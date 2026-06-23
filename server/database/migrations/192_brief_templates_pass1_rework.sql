@@ -911,7 +911,7 @@ SET name = 'SEO Retainer Brief',
 WHERE slug = 'seo-audit';
 
 -- ============================================================
--- Task 16: billboard-ooh — Full rework
+-- Task 16: billboard-ooh — Full rework (Task 16 / 17 anchor)
 -- ============================================================
 -- Starting point: batch-2 §5 (21 fields — note: batch listed 18+3 extras = 21 total rows).
 -- RETYPE: key_visual textarea → files.
