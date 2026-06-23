@@ -243,7 +243,7 @@ git commit -m "feat(briefs): add Meta AIA brief template (191)"
 | 4 | Budget | end_date | date | N | |
 | 5 Offer & Accountability | — | **Tier A block** + **acct block** | | | splice from Reference, ‹S›=5, ‹STEP›='Offer & Accountability' |
 
-Steps: (1) verify query `slug='google-pmax'` empty → (2) append SQL → (3) run `191` → (4) verify field count = 26 + 12 (Tier A 9 + acct 3) = **38**; conditional fields present → (5) `git commit -m "feat(briefs): add Google Performance Max brief template (191)"`.
+Steps: (1) verify query `slug='google-pmax'` empty → (2) append SQL → (3) run `191` → (4) verify field count = **36** (25 base + Tier A 9 + acct 3, **minus** the `auto_oem_brand` already in S1 — it appears once; do NOT re-add it in the S5 Tier A splice); conditional fields present → (5) `git commit -m "feat(briefs): add Google Performance Max brief template (191)"`.
 
 ---
 
@@ -319,7 +319,7 @@ Steps: verify empty → append → run `191` → verify count = 16 + 3 (partial 
 psql "$DATABASE_URL" -f server/database/migrations/191_brief_templates_pass1_new.sql
 psql "$DATABASE_URL" -tA -F'|' -c "SELECT slug, is_active, (SELECT COUNT(*) FROM brief_template_fields f WHERE f.template_id=t.id) FROM brief_templates t WHERE slug IN ('meta-aia','google-pmax','newspaper-ad','sms-mms') ORDER BY slug;"
 ```
-Expected: 4 rows, all `…|t|N` with N matching Tasks 2–5 (33 / 38 / 31 / 22).
+Expected: 4 rows, all `…|t|N` with N matching Tasks 2–5 (meta-aia 33 / google-pmax 36 / newspaper-ad 31 / sms-mms 22).
 
 - [ ] **Step 2: Assert every conditional_logic object is well-formed**
 
