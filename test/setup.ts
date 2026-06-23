@@ -19,28 +19,38 @@ const mockUseStorage = () => ({
   }
 })
 
+// Shared mock impls reused by both the #imports mock and the Nuxt auto-import globals.
+const mockRuntimeConfig = () => ({
+  databaseUrl: 'postgresql://test:test@localhost:5432/test_db',
+  jwtSecret: 'test-secret-key',
+  resendApiKey: 'test-resend-key',
+  groqApiKey: 'test-groq-key',
+  public: {}
+})
+
+const mockCreateError = (opts: { statusCode: number; statusMessage: string }) => {
+  const error = new Error(opts.statusMessage) as any
+  error.statusCode = opts.statusCode
+  error.statusMessage = opts.statusMessage
+  return error
+}
+
 // Mock Nuxt runtime config and utilities from #imports
 vi.mock('#imports', () => ({
-  useRuntimeConfig: () => ({
-    databaseUrl: 'postgresql://test:test@localhost:5432/test_db',
-    jwtSecret: 'test-secret-key',
-    resendApiKey: 'test-resend-key',
-    groqApiKey: 'test-groq-key'
-  }),
-  createError: (opts: { statusCode: number; statusMessage: string }) => {
-    const error = new Error(opts.statusMessage) as any
-    error.statusCode = opts.statusCode
-    error.statusMessage = opts.statusMessage
-    return error
-  },
+  useRuntimeConfig: mockRuntimeConfig,
+  createError: mockCreateError,
   getHeader: vi.fn(),
   getCookie: vi.fn(),
   setCookie: vi.fn(),
   useStorage: mockUseStorage
 }))
 
-// Also provide useStorage as a global (Nuxt auto-imports it)
+// Also provide the commonly auto-imported Nuxt helpers as globals — server utils
+// call these bare (Nuxt auto-imports them in prod); in the vitest node env they'd
+// otherwise be ReferenceErrors. Mirrors the useStorage global pattern.
 ;(globalThis as any).useStorage = mockUseStorage
+;(globalThis as any).useRuntimeConfig = mockRuntimeConfig
+;(globalThis as any).createError = mockCreateError
 
 // Set test environment variables
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test_db'

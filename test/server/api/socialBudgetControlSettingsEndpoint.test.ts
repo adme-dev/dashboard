@@ -19,6 +19,14 @@ vi.mock('~~/server/utils/session', () => ({
 vi.mock('~~/server/utils/socialBudgetControlConfig', () => ({
   getSocialBudgetControlConfig: (...args: unknown[]) => mockGetConfig(...args),
   saveSocialBudgetControlConfig: (...args: unknown[]) => mockSaveConfig(...args),
+  // The endpoint imports the defaults constant; mirror the real shape.
+  DEFAULT_SOCIAL_BUDGET_CONTROL_CONFIG: {
+    liveBudgetChangesEnabled: false,
+    metaBudgetWritesEnabled: false,
+    googleBudgetWritesEnabled: false,
+    maxMultiple: 2,
+    monthlyMarginPct: 0.1,
+  },
 }))
 
 vi.mock('h3', () => ({
@@ -55,14 +63,22 @@ describe('/api/agency/social/spend/budget-control-settings', () => {
     })
   })
 
-  it('requires an organization for reads', async () => {
+  it('degrades reads to safe "recommend-only" defaults when no organization is selected', async () => {
+    // Intentional: GET returns DEFAULT_SOCIAL_BUDGET_CONTROL_CONFIG (no 400) so the
+    // spend page loads clean before Xero is connected. Saving (PUT) still requires a tenant.
     mockGetSelectedTenant.mockResolvedValue(null)
     const handler = (await import('~~/server/api/agency/social/spend/budget-control-settings.get')).default
 
-    await expect(handler({} as any)).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: 'No organization selected',
+    const result = await handler({} as any)
+
+    expect(result).toEqual({
+      liveBudgetChangesEnabled: false,
+      metaBudgetWritesEnabled: false,
+      googleBudgetWritesEnabled: false,
+      maxMultiple: 2,
+      monthlyMarginPct: 0.1,
     })
+    expect(mockGetConfig).not.toHaveBeenCalled()
   })
 
   it('allows owners and admins to update the persisted toggle state', async () => {

@@ -147,7 +147,8 @@ describe('campaign target client scope enforcement', () => {
 
   it('blocks scheduling when saved campaign lists cross client scope', async () => {
     const handler = (await import('~~/server/api/email/campaigns/[id].patch')).default
-    mockReadBody.mockResolvedValueOnce({ scheduled_at: '2026-06-10T02:00:00.000Z' })
+    // Far-future so the schedule-time-in-past guard doesn't pre-empt the scope check.
+    mockReadBody.mockResolvedValueOnce({ scheduled_at: '2030-06-10T02:00:00.000Z' })
 
     await expect(handler({} as never)).rejects.toMatchObject({
       statusCode: 403,

@@ -23,7 +23,13 @@ vi.mock('~~/server/utils/email', () => ({
   sendTaskAssignedEmail: (...args: any[]) => mockSendTaskAssignedEmail(...args),
   sendMentionEmail: (...args: any[]) => mockSendMentionEmail(...args),
   sendApprovalRequestEmail: (...args: any[]) => mockSendApprovalRequestEmail(...args),
-  sendDueReminderEmail: (...args: any[]) => mockSendDueReminderEmail(...args),
+  sendDueReminderEmail: (...args: any[]) => mockSendDueReminderEmail(...args)
+}))
+
+// getAppUrl lives in its own module (server/utils/appUrl). notifications.ts imports
+// it from there, so mock it here to keep taskUrl deterministic — the real impl returns
+// https://app.xeroflow.io outside dev, which would otherwise break these assertions.
+vi.mock('~~/server/utils/appUrl', () => ({
   getAppUrl: () => 'http://localhost:3000'
 }))
 

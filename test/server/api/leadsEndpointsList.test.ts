@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 
 type TestEvent = Record<string, never>
 
@@ -34,27 +35,31 @@ describe('GET /api/leads/endpoints/list', () => {
     mockExecute.mockResolvedValue(0)
   })
 
-  it('requires owner or admin access', async () => {
-    mockQueryRows.mockResolvedValueOnce([])
+  it('requires media-buying access (owner/admin/lead/PM/buyer/AM)', async () => {
+    mockQueryRows.mockResolvedValue([])
 
     await handler({} satisfies TestEvent)
 
-    expect(mockRequireRole).toHaveBeenCalledWith({}, ['owner', 'admin'])
+    expect(mockRequireRole).toHaveBeenCalledWith({}, PERMISSIONS.MEDIA_BUYING)
   })
 
   it('returns Google and all-routable lead counts for connection setup', async () => {
-    mockQueryRows.mockResolvedValueOnce([
-      {
-        id: 'endpoint-1',
-        client_id: 'client-1',
-        client_name: 'Brighton Auto Group',
-        url_token: 'token',
-        secret_key: 'secret',
-        lead_count: '2',
-        google_lead_count: '2',
-        routable_lead_count: '5'
-      }
-    ])
+    // The handler first runs a backfill query (clients missing a 'google'
+    // endpoint), then the data query. Mock both: no missing clients, then rows.
+    mockQueryRows
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'endpoint-1',
+          client_id: 'client-1',
+          client_name: 'Brighton Auto Group',
+          url_token: 'token',
+          secret_key: 'secret',
+          lead_count: '2',
+          google_lead_count: '2',
+          routable_lead_count: '5'
+        }
+      ])
 
     const result = await handler({} satisfies TestEvent)
 
@@ -62,7 +67,8 @@ describe('GET /api/leads/endpoints/list', () => {
       google_lead_count: '2',
       routable_lead_count: '5'
     })
-    const sql = String(mockQueryRows.mock.calls[0]?.[0])
+    // calls[0] is the backfill query; calls[1] is the data query with the counts.
+    const sql = String(mockQueryRows.mock.calls[1]?.[0])
     expect(sql).toContain('l.source = \'google\'')
     expect(sql).toContain('l.source IN (\'google\', \'meta\', \'webhook\', \'csv\')')
   })
