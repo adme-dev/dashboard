@@ -13,6 +13,17 @@ import { raiseEscalation } from '~~/server/utils/automation/escalationsStore'
 import { notifyEscalationApprovers } from '~~/server/utils/automation/notifyEscalation'
 import { classifyTransition, lifecycleTransitionToEscalation, filterAlreadyPending } from '~~/server/utils/automation/lifecycle'
 
+/**
+ * Kill switch for the lifecycle guard. OFF by default. The guard is wired live
+ * into status.patch.ts and is otherwise gated only by the data (flat statuses →
+ * no 🟡 transitions). This flag is the explicit operator switch that must be set
+ * to 'true' before the guard may raise escalations — required before any
+ * status-taxonomy migration introduces real gate transitions.
+ */
+export function isLifecycleGuardEnabled(): boolean {
+  return process.env.LIFECYCLE_GUARD_ENABLED === 'true'
+}
+
 interface LifecycleBoardEvent {
   boardId: string
   type: string
@@ -32,27 +43,29 @@ interface LifecycleBoardEvent {
  * Inert on generic dashboard statuses (they resolve to gate 'auto').
  */
 export async function evaluateLifecycleTransition(
-  event: LifecycleBoardEvent,
-): Promise<{ evaluated: number; raised: number; skipped: number }> {
+  event: LifecycleBoardEvent
+): Promise<{ evaluated: number, raised: number, skipped: number }> {
   const nil = { evaluated: 0, raised: 0, skipped: 0 }
   try {
+    // Operator kill switch — dormant until explicitly enabled (see isLifecycleGuardEnabled).
+    if (!isLifecycleGuardEnabled()) return nil
     if (event?.type !== 'status_changed' || !event.taskId) return nil
     const newStatusName = event.changes?.newStatusName
     if (!newStatusName) return nil
 
-    const { stage, requiresEscalation } = classifyTransition(
+    const { requiresEscalation } = classifyTransition(
       { name: event.changes?.oldStatusName },
-      { name: newStatusName },
+      { name: newStatusName }
     )
     if (!requiresEscalation) return { ...nil, evaluated: 1 }
 
     // Need the task title + client for the escalation card.
-    const task = await queryOne<{ title: string; client_id: string | null }>(
+    const task = await queryOne<{ title: string, client_id: string | null }>(
       `SELECT t.title, p.client_id
          FROM tasks t
          LEFT JOIN projects p ON t.project_id = p.id
         WHERE t.id = $1`,
-      [event.taskId],
+      [event.taskId]
     )
     if (!task) return { ...nil, evaluated: 1 }
 
@@ -61,12 +74,12 @@ export async function evaluateLifecycleTransition(
       taskTitle: task.title,
       toStatus: newStatusName,
       fromStatus: event.changes?.oldStatusName ?? null,
-      clientId: task.client_id ?? null,
+      clientId: task.client_id ?? null
     })
 
     // Dedupe against still-pending lifecycle_gate escalations (same task + same destination).
     const pending = await queryRows<{ detail: Record<string, any> }>(
-      `SELECT detail FROM automation_escalations WHERE capability = 'lifecycle_gate' AND status = 'pending'`,
+      `SELECT detail FROM automation_escalations WHERE capability = 'lifecycle_gate' AND status = 'pending'`
     )
     const fresh = filterAlreadyPending([candidate], pending.map(p => p.detail ?? {}))
     const top = fresh[0]
@@ -78,7 +91,7 @@ export async function evaluateLifecycleTransition(
         escalationId: row.id,
         capability: top.capability,
         title: top.title,
-        severity: 'critical',
+        severity: 'critical'
       })
     }
     return { evaluated: 1, raised: 1, skipped: 0 }
