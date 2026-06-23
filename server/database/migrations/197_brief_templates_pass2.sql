@@ -395,7 +395,7 @@ WHERE slug='influencer-campaign';
 
 
 -- ============================================================
--- REWORK 5: graphic-design
+-- REWORK 5: graphic-design  [pass2-b2 verified 2026-06-24]
 -- Assembly: 10 current fields (rekeyed for consistency) + full
 --   Tier A offer block (9 fields) + new automotive deltas
 --   (extend design_type, retype dimensions→dropdown + custom
