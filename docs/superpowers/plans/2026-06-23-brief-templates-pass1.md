@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Two migration files**, underscore convention (matching `190_banner_render_jobs.sql`): `server/database/migrations/195_brief_templates_pass1_new.sql` and `196_brief_templates_pass1_rework.sql`.
+- **Two migration files**, underscore convention (matching `190_banner_render_jobs.sql`): `server/database/migrations/196_brief_templates_pass1_new.sql` and `197_brief_templates_pass1_rework.sql`.
 - **Run command (verbatim):** `export DATABASE_URL=$(grep '^DATABASE_URL' .env | cut -d= -f2-)` then `psql "$DATABASE_URL" -f server/database/migrations/<file>`. Migrations are run as part of this workflow (CLAUDE.md), not handed to the user.
 - **Field INSERT column order (verbatim):** `(template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)`.
 - **`options`** = jsonb array `'[{"label":"…","value":"…"}]'::jsonb` (or `'[]'::jsonb`). **`conditional_logic`** = jsonb single object `'{"fieldKey":"…","operator":"…","value":"…","action":"…"}'::jsonb` (or `NULL`). Operators: `equals|not_equals|contains|not_contains|is_empty|is_not_empty`. Actions: `show|hide|require|unrequire`.
@@ -64,8 +64,8 @@ These are the **verbatim** field tuples for the reusable blocks. Per template, s
 ## Task 1: Scaffold both migration files + zero-data guard
 
 **Files:**
-- Create: `server/database/migrations/195_brief_templates_pass1_new.sql`
-- Create: `server/database/migrations/196_brief_templates_pass1_rework.sql`
+- Create: `server/database/migrations/196_brief_templates_pass1_new.sql`
+- Create: `server/database/migrations/197_brief_templates_pass1_rework.sql`
 
 - [ ] **Step 1: Confirm the zero-data precondition (the guard)**
 
@@ -76,7 +76,7 @@ psql "$DATABASE_URL" -tA -c "SELECT (SELECT COUNT(*) FROM briefs) AS briefs, (SE
 ```
 Expected: `0|0`. **If non-zero, STOP** and switch `192` rework blocks from DELETE+INSERT to additive `INSERT … ON CONFLICT DO NOTHING` + surgical `UPDATE` (see Global Constraints).
 
-- [ ] **Step 2: Create `195_brief_templates_pass1_new.sql` with header**
+- [ ] **Step 2: Create `196_brief_templates_pass1_new.sql` with header**
 
 ```sql
 -- ============================================
@@ -87,7 +87,7 @@ Expected: `0|0`. **If non-zero, STOP** and switch `192` rework blocks from DELET
 -- ============================================
 ```
 
-- [ ] **Step 3: Create `196_brief_templates_pass1_rework.sql` with header + guard**
+- [ ] **Step 3: Create `197_brief_templates_pass1_rework.sql` with header + guard**
 
 ```sql
 -- ============================================
@@ -105,7 +105,7 @@ END $$;
 - [ ] **Step 4: Commit**
 
 ```bash
-git add server/database/migrations/195_brief_templates_pass1_new.sql server/database/migrations/196_brief_templates_pass1_rework.sql
+git add server/database/migrations/196_brief_templates_pass1_new.sql server/database/migrations/197_brief_templates_pass1_rework.sql
 git commit -m "feat(briefs): scaffold Pass-1 brief-template migrations 195/196 + zero-data guard"
 ```
 
@@ -115,7 +115,7 @@ git commit -m "feat(briefs): scaffold Pass-1 brief-template migrations 195/196 +
 
 This task is fully expanded; Tasks 3–5 follow the identical pattern from their field tables.
 
-**Files:** Modify: `server/database/migrations/195_brief_templates_pass1_new.sql`
+**Files:** Modify: `server/database/migrations/196_brief_templates_pass1_new.sql`
 
 **Interfaces — Produces:** template slug `meta-aia` in category `digital-marketing` with the fields below; later verification relies on field_key `auto_catalogue_id`, `acct_approval_required` existing.
 
@@ -186,7 +186,7 @@ END $$;
 - [ ] **Step 3: Run the migration (idempotent)**
 
 ```bash
-psql "$DATABASE_URL" -f server/database/migrations/195_brief_templates_pass1_new.sql
+psql "$DATABASE_URL" -f server/database/migrations/196_brief_templates_pass1_new.sql
 ```
 Expected: no errors (INSERT/DO output).
 
@@ -204,7 +204,7 @@ Expected: `4` (the conditional fields: `auto_offer_disclaimer`, `auto_oem_assets
 - [ ] **Step 5: Commit**
 
 ```bash
-git add server/database/migrations/195_brief_templates_pass1_new.sql
+git add server/database/migrations/196_brief_templates_pass1_new.sql
 git commit -m "feat(briefs): add Meta AIA brief template (191)"
 ```
 
@@ -212,7 +212,7 @@ git commit -m "feat(briefs): add Meta AIA brief template (191)"
 
 ## Task 3: New template — Google Performance Max (`google-pmax`)
 
-**Files:** Modify: `195_brief_templates_pass1_new.sql`. Build exactly like Task 2 from this field table; template INSERT: category `digital-marketing`, name `Google Performance Max`, icon `i-lucide-trending-up`, `default_priority 'high'`, sort_order 21.
+**Files:** Modify: `196_brief_templates_pass1_new.sql`. Build exactly like Task 2 from this field table; template INSERT: category `digital-marketing`, name `Google Performance Max`, icon `i-lucide-trending-up`, `default_priority 'high'`, sort_order 21.
 
 | step / step_title | section | field_key | type | req | options / conditional_logic |
 |---|---|---|---|---|---|
@@ -316,7 +316,7 @@ Steps: verify empty → append → run `191` → verify count = 16 + 3 (partial 
 - [ ] **Step 1: Re-run full `191` and assert all 4 new templates**
 
 ```bash
-psql "$DATABASE_URL" -f server/database/migrations/195_brief_templates_pass1_new.sql
+psql "$DATABASE_URL" -f server/database/migrations/196_brief_templates_pass1_new.sql
 psql "$DATABASE_URL" -tA -F'|' -c "SELECT slug, is_active, (SELECT COUNT(*) FROM brief_template_fields f WHERE f.template_id=t.id) FROM brief_templates t WHERE slug IN ('meta-aia','google-pmax','newspaper-ad','sms-mms') ORDER BY slug;"
 ```
 Expected: 4 rows, all `…|t|N` with N matching Tasks 2–5 (meta-aia 33 / google-pmax 36 / newspaper-ad 31 / sms-mms 22).
@@ -334,7 +334,7 @@ Expected: `0` (every conditional has fieldKey+operator+action).
 
 ## Task 7: Rework — `facebook-ads` → "Meta Ads Campaign" + retire `instagram-ads`
 
-**Files:** Modify: `server/database/migrations/196_brief_templates_pass1_rework.sql`
+**Files:** Modify: `server/database/migrations/197_brief_templates_pass1_rework.sql`
 
 **Starting field set:** audit `…-batch-1.md §1` (Facebook, 28 fields) merged with IG's distinctive fields. **Deltas (synthesis §6):** add `platform`(checkboxgroup: Facebook/Instagram/Both, R), `campaign_subtype`(radio: Standard / Auto Inventory Ads (AIA) / Lead Gen); conditional reveal `auto_catalogue_id` (when subtype=aia) + `lead_form_name` (when subtype=lead_gen); add `meta_pixel_id`, `utm_template`(url); **drop** Hashtags; `Landing Page URL` cond-required when subtype≠lead_gen; group age min/max `width:'half'` in one section; splice **Tier A** + **Tier B (auto_catalogue_id)** + **acct block** in a final "Offer & Accountability" step.
 
@@ -369,7 +369,7 @@ UPDATE brief_templates SET is_active=false WHERE slug='instagram-ads';
 - [ ] **Step 3: Run `192`**
 
 ```bash
-psql "$DATABASE_URL" -f server/database/migrations/196_brief_templates_pass1_rework.sql
+psql "$DATABASE_URL" -f server/database/migrations/197_brief_templates_pass1_rework.sql
 ```
 
 - [ ] **Step 4: Verify**
@@ -382,7 +382,7 @@ Expected: `Meta Ads Campaign|t|f|t` (renamed, client-link on, IG retired, `platf
 - [ ] **Step 5: Commit**
 
 ```bash
-git add server/database/migrations/196_brief_templates_pass1_rework.sql
+git add server/database/migrations/197_brief_templates_pass1_rework.sql
 git commit -m "feat(briefs): rework facebook-ads → Meta Ads Campaign, retire instagram-ads (192)"
 ```
 

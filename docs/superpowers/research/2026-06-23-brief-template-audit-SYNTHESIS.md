@@ -475,7 +475,7 @@ reworks = `facebook-ads`→Meta Ads Campaign (+retire `instagram-ads`), `google-
 graphic-design, brand-identity, print-collateral, tv-commercial, video-production, radio-ad,
 podcast-audio, blog-content, it-support, support-ticket, bug-report, change-request.
 
-**Migrations:** `195_brief_templates_pass1_new.sql` (4 new) + `196_brief_templates_pass1_rework.sql`
+**Migrations:** `196_brief_templates_pass1_new.sql` (4 new) + `197_brief_templates_pass1_rework.sql`
 (11 reworks: full field-set rewrite via DELETE+INSERT — zero-brief-safe — + flag UPDATEs +
 retire IG). Run via `psql "$DATABASE_URL" -f …`. Branch: `feat/brief-templates-automotive-pass1`
 off `main`.

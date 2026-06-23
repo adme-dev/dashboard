@@ -1,5 +1,5 @@
 -- ============================================
--- 197 · Brief Templates Pass 2 — REWORKS (first 3 of 16 deferred)
+-- 198 · Brief Templates Pass 2 — REWORKS (first 3 of 16 deferred)
 -- Reworks: tiktok-ads, display-banner, media-plan
 -- Full field-set rewrite (DELETE+INSERT) — safe while brief_field_values = 0.
 -- + template-flag UPDATEs (require_client_link=true on all three).
@@ -11,7 +11,7 @@
 
 DO $$ BEGIN
   IF (SELECT COUNT(*) FROM brief_field_values) <> 0 THEN
-    RAISE EXCEPTION '197 aborted: brief_field_values is not empty — switch to additive mode';
+    RAISE EXCEPTION '198 aborted: brief_field_values is not empty — switch to additive mode';
   END IF;
 END $$;
 
