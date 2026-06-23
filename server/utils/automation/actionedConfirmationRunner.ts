@@ -40,7 +40,9 @@ export async function runBriefSlaSweep(opts: { now?: Date, force?: boolean } = {
       `${SELECT_BRIEF}
         WHERE b.submitted_at IS NOT NULL
           AND b.c7_acknowledged_at IS NULL AND b.c7_stall_alerted_at IS NULL
-          AND b.assigned_to IS NULL AND b.converted_to_task_id IS NULL AND b.converted_to_project_id IS NULL`)
+          AND b.assigned_to IS NULL AND b.converted_to_task_id IS NULL AND b.converted_to_project_id IS NULL
+        ORDER BY b.submitted_at ASC
+        LIMIT 200`)
     for (const b of rows) {
       checked++
       if (!isStalled(b, now)) continue
