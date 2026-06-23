@@ -1007,7 +1007,7 @@ WHERE slug='radio-ad';
 
 
 -- ============================================================
--- REWORK 11: podcast-audio  [pass2-b4]
+-- REWORK 11: podcast-audio  [pass2-b4 verified 2026-06-24]
 -- Assembly: 12 current fields (all retained, keys normalised)
 --   + auto_oem_brand ONLY (no offer Tier A — podcast minimal automotive)
 --   + num_episodes (number, conditional content_type=podcast)
