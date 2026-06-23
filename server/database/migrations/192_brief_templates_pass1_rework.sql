@@ -548,3 +548,276 @@ UPDATE brief_templates
 SET require_client_link = true,
     default_priority = 'high'
 WHERE slug = 'landing-page';
+
+-- ============================================================
+-- Task 12: email-campaign — Full rework
+-- ============================================================
+-- Starting point: batch-3 §3 (14 fields).
+-- ADD: list_segment (text, R), list_size (number), send_datetime (datetime, R — replaces target_send_date),
+--      from_name (text), from_email (email), preview_text (text),
+--      spam_compliance (checkbox, R — Spam Act 2003).
+-- REMOVE: target_send_date (replaced by send_datetime).
+-- MAKE REQUIRED: email_platform, cta_landing_page.
+-- Partial Tier A: auto_offer_details, auto_offer_disclaimer (cond_logic=NULL — no driveaway field),
+--                 auto_dealer_locations.
+-- acct block: acct_compliance_ack cond_logic=NULL (no driveaway field in this template).
+-- Steps: 1 Campaign Details, 2 Audience & List, 3 Content, 4 Technical, 5 Offer & Accountability.
+-- Total: 11 base (14 - target_send_date + 4 new fields) + 3 partial Tier A + 3 acct = ~24 fields.
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug = 'email-campaign';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id = tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+
+  -- ── Step 1: Campaign Details ─────────────────────────────────────────
+  (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Campaign Details','Basic Information','full',1),
+  (tmpl_id,'campaign_name','Campaign Name','text','e.g. June EOFY Mazda EDM',NULL,true,'[]'::jsonb,NULL,1,'Campaign Details','Basic Information','full',2),
+  (tmpl_id,'campaign_goal','Campaign Goal','dropdown',NULL,NULL,true,
+   '[{"label":"Promotion / Offer","value":"promotion"},{"label":"New Model Launch","value":"new_model_launch"},{"label":"Service Reminder","value":"service_reminder"},{"label":"Event Invitation","value":"event"},{"label":"Newsletter","value":"newsletter"},{"label":"Re-engagement","value":"re_engagement"},{"label":"Lead Nurture","value":"lead_nurture"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,1,'Campaign Details','Basic Information','half',3),
+  (tmpl_id,'email_type','Email Type','dropdown',NULL,NULL,true,
+   '[{"label":"Promotional","value":"promotional"},{"label":"Transactional","value":"transactional"},{"label":"Newsletter","value":"newsletter"},{"label":"Automated / Drip","value":"automated"},{"label":"Event","value":"event"},{"label":"Re-engagement","value":"re_engagement"}]'::jsonb,
+   NULL,1,'Campaign Details','Basic Information','half',4),
+  (tmpl_id,'email_platform','Email Platform','dropdown',NULL,'The ESP / platform the campaign will be sent from.',true,
+   '[{"label":"Mailchimp","value":"mailchimp"},{"label":"Klaviyo","value":"klaviyo"},{"label":"ActiveCampaign","value":"activecampaign"},{"label":"HubSpot","value":"hubspot"},{"label":"Campaign Monitor","value":"campaign_monitor"},{"label":"Dotdigital","value":"dotdigital"},{"label":"Constant Contact","value":"constant_contact"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,1,'Campaign Details','Platform','half',5),
+  (tmpl_id,'from_name','From Name','text','e.g. Mazda Berwick','Sender name recipients will see in their inbox.',false,'[]'::jsonb,NULL,1,'Campaign Details','Platform','half',6),
+  (tmpl_id,'from_email','From Email','email','e.g. hello@mazdasoutheast.com.au','Sender email address. Must be an authenticated domain.',false,'[]'::jsonb,NULL,1,'Campaign Details','Platform','half',7),
+  (tmpl_id,'send_datetime','Send Date & Time','datetime',NULL,'Exact date and time to send — automotive EDMs are often time-sensitive (EOM, weekend promo).',true,'[]'::jsonb,NULL,1,'Campaign Details','Schedule','half',8),
+
+  -- ── Step 2: Audience & List ──────────────────────────────────────────
+  (tmpl_id,'list_segment','List / Segment','text','e.g. All Mazda leads — June 2026','Name or ID of the email list / segment in the ESP.',true,'[]'::jsonb,NULL,2,'Audience & List','Audience','full',1),
+  (tmpl_id,'list_size','Estimated List Size','number',NULL,'Approximate number of recipients. Affects scheduling and deliverability planning.',false,'[]'::jsonb,NULL,2,'Audience & List','Audience','half',2),
+  (tmpl_id,'target_audience','Target Audience / Segment Details','textarea','e.g. Past Toyota service customers, in-market SUV buyers','Describe the audience being targeted.',true,'[]'::jsonb,NULL,2,'Audience & List','Audience','full',3),
+
+  -- ── Step 3: Content ───────────────────────────────────────────────────
+  (tmpl_id,'subject_line_ideas','Subject Line Ideas','textarea',NULL,'Draft subject lines — include emoji options if appropriate.',false,'[]'::jsonb,NULL,3,'Content','Copy','full',1),
+  (tmpl_id,'preview_text','Preview Text','text','e.g. Drive away this month — see the deal inside','Inbox preview snippet shown alongside subject line.',false,'[]'::jsonb,NULL,3,'Content','Copy','half',2),
+  (tmpl_id,'email_content','Email Content / Copy','richtext',NULL,'Full email body copy, sections, and key messages.',true,'[]'::jsonb,NULL,3,'Content','Copy','full',3),
+  (tmpl_id,'call_to_action','Call-to-Action Text','text','e.g. See the Deal',NULL,true,'[]'::jsonb,NULL,3,'Content','CTA','half',4),
+  (tmpl_id,'cta_landing_page','CTA Landing Page URL','url','https://','The destination URL for the primary CTA. Must be verified before build starts.',true,'[]'::jsonb,NULL,3,'Content','CTA','half',5),
+  (tmpl_id,'design_requirements','Design Requirements','dropdown',NULL,NULL,true,
+   '[{"label":"New design from brief","value":"new_design"},{"label":"Use existing template","value":"existing_template"},{"label":"Client-supplied HTML","value":"client_html"},{"label":"Plain text only","value":"plain_text"}]'::jsonb,
+   NULL,3,'Content','Design','half',6),
+  (tmpl_id,'assets_images','Assets / Images','files',NULL,NULL,false,'[]'::jsonb,NULL,3,'Content','Assets','full',7),
+  (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Content','Notes','full',8),
+
+  -- ── Step 4: Compliance ───────────────────────────────────────────────
+  (tmpl_id,'spam_compliance','Spam Act 2003 Compliance','checkbox',NULL,'I confirm the email includes: a working unsubscribe mechanism AND a physical postal address for the sender. Required under Australian Spam Act 2003.',true,'[]'::jsonb,NULL,4,'Compliance','Legal','full',1),
+
+  -- ── Step 5: Offer & Accountability (Partial Tier A + acct) ──────────
+  -- Partial Tier A: auto_offer_details, auto_offer_disclaimer (NULL cond — no driveaway field),
+  --                 auto_dealer_locations.
+  -- auto_offer_disclaimer cond_logic = NULL (no auto_driveaway_price in this template).
+  (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. $500 cashback + 3.9% comparison rate','The promotional offer this email campaign features.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+  (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC). Required if a price or rate is quoted.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',2),
+  (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this email is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',3),
+  -- acct block — acct_compliance_ack cond_logic = NULL (no auto_driveaway_price field here)
+  (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',4),
+  (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',5),
+  (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+   '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Accountability','full',6)
+
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET require_client_link = true WHERE slug = 'email-campaign';
+
+-- ============================================================
+-- Task 13: social-content — Full rework (fixes duplicate content_brief_title)
+-- ============================================================
+-- Starting point: batch-2 §10 (15 unique fields — 17 rows but duplicate content_brief_title;
+--   DELETE+INSERT inherently drops the dup, single content_brief_title authored here).
+-- EXTEND content_type options: add Vehicle Showcase, Inventory Post, OEM Content, GBP Post, ReelMotion.
+-- ADD: num_posts (number).
+-- MAKE REQUIRED: posting_frequency, content_period.
+-- FULL Tier A (9 fields — all auto_* incl driveaway) + Tier B (auto_stock_feed_url) + full acct block.
+-- auto_offer_disclaimer cond_logic: require when auto_driveaway_price is_not_empty (field exists here).
+-- acct_compliance_ack cond_logic: require when auto_driveaway_price is_not_empty (field exists here).
+-- Steps: 1 Brief Overview, 2 Content Strategy, 3 Schedule & Budget, 4 Assets, 5 Offer & Accountability.
+-- Total: ~14 base + 10 Tier A + 1 Tier B + 3 acct = ~28 fields.
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug = 'social-content';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id = tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+
+  -- ── Step 1: Brief Overview ────────────────────────────────────────────
+  (tmpl_id,'content_brief_title','Content Brief Title','text','e.g. Mazda June Social Package',NULL,true,'[]'::jsonb,NULL,1,'Brief Overview','Basic Information','full',1),
+  (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Brief Overview','Basic Information','full',2),
+  (tmpl_id,'platforms','Platforms','checkboxgroup',NULL,'Which platforms this content is for.',true,
+   '[{"label":"Facebook","value":"facebook"},{"label":"Instagram","value":"instagram"},{"label":"TikTok","value":"tiktok"},{"label":"LinkedIn","value":"linkedin"},{"label":"YouTube","value":"youtube"},{"label":"Google Business Profile","value":"gbp"},{"label":"Pinterest","value":"pinterest"}]'::jsonb,
+   NULL,1,'Brief Overview','Platforms','full',3),
+  (tmpl_id,'content_type','Content Type','checkboxgroup',NULL,'Select all content types in this brief.',true,
+   '[{"label":"Static Post","value":"static_post"},{"label":"Carousel","value":"carousel"},{"label":"Reel / Short Video","value":"reel"},{"label":"Story","value":"story"},{"label":"Vehicle Showcase","value":"vehicle_showcase"},{"label":"Inventory Post","value":"inventory_post"},{"label":"OEM Content","value":"oem_content"},{"label":"GBP Post","value":"gbp_post"},{"label":"ReelMotion","value":"reelmotion"},{"label":"Animation / Motion Graphic","value":"animation"},{"label":"User-Generated Content","value":"ugc"}]'::jsonb,
+   NULL,1,'Brief Overview','Content','full',4),
+
+  -- ── Step 2: Content Strategy ─────────────────────────────────────────
+  (tmpl_id,'content_goals','Content Goals','checkboxgroup',NULL,NULL,true,
+   '[{"label":"Brand Awareness","value":"brand_awareness"},{"label":"Lead Generation","value":"lead_gen"},{"label":"Engagement","value":"engagement"},{"label":"Website Traffic","value":"traffic"},{"label":"Inventory / Offer Promotion","value":"inventory_offer"},{"label":"Community Building","value":"community"},{"label":"Customer Retention","value":"retention"}]'::jsonb,
+   NULL,2,'Content Strategy','Goals','full',1),
+  (tmpl_id,'scope','What Do You Need From Us?','checkboxgroup',NULL,NULL,true,
+   '[{"label":"Copywriting","value":"copywriting"},{"label":"Design / Graphics","value":"design"},{"label":"Photography","value":"photography"},{"label":"Video Production","value":"video"},{"label":"Scheduling / Publishing","value":"scheduling"},{"label":"Reporting","value":"reporting"}]'::jsonb,
+   NULL,2,'Content Strategy','Scope','full',2),
+  (tmpl_id,'target_audience','Target Audience','textarea','e.g. In-market car buyers, 25–55, Melbourne metro',NULL,true,'[]'::jsonb,NULL,2,'Content Strategy','Audience','full',3),
+  (tmpl_id,'tone_of_voice','Tone of Voice','multiselect',NULL,NULL,true,
+   '[{"label":"Professional","value":"professional"},{"label":"Friendly","value":"friendly"},{"label":"Urgent","value":"urgent"},{"label":"Aspirational","value":"aspirational"},{"label":"Educational","value":"educational"},{"label":"Humorous","value":"humorous"},{"label":"Bold","value":"bold"}]'::jsonb,
+   NULL,2,'Content Strategy','Tone','full',4),
+  (tmpl_id,'num_posts','Number of Posts','number',NULL,'How many posts are included in this content package?',false,'[]'::jsonb,NULL,2,'Content Strategy','Volume','half',5),
+  (tmpl_id,'content_pillars','Content Pillars / Themes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,2,'Content Strategy','Themes','full',6),
+  (tmpl_id,'hashtag_strategy','Hashtag Strategy','textarea',NULL,NULL,false,'[]'::jsonb,NULL,2,'Content Strategy','Themes','full',7),
+
+  -- ── Step 3: Schedule & Budget ────────────────────────────────────────
+  (tmpl_id,'content_due_date','Content Due Date','date',NULL,NULL,true,'[]'::jsonb,NULL,3,'Schedule & Budget','Timeline','half',1),
+  (tmpl_id,'posting_frequency','Posting Frequency','dropdown',NULL,'How often content will be posted.',true,
+   '[{"label":"Daily","value":"daily"},{"label":"2–3× per week","value":"2_3_week"},{"label":"Weekly","value":"weekly"},{"label":"Fortnightly","value":"fortnightly"},{"label":"Monthly","value":"monthly"},{"label":"One-off","value":"one_off"}]'::jsonb,
+   NULL,3,'Schedule & Budget','Schedule','half',2),
+  (tmpl_id,'content_period','Content Period','daterange',NULL,'Date range this content package covers.',true,'[]'::jsonb,NULL,3,'Schedule & Budget','Schedule','full',3),
+  (tmpl_id,'monthly_budget','Monthly Budget','dropdown',NULL,NULL,false,
+   '[{"label":"Under $500","value":"under_500"},{"label":"$500 – $1,500","value":"500_1500"},{"label":"$1,500 – $3,000","value":"1500_3000"},{"label":"$3,000 – $5,000","value":"3k_5k"},{"label":"Over $5,000","value":"over_5k"}]'::jsonb,
+   NULL,3,'Schedule & Budget','Budget','half',4),
+
+  -- ── Step 4: Assets & References ─────────────────────────────────────
+  (tmpl_id,'brand_assets','Brand Assets / Guidelines','files',NULL,NULL,false,'[]'::jsonb,NULL,4,'Assets & References','Assets','full',1),
+  (tmpl_id,'reference_accounts','Reference Accounts / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Assets & References','References','full',2),
+  (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Assets & References','Notes','full',3),
+
+  -- ── Step 5: Offer & Accountability (Full Tier A + Tier B stock feed + acct) ─
+  -- Full Tier A: all 9 auto_* fields incl auto_driveaway_price
+  (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+   '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+  (tmpl_id,'auto_vehicle_focus','Vehicle(s) Featured','text','e.g. 2024 Mazda CX-5 Touring','Make / model / year being promoted.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',2),
+  (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+   '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+  (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. $500 cashback + 3.9% comparison rate','The specific deal or promotion featured in this content.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',4),
+  (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear. Text — values are ranges/wording.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',5),
+  (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC).',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',6),
+  (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply.',false,
+   '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',7),
+  (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',8),
+  (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this content is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',9),
+  -- Tier B — feed extension
+  (tmpl_id,'auto_stock_feed_url','Stock / Inventory Feed URL','url','https://feed.autogate.com.au/...','Autogate / dealer DMS export — for inventory post content.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',10),
+  -- acct block — full conditional logic (auto_driveaway_price exists in this template)
+  (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',11),
+  (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Accountability','half',12),
+  (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+   '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Accountability','full',13)
+
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET require_client_link = true WHERE slug = 'social-content';
+
+-- ============================================================
+-- Task 14: website-dev — Full rework
+-- ============================================================
+-- Starting point: batch-3 §1 (18 fields).
+-- ADD: vdp_required (radio: Yes/No), analytics_gtm_setup (checkbox).
+-- MAKE REQUIRED: current_website_url.
+-- ADD "Automotive Dealership" as the FIRST option of website_type.
+-- Partial Tier A: auto_oem_brand, auto_dealer_locations (NO offer/driveaway/disclaimer/oem_coop/vehicle).
+-- Tier B: auto_stock_feed_url, auto_catalogue_id.
+-- acct block: acct_compliance_ack cond_logic = NULL (no auto_driveaway_price in this template).
+-- Steps: 1 Project Overview, 2 Site Type & Design, 3 Technical, 4 Pages & Features, 5 Offer & Accountability.
+-- Total: ~18 base + 2 new + 2 partial Tier A + 2 Tier B + 3 acct = ~27 fields.
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug = 'website-dev';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id = tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+
+  -- ── Step 1: Project Overview ─────────────────────────────────────────
+  (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Basic Info','full',1),
+  (tmpl_id,'project_name','Project Name','text','e.g. Mazda Berwick Website Redesign',NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Basic Info','full',2),
+  (tmpl_id,'project_type','Project Type','dropdown',NULL,NULL,true,
+   '[{"label":"New Build","value":"new_build"},{"label":"Redesign","value":"redesign"},{"label":"Migration","value":"migration"},{"label":"Ongoing Maintenance","value":"maintenance"}]'::jsonb,
+   NULL,1,'Project Overview','Basic Info','half',3),
+  (tmpl_id,'current_website_url','Current Website URL','url','https://','Existing site URL — required for redesigns and migrations.',true,'[]'::jsonb,NULL,1,'Project Overview','Basic Info','half',4),
+  (tmpl_id,'project_goals','Project Goals','richtext',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Goals','full',5),
+  (tmpl_id,'target_audience','Target Audience','richtext',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Goals','full',6),
+  (tmpl_id,'target_launch_date','Target Launch Date','date',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Overview','Timeline','half',7),
+  (tmpl_id,'budget_range','Budget Range','dropdown',NULL,NULL,true,
+   '[{"label":"Under $5,000","value":"under_5k"},{"label":"$5,000 – $15,000","value":"5k_15k"},{"label":"$15,000 – $30,000","value":"15k_30k"},{"label":"$30,000 – $60,000","value":"30k_60k"},{"label":"Over $60,000","value":"over_60k"}]'::jsonb,
+   NULL,1,'Project Overview','Budget','half',8),
+
+  -- ── Step 2: Site Type & Design ───────────────────────────────────────
+  (tmpl_id,'website_type','Website Type','multiselect',NULL,NULL,true,
+   '[{"label":"Automotive Dealership","value":"automotive_dealership"},{"label":"Corporate / Business","value":"corporate"},{"label":"E-commerce","value":"ecommerce"},{"label":"Landing Page / Microsites","value":"landing_page"},{"label":"Blog / Content Site","value":"blog"},{"label":"Portfolio","value":"portfolio"},{"label":"Membership / Community","value":"membership"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,2,'Site Type & Design','Site Type','full',1),
+  (tmpl_id,'vdp_required','Vehicle Detail Page (VDP) Required','radio',NULL,'Flags need for VDP template, stock-feed integration, and drive-away / EGC pricing display.',false,
+   '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+   NULL,2,'Site Type & Design','Site Type','half',2),
+  (tmpl_id,'design_style','Design Style','multiselect',NULL,NULL,true,
+   '[{"label":"Modern / Minimal","value":"modern"},{"label":"Bold / High-Impact","value":"bold"},{"label":"Corporate / Professional","value":"corporate"},{"label":"Premium / Luxury","value":"luxury"},{"label":"Friendly / Approachable","value":"friendly"}]'::jsonb,
+   NULL,2,'Site Type & Design','Design','full',3),
+  (tmpl_id,'design_references','Design References','richtext',NULL,NULL,false,'[]'::jsonb,NULL,2,'Site Type & Design','Design','full',4),
+  (tmpl_id,'content_status','Content Status','dropdown',NULL,NULL,true,
+   '[{"label":"Client supplies all content","value":"client_supplied"},{"label":"Agency to write all content","value":"agency_writes"},{"label":"Mix — client + agency","value":"mixed"},{"label":"Migrating from existing site","value":"migrating"}]'::jsonb,
+   NULL,2,'Site Type & Design','Content','half',5),
+
+  -- ── Step 3: Technical ────────────────────────────────────────────────
+  (tmpl_id,'cms_preference','CMS Preference','dropdown',NULL,NULL,false,
+   '[{"label":"WordPress","value":"wordpress"},{"label":"Custom Build","value":"custom"},{"label":"Webflow","value":"webflow"},{"label":"Shopify","value":"shopify"},{"label":"DealerSocket / CDK","value":"dealer_platform"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,3,'Technical','Platform','half',1),
+  (tmpl_id,'hosting','Hosting','dropdown',NULL,'Leave blank if ADME manages hosting.',false,
+   '[{"label":"ADME Managed","value":"adme"},{"label":"Client Managed","value":"client"},{"label":"Cloudflare Pages","value":"cloudflare"},{"label":"WP Engine","value":"wp_engine"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,3,'Technical','Platform','half',2),
+  (tmpl_id,'third_party_integrations','Third-party Integrations','checkboxgroup',NULL,NULL,false,
+   '[{"label":"CRM (HubSpot / Salesforce)","value":"crm"},{"label":"Live Chat","value":"live_chat"},{"label":"Finance Calculator","value":"finance_calc"},{"label":"Trade-In Tool","value":"trade_in"},{"label":"Booking / Scheduling","value":"booking"},{"label":"Google Analytics / Tag Manager","value":"ga_gtm"},{"label":"Meta Pixel","value":"meta_pixel"},{"label":"Heatmap (Hotjar)","value":"heatmap"},{"label":"Other","value":"other"}]'::jsonb,
+   NULL,3,'Technical','Integrations','full',3),
+  (tmpl_id,'analytics_gtm_setup','Google Analytics / GTM Setup Required','checkbox',NULL,'Check if GA4 and Google Tag Manager need to be installed or reconfigured as part of this project.',false,'[]'::jsonb,NULL,3,'Technical','Integrations','half',4),
+
+  -- ── Step 4: Pages & Features ─────────────────────────────────────────
+  (tmpl_id,'required_pages','Required Pages','checkboxgroup',NULL,NULL,true,
+   '[{"label":"Home","value":"home"},{"label":"About Us","value":"about"},{"label":"Contact","value":"contact"},{"label":"New Vehicles","value":"new_vehicles"},{"label":"Used Vehicles","value":"used_vehicles"},{"label":"Demonstrators","value":"demos"},{"label":"Finance","value":"finance"},{"label":"Service / Parts","value":"service"},{"label":"Specials / Offers","value":"specials"},{"label":"Blog","value":"blog"},{"label":"Privacy Policy","value":"privacy"},{"label":"Custom","value":"custom"}]'::jsonb,
+   NULL,4,'Pages & Features','Pages','full',1),
+  (tmpl_id,'features_needed','Features Needed','checkboxgroup',NULL,NULL,false,
+   '[{"label":"Vehicle Search / Filter","value":"vehicle_search"},{"label":"Finance Calculator","value":"finance_calc"},{"label":"Test Drive Booking","value":"test_drive_booking"},{"label":"Service Booking","value":"service_booking"},{"label":"Live Chat","value":"live_chat"},{"label":"Trade-In Valuation","value":"trade_in"},{"label":"Social Media Feed","value":"social_feed"},{"label":"Google Maps / Directions","value":"maps"},{"label":"Offer / Specials Carousel","value":"specials_carousel"}]'::jsonb,
+   NULL,4,'Pages & Features','Features','full',2),
+  (tmpl_id,'brand_assets','Brand Assets','files',NULL,NULL,false,'[]'::jsonb,NULL,4,'Pages & Features','Assets','half',3),
+  (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Pages & Features','Notes','full',4),
+
+  -- ── Step 5: Offer & Accountability (Partial Tier A + Tier B + acct) ──
+  -- Partial Tier A: auto_oem_brand + auto_dealer_locations ONLY
+  -- (NO offer/driveaway/disclaimer/oem_coop/vehicle fields per §4.3)
+  -- Tier B: auto_stock_feed_url, auto_catalogue_id
+  -- acct_compliance_ack cond_logic = NULL (no auto_driveaway_price in this template)
+  (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+   '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+  (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this site is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',2),
+  -- Tier B — feed extension (key for VDP / inventory pages)
+  (tmpl_id,'auto_stock_feed_url','Stock / Inventory Feed URL','url','https://feed.autogate.com.au/...','Autogate / dealer DMS export / Merchant Centre feed. Required for VDP and inventory listing pages.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+  (tmpl_id,'auto_catalogue_id','Product Catalogue / Feed ID','text',NULL,'Meta vehicle catalogue ID or Google Merchant Centre feed ID.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',4),
+  -- acct block — acct_compliance_ack cond_logic = NULL (no auto_driveaway_price field)
+  (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',5),
+  (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',6),
+  (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+   '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Accountability','full',7)
+
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET require_client_link = true WHERE slug = 'website-dev';
