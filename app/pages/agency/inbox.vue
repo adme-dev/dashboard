@@ -14,9 +14,6 @@ const {
   markAsRead,
   markAllAsRead,
   deleteNotification,
-  getNotificationIcon,
-  getNotificationColor,
-  formatRelativeTime,
   connectToStream,
   disconnectFromStream
 } = useNotifications()
@@ -111,7 +108,8 @@ onBeforeUnmount(() => {
   disconnectFromStream()
 })
 
-// Infinite scroll sentinel
+// Infinite scroll sentinel — rendered inside the list's scroll viewport
+// via InboxList's #footer slot so it fires on the list itself.
 const loadMoreSentinel = ref<HTMLElement | null>(null)
 const loadingMore = ref(false)
 
@@ -136,196 +134,117 @@ const isMobile = breakpoints.smaller('lg')
 </script>
 
 <template>
-  <!-- Master–detail split must live in a flex-ROW. The agency layout (layouts/agency.vue)
-       wraps every page in a flex-COLUMN content area; the inbox is the only two-panel page,
-       so without this row wrapper the tall list eats all the height and the detail panel
-       collapses to 0px (nothing shows on the right). See the inbox layout fix. -->
-  <div class="flex flex-1 min-h-0 overflow-hidden">
-    <UDashboardPanel
-      id="inbox-1"
-      :default-size="25"
-      :min-size="20"
-      :max-size="30"
-      resizable
-    >
-      <UDashboardNavbar title="Inbox">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #trailing>
-          <UBadge :label="filteredNotifications.length" variant="subtle" />
-        </template>
-
-        <template #right>
-          <UTabs
-            v-model="selectedTab"
-            :items="tabItems"
-            :content="false"
-            size="xs"
-          />
-        </template>
-      </UDashboardNavbar>
-      <InboxList
-        v-model="selectedNotification"
-        :notifications="filteredNotifications"
-        :loading="loading"
-        @select="handleSelect"
-      />
-    </UDashboardPanel>
-
-    <InboxNotification
-      v-if="selectedNotification"
-      :notification="selectedNotification"
-      @close="selectedNotification = null"
-      @mark-read="handleMarkRead"
-      @delete="handleDelete"
-      @navigate="handleNavigate"
-    />
-    <div v-else class="hidden lg:flex flex-col flex-1 overflow-hidden">
-      <!-- Live Feed Header -->
-      <div class="border-b px-6 py-4 flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2">
-            <div
-              class="w-2 h-2 rounded-full"
-              :class="isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-300'"
-            />
-            <h2 class="text-lg font-semibold">
-              Live Feed
-            </h2>
-          </div>
+  <!-- The agency layout wraps every page in a flex-COLUMN content area. The inbox
+       owns a unified top bar (shrink-0) above a master–detail ROW (flex-1). The row
+       must be a flex-ROW or the tall list eats all the height and the detail panel
+       collapses to 0px. See the inbox layout fix. -->
+  <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
+    <!-- ── Unified top bar ───────────────────────────────────────────── -->
+    <header class="shrink-0 border-b border-default px-3 sm:px-6 py-2.5 flex items-center gap-3">
+      <div class="flex items-center gap-2.5 shrink-0">
+        <UDashboardSidebarCollapse class="-ms-1" />
+        <h1 class="text-base font-semibold text-highlighted">
+          Inbox
+        </h1>
+        <UTooltip v-if="unreadCount > 0" :text="`${unreadCount} unread`">
           <UBadge
-            v-if="unreadCount > 0"
             :label="String(unreadCount)"
             color="error"
-            size="xs"
+            variant="subtle"
+            size="sm"
           />
-        </div>
+        </UTooltip>
+      </div>
+
+      <!-- Filter tabs — scroll horizontally when the bar is narrow rather than
+           overflowing into the rest of the header. -->
+      <div class="min-w-0 flex-1 overflow-x-auto">
+        <UTabs
+          v-model="selectedTab"
+          :items="tabItems"
+          :content="false"
+          color="neutral"
+          size="xs"
+          class="w-fit"
+        />
+      </div>
+
+      <div class="flex items-center gap-3 shrink-0">
+        <span class="hidden sm:flex items-center gap-1.5 text-xs text-muted whitespace-nowrap">
+          <span
+            class="w-1.5 h-1.5 rounded-full"
+            :class="isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400 dark:bg-neutral-600'"
+          />
+          {{ isConnected ? 'Live' : 'Reconnecting…' }}
+        </span>
         <UButton
           v-if="unreadCount > 0"
           label="Mark all read"
+          icon="i-lucide-check-check"
           color="neutral"
           variant="ghost"
           size="xs"
           @click="markAllAsRead"
         />
       </div>
+    </header>
 
-      <!-- Live notifications stream -->
-      <div class="flex-1 overflow-y-auto">
-        <div v-if="notifications.length > 0" class="divide-y">
-          <div
-            v-for="notification in notifications"
-            :key="notification.id"
-            class="group px-6 py-4 hover:bg-elevated/50 cursor-pointer transition-colors relative"
-            :class="{ 'bg-primary/5': !notification.isRead }"
-            @click="handleSelect(notification)"
-          >
-            <!-- Unread bar -->
-            <div
-              v-if="!notification.isRead"
-              class="absolute left-0 top-0 bottom-0 w-1 bg-primary"
-            />
-
-            <div class="flex items-start gap-3">
-              <!-- Actor avatar or type icon -->
-              <div v-if="notification.actor" class="relative shrink-0">
-                <UAvatar
-                  :src="notification.actor.avatarUrl || undefined"
-                  :alt="notification.actor.name"
+    <!-- ── Master–detail split ──────────────────────────────────────── -->
+    <div class="flex flex-1 min-h-0 overflow-hidden">
+      <!-- List (full width on mobile, fixed rail on desktop) -->
+      <div class="flex flex-col min-h-0 w-full lg:w-96 lg:shrink-0 border-r border-default">
+        <InboxList
+          v-model="selectedNotification"
+          :notifications="filteredNotifications"
+          :loading="loading"
+          class="flex-1 min-h-0"
+          @select="handleSelect"
+        >
+          <template #footer>
+            <div v-if="filteredNotifications.length > 0 && hasMore" class="px-4 py-3">
+              <div ref="loadMoreSentinel">
+                <UButton
+                  label="Load more"
+                  variant="ghost"
+                  color="neutral"
+                  block
                   size="sm"
-                />
-                <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-elevated flex items-center justify-center">
-                  <UIcon
-                    :name="getNotificationIcon(notification.type)"
-                    :class="getNotificationColor(notification.type)"
-                    class="h-2.5 w-2.5"
-                  />
-                </div>
-              </div>
-              <div
-                v-else
-                class="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0"
-              >
-                <UIcon
-                  :name="getNotificationIcon(notification.type)"
-                  :class="getNotificationColor(notification.type)"
-                  class="h-4 w-4"
+                  :loading="loadingMore"
+                  @click="loadMore"
                 />
               </div>
-
-              <!-- Content -->
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium truncate" :class="!notification.isRead ? 'text-highlighted' : 'text-muted'">
-                  {{ notification.title }}
-                </p>
-                <p class="text-sm text-muted line-clamp-2 mt-0.5">
-                  {{ notification.message }}
-                </p>
-                <div class="flex items-center gap-2 mt-1.5">
-                  <span class="text-xs text-dimmed">{{ formatRelativeTime(notification.createdAt) }}</span>
-                  <UBadge
-                    v-if="notification.link"
-                    label="View"
-                    color="primary"
-                    variant="subtle"
-                    size="xs"
-                    class="cursor-pointer"
-                    @click.stop="handleNavigate(notification)"
-                  />
-                </div>
-              </div>
-
-              <!-- Delete -->
-              <UButton
-                icon="i-lucide-x"
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                class="opacity-0 group-hover:opacity-100 shrink-0"
-                @click.stop="handleDelete(notification)"
-              />
             </div>
-          </div>
-        </div>
+          </template>
+        </InboxList>
+      </div>
 
-        <!-- Load more -->
-        <div v-if="notifications.length > 0 && hasMore" class="px-6 py-3 flex justify-center">
-          <div ref="loadMoreSentinel" class="w-full">
-            <UButton
-              label="Load more"
-              variant="ghost"
-              color="neutral"
-              block
-              :loading="loadingMore"
-              @click="loadMore"
-            />
-          </div>
+      <!-- Detail (desktop) — rich item view when selected, else a calm empty state.
+           Mobile opens the same detail in a slideover (below). -->
+      <div v-if="selectedNotification" class="hidden lg:flex flex-1 min-w-0">
+        <InboxNotification
+          :notification="selectedNotification"
+          class="flex-1 min-w-0"
+          @close="selectedNotification = null"
+          @mark-read="handleMarkRead"
+          @delete="handleDelete"
+          @navigate="handleNavigate"
+        />
+      </div>
+      <div v-else class="hidden lg:flex flex-1 min-w-0 flex-col items-center justify-center text-center p-8">
+        <div class="w-14 h-14 rounded-full bg-elevated flex items-center justify-center mb-4">
+          <UIcon name="i-lucide-mail-open" class="h-7 w-7 text-dimmed" />
         </div>
-
-        <!-- Empty state -->
-        <div v-else-if="notifications.length === 0" class="flex flex-col items-center justify-center h-full text-center px-6">
-          <div class="w-16 h-16 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
-            <UIcon name="i-lucide-bell-off" class="h-8 w-8 text-muted" />
-          </div>
-          <p class="text-sm font-medium text-highlighted">
-            No notifications yet
-          </p>
-          <p class="text-xs text-muted mt-1">
-            Push notifications will appear here in real-time
-          </p>
-          <div class="flex items-center gap-1.5 mt-4 text-xs text-dimmed">
-            <div
-              class="w-1.5 h-1.5 rounded-full"
-              :class="isConnected ? 'bg-emerald-500' : 'bg-neutral-300'"
-            />
-            {{ isConnected ? 'Connected — listening for updates' : 'Connecting...' }}
-          </div>
-        </div>
+        <p class="text-sm font-medium text-highlighted">
+          Select a notification
+        </p>
+        <p class="text-xs text-muted mt-1 max-w-xs">
+          Choose an item from the list to see its full details and actions here.
+        </p>
       </div>
     </div>
   </div>
 
+  <!-- Mobile detail — slideover overlay -->
   <ClientOnly>
     <USlideover v-if="isMobile" v-model:open="isNotificationPanelOpen">
       <template #content>

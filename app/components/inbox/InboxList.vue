@@ -105,8 +105,12 @@ function handleClick(notification: Notification) {
     <!-- Empty state -->
     <div v-else-if="notifications.length === 0" class="flex flex-col items-center justify-center py-12 text-center">
       <UIcon name="i-lucide-bell-off" class="size-12 text-dimmed mb-3" />
-      <p class="text-sm font-medium text-highlighted">No notifications</p>
-      <p class="text-xs text-muted mt-1">You're all caught up</p>
+      <p class="text-sm font-medium text-highlighted">
+        No notifications
+      </p>
+      <p class="text-xs text-muted mt-1">
+        You're all caught up
+      </p>
     </div>
 
     <!-- Notification items -->
@@ -174,5 +178,9 @@ function handleClick(notification: Notification) {
         </div>
       </div>
     </template>
+
+    <!-- Footer slot — used by the inbox page to render the load-more sentinel
+         INSIDE the scroll viewport so infinite-scroll fires on the list itself. -->
+    <slot name="footer" />
   </div>
 </template>
