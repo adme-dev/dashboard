@@ -36,8 +36,6 @@ vi.mock('@neondatabase/serverless', () => {
     on = mockPoolOn
     connect = mockPoolConnect
     end = mockPoolEnd
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    constructor(_opts?: unknown) {}
   }
   return { neon, Pool: MockPool }
 })
@@ -48,8 +46,6 @@ vi.mock('pg', () => {
     connect = vi.fn().mockResolvedValue(undefined)
     query = vi.fn()
     end = vi.fn().mockResolvedValue(undefined)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    constructor(_opts?: unknown) {}
   }
   return { default: { Client: MockClient } }
 })
