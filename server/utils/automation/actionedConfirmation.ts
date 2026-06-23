@@ -44,3 +44,47 @@ export function isStalled(b: BriefForC7, now: Date, slaWorkingDays = 1): boolean
   }
   return now > due
 }
+
+export interface AckParams {
+  userId: string
+  type: 'brief_actioned'
+  title: string
+  message: string
+  link: string
+  reason: 'direct'
+}
+
+export function isFirstAction(b: BriefForC7): boolean {
+  if (b.c7_acknowledged_at) return false
+  return Boolean(b.assigned_to || b.converted_to_task_id || b.converted_to_project_id)
+}
+
+function withSuggestion(base: string, suggestion?: string): string {
+  return suggestion ? `${base}\n\nSuggested next step: ${suggestion}` : base
+}
+
+export function ackNotification(b: BriefForC7, suggestion?: string): AckParams | null {
+  if (!b.submitted_by) return null
+  const title = b.title || 'Your brief'
+  const base = b.assigned_to
+    ? `Your brief "${title}" has been picked up${b.assignee_name ? ` by ${b.assignee_name}` : ''}.`
+    : `Your brief "${title}" is now in the production pipeline.`
+  return { userId: b.submitted_by, type: 'brief_actioned', title: 'Brief actioned', message: withSuggestion(base, suggestion), link: `/agency/briefs/${b.id}`, reason: 'direct' }
+}
+
+export function stallEscalation(b: BriefForC7, suggestion?: string): { escalation: EscalationInput, briefer: AckParams | null } {
+  const title = b.title || 'Untitled brief'
+  const escalation: EscalationInput = {
+    capability: 'brief_sla',
+    title: `Brief SLA breach: ${title}`,
+    severity: 'warning',
+    clientId: b.client_id ?? null,
+    detail: { briefId: b.id, submittedAt: b.submitted_at, requestedDeadline: b.requested_deadline },
+    proposedAction: null,
+    assignedRole: 'AUTOMATION'
+  }
+  const briefer: AckParams | null = b.submitted_by
+    ? { userId: b.submitted_by, type: 'brief_actioned', title: 'Brief not actioned', message: withSuggestion(`Brief "${title}" hasn't been actioned yet.`, suggestion), link: `/agency/briefs/${b.id}`, reason: 'direct' }
+    : null
+  return { escalation, briefer }
+}
