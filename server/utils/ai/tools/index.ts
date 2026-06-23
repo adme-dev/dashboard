@@ -27,6 +27,7 @@ import { expenseApprovalTool, eomGenerateTool, expenseClassifyTool } from './fin
 import { creativeQueueTool, proofStatusTool } from './creativeActions'
 import { teamMemoryTool } from './proposeTeamMemory'
 import { checkPacingTool } from './checkPacing'
+import { checkBriefCompletenessTool } from './checkBriefCompleteness'
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
@@ -72,4 +73,6 @@ export const registry: AiTool<any>[] = [
   teamMemoryTool,
   // Ops Autopilot: pacing watchdog read tool.
   checkPacingTool,
+  // Ops Autopilot: C5 brief-completeness gatekeeper read tool.
+  checkBriefCompletenessTool,
 ]

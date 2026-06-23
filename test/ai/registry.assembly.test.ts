@@ -27,8 +27,10 @@ const CREATIVE_READS = ['get_my_creative_queue']
 const CREATIVE_WRITES = ['propose_proof_status']
 // Cross-cutting: promote a fact to department-shared memory (MANAGEMENT-gated).
 const SHARED_MEMORY_WRITES = ['propose_team_memory']
+// Ops Autopilot read tools: C1 pacing watchdog (MEDIA_BUYING) + C5 brief gatekeeper (any authed).
+const OPS_AUTOPILOT_READS = ['check_pacing', 'check_brief_completeness']
 // remember = personal-memory capture (non-mutating; available to every authed role).
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, 'remember']
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, ...OPS_AUTOPILOT_READS, 'remember']
 
 describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
   it('contains the 15 read tools + the write tools + remember', () => {
