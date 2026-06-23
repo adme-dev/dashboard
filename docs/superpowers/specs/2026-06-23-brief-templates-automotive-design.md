@@ -261,7 +261,7 @@ the Pass-1 specifics + blocks to apply:
 
 Two migrations in `server/database/migrations/` (underscore convention, matching 185–190):
 
-**`191_brief_templates_pass1_new.sql`** — the 4 new templates. Pattern (from `054`):
+**`195_brief_templates_pass1_new.sql`** — the 4 new templates. Pattern (from `054`):
 ```sql
 INSERT INTO brief_templates (category_id, slug, name, description, icon,
   requires_approval, is_multi_step, default_priority, require_client_link, sort_order)
@@ -284,7 +284,7 @@ END $$;
 `options` = JSON array `[{"label":"…","value":"…"}]` (or `'[]'`). `conditional_logic` = JSON
 object `'{"fieldKey":"…","operator":"…","value":"…","action":"…"}'::jsonb` (or NULL).
 
-**`192_brief_templates_pass1_rework.sql`** — the 11 reworks. Per template:
+**`196_brief_templates_pass1_rework.sql`** — the 11 reworks. Per template:
 ```sql
 DO $$ DECLARE tmpl_id UUID; BEGIN
   SELECT id INTO tmpl_id FROM brief_templates WHERE slug='facebook-ads';
