@@ -11,7 +11,7 @@
 
 DO $$ BEGIN
   IF (SELECT COUNT(*) FROM brief_field_values) <> 0 THEN
-    RAISE EXCEPTION '193 aborted: brief_field_values is not empty — switch to additive mode';
+    RAISE EXCEPTION '197 aborted: brief_field_values is not empty — switch to additive mode';
   END IF;
 END $$;
 
@@ -137,7 +137,8 @@ WHERE slug='tiktok-ads';
 -- Assembly: 22 current − language_versions − background − additional_notes
 --           + context_notes (merged) + retype key_message textarea→text
 --           + fix custom_sizes conditional + add Carsales sizes + Carsales network
---           + Tier A (9) + acct_* (3) = 32 fields
+--           + Tier A (9) + acct_* (3) = 31 fields
+--           (offer_details legacy field removed — auto_offer_details is canonical)
 -- ============================================================
 DO $$ DECLARE tmpl_id UUID; BEGIN
   SELECT id INTO tmpl_id FROM brief_templates WHERE slug='display-banner';
@@ -178,11 +179,10 @@ DO $$ DECLARE tmpl_id UUID; BEGIN
     -- Step 3: Messaging & Assets
     (tmpl_id,'key_message','Key Message / Headline','text','e.g. Drive Away from $34,990','Single-line headline as it appears on the banner (max ~30 chars).',true,'[]'::jsonb,NULL,3,'Messaging & Assets','Messaging','full',1),
     (tmpl_id,'cta_text','Call-to-Action Text','text','e.g. Get Quote Today',NULL,true,'[]'::jsonb,NULL,3,'Messaging & Assets','Messaging','half',2),
-    (tmpl_id,'offer_details','Offer/Promotion Details','textarea',NULL,NULL,false,'[]'::jsonb,NULL,3,'Messaging & Assets','Messaging','full',3),
-    (tmpl_id,'brand_guidelines','Brand Guidelines / Assets','files',NULL,NULL,false,'[]'::jsonb,NULL,3,'Messaging & Assets','Assets','full',4),
-    (tmpl_id,'colour_palette','Colour Requirements','textarea',NULL,'e.g. Primary #C8102E, white on dark background.',false,'[]'::jsonb,NULL,3,'Messaging & Assets','Assets','half',5),
-    (tmpl_id,'reference_banners','Reference / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Messaging & Assets','Assets','full',6),
-    (tmpl_id,'context_notes','Campaign Context / Notes','richtext',NULL,'Campaign background, brief history, and any additional creative or production notes.',false,'[]'::jsonb,NULL,3,'Messaging & Assets','Notes','full',7),
+    (tmpl_id,'brand_guidelines','Brand Guidelines / Assets','files',NULL,NULL,false,'[]'::jsonb,NULL,3,'Messaging & Assets','Assets','full',3),
+    (tmpl_id,'colour_palette','Colour Requirements','textarea',NULL,'e.g. Primary #C8102E, white on dark background.',false,'[]'::jsonb,NULL,3,'Messaging & Assets','Assets','half',4),
+    (tmpl_id,'reference_banners','Reference / Inspiration','richtext',NULL,NULL,false,'[]'::jsonb,NULL,3,'Messaging & Assets','Assets','full',5),
+    (tmpl_id,'context_notes','Campaign Context / Notes','richtext',NULL,'Campaign background, brief history, and any additional creative or production notes.',false,'[]'::jsonb,NULL,3,'Messaging & Assets','Notes','full',6),
 
     -- Step 4: Timeline & Versions
     (tmpl_id,'due_date','Required Delivery Date','date',NULL,NULL,true,'[]'::jsonb,NULL,4,'Timeline & Versions','Timeline','half',1),
@@ -315,7 +315,7 @@ WHERE slug='media-plan';
 --   adds (geographic_requirement, exclusivity_restriction,
 --   influencer_niche) + fix num_influencers + make usage_rights
 --   required + acct_* (3, compliance_ack is_required=true,
---   conditional_logic=NULL) = 28 fields total.
+--   conditional_logic=NULL) = 25 fields total.
 -- acct_compliance_ack is_required=true: captures ACCC paid-partnership
 --   disclosure acknowledgment (no driveaway_price → conditional=NULL).
 -- ============================================================
@@ -400,7 +400,7 @@ WHERE slug='influencer-campaign';
 --   Tier A offer block (9 fields) + new automotive deltas
 --   (extend design_type, retype dimensions→dropdown + custom
 --   conditional, add output_format, add num_sizes) + acct_* (3)
---   = 27 fields total.
+--   = 25 fields total.
 -- Full Tier A means auto_driveaway_price present →
 --   auto_offer_disclaimer + acct_compliance_ack keep their
 --   is_not_empty conditional.
@@ -489,7 +489,7 @@ WHERE slug='graphic-design';
 --     franchise_type + make num_concepts REQUIRED
 --   + sort order fix: project_type moved up near client fields
 --   + acct_* (3, compliance_ack conditional=NULL — no driveaway)
---   = 22 fields total.
+--   = 23 fields total.
 -- ============================================================
 DO $$ DECLARE tmpl_id UUID; BEGIN
   SELECT id INTO tmpl_id FROM brief_templates WHERE slug='brand-identity';
@@ -906,10 +906,10 @@ WHERE slug='video-production';
 --   ~ target_radio_stations textarea → checkboxgroup (Nova/KIIS/GOLD/Triple M/2GB/SEN/ABC/Other)
 --   + script_author (dropdown, required)
 --   ~ production_budget → required
---   = 19 kept/modified base fields
+--   = 20 kept/modified base fields
 --   + full Tier A 9 (auto_oem_brand…auto_dealer_locations; auto_offer_details replaces legacy)
 --   + acct_* 3 (compliance_ack conditional on auto_driveaway_price is_not_empty)
---   = 31 fields total
+--   = 32 fields total
 -- require_client_link=true
 -- ============================================================
 DO $$ DECLARE tmpl_id UUID; BEGIN
@@ -1019,7 +1019,7 @@ WHERE slug='radio-ad';
 --   ~ tone_style → required
 --   ~ budget → required
 --   + acct_* 3 (acct_compliance_ack conditional_logic=NULL — no auto_driveaway_price)
---   = 22 fields total
+--   = 24 fields total
 -- NOTE on conditionals: content_type options in existing template include
 --   podcast, podcast_series, audio_ad, jingle, voiceover, music.
 --   num_episodes → show when content_type=podcast (most relevant single value)
@@ -1118,7 +1118,7 @@ WHERE slug='podcast-audio';
 --   ~ target_seo_keywords → required
 --   ~ target_word_count → required
 --   + acct_* 3 (acct_compliance_ack conditional_logic=NULL — no auto_driveaway_price)
---   = 19 fields total
+--   = 18 fields total
 -- require_client_link=true
 -- ============================================================
 DO $$ DECLARE tmpl_id UUID; BEGIN
