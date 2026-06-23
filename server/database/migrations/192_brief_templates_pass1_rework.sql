@@ -729,6 +729,7 @@ UPDATE brief_templates SET require_client_link = true WHERE slug = 'social-conte
 
 -- ============================================================
 -- Task 14: website-dev — Full rework
+-- Committed: 2026-06-23
 -- ============================================================
 -- Starting point: batch-3 §1 (18 fields).
 -- ADD: vdp_required (radio: Yes/No), analytics_gtm_setup (checkbox).
