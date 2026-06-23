@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi, afterEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { createSSRApp, h, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import InboxItemPreview from '~~/app/components/inbox/InboxItemPreview.vue'
@@ -9,6 +9,7 @@ const stubs: Record<string, Component> = {
   USkeleton: { name: 'USkeleton', template: '<div class="skeleton" />' },
   UAlert: { name: 'UAlert', props: ['title', 'description', 'icon', 'color', 'variant'], template: '<div class="alert">{{ title }} {{ description }}</div>' },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span class="badge">{{ label }}</span>' },
+  UButton: { name: 'UButton', props: ['label', 'icon', 'color'], template: '<button>{{ label }}</button>' },
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' }
 }
 
@@ -19,6 +20,11 @@ async function render(notification: { link: string | null }) {
   }
   return renderToString(app)
 }
+
+beforeEach(() => {
+  // useToast is a Nuxt auto-import the component calls at setup.
+  vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -35,6 +41,12 @@ describe('InboxItemPreview', () => {
   it('renders the loading state for a brief link without throwing', async () => {
     vi.stubGlobal('$fetch', () => new Promise(() => {}))
     const html = await render({ link: '/agency/briefs/b1' })
+    expect(html).toContain('skeleton')
+  })
+
+  it('renders the loading state for an anomaly link without throwing', async () => {
+    vi.stubGlobal('$fetch', () => new Promise(() => {}))
+    const html = await render({ link: '/anomalies?focus=a1' })
     expect(html).toContain('skeleton')
   })
 
