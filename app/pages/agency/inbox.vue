@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { breakpointsTailwind, useIntersectionObserver } from '@vueuse/core'
 import InboxNotification from '~/components/inbox/InboxNotification.vue'
+import { inboxTabItems, filterNotificationsByTab } from '~~/app/utils/inboxTabs'
 
 definePageMeta({ title: 'Inbox' })
 
@@ -20,32 +21,11 @@ const {
 
 const router = useRouter()
 
-const tabItems = [
-  { label: 'All', value: 'all' },
-  { label: 'Unread', value: 'unread' },
-  { label: 'Assigned', value: 'assigned' },
-  { label: 'Mentions', value: 'mentions' },
-  { label: 'Approvals', value: 'approvals' },
-  { label: 'Chat', value: 'chat' },
-  { label: 'System', value: 'system' }
-]
 const selectedTab = ref('all')
 
-const typesByTab: Record<string, string[]> = {
-  assigned: ['task_assigned'],
-  mentions: ['task_mentioned', 'chat_mention'],
-  approvals: ['approval_requested', 'approval_completed'],
-  chat: ['chat_mention', 'chat_dm'],
-  system: ['system', 'team_update']
-}
-
-const filteredNotifications = computed(() => {
-  if (selectedTab.value === 'all') return notifications.value
-  if (selectedTab.value === 'unread') return notifications.value.filter(n => !n.isRead)
-  const types = typesByTab[selectedTab.value]
-  if (types) return notifications.value.filter(n => types.includes(n.type))
-  return notifications.value
-})
+// Tab definitions + the type→tab mapping live in app/utils/inboxTabs.ts so the
+// routing stays in sync with the notification types the app creates (unit-tested).
+const filteredNotifications = computed(() => filterNotificationsByTab(notifications.value, selectedTab.value))
 
 const selectedNotification = ref<any>(null)
 
@@ -161,7 +141,7 @@ const isMobile = breakpoints.smaller('lg')
       <div class="min-w-0 flex-1 overflow-x-auto">
         <UTabs
           v-model="selectedTab"
-          :items="tabItems"
+          :items="inboxTabItems"
           :content="false"
           color="neutral"
           size="xs"

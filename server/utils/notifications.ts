@@ -20,7 +20,6 @@ export type NotificationType =
   | 'approval_requested'
   | 'approval_completed'
   | 'approval_response'
-  | 'invitation_received'
   | 'team_update'
   | 'system'
   | 'ai_digest'

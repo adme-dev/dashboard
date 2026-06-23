@@ -60,7 +60,6 @@ const typeLabelMap: Record<string, string> = {
   task_overdue: 'Overdue',
   approval_requested: 'Approval',
   approval_completed: 'Approved',
-  invitation_received: 'Invitation',
   team_update: 'Team Update',
   system: 'System'
 }
