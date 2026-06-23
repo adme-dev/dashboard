@@ -152,6 +152,55 @@ migration is the next gate; it must land + validate **before** `LIFECYCLE_GUARD_
 is ever flipped on. C6/C7 follow once stages are live.
 
 ---
-**Recommended next step:** approve Approach C + the scope in §8.1, and let me run **Phase 0
-discovery** (read-only) to produce the concrete board/department + status table, which I'll
-bring back before writing any migration SQL.
+
+## 10. Phase 0 — Discovery results (read-only, run 2026-06-23 against live DB)
+
+**Schema reality (refines §4):**
+- There is **no `boards` table** — the 329 rows in `departments` ARE the imported Monday
+  boards (e.g. "ADME Creative Request", "Knox Mitsubishi", "Production", "Creative"). A
+  task belongs to a board via `tasks.department_id`.
+- The **real status is `tasks.status_id` → `task_statuses`** (department-scoped). Integrity
+  is near-perfect: **38,523 / 38,524** tasks resolve to a same-department status row.
+- `tasks.status` is a **dead denormalized text field — 100% `'todo'` (×38,524)**. Ignore it;
+  drive everything off `status_id` / `task_statuses.name`.
+- `board_columns` (111, legacy) and `custom_columns` (235, modern) are *extra* columns
+  (date/people/dropdown/status/budget/client). Some boards have a `status`-type column
+  (22 legacy / 65 modern) but **the DA board has none** → its status is purely `task_statuses`.
+
+**Flattening is total and unrecoverable:**
+- Every task is generic. Most boards = the triad (To Do / In Progress / Done). Six
+  "workflow" departments (Creative, Production, Marketing, Operations, Account Services,
+  Sales) share a 9-set (Backlog, To Do, In Progress, Internal Review, Client Review,
+  Revisions, Approved, Done, Cancelled).
+- The canonical DA values (Brief Required, QA, Awaiting Approval, Check Daily, Roll
+  This/Next Month, …) are **absent from `task_statuses` AND from every status-column's
+  `settings`** — confirmed by scanning for the labels. **There is no source to recover
+  from → the taxonomy must be defined forward.**
+
+**DA lifecycle work is thin (good — small, low-risk pilot):**
+- **`ADME Creative Request` = 147 tasks, all "To Do", triad only, no custom columns** —
+  the natural pilot board.
+- Marketing 883 (broad, not pure DA), Creative 25, Account Services 22, Production 0.
+- The big volumes (Approved To Be Billed ~12.8k, Website Builds 3.8k, Support 2.8k, Budget
+  Tracker 2k) are billing/ops/client boards — **not** the DA creative lifecycle.
+
+**The four open decisions (§8) — now answered with evidence:**
+1. **Scope** → pilot on **`ADME Creative Request`** only (147 tasks). Expand to Creative /
+   Marketing later. NOT a global migration.
+2. **Active-task remap** → **forward-only.** The 147 are all "To Do" (no signal to infer
+   stage); the set is small enough for the team to manually re-stage in-app if they want.
+3. **Status set** → a **trimmed, stage-aligned set (~12–15 names)** whose names match
+   `STATUS_TO_STAGE` so `resolveStage` works (one+ per lifecycle stage: brief, production,
+   qa, proofing, approval, deployment, monitoring, reporting, billable, recurring, done),
+   NOT all ~30 Monday strings (many are dealer-specific noise).
+4. **UI source** → **`task_statuses`** (the pilot board has no status column). The dual
+   status-columns are out of scope for the pilot.
+
+**Revised risk read:** LOW. One board, 147 same-status tasks, additive `task_statuses`
+inserts, kill switch already in place. The blast radius the original plan worried about
+(38k rows) does not apply to the recommended pilot.
+
+**Recommended next step:** sign off the pilot scope above; then I'll write the **Phase 1
+seed migration** (idempotent, dry-run-first) for `ADME Creative Request` with the trimmed
+stage-aligned status set + colors/sort order, validate it (Phase 2), and bring it back
+before applying. The guard stays OFF until Phase 4.
