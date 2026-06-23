@@ -21,6 +21,19 @@ describe('parseInboxEntity', () => {
     expect(parseInboxEntity('/agency/tasks/t1?ref=inbox#comments')?.id).toBe('t1')
   })
 
+  it('resolves an anomaly link from the ?focus= query param', () => {
+    expect(parseInboxEntity('/anomalies?focus=anom-9')).toEqual({
+      kind: 'anomaly',
+      id: 'anom-9',
+      apiPath: '/api/ai/anomalies/anom-9',
+      label: 'Anomaly'
+    })
+  })
+
+  it('returns null for an anomalies link with no focus id', () => {
+    expect(parseInboxEntity('/anomalies')).toBeNull()
+  })
+
   it('returns null for null/empty/unknown links (fallback to plain view)', () => {
     expect(parseInboxEntity(null)).toBeNull()
     expect(parseInboxEntity('')).toBeNull()

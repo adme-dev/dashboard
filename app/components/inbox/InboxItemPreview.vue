@@ -14,6 +14,8 @@ const entity = computed(() => parseInboxEntity(props.notification?.link))
 const item = ref<any>(null)
 const pending = ref(false)
 const failed = ref(false)
+const acting = ref(false)
+const toast = useToast()
 
 async function load() {
   item.value = null
@@ -22,7 +24,10 @@ async function load() {
   if (!e) return
   pending.value = true
   try {
-    item.value = await $fetch(e.apiPath)
+    const res: any = await $fetch(e.apiPath)
+    // The anomaly endpoint nests the record under `.anomaly`; tasks/briefs return it directly.
+    item.value = e.kind === 'anomaly' ? (res?.anomaly ?? null) : res
+    if (!item.value) failed.value = true
   } catch {
     failed.value = true
   } finally {
@@ -31,6 +36,38 @@ async function load() {
 }
 
 watch(() => entity.value?.apiPath, load, { immediate: true })
+
+// ---- anomaly actions (PATCH /api/ai/anomalies/:id) ----
+// Available actions per status mirror the server state-machine.
+const anomalyActions = computed<Array<{ action: string, label: string, icon: string, color: string }>>(() => {
+  const s = item.value?.status
+  if (entity.value?.kind !== 'anomaly' || !s) return []
+  const all = [
+    { action: 'acknowledge', label: 'Acknowledge', icon: 'i-lucide-eye', color: 'neutral', when: ['open', 'snoozed'] },
+    { action: 'snooze', label: 'Snooze 24h', icon: 'i-lucide-clock', color: 'neutral', when: ['open', 'acknowledged'] },
+    { action: 'resolve', label: 'Resolve', icon: 'i-lucide-check', color: 'primary', when: ['open', 'acknowledged', 'snoozed'] },
+    { action: 'reopen', label: 'Reopen', icon: 'i-lucide-rotate-ccw', color: 'neutral', when: ['resolved'] }
+  ]
+  return all.filter(a => a.when.includes(s)).map(({ when, ...a }) => a)
+})
+
+async function doAction(action: string) {
+  const e = entity.value
+  if (!e || acting.value) return
+  acting.value = true
+  try {
+    const body: Record<string, unknown> = { action }
+    if (action === 'snooze') body.snoozedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    await $fetch(e.apiPath, { method: 'PATCH', body })
+    // Reflect the new status locally (state-machine end states).
+    item.value = { ...item.value, status: action === 'resolve' ? 'resolved' : action === 'acknowledge' ? 'acknowledged' : action === 'snooze' ? 'snoozed' : action === 'reopen' ? 'open' : item.value.status }
+    toast.add({ title: `Anomaly ${action === 'resolve' ? 'resolved' : action === 'acknowledge' ? 'acknowledged' : action === 'snooze' ? 'snoozed' : 'reopened'}`, color: 'success' })
+  } catch (err: any) {
+    toast.add({ title: 'Action failed', description: err?.data?.statusMessage || err?.message, color: 'error' })
+  } finally {
+    acting.value = false
+  }
+}
 
 // ---- formatting helpers ----
 function fmtValue(v: unknown): string {
@@ -56,6 +93,8 @@ const briefStatusColor: Record<string, string> = {
   approved: 'success', in_progress: 'info', completed: 'success', rejected: 'error', cancelled: 'neutral'
 }
 const priorityColor: Record<string, string> = { low: 'neutral', medium: 'info', high: 'warning', urgent: 'error' }
+const severityColor: Record<string, string> = { critical: 'error', high: 'warning', medium: 'info', low: 'neutral' }
+const anomalyStatusColor: Record<string, string> = { open: 'warning', acknowledged: 'info', snoozed: 'neutral', resolved: 'success', dismissed: 'neutral' }
 
 const briefFields = computed(() =>
   ((item.value?.fieldValues as any[]) || []).filter(f => f?.value !== null && f?.value !== undefined && f?.value !== '')
@@ -160,7 +199,6 @@ const briefFields = computed(() =>
         </div>
       </div>
 
-      <!-- the actual brief contents -->
       <dl v-if="briefFields.length" class="space-y-2.5">
         <div v-for="f in briefFields" :key="f.fieldId || f.fieldKey" class="text-sm">
           <dt class="text-xs font-medium text-dimmed uppercase tracking-wide">
@@ -174,6 +212,77 @@ const briefFields = computed(() =>
       <p v-else class="text-sm text-muted italic">
         No fields filled in yet.
       </p>
+    </div>
+
+    <!-- ANOMALY preview + actions -->
+    <div v-else-if="item && entity?.kind === 'anomaly'" class="space-y-4">
+      <div>
+        <div class="flex items-center gap-2 text-xs text-dimmed mb-1">
+          <UIcon name="i-lucide-activity" class="h-3.5 w-3.5" />
+          <span>Anomaly{{ item.metric ? ` · ${item.metric}` : '' }}</span>
+        </div>
+        <h3 class="text-base font-semibold text-highlighted">
+          {{ item.title }}
+        </h3>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <UBadge
+          v-if="item.severity"
+          :label="item.severity"
+          :color="severityColor[item.severity] || 'neutral'"
+          variant="subtle"
+          size="xs"
+          class="capitalize"
+        />
+        <UBadge
+          v-if="item.status"
+          :label="item.status"
+          :color="anomalyStatusColor[item.status] || 'neutral'"
+          variant="outline"
+          size="xs"
+          class="capitalize"
+        />
+        <span v-if="fmtDate(item.last_detected_at || item.first_detected_at)" class="text-xs text-dimmed">
+          detected {{ fmtDate(item.last_detected_at || item.first_detected_at) }}
+        </span>
+      </div>
+
+      <p v-if="item.description" class="text-sm text-muted whitespace-pre-wrap">
+        {{ item.description }}
+      </p>
+
+      <!-- recommendation: the "what to do" -->
+      <div v-if="item.recommendation" class="rounded-md bg-primary/5 border border-primary/20 p-3">
+        <div class="flex items-center gap-1.5 text-xs font-medium text-primary mb-1">
+          <UIcon name="i-lucide-lightbulb" class="h-3.5 w-3.5" />
+          Recommendation
+        </div>
+        <p class="text-sm text-highlighted whitespace-pre-wrap">
+          {{ item.recommendation }}
+        </p>
+      </div>
+
+      <!-- AI driver narrative, if present -->
+      <div v-if="item.driver_narrative" class="text-sm text-muted whitespace-pre-wrap border-l-2 border-default pl-3">
+        {{ item.driver_narrative }}
+      </div>
+
+      <!-- actions -->
+      <div v-if="anomalyActions.length" class="flex flex-wrap items-center gap-2 pt-1">
+        <UButton
+          v-for="a in anomalyActions"
+          :key="a.action"
+          :label="a.label"
+          :icon="a.icon"
+          :color="a.color"
+          :variant="a.color === 'primary' ? 'solid' : 'outline'"
+          size="xs"
+          :loading="acting"
+          :disabled="acting"
+          @click="doAction(a.action)"
+        />
+      </div>
     </div>
   </div>
 </template>
