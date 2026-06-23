@@ -629,6 +629,7 @@ UPDATE brief_templates SET require_client_link = true WHERE slug = 'email-campai
 
 -- ============================================================
 -- Task 13: social-content — Full rework (fixes duplicate content_brief_title)
+-- Committed: 2026-06-23
 -- ============================================================
 -- Starting point: batch-2 §10 (15 unique fields — 17 rows but duplicate content_brief_title;
 --   DELETE+INSERT inherently drops the dup, single content_brief_title authored here).
