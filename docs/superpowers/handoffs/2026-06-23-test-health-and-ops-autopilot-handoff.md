@@ -28,7 +28,42 @@ only in the repo root. Tests: `pnpm exec vitest run <file>`.
 
 ---
 
-## 1. Workstream A — Test-suite health (ACTIVE, the priority)
+## ✅ UPDATE 2026-06-23 (later session): Workstream A is COMPLETE
+
+The full vitest suite is **GREEN** — `4062 passed | 4 skipped | 0 failed` across 663 files
+(was 129 failed at branch start). Five commits added after the handoff
+(`3f351845`, `735f61c1`, `113e7547`, `11ff6291` + this doc update):
+
+- **9 drift fixes** (`3f351845`): `getAppUrl` moved to its own `server/utils/appUrl`
+  module — notifications + officeMeetingInvitePost mocked it on the *email* module
+  (stale), so the real impl ran; fixed by mocking the actual module. leadsEndpointsList:
+  handler now gates on `PERMISSIONS.MEDIA_BUYING` + runs a backfill `queryRows` before
+  the data query.
+- **db.test.ts rewrite** (`735f61c1`, +`11ff6291` lint): old suite mocked `pg.Pool` and
+  imported a removed `healthCheck`; rewrote against the dual-driver (neon() HTTP path in
+  tests) — query/queryRows/queryOne/queryCount/execute, transaction BEGIN/COMMIT+ROLLBACK,
+  db/getDb wrappers, withRetry. 49→0.
+- **auth.test.ts rewrite** (`113e7547`): old suite tested a since-removed system wholesale
+  (scrypt, SHA-256 hashToken, DB `user_sessions`, per-entity `checkPermission`). Rewrote
+  against the current **stateless-JWT + group-RBAC** model. 46→0.
+
+**⚠️ Two genuine security/coverage changes surfaced during the auth rewrite (NOT test bugs —
+operator decisions, documented in `auth.test.ts` header):**
+  1. **No server-side session revocation.** `invalidateSession` is gone;
+     `invalidateAllSessions` is a no-op stub. Stateless JWT (7-day expiry) → a leaked token
+     stays valid until expiry; logout = client cookie clear only. Decide whether real
+     revocation (deny-list / short expiry + refresh) is needed before launch.
+  2. **`hashToken` is a passthrough stub** → magic-link tokens stored UNHASHED in
+     `magic_link_tokens.token_hash`. Mitigated by 1h expiry + atomic single-use claim, but
+     DB compromise exposes usable links. Cheap hardening: hash with SHA-256 before storing.
+
+**Next (human-gated):** push `fix/test-suite-health` (needs the `adme-dev` gh account —
+`Paul008` gets 403) → open its own PR → merge to main. Then Workstream B (Ops Autopilot)
+per §2 / §4.
+
+---
+
+## 1. Workstream A — Test-suite health (ACTIVE, the priority) — see ✅ UPDATE above
 
 **Discovery:** clean `origin/main` (d064518e) has **129 pre-existing vitest failures / 13 files** —
 proven NOT caused by Ops Autopilot (identical on a clean main worktree). Means main's CI gate is RED
