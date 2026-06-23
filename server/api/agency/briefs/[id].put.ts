@@ -9,6 +9,7 @@ import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { notifyBriefAssigneeChanged } from '~~/server/utils/briefNotifications'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { maybeAcknowledgeBrief } from '~~/server/utils/automation/actionedConfirmationRunner'
 
 interface UpdateBriefBody {
   title?: string
@@ -196,9 +197,12 @@ export default defineEventHandler(async (event) => {
         referenceNumber: brief.reference_number,
         oldAssigneeId: brief.assigned_to,
         newAssigneeId: body.assignedTo || null,
-        actorId: user.id,
+        actorId: user.id
       }), 'notifyBriefAssigneeChanged')
     }
+
+    // C7: confirm to the briefer once the brief is first actioned (flag-gated, fail-open).
+    await maybeAcknowledgeBrief(briefId)
 
     // Return updated brief
     const updated = await queryOne(`

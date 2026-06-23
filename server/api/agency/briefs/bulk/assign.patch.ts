@@ -5,6 +5,7 @@
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { notifyBriefAssigned } from '~~/server/utils/briefNotifications'
+import { maybeAcknowledgeBrief } from '~~/server/utils/automation/actionedConfirmationRunner'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, ['admin', 'owner'])
@@ -90,6 +91,9 @@ export default defineEventHandler(async (event) => {
         assignerId: user.id
       }).catch(err => console.error('[Brief] Bulk assign notification error:', err))
     }
+
+    // C7: ack each newly-assigned brief (flag-gated, fail-open, deduped per brief).
+    for (const briefId of existingBriefs.map(b => b.id)) await maybeAcknowledgeBrief(briefId)
 
     return {
       assigned: existingBriefs.length,

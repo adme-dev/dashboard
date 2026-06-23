@@ -11,6 +11,7 @@
 
 import { requireAuth } from '~~/server/utils/auth'
 import { convertBriefToProject } from '~~/server/utils/briefConversion'
+import { maybeAcknowledgeBrief } from '~~/server/utils/automation/actionedConfirmationRunner'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -31,6 +32,9 @@ export default defineEventHandler(async (event) => {
       startDate: body?.startDate || null,
       clientId: body?.clientId || null
     })
+
+    // C7: a converted brief counts as actioned (flag-gated, fail-open).
+    await maybeAcknowledgeBrief(briefId)
 
     return {
       success: true,
