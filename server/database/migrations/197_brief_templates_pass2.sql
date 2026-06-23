@@ -482,7 +482,7 @@ WHERE slug='graphic-design';
 
 
 -- ============================================================
--- REWORK 6: brand-identity
+-- REWORK 6: brand-identity  [pass2-b2 verified 2026-06-24]
 -- Assembly: 16 current fields (all retained, sort order adjusted)
 --   + automotive: auto_oem_brand ONLY (optional compliance flag)
 --   + brand-specific adds: revision_rounds, current_brand_audit,
