@@ -1109,7 +1109,7 @@ WHERE slug='podcast-audio';
 
 
 -- ============================================================
--- REWORK 12: blog-content  [pass2-b4]
+-- REWORK 12: blog-content  [pass2-b4 verified 2026-06-24]
 -- Assembly: 11 current fields (all retained, keys normalised)
 --   + auto_vehicle_focus ONLY (no offer Tier A — blog minimal automotive)
 --   + target_url_slug (text, optional)
