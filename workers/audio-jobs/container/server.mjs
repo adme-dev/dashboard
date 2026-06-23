@@ -131,6 +131,19 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  if (req.method === 'POST' && req.url === '/render-banner') {
+    try {
+      const { captureBannerMp4 } = await import('./bannerCapture.mjs')
+      const body = JSON.parse((await readBody(req)).toString('utf8'))
+      const mp4 = await captureBannerMp4(body)
+      res.writeHead(200, { 'content-type': 'video/mp4' })
+      return res.end(mp4)
+    } catch (e) {
+      console.error('render-banner error', e)
+      res.writeHead(500); return res.end('render-banner error')
+    }
+  }
+
   if (req.method !== 'POST' || req.url !== '/render') {
     res.writeHead(404); return res.end('not found')
   }

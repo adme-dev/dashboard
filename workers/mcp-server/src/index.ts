@@ -37,17 +37,24 @@ interface Env {
 const b64urlEncode = (s: string) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 const b64urlDecode = (s: string) => atob(s.replace(/-/g, '+').replace(/_/g, '/'))
 
-// Per-session props the OAuth layer puts on the token (TODO A). userId is the validated XeroFlow user.
-type Props = { userId: string }
+// Per-session props the OAuth layer puts on the token. userId is the validated XeroFlow user; scope is
+// the granted OAuth scope (['mcp:read'] or ['mcp:read','mcp:write']) — forwarded to the app, which
+// enforces mcp:write for write-class tools when MCP_REQUIRE_WRITE_SCOPE is on.
+type Props = { userId: string, scope: string[] }
 
 // Matches the MCP `Tool` shape — the app's manifest endpoint returns this directly.
 type ToolManifest = { name: string, description: string, inputSchema: Record<string, unknown> }
 
-/** Call the Pages app's internal MCP endpoints (the single, audited, RBAC-enforcing execution authority). */
-async function appFetch(env: Env, path: string, body: unknown): Promise<Response> {
+/** Call the Pages app's internal MCP endpoints (the single, audited, RBAC-enforcing execution authority).
+ *  Forwards the session's granted OAuth scope as x-mcp-scope so the app can enforce write scope. */
+async function appFetch(env: Env, path: string, body: unknown, scope: string[] = []): Promise<Response> {
   return fetch(`${env.APP_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-mcp-secret': env.MCP_INTERNAL_SECRET },
+    headers: {
+      'content-type': 'application/json',
+      'x-mcp-secret': env.MCP_INTERNAL_SECRET,
+      'x-mcp-scope': scope.join(' '),
+    },
     body: JSON.stringify(body),
   })
 }
@@ -56,12 +63,15 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
   server = new McpServer({ name: 'xeroflow', version: '1.0.0' })
 
   async init() {
-    // props are populated by the OAuth layer (TODO A); no validated user → expose nothing.
+    // props are populated by the OAuth layer; no validated user → expose nothing.
     const userId = this.props?.userId
     if (!userId) throw new Error('unauthenticated: no userId in session props')
+    // Granted OAuth scope for this session — forwarded to the app so it can filter the manifest + gate
+    // execution by mcp:write (when MCP_REQUIRE_WRITE_SCOPE is on). Fail-safe to read-only.
+    const scope = this.props?.scope ?? ['mcp:read']
 
-    // 1. Fetch the read-only toolset this user may call (RBAC enforced server-side in the app).
-    const res = await appFetch(this.env, '/api/internal/mcp/tools', { userId })
+    // 1. Fetch the toolset this user may call (RBAC + scope enforced server-side in the app).
+    const res = await appFetch(this.env, '/api/internal/mcp/tools', { userId }, scope)
     if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`)
     const { tools } = await res.json() as { tools: ToolManifest[] }
 
@@ -77,7 +87,7 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
         userId,
         tool: req.params.name,
         args: req.params.arguments ?? {},
-      })
+      }, scope)
       const outcome = await callRes.json() as { ok: boolean, data?: unknown, error?: string }
       if (!outcome.ok) {
         return { content: [{ type: 'text' as const, text: `Error: ${outcome.error ?? 'tool failed'}` }], isError: true }
@@ -112,15 +122,17 @@ const authHandler = {
         body: JSON.stringify({ assertion }),
       })
       if (!res.ok) return new Response('Authentication failed', { status: 401 })
-      const { userId } = await res.json() as { userId: string }
+      const { userId, scope } = await res.json() as { userId: string, scope?: string[] }
+      // Mint the token with exactly the scope the user consented to (read-only, or read + write).
+      const granted = Array.isArray(scope) && scope.length ? scope : ['mcp:read']
 
       const oauthReqInfo = JSON.parse(b64urlDecode(state))
       const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
         request: oauthReqInfo,
         userId,
-        scope: ['mcp:read'],
+        scope: granted,
         metadata: {},
-        props: { userId },
+        props: { userId, scope: granted },
       })
       return Response.redirect(redirectTo, 302)
     }
@@ -136,5 +148,5 @@ export default new OAuthProvider({
   authorizeEndpoint: '/authorize',
   tokenEndpoint: '/token',
   clientRegistrationEndpoint: '/register',
-  scopesSupported: ['mcp:read'],
+  scopesSupported: ['mcp:read', 'mcp:write'],
 })

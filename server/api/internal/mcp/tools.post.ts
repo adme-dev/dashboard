@@ -12,15 +12,20 @@ import { queryOne } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
 import { projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
 import { projectGenerationTools } from '~~/server/utils/ai/mcp/generationTools'
-import { projectWriteTools } from '~~/server/utils/ai/mcp/writeTools'
+import { projectWriteTools, projectFinancialTools } from '~~/server/utils/ai/mcp/writeTools'
+import { projectVideoTools } from '~~/server/utils/ai/mcp/videoTools'
+import { projectBannerTools } from '~~/server/utils/ai/mcp/bannerTools'
+import { isWriteScopeToolName, parseScopeHeader, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 
 export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
     throw createError({ statusCode: 503, statusMessage: 'MCP server disabled' })
   }
+  // Always require the shared secret (no dev bypass — that was a fail-open gate in non-prod builds).
+  const expectedSecret = process.env.MCP_INTERNAL_SECRET
   const secret = getHeader(event, 'x-mcp-secret')
-  if (!import.meta.dev && secret !== process.env.MCP_INTERNAL_SECRET) {
+  if (!expectedSecret || secret !== expectedSecret) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
@@ -35,13 +40,30 @@ export default defineEventHandler(async (event) => {
   if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
 
   // Read tools (Phase 1) + generation tools (2a, MCP_GEN_TOOLS_ENABLED) + confirm-tier write
-  // propose/confirm tools (2c, MCP_WRITE_TOOLS_ENABLED). Each group flag-gated independently.
+  // propose/confirm tools (2c, MCP_WRITE_TOOLS_ENABLED) + video suite reads (2b,
+  // MCP_VIDEO_TOOLS_ENABLED). Each group flag-gated independently. Deduped by name so a tool emitted
+  // by more than one group (e.g. confirm_action, once 2b's propose/confirm lands) appears once.
   const role = user.role ?? ''
-  return {
-    tools: [
-      ...projectReadOnlyTools(registry as AiTool<unknown>[], role),
-      ...projectGenerationTools(role, process.env.MCP_GEN_TOOLS_ENABLED === 'true'),
-      ...projectWriteTools(registry as AiTool<unknown>[], role, process.env.MCP_WRITE_TOOLS_ENABLED === 'true')
-    ]
-  }
+  const assembled = [
+    ...projectReadOnlyTools(registry as AiTool<unknown>[], role),
+    ...projectGenerationTools(role, process.env.MCP_GEN_TOOLS_ENABLED === 'true'),
+    ...projectWriteTools(registry as AiTool<unknown>[], role, process.env.MCP_WRITE_TOOLS_ENABLED === 'true'),
+    ...projectVideoTools(role, {
+      suite: process.env.MCP_VIDEO_TOOLS_ENABLED === 'true',
+      gen: process.env.MCP_VIDEO_GEN_ENABLED === 'true'
+    }),
+    ...projectBannerTools(role, process.env.MCP_BANNER_TOOLS_ENABLED === 'true'),
+    ...projectFinancialTools(registry as AiTool<unknown>[], role, process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true')
+  ]
+  const seen = new Set<string>()
+  const tools = assembled.filter(t => (seen.has(t.name) ? false : (seen.add(t.name), true)))
+
+  // CRITICAL-B: when write-scope enforcement is on, a read-only-consented connector (no mcp:write) must
+  // not even SEE write-class tools in its manifest. Flag OFF (default) → manifest unchanged (non-breaking).
+  const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
+  const grantedScopes = parseScopeHeader(getHeader(event, 'x-mcp-scope'))
+  const scopedTools = requireWriteScope && !hasWriteScope(grantedScopes)
+    ? tools.filter(t => !isWriteScopeToolName(t.name))
+    : tools
+  return { tools: scopedTools }
 })

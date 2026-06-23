@@ -28,6 +28,12 @@ import { creativeQueueTool, proofStatusTool } from './creativeActions'
 import { teamMemoryTool } from './proposeTeamMemory'
 import { checkPacingTool } from './checkPacing'
 import { checkBriefCompletenessTool } from './checkBriefCompleteness'
+import { searchCrmTool } from './searchCrm'
+import { crmPipelineTool } from './crmPipeline'
+import { leadsTool } from './leads'
+import { socialListeningTool } from './socialListening'
+import { socialInboxTool } from './socialInbox'
+import { emailCampaignsTool } from './emailCampaigns'
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
@@ -75,4 +81,11 @@ export const registry: AiTool<any>[] = [
   checkPacingTool,
   // Ops Autopilot: C5 brief-completeness gatekeeper read tool.
   checkBriefCompletenessTool,
+  // Sub-project 1 — broadened read coverage (auto-projects to MCP + in-app chat).
+  searchCrmTool,
+  crmPipelineTool,
+  leadsTool,
+  socialListeningTool,
+  socialInboxTool,
+  emailCampaignsTool,
 ]

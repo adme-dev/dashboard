@@ -58,6 +58,21 @@ max_batch_timeout = 5
 max_retries = 3
 dead_letter_queue = "video-render-dlq"
 
+# Banner Studio #2a — async MP4 export queue. The Pages app produces to
+# `banner-render` (BANNER_RENDER_QUEUE binding); this Worker consumes and branches
+# on batch.queue in index.ts. batch size 1: a Chromium capture + ffmpeg encode is heavy.
+[[queues.consumers]]
+queue = "banner-render"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "banner-render-dlq"
+
+# R2 public URL — used by uploadBannerMp4 to build the public MP4 URL.
+# Must match the R2_PUBLIC_URL env var on the Pages app (see .env).
+[vars]
+R2_PUBLIC_URL = "https://pub-4f176d271bd34c3fbce203cd6d79f215.r2.dev"
+
 # Phase 3 — FFmpeg render service as a CF Container bound to this Worker
 # (RENDER). The queue handler invokes it per channel to produce loudness-
 # normalised variants. Stateless; the Worker owns R2/DB.

@@ -50,6 +50,15 @@ queue = "timeline-render"
 binding = "VIDEO_RENDER_QUEUE"
 queue = "video-render"
 
+# Producer binding for Banner Studio MP4 renders (#2a). Consumer runs in
+# workers/audio-jobs/ as the `banner-render` queue branch.
+# ACTIVATED 2026-06-22 (sign-off): banner-render + banner-render-dlq queues created;
+# audio-jobs Worker + Chromium container (bannerCapture.mjs) deployed with the
+# banner-render consumer attached. In-app MP4 export + MCP banner-confirm enqueue here.
+[[queues.producers]]
+binding = "BANNER_RENDER_QUEUE"
+queue = "banner-render"
+
 # Producer binding for AI Video Studio generation jobs. Consumer runs in
 # workers/video-generation/ as the `video-generation` queue branch.
 [[queues.producers]]
@@ -116,6 +125,36 @@ MCP_GEN_TOOLS_ENABLED = "true"
 # uncomment + redeploy (each propose persists a HITL pending row; confirm executes via the existing
 # executor registry; rich_confirm needs ack):
 # MCP_WRITE_TOOLS_ENABLED = "true"
+# MCP Phase 2b — video-generation suite over MCP. DORMANT: left UNSET (absent = off).
+#   MCP_VIDEO_TOOLS_ENABLED  → discovery reads + status (list_av_projects/list_video_models/
+#                              list_video_generations/get_video_generation_status; no spend, no writes)
+#   MCP_VIDEO_GEN_ENABLED    → confirm-tier propose_video_generation + create_video_project (bills;
+#                              HITL propose→confirm; video spend is NOT in the D4 financial set)
+# Doubly-dormant: live-verify ALSO needs base VIDEO_GENERATION_ENABLED baked into these [vars]
+# (currently absent → engine 404s). Activate after sign-off: uncomment + redeploy from clean worktree.
+# PHASE 1 GO-LIVE (2026-06-22): reads ON (browse-only, zero spend path). Phase 2 (generation) stays
+# OFF until a tenant + cap is chosen — leave MCP_VIDEO_GEN_ENABLED + VIDEO_GENERATION_ENABLED commented.
+MCP_VIDEO_TOOLS_ENABLED = "true"
+# MCP_VIDEO_GEN_ENABLED = "true"
+# VIDEO_GENERATION_ENABLED = "true"
+# MCP Phase 2b — banner-render suite over MCP. ACTIVATED 2026-06-22 (sign-off).
+# MCP_BANNER_TOOLS_ENABLED → banner read tools (list_banner_projects/get_banner_render_status) +
+#   propose_banner_render confirm-tier (HITL propose→confirm_action→dispatch). CREATIVE-gated.
+MCP_BANNER_TOOLS_ENABLED = "true"
+# MCP Phase D4 — financial write tools over MCP. DORMANT: set to "false" until sign-off.
+# MCP_FINANCIAL_TOOLS_ENABLED → propose_budget_change, propose_eom_generate, propose_expense_approval
+#   (money-movers; require ack:true at confirm), propose_quote, propose_expense_classify,
+#   propose_budget_alert — all gated independently from MCP_WRITE_TOOLS_ENABLED.
+MCP_FINANCIAL_TOOLS_ENABLED = "false"
+# MCP CRITICAL-B — OAuth write-scope enforcement. When "true", any WRITE-class tool over MCP
+# (propose_*/confirm_action/generation/banner/financial) requires the connector to hold the mcp:write
+# scope (granted via the "Allow read + write" consent button); read-only-consented connectors are limited
+# to reads. DORMANT ("false") so existing read-only connectors keep working. ⚠️ BREAKING when flipped on:
+# existing connectors must RECONNECT and grant write to regain write/generation. Activation order (after
+# this whole branch deploys): operators reconnect granting write → set "true" → verify a financial
+# propose→confirm works from a Claude host → only THEN set MCP_FINANCIAL_TOOLS_ENABLED="true".
+# Flipping MCP_FINANCIAL_TOOLS_ENABLED without this on would expose money-movers under a read-only consent.
+MCP_REQUIRE_WRITE_SCOPE = "false"
 
 # Chat — Durable Objects (hosted in separate worker)
 [[durable_objects.bindings]]

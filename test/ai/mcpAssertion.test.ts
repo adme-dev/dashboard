@@ -4,9 +4,22 @@ import { signMcpAssertion, verifyMcpAssertion } from '~~/server/utils/ai/mcp/ass
 const SECRET = 'test-handshake-secret'
 
 describe('MCP assertion sign/verify', () => {
-  it('round-trips a userId', async () => {
+  it('round-trips a userId (defaults to mcp:read scope)', async () => {
     const a = await signMcpAssertion('user-123', SECRET)
-    expect(await verifyMcpAssertion(a, SECRET)).toBe('user-123')
+    expect(await verifyMcpAssertion(a, SECRET)).toEqual({ uid: 'user-123', scope: ['mcp:read'] })
+  })
+
+  it('round-trips a granted write scope', async () => {
+    const a = await signMcpAssertion('user-123', SECRET, { scope: ['mcp:read', 'mcp:write'] })
+    expect(await verifyMcpAssertion(a, SECRET)).toEqual({ uid: 'user-123', scope: ['mcp:read', 'mcp:write'] })
+  })
+
+  it('scope is integrity-protected (tampering the scp breaks the signature)', async () => {
+    const a = await signMcpAssertion('user-123', SECRET, { scope: ['mcp:read'] })
+    const [, sig] = a.split('.')
+    // Forge a body that grants write, keep the old signature → must fail.
+    const forgedBody = Buffer.from(JSON.stringify({ uid: 'user-123', exp: 9999999999, scp: ['mcp:read', 'mcp:write'] })).toString('base64url')
+    expect(await verifyMcpAssertion(`${forgedBody}.${sig}`, SECRET)).toBeNull()
   })
 
   it('rejects a wrong secret', async () => {
@@ -28,7 +41,7 @@ describe('MCP assertion sign/verify', () => {
     // verify 61s later → expired
     expect(await verifyMcpAssertion(a, SECRET, { now: t0 + 61_000 })).toBeNull()
     // still valid at 59s
-    expect(await verifyMcpAssertion(a, SECRET, { now: t0 + 59_000 })).toBe('user-123')
+    expect(await verifyMcpAssertion(a, SECRET, { now: t0 + 59_000 })).toEqual({ uid: 'user-123', scope: ['mcp:read'] })
   })
 
   it('is fail-safe on malformed input', async () => {

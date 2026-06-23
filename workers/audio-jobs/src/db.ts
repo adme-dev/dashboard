@@ -61,3 +61,33 @@ export async function dbLoadTimelineState(timelineId: string): Promise<any> {
   if (!row) throw new Error(`timeline ${timelineId} not found`)
   return row.state
 }
+
+// Banner render-job writers (#2a). Mirror the media-render writers' execute() usage.
+export interface BannerJobDb {
+  id: string; project_id: string; format_key: string; width: number; height: number
+  fps: number; crf: number; quality: number; source_r2_key: string; status: string; created_by: string
+}
+export async function dbLoadBannerJob(jobId: string): Promise<BannerJobDb | null> {
+  const rows = await queryRows<BannerJobDb>(
+    `SELECT id, project_id, format_key, width, height, fps, crf, quality, source_r2_key, status, created_by
+       FROM banner_render_jobs WHERE id=$1`, [jobId])
+  return rows[0] ?? null
+}
+export async function dbMarkBannerRendering(jobId: string): Promise<void> {
+  await execute(`UPDATE banner_render_jobs SET status='rendering', started_at=now(), updated_at=now() WHERE id=$1`, [jobId])
+}
+export async function dbInsertBannerExport(a: { projectId: string, formatKey: string, r2Key: string, url: string, size: number, quality: number, userId: string }): Promise<string> {
+  const rows = await queryRows<{ id: string }>(
+    `INSERT INTO banner_exports (project_id, format_key, r2_key, url, file_size, export_type, quality, exported_by)
+     VALUES ($1,$2,$3,$4,$5,'mp4',$6,$7) RETURNING id`,
+    [a.projectId, a.formatKey, a.r2Key, a.url, a.size, a.quality, a.userId])
+  return rows[0].id
+}
+export async function dbMarkBannerDone(jobId: string, o: { r2Key: string, url: string, size: number, exportId: string }): Promise<void> {
+  await execute(
+    `UPDATE banner_render_jobs SET status='done', r2_key=$1, url=$2, file_size=$3, export_id=$4, finished_at=now(), updated_at=now() WHERE id=$5`,
+    [o.r2Key, o.url, o.size, o.exportId, jobId])
+}
+export async function dbMarkBannerFailed(jobId: string, error: string): Promise<void> {
+  await execute(`UPDATE banner_render_jobs SET status='failed', error=$1, finished_at=now(), updated_at=now() WHERE id=$2`, [error, jobId])
+}

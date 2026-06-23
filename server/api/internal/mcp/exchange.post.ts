@@ -10,8 +10,10 @@ export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
     throw createError({ statusCode: 503, statusMessage: 'MCP server disabled' })
   }
+  // Always require the shared secret (no dev bypass — that was a fail-open gate in non-prod builds).
+  const expectedSecret = process.env.MCP_INTERNAL_SECRET
   const secret = getHeader(event, 'x-mcp-secret')
-  if (!import.meta.dev && secret !== process.env.MCP_INTERNAL_SECRET) {
+  if (!expectedSecret || secret !== expectedSecret) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
@@ -19,8 +21,9 @@ export default defineEventHandler(async (event) => {
   if (!hs) throw createError({ statusCode: 503, statusMessage: 'MCP_HANDSHAKE_SECRET not configured' })
 
   const body = await readBody<{ assertion?: string }>(event).catch(() => null)
-  const userId = await verifyMcpAssertion(body?.assertion || '', hs)
-  if (!userId) throw createError({ statusCode: 401, statusMessage: 'Invalid or expired assertion' })
+  const verified = await verifyMcpAssertion(body?.assertion || '', hs)
+  if (!verified) throw createError({ statusCode: 401, statusMessage: 'Invalid or expired assertion' })
 
-  return { userId }
+  // Return the granted scope so the Worker mints the OAuth token with it (and forwards it to the app).
+  return { userId: verified.uid, scope: verified.scope }
 })
