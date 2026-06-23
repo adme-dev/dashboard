@@ -1052,7 +1052,7 @@ DO $$ DECLARE tmpl_id UUID; BEGIN
   (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Project Info','Basic Information','full',1),
   (tmpl_id,'project_name','Project Name','text','e.g. Mazda Berwick Fleet Wrap — June 2026',NULL,true,'[]'::jsonb,NULL,1,'Project Info','Basic Information','full',2),
   (tmpl_id,'signage_type','Signage Type','checkboxgroup',NULL,'Select all types included in this brief.',true,
-   '[{"label":"Vehicle Wrap (full)","value":"vehicle_full"},{"label":"Vehicle Wrap (partial)","value":"vehicle_partial"},{"label":"Window Graphics / Frosting","value":"window"},{"label":"Building / Fascia Signage","value":"building"},{"label":"A-Frame / Pavement Sign","value":"a_frame"},{"label":"Trade Show / Exhibition","value":"trade_show"},{"label":"Retail POS / Display","value":"retail_pos"},{"label":"Wayfinding / Directional","value":"wayfinding"},{"label":"Wall Mural / Graphics","value":"wall_mural"},{"label":"Other","value":"other"}]'::jsonb,
+   '[{"label":"Vehicle Wrap","value":"vehicle_wrap"},{"label":"Window Graphics / Frosting","value":"window"},{"label":"Building / Fascia Signage","value":"building"},{"label":"A-Frame / Pavement Sign","value":"a_frame"},{"label":"Trade Show / Exhibition","value":"trade_show"},{"label":"Retail POS / Display","value":"retail_pos"},{"label":"Wayfinding / Directional","value":"wayfinding"},{"label":"Wall Mural / Graphics","value":"wall_mural"},{"label":"Other","value":"other"}]'::jsonb,
    NULL,1,'Project Info','Type','full',3),
   (tmpl_id,'quantity','Quantity','number',NULL,'How many units / vehicles are included in this order?',false,'[]'::jsonb,NULL,1,'Project Info','Specs','half',4),
   (tmpl_id,'print_install_scope','Print & Install Scope','radio',NULL,'Determines full scope of production deliverable.',true,
@@ -1068,7 +1068,7 @@ DO $$ DECLARE tmpl_id UUID; BEGIN
   -- Wrap coverage — conditional on vehicle wrap signage type
   (tmpl_id,'wrap_coverage','Wrap Coverage','dropdown',NULL,'How much of the vehicle surface will be wrapped.',false,
    '[{"label":"Full wrap","value":"full_wrap"},{"label":"3/4 wrap","value":"three_quarter_wrap"},{"label":"Half wrap","value":"half_wrap"},{"label":"Bonnet only","value":"bonnet_only"},{"label":"Rear only","value":"rear_only"},{"label":"Doors only","value":"doors_only"},{"label":"Custom","value":"custom_coverage"}]'::jsonb,
-   '{"fieldKey":"signage_type","operator":"contains","value":"vehicle_full","action":"show"}'::jsonb,
+   '{"fieldKey":"signage_type","operator":"contains","value":"vehicle_wrap","action":"show"}'::jsonb,
    2,'Vehicle & Signage Details','Wrap','half',5),
   (tmpl_id,'production_vendor','Production Vendor','text','e.g. Sign-A-Rama, local wrap shop',NULL,false,'[]'::jsonb,NULL,2,'Vehicle & Signage Details','Vendor','half',6),
 
