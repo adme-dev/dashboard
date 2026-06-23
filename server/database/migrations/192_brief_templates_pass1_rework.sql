@@ -342,3 +342,106 @@ DO $$ DECLARE tmpl_id UUID; BEGIN
 END $$;
 
 UPDATE brief_templates SET require_client_link = true WHERE slug = 'marketing-campaign';
+
+-- ============================================================
+-- Task 10: ad-creative — Full rework
+-- ============================================================
+-- Starting point: batch-1 §8 (22 fields).
+-- RETYPE: campaign_objective richtext → dropdown.
+-- ADD: platforms (checkboxgroup), dealer_vs_oem_brand (radio), confirmed_budget (currency).
+-- MAKE REQUIRED: mandatory_elements.
+-- REMOVE: age_range (text field, duplicate of target_audience richtext).
+-- Splice Tier A (9 fields) + acct block (3 fields).
+-- Steps: 1 Campaign Context, 2 Audience & Messaging, 3 Creative Specs, 4 Timeline & Assets, 5 Offer & Accountability.
+-- Total estimate: ~37 fields (22 - 1 age_range + 3 new + 9 Tier A + 3 acct).
+-- ============================================================
+DO $$ DECLARE tmpl_id UUID; BEGIN
+  SELECT id INTO tmpl_id FROM brief_templates WHERE slug = 'ad-creative';
+  IF tmpl_id IS NULL THEN RETURN; END IF;
+  DELETE FROM brief_template_fields WHERE template_id = tmpl_id;
+  INSERT INTO brief_template_fields
+    (template_id, field_key, field_label, field_type, placeholder, help_text, is_required, options, conditional_logic, step_number, step_title, section, width, sort_order)
+  VALUES
+
+  -- ── Step 1: Campaign Context ────────────────────────────────────────
+  (tmpl_id,'client','Client','client',NULL,NULL,true,'[]'::jsonb,NULL,1,'Campaign Context','Basic Info','full',1),
+  (tmpl_id,'campaign_name','Campaign Name','text','e.g. June EOFY Creative — Mazda',NULL,true,'[]'::jsonb,NULL,1,'Campaign Context','Basic Info','full',2),
+  (tmpl_id,'ad_type','Ad Type','multiselect',NULL,'Select all formats this creative will be used for.',true,
+   '[{"label":"Social Media Ad","value":"social"},{"label":"Display / Programmatic","value":"display"},{"label":"Video","value":"video"},{"label":"Search","value":"search"},{"label":"Print","value":"print"},{"label":"Outdoor / OOH","value":"ooh"},{"label":"Radio / Audio","value":"radio"},{"label":"TV / Broadcast","value":"tv"}]'::jsonb,
+   NULL,1,'Campaign Context','Basic Info','full',3),
+  (tmpl_id,'platforms','Platform(s)','checkboxgroup',NULL,'Which platforms / channels the creative will run on.',true,
+   '[{"label":"Meta (Facebook/Instagram)","value":"meta"},{"label":"Google","value":"google"},{"label":"TikTok","value":"tiktok"},{"label":"Display / Programmatic","value":"display"},{"label":"Carsales","value":"carsales"},{"label":"Print","value":"print"},{"label":"OOH","value":"ooh"}]'::jsonb,
+   NULL,1,'Campaign Context','Basic Info','full',4),
+  (tmpl_id,'campaign_objective','Campaign Objective','dropdown',NULL,'Primary campaign objective — drives creative direction.',true,
+   '[{"label":"Brand Awareness","value":"brand_awareness"},{"label":"New Model Launch","value":"new_model_launch"},{"label":"Clearance / End-of-Run","value":"clearance"},{"label":"Finance Offer","value":"finance_offer"},{"label":"Seasonal Campaign","value":"seasonal"},{"label":"Event Promotion","value":"event"},{"label":"Dealer Awareness","value":"dealer_awareness"},{"label":"Lead Generation","value":"lead_gen"}]'::jsonb,
+   NULL,1,'Campaign Context','Objectives','half',5),
+  (tmpl_id,'dealer_vs_oem_brand','Brand Hierarchy','radio',NULL,'Who is the dominant visual brand on the creative?',false,
+   '[{"label":"Dealer brand dominant","value":"dealer_dominant"},{"label":"OEM brand dominant","value":"oem_dominant"},{"label":"Co-branded","value":"co_branded"}]'::jsonb,
+   NULL,1,'Campaign Context','Objectives','half',6),
+  (tmpl_id,'success_metrics','Success Metrics / KPIs','textarea','e.g. CPL < $30, ROAS > 4×',NULL,true,'[]'::jsonb,NULL,1,'Campaign Context','Objectives','full',7),
+
+  -- ── Step 2: Audience & Messaging ────────────────────────────────────
+  (tmpl_id,'target_audience','Target Audience','richtext',NULL,NULL,true,'[]'::jsonb,NULL,2,'Audience & Messaging','Demographics','full',1),
+  (tmpl_id,'geographic_location','Geographic Location','text','e.g. Melbourne + Geelong',NULL,false,'[]'::jsonb,NULL,2,'Audience & Messaging','Demographics','full',2),
+  (tmpl_id,'key_message','Key Message','richtext',NULL,NULL,true,'[]'::jsonb,NULL,2,'Audience & Messaging','Messaging','full',3),
+  (tmpl_id,'call_to_action','Call to Action','text','e.g. Book a Test Drive',NULL,true,'[]'::jsonb,NULL,2,'Audience & Messaging','Messaging','half',4),
+  (tmpl_id,'tone_style','Tone & Style','multiselect',NULL,NULL,true,
+   '[{"label":"Professional","value":"professional"},{"label":"Friendly","value":"friendly"},{"label":"Urgent","value":"urgent"},{"label":"Aspirational","value":"aspirational"},{"label":"Bold","value":"bold"},{"label":"Trustworthy","value":"trustworthy"},{"label":"Premium","value":"premium"}]'::jsonb,
+   NULL,2,'Audience & Messaging','Messaging','half',5),
+  (tmpl_id,'customer_insights','Customer Insights','richtext',NULL,NULL,false,'[]'::jsonb,NULL,2,'Audience & Messaging','Insights','full',6),
+
+  -- ── Step 3: Creative Specs ───────────────────────────────────────────
+  (tmpl_id,'required_sizes','Required Sizes / Formats','checkboxgroup',NULL,NULL,true,
+   '[{"label":"1080×1080 (Social Square)","value":"1080_1080"},{"label":"1200×628 (Facebook Feed)","value":"1200_628"},{"label":"1080×1920 (Stories/Reels)","value":"1080_1920"},{"label":"1200×1200 (Instagram)","value":"1200_1200"},{"label":"300×250 (Banner)","value":"300_250"},{"label":"728×90 (Leaderboard)","value":"728_90"},{"label":"160×600 (Skyscraper)","value":"160_600"},{"label":"970×250 (Billboard)","value":"970_250"},{"label":"1920×1080 (Video/TV)","value":"1920_1080"},{"label":"Custom","value":"custom"}]'::jsonb,
+   NULL,3,'Creative Specs','Deliverables','full',1),
+  (tmpl_id,'custom_sizes','Custom Sizes (if any)','textarea',NULL,'Specify dimensions and format.',false,'[]'::jsonb,
+   '{"fieldKey":"required_sizes","operator":"contains","value":"custom","action":"show"}'::jsonb,
+   3,'Creative Specs','Deliverables','full',2),
+  (tmpl_id,'mandatory_elements','Mandatory Elements','textarea',NULL,'Legal requirements, logos, slogans, disclaimer text that MUST appear on the creative.',true,'[]'::jsonb,NULL,3,'Creative Specs','Requirements','full',3),
+  (tmpl_id,'things_to_avoid','Things to Avoid','textarea',NULL,NULL,false,'[]'::jsonb,NULL,3,'Creative Specs','Requirements','full',4),
+
+  -- ── Step 4: Timeline & Assets ────────────────────────────────────────
+  (tmpl_id,'creative_budget','Creative Budget','dropdown',NULL,NULL,false,
+   '[{"label":"Under $2,000","value":"under_2k"},{"label":"$2,000 – $5,000","value":"2k_5k"},{"label":"$5,000 – $10,000","value":"5k_10k"},{"label":"$10,000 – $20,000","value":"10k_20k"},{"label":"Over $20,000","value":"over_20k"}]'::jsonb,
+   NULL,4,'Timeline & Assets','Budget','half',1),
+  (tmpl_id,'confirmed_budget','Confirmed Budget','currency',NULL,'Actual confirmed production budget once known.',false,'[]'::jsonb,NULL,4,'Timeline & Assets','Budget','half',2),
+  (tmpl_id,'creative_deadline','Creative Deadline','date',NULL,NULL,true,'[]'::jsonb,NULL,4,'Timeline & Assets','Timeline','half',3),
+  (tmpl_id,'campaign_launch_date','Campaign Launch Date','date',NULL,NULL,false,'[]'::jsonb,NULL,4,'Timeline & Assets','Timeline','half',4),
+  (tmpl_id,'brand_assets','Brand Assets','files',NULL,NULL,false,'[]'::jsonb,NULL,4,'Timeline & Assets','Assets','half',5),
+  (tmpl_id,'creative_references','Creative References','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Timeline & Assets','Assets','half',6),
+  (tmpl_id,'additional_notes','Additional Notes','richtext',NULL,NULL,false,'[]'::jsonb,NULL,4,'Timeline & Assets','Notes','full',7),
+
+  -- ── Step 5: Offer & Accountability (Tier A + acct) ───────────────────
+  (tmpl_id,'auto_oem_brand','OEM / Manufacturer Brand','dropdown',NULL,'Manufacturer brand — gates OEM co-op funds and brand-compliance sign-off.',false,
+   '[{"label":"Toyota","value":"toyota"},{"label":"Mazda","value":"mazda"},{"label":"Ford","value":"ford"},{"label":"Hyundai","value":"hyundai"},{"label":"Kia","value":"kia"},{"label":"Mitsubishi","value":"mitsubishi"},{"label":"Nissan","value":"nissan"},{"label":"Subaru","value":"subaru"},{"label":"Volkswagen","value":"volkswagen"},{"label":"Honda","value":"honda"},{"label":"MG","value":"mg"},{"label":"GWM","value":"gwm"},{"label":"Isuzu","value":"isuzu"},{"label":"Suzuki","value":"suzuki"},{"label":"Mercedes-Benz","value":"mercedes_benz"},{"label":"BMW","value":"bmw"},{"label":"Audi","value":"audi"},{"label":"Alfa Romeo","value":"alfa_romeo"},{"label":"Jeep","value":"jeep"},{"label":"RAM","value":"ram"},{"label":"LDV","value":"ldv"},{"label":"Chery","value":"chery"},{"label":"BYD","value":"byd"},{"label":"Tesla","value":"tesla"},{"label":"Multi-franchise","value":"multi_franchise"},{"label":"Independent / Used","value":"independent"},{"label":"Other / N/A","value":"na"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','full',1),
+  (tmpl_id,'auto_vehicle_focus','Vehicle(s) Featured','text','e.g. 2024 Mazda CX-5 Touring','Make / model / year being promoted.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',2),
+  (tmpl_id,'auto_vehicle_category','Vehicle Category','dropdown',NULL,'Drives offer type and audience.',false,
+   '[{"label":"New","value":"new"},{"label":"Demonstrator","value":"demo"},{"label":"Used","value":"used"},{"label":"Fleet & Government","value":"fleet"},{"label":"Finance","value":"finance"},{"label":"Service","value":"service"},{"label":"Parts","value":"parts"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',3),
+  (tmpl_id,'auto_offer_details','Offer / Key Deal','textarea','e.g. $500 cashback + 3.9% comparison rate','The specific deal the creative features.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',4),
+  (tmpl_id,'auto_driveaway_price','Drive-Away / EGC Price','text','e.g. Drive Away from $34,990','Price/wording as it must appear. Text — values are ranges/wording.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','half',5),
+  (tmpl_id,'auto_offer_disclaimer','Offer Disclaimer / Legal Fine Print','textarea',NULL,'VFACTS class, drive-away terms, finance comparison-rate wording (ACCC/ASIC).',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',6),
+  (tmpl_id,'auto_oem_coop','OEM Co-op Funded?','radio',NULL,'If yes, OEM brand guidelines + approval apply.',false,
+   '[{"label":"Yes","value":"yes"},{"label":"No","value":"no"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Offer & Compliance','half',7),
+  (tmpl_id,'auto_oem_assets','OEM Brand Guidelines / Assets','files',NULL,'OEM-supplied guidelines / approved assets.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_oem_coop","operator":"equals","value":"yes","action":"show"}'::jsonb,
+   5,'Offer & Accountability','Offer & Compliance','full',8),
+  (tmpl_id,'auto_dealer_locations','Dealer Location(s)','textarea','e.g. Berwick + Narre Warren','Which rooftop(s) this is for.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Offer & Compliance','full',9),
+  -- acct block
+  (tmpl_id,'acct_accountable_owner','Accountable Owner','user',NULL,'Named human responsible for delivery — who the gatekeeper/copilot routes to & notifies.',false,'[]'::jsonb,NULL,5,'Offer & Accountability','Accountability','half',10),
+  (tmpl_id,'acct_compliance_ack','Compliance Confirmed','checkbox',NULL,'I confirm the offer claims + disclaimer are ACCC/ASIC compliant.',false,'[]'::jsonb,
+   '{"fieldKey":"auto_driveaway_price","operator":"is_not_empty","action":"require"}'::jsonb,
+   5,'Offer & Accountability','Accountability','half',11),
+  (tmpl_id,'acct_approval_required','Sign-off Before Go-Live','dropdown',NULL,'Sign-off needed before go-live. Copilots will not auto-proceed past proposed until satisfied.',false,
+   '[{"label":"None","value":"none"},{"label":"Client","value":"client"},{"label":"OEM","value":"oem"},{"label":"Client + OEM","value":"client_oem"}]'::jsonb,
+   NULL,5,'Offer & Accountability','Accountability','full',12)
+
+  ON CONFLICT (template_id, field_key) DO NOTHING;
+END $$;
+
+UPDATE brief_templates SET require_client_link = true WHERE slug = 'ad-creative';
+
