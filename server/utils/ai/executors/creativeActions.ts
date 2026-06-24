@@ -5,7 +5,7 @@ import type { ActionExecutor, ExecutorResult } from './types'
  * Executor for propose_proof_status — sets a proof's status via the existing PUT /proofs/:id/status
  * endpoint on a confirmed proposal, forwarding the caller's headers. PUT injected for unit-testing.
  */
-export type Putter = (url: string, body: any, ctx: ToolContext) => Promise<any>
+type Putter = (url: string, body: any, ctx: ToolContext) => Promise<any>
 const defaultPut: Putter = (url, body, ctx) => $fetch(url, { method: 'PUT', body, headers: ctx.event.headers as any })
 
 export function makeProofStatusExecutor(put: Putter = defaultPut): ActionExecutor {

@@ -7,7 +7,7 @@ import type { ActionExecutor, ExecutorResult } from './types'
  * requireWriteAccess / requirePricingAccess re-runs as the real user). POST injected for unit-testing.
  */
 
-export type Poster = (url: string, body: any, ctx: ToolContext) => Promise<any>
+type Poster = (url: string, body: any, ctx: ToolContext) => Promise<any>
 const defaultPost: Poster = (url, body, ctx) => $fetch(url, { method: 'POST', body, headers: ctx.event.headers as any })
 
 export function makeOpportunityExecutor(post: Poster = defaultPost): ActionExecutor {

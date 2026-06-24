@@ -14,7 +14,7 @@ import type { EscalationInput, EscalationSeverity } from '~~/server/utils/automa
 
 export type LifecycleGate = 'auto' | 'human_approve' | 'human_only' // 🟢 / 🟡 / 🔴
 
-export interface LifecycleStage {
+interface LifecycleStage {
   key: string
   label: string
   owner: string
@@ -162,7 +162,7 @@ export function lifecycleTransitionToEscalation(args: LifecycleTransitionArgs): 
     title: `${stage.label} gate: ${args.taskTitle}`,
     severity,
     clientId: args.clientId ?? null,
-    runId: dedupeKey({ taskId: args.taskId, toStatus: args.toStatus }),
+    runId: lifecycleDedupeKey({ taskId: args.taskId, toStatus: args.toStatus }),
     detail: {
       taskId: args.taskId,
       fromStatus: args.fromStatus ?? null,
@@ -175,17 +175,17 @@ export function lifecycleTransitionToEscalation(args: LifecycleTransitionArgs): 
   }
 }
 
-export function dedupeKey(d: { taskId?: string | null; toStatus?: string | null }): string {
+export function lifecycleDedupeKey(d: { taskId?: string | null; toStatus?: string | null }): string {
   return `${d.taskId ?? ''}::${normalizeStatus(d.toStatus)}`
 }
 
-export function filterAlreadyPending(
+export function filterAlreadyPendingTransitions(
   candidates: EscalationInput[],
   pendingDetails: Array<Record<string, any>>,
 ): EscalationInput[] {
-  const seen = new Set(pendingDetails.map(d => dedupeKey({ taskId: d.taskId, toStatus: d.toStatus })))
+  const seen = new Set(pendingDetails.map(d => lifecycleDedupeKey({ taskId: d.taskId, toStatus: d.toStatus })))
   return candidates.filter((c) => {
     const det = (c.detail ?? {}) as Record<string, any>
-    return !seen.has(dedupeKey({ taskId: det.taskId, toStatus: det.toStatus }))
+    return !seen.has(lifecycleDedupeKey({ taskId: det.taskId, toStatus: det.toStatus }))
   })
 }

@@ -1,6 +1,6 @@
 // test/automation/adReporting.test.ts
 import { describe, expect, it } from 'vitest'
-import { aggregateAdKpis, pctDelta, buildAdReportModel } from '~~/server/utils/adReporting/model'
+import { aggregateAdKpis, pctDeltaNullable, buildAdReportModel } from '~~/server/utils/adReporting/model'
 import { buildAdReportHtml } from '~~/server/utils/adReporting/html'
 
 const rows = [
@@ -37,12 +37,12 @@ describe('aggregateAdKpis', () => {
   })
 })
 
-describe('pctDelta', () => {
+describe('pctDeltaNullable', () => {
   it('computes percent change and handles null/zero prior', () => {
-    expect(pctDelta(120, 100)).toBeCloseTo(20, 5)
-    expect(pctDelta(80, 100)).toBeCloseTo(-20, 5)
-    expect(pctDelta(50, null)).toBeNull()
-    expect(pctDelta(50, 0)).toBeNull()
+    expect(pctDeltaNullable(120, 100)).toBeCloseTo(20, 5)
+    expect(pctDeltaNullable(80, 100)).toBeCloseTo(-20, 5)
+    expect(pctDeltaNullable(50, null)).toBeNull()
+    expect(pctDeltaNullable(50, 0)).toBeNull()
   })
 })
 
@@ -55,7 +55,7 @@ describe('buildAdReportModel', () => {
     })
     expect(m.clientName).toBe('Knox GWM')
     expect(m.kpis.spend).toBe(1400)
-    expect(m.deltas.spend).toBeCloseTo(pctDelta(1400, 700)!, 5)
+    expect(m.deltas.spend).toBeCloseTo(pctDeltaNullable(1400, 700)!, 5)
     expect(m.topCampaigns[0].campaign).toBe('A') // 800 spend > 600
     expect(m.topCampaigns).toHaveLength(2)
   })

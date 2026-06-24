@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildDistillPrompt, parseDistillResponse, distill, MAX_CANDIDATES, PARSE_LIMIT } from '~~/server/utils/ai/memory/distill'
+import { buildDistillPrompt, parseDistillResponse, distill, MAX_CANDIDATES, MEMORY_PARSE_LIMIT } from '~~/server/utils/ai/memory/distill'
 
 const turn = { userMessage: 'I always report Acme in AUD', assistantMessage: 'Noted.' }
 
@@ -40,9 +40,9 @@ describe('parseDistillResponse', () => {
     ])
   })
 
-  it('bounds runaway output at PARSE_LIMIT (not the post-dedup yield cap)', () => {
+  it('bounds runaway output at MEMORY_PARSE_LIMIT (not the post-dedup yield cap)', () => {
     const many = JSON.stringify(Array.from({ length: 20 }, (_, i) => ({ content: `c${i}` })))
-    expect(parseDistillResponse(many)).toHaveLength(PARSE_LIMIT)
+    expect(parseDistillResponse(many)).toHaveLength(MEMORY_PARSE_LIMIT)
   })
 })
 

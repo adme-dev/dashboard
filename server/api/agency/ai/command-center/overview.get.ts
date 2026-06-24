@@ -7,7 +7,7 @@
  */
 import { requirePermission } from '~~/server/utils/auth'
 import { queryRows, queryOne } from '~~/server/utils/db'
-import { buildOverview, type ProposalRow, type AuditRow } from '~~/server/utils/ai/commandCenter'
+import { buildCommandCenterOverview, type ProposalRow, type AuditRow } from '~~/server/utils/ai/commandCenter'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'MANAGEMENT')
@@ -48,7 +48,7 @@ export default defineEventHandler(async (event) => {
     ),
   ])
 
-  return buildOverview({
+  return buildCommandCenterOverview({
     proposals,
     audit,
     usage: {

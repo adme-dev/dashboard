@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { H3Event } from 'h3'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
-import { fetchClientEconomics, resolveByName, type ClientEconomicsRow, type Period } from './economics'
+import { fetchClientEconomics, resolveByName, type ClientEconomicsRow, type EconomicsPeriod } from './economics'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -11,7 +11,7 @@ const params = z.object({
 type Args = z.infer<typeof params>
 
 export type ProfitabilityDeps = {
-  fetchEconomics: (event: H3Event, period: Period) => Promise<ClientEconomicsRow[]>
+  fetchEconomics: (event: H3Event, period: EconomicsPeriod) => Promise<ClientEconomicsRow[]>
 }
 const defaultDeps: ProfitabilityDeps = { fetchEconomics: fetchClientEconomics }
 

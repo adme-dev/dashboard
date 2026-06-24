@@ -12,14 +12,14 @@ type CashPosition = { balance: number, runwayDays: number | null, risk: string }
 type Overdue = { number: string, client: string, amount: number, overdueDays: number }
 type Receivables = { total: number, top: Overdue[] }
 
-export type FinanceDeps = {
+export type FinanceSnapshotDeps = {
   cashPosition: (ctx: ToolContext) => Promise<CashPosition>
   outstanding: (ctx: ToolContext) => Promise<Receivables>
 }
 
 // Real wiring: Xero data is route-mediated (no pure DB util exists; advisorMetrics.ts sets the
 // internal-$fetch precedent). Forward the caller's auth headers so Xero connection/tenant resolve.
-const defaultDeps: FinanceDeps = {
+const defaultDeps: FinanceSnapshotDeps = {
   cashPosition: async (ctx) => {
     const r: any = await $fetch('/api/xero/get-out/cash-position', { headers: ctx.event.headers as any })
     return { balance: Number(r?.cashOnHand ?? 0), runwayDays: r?.daysOfCash ?? null, risk: String(r?.band ?? 'unknown') }
@@ -37,7 +37,7 @@ const defaultDeps: FinanceDeps = {
   },
 }
 
-export async function getFinanceSnapshot(args: Args, ctx: ToolContext, deps: FinanceDeps = defaultDeps): Promise<ToolResult> {
+export async function getFinanceSnapshot(args: Args, ctx: ToolContext, deps: FinanceSnapshotDeps = defaultDeps): Promise<ToolResult> {
   try {
     const [cash, receivables] = await Promise.all([deps.cashPosition(ctx), deps.outstanding(ctx)])
     return ok({

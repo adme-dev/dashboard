@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { getFinanceSnapshot, type FinanceDeps } from '~~/server/utils/ai/tools/finance'
+import { getFinanceSnapshot, type FinanceSnapshotDeps } from '~~/server/utils/ai/tools/finance'
 
 describe('get_finance_snapshot', () => {
   it('returns a compact cash + receivables projection (top 5 + more count)', async () => {
-    const deps: FinanceDeps = {
+    const deps: FinanceSnapshotDeps = {
       cashPosition: vi.fn().mockResolvedValue({ balance: 124000, runwayDays: 86, risk: 'healthy' }),
       outstanding: vi.fn().mockResolvedValue({
         total: 58000,
@@ -21,7 +21,7 @@ describe('get_finance_snapshot', () => {
   })
 
   it('returns a recoverable error (never throws) when a source fails', async () => {
-    const deps: FinanceDeps = {
+    const deps: FinanceSnapshotDeps = {
       cashPosition: vi.fn().mockRejectedValue(new Error('xero down')),
       outstanding: vi.fn().mockResolvedValue({ total: 0, top: [] }),
     }

@@ -4,8 +4,8 @@ import {
   resolveStage,
   classifyTransition,
   lifecycleTransitionToEscalation,
-  dedupeKey,
-  filterAlreadyPending,
+  lifecycleDedupeKey,
+  filterAlreadyPendingTransitions,
 } from '~~/server/utils/automation/lifecycle'
 
 describe('resolveStage', () => {
@@ -100,10 +100,10 @@ describe('lifecycleTransitionToEscalation', () => {
   })
 })
 
-describe('dedupeKey + filterAlreadyPending', () => {
+describe('lifecycleDedupeKey + filterAlreadyPendingTransitions', () => {
   it('builds a stable key from taskId + normalized toStatus', () => {
-    expect(dedupeKey({ taskId: 't-1', toStatus: 'Budget Update' })).toBe('t-1::budget update')
-    expect(dedupeKey({ taskId: 't-1', toStatus: '  BUDGET   update ' })).toBe('t-1::budget update')
+    expect(lifecycleDedupeKey({ taskId: 't-1', toStatus: 'Budget Update' })).toBe('t-1::budget update')
+    expect(lifecycleDedupeKey({ taskId: 't-1', toStatus: '  BUDGET   update ' })).toBe('t-1::budget update')
   })
 
   it('drops candidates whose key matches an already-pending escalation detail', () => {
@@ -112,7 +112,7 @@ describe('dedupeKey + filterAlreadyPending', () => {
       lifecycleTransitionToEscalation({ taskId: 't-2', taskTitle: 'b', toStatus: 'Awaiting Approval' }),
     ]
     const pending = [{ taskId: 't-1', toStatus: 'Budget Update' }]
-    const fresh = filterAlreadyPending(candidates, pending)
+    const fresh = filterAlreadyPendingTransitions(candidates, pending)
     expect(fresh).toHaveLength(1)
     expect((fresh[0].detail as any).taskId).toBe('t-2')
   })

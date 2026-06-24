@@ -24,7 +24,7 @@ export type BreakdownCampaign = {
 }
 
 /** The fetched window plus the endpoint's true total, so the handler can flag a truncated ranking. */
-export type BreakdownResult = { campaigns: BreakdownCampaign[], total: number }
+type BreakdownResult = { campaigns: BreakdownCampaign[], total: number }
 
 export type CampaignBreakdownDeps = {
   breakdown: (ctx: ToolContext, platform?: 'meta' | 'google') => Promise<BreakdownResult>

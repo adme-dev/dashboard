@@ -2,7 +2,7 @@ import type { H3Event } from 'h3'
 import { queryRows } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
 
-export type Period = 'mtd' | 'ytd'
+export type EconomicsPeriod = 'mtd' | 'ytd'
 
 export interface PeriodBounds {
   /** inclusive ISO date 'YYYY-MM-DD' */
@@ -15,7 +15,7 @@ export interface PeriodBounds {
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 const ym = (y: number, m0: number) => `${y}-${String(m0 + 1).padStart(2, '0')}`
 
-export function periodBounds(period: Period, now: Date = new Date()): PeriodBounds {
+export function periodBounds(period: EconomicsPeriod, now: Date = new Date()): PeriodBounds {
   const y = now.getUTCFullYear()
   const m = now.getUTCMonth()
   if (period === 'ytd') {
@@ -62,7 +62,7 @@ const num = (v: unknown): number => {
 }
 
 /** Per-client revenue − pass-through + labor for the period. Returns [] if no Xero tenant is selected. */
-export async function fetchClientEconomics(event: H3Event, period: Period): Promise<ClientEconomicsRow[]> {
+export async function fetchClientEconomics(event: H3Event, period: EconomicsPeriod): Promise<ClientEconomicsRow[]> {
   const tenantId = await getSelectedTenant(event)
   if (!tenantId) return []
   const { start, end, mediaPeriods } = periodBounds(period)
@@ -127,7 +127,7 @@ export async function fetchRetainerCaps(): Promise<RetainerRow[]> {
 export interface ProjectLaborRow { project: string, deliveredValue: number }
 
 /** Labor $ by project for one client over the period — powers the over-servicing deep-dive. */
-export async function fetchClientProjectLabor(clientId: string, period: Period): Promise<ProjectLaborRow[]> {
+export async function fetchClientProjectLabor(clientId: string, period: EconomicsPeriod): Promise<ProjectLaborRow[]> {
   const { start, end } = periodBounds(period)
   const rows = await queryRows<{ project_name: string, labor_dollars: string }>(
     `SELECT p.name AS project_name,
