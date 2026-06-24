@@ -47,6 +47,31 @@ async function addSlot() {
   } catch (e: any) { toast.add({ title: 'Failed', description: e?.data?.statusMessage, color: 'error' }) }
 }
 const dowLabel = (v: number) => DOW.find(d => d.value === v)?.label ?? v
+
+async function toggleSlot(s: SocialSlot) {
+  const prev = s.enabled
+  s.enabled = !s.enabled // optimistic
+  try {
+    await api.updateSlot(s.id, { enabled: s.enabled })
+  } catch (e: any) {
+    s.enabled = prev
+    toast.add({ title: 'Could not update slot', description: e?.data?.statusMessage, color: 'error' })
+  }
+}
+
+const deleteTarget = ref<SocialSlot | null>(null)
+async function confirmDelete() {
+  const s = deleteTarget.value
+  if (!s) return
+  try {
+    await api.deleteSlot(s.id)
+    deleteTarget.value = null
+    toast.add({ title: 'Slot removed', color: 'success' })
+    await load()
+  } catch (e: any) {
+    toast.add({ title: 'Could not remove slot', description: e?.data?.statusMessage, color: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -79,7 +104,11 @@ const dowLabel = (v: number) => DOW.find(d => d.value === v)?.label ?? v
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <div v-else-if="!slots.length" class="rounded-lg border border-default p-10 text-center text-muted">No slots yet.</div>
     <div v-else class="space-y-2">
-      <div v-for="s in slots" :key="s.id" class="flex items-center gap-3 rounded-lg border border-default p-3">
+      <div
+        v-for="s in slots" :key="s.id"
+        class="flex items-center gap-3 rounded-lg border border-default p-3 transition-opacity"
+        :class="s.enabled === false ? 'opacity-60' : ''"
+      >
         <UIcon name="i-lucide-clock" class="size-4 text-muted" />
         <div class="flex-1">
           <span class="text-sm font-medium">{{ dowLabel(s.day_of_week) }} · {{ s.time_of_day?.slice(0, 5) }}</span>
@@ -89,7 +118,27 @@ const dowLabel = (v: number) => DOW.find(d => d.value === v)?.label ?? v
           <UBadge v-for="pl in (s.platforms || [])" :key="pl" size="xs" color="neutral" variant="subtle">{{ pl }}</UBadge>
           <UBadge v-if="!s.platforms?.length" size="xs" color="neutral" variant="subtle">all</UBadge>
         </div>
+        <UTooltip :text="s.enabled === false ? 'Slot paused' : 'Slot active'">
+          <USwitch :model-value="s.enabled !== false" @update:model-value="toggleSlot(s)" />
+        </UTooltip>
+        <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" @click="deleteTarget = s" />
       </div>
     </div>
+
+    <UModal :open="!!deleteTarget" @update:open="(v) => { if (!v) deleteTarget = null }">
+      <template #content>
+        <div class="p-5 space-y-4">
+          <h3 class="font-semibold">Remove posting slot?</h3>
+          <p class="text-sm text-muted">
+            {{ deleteTarget ? dowLabel(deleteTarget.day_of_week) + ' · ' + deleteTarget.time_of_day?.slice(0, 5) : '' }}
+            will no longer auto-fill from the queue.
+          </p>
+          <div class="flex justify-end gap-2">
+            <UButton color="neutral" variant="ghost" @click="deleteTarget = null">Cancel</UButton>
+            <UButton color="error" icon="i-lucide-trash-2" @click="confirmDelete">Remove</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </SocialPublishingShell>
 </template>
