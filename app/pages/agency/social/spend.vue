@@ -6,6 +6,7 @@ const route = useRoute()
 const router = useRouter()
 const {
   fetchSpendSummary,
+  fetchSpendControlDiagnostics,
   fetchPacingReview,
   fetchBudgetControlSettings,
   updateBudgetControlSettings,
@@ -22,9 +23,11 @@ const syncing = ref(false)
 const searchQuery = ref('')
 
 const spendData = ref<any>(null)
+const spendDiagnostics = ref<any>(null)
 const bankCharges = ref<any>(null)
 const pacingReview = ref<any>(null)
 const pacingReviewLoading = ref(false)
+const diagnosticsLoading = ref(false)
 const budgetControlSettings = ref({
   liveBudgetChangesEnabled: false,
   metaBudgetWritesEnabled: false,
@@ -77,6 +80,18 @@ async function loadPacingReview() {
     toast.add({ title: 'Error loading pacing review', description: e.message, color: 'error' })
   } finally {
     pacingReviewLoading.value = false
+  }
+}
+
+async function loadSpendDiagnostics() {
+  diagnosticsLoading.value = true
+  try {
+    spendDiagnostics.value = await fetchSpendControlDiagnostics(selectedMonth.value, selectedYear.value, selectedPlatform.value)
+  } catch (e: any) {
+    spendDiagnostics.value = null
+    toast.add({ title: 'Error loading spend diagnostics', description: e.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    diagnosticsLoading.value = false
   }
 }
 
@@ -278,7 +293,7 @@ async function finishSync(statuses: SyncStatusResponse[]) {
 
 // Re-fetch summary + bank charges, bypassing the KV cache.
 async function refreshAfterSync() {
-  await Promise.all([loadSpend(true), loadPacingReview()])
+  await Promise.all([loadSpend(true), loadPacingReview(), loadSpendDiagnostics()])
   loadBankCharges(true)
 }
 
@@ -320,6 +335,7 @@ function exportCSV() {
 watch([selectedMonth, selectedYear, selectedPlatform], () => {
   loadSpend()
   loadPacingReview()
+  loadSpendDiagnostics()
   loadBankCharges()
 
   // Sync URL query string so the current view is linkable
@@ -333,6 +349,7 @@ watch([selectedMonth, selectedYear, selectedPlatform], () => {
 
 onMounted(() => {
   loadSpend()
+  loadSpendDiagnostics()
   loadPacingReview()
   loadBudgetControlSettings()
   loadBankCharges()
@@ -378,6 +395,7 @@ const hasBankData = computed(() => {
 const showPacingReview = computed(() => ['all', 'meta', 'google'].includes(selectedPlatform.value))
 const liveBudgetChangesEnabled = computed(() => Boolean(budgetControlSettings.value.liveBudgetChangesEnabled))
 const pacingReviewItems = computed(() => pacingReview.value?.items ?? [])
+const pacingReviewSummary = computed(() => pacingReview.value?.summary ?? null)
 
 /** Combined: Xero bank/CC + Meta billing (for platforms not matched in Xero) */
 const combinedBankTotal = computed(() => {
@@ -458,6 +476,15 @@ const bankDiscrepancy = computed(() => {
 
       <!-- Connection Health Strip -->
       <SocialConnectionHealthStrip />
+
+      <SocialSpendControlRoom
+        :diagnostics="spendDiagnostics"
+        :diagnostics-loading="diagnosticsLoading"
+        :pacing-summary="pacingReviewSummary"
+        :bank-discrepancy="bankDiscrepancy"
+        :has-bank-data="hasBankData"
+        :live-budget-changes-enabled="liveBudgetChangesEnabled"
+      />
 
       <!-- Summary Cards -->
       <div v-if="spendData" class="grid grid-cols-2 lg:grid-cols-6 gap-4">

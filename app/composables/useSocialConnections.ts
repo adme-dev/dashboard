@@ -80,6 +80,39 @@ interface SocialBudgetControlSettings {
   googleBudgetWritesEnabled: boolean
 }
 
+interface SpendControlDiagnostics {
+  month: number
+  year: number
+  period: string
+  platform: string
+  generatedAt: string
+  overallStatus: 'healthy' | 'warning' | 'critical'
+  summary: {
+    connectedAccounts: number
+    mappedConnections: number
+    duplicateConnectionGroups: number
+    unmappedSpendGroups: number
+    staleConnections: number
+    expiredConnections: number
+    disconnectedConnections: number
+    issueCount: number
+  }
+  issues: Array<{
+    id: string
+    type: string
+    severity: 'warning' | 'critical'
+    title: string
+    detail: string
+    action: string
+    platform: string
+    accountId: string | null
+    accountName: string | null
+    spend?: number
+    budget?: number
+    campaignCount?: number
+  }>
+}
+
 export function useSocialConnections() {
   const connections = ref<any[]>([])
   const loading = ref(false)
@@ -238,6 +271,12 @@ export function useSocialConnections() {
     return await $fetch('/api/agency/social/spend/budget-control-settings')
   }
 
+  async function fetchSpendControlDiagnostics(month: number, year: number, platform?: string): Promise<SpendControlDiagnostics> {
+    const params: any = { month, year }
+    if (platform && platform !== 'all') params.platform = platform
+    return await $fetch('/api/agency/social/spend/control-diagnostics', { params })
+  }
+
   async function updateBudgetControlSettings(settings: Partial<SocialBudgetControlSettings>) {
     return await $fetch<{ ok: boolean; config: SocialBudgetControlSettings }>(
       '/api/agency/social/spend/budget-control-settings',
@@ -358,6 +397,7 @@ export function useSocialConnections() {
     disconnectPlatform,
     syncSpend,
     fetchSpendSummary,
+    fetchSpendControlDiagnostics,
     fetchPacingReview,
     fetchBudgetControlSettings,
     updateBudgetControlSettings,
