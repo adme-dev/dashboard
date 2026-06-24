@@ -65,13 +65,21 @@ async function handleSubmit(values: Record<string, any>, isDraft: boolean) {
 
   try {
     const templateDataValue = templateData.value as any
+    // Derive the brief title from whichever title-bearing field the template uses.
+    // Different templates name their headline field differently (campaign vs. subject
+    // vs. bug summary vs. change-request title) — check them all before falling back.
+    const titleKeys = ['project_name', 'campaign_name', 'subject', 'bug_summary', 'change_request_title', 'title']
+    const derivedTitle = titleKeys
+      .map(k => values[k])
+      .find(v => typeof v === 'string' && v.trim())
+      || `${templateDataValue.name} - ${new Date().toLocaleDateString()}`
     const response = await $fetch('/api/agency/briefs', {
       method: 'POST',
       body: {
         templateId: templateDataValue.id,
-        title: values.project_name || values.title || `${templateDataValue.name} - ${new Date().toLocaleDateString()}`,
-        description: values.description || values.project_description || '',
-        priority: values.priority || templateDataValue.defaultPriority || 'normal',
+        title: derivedTitle,
+        description: values.description || values.description_of_change || values.project_description || '',
+        priority: values.priority || templateDataValue.defaultPriority || 'medium',
         fieldValues: values,
         isDraft
       }

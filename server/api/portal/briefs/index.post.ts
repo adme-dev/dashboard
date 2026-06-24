@@ -6,6 +6,7 @@
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { runBriefGatekeeper } from '~~/server/utils/automation/briefGatekeeperRunner'
+import { normalizeBriefPriority } from '~~/server/utils/briefPriority'
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -99,7 +100,7 @@ export default defineEventHandler(async (event) => {
       clientUser.clientId,
       departmentId,
       'submitted',
-      priority || template.default_priority || 'medium',
+      normalizeBriefPriority(priority, template.default_priority),
       assignedTo,
       assignedTo ? new Date().toISOString() : null,
       requestedDeadline || null,
