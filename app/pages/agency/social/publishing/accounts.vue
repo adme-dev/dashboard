@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
+import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
 import type { SocialAccount } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -11,18 +12,7 @@ const router = useRouter()
 const config = useRuntimeConfig()
 const googleBusinessPublishingEnabled = computed(() => Boolean(config.public.googleBusinessPublishingEnabled))
 
-const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
-const clients = computed<any[]>(() => {
-  const d = clientsData.value as any
-  return Array.isArray(d) ? d : (d?.clients ?? [])
-})
-const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
-const routeClientId = computed(() => typeof route.query.client === 'string' ? route.query.client : null)
-const initialClientId = computed(() => {
-  const requested = routeClientId.value
-  return clients.value.some(c => c.id === requested) ? requested : (clients.value[0]?.id ?? null)
-})
-const clientId = ref<string | null>(initialClientId.value)
+const { clientId } = useSocialPublishingClient()
 
 const accounts = ref<SocialAccount[]>([])
 const loading = ref(false)
@@ -107,17 +97,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="p-6 h-full overflow-y-auto">
-    <div class="flex items-center justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Connected accounts</h1>
-        <p class="text-sm text-muted mt-0.5">Publishing connections (pages/profiles) for this client.</p>
-      </div>
-      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" label-key="label" icon="i-lucide-building-2" class="w-56" />
-    </div>
-
-    <SocialPublishingSectionNav />
-
+  <SocialPublishingShell
+    title="Connected accounts"
+    subtitle="Publishing connections (pages/profiles) for this client."
+  >
     <UAlert
       icon="i-lucide-info" color="info" variant="subtle" class="mb-5"
       title="Publishing accounts"
@@ -199,5 +182,5 @@ onMounted(async () => {
         </div>
       </template>
     </UModal>
-  </div>
+  </SocialPublishingShell>
 </template>

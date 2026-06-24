@@ -4,19 +4,14 @@ import {
   addDays, addWeeks, addMonths, isSameMonth, isSameDay, format, parseISO,
 } from 'date-fns'
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
+import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
 import type { SocialPost } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const api = useSocialPublishing()
 
-const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
-const clients = computed<any[]>(() => {
-  const d = clientsData.value as any
-  return Array.isArray(d) ? d : (d?.clients ?? [])
-})
-const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
-const clientId = ref<string | null>(clients.value[0]?.id ?? null)
+const { clientId } = useSocialPublishingClient()
 
 type View = 'month' | 'week' | 'day'
 const view = ref<View>('month')
@@ -103,32 +98,22 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 </script>
 
 <template>
-  <div class="p-6">
-    <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Social Calendar</h1>
-        <p class="text-sm text-muted mt-0.5">Plan, schedule, and track every organic post in one place.</p>
-      </div>
-      <div class="flex items-center gap-2">
-        <UButton
-          v-if="approvalsCount"
-          to="/agency/social/publishing/approvals"
-          color="warning" variant="subtle" icon="i-lucide-clipboard-check"
-        >
-          {{ approvalsCount }} awaiting approval
-        </UButton>
-        <USelectMenu
-          v-model="clientId"
-          :items="clientOptions" value-key="value" label-key="label"
-          placeholder="Select client" icon="i-lucide-building-2" class="w-56"
-        />
-        <UButton :to="{ path: '/agency/social/publishing/compose', query: { client: clientId } }" color="primary" icon="i-lucide-plus">
-          New post
-        </UButton>
-      </div>
-    </div>
-
-    <SocialPublishingSectionNav />
+  <SocialPublishingShell
+    title="Social Calendar"
+    subtitle="Plan, schedule, and track every organic post in one place."
+  >
+    <template #actions>
+      <UButton
+        v-if="approvalsCount"
+        to="/agency/social/publishing/approvals"
+        color="warning" variant="subtle" icon="i-lucide-clipboard-check"
+      >
+        {{ approvalsCount }} awaiting approval
+      </UButton>
+      <UButton :to="{ path: '/agency/social/publishing/compose', query: { client: clientId } }" color="primary" icon="i-lucide-plus">
+        New post
+      </UButton>
+    </template>
 
     <!-- View toggle + nav -->
     <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -233,5 +218,5 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
       </NuxtLink>
       <div v-if="!postsOn(cursor).length" class="p-10 text-center text-muted text-sm">Nothing scheduled this day.</div>
     </div>
-  </div>
+  </SocialPublishingShell>
 </template>
