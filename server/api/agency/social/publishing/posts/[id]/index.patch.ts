@@ -25,6 +25,9 @@ const FIELDS: Record<string, { col: string; json?: boolean }> = {
   campaignId: { col: 'campaign_id' },
   assignedTo: { col: 'assigned_to' },
   dueAt: { col: 'due_at' },
+  // Nullable so the planner board can move a post back to the Draft lane (clears the approval gate).
+  approvalRequestedAt: { col: 'approval_requested_at' },
+  approvedAt: { col: 'approved_at' },
   metadata: { col: 'metadata', json: true },
 }
 
