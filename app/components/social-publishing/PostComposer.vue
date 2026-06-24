@@ -321,7 +321,7 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
             <UTooltip text="Emoji">
               <UButton
                 size="xs" variant="ghost" color="neutral" icon="i-lucide-smile"
-                aria-label="Insert emoji" @click="showEmoji = !showEmoji"
+                aria-label="Insert emoji"
               />
             </UTooltip>
             <template #content>
