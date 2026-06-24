@@ -1,4 +1,5 @@
 import { queryOne } from '~~/server/utils/db'
+import { isPlannerEnabled } from '~~/server/utils/socialPublishing/plannerGate'
 
 /**
  * Live counts that drive the Social Publishing suite tile-nav badges. Keys
@@ -9,6 +10,7 @@ export interface SocialPublishingNavCounts {
   scheduled: number
   pendingApprovals: number
   drafts: number
+  campaigns: number
 }
 
 /**
@@ -35,7 +37,9 @@ export async function getSocialPublishingNavCounts(
            AND ($1::uuid IS NULL OR client_id = $1)) AS "pendingApprovals",
        (SELECT COUNT(*)::int FROM social_posts
          WHERE status = 'draft'
-           AND ($1::uuid IS NULL OR client_id = $1)) AS drafts`,
+           AND ($1::uuid IS NULL OR client_id = $1)) AS drafts,
+       (SELECT COUNT(*)::int FROM social_campaigns
+         WHERE ($1::uuid IS NULL OR client_id = $1)) AS campaigns`,
     [clientId ?? null]
   )
 
@@ -44,5 +48,7 @@ export async function getSocialPublishingNavCounts(
     scheduled: row?.scheduled ?? 0,
     pendingApprovals: row?.pendingApprovals ?? 0,
     drafts: row?.drafts ?? 0,
+    // Planner dormant → don't surface a campaigns badge even though the table exists.
+    campaigns: isPlannerEnabled() ? (row?.campaigns ?? 0) : 0,
   }
 }

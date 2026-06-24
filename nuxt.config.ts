@@ -223,7 +223,11 @@ export default defineNuxtConfig({
       googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true',
       // Client-visible mirror of AI_PORTAL_ENABLED — gates ONLY the portal co-pilot launcher.
       // The /api/portal/ai/* endpoints 404 when off; this just hides the UI until go-live.
-      aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true'
+      aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true',
+      // Client-visible mirrors of the Planner flags. Gate ONLY the board/AI UI; the
+      // campaigns/board/generate-plan endpoints are the real boundary (they 404/empty when off).
+      socialPlannerEnabled: process.env.SOCIAL_PLANNER_ENABLED === 'true',
+      socialPlannerAiEnabled: process.env.SOCIAL_PLANNER_AI_ENABLED === 'true'
     }
   },
 
