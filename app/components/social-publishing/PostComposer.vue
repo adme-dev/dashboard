@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { DateValue } from '@internationalized/date'
 import { isoToScheduleParts, partsToIso } from '~/utils/socialSchedule'
+import { insertAtCaret } from '~/utils/insertAtCaret'
 import type { SocialAccount, SocialPublishPlatform } from '~/types'
 import { syncComposerAccountIds, useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
 
@@ -121,6 +122,30 @@ function pickCreative(c: BannerCreative) {
 const toast = useToast()
 
 // AI caption
+// Emoji picker for the base post content — reuses the shared ChatEmojiPicker and
+// inserts at the textarea caret (replacing any selection), falling back to append.
+const showEmoji = ref(false)
+const contentField = ref<{ $el?: HTMLElement } | null>(null)
+function contentTextarea(): HTMLTextAreaElement | null {
+  const root = contentField.value?.$el
+  if (!root) return null
+  return (root.tagName === 'TEXTAREA' ? root : root.querySelector('textarea')) as HTMLTextAreaElement | null
+}
+function insertEmoji(emoji: string) {
+  const el = contentTextarea()
+  const text = state.value.content || ''
+  const start = el ? el.selectionStart : text.length
+  const end = el ? el.selectionEnd : text.length
+  const { text: next, caret } = insertAtCaret(text, emoji, start, end)
+  state.value.content = next
+  showEmoji.value = false
+  nextTick(() => {
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(caret, caret)
+  })
+}
+
 const aiOpen = ref(false)
 const aiBrief = ref('')
 const aiTone = ref('friendly')
@@ -291,11 +316,25 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
     <!-- Base content -->
     <UFormField label="Post content">
       <template #hint>
-        <UButton size="xs" variant="ghost" color="primary" icon="i-lucide-sparkles" @click="aiOpen = true">
-          Write with AI
-        </UButton>
+        <div class="flex items-center gap-1">
+          <UPopover v-model:open="showEmoji">
+            <UTooltip text="Emoji">
+              <UButton
+                size="xs" variant="ghost" color="neutral" icon="i-lucide-smile"
+                aria-label="Insert emoji" @click="showEmoji = !showEmoji"
+              />
+            </UTooltip>
+            <template #content>
+              <ChatEmojiPicker @select="insertEmoji" />
+            </template>
+          </UPopover>
+          <UButton size="xs" variant="ghost" color="primary" icon="i-lucide-sparkles" @click="aiOpen = true">
+            Write with AI
+          </UButton>
+        </div>
       </template>
       <UTextarea
+        ref="contentField"
         v-model="state.content"
         :rows="6"
         autoresize
