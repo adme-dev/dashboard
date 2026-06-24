@@ -1,13 +1,15 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
-import { kvDelete } from '~~/server/utils/kv'
+import { getSelectedTenant } from '~~/server/utils/session'
+import { invalidateSpendPeriodCaches } from '~~/server/utils/socialSpendCache'
 
 /**
  * PATCH /api/agency/social/spend/:id
  * Updates budget_allocated for a media_spend row and logs the change
  */
 export default eventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
+  const tenantId = await getSelectedTenant(event)
 
   const id = getRouterParam(event, 'id')
   if (!id) {
@@ -36,7 +38,10 @@ export default eventHandler(async (event) => {
   // Update the budget and rolling flag
   const rollingBool = body.rolling === true || body.rolling === 'true'
   const row = await queryOne<{ id: string; budget_allocated: number; budget_rolling: boolean }>(
-    `UPDATE media_spend SET budget_allocated = $1, budget_rolling = $3 WHERE id = $2 RETURNING id, budget_allocated, budget_rolling`,
+    `UPDATE media_spend
+     SET budget_allocated = $1, budget_rolling = $3, updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, budget_allocated, budget_rolling`,
     [budgetAllocated, id, rollingBool]
   )
 
@@ -52,14 +57,11 @@ export default eventHandler(async (event) => {
   }
 
   // Bust KV cache for this period (fire-and-forget)
-  const period = current.period
-  const kvPlatform = current.platform === 'google_ads' ? 'google' : current.platform
-  Promise.all([
-    kvDelete(event, `spend:summary:${period}:all`),
-    kvDelete(event, `spend:summary:${period}:${current.platform}`),
-    kvDelete(event, `spend:${kvPlatform}:accounts:${period}`),
-    kvDelete(event, `spend:daily:${kvPlatform}:${period}`),
-  ]).catch(() => {})
+  invalidateSpendPeriodCaches(event, {
+    tenantId,
+    period: current.period,
+    platform: current.platform,
+  }).catch(() => {})
 
   return { updated: true, id: row!.id, budgetAllocated: row!.budget_allocated, rolling: row!.budget_rolling }
 })
