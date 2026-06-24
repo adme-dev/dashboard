@@ -5,11 +5,13 @@ import {
 } from 'date-fns'
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
 import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
+import { canReschedule, computeRescheduledAt } from '~/utils/socialCalendar'
 import type { SocialPost } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const api = useSocialPublishing()
+const toast = useToast()
 
 const { clientId } = useSocialPublishingClient()
 
@@ -94,6 +96,41 @@ const headingLabel = computed(() => {
 function newPostOn(day: Date) {
   navigateTo({ path: '/agency/social/publishing/compose', query: { client: clientId.value, date: day.toISOString() } })
 }
+
+// --- Drag-and-drop reschedule (Slice 2) ---
+const draggingPost = ref<SocialPost | null>(null)
+const dragOverKey = ref<string | null>(null)
+
+function onDragStart(p: SocialPost, e: DragEvent) {
+  draggingPost.value = p
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', p.id)
+  }
+}
+function onDrop(day: Date) {
+  const p = draggingPost.value
+  draggingPost.value = null
+  dragOverKey.value = null
+  if (p) reschedule(p, day)
+}
+async function reschedule(post: SocialPost, day: Date) {
+  if (!canReschedule(post.status)) return
+  const currentIso = postIso(post)
+  if (currentIso && isSameDay(parseISO(currentIso), day)) return // dropped on the same day — no-op
+  const scheduledAt = computeRescheduledAt(currentIso, day)
+  const prev = post.scheduled_at
+  post.scheduled_at = scheduledAt // optimistic move to the new day
+  try {
+    await api.updatePost(post.id, { scheduledAt })
+    toast.add({ title: 'Post rescheduled', description: `Moved to ${format(day, 'd MMM')}`, color: 'success' })
+  } catch (e: any) {
+    post.scheduled_at = prev // rollback
+    toast.add({ title: 'Reschedule failed', description: e?.data?.statusMessage, color: 'error' })
+    await load()
+  }
+}
+
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 </script>
 
@@ -145,11 +182,15 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
       <div class="grid grid-cols-7">
         <div
           v-for="day in monthDays" :key="day.toISOString()"
-          class="min-h-28 border-t border-l border-default p-1.5 group relative"
+          class="min-h-28 border-t border-l border-default p-1.5 group relative transition-colors"
           :class="[
             isSameMonth(day, cursor) ? '' : 'bg-muted/30',
             isSameDay(day, new Date()) ? 'ring-1 ring-primary ring-inset' : '',
+            dragOverKey === day.toISOString() ? 'bg-primary/10 ring-1 ring-primary/40 ring-inset' : '',
           ]"
+          @dragover.prevent="dragOverKey = day.toISOString()"
+          @dragleave="dragOverKey = null"
+          @drop.prevent="onDrop(day)"
         >
           <div class="flex items-center justify-between">
             <span class="text-xs" :class="isSameMonth(day, cursor) ? 'text-default' : 'text-muted'">{{ format(day, 'd') }}</span>
@@ -157,8 +198,20 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
               class="opacity-0 group-hover:opacity-100 transition-opacity" @click="newPostOn(day)" />
           </div>
           <div class="mt-1 space-y-1">
-            <NuxtLink v-for="p in postsOn(day)" :key="p.id" :to="{ path: '/agency/social/publishing/compose', query: { edit: p.id } }" class="block">
-              <UBadge :color="(STATUS_COLOR[p.status] as any) || 'neutral'" variant="subtle" class="w-full justify-start truncate">
+            <NuxtLink
+              v-for="p in postsOn(day)" :key="p.id"
+              :to="{ path: '/agency/social/publishing/compose', query: { edit: p.id } }"
+              class="block"
+              :class="canReschedule(p.status) ? 'cursor-grab active:cursor-grabbing' : ''"
+              :draggable="canReschedule(p.status)"
+              @dragstart="onDragStart(p, $event)"
+              @dragend="draggingPost = null"
+            >
+              <UBadge
+                :color="(STATUS_COLOR[p.status] as any) || 'neutral'" variant="subtle"
+                class="w-full justify-start truncate"
+                :class="draggingPost?.id === p.id ? 'opacity-50' : ''"
+              >
                 <span class="truncate">{{ p.content?.slice(0, 24) || '(no copy)' }}</span>
               </UBadge>
             </NuxtLink>
@@ -171,8 +224,14 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     <div v-else-if="view === 'week'" class="grid grid-cols-7 gap-2">
       <div
         v-for="day in weekDays" :key="day.toISOString()"
-        class="min-h-64 rounded-lg border border-default p-2 group"
-        :class="isSameDay(day, new Date()) ? 'ring-1 ring-primary ring-inset' : ''"
+        class="min-h-64 rounded-lg border border-default p-2 group transition-colors"
+        :class="[
+          isSameDay(day, new Date()) ? 'ring-1 ring-primary ring-inset' : '',
+          dragOverKey === day.toISOString() ? 'bg-primary/10 ring-1 ring-primary/40' : '',
+        ]"
+        @dragover.prevent="dragOverKey = day.toISOString()"
+        @dragleave="dragOverKey = null"
+        @drop.prevent="onDrop(day)"
       >
         <div class="flex items-center justify-between mb-2">
           <div class="text-xs font-medium">
@@ -183,8 +242,19 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
             class="opacity-0 group-hover:opacity-100 transition-opacity" @click="newPostOn(day)" />
         </div>
         <div class="space-y-1">
-          <NuxtLink v-for="p in postsOn(day)" :key="p.id" :to="{ path: '/agency/social/publishing/compose', query: { edit: p.id } }" class="block">
-            <div class="rounded-md border border-default p-1.5 hover:bg-elevated transition-colors">
+          <NuxtLink
+            v-for="p in postsOn(day)" :key="p.id"
+            :to="{ path: '/agency/social/publishing/compose', query: { edit: p.id } }"
+            class="block"
+            :class="canReschedule(p.status) ? 'cursor-grab active:cursor-grabbing' : ''"
+            :draggable="canReschedule(p.status)"
+            @dragstart="onDragStart(p, $event)"
+            @dragend="draggingPost = null"
+          >
+            <div
+              class="rounded-md border border-default p-1.5 hover:bg-elevated transition-colors"
+              :class="draggingPost?.id === p.id ? 'opacity-50' : ''"
+            >
               <div class="flex items-center gap-1">
                 <span class="text-[10px] tabular-nums text-muted">{{ postTime(p) }}</span>
                 <UBadge :color="(STATUS_COLOR[p.status] as any) || 'neutral'" variant="subtle" size="xs">{{ p.status }}</UBadge>
