@@ -1250,6 +1250,9 @@ export interface SocialPost {
   approved_at: string | null
   rejection_reason: string | null
   queue_position: number | null
+  campaign_id: string | null
+  assigned_to: string | null
+  due_at: string | null
   metadata: Record<string, any>
   created_at: string
   updated_at: string
@@ -1279,6 +1282,47 @@ export interface SocialSlot {
   timezone: string
   capacity: number
   enabled: boolean
+}
+
+// --- Social Planner (Slice 3) ---
+export type SocialCampaignStatus = 'active' | 'planning' | 'archived'
+
+export interface SocialCampaign {
+  id: string
+  client_id: string
+  name: string
+  color: string
+  status: SocialCampaignStatus
+  start_date: string | null
+  end_date: string | null
+  brief: string | null
+  goal_post_count: number | null
+  metadata: Record<string, any>
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialCampaignWithCounts extends SocialCampaign {
+  post_count: number
+  scheduled_count: number
+  published_count: number
+}
+
+export type SocialPlannerLane = 'draft' | 'needs_approval' | 'scheduled' | 'published'
+
+export interface SocialBoardPost extends SocialPost {
+  lane: SocialPlannerLane
+  needs_attention: boolean
+  campaign: Pick<SocialCampaign, 'id' | 'name' | 'color'> | null
+}
+
+export interface SocialGeneratedDraft {
+  content: string
+  platforms: SocialPublishPlatform[]
+  platform_overrides: Record<string, { content: string }>
+  hashtags: string[]
+  suggested_scheduled_at: string | null
 }
 
 // --- Social Inbox (Slice 2) ---
