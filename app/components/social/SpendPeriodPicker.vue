@@ -177,6 +177,8 @@ const syncLabel = computed(() => {
   const date = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
   return { relative, exact: `${date} at ${time}` }
 })
+
+const syncButtonLabel = computed(() => props.syncing ? 'Syncing' : 'Sync now')
 </script>
 
 <template>
@@ -290,10 +292,11 @@ const syncLabel = computed(() => {
       </div>
       <UButton
         icon="i-lucide-refresh-cw"
-        label="Sync"
+        :label="syncButtonLabel"
         color="primary"
         size="sm"
         :loading="syncing"
+        :disabled="syncing"
         @click="$emit('sync')"
       />
     </div>

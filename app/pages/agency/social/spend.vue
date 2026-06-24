@@ -179,6 +179,7 @@ const syncStatusLabel = ref('')
 let syncPollTimer: ReturnType<typeof setTimeout> | null = null
 const SYNC_POLL_INTERVAL = 4000
 const SYNC_POLL_TIMEOUT = 16 * 60_000
+type SyncablePlatform = typeof syncablePlatforms[number]
 
 interface SyncStatusResponse {
   jobId: string
@@ -193,10 +194,15 @@ interface SyncStatusResponse {
 async function handleSyncAll() {
   if (syncing.value) return
   syncing.value = true
-  syncStatusLabel.value = 'Starting sync…'
+  const platformsToSync: readonly SyncablePlatform[] = selectedPlatform.value === 'all'
+    ? syncablePlatforms
+    : syncablePlatforms.includes(selectedPlatform.value as SyncablePlatform)
+      ? [selectedPlatform.value as SyncablePlatform]
+      : syncablePlatforms
+  syncStatusLabel.value = `Queueing ${platformsToSync.length === 1 ? platformLabel(platformsToSync[0]) : `${platformsToSync.length} platforms`}…`
   try {
     const results = await Promise.allSettled(
-      syncablePlatforms.map(p => syncSpend(p as any, selectedMonth.value, selectedYear.value))
+      platformsToSync.map(p => syncSpend(p as any, selectedMonth.value, selectedYear.value))
     )
     const jobIds: string[] = []
     let started = 0
@@ -218,7 +224,7 @@ async function handleSyncAll() {
       // Tracked platforms (Meta/Google) — poll to real completion. The
       // untracked waitUntil platforms finish quickly and are picked up by the
       // final refresh.
-      syncStatusLabel.value = `Syncing ${started} platform${started === 1 ? '' : 's'}…`
+      syncStatusLabel.value = `Sync queued for ${started} platform${started === 1 ? '' : 's'}…`
       pollSyncStatus(jobIds)
     } else {
       // No tracked jobs — fall back to a single delayed refresh.
@@ -232,6 +238,10 @@ async function handleSyncAll() {
     syncing.value = false
     syncStatusLabel.value = ''
   }
+}
+
+function platformLabel(platform: SyncablePlatform) {
+  return platformOptions.find(option => option.value === platform)?.label || platform
 }
 
 function stopSyncPoll() {
@@ -269,7 +279,7 @@ function pollSyncStatus(jobIds: string[]) {
     }
     syncPollTimer = setTimeout(tick, SYNC_POLL_INTERVAL)
   }
-  syncPollTimer = setTimeout(tick, SYNC_POLL_INTERVAL)
+  void tick()
 }
 
 async function finishSync(statuses: SyncStatusResponse[]) {
