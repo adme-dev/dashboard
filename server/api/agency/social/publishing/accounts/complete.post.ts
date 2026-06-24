@@ -57,23 +57,24 @@ export default defineEventHandler(async (event) => {
   const chosen = (pending.pages ?? []).filter(p => pageIds.includes(p.id))
   if (!chosen.length) throw createError({ statusCode: 400, statusMessage: 'no matching pages' })
 
-  const connected: string[] = []
-  const conflicts: string[] = []
-  for (const page of chosen) {
+  // Process pages concurrently — each page does a webhook subscribe (Graph call,
+  // now timeout-capped) plus its row upserts. Sequential fan-out over several
+  // pages was overrunning Cloudflare's request budget → 524.
+  const perPage = await Promise.all(chosen.map(async (page) => {
     const rows = mapPagesToAccountRows(page, pending.expiresAt)
     const sub = await subscribePageWebhook(page.id, page.accessToken)
-    let conflict = false
     for (const row of rows) {
       row.metadata.webhook_subscribed = sub.ok
       const res = await upsertSocialAccount({ queryOne, execute }, pending.clientId, row, String(user.id))
       if (res.status === 'conflict') {
-        conflict = true
-        conflicts.push(`${page.name} -> ${res.conflictClientName || 'another client'}`)
-        break
+        return { conflict: `${page.name} -> ${res.conflictClientName || 'another client'}` }
       }
       if (!sub.ok) await markWebhookSubscribed({ queryOne, execute }, res.id, false, `webhook subscribe failed: ${sub.error}`)
     }
-    if (!conflict) connected.push(page.name)
-  }
+    return { connected: page.name }
+  }))
+
+  const connected = perPage.filter(r => r.connected).map(r => r.connected as string)
+  const conflicts = perPage.filter(r => r.conflict).map(r => r.conflict as string)
   return { connected, conflicts }
 })
