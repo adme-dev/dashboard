@@ -13,6 +13,7 @@ const { clientId } = useSocialPublishingClient()
 
 const queue = ref<SocialPost[]>([])
 const loading = ref(false)
+const filling = ref(false)
 
 async function load() {
   if (!clientId.value) return
@@ -63,6 +64,23 @@ function onDrop(i: number) {
   queue.value = reorder(queue.value, from, i)
   persist(prev)
 }
+
+async function fillFromDrafts() {
+  if (!clientId.value) return
+  filling.value = true
+  try {
+    const { count } = await api.fillQueueFromDrafts(clientId.value)
+    toast.add({
+      title: count ? `Added ${count} draft${count === 1 ? '' : 's'} to the queue` : 'No unqueued drafts to add',
+      color: count ? 'success' : 'neutral',
+    })
+    if (count) await load()
+  } catch (e: any) {
+    toast.add({ title: 'Could not fill from drafts', description: e?.data?.statusMessage, color: 'error' })
+  } finally {
+    filling.value = false
+  }
+}
 </script>
 
 <template>
@@ -70,6 +88,15 @@ function onDrop(i: number) {
     title="Queue"
     subtitle="Posts waiting for the next free posting slot. Reorder to set priority."
   >
+    <template #actions>
+      <UButton
+        icon="i-lucide-list-plus" variant="subtle" :loading="filling" :disabled="!clientId"
+        @click="fillFromDrafts"
+      >
+        Fill from drafts
+      </UButton>
+    </template>
+
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <div v-else-if="!queue.length" class="rounded-lg border border-default p-10 text-center text-muted">
       <UIcon name="i-lucide-list" class="size-8 mx-auto mb-2 opacity-50" />

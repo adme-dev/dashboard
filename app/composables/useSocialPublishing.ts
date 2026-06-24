@@ -51,6 +51,9 @@ export function useSocialPublishing() {
   const reorderQueue = (clientId: string, orderedIds: string[]) =>
     $fetch(`${base}/queue/reorder`, { method: 'POST', body: { clientId, orderedIds } })
 
+  const fillQueueFromDrafts = (clientId: string, postIds?: string[]) =>
+    $fetch<{ count: number }>(`${base}/queue/fill`, { method: 'POST', body: { clientId, postIds } })
+
   const getCalendar = (clientId: string, from: string, to: string) =>
     $fetch<SocialPost[]>(`${base}/calendar`, { query: { clientId, from, to } })
 
@@ -65,6 +68,6 @@ export function useSocialPublishing() {
     requestApproval, approve, reject,
     listAccounts, deleteAccount,
     listSlots, createSlot,
-    getQueue, reorderQueue, getCalendar, getApprovals, getApprovalsBadge,
+    getQueue, reorderQueue, fillQueueFromDrafts, getCalendar, getApprovals, getApprovalsBadge,
   }
 }
