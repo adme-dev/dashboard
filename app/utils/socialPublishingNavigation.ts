@@ -10,11 +10,23 @@ export type SocialPublishingRouteKey
     | 'queue'
     | 'analytics'
 
+/**
+ * Enterprise suite sections (Agorapulse/Sprout-class). The tile nav renders
+ * these in order: Create → Schedule → Review → Connect → Measure.
+ */
 export type SocialPublishingRouteGroupKey
-  = | 'publishing-basics'
-    | 'message-approvals'
-    | 'additional-publishing'
-    | 'analytics-reporting'
+  = | 'create'
+    | 'schedule'
+    | 'review'
+    | 'connect'
+    | 'measure'
+
+/** Keys of the live counts surfaced as nav badges (see nav-counts endpoint). */
+export type SocialPublishingNavCountKey
+  = | 'accounts'
+    | 'scheduled'
+    | 'pendingApprovals'
+    | 'drafts'
 
 export interface SocialPublishingRouteGroup {
   key: SocialPublishingRouteGroupKey
@@ -29,64 +41,82 @@ export interface SocialPublishingRouteItem {
   to: string
   exact?: boolean
   objective: string
+  /** When set, the tile shows this live count as a badge. */
+  badgeKey?: SocialPublishingNavCountKey
 }
 
 export const SOCIAL_PUBLISHING_ROUTE_GROUPS: SocialPublishingRouteGroup[] = [
   {
-    key: 'publishing-basics',
-    label: 'Publishing Basics'
+    key: 'create',
+    label: 'Create'
   },
   {
-    key: 'message-approvals',
-    label: 'Message approvals'
+    key: 'schedule',
+    label: 'Schedule'
   },
   {
-    key: 'additional-publishing',
-    label: 'Additional Publishing Features'
+    key: 'review',
+    label: 'Review'
   },
   {
-    key: 'analytics-reporting',
-    label: 'Analytics & Reporting'
+    key: 'connect',
+    label: 'Connect'
+  },
+  {
+    key: 'measure',
+    label: 'Measure'
   }
 ]
 
+/**
+ * Canonical flat order: accounts → calendar → compose → approvals → planner →
+ * queue → analytics. This drives the global agency sidebar (via
+ * socialSuiteNavigation) and the step indicator, so it is intentionally kept
+ * setup-first and stable. The in-page tile nav re-presents these by the five
+ * suite groups below (Create → Schedule → Review → Connect → Measure) — group
+ * order lives in SOCIAL_PUBLISHING_ROUTE_GROUPS, not in this array.
+ */
 export const SOCIAL_PUBLISHING_ROUTE_ORDER: SocialPublishingRouteItem[] = [
   {
     key: 'accounts',
-    group: 'publishing-basics',
+    group: 'connect',
     label: 'Accounts',
     icon: 'i-lucide-plug',
     to: '/agency/social/publishing/accounts',
-    objective: 'Connect the client publishing pages and profiles before posts are scheduled.'
+    objective: 'Connect the client publishing pages and profiles before posts are scheduled.',
+    badgeKey: 'accounts'
   },
   {
     key: 'calendar',
-    group: 'publishing-basics',
+    group: 'schedule',
     label: 'Calendar',
     icon: 'i-lucide-calendar-days',
     to: '/agency/social/publishing',
     exact: true,
-    objective: 'Use the calendar as the hub for planning, reviewing, and opening scheduled posts.'
+    objective: 'Use the calendar as the hub for planning, reviewing, and opening scheduled posts.',
+    badgeKey: 'scheduled'
   },
   {
     key: 'compose',
-    group: 'publishing-basics',
+    group: 'create',
     label: 'Compose',
     icon: 'i-lucide-pen-square',
     to: '/agency/social/publishing/compose',
-    objective: 'Create one base post, customize it per network, and choose publish timing.'
+    objective: 'Create one base post, customize it per network, and choose publish timing.',
+    badgeKey: 'drafts'
   },
   {
     key: 'approvals',
-    group: 'message-approvals',
+    group: 'review',
     label: 'Approvals',
     icon: 'i-lucide-clipboard-check',
     to: '/agency/social/publishing/approvals',
-    objective: 'Review draft posts and approve or return them before publishing.'
+    objective: 'Review draft posts and approve or return them before publishing.',
+    badgeKey: 'pendingApprovals'
   },
   {
     key: 'planner',
-    group: 'additional-publishing',
+    group: 'schedule',
     label: 'Planner',
     icon: 'i-lucide-calendar-clock',
     to: '/agency/social/publishing/planner',
@@ -94,7 +124,7 @@ export const SOCIAL_PUBLISHING_ROUTE_ORDER: SocialPublishingRouteItem[] = [
   },
   {
     key: 'queue',
-    group: 'additional-publishing',
+    group: 'schedule',
     label: 'Queue',
     icon: 'i-lucide-list-ordered',
     to: '/agency/social/publishing/queue',
@@ -102,7 +132,7 @@ export const SOCIAL_PUBLISHING_ROUTE_ORDER: SocialPublishingRouteItem[] = [
   },
   {
     key: 'analytics',
-    group: 'analytics-reporting',
+    group: 'measure',
     label: 'Analytics',
     icon: 'i-lucide-bar-chart-3',
     to: '/agency/social/publishing/analytics',

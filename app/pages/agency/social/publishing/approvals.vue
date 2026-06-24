@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
+import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
 import type { SocialPost } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const api = useSocialPublishing()
 const toast = useToast()
+
+const { clientId } = useSocialPublishingClient()
 
 const pending = ref<SocialPost[]>([])
 const loading = ref(false)
@@ -14,9 +17,9 @@ const rejectReason = ref('')
 
 async function load() {
   loading.value = true
-  try { pending.value = await api.getApprovals() } finally { loading.value = false }
+  try { pending.value = await api.getApprovals(clientId.value ?? undefined) } finally { loading.value = false }
 }
-onMounted(load)
+watch(clientId, load, { immediate: true })
 
 async function approve(p: SocialPost) {
   try { await api.approve(p.id); toast.add({ title: 'Approved', color: 'success' }); await load() }
@@ -34,12 +37,10 @@ async function confirmReject() {
 </script>
 
 <template>
-  <div class="p-6 max-w-4xl mx-auto">
-    <h1 class="text-2xl font-semibold tracking-tight mb-1">Approvals</h1>
-    <p class="text-sm text-muted mb-6">Posts awaiting sign-off before they schedule or publish.</p>
-
-    <SocialPublishingSectionNav />
-
+  <SocialPublishingShell
+    title="Approvals"
+    subtitle="Posts awaiting sign-off before they schedule or publish."
+  >
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <div v-else-if="!pending.length" class="rounded-lg border border-default p-10 text-center text-muted">
       <UIcon name="i-lucide-check-circle-2" class="size-8 mx-auto mb-2 opacity-50" />
@@ -81,5 +82,5 @@ async function confirmReject() {
         </div>
       </template>
     </UModal>
-  </div>
+  </SocialPublishingShell>
 </template>

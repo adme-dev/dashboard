@@ -31,13 +31,13 @@ const agencySocialRouteNavs = new Map([
   ['app/pages/agency/social/inbox/settings.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/listening/index.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/reporting/index.vue', 'SocialSuiteSectionNav'],
-  ['app/pages/agency/social/publishing/accounts.vue', 'SocialPublishingSectionNav'],
-  ['app/pages/agency/social/publishing/analytics.vue', 'SocialPublishingSectionNav'],
-  ['app/pages/agency/social/publishing/approvals.vue', 'SocialPublishingSectionNav'],
-  ['app/pages/agency/social/publishing/compose.vue', 'SocialPublishingSectionNav'],
-  ['app/pages/agency/social/publishing/index.vue', 'SocialPublishingSectionNav'],
-  ['app/pages/agency/social/publishing/planner.vue', 'SocialPublishingSectionNav'],
-  ['app/pages/agency/social/publishing/queue.vue', 'SocialPublishingSectionNav']
+  ['app/pages/agency/social/publishing/accounts.vue', 'SocialPublishingShell'],
+  ['app/pages/agency/social/publishing/analytics.vue', 'SocialPublishingShell'],
+  ['app/pages/agency/social/publishing/approvals.vue', 'SocialPublishingShell'],
+  ['app/pages/agency/social/publishing/compose.vue', 'SocialPublishingShell'],
+  ['app/pages/agency/social/publishing/index.vue', 'SocialPublishingShell'],
+  ['app/pages/agency/social/publishing/planner.vue', 'SocialPublishingShell'],
+  ['app/pages/agency/social/publishing/queue.vue', 'SocialPublishingShell']
 ])
 
 const portalSocialRouteNavs = new Map([

@@ -16,7 +16,7 @@ describe('social publishing navigation order', () => {
     expect(SOCIAL_PUBLISHING_OBJECTIVE).toContain('measure')
   })
 
-  it('orders related routes by setup, workflow, and measurement', () => {
+  it('keeps a stable setup-first canonical order for the sidebar and step indicator', () => {
     expect(SOCIAL_PUBLISHING_ROUTE_ORDER.map(item => item.key)).toEqual([
       'accounts',
       'calendar',
@@ -28,19 +28,43 @@ describe('social publishing navigation order', () => {
     ])
   })
 
-  it('uses Sprout-inspired publishing support buckets for route context', () => {
+  it('groups routes into the five enterprise suite sections', () => {
+    expect(SOCIAL_PUBLISHING_ROUTE_GROUPS.map(group => group.key)).toEqual([
+      'create',
+      'schedule',
+      'review',
+      'connect',
+      'measure'
+    ])
     expect(SOCIAL_PUBLISHING_ROUTE_GROUPS.map(group => group.label)).toEqual([
-      'Publishing Basics',
-      'Message approvals',
-      'Additional Publishing Features',
-      'Analytics & Reporting'
+      'Create',
+      'Schedule',
+      'Review',
+      'Connect',
+      'Measure'
     ])
     expect(socialPublishingRouteGroups().map(group => group.items.map(item => item.key))).toEqual([
-      ['accounts', 'calendar', 'compose'],
+      ['compose'],
+      ['calendar', 'planner', 'queue'],
       ['approvals'],
-      ['planner', 'queue'],
+      ['accounts'],
       ['analytics']
     ])
+  })
+
+  it('tags the routes that surface a live count badge', () => {
+    const badgeKeys = Object.fromEntries(
+      SOCIAL_PUBLISHING_ROUTE_ORDER.map(item => [item.key, item.badgeKey])
+    )
+    expect(badgeKeys).toMatchObject({
+      compose: 'drafts',
+      calendar: 'scheduled',
+      approvals: 'pendingApprovals',
+      accounts: 'accounts'
+    })
+    expect(badgeKeys.queue).toBeUndefined()
+    expect(badgeKeys.planner).toBeUndefined()
+    expect(badgeKeys.analytics).toBeUndefined()
   })
 
   it('maps every ordered route into a sidebar-ready nav item', () => {

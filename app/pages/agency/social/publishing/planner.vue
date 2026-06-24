@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
+import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
 import type { SocialSlot, SocialPublishPlatform } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -7,13 +8,7 @@ definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 const api = useSocialPublishing()
 const toast = useToast()
 
-const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
-const clients = computed<any[]>(() => {
-  const d = clientsData.value as any
-  return Array.isArray(d) ? d : (d?.clients ?? [])
-})
-const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
-const clientId = ref<string | null>(clients.value[0]?.id ?? null)
+const { clientId } = useSocialPublishingClient()
 
 const slots = ref<SocialSlot[]>([])
 const loading = ref(false)
@@ -55,17 +50,10 @@ const dowLabel = (v: number) => DOW.find(d => d.value === v)?.label ?? v
 </script>
 
 <template>
-  <div class="p-6 max-w-3xl mx-auto">
-    <div class="flex items-center justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Planner</h1>
-        <p class="text-sm text-muted mt-0.5">Define recurring posting slots. Queued posts fill the next free slot automatically.</p>
-      </div>
-      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" label-key="label" icon="i-lucide-building-2" class="w-56" />
-    </div>
-
-    <SocialPublishingSectionNav />
-
+  <SocialPublishingShell
+    title="Planner"
+    subtitle="Define recurring posting slots. Queued posts fill the next free slot automatically."
+  >
     <div class="rounded-lg border border-default p-4 mb-6">
       <h2 class="text-sm font-medium mb-3">Add a posting slot</h2>
       <div class="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-4 items-end">
@@ -103,5 +91,5 @@ const dowLabel = (v: number) => DOW.find(d => d.value === v)?.label ?? v
         </div>
       </div>
     </div>
-  </div>
+  </SocialPublishingShell>
 </template>

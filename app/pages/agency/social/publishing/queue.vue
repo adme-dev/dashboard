@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
+import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
 import type { SocialPost } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -7,13 +8,7 @@ definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 const api = useSocialPublishing()
 const toast = useToast()
 
-const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
-const clients = computed<any[]>(() => {
-  const d = clientsData.value as any
-  return Array.isArray(d) ? d : (d?.clients ?? [])
-})
-const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
-const clientId = ref<string | null>(clients.value[0]?.id ?? null)
+const { clientId } = useSocialPublishingClient()
 
 const queue = ref<SocialPost[]>([])
 const loading = ref(false)
@@ -40,17 +35,10 @@ function move(i: number, dir: -1 | 1) {
 </script>
 
 <template>
-  <div class="p-6 max-w-3xl mx-auto">
-    <div class="flex items-center justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Queue</h1>
-        <p class="text-sm text-muted mt-0.5">Posts waiting for the next free posting slot. Reorder to set priority.</p>
-      </div>
-      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" label-key="label" icon="i-lucide-building-2" class="w-56" />
-    </div>
-
-    <SocialPublishingSectionNav />
-
+  <SocialPublishingShell
+    title="Queue"
+    subtitle="Posts waiting for the next free posting slot. Reorder to set priority."
+  >
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <div v-else-if="!queue.length" class="rounded-lg border border-default p-10 text-center text-muted">
       <UIcon name="i-lucide-list" class="size-8 mx-auto mb-2 opacity-50" />
@@ -73,5 +61,5 @@ function move(i: number, dir: -1 | 1) {
         <UButton :to="{ path: '/agency/social/publishing/compose', query: { edit: p.id } }" icon="i-lucide-pencil" size="xs" variant="ghost" />
       </div>
     </div>
-  </div>
+  </SocialPublishingShell>
 </template>
