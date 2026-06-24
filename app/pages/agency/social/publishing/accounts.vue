@@ -125,39 +125,45 @@ onMounted(async () => {
     />
 
     <div class="space-y-2">
-      <div v-for="p in PLATFORMS" :key="p" class="flex items-center gap-3 rounded-lg border border-default p-3">
-        <UIcon :name="`i-lucide-${p === 'google-business' ? 'store' : p === 'tiktok' ? 'music' : p}`" class="size-5 text-muted" />
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium capitalize">{{ p.replace('-', ' ') }}</div>
-          <template v-for="a in accounts.filter(x => x.platform === p)" :key="a.id">
-            <div class="text-xs text-muted truncate">{{ a.account_name || a.platform_account_id }}</div>
-          </template>
-        </div>
-        <template v-if="accounts.some(x => x.platform === p)">
-          <template v-for="a in accounts.filter(x => x.platform === p)" :key="a.id">
-            <UBadge :color="(expiryState(a).color as any)" variant="subtle">{{ expiryState(a).label }}</UBadge>
-            <UButton icon="i-lucide-unlink" size="xs" variant="ghost" color="error" @click="disconnect(a)" />
-          </template>
-        </template>
-        <template v-else>
+      <div v-for="p in PLATFORMS" :key="p" class="rounded-lg border border-default p-3 space-y-3">
+        <!-- Platform header: icon, name, connected count, connect/add action -->
+        <div class="flex items-center gap-3">
+          <UIcon :name="`i-lucide-${p === 'google-business' ? 'store' : p === 'tiktok' ? 'music' : p}`" class="size-5 text-muted shrink-0" />
+          <div class="flex-1 min-w-0 text-sm font-medium capitalize">
+            {{ p.replace('-', ' ') }}
+            <span v-if="accounts.some(x => x.platform === p)" class="text-xs text-muted font-normal">· {{ accounts.filter(x => x.platform === p).length }} connected</span>
+          </div>
           <UButton
             v-if="p === 'facebook'"
             size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
-          >Connect</UButton>
-          <UButton
-            v-else-if="p === 'google-business' && googleBusinessPublishingEnabled"
-            size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
-          >Connect</UButton>
-          <UTooltip v-else-if="p === 'google-business'" text="Dormant until Google Business API approval and production secrets are enabled">
-            <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-lock">Dormant</UButton>
-          </UTooltip>
-          <UTooltip v-else-if="p === 'instagram'" text="Instagram connects automatically with a linked Facebook Page">
-            <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-link-2">Via Facebook</UButton>
-          </UTooltip>
-          <UTooltip v-else text="Coming soon — needs platform app registration">
-            <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-plus">Connect</UButton>
-          </UTooltip>
-        </template>
+          >{{ accounts.some(x => x.platform === p) ? 'Add more' : 'Connect' }}</UButton>
+          <template v-else-if="!accounts.some(x => x.platform === p)">
+            <UButton
+              v-if="p === 'google-business' && googleBusinessPublishingEnabled"
+              size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
+            >Connect</UButton>
+            <UTooltip v-else-if="p === 'google-business'" text="Dormant until Google Business API approval and production secrets are enabled">
+              <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-lock">Dormant</UButton>
+            </UTooltip>
+            <UTooltip v-else-if="p === 'instagram'" text="Instagram connects automatically with a linked Facebook Page">
+              <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-link-2">Via Facebook</UButton>
+            </UTooltip>
+            <UTooltip v-else text="Coming soon — needs platform app registration">
+              <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-plus">Connect</UButton>
+            </UTooltip>
+          </template>
+        </div>
+        <!-- Connected accounts: responsive wrapping grid of cards (handles many accounts) -->
+        <div v-if="accounts.some(x => x.platform === p)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div
+            v-for="a in accounts.filter(x => x.platform === p)" :key="a.id"
+            class="flex items-center gap-2 rounded-md border border-default bg-elevated/30 px-3 py-2 min-w-0"
+          >
+            <div class="flex-1 min-w-0 text-sm truncate" :title="a.account_name || a.platform_account_id">{{ a.account_name || a.platform_account_id }}</div>
+            <UBadge :color="(expiryState(a).color as any)" variant="subtle" size="sm" class="shrink-0">{{ expiryState(a).label }}</UBadge>
+            <UButton icon="i-lucide-unlink" size="xs" variant="ghost" color="error" class="shrink-0" @click="disconnect(a)" />
+          </div>
+        </div>
       </div>
     </div>
 
