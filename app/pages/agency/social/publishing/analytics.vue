@@ -1,13 +1,9 @@
 <script setup lang="ts">
+import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
+
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
-const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
-const clients = computed<any[]>(() => {
-  const d = clientsData.value as any
-  return Array.isArray(d) ? d : (d?.clients ?? [])
-})
-const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
-const clientId = ref<string | null>(clients.value[0]?.id ?? null)
+const { clientId } = useSocialPublishingClient()
 
 interface Overview {
   counts: { published: number; scheduled: number; failed: number; drafts: number }
@@ -36,17 +32,10 @@ const cards = computed(() => data.value ? [
 </script>
 
 <template>
-  <div class="p-6 max-w-5xl mx-auto">
-    <div class="flex items-center justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Analytics</h1>
-        <p class="text-sm text-muted mt-0.5">Top-line publishing performance. Deep reporting lands in a later slice.</p>
-      </div>
-      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" label-key="label" icon="i-lucide-building-2" class="w-56" />
-    </div>
-
-    <SocialPublishingSectionNav />
-
+  <SocialPublishingShell
+    title="Analytics"
+    subtitle="Top-line publishing performance. Deep reporting lands in a later slice."
+  >
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
       <div v-for="c in cards" :key="c.label" class="rounded-lg border border-default p-4">
         <div class="flex items-center gap-2 text-xs text-muted uppercase tracking-wide">
@@ -57,5 +46,5 @@ const cards = computed(() => data.value ? [
       </div>
     </div>
     <p v-if="!cards.length && !loading" class="text-sm text-muted mt-4">No data yet.</p>
-  </div>
+  </SocialPublishingShell>
 </template>

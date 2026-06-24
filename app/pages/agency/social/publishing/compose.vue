@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
+import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
 import { missingAccountPlatforms, useSocialComposer } from '~/composables/useSocialComposer'
 import type { SocialAccount } from '~/types'
 
@@ -16,8 +17,7 @@ const clients = computed<any[]>(() => {
   const d = clientsData.value as any
   return Array.isArray(d) ? d : (d?.clients ?? [])
 })
-const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
-const clientId = ref<string | null>((route.query.client as string) || null)
+const { clientId } = useSocialPublishingClient()
 const pageName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || '')
 const accounts = ref<SocialAccount[]>([])
 const accountsLoading = ref(false)
@@ -153,25 +153,10 @@ const primaryLabel = computed(() => ({
 </script>
 
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
-    <div class="flex items-center justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Compose</h1>
-        <p class="text-sm text-muted mt-0.5">Author one post, tailor it per network, and schedule across channels.</p>
-      </div>
-      <USelectMenu
-        v-model="clientId"
-        :items="clientOptions"
-        value-key="value"
-        label-key="label"
-        placeholder="Select client"
-        icon="i-lucide-building-2"
-        class="w-60"
-      />
-    </div>
-
-    <SocialPublishingSectionNav />
-
+  <SocialPublishingShell
+    title="Compose"
+    subtitle="Author one post, tailor it per network, and schedule across channels."
+  >
     <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-8">
       <!-- Authoring -->
       <div>
@@ -204,5 +189,5 @@ const primaryLabel = computed(() => ({
         />
       </aside>
     </div>
-  </div>
+  </SocialPublishingShell>
 </template>
