@@ -3,6 +3,7 @@ import { XeroClient } from 'xero-node'
 import type { TokenSet } from 'xero-node'
 import type { H3Event } from 'h3'
 import { getAppUrl } from '~~/server/utils/appUrl'
+import { getCachedBinding } from '~~/server/utils/email'
 
 const DEFAULT_SCOPES = [
   'offline_access',
@@ -38,6 +39,32 @@ type CreateClientOptions = {
   tokenSet?: XeroTokenSet
   state?: string
   event?: H3Event
+}
+
+function getCfBinding(event: H3Event | undefined, key: string): string | undefined {
+  if (event) {
+    try {
+      const value = (event.context as any).cloudflare?.env?.[key]
+      if (typeof value === 'string') return value
+    } catch {
+      // Fall through to cached/runtime fallbacks.
+    }
+  }
+  return getCachedBinding(key)
+}
+
+function resolveXeroOAuthConfig(event?: H3Event) {
+  const config = useRuntimeConfig()
+  const runtimeXeroClientId = config.xeroClientId as string | undefined
+  const runtimeXeroClientSecret = config.xeroClientSecret as string | undefined
+  const runtimeXeroRedirectUri = config.xeroRedirectUri as string | undefined
+
+  return {
+    clientId: getCfBinding(event, 'XERO_CLIENT_ID') || runtimeXeroClientId || process.env.XERO_CLIENT_ID || '',
+    clientSecret: getCfBinding(event, 'XERO_CLIENT_SECRET') || runtimeXeroClientSecret || process.env.XERO_CLIENT_SECRET || '',
+    xeroRedirectUri: getCfBinding(event, 'XERO_REDIRECT_URI') || runtimeXeroRedirectUri || process.env.XERO_REDIRECT_URI || '/api/xero/callback',
+    httpTimeout: Number(config.xeroHttpTimeout ?? process.env.XERO_HTTP_TIMEOUT ?? 15000),
+  }
 }
 
 /**
@@ -90,8 +117,8 @@ function resolveRedirectUri(config: any, event?: H3Event): string {
  * Replaces XeroClient.buildConsentUrl() which uses openid-client (Node.js HTTP).
  */
 export async function buildXeroConsentUrl(options: { state: string; event?: H3Event }): Promise<string> {
-  const config = useRuntimeConfig()
-  const clientId = config.xeroClientId as string
+  const config = resolveXeroOAuthConfig(options.event)
+  const clientId = config.clientId
   if (!clientId) {
     throw createError({ statusCode: 500, statusMessage: 'Xero OAuth not configured' })
   }
@@ -118,9 +145,9 @@ export async function exchangeXeroCode(options: {
   code: string
   event: H3Event
 }): Promise<XeroTokenSet> {
-  const config = useRuntimeConfig()
-  const clientId = config.xeroClientId as string
-  const clientSecret = config.xeroClientSecret as string
+  const config = resolveXeroOAuthConfig(options.event)
+  const clientId = config.clientId
+  const clientSecret = config.clientSecret
   const redirectUri = resolveRedirectUri(config, options.event)
   const metadata = await fetchOidcMetadata()
 
@@ -166,9 +193,9 @@ export async function refreshXeroToken(options: {
   refreshToken: string
   event?: H3Event
 }): Promise<XeroTokenSet> {
-  const config = useRuntimeConfig()
-  const clientId = config.xeroClientId as string
-  const clientSecret = config.xeroClientSecret as string
+  const config = resolveXeroOAuthConfig(options.event)
+  const clientId = config.clientId
+  const clientSecret = config.clientSecret
   const metadata = await fetchOidcMetadata()
 
   const response = await fetch(metadata.token_endpoint, {
@@ -331,11 +358,11 @@ export async function fetchXeroTenants(accessToken: string): Promise<Array<{ ten
  * The accountingApi uses axios internally which works on CF Workers.
  */
 export async function createXeroClient(options: CreateClientOptions = {}) {
-  const config = useRuntimeConfig()
-  const clientId = config.xeroClientId
-  const clientSecret = config.xeroClientSecret
+  const config = resolveXeroOAuthConfig(options.event)
+  const clientId = config.clientId
+  const clientSecret = config.clientSecret
   const redirectUri = resolveRedirectUri(config, options.event)
-  const httpTimeout = Number(config.xeroHttpTimeout ?? 15000)
+  const httpTimeout = config.httpTimeout
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw createError({ statusCode: 500, statusMessage: 'Xero OAuth not configured' })

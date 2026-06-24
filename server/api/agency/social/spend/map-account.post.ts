@@ -3,7 +3,9 @@
 // the client) AND backfills media_spend.client_id for the account's existing
 // rows — so the mapping takes effect immediately without a full re-sync.
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne, execute } from '~~/server/utils/db'
+import { queryOne, queryRows, execute } from '~~/server/utils/db'
+import { getSelectedTenant } from '~~/server/utils/session'
+import { invalidateSpendPeriodCaches } from '~~/server/utils/socialSpendCache'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -20,6 +22,11 @@ export default eventHandler(async (event) => {
     [connectionId]
   )
   if (!conn) throw createError({ statusCode: 404, statusMessage: 'Connection not found' })
+  const tenantId = await getSelectedTenant(event)
+  const affectedPeriods = await queryRows<{ period: string; platform: string }>(
+    `SELECT DISTINCT period, platform FROM media_spend WHERE connection_id = $1`,
+    [connectionId]
+  )
 
   // Account-level mapping has no campaign scope.
   const findMapSql = `SELECT id FROM ad_account_client_map
@@ -31,7 +38,9 @@ export default eventHandler(async (event) => {
     // Unmap: drop the account mapping and clear client_id on its spend rows.
     await execute(`DELETE FROM ad_account_client_map WHERE connection_id = $1
        AND COALESCE(campaign_id, '') = '' AND COALESCE(campaign_name_pattern, '') = ''`, [connectionId])
+    await execute(`UPDATE social_connections SET client_id = NULL, updated_at = NOW() WHERE id = $1`, [connectionId])
     const cleared = await execute(`UPDATE media_spend SET client_id = NULL WHERE connection_id = $1`, [connectionId])
+    await Promise.all(affectedPeriods.map(row => invalidateSpendPeriodCaches(event, { ...row, tenantId })))
     return { ok: true, clientId: null, cleared }
   }
 
@@ -56,10 +65,15 @@ export default eventHandler(async (event) => {
   }
 
   // Backfill so the mapping is effective immediately (no re-sync needed).
+  await execute(
+    `UPDATE social_connections SET client_id = $1, updated_at = NOW() WHERE id = $2`,
+    [client.id, connectionId]
+  )
   const backfilled = await execute(
     `UPDATE media_spend SET client_id = $1 WHERE connection_id = $2`,
     [client.id, connectionId]
   )
+  await Promise.all(affectedPeriods.map(row => invalidateSpendPeriodCaches(event, { ...row, tenantId })))
 
   return { ok: true, clientId: client.id, backfilled }
 })

@@ -483,7 +483,7 @@ const totalColSpan = computed(() => socialSpendColumnCount({
       <thead>
         <tr class="border-b border-default text-left">
           <th class="py-2 px-3 font-medium text-muted cursor-pointer w-80 min-w-80 max-w-80" @click="toggleSort('clientName')">
-            Client
+            Client / Account
             <UIcon v-if="sortKey === 'clientName'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
           </th>
           <th class="py-2 px-3 font-medium text-muted">Platform</th>
