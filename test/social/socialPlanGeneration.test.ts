@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parsePlanDrafts, spreadSchedule } from '../../app/utils/socialPlanGeneration'
+import { parsePlanDrafts, spreadSchedule } from '~~/server/utils/socialPublishing/planGeneration'
 
 describe('parsePlanDrafts', () => {
   it('parses a clean JSON array of drafts', () => {
