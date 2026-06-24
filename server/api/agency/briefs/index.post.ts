@@ -6,6 +6,7 @@ import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { getAuthUser } from '~~/server/utils/auth'
 import { notifyBriefSubmitted, notifyBriefAssigned } from '~~/server/utils/briefNotifications'
 import { runBriefGatekeeper } from '~~/server/utils/automation/briefGatekeeperRunner'
+import { normalizeBriefPriority } from '~~/server/utils/briefPriority'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -141,7 +142,7 @@ export default defineEventHandler(async (event) => {
       projectId || null,
       actualDepartmentId,
       isDraft ? 'draft' : 'submitted',
-      priority || template.default_priority || 'medium',
+      normalizeBriefPriority(priority, template.default_priority),
       assignedTo,
       assignedTo ? new Date().toISOString() : null,
       requestedDeadline || null,
