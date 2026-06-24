@@ -159,6 +159,7 @@ const categories = [
     iconColor: 'text-sky-600',
     features: [
       { title: 'Content Calendar', slug: 'social-calendar', icon: 'i-lucide-calendar-days', description: 'A single calendar hub for every organic post — colour-coded by status, click any day to compose.' },
+      { title: 'Campaign Planner & AI Calendar', slug: 'social-planner', icon: 'i-lucide-folder-kanban', description: 'Group posts into campaigns on a production-pipeline board, then let AI draft a whole week of content from a brief — every draft editable, nothing publishes without you.' },
       { title: 'Multi-Network Composer', slug: 'social-composer', icon: 'i-lucide-pen-square', description: 'Author once, customise per network. Publish to Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business with live per-network previews.' },
       { title: 'Scheduling & Queue', slug: 'social-scheduling', icon: 'i-lucide-calendar-clock', description: 'Publish now, schedule for later, or drop into recurring optimal posting slots — dispatched reliably with idempotent, partial-success-aware publishing.' },
       { title: 'Approvals', slug: 'social-approvals', icon: 'i-lucide-clipboard-check', description: 'Request → approve/reject workflow with notifications, so nothing goes out without sign-off.' },

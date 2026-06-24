@@ -355,6 +355,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'social-planner': {
+    title: 'Campaign Planner & AI Content Calendar',
+    slug: 'social-planner',
+    icon: 'i-lucide-folder-kanban',
+    category: 'Social Publishing',
+    categoryIcon: 'i-lucide-share-2',
+    categoryIconBg: 'bg-sky-50',
+    categoryIconColor: 'text-sky-600',
+    description: 'Plan a client\'s organic social as campaigns on a production-pipeline board, and let AI draft a whole week of content from a brief — every draft reviewed before anything is scheduled.',
+    details: [
+      {
+        title: 'A Production Pipeline, Not Just a Calendar',
+        content: 'See every post as a card on a board whose columns are the real stages of your workflow — Draft, Needs approval, Scheduled, Published. Drag a card across lanes to move it through the pipeline; failed posts surface with an attention flag so nothing slips. It is the operational view the calendar and queue can\'t show: at a glance, what needs your attention right now.'
+      },
+      {
+        title: 'Campaigns as First-Class Plans',
+        content: 'Group posts into campaigns — a launch, a promotion, an always-on theme — each with its own colour, date window, brief, and goal. Flip on "Group by campaign" to see the board as swimlanes with live rollups (12 posts · 4 scheduled · goal 20), so you always know how a launch is tracking. Campaigns are the connective tissue across Compose, the Calendar, and the Queue.'
+      },
+      {
+        title: 'AI Drafts a Week in One Click',
+        content: 'Give the AI a brief, a campaign, a date range, a tone, and your networks, and it returns a grid of draft posts with per-network variants — the differentiator over reused, one-size-fits-all captions. Edit any draft inline, regenerate the ones that miss, discard the rest. Then add them to the board in a single click.'
+      },
+      {
+        title: 'Safe by Design',
+        content: 'AI output always lands as drafts in the review lane — nothing schedules or publishes without an explicit human action. The board is the safety gate. Built on the same composer, scheduling, and approval engine as the rest of the suite, so a planned post flows straight into the workflow your team already knows.'
+      }
+    ]
+  },
   'social-composer': {
     title: 'Multi-Network Composer',
     slug: 'social-composer',
