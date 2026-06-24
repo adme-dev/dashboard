@@ -59,7 +59,7 @@ export function aggregateAdKpis(rows: AdSpendRow[]): AdReportKpis {
   }
 }
 
-export function pctDelta(cur: number, prior: number | null | undefined): number | null {
+export function pctDeltaNullable(cur: number, prior: number | null | undefined): number | null {
   if (prior == null || prior === 0) return null
   return ((cur - prior) / prior) * 100
 }
@@ -88,10 +88,10 @@ export function buildAdReportModel(input: {
     kpis,
     prior,
     deltas: {
-      spend: pctDelta(kpis.spend, prior?.spend),
-      clicks: pctDelta(kpis.clicks, prior?.clicks),
-      conversions: pctDelta(kpis.conversions, prior?.conversions),
-      cpa: pctDelta(kpis.cpa, prior?.cpa),
+      spend: pctDeltaNullable(kpis.spend, prior?.spend),
+      clicks: pctDeltaNullable(kpis.clicks, prior?.clicks),
+      conversions: pctDeltaNullable(kpis.conversions, prior?.conversions),
+      cpa: pctDeltaNullable(kpis.cpa, prior?.cpa),
     },
     topCampaigns,
   }

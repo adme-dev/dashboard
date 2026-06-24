@@ -133,7 +133,7 @@ export interface OverviewInput {
   memory: { total: number, users: number }
 }
 
-export function buildOverview(input: OverviewInput) {
+export function buildCommandCenterOverview(input: OverviewInput) {
   return {
     proposals: input.proposals.map(mapProposal),
     openProposalCount: input.proposals.length,

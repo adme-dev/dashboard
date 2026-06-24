@@ -11,7 +11,7 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { raiseEscalation } from '~~/server/utils/automation/escalationsStore'
 import { notifyEscalationApprovers } from '~~/server/utils/automation/notifyEscalation'
-import { classifyTransition, lifecycleTransitionToEscalation, filterAlreadyPending } from '~~/server/utils/automation/lifecycle'
+import { classifyTransition, lifecycleTransitionToEscalation, filterAlreadyPendingTransitions } from '~~/server/utils/automation/lifecycle'
 
 /**
  * Kill switch for the lifecycle guard. OFF by default. The guard is wired live
@@ -81,7 +81,7 @@ export async function evaluateLifecycleTransition(
     const pending = await queryRows<{ detail: Record<string, any> }>(
       `SELECT detail FROM automation_escalations WHERE capability = 'lifecycle_gate' AND status = 'pending'`
     )
-    const fresh = filterAlreadyPending([candidate], pending.map(p => p.detail ?? {}))
+    const fresh = filterAlreadyPendingTransitions([candidate], pending.map(p => p.detail ?? {}))
     const top = fresh[0]
     if (!top) return { evaluated: 1, raised: 0, skipped: 1 }
 

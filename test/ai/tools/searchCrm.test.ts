@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { searchCrm, searchCrmTool, type CrmSearchDeps, type CrmSearchHit } from '~~/server/utils/ai/tools/searchCrm'
+import { searchCrm, searchCrmTool, type CrmSearchDeps, type AiCrmSearchHit } from '~~/server/utils/ai/tools/searchCrm'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 const ctx: ToolContext = { userId: 'u1', userRole: 'owner', event: {} as any }
 const found = { resolveClient: vi.fn().mockResolvedValue({ id: 'c1', name: 'Acme' }) }
-const hits = (n: number): CrmSearchHit[] =>
+const hits = (n: number): AiCrmSearchHit[] =>
   Array.from({ length: n }, (_, i) => ({ type: 'person', id: `p${i}`, title: `Person ${i}`, subtitle: `note ${i}`, rank: 1 }))
 
 describe('search_crm', () => {

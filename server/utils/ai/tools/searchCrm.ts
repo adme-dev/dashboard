@@ -10,10 +10,10 @@ const params = z.object({
 })
 type Args = z.infer<typeof params>
 
-export type CrmSearchHit = { type: string, id: string, title: string, subtitle: string | null, rank?: number }
+export type AiCrmSearchHit = { type: string, id: string, title: string, subtitle: string | null, rank?: number }
 export type CrmSearchDeps = {
   resolveClient: ResolveClient
-  search: (clientId: string, q: string, limit: number, ctx: ToolContext) => Promise<{ results: CrmSearchHit[] }>
+  search: (clientId: string, q: string, limit: number, ctx: ToolContext) => Promise<{ results: AiCrmSearchHit[] }>
 }
 
 const defaultDeps: CrmSearchDeps = {

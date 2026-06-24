@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  mapProposal, mapAuditRow, payloadSummary, summarizeUsage, auditByTool, buildOverview, mapDraft,
+  mapProposal, mapAuditRow, payloadSummary, summarizeUsage, auditByTool, buildCommandCenterOverview, mapDraft,
   type ProposalRow, type AuditRow,
 } from '~~/server/utils/ai/commandCenter'
 
@@ -78,9 +78,9 @@ describe('mapDraft', () => {
   })
 })
 
-describe('buildOverview', () => {
+describe('buildCommandCenterOverview', () => {
   it('assembles proposals + audit + usage + memory into one payload', () => {
-    const o = buildOverview({
+    const o = buildCommandCenterOverview({
       proposals: [proposal()],
       audit: [audit()],
       usage: { turns: 1, costUsd: 0.001, tokens: 15 },
