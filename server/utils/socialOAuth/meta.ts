@@ -110,8 +110,17 @@ export async function subscribePageWebhook(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const url = `${GRAPH}/${pageId}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`
-    await graphJson(f, url, { method: 'POST' })
-    return { ok: true }
+    // Cap the call: webhook subscription is non-critical to the connection, and a
+    // slow/hanging Graph response must not stall the /complete request into a 524.
+    // On timeout we report ok:false; the caller persists webhook_subscribed=false
+    // and the subscription can be retried later.
+    const result = await Promise.race([
+      graphJson(f, url, { method: 'POST' }).then(() => ({ ok: true as const })),
+      new Promise<{ ok: false; error: string }>(resolve =>
+        setTimeout(() => resolve({ ok: false, error: 'webhook subscribe timed out' }), 15_000)
+      ),
+    ])
+    return result
   } catch (e: any) {
     return { ok: false, error: String(e?.message ?? e) }
   }
