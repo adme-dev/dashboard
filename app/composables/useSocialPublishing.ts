@@ -45,11 +45,20 @@ export function useSocialPublishing() {
   const createSlot = (body: Record<string, any>) =>
     $fetch<SocialSlot>(`${base}/slots`, { method: 'POST', body })
 
+  const updateSlot = (id: string, body: Record<string, any>) =>
+    $fetch<SocialSlot>(`${base}/slots/${id}`, { method: 'PATCH', body })
+
+  const deleteSlot = (id: string) =>
+    $fetch<{ ok: true }>(`${base}/slots/${id}`, { method: 'DELETE' })
+
   const getQueue = (clientId: string) =>
     $fetch<SocialPost[]>(`${base}/queue`, { query: { clientId } })
 
   const reorderQueue = (clientId: string, orderedIds: string[]) =>
     $fetch(`${base}/queue/reorder`, { method: 'POST', body: { clientId, orderedIds } })
+
+  const fillQueueFromDrafts = (clientId: string, postIds?: string[]) =>
+    $fetch<{ count: number }>(`${base}/queue/fill`, { method: 'POST', body: { clientId, postIds } })
 
   const getCalendar = (clientId: string, from: string, to: string) =>
     $fetch<SocialPost[]>(`${base}/calendar`, { query: { clientId, from, to } })
@@ -64,7 +73,7 @@ export function useSocialPublishing() {
     listPosts, getPost, createPost, updatePost, deletePost, publishNow,
     requestApproval, approve, reject,
     listAccounts, deleteAccount,
-    listSlots, createSlot,
-    getQueue, reorderQueue, getCalendar, getApprovals, getApprovalsBadge,
+    listSlots, createSlot, updateSlot, deleteSlot,
+    getQueue, reorderQueue, fillQueueFromDrafts, getCalendar, getApprovals, getApprovalsBadge,
   }
 }

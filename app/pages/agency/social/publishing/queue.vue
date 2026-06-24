@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
 import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
+import { reorder } from '~/utils/socialQueue'
 import type { SocialPost } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -12,6 +13,7 @@ const { clientId } = useSocialPublishingClient()
 
 const queue = ref<SocialPost[]>([])
 const loading = ref(false)
+const filling = ref(false)
 
 async function load() {
   if (!clientId.value) return
@@ -20,17 +22,64 @@ async function load() {
 }
 watch(clientId, load, { immediate: true })
 
-async function persist() {
+async function persist(prev: SocialPost[]) {
   if (!clientId.value) return
-  await api.reorderQueue(clientId.value, queue.value.map(p => p.id))
-  toast.add({ title: 'Queue order saved', color: 'success' })
+  try {
+    await api.reorderQueue(clientId.value, queue.value.map(p => p.id))
+    toast.add({ title: 'Queue order saved', color: 'success' })
+  } catch (e: any) {
+    queue.value = prev // rollback to the pre-reorder order
+    toast.add({ title: 'Could not save order', description: e?.data?.statusMessage, color: 'error' })
+  }
 }
 function move(i: number, dir: -1 | 1) {
   const j = i + dir
   if (j < 0 || j >= queue.value.length) return
-  const arr = queue.value
-  ;[arr[i], arr[j]] = [arr[j], arr[i]]
-  persist()
+  const prev = [...queue.value]
+  const next = [...queue.value]
+  ;[next[i], next[j]] = [next[j], next[i]]
+  queue.value = next
+  persist(prev)
+}
+
+// --- Drag-to-reorder (Slice 3) ---
+const dragIndex = ref<number | null>(null)
+const dragOverIndex = ref<number | null>(null)
+function onDragStart(i: number, e: DragEvent) {
+  dragIndex.value = i
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(i))
+  }
+}
+function onDragEnd() {
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
+function onDrop(i: number) {
+  const from = dragIndex.value
+  onDragEnd()
+  if (from === null || from === i) return
+  const prev = [...queue.value]
+  queue.value = reorder(queue.value, from, i)
+  persist(prev)
+}
+
+async function fillFromDrafts() {
+  if (!clientId.value) return
+  filling.value = true
+  try {
+    const { count } = await api.fillQueueFromDrafts(clientId.value)
+    toast.add({
+      title: count ? `Added ${count} draft${count === 1 ? '' : 's'} to the queue` : 'No unqueued drafts to add',
+      color: count ? 'success' : 'neutral',
+    })
+    if (count) await load()
+  } catch (e: any) {
+    toast.add({ title: 'Could not fill from drafts', description: e?.data?.statusMessage, color: 'error' })
+  } finally {
+    filling.value = false
+  }
 }
 </script>
 
@@ -39,6 +88,15 @@ function move(i: number, dir: -1 | 1) {
     title="Queue"
     subtitle="Posts waiting for the next free posting slot. Reorder to set priority."
   >
+    <template #actions>
+      <UButton
+        icon="i-lucide-list-plus" variant="subtle" :loading="filling" :disabled="!clientId"
+        @click="fillFromDrafts"
+      >
+        Fill from drafts
+      </UButton>
+    </template>
+
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <div v-else-if="!queue.length" class="rounded-lg border border-default p-10 text-center text-muted">
       <UIcon name="i-lucide-list" class="size-8 mx-auto mb-2 opacity-50" />
@@ -46,7 +104,20 @@ function move(i: number, dir: -1 | 1) {
     </div>
 
     <div v-else class="space-y-2">
-      <div v-for="(p, i) in queue" :key="p.id" class="flex items-center gap-3 rounded-lg border border-default p-3">
+      <div
+        v-for="(p, i) in queue" :key="p.id"
+        class="flex items-center gap-3 rounded-lg border border-default p-3 transition-colors"
+        :class="[
+          dragOverIndex === i && dragIndex !== i ? 'border-primary bg-primary/5' : '',
+          dragIndex === i ? 'opacity-50' : '',
+        ]"
+        draggable="true"
+        @dragstart="onDragStart(i, $event)"
+        @dragend="onDragEnd"
+        @dragover.prevent="dragOverIndex = i"
+        @drop.prevent="onDrop(i)"
+      >
+        <UIcon name="i-lucide-grip-vertical" class="size-4 text-muted shrink-0 cursor-grab active:cursor-grabbing" />
         <span class="text-xs text-muted w-6 text-center">{{ i + 1 }}</span>
         <div class="min-w-0 flex-1">
           <p class="text-sm truncate">{{ p.content || '(no copy)' }}</p>
