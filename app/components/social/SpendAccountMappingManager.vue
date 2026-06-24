@@ -31,6 +31,7 @@ const clientItems = computed(() =>
 
 const search = ref('')
 const savingId = ref<string | null>(null)
+const autoMapping = ref(false)
 
 const accounts = computed(() => accountsData.value?.items ?? [])
 const filtered = computed(() => {
@@ -86,6 +87,29 @@ async function save(account: Account, clientId: string | null) {
     savingId.value = null
   }
 }
+
+async function autoMapHighConfidence() {
+  autoMapping.value = true
+  try {
+    const res = await $fetch<{ mapped: number; backfilled: number }>(
+      '/api/agency/social/spend/auto-map',
+      { method: 'POST' }
+    )
+    toast.add({
+      title: res.mapped > 0 ? 'Auto-map complete' : 'No safe matches found',
+      description: res.mapped > 0
+        ? `${res.mapped} account${res.mapped === 1 ? '' : 's'} mapped, ${res.backfilled} spend row${res.backfilled === 1 ? '' : 's'} updated.`
+        : 'No unmapped spend accounts had a high-confidence client match.',
+      color: res.mapped > 0 ? 'success' : 'neutral',
+    })
+    await refresh()
+    emit('mapped')
+  } catch (e: any) {
+    toast.add({ title: 'Could not auto-map accounts', description: e?.data?.statusMessage ?? e.message, color: 'error' })
+  } finally {
+    autoMapping.value = false
+  }
+}
 </script>
 
 <template>
@@ -97,6 +121,22 @@ async function save(account: Account, clientId: string | null) {
           immediately — powering per-client reporting and budget pacing alerts.
           <span class="text-default font-medium">{{ mappedCount }}/{{ accounts.length }} mapped.</span>
         </p>
+
+        <div class="flex items-center justify-between gap-3 rounded-lg border border-default bg-default/40 px-3 py-2">
+          <div class="min-w-0">
+            <p class="text-sm font-medium">Auto-map high-confidence matches</p>
+            <p class="text-xs text-muted">Matches account names to clients only when the result is unambiguous.</p>
+          </div>
+          <UButton
+            icon="i-lucide-wand-sparkles"
+            size="sm"
+            variant="soft"
+            :loading="autoMapping"
+            @click="autoMapHighConfidence"
+          >
+            Auto-map
+          </UButton>
+        </div>
 
         <UInput v-model="search" icon="i-lucide-search" placeholder="Search accounts or platform…" class="w-full" />
 

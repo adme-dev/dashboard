@@ -589,13 +589,13 @@ const bankDiscrepancy = computed(() => {
           <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
             <div>
               <div class="flex flex-wrap items-center gap-2">
-                <h2 class="text-sm font-semibold">Spend by Client</h2>
+                <h2 class="text-sm font-semibold">Spend by Client / Account</h2>
                 <UBadge v-if="showPacingReview" :color="liveBudgetChangesEnabled ? 'warning' : 'neutral'" variant="soft" size="xs">
                   {{ liveBudgetChangesEnabled ? 'Live budget changes armed' : 'Recommend only' }}
                 </UBadge>
               </div>
               <p class="text-xs text-muted mt-0.5">
-                {{ spendData.items.length }} {{ spendData.items.length === 1 ? 'client' : 'clients' }} this period
+                {{ spendData.items.length }} {{ spendData.items.length === 1 ? 'spend group' : 'spend groups' }} this period
                 <template v-if="showPacingReview"> · AI pacing merged into this view</template>
               </p>
             </div>

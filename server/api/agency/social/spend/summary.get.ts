@@ -2,6 +2,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { cachedFetch } from '~~/server/utils/kv'
 import { getSelectedTenant } from '~~/server/utils/session'
+import { labelSpendSummaryGroup } from '~~/server/utils/socialSpendAccuracy'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -23,7 +24,9 @@ export default eventHandler(async (event) => {
     let sql = `
       SELECT
         ms.platform,
-        COALESCE(ac.name, ms.campaign_name, 'Unknown') as client_name,
+        ac.name as client_name,
+        sc.account_name as account_name,
+        MIN(ms.campaign_name) as sample_campaign_name,
         ac.xero_contact_id as client_ref,
         MAX(cf.account_manager_id::text) as owner_id,
         MAX(tm.name) as owner_name,
@@ -40,6 +43,7 @@ export default eventHandler(async (event) => {
         MAX(ms.commission_rate) as commission_rate
       FROM media_spend ms
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
+      LEFT JOIN social_connections sc ON sc.id = ms.connection_id
       LEFT JOIN customer_finance cf ON cf.contact_id = ac.xero_contact_id AND cf.tenant_id = $2
       LEFT JOIN team_members tm ON tm.id = cf.account_manager_id
       WHERE ms.period = $1
@@ -51,7 +55,7 @@ export default eventHandler(async (event) => {
       params.push(platform)
     }
 
-    sql += ` GROUP BY ms.platform, ac.name, ac.xero_contact_id, ms.campaign_name ORDER BY total_spend DESC`
+    sql += ` GROUP BY ms.platform, ms.client_id, ac.name, ac.xero_contact_id, sc.account_name ORDER BY total_spend DESC`
 
     const rows = await queryRows<any>(sql, params)
 
@@ -63,7 +67,12 @@ export default eventHandler(async (event) => {
 
       return {
         platform: r.platform,
-        clientName: r.client_name,
+        clientName: labelSpendSummaryGroup({
+          clientName: r.client_name || null,
+          accountName: r.account_name || null,
+          campaignName: r.sample_campaign_name || null,
+          platform: r.platform || null,
+        }),
         clientCode: r.client_ref || null,
         owner: r.owner_id ? { id: r.owner_id, name: r.owner_name || null } : null,
         budget,
