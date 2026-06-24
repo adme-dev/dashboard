@@ -47,3 +47,6 @@ server/uploads/
 
 # Visual brainstorming companion
 .superpowers/
+
+# Graphify knowledge-graph output (generated locally; not source)
+graphify-out/
