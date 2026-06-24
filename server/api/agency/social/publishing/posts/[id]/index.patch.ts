@@ -22,6 +22,9 @@ const FIELDS: Record<string, { col: string; json?: boolean }> = {
   timezone: { col: 'timezone' },
   status: { col: 'status' },
   queuePosition: { col: 'queue_position' },
+  campaignId: { col: 'campaign_id' },
+  assignedTo: { col: 'assigned_to' },
+  dueAt: { col: 'due_at' },
   metadata: { col: 'metadata', json: true },
 }
 

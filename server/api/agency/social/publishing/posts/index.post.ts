@@ -14,8 +14,9 @@ export default defineEventHandler(async (event) => {
   const row = await queryOne(
     `INSERT INTO social_posts (
        client_id, created_by, content, media_urls, link_url, hashtags, first_comment,
-       platforms, account_ids, platform_overrides, tags, scheduled_at, timezone, status, metadata
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       platforms, account_ids, platform_overrides, tags, scheduled_at, timezone, status, metadata,
+       campaign_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING *`,
     [
       b.clientId,
@@ -33,6 +34,7 @@ export default defineEventHandler(async (event) => {
       b.timezone ?? 'Australia/Sydney',
       b.status ?? 'draft',
       JSON.stringify(b.metadata ?? {}),
+      b.campaignId ?? null,
     ],
   )
   return row
