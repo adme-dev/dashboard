@@ -107,7 +107,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="p-6 max-w-4xl mx-auto">
+  <div class="p-6 h-full overflow-y-auto">
     <div class="flex items-center justify-between gap-4 mb-6">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">Connected accounts</h1>
