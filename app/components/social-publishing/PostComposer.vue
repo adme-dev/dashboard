@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { CalendarDate, CalendarDateTime, parseDate, toZoned, type DateValue } from '@internationalized/date'
+import type { DateValue } from '@internationalized/date'
+import { isoToScheduleParts, partsToIso } from '~/utils/socialSchedule'
 import type { SocialAccount, SocialPublishPlatform } from '~/types'
 import { syncComposerAccountIds, useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
 
@@ -167,44 +168,33 @@ async function generateImage() {
   }
 }
 
-// schedule date bridge (ISO <-> CalendarDate)
-function toCalendarDate(iso: string | null): DateValue | null {
-  if (!iso) return null
-  try { return parseDate(iso.slice(0, 10)) } catch { return null }
-}
 // Half-hour time options (HH:MM)
 const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) =>
   `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`)
 
-// Derive the initial time-of-day (in the post's timezone) from an existing scheduledAt.
-function timeFromScheduled(): string {
-  if (!state.value.scheduledAt) return '09:00'
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit', minute: '2-digit', hour12: false, timeZone: state.value.timezone,
-    }).format(new Date(state.value.scheduledAt))
-  } catch { return '09:00' }
-}
+// The post timezone backs BOTH directions of the schedule date/time bridge.
+// Deriving the calendar date and the time-of-day in the same zone keeps the
+// ISO <-> controls round-trip a stable fixed point — deriving the date in UTC
+// while the time came from the post tz used to make it drift a day per cycle,
+// looping the watches below forever and blanking compose (see socialSchedule.ts).
+const scheduleTz = () => state.value.timezone || 'Australia/Sydney'
 
-const scheduleDate = ref<DateValue | null>(toCalendarDate(state.value.scheduledAt))
-const scheduleTime = ref(timeFromScheduled())
+const initialParts = isoToScheduleParts(state.value.scheduledAt, scheduleTz())
+const scheduleDate = ref<DateValue | null>(initialParts.date)
+const scheduleTime = ref(initialParts.time)
 
 // Combine the chosen calendar date + time into an instant in the post's timezone.
 function recomputeScheduledAt() {
-  if (!scheduleDate.value) { state.value.scheduledAt = null; return }
-  const d = scheduleDate.value as CalendarDate
-  const [h, m] = scheduleTime.value.split(':').map(Number)
-  const cdt = new CalendarDateTime(d.year, d.month, d.day, h || 0, m || 0)
-  state.value.scheduledAt = toZoned(cdt, state.value.timezone || 'Australia/Sydney').toDate().toISOString()
+  state.value.scheduledAt = partsToIso(scheduleDate.value, scheduleTime.value, scheduleTz())
 }
 watch([scheduleDate, scheduleTime], recomputeScheduledAt)
 
-// Re-sync the local date/time controls if the post is (re)loaded externally (e.g. ?edit).
+// Re-sync the local date/time controls if the post is (re)loaded externally
+// (e.g. ?edit, or a calendar "+" deep-link that pre-sets scheduledAt).
 watch(() => state.value.scheduledAt, (iso) => {
-  const next = toCalendarDate(iso)
-  if (next?.toString() !== scheduleDate.value?.toString()) scheduleDate.value = next
-  const t = timeFromScheduled()
-  if (t !== scheduleTime.value) scheduleTime.value = t
+  const { date, time } = isoToScheduleParts(iso, scheduleTz())
+  if (date?.toString() !== scheduleDate.value?.toString()) scheduleDate.value = date
+  if (time !== scheduleTime.value) scheduleTime.value = time
 })
 
 const dateFmt = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
