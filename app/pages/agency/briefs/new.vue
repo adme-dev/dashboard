@@ -79,7 +79,7 @@ async function handleSubmit(values: Record<string, any>, isDraft: boolean) {
         templateId: templateDataValue.id,
         title: derivedTitle,
         description: values.description || values.description_of_change || values.project_description || '',
-        priority: values.priority || templateDataValue.defaultPriority || 'normal',
+        priority: values.priority || templateDataValue.defaultPriority || 'medium',
         fieldValues: values,
         isDraft
       }

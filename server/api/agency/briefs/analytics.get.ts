@@ -84,7 +84,7 @@ export default defineEventHandler(async (event) => {
       WHERE ${whereClause}
       GROUP BY b.priority
       ORDER BY
-        CASE b.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 END
+        CASE b.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END
     `, params)
 
     // By template

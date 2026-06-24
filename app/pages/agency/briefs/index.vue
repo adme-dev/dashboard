@@ -135,7 +135,7 @@ const getPriorityColor = (priority: string) => {
   switch (priority) {
     case 'urgent': return 'error'
     case 'high': return 'warning'
-    case 'normal': return 'info'
+    case 'medium': return 'info'
     case 'low': return 'neutral'
     default: return 'neutral'
   }

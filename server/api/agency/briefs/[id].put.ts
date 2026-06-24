@@ -10,13 +10,15 @@ import { requireAuth } from '~~/server/utils/auth'
 import { notifyBriefAssigneeChanged } from '~~/server/utils/briefNotifications'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
 import { maybeAcknowledgeBrief } from '~~/server/utils/automation/actionedConfirmationRunner'
+import { normalizeBriefPriority } from '~~/server/utils/briefPriority'
 
 interface UpdateBriefBody {
   title?: string
   clientId?: string | null
   projectId?: string | null
   departmentId?: string | null
-  priority?: 'low' | 'normal' | 'high' | 'urgent'
+  // Free-form on input; coerced to a valid briefs.priority tier server-side.
+  priority?: string
   assignedTo?: string | null
   requestedDeadline?: string | null
   estimatedCompletion?: string | null
@@ -91,14 +93,10 @@ export default defineEventHandler(async (event) => {
     }
 
     if (body.priority !== undefined) {
-      if (!['low', 'normal', 'high', 'urgent'].includes(body.priority)) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: 'Invalid priority level'
-        })
-      }
+      // Coerce to a constraint-valid tier (e.g. the support templates' "critical"
+      // → "urgent") rather than rejecting — consistent with the brief-create paths.
       fields.push(`priority = $${idx}`)
-      values.push(body.priority)
+      values.push(normalizeBriefPriority(body.priority))
       idx++
     }
 
