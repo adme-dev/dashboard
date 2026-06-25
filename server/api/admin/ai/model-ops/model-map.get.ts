@@ -1,5 +1,5 @@
 import { requireRole } from '~~/server/utils/auth'
-import { getAiModelMapSummary, listAiModelMap } from '~~/server/utils/ai/modelRegistry'
+import { listAiModelAssignments } from '~~/server/utils/ai/modelAssignments'
 
 const ORCHESTRATOR_READ_TOOL_COUNT = 5
 
@@ -85,10 +85,11 @@ function aiConfigReadiness() {
 export default eventHandler(async (event) => {
   await requireRole(event, ['admin', 'owner'])
 
-  const rows = listAiModelMap()
+  const { rows, summary, assignments } = await listAiModelAssignments()
   return {
     rows,
-    summary: getAiModelMapSummary(rows),
+    summary,
     config: aiConfigReadiness(),
+    assignments,
   }
 })

@@ -11,6 +11,7 @@ testGlobal.eventHandler = fn => fn
 testGlobal.defineEventHandler = fn => fn
 testGlobal.getHeader = (event, name) => event.headers?.[name.toLowerCase()]
 testGlobal.readBody = async event => event.body ?? {}
+;(globalThis as any).createError = (input: any) => input
 
 const mockRequireRole = vi.fn()
 const mockQueryRows = vi.fn()
@@ -51,6 +52,12 @@ const { default: agentRunsHandler } = await import(
 const { default: orchestratorCheckHandler } = await import(
   '../../../../server/api/admin/ai/model-ops/orchestrator-check.post'
 )
+const { default: assignmentPatchHandler } = await import(
+  '../../../../server/api/admin/ai/model-ops/assignments/[featureKey].patch'
+)
+const { default: assignmentDeleteHandler } = await import(
+  '../../../../server/api/admin/ai/model-ops/assignments/[featureKey].delete'
+)
 
 describe('GET /api/admin/ai/model-ops/model-map', () => {
   const oldEnv = { ...process.env }
@@ -60,6 +67,7 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
     mockRequireRole.mockReset()
     mockQueryRows.mockReset()
     mockRequireRole.mockResolvedValue({ id: 'user-1', role: 'admin' })
+    mockQueryRows.mockResolvedValue([])
   })
 
   it('requires admin access and returns the static model map', async () => {
@@ -77,6 +85,12 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
     expect(Array.isArray(result.rows)).toBe(true)
     expect(result.rows.some((row: any) => row.featureKey === 'agency_ai_tool_loop')).toBe(true)
     expect(result.summary.totalRows).toBe(result.rows.length)
+    expect(result.summary.overrideCount).toBe(0)
+    expect(result.assignments).toMatchObject({
+      available: true,
+      reason: null,
+    })
+    expect(result.assignments.catalog.length).toBeGreaterThan(0)
     expect(result.config.gateway).toMatchObject({
       configured: true,
       host: 'gateway.ai.cloudflare.com',
@@ -110,6 +124,107 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
       internalApiKeyConfigured: false,
       manualCheckReady: false,
     })
+  })
+
+  it('merges admin assignment overrides into the model map', async () => {
+    mockQueryRows.mockResolvedValueOnce([{
+      feature_key: 'social_spend_ai_analysis',
+      provider: 'anthropic',
+      model_id: 'claude-sonnet-4-6',
+      fallback_model_id: 'llama-3.3-70b-versatile',
+      notes: 'Use stronger reasoning for pacing review brief.',
+      updated_by: 'b4a0a130-48da-444b-8fdc-d91db8923318',
+      updated_at: '2026-06-25T01:00:00.000Z',
+      created_at: '2026-06-25T00:00:00.000Z',
+    }])
+
+    const result = await modelMapHandler({})
+    const row = result.rows.find((item: any) => item.featureKey === 'social_spend_ai_analysis')
+
+    expect(row).toMatchObject({
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-6',
+      fallback: 'llama-3.3-70b-versatile',
+      defaultProvider: 'groq',
+      assignmentSource: 'override',
+      assignmentNotes: 'Use stronger reasoning for pacing review brief.',
+    })
+    expect(result.summary.overrideCount).toBe(1)
+  })
+})
+
+describe('PATCH /api/admin/ai/model-ops/assignments/:featureKey', () => {
+  beforeEach(() => {
+    mockRequireRole.mockReset()
+    mockQueryRows.mockReset()
+    mockExecute.mockReset()
+    mockRequireRole.mockResolvedValue({ id: 'b4a0a130-48da-444b-8fdc-d91db8923318', role: 'admin' })
+    mockQueryRows.mockResolvedValue([])
+    mockExecute.mockResolvedValue(1)
+  })
+
+  it('validates and saves an editable model assignment override', async () => {
+    const result = await assignmentPatchHandler({
+      context: { params: { featureKey: 'social_spend_ai_analysis' } },
+      body: {
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        fallbackModelId: 'llama-3.3-70b-versatile',
+        notes: 'Use stronger reasoning for pacing review brief.',
+      },
+    } as any)
+
+    expect(mockRequireRole).toHaveBeenCalledWith(expect.anything(), ['admin', 'owner'])
+    expect(mockExecute.mock.calls[0]?.[0]).toContain('INSERT INTO ai_model_assignments')
+    expect(mockExecute.mock.calls[0]?.[1]).toEqual([
+      'social_spend_ai_analysis',
+      'anthropic',
+      'claude-sonnet-4-6',
+      'llama-3.3-70b-versatile',
+      'Use stronger reasoning for pacing review brief.',
+      'b4a0a130-48da-444b-8fdc-d91db8923318',
+    ])
+    expect(mockExecute.mock.calls[1]?.[0]).toContain('INSERT INTO ai_model_assignment_audit')
+    expect(result.rows.length).toBeGreaterThan(0)
+  })
+
+  it('rejects duplicate feature keys until they are split into unique rows', async () => {
+    await expect(assignmentPatchHandler({
+      context: { params: { featureKey: 'video_generation_job' } },
+      body: { provider: 'groq', modelId: 'llama-3.3-70b-versatile' },
+    } as any)).rejects.toMatchObject({
+      statusCode: 409,
+    })
+  })
+
+  it('rejects unknown models', async () => {
+    await expect(assignmentPatchHandler({
+      context: { params: { featureKey: 'social_spend_ai_analysis' } },
+      body: { provider: 'groq', modelId: 'made-up-model' },
+    } as any)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Unsupported model ID.',
+    })
+  })
+})
+
+describe('DELETE /api/admin/ai/model-ops/assignments/:featureKey', () => {
+  beforeEach(() => {
+    mockRequireRole.mockReset()
+    mockQueryRows.mockReset()
+    mockExecute.mockReset()
+    mockRequireRole.mockResolvedValue({ id: 'b4a0a130-48da-444b-8fdc-d91db8923318', role: 'owner' })
+    mockQueryRows.mockResolvedValue([])
+    mockExecute.mockResolvedValue(1)
+  })
+
+  it('resets an assignment override and records audit', async () => {
+    await assignmentDeleteHandler({
+      context: { params: { featureKey: 'social_spend_ai_analysis' } },
+    } as any)
+
+    expect(mockExecute.mock.calls[0]?.[0]).toContain('DELETE FROM ai_model_assignments')
+    expect(mockExecute.mock.calls[1]?.[0]).toContain("VALUES ($1, 'reset'")
   })
 })
 

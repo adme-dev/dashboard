@@ -1,4 +1,4 @@
-import { getAiModelMapSummary, listAiModelMap } from '~~/server/utils/ai/modelRegistry'
+import { listAiModelAssignments } from '~~/server/utils/ai/modelAssignments'
 import { execute, queryRows } from '~~/server/utils/db'
 
 type OrchestratorReadToolName =
@@ -277,13 +277,17 @@ export default defineEventHandler(async (event) => {
 
   try {
     if (tool === 'model_ops_model_map') {
-      const rows = listAiModelMap()
+      const { rows, summary, assignments } = await listAiModelAssignments()
       const response = {
         ok: true,
         tool,
         data: {
           rows,
-          summary: getAiModelMapSummary(rows),
+          summary,
+          assignments: {
+            available: assignments.available,
+            reason: assignments.reason,
+          },
         },
       }
       await recordOrchestratorReadRun({ tool, startedAt, status: 'completed' })

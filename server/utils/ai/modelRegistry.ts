@@ -47,6 +47,14 @@ interface ModelCatalogEntry {
   pricing?: AiModelPricing
 }
 
+export interface AiModelCatalogOption {
+  provider: string
+  modelId: string
+  status: AiModelStatus
+  pricing: AiModelPricing | null
+  warnings: string[]
+}
+
 const DEFAULT_AI_LOOP_MODEL = 'groq/openai/gpt-oss-120b'
 const DEFAULT_AI_LOOP_FALLBACK_MODEL = 'groq/openai/gpt-oss-20b'
 
@@ -818,12 +826,12 @@ const FEATURE_SEEDS: FeatureSeed[] = [
   }
 ]
 
-function metadataForModel(modelId: string): ModelCatalogEntry {
+export function metadataForModel(modelId: string): ModelCatalogEntry {
   const normalized = modelId.replace(/^groq\//, '').replace(/^anthropic\//, '')
   return MODEL_CATALOG[modelId] || MODEL_CATALOG[normalized] || { status: 'unknown' }
 }
 
-function buildWarnings(modelId: string, entry: ModelCatalogEntry): string[] {
+export function buildWarnings(modelId: string, entry: ModelCatalogEntry): string[] {
   const warnings: string[] = []
   if (entry.status === 'preview') warnings.push('Preview model')
   if (entry.status === 'deprecated') warnings.push('Deprecated model')
@@ -834,6 +842,30 @@ function buildWarnings(modelId: string, entry: ModelCatalogEntry): string[] {
   if (!hasTokenPricing && !hasUnitPricing) warnings.push('Pricing not yet mapped')
   if (modelId.includes('workersai/') || modelId.startsWith('@cf/')) warnings.push('Workers AI pricing should be validated against neuron billing')
   return warnings
+}
+
+function providerForModel(modelId: string) {
+  if (modelId.startsWith('@cf/')) return 'workers_ai'
+  if (modelId.startsWith('groq/')) return 'groq'
+  if (modelId.startsWith('anthropic/')) return 'anthropic'
+  if (modelId.startsWith('minimax/')) return 'minimax'
+  if (modelId.includes('claude')) return 'anthropic'
+  return 'groq'
+}
+
+export function listAiModelCatalogOptions(): AiModelCatalogOption[] {
+  return Object.keys(MODEL_CATALOG)
+    .map((modelId) => {
+      const meta = metadataForModel(modelId)
+      return {
+        provider: providerForModel(modelId),
+        modelId,
+        status: meta.status,
+        pricing: meta.pricing ?? null,
+        warnings: buildWarnings(modelId, meta)
+      }
+    })
+    .sort((a, b) => a.provider.localeCompare(b.provider) || a.modelId.localeCompare(b.modelId))
 }
 
 function toRow(seed: FeatureSeed): AiModelMapRow {

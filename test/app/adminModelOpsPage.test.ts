@@ -17,6 +17,9 @@ const modelMapResponse = {
     providers: ['openai', 'groq'],
     highRiskCount: 1,
     warningCount: 2,
+    overrideCount: 0,
+    editableCount: 11,
+    blockedDuplicateCount: 1,
   },
   config: {
     gateway: {
@@ -46,6 +49,26 @@ const modelMapResponse = {
       manualCheckReady: true,
       readToolCount: 5,
     },
+  },
+  assignments: {
+    available: true,
+    reason: null,
+    catalog: [
+      {
+        provider: 'groq',
+        modelId: 'llama-3.3-70b-versatile',
+        status: 'production',
+        pricing: null,
+        warnings: [],
+      },
+      {
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        status: 'production',
+        pricing: null,
+        warnings: [],
+      },
+    ],
   },
 }
 
@@ -179,6 +202,18 @@ const stubs = {
     props: ['name'],
     template: '<i :data-icon="name" />',
   },
+  USelect: {
+    name: 'USelect',
+    props: ['modelValue', 'items', 'disabled'],
+    emits: ['update:modelValue'],
+    template: '<select v-bind="$attrs" :disabled="disabled" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option></select>',
+  },
+  UTextarea: {
+    name: 'UTextarea',
+    props: ['modelValue', 'disabled'],
+    emits: ['update:modelValue'],
+    template: '<textarea v-bind="$attrs" :disabled="disabled" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+  },
 }
 
 function clone<T>(value: T): T {
@@ -266,6 +301,46 @@ describe('Admin AI Model Ops page', () => {
     expect(html).toContain('ai-orchestrator-agent.example.workers.dev')
   })
 
+  it('renders the model assignment brief and editable assignment controls', async () => {
+    const modelMap = clone(modelMapResponse)
+    modelMap.summary.overrideCount = 1
+    modelMap.rows = [{
+      featureKey: 'social_spend_ai_analysis',
+      label: 'Social spend review panel analysis',
+      surface: '/agency/social/spend',
+      owner: 'Growth',
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-6',
+      fallback: 'llama-3.3-70b-versatile',
+      modality: 'text',
+      riskTier: 'high',
+      sourceFile: 'server/api/agency/social/spend/[id]/ai-analysis.post.ts',
+      status: 'production',
+      pricing: null,
+      warnings: [],
+      defaultProvider: 'groq',
+      defaultModelId: 'llama-3.3-70b-versatile',
+      defaultFallback: null,
+      assignedProvider: 'anthropic',
+      assignedModelId: 'claude-sonnet-4-6',
+      assignedFallback: 'llama-3.3-70b-versatile',
+      assignmentSource: 'override',
+      assignmentEditable: true,
+      assignmentNotes: 'Use stronger reasoning for brief.',
+      assignmentUpdatedBy: 'user-1',
+      assignmentUpdatedAt: '2026-06-25T01:00:00.000Z',
+    }]
+
+    const html = await render({ modelMap })
+
+    expect(html).toContain('Model assignment brief')
+    expect(html).toContain('Editable surfaces')
+    expect(html).toContain('Overrides')
+    expect(html).toContain('Override')
+    expect(html).toContain('Default: llama-3.3-70b-versatile')
+    expect(html).toContain('Use stronger reasoning for brief.')
+  })
+
   it('disables the manual read-check action when the internal secret is missing', async () => {
     const modelMap = clone(modelMapResponse)
     modelMap.config.orchestrator.internalApiKeyConfigured = false
@@ -292,6 +367,83 @@ describe('Admin AI Model Ops page', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/admin/ai/model-ops/orchestrator-check', { method: 'POST' })
       expect(host.textContent).toContain('Read-only orchestrator check complete')
       expect(host.textContent).toContain('4/5 tools succeeded')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('saves an edited assignment and updates the page response', async () => {
+    const modelMap = clone(modelMapResponse)
+    modelMap.rows = [{
+      featureKey: 'social_spend_ai_analysis',
+      label: 'Social spend review panel analysis',
+      surface: '/agency/social/spend',
+      owner: 'Growth',
+      provider: 'groq',
+      modelId: 'llama-3.3-70b-versatile',
+      fallback: null,
+      modality: 'text',
+      riskTier: 'high',
+      sourceFile: 'server/api/agency/social/spend/[id]/ai-analysis.post.ts',
+      status: 'production',
+      pricing: null,
+      warnings: [],
+      defaultProvider: 'groq',
+      defaultModelId: 'llama-3.3-70b-versatile',
+      defaultFallback: null,
+      assignedProvider: 'groq',
+      assignedModelId: 'llama-3.3-70b-versatile',
+      assignedFallback: null,
+      assignmentSource: 'default',
+      assignmentEditable: true,
+      assignmentNotes: null,
+      assignmentUpdatedBy: null,
+      assignmentUpdatedAt: null,
+    }]
+    const updated = clone(modelMap)
+    updated.summary.overrideCount = 1
+    updated.rows[0].assignmentSource = 'override'
+    updated.rows[0].provider = 'anthropic'
+    updated.rows[0].modelId = 'claude-sonnet-4-6'
+    updated.rows[0].assignedProvider = 'anthropic'
+    updated.rows[0].assignedModelId = 'claude-sonnet-4-6'
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      rows: updated.rows,
+      summary: updated.summary,
+      assignments: updated.assignments,
+    })
+    const { app, host } = await mountPage({ fetchMock, modelMap })
+
+    try {
+      const selects = host.querySelectorAll('select')
+      ;(selects[0] as HTMLSelectElement).value = 'anthropic'
+      selects[0].dispatchEvent(new Event('change'))
+      await flushAsyncUi()
+      ;(selects[1] as HTMLSelectElement).value = 'claude-sonnet-4-6'
+      selects[1].dispatchEvent(new Event('change'))
+      await flushAsyncUi()
+
+      const buttons = Array.from(host.querySelectorAll('button'))
+      const saveButton = buttons.find(button => button.textContent?.includes('Save'))
+      expect(saveButton?.disabled).toBe(false)
+
+      saveButton?.click()
+      await flushAsyncUi()
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/ai/model-ops/assignments/social_spend_ai_analysis',
+        {
+          method: 'PATCH',
+          body: {
+            provider: 'anthropic',
+            modelId: 'claude-sonnet-4-6',
+            fallbackModelId: null,
+            notes: null,
+          },
+        }
+      )
+      expect(host.textContent).toContain('Updated Social spend review panel analysis.')
     } finally {
       app.unmount()
       host.remove()

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { reactive, watch } from 'vue'
+
 definePageMeta({ middleware: ['role-admin'] })
 
 type ModelMapRow = {
@@ -20,6 +22,17 @@ type ModelMapRow = {
     unitName?: string
   } | null
   warnings: string[]
+  defaultProvider: string
+  defaultModelId: string
+  defaultFallback: string | null
+  assignedProvider: string
+  assignedModelId: string
+  assignedFallback: string | null
+  assignmentSource: 'default' | 'override'
+  assignmentEditable: boolean
+  assignmentNotes: string | null
+  assignmentUpdatedBy: string | null
+  assignmentUpdatedAt: string | null
 }
 
 type ModelMapResponse = {
@@ -29,6 +42,9 @@ type ModelMapResponse = {
     providers: string[]
     highRiskCount: number
     warningCount: number
+    overrideCount: number
+    editableCount: number
+    blockedDuplicateCount: number
   }
   config: {
     gateway: {
@@ -56,6 +72,17 @@ type ModelMapResponse = {
       manualCheckReady: boolean
       readToolCount: number
     }
+  }
+  assignments: {
+    available: boolean
+    reason: string | null
+    catalog: Array<{
+      provider: string
+      modelId: string
+      status: string
+      pricing: ModelMapRow['pricing']
+      warnings: string[]
+    }>
   }
 }
 
@@ -241,6 +268,13 @@ type OrchestratorCheckResponse = {
   }>
 }
 
+type AssignmentDraft = {
+  provider: string
+  modelId: string
+  fallbackModelId: string
+  notes: string
+}
+
 const { data, pending, error, refresh } = await useFetch<ModelMapResponse>('/api/admin/ai/model-ops/model-map')
 const {
   data: invocationData,
@@ -264,6 +298,10 @@ const {
 const orchestratorCheckPending = ref(false)
 const orchestratorCheckError = ref<string | null>(null)
 const orchestratorCheckResult = ref<OrchestratorCheckResponse | null>(null)
+const assignmentDrafts = reactive<Record<string, AssignmentDraft>>({})
+const assignmentSaving = reactive<Record<string, boolean>>({})
+const assignmentError = ref<string | null>(null)
+const assignmentSuccess = ref<string | null>(null)
 
 const orchestratorManualCheckReady = computed(() => Boolean(data.value?.config.orchestrator.manualCheckReady))
 const orchestratorReadCheckDisabled = computed(() => orchestratorCheckPending.value || !orchestratorManualCheckReady.value)
@@ -318,6 +356,26 @@ const ledgerHealthItems = computed(() => {
 const missingTelemetryPreview = computed(() => invocationData.value?.coverage.missingMappedFeatureKeys.slice(0, 8) ?? [])
 
 const configProviderItems = computed(() => data.value?.config.providers ?? [])
+
+const assignmentProviderOptions = computed(() => {
+  const providers = new Set<string>()
+  data.value?.rows.forEach((row) => {
+    providers.add(row.defaultProvider || row.provider)
+    providers.add(row.assignedProvider || row.provider)
+  })
+  data.value?.assignments.catalog.forEach((model) => providers.add(model.provider))
+  return Array.from(providers).filter(Boolean).sort().map((provider) => ({ label: provider, value: provider }))
+})
+
+const assignmentBriefCards = computed(() => {
+  const summary = data.value?.summary
+  return [
+    { label: 'Editable surfaces', value: (summary?.editableCount ?? 0).toLocaleString(), icon: 'i-lucide-sliders-horizontal' },
+    { label: 'Overrides', value: (summary?.overrideCount ?? 0).toLocaleString(), icon: 'i-lucide-git-compare-arrows' },
+    { label: 'Blocked duplicates', value: (summary?.blockedDuplicateCount ?? 0).toLocaleString(), icon: 'i-lucide-copy-x' },
+    { label: 'High-risk surfaces', value: (summary?.highRiskCount ?? 0).toLocaleString(), icon: 'i-lucide-shield-alert' },
+  ]
+})
 
 const graphifyCards = computed(() => {
   const summary = graphifyData.value?.summary
@@ -374,6 +432,58 @@ function durationLabel(value: number) {
   return `${Math.round(value / 60_000)}m`
 }
 
+function hydrateAssignmentDrafts() {
+  for (const row of data.value?.rows ?? []) {
+    const existing = assignmentDrafts[row.featureKey]
+    if (existing && assignmentSaving[row.featureKey]) continue
+    assignmentDrafts[row.featureKey] = {
+      provider: row.assignedProvider || row.provider,
+      modelId: row.assignedModelId || row.modelId,
+      fallbackModelId: row.assignedFallback || '',
+      notes: row.assignmentNotes || '',
+    }
+  }
+}
+
+watch(data, hydrateAssignmentDrafts, { immediate: true })
+
+function modelOptionsFor(row: ModelMapRow) {
+  const draft = assignmentDrafts[row.featureKey]
+  const provider = draft?.provider || row.assignedProvider || row.provider
+  const options = new Map<string, { label: string, value: string }>()
+  for (const model of data.value?.assignments.catalog ?? []) {
+    if (model.provider === provider) options.set(model.modelId, { label: model.modelId, value: model.modelId })
+  }
+  for (const modelId of [row.defaultModelId, row.assignedModelId, row.defaultFallback, row.assignedFallback]) {
+    if (modelId) options.set(modelId, { label: modelId, value: modelId })
+  }
+  return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label))
+}
+
+function fallbackOptionsFor(row: ModelMapRow) {
+  return [{ label: 'No fallback', value: '' }, ...modelOptionsFor(row)]
+}
+
+function assignmentChanged(row: ModelMapRow) {
+  const draft = assignmentDrafts[row.featureKey]
+  if (!draft) return false
+  return draft.provider !== row.assignedProvider
+    || draft.modelId !== row.assignedModelId
+    || (draft.fallbackModelId || null) !== row.assignedFallback
+    || draft.notes.trim() !== (row.assignmentNotes || '')
+}
+
+function applyAssignmentResponse(result: Pick<ModelMapResponse, 'rows' | 'summary' | 'assignments'>) {
+  if (!data.value) return
+  data.value = {
+    ...data.value,
+    rows: result.rows,
+    summary: result.summary,
+    assignments: result.assignments,
+  }
+  hydrateAssignmentDrafts()
+}
+
 function repoName(url: string) {
   const clean = url.replace(/\/+$/, '')
   return clean.split('/').slice(-2).join('/')
@@ -400,6 +510,53 @@ async function runOrchestratorCheck() {
     orchestratorCheckError.value = err?.data?.statusMessage || err?.message || 'Orchestrator check failed.'
   } finally {
     orchestratorCheckPending.value = false
+  }
+}
+
+async function saveAssignment(row: ModelMapRow) {
+  const draft = assignmentDrafts[row.featureKey]
+  if (!draft || !row.assignmentEditable || !data.value?.assignments.available) return
+  assignmentSaving[row.featureKey] = true
+  assignmentError.value = null
+  assignmentSuccess.value = null
+  try {
+    const result = await $fetch<Pick<ModelMapResponse, 'rows' | 'summary' | 'assignments'>>(
+      `/api/admin/ai/model-ops/assignments/${encodeURIComponent(row.featureKey)}`,
+      {
+        method: 'PATCH',
+        body: {
+          provider: draft.provider,
+          modelId: draft.modelId,
+          fallbackModelId: draft.fallbackModelId || null,
+          notes: draft.notes.trim() || null,
+        },
+      }
+    )
+    applyAssignmentResponse(result)
+    assignmentSuccess.value = `Updated ${row.label}.`
+  } catch (err: any) {
+    assignmentError.value = err?.data?.statusMessage || err?.message || 'Model assignment update failed.'
+  } finally {
+    assignmentSaving[row.featureKey] = false
+  }
+}
+
+async function resetAssignment(row: ModelMapRow) {
+  if (!row.assignmentEditable || !data.value?.assignments.available) return
+  assignmentSaving[row.featureKey] = true
+  assignmentError.value = null
+  assignmentSuccess.value = null
+  try {
+    const result = await $fetch<Pick<ModelMapResponse, 'rows' | 'summary' | 'assignments'>>(
+      `/api/admin/ai/model-ops/assignments/${encodeURIComponent(row.featureKey)}`,
+      { method: 'DELETE' }
+    )
+    applyAssignmentResponse(result)
+    assignmentSuccess.value = `Reset ${row.label} to the registry default.`
+  } catch (err: any) {
+    assignmentError.value = err?.data?.statusMessage || err?.message || 'Model assignment reset failed.'
+  } finally {
+    assignmentSaving[row.featureKey] = false
   }
 }
 
@@ -557,6 +714,76 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
         title="Graphify status not active yet"
         :description="graphifyData.reason || 'Configure repository metadata to enable Graphify status.'"
       />
+
+      <UAlert
+        v-if="data && !data.assignments.available"
+        color="warning"
+        variant="soft"
+        icon="i-lucide-database"
+        title="Editable model assignments not active yet"
+        :description="data.assignments.reason || 'Run the model assignment migration to enable admin-managed overrides.'"
+      />
+
+      <UAlert
+        v-if="assignmentError"
+        color="error"
+        variant="soft"
+        icon="i-lucide-triangle-alert"
+        title="Couldn't update model assignment"
+        :description="assignmentError"
+      />
+
+      <UAlert
+        v-if="assignmentSuccess"
+        color="success"
+        variant="soft"
+        icon="i-lucide-circle-check"
+        title="Model assignment updated"
+        :description="assignmentSuccess"
+      />
+
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-sm font-semibold text-highlighted">Model assignment brief</h2>
+              <p class="text-xs text-muted">Admin-managed routing view for stakeholder review; runtime routing remains code-defined until resolver rollout.</p>
+            </div>
+            <UBadge :color="data?.assignments.available ? 'success' : 'warning'" variant="soft">
+              {{ data?.assignments.available ? 'Editable' : 'Read only' }}
+            </UBadge>
+          </div>
+        </template>
+
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div v-for="card in assignmentBriefCards" :key="card.label" class="rounded-md border border-default p-3">
+            <div class="flex items-center gap-2 text-muted">
+              <UIcon :name="card.icon" class="size-4" />
+              <span class="text-[10px] font-semibold uppercase tracking-wider">{{ card.label }}</span>
+            </div>
+            <p class="mt-1.5 text-lg font-semibold text-highlighted">{{ card.value }}</p>
+          </div>
+        </div>
+
+        <div class="mt-3 grid gap-3 text-sm xl:grid-cols-3">
+          <div class="rounded-md border border-default p-3">
+            <p class="font-medium text-default">Current source</p>
+            <p class="mt-1 text-xs text-muted">Defaults come from the code registry; overrides are stored in the admin assignment table with audit entries.</p>
+          </div>
+          <div class="rounded-md border border-default p-3">
+            <p class="font-medium text-default">Orchestrator status</p>
+            <p class="mt-1 text-xs text-muted">
+              {{ data?.config.orchestrator.workerConfigured ? 'Worker URL is configured' : 'Worker URL is missing' }}
+              /
+              {{ data?.config.orchestrator.manualCheckReady ? 'manual checks are ready' : 'manual checks need INTERNAL_API_KEY' }}
+            </p>
+          </div>
+          <div class="rounded-md border border-default p-3">
+            <p class="font-medium text-default">Runtime note</p>
+            <p class="mt-1 text-xs text-muted">This pass governs assignments in admin; runtime callers can adopt this resolver in the next rollout.</p>
+          </div>
+        </div>
+      </UCard>
 
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <UCard v-for="card in invocationCards" :key="card.label" :ui="{ body: 'p-4' }">
@@ -1022,7 +1249,7 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
           <div class="flex items-center justify-between">
             <div>
               <h2 class="text-sm font-semibold text-highlighted">Model map</h2>
-              <p class="text-xs text-muted">Visibility-first inventory before the invocation ledger lands.</p>
+              <p class="text-xs text-muted">Default registry plus admin assignment overrides for the orchestration brief.</p>
             </div>
             <UBadge color="neutral" variant="soft">{{ data?.rows.length ?? 0 }} rows</UBadge>
           </div>
@@ -1039,6 +1266,7 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
                 <th class="pb-2 pr-4">Feature</th>
                 <th class="pb-2 pr-4">Model</th>
                 <th class="pb-2 pr-4">Provider</th>
+                <th class="pb-2 pr-4">Assignment</th>
                 <th class="pb-2 pr-4">Status</th>
                 <th class="pb-2 pr-4">Risk</th>
                 <th class="pb-2 pr-4">Pricing</th>
@@ -1060,10 +1288,93 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
                   <div class="min-w-[220px]">
                     <p class="font-mono text-xs text-default">{{ row.modelId }}</p>
                     <p class="mt-1 text-xs text-muted">{{ row.modality }}</p>
+                    <p v-if="row.assignmentSource === 'override'" class="mt-1 text-xs text-muted">
+                      Default: {{ row.defaultModelId }}
+                    </p>
                   </div>
                 </td>
                 <td class="py-3 pr-4">
                   <span class="font-medium text-default">{{ row.provider }}</span>
+                  <p v-if="row.assignmentSource === 'override'" class="mt-1 text-xs text-muted">Default: {{ row.defaultProvider }}</p>
+                </td>
+                <td class="py-3 pr-4">
+                  <div class="min-w-[320px] space-y-2">
+                    <div class="flex items-center gap-2">
+                      <UBadge :color="row.assignmentSource === 'override' ? 'warning' : 'neutral'" variant="soft" size="sm">
+                        {{ row.assignmentSource === 'override' ? 'Override' : 'Default' }}
+                      </UBadge>
+                      <span v-if="row.assignmentUpdatedAt" class="text-xs text-muted">
+                        Updated {{ dateLabel(row.assignmentUpdatedAt) }}
+                      </span>
+                    </div>
+
+                    <div v-if="row.assignmentEditable && assignmentDrafts[row.featureKey]" class="grid gap-2 md:grid-cols-3">
+                      <USelect
+                        v-model="assignmentDrafts[row.featureKey].provider"
+                        :items="assignmentProviderOptions"
+                        value-key="value"
+                        size="sm"
+                        aria-label="Assigned provider"
+                        :disabled="!data?.assignments.available || assignmentSaving[row.featureKey]"
+                      />
+                      <USelect
+                        v-model="assignmentDrafts[row.featureKey].modelId"
+                        :items="modelOptionsFor(row)"
+                        value-key="value"
+                        size="sm"
+                        aria-label="Assigned model"
+                        :disabled="!data?.assignments.available || assignmentSaving[row.featureKey]"
+                        class="md:col-span-2"
+                      />
+                      <USelect
+                        v-model="assignmentDrafts[row.featureKey].fallbackModelId"
+                        :items="fallbackOptionsFor(row)"
+                        value-key="value"
+                        size="sm"
+                        aria-label="Assigned fallback model"
+                        :disabled="!data?.assignments.available || assignmentSaving[row.featureKey]"
+                        class="md:col-span-3"
+                      />
+                      <UTextarea
+                        v-model="assignmentDrafts[row.featureKey].notes"
+                        :rows="2"
+                        maxlength="500"
+                        placeholder="Assignment note"
+                        aria-label="Assignment note"
+                        :disabled="!data?.assignments.available || assignmentSaving[row.featureKey]"
+                        class="md:col-span-3"
+                      />
+                    </div>
+                    <p v-else class="text-xs text-muted">
+                      Duplicate feature key; split this registry row before enabling direct assignment.
+                    </p>
+
+                    <div class="flex flex-wrap gap-2">
+                      <UButton
+                        icon="i-lucide-save"
+                        color="primary"
+                        variant="soft"
+                        size="sm"
+                        :loading="assignmentSaving[row.featureKey]"
+                        :disabled="!row.assignmentEditable || !data?.assignments.available || !assignmentChanged(row)"
+                        @click="saveAssignment(row)"
+                      >
+                        Save
+                      </UButton>
+                      <UButton
+                        icon="i-lucide-rotate-ccw"
+                        color="neutral"
+                        variant="ghost"
+                        size="sm"
+                        :loading="assignmentSaving[row.featureKey]"
+                        :disabled="!row.assignmentEditable || !data?.assignments.available || row.assignmentSource === 'default'"
+                        @click="resetAssignment(row)"
+                      >
+                        Reset
+                      </UButton>
+                    </div>
+                    <p v-if="row.assignmentNotes" class="text-xs text-muted">{{ row.assignmentNotes }}</p>
+                  </div>
                 </td>
                 <td class="py-3 pr-4">
                   <UBadge :color="statusColor[row.status]" variant="soft" size="sm">

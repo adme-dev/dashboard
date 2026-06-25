@@ -301,6 +301,7 @@ describe('internal AI orchestrator manual-check endpoint', () => {
 
   it('runs the current read-only tool bundle and summarizes results', async () => {
     mockQueryRows
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{
         total_invocations: '12',
         error_count: '2',
