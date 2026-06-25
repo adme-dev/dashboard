@@ -7,6 +7,7 @@ import {
   dbMarkVideoGenerationJobFailed,
   dbMarkVideoGenerationJobRunning,
   dbMarkVideoGenerationJobSucceeded,
+  dbRecordAiInvocation,
 } from './db'
 import type { VideoGenerationMessage } from '../../../server/utils/video-generation/enqueue'
 import type { VideoGenerationJob } from '../../../server/utils/video-generation/types'
@@ -62,6 +63,7 @@ export default {
           markFailed: dbMarkVideoGenerationJobFailed,
           markSucceeded: dbMarkVideoGenerationJobSucceeded,
           createOutputAsset: (job, result) => createOutputAsset(job, result, env),
+          recordInvocation: dbRecordAiInvocation,
           providers: {
             mock: mockVideoGenerationProvider,
             aigateway: makeAiGatewayProvider({

@@ -24,7 +24,7 @@ interface ChannelTotals {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
+  const user = await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
   const body = await readBody(event).catch(() => null)
   const question = typeof body?.question === 'string' ? body.question.trim() : ''
   if (!question) {
@@ -69,6 +69,18 @@ export default defineEventHandler(async (event) => {
         model: GROQ_MODELS.LLAMA_70B,
         temperature: 0.1,
         maxTokens: 600,
+        featureKey: 'agency_analytics_ask',
+        userId: user?.id ?? null,
+        clientId: clientId ?? null,
+        requestId: `${startDate}:${endDate}:${clientId ?? 'agency'}`,
+        metadata: {
+          route: '/api/agency/analytics/ask',
+          scope: clientId ? 'client' : 'agency',
+          startDate,
+          endDate,
+          channelCount: channels.length,
+          questionChars: question.length,
+        },
         systemPrompt:
           'You are a marketing analytics assistant. Answer the question using ONLY the supplied metrics JSON. '
           + 'Cite concrete numbers. CPL/CPA/spend are AUD; conversions and revenue are platform-reported, leads are first-party. '

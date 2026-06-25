@@ -7,6 +7,12 @@ interface Kpi { value: number; deltaPct: number | null }
 interface OverviewKpis {
   posts: Kpi; impressions: Kpi; reach: Kpi; engagements: Kpi; clicks: Kpi; engagementRate: Kpi
 }
+interface SummaryTelemetryOptions {
+  userId?: string | null
+  clientId?: string | null
+  requestId?: string | null
+  source?: 'agency' | 'portal' | 'cron' | 'preview' | string
+}
 
 /** Build the prompt (pure — testable without calling Groq). */
 export function buildSummaryPrompt(clientName: string, periodLabel: string, k: OverviewKpis): string {
@@ -24,10 +30,25 @@ export function buildSummaryPrompt(clientName: string, periodLabel: string, k: O
   ].join('\n')
 }
 
-export async function generateReportSummary(clientName: string, periodLabel: string, k: OverviewKpis): Promise<string | null> {
+export async function generateReportSummary(
+  clientName: string,
+  periodLabel: string,
+  k: OverviewKpis,
+  telemetry: SummaryTelemetryOptions = {}
+): Promise<string | null> {
   try {
     const text = await generateGroqInsight(buildSummaryPrompt(clientName, periodLabel, k), {
       maxTokens: 220,
+      featureKey: 'social_reporting_ai_summary',
+      userId: telemetry.userId ?? null,
+      clientId: telemetry.clientId ?? null,
+      requestId: telemetry.requestId ?? null,
+      metadata: {
+        source: telemetry.source ?? 'unknown',
+        periodLabel,
+        postCount: k.posts.value,
+        hasPriorBaseline: Object.values(k).some(metric => metric.deltaPct != null),
+      },
       systemPrompt: 'You are a social media analyst. Write concise, factual performance summaries for agency clients.',
     })
     const trimmed = (text || '').trim()

@@ -3,6 +3,12 @@ import { MockLanguageModelV3 } from 'ai/test'
 import { runPortalToolLoop, PORTAL_SYSTEM_PREAMBLE } from '~~/server/utils/ai/portalLoop'
 import type { PortalToolContext } from '~~/server/utils/ai/portalTools/portalContext'
 
+const mockRecordAiInvocation = vi.fn()
+
+vi.mock('~~/server/utils/ai/invocationLedger', () => ({
+  recordAiInvocation: (...args: unknown[]) => mockRecordAiInvocation(...args),
+}))
+
 beforeAll(() => vi.stubGlobal('useRuntimeConfig', () => ({})))
 afterAll(() => vi.unstubAllGlobals())
 
@@ -20,6 +26,11 @@ const textModel = (text: string) => new MockLanguageModelV3({
 })
 
 describe('runPortalToolLoop', () => {
+  beforeEach(() => {
+    mockRecordAiInvocation.mockReset()
+    mockRecordAiInvocation.mockResolvedValue(undefined)
+  })
+
   it('refuses to run without a clientScope (tenant isolation)', async () => {
     await expect(runPortalToolLoop({
       ctx: ctx({ clientScope: '' }), messages: [{ role: 'user', content: 'hi' }], seed: 's', model: textModel('x'),
@@ -32,6 +43,12 @@ describe('runPortalToolLoop', () => {
     })
     expect(out.text).toBe('All on track.')
     expect(typeof out.costUsd).toBe('number')
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'portal_ai_tool_loop',
+      modelId: 'injected',
+      userId: 'cu-1',
+      clientId: 'client-aaaa',
+    }))
   })
 
   it('only exposes the portal registry tools to the model (no agency tools)', async () => {
@@ -58,6 +75,10 @@ describe('runPortalToolLoop', () => {
       ctx: ctx(), messages: [{ role: 'user', content: 'hi' }], seed: 's', model: boom, fallbackModel: textModel('from fallback'),
     })
     expect(out.text).toBe('from fallback')
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'portal_ai_tool_loop',
+      fallbackUsed: true,
+    }))
   })
 
   it('the system preamble scopes the assistant to the client', () => {

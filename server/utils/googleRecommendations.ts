@@ -48,6 +48,11 @@ function campaignIdFromResource(name: unknown): string | null {
   return m ? m[1] : null
 }
 
+function campaignIdFromRecommendation(r: any): string | null {
+  return campaignIdFromResource(r.campaign)
+    || campaignIdFromResource(Array.isArray(r.campaigns) ? r.campaigns[0] : null)
+}
+
 function impactSummary(impact: any): string | null {
   const base = Number(impact?.baseMetrics?.impressions)
   const pot = Number(impact?.potentialMetrics?.impressions)
@@ -64,13 +69,13 @@ export function normalizeRecommendations(
   const recommendations = (rows || []).map((row): NormalizedRecommendation => {
     const r = row?.recommendation || {}
     const type = typeof r.type === 'string' ? r.type : 'UNKNOWN'
-    const budget = r.campaignBudgetRecommendation || {}
+    const budget = r.campaignBudgetRecommendation || r.forecastingCampaignBudgetRecommendation || {}
     const currentDailyMajor = microsToMajor(budget.currentBudgetAmountMicros)
     const recommendedDailyMajor = microsToMajor(budget.recommendedBudgetAmountMicros)
     const isBudget = BUDGET_TYPES.has(type) && recommendedDailyMajor != null && recommendedDailyMajor > 0
     return {
       type,
-      campaignId: campaignIdFromResource(r.campaign),
+      campaignId: campaignIdFromRecommendation(r),
       title: TITLES[type] || humanize(type),
       currentDailyMajor,
       recommendedDailyMajor,
@@ -99,11 +104,12 @@ export async function fetchGoogleRecommendations(
   try {
     const recRows = await gaqlQuery(
       customerId, token, developerToken,
-      `SELECT recommendation.type, recommendation.campaign, recommendation.resource_name,
-              recommendation.campaign_budget_recommendation.current_budget_amount_micros,
-              recommendation.campaign_budget_recommendation.recommended_budget_amount_micros,
-              recommendation.impact.base_metrics.impressions,
-              recommendation.impact.potential_metrics.impressions
+      `SELECT recommendation.type,
+              recommendation.resource_name,
+              recommendation.campaigns,
+              recommendation.campaign_budget_recommendation,
+              recommendation.forecasting_campaign_budget_recommendation,
+              recommendation.impact
        FROM recommendation`,
       loginCustomerId,
     )

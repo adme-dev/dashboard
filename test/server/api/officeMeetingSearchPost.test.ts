@@ -107,6 +107,22 @@ describe('POST /api/office/:officeId/meetings/search', () => {
     })
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('JOIN office_meeting_sessions')
     expect(String(mockGenerateGroqInsight.mock.calls[0]?.[0])).toContain('Question: Where did budget come up?')
+    expect(mockGenerateGroqInsight).toHaveBeenCalledWith(
+      expect.stringContaining('Question: Where did budget come up?'),
+      expect.objectContaining({
+        model: 'llama-3.3-70b-versatile',
+        featureKey: 'office_meeting_cross_search',
+        userId: 'user-1',
+        requestId: 'office-1',
+        metadata: {
+          route: 'officeMeetingSearch',
+          officeId: 'office-1',
+          artifactCount: 1,
+          sourceCount: 1,
+          questionChars: 25,
+        },
+      }),
+    )
   })
 
   it('requires office membership', async () => {

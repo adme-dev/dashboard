@@ -13,6 +13,7 @@
 
 import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 
@@ -135,6 +136,23 @@ async function generateAndStoreSummary(opts: {
       model: GROQ_MODELS.LLAMA_70B,
       temperature: 0.2,
       maxTokens: 200,
+      featureKey: 'customer_insights_summary',
+      clientId: opts.tenantId,
+      requestId: opts.contactId,
+      metadata: {
+        route: '/api/customers/:contactId/insights',
+        tenantId: opts.tenantId,
+        contactId: opts.contactId,
+        anomalyCount: opts.anomalyCount,
+        churnRiskBand: opts.insights.churn_risk_band,
+        forecastBasis: opts.insights.forecast_basis,
+        hasAiSummary: Boolean(opts.insights.ai_summary),
+        hasActiveRepeating: Boolean(opts.customer.has_active_repeating),
+        invoiceCount: n(opts.customer.invoice_count),
+        hasOutstanding: dollars(opts.customer.outstanding_cents) > 0,
+        hasOverdue: dollars(opts.customer.overdue_cents) > 0,
+        hasMrr: dollars(opts.customer.mrr_cents) > 0,
+      },
       systemPrompt: 'You are a concise agency CFO assistant. Write a single short paragraph summarising customer accounts for operators reviewing them. Be specific, factual, and no-fluff.',
     })
     const trimmed = text.trim()

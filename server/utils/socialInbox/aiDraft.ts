@@ -51,6 +51,13 @@ export async function generateReplyDraft(ctx: AutomationContext, brandPrompt: st
       temperature: 0.3,
       maxTokens: 300,
       systemPrompt: 'You are a senior social media community manager. You write safe, on-brand, accurate replies and you flag anything sensitive for a human.',
+      featureKey: 'social_inbox_reply_draft',
+      clientId: ctx.clientId ?? null,
+      metadata: {
+        platform: ctx.platform,
+        channelType: ctx.channelType,
+        hasRating: ctx.rating != null,
+      },
     })
     return parseDraftResponse(out)
   } catch {

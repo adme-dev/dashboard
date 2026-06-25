@@ -3,6 +3,8 @@ import { MockLanguageModelV3 } from 'ai/test'
 import { extractLoopOutput, runToolLoop, estimateCostUsd } from '~~/server/utils/ai/toolLoop'
 import * as economics from '~~/server/utils/ai/tools/economics'
 
+const mockRecordAiInvocation = vi.fn()
+
 // Stub fetchClientEconomics so the get_client_profitability handler never touches the DB.
 // Imported back via `economics` so tests can assert the REAL registered handler ran (the loop's
 // registry → toSdkTools → execute path actually called it), not just that the mock emitted a call.
@@ -15,6 +17,10 @@ vi.mock('~~/server/utils/ai/tools/economics', async (importOriginal) => {
     ]),
   }
 })
+
+vi.mock('~~/server/utils/ai/invocationLedger', () => ({
+  recordAiInvocation: (...args: unknown[]) => mockRecordAiInvocation(...args),
+}))
 
 // toolLoop calls useRuntimeConfig() (Nuxt auto-import). Stub it for unit tests; model specs
 // aren't read when a model is injected, so an empty config is enough.
@@ -92,6 +98,11 @@ describe('estimateCostUsd', () => {
 })
 
 describe('runToolLoop (injected mock model)', () => {
+  beforeEach(() => {
+    mockRecordAiInvocation.mockReset()
+    mockRecordAiInvocation.mockResolvedValue(undefined)
+  })
+
   it('returns the model text with no tool calls when the model just answers', async () => {
     const out = await runToolLoop({
       ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: "what's our runway?" }],
@@ -100,6 +111,12 @@ describe('runToolLoop (injected mock model)', () => {
     expect(out.text).toContain('86 days')
     expect(out.toolCalls).toEqual([])
     expect(out.proposedAction).toBeNull()
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'agency_ai_tool_loop',
+      modelId: 'injected',
+      userId: 'u1',
+      status: 'success',
+    }))
   })
 
   it('falls back to the second model when the primary throws', async () => {
@@ -109,6 +126,10 @@ describe('runToolLoop (injected mock model)', () => {
       seed: 'c1', model: badModel, fallbackModel: textModel('Recovered via fallback.'),
     })
     expect(out.text).toContain('fallback')
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      fallbackUsed: true,
+      modelId: 'injected',
+    }))
   })
 })
 

@@ -3,6 +3,7 @@ import type { VideoGenerationProviderResult } from '~~/server/utils/video-genera
 import { uploadFile } from '~~/server/utils/storage'
 import { createGeneratedVideoAsset } from '~~/server/utils/video-generation/createAsset'
 import { markVideoGenerationJobSucceeded } from '~~/server/utils/video-generation/jobs'
+import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 export interface FinalizeDeps {
   fetchImpl: typeof fetch
@@ -13,6 +14,13 @@ export interface FinalizeDeps {
 
 const defaultDeps: FinalizeDeps = { fetchImpl: fetch, uploadFile, createVideoAsset: createGeneratedVideoAsset, markSucceeded: markVideoGenerationJobSucceeded }
 
+function uuidOrNull(value: string | null | undefined): string | null {
+  if (!value) return null
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null
+}
+
 /** Download the provider output, store it in R2, create a video_asset row, and mark the job succeeded.
  *  Throws on download failure so callers (webhook/reconcile) can mark the job failed. */
 export async function finalizeVideoGenerationJob(
@@ -20,6 +28,7 @@ export async function finalizeVideoGenerationJob(
   result: VideoGenerationProviderResult,
   deps: FinalizeDeps = defaultDeps
 ): Promise<VideoGenerationJob> {
+  const startedAt = Date.now()
   if (!result.outputUrl) throw new Error('finalize called without an output url')
   const res = await deps.fetchImpl(result.outputUrl)
   if (!res.ok) throw new Error(`output download failed: ${res.status}`)
@@ -43,7 +52,7 @@ export async function finalizeVideoGenerationJob(
     format: job.aspectRatio,
     durationSec: job.durationSeconds,
   })
-  return deps.markSucceeded({
+  const completed = await deps.markSucceeded({
     id: job.id,
     providerStatus: result.status,
     providerResultUrl: result.outputUrl,
@@ -51,4 +60,27 @@ export async function finalizeVideoGenerationJob(
     outputR2Key: asset.r2Key,
     actualCostCents: result.actualCostCents,
   })
+  await recordAiInvocation({
+    featureKey: 'video_generation_completion',
+    provider: job.provider,
+    modelId: job.modelId,
+    gatewayUsed: job.provider === 'aigateway',
+    userId: job.createdBy,
+    clientId: uuidOrNull(job.tenantId),
+    requestId: job.id,
+    estimatedCostUsd: result.actualCostCents == null ? null : result.actualCostCents / 100,
+    status: 'success',
+    latencyMs: Date.now() - startedAt,
+    metadata: {
+      tenantId: job.tenantId,
+      projectId: job.projectId,
+      jobId: job.id,
+      providerRequestId: job.providerRequestId,
+      providerStatus: result.status,
+      outputAssetId: asset.id,
+      outputR2Key: asset.r2Key,
+      completionPath: 'finalize',
+    },
+  })
+  return completed
 }

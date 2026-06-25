@@ -16,7 +16,7 @@ interface ImageSuggestion {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const body = await readBody(event)
   const { texts, projectName, clientName, purpose } = body as {
@@ -57,6 +57,13 @@ Return ONLY valid JSON array:
       systemPrompt,
       maxTokens: 400,
       temperature: 0.7,
+      featureKey: 'banner_image_suggest',
+      userId: user?.id ?? null,
+      metadata: {
+        route: '/api/agency/banner-studio/ai/image-suggest',
+        providerPath: 'workers_ai',
+        textCount: texts.length,
+      },
     })
     if (aiResult) suggestions = parseResponse(aiResult)
   } catch {
@@ -71,6 +78,14 @@ Return ONLY valid JSON array:
         systemPrompt,
         maxTokens: 400,
         temperature: 0.7,
+        featureKey: 'banner_image_suggest',
+        userId: user?.id ?? null,
+        metadata: {
+          route: '/api/agency/banner-studio/ai/image-suggest',
+          textCount: texts.length,
+          hasProjectName: Boolean(projectName),
+          hasClientName: Boolean(clientName),
+        },
       })
       suggestions = parseResponse(groqResult)
     } catch {

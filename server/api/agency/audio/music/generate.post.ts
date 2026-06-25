@@ -3,6 +3,7 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { guardAudioPrompt, loadBlocklist } from '~~/server/utils/audio/musicGuard'
 import { createMusicAsset, getMusicAssetByIdempotencyKey, requeueFailedMusicAsset } from '~~/server/utils/audio/assets'
 import { getMusicQueue, musicIdempotencyKey, type MusicJobPayload } from '~~/server/utils/audio/musicJob'
+import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 const BodySchema = z.object({
   prompt: z.string().min(2).max(2000),
@@ -87,6 +88,24 @@ export default defineEventHandler(async (event) => {
     idempotencyKey
   }
   await queue.send(payload)
+  await recordAiInvocation({
+    featureKey: 'audio_music_generation',
+    provider: 'workers_ai',
+    modelId: 'minimax/music-2.6',
+    gatewayUsed: true,
+    userId: user.id,
+    clientId: body.clientId ?? null,
+    status: 'success',
+    metadata: {
+      assetId: asset.id,
+      queued: true,
+      format: body.format,
+      channels: body.channels,
+      isInstrumental: body.isInstrumental,
+      hasLyrics: Boolean(body.lyrics),
+      idempotencyKey,
+    },
+  })
 
   setResponseStatus(event, 202)
   return { asset }

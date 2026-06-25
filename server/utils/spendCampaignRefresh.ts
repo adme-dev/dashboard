@@ -1,6 +1,7 @@
 import { queryOne, execute } from '~~/server/utils/db'
 import { getCampaignInsightsById } from '~~/server/utils/metaClient'
 import { resolveGoogleWriteAuth } from '~~/server/utils/googleWriteAuth'
+import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 /**
  * Re-pull ONE campaign's month-to-date core metrics and update its media_spend row.
@@ -59,7 +60,7 @@ export async function refreshSingleCampaignSpend(mediaSpendId: string): Promise<
     }
 
     // Google
-    const config = useRuntimeConfig()
+    const config = resolveGoogleAdsRuntimeConfig()
     const { refreshGoogleToken, listAccessibleCustomers, getCampaignSpendById } = await import('~~/server/utils/googleAdsClient')
     const { accessToken, loginCustomerId } = await resolveGoogleWriteAuth(
       {
@@ -70,9 +71,9 @@ export async function refreshSingleCampaignSpend(mediaSpendId: string): Promise<
         token_expires_at: row.token_expires_at,
       },
       {
-        googleClientId: config.googleClientId as string,
-        googleClientSecret: config.googleClientSecret as string,
-        googleDeveloperToken: config.googleDeveloperToken as string,
+        googleClientId: config.googleClientId,
+        googleClientSecret: config.googleClientSecret,
+        googleDeveloperToken: config.googleDeveloperToken,
         googleAdsLoginCustomerId: (config.googleAdsLoginCustomerId as string) || '',
       },
       {
@@ -88,12 +89,12 @@ export async function refreshSingleCampaignSpend(mediaSpendId: string): Promise<
     )
     let match
     try {
-      match = await getCampaignSpendById(row.account_id, accessToken, config.googleDeveloperToken as string, row.campaign_id, month, year, loginCustomerId)
+      match = await getCampaignSpendById(row.account_id, accessToken, config.googleDeveloperToken, row.campaign_id, month, year, loginCustomerId)
     } catch (err: any) {
       // Directly-owned account under a manager context → retry without the header.
       const status = err?.status || err?.statusCode
       if (status === 403 && loginCustomerId) {
-        match = await getCampaignSpendById(row.account_id, accessToken, config.googleDeveloperToken as string, row.campaign_id, month, year, undefined)
+        match = await getCampaignSpendById(row.account_id, accessToken, config.googleDeveloperToken, row.campaign_id, month, year, undefined)
       } else {
         throw err
       }

@@ -2,6 +2,7 @@ import { requireAuth, requireRole } from '~~/server/utils/auth'
 import { queryOne, execute } from '~~/server/utils/db'
 import { resolveGoogleWriteAuth } from '~~/server/utils/googleWriteAuth'
 import { fetchGoogleRecommendations } from '~~/server/utils/googleRecommendations'
+import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 /**
  * GET /api/agency/social/spend/:id/google-recommendations
@@ -40,15 +41,15 @@ export default eventHandler(async (event) => {
     return { optimizationScore: null, recommendations: [], campaignId: row?.campaign_id ?? null }
   }
 
-  const config = useRuntimeConfig()
+  const config = resolveGoogleAdsRuntimeConfig()
   try {
     const { refreshGoogleToken, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
     const { accessToken, loginCustomerId } = await resolveGoogleWriteAuth(
       { id: row.conn_id, account_id: row.account_id, access_token: row.access_token, refresh_token: row.refresh_token, token_expires_at: row.token_expires_at },
       {
-        googleClientId: config.googleClientId as string,
-        googleClientSecret: config.googleClientSecret as string,
-        googleDeveloperToken: config.googleDeveloperToken as string,
+        googleClientId: config.googleClientId,
+        googleClientSecret: config.googleClientSecret,
+        googleDeveloperToken: config.googleDeveloperToken,
         googleAdsLoginCustomerId: (config.googleAdsLoginCustomerId as string) || '',
       },
       {
@@ -62,7 +63,7 @@ export default eventHandler(async (event) => {
         },
       },
     )
-    const result = await fetchGoogleRecommendations(row.account_id, accessToken, config.googleDeveloperToken as string, loginCustomerId)
+    const result = await fetchGoogleRecommendations(row.account_id, accessToken, config.googleDeveloperToken, loginCustomerId)
     return { ...result, campaignId: row.campaign_id }
   } catch (err: any) {
     return { optimizationScore: null, recommendations: [], campaignId: row.campaign_id, error: (err?.message || 'failed').slice(0, 300) }

@@ -4,6 +4,7 @@
 // via the FFmpeg container → flip audio_assets to done/failed.
 // Kept free of CF-only global types so it's unit-testable under vitest.
 import { queryOne, execute } from './db'
+import { dbRecordAiInvocation } from './db'
 import { renderVariants, type RenderEnv } from './renderVariants'
 
 // MiniMax partner models on Workers AI use the bare `provider/model` id — NOT
@@ -146,9 +147,13 @@ export function estimateAudioDurationSec(bytes: Uint8Array, format: string): num
 }
 
 export async function runMusicJob(job: MusicJobBody, env: MusicWorkerEnv): Promise<void> {
+  const startedAt = Date.now()
+  let modelAttempted = false
+  let modelLatencyMs: number | null = null
+  let durationSec: number | null = null
   // State/idempotency guard. A redelivered message for a done asset no-ops.
-  const row = await queryOne<{ status: string, client_id: string | null, channels: string[] | null, r2_key_master: string | null }>(
-    `SELECT status, client_id, channels, r2_key_master FROM audio_assets WHERE id = $1`,
+  const row = await queryOne<{ status: string, client_id: string | null, created_by: string | null, channels: string[] | null, r2_key_master: string | null }>(
+    `SELECT status, client_id, created_by, channels, r2_key_master FROM audio_assets WHERE id = $1`,
     [job.assetId],
   )
   if (!row) return // asset deleted — nothing to do
@@ -173,14 +178,17 @@ export async function runMusicJob(job: MusicJobBody, env: MusicWorkerEnv): Promi
       }
       if (job.lyrics) inputs.lyrics = job.lyrics
 
+      const modelStartedAt = Date.now()
+      modelAttempted = true
       const result = await env.AI.run(MUSIC_MODEL, inputs)
+      modelLatencyMs = Date.now() - modelStartedAt
       const url = extractAudioUrl(result)
       if (!url) throw new Error('music model returned no audio URL')
 
       const audioRes = await fetch(url)
       if (!audioRes.ok) throw new Error(`fetch generated audio failed: ${audioRes.status}`)
       const bytes = await audioRes.arrayBuffer()
-      const durationSec = estimateAudioDurationSec(new Uint8Array(bytes), ext)
+      durationSec = estimateAudioDurationSec(new Uint8Array(bytes), ext)
 
       masterR2Key = masterKey(row.client_id, job.assetId, ext)
       await env.AUDIO_BUCKET.put(masterR2Key, bytes, {
@@ -216,11 +224,58 @@ export async function runMusicJob(job: MusicJobBody, env: MusicWorkerEnv): Promi
         [job.assetId],
       )
     }
+    if (modelAttempted) {
+      await dbRecordAiInvocation({
+        featureKey: 'audio_music_generation_worker_runtime',
+        provider: 'workers_ai',
+        modelId: MUSIC_MODEL,
+        gatewayUsed: true,
+        userId: row.created_by ?? null,
+        clientId: row.client_id,
+        requestId: job.assetId,
+        status: 'success',
+        latencyMs: modelLatencyMs ?? Date.now() - startedAt,
+        metadata: {
+          assetId: job.assetId,
+          idempotencyKey: job.idempotencyKey,
+          outcome: 'succeeded',
+          generatedMaster: true,
+          format: ext,
+          isInstrumental: job.isInstrumental,
+          hasLyrics: Boolean(job.lyrics),
+          durationSec,
+          totalWorkerLatencyMs: Date.now() - startedAt,
+        },
+      })
+    }
   } catch (err: any) {
     await execute(
       `UPDATE audio_assets SET status = 'failed', error = $2, updated_at = now() WHERE id = $1`,
       [job.assetId, String(err?.message ?? err).slice(0, 500)],
     )
+    if (modelAttempted) {
+      await dbRecordAiInvocation({
+        featureKey: 'audio_music_generation_worker_runtime',
+        provider: 'workers_ai',
+        modelId: MUSIC_MODEL,
+        gatewayUsed: true,
+        userId: row.created_by ?? null,
+        clientId: row.client_id,
+        requestId: job.assetId,
+        status: 'error',
+        errorCode: 'audio_music_worker_failed',
+        latencyMs: modelLatencyMs ?? Date.now() - startedAt,
+        metadata: {
+          assetId: job.assetId,
+          idempotencyKey: job.idempotencyKey,
+          outcome: 'failed',
+          generatedMaster: false,
+          format: ext,
+          errorMessage: String(err?.message ?? err).slice(0, 500),
+          totalWorkerLatencyMs: Date.now() - startedAt,
+        },
+      })
+    }
     throw err // surface to the queue runtime → retry, then DLQ (row stays 'failed')
   }
 }

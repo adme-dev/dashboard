@@ -40,6 +40,18 @@ export default defineEventHandler(async (event) => {
           model: GROQ_MODELS.LLAMA_70B,
           temperature: 0.2,
           maxTokens: 1200,
+          featureKey: 'video_project_ai_assembly',
+          userId: user.id,
+          requestId: projectId,
+          metadata: {
+            route: '/api/agency/video/projects/:id/assemble',
+            projectId,
+            targetFormat: body.targetFormat,
+            usableItemCount: usable.length,
+            bucketItemCount: bucketItems.length,
+            hasSelectedAsset: Boolean(body.selectedAsset),
+            briefChars: body.brief.length,
+          },
           systemPrompt: 'You are a senior video producer assembling a social edit from a fixed asset list. Respond with ONLY the requested JSON.'
         }
       )

@@ -8,7 +8,7 @@ describe('normalizeRecommendations', () => {
     const rows = [{
       recommendation: {
         type: 'CAMPAIGN_BUDGET',
-        campaign: 'customers/999/campaigns/555',
+        campaigns: ['customers/999/campaigns/555'],
         resourceName: 'customers/999/recommendations/abc',
         campaignBudgetRecommendation: {
           currentBudgetAmountMicros: '20000000',
@@ -32,7 +32,7 @@ describe('normalizeRecommendations', () => {
   })
 
   it('treats FORECASTING_CAMPAIGN_BUDGET with a recommended amount as budget_guardrailed', () => {
-    const rows = [{ recommendation: { type: 'FORECASTING_CAMPAIGN_BUDGET', resourceName: 'rn', campaignBudgetRecommendation: { recommendedBudgetAmountMicros: '15000000' } } }]
+    const rows = [{ recommendation: { type: 'FORECASTING_CAMPAIGN_BUDGET', resourceName: 'rn', forecastingCampaignBudgetRecommendation: { recommendedBudgetAmountMicros: '15000000' } } }]
     const r = normalizeRecommendations(rows, { optimizationScore: null, deepLink: DEEP })
     expect(r.recommendations[0].applyability).toBe('budget_guardrailed')
     expect(r.recommendations[0].recommendedDailyMajor).toBe(15)

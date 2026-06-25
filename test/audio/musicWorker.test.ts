@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const queryOne = vi.fn()
 const execute = vi.fn()
+const dbRecordAiInvocation = vi.fn()
 vi.mock('../../workers/audio-jobs/src/db', () => ({
   queryOne: (...a: any[]) => queryOne(...a),
   execute: (...a: any[]) => execute(...a),
+  dbRecordAiInvocation: (...a: any[]) => dbRecordAiInvocation(...a),
   queryRows: vi.fn(),
 }))
 
@@ -43,7 +45,7 @@ function mp3Frames(count: number): Uint8Array {
 }
 
 beforeEach(() => {
-  queryOne.mockReset(); execute.mockReset(); renderVariants.mockReset()
+  queryOne.mockReset(); execute.mockReset(); renderVariants.mockReset(); dbRecordAiInvocation.mockReset()
   vi.unstubAllGlobals()
 })
 
@@ -70,7 +72,7 @@ describe('estimateAudioDurationSec', () => {
 
 describe('runMusicJob', () => {
   it('master only (no channels): generate → R2 → done, no render', async () => {
-    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: 'c1', channels: [], r2_key_master: null })
+    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: 'c1', created_by: 'u1', channels: [], r2_key_master: null })
     const env = fakeEnv({ audio: 'https://oss/track.mp3' })
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => mp3Frames(10).buffer })))
 
@@ -82,10 +84,26 @@ describe('runMusicJob', () => {
     expect(masterUpdate?.[1][2]).toBeCloseTo(10 * 1152 / 44100, 5)
     expect(renderVariants).not.toHaveBeenCalled()
     expect(execute.mock.calls.some(c => /status = 'done'/.test(c[0]) && !/variants/.test(c[0]))).toBe(true)
+    expect(dbRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'audio_music_generation_worker_runtime',
+      provider: 'workers_ai',
+      modelId: 'minimax/music-2.6',
+      gatewayUsed: true,
+      userId: 'u1',
+      clientId: 'c1',
+      requestId: 'asset-1',
+      status: 'success',
+      metadata: expect.objectContaining({
+        assetId: 'asset-1',
+        outcome: 'succeeded',
+        generatedMaster: true,
+        format: 'mp3',
+      }),
+    }))
   })
 
   it('with channels: generate → render variants → done with variants', async () => {
-    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: 'c1', channels: ['tiktok', 'radio'], r2_key_master: null })
+    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: 'c1', created_by: 'u1', channels: ['tiktok', 'radio'], r2_key_master: null })
     renderVariants.mockResolvedValueOnce({ tiktok: 'audio/c1/asset-1/tiktok.mp3', radio: 'audio/c1/asset-1/radio.wav' })
     const env = fakeEnv({ audio: 'https://oss/track.mp3' })
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })))
@@ -100,7 +118,7 @@ describe('runMusicJob', () => {
   })
 
   it('render-only retry: master already exists → skip generation', async () => {
-    queryOne.mockResolvedValueOnce({ status: 'rendering', client_id: 'c1', channels: ['meta'], r2_key_master: 'audio/c1/asset-1/master.mp3' })
+    queryOne.mockResolvedValueOnce({ status: 'rendering', client_id: 'c1', created_by: 'u1', channels: ['meta'], r2_key_master: 'audio/c1/asset-1/master.mp3' })
     renderVariants.mockResolvedValueOnce({ meta: 'audio/c1/asset-1/meta.mp3' })
     const env = fakeEnv({ audio: 'https://oss/track.mp3' })
 
@@ -109,10 +127,11 @@ describe('runMusicJob', () => {
     expect(env.AI.run).not.toHaveBeenCalled() // no re-generation / re-bill
     expect(env.AUDIO_BUCKET.put).not.toHaveBeenCalled()
     expect(renderVariants).toHaveBeenCalledOnce()
+    expect(dbRecordAiInvocation).not.toHaveBeenCalled()
   })
 
   it('idempotency: already-done asset no-ops', async () => {
-    queryOne.mockResolvedValueOnce({ status: 'done', client_id: 'c1', channels: ['meta'], r2_key_master: 'audio/c1/asset-1/master.mp3' })
+    queryOne.mockResolvedValueOnce({ status: 'done', client_id: 'c1', created_by: 'u1', channels: ['meta'], r2_key_master: 'audio/c1/asset-1/master.mp3' })
     const env = fakeEnv({})
     await runMusicJob(JOB, env as any)
     expect(env.AI.run).not.toHaveBeenCalled()
@@ -121,9 +140,19 @@ describe('runMusicJob', () => {
   })
 
   it('marks failed and rethrows when the model returns no url', async () => {
-    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: null, channels: [], r2_key_master: null })
+    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: null, created_by: 'u1', channels: [], r2_key_master: null })
     const env = fakeEnv({ nope: true })
     await expect(runMusicJob(JOB, env as any)).rejects.toThrow(/no audio URL/)
     expect(execute.mock.calls.some(c => /status = 'failed'/.test(c[0]))).toBe(true)
+    expect(dbRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'audio_music_generation_worker_runtime',
+      status: 'error',
+      errorCode: 'audio_music_worker_failed',
+      metadata: expect.objectContaining({
+        assetId: 'asset-1',
+        outcome: 'failed',
+        errorMessage: 'music model returned no audio URL',
+      }),
+    }))
   })
 })

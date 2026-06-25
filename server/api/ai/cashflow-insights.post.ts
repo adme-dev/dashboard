@@ -94,6 +94,24 @@ Keep recommendations specific and actionable. Focus on the most impactful sugges
       model: GROQ_MODELS.LLAMA_8B,
       temperature: 0.3,
       maxTokens: 2000,
+      featureKey: 'cashflow_insights',
+      requestId: `forecast-${body.forecastPeriod}`,
+      metadata: {
+        route: '/api/ai/cashflow-insights',
+        forecastPeriod: body.forecastPeriod,
+        runwayDays: body.runway,
+        shortfallCount: body.shortfallCount,
+        outstandingCount: body.outstandingCount,
+        overdueCount: body.overdueCount,
+        hasScenarios: Boolean(body.scenarios),
+        currentCash: body.currentCash,
+        projectedEndBalance: body.projectedEndBalance,
+        minProjectedBalance: body.minProjectedBalance,
+        maxProjectedBalance: body.maxProjectedBalance,
+        burnRate: body.burnRate,
+        outstandingReceivables: body.outstandingReceivables,
+        overdueReceivables: body.overdueReceivables,
+      },
       systemPrompt: 'You are an expert financial advisor specializing in cash flow management. Provide clear, actionable insights based on financial data. Always respond with valid JSON.'
     })
 

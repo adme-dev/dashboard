@@ -538,7 +538,16 @@ export async function processUserMessage(
             import('~~/server/utils/ai/controller/synthesize'),
           ])
           const cls = await classifyRequest(content, {
-            complete: p => generateGroqInsight(p, { model: GROQ_MODELS.REASONING_20B, temperature: 0.1, maxTokens: 200, systemPrompt: 'Reply with ONLY JSON.' }),
+            complete: p => generateGroqInsight(p, {
+              model: GROQ_MODELS.REASONING_20B,
+              temperature: 0.1,
+              maxTokens: 200,
+              systemPrompt: 'Reply with ONLY JSON.',
+              featureKey: 'agency_ai_l2_classifier',
+              userId,
+              requestId: conversationId,
+              metadata: { route: 'aiChatEngine', conversationId },
+            }),
           })
           const plan = cls.tier === 'L2' ? planSpecialists(cls.domains, userRole) : { personas: [] }
           if (plan.personas.length >= 2) {
@@ -549,6 +558,9 @@ export async function processUserMessage(
                   system: systemPrompt, messages: loopMessages, seed: `${conversationId}:${pk}`, persona: resolvePersona(pk),
                   readOnly: true, // L2 specialists READ only — never persist a write proposal
                   disabledTools: agentConfig?.disabledTools,
+                  featureKey: 'agency_ai_l2_specialist_loop',
+                  requestId: conversationId,
+                  metadata: { specialistPersona: pk, controller: 'l2' },
                 })
                 l2Cost += sub.costUsd ?? 0
                 return { text: sub.text }
@@ -558,7 +570,21 @@ export async function processUserMessage(
             // through to L1 rather than dead-ending on a synthesized "didn't find anything".
             if (results.some(r => r.text.trim())) {
               l2Answer = await synthesizeAnswer(content, results, {
-                complete: p => generateGroqInsight(p, { model: GROQ_MODELS.REASONING_120B, temperature: 0.2, maxTokens: 1200, systemPrompt: 'Combine the specialist findings into one grounded answer; invent nothing.' }),
+                complete: p => generateGroqInsight(p, {
+                  model: GROQ_MODELS.REASONING_120B,
+                  temperature: 0.2,
+                  maxTokens: 1200,
+                  systemPrompt: 'Combine the specialist findings into one grounded answer; invent nothing.',
+                  featureKey: 'agency_ai_l2_synthesis',
+                  userId,
+                  requestId: conversationId,
+                  metadata: {
+                    route: 'aiChatEngine',
+                    conversationId,
+                    domains: cls.domains,
+                    personas: plan.personas,
+                  },
+                }),
               })
               toolTrace = [{ name: 'traffic_controller_l2', args: { domains: cls.domains, packs: plan.personas } }]
             }
@@ -631,6 +657,22 @@ export async function processUserMessage(
         model: selectedModel,
         temperature: 0.3,
         maxTokens: 2000,
+        featureKey: 'agency_ai_single_shot_fallback',
+        userId,
+        requestId: conversationId,
+        metadata: {
+          route: 'aiChatEngine.singleShotFallback',
+          conversationId,
+          selectedModel,
+          intent: contextBundle.intent,
+          persona: activePersona.key,
+          contextSourceCount: contextSources.length,
+          historyCount: history.length,
+          promptChars: fullPrompt.length,
+          usedToolLoop,
+          usedLora,
+          loraAdapterId,
+        },
         systemPrompt,
       })
     } catch (err: any) {

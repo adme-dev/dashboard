@@ -82,6 +82,15 @@ export function pacingSignalRows(source: PacingSignalSource, locale = 'en-AU', t
   const pacingDetail = source.pacingRatio >= 1
     ? `${Math.round((source.pacingRatio - 1) * 100)}% ahead of expected spend`
     : `${Math.round((1 - source.pacingRatio) * 100)}% behind expected spend`
+  const syncedAt = source.syncedAt ? new Date(source.syncedAt) : null
+  const syncedAgeMs = syncedAt ? Date.now() - syncedAt.getTime() : null
+  const staleSyncedAt = syncedAgeMs == null ? false : syncedAgeMs > 24 * 60 * 60 * 1000
+  let syncDetail = 'Sync Meta or Google before applying changes'
+  if (source.syncedAt) {
+    syncDetail = staleSyncedAt
+      ? 'Stale platform data — run a successful sync before applying changes'
+      : 'Fresh platform spend reduces recommendation risk'
+  }
 
   return [
     {
@@ -105,9 +114,9 @@ export function pacingSignalRows(source: PacingSignalSource, locale = 'en-AU', t
       detail: `${formatCurrency(currentDailyBudget, locale)}/day current to ${formatCurrency(source.recommendedDailyBudget, locale)}/day recommended`,
     },
     {
-      label: 'Last synced',
+      label: 'Last successful sync',
       value: source.syncedAt ? formatBudgetHistoryTime(source.syncedAt, locale, timeZone) : 'Not synced',
-      detail: source.syncedAt ? 'Fresh platform spend reduces recommendation risk' : 'Sync Meta or Google before applying changes',
+      detail: syncDetail,
     },
   ]
 }

@@ -57,7 +57,13 @@ export async function generateMeetingSummaryFromTranscript(input: {
       model: GROQ_MODELS.LLAMA_70B,
       temperature: 0.1,
       maxTokens: 1600,
-      systemPrompt: 'You summarize business meetings for an agency operations platform. Be specific, factual, and concise. Do not invent details not present in the transcript.'
+      systemPrompt: 'You summarize business meetings for an agency operations platform. Be specific, factual, and concise. Do not invent details not present in the transcript.',
+      featureKey: 'office_recording_transcription',
+      metadata: {
+        artifact: 'summary',
+        hasContext: Boolean(input.context),
+        transcriptChars: input.transcript.length,
+      },
     }
   ))
 }
@@ -81,7 +87,12 @@ export async function generateMeetingActionItemsFromTranscript(input: {
       model: GROQ_MODELS.LLAMA_70B,
       temperature: 0,
       maxTokens: 1200,
-      systemPrompt: 'You extract meeting action items. Only include actions supported by the transcript. Return bullet points only unless there are no clear actions.'
+      systemPrompt: 'You extract meeting action items. Only include actions supported by the transcript. Return bullet points only unless there are no clear actions.',
+      featureKey: 'office_recording_transcription',
+      metadata: {
+        artifact: 'action_items',
+        transcriptChars: input.transcript.length,
+      },
     }
   ))
 

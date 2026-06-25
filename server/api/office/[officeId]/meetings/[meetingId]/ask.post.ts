@@ -102,6 +102,17 @@ export default defineEventHandler(async (event) => {
       model: GROQ_MODELS.LLAMA_70B,
       temperature: 0.05,
       maxTokens: 900,
+      featureKey: 'office_meeting_question_answer',
+      userId: user.id,
+      requestId: meetingId,
+      metadata: {
+        route: 'officeMeetingAsk',
+        officeId,
+        meetingId,
+        artifactCount: usableArtifacts.length,
+        sourceCount: Math.min(usableArtifacts.length, 5),
+        questionChars: body.question.length,
+      },
       systemPrompt: 'You answer questions about a single business meeting. Use only the supplied artifacts. Do not invent facts or use outside knowledge.'
     }
   )

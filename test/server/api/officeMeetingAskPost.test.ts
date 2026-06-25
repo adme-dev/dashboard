@@ -119,6 +119,23 @@ describe('POST /api/office/:officeId/meetings/:meetingId/ask', () => {
     expect(mockGenerateGroqInsight).toHaveBeenCalledOnce()
     expect(String(mockGenerateGroqInsight.mock.calls[0]?.[0])).toContain('Question: What follow-up was agreed?')
     expect(String(mockGenerateGroqInsight.mock.calls[0]?.[0])).toContain('using only these meeting artifacts')
+    expect(mockGenerateGroqInsight).toHaveBeenCalledWith(
+      expect.stringContaining('Question: What follow-up was agreed?'),
+      expect.objectContaining({
+        model: 'llama-3.3-70b-versatile',
+        featureKey: 'office_meeting_question_answer',
+        userId: 'user-1',
+        requestId: 'meeting-1',
+        metadata: {
+          route: 'officeMeetingAsk',
+          officeId: 'office-1',
+          meetingId: 'meeting-1',
+          artifactCount: 2,
+          sourceCount: 2,
+          questionChars: 26,
+        },
+      }),
+    )
   })
 
   it('requires office membership', async () => {

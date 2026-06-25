@@ -16,6 +16,7 @@ import { isTenantModel } from '~~/server/utils/video-generation/surface'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { loadVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssets'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
+import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 const BodySchema = z.object({
   projectId: z.string().uuid(),
@@ -55,6 +56,48 @@ function assertModelSupportsRequest(model: NonNullable<ReturnType<typeof getVide
   if (model.requiresApprovedSourceAsset && body.sourceAssetIds.length === 0) {
     throw createError({ statusCode: 400, statusMessage: 'A source image is required for this model' })
   }
+}
+
+function uuidOrNull(value: string | null | undefined): string | null {
+  if (!value) return null
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null
+}
+
+async function recordVideoGenerationRequest(input: {
+  model: NonNullable<ReturnType<typeof getVideoGenerationModel>>
+  userId: string
+  tenantId: string
+  projectId: string
+  jobId: string
+  mode: z.infer<typeof BodySchema>['mode']
+  status?: 'success' | 'error'
+  errorCode?: string | null
+  estimatedCostCents: number
+  metadata?: Record<string, unknown>
+}) {
+  await recordAiInvocation({
+    featureKey: 'video_generation_job',
+    provider: input.model.provider,
+    modelId: input.model.cfModel ?? input.model.id,
+    gatewayUsed: input.model.provider === 'aigateway',
+    userId: input.userId,
+    clientId: uuidOrNull(input.tenantId),
+    estimatedCostUsd: input.estimatedCostCents / 100,
+    status: input.status ?? 'success',
+    errorCode: input.errorCode ?? null,
+    metadata: {
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      jobId: input.jobId,
+      mode: input.mode,
+      registryModelId: input.model.id,
+      modality: input.model.modality ?? null,
+      supportsNativeAudio: input.model.supportsNativeAudio,
+      ...(input.metadata ?? {}),
+    },
+  })
 }
 
 export default defineEventHandler(async (event) => {
@@ -139,6 +182,25 @@ export default defineEventHandler(async (event) => {
       estimatedCostCents,
       idempotencyKey: body.idempotencyKey,
     })
+    await recordVideoGenerationRequest({
+      model,
+      userId: user.id,
+      tenantId,
+      projectId: body.projectId,
+      jobId: blocked.id,
+      mode: body.mode,
+      estimatedCostCents,
+      status: 'error',
+      errorCode: 'blocked_by_compliance',
+      metadata: {
+        queued: false,
+        complianceStatus: compliance.classification,
+        complianceReasons: compliance.reasons,
+        durationSeconds: body.durationSeconds,
+        aspectRatio: body.aspectRatio,
+        resolution: body.resolution ?? null,
+      },
+    })
     throw createError({ statusCode: 422, statusMessage: 'Video generation blocked', data: { job: blocked, reasons: compliance.reasons } })
   }
 
@@ -193,10 +255,44 @@ export default defineEventHandler(async (event) => {
       sourceAssetUrls = await resolveSourceAssetUrls(body.sourceAssetIds, tenantId)
     } catch (e: any) {
       await markVideoGenerationJobFailed(job.id, `source resolution failed: ${e?.message ?? String(e)}`)
+      await recordVideoGenerationRequest({
+        model,
+        userId: user.id,
+        tenantId,
+        projectId: body.projectId,
+        jobId: job.id,
+        mode: body.mode,
+        estimatedCostCents,
+        status: 'error',
+        errorCode: 'source_resolution_failed',
+        metadata: {
+          queued: false,
+          sourceAssetCount: body.sourceAssetIds.length,
+          errorMessage: e?.message ?? String(e),
+        },
+      })
       throw createError({ statusCode: 400, statusMessage: `Source image unavailable: ${e?.message ?? 'unresolved'}` })
     }
   }
   await enqueueVideoGeneration(event, { jobId: job.id, tenantId, idempotencyKey: body.idempotencyKey, sourceAssetUrls })
+  await recordVideoGenerationRequest({
+    model,
+    userId: user.id,
+    tenantId,
+    projectId: body.projectId,
+    jobId: job.id,
+    mode: body.mode,
+    estimatedCostCents,
+    metadata: {
+      queued: true,
+      sourceAssetCount: body.sourceAssetIds.length,
+      resolvedSourceAssetUrlCount: sourceAssetUrls.length,
+      durationSeconds: body.durationSeconds,
+      aspectRatio: body.aspectRatio,
+      resolution: body.resolution ?? null,
+      complianceStatus: compliance.classification,
+    },
+  })
   setResponseStatus(event, 202)
   return { job, reused: false }
 })

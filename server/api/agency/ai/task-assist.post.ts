@@ -131,6 +131,19 @@ Use ONLY valid IDs from the lists above.`
         model: GROQ_MODELS.LLAMA_70B,
         temperature: 0.2,
         maxTokens: 1000,
+        featureKey: 'agency_task_assist_analysis',
+        userId: user.id,
+        requestId: body.taskId,
+        metadata: {
+          mode: 'analysis',
+          taskId: body.taskId,
+          boardId: body.boardId ?? null,
+          workspaceId: body.workspaceId ?? null,
+          teamMemberCount: teamMembers.length,
+          projectCount: projects.length,
+          statusCount: statuses.length,
+          hasExistingTask: true,
+        },
         systemPrompt
       })
 
@@ -206,6 +219,19 @@ Rules:
       model: GROQ_MODELS.LLAMA_70B,
       temperature: 0.2,
       maxTokens: 1000,
+      featureKey: 'agency_task_assist_creation',
+      userId: user.id,
+      requestId: body.boardId ?? body.workspaceId ?? null,
+      metadata: {
+        mode: 'creation',
+        boardId: body.boardId ?? null,
+        workspaceId: body.workspaceId ?? null,
+        hasBoardName: Boolean(body.boardName),
+        descriptionChars: body.description?.length ?? 0,
+        teamMemberCount: teamMembers.length,
+        projectCount: projects.length,
+        statusCount: statuses.length,
+      },
       systemPrompt
     })
 

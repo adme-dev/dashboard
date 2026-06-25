@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   budgetHistoryDelta,
   budgetHistoryTone,
@@ -9,6 +9,10 @@ import {
 } from '~~/app/utils/socialSpendHistory'
 
 describe('socialSpendHistory', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('calculates budget deltas and tone from audit entries', () => {
     expect(budgetHistoryDelta({ previousBudget: 1200, newBudget: 1500 })).toBe(300)
     expect(budgetHistoryTone({ previousBudget: 1200, newBudget: 1500 })).toBe('increase')
@@ -21,6 +25,9 @@ describe('socialSpendHistory', () => {
   })
 
   it('builds pacing signal rows explaining why a campaign is flagged', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-10T00:00:00.000Z'))
+
     const rows = pacingSignalRows({
       budget: 3000,
       mtdSpend: 1800,
@@ -37,8 +44,30 @@ describe('socialSpendHistory', () => {
       { label: 'Spend vs expected', value: '+$800', detail: '$1,800 spent vs $1,000 expected' },
       { label: 'Projected variance', value: '+$2,400', detail: '$5,400 projected vs $3,000 budget' },
       { label: 'Daily budget change', value: '-$30/day', detail: '$100/day current to $70/day recommended' },
-      { label: 'Last synced', value: '9 Jun 2026, 11:00 pm', detail: 'Fresh platform spend reduces recommendation risk' },
+      { label: 'Last successful sync', value: '9 Jun 2026, 11:00 pm', detail: 'Fresh platform spend reduces recommendation risk' },
     ])
+  })
+
+  it('marks old campaign sync timestamps as stale', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-25T00:00:00.000Z'))
+
+    const rows = pacingSignalRows({
+      budget: 3000,
+      mtdSpend: 1800,
+      expectedToDate: 1000,
+      projectedMonthEnd: 5400,
+      currentDailyBudget: 100,
+      recommendedDailyBudget: 70,
+      pacingRatio: 1.8,
+      syncedAt: '2026-06-18T03:18:00.000Z',
+    }, 'en-AU', 'UTC')
+
+    expect(rows.at(-1)).toEqual({
+      label: 'Last successful sync',
+      value: '18 Jun 2026, 3:18 am',
+      detail: 'Stale platform data — run a successful sync before applying changes',
+    })
   })
 
   it('builds performance signal rows from campaign delivery metrics', () => {

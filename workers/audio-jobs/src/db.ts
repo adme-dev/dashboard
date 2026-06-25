@@ -43,6 +43,48 @@ export async function execute(sql: string, params?: any[]): Promise<number> {
   return result.rowCount ?? 0
 }
 
+export interface WorkerAiInvocationInput {
+  featureKey: string
+  provider: string
+  modelId: string
+  gatewayUsed?: boolean
+  userId?: string | null
+  clientId?: string | null
+  requestId?: string | null
+  status?: 'success' | 'error'
+  errorCode?: string | null
+  latencyMs?: number | null
+  metadata?: Record<string, unknown> | null
+}
+
+export async function dbRecordAiInvocation(input: WorkerAiInvocationInput): Promise<void> {
+  try {
+    await execute(
+      `INSERT INTO ai_invocations (
+         feature_key, provider, model_id, gateway_used,
+         user_id, client_id, request_id, status, error_code, latency_ms, metadata
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
+      [
+        input.featureKey,
+        input.provider,
+        input.modelId,
+        Boolean(input.gatewayUsed),
+        input.userId ?? null,
+        input.clientId ?? null,
+        input.requestId ?? null,
+        input.status ?? 'success',
+        input.errorCode ?? null,
+        input.latencyMs == null ? null : Math.max(0, Math.round(Number(input.latencyMs))),
+        JSON.stringify(input.metadata ?? {}),
+      ]
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('ai_invocations')) console.warn('audio-jobs.ai-invocation-record-failed', message)
+  }
+}
+
 // Render-job status writers (Hyperdrive→Neon). Mirror the music writers' execute() usage.
 export async function dbMarkRenderRendering(jobId: string): Promise<void> {
   await execute(`UPDATE media_render_jobs SET status='rendering', updated_at=now() WHERE id=$1`, [jobId])

@@ -103,6 +103,11 @@ vi.mock('~~/server/utils/video-asset-intelligence/enqueue', () => ({
   enqueueAssetIntelligence: (...args: unknown[]) => mockEnqueueAssetIntelligence(...args),
 }))
 
+const mockRecordAiInvocation = vi.fn()
+vi.mock('~~/server/utils/ai/invocationLedger', () => ({
+  recordAiInvocation: (...args: unknown[]) => mockRecordAiInvocation(...args),
+}))
+
 const bucketsHandler = (await import('~~/server/api/agency/video/projects/[id]/buckets/index.get')).default
 const directiveHandler = (await import('~~/server/api/agency/video/bucket-items/[id]/directive.post')).default
 const extractHandler = (await import('~~/server/api/agency/video/assets/[id]/extract.post')).default
@@ -277,6 +282,20 @@ describe('video asset harness API', () => {
       brushMaskKey: 'mask.png',
       createdBy: 'user-1'
     }))
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_asset_intelligence_job',
+      provider: 'replicate',
+      modelId: 'replicate/qwen-image-layered',
+      userId: 'user-1',
+      status: 'error',
+      errorCode: 'asset_intelligence_queue_unavailable',
+      metadata: expect.objectContaining({
+        queued: false,
+        projectId: '11111111-1111-4111-8111-111111111111',
+        sourceAssetId: '22222222-2222-4222-8222-222222222222',
+        action: 'mask-lift',
+      }),
+    }))
     expect(res.job.status).toBe('blocked')
   })
 
@@ -329,6 +348,18 @@ describe('video asset harness API', () => {
       projectId: '11111111-1111-4111-8111-111111111111',
       sourceAssetId: '22222222-2222-4222-8222-222222222222',
     })
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_asset_intelligence_job',
+      provider: 'replicate',
+      modelId: 'replicate/sam-2',
+      status: 'success',
+      metadata: expect.objectContaining({
+        queued: true,
+        jobId: 'job-queued',
+        action: 'mask-only',
+        hasBrushMask: true,
+      }),
+    }))
     expect(res.job.status).toBe('queued')
   })
 
@@ -359,6 +390,18 @@ describe('video asset harness API', () => {
     }))
     expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
     expect(mockEnqueueAssetIntelligence).not.toHaveBeenCalled()
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_asset_intelligence_job',
+      modelId: 'workers-ai/other-model',
+      provider: 'unknown',
+      status: 'error',
+      errorCode: 'unsupported_asset_intelligence_model',
+      metadata: expect.objectContaining({
+        queued: false,
+        requestedModelId: 'workers-ai/other-model',
+        hasQueueBinding: true,
+      }),
+    }))
     expect(res.job.status).toBe('blocked')
   })
 
@@ -378,6 +421,13 @@ describe('video asset harness API', () => {
     } as any)).rejects.toThrow('Queue offline')
 
     expect(mockMarkAssetIntelligenceJobFailed).toHaveBeenCalledWith('job-queued', 'Queue offline')
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_asset_intelligence_job',
+      modelId: 'replicate/sam-2',
+      status: 'error',
+      errorCode: 'asset_intelligence_enqueue_failed',
+      metadata: expect.objectContaining({ queued: false, errorMessage: 'Queue offline' }),
+    }))
   })
 
   it('rejects extraction when the caller cannot mutate the project', async () => {
@@ -506,7 +556,30 @@ describe('video asset harness API', () => {
       assetId: '22222222-2222-4222-8222-222222222222',
       prompt: 'Drive away',
       modelId: 'aigateway/seedance-i2v',
+      captionGenerator: expect.any(Function),
     }))
+    const captionGenerator = mockBuildVideoStudioSocialDraft.mock.calls[0][0].captionGenerator
+    await expect(captionGenerator({ topic: 'Drive away', platform: 'instagram', tone: 'professional' }))
+      .resolves.toBe('Draft caption')
+    expect(mockGenerateGroqInsight).toHaveBeenCalledWith(
+      expect.stringContaining('Topic / brief: Drive away'),
+      expect.objectContaining({
+        featureKey: 'video_asset_publish_social_caption',
+        userId: 'user-1',
+        clientId: '55555555-5555-4555-8555-555555555555',
+        requestId: '22222222-2222-4222-8222-222222222222',
+        metadata: {
+          route: '/api/agency/video/assets/:id/publish-social',
+          assetId: '22222222-2222-4222-8222-222222222222',
+          projectId: '11111111-1111-4111-8111-111111111111',
+          jobId: null,
+          format: 'mp4',
+          modelId: 'aigateway/seedance-i2v',
+          platform: 'instagram',
+          tone: 'professional',
+        },
+      })
+    )
     expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO social_posts'), expect.any(Array))
     expect(res).toEqual({ postId: 'post-1', clientId: '55555555-5555-4555-8555-555555555555' })
   })

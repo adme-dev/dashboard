@@ -186,6 +186,16 @@ export async function runAgentDigest(runType: AgentRunType): Promise<{ runId: st
           model: GROQ_MODELS.LLAMA_70B,
           temperature: 0.3,
           maxTokens: 1500,
+          featureKey: 'ai_agent_digest_report',
+          userId: member.id,
+          requestId: runId,
+          metadata: {
+            runId,
+            runType,
+            userRole: member.role,
+            relevantFindingCount: totalFindings,
+            resultTypeCount: userResults.length,
+          },
           systemPrompt: 'You are an AI operations assistant for a digital marketing agency. Generate clear, actionable digest reports in markdown format. Be concise and specific.'
         })
 

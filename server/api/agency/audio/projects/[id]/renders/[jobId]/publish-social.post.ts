@@ -47,6 +47,18 @@ export default defineEventHandler(async (event) => {
       {
         temperature: 0.7,
         maxTokens: 400,
+        featureKey: 'audio_render_publish_social_caption',
+        userId: user.id,
+        clientId,
+        requestId: jobId,
+        metadata: {
+          route: '/api/agency/audio/projects/:id/renders/:jobId/publish-social',
+          projectId: id,
+          jobId,
+          format,
+          platform,
+          tone,
+        },
         systemPrompt: 'You are an expert social media copywriter for a digital marketing agency. Output only the caption text.',
       },
     ),

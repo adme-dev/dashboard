@@ -5,6 +5,7 @@ import { registry } from './tools/index'
 import { DEFAULT_PERSONA, type Persona } from './personas'
 import { spotlightSystemClause } from './spotlight'
 import type { ToolContext } from './toolContext'
+import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 export interface LoopOutput {
   text: string
@@ -13,6 +14,16 @@ export interface LoopOutput {
   usage?: { inputTokens?: number, outputTokens?: number, totalTokens?: number }
   /** Estimated turn cost in USD (from usage + the model's price). */
   costUsd?: number
+}
+
+function normalizeUsage(result: any): LoopOutput['usage'] {
+  const usage = result?.usage ?? result?.totalUsage ?? result?.response?.usage
+  if (!usage) return undefined
+  const inputTokens = usage.inputTokens ?? usage.promptTokens ?? usage.prompt_tokens
+  const outputTokens = usage.outputTokens ?? usage.completionTokens ?? usage.completion_tokens
+  const totalTokens = usage.totalTokens ?? usage.total_tokens
+  if (inputTokens == null && outputTokens == null && totalTokens == null) return undefined
+  return { inputTokens, outputTokens, totalTokens }
 }
 
 const STEP_CAP = 5
@@ -58,7 +69,7 @@ export function extractLoopOutput(result: any): LoopOutput {
       }
     }
   }
-  return { text: result?.text ?? '', toolCalls, proposedAction, usage: result?.usage }
+  return { text: result?.text ?? '', toolCalls, proposedAction, usage: normalizeUsage(result) }
 }
 
 /**
@@ -83,7 +94,13 @@ export async function runToolLoop(opts: {
   readOnly?: boolean
   /** The user's self-disabled tools (config narrows, never grants — applied by subtraction). */
   disabledTools?: string[]
+  /** Model Ops telemetry metadata. Content/prompts are never recorded. */
+  featureKey?: string
+  clientId?: string | null
+  requestId?: string | null
+  metadata?: Record<string, unknown>
 }): Promise<LoopOutput> {
+  const startedAt = Date.now()
   const cfg = useRuntimeConfig() as any
   const persona = opts.persona ?? DEFAULT_PERSONA
 
@@ -117,6 +134,7 @@ export async function runToolLoop(opts: {
   // Workers AI models (workersai/@cf/...) resolve via the request's edge AI binding.
   const aiBinding = (opts.ctx.event?.context as any)?.cloudflare?.env?.AI
   let usedSpec: string = opts.model ? 'injected' : primarySpec
+  let fallbackUsed = false
   let result
   try {
     result = await run(opts.model ?? resolveModel(primarySpec, { aiBinding }))
@@ -125,10 +143,40 @@ export async function runToolLoop(opts: {
     const fb = opts.fallbackModel ?? (fallbackSpec ? resolveModel(fallbackSpec, { aiBinding }) : null)
     if (!fb) throw err
     usedSpec = opts.fallbackModel ? 'injected' : fallbackSpec
+    fallbackUsed = true
     result = await run(fb)
   }
 
   const out = extractLoopOutput(result)
   out.costUsd = estimateCostUsd(out.usage, usedSpec)
+  await recordAiInvocation({
+    featureKey: opts.featureKey ?? 'agency_ai_tool_loop',
+    provider: usedSpec.startsWith('anthropic/')
+      ? 'anthropic'
+      : usedSpec.startsWith('workersai/')
+        ? 'workers_ai'
+        : 'groq',
+    modelId: usedSpec.replace(/^(groq|anthropic|workersai)\//, ''),
+    gatewayUsed: !opts.model && !usedSpec.startsWith('workersai/'),
+    fallbackUsed,
+    userId: opts.ctx.userId,
+    clientId: opts.clientId ?? null,
+    requestId: opts.requestId ?? null,
+    promptTokens: out.usage?.inputTokens ?? null,
+    completionTokens: out.usage?.outputTokens ?? null,
+    totalTokens: out.usage?.totalTokens ?? null,
+    estimatedCostUsd: out.costUsd ?? null,
+    status: 'success',
+    latencyMs: Date.now() - startedAt,
+    metadata: {
+      persona: persona.key,
+      readOnly: Boolean(opts.readOnly),
+      toolCount: tools.length,
+      toolCalls: out.toolCalls.map((call) => call.name).slice(0, 20),
+      proposedTool: out.proposedAction?.toolName ?? null,
+      injectedModel: Boolean(opts.model),
+      ...(opts.metadata ?? {}),
+    },
+  })
   return out
 }

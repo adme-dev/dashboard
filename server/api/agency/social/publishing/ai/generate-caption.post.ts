@@ -17,7 +17,7 @@ const PLATFORM_GUIDELINES: Record<string, string> = {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, PERMISSIONS.CREATIVE)
+  const user = await requireRole(event, PERMISSIONS.CREATIVE)
   const b = await readBody(event)
   const topic = String(b?.topic ?? b?.content ?? '').trim()
   if (!topic) throw createError({ statusCode: 400, statusMessage: 'topic or content required' })
@@ -38,6 +38,13 @@ export default defineEventHandler(async (event) => {
     maxTokens: 400,
     systemPrompt:
       'You are an expert social media copywriter for a digital marketing agency. Write engaging, on-brand captions that fit the platform. Output only the caption text.',
+    featureKey: 'social_publishing_caption',
+    userId: user?.id ?? null,
+    metadata: {
+      route: '/api/agency/social/publishing/ai/generate-caption',
+      platform,
+      tone,
+    },
   })
 
   return { caption: caption.trim() }

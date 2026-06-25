@@ -22,6 +22,7 @@ describe('asset intelligence worker', () => {
       markFailed: vi.fn(),
       markSucceeded: vi.fn().mockResolvedValue({ id: 'job-1', status: 'succeeded' }),
       createDerivative: vi.fn().mockResolvedValue({ id: 'derivative-1' }),
+      recordInvocation: vi.fn().mockResolvedValue(undefined),
       runProvider: vi.fn().mockResolvedValue({
         derivatives: [{ kind: 'mask-png', r2Key: 'out-mask.png', width: null, height: null, metadata: { sourceMaskKey: 'mask.png' }, contentType: 'image/png', size: 128 }],
       }),
@@ -36,6 +37,18 @@ describe('asset intelligence worker', () => {
       metadata: { sourceMaskKey: 'mask.png', contentType: 'image/png', size: 128 },
     }))
     expect(deps.markSucceeded).toHaveBeenCalledWith({ id: 'job-1', outputDerivativeIds: ['derivative-1'] })
+    expect(deps.recordInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_asset_intelligence_worker_runtime',
+      provider: 'replicate',
+      modelId: 'replicate/sam-2',
+      status: 'success',
+      requestId: 'job-1',
+      metadata: expect.objectContaining({
+        outcome: 'succeeded',
+        derivativeCount: 1,
+        outputDerivativeIds: ['derivative-1'],
+      }),
+    }))
   })
 
   it('skips missing jobs without claiming or running providers', async () => {
@@ -133,6 +146,43 @@ describe('asset intelligence worker', () => {
 
     expect(deps.markSucceeded).toHaveBeenCalledWith({ id: 'job-1', outputDerivativeIds: ['derivative-1'] })
     expect(deps.markFailed).not.toHaveBeenCalled()
+  })
+
+  it('records worker runtime failures after marking the job failed', async () => {
+    const deps = {
+      getJob: vi.fn().mockResolvedValue({
+        id: 'job-1',
+        tenantId: 'tenant-1',
+        projectId: 'project-1',
+        sourceAssetId: 'asset-1',
+        action: 'asset-analysis',
+        modelId: 'workers-ai/kimi-planner',
+        provider: 'workers-ai',
+        status: 'queued',
+        prompt: 'inspect',
+        brushMaskKey: null,
+      }),
+      markRunning: vi.fn().mockResolvedValue({ id: 'job-1', status: 'running' }),
+      markFailed: vi.fn().mockResolvedValue({ id: 'job-1', status: 'failed' }),
+      markSucceeded: vi.fn(),
+      createDerivative: vi.fn(),
+      recordInvocation: vi.fn().mockResolvedValue(undefined),
+      runProvider: vi.fn().mockRejectedValue(new Error('provider timeout')),
+    }
+
+    await expect(processAssetIntelligenceJob(validMessage, deps))
+      .resolves.toEqual({ skipped: false, status: 'failed' })
+
+    expect(deps.markFailed).toHaveBeenCalledWith('job-1', 'provider timeout')
+    expect(deps.recordInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_asset_intelligence_worker_runtime',
+      provider: 'workers-ai',
+      modelId: 'workers-ai/kimi-planner',
+      gatewayUsed: true,
+      status: 'error',
+      errorCode: 'asset_intelligence_worker_failed',
+      metadata: expect.objectContaining({ outcome: 'failed', errorMessage: 'provider timeout' }),
+    }))
   })
 
   it.each(['succeeded', 'failed', 'blocked'])('skips %s jobs before attempting to claim them', async (status) => {

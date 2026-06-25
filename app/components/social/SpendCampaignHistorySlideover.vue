@@ -81,10 +81,22 @@ interface CampaignActionEntry {
   reason: string | null
   externalRequestId: string | null
   errorMessage: string | null
+  metadata?: Record<string, unknown>
 }
 
 const props = defineProps<{
   item: PacingReviewItem | null
+  latestSyncJobs?: Array<{
+    platform: string
+    status: 'running' | 'completed' | 'failed'
+    syncedCount: number
+    error: string | null
+    startedAt: string
+    finishedAt: string | null
+    totalAccounts: number | null
+    processedAccounts: number
+    failures: Array<{ account: string; reason: string }>
+  }>
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -104,13 +116,102 @@ const applyingActionId = ref<string | null>(null)
 const loadedSpendId = ref<string | null>(null)
 
 // Google optimization recommendations (Google rows only; fetched on open).
-const googleRecs = ref<{ optimizationScore: number | null; recommendations: any[]; campaignId: string | null }>({ optimizationScore: null, recommendations: [], campaignId: null })
+const googleRecs = ref<{ optimizationScore: number | null; recommendations: any[]; campaignId: string | null; error?: string | null }>({ optimizationScore: null, recommendations: [], campaignId: null, error: null })
 const applyingRec = ref<string | null>(null)
 
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
 const performanceSignals = computed(() => props.item ? performanceSignalRows(props.item.performance) : [])
 const matchingPlannedAction = computed(() => props.item ? matchingPlannedBudgetAction(platformActions.value, props.item.recommendedDailyBudget) : null)
 const matchingActionLabel = computed(() => matchingPlannedAction.value?.actionStatus === 'approved' ? 'Approved' : 'Planned')
+const STALE_SYNC_MS = 24 * 60 * 60 * 1000
+
+const platformSyncKey = computed(() => props.item?.platform === 'google' ? 'google' : props.item?.platform)
+const latestPlatformSyncJob = computed(() => {
+  if (!platformSyncKey.value) return null
+  return [...(props.latestSyncJobs || [])]
+    .filter(job => job.platform === platformSyncKey.value)
+    .sort((a, b) => new Date(b.finishedAt || b.startedAt).getTime() - new Date(a.finishedAt || a.startedAt).getTime())[0] || null
+})
+const itemSyncIsStale = computed(() => {
+  if (!props.item?.syncedAt) return true
+  return Date.now() - new Date(props.item.syncedAt).getTime() > STALE_SYNC_MS
+})
+const syncHealthRows = computed(() => {
+  if (!props.item) return []
+  const job = latestPlatformSyncJob.value
+  const rows = [
+    {
+      label: 'Last successful data sync',
+      value: props.item.syncedAt ? formatBudgetHistoryTime(props.item.syncedAt) : 'Not synced',
+      tone: itemSyncIsStale.value ? 'warning' : 'success',
+      detail: itemSyncIsStale.value ? 'Refresh before approving spend changes' : 'Campaign metrics are recent enough for review',
+    },
+  ]
+  if (job) {
+    rows.push({
+      label: 'Latest platform sync attempt',
+      value: actionLabel(job.status),
+      tone: job.status === 'failed' ? 'error' : job.status === 'running' ? 'warning' : 'success',
+      detail: job.status === 'failed'
+        ? (job.error || `${job.failures.length} account issue${job.failures.length === 1 ? '' : 's'} recorded`)
+        : `${job.processedAccounts || 0}/${job.totalAccounts || 0} accounts processed`,
+    })
+  }
+  if (googleRecs.value.error) {
+    rows.push({
+      label: 'Google recommendations',
+      value: 'Unavailable',
+      tone: 'warning',
+      detail: googleRecs.value.error,
+    })
+  }
+  return rows
+})
+const assistanceOpportunities = computed(() => {
+  if (!props.item) return []
+  const opportunities: Array<{ label: string; detail: string; icon: string; tone: 'neutral' | 'warning' | 'info' }> = []
+  if (itemSyncIsStale.value) {
+    opportunities.push({
+      label: 'Require fresh data before approval',
+      detail: 'Gate approvals when platform data is older than 24 hours or the latest sync failed.',
+      icon: 'i-lucide-shield-alert',
+      tone: 'warning',
+    })
+  }
+  if (!props.item.performance.conversions || props.item.performance.conversionRate == null) {
+    opportunities.push({
+      label: 'Add lead quality context',
+      detail: 'Connect GA4/CRM conversions so pacing recommendations consider lead volume and quality, not only spend.',
+      icon: 'i-lucide-route',
+      tone: 'info',
+    })
+  }
+  if (props.item.platform === 'meta' && latestPlatformSyncJob.value?.status === 'failed') {
+    opportunities.push({
+      label: 'Surface Meta permission repair',
+      detail: 'Show the exact ad account permission issue and link operators to reconnect or grant ads_read access.',
+      icon: 'i-lucide-key-round',
+      tone: 'warning',
+    })
+  }
+  if (props.item.platform === 'google' && googleRecs.value.error) {
+    opportunities.push({
+      label: 'Repair Google recommendation access',
+      detail: 'Expose OAuth/developer-token failures so operators know whether native Google recommendations are available.',
+      icon: 'i-lucide-wrench',
+      tone: 'warning',
+    })
+  }
+  if (!platformActions.value.length) {
+    opportunities.push({
+      label: 'Start an auditable action trail',
+      detail: 'Save the recommendation as a planned action so approval, cancellation, and platform writes are visible later.',
+      icon: 'i-lucide-clipboard-check',
+      tone: 'neutral',
+    })
+  }
+  return opportunities.slice(0, 4)
+})
 
 watch(
   () => [open.value, props.item?.mediaSpendId] as const,
@@ -185,14 +286,14 @@ async function planCurrentRecommendation() {
 }
 
 async function loadGoogleRecs(spendId: string) {
-  if (props.item?.platform !== 'google') {
-    googleRecs.value = { optimizationScore: null, recommendations: [], campaignId: null }
+  if (props.item?.platform !== 'google' || !canApplyLive.value) {
+    googleRecs.value = { optimizationScore: null, recommendations: [], campaignId: null, error: null }
     return
   }
   try {
     googleRecs.value = await $fetch(`/api/agency/social/spend/${spendId}/google-recommendations`)
   } catch {
-    googleRecs.value = { optimizationScore: null, recommendations: [], campaignId: null }
+    googleRecs.value = { optimizationScore: null, recommendations: [], campaignId: null, error: 'Could not load Google recommendations' }
   }
 }
 
@@ -457,6 +558,13 @@ function actionStatusColor(value: string) {
   return 'neutral'
 }
 
+function healthToneColor(value: string) {
+  if (value === 'success') return 'success'
+  if (value === 'error') return 'error'
+  if (value === 'warning') return 'warning'
+  return 'neutral'
+}
+
 function summarizeValue(value: Record<string, unknown>) {
   const entries = Object.entries(value || {})
   if (!entries.length) return '-'
@@ -504,6 +612,44 @@ function summarizeValue(value: Record<string, unknown>) {
         </div>
 
         <div class="min-h-0 flex-1 overflow-y-auto">
+          <section class="border-b border-default p-4 sm:p-5">
+            <div class="mb-3 flex items-center gap-2">
+              <UIcon name="i-lucide-activity" class="size-4 text-primary" />
+              <h4 class="text-sm font-semibold">Data health</h4>
+            </div>
+            <div class="grid gap-2 sm:grid-cols-2">
+              <div v-for="row in syncHealthRows" :key="row.label" class="rounded-lg bg-elevated/40 p-3">
+                <div class="flex items-start justify-between gap-3">
+                  <p class="text-xs font-medium text-muted">{{ row.label }}</p>
+                  <UBadge :color="healthToneColor(row.tone) as any" variant="subtle" size="xs">
+                    {{ row.value }}
+                  </UBadge>
+                </div>
+                <p class="mt-1 text-xs text-muted">{{ row.detail }}</p>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="assistanceOpportunities.length" class="border-b border-default p-4 sm:p-5">
+            <div class="mb-3 flex items-center gap-2">
+              <UIcon name="i-lucide-lightbulb" class="size-4 text-primary" />
+              <h4 class="text-sm font-semibold">Assistance opportunities</h4>
+            </div>
+            <div class="space-y-2">
+              <div
+                v-for="opportunity in assistanceOpportunities"
+                :key="opportunity.label"
+                class="flex items-start gap-3 rounded-lg bg-elevated/40 p-3"
+              >
+                <UIcon :name="opportunity.icon" class="mt-0.5 size-4 shrink-0" :class="opportunity.tone === 'warning' ? 'text-warning' : 'text-primary'" />
+                <div class="min-w-0">
+                  <p class="text-sm font-medium">{{ opportunity.label }}</p>
+                  <p class="mt-0.5 text-xs text-muted">{{ opportunity.detail }}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section class="border-b border-default p-4 sm:p-5">
             <div class="mb-3 flex items-center gap-2">
               <UIcon name="i-lucide-chart-no-axes-combined" class="size-4 text-primary" />

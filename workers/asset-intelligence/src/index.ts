@@ -5,6 +5,7 @@ import {
   markAssetIntelligenceJobFailed,
   markAssetIntelligenceJobRunning,
   markAssetIntelligenceJobSucceeded,
+  dbRecordAiInvocation,
 } from './db'
 import { runAssetIntelligenceProvider } from './providers'
 import { copyR2Object, fetchAssetBytes, uploadBinary, uploadJson } from './storage'
@@ -34,6 +35,7 @@ export default {
           markFailed: markAssetIntelligenceJobFailed,
           markSucceeded: markAssetIntelligenceJobSucceeded,
           createDerivative,
+          recordInvocation: dbRecordAiInvocation,
           runProvider: job => runAssetIntelligenceProvider({
             job,
             env,

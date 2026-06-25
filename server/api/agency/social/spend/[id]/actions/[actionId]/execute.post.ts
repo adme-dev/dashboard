@@ -11,6 +11,7 @@ import { claimApprovedAction, releaseActionClaim } from '~~/server/utils/campaig
 import { splitDailyBudget } from '~~/server/utils/budgetSplit'
 import { executeAdSetSplitWrites } from '~~/server/utils/budgetSplitExecutor'
 import { kvDelete } from '~~/server/utils/kv'
+import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 export default eventHandler(async (event) => {
   const user = await requireRole(event, ['owner', 'admin'])
@@ -241,7 +242,7 @@ export default eventHandler(async (event) => {
       const res = await updateMetaDailyBudget(metaTarget!.targetId!, decision.finalDaily, row.access_token)
       readBack = res.readBackDailyMajor
     } else {
-      const config = useRuntimeConfig()
+      const config = resolveGoogleAdsRuntimeConfig()
       // The stored access_token is almost always stale (Google tokens expire
       // hourly), and client accounts under a manager need the login-customer-id
       // header — resolve both exactly like the working spend-sync read path.
@@ -255,9 +256,9 @@ export default eventHandler(async (event) => {
           token_expires_at: row.token_expires_at,
         },
         {
-          googleClientId: config.googleClientId as string,
-          googleClientSecret: config.googleClientSecret as string,
-          googleDeveloperToken: config.googleDeveloperToken as string,
+          googleClientId: config.googleClientId,
+          googleClientSecret: config.googleClientSecret,
+          googleDeveloperToken: config.googleDeveloperToken,
           googleAdsLoginCustomerId: (config.googleAdsLoginCustomerId as string) || '',
         },
         {
@@ -273,7 +274,7 @@ export default eventHandler(async (event) => {
       )
       const res = await updateGoogleCampaignDailyBudget({
         customerId: row.account_id, campaignId: row.campaign_id, dailyMajor: decision.finalDaily,
-        token: accessToken, developerToken: config.googleDeveloperToken as string,
+        token: accessToken, developerToken: config.googleDeveloperToken,
         loginCustomerId,
       })
       readBack = res.readBackDailyMajor

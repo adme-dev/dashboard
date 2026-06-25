@@ -84,6 +84,7 @@ export default defineNuxtConfig({
     // AI (Groq) — routed through Cloudflare AI Gateway when AI_GATEWAY_URL is set
     groqApiKey: process.env.GROQ_API_KEY || '',
     aiGatewayUrl: process.env.AI_GATEWAY_URL || '',
+    aiGatewayAuthToken: process.env.AI_GATEWAY_AUTH_TOKEN || '',
     // Anthropic — dormant escape hatch for the tool-calling loop (prod-only; needs key + gateway)
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
 

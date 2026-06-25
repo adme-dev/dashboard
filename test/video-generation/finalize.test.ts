@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
-import { finalizeVideoGenerationJob } from '~~/server/utils/video-generation/finalize'
 import type { VideoGenerationJob } from '~~/server/utils/video-generation/types'
 
-const job = { id: 'job-1', tenantId: 'agency', projectId: 'p1', createdBy: 'u1', aspectRatio: '9:16', durationSeconds: 5 } as unknown as VideoGenerationJob
+const mockRecordAiInvocation = vi.fn()
+vi.mock('~~/server/utils/ai/invocationLedger', () => ({
+  recordAiInvocation: (...args: unknown[]) => mockRecordAiInvocation(...args),
+}))
+
+const { finalizeVideoGenerationJob } = await import('~~/server/utils/video-generation/finalize')
+
+const job = { id: 'job-1', tenantId: 'agency', projectId: 'p1', createdBy: 'u1', provider: 'aigateway', modelId: 'aigateway/seedance-i2v', providerRequestId: 'req-1', aspectRatio: '9:16', durationSeconds: 5 } as unknown as VideoGenerationJob
 
 describe('finalizeVideoGenerationJob', () => {
   it('downloads the output, stores it in R2, creates an asset, and marks succeeded', async () => {
+    mockRecordAiInvocation.mockReset()
     const deps = {
       fetchImpl: vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }),
       uploadFile: vi.fn().mockResolvedValue({ url: '/x' }),
@@ -16,6 +23,21 @@ describe('finalizeVideoGenerationJob', () => {
     expect(deps.fetchImpl).toHaveBeenCalledWith('https://cdn/out.mp4')
     expect(deps.uploadFile).toHaveBeenCalledWith(expect.any(Buffer), 'video-generation/agency/job-1/output.mp4', 'video/mp4', expect.any(Object))
     expect(deps.markSucceeded).toHaveBeenCalledWith(expect.objectContaining({ id: 'job-1', outputAssetId: 'asset-1', actualCostCents: 42 }))
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_generation_completion',
+      provider: 'aigateway',
+      modelId: 'aigateway/seedance-i2v',
+      gatewayUsed: true,
+      userId: 'u1',
+      requestId: 'job-1',
+      estimatedCostUsd: 0.42,
+      status: 'success',
+      metadata: expect.objectContaining({
+        completionPath: 'finalize',
+        providerRequestId: 'req-1',
+        outputAssetId: 'asset-1',
+      }),
+    }))
     expect(result.status).toBe('succeeded')
   })
 

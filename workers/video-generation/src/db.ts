@@ -34,6 +34,53 @@ async function queryOne<T = any>(sql: string, params?: any[]): Promise<T | null>
   return rows[0] ?? null
 }
 
+export interface WorkerAiInvocationInput {
+  featureKey: string
+  provider: string
+  modelId: string
+  gatewayUsed?: boolean
+  fallbackUsed?: boolean
+  userId?: string | null
+  clientId?: string | null
+  requestId?: string | null
+  estimatedCostUsd?: number | null
+  status?: 'success' | 'error'
+  errorCode?: string | null
+  latencyMs?: number | null
+  metadata?: Record<string, unknown> | null
+}
+
+export async function dbRecordAiInvocation(input: WorkerAiInvocationInput): Promise<void> {
+  try {
+    await queryRows(
+      `INSERT INTO ai_invocations (
+         feature_key, provider, model_id, gateway_used, fallback_used,
+         user_id, client_id, request_id, estimated_cost_usd, status,
+         error_code, latency_ms, metadata
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
+      [
+        input.featureKey,
+        input.provider,
+        input.modelId,
+        Boolean(input.gatewayUsed),
+        Boolean(input.fallbackUsed),
+        input.userId ?? null,
+        input.clientId ?? null,
+        input.requestId ?? null,
+        input.estimatedCostUsd ?? null,
+        input.status ?? 'success',
+        input.errorCode ?? null,
+        input.latencyMs == null ? null : Math.max(0, Math.round(Number(input.latencyMs))),
+        JSON.stringify(input.metadata ?? {}),
+      ]
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('ai_invocations')) console.warn('video-generation.ai-invocation-record-failed', message)
+  }
+}
+
 function asStringArray(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String)
   if (typeof value === 'string') {

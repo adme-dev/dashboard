@@ -72,6 +72,13 @@ export default defineEventHandler(async (event) => {
       model: GROQ_MODELS.REASONING_20B,
       temperature: 0.2,
       maxTokens: 1500,
+      featureKey: 'observe_and_learn_distillation',
+      requestId: 'cron-observe-and-learn',
+      metadata: {
+        route: '/api/cron/observe-and-learn',
+        lookbackDays: ROUTINE_LOOKBACK_DAYS,
+        promptChars: prompt.length,
+      },
       systemPrompt: 'Reply with ONLY a JSON array, exactly as the user instruction specifies.'
     })
   }

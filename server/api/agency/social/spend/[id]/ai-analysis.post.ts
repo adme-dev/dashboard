@@ -4,8 +4,15 @@ import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS, type PacingReviewRow }
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { buildAnalysisPrompt, parseAnalysisResult, buildAnalysisResponse, type AiAnalysisResult } from '~~/server/utils/spendAiAnalysis'
 
+function requestIdFromEvent(event: any): string | null {
+  const headers = event?.node?.req?.headers
+  const value = headers?.['cf-ray'] ?? headers?.['x-request-id']
+  if (Array.isArray(value)) return value[0] || null
+  return typeof value === 'string' && value ? value : null
+}
+
 export default eventHandler(async (event) => {
-  await requireWriteAccess(event)
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id is required' })
 
@@ -26,8 +33,8 @@ export default eventHandler(async (event) => {
     refreshError = r.error
   }
 
-  const row = await queryOne<PacingReviewRow & { synced_at: string | null }>(
-    `SELECT ${PACING_REVIEW_SELECT_COLUMNS}
+  const row = await queryOne<PacingReviewRow & { synced_at: string | null, client_id: string | null }>(
+    `SELECT ${PACING_REVIEW_SELECT_COLUMNS}, ms.client_id::text AS client_id
      FROM media_spend ms
      LEFT JOIN agency_clients ac ON ac.id = ms.client_id
      WHERE ms.id = $1`,
@@ -64,7 +71,7 @@ export default eventHandler(async (event) => {
     },
   })
 
-  const modelId = GROQ_MODELS.LLAMA_70B
+  const modelId = GROQ_MODELS.REASONING_120B
   let aiResult: AiAnalysisResult = { ok: false, proposedDailyBudget: null, rationale: '', confidence: 'low', riskFlags: [] }
   try {
     const raw = await generateGroqInsight(prompt, {
@@ -72,6 +79,17 @@ export default eventHandler(async (event) => {
       temperature: 0.2,
       maxTokens: 800,
       systemPrompt: 'You are a senior paid-media strategist. Respond ONLY with valid JSON and no prose.',
+      featureKey: 'social_spend_ai_analysis',
+      userId: user.id,
+      clientId: row.client_id,
+      requestId: requestIdFromEvent(event),
+      metadata: {
+        route: '/api/agency/social/spend/[id]/ai-analysis',
+        mediaSpendId: id,
+        platform: item.platform,
+        issueType: item.issueType,
+        refreshed,
+      },
     })
     aiResult = parseAnalysisResult(raw, { currentDailyBudget: item.currentDailyBudget, monthlyBudget: item.budget })
   } catch (err: any) {

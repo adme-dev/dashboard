@@ -30,6 +30,7 @@ export default eventHandler(async (event) => {
     executed_at: string | null
     previous_value: Record<string, unknown>
     new_value: Record<string, unknown>
+    metadata: Record<string, unknown>
     reason: string | null
     external_request_id: string | null
     error_message: string | null
@@ -54,6 +55,7 @@ export default eventHandler(async (event) => {
             cal.executed_at::text,
             cal.previous_value,
             cal.new_value,
+            cal.metadata,
             cal.reason,
             cal.external_request_id,
             cal.error_message
@@ -88,6 +90,7 @@ export default eventHandler(async (event) => {
     executedAt: r.executed_at,
     previousValue: r.previous_value,
     newValue: r.new_value,
+    metadata: r.metadata || {},
     reason: r.reason,
     externalRequestId: r.external_request_id,
     errorMessage: r.error_message,

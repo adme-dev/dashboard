@@ -31,6 +31,15 @@ describe('generate-caption', () => {
     expect(prompt).toContain('launch of our new app')
     expect(prompt.toLowerCase()).toContain('hashtag') // instagram guideline mentions hashtags
     expect(opts.temperature).toBeGreaterThan(0)
+    expect(opts).toMatchObject({
+      featureKey: 'social_publishing_caption',
+      userId: 'U1',
+      metadata: expect.objectContaining({
+        route: '/api/agency/social/publishing/ai/generate-caption',
+        platform: 'instagram',
+        tone: 'playful',
+      }),
+    })
   })
 
   it('falls back to content when topic is absent', async () => {

@@ -151,6 +151,19 @@ export default defineEventHandler(async (event) => {
                 model: GROQ_MODELS.LLAMA_8B,
                 maxTokens: 60,
                 temperature: 0.3,
+                featureKey: 'notification_digest_narrative',
+                userId: user.id,
+                requestId: `${range}:${b.boardId}`,
+                metadata: {
+                  route: '/api/notifications/digest',
+                  range,
+                  boardId: b.boardId,
+                  topItemCount: b.topItems.length,
+                  mentionedCount: b.counts.mentioned,
+                  assignedCount: b.counts.assigned,
+                  watchingCount: b.counts.watching,
+                  directCount: b.counts.direct,
+                },
                 systemPrompt: 'You write punchy single-sentence activity summaries. No emoji, no preamble, no bullet points.',
               })
               b.narrative = text.trim().replace(/^["']|["']$/g, '')

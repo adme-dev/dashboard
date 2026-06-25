@@ -5,6 +5,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGroq } from '@ai-sdk/groq'
 import { createWorkersAI } from 'workers-ai-provider'
 import type { LanguageModel } from 'ai'
+import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 let client: Anthropic | null = null
 
@@ -33,6 +34,11 @@ type ClaudeInsightOptions = {
   maxTokens?: number
   systemPrompt?: string
   cacheSystem?: boolean
+  featureKey?: string
+  userId?: string | null
+  clientId?: string | null
+  requestId?: string | null
+  metadata?: Record<string, unknown>
 }
 
 type ClaudeInsightResult = {
@@ -46,6 +52,39 @@ type ClaudeInsightResult = {
   }
 }
 
+async function recordClaudeInvocation(input: {
+  options: ClaudeInsightOptions
+  model: string
+  startedAt: number
+  status: 'success' | 'error'
+  usage?: ClaudeInsightResult['usage']
+  error?: unknown
+}) {
+  if (!input.options.featureKey) return
+  const error = input.error as { code?: unknown, status?: unknown, message?: unknown } | undefined
+  await recordAiInvocation({
+    featureKey: input.options.featureKey,
+    provider: 'anthropic',
+    modelId: input.model,
+    gatewayUsed: false,
+    fallbackUsed: false,
+    userId: input.options.userId,
+    clientId: input.options.clientId,
+    requestId: input.options.requestId,
+    promptTokens: input.usage?.inputTokens ?? null,
+    completionTokens: input.usage?.outputTokens ?? null,
+    totalTokens: input.usage ? input.usage.inputTokens + input.usage.outputTokens : null,
+    status: input.status,
+    errorCode: input.error ? String(error?.code ?? error?.status ?? error?.message ?? 'unknown_error').slice(0, 160) : null,
+    latencyMs: Date.now() - input.startedAt,
+    metadata: {
+      cacheReadTokens: input.usage?.cacheReadTokens ?? null,
+      cacheCreationTokens: input.usage?.cacheCreationTokens ?? null,
+      ...(input.options.metadata ?? {}),
+    },
+  })
+}
+
 export async function generateClaudeInsight(
   prompt: string,
   options: ClaudeInsightOptions = {}
@@ -56,6 +95,7 @@ export async function generateClaudeInsight(
     systemPrompt,
     cacheSystem = true,
   } = options
+  const startedAt = Date.now()
 
   const anthropic = getClient()
 
@@ -65,19 +105,25 @@ export async function generateClaudeInsight(
       : [{ type: 'text' as const, text: systemPrompt }]
     : undefined
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: maxTokens,
-    system,
-    messages: [{ role: 'user', content: prompt }],
-  })
+  let response
+  try {
+    response = await anthropic.messages.create({
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: prompt }],
+    })
+  } catch (error) {
+    await recordClaudeInvocation({ options, model, startedAt, status: 'error', error })
+    throw error
+  }
 
   const firstText = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
   if (!firstText) {
     throw new Error('Claude returned no text content')
   }
 
-  return {
+  const result = {
     text: firstText.text,
     model: response.model,
     usage: {
@@ -87,6 +133,8 @@ export async function generateClaudeInsight(
       cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
     },
   }
+  await recordClaudeInvocation({ options, model: result.model, startedAt, status: 'success', usage: result.usage })
+  return result
 }
 
 type ClaudeStructuredOptions<T extends z.ZodType> = Omit<ClaudeInsightOptions, never> & {
@@ -108,6 +156,7 @@ export async function generateClaudeStructured<T extends z.ZodType>(
     systemPrompt,
     cacheSystem = true,
   } = options
+  const startedAt = Date.now()
 
   const anthropic = getClient()
 
@@ -117,19 +166,25 @@ export async function generateClaudeStructured<T extends z.ZodType>(
       : [{ type: 'text' as const, text: systemPrompt }]
     : undefined
 
-  const response = await anthropic.messages.parse({
-    model,
-    max_tokens: maxTokens,
-    system,
-    messages: [{ role: 'user', content: prompt }],
-    output_config: { format: zodOutputFormat(schema) },
-  })
+  let response
+  try {
+    response = await anthropic.messages.parse({
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: prompt }],
+      output_config: { format: zodOutputFormat(schema) },
+    })
+  } catch (error) {
+    await recordClaudeInvocation({ options, model, startedAt, status: 'error', error })
+    throw error
+  }
 
   if (!response.parsed_output) {
     throw new Error(`Claude returned no parsed output (stop_reason=${response.stop_reason})`)
   }
 
-  return {
+  const result = {
     parsed: response.parsed_output as z.infer<T>,
     model: response.model,
     usage: {
@@ -139,6 +194,8 @@ export async function generateClaudeStructured<T extends z.ZodType>(
       cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
     },
   }
+  await recordClaudeInvocation({ options, model: result.model, startedAt, status: 'success', usage: result.usage })
+  return result
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

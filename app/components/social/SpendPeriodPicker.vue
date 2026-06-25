@@ -8,6 +8,14 @@ const props = defineProps<{
   /** Optional: filter to a date range within the month (e.g., a week) */
   weekFilter?: { start: string; end: string } | null
   lastSyncedAt?: string | null
+  latestSyncJobs?: Array<{
+    platform: string
+    status: 'running' | 'completed' | 'failed'
+    syncedCount: number
+    error?: string | null
+    startedAt: string
+    finishedAt?: string | null
+  }>
   syncing?: boolean
 }>()
 
@@ -178,6 +186,24 @@ const syncLabel = computed(() => {
   return { relative, exact: `${date} at ${time}` }
 })
 
+const latestFailedSync = computed(() => {
+  return [...(props.latestSyncJobs || [])]
+    .filter(job => job.status === 'failed')
+    .sort((a, b) => new Date(b.finishedAt || b.startedAt).getTime() - new Date(a.finishedAt || a.startedAt).getTime())[0] || null
+})
+
+const latestFailedSyncLabel = computed(() => {
+  const job = latestFailedSync.value
+  if (!job) return null
+  const d = new Date(job.finishedAt || job.startedAt)
+  const time = d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const date = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+  return {
+    exact: `${date} at ${time}`,
+    title: job.error || `${job.platform} sync failed with ${job.syncedCount} campaigns updated`,
+  }
+})
+
 const syncButtonLabel = computed(() => props.syncing ? 'Syncing' : 'Sync now')
 </script>
 
@@ -286,9 +312,18 @@ const syncButtonLabel = computed(() => props.syncing ? 'Syncing' : 'Sync now')
 
     <!-- Last synced + Sync button -->
     <div class="flex items-center gap-2">
-      <div v-if="syncLabel" class="text-xs text-muted text-right hidden sm:block" :title="syncLabel.exact">
-        <span>Synced {{ syncLabel.relative }}</span>
-        <span class="text-muted/60 ml-1">({{ syncLabel.exact }})</span>
+      <div class="text-xs text-muted text-right hidden sm:block">
+        <div v-if="latestFailedSyncLabel" class="text-warning" :title="latestFailedSyncLabel.title">
+          Latest sync failed
+          <span class="text-muted/60 ml-1">({{ latestFailedSyncLabel.exact }})</span>
+        </div>
+        <div v-if="syncLabel" :title="syncLabel.exact">
+          Last successful data sync {{ syncLabel.relative }}
+          <span class="text-muted/60 ml-1">({{ syncLabel.exact }})</span>
+        </div>
+        <div v-else-if="!latestFailedSyncLabel">
+          Never synced
+        </div>
       </div>
       <UButton
         icon="i-lucide-refresh-cw"

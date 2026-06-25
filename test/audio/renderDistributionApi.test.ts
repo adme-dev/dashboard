@@ -161,6 +161,18 @@ describe('render distribution endpoints', () => {
       expect.objectContaining({
         temperature: 0.7,
         maxTokens: 400,
+        featureKey: 'audio_render_publish_social_caption',
+        userId: 'user-1',
+        clientId: 'client-1',
+        requestId: 'job-1',
+        metadata: {
+          route: '/api/agency/audio/projects/:id/renders/:jobId/publish-social',
+          projectId: 'project-1',
+          jobId: 'job-1',
+          format: 'reels_9x16',
+          platform: 'instagram',
+          tone: 'professional',
+        },
         systemPrompt: expect.stringContaining('social media copywriter'),
       })
     )

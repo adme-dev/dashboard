@@ -523,7 +523,28 @@ export default eventHandler(async (event) => {
 
       const raw = await generateGroqInsight(
         `Based on these financial metrics for an Australian marketing agency, write a single-sentence executive headline (max 25 words) summarising the financial position. Be specific and data-driven.\n\nData: ${dataSummary}`,
-        { model: GROQ_MODELS.LLAMA_8B, temperature: 0.3, maxTokens: 100, systemPrompt: 'You are a CFO writing a one-line executive summary. Respond with just the sentence, no quotes or formatting.' }
+        {
+          model: GROQ_MODELS.LLAMA_8B,
+          temperature: 0.3,
+          maxTokens: 100,
+          featureKey: 'financial_insights_headline',
+          clientId: tenantId || undefined,
+          requestId: cacheKey,
+          metadata: {
+            route: '/api/ai/insights',
+            tenantId: tenantId || null,
+            healthScore,
+            healthLabel: healthLabel(healthScore),
+            hasPnl: Boolean(pnl),
+            hasBankMonitoring: Boolean(bankMonitoring),
+            hasAging: Boolean(aging),
+            hasBudgetVariance: Boolean(budgetVariance),
+            keyMetricCount: keyMetrics.length,
+            sectionCount: sections.length,
+            recommendationCount: recommendations.length,
+          },
+          systemPrompt: 'You are a CFO writing a one-line executive summary. Respond with just the sentence, no quotes or formatting.'
+        }
       )
       headline = raw.trim().replace(/^["']|["']$/g, '')
     } catch {
@@ -540,7 +561,29 @@ export default eventHandler(async (event) => {
         const recSummary = recommendations.map(r => `${r.title}: ${r.description}`).join('\n')
         const raw = await generateGroqInsight(
           `Given these financial recommendations for an Australian marketing agency, provide 1-2 additional strategic recommendations in JSON array format. Each item should have: title, description, impact (high/medium/low), category.\n\nExisting recommendations:\n${recSummary}`,
-          { model: GROQ_MODELS.LLAMA_8B, temperature: 0.3, maxTokens: 500, systemPrompt: 'You are a senior financial adviser. Respond with valid JSON array only — no markdown, no code fences.' }
+          {
+            model: GROQ_MODELS.LLAMA_8B,
+            temperature: 0.3,
+            maxTokens: 500,
+            featureKey: 'financial_insights_recommendations',
+            clientId: tenantId || undefined,
+            requestId: cacheKey,
+            metadata: {
+              route: '/api/ai/insights',
+              tenantId: tenantId || null,
+              healthScore,
+              healthLabel: healthLabel(healthScore),
+              existingRecommendationCount: recommendations.length,
+              sectionCount: sections.length,
+              keyMetricCount: keyMetrics.length,
+              hasPnl: Boolean(pnl),
+              hasExpenses: Boolean(expenses),
+              hasInvoices: Boolean(invoices),
+              hasCashForecast: Boolean(cashForecast),
+              hasCashFlowInsights: Boolean(cashFlowInsights),
+            },
+            systemPrompt: 'You are a senior financial adviser. Respond with valid JSON array only — no markdown, no code fences.'
+          }
         )
         try {
           let parsed = JSON.parse(raw)

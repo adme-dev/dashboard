@@ -43,6 +43,7 @@ function deps(job: VideoGenerationJob, overrides: Record<string, any> = {}) {
     markFailed: vi.fn().mockResolvedValue({ ...job, status: 'failed' }),
     markSucceeded: vi.fn().mockResolvedValue({ ...job, status: 'succeeded' }),
     createOutputAsset: vi.fn().mockResolvedValue({ id: 'asset-out', r2Key: 'video-generation/job-1/output.mp4' }),
+    recordInvocation: vi.fn().mockResolvedValue(undefined),
     providers: {
       mock: {
         submit: vi.fn().mockResolvedValue({ providerRequestId: 'provider-job-1', status: 'submitted' }),
@@ -95,6 +96,13 @@ describe('video generation worker orchestration', () => {
     expect(d.markRunning).toHaveBeenCalledWith('job-1', 'cf-req-1')
     expect(d.providers.mock.poll).not.toHaveBeenCalled()
     expect(d.markSucceeded).not.toHaveBeenCalled()
+    expect(d.recordInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_generation_worker_runtime',
+      provider: 'mock',
+      modelId: 'mock/i2v-safe',
+      status: 'success',
+      metadata: expect.objectContaining({ outcome: 'submitted_async', providerRequestId: 'cf-req-1' }),
+    }))
   })
 
   it('marks failed on provider error', async () => {
@@ -111,6 +119,12 @@ describe('video generation worker orchestration', () => {
 
     expect(result.status).toBe('failed')
     expect(d.markFailed).toHaveBeenCalledWith('job-1', 'provider unavailable')
+    expect(d.recordInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_generation_worker_runtime',
+      status: 'error',
+      errorCode: 'video_generation_worker_exception',
+      metadata: expect.objectContaining({ outcome: 'exception', errorMessage: 'provider unavailable' }),
+    }))
   })
 
   it('marks succeeded and links the output asset on provider success', async () => {
@@ -127,6 +141,19 @@ describe('video generation worker orchestration', () => {
       outputR2Key: 'video-generation/job-1/output.mp4',
       actualCostCents: 123,
     })
+    expect(d.recordInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_generation_worker_runtime',
+      provider: 'mock',
+      modelId: 'mock/i2v-safe',
+      requestId: 'job-1',
+      estimatedCostUsd: 1.23,
+      status: 'success',
+      metadata: expect.objectContaining({
+        outcome: 'succeeded',
+        outputAssetId: 'asset-out',
+        outputR2Key: 'video-generation/job-1/output.mp4',
+      }),
+    }))
     expect(result.status).toBe('succeeded')
   })
 

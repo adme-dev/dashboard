@@ -22,6 +22,19 @@ interface SpendSummary {
   platform: string
   items: SpendSummaryItem[]
   totals: { budget: number; spend: number; commission: number; variance: number }
+  lastSyncedAt: string | null
+  latestSyncJobs: Array<{
+    platform: string
+    status: 'running' | 'completed' | 'failed'
+    syncedCount: number
+    totalSpend: number
+    failures: Array<{ account: string; reason: string }>
+    error: string | null
+    startedAt: string
+    finishedAt: string | null
+    totalAccounts: number | null
+    processedAccounts: number
+  }>
 }
 
 interface PacingReview {

@@ -33,6 +33,14 @@ vi.mock('~~/server/utils/appUrl', () => ({
   getAppUrl: () => 'http://localhost:3000'
 }))
 
+const mockGenerateGroqInsight = vi.fn()
+vi.mock('~~/server/utils/groqClient', () => ({
+  GROQ_MODELS: {
+    LLAMA_8B: 'llama-3.1-8b-instant',
+  },
+  generateGroqInsight: (...args: any[]) => mockGenerateGroqInsight(...args),
+}))
+
 import {
   createNotification,
   createBulkNotifications,
@@ -52,6 +60,7 @@ describe('notifications utility', () => {
     mockSendMentionEmail.mockResolvedValue(undefined)
     mockSendApprovalRequestEmail.mockResolvedValue(undefined)
     mockSendDueReminderEmail.mockResolvedValue(undefined)
+    mockGenerateGroqInsight.mockResolvedValue('👋 Got it — I’ll take a look.')
   })
 
   describe('createNotification', () => {
@@ -333,6 +342,46 @@ describe('notifications utility', () => {
       })
 
       expect(mockSendTaskAssignedEmail).not.toHaveBeenCalled()
+    })
+
+    it('records Model Ops metadata when drafting an auto-ack assignment comment', async () => {
+      mockQueryOne
+        .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' }) // assigner
+        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: { email_task_assigned: false } }) // assignee
+        .mockResolvedValueOnce({ notification_preferences: {} }) // in-app preference lookup
+        .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() }) // notification
+        .mockResolvedValueOnce({ department_id: null }) // skip auto subscribe in this focused metadata test
+        .mockResolvedValueOnce({ auto_ack_assignments: true }) // auto ack pref
+        .mockResolvedValueOnce({ id: 'activity-1' }) // activity insert
+
+      await notifyTaskAssigned({
+        taskId: 'task-123',
+        taskTitle: 'Complete report',
+        assigneeId: 'assignee-id',
+        assignerId: 'assigner-id',
+        projectName: 'Project X',
+        dueDate: '2026-06-30',
+      })
+
+      expect(mockGenerateGroqInsight).toHaveBeenCalledWith(expect.stringContaining('Complete report'), expect.objectContaining({
+        model: 'llama-3.1-8b-instant',
+        featureKey: 'task_assignment_auto_ack',
+        userId: 'assignee-id',
+        requestId: 'task-123',
+        metadata: {
+          route: 'notifyTaskAssigned',
+          taskId: 'task-123',
+          assignerId: 'assigner-id',
+          assigneeId: 'assignee-id',
+          hasProjectName: true,
+          hasDueDate: true,
+          taskTitleChars: 15,
+        },
+      }))
+      expect(mockQueryOne).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO task_activities'),
+        ['task-123', 'assignee-id', '👋 Got it — I’ll take a look.'],
+      )
     })
   })
 

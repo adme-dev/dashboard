@@ -4,6 +4,7 @@ import { spotlightSystemClause } from './spotlight'
 import { extractLoopOutput, estimateCostUsd, type LoopOutput } from './toolLoop'
 import { buildPortalTools } from './portalTools'
 import { assertPortalScope, type PortalToolContext } from './portalTools/portalContext'
+import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 /**
  * The client-portal agentic loop (portal-agent spec §8). Deliberately a SEPARATE entry point from the
@@ -38,7 +39,10 @@ export async function runPortalToolLoop(opts: {
   model?: LanguageModel
   fallbackModel?: LanguageModel
   signal?: AbortSignal
+  requestId?: string | null
+  metadata?: Record<string, unknown>
 }): Promise<LoopOutput> {
+  const startedAt = Date.now()
   // Refuse to run without a tenant key — defense in depth (buildPortalTools also asserts).
   assertPortalScope(opts.ctx)
   const cfg = useRuntimeConfig() as any
@@ -64,6 +68,7 @@ export async function runPortalToolLoop(opts: {
   const fallbackSpec = opts.fallbackSpec ?? cfg.aiLoopFallbackModel
   const aiBinding = (opts.ctx.event?.context as any)?.cloudflare?.env?.AI
   let usedSpec: string = opts.model ? 'injected' : primarySpec
+  let fallbackUsed = false
   let result
   try {
     result = await run(opts.model ?? resolveModel(primarySpec, { aiBinding }))
@@ -71,10 +76,40 @@ export async function runPortalToolLoop(opts: {
     const fb = opts.fallbackModel ?? (fallbackSpec ? resolveModel(fallbackSpec, { aiBinding }) : null)
     if (!fb) throw err
     usedSpec = opts.fallbackModel ? 'injected' : fallbackSpec
+    fallbackUsed = true
     result = await run(fb)
   }
 
   const out = extractLoopOutput(result)
   out.costUsd = estimateCostUsd(out.usage, usedSpec)
+  await recordAiInvocation({
+    featureKey: 'portal_ai_tool_loop',
+    provider: usedSpec.startsWith('anthropic/')
+      ? 'anthropic'
+      : usedSpec.startsWith('workersai/')
+        ? 'workers_ai'
+        : 'groq',
+    modelId: usedSpec.replace(/^(groq|anthropic|workersai)\//, ''),
+    gatewayUsed: !opts.model && !usedSpec.startsWith('workersai/'),
+    fallbackUsed,
+    userId: opts.ctx.clientUserId ?? null,
+    clientId: opts.ctx.clientScope,
+    requestId: opts.requestId ?? null,
+    promptTokens: out.usage?.inputTokens ?? null,
+    completionTokens: out.usage?.outputTokens ?? null,
+    totalTokens: out.usage?.totalTokens ?? null,
+    estimatedCostUsd: out.costUsd ?? null,
+    status: 'success',
+    latencyMs: Date.now() - startedAt,
+    metadata: {
+      enabledApps: opts.enabledApps ?? null,
+      allowWrites: Boolean(opts.allowWrites ?? !!cfg.aiPortalWritesEnabled),
+      toolCount: Object.keys(sdkTools).length,
+      toolCalls: out.toolCalls.map((call) => call.name).slice(0, 20),
+      proposedTool: out.proposedAction?.toolName ?? null,
+      injectedModel: Boolean(opts.model),
+      ...(opts.metadata ?? {}),
+    },
+  })
   return out
 }

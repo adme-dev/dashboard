@@ -150,6 +150,13 @@ async function classifyByLLM(message: string, event?: H3Event): Promise<IntentRe
           maxTokens: 100,
           temperature: 0.1,
           loraAdapter: adapter,
+          featureKey: 'agency_ai_intent_lora_classifier',
+          metadata: {
+            classifier: 'intent',
+            stage: 'lora',
+            messageChars: message.length,
+            intentCount: validIntents.length,
+          },
         })
         if (result.response) {
           const cleaned = result.response.replace(/```json\n?|\n?```/g, '').trim()
@@ -170,7 +177,15 @@ async function classifyByLLM(message: string, event?: H3Event): Promise<IntentRe
 
   // Try Workers AI edge inference (<50ms vs 1-3s Groq)
   if (event) {
-    const edgeResult = await edgeClassify(event, message, validIntents)
+    const edgeResult = await edgeClassify(event, message, validIntents, {
+      featureKey: 'agency_ai_intent_edge_classifier',
+      metadata: {
+        classifier: 'intent',
+        stage: 'edge',
+        messageChars: message.length,
+        intentCount: validIntents.length,
+      },
+    })
     if (edgeResult && validIntents.includes(edgeResult.category as AiIntent)) {
       return {
         intent: edgeResult.category as AiIntent,
@@ -206,6 +221,13 @@ Respond in this exact JSON format only, no other text:
       model: GROQ_MODELS.LLAMA_8B,
       temperature: 0.1,
       maxTokens: 150,
+      featureKey: 'agency_ai_intent_groq_classifier',
+      metadata: {
+        classifier: 'intent',
+        stage: 'groq_fallback',
+        messageChars: message.length,
+        intentCount: validIntents.length,
+      },
       systemPrompt: 'You are a message classifier. Respond only with valid JSON. No explanations.',
     })
 

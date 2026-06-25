@@ -366,6 +366,7 @@ onMounted(() => {
 })
 
 const lastSyncedAt = computed(() => spendData.value?.lastSyncedAt || null)
+const latestSyncJobs = computed(() => spendData.value?.latestSyncJobs || [])
 
 const flaggedItems = computed(() => {
   if (!spendData.value?.items) return []
@@ -477,6 +478,7 @@ const bankDiscrepancy = computed(() => {
         :year="selectedYear"
         :week-filter="weekFilter"
         :last-synced-at="lastSyncedAt"
+        :latest-sync-jobs="latestSyncJobs"
         :syncing="syncing"
         @update:month="selectedMonth = $event"
         @update:year="selectedYear = $event"
@@ -699,8 +701,9 @@ const bankDiscrepancy = computed(() => {
           :totals="spendData.totals"
           :search="searchQuery"
           :month-progress="monthProgress"
-          :pacing-review-items="pacingReviewItems"
-          :budget-control-settings="budgetControlSettings"
+        :pacing-review-items="pacingReviewItems"
+        :latest-sync-jobs="latestSyncJobs"
+        :budget-control-settings="budgetControlSettings"
           :bank-charges="bankCharges"
           @budget-updated="loadSpend"
         />

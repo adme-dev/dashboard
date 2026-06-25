@@ -15,7 +15,7 @@ export default eventHandler(async (event) => {
   const platform = rawPlatform === 'google' ? 'google_ads' : rawPlatform
   const tenantId = await getSelectedTenant(event)
 
-  const emptyResult = { month, year, platform: platform || 'all', items: [], totals: { budget: 0, spend: 0, commission: 0, variance: 0 } }
+  const emptyResult = { month, year, platform: platform || 'all', items: [], totals: { budget: 0, spend: 0, commission: 0, variance: 0 }, lastSyncedAt: null, latestSyncJobs: [] }
 
   const cacheKey = `spend:summary:${tenantId || 'no-tenant'}:${period}:${platform || 'all'}`
 
@@ -58,6 +58,28 @@ export default eventHandler(async (event) => {
     sql += ` GROUP BY ms.platform, ms.client_id, ac.name, ac.xero_contact_id, sc.account_name ORDER BY total_spend DESC`
 
     const rows = await queryRows<any>(sql, params)
+    const jobPlatform = platform === 'google_ads' ? 'google' : platform
+    const latestSyncJobs = await queryRows<{
+      platform: string
+      status: string
+      synced_count: number
+      total_spend: string
+      failures: Array<{ account: string; reason: string }>
+      error: string | null
+      started_at: string
+      finished_at: string | null
+      total_accounts: number | null
+      processed_accounts: number
+    }>(
+      `SELECT DISTINCT ON (platform)
+          platform, status, synced_count, total_spend, failures, error,
+          started_at, finished_at, total_accounts, processed_accounts
+       FROM spend_sync_jobs
+       WHERE period = $1
+       ${jobPlatform && jobPlatform !== 'all' ? 'AND platform = $2' : ''}
+       ORDER BY platform, started_at DESC`,
+      jobPlatform && jobPlatform !== 'all' ? [period, jobPlatform] : [period]
+    )
 
     const summary = rows.map((r: any) => {
       const budget = parseFloat(r.total_budget) || 0
@@ -104,7 +126,26 @@ export default eventHandler(async (event) => {
       return r.last_synced_at > latest ? r.last_synced_at : latest
     }, null as string | null)
 
-    return { month, year, platform: platform || 'all', items: summary, totals, lastSyncedAt }
+    return {
+      month,
+      year,
+      platform: platform || 'all',
+      items: summary,
+      totals,
+      lastSyncedAt,
+      latestSyncJobs: latestSyncJobs.map(job => ({
+        platform: job.platform,
+        status: job.status,
+        syncedCount: Number(job.synced_count) || 0,
+        totalSpend: Number(job.total_spend) || 0,
+        failures: job.failures || [],
+        error: job.error,
+        startedAt: job.started_at,
+        finishedAt: job.finished_at,
+        totalAccounts: job.total_accounts,
+        processedAccounts: job.processed_accounts,
+      })),
+    }
   } catch (err: any) {
     // Table may not exist if migrations haven't been run
     if (err.message?.includes('does not exist') || err.code === '42P01') {

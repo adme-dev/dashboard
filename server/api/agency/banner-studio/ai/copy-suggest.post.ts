@@ -16,7 +16,7 @@ interface CopySuggestion {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const body = await readBody(event)
   const { text, context } = body as {
@@ -65,6 +65,13 @@ Format: [{"text":"...","tone":"punchy"},{"text":"...","tone":"professional"},...
       systemPrompt,
       maxTokens: 500,
       temperature: 0.7,
+      featureKey: 'banner_copy_suggest',
+      userId: user?.id ?? null,
+      metadata: {
+        route: '/api/agency/banner-studio/ai/copy-suggest',
+        providerPath: 'workers_ai',
+        format: context?.format ?? null,
+      },
     })
 
     if (aiResult) {
@@ -82,6 +89,14 @@ Format: [{"text":"...","tone":"punchy"},{"text":"...","tone":"professional"},...
         systemPrompt,
         maxTokens: 500,
         temperature: 0.7,
+        featureKey: 'banner_copy_suggest',
+        userId: user?.id ?? null,
+        metadata: {
+          route: '/api/agency/banner-studio/ai/copy-suggest',
+          hasProjectName: Boolean(context?.projectName),
+          hasClientName: Boolean(context?.clientName),
+          format: context?.format ?? null,
+        },
       })
       suggestions = parseAiResponse(groqResult)
     } catch {

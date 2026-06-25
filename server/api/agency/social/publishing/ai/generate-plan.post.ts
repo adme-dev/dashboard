@@ -11,7 +11,7 @@ import type { SocialGeneratedDraft, SocialPublishPlatform } from '~/types'
  * → { posts: SocialGeneratedDraft[] }. PURE generation — writes nothing.
  */
 export default defineEventHandler(async (event): Promise<{ posts: SocialGeneratedDraft[] }> => {
-  await requireRole(event, PERMISSIONS.CREATIVE)
+  const user = await requireRole(event, PERMISSIONS.CREATIVE)
   if (!isPlannerAiEnabled()) throw createError({ statusCode: 404, statusMessage: 'Planner AI not enabled' })
   const b = await readBody(event)
   const brief = String(b?.brief ?? '').trim()
@@ -34,6 +34,15 @@ export default defineEventHandler(async (event): Promise<{ posts: SocialGenerate
     raw = await generateGroqInsight(prompt, {
       temperature: 0.8, maxTokens: 2000,
       systemPrompt: 'You are an expert social media strategist. Output ONLY valid JSON matching the requested shape — no prose, no code fences.',
+      featureKey: 'social_publishing_plan',
+      userId: user?.id ?? null,
+      clientId: typeof b?.clientId === 'string' ? b.clientId : null,
+      metadata: {
+        route: '/api/agency/social/publishing/ai/generate-plan',
+        platformCount: platforms.length,
+        postCount: count,
+        hasCampaignId: Boolean(b?.campaignId),
+      },
     })
   } catch {
     throw createError({ statusCode: 502, statusMessage: 'AI generation failed — please retry' })

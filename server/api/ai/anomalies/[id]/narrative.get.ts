@@ -37,6 +37,22 @@ export default defineEventHandler(async (event) => {
     narrative = await generateGroqInsight(prompt, {
       model: GROQ_MODELS.LLAMA_70B,
       maxTokens: 600,
+      featureKey: 'anomaly_driver_narrative',
+      clientId: tenantId,
+      requestId: id,
+      metadata: {
+        route: '/api/ai/anomalies/:id/narrative',
+        tenantId,
+        anomalyId: id,
+        anomalyType: row.type,
+        severity: row.severity,
+        status: row.status,
+        hasMetric: Boolean(row.metric),
+        hasComparison: Boolean(row.comparison),
+        hasContext: Boolean(row.context),
+        hasRecommendation: Boolean(row.recommendation),
+        tagCount: row.tags?.length || 0,
+      },
       systemPrompt: 'You are a senior FP&A analyst at a digital marketing agency. Be direct, practical, and specific. No fluff or buzzwords.',
     })
   } catch (err: any) {

@@ -308,6 +308,18 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
           model: GROQ_MODELS.LLAMA_8B,
           maxTokens: 60,
           temperature: 0.4,
+          featureKey: 'task_assignment_auto_ack',
+          userId: params.assigneeId,
+          requestId: params.taskId,
+          metadata: {
+            route: 'notifyTaskAssigned',
+            taskId: params.taskId,
+            assignerId: params.assignerId,
+            assigneeId: params.assigneeId,
+            hasProjectName: Boolean(params.projectName),
+            hasDueDate: Boolean(params.dueDate),
+            taskTitleChars: params.taskTitle.length,
+          },
           systemPrompt: 'You write short, professional acknowledgement comments. One sentence only. No quotes, no preamble.',
         })
         const cleaned = aiDraft.trim().replace(/^["']|["']$/g, '')

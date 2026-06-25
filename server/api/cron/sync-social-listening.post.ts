@@ -35,7 +35,19 @@ export default defineEventHandler(async (event) => {
   // Enrich any mentions still missing sentiment/topics (this run's + any backlog). Fail-safe.
   const enriched = await enrichUnenriched(
     { queryRows, execute },
-    (prompt) => generateGroqInsight(prompt, { maxTokens: 500, systemPrompt: 'You are a precise social-media sentiment classifier. Output only JSON.' }),
+    (prompt) => generateGroqInsight(prompt, {
+      maxTokens: 500,
+      featureKey: 'social_listening_enrichment',
+      requestId: 'cron-sync-social-listening',
+      metadata: {
+        route: '/api/cron/sync-social-listening',
+        enabledQueryCount: queries.length,
+        queriesRun,
+        mentionsUpserted,
+        promptChars: prompt.length,
+      },
+      systemPrompt: 'You are a precise social-media sentiment classifier. Output only JSON.',
+    }),
   )
   const alerts = await dispatchListeningAlerts({
     db: { queryRows, execute }, env: process.env as Record<string, string | undefined>,

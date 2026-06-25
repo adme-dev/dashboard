@@ -329,6 +329,14 @@ export default eventHandler(async (event) => {
           model: CLAUDE_MODELS.SONNET_4_6,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
+          featureKey: 'financial_advisor',
+          clientId: requestedClientId,
+          metadata: {
+            route: '/api/ai/financial-advisor',
+            tenantId,
+            requestedClientId,
+            backend: 'claude',
+          },
         })
         parsed = result.parsed
         modelUsed = result.model
@@ -342,6 +350,14 @@ export default eventHandler(async (event) => {
           temperature: 0.3,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
+          featureKey: 'financial_advisor',
+          clientId: requestedClientId,
+          metadata: {
+            route: '/api/ai/financial-advisor',
+            tenantId,
+            requestedClientId,
+            backend: 'claude_fallback_groq',
+          },
         }))
       }
     } else {
@@ -351,6 +367,14 @@ export default eventHandler(async (event) => {
           temperature: 0.3,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
+          featureKey: 'financial_advisor',
+          clientId: requestedClientId,
+          metadata: {
+            route: '/api/ai/financial-advisor',
+            tenantId,
+            requestedClientId,
+            backend: 'groq',
+          },
         }))
       } catch (err: any) {
         console.warn('[financial-advisor] REASONING_120B failed, falling back to LLAMA_70B:', err?.message)
@@ -359,6 +383,14 @@ export default eventHandler(async (event) => {
           temperature: 0.3,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
+          featureKey: 'financial_advisor',
+          clientId: requestedClientId,
+          metadata: {
+            route: '/api/ai/financial-advisor',
+            tenantId,
+            requestedClientId,
+            backend: 'groq_model_fallback',
+          },
         }))
         modelUsed = 'llama-3.3-70b-versatile'
       }

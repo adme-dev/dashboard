@@ -80,6 +80,17 @@ const props = defineProps<{
   search?: string
   monthProgress?: number
   pacingReviewItems?: PacingReviewItem[]
+  latestSyncJobs?: Array<{
+    platform: string
+    status: 'running' | 'completed' | 'failed'
+    syncedCount: number
+    error: string | null
+    startedAt: string
+    finishedAt: string | null
+    totalAccounts: number | null
+    processedAccounts: number
+    failures: Array<{ account: string; reason: string }>
+  }>
   budgetControlSettings?: SpendBudgetControlSettings
   bankCharges?: {
     byPlatform: Record<string, { total: number }>
@@ -108,7 +119,11 @@ const { alertsFor } = useSpendAlerts()
 const budgetModalOpen = ref(false)
 const budgetModalTarget = ref<BudgetEditTarget | null>(null)
 const historyOpen = ref(false)
-const selectedHistoryItem = ref<PacingReviewItem | null>(null)
+const selectedHistoryItemId = ref<string | null>(null)
+const selectedHistoryItem = computed(() => {
+  if (!selectedHistoryItemId.value) return null
+  return (props.pacingReviewItems ?? []).find(item => item.mediaSpendId === selectedHistoryItemId.value) ?? null
+})
 
 function openBudgetModal(item: typeof props.items[0]) {
   budgetModalTarget.value = {
@@ -153,9 +168,13 @@ function reasonCodesForItem(item: typeof props.items[0]) {
 }
 
 function openPacingHistory(item: PacingReviewItem) {
-  selectedHistoryItem.value = item
+  selectedHistoryItemId.value = item.mediaSpendId
   historyOpen.value = true
 }
+
+watch(historyOpen, (open) => {
+  if (!open) selectedHistoryItemId.value = null
+})
 
 function issueLabel(issue: string) {
   return issue.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
@@ -754,6 +773,10 @@ const totalColSpan = computed(() => socialSpendColumnCount({
       @saved="$emit('budget-updated')"
     />
 
-    <SocialSpendCampaignHistorySlideover v-model:open="historyOpen" :item="selectedHistoryItem" />
+    <SocialSpendCampaignHistorySlideover
+      v-model:open="historyOpen"
+      :item="selectedHistoryItem"
+      :latest-sync-jobs="latestSyncJobs"
+    />
   </div>
 </template>

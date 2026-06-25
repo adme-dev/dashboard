@@ -188,6 +188,12 @@ export default eventHandler(async (event) => {
       temperature: 0.2,
       maxTokens: 800,
       systemPrompt: SYSTEM_PROMPT,
+      featureKey: 'xero_invoice_ai_briefing',
+      metadata: {
+        route: '/api/xero/invoices/ai-briefing',
+        tenantId,
+        refresh,
+      },
     })
     parsed = tryParseJson(raw)
   } catch (err: any) {

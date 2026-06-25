@@ -1,21 +1,72 @@
 import Groq from 'groq-sdk'
 import { toFile } from 'groq-sdk/uploads'
+import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 // Lazy initialization to avoid startup errors
 let groq: Groq | null = null
+let directGroq: Groq | null = null
+
+/**
+ * Cloudflare AI Gateway's Groq provider endpoint is:
+ * https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/groq
+ * Accept the root gateway URL too so local/prod config can share one value
+ * across Groq and Anthropic helpers without silently misrouting requests.
+ * Source: https://developers.cloudflare.com/ai-gateway/usage/providers/groq/
+ */
+export function resolveGroqGatewayBaseUrl(base?: string | null): string | undefined {
+  if (!base) return undefined
+  const trimmed = String(base).trim().replace(/\/+$/, '')
+  if (!trimmed) return undefined
+  return trimmed.replace(/\/(groq|anthropic|perplexity-ai)$/, '') + '/groq'
+}
+
+export function buildGatewayAuthHeaders(gatewayUrl?: string, token?: string | null): Record<string, string> | undefined {
+  if (!gatewayUrl || !token) return undefined
+  const trimmed = String(token).trim()
+  if (!trimmed) return undefined
+  const bearer = trimmed.replace(/^Bearer\s+/i, '')
+  return { 'cf-aig-authorization': `Bearer ${bearer}` }
+}
+
+function resolveGroqApiKey(config: ReturnType<typeof useRuntimeConfig>): string {
+  const apiKey = config.groqApiKey || process.env.GROQ_API_KEY || process.env.GROQ_API
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY environment variable is required')
+  }
+  return apiKey
+}
+
+function hasGatewayConfigured(): boolean {
+  const config = useRuntimeConfig()
+  return Boolean(resolveGroqGatewayBaseUrl(config.aiGatewayUrl || process.env.AI_GATEWAY_URL))
+}
+
+function getDirectGroqClient() {
+  if (!directGroq) {
+    const config = useRuntimeConfig()
+    directGroq = new Groq({ apiKey: resolveGroqApiKey(config) })
+  }
+  return directGroq
+}
 
 function getGroqClient() {
   if (!groq) {
     const config = useRuntimeConfig()
-    const apiKey = config.groqApiKey || process.env.GROQ_API_KEY || process.env.GROQ_API
-    if (!apiKey) {
-      throw new Error('GROQ_API_KEY environment variable is required')
-    }
+    const apiKey = resolveGroqApiKey(config)
     // Route through Cloudflare AI Gateway when configured (provides caching, rate limiting, analytics)
-    const aiGatewayUrl = config.aiGatewayUrl || process.env.AI_GATEWAY_URL
+    const aiGatewayUrl = resolveGroqGatewayBaseUrl(config.aiGatewayUrl || process.env.AI_GATEWAY_URL)
+    const gatewayAuthHeaders = buildGatewayAuthHeaders(
+      aiGatewayUrl,
+      config.aiGatewayAuthToken
+      || process.env.AI_GATEWAY_AUTH_TOKEN
+      || config.cfApiToken
+      || process.env.CF_API_TOKEN
+      || process.env.CLOUDFLARE_API_TOKEN
+    )
     groq = new Groq({
       apiKey,
-      ...(aiGatewayUrl ? { baseURL: aiGatewayUrl } : {})
+      ...(aiGatewayUrl ? { baseURL: aiGatewayUrl } : {}),
+      ...(gatewayAuthHeaders ? { defaultHeaders: gatewayAuthHeaders } : {})
     })
   }
   return groq
@@ -72,6 +123,56 @@ interface GroqChatOptions {
   temperature?: number
   maxTokens?: number
   systemPrompt?: string
+  featureKey?: string
+  userId?: string | null
+  clientId?: string | null
+  requestId?: string | null
+  metadata?: Record<string, unknown>
+}
+
+function usageFromCompletion(completion: any) {
+  return {
+    promptTokens: completion?.usage?.prompt_tokens ?? completion?.usage?.promptTokens ?? null,
+    completionTokens: completion?.usage?.completion_tokens ?? completion?.usage?.completionTokens ?? null,
+    totalTokens: completion?.usage?.total_tokens ?? completion?.usage?.totalTokens ?? null
+  }
+}
+
+function errorCode(error: unknown): string {
+  const err = error as { code?: unknown, status?: unknown, message?: unknown }
+  return String(err?.code ?? err?.status ?? err?.message ?? 'unknown_error').slice(0, 160)
+}
+
+async function recordGroqChatInvocation(input: {
+  options: GroqChatOptions
+  model: GroqModel
+  gatewayUsed: boolean
+  fallbackUsed: boolean
+  status: 'success' | 'error'
+  startedAt: number
+  completion?: any
+  error?: unknown
+}) {
+  if (!input.options.featureKey) return
+
+  const usage = usageFromCompletion(input.completion)
+  await recordAiInvocation({
+    featureKey: input.options.featureKey,
+    provider: 'groq',
+    modelId: input.model,
+    gatewayUsed: input.gatewayUsed,
+    fallbackUsed: input.fallbackUsed,
+    userId: input.options.userId,
+    clientId: input.options.clientId,
+    requestId: input.options.requestId,
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens,
+    status: input.status,
+    errorCode: input.error ? errorCode(input.error) : null,
+    latencyMs: Date.now() - input.startedAt,
+    metadata: input.options.metadata ?? {}
+  })
 }
 
 /**
@@ -87,6 +188,8 @@ export async function generateGroqInsight(
     maxTokens = 1000,
     systemPrompt = 'You are a financial analyst AI assistant. Provide clear, actionable insights based on expense data.'
   } = options
+  const startedAt = Date.now()
+  const gatewayConfigured = hasGatewayConfigured()
 
   try {
     const groqClient = getGroqClient()
@@ -106,10 +209,71 @@ export async function generateGroqInsight(
       max_tokens: maxTokens,
       stream: false
     })
+    await recordGroqChatInvocation({
+      options,
+      model,
+      gatewayUsed: gatewayConfigured,
+      fallbackUsed: false,
+      status: 'success',
+      startedAt,
+      completion
+    })
 
     return completion.choices[0]?.message?.content || 'Unable to generate insight'
   } catch (error) {
+    if (gatewayConfigured) {
+      console.warn('Groq AI Gateway request failed; retrying direct Groq:', error)
+      try {
+        const directCompletion = await getDirectGroqClient().chat.completions.create({
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          model,
+          temperature,
+          max_tokens: maxTokens,
+          stream: false
+        })
+        await recordGroqChatInvocation({
+          options,
+          model,
+          gatewayUsed: true,
+          fallbackUsed: true,
+          status: 'success',
+          startedAt,
+          completion: directCompletion
+        })
+
+        return directCompletion.choices[0]?.message?.content || 'Unable to generate insight'
+      } catch (directError) {
+        await recordGroqChatInvocation({
+          options,
+          model,
+          gatewayUsed: true,
+          fallbackUsed: true,
+          status: 'error',
+          startedAt,
+          error: directError
+        })
+        throw directError
+      }
+    }
     console.error('Groq API Error:', error)
+    await recordGroqChatInvocation({
+      options,
+      model,
+      gatewayUsed: false,
+      fallbackUsed: false,
+      status: 'error',
+      startedAt,
+      error
+    })
     throw new Error('Failed to generate AI insight')
   }
 }

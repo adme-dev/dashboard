@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 /**
  * Workers AI edge inference — lightweight AI at the edge (<50ms).
@@ -14,6 +15,49 @@ function getAI(event: H3Event): any | null {
   }
 }
 
+interface EdgeTelemetryOptions {
+  featureKey?: string
+  userId?: string | null
+  clientId?: string | null
+  requestId?: string | null
+  metadata?: Record<string, unknown> | null
+}
+
+type EdgeGenerateOptions = {
+  systemPrompt?: string
+  maxTokens?: number
+  temperature?: number
+} & EdgeTelemetryOptions
+
+async function recordEdgeInvocation(input: {
+  featureKey: string
+  modelId: string
+  options?: EdgeTelemetryOptions
+  status?: 'success' | 'error'
+  errorCode?: string | null
+  fallbackUsed?: boolean
+  latencyMs?: number
+  metadata?: Record<string, unknown>
+}) {
+  await recordAiInvocation({
+    featureKey: input.featureKey,
+    provider: 'workers_ai',
+    modelId: input.modelId,
+    gatewayUsed: true,
+    fallbackUsed: Boolean(input.fallbackUsed),
+    userId: input.options?.userId ?? null,
+    clientId: input.options?.clientId ?? null,
+    requestId: input.options?.requestId ?? null,
+    status: input.status ?? 'success',
+    errorCode: input.errorCode ?? null,
+    latencyMs: input.latencyMs,
+    metadata: {
+      ...(input.options?.metadata ?? {}),
+      ...(input.metadata ?? {}),
+    },
+  })
+}
+
 /**
  * Generate text using Workers AI at the edge.
  * Returns null if binding unavailable or on error.
@@ -21,11 +65,13 @@ function getAI(event: H3Event): any | null {
 export async function edgeGenerate(
   event: H3Event,
   prompt: string,
-  options: { systemPrompt?: string; maxTokens?: number; temperature?: number } = {}
+  options: EdgeGenerateOptions = {}
 ): Promise<string | null> {
   const ai = getAI(event)
   if (!ai) return null
 
+  const startedAt = Date.now()
+  const modelId = '@cf/meta/llama-3.1-8b-instruct'
   try {
     const messages: Array<{ role: string; content: string }> = []
     if (options.systemPrompt) {
@@ -33,15 +79,31 @@ export async function edgeGenerate(
     }
     messages.push({ role: 'user', content: prompt })
 
-    const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+    const result = await ai.run(modelId, {
       messages,
       max_tokens: options.maxTokens ?? 256,
       temperature: options.temperature ?? 0.3,
     })
 
-    return result?.response ?? null
+    const response = result?.response ?? null
+    await recordEdgeInvocation({
+      featureKey: options.featureKey ?? 'workers_ai_edge_generate',
+      modelId,
+      options,
+      latencyMs: Date.now() - startedAt,
+      metadata: { hasResponse: Boolean(response), maxTokens: options.maxTokens ?? 256 },
+    })
+    return response
   } catch (err) {
     console.error('[edgeAi] Generation failed:', err)
+    await recordEdgeInvocation({
+      featureKey: options.featureKey ?? 'workers_ai_edge_generate',
+      modelId,
+      options,
+      status: 'error',
+      errorCode: err instanceof Error ? err.message.slice(0, 120) : 'edge_generation_failed',
+      latencyMs: Date.now() - startedAt,
+    })
     return null
   }
 }
@@ -53,16 +115,19 @@ export async function edgeGenerate(
 export async function edgeClassify(
   event: H3Event,
   text: string,
-  categories: string[]
+  categories: string[],
+  options: EdgeTelemetryOptions = {}
 ): Promise<{ category: string; confidence: number } | null> {
   const ai = getAI(event)
   if (!ai) return null
 
+  const startedAt = Date.now()
+  const modelId = '@cf/meta/llama-3.1-8b-instruct'
   try {
     const categoryList = categories.map((c, i) => `${i + 1}. ${c}`).join('\n')
     const prompt = `Classify the following text into exactly ONE of these categories. Respond with ONLY valid JSON in format {"category":"<name>","confidence":<0.0-1.0>}.\n\nCategories:\n${categoryList}\n\nText: "${text}"`
 
-    const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+    const result = await ai.run(modelId, {
       messages: [
         { role: 'system', content: 'You are a text classifier. Respond only with valid JSON. No explanations.' },
         { role: 'user', content: prompt },
@@ -72,6 +137,13 @@ export async function edgeClassify(
     })
 
     const response = result?.response
+    await recordEdgeInvocation({
+      featureKey: options.featureKey ?? 'workers_ai_edge_classify',
+      modelId,
+      options,
+      latencyMs: Date.now() - startedAt,
+      metadata: { categories, hasResponse: Boolean(response) },
+    })
     if (!response) return null
 
     const cleaned = response.replace(/```json\n?|\n?```/g, '').trim()
@@ -89,6 +161,15 @@ export async function edgeClassify(
     }
   } catch (err) {
     console.error('[edgeAi] Classification failed:', err)
+    await recordEdgeInvocation({
+      featureKey: options.featureKey ?? 'workers_ai_edge_classify',
+      modelId,
+      options,
+      status: 'error',
+      errorCode: err instanceof Error ? err.message.slice(0, 120) : 'edge_classification_failed',
+      latencyMs: Date.now() - startedAt,
+      metadata: { categories },
+    })
     return null
   }
 }
@@ -106,7 +187,7 @@ export async function edgeGenerateWithLoRA(
     maxTokens?: number
     temperature?: number
     loraAdapter?: { id: string; name: string } | null
-  } = {}
+  } & EdgeTelemetryOptions = {}
 ): Promise<{ response: string | null; usedLora: boolean; adapterId: string | null }> {
   const ai = getAI(event)
   if (!ai) return { response: null, usedLora: false, adapterId: null }
@@ -124,26 +205,68 @@ export async function edgeGenerateWithLoRA(
   }
 
   // Try LoRA adapter first if provided
+  let loraError: string | null = null
   if (options.loraAdapter) {
+    const startedAt = Date.now()
+    const loraModelId = '@cf/meta/llama-3.1-8b-instruct-fast'
     try {
-      const result = await ai.run('@cf/meta/llama-3.1-8b-instruct-fast', {
+      const result = await ai.run(loraModelId, {
         ...baseParams,
         lora: options.loraAdapter.name,
       })
       if (result?.response) {
+        await recordEdgeInvocation({
+          featureKey: options.featureKey ?? 'workers_ai_edge_generate_lora',
+          modelId: loraModelId,
+          options,
+          latencyMs: Date.now() - startedAt,
+          metadata: { usedLora: true, adapterId: options.loraAdapter.id, adapterName: options.loraAdapter.name },
+        })
         return { response: result.response, usedLora: true, adapterId: options.loraAdapter.id }
       }
     } catch (err) {
+      loraError = err instanceof Error ? err.message : String(err)
       console.warn('[edgeAi] LoRA generation failed, falling back to base model:', err)
     }
   }
 
   // Fall back to base model
+  const startedAt = Date.now()
+  const modelId = '@cf/meta/llama-3.1-8b-instruct'
   try {
-    const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', baseParams)
-    return { response: result?.response ?? null, usedLora: false, adapterId: null }
+    const result = await ai.run(modelId, baseParams)
+    const response = result?.response ?? null
+    await recordEdgeInvocation({
+      featureKey: options.featureKey ?? 'workers_ai_edge_generate_lora',
+      modelId,
+      options,
+      fallbackUsed: Boolean(options.loraAdapter),
+      latencyMs: Date.now() - startedAt,
+      metadata: {
+        usedLora: false,
+        loraAttempted: Boolean(options.loraAdapter),
+        loraAdapterId: options.loraAdapter?.id ?? null,
+        loraError,
+        hasResponse: Boolean(response),
+      },
+    })
+    return { response, usedLora: false, adapterId: null }
   } catch (err) {
     console.error('[edgeAi] Base generation failed:', err)
+    await recordEdgeInvocation({
+      featureKey: options.featureKey ?? 'workers_ai_edge_generate_lora',
+      modelId,
+      options,
+      fallbackUsed: Boolean(options.loraAdapter),
+      status: 'error',
+      errorCode: err instanceof Error ? err.message.slice(0, 120) : 'edge_base_generation_failed',
+      latencyMs: Date.now() - startedAt,
+      metadata: {
+        loraAttempted: Boolean(options.loraAdapter),
+        loraAdapterId: options.loraAdapter?.id ?? null,
+        loraError,
+      },
+    })
     return { response: null, usedLora: false, adapterId: null }
   }
 }
@@ -161,5 +284,6 @@ export async function edgeSummarize(
     systemPrompt: 'You are a text summarizer. Provide concise summaries only.',
     maxTokens: Math.ceil(maxLength / 3),
     temperature: 0.2,
+    featureKey: 'workers_ai_edge_summarize',
   })
 }

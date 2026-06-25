@@ -120,6 +120,11 @@ const defaultDistillStoreDeps: DistillStoreDeps = {
     model: GROQ_MODELS.REASONING_20B,
     temperature: 0.2,
     maxTokens: 400,
+    featureKey: 'ai_memory_distillation',
+    metadata: {
+      route: 'aiMemory.distillAndStoreMemories',
+      promptChars: prompt.length,
+    },
     systemPrompt: 'Reply with ONLY a JSON array, exactly as the user instruction specifies.',
   }),
   // content only — dedup needs the strings, not whole rows (review finding #9).

@@ -73,6 +73,20 @@ export default defineEventHandler(async (event) => {
       model: GROQ_MODELS.LLAMA_8B,
       maxTokens: 50,
       temperature: 0.2,
+      featureKey: 'notification_why_explanation',
+      userId: user.id,
+      requestId: notificationId,
+      metadata: {
+        route: '/api/notifications/:id/why',
+        notificationId,
+        notificationType: row.type ?? null,
+        reason: row.reason ?? null,
+        hasTitle: Boolean(row.title),
+        hasMessage: Boolean(row.message),
+        hasBoardName: Boolean(md.boardName),
+        hasTaskTitle: Boolean(md.taskTitle),
+        hasChanges: Boolean(md.changes),
+      },
       systemPrompt: 'You write punchy single-sentence notification explanations. No preamble, no quotes, no markdown.',
     })
 

@@ -2,7 +2,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const body = await readBody(event)
   const { serviceName, categoryName, price, priceUnit, setupFee, setupNotes, notes } = body
@@ -35,6 +35,18 @@ Write 2-3 paragraphs describing what this service includes, typical deliverables
     model: GROQ_MODELS.LLAMA_70B,
     temperature: 0.4,
     maxTokens: 600,
+    featureKey: 'rate_card_description',
+    userId: user?.id ?? null,
+    metadata: {
+      route: '/api/agency/rate-cards/generate-description',
+      categoryName: categoryName || 'General',
+      priceUnit: priceUnit || null,
+      priceMode: priceUnit === 'POA' ? 'poa' : 'fixed',
+      hasSetupFee: Boolean(setupFee),
+      hasSetupNotes: Boolean(setupNotes),
+      hasContextNotes: Boolean(notes),
+      hasWebResearch: Boolean(webResearch),
+    },
     systemPrompt: 'You are a digital marketing agency copywriter. Write clear, professional service descriptions for rate cards. Be concise and specific. Output plain text only — no markdown, no bullet points, no headers.',
   })
 

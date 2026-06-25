@@ -59,6 +59,11 @@ vi.mock('~~/server/utils/video-generation/sourceAssets', () => ({
   loadVideoGenerationSourceAssets: (...a: unknown[]) => mockLoadSourceAssets(...a),
 }))
 
+const mockRecordAiInvocation = vi.fn()
+vi.mock('~~/server/utils/ai/invocationLedger', () => ({
+  recordAiInvocation: (...a: unknown[]) => mockRecordAiInvocation(...a),
+}))
+
 const mockIsTenantModel = vi.fn((model: any) => model.provider === 'aigateway'
   && model.surface === 'tenant'
   && model.defaultEnabled
@@ -175,6 +180,22 @@ describe('POST /agency/video/generation/jobs', () => {
       idempotencyKey: 'idem-1',
       sourceAssetUrls: ['https://r2.example/asset-1?sig=abc'],
     })
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_generation_job',
+      provider: 'aigateway',
+      modelId: 'bytedance/seedance-2.0-fast',
+      gatewayUsed: true,
+      userId: '00000000-0000-4000-8000-000000000001',
+      clientId: avProject.clientId,
+      estimatedCostUsd: 1.5,
+      status: 'success',
+      metadata: expect.objectContaining({
+        queued: true,
+        projectId: avProject.id,
+        jobId: 'job-1',
+        registryModelId: 'aigateway/seedance-i2v',
+      }),
+    }))
     expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 202)
     expect(res.job.id).toBe('job-1')
   })
@@ -279,6 +300,7 @@ describe('POST /agency/video/generation/jobs', () => {
     expect(mockReserve).not.toHaveBeenCalled()
     expect(mockCreateJob).not.toHaveBeenCalled()
     expect(mockEnqueue).not.toHaveBeenCalled()
+    expect(mockRecordAiInvocation).not.toHaveBeenCalled()
     expect(res.job.id).toBe('existing-job')
   })
 

@@ -9,7 +9,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { edgeGenerate } from '~~/server/utils/edgeAi'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const body = await readBody(event)
 
   if (!body?.campaignId || !body?.breakdowns) {
@@ -25,6 +25,19 @@ export default defineEventHandler(async (event) => {
       systemPrompt: 'You are a digital marketing analyst writing for a sales team. Use clear, non-technical language. Focus on actionable insights. Be concise — 3-4 bullet points maximum. Use bullet points (•) format.',
       maxTokens: 350,
       temperature: 0.4,
+      featureKey: 'agency_analytics_ai_summary',
+      userId: user?.id ?? null,
+      requestId: body.campaignId,
+      metadata: {
+        route: '/api/agency/analytics/ai-summary',
+        campaignId: body.campaignId,
+        platform: typeof platform === 'string' ? platform : null,
+        hasCampaignName: Boolean(campaignName),
+        ageBreakdownCount: Array.isArray(breakdowns.age) ? breakdowns.age.length : 0,
+        genderBreakdownCount: Array.isArray(breakdowns.gender) ? breakdowns.gender.length : 0,
+        deviceBreakdownCount: Array.isArray(breakdowns.device) ? breakdowns.device.length : 0,
+        geoBreakdownCount: Array.isArray(breakdowns.geo) ? breakdowns.geo.length : 0,
+      },
     })
 
     return { summary }

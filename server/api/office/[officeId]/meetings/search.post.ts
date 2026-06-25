@@ -97,6 +97,16 @@ export default defineEventHandler(async (event) => {
       model: GROQ_MODELS.LLAMA_70B,
       temperature: 0.05,
       maxTokens: 1100,
+      featureKey: 'office_meeting_cross_search',
+      userId: user.id,
+      requestId: officeId,
+      metadata: {
+        route: 'officeMeetingSearch',
+        officeId,
+        artifactCount: usableArtifacts.length,
+        sourceCount: Math.min(usableArtifacts.length, 6),
+        questionChars: body.question.length,
+      },
       systemPrompt: 'You answer questions across recent business meeting artifacts. Use only supplied artifacts and do not invent facts.'
     }
   )

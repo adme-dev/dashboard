@@ -65,6 +65,14 @@ export async function draftFollowUp(c: DraftContext): Promise<FollowUpDraft> {
     temperature: 0.4,
     maxTokens: 600,
     systemPrompt: 'You are a sales rep writing concise, genuine follow-up emails. Respond in valid JSON only.',
+    featureKey: 'crm_followup_draft',
+    metadata: {
+      hasContactName: Boolean(c.contactName),
+      hasCompanyName: Boolean(c.companyName),
+      hasOpportunityTitle: Boolean(c.oppTitle),
+      hasAmount: c.amount != null,
+      stageName: c.stageName ?? null,
+    },
   })
   return parseDraft(raw, c)
 }

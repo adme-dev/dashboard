@@ -33,7 +33,7 @@ Rules:
 - Optimize for small file size and fast load times`
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const body = await readBody(event)
   const {
@@ -110,6 +110,14 @@ export default defineEventHandler(async (event) => {
       systemPrompt: SYSTEM_PROMPT,
       maxTokens: 2000,
       temperature: 0.4,
+      featureKey: 'banner_code_assist',
+      userId: user?.id ?? null,
+      metadata: {
+        route: '/api/agency/banner-studio/ai/code-assist',
+        providerPath: 'workers_ai',
+        action: action ?? 'general',
+        historyCount: recentHistory.length,
+      },
     })
 
     if (aiResult && aiResult.trim().length > 20) {
@@ -128,6 +136,16 @@ export default defineEventHandler(async (event) => {
         systemPrompt: SYSTEM_PROMPT,
         maxTokens: 2000,
         temperature: 0.4,
+        featureKey: 'banner_code_assist',
+        userId: user?.id ?? null,
+        metadata: {
+          route: '/api/agency/banner-studio/ai/code-assist',
+          action: action ?? 'general',
+          width: width ?? null,
+          height: height ?? null,
+          hasTemplateName: Boolean(templateName),
+          historyCount: recentHistory.length,
+        },
       })
       if (groqResult && groqResult.trim().length > 10) {
         reply = groqResult

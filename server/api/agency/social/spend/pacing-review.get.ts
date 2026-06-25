@@ -8,6 +8,13 @@ import {
 } from '~~/server/utils/socialSpendPacingReview'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 
+function requestIdFromEvent(event: any): string | null {
+  const headers = event?.node?.req?.headers
+  const value = headers?.['cf-ray'] ?? headers?.['x-request-id']
+  if (Array.isArray(value)) return value[0] || null
+  return typeof value === 'string' && value ? value : null
+}
+
 function platformFilter(raw: unknown): 'meta' | 'google_ads' | null {
   const value = String(raw || '')
   if (value === 'meta') return 'meta'
@@ -32,7 +39,11 @@ function buildAiPrompt(review: PacingReviewResult): string {
   return JSON.stringify({ period: review.period, summary: review.summary, items }, null, 2)
 }
 
-async function generateAiSummary(review: PacingReviewResult): Promise<string | null> {
+async function generateAiSummary(review: PacingReviewResult, context: {
+  userId: string
+  requestId: string | null
+  metadata: Record<string, unknown>
+}): Promise<string | null> {
   if (review.items.length === 0) return null
   try {
     const raw = await generateGroqInsight(buildAiPrompt(review), {
@@ -46,6 +57,10 @@ async function generateAiSummary(review: PacingReviewResult): Promise<string | n
         'Prioritize what the media buyer should review first.',
         'Do not claim any changes were made.',
       ].join(' '),
+      featureKey: 'social_spend_pacing_summary',
+      userId: context.userId,
+      requestId: context.requestId,
+      metadata: context.metadata,
     })
     return raw.trim() || null
   } catch (err: any) {
@@ -55,7 +70,7 @@ async function generateAiSummary(review: PacingReviewResult): Promise<string | n
 }
 
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const q = getQuery(event)
   const now = new Date()
@@ -82,7 +97,17 @@ export default eventHandler(async (event) => {
 
   const review = buildPacingReview(rows, { now, period })
   const includeAi = q.ai !== '0' && q.ai !== 'false'
-  const aiSummary = includeAi ? await generateAiSummary(review) : null
+  const aiSummary = includeAi
+    ? await generateAiSummary(review, {
+      userId: user.id,
+      requestId: requestIdFromEvent(event),
+      metadata: {
+        route: '/api/agency/social/spend/pacing-review',
+        period,
+        platform: selectedPlatform ?? 'all',
+      },
+    })
+    : null
 
   return { ...review, aiSummary }
 })
