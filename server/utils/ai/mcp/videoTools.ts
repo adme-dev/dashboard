@@ -95,6 +95,14 @@ export const videoReadTools: VideoToolDescriptor[] = [
       + 'Poll after confirming a propose_video_generation.',
     parameters: z.object({ jobId: UUID }),
     requiredPermission: 'CREATIVE'
+  },
+  {
+    name: 'get_timeline_context',
+    description:
+      'Read AV project timeline context for agent planning. Returns project, current timeline clips/assets, '
+      + 'recent render/generation jobs, and derived creative version nodes. Read-only.',
+    parameters: z.object({ projectId: UUID }),
+    requiredPermission: 'CREATIVE'
   }
 ]
 

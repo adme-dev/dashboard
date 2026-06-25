@@ -131,12 +131,14 @@ This task list decomposes the approved PRD into small, verifiable slices. Slice 
 **Description:** Add an MCP read tool that returns project, timeline, asset, render, and version graph context.
 
 **Acceptance criteria:**
-- [ ] Uses existing MCP scope checks.
-- [ ] Does not mutate state.
-- [ ] Includes stable clip and version ids.
+- [x] Uses existing MCP scope checks.
+- [x] Does not mutate state.
+- [x] Includes stable clip and version ids.
 
 **Verification:**
-- [ ] MCP tool tests.
+- [x] `pnpm exec vitest run test/ai/mcpVideoTools.test.ts`
+- [x] `pnpm exec eslint server/utils/ai/mcp/videoTools.ts server/utils/ai/mcp/videoRunner.ts test/ai/mcpVideoTools.test.ts`
+- [x] `pnpm exec vue-tsc --noEmit --pretty false`
 
 **Dependencies:** Task 1.
 

@@ -22,7 +22,7 @@ vi.mock('~~/server/utils/permissions', () => ({
 
 const ctx = (role: string, userId = 'u1'): ToolContext => ({ userId, userRole: role, event: {} as never, source: 'mcp' })
 
-const READ_NAMES = ['list_av_projects', 'list_video_models', 'list_video_generations', 'get_video_generation_status']
+const READ_NAMES = ['list_av_projects', 'list_video_models', 'list_video_generations', 'get_video_generation_status', 'get_timeline_context']
 
 describe('projectVideoReadTools', () => {
   it('returns no tools when the suite flag is off', () => {
@@ -74,6 +74,34 @@ describe('executeVideoTool guard (never throws)', () => {
   it('bad_args when args fail Zod', async () => {
     const r = await executeVideoTool('get_video_generation_status', { jobId: 'not-a-uuid' }, ctx('admin'), { enabled: true, runner: runner() })
     expect(r).toMatchObject({ ok: false, code: 'bad_args' })
+  })
+
+  it('executes get_timeline_context as a read-only project-scoped tool', async () => {
+    const projectId = '11111111-1111-4111-8111-111111111111'
+    const getTimelineContext = vi.fn(async () => ({
+      project: { id: projectId, title: 'Launch edit' },
+      timeline: { id: 'timeline-1', clips: [{ id: 'clip-1' }] },
+      assets: [{ id: 'asset-1', kind: 'video' }],
+      renderJobs: [{ id: 'render-1', status: 'done' }],
+      versions: [{ id: 'media-render:render-1' }]
+    }))
+
+    const r = await executeVideoTool('get_timeline_context', { projectId }, ctx('admin'), {
+      enabled: true,
+      runner: { get_timeline_context: getTimelineContext }
+    })
+
+    expect(r).toEqual({
+      ok: true,
+      data: {
+        project: { id: projectId, title: 'Launch edit' },
+        timeline: { id: 'timeline-1', clips: [{ id: 'clip-1' }] },
+        assets: [{ id: 'asset-1', kind: 'video' }],
+        renderJobs: [{ id: 'render-1', status: 'done' }],
+        versions: [{ id: 'media-render:render-1' }]
+      }
+    })
+    expect(getTimelineContext).toHaveBeenCalledWith({ projectId }, expect.objectContaining({ source: 'mcp' }))
   })
 
   it('handler_error when the runner throws', async () => {
@@ -224,7 +252,12 @@ describe('dispatchVideoConfirm', () => {
   })
 
   it('handler_error when the executor throws', async () => {
-    const deps = { ...okDeps(), reserve: vi.fn(async () => { throw new Error('boom') }) }
+    const deps = {
+      ...okDeps(),
+      reserve: vi.fn(async () => {
+        throw new Error('boom')
+      })
+    }
     const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
     expect(r).toMatchObject({ ok: false, code: 'handler_error' })
   })

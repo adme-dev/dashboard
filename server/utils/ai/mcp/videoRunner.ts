@@ -6,7 +6,7 @@ import {
   type VideoGenerationPendingPayload,
   type VideoProjectPendingPayload
 } from './videoTools'
-import { listProjects, getProjectWithCurrentTimeline, createProject } from '~~/server/utils/audio/projects'
+import { listProjects, getProjectWithCurrentTimeline, createProject, listRenderJobs } from '~~/server/utils/audio/projects'
 import { listSelectableVideoGenerationModels, getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { selectableVideoModelOptions } from '~~/app/utils/video/modelPresentation'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
@@ -21,6 +21,7 @@ import { enqueueVideoGeneration } from '~~/server/utils/video-generation/enqueue
 import { resolveSourceAssetUrls } from '~~/server/utils/video-generation/resolveSourceUrls'
 import { emptyAvTimeline } from '~~/server/utils/audio/timelineSchema'
 import { proposeAction } from '~~/server/utils/ai/pendingActions'
+import { buildCreativeVersionGraph, mapMediaRenderJobToVersionSource } from '~~/server/utils/creative/versionGraph'
 
 /**
  * MCP Phase 2b — the REAL video runner (the binding-dependent half of videoTools.ts). Wraps the exact
@@ -32,6 +33,7 @@ import { proposeAction } from '~~/server/utils/ai/pendingActions'
 interface ModelsArgs { projectId?: string }
 interface ListArgs { projectId: string }
 interface StatusArgs { jobId: string }
+interface TimelineContextArgs { projectId: string }
 
 /**
  * Resolve + authorize a projectId for the actor. Returns the project + current timeline, or null when
@@ -102,8 +104,120 @@ export function buildVideoReadRunner(): VideoReadRunner {
         actualCostCents: job.actualCostCents,
         error: job.errorMessage ?? null
       }
+    },
+
+    get_timeline_context: async (raw, ctx) => {
+      const a = raw as TimelineContextArgs
+      const existing = await authorizedProject(a.projectId, ctx)
+      if (!existing) throw new Error('project not usable')
+
+      const renderJobs = await listRenderJobs(a.projectId)
+      const generationJobs = await listVideoGenerationJobsForProject(a.projectId, 20)
+      const timelineNode = existing.timeline
+        ? [{
+            id: `timeline:${existing.timeline.id}`,
+            assetType: 'video' as const,
+            versionKind: 'original' as const,
+            status: 'ready' as const,
+            sourceRef: { source: 'media_timelines', id: existing.timeline.id },
+            parentIds: [],
+            label: existing.timeline.label ?? `Timeline v${existing.timeline.version}`,
+            createdAt: existing.timeline.createdAt,
+            metadata: { projectId: a.projectId, version: existing.timeline.version }
+          }]
+        : []
+      const graph = buildCreativeVersionGraph([
+        ...timelineNode,
+        ...renderJobs.map(job => mapMediaRenderJobToVersionSource(job as unknown as Record<string, unknown>))
+      ])
+
+      return {
+        project: {
+          id: existing.project.id,
+          title: existing.project.title,
+          clientId: existing.project.clientId ?? null,
+          currentTimelineId: existing.project.currentTimelineId ?? null
+        },
+        timeline: existing.timeline
+          ? {
+              id: existing.timeline.id,
+              version: existing.timeline.version,
+              clips: timelineClips(existing.timeline.state)
+            }
+          : null,
+        assets: timelineAssets(existing.timeline?.state),
+        renderJobs: renderJobs.map(job => ({
+          id: job.id,
+          status: job.status,
+          timelineId: job.timelineId,
+          variants: job.variants,
+          createdAt: job.createdAt
+        })),
+        generationJobs: generationJobs.map(job => ({
+          id: job.id,
+          status: job.status,
+          mode: job.mode,
+          modelId: job.modelId,
+          outputAssetId: job.outputAssetId,
+          createdAt: job.createdAt
+        })),
+        versions: graph.nodes.map(node => ({
+          id: node.id,
+          kind: node.versionKind,
+          status: node.status,
+          label: node.label,
+          parentIds: node.parentIds,
+          sourceRef: node.sourceRef
+        })),
+        findings: graph.findings
+      }
     }
   }
+}
+
+function timelineClips(state: unknown): Array<Record<string, unknown>> {
+  const clips: Array<Record<string, unknown>> = []
+  const tracks = state && typeof state === 'object' && Array.isArray((state as { tracks?: unknown }).tracks)
+    ? (state as { tracks: Array<Record<string, unknown>> }).tracks
+    : []
+
+  for (const track of tracks) {
+    const trackClips = Array.isArray(track.clips) ? track.clips : []
+    for (const rawClip of trackClips) {
+      if (!rawClip || typeof rawClip !== 'object') continue
+      const clip = rawClip as Record<string, unknown>
+      clips.push({
+        id: clip.id,
+        type: clip.type ?? track.kind ?? null,
+        trackId: track.id ?? null,
+        assetId: clip.asset_id ?? clip.assetId ?? null,
+        r2Key: clip.r2_key ?? clip.r2Key ?? null,
+        timelineStartSec: clip.timeline_start_sec ?? clip.timelineStartSec ?? null,
+        sourceInSec: clip.source_in_sec ?? clip.sourceInSec ?? null,
+        sourceOutSec: clip.source_out_sec ?? clip.sourceOutSec ?? null
+      })
+    }
+  }
+
+  return clips
+}
+
+function timelineAssets(state: unknown): Array<Record<string, unknown>> {
+  const byKey = new Map<string, Record<string, unknown>>()
+  for (const clip of timelineClips(state)) {
+    const assetId = typeof clip.assetId === 'string' ? clip.assetId : null
+    const r2Key = typeof clip.r2Key === 'string' ? clip.r2Key : null
+    if (!assetId && !r2Key) continue
+    const key = assetId ?? r2Key ?? ''
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        id: assetId,
+        r2Key,
+        type: clip.type ?? null
+      })
+    }
+  }
+  return [...byKey.values()]
 }
 
 /**
