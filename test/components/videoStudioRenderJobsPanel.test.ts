@@ -11,9 +11,9 @@ const stubs = {
     name: 'UButton',
     props: ['icon', 'label', 'to', 'disabled', 'loading'],
     emits: ['click'],
-    template: '<a v-if="to" :href="to"><slot />{{ label }}</a><button v-else :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>',
+    template: '<a v-if="to" :href="to"><slot />{{ label }}</a><button v-else :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
   },
-  UDropdownMenu: { name: 'UDropdownMenu', props: ['items'], template: '<div><slot /></div>' },
+  UDropdownMenu: { name: 'UDropdownMenu', props: ['items'], template: '<div><slot /></div>' }
 }
 
 function job(overrides: Partial<MediaRenderJob> = {}): MediaRenderJob {
@@ -29,7 +29,7 @@ function job(overrides: Partial<MediaRenderJob> = {}): MediaRenderJob {
     requestedBy: 'user-1',
     createdAt: '2026-06-18T00:00:00Z',
     updatedAt: '2026-06-18T00:01:00Z',
-    ...overrides,
+    ...overrides
   }
 }
 
@@ -45,6 +45,7 @@ describe('VideoStudioRenderJobsPanel', () => {
 
     expect(html).toContain('Render jobs')
     expect(html).toContain('done')
+    expect(html).toContain('Version render-1 · reels_9x16, square_1x1')
     expect(html).toContain('reels_9x16')
     expect(html).toContain('/api/agency/audio/projects/project-1/renders/render-1/reels_9x16')
     expect(html).toContain('Publish')
@@ -65,8 +66,8 @@ describe('VideoStudioRenderJobsPanel', () => {
         id: 'failed-render',
         status: 'failed',
         variants: {},
-        error: 'FFmpeg exited with code 1\nOverlay source was missing.',
-      })],
+        error: 'FFmpeg exited with code 1\nOverlay source was missing.'
+      })]
     })
 
     expect(html).toContain('failed')

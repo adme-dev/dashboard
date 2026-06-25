@@ -40,6 +40,12 @@ export function renderVariantUrl(projectId: string, jobId: string, format: strin
   return `/api/agency/audio/projects/${encodeURIComponent(projectId)}/renders/${encodeURIComponent(jobId)}/${encodeURIComponent(format)}`
 }
 
+export function creativeVersionLabelForRenderJob(job: MediaRenderJob): string {
+  const formats = renderVariantFormats(job)
+  const suffix = formats.length ? formats.join(', ') : job.status
+  return `Version ${job.id} · ${suffix}`
+}
+
 export function parseRenderFailure(error: string | null | undefined): RenderFailureSummary {
   const details = (error ?? '').trim()
   const match = details.match(/^([a-z_]+):\s*(.*)$/)

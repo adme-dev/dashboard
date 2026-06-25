@@ -4,6 +4,7 @@ import {
   favoriteVersions,
   latestVersionForRoot,
   mapAudioAssetToVersionSource,
+  mapMediaRenderJobToVersionSource,
   mapVideoGenerationJobToVersionSource
 } from '~~/server/utils/creative/versionGraph'
 
@@ -285,5 +286,69 @@ describe('creative version graph', () => {
         sourceAssetIds: ['source-1']
       }
     })
+  })
+
+  it('maps media render jobs into render version sources', () => {
+    expect(mapMediaRenderJobToVersionSource({
+      id: 'render-1',
+      timelineId: 'timeline-2',
+      projectId: 'project-1',
+      channels: ['video'],
+      status: 'done',
+      variants: { reels_9x16: 'renders/reels.mp4' },
+      costCents: 14,
+      error: null,
+      requestedBy: 'user-1',
+      createdAt: '2026-06-26T10:00:00.000Z',
+      updatedAt: '2026-06-26T10:02:00.000Z'
+    })).toEqual({
+      id: 'media-render:render-1',
+      assetType: 'render',
+      versionKind: 'render',
+      status: 'ready',
+      sourceRef: { source: 'media_render_jobs', id: 'render-1' },
+      parentIds: ['timeline:timeline-2'],
+      label: 'Render reels_9x16',
+      createdAt: '2026-06-26T10:00:00.000Z',
+      metadata: {
+        channels: ['video'],
+        costCents: 14,
+        projectId: 'project-1',
+        requestedBy: 'user-1',
+        timelineId: 'timeline-2',
+        variants: { reels_9x16: 'renders/reels.mp4' }
+      }
+    })
+  })
+
+  it('keeps failed render jobs out of latest selection when a ready render exists', () => {
+    const graph = buildCreativeVersionGraph([
+      {
+        id: 'timeline:timeline-2',
+        assetType: 'video',
+        versionKind: 'original',
+        status: 'ready',
+        sourceRef: { source: 'media_timelines', id: 'timeline-2' },
+        parentIds: [],
+        label: 'Timeline',
+        createdAt: '2026-06-26T09:00:00.000Z'
+      },
+      mapMediaRenderJobToVersionSource({
+        id: 'ready-render',
+        timelineId: 'timeline-2',
+        status: 'done',
+        variants: { reels_9x16: 'renders/ready.mp4' },
+        createdAt: '2026-06-26T10:00:00.000Z'
+      }),
+      mapMediaRenderJobToVersionSource({
+        id: 'failed-render',
+        timelineId: 'timeline-2',
+        status: 'failed',
+        variants: {},
+        createdAt: '2026-06-26T10:01:00.000Z'
+      })
+    ])
+
+    expect(latestVersionForRoot(graph, 'timeline:timeline-2')?.id).toBe('media-render:ready-render')
   })
 })

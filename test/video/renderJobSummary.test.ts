@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { MediaRenderJob } from '~~/app/types'
 import {
+  creativeVersionLabelForRenderJob,
   parseRenderFailure,
   renderVariantFormats,
   renderVariantUrl,
-  summarizeVideoRenderJobs,
+  summarizeVideoRenderJobs
 } from '~~/app/utils/video/renderJobSummary'
 
 function job(input: Partial<MediaRenderJob>): MediaRenderJob {
@@ -20,7 +21,7 @@ function job(input: Partial<MediaRenderJob>): MediaRenderJob {
     requestedBy: 'user-1',
     createdAt: '2026-06-19T00:00:00.000Z',
     updatedAt: '2026-06-19T00:00:00.000Z',
-    ...input,
+    ...input
   }
 }
 
@@ -30,7 +31,7 @@ describe('video render job summary', () => {
       job({ id: 'queued', status: 'queued' }),
       job({ id: 'rendering', status: 'rendering' }),
       job({ id: 'done', status: 'done' }),
-      job({ id: 'failed', status: 'failed' }),
+      job({ id: 'failed', status: 'failed' })
     ])
 
     expect(summary).toMatchObject({ total: 4, active: 2, completed: 1, failed: 1 })
@@ -39,7 +40,7 @@ describe('video render job summary', () => {
   it('selects the latest job by created time', () => {
     const summary = summarizeVideoRenderJobs([
       job({ id: 'older', createdAt: '2026-06-19T00:00:00.000Z' }),
-      job({ id: 'newer', createdAt: '2026-06-19T01:00:00.000Z' }),
+      job({ id: 'newer', createdAt: '2026-06-19T01:00:00.000Z' })
     ])
 
     expect(summary.latest?.id).toBe('newer')
@@ -52,22 +53,36 @@ describe('video render job summary', () => {
     expect(renderVariantUrl('project/1', 'job/1', 'reels_9x16')).toBe('/api/agency/audio/projects/project%2F1/renders/job%2F1/reels_9x16')
   })
 
+  it('builds a creative version label for render jobs', () => {
+    expect(creativeVersionLabelForRenderJob(job({
+      id: 'render-2',
+      status: 'done',
+      variants: { reels_9x16: 'a.mp4', square_1x1: 'b.mp4' }
+    }))).toBe('Version render-2 · reels_9x16, square_1x1')
+
+    expect(creativeVersionLabelForRenderJob(job({
+      id: 'render-3',
+      status: 'failed',
+      variants: {}
+    }))).toBe('Version render-3 · failed')
+  })
+
   it('parses categorized render failures for display', () => {
     expect(parseRenderFailure('runtime_not_ready: runtime_not_ready after 2500ms')).toEqual({
       category: 'runtime_not_ready',
       label: 'Render runtime not ready',
       details: 'runtime_not_ready after 2500ms',
-      retryable: true,
+      retryable: true
     })
     expect(parseRenderFailure('invalid_composition: missing runtime')).toMatchObject({
       label: 'Invalid composition',
-      retryable: false,
+      retryable: false
     })
     expect(parseRenderFailure('plain failure')).toMatchObject({
       category: null,
       label: 'Render failed',
       details: 'plain failure',
-      retryable: true,
+      retryable: true
     })
   })
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MediaRenderJob, MediaRenderJobStatus } from '~~/app/types'
-import { parseRenderFailure, renderVariantFormats, renderVariantUrl } from '~~/app/utils/video/renderJobSummary'
+import { creativeVersionLabelForRenderJob, parseRenderFailure, renderVariantFormats, renderVariantUrl } from '~~/app/utils/video/renderJobSummary'
 
 const props = withDefaults(defineProps<{
   projectId: string
@@ -8,15 +8,13 @@ const props = withDefaults(defineProps<{
   rendering?: boolean
 }>(), {
   jobs: () => [],
-  rendering: false,
+  rendering: false
 })
 
 const emit = defineEmits<{
   (event: 'render'): void
   (event: 'retry', job: MediaRenderJob): void
-  (event: 'publish', job: MediaRenderJob, format: string): void
-  (event: 'send-to-portal', job: MediaRenderJob, format: string): void
-  (event: 'save-asset', job: MediaRenderJob, format: string): void
+  (event: 'publish' | 'send-to-portal' | 'save-asset', job: MediaRenderJob, format: string): void
 }>()
 
 function statusColor(status: MediaRenderJobStatus): 'primary' | 'success' | 'error' | 'neutral' {
@@ -42,11 +40,15 @@ function variantUrl(job: MediaRenderJob, format: string) {
   return renderVariantUrl(props.projectId, job.id, format)
 }
 
+function versionLabel(job: MediaRenderJob) {
+  return creativeVersionLabelForRenderJob(job)
+}
+
 function variantItems(job: MediaRenderJob, label: string, icon: string, event: 'publish' | 'send-to-portal' | 'save-asset') {
   return [variantFormats(job).map(format => ({
     label: `${label} ${format}`,
     icon,
-    onSelect: () => emit(event, job, format),
+    onSelect: () => emit(event, job, format)
   }))]
 }
 
@@ -59,8 +61,12 @@ function failureSummary(job: MediaRenderJob) {
   <div class="rounded-md border border-default bg-elevated p-3">
     <div class="flex items-start justify-between gap-2">
       <div class="min-w-0">
-        <p class="text-sm font-medium text-highlighted">Render jobs</p>
-        <p class="mt-0.5 text-xs leading-snug text-muted">Export, save, send, or publish completed renders.</p>
+        <p class="text-sm font-medium text-highlighted">
+          Render jobs
+        </p>
+        <p class="mt-0.5 text-xs leading-snug text-muted">
+          Export, save, send, or publish completed renders.
+        </p>
       </div>
       <UButton
         icon="i-lucide-clapperboard"
@@ -80,9 +86,19 @@ function failureSummary(job: MediaRenderJob) {
         class="rounded-md border border-default bg-default/30 p-2"
       >
         <div class="flex items-start gap-2">
-          <UBadge :label="job.status" size="xs" variant="subtle" :color="statusColor(job.status)" />
+          <UBadge
+            :label="job.status"
+            size="xs"
+            variant="subtle"
+            :color="statusColor(job.status)"
+          />
           <div class="min-w-0 flex-1">
-            <p class="truncate text-xs text-muted">{{ dateLabel(job.createdAt) }}</p>
+            <p class="truncate text-xs text-muted">
+              {{ dateLabel(job.createdAt) }}
+            </p>
+            <p class="mt-0.5 truncate text-[11px] text-muted">
+              {{ versionLabel(job) }}
+            </p>
           </div>
         </div>
 
@@ -91,7 +107,9 @@ function failureSummary(job: MediaRenderJob) {
             <UIcon name="i-lucide-triangle-alert" class="size-3.5" />
             <span>{{ failureSummary(job).label }}</span>
           </div>
-          <p class="mt-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-error">{{ failureSummary(job).details }}</p>
+          <p class="mt-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-error">
+            {{ failureSummary(job).details }}
+          </p>
         </div>
 
         <div class="mt-2 flex flex-wrap items-center gap-1.5">
@@ -119,19 +137,37 @@ function failureSummary(job: MediaRenderJob) {
             v-if="job.status === 'done' && variantFormats(job).length"
             :items="variantItems(job, 'Publish', 'i-lucide-share-2', 'publish')"
           >
-            <UButton icon="i-lucide-share-2" size="xs" variant="ghost" color="primary" label="Publish" />
+            <UButton
+              icon="i-lucide-share-2"
+              size="xs"
+              variant="ghost"
+              color="primary"
+              label="Publish"
+            />
           </UDropdownMenu>
           <UDropdownMenu
             v-if="job.status === 'done' && variantFormats(job).length"
             :items="variantItems(job, 'Send', 'i-lucide-send', 'send-to-portal')"
           >
-            <UButton icon="i-lucide-send" size="xs" variant="ghost" color="neutral" label="Portal" />
+            <UButton
+              icon="i-lucide-send"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              label="Portal"
+            />
           </UDropdownMenu>
           <UDropdownMenu
             v-if="job.status === 'done' && variantFormats(job).length"
             :items="variantItems(job, 'Save', 'i-lucide-bookmark', 'save-asset')"
           >
-            <UButton icon="i-lucide-bookmark" size="xs" variant="ghost" color="neutral" label="Library" />
+            <UButton
+              icon="i-lucide-bookmark"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              label="Library"
+            />
           </UDropdownMenu>
         </div>
       </div>
@@ -139,8 +175,12 @@ function failureSummary(job: MediaRenderJob) {
 
     <div v-else class="mt-3 rounded-md border border-dashed border-default px-3 py-4 text-center">
       <UIcon name="i-lucide-clapperboard" class="mx-auto size-4 text-muted" />
-      <p class="mt-2 text-xs font-medium text-highlighted">No render jobs yet</p>
-      <p class="mt-1 text-[11px] text-muted">Render the timeline to create export variants.</p>
+      <p class="mt-2 text-xs font-medium text-highlighted">
+        No render jobs yet
+      </p>
+      <p class="mt-1 text-[11px] text-muted">
+        Render the timeline to create export variants.
+      </p>
     </div>
   </div>
 </template>

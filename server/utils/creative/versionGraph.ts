@@ -266,3 +266,36 @@ export function mapVideoGenerationJobToVersionSource(row: Record<string, unknown
     }
   }
 }
+
+export function mapMediaRenderJobToVersionSource(row: Record<string, unknown>): CreativeVersionSource {
+  const id = String(row.id)
+  const variants = row.variants && typeof row.variants === 'object' && !Array.isArray(row.variants)
+    ? row.variants as Record<string, unknown>
+    : {}
+  const variantFormats = Object.keys(variants)
+  const timelineId = String(row.timelineId ?? row.timeline_id ?? '')
+  const projectId = String(row.projectId ?? row.project_id ?? '')
+
+  return {
+    id: `media-render:${id}`,
+    assetType: 'render',
+    versionKind: 'render',
+    status: mapStatus(row.status),
+    sourceRef: { source: 'media_render_jobs', id },
+    parentIds: timelineId ? [`timeline:${timelineId}`] : [],
+    label: variantFormats.length ? `Render ${variantFormats.join(', ')}` : `Render ${id}`,
+    createdAt: row.createdAt instanceof Date || typeof row.createdAt === 'string'
+      ? row.createdAt
+      : row.created_at instanceof Date || typeof row.created_at === 'string'
+        ? row.created_at
+        : null,
+    metadata: {
+      channels: Array.isArray(row.channels) ? row.channels.map(String) : [],
+      costCents: row.costCents ?? row.cost_cents ?? null,
+      projectId,
+      requestedBy: row.requestedBy ?? row.requested_by ?? null,
+      timelineId,
+      variants
+    }
+  }
+}
