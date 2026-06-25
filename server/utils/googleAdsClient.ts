@@ -99,15 +99,45 @@ export async function refreshGoogleToken(
   clientId: string,
   clientSecret: string
 ): Promise<GoogleTokenResponse> {
-  return ofetch<GoogleTokenResponse>(GOOGLE_TOKEN_URL, {
-    method: 'POST',
-    body: {
-      refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: 'refresh_token'
-    }
-  })
+  try {
+    return await ofetch<GoogleTokenResponse>(GOOGLE_TOKEN_URL, {
+      method: 'POST',
+      body: {
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'refresh_token'
+      }
+    })
+  } catch (err: unknown) {
+    throw new Error(formatGoogleOAuthError(err))
+  }
+}
+
+function formatGoogleOAuthError(err: unknown): string {
+  const errorLike = isObjectRecord(err) ? err : {}
+  const status = typeof errorLike.status === 'number'
+    ? errorLike.status
+    : typeof errorLike.statusCode === 'number'
+      ? errorLike.statusCode
+      : undefined
+  const response = isObjectRecord(errorLike.response) ? errorLike.response : {}
+  const data = isObjectRecord(errorLike.data)
+    ? errorLike.data
+    : isObjectRecord(response._data)
+      ? response._data
+      : {}
+  const code = typeof data.error === 'string' ? data.error : ''
+  const description = typeof data.error_description === 'string' ? data.error_description : ''
+  const detail = [code, description].filter(Boolean).join(': ')
+  if (detail) return status ? `${detail} (${status})` : detail
+  return typeof errorLike.message === 'string'
+    ? errorLike.message
+    : status ? `Google OAuth error ${status}` : 'Google OAuth error'
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 // ============================================

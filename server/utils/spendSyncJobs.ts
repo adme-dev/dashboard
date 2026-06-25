@@ -23,8 +23,8 @@ import { queryOne, execute } from './db'
  */
 async function alertEmptySpendSync(platform: string, jobId: string, totalAccounts: number): Promise<void> {
   console.error(
-    `[SpendSync] ⚠️ ${platform} job ${jobId} COMPLETED with synced_count=0 across ${totalAccounts} accounts — ` +
-    `likely an access-tier/egress empty-throttle, NOT a genuine $0. Investigate before trusting the data.`
+    `[SpendSync] ⚠️ ${platform} job ${jobId} COMPLETED with synced_count=0 across ${totalAccounts} accounts — `
+    + `likely an access-tier/egress empty-throttle, NOT a genuine $0. Investigate before trusting the data.`
   )
   const webhook = process.env.SPEND_SYNC_ALERT_SLACK_WEBHOOK
   if (!webhook) return
@@ -37,11 +37,11 @@ async function alertEmptySpendSync(platform: string, jobId: string, totalAccount
         text: {
           type: 'mrkdwn',
           text:
-            `:warning: *${platform} spend sync wrote $0*\n` +
-            `Job \`${jobId}\` completed with *0 synced* across *${totalAccounts}* account(s).\n` +
-            `Likely an access-tier/egress empty-throttle (e.g. Meta \`development_access\` from data-center IPs), not a real $0 — investigate before trusting the data.`,
-        },
-      },
+            `:warning: *${platform} spend sync wrote $0*\n`
+            + `Job \`${jobId}\` completed with *0 synced* across *${totalAccounts}* account(s).\n`
+            + `Likely an access-tier/egress empty-throttle (e.g. Meta \`development_access\` from data-center IPs), not a real $0 — investigate before trusting the data.`
+        }
+      }
     ])
   } catch (e) {
     console.error('[SpendSync] failed to post $0-sync Slack alert:', e)
@@ -76,12 +76,16 @@ export async function createSpendSyncJob(
 
 /** Mark a job completed with its result. Safe to call from inside a waitUntil promise. */
 export async function completeSpendSyncJob(jobId: string, result: SyncJobResult): Promise<void> {
-  const row = await queryOne<{ platform: string; total_accounts: number | null }>(
+  const row = await queryOne<{ platform: string, total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
-       SET status = 'completed',
+       SET status = CASE WHEN $2 = 0 AND jsonb_array_length($4::jsonb) > 0
+                         THEN 'failed' ELSE 'completed' END,
            synced_count = $2,
            total_spend = $3,
            failures = $4::jsonb,
+           error = CASE WHEN $2 = 0 AND jsonb_array_length($4::jsonb) > 0
+                        THEN 'Sync finished with account failures and no campaigns updated'
+                        ELSE error END,
            finished_at = NOW()
      WHERE id = $1
      RETURNING platform, total_accounts`,
@@ -107,14 +111,24 @@ export async function setSyncJobTotalAccounts(jobId: string, total: number): Pro
  * UPDATE that reaches total_accounts.
  */
 export async function recordSyncJobAccountResult(jobId: string, result: SyncJobResult): Promise<void> {
-  const row = await queryOne<{ platform: string; status: string; synced_count: number; total_accounts: number | null }>(
+  const row = await queryOne<{ platform: string, status: string, synced_count: number, total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
        SET processed_accounts = processed_accounts + 1,
            synced_count = synced_count + $2,
            total_spend = total_spend + $3,
            failures = failures || $4::jsonb,
            status = CASE WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
-                         THEN 'completed' ELSE status END,
+                              AND synced_count + $2 = 0
+                              AND jsonb_array_length(failures || $4::jsonb) > 0
+                         THEN 'failed'
+                         WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
+                         THEN 'completed'
+                         ELSE status END,
+           error = CASE WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
+                             AND synced_count + $2 = 0
+                             AND jsonb_array_length(failures || $4::jsonb) > 0
+                        THEN 'Sync finished with account failures and no campaigns updated'
+                        ELSE error END,
            finished_at = CASE WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
                               THEN NOW() ELSE finished_at END
      WHERE id = $1
@@ -123,7 +137,7 @@ export async function recordSyncJobAccountResult(jobId: string, result: SyncJobR
   )
   // Fail loud (+ Slack alert when configured): a job that completes with 0 synced
   // across N accounts is almost never a genuine $0 — see alertEmptySpendSync.
-  if (row && row.status === 'completed' && Number(row.synced_count) === 0 && Number(row.total_accounts) > 0) {
+  if (row && row.status !== 'running' && Number(row.synced_count) === 0 && Number(row.total_accounts) > 0) {
     await alertEmptySpendSync(row.platform, jobId, Number(row.total_accounts))
   }
 }
