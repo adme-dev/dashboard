@@ -129,6 +129,22 @@ function normalizeNumber(value: unknown): number | null {
   return null
 }
 
+function normalizeVoiceoverChunks(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return []
+  return value.map((chunk, index) => {
+    const row = normalizeRecord(chunk)
+    const status = mapStatus(row.status)
+    return {
+      index: normalizeNumber(row.index) ?? index,
+      text: typeof row.text === 'string' ? row.text : '',
+      status,
+      assetId: row.assetId ?? row.asset_id ?? null,
+      error: row.error ?? null,
+      retryable: status === 'failed'
+    }
+  })
+}
+
 export function buildCreativeVersionGraph(sources: CreativeVersionSource[]): CreativeVersionGraph {
   const findings: CreativeVersionFinding[] = []
   const nodesById: Record<string, CreativeVersionNode> = {}
@@ -244,6 +260,10 @@ export function mapAudioAssetToVersionSource(row: Record<string, unknown>): Crea
   const id = String(row.id)
   const kind = row.kind ?? null
   const title = typeof row.title === 'string' ? row.title.trim() : ''
+  const sourceAudioAssetId = row.sourceAudioAssetId ?? row.source_audio_asset_id ?? null
+  const scriptChunkGroupId = row.scriptChunkGroupId ?? row.script_chunk_group_id ?? null
+  const voiceoverChunks = normalizeVoiceoverChunks(row.voiceoverChunks ?? row.chunks)
+  const isVoiceoverTake = kind === 'voiceover' && typeof sourceAudioAssetId === 'string' && sourceAudioAssetId.trim()
   const fallbackLabel = kind === 'music'
     ? 'Music asset'
     : kind === 'voiceover'
@@ -253,10 +273,10 @@ export function mapAudioAssetToVersionSource(row: Record<string, unknown>): Crea
   return {
     id: `audio:${id}`,
     assetType: 'audio',
-    versionKind: 'original',
+    versionKind: isVoiceoverTake ? 'take' : 'original',
     status: mapStatus(row.status),
     sourceRef: { source: 'audio_assets', id },
-    parentIds: [],
+    parentIds: isVoiceoverTake ? [`audio:${sourceAudioAssetId}`] : [],
     label: title || fallbackLabel,
     createdAt: row.createdAt instanceof Date || typeof row.createdAt === 'string'
       ? row.createdAt
@@ -278,7 +298,11 @@ export function mapAudioAssetToVersionSource(row: Record<string, unknown>): Crea
       prompt: row.prompt ?? null,
       r2Key: row.r2KeyMaster ?? row.r2_key_master ?? null,
       variants: normalizeRecord(row.variants),
-      voice: row.voice ?? null
+      voice: row.voice ?? null,
+      ...(scriptChunkGroupId ? { scriptChunkGroupId } : {}),
+      ...(sourceAudioAssetId ? { sourceAudioAssetId } : {}),
+      ...(row.takeIndex != null || row.take_index != null ? { takeIndex: normalizeNumber(row.takeIndex ?? row.take_index) } : {}),
+      ...(voiceoverChunks.length ? { voiceoverChunks } : {})
     }
   }
 }

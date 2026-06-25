@@ -112,11 +112,13 @@ This task list decomposes the approved PRD into small, verifiable slices. Slice 
 **Description:** Attach generated voiceover chunks and retakes to version graph metadata.
 
 **Acceptance criteria:**
-- [ ] Takes can reference an original script/chunk group.
-- [ ] Failed chunks are individually retryable in metadata.
+- [x] Takes can reference an original script/chunk group.
+- [x] Failed chunks are individually retryable in metadata.
 
 **Verification:**
-- [ ] Audio utility/API tests.
+- [x] `pnpm exec vitest run test/creative/versionGraph.test.ts`
+- [x] `pnpm exec eslint server/utils/creative/versionGraph.ts test/creative/versionGraph.test.ts`
+- [x] `pnpm exec vue-tsc --noEmit --pretty false`
 
 **Dependencies:** Task 5.
 

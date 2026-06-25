@@ -342,6 +342,81 @@ describe('creative version graph', () => {
     ])
   })
 
+  it('maps voiceover retakes with script chunk retry metadata', () => {
+    expect(mapAudioAssetToVersionSource({
+      id: 'voiceover-take-2',
+      kind: 'voiceover',
+      status: 'failed',
+      title: 'VO take 2',
+      prompt: 'Full script',
+      source_audio_asset_id: 'voiceover-original',
+      script_chunk_group_id: 'script-group-1',
+      take_index: 2,
+      chunks: [
+        {
+          index: 0,
+          text: 'First sentence.',
+          status: 'done',
+          asset_id: 'chunk-asset-1'
+        },
+        {
+          index: 1,
+          text: 'Second sentence.',
+          status: 'failed',
+          error: 'provider timeout'
+        }
+      ],
+      created_at: '2026-06-26T10:05:00.000Z'
+    })).toEqual({
+      id: 'audio:voiceover-take-2',
+      assetType: 'audio',
+      versionKind: 'take',
+      status: 'failed',
+      sourceRef: { source: 'audio_assets', id: 'voiceover-take-2' },
+      parentIds: ['audio:voiceover-original'],
+      label: 'VO take 2',
+      createdAt: '2026-06-26T10:05:00.000Z',
+      metadata: {
+        channels: [],
+        clientId: null,
+        costCents: null,
+        createdBy: null,
+        durationSec: null,
+        error: null,
+        format: null,
+        isInstrumental: null,
+        kind: 'voiceover',
+        lang: null,
+        lyrics: null,
+        prompt: 'Full script',
+        r2Key: null,
+        scriptChunkGroupId: 'script-group-1',
+        sourceAudioAssetId: 'voiceover-original',
+        takeIndex: 2,
+        variants: {},
+        voice: null,
+        voiceoverChunks: [
+          {
+            index: 0,
+            text: 'First sentence.',
+            status: 'ready',
+            assetId: 'chunk-asset-1',
+            error: null,
+            retryable: false
+          },
+          {
+            index: 1,
+            text: 'Second sentence.',
+            status: 'failed',
+            assetId: null,
+            error: 'provider timeout',
+            retryable: true
+          }
+        ]
+      }
+    })
+  })
+
   it('maps video generation jobs into version sources', () => {
     expect(mapVideoGenerationJobToVersionSource({
       id: 'job-1',
