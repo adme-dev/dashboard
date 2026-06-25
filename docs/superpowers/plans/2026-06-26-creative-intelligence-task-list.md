@@ -74,12 +74,14 @@ This task list decomposes the approved PRD into small, verifiable slices. Slice 
 **Description:** Add a compact UI component that can display active and failed creative jobs from the shared job summary contract.
 
 **Acceptance criteria:**
-- [ ] Component renders active, failed, and completed groups.
-- [ ] Existing Video Studio render job UI remains intact.
-- [ ] Component is tested with SSR/component tests.
+- [x] Component renders active, failed, and completed groups.
+- [x] Existing Video Studio render job UI remains intact.
+- [x] Component is tested with SSR/component tests.
 
 **Verification:**
-- [ ] Component tests, lint, typecheck.
+- [x] `pnpm exec vitest run test/components/creativeJobStrip.test.ts`
+- [x] `pnpm exec eslint app/components/creative/CreativeJobStrip.vue test/components/creativeJobStrip.test.ts`
+- [x] `pnpm exec vue-tsc --noEmit --pretty false`
 
 **Dependencies:** Task 3.
 
