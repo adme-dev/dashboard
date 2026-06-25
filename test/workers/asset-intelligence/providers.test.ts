@@ -67,6 +67,74 @@ describe('asset intelligence providers', () => {
     expect(result.derivatives[0]).toMatchObject({ kind: 'analysis-json' })
   })
 
+  it('runs Workers AI erase-fill jobs and writes an edited image derivative', async () => {
+    const run = vi.fn().mockResolvedValue({ image: 'data:image/png;base64,AAEC' })
+    const uploadBinary = vi.fn().mockResolvedValue({ r2Key: 'video-asset-derivatives/tenant-1/project-1/job-5/edited.png', contentType: 'image/png', size: 3 })
+
+    const result = await runAssetIntelligenceProvider({
+      job: {
+        id: 'job-5',
+        tenantId: 'tenant-1',
+        projectId: 'project-1',
+        sourceAssetId: 'asset-1',
+        action: 'erase-fill',
+        modelId: 'workers-ai/flux-edit',
+        provider: 'workers-ai',
+        prompt: 'erase the badge and heal the paint',
+        brushMaskKey: 'video-asset-masks/project-1/asset-1/mask.png',
+      },
+      env: { AI: { run } } as any,
+      fetchAssetBytes: vi.fn().mockResolvedValue({ dataUri: 'data:image/png;base64,AQID', contentType: 'image/png' }),
+      copyR2Object: vi.fn(),
+      uploadJson: vi.fn(),
+      uploadBinary,
+    })
+
+    expect(run).toHaveBeenCalledWith(
+      '@cf/black-forest-labs/flux-1-schnell',
+      expect.objectContaining({
+        prompt: 'erase the badge and heal the paint',
+        image: 'data:image/png;base64,AQID',
+        mask: 'video-asset-masks/project-1/asset-1/mask.png',
+      }),
+      expect.any(Object)
+    )
+    expect(uploadBinary).toHaveBeenCalledWith(
+      'video-asset-derivatives/tenant-1/project-1/job-5/edited.png',
+      expect.any(Uint8Array),
+      'image/png'
+    )
+    expect(result.derivatives[0]).toMatchObject({
+      kind: 'edited-image',
+      r2Key: 'video-asset-derivatives/tenant-1/project-1/job-5/edited.png',
+      metadata: expect.objectContaining({
+        modelId: 'workers-ai/flux-edit',
+        action: 'erase-fill',
+      }),
+    })
+  })
+
+  it('fails layer-decomposition jobs with a specific external provider setup error', async () => {
+    await expect(runAssetIntelligenceProvider({
+      job: {
+        id: 'job-6',
+        tenantId: 'tenant-1',
+        projectId: 'project-1',
+        sourceAssetId: 'asset-1',
+        action: 'layer-decomposition',
+        modelId: 'replicate/qwen-image-layered',
+        provider: 'replicate',
+        prompt: 'separate product and badge',
+        brushMaskKey: null,
+      },
+      env: { AI: { run: vi.fn() } } as any,
+      fetchAssetBytes: vi.fn(),
+      copyR2Object: vi.fn(),
+      uploadJson: vi.fn(),
+      uploadBinary: vi.fn(),
+    })).rejects.toThrow('layer-decomposition requires configured provider runtime: replicate/qwen-image-layered')
+  })
+
   it('rejects asset-analysis jobs for unsupported providers before calling AI', async () => {
     const run = vi.fn()
 

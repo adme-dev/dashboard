@@ -299,9 +299,48 @@ describe('video asset harness API', () => {
     expect(res.job.status).toBe('blocked')
   })
 
-  it('creates blocked jobs for unsupported actions even when queue binding exists', async () => {
+  it('creates and enqueues mask-lift jobs when queue binding exists', async () => {
     mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
-    mockCreateBlockedExtractionJob.mockResolvedValue({ id: 'job-blocked', status: 'blocked', action: 'erase-fill', errorMessage: 'Asset intelligence action erase-fill is not supported by the deployed worker.' })
+    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'mask-lift' })
+
+    const res = await extractHandler({
+      params: { id: '22222222-2222-4222-8222-222222222222' },
+      body: {
+        projectId: '11111111-1111-4111-8111-111111111111',
+        action: 'mask-lift',
+        prompt: 'lift embedded logo',
+        brushMaskKey: 'mask.png',
+      }
+    } as any)
+
+    expect(mockCreateQueuedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+      sourceAssetId: '22222222-2222-4222-8222-222222222222',
+      action: 'mask-lift',
+      createdBy: 'user-1',
+    }))
+    expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
+    expect(mockEnqueueAssetIntelligence).toHaveBeenCalledWith(expect.anything(), {
+      jobId: 'job-queued',
+      projectId: '11111111-1111-4111-8111-111111111111',
+      sourceAssetId: '22222222-2222-4222-8222-222222222222',
+    })
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_asset_intelligence_job',
+      provider: 'replicate',
+      modelId: 'replicate/qwen-image-layered',
+      status: 'success',
+      metadata: expect.objectContaining({
+        queued: true,
+        action: 'mask-lift',
+        hasBrushMask: true,
+      }),
+    }))
+    expect(res.job.status).toBe('queued')
+  })
+
+  it('creates and enqueues erase-fill jobs when queue binding exists', async () => {
+    mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'erase-fill' })
 
     const res = await extractHandler({
       params: { id: '22222222-2222-4222-8222-222222222222' },
@@ -313,15 +352,70 @@ describe('video asset harness API', () => {
       }
     } as any)
 
-    expect(mockCreateBlockedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockCreateQueuedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
       sourceAssetId: '22222222-2222-4222-8222-222222222222',
       action: 'erase-fill',
       createdBy: 'user-1',
-      errorMessage: 'Asset intelligence action erase-fill is not supported by the deployed worker.',
     }))
-    expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
-    expect(mockEnqueueAssetIntelligence).not.toHaveBeenCalled()
-    expect(res.job.status).toBe('blocked')
+    expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
+    expect(mockEnqueueAssetIntelligence).toHaveBeenCalledWith(expect.anything(), {
+      jobId: 'job-queued',
+      projectId: '11111111-1111-4111-8111-111111111111',
+      sourceAssetId: '22222222-2222-4222-8222-222222222222',
+    })
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_asset_intelligence_job',
+      provider: 'workers-ai',
+      modelId: 'workers-ai/flux-edit',
+      status: 'success',
+      metadata: expect.objectContaining({
+        queued: true,
+        action: 'erase-fill',
+        hasBrushMask: true,
+      }),
+    }))
+    expect(res.job.status).toBe('queued')
+  })
+
+  it.each([
+    ['layer-decomposition', 'replicate/qwen-image-layered', 'replicate'],
+    ['background-removal', 'bria/rmbg', 'bria'],
+    ['object-segmentation', 'replicate/sam-2', 'replicate'],
+  ])('creates and enqueues %s jobs when queue binding exists', async (action, modelId, provider) => {
+    mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action })
+
+    const res = await extractHandler({
+      params: { id: '22222222-2222-4222-8222-222222222222' },
+      body: {
+        projectId: '11111111-1111-4111-8111-111111111111',
+        action,
+        prompt: 'separate editable layers',
+      }
+    } as any)
+
+    expect(mockCreateQueuedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+      sourceAssetId: '22222222-2222-4222-8222-222222222222',
+      action,
+      createdBy: 'user-1',
+    }))
+    expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
+    expect(mockEnqueueAssetIntelligence).toHaveBeenCalledWith(expect.anything(), {
+      jobId: 'job-queued',
+      projectId: '11111111-1111-4111-8111-111111111111',
+      sourceAssetId: '22222222-2222-4222-8222-222222222222',
+    })
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'video_asset_intelligence_job',
+      provider,
+      modelId,
+      status: 'success',
+      metadata: expect.objectContaining({
+        queued: true,
+        action,
+      }),
+    }))
+    expect(res.job.status).toBe('queued')
   })
 
   it('creates and enqueues executable asset intelligence jobs when queue binding exists', async () => {

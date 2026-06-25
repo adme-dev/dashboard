@@ -7,7 +7,16 @@ import { enqueueAssetIntelligence, getAssetIntelligenceQueue } from '~~/server/u
 import type { AssetIntelligenceActionId } from '~~/server/utils/video-asset-intelligence/registry'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
-const QUEUE_SUPPORTED_ACTIONS = new Set<AssetIntelligenceActionId>(['mask-only', 'asset-analysis'])
+const QUEUE_SUPPORTED_ACTIONS = new Set<AssetIntelligenceActionId>([
+  'asset-analysis',
+  'background-removal',
+  'object-segmentation',
+  'layer-decomposition',
+  'mask-lift',
+  'erase-fill',
+  'mask-only',
+  'image-edit',
+])
 
 function queueSupportsExtractionInput(action: AssetIntelligenceActionId, modelId: string | null): boolean {
   if (!QUEUE_SUPPORTED_ACTIONS.has(action)) return false
