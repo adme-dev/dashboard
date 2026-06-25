@@ -94,12 +94,14 @@ This task list decomposes the approved PRD into small, verifiable slices. Slice 
 **Description:** Add a pure sentence-aware script chunking utility for long-form voiceover generation.
 
 **Acceptance criteria:**
-- [ ] Respects max chunk size.
-- [ ] Preserves bracketed expressive tags.
-- [ ] Handles common abbreviations and CJK punctuation.
+- [x] Respects max chunk size.
+- [x] Preserves bracketed expressive tags.
+- [x] Handles common abbreviations and CJK punctuation.
 
 **Verification:**
-- [ ] Utility tests.
+- [x] `pnpm exec vitest run test/audio/scriptChunker.test.ts`
+- [x] `pnpm exec eslint server/utils/audio/scriptChunker.ts test/audio/scriptChunker.test.ts`
+- [x] `pnpm exec vue-tsc --noEmit --pretty false`
 
 **Dependencies:** Task 2.
 
