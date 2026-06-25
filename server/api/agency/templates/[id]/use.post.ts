@@ -10,10 +10,10 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
   const templateId = getRouterParam(event, 'id')
   const body = await readBody(event)
 
@@ -157,9 +157,9 @@ export default defineEventHandler(async (event) => {
         name: template.name
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to create project from template:', error)
-    if (error.statusCode) throw error
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to create project from template'

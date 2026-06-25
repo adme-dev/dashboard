@@ -4,10 +4,10 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -47,9 +47,9 @@ export default defineEventHandler(async (event) => {
       success: true,
       message: `Template "${existing.name}" deleted`
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to delete template:', error)
-    if (error.statusCode) throw error
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to delete template'

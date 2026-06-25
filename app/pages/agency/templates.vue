@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { format } from 'date-fns'
-
 definePageMeta({
   title: 'Project Templates',
   middleware: ['auth']
@@ -8,26 +6,82 @@ definePageMeta({
 
 const toast = useToast()
 
+type TemplateRow = {
+  id: string
+  name: string
+  description: string | null
+  category: string | null
+  tags: string[] | null
+  defaultBudgetType: string
+  defaultBudgetAmount: number
+  estimatedDurationDays: number | null
+  estimatedHours: number
+  isPublic: boolean
+  timesUsed: number
+  lastUsedAt: string | null
+  createdAt: string | null
+  createdByName: string | null
+  departmentName: string | null
+  phaseCount: number
+  taskCount: number
+  duplicateCount: number
+}
+
+type TemplatesResponse = {
+  templates: TemplateRow[]
+  categories: string[]
+  total: number
+  hiddenDuplicateCount: number
+}
+
+type ClientOption = {
+  id: string
+  name: string
+}
+
+type ClientsResponse = {
+  clients: ClientOption[]
+}
+
+type UseTemplateResponse = {
+  project: {
+    id: string
+    name: string
+  }
+  tasksCreated: number
+}
+
+const getErrorMessage = (error: unknown) => {
+  if (error && typeof error === 'object') {
+    const maybeError = error as { data?: { message?: string }, message?: string }
+    return maybeError.data?.message || maybeError.message
+  }
+  return undefined
+}
+
 // Filters
 const categoryFilter = ref('all')
 const searchQuery = ref('')
 
 // Fetch templates
-const { data: templatesData, pending, refresh } = await useFetch('/api/agency/templates', {
+const { data: templatesData, pending, refresh } = await useFetch<TemplatesResponse>('/api/agency/templates', {
   query: {
     category: categoryFilter,
     search: searchQuery
   }
 })
 
-const templates = computed(() => ((templatesData.value as any)?.templates || []) as any[])
-const categories = computed(() => ((templatesData.value as any)?.categories || []) as string[])
+const templates = computed(() => templatesData.value?.templates || [])
+const categories = computed(() => templatesData.value?.categories || [])
+const totalTemplates = computed(() => Number(templatesData.value?.total ?? templates.value.length))
+const hiddenDuplicateCount = computed(() => Number(templatesData.value?.hiddenDuplicateCount ?? 0))
+const hasActiveFilters = computed(() => Boolean(searchQuery.value.trim()) || categoryFilter.value !== 'all')
 
 // Fetch clients for "use template" modal
-const { data: clientsData } = await useFetch('/api/agency/clients', {
+const { data: clientsData } = await useFetch<ClientsResponse>('/api/agency/clients', {
   query: { limit: 100 }
 })
-const clients = computed(() => ((clientsData.value as any)?.clients || []) as any[])
+const clients = computed(() => clientsData.value?.clients || [])
 
 // Format helpers
 const formatCurrency = (value: number) => {
@@ -40,14 +94,9 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
-const formatDate = (date: string) => {
-  if (!date) return '—'
-  return format(new Date(date), 'MMM d, yyyy')
-}
-
 // Use template modal
 const showUseModal = ref(false)
-const selectedTemplate = ref<any>(null)
+const selectedTemplate = ref<TemplateRow | null>(null)
 const newProject = ref({
   clientId: null as string | null,
   projectName: '',
@@ -55,7 +104,7 @@ const newProject = ref({
   budgetOverride: null as number | null
 })
 
-const openUseModal = (template: any) => {
+const openUseModal = (template: TemplateRow) => {
   selectedTemplate.value = template
   newProject.value = {
     clientId: null,
@@ -68,6 +117,10 @@ const openUseModal = (template: any) => {
 
 const creatingProject = ref(false)
 const createProjectFromTemplate = async () => {
+  if (!selectedTemplate.value) {
+    return
+  }
+
   if (!newProject.value.clientId || !newProject.value.projectName) {
     toast.add({ title: 'Please fill in required fields', color: 'error' })
     return
@@ -75,10 +128,10 @@ const createProjectFromTemplate = async () => {
 
   creatingProject.value = true
   try {
-    const result = await $fetch(`/api/agency/templates/${selectedTemplate.value.id}/use`, {
+    const result = await $fetch<UseTemplateResponse>(`/api/agency/templates/${selectedTemplate.value.id}/use`, {
       method: 'POST',
       body: newProject.value
-    }) as any
+    })
 
     toast.add({
       title: 'Project created',
@@ -88,8 +141,8 @@ const createProjectFromTemplate = async () => {
     showUseModal.value = false
     refresh()
     navigateTo(`/agency/projects/${result.project.id}`)
-  } catch (err: any) {
-    toast.add({ title: 'Failed to create project', description: err.data?.message || err.message, color: 'error' })
+  } catch (error: unknown) {
+    toast.add({ title: 'Failed to create project', description: getErrorMessage(error), color: 'error' })
   } finally {
     creatingProject.value = false
   }
@@ -145,8 +198,8 @@ const createTemplate = async () => {
     showNewModal.value = false
     resetNewTemplate()
     refresh()
-  } catch (err: any) {
-    toast.add({ title: 'Failed to create template', description: err.data?.message || err.message, color: 'error' })
+  } catch (error: unknown) {
+    toast.add({ title: 'Failed to create template', description: getErrorMessage(error), color: 'error' })
   } finally {
     creatingTemplate.value = false
   }
@@ -254,20 +307,39 @@ const tableColumns = [
             value-key="value"
             class="w-48"
           />
-          <div class="ml-auto inline-flex rounded-md shadow-xs">
+          <div class="ml-auto inline-flex rounded-md shadow-xs" role="group" aria-label="Template view">
             <UButton
               :variant="viewMode === 'grid' ? 'solid' : 'outline'"
               icon="i-lucide-layout-grid"
+              aria-label="Show templates as cards"
               class="rounded-r-none"
               @click="viewMode = 'grid'"
             />
             <UButton
               :variant="viewMode === 'table' ? 'solid' : 'outline'"
               icon="i-lucide-table"
+              aria-label="Show templates as table"
               class="rounded-l-none -ml-px"
               @click="viewMode = 'table'"
             />
           </div>
+        </div>
+
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+          <p>
+            {{ totalTemplates }} template{{ totalTemplates === 1 ? '' : 's' }}
+            <span v-if="hiddenDuplicateCount">
+              · {{ hiddenDuplicateCount }} duplicate{{ hiddenDuplicateCount === 1 ? '' : 's' }} collapsed
+            </span>
+          </p>
+          <UButton
+            v-if="hasActiveFilters"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            label="Clear filters"
+            @click="searchQuery = ''; categoryFilter = 'all'"
+          />
         </div>
 
         <!-- Loading -->
@@ -285,10 +357,17 @@ const tableColumns = [
             <div class="flex flex-col h-full">
               <div class="flex items-start justify-between mb-3">
                 <div>
-                  <h3 class="font-semibold text-lg">{{ template.name }}</h3>
-                  <UBadge v-if="template.category" variant="subtle" color="neutral" class="mt-1">
-                    {{ template.category }}
-                  </UBadge>
+                  <h3 class="font-semibold text-lg">
+                    {{ template.name }}
+                  </h3>
+                  <div class="mt-1 flex flex-wrap items-center gap-2">
+                    <UBadge v-if="template.category" variant="subtle" color="neutral">
+                      {{ template.category }}
+                    </UBadge>
+                    <UBadge v-if="template.duplicateCount > 1" variant="subtle" color="warning">
+                      {{ template.duplicateCount }} versions
+                    </UBadge>
+                  </div>
                 </div>
                 <UDropdownMenu
                   :items="[[
@@ -296,7 +375,12 @@ const tableColumns = [
                     { label: 'View Details', icon: 'i-lucide-eye', onClick: () => navigateTo(`/agency/templates/${template.id}`) }
                   ]]"
                 >
-                  <UButton variant="ghost" icon="i-lucide-more-vertical" size="xs" />
+                  <UButton
+                    variant="ghost"
+                    icon="i-lucide-more-vertical"
+                    size="xs"
+                    :aria-label="`Open actions for ${template.name}`"
+                  />
                 </UDropdownMenu>
               </div>
 
@@ -306,20 +390,36 @@ const tableColumns = [
 
               <div class="grid grid-cols-2 gap-3 mt-auto">
                 <div>
-                  <p class="text-xs text-gray-400">Duration</p>
-                  <p class="font-medium">{{ template.estimatedDurationDays || '—' }} days</p>
+                  <p class="text-xs text-gray-400">
+                    Duration
+                  </p>
+                  <p class="font-medium">
+                    {{ template.estimatedDurationDays || '—' }} days
+                  </p>
                 </div>
                 <div>
-                  <p class="text-xs text-gray-400">Hours</p>
-                  <p class="font-medium">{{ template.estimatedHours || '—' }}h</p>
+                  <p class="text-xs text-gray-400">
+                    Hours
+                  </p>
+                  <p class="font-medium">
+                    {{ template.estimatedHours || '—' }}h
+                  </p>
                 </div>
                 <div>
-                  <p class="text-xs text-gray-400">Tasks</p>
-                  <p class="font-medium">{{ template.taskCount }}</p>
+                  <p class="text-xs text-gray-400">
+                    Tasks
+                  </p>
+                  <p class="font-medium">
+                    {{ template.taskCount }}
+                  </p>
                 </div>
                 <div>
-                  <p class="text-xs text-gray-400">Used</p>
-                  <p class="font-medium">{{ template.timesUsed }}x</p>
+                  <p class="text-xs text-gray-400">
+                    Used
+                  </p>
+                  <p class="font-medium">
+                    {{ template.timesUsed }}x
+                  </p>
                 </div>
               </div>
 
@@ -340,7 +440,12 @@ const tableColumns = [
           </UCard>
 
           <div v-if="templates.length === 0" class="col-span-full text-center text-gray-500 py-12">
-            No templates found. Create one to get started!
+            <h3 class="text-base font-medium text-highlighted">
+              {{ hasActiveFilters ? 'No templates match your filters' : 'No templates yet' }}
+            </h3>
+            <p class="mt-1 text-sm">
+              {{ hasActiveFilters ? 'Try a different search or category.' : 'Create one to standardise repeatable project work.' }}
+            </p>
           </div>
         </div>
 
@@ -359,7 +464,12 @@ const tableColumns = [
             </template>
 
             <template #category-cell="{ row }">
-              <UBadge v-if="row.original.category" variant="subtle" color="neutral" size="sm">
+              <UBadge
+                v-if="row.original.category"
+                variant="subtle"
+                color="neutral"
+                size="sm"
+              >
                 {{ row.original.category }}
               </UBadge>
               <span v-else class="text-muted">—</span>
@@ -404,14 +514,24 @@ const tableColumns = [
                     { label: 'View Details', icon: 'i-lucide-eye', onClick: () => navigateTo(`/agency/templates/${row.original.id}`) }
                   ]]"
                 >
-                  <UButton variant="ghost" icon="i-lucide-more-vertical" size="xs" />
+                  <UButton
+                    variant="ghost"
+                    icon="i-lucide-more-vertical"
+                    size="xs"
+                    :aria-label="`Open actions for ${row.original.name}`"
+                  />
                 </UDropdownMenu>
               </div>
             </template>
           </UTable>
 
           <div v-if="templates.length === 0" class="text-center text-gray-500 py-12">
-            No templates found. Create one to get started!
+            <h3 class="text-base font-medium text-highlighted">
+              {{ hasActiveFilters ? 'No templates match your filters' : 'No templates yet' }}
+            </h3>
+            <p class="mt-1 text-sm">
+              {{ hasActiveFilters ? 'Try a different search or category.' : 'Create one to standardise repeatable project work.' }}
+            </p>
           </div>
         </div>
       </div>
@@ -420,12 +540,16 @@ const tableColumns = [
     <!-- Use Template Modal -->
     <UModal v-model:open="showUseModal">
       <template #header>
-        <h3 class="font-semibold">Create Project from Template</h3>
+        <h3 class="font-semibold">
+          Create Project from Template
+        </h3>
       </template>
       <template #body>
         <div v-if="selectedTemplate" class="space-y-4">
           <div class="p-3 rounded-lg bg-gray-50 dark:bg-gray-800 mb-4">
-            <p class="font-medium">{{ selectedTemplate.name }}</p>
+            <p class="font-medium">
+              {{ selectedTemplate.name }}
+            </p>
             <p class="text-sm text-gray-500">
               {{ selectedTemplate.taskCount }} tasks · {{ selectedTemplate.estimatedHours || 0 }}h estimated
             </p>
@@ -476,21 +600,30 @@ const tableColumns = [
     <USlideover v-model:open="showNewModal">
       <template #header>
         <div class="flex items-center justify-between w-full">
-          <h3 class="font-semibold text-lg">Create New Template</h3>
+          <h3 class="font-semibold text-lg">
+            Create New Template
+          </h3>
         </div>
       </template>
       <template #body>
         <div class="space-y-6">
           <!-- Basic Info -->
           <div>
-            <h4 class="text-sm font-medium text-muted mb-3">Basic Information</h4>
+            <h4 class="text-sm font-medium text-muted mb-3">
+              Basic Information
+            </h4>
             <div class="space-y-4">
               <UFormField label="Template Name" required class="w-full">
                 <UInput v-model="newTemplate.name" placeholder="e.g., Website Development" class="w-full" />
               </UFormField>
 
               <UFormField label="Description" class="w-full">
-                <UTextarea v-model="newTemplate.description" placeholder="Describe what this template is used for, the typical workflow, and expected deliverables..." :rows="5" class="w-full" />
+                <UTextarea
+                  v-model="newTemplate.description"
+                  placeholder="Describe what this template is used for, the typical workflow, and expected deliverables..."
+                  :rows="5"
+                  class="w-full"
+                />
               </UFormField>
 
               <UFormField label="Category" class="w-full">
@@ -513,27 +646,46 @@ const tableColumns = [
 
               <UFormField label="Tags" class="w-full">
                 <UInput v-model="newTemplate.tags" placeholder="e.g., marketing, campaign, digital (comma-separated)" class="w-full" />
-                <p class="text-xs text-muted mt-1">Comma-separated tags for search and filtering</p>
+                <p class="text-xs text-muted mt-1">
+                  Comma-separated tags for search and filtering
+                </p>
               </UFormField>
             </div>
           </div>
 
           <!-- Timeline & Effort -->
           <div>
-            <h4 class="text-sm font-medium text-muted mb-3">Timeline & Effort</h4>
+            <h4 class="text-sm font-medium text-muted mb-3">
+              Timeline & Effort
+            </h4>
             <div class="grid grid-cols-2 gap-4">
               <UFormField label="Duration (days)">
-                <UInput v-model.number="newTemplate.estimatedDurationDays" type="number" min="1" placeholder="e.g., 30" class="w-full" />
+                <UInput
+                  v-model.number="newTemplate.estimatedDurationDays"
+                  type="number"
+                  min="1"
+                  placeholder="e.g., 30"
+                  class="w-full"
+                />
               </UFormField>
               <UFormField label="Estimated Hours">
-                <UInput v-model.number="newTemplate.estimatedHours" type="number" min="0" step="0.5" placeholder="e.g., 80" class="w-full" />
+                <UInput
+                  v-model.number="newTemplate.estimatedHours"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  placeholder="e.g., 80"
+                  class="w-full"
+                />
               </UFormField>
             </div>
           </div>
 
           <!-- Budget & Billing -->
           <div>
-            <h4 class="text-sm font-medium text-muted mb-3">Budget & Billing</h4>
+            <h4 class="text-sm font-medium text-muted mb-3">
+              Budget & Billing
+            </h4>
             <div class="space-y-4">
               <div class="grid grid-cols-2 gap-4">
                 <UFormField label="Budget Type">
@@ -545,7 +697,14 @@ const tableColumns = [
                   />
                 </UFormField>
                 <UFormField label="Default Budget ($)">
-                  <UInput v-model.number="newTemplate.defaultBudgetAmount" type="number" min="0" step="100" placeholder="e.g., 10000" class="w-full" />
+                  <UInput
+                    v-model.number="newTemplate.defaultBudgetAmount"
+                    type="number"
+                    min="0"
+                    step="100"
+                    placeholder="e.g., 10000"
+                    class="w-full"
+                  />
                 </UFormField>
               </div>
 
@@ -559,7 +718,14 @@ const tableColumns = [
                   />
                 </UFormField>
                 <UFormField label="Hourly Rate ($)">
-                  <UInput v-model.number="newTemplate.defaultHourlyRate" type="number" min="0" step="5" placeholder="e.g., 150" class="w-full" />
+                  <UInput
+                    v-model.number="newTemplate.defaultHourlyRate"
+                    type="number"
+                    min="0"
+                    step="5"
+                    placeholder="e.g., 150"
+                    class="w-full"
+                  />
                 </UFormField>
               </div>
             </div>
@@ -567,9 +733,13 @@ const tableColumns = [
 
           <!-- Visibility -->
           <div>
-            <h4 class="text-sm font-medium text-muted mb-3">Visibility</h4>
+            <h4 class="text-sm font-medium text-muted mb-3">
+              Visibility
+            </h4>
             <UCheckbox v-model="newTemplate.isPublic" label="Make template visible to all team members" />
-            <p class="text-xs text-muted mt-1 ml-6">Private templates are only visible to you and admins</p>
+            <p class="text-xs text-muted mt-1 ml-6">
+              Private templates are only visible to you and admins
+            </p>
           </div>
         </div>
       </template>

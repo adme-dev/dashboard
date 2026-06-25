@@ -4,10 +4,10 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   const body = await readBody(event)
 
@@ -50,7 +50,7 @@ export default defineEventHandler(async (event) => {
 
     // Build dynamic update query
     const updates: string[] = []
-    const params: any[] = []
+    const params: Array<string | number | boolean | null | string[]> = []
     let paramIndex = 1
 
     if (name !== undefined) {
@@ -155,9 +155,9 @@ export default defineEventHandler(async (event) => {
         updatedAt: result.updated_at
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to update template:', error)
-    if (error.statusCode) throw error
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to update template'

@@ -4,10 +4,10 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
   const body = await readBody(event)
 
   const {

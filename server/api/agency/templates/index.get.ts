@@ -8,7 +8,7 @@
  * - limit: Max results (default 50)
  */
 
-import { queryRows, queryOne } from '~~/server/utils/db'
+import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
   try {
     // Build query conditions
     const conditions: string[] = ['pt.is_active = true']
-    const params: any[] = []
+    const params: Array<string | number> = []
     let idx = 1
 
     if (category && category !== 'all') {
@@ -41,39 +41,53 @@ export default defineEventHandler(async (event) => {
     params.push(limit)
 
     const templates = await queryRows(`
+      WITH filtered_templates AS (
+        SELECT
+          pt.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY lower(trim(pt.name)), COALESCE(pt.category, '')
+            ORDER BY pt.times_used DESC, pt.created_at DESC, pt.id
+          ) as duplicate_rank,
+          COUNT(*) OVER (
+            PARTITION BY lower(trim(pt.name)), COALESCE(pt.category, '')
+          ) as duplicate_count
+        FROM project_templates pt
+        WHERE ${whereClause}
+      )
       SELECT
-        pt.id,
-        pt.name,
-        pt.description,
-        pt.category,
-        pt.tags,
-        pt.default_budget_type,
-        pt.default_budget_amount,
-        pt.estimated_duration_days,
-        pt.estimated_hours,
-        pt.is_public,
-        pt.times_used,
-        pt.last_used_at,
-        pt.created_at,
+        ft.id,
+        ft.name,
+        ft.description,
+        ft.category,
+        ft.tags,
+        ft.default_budget_type,
+        ft.default_budget_amount,
+        ft.estimated_duration_days,
+        ft.estimated_hours,
+        ft.is_public,
+        ft.times_used,
+        ft.last_used_at,
+        ft.created_at,
+        ft.duplicate_count,
         tm.name as created_by_name,
         d.name as department_name,
         COALESCE(phases.count, 0) as phase_count,
         COALESCE(tasks.count, 0) as task_count
-      FROM project_templates pt
-      LEFT JOIN team_members tm ON pt.created_by = tm.id
-      LEFT JOIN departments d ON pt.department_id = d.id
+      FROM filtered_templates ft
+      LEFT JOIN team_members tm ON ft.created_by = tm.id
+      LEFT JOIN departments d ON ft.department_id = d.id
       LEFT JOIN (
         SELECT template_id, COUNT(*) as count
         FROM template_phases
         GROUP BY template_id
-      ) phases ON pt.id = phases.template_id
+      ) phases ON ft.id = phases.template_id
       LEFT JOIN (
         SELECT template_id, COUNT(*) as count
         FROM template_tasks
         GROUP BY template_id
-      ) tasks ON pt.id = tasks.template_id
-      WHERE ${whereClause}
-      ORDER BY pt.times_used DESC, pt.name
+      ) tasks ON ft.id = tasks.template_id
+      WHERE duplicate_rank = 1
+      ORDER BY ft.times_used DESC, ft.name
       LIMIT $${idx}
     `, params)
 
@@ -84,6 +98,10 @@ export default defineEventHandler(async (event) => {
       WHERE is_active = true AND category IS NOT NULL
       ORDER BY category
     `)
+
+    const hiddenDuplicateCount = templates.reduce((sum, t) => {
+      return sum + Math.max(Number(t.duplicate_count || 1) - 1, 0)
+    }, 0)
 
     return {
       templates: templates.map(t => ({
@@ -103,9 +121,12 @@ export default defineEventHandler(async (event) => {
         createdByName: t.created_by_name,
         departmentName: t.department_name,
         phaseCount: Number(t.phase_count || 0),
-        taskCount: Number(t.task_count || 0)
+        taskCount: Number(t.task_count || 0),
+        duplicateCount: Number(t.duplicate_count || 1)
       })),
-      categories: categories.map(c => c.category)
+      categories: categories.map(c => c.category),
+      total: templates.length,
+      hiddenDuplicateCount
     }
   } catch (error) {
     console.error('Failed to fetch templates:', error)
