@@ -230,14 +230,22 @@ describe('creative version graph', () => {
     expect(favoriteVersions(graph).map(node => node.id)).toEqual(['newer', 'older'])
   })
 
-  it('maps audio assets into version sources', () => {
+  it('maps voiceover audio assets into version sources with creative metadata', () => {
     expect(mapAudioAssetToVersionSource({
       id: 'audio-1',
+      client_id: 'client-1',
+      created_by: 'user-1',
       kind: 'voiceover',
       title: 'Launch VO',
       status: 'done',
       prompt: 'Read this line',
+      lang: 'en-AU',
+      voice: 'alloy',
+      channels: ['tiktok', 'meta'],
       r2_key_master: 'audio/client/audio-1/master.mp3',
+      variants: { tiktok: 'audio/client/audio-1/tiktok.mp3' },
+      duration_sec: '8.5',
+      cost_cents: 7,
       created_at: '2026-06-26T10:00:00.000Z'
     })).toEqual({
       id: 'audio:audio-1',
@@ -249,11 +257,89 @@ describe('creative version graph', () => {
       label: 'Launch VO',
       createdAt: '2026-06-26T10:00:00.000Z',
       metadata: {
+        channels: ['tiktok', 'meta'],
+        clientId: 'client-1',
+        costCents: 7,
+        createdBy: 'user-1',
+        durationSec: 8.5,
+        error: null,
+        format: null,
+        isInstrumental: null,
         kind: 'voiceover',
+        lang: 'en-AU',
+        lyrics: null,
         prompt: 'Read this line',
-        r2Key: 'audio/client/audio-1/master.mp3'
+        r2Key: 'audio/client/audio-1/master.mp3',
+        variants: { tiktok: 'audio/client/audio-1/tiktok.mp3' },
+        voice: 'alloy'
       }
     })
+  })
+
+  it('maps music audio asset statuses and metadata into version sources', () => {
+    expect([
+      mapAudioAssetToVersionSource({
+        id: 'music-queued',
+        kind: 'music',
+        status: 'queued',
+        prompt: 'Warm acoustic bed',
+        is_instrumental: true,
+        lyrics: null,
+        format: 'mp3',
+        channels: ['radio'],
+        created_at: '2026-06-26T10:00:00.000Z'
+      }),
+      mapAudioAssetToVersionSource({
+        id: 'music-rendering',
+        kind: 'music',
+        status: 'rendering',
+        prompt: 'Energetic synthwave',
+        is_instrumental: false,
+        lyrics: 'Drive away today',
+        format: 'wav',
+        channels: [],
+        created_at: '2026-06-26T10:01:00.000Z'
+      }),
+      mapAudioAssetToVersionSource({
+        id: 'music-failed',
+        kind: 'music',
+        status: 'failed',
+        prompt: 'Cinematic launch',
+        error: 'model returned no audio',
+        created_at: '2026-06-26T10:02:00.000Z'
+      })
+    ]).toMatchObject([
+      {
+        id: 'audio:music-queued',
+        status: 'queued',
+        label: 'Music asset',
+        metadata: {
+          channels: ['radio'],
+          format: 'mp3',
+          isInstrumental: true,
+          kind: 'music',
+          lyrics: null,
+          prompt: 'Warm acoustic bed'
+        }
+      },
+      {
+        id: 'audio:music-rendering',
+        status: 'running',
+        metadata: {
+          format: 'wav',
+          isInstrumental: false,
+          lyrics: 'Drive away today'
+        }
+      },
+      {
+        id: 'audio:music-failed',
+        status: 'failed',
+        metadata: {
+          error: 'model returned no audio',
+          kind: 'music'
+        }
+      }
+    ])
   })
 
   it('maps video generation jobs into version sources', () => {

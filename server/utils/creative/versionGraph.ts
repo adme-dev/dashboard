@@ -114,6 +114,21 @@ function normalizeStringArray(value: unknown): string[] {
   return []
 }
 
+function normalizeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function normalizeNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
 export function buildCreativeVersionGraph(sources: CreativeVersionSource[]): CreativeVersionGraph {
   const findings: CreativeVersionFinding[] = []
   const nodesById: Record<string, CreativeVersionNode> = {}
@@ -227,6 +242,14 @@ export function favoriteVersions(graph: CreativeVersionGraph): CreativeVersionNo
 
 export function mapAudioAssetToVersionSource(row: Record<string, unknown>): CreativeVersionSource {
   const id = String(row.id)
+  const kind = row.kind ?? null
+  const title = typeof row.title === 'string' ? row.title.trim() : ''
+  const fallbackLabel = kind === 'music'
+    ? 'Music asset'
+    : kind === 'voiceover'
+      ? 'Voiceover asset'
+      : 'Audio asset'
+
   return {
     id: `audio:${id}`,
     assetType: 'audio',
@@ -234,12 +257,28 @@ export function mapAudioAssetToVersionSource(row: Record<string, unknown>): Crea
     status: mapStatus(row.status),
     sourceRef: { source: 'audio_assets', id },
     parentIds: [],
-    label: typeof row.title === 'string' && row.title.trim() ? row.title : String(row.kind ?? 'Audio asset'),
-    createdAt: row.created_at instanceof Date || typeof row.created_at === 'string' ? row.created_at : null,
+    label: title || fallbackLabel,
+    createdAt: row.createdAt instanceof Date || typeof row.createdAt === 'string'
+      ? row.createdAt
+      : row.created_at instanceof Date || typeof row.created_at === 'string'
+        ? row.created_at
+        : null,
     metadata: {
-      kind: row.kind ?? null,
+      channels: normalizeStringArray(row.channels),
+      clientId: row.clientId ?? row.client_id ?? null,
+      costCents: normalizeNumber(row.costCents ?? row.cost_cents),
+      createdBy: row.createdBy ?? row.created_by ?? null,
+      durationSec: normalizeNumber(row.durationSec ?? row.duration_sec),
+      error: row.error ?? null,
+      format: row.format ?? null,
+      isInstrumental: row.isInstrumental ?? row.is_instrumental ?? null,
+      kind,
+      lang: row.lang ?? null,
+      lyrics: row.lyrics ?? null,
       prompt: row.prompt ?? null,
-      r2Key: row.r2_key_master ?? null
+      r2Key: row.r2KeyMaster ?? row.r2_key_master ?? null,
+      variants: normalizeRecord(row.variants),
+      voice: row.voice ?? null
     }
   }
 }

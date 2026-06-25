@@ -38,12 +38,12 @@ This task list decomposes the approved PRD into small, verifiable slices. Slice 
 **Description:** Map voiceover and music assets into creative version graph sources for later Audio Studio takes and script chunking.
 
 **Acceptance criteria:**
-- [ ] Audio assets have deterministic version source ids.
-- [ ] Music and voiceover metadata are preserved.
-- [ ] Ready/done/failed/queued status mapping is tested.
+- [x] Audio assets have deterministic version source ids.
+- [x] Music and voiceover metadata are preserved.
+- [x] Ready/done/failed/queued status mapping is tested.
 
 **Verification:**
-- [ ] `pnpm exec vitest run test/creative/versionGraph.test.ts test/audio/assets.test.ts`
+- [x] `pnpm exec vitest run test/creative/versionGraph.test.ts test/audio/assets.test.ts`
 
 **Dependencies:** Task 1.
 
