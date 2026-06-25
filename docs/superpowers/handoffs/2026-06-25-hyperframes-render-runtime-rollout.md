@@ -1,7 +1,7 @@
 # Hyperframes Render Runtime Rollout And Upgrade
 
 **Date:** 2026-06-25
-**Status:** Preview app and audio render runtime deployed
+**Status:** Production app and audio render runtime deployed
 **Related PRD:** `docs/specs/2026-06-25-hyperframes-render-runtime-prd.md`
 **Implementation plan:** `docs/superpowers/plans/2026-06-25-hyperframes-render-runtime.md`
 
@@ -86,6 +86,13 @@ Known local limitation:
 - Cloudflare deployment verification passed:
   - `pnpm exec wrangler deployments list --cwd workers/audio-jobs --config wrangler.toml`
   - Latest deployment created `2026-06-25T12:32:32.313Z` is at `100%` for Version ID `6c4db843-99f4-40a7-893e-900e4ae465e5`.
+- Main branch was merged/pushed and Pages production deploy succeeded:
+  - Commit: `3f4051f0 feat: add hyperframes render runtime rollout`
+  - Push: `origin/main`
+  - Command: `pnpm run deploy`
+  - Production deployment URL: `https://cf80e82c.agency-dashboard-6cm.pages.dev`
+  - Production alias verified: `https://agency-dashboard-6cm.pages.dev`
+  - Verification: both URLs returned `HTTP/2 200`.
 
 ## Upgrade Sequence
 
