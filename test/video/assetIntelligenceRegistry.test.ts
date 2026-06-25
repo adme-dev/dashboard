@@ -24,6 +24,28 @@ describe('video asset intelligence registry', () => {
     expect(listAssetIntelligenceModelsForAction('mask-lift').map(model => model.id)).toContain('replicate/sam-2')
   })
 
+  it('only exposes deployed executable actions to tenants by default', () => {
+    const actionIds = listAssetIntelligenceActions().map(action => action.id)
+    expect(actionIds).toEqual(expect.arrayContaining([
+      'asset-analysis',
+      'erase-fill',
+      'mask-only',
+      'image-edit',
+      'thumbnail-generation',
+      'caption-generation',
+      'timeline-assembly',
+    ]))
+    for (const hiddenAction of [
+      'background-removal',
+      'object-segmentation',
+      'layer-decomposition',
+      'mask-lift',
+      'provider-test',
+    ]) {
+      expect(actionIds).not.toContain(hiddenAction)
+    }
+  })
+
   it('keeps model metadata explicit for Cloudflare Gateway routing', () => {
     expect(getAssetIntelligenceModel('replicate/qwen-image-layered')).toMatchObject({
       provider: 'replicate',

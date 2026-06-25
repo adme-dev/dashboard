@@ -299,45 +299,6 @@ describe('video asset harness API', () => {
     expect(res.job.status).toBe('blocked')
   })
 
-  it('creates and enqueues mask-lift jobs when queue binding exists', async () => {
-    mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
-    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'mask-lift' })
-
-    const res = await extractHandler({
-      params: { id: '22222222-2222-4222-8222-222222222222' },
-      body: {
-        projectId: '11111111-1111-4111-8111-111111111111',
-        action: 'mask-lift',
-        prompt: 'lift embedded logo',
-        brushMaskKey: 'mask.png',
-      }
-    } as any)
-
-    expect(mockCreateQueuedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
-      sourceAssetId: '22222222-2222-4222-8222-222222222222',
-      action: 'mask-lift',
-      createdBy: 'user-1',
-    }))
-    expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
-    expect(mockEnqueueAssetIntelligence).toHaveBeenCalledWith(expect.anything(), {
-      jobId: 'job-queued',
-      projectId: '11111111-1111-4111-8111-111111111111',
-      sourceAssetId: '22222222-2222-4222-8222-222222222222',
-    })
-    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
-      featureKey: 'video_asset_intelligence_job',
-      provider: 'replicate',
-      modelId: 'replicate/qwen-image-layered',
-      status: 'success',
-      metadata: expect.objectContaining({
-        queued: true,
-        action: 'mask-lift',
-        hasBrushMask: true,
-      }),
-    }))
-    expect(res.job.status).toBe('queued')
-  })
-
   it('creates and enqueues erase-fill jobs when queue binding exists', async () => {
     mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
     mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'erase-fill' })
@@ -381,9 +342,10 @@ describe('video asset harness API', () => {
     ['layer-decomposition', 'replicate/qwen-image-layered', 'replicate'],
     ['background-removal', 'bria/rmbg', 'bria'],
     ['object-segmentation', 'replicate/sam-2', 'replicate'],
-  ])('creates and enqueues %s jobs when queue binding exists', async (action, modelId, provider) => {
+    ['mask-lift', 'replicate/qwen-image-layered', 'replicate'],
+  ])('creates blocked %s jobs when provider runtime is not production-enabled', async (action, modelId, provider) => {
     mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
-    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action })
+    mockCreateBlockedExtractionJob.mockResolvedValue({ id: 'job-blocked', status: 'blocked', action })
 
     const res = await extractHandler({
       params: { id: '22222222-2222-4222-8222-222222222222' },
@@ -394,28 +356,26 @@ describe('video asset harness API', () => {
       }
     } as any)
 
-    expect(mockCreateQueuedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockCreateBlockedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
       sourceAssetId: '22222222-2222-4222-8222-222222222222',
       action,
       createdBy: 'user-1',
+      errorMessage: expect.stringContaining('is not production-enabled'),
     }))
-    expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
-    expect(mockEnqueueAssetIntelligence).toHaveBeenCalledWith(expect.anything(), {
-      jobId: 'job-queued',
-      projectId: '11111111-1111-4111-8111-111111111111',
-      sourceAssetId: '22222222-2222-4222-8222-222222222222',
-    })
+    expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+    expect(mockEnqueueAssetIntelligence).not.toHaveBeenCalled()
     expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
       featureKey: 'video_asset_intelligence_job',
       provider,
       modelId,
-      status: 'success',
+      status: 'error',
+      errorCode: 'unsupported_asset_intelligence_model',
       metadata: expect.objectContaining({
-        queued: true,
+        queued: false,
         action,
       }),
     }))
-    expect(res.job.status).toBe('queued')
+    expect(res.job.status).toBe('blocked')
   })
 
   it('creates and enqueues executable asset intelligence jobs when queue binding exists', async () => {

@@ -9,10 +9,6 @@ import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 const QUEUE_SUPPORTED_ACTIONS = new Set<AssetIntelligenceActionId>([
   'asset-analysis',
-  'background-removal',
-  'object-segmentation',
-  'layer-decomposition',
-  'mask-lift',
   'erase-fill',
   'mask-only',
   'image-edit',
@@ -150,7 +146,9 @@ export default defineEventHandler(async (event) => {
   const job = await createBlockedExtractionJob({
     ...input,
     errorMessage: queue
-      ? input.modelId
+      ? !QUEUE_SUPPORTED_ACTIONS.has(body.action)
+        ? `Asset intelligence action ${body.action} is not production-enabled.`
+        : input.modelId
         ? `Asset intelligence action ${body.action} with model ${input.modelId} is not supported by the deployed worker.`
         : `Asset intelligence action ${body.action} is not supported by the deployed worker.`
       : undefined,
