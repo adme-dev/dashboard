@@ -418,7 +418,7 @@ export default {
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
-    "wrangler": "^4.95.0"
+    "wrangler": "^4.99.0"
   }
 }
 ```

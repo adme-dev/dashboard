@@ -6,6 +6,7 @@
 import { buildFingerprint } from '../fingerprints'
 import type { Analyser, DetectedAnomaly } from '../types'
 import { periodOf, dayOfMonth, expectedToDate, projectedMonthEnd } from '../adPacingMath'
+import { computeCampaignBudgetPacing } from '~~/server/utils/budgetPacing'
 
 export interface DailyPoint { date: string; spend: number; conversions: number }
 export interface Group {
@@ -16,6 +17,7 @@ export interface Group {
   period: string
   budget: number
   campaignStatus: string | null
+  endDate: string | null
   syncedAt: string | null
   days: DailyPoint[]
 }
@@ -30,6 +32,7 @@ interface HealthRow {
   budget_allocated: number | string
   period: string
   campaign_status: string | null
+  end_date?: string | null
   synced_at: string | null
   conversions: number | string | null
 }
@@ -56,6 +59,7 @@ export function buildGroups(rows: HealthRow[]): Map<string, Group> {
         period: r.period,
         budget: num(r.budget_allocated),
         campaignStatus: r.campaign_status,
+        endDate: r.end_date ?? null,
         syncedAt: r.synced_at,
         days: [],
       }
@@ -72,12 +76,20 @@ export function detectUnderspend(g: Group, now: Date): DetectedAnomaly | null {
   if (dayOfMonth(now) < 7) return null
 
   const spent = mtd(g)
+  const pacing = computeCampaignBudgetPacing({
+    monthlyBudget: g.budget,
+    mtdSpend: spent,
+    period: g.period,
+    now,
+    campaignStatus: g.campaignStatus,
+    endDate: g.endDate,
+  })
+  if (pacing.pacingStatus !== 'warning_under_pacing' && pacing.pacingStatus !== 'no_spend') return null
+
   const expected = expectedToDate(g.budget, now)
   if (expected <= 0) return null
 
   const ratio = spent / expected
-  if (ratio >= 0.5) return null
-
   const severity = ratio < 0.25 ? 'critical' : 'warning'
   const shortfall = expected - spent
   const projected = projectedMonthEnd(spent, now)
@@ -87,7 +99,7 @@ export function detectUnderspend(g: Group, now: Date): DetectedAnomaly | null {
     type: 'adspend',
     severity,
     title: `${g.clientName} (${g.platform}) underspending`,
-    description: `Spent $${round(spent)} of an expected $${round(expected)} by day ${dayOfMonth(now)} — $${round(shortfall)} behind pace (tracking to $${round(projected)} of a $${round(g.budget)} budget).`,
+    description: `Spent $${round(spent)} of an expected $${round(expected)} by day ${dayOfMonth(now)} — $${round(shortfall)} behind pace (tracking to $${round(projected)} of a $${round(g.budget)} budget). Current daily spend is $${round(pacing.currentDailyBudget)}; recommended daily budget is $${round(pacing.newDailyBudget)}.`,
     metric: { label: 'Month-to-date spend', value: spent, format: 'currency' },
     comparison: { label: 'Expected to date', value: expected, format: 'currency', trend: 'down' },
     context: { client: g.clientName, vendor: g.platform, period: g.period, mediaSpendId: g.mediaSpendId },
@@ -165,17 +177,25 @@ export function detectOverspend(g: Group, now: Date): DetectedAnomaly | null {
   if (dayOfMonth(now) < 7) return null
 
   const spent = mtd(g)
+  const pacing = computeCampaignBudgetPacing({
+    monthlyBudget: g.budget,
+    mtdSpend: spent,
+    period: g.period,
+    now,
+    campaignStatus: g.campaignStatus,
+    endDate: g.endDate,
+  })
+  if (pacing.pacingStatus !== 'warning_over_pacing' && pacing.pacingStatus !== 'critical_over_pacing') return null
+
   const projected = projectedMonthEnd(spent, now)
   const ratio = projected / g.budget
-  if (ratio <= 1.15) return null
-
-  const severity = ratio > 1.3 ? 'critical' : 'warning'
+  const severity = pacing.pacingStatus === 'critical_over_pacing' ? 'critical' : 'warning'
   return {
     fingerprint: buildFingerprint('adspend', `overspend-${g.mediaSpendId}-${g.period}`),
     type: 'adspend',
     severity,
     title: `${g.clientName} (${g.platform}) overspending`,
-    description: `Tracking to $${round(projected)} against a $${round(g.budget)} budget (${Math.round((ratio - 1) * 100)}% over) at the current pace.`,
+    description: `Tracking to $${round(projected)} against a $${round(g.budget)} budget (${Math.round((ratio - 1) * 100)}% over) at the current pace. Current daily spend is $${round(pacing.currentDailyBudget)}; recommended daily budget is $${round(pacing.newDailyBudget)}.`,
     metric: { label: 'Projected month-end', value: projected, format: 'currency' },
     comparison: { label: 'Budget', value: g.budget, format: 'currency', trend: 'up' },
     context: { client: g.clientName, vendor: g.platform, period: g.period, mediaSpendId: g.mediaSpendId },

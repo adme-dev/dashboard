@@ -8,6 +8,7 @@
 
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { computeCampaignBudgetPacing, statusSeverityRank } from '~~/server/utils/budgetPacing'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -22,7 +23,8 @@ export default defineEventHandler(async (event) => {
     period, month, year, monthProgress: 0,
     summary: { totalBudget: 0, totalSpent: 0, totalRemaining: 0, overallUtilization: 0, clientCount: 0, overBudgetCount: 0, atRiskCount: 0, underspendCount: 0, healthyCount: 0, noBudgetCount: 0 },
     clients: [],
-    burnRateTrends: []
+    burnRateTrends: [],
+    campaigns: []
   }
 
   try {
@@ -102,6 +104,64 @@ export default defineEventHandler(async (event) => {
       ORDER BY week_start
     `, [period])
 
+    const campaignRows = await queryRows<any>(`
+      SELECT
+        ms.id::text as media_spend_id,
+        ms.campaign_id,
+        COALESCE(ms.campaign_name, 'Unnamed campaign') as campaign_name,
+        COALESCE(ac.id::text, 'unmapped') as client_id,
+        COALESCE(ac.name, 'Unmapped') as client_name,
+        ms.platform,
+        ms.campaign_status,
+        ms.end_date::text as end_date,
+        COALESCE(ms.budget_rolling, false) as budget_rolling,
+        COALESCE(ms.budget_allocated, 0) as monthly_budget,
+        COALESCE(SUM(ds.spend), 0) as mtd_spend,
+        COALESCE(SUM(ds.impressions), 0) as impressions,
+        COALESCE(SUM(ds.clicks), 0) as clicks,
+        COALESCE(SUM(ds.conversions), 0) as conversions,
+        MAX(ms.synced_at)::text as last_synced_at
+      FROM media_spend ms
+      LEFT JOIN agency_clients ac ON ms.client_id = ac.id
+      LEFT JOIN daily_spend ds ON ds.media_spend_id = ms.id
+      WHERE ms.period = $1
+      GROUP BY ms.id, ac.id, ac.name
+    `, [period])
+
+    const campaigns = campaignRows.map((r: any) => {
+      const monthlyBudget = parseFloat(r.monthly_budget) || 0
+      const mtdSpend = parseFloat(r.mtd_spend) || 0
+      const pacing = computeCampaignBudgetPacing({
+        monthlyBudget,
+        mtdSpend,
+        period,
+        now,
+        campaignStatus: r.campaign_status,
+        endDate: r.end_date
+      })
+
+      return {
+        mediaSpendId: r.media_spend_id,
+        campaignId: r.campaign_id,
+        campaignName: r.campaign_name,
+        clientId: r.client_id,
+        clientName: r.client_name,
+        platform: r.platform,
+        campaignStatus: r.campaign_status,
+        endDate: r.end_date,
+        budgetRolling: r.budget_rolling === true,
+        impressions: parseInt(r.impressions) || 0,
+        clicks: parseInt(r.clicks) || 0,
+        conversions: parseInt(r.conversions) || 0,
+        lastSyncedAt: r.last_synced_at,
+        ...pacing
+      }
+    }).sort((a: any, b: any) => {
+      const severity = statusSeverityRank(a.pacingStatus) - statusSeverityRank(b.pacingStatus)
+      if (severity !== 0) return severity
+      return b.mtdSpend - a.mtdSpend
+    })
+
     return {
       period,
       month,
@@ -126,7 +186,8 @@ export default defineEventHandler(async (event) => {
         impressions: parseInt(t.total_impressions) || 0,
         clicks: parseInt(t.total_clicks) || 0,
         campaignCount: t.campaign_count
-      }))
+      })),
+      campaigns
     }
   } catch (error: any) {
     // Only swallow table-not-found (42P01), not column errors

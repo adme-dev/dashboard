@@ -33,6 +33,12 @@ const summary = computed(() => (healthData.value as any)?.summary || {
 const monthProgress = computed(() => (healthData.value as any)?.monthProgress || 0)
 const clients = computed(() => ((healthData.value as any)?.clients || []) as any[])
 const burnRateTrends = computed(() => ((healthData.value as any)?.burnRateTrends || []) as any[])
+const campaignRows = computed(() => ((healthData.value as any)?.campaigns || []) as any[])
+
+const campaignSearch = ref('')
+const campaignPlatformFilter = ref('all')
+const campaignClientFilter = ref('all')
+const campaignStatusFilter = ref('all')
 
 // Derived: only those with budget assigned
 const hasBudgets = computed(() => summary.value.clientCount > 0)
@@ -94,6 +100,86 @@ const platformIcon = (p: string) => {
   if (p === 'meta') return 'i-lucide-facebook'
   if (p === 'google_ads') return 'i-lucide-chrome'
   return 'i-lucide-globe'
+}
+
+const pacingStatusOptions = [
+  { label: 'All pacing statuses', value: 'all' },
+  { label: 'Critical over-pacing', value: 'critical_over_pacing' },
+  { label: 'Warning over-pacing', value: 'warning_over_pacing' },
+  { label: 'Warning under-pacing', value: 'warning_under_pacing' },
+  { label: 'No spend', value: 'no_spend' },
+  { label: 'Campaign ended', value: 'campaign_ended' },
+  { label: 'No budget', value: 'no_budget' },
+  { label: 'On track', value: 'on_track' }
+]
+
+const campaignPlatformOptions = computed(() => [
+  { label: 'All platforms', value: 'all' },
+  ...Array.from(new Set(campaignRows.value.map(c => c.platform).filter(Boolean)))
+    .sort()
+    .map(platform => ({ label: platformLabel(platform), value: platform }))
+])
+
+const campaignClientOptions = computed(() => [
+  { label: 'All clients', value: 'all' },
+  ...Array.from(new Map(
+    campaignRows.value
+      .filter(c => c.clientId)
+      .map(c => [c.clientId, c.clientName || 'Unmapped'])
+  ).entries())
+    .sort((a, b) => String(a[1]).localeCompare(String(b[1])))
+    .map(([value, label]) => ({ label, value }))
+])
+
+const filteredCampaignRows = computed(() => {
+  const search = campaignSearch.value.trim().toLowerCase()
+  return campaignRows.value.filter((campaign) => {
+    if (campaignPlatformFilter.value !== 'all' && campaign.platform !== campaignPlatformFilter.value) return false
+    if (campaignClientFilter.value !== 'all' && campaign.clientId !== campaignClientFilter.value) return false
+    if (campaignStatusFilter.value !== 'all' && campaign.pacingStatus !== campaignStatusFilter.value) return false
+    if (!search) return true
+    return [
+      campaign.campaignName,
+      campaign.clientName,
+      campaign.campaignStatus,
+      platformLabel(campaign.platform)
+    ].some(value => String(value || '').toLowerCase().includes(search))
+  })
+})
+
+const getPacingLabel = (status: string): string => {
+  switch (status) {
+    case 'campaign_ended': return 'Campaign Ended'
+    case 'no_budget': return 'No Budget'
+    case 'no_spend': return 'No Spend'
+    case 'critical_over_pacing': return 'Critical: Over-Pacing'
+    case 'warning_over_pacing': return 'Warning: Over-Pacing'
+    case 'warning_under_pacing': return 'Warning: Under-Pacing'
+    case 'on_track': return 'On Track'
+    default: return status
+  }
+}
+
+const getPacingColor = (status: string): 'success' | 'warning' | 'error' | 'neutral' | 'info' => {
+  switch (status) {
+    case 'critical_over_pacing': return 'error'
+    case 'warning_over_pacing': return 'warning'
+    case 'warning_under_pacing': return 'info'
+    case 'no_spend': return 'warning'
+    case 'campaign_ended': return 'neutral'
+    case 'on_track': return 'success'
+    default: return 'neutral'
+  }
+}
+
+const getCampaignStatusColor = (status: string | null): 'success' | 'warning' | 'error' | 'neutral' | 'info' => {
+  if (!status) return 'neutral'
+  const value = status.toUpperCase()
+  if (value === 'ACTIVE' || value === 'ENABLED' || value === 'DELIVERING') return 'success'
+  if (value.includes('PAUSED') || value === 'LIMITED') return 'warning'
+  if (value.includes('REMOVED') || value.includes('DELETED') || value.includes('ARCHIVED') || value === 'DISAPPROVED') return 'error'
+  if (value.includes('PENDING') || value === 'IN_PROCESS' || value === 'WITH_ISSUES') return 'info'
+  return 'neutral'
 }
 </script>
 
@@ -229,6 +315,143 @@ const platformIcon = (p: string) => {
           </div>
         </UCard>
       </div>
+
+      <UCard>
+        <template #header>
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h3 class="font-semibold">Campaign Budget Pacing</h3>
+              <p class="text-xs text-muted mt-1">
+                Campaign-level budget variables used by pacing alerts.
+              </p>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 lg:justify-end">
+              <UInput
+                v-model="campaignSearch"
+                icon="i-lucide-search"
+                placeholder="Search campaigns"
+                size="sm"
+                class="sm:w-56"
+              />
+              <USelect
+                v-model="campaignPlatformFilter"
+                :items="campaignPlatformOptions"
+                value-key="value"
+                size="sm"
+                class="sm:w-40"
+              />
+              <USelect
+                v-model="campaignClientFilter"
+                :items="campaignClientOptions"
+                value-key="value"
+                size="sm"
+                class="sm:w-48"
+              />
+              <USelect
+                v-model="campaignStatusFilter"
+                :items="pacingStatusOptions"
+                value-key="value"
+                size="sm"
+                class="sm:w-52"
+              />
+            </div>
+          </div>
+        </template>
+
+        <div v-if="campaignRows.length === 0" class="text-center text-muted py-8">
+          No campaign budget data for this period
+        </div>
+
+        <div v-else class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-default">
+                <th class="px-3 py-2 text-left text-xs font-medium text-muted">Campaign</th>
+                <th class="px-3 py-2 text-left text-xs font-medium text-muted">Client</th>
+                <th class="px-3 py-2 text-left text-xs font-medium text-muted">Platform</th>
+                <th class="px-3 py-2 text-left text-xs font-medium text-muted">MTD Budget Pacing</th>
+                <th class="px-3 py-2 text-right text-xs font-medium text-muted">Monthly Budget</th>
+                <th class="px-3 py-2 text-right text-xs font-medium text-muted">MTD Spend</th>
+                <th class="px-3 py-2 text-right text-xs font-medium text-muted">MTD Difference</th>
+                <th class="px-3 py-2 text-right text-xs font-medium text-muted">Current Daily Budget</th>
+                <th class="px-3 py-2 text-right text-xs font-medium text-muted">New Daily Budget</th>
+                <th class="px-3 py-2 text-left text-xs font-medium text-muted">Campaign Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="campaign in filteredCampaignRows"
+                :key="campaign.mediaSpendId"
+                class="border-b border-default/50 hover:bg-elevated/30 transition-colors"
+              >
+                <td class="px-3 py-2.5 min-w-72 max-w-96">
+                  <div class="flex items-center gap-2">
+                    <UIcon v-if="campaign.budgetRolling" name="i-lucide-repeat" class="size-3.5 text-primary shrink-0" />
+                    <span class="font-medium truncate" :title="campaign.campaignName">
+                      {{ campaign.campaignName }}
+                    </span>
+                  </div>
+                </td>
+                <td class="px-3 py-2.5 min-w-44 text-muted">
+                  {{ campaign.clientName }}
+                </td>
+                <td class="px-3 py-2.5 min-w-32">
+                  <div class="flex items-center gap-1.5 text-muted">
+                    <UIcon :name="platformIcon(campaign.platform)" class="size-3.5" />
+                    <span>{{ platformLabel(campaign.platform) }}</span>
+                  </div>
+                </td>
+                <td class="px-3 py-2.5 min-w-48">
+                  <div class="flex items-center gap-2">
+                    <UBadge :color="getPacingColor(campaign.pacingStatus)" variant="subtle" size="xs">
+                      {{ getPacingLabel(campaign.pacingStatus) }}
+                    </UBadge>
+                    <span v-if="campaign.monthlyBudget > 0" class="text-xs text-muted tabular-nums">
+                      {{ campaign.pacingRatio.toFixed(2) }}x
+                    </span>
+                  </div>
+                </td>
+                <td class="px-3 py-2.5 text-right tabular-nums">
+                  {{ campaign.monthlyBudget > 0 ? formatCurrency(campaign.monthlyBudget) : '-' }}
+                </td>
+                <td class="px-3 py-2.5 text-right tabular-nums font-medium">
+                  {{ formatCurrency(campaign.mtdSpend) }}
+                </td>
+                <td
+                  class="px-3 py-2.5 text-right tabular-nums"
+                  :class="campaign.mtdDifference >= 0 ? 'text-emerald-500' : 'text-red-500'"
+                >
+                  {{ formatCurrency(campaign.mtdDifference) }}
+                </td>
+                <td class="px-3 py-2.5 text-right tabular-nums">
+                  {{ formatCurrency(campaign.currentDailyBudget) }}
+                </td>
+                <td
+                  class="px-3 py-2.5 text-right tabular-nums"
+                  :class="campaign.newDailyBudget < 0 ? 'text-red-500' : ''"
+                >
+                  {{ formatCurrency(campaign.newDailyBudget) }}
+                </td>
+                <td class="px-3 py-2.5 min-w-36">
+                  <UBadge
+                    v-if="campaign.campaignStatus"
+                    :color="getCampaignStatusColor(campaign.campaignStatus)"
+                    variant="subtle"
+                    size="xs"
+                  >
+                    {{ campaign.campaignStatus }}
+                  </UBadge>
+                  <span v-else class="text-xs text-muted">Unknown</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p v-if="filteredCampaignRows.length === 0" class="text-center text-muted py-6">
+            No campaigns match these filters
+          </p>
+        </div>
+      </UCard>
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Client Budget Status (with budget) -->

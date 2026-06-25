@@ -42,20 +42,23 @@ export async function fetchSharedData(event: H3Event | null): Promise<SharedData
         ms.client_id::text AS client_id,
         ac.name AS client_name,
         ms.platform,
-        ds.spend_date::text AS spend_date,
-        ds.spend::numeric AS spend,
+        COALESCE(ds.spend_date::text, CURRENT_DATE::text) AS spend_date,
+        COALESCE(ds.spend, 0)::numeric AS spend,
         ms.id::text AS media_spend_id,
         ms.budget_allocated::numeric AS budget_allocated,
         ms.period,
         ms.campaign_status,
+        ms.end_date::text AS end_date,
         ms.synced_at,
-        ds.conversions::numeric AS conversions
-      FROM daily_spend ds
-      JOIN media_spend ms ON ds.media_spend_id = ms.id
+        COALESCE(ds.conversions, 0)::numeric AS conversions
+      FROM media_spend ms
+      LEFT JOIN daily_spend ds
+        ON ds.media_spend_id = ms.id
+       AND ds.spend_date >= CURRENT_DATE - INTERVAL '31 days'
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
-      WHERE ds.spend_date >= CURRENT_DATE - INTERVAL '31 days'
+      WHERE ms.period >= TO_CHAR(CURRENT_DATE - INTERVAL '31 days', 'YYYY-MM')
         AND ms.client_id IS NOT NULL
-      ORDER BY ds.spend_date DESC
+      ORDER BY COALESCE(ds.spend_date, CURRENT_DATE) DESC
     `)
   } catch (err) {
     console.warn('[anomalies] daily_spend fetch failed:', err)

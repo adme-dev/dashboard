@@ -18,7 +18,7 @@
     "resend": "*"
   },
   "devDependencies": {
-    "wrangler": "^4.95.0",
+    "wrangler": "^4.99.0",
     "@cloudflare/workers-types": "*",
     "typescript": "*"
   }
