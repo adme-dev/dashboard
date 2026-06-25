@@ -56,12 +56,14 @@ This task list decomposes the approved PRD into small, verifiable slices. Slice 
 **Description:** Add a pure `creativeJobSummary` utility that maps render, generation, and audio jobs into one status model.
 
 **Acceptance criteria:**
-- [ ] Statuses normalize into `queued`, `running`, `ready`, `failed`, `blocked`.
-- [ ] Retryability is explicit.
-- [ ] Source-specific ids and labels are preserved.
+- [x] Statuses normalize into `queued`, `running`, `ready`, `failed`, `blocked`.
+- [x] Retryability is explicit.
+- [x] Source-specific ids and labels are preserved.
 
 **Verification:**
-- [ ] Focused utility tests and typecheck.
+- [x] `pnpm exec vitest run test/creative/jobSummary.test.ts`
+- [x] `pnpm exec eslint app/utils/creative/jobSummary.ts test/creative/jobSummary.test.ts`
+- [x] `pnpm exec vue-tsc --noEmit --pretty false`
 
 **Dependencies:** Task 1.
 
