@@ -6,6 +6,7 @@
  */
 
 import { queryRows, queryOne } from '~~/server/utils/db'
+import { getCachedBinding } from '~~/server/utils/email'
 
 // ─── Meta Spend Sync ────────────────────────────────────────────
 
@@ -279,7 +280,27 @@ interface GoogleSyncCtx {
   period: string
   mccId: string | undefined
   mappings: Array<{ connection_id: string; campaign_id: string | null; campaign_name_pattern: string | null; xero_client_name: string; xero_client_code: string | null }>
-  config: { googleClientId: string; googleClientSecret: string; googleDeveloperToken: string }
+  config: GoogleAdsRuntimeConfig
+}
+
+interface GoogleAdsRuntimeConfig {
+  googleClientId: string
+  googleClientSecret: string
+  googleDeveloperToken: string
+  googleAdsLoginCustomerId: string
+}
+
+export function resolveGoogleAdsRuntimeConfig(runtimeConfig?: Partial<GoogleAdsRuntimeConfig>): GoogleAdsRuntimeConfig {
+  const config = runtimeConfig ?? (useRuntimeConfig() as Partial<GoogleAdsRuntimeConfig>)
+  const read = (runtimeKey: keyof GoogleAdsRuntimeConfig, envKey: string): string =>
+    getCachedBinding(envKey) || String(config[runtimeKey] || '') || process.env[envKey] || ''
+
+  return {
+    googleClientId: read('googleClientId', 'GOOGLE_CLIENT_ID'),
+    googleClientSecret: read('googleClientSecret', 'GOOGLE_CLIENT_SECRET'),
+    googleDeveloperToken: read('googleDeveloperToken', 'GOOGLE_DEVELOPER_TOKEN'),
+    googleAdsLoginCustomerId: read('googleAdsLoginCustomerId', 'GOOGLE_ADS_LOGIN_CUSTOMER_ID')
+  }
 }
 
 /**
@@ -440,7 +461,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
   const failures: Array<{ account: string; reason: string }> = []
 
   const period = `${year}-${String(month).padStart(2, '0')}`
-  const config = useRuntimeConfig()
+  const config = resolveGoogleAdsRuntimeConfig()
 
   const connections = await queryRows<{
     id: string
@@ -471,7 +492,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
 
   let mccId: string | undefined
   const connAccountIds = new Set(connections.map(c => c.account_id.replace(/-/g, '')))
-  const configuredMcc = (config.googleAdsLoginCustomerId as string) || ''
+  const configuredMcc = config.googleAdsLoginCustomerId || ''
   if (configuredMcc) {
     mccId = resolveGoogleManagerId({ configured: configuredMcc })
   } else {
@@ -488,7 +509,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
   let totalSpend = 0
 
   const deps = { refreshGoogleToken, getMonthlySpend, getDailySpend }
-  const ctx: GoogleSyncCtx = { month, year, period, mccId, mappings, config: config as any }
+  const ctx: GoogleSyncCtx = { month, year, period, mccId, mappings, config }
   for (const conn of connections) {
     const r = await processGoogleConnection(conn, ctx, deps)
     totalSynced += r.synced
@@ -509,7 +530,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
 export async function syncGoogleSpendByConnectionId(connectionId: string, month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
   const { refreshGoogleToken, getMonthlySpend, getDailySpend, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
   const period = `${year}-${String(month).padStart(2, '0')}`
-  const config = useRuntimeConfig()
+  const config = resolveGoogleAdsRuntimeConfig()
 
   const conn = await queryOne<GoogleConnRow>(
     `SELECT id, account_id, account_name, access_token, refresh_token, token_expires_at, metadata
@@ -523,7 +544,7 @@ export async function syncGoogleSpendByConnectionId(connectionId: string, month:
   )
 
   // Resolve the manager id once for this account (configured MCC wins, else detect).
-  const configuredMcc = (config.googleAdsLoginCustomerId as string) || ''
+  const configuredMcc = config.googleAdsLoginCustomerId || ''
   let mccId: string | undefined
   if (configuredMcc) {
     mccId = resolveGoogleManagerId({ configured: configuredMcc })
@@ -540,7 +561,7 @@ export async function syncGoogleSpendByConnectionId(connectionId: string, month:
     } catch { /* leave undefined; processGoogleConnection retries without mcc on 403 */ }
   }
 
-  const ctx: GoogleSyncCtx = { month, year, period, mccId, mappings, config: config as any }
+  const ctx: GoogleSyncCtx = { month, year, period, mccId, mappings, config }
   return processGoogleConnection(conn, ctx, { refreshGoogleToken, getMonthlySpend, getDailySpend })
 }
 
