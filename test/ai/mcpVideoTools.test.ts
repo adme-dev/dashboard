@@ -155,9 +155,10 @@ const baseProposeDeps = () => ({
 })
 
 describe('resolveVideoProposeAction', () => {
-  it('maps the two propose tools, null otherwise', () => {
+  it('maps the video propose tools, null otherwise', () => {
     expect(resolveVideoProposeAction('propose_video_generation')).toBe('video_generation')
     expect(resolveVideoProposeAction('create_video_project')).toBe('video_project_create')
+    expect(resolveVideoProposeAction('propose_timeline_edit')).toBe('video_timeline_edit')
     expect(resolveVideoProposeAction('create_task')).toBeNull()
   })
 })
@@ -202,6 +203,78 @@ describe('executeVideoPropose — video_project_create', () => {
   })
 })
 
+describe('executeVideoPropose — video_timeline_edit', () => {
+  it('persists validated timeline edit proposals without requiring the generation flag', async () => {
+    const deps = { ...baseProposeDeps(), genEnabled: false }
+    const r = await executeVideoPropose('video_timeline_edit', {
+      projectId: genArgs.projectId,
+      reason: 'Place approved VO and trim intro.',
+      operations: [
+        {
+          type: 'insert',
+          trackId: 'voiceover',
+          assetId: 'audio-1',
+          timelineStartSec: 0,
+          durationSec: 5
+        },
+        {
+          type: 'trim',
+          clipId: 'clip-1',
+          sourceInSec: 0.5,
+          sourceOutSec: 4.5
+        },
+        {
+          type: 'replace',
+          clipId: 'clip-2',
+          assetId: 'video-2'
+        },
+        {
+          type: 'add-overlay',
+          text: 'Book a test drive',
+          timelineStartSec: 1,
+          durationSec: 3
+        }
+      ]
+    }, ctx('admin'), deps)
+
+    expect(r).toEqual({
+      ok: true,
+      data: expect.objectContaining({
+        proposalId: 'prop-123',
+        kind: 'video_timeline_edit',
+        operationCount: 4,
+        requiresReview: true
+      })
+    })
+    expect(deps.persist).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'mcp' }),
+      'video_timeline_edit',
+      expect.objectContaining({
+        projectId: genArgs.projectId,
+        timelineId: 't1',
+        operations: expect.arrayContaining([
+          expect.objectContaining({ type: 'insert', trackId: 'voiceover' }),
+          expect.objectContaining({ type: 'trim', clipId: 'clip-1' }),
+          expect.objectContaining({ type: 'replace', clipId: 'clip-2' }),
+          expect.objectContaining({ type: 'add-overlay', text: 'Book a test drive' })
+        ]),
+        reviewRequired: true
+      })
+    )
+  })
+
+  it('rejects invalid timeline edit operations before persistence', async () => {
+    const deps = baseProposeDeps()
+    const r = await executeVideoPropose('video_timeline_edit', {
+      projectId: genArgs.projectId,
+      operations: [{ type: 'trim', sourceInSec: 0 }]
+    }, ctx('admin'), deps)
+
+    expect(r).toMatchObject({ ok: false, code: 'bad_args' })
+    expect(deps.persist).not.toHaveBeenCalled()
+  })
+})
+
 const genPayload = {
   tenantId: 'c1', projectId: 'p1', mode: 'text-to-video', modelId: 'm1', provider: 'cf', prompt: 'x',
   sourceAssetIds: [], durationSeconds: 5, aspectRatio: '16:9', resolution: null, subjectType: 'unknown',
@@ -218,6 +291,15 @@ describe('dispatchVideoConfirm', () => {
 
   it('returns null for a non-video tool_name (2c falls through)', async () => {
     expect(await dispatchVideoConfirm({ tool_name: 'create_task', resolved_payload: {} }, ctx('admin'), okDeps())).toBeNull()
+  })
+
+  it('does not directly execute timeline edit proposals', async () => {
+    const r = await dispatchVideoConfirm({
+      tool_name: 'video_timeline_edit',
+      resolved_payload: { projectId: 'p1', operations: [] }
+    }, ctx('admin'), okDeps())
+
+    expect(r).toMatchObject({ ok: false, code: 'forbidden' })
   })
 
   it('forbidden when gen flag is off', async () => {
@@ -272,7 +354,7 @@ describe('projectVideoTools flag matrix', () => {
   })
   it('suite + gen on → reads + propose + create + confirm_action', () => {
     expect(projectVideoTools('admin', { suite: true, gen: true }).map(t => t.name)).toEqual([
-      ...READ_NAMES, 'propose_video_generation', 'create_video_project', 'confirm_action'
+      ...READ_NAMES, 'propose_video_generation', 'create_video_project', 'propose_timeline_edit', 'confirm_action'
     ])
   })
   it('non-CREATIVE role → no tools even with flags on', () => {

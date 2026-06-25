@@ -149,12 +149,14 @@ This task list decomposes the approved PRD into small, verifiable slices. Slice 
 **Description:** Add propose-only timeline mutation tools for insert/trim/replace/add-overlay.
 
 **Acceptance criteria:**
-- [ ] No direct writes without confirmation.
-- [ ] Proposed payloads are validated and audit-ready.
-- [ ] Existing pending-action flow is reused.
+- [x] No direct writes without confirmation.
+- [x] Proposed payloads are validated and audit-ready.
+- [x] Existing pending-action flow is reused.
 
 **Verification:**
-- [ ] MCP proposal and confirmation tests.
+- [x] `pnpm exec vitest run test/ai/mcpVideoTools.test.ts`
+- [x] `pnpm exec eslint server/utils/ai/mcp/videoTools.ts test/ai/mcpVideoTools.test.ts`
+- [x] `pnpm exec vue-tsc --noEmit --pretty false`
 
 **Dependencies:** Task 7.
 

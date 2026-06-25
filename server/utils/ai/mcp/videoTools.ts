@@ -44,6 +44,15 @@ export interface VideoGenerationPendingPayload {
 /** The resolved payload a `video_project_create` proposal persists. */
 export interface VideoProjectPendingPayload { title: string, clientId: string | null }
 
+/** The resolved payload a proposal-only timeline edit stores for in-app review. */
+export interface VideoTimelineEditPendingPayload {
+  projectId: string
+  timelineId: string | null
+  reason: string | null
+  operations: Array<Record<string, unknown>>
+  reviewRequired: true
+}
+
 /**
  * MCP Server Phase 2b — owned video-generation suite over MCP (spec:
  * docs/superpowers/specs/2026-06-21-mcp-phase2b-video-generation-design.md).
@@ -176,7 +185,7 @@ export async function executeVideoTool(
 // ai_pending_actions.tool_name values + dispatchVideoConfirm routing keys — deliberately NOT in
 // MCP_WRITE_SAFE_ACTIONS and NOT in the executor registry (video has no in-app chat equivalent).
 
-export const VIDEO_CONFIRM_ACTIONS = ['video_generation', 'video_project_create'] as const
+export const VIDEO_CONFIRM_ACTIONS = ['video_generation', 'video_project_create', 'video_timeline_edit'] as const
 export type VideoConfirmAction = typeof VIDEO_CONFIRM_ACTIONS[number]
 
 const VideoGenParams = z.object({
@@ -191,6 +200,40 @@ const VideoGenParams = z.object({
   subjectType: z.enum(['vehicle', 'non_vehicle', 'unknown']).default('unknown')
 })
 const VideoProjectParams = z.object({ title: z.string().min(1).max(200), clientId: UUID.nullable().optional() })
+const TimelineEditOperation = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('insert'),
+    trackId: z.string().min(1),
+    assetId: z.string().min(1).optional(),
+    r2Key: z.string().min(1).optional(),
+    timelineStartSec: z.number().min(0),
+    durationSec: z.number().positive()
+  }),
+  z.object({
+    type: z.literal('trim'),
+    clipId: z.string().min(1),
+    sourceInSec: z.number().min(0),
+    sourceOutSec: z.number().positive()
+  }),
+  z.object({
+    type: z.literal('replace'),
+    clipId: z.string().min(1),
+    assetId: z.string().min(1).optional(),
+    r2Key: z.string().min(1).optional()
+  }),
+  z.object({
+    type: z.literal('add-overlay'),
+    text: z.string().min(1).max(500).optional(),
+    r2Key: z.string().min(1).optional(),
+    timelineStartSec: z.number().min(0),
+    durationSec: z.number().positive()
+  })
+])
+const TimelineEditParams = z.object({
+  projectId: UUID,
+  reason: z.string().max(500).optional(),
+  operations: z.array(TimelineEditOperation).min(1).max(20)
+})
 
 export const videoProposeTools: VideoToolDescriptor[] = [
   {
@@ -210,6 +253,14 @@ export const videoProposeTools: VideoToolDescriptor[] = [
       + 'confirm_action(proposalId) to create it. Use when no suitable project exists (see list_av_projects).',
     parameters: VideoProjectParams,
     requiredPermission: 'CREATIVE'
+  },
+  {
+    name: 'propose_timeline_edit',
+    description:
+      'Propose timeline edits for human review. Supports insert, trim, replace, and add-overlay operations. '
+      + 'This does not mutate the timeline directly; it stores an audit-ready proposal for in-app review.',
+    parameters: TimelineEditParams,
+    requiredPermission: 'CREATIVE'
   }
 ]
 
@@ -217,6 +268,7 @@ export const videoProposeTools: VideoToolDescriptor[] = [
 export function resolveVideoProposeAction(name: string): VideoConfirmAction | null {
   if (name === 'propose_video_generation') return 'video_generation'
   if (name === 'create_video_project') return 'video_project_create'
+  if (name === 'propose_timeline_edit') return 'video_timeline_edit'
   return null
 }
 
@@ -257,8 +309,38 @@ function modelSupports(model: VideoGenerationModel, p: z.infer<typeof VideoGenPa
 export async function executeVideoPropose(
   action: VideoConfirmAction, args: unknown, ctx: ToolContext, deps: VideoProposeDeps
 ): Promise<VideoProposeOutcome> {
-  if (!deps.suiteEnabled || !deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'disabled' }
+  if (!deps.suiteEnabled) return { ok: false, error: 'Video tools are not enabled over MCP.', code: 'disabled' }
+  if ((action === 'video_generation' || action === 'video_project_create') && !deps.genEnabled) {
+    return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'disabled' }
+  }
   if (!roleHasPermission(ctx.userRole, 'CREATIVE')) return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+
+  if (action === 'video_timeline_edit') {
+    const parsed = TimelineEditParams.safeParse(args)
+    if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+    try {
+      const existing = await deps.resolveProject(parsed.data.projectId, ctx)
+      if (!existing) return { ok: false, error: 'Project not found or not an AV project you can use.', code: 'forbidden' }
+      const proposalId = await deps.persist(ctx, 'video_timeline_edit', {
+        projectId: parsed.data.projectId,
+        timelineId: existing.timeline?.id ?? existing.project.currentTimelineId ?? null,
+        reason: parsed.data.reason ?? null,
+        operations: parsed.data.operations,
+        reviewRequired: true
+      } satisfies VideoTimelineEditPendingPayload)
+      return {
+        ok: true,
+        data: {
+          proposalId,
+          kind: 'video_timeline_edit',
+          operationCount: parsed.data.operations.length,
+          requiresReview: true
+        }
+      }
+    } catch {
+      return { ok: false, error: 'Propose failed.', code: 'handler_error' }
+    }
+  }
 
   if (action === 'video_project_create') {
     const parsed = VideoProjectParams.safeParse(args)
@@ -348,6 +430,9 @@ export async function dispatchVideoConfirm(
   row: ClaimedRow, ctx: ToolContext, deps: VideoConfirmDeps
 ): Promise<VideoConfirmOutcome | null> {
   if (!(VIDEO_CONFIRM_ACTIONS as readonly string[]).includes(row.tool_name)) return null
+  if (row.tool_name === 'video_timeline_edit') {
+    return { ok: false, error: 'Timeline edit proposals require in-app review before execution.', code: 'forbidden' }
+  }
   if (!deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'forbidden' }
   try {
     if (row.tool_name === 'video_project_create') {
