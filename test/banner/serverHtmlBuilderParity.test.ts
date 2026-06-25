@@ -12,6 +12,15 @@ describe('server banner builder parity', () => {
   it('matches the client builder byte-for-byte (absolute srcs)', () => {
     expect(server('fb_story', layers as any)).toBe(client('fb_story', layers as any))
   })
+  it('injects the render runtime contract for animated exports', () => {
+    const html = server('fb_story', layers as any)
+    expect(html).toContain('window.__engagrTimeline = tl')
+    expect(html).toContain('window.__engagrFrame')
+    expect(html).toContain('getVisibleElements')
+  })
+  it('omits the render runtime when animations are disabled', () => {
+    expect(server('fb_story', layers as any, { includeAnimations: false })).not.toContain('window.__engagrFrame')
+  })
   it('absolutizes a relative src only when baseUrl is given', () => {
     const rel: any[] = [{ id: 'l', type: 'image', src: '/img/x.jpg', x: 0, y: 0, w: 10, h: 10 }]
     expect(server('fb_story', rel as any, { baseUrl: 'https://app.test' })).toContain('https://app.test/img/x.jpg')

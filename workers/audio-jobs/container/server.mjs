@@ -140,7 +140,7 @@ const server = createServer(async (req, res) => {
       return res.end(mp4)
     } catch (e) {
       console.error('render-banner error', e)
-      res.writeHead(500); return res.end('render-banner error')
+      res.writeHead(500); return res.end(e?.message ? String(e.message).slice(0, 2000) : 'render-banner error')
     }
   }
 

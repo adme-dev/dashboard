@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { MediaRenderJob } from '~~/app/types'
 import {
+  parseRenderFailure,
   renderVariantFormats,
   renderVariantUrl,
   summarizeVideoRenderJobs,
@@ -49,5 +50,24 @@ describe('video render job summary', () => {
 
     expect(renderVariantFormats(done)).toEqual(['reels_9x16', 'square_1x1'])
     expect(renderVariantUrl('project/1', 'job/1', 'reels_9x16')).toBe('/api/agency/audio/projects/project%2F1/renders/job%2F1/reels_9x16')
+  })
+
+  it('parses categorized render failures for display', () => {
+    expect(parseRenderFailure('runtime_not_ready: runtime_not_ready after 2500ms')).toEqual({
+      category: 'runtime_not_ready',
+      label: 'Render runtime not ready',
+      details: 'runtime_not_ready after 2500ms',
+      retryable: true,
+    })
+    expect(parseRenderFailure('invalid_composition: missing runtime')).toMatchObject({
+      label: 'Invalid composition',
+      retryable: false,
+    })
+    expect(parseRenderFailure('plain failure')).toMatchObject({
+      category: null,
+      label: 'Render failed',
+      details: 'plain failure',
+      retryable: true,
+    })
   })
 })

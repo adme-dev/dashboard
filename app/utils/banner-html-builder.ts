@@ -1,6 +1,7 @@
 import { FORMATS, ANIM_IN, ANIM_OUT } from '~/utils/banner-constants'
 import type { Layer, KeyframeProperty, Keyframe } from '~/types/banner-studio'
 import { computeClipPathPx } from '~/utils/banner-mask'
+import { buildEngagrFrameRuntimeScript, buildVisibleElementManifest, estimateBannerDuration } from '~/utils/banner-render-runtime'
 
 const SYSTEM_FONTS = new Set(['Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Impact'])
 
@@ -414,8 +415,14 @@ export function buildBannerHTML(
   const registerMotionPath = needsMotionPath ? '\n  gsap.registerPlugin(MotionPathPlugin);' : ''
   const animScript =
     includeAnimations && animLines
-      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline();\n${animLines}\n<\/script>`
+      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline();\n  window.__engagrTimeline = tl;\n${animLines}\n<\/script>`
       : ''
+  const runtimeScript = includeAnimations
+    ? buildEngagrFrameRuntimeScript({
+        durationSec: estimateBannerDuration(layers),
+        visibleElements: buildVisibleElementManifest(layers),
+      })
+    : ''
 
   // Feed runtime script — fetches feed JSON and substitutes layer content at runtime
   let feedScript = ''
@@ -468,6 +475,7 @@ ${buildCustomFontFaces(layers, customFonts)}
     ${layerDivs}
 </div>
 ${animScript}
+${runtimeScript}
 ${feedScript}
 </body>
 </html>`

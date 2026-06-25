@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MediaRenderJob, MediaRenderJobStatus } from '~~/app/types'
-import { renderVariantFormats, renderVariantUrl } from '~~/app/utils/video/renderJobSummary'
+import { parseRenderFailure, renderVariantFormats, renderVariantUrl } from '~~/app/utils/video/renderJobSummary'
 
 const props = withDefaults(defineProps<{
   projectId: string
@@ -49,6 +49,10 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
     onSelect: () => emit(event, job, format),
   }))]
 }
+
+function failureSummary(job: MediaRenderJob) {
+  return parseRenderFailure(job.error)
+}
 </script>
 
 <template>
@@ -85,9 +89,9 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
         <div v-if="job.status === 'failed' && job.error" class="mt-2 rounded-md border border-error/30 bg-error/5 p-2">
           <div class="flex items-center gap-1.5 text-[11px] font-medium text-error">
             <UIcon name="i-lucide-triangle-alert" class="size-3.5" />
-            <span>Failure details</span>
+            <span>{{ failureSummary(job).label }}</span>
           </div>
-          <p class="mt-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-error">{{ job.error }}</p>
+          <p class="mt-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-error">{{ failureSummary(job).details }}</p>
         </div>
 
         <div class="mt-2 flex flex-wrap items-center gap-1.5">
@@ -106,7 +110,7 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
             icon="i-lucide-refresh-cw"
             size="xs"
             variant="soft"
-            color="primary"
+            :color="failureSummary(job).retryable ? 'primary' : 'neutral'"
             label="Retry"
             :loading="props.rendering"
             @click="emit('retry', job)"

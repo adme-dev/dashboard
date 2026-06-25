@@ -47,4 +47,10 @@ describe('runBannerRenderJob', () => {
     expect(d.markFailed).toHaveBeenCalledWith('j1', 'chromium boom')
     expect(d.markDone).not.toHaveBeenCalled()
   })
+
+  it('prefixes classified render failures before storing them', async () => {
+    const d = deps({ render: vi.fn().mockRejectedValue(new Error('runtime_not_ready after 2500ms')) })
+    await expect(runBannerRenderJob({ jobId: 'j1' }, d)).rejects.toThrow('runtime_not_ready')
+    expect(d.markFailed).toHaveBeenCalledWith('j1', expect.stringContaining('runtime_not_ready: runtime_not_ready after 2500ms'))
+  })
 })

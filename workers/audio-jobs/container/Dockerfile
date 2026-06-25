@@ -13,7 +13,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=1
 
 WORKDIR /app
 RUN npm install @cloudflare/puppeteer
-COPY server.mjs render.mjs timelineFiltergraph.mjs videoCompositeGraph.mjs overlayCapture.mjs bannerCapture.mjs ./
+COPY server.mjs render.mjs timelineFiltergraph.mjs videoCompositeGraph.mjs frameRuntime.mjs overlayCapture.mjs bannerCapture.mjs ./
 
 EXPOSE 8080
 CMD ["node", "server.mjs"]

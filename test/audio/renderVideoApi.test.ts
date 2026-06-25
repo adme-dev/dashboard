@@ -67,6 +67,7 @@ const audioProject = {
   status: 'draft'
 }
 const goodTimeline = { id: 't1', state: {} }
+const validOverlayHtml = '<script>window.__engagrFrame={ready:true,duration:5,seek:function(){}}</script>'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -160,7 +161,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
     mockEnqueueVideoRender.mockResolvedValue(undefined)
     mockLoadBannerLayers.mockResolvedValue({ layers: [{ id: 'l1', type: 'text', text: 'Hi' }], width: 1080, height: 1920 })
     mockResolveOverlayFormatKey.mockReturnValue('fb_story')
-    mockBuildBannerHTML.mockReturnValue('<html>banner</html>')
+    mockBuildBannerHTML.mockReturnValue(validOverlayHtml)
     mockUploadFile.mockResolvedValue({ key: 'media/p1/j1/overlay-o1.html', url: '/uploads/x', size: 20 })
   })
 
@@ -278,8 +279,8 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
       .mockResolvedValueOnce({ layers: [{ id: 'portrait' }], width: 1080, height: 1920 })
       .mockResolvedValueOnce({ layers: [{ id: 'landscape' }], width: 1920, height: 1080 })
     mockBuildBannerHTML
-      .mockReturnValueOnce('<html>portrait</html>')
-      .mockReturnValueOnce('<html>landscape</html>')
+      .mockReturnValueOnce(validOverlayHtml)
+      .mockReturnValueOnce(validOverlayHtml)
 
     await renderVideoH({
       params: { id: 'p1' },
@@ -323,5 +324,16 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
 
     await expect(renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any))
       .rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('400s when built overlay HTML fails render linting', async () => {
+    mockGetProject.mockResolvedValue({ project: avProject, timeline: overlayTimeline })
+    mockCreateRenderJob.mockResolvedValue({ id: 'j4', timelineId: 't1', status: 'queued' })
+    mockBuildBannerHTML.mockReturnValue('<div>invalid overlay</div>')
+
+    await expect(renderVideoH({ params: { id: 'p1' }, body: { formats: ['reels_9x16'] }, context: {} } as any))
+      .rejects.toMatchObject({ statusCode: 400, statusMessage: expect.stringContaining('Overlay resolution failed') })
+    expect(mockMarkFailed).toHaveBeenCalledWith('j4', expect.stringContaining('render runtime'))
+    expect(mockUploadFile).not.toHaveBeenCalled()
   })
 })

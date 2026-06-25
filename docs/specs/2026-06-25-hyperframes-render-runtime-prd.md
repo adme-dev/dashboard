@@ -1,7 +1,7 @@
 # Hyperframes-Inspired Render Runtime PRD
 
 **Date:** 2026-06-25
-**Status:** Draft PRD
+**Status:** First Hyperframes runtime slice implemented
 **Owner:** Product/Engineering
 **Feature area:** Creative > Banner Studio, Creative > Video Studio
 **References:**
@@ -12,6 +12,7 @@
 - `docs/specs/2026-06-19-video-studio-enterprise-redesign-prd.md`
 - `docs/superpowers/plans/2026-06-22-banner-render-async-pipeline.md`
 - `docs/superpowers/specs/2026-06-18-video-studio-unified-producer-prd.md`
+- `docs/superpowers/handoffs/2026-06-25-hyperframes-render-runtime-rollout.md`
 
 ## Objective
 
@@ -22,6 +23,21 @@ Add a related Video Studio agent-control track inspired by Palmier Pro: agent-re
 This is not a proposal to replace our studios with Hyperframes or Palmier. The target is to preserve our existing Nuxt/Cloudflare/Banner Studio/Video Studio architecture while borrowing proven patterns at the product/API level.
 
 Success means Banner Studio MP4 exports and Video Studio banner-overlay renders are easier to validate, easier to debug, and more deterministic across preview, container render, and final FFmpeg output.
+
+## Implementation Status
+
+The first Hyperframes-inspired runtime slice is implemented:
+
+- Banner HTML now exposes `window.__engagrFrame` for animated exports.
+- Server/client Banner HTML builders remain parity-tested.
+- Banner MP4 enqueue runs a pre-render linter and returns structured findings on validation failures.
+- Banner Studio MP4 export surfaces blocking lint findings in the export failure toast.
+- Video Studio overlay HTML is linted before upload/enqueue.
+- Banner and overlay container capture prefer `window.__engagrFrame` and retain legacy GSAP fallback.
+- Container capture includes bounded browser diagnostics and FFmpeg stderr in failure text.
+- Worker failures are categorized where possible, and Video Studio render UI shows concise failure labels.
+
+Palmier Pro-inspired agent/editor control remains documented as follow-up scope.
 
 ## Background
 
@@ -404,7 +420,7 @@ Manual/browser checks:
 
 ## Open Questions
 
-- Should first-slice lint findings be shown in the Banner export modal before enqueue, or only surfaced after failed enqueue responses?
+- Resolved: first-slice lint findings are returned by the enqueue API and surfaced in the Banner export modal failure toast.
 - Should Video Studio overlay validation run when adding the overlay clip, when rendering, or both?
 - Do we want to support exact fractional FPS in UI now, or only prepare the internal type and helpers?
 - Should diagnostics be stored in `banner_render_jobs.error` as text, a new JSON column, or a separate render diagnostics table?

@@ -84,7 +84,7 @@ describe('VideoStudioRenderStatusStrip', () => {
     const { app, host, events } = await mount({ jobs: [failed] })
 
     try {
-      expect(host.textContent).toContain('Failure details')
+      expect(host.textContent).toContain('Render failed')
       expect(host.textContent).toContain('VIDEO_RENDER_QUEUE binding unavailable')
 
       ;([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Retry')) as HTMLButtonElement).click()

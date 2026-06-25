@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
     )
     return { jobIds }
   } catch (e) {
-    if (e instanceof BannerRenderError) throw createError({ statusCode: 400, statusMessage: e.message })
+    if (e instanceof BannerRenderError) throw createError({ statusCode: 400, statusMessage: e.message, data: { findings: e.findings ?? [] } })
     throw e
   }
 })

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { MediaRenderJob, MediaRenderJobStatus } from '~~/app/types'
 import {
+  parseRenderFailure,
   renderVariantFormats,
   renderVariantUrl,
   summarizeVideoRenderJobs,
@@ -70,6 +71,8 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
     onSelect: () => emit(event, job, format),
   }))]
 }
+
+const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(latestFailed.value.error) : null)
 </script>
 
 <template>
@@ -121,15 +124,15 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
       <div v-if="latestFailed.error" class="min-w-0 rounded-md border border-error/30 bg-error/5 px-2 py-1">
         <div class="flex items-center gap-1.5 text-[11px] font-medium text-error">
           <UIcon name="i-lucide-triangle-alert" class="size-3.5 shrink-0" />
-          <span class="shrink-0">Failure details</span>
-          <span class="truncate font-normal">{{ latestFailed.error }}</span>
+          <span class="shrink-0">{{ latestFailure?.label }}</span>
+          <span class="truncate font-normal">{{ latestFailure?.details }}</span>
         </div>
       </div>
       <UButton
         icon="i-lucide-refresh-cw"
         size="xs"
         variant="soft"
-        color="primary"
+        :color="latestFailure?.retryable ? 'primary' : 'neutral'"
         label="Retry"
         :loading="props.rendering"
         @click="emit('retry', latestFailed)"

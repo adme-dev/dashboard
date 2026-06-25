@@ -1,3 +1,6 @@
+import { hasRenderLintErrors, lintBannerRenderFormat } from './renderLinter'
+import type { RenderLintFinding } from '~~/app/utils/banner-render-runtime'
+
 export type BannerFormat = { key: string, html: string, width: number, height: number }
 export type BannerRenderInput = { projectId: string, formats: BannerFormat[], fps: number, quality: 1 | 2, crf: number, userId: string }
 export type BannerJobRow = {
@@ -20,7 +23,11 @@ export const CAPS = { MAX_FORMATS: 10, MAX_DIMENSION: 2000 } as const
 
 export class BannerRenderError extends Error {
   code = 'bad_request' as const
-  constructor(message: string) { super(message) }
+  findings?: RenderLintFinding[]
+  constructor(message: string, findings?: RenderLintFinding[]) {
+    super(message)
+    this.findings = findings
+  }
 }
 
 export function clampRenderParams(fps: number, crf: number, quality: number): { fps: number, crf: number, quality: 1 | 2 } {
@@ -39,7 +46,11 @@ export async function enqueueBannerRender(input: BannerRenderInput, deps: Enqueu
 
   const jobIds: string[] = []
   for (const f of input.formats) {
-    if (f.width > CAPS.MAX_DIMENSION || f.height > CAPS.MAX_DIMENSION) continue // skip oversize (mirrors current loop)
+    const findings = lintBannerRenderFormat(f, { fps, crf, quality, maxDimension: CAPS.MAX_DIMENSION })
+    if (hasRenderLintErrors(findings)) {
+      const firstError = findings.find(finding => finding.severity === 'error')
+      throw new BannerRenderError(firstError?.message ?? 'Invalid banner render input', findings)
+    }
     const id = deps.genId()
     const source_r2_key = `banner-render-jobs/${id}/source.html`
     await deps.putSourceHtml(source_r2_key, f.html)

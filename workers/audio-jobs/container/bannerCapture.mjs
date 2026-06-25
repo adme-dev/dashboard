@@ -7,6 +7,7 @@ import { mkdirSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createPageDiagnostics, resolveFrameRuntime, seekFrameRuntime } from './frameRuntime.mjs'
 
 const MAX_FRAMES = 600
 
@@ -22,27 +23,17 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
   const tmp = join(tmpdir(), `banner-${randomUUID()}`)
   mkdirSync(tmp, { recursive: true })
   let page = null
+  let diagnostics = null
   try {
     page = await browser.newPage()
+    diagnostics = createPageDiagnostics(page)
     await page.setViewport({ width: vpW, height: vpH, deviceScaleFactor: 1 })
 
     // Load the HTML string — networkidle0 ensures fonts + GSAP fully settled.
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 })
 
-    // Resolve actual animation duration from the GSAP master timeline.
-    // Must NOT return the timeline object itself — it's thenable; CDP would hang
-    // waiting for it to "resolve". Return a primitive (number|null) only.
-    let duration = 5
-    try {
-      const gDuration = await page.evaluate(() => {
-        const g = window.gsap
-        const c = g && g.globalTimeline.getChildren(false)
-        return (c && c[0]) ? c[0].duration() : null
-      })
-      if (typeof gDuration === 'number' && gDuration > 0) {
-        duration = gDuration
-      }
-    } catch { /* default 5s */ }
+    const runtime = await resolveFrameRuntime(page, 5)
+    let duration = runtime.duration
 
     duration = Math.min(duration, 30)
     const totalFrames = Math.min(MAX_FRAMES, Math.ceil(duration * fps))
@@ -50,15 +41,7 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
     for (let f = 0; f < totalFrames; f++) {
       const t = f / fps
 
-      // Block-body seek: must NOT return the timeline (thenable → CDP hang).
-      await page.evaluate((seekT) => {
-        const g = window.gsap
-        const c = g && g.globalTimeline.getChildren(false)
-        if (c && c[0]) c[0].seek(seekT)
-      }, t)
-
-      // One rAF settle to flush GSAP mutations into the DOM before screenshot.
-      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))))
+      await seekFrameRuntime(page, runtime.mode, t)
 
       await page.screenshot({
         path: join(tmp, `frame_${String(f).padStart(5, '0')}.png`),
@@ -80,10 +63,16 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
         '-vf', `scale=${vpW}:${vpH}:flags=lanczos`,
         out,
       ], { timeout: 120000 })
-      ff.on('close', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`)))
+      let stderr = ''
+      ff.stderr?.on('data', d => { stderr += d.toString() })
+      ff.on('close', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(-800)}`)))
       ff.on('error', reject)
     })
     return readFileSync(out)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    const suffix = diagnostics?.events?.length ? ` diagnostics=${diagnostics.format()}` : ''
+    throw new Error(`${message}${suffix}`)
   } finally {
     await page?.close().catch(() => {})
     await browser.close().catch(() => {})

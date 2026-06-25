@@ -12,6 +12,7 @@ import { resolveOverlayFormatKey, loadBannerLayers } from '~~/server/utils/audio
 import { buildBannerHTML } from '~~/server/utils/banner/htmlBuilder'
 import { uploadFile } from '~~/server/utils/storage'
 import { videoFormatFor } from '~~/server/utils/audio/videoProfiles'
+import { hasRenderLintErrors, lintBannerRenderFormat } from '~~/server/utils/banner/renderLinter'
 
 const ALL_FORMATS = ['reels_9x16', 'square_1x1', 'youtube_16x9'] as const
 type VideoFormatKey = typeof ALL_FORMATS[number]
@@ -76,9 +77,14 @@ export default defineEventHandler(async (event) => {
 
       for (const clip of overlayClips) {
         const fmtKey: string = clip.gsap_format_key ?? resolveOverlayFormatKey(profileW, profileH)
-        const { layers } = await loadBannerLayers(clip.gsap_project_id, fmtKey)
+        const { layers, width, height } = await loadBannerLayers(clip.gsap_project_id, fmtKey)
         const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? ''
         const html = buildBannerHTML(fmtKey, layers, { baseUrl })
+        const findings = lintBannerRenderFormat({ key: fmtKey, html, width, height }, { fps: 30, crf: 23, quality: 1 })
+        if (hasRenderLintErrors(findings)) {
+          const firstError = findings.find(finding => finding.severity === 'error')
+          throw new Error(`overlay ${clip.id}: ${firstError?.message ?? 'invalid banner overlay'}`)
+        }
         const htmlKey = `media/${id}/${job.id}/${format}/overlay-${clip.id}.html`
         await uploadFile(Buffer.from(html, 'utf8'), htmlKey, 'text/html')
         resolvedForFormat.push({

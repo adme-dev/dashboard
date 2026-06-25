@@ -1,4 +1,6 @@
 // workers/audio-jobs/src/bannerRenderWorker.ts
+import { classifyBannerRenderError } from '../../../server/utils/banner/renderDiagnostics'
+
 export type BannerJob = {
   id: string, project_id: string, format_key: string, width: number, height: number,
   fps: number, crf: number, quality: number, source_r2_key: string, status: string, created_by: string,
@@ -26,7 +28,9 @@ export async function runBannerRenderJob(msg: { jobId: string }, deps: BannerRen
     const exportId = await deps.insertExport({ projectId: job.project_id, formatKey: job.format_key, r2Key, url, size, quality: job.quality, userId: job.created_by })
     await deps.markDone(job.id, { r2Key, url, size, exportId })
   } catch (e) {
-    await deps.markFailed(job.id, e instanceof Error ? e.message : String(e))
+    const message = e instanceof Error ? e.message : String(e)
+    const category = classifyBannerRenderError(message)
+    await deps.markFailed(job.id, category === 'unknown' ? message : `${category}: ${message}`)
     throw e // surface to the queue branch → msg.retry
   }
 }

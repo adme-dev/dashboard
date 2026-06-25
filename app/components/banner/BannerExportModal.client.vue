@@ -5,6 +5,7 @@ import { buildBannerHTML } from '~/utils/banner-html-builder'
 import type { Layer, ImageExportResult } from '~/types/banner-studio'
 import { summarizeExportJobs } from '~/utils/bannerExportPoll'
 import type { ExportJob } from '~/utils/bannerExportPoll'
+import { describeBannerVideoExportError } from '~/utils/bannerExportError'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
@@ -435,7 +436,7 @@ async function exportVideos() {
     const status = err?.statusCode ?? err?.status
     const message = status === 503
       ? 'MP4 export isn\'t enabled yet — the render queue binding is not active'
-      : err?.data?.statusMessage || err?.message || 'Video export failed'
+      : describeBannerVideoExportError(err)
     toast.add({ title: 'Export failed', description: message, color: 'error' })
   } finally {
     if (pollTimer) clearTimeout(pollTimer)

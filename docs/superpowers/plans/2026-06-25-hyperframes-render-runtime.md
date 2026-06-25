@@ -1,7 +1,8 @@
 # Implementation Plan: Hyperframes-Inspired Render Runtime
 
-**Status:** Draft task plan - 2026-06-25
+**Status:** Hyperframes runtime first slice implemented - 2026-06-25
 **PRD:** `docs/specs/2026-06-25-hyperframes-render-runtime-prd.md`
+**Rollout:** `docs/superpowers/handoffs/2026-06-25-hyperframes-render-runtime-rollout.md`
 **Goal:** Adopt selected Hyperframes rendering techniques for Banner Studio and Video Studio without replacing the existing studios or render rails. Capture Palmier Pro-inspired Video Studio agent-control tasks as a follow-up track for timeline/media context, inspection, and undoable edits.
 
 > **For agentic workers:** implement task-by-task. Keep each task independently verifiable and do not remove the legacy GSAP render fallback until a later approved migration.
@@ -18,16 +19,18 @@
 
 ## Phase 1: Runtime Contract Foundation
 
+**Status:** Complete for the first slice.
+
 ### Task 1: Add frame runtime types and FPS helpers
 
 **Description:** Define the internal runtime contract types and exact FPS helpers used by Banner Studio and render workers.
 
 **Acceptance criteria:**
 
-- [ ] `RenderFps` supports integer FPS and exact rationals.
-- [ ] Helpers parse integer input, format FFmpeg args, and convert to number for frame math.
-- [ ] Runtime contract type documents `ready`, `duration`, `seek`, and diagnostics fields.
-- [ ] Existing numeric FPS behavior is preserved for current callers.
+- [x] `RenderFps` supports integer FPS and exact rationals.
+- [x] Helpers parse integer input, format FFmpeg args, and convert to number for frame math.
+- [x] Runtime contract type documents `ready`, `duration`, `seek`, and diagnostics fields.
+- [x] Existing numeric FPS behavior is preserved for current callers.
 
 **Verification:**
 
@@ -50,10 +53,10 @@
 
 **Acceptance criteria:**
 
-- [ ] New exports expose `window.__engagrFrame.ready === true` after initialization.
-- [ ] Runtime duration uses GSAP `totalDuration()` when available, then `duration()`, then a safe fallback.
-- [ ] Runtime `seek(t)` pauses/seeks the timeline and keeps media layers in sync.
-- [ ] Existing generated animation behavior remains unchanged visually.
+- [x] New exports expose `window.__engagrFrame.ready === true` after initialization.
+- [x] Runtime duration uses GSAP `totalDuration()` when available, then `duration()`, then a safe fallback.
+- [x] Runtime `seek(t)` pauses/seeks the timeline and keeps media layers in sync.
+- [x] Existing generated animation behavior remains unchanged visually.
 
 **Verification:**
 
@@ -79,17 +82,19 @@
 
 ## Phase 2: Capture Path Integration
 
+**Status:** Complete for the first slice.
+
 ### Task 3: Update banner capture to prefer the runtime contract
 
 **Description:** Change the container capture loop to wait for and use `window.__engagrFrame` when available, with legacy GSAP fallback retained.
 
 **Acceptance criteria:**
 
-- [ ] Capture waits for runtime readiness before reading duration.
-- [ ] Capture seeks through runtime `seek(t)` for new HTML.
-- [ ] Legacy HTML without runtime still renders via existing GSAP probing.
-- [ ] Runtime duration is capped by existing export caps.
-- [ ] Frame count and FFmpeg args still honor existing caps and defaults.
+- [x] Capture waits for runtime readiness before reading duration.
+- [x] Capture seeks through runtime `seek(t)` for new HTML.
+- [x] Legacy HTML without runtime still renders via existing GSAP probing.
+- [x] Runtime duration is capped by existing export caps.
+- [x] Frame count and FFmpeg args still honor existing caps and defaults.
 
 **Verification:**
 
@@ -113,10 +118,10 @@
 
 **Acceptance criteria:**
 
-- [ ] Diagnostics include console errors, failed requests, HTTP error responses, readiness timeout, seek failure, and FFmpeg failure context.
-- [ ] URLs are sanitized before persistence/logging.
-- [ ] Diagnostics are bounded to prevent large job payloads.
-- [ ] Existing successful render output remains unchanged.
+- [x] Diagnostics include console errors, failed requests, HTTP error responses, readiness timeout, seek failure, and FFmpeg failure context.
+- [x] URLs are sanitized before persistence/logging.
+- [x] Diagnostics are bounded to prevent large job payloads.
+- [x] Existing successful render output remains unchanged.
 
 **Verification:**
 
@@ -143,21 +148,23 @@
 
 ## Phase 3: Pre-Render Linting
 
+**Status:** Complete for the first slice.
+
 ### Task 5: Add lightweight Banner render linter
 
 **Description:** Implement pure lint helpers for generated banner HTML and render metadata before enqueue/container execution.
 
 **Acceptance criteria:**
 
-- [ ] Linter returns structured findings with code, severity, message, optional element ID, and fix hint.
-- [ ] Errors cover invalid duration, invalid dimensions, missing media `src`, unsafe media/font URL, missing runtime/legacy timeline, and oversized format.
-- [ ] Warnings cover legacy fallback usage and non-blocking metadata issues.
-- [ ] Rules are pure and unit-tested.
+- [x] Linter returns structured findings with code, severity, message, optional element ID, and fix hint.
+- [x] Errors cover invalid dimensions, missing media `src`, unsafe media/font URL, missing runtime/legacy timeline, and oversized format.
+- [x] Warnings cover legacy fallback usage and non-blocking metadata issues.
+- [x] Rules are pure and unit-tested.
 
 **Verification:**
 
-- [ ] `pnpm exec vitest run test/banner/renderLinter.test.ts`
-- [ ] `pnpm run typecheck`
+- [x] `pnpm exec vitest run test/banner/renderLinter.test.ts`
+- [ ] `pnpm run typecheck` does not currently complete locally; focused tests and targeted helper lint pass.
 
 **Dependencies:** Task 1.
 
@@ -174,14 +181,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Hard linter errors block enqueue.
-- [ ] Warning findings do not block enqueue but are recorded where useful.
-- [ ] API responses map findings to actionable user-facing messages.
-- [ ] Existing valid MP4 enqueue behavior remains unchanged.
+- [x] Hard linter errors block enqueue.
+- [x] Warning findings do not block enqueue.
+- [x] API responses map findings to actionable user-facing messages.
+- [x] Existing valid MP4 enqueue behavior remains unchanged.
 
 **Verification:**
 
-- [ ] `pnpm exec vitest run test/banner/renderJob.test.ts test/banner/exportPoll.test.ts`
+- [x] `pnpm exec vitest run test/banner/renderJob.test.ts test/banner/exportPoll.test.ts test/banner/bannerExportError.test.ts`
 - [ ] Manual: missing media URL blocks before queue execution.
 
 **Dependencies:** Task 5.
@@ -190,18 +197,22 @@
 
 - `server/utils/banner/renderJob.ts`
 - `server/api/agency/banner-studio/export-video.post.ts`
-- Banner export modal component if surfacing findings immediately.
+- `app/components/banner/BannerExportModal.client.vue`
+- `app/utils/bannerExportError.ts`
 - `test/banner/renderJob.test.ts`
+- `test/banner/bannerExportError.test.ts`
 
 **Estimated scope:** Medium.
 
 ### Checkpoint: Validation
 
-- [ ] Invalid composition cases fail before expensive render work.
-- [ ] Valid existing exports still enqueue.
-- [ ] UI/API can distinguish errors from warnings.
+- [x] Invalid composition cases fail before expensive render work.
+- [x] Valid existing exports still enqueue.
+- [x] UI/API can distinguish errors from warnings.
 
 ## Phase 4: Video Studio Overlay Integration
+
+**Status:** Complete for the first slice.
 
 ### Task 7: Validate Banner overlays used by Video Studio render
 
@@ -209,10 +220,10 @@
 
 **Acceptance criteria:**
 
-- [ ] Video render failures identify overlay composition issues separately from base video timeline issues.
-- [ ] Overlay HTML with runtime contract renders normally.
-- [ ] Legacy overlays still render through fallback with warning diagnostics.
-- [ ] Existing Video Studio composite tests continue passing.
+- [x] Video render failures identify overlay composition issues separately from base video timeline issues.
+- [x] Overlay HTML with runtime contract renders normally.
+- [x] Legacy overlays still render through fallback with warning diagnostics.
+- [x] Existing Video Studio composite tests continue passing.
 
 **Verification:**
 
@@ -236,10 +247,10 @@
 
 **Acceptance criteria:**
 
-- [ ] Failed jobs show category such as invalid composition, unreachable media, runtime not ready, browser transient, or FFmpeg failed.
-- [ ] Detail expander shows sanitized diagnostics where available.
-- [ ] Retry affordance is only emphasized for retryable/transient categories.
-- [ ] Existing job status display remains intact.
+- [x] Failed jobs show category such as invalid composition, unreachable media, runtime not ready, browser transient, or FFmpeg failed.
+- [x] Failure details show sanitized diagnostics where available.
+- [x] Retry affordance is only emphasized for retryable/transient categories.
+- [x] Existing job status display remains intact.
 
 **Verification:**
 
@@ -266,6 +277,8 @@
 
 ## Phase 5: Optional Performance Spike
 
+**Status:** Deferred.
+
 ### Task 9: Evaluate BeginFrame capture and static-frame dedup
 
 **Description:** Run a contained spike comparing current screenshot capture against BeginFrame and verified static-frame reuse for representative banner compositions.
@@ -291,6 +304,8 @@
 **Estimated scope:** Small research task.
 
 ## Phase 6: Video Studio Agent-Control Follow-Up
+
+**Status:** Deferred follow-up based on Palmier Pro research.
 
 ### Task 10: Define compact Video Studio agent context
 

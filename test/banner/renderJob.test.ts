@@ -11,12 +11,14 @@ function deps(over: Partial<EnqueueDeps> = {}): EnqueueDeps {
     ...over,
   }
 }
-const fmt = (k: string) => ({ key: k, html: `<div>${k}</div>`, width: 300, height: 250 })
+const validHtml = '<script>window.__engagrFrame={ready:true,duration:5,seek:function(){}}</script>'
+const fmt = (k: string) => ({ key: k, html: validHtml, width: 300, height: 250 })
 
 describe('clampRenderParams', () => {
   it('clamps fps/crf into range and coerces quality to 1|2', () => {
     expect(clampRenderParams(999, -5, 3)).toEqual({ fps: 60, crf: 0, quality: 2 })
     expect(clampRenderParams(1, 100, 0)).toEqual({ fps: 12, crf: 51, quality: 1 })
+    expect(clampRenderParams(29.97, 23, 1)).toEqual({ fps: 30, crf: 23, quality: 1 })
   })
 })
 
@@ -38,11 +40,22 @@ describe('enqueueBannerRender', () => {
     await expect(enqueueBannerRender({ projectId: 'p1', formats: many, fps: 30, quality: 1, crf: 23, userId: 'u1' }, deps())).rejects.toMatchObject({ code: 'bad_request' })
   })
 
-  it('skips formats over the max dimension (no job created for them)', async () => {
+  it('blocks formats over the max dimension before enqueue', async () => {
     const d = deps()
-    const res = await enqueueBannerRender({ projectId: 'p1', formats: [fmt('ok'), { key: 'big', html: '<i/>', width: 3000, height: 100 }], fps: 30, quality: 1, crf: 23, userId: 'u1' }, d)
-    expect(res.jobIds).toHaveLength(1)
-    expect(d.insertJob).toHaveBeenCalledTimes(1)
+    await expect(enqueueBannerRender({ projectId: 'p1', formats: [{ key: 'big', html: validHtml, width: 3000, height: 100 }], fps: 30, quality: 1, crf: 23, userId: 'u1' }, d)).rejects.toMatchObject({
+      code: 'bad_request',
+      findings: [expect.objectContaining({ code: 'format_too_large' })],
+    })
+    expect(d.insertJob).not.toHaveBeenCalled()
+  })
+
+  it('blocks HTML without a render runtime or legacy GSAP timeline', async () => {
+    const d = deps()
+    await expect(enqueueBannerRender({ projectId: 'p1', formats: [{ key: 'bad', html: '<div>bad</div>', width: 300, height: 250 }], fps: 30, quality: 1, crf: 23, userId: 'u1' }, d)).rejects.toMatchObject({
+      code: 'bad_request',
+      findings: [expect.objectContaining({ code: 'missing_runtime_contract' })],
+    })
+    expect(d.putSourceHtml).not.toHaveBeenCalled()
   })
 })
 

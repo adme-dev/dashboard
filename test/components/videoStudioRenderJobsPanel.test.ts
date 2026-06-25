@@ -70,7 +70,7 @@ describe('VideoStudioRenderJobsPanel', () => {
     })
 
     expect(html).toContain('failed')
-    expect(html).toContain('Failure details')
+    expect(html).toContain('Render failed')
     expect(html).toContain('FFmpeg exited with code 1')
     expect(html).toContain('Overlay source was missing.')
     expect(html).toContain('Retry')
