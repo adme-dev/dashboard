@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { ok, fail, portalDb, proposePortalAction, type PortalAiTool, type PortalToolContext, type ToolResult } from './portalContext'
+import { ok, fail, type ToolResult } from '../toolContext'
+import { portalDb, proposePortalAction, type PortalAiTool, type PortalToolContext } from './portalContext'
 
 const params = z.object({
   approvalId: z.string().uuid(),

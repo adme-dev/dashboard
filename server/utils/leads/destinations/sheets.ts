@@ -1,5 +1,5 @@
 // server/utils/leads/destinations/sheets.ts
-import { registerAdapter } from './index'
+import { registerAdapter } from './registry'
 import { queryOne } from '~~/server/utils/db'
 import type { DestinationAdapter } from './types'
 

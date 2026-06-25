@@ -1,6 +1,6 @@
 // server/utils/leads/destinations/webhook.ts
 import { createHmac } from 'node:crypto'
-import { registerAdapter } from './index'
+import { registerAdapter } from './registry'
 import type { DestinationAdapter, DispatchResult } from './types'
 
 interface Cfg { url: string; method?: 'POST' | 'PUT'; headers?: Record<string, string>; secret?: string }

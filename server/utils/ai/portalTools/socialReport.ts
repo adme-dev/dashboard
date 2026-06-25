@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { portalPeriodPostRows } from '~~/server/utils/socialReporting/portal'
 import { rollupPostMetrics, rankBestContent, engagementRate } from '~~/server/utils/socialReporting/aggregate'
-import { ok, fail, portalDb, type PortalAiTool, type PortalToolContext, type ToolResult } from './portalContext'
+import { ok, fail, type ToolResult } from '../toolContext'
+import { portalDb, type PortalAiTool, type PortalToolContext } from './portalContext'
 
 const params = z.object({
   days: z.number().int().min(1).max(365).default(30),

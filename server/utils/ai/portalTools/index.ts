@@ -9,10 +9,6 @@ import { getMySocialReportTool } from './socialReport'
 import { respondToApprovalTool } from './respondApproval'
 import { narrowPortalRegistryByApps } from './appAssignment'
 
-export type { PortalAiTool, PortalToolContext }
-export { assertPortalScope } from './portalContext'
-export { PORTAL_APP_TOOLS, narrowPortalRegistryByApps, getEnabledPortalApps } from './appAssignment'
-
 /**
  * The portal registry (portal-agent spec §3, layer 1: SEPARATE registry). ONLY portal-safe, read-only,
  * client-scoped tools live here — agency tools are physically absent, so a portal agent can never call

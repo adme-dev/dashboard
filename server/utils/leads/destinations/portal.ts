@@ -1,5 +1,5 @@
 // server/utils/leads/destinations/portal.ts
-import { registerAdapter } from './index'
+import { registerAdapter } from './registry'
 import type { DestinationAdapter } from './types'
 
 const adapter: DestinationAdapter = {

@@ -1,22 +1,22 @@
 // test/server/utils/leads/destinations/webhook.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { Lead, LeadDelivery } from '~~/app/types'
 
-// Break the circular dependency: webhook.ts calls registerAdapter(adapter) at module load.
-// index.ts also side-effect-imports webhook.ts. Mocking index avoids the cycle.
-vi.mock('../../../../../server/utils/leads/destinations/index', () => ({
+// webhook.ts calls registerAdapter(adapter) at module load; mock the leaf registry.
+vi.mock('../../../../../server/utils/leads/destinations/registry', () => ({
   registerAdapter: vi.fn(),
   getAdapter: vi.fn(),
-  listAdapterTypes: vi.fn(),
+  listAdapterTypes: vi.fn()
 }))
 
-import adapter from '../../../../../server/utils/leads/destinations/webhook'
+const { default: adapter } = await import('../../../../../server/utils/leads/destinations/webhook')
 
-const baseLead: any = {
+const baseLead: Lead = {
   id: 'L1', source: 'google', source_lead_id: 's1', field_data: { email: 'a@b.co' },
-  attribution: null, status: 'new', form_id: 'F1',
+  attribution: null, status: 'new', form_id: 'F1'
 }
-const baseDelivery: any = {
-  id: 'D1', lead_id: 'L1', idempotency_key: 'idem-1', destination_type: 'webhook',
+const baseDelivery: LeadDelivery = {
+  id: 'D1', lead_id: 'L1', idempotency_key: 'idem-1', destination_type: 'webhook'
 }
 
 describe('validateConfig', () => {
@@ -41,7 +41,7 @@ describe('validateConfig', () => {
   it('rejects CRLF-injected headers', () => {
     expect(adapter.validateConfig({
       url: 'https://x.example/h',
-      headers: { 'X-Bad': 'v\r\nInjected: y' },
+      headers: { 'X-Bad': 'v\r\nInjected: y' }
     }).valid).toBe(false)
   })
   it('accepts a valid HTTPS URL', () => {
@@ -56,7 +56,7 @@ describe('dispatch', () => {
     vi.stubGlobal('fetch', fetchMock)
     const r = await adapter.dispatch(baseDelivery, baseLead, { url: 'https://x.example/h' })
     expect(r.status).toBe('delivered')
-    const [, init] = fetchMock.mock.calls[0]
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit & { headers: Record<string, string> }
     expect(init.headers['X-Leads-Idempotency-Key']).toBe('idem-1')
     expect(init.headers['Content-Type']).toBe('application/json')
   })
@@ -64,7 +64,7 @@ describe('dispatch', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     await adapter.dispatch(baseDelivery, baseLead, { url: 'https://x.example/h', secret: 'top-secret' })
-    const [, init] = fetchMock.mock.calls[0]
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit & { headers: Record<string, string> }
     expect(init.headers['X-Leads-Signature']).toMatch(/^sha256=[a-f0-9]{64}$/)
   })
   it('returns failed on 5xx', async () => {
@@ -76,14 +76,14 @@ describe('dispatch', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('bad', { status: 400 })))
     const r = await adapter.dispatch(baseDelivery, baseLead, { url: 'https://x.example/h' })
     expect(r.status).toBe('failed')
-    expect((r as any).retry_after_ms).toBeUndefined()
+    expect((r as typeof r & { retry_after_ms?: number }).retry_after_ms).toBeUndefined()
   })
   it('honors 429 Retry-After', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-      new Response('rl', { status: 429, headers: { 'Retry-After': '7' } }),
+      new Response('rl', { status: 429, headers: { 'Retry-After': '7' } })
     ))
     const r = await adapter.dispatch(baseDelivery, baseLead, { url: 'https://x.example/h' })
     expect(r.status).toBe('failed')
-    expect((r as any).retry_after_ms).toBe(7000)
+    expect((r as typeof r & { retry_after_ms?: number }).retry_after_ms).toBe(7000)
   })
 })

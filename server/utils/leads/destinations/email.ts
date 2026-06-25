@@ -1,6 +1,6 @@
 // server/utils/leads/destinations/email.ts
 import { Resend } from 'resend'
-import { registerAdapter } from './index'
+import { registerAdapter } from './registry'
 import { renderTemplate } from '../templateRender'
 import type { DestinationAdapter } from './types'
 

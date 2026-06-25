@@ -1,5 +1,5 @@
 // server/utils/leads/destinations/assignUser.ts
-import { registerAdapter } from './index'
+import { registerAdapter } from './registry'
 import { execute } from '~~/server/utils/db'
 import type { DestinationAdapter } from './types'
 

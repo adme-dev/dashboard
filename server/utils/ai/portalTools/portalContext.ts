@@ -2,7 +2,6 @@ import type { H3Event } from 'h3'
 import type { z } from 'zod'
 import { tool, type Tool } from 'ai'
 import { queryRows, queryOne } from '~~/server/utils/db'
-import { ok, fail, escapeLike, capWithMore, type ToolResult } from '../toolContext'
 import { spotlight } from '../spotlight'
 
 /**
@@ -19,17 +18,13 @@ import { spotlight } from '../spotlight'
  *   4. No cross-client tools exist here — portfolio/ranking/other-client tools are simply absent.
  */
 
-// Re-export the shared, side-effect-free tool helpers so portal tools don't reach into the agency module.
-export { ok, fail, escapeLike, capWithMore }
-export type { ToolResult }
-
 /** Injected DB surface (mirrors the agency tools' deps pattern) so portal handlers are unit-testable. */
-export interface PortalDb {
+export interface PortalAgentDb {
   queryRows: <T = any>(sql: string, params?: any[]) => Promise<T[]>
   queryOne: <T = any>(sql: string, params?: any[]) => Promise<T | null>
 }
 
-export const defaultPortalDb: PortalDb = { queryRows, queryOne }
+export const defaultPortalDb: PortalAgentDb = { queryRows, queryOne }
 
 /**
  * Portal tool context. `clientScope` (= `agency_clients.id`, the session's client) is REQUIRED — it is
@@ -53,7 +48,7 @@ export type PortalToolContext = {
   conversationId?: string
   event: H3Event
   /** Injected DB (defaults to the real db); lets every handler be unit-tested without a database. */
-  db?: PortalDb
+  db?: PortalAgentDb
 }
 
 /**
@@ -68,7 +63,7 @@ export function assertPortalScope(ctx: { clientScope?: string | null }): asserts
 }
 
 /** Resolve the db a handler should use (injected wins; defaults to the real db). */
-export function portalDb(ctx: PortalToolContext): PortalDb {
+export function portalDb(ctx: PortalToolContext): PortalAgentDb {
   return ctx.db ?? defaultPortalDb
 }
 

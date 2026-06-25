@@ -38,5 +38,3 @@ export const executors: Record<string, ActionExecutor> = {
 export function getExecutor(toolName: string): ActionExecutor | null {
   return executors[toolName] ?? null
 }
-
-export type { ActionExecutor, ExecutorResult } from './types'

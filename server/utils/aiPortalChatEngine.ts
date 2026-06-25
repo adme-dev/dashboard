@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { runPortalToolLoop } from '~~/server/utils/ai/portalLoop'
-import { getEnabledPortalApps } from '~~/server/utils/ai/portalTools'
+import { getEnabledPortalApps } from '~~/server/utils/ai/portalTools/appAssignment'
 
 /**
  * Client-portal chat engine (portal-agent spec §8). The customer-facing analog of aiChatEngine —

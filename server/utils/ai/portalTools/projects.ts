@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { ok, fail, capWithMore, portalDb, type PortalAiTool, type PortalToolContext, type ToolResult } from './portalContext'
+import { ok, fail, capWithMore, type ToolResult } from '../toolContext'
+import { portalDb, type PortalAiTool, type PortalToolContext } from './portalContext'
 
 const params = z.object({
   status: z.enum(['active', 'on_hold', 'completed', 'all']).default('all'),

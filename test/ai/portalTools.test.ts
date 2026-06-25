@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { portalRegistry, buildPortalTools, assertPortalScope, PORTAL_APP_TOOLS } from '~~/server/utils/ai/portalTools'
-import type { PortalDb, PortalToolContext } from '~~/server/utils/ai/portalTools/portalContext'
+import { portalRegistry, buildPortalTools } from '~~/server/utils/ai/portalTools'
+import { PORTAL_APP_TOOLS } from '~~/server/utils/ai/portalTools/appAssignment'
+import { assertPortalScope } from '~~/server/utils/ai/portalTools/portalContext'
+import type { PortalAgentDb, PortalToolContext } from '~~/server/utils/ai/portalTools/portalContext'
 import { getMySocialReport } from '~~/server/utils/ai/portalTools/socialReport'
 
 const TENANT_A = 'client-aaaa'
@@ -11,7 +13,7 @@ const TENANT_B = 'client-bbbb'
  * query BOUND as $1 (the portal convention). If a tool ever bound the wrong scope, the returned rows'
  * client_id wouldn't match the caller's clientScope and the fuzz assertion below would fail.
  */
-function makeFakeDb(calls: { sql: string, params: any[] }[]): PortalDb {
+function makeFakeDb(calls: { sql: string, params: any[] }[]): PortalAgentDb {
   const rowsFor = (scope: string) => ([{
     id: `${scope}-row1`, client_id: scope, title: 'x', name: 'x',
     form_name: 'x', reference_number: 'x', invoice_number: 'x', source: 'x',
@@ -27,7 +29,7 @@ function makeFakeDb(calls: { sql: string, params: any[] }[]): PortalDb {
   }
 }
 
-const ctxFor = (scope: string, db: PortalDb): PortalToolContext => ({
+const ctxFor = (scope: string, db: PortalAgentDb): PortalToolContext => ({
   clientScope: scope, clientUserId: 'cu-1', event: {} as any, db,
 })
 
@@ -85,7 +87,7 @@ describe('portal registry — cross-tenant isolation (fuzz, the §12 gate)', () 
 describe('get_my_social_report', () => {
   it('scopes the period query to clientScope and rolls up totals + top content', async () => {
     const calls: { sql: string, params: any[] }[] = []
-    const db: PortalDb = {
+    const db: PortalAgentDb = {
       queryRows: (async (sql: string, params: any[] = []) => {
         calls.push({ sql, params })
         return [

@@ -1,5 +1,5 @@
 // server/utils/leads/destinations/slack.ts
-import { registerAdapter } from './index'
+import { registerAdapter } from './registry'
 import { renderTemplate } from '../templateRender'
 import type { DestinationAdapter, DispatchResult } from './types'
 

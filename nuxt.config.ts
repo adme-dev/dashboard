@@ -34,6 +34,25 @@ const devWatcherIgnored = [
   '**/node_modules/.vite/**'
 ]
 
+const isKnownThirdPartyRollupWarning = (warning: {
+  code?: string
+  id?: string
+  message?: string
+}) => {
+  const id = warning.id || ''
+  if (warning.code === 'INVALID_ANNOTATION' && id.includes('/node_modules/') && id.includes('@vueuse/core')) {
+    return true
+  }
+  if (warning.code === 'THIS_IS_UNDEFINED' && id.includes('/node_modules/')
+    && (id.includes('groq-sdk') || id.includes('@opentelemetry/api'))) {
+    return true
+  }
+  if (warning.code === 'CIRCULAR_DEPENDENCY' && warning.message?.includes('/node_modules/')) {
+    return true
+  }
+  return false
+}
+
 export default defineNuxtConfig({
 
   modules: [
@@ -90,7 +109,7 @@ export default defineNuxtConfig({
 
     // AI tool-calling (Slice 1) — OFF by default; flip per-env to enable the loop
     aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true',
-    aiLoopModel: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b',           // Option 2: Groq open-source default
+    aiLoopModel: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b', // Option 2: Groq open-source default
     // Fallback was kimi-k2 but Groq returns 404 for it (not on the account) — gpt-oss-20b is the valid sibling.
     aiLoopFallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/openai/gpt-oss-20b',
     // Inferred personal-memory distillation (Phase-0 WS-A.8b) — OFF by default. When enabled, the
@@ -318,7 +337,11 @@ export default defineNuxtConfig({
       ignore: ['/', '/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake']
     },
     rollupConfig: {
-      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native']
+      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native'],
+      onwarn(warning, warn) {
+        if (isKnownThirdPartyRollupWarning(warning)) return
+        warn(warning)
+      }
     }
     // Lead-maintenance crons run via the dedicated `leads-cron` companion Worker
     // (workers/leads-cron) — its scheduled() handler POSTs to the
@@ -327,6 +350,18 @@ export default defineNuxtConfig({
   },
 
   vite: {
+    build: {
+      // The app has several intentionally lazy, feature-heavy route chunks. Keep
+      // the warning threshold aligned with the current route-level split while
+      // still flagging unusually large future chunks.
+      chunkSizeWarningLimit: 700,
+      rollupOptions: {
+        onwarn(warning, warn) {
+          if (isKnownThirdPartyRollupWarning(warning)) return
+          warn(warning)
+        }
+      }
+    },
     server: {
       watch: {
         ignored: devWatcherIgnored
@@ -341,9 +376,11 @@ export default defineNuxtConfig({
   // Environment variable validation helper
   // This ensures required vars are set in production
   hooks: {
-    'nitro:config'(nitroConfig) {
-      // Log warning if critical env vars are missing in production
-      if (process.env.NODE_ENV === 'production') {
+    'nitro:config'() {
+      // Runtime secrets are injected by Cloudflare Pages and are often absent
+      // during local production builds. Enable this in CI/release validation with
+      // NUXT_VALIDATE_REQUIRED_ENV=true so local deploy builds stay signal-only.
+      if (process.env.NUXT_VALIDATE_REQUIRED_ENV === 'true') {
         const required = ['DATABASE_URL', 'JWT_SECRET', 'SESSION_SECRET']
         const missing = required.filter(key => !process.env[key])
         if (missing.length > 0) {
