@@ -90,7 +90,14 @@ export default defineEventHandler(async (event) => {
   const boardId = boardIdPart?.data ? boardIdPart.data.toString('utf-8').trim() || undefined : undefined
 
   // Step 1: Speech-to-Text
-  const sttResult = await speechToText(event, audioPart.data)
+  const sttResult = await speechToText(event, audioPart.data, {
+    featureKey: 'agency_ai_voice_stt',
+    userId: user.id,
+    metadata: {
+      route: '/api/agency/ai/chat/conversations/:id/voice',
+      conversationId: id,
+    },
+  })
 
   if (!sttResult || !sttResult.text) {
     throw createError({
@@ -119,7 +126,15 @@ export default defineEventHandler(async (event) => {
   let audioFormat: string | null = null
 
   try {
-    const ttsResult = await textToSpeech(event, result.message.content)
+    const ttsResult = await textToSpeech(event, result.message.content, {
+      lang: 'en',
+      featureKey: 'agency_ai_voice_tts',
+      userId: user.id,
+      metadata: {
+        route: '/api/agency/ai/chat/conversations/:id/voice',
+        conversationId: id,
+      },
+    })
     if (ttsResult) {
       audioBase64 = Buffer.from(ttsResult.audioBuffer).toString('base64')
       audioFormat = ttsResult.format

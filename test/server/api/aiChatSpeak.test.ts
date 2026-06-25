@@ -53,6 +53,12 @@ describe('POST /api/agency/ai/chat/speak', () => {
     mockTextToSpeech.mockResolvedValue({ audioBuffer: new Uint8Array([1, 2, 3]).buffer, format: 'wav' })
     const res = await run({ text: 'Done, created the task.' })
     expect(res).toEqual({ audioBase64: Buffer.from([1, 2, 3]).toString('base64'), audioFormat: 'wav' })
+    expect(mockTextToSpeech).toHaveBeenCalledWith(expect.anything(), 'Done, created the task.', {
+      lang: 'en',
+      featureKey: 'agency_ai_voice_tts',
+      userId: 'u1',
+      metadata: { route: '/api/agency/ai/chat/speak' },
+    })
   })
 
   it('returns 204/null when TTS is unavailable', async () => {

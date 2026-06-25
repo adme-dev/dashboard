@@ -33,6 +33,10 @@ const links = [[{
   icon: 'i-lucide-lock',
   to: '/admin/permissions'
 }, {
+  label: 'AI',
+  icon: 'i-lucide-brain-circuit',
+  to: '/admin/ai/model-ops'
+}, {
   label: 'Settings',
   icon: 'i-lucide-settings',
   to: '/admin/settings'

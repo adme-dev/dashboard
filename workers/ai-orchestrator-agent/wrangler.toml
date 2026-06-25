@@ -1,0 +1,25 @@
+name = "ai-orchestrator-agent"
+main = "src/index.ts"
+compatibility_date = "2026-06-25"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare Agents activation notes:
+# - The official Agents docs require a Durable Object binding plus a SQLite class
+#   migration for Agent state persistence.
+# - This first local slice keeps the runtime as a read-only Worker bridge until
+#   the `agents` package is installed in the workspace and an Agent class is
+#   introduced behind the same read-only app endpoint contracts.
+#
+# [[durable_objects.bindings]]
+# name = "XeroFlowOrchestratorAgent"
+# class_name = "XeroFlowOrchestratorAgent"
+#
+# [[migrations]]
+# tag = "v1"
+# new_sqlite_classes = ["XeroFlowOrchestratorAgent"]
+
+[vars]
+API_URL = "https://app.xeroflow.io"
+
+# INTERNAL_API_KEY should match the Pages app secret:
+# wrangler secret put INTERNAL_API_KEY

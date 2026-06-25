@@ -9,7 +9,7 @@ import { textToSpeech } from '~~/server/utils/aiVoice'
 const MAX_TEXT = 2000
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const body = await readBody(event)
   const text = typeof body?.text === 'string' ? body.text.trim() : ''
@@ -21,7 +21,12 @@ export default defineEventHandler(async (event) => {
   }
 
   // v1 uses a single voice (design) — lang is not user-configurable.
-  const result = await textToSpeech(event, text, { lang: 'en' })
+  const result = await textToSpeech(event, text, {
+    lang: 'en',
+    featureKey: 'agency_ai_voice_tts',
+    userId: user.id,
+    metadata: { route: '/api/agency/ai/chat/speak' },
+  })
   if (!result) {
     setResponseStatus(event, 204)
     return null

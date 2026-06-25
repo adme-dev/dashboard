@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { textToSpeech, detectAudioFormat } from '~~/server/utils/aiVoice'
 
+const mockRecordAiInvocation = vi.fn()
+
+vi.mock('~~/server/utils/ai/invocationLedger', () => ({
+  recordAiInvocation: (...args: unknown[]) => mockRecordAiInvocation(...args),
+}))
+
 // Build a fake H3Event whose Workers AI binding returns whatever `run` yields.
 function eventWithAI(run: (model: string, inputs: any) => Promise<any>) {
   return { context: { cloudflare: { env: { AI: { run: vi.fn(run) } } } } } as any
@@ -14,11 +20,19 @@ const MP3 = [0xff, 0xfb, 0x90, 0x00, 0x11, 0x22]
 
 describe('textToSpeech (Workers AI melotts response handling)', () => {
   it('decodes the real { audio: <base64> } response shape into bytes (regression: used to 503)', async () => {
+    mockRecordAiInvocation.mockReset()
+    mockRecordAiInvocation.mockResolvedValue(undefined)
     const event = eventWithAI(async () => ({ audio: b64(WAV) }))
     const out = await textToSpeech(event, 'Robbo has got no cash again.', { lang: 'en' })
     expect(out).not.toBeNull()
     expect(out!.format).toBe('wav')
     expect(Array.from(new Uint8Array(out!.audioBuffer))).toEqual(WAV)
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'workers_ai_text_to_speech',
+      provider: 'workers_ai',
+      modelId: '@cf/myshell-ai/melotts',
+      status: 'success',
+    }))
   })
 
   it('labels mp3 output correctly', async () => {

@@ -12,7 +12,7 @@ const MIN_AUDIO_SIZE = 100 // bytes
 const ALLOWED_AUDIO_TYPES = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/x-m4a']
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const formData = await readMultipartFormData(event)
   if (!formData) {
@@ -35,7 +35,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 422, statusMessage: 'Audio too short. Try again.' })
   }
 
-  const stt = await speechToText(event, audioPart.data)
+  const stt = await speechToText(event, audioPart.data, {
+    featureKey: 'agency_ai_voice_stt',
+    userId: user.id,
+    metadata: { route: '/api/agency/ai/chat/transcribe' },
+  })
   if (!stt || !stt.text) {
     throw createError({ statusCode: 422, statusMessage: 'Could not understand audio.' })
   }

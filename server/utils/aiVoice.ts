@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 /**
  * Voice AI utilities — STT (OpenAI Whisper) and TTS (MyShell MeloTTS)
@@ -26,7 +27,14 @@ export function isVoiceAvailable(event: H3Event): boolean {
  */
 export async function speechToText(
   event: H3Event,
-  audioBuffer: ArrayBuffer | Uint8Array
+  audioBuffer: ArrayBuffer | Uint8Array,
+  options: {
+    featureKey?: string
+    userId?: string | null
+    clientId?: string | null
+    requestId?: string | null
+    metadata?: Record<string, unknown>
+  } = {}
 ): Promise<{ text: string; durationMs: number } | null> {
   const ai = getAI(event)
   if (!ai) return null
@@ -49,10 +57,34 @@ export async function speechToText(
 
     const text = result?.text?.trim() || result?.vtt?.replace(/WEBVTT\n\n[\d:.]+ --> [\d:.]+\n/g, '').trim() || ''
     if (!text) return null
+    await recordAiInvocation({
+      featureKey: options.featureKey ?? 'workers_ai_speech_to_text',
+      provider: 'workers_ai',
+      modelId: '@cf/openai/whisper-large-v3-turbo',
+      gatewayUsed: false,
+      fallbackUsed: false,
+      userId: options.userId,
+      clientId: options.clientId,
+      requestId: options.requestId,
+      status: 'success',
+      latencyMs: durationMs,
+      metadata: {
+        inputBytes: bytes.byteLength,
+        ...(options.metadata ?? {}),
+      },
+    })
 
     return { text, durationMs }
   } catch (err) {
     console.error('[aiVoice] STT failed:', err)
+    await recordAiInvocation({
+      featureKey: options.featureKey ?? 'workers_ai_speech_to_text',
+      provider: 'workers_ai',
+      modelId: '@cf/openai/whisper-large-v3-turbo',
+      status: 'error',
+      errorCode: err instanceof Error ? err.message.slice(0, 160) : 'unknown_error',
+      metadata: options.metadata ?? {},
+    })
     return null
   }
 }
@@ -65,7 +97,14 @@ export async function speechToText(
 export async function textToSpeech(
   event: H3Event,
   text: string,
-  options: { lang?: string } = {}
+  options: {
+    lang?: string
+    featureKey?: string
+    userId?: string | null
+    clientId?: string | null
+    requestId?: string | null
+    metadata?: Record<string, unknown>
+  } = {}
 ): Promise<{ audioBuffer: ArrayBuffer; format: string } | null> {
   const ai = getAI(event)
   if (!ai) return null
@@ -95,7 +134,25 @@ export async function textToSpeech(
       const bytes = Buffer.from((result as any).audio, 'base64')
       if (!bytes.byteLength) return null
       const audioBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-      return { audioBuffer, format: detectAudioFormat(bytes) }
+      const format = detectAudioFormat(bytes)
+      await recordAiInvocation({
+        featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+        provider: 'workers_ai',
+        modelId: '@cf/myshell-ai/melotts',
+        gatewayUsed: false,
+        fallbackUsed: false,
+        userId: options.userId,
+        clientId: options.clientId,
+        requestId: options.requestId,
+        status: 'success',
+        metadata: {
+          outputBytes: bytes.byteLength,
+          outputFormat: format,
+          lang: options.lang || 'en',
+          ...(options.metadata ?? {}),
+        },
+      })
+      return { audioBuffer, format }
     }
 
     // Fallback: ReadableStream response (older Workers AI behaviour).
@@ -116,7 +173,15 @@ export async function textToSpeech(
           offset += chunk.length
         }
         if (!totalLength) return null
-        return { audioBuffer: merged.buffer.slice(0, totalLength), format: detectAudioFormat(merged) }
+        const format = detectAudioFormat(merged)
+        await recordAiInvocation({
+          featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+          provider: 'workers_ai',
+          modelId: '@cf/myshell-ai/melotts',
+          status: 'success',
+          metadata: { outputBytes: totalLength, outputFormat: format, lang: options.lang || 'en', ...(options.metadata ?? {}) },
+        })
+        return { audioBuffer: merged.buffer.slice(0, totalLength), format }
       } finally {
         reader.releaseLock()
       }
@@ -125,12 +190,28 @@ export async function textToSpeech(
     // Fallback: raw ArrayBuffer / typed-array.
     if ((result as any).byteLength) {
       const bytes = result instanceof Uint8Array ? result : new Uint8Array(result as ArrayBuffer)
-      return { audioBuffer: result as ArrayBuffer, format: detectAudioFormat(bytes) }
+      const format = detectAudioFormat(bytes)
+      await recordAiInvocation({
+        featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+        provider: 'workers_ai',
+        modelId: '@cf/myshell-ai/melotts',
+        status: 'success',
+        metadata: { outputBytes: bytes.byteLength, outputFormat: format, lang: options.lang || 'en', ...(options.metadata ?? {}) },
+      })
+      return { audioBuffer: result as ArrayBuffer, format }
     }
 
     return null
   } catch (err) {
     console.error('[aiVoice] TTS failed:', err)
+    await recordAiInvocation({
+      featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+      provider: 'workers_ai',
+      modelId: '@cf/myshell-ai/melotts',
+      status: 'error',
+      errorCode: err instanceof Error ? err.message.slice(0, 160) : 'unknown_error',
+      metadata: options.metadata ?? {},
+    })
     return null
   }
 }

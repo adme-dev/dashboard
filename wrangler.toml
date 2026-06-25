@@ -110,6 +110,14 @@ id = "900b4b74ec41462cbbabebd0aa8775aa"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 EMAIL_FROM = "notification@adme.net.au"
+# Cloudflare AI Gateway root for server-side Groq SDK calls. The app normalizes
+# Groq requests to /groq and falls back to direct Groq if Gateway auth rejects.
+AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f9357b17/default"
+# AI Model Ops orchestrator readiness:
+# - INTERNAL_API_KEY is a secret, set in Cloudflare Pages dashboard or via wrangler secret.
+# - AI_ORCHESTRATOR_WORKER_URL is optional until the standalone Worker is deployed.
+#   Uncomment after deploying workers/ai-orchestrator-agent so Model Ops can show Worker readiness.
+# AI_ORCHESTRATOR_WORKER_URL = "https://ai-orchestrator-agent.<subdomain>.workers.dev"
 # APP_URL is set in CF Pages dashboard to avoid binding conflict
 # MCP server (Phase 1) — non-secret plaintext vars MUST live here, not the CF dashboard:
 # deployConfig bakes [vars] into the Direct-Upload deploy config, which REPLACES dashboard

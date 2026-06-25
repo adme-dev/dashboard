@@ -53,6 +53,11 @@ describe('POST /api/agency/ai/chat/transcribe', () => {
   it('returns the transcript (no agent involved)', async () => {
     mockSpeechToText.mockResolvedValue({ text: 'confirm', durationMs: 5 })
     expect(await run([audio()])).toEqual({ text: 'confirm' })
+    expect(mockSpeechToText).toHaveBeenCalledWith(expect.anything(), expect.any(Buffer), {
+      featureKey: 'agency_ai_voice_stt',
+      userId: 'u1',
+      metadata: { route: '/api/agency/ai/chat/transcribe' },
+    })
   })
 
   it('rejects a missing audio part with 400', async () => {

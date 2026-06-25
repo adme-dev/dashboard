@@ -31,5 +31,6 @@ const adminSections = [
   { label: 'Billing', to: '/admin/billing/plans', icon: 'i-lucide-credit-card', description: 'Plans and invoices' },
   { label: 'Connections', to: '/admin/connections/integrations', icon: 'i-lucide-plug', description: 'Integrations and API settings' },
   { label: 'Roles & Permissions', to: '/admin/permissions', icon: 'i-lucide-shield-check', description: 'Create custom roles and manage permission groups' },
+  { label: 'AI Model Ops', to: '/admin/ai/model-ops', icon: 'i-lucide-brain-circuit', description: 'Review model routing, pricing coverage and AI surface risk' },
 ]
 </script>
