@@ -9,12 +9,18 @@ interface SpendControllerBridgeBody {
   context?: unknown
 }
 
+interface PublishingPlannerBridgeBody {
+  prompt?: unknown
+  context?: unknown
+}
+
 export interface Env {
   AI: Ai
   APP_BASE_URL: string
   INTERNAL_API_KEY?: string
   THINK_MODEL?: string
   SpendControllerAgent: DurableObjectNamespace
+  PublishingPlannerAgent: DurableObjectNamespace
 }
 
 function json(data: unknown, init?: ResponseInit): Response {
@@ -26,7 +32,7 @@ function expectedAuth(env: Env): string | null {
   return key ? `Bearer ${key}` : null
 }
 
-async function callSpendControllerAppBridge(env: Env, body: SpendControllerBridgeBody) {
+async function callAppBridge(env: Env, path: string, body: { prompt?: unknown, context?: unknown }) {
   const expected = expectedAuth(env)
   if (!expected) {
     throw new Error('INTERNAL_API_KEY is not configured')
@@ -37,7 +43,7 @@ async function callSpendControllerAppBridge(env: Env, body: SpendControllerBridg
   }
 
   const appBaseUrl = env.APP_BASE_URL || 'https://app.xeroflow.io'
-  const response = await fetch(`${appBaseUrl}/api/internal/platform-agents/spend-controller/ask`, {
+  const response = await fetch(`${appBaseUrl}${path}`, {
     method: 'POST',
     headers: {
       authorization: expected,
@@ -60,6 +66,14 @@ async function callSpendControllerAppBridge(env: Env, body: SpendControllerBridg
   return payload
 }
 
+async function callSpendControllerAppBridge(env: Env, body: SpendControllerBridgeBody) {
+  return callAppBridge(env, '/api/internal/platform-agents/spend-controller/ask', body)
+}
+
+async function callPublishingPlannerAppBridge(env: Env, body: PublishingPlannerBridgeBody) {
+  return callAppBridge(env, '/api/internal/platform-agents/publishing-planner/ask', body)
+}
+
 async function handleSpendControllerBridge(request: Request, env: Env): Promise<Response> {
   const expected = expectedAuth(env)
   if (!expected || request.headers.get('authorization') !== expected) {
@@ -69,6 +83,23 @@ async function handleSpendControllerBridge(request: Request, env: Env): Promise<
   const body = await request.json().catch(() => ({})) as SpendControllerBridgeBody
   try {
     const payload = await callSpendControllerAppBridge(env, body)
+    return json(payload)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const status = message === 'prompt required' ? 400 : 502
+    return json({ ok: false, error: message }, { status })
+  }
+}
+
+async function handlePublishingPlannerBridge(request: Request, env: Env): Promise<Response> {
+  const expected = expectedAuth(env)
+  if (!expected || request.headers.get('authorization') !== expected) {
+    return json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json().catch(() => ({})) as PublishingPlannerBridgeBody
+  try {
+    const payload = await callPublishingPlannerAppBridge(env, body)
     return json(payload)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -117,6 +148,40 @@ export class SpendControllerAgent extends Think<Env> {
   }
 }
 
+export class PublishingPlannerAgent extends Think<Env> {
+  override workspaceBash = false
+
+  getModel() {
+    const model = this.env.THINK_MODEL || '@cf/moonshotai/kimi-k2.7-code'
+    return createWorkersAI({ binding: this.env.AI })(model as any)
+  }
+
+  getSystemPrompt() {
+    return [
+      'You are the XeroFlow Publishing Planner Agent.',
+      'Use read-only planner, queue, slot, campaign, and connection data to identify scheduling risks and draft-safe next steps.',
+      'Never schedule, approve, publish, delete, or mutate posts directly.',
+      'When a plan is needed, recommend draft-only actions that require human review in the app.',
+    ].join(' ')
+  }
+
+  getTools() {
+    return {
+      reviewPublishingPlan: tool({
+        description: 'Read the current publishing planner state for a client, including campaigns, queue, slots, accounts, and upcoming scheduled posts.',
+        inputSchema: z.object({
+          prompt: z.string().min(1).describe('The planner question to answer.'),
+          clientId: z.string().min(1).describe('Client id to scope the planner review.'),
+        }),
+        execute: async ({ prompt, clientId }) => callPublishingPlannerAppBridge(this.env, {
+          prompt,
+          context: { clientId },
+        }),
+      }),
+    }
+  }
+}
+
 export async function handlePlatformAgentsFetch(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
 
@@ -131,10 +196,20 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
           route: '/agents/spend-controller-agent/{name}',
           mode: 'read-only-and-propose-via-app',
         },
+        {
+          className: 'PublishingPlannerAgent',
+          route: '/agents/publishing-planner-agent/{name}',
+          mode: 'read-only',
+        },
       ],
       bridges: [
         {
           path: '/tools/spend-controller/ask',
+          auth: 'INTERNAL_API_KEY',
+          mode: 'read_only',
+        },
+        {
+          path: '/tools/publishing-planner/ask',
           auth: 'INTERNAL_API_KEY',
           mode: 'read_only',
         },
@@ -144,6 +219,10 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
 
   if (request.method === 'POST' && url.pathname === '/tools/spend-controller/ask') {
     return handleSpendControllerBridge(request, env)
+  }
+
+  if (request.method === 'POST' && url.pathname === '/tools/publishing-planner/ask') {
+    return handlePublishingPlannerBridge(request, env)
   }
 
   const routed = await routeAgentRequest(request, env)

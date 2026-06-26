@@ -39,10 +39,58 @@ describe('platform-agents worker', () => {
       ok: true,
       worker: 'platform-agents',
       runtime: 'cloudflare-think',
-      agents: [expect.objectContaining({ className: 'SpendControllerAgent' })],
-      bridges: [expect.objectContaining({ path: '/tools/spend-controller/ask', mode: 'read_only' })],
+      agents: expect.arrayContaining([
+        expect.objectContaining({ className: 'SpendControllerAgent' }),
+        expect.objectContaining({ className: 'PublishingPlannerAgent' }),
+      ]),
+      bridges: expect.arrayContaining([
+        expect.objectContaining({ path: '/tools/spend-controller/ask', mode: 'read_only' }),
+        expect.objectContaining({ path: '/tools/publishing-planner/ask', mode: 'read_only' }),
+      ]),
     })
     expect(mockRouteAgentRequest).not.toHaveBeenCalled()
+  })
+
+  it('proxies read-only Publishing Planner requests to the internal app endpoint', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      mode: 'read_only',
+      answer: 'Planner has drafts ready to queue.',
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    const { handlePlatformAgentsFetch } = await import('~~/workers/platform-agents/src/index')
+
+    const res = await handlePlatformAgentsFetch(new Request('https://platform-agents.test/tools/publishing-planner/ask', {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key' },
+      body: JSON.stringify({
+        prompt: 'Review planner.',
+        context: { clientId: 'client-1' },
+      }),
+    }), {
+      APP_BASE_URL: 'https://app.xeroflow.io',
+      INTERNAL_API_KEY: 'secret-key',
+    } as any)
+
+    expect(res.status).toBe(200)
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://app.xeroflow.io/api/internal/platform-agents/publishing-planner/ask',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          authorization: 'Bearer secret-key',
+          'content-type': 'application/json',
+        }),
+        body: JSON.stringify({
+          prompt: 'Review planner.',
+          context: { clientId: 'client-1' },
+          draftActions: false,
+        }),
+      })
+    )
+    await expect(res.json()).resolves.toMatchObject({ mode: 'read_only' })
+    fetchSpy.mockRestore()
   })
 
   it('guards the Spend Controller app bridge with INTERNAL_API_KEY', async () => {
@@ -129,6 +177,41 @@ describe('platform-agents worker', () => {
     })
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://app.xeroflow.io/api/internal/platform-agents/spend-controller/ask',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ authorization: 'Bearer secret-key' }),
+      })
+    )
+    fetchSpy.mockRestore()
+  })
+
+  it('exposes a read-only publishing planner tool on the Think agent', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      mode: 'read_only',
+      answer: 'Planner review complete.',
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    const { PublishingPlannerAgent } = await import('~~/workers/platform-agents/src/index')
+    const agent = new PublishingPlannerAgent({} as any, {
+      APP_BASE_URL: 'https://app.xeroflow.io',
+      INTERNAL_API_KEY: 'secret-key',
+    } as any)
+
+    const tools = agent.getTools()
+    expect(Object.keys(tools)).toEqual(['reviewPublishingPlan'])
+    await expect(tools.reviewPublishingPlan.execute?.({
+      prompt: 'Review planner.',
+      clientId: 'client-1',
+    }, {
+      toolCallId: 'tool-1',
+      messages: [],
+    } as any)).resolves.toMatchObject({
+      mode: 'read_only',
+    })
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://app.xeroflow.io/api/internal/platform-agents/publishing-planner/ask',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ authorization: 'Bearer secret-key' }),

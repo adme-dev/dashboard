@@ -603,9 +603,10 @@ Extend existing run surfaces where possible. The response should include agent t
 
 ### Phase 4: Publishing Planner Agent
 
-- [ ] Task 4.1: Add Publishing Planner read tools.
-  - Acceptance: Agent can read campaigns, board, queue, calendar, slots, and connected accounts.
-  - Verify: Tool tests cover client scoping and empty planner states.
+- [x] Task 4.1: Add Publishing Planner read tools.
+  - Acceptance: Agent can read publishing status, campaigns, queue, slots, connected accounts, and upcoming scheduled posts for a scoped client.
+  - Verify: API and Worker tests cover client scoping, internal auth, read-only bridge behavior, and Think tool exposure.
+  - Files: `server/utils/ai/publishingPlannerAgentRuntime.ts`, `server/api/agency/agents/publishing-planner/ask.post.ts`, `server/api/internal/platform-agents/publishing-planner/ask.post.ts`, `workers/platform-agents/src/index.ts`, tests.
 
 - [ ] Task 4.2: Add draft-only plan tools.
   - Acceptance: Agent can call existing `generate-plan` and return editable draft suggestions.
