@@ -19,6 +19,11 @@ interface FinancialWatchBridgeBody {
   context?: unknown
 }
 
+interface TrafficControllerBridgeBody {
+  prompt?: unknown
+  context?: unknown
+}
+
 export interface Env {
   AI: Ai
   APP_BASE_URL: string
@@ -27,6 +32,7 @@ export interface Env {
   SpendControllerAgent: DurableObjectNamespace
   PublishingPlannerAgent: DurableObjectNamespace
   FinancialWatchAgent: DurableObjectNamespace
+  TrafficControllerAgent: DurableObjectNamespace
 }
 
 function json(data: unknown, init?: ResponseInit): Response {
@@ -84,6 +90,10 @@ async function callFinancialWatchAppBridge(env: Env, body: FinancialWatchBridgeB
   return callAppBridge(env, '/api/internal/platform-agents/financial-watch/ask', body)
 }
 
+async function callTrafficControllerAppBridge(env: Env, body: TrafficControllerBridgeBody) {
+  return callAppBridge(env, '/api/internal/platform-agents/traffic-controller/ask', body)
+}
+
 async function handleSpendControllerBridge(request: Request, env: Env): Promise<Response> {
   const expected = expectedAuth(env)
   if (!expected || request.headers.get('authorization') !== expected) {
@@ -127,6 +137,23 @@ async function handleFinancialWatchBridge(request: Request, env: Env): Promise<R
   const body = await request.json().catch(() => ({})) as FinancialWatchBridgeBody
   try {
     const payload = await callFinancialWatchAppBridge(env, body)
+    return json(payload)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const status = message === 'prompt required' ? 400 : 502
+    return json({ ok: false, error: message }, { status })
+  }
+}
+
+async function handleTrafficControllerBridge(request: Request, env: Env): Promise<Response> {
+  const expected = expectedAuth(env)
+  if (!expected || request.headers.get('authorization') !== expected) {
+    return json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json().catch(() => ({})) as TrafficControllerBridgeBody
+  try {
+    const payload = await callTrafficControllerAppBridge(env, body)
     return json(payload)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -273,6 +300,42 @@ export class FinancialWatchAgent extends Think<Env> {
   }
 }
 
+export class TrafficControllerAgent extends Think<Env> {
+  override workspaceBash = false
+
+  getModel() {
+    const model = this.env.THINK_MODEL || '@cf/moonshotai/kimi-k2.7-code'
+    return createWorkersAI({ binding: this.env.AI })(model as any)
+  }
+
+  getSystemPrompt() {
+    return [
+      'You are the XeroFlow Traffic Controller Agent.',
+      'Use platform-agent signals from spend, publishing, and finance to recommend operational allocation priorities.',
+      'Never mutate budgets, posts, invoices, recommendations, campaigns, or Xero directly.',
+      'Return read-only allocation recommendations that a human can review in the app.',
+    ].join(' ')
+  }
+
+  getTools() {
+    return {
+      reviewTrafficControl: tool({
+        description: 'Read recent platform-agent signals and recommend cross-studio allocation priorities. This never mutates budgets, posts, invoices, or campaigns.',
+        inputSchema: z.object({
+          prompt: z.string().min(1).describe('The traffic-control question to answer.'),
+          clientId: z.string().optional().describe('Optional client id for scoped platform signals.'),
+        }),
+        execute: async ({ prompt, clientId }) => callTrafficControllerAppBridge(this.env, {
+          prompt,
+          context: {
+            clientId,
+          },
+        }),
+      }),
+    }
+  }
+}
+
 export async function handlePlatformAgentsFetch(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
 
@@ -297,6 +360,11 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
           route: '/agents/financial-watch-agent/{name}',
           mode: 'read-only',
         },
+        {
+          className: 'TrafficControllerAgent',
+          route: '/agents/traffic-controller-agent/{name}',
+          mode: 'read-only',
+        },
       ],
       bridges: [
         {
@@ -314,6 +382,11 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
           auth: 'INTERNAL_API_KEY',
           mode: 'read_only',
         },
+        {
+          path: '/tools/traffic-controller/ask',
+          auth: 'INTERNAL_API_KEY',
+          mode: 'read_only',
+        },
       ],
     })
   }
@@ -328,6 +401,10 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
 
   if (request.method === 'POST' && url.pathname === '/tools/financial-watch/ask') {
     return handleFinancialWatchBridge(request, env)
+  }
+
+  if (request.method === 'POST' && url.pathname === '/tools/traffic-controller/ask') {
+    return handleTrafficControllerBridge(request, env)
   }
 
   const routed = await routeAgentRequest(request, env)

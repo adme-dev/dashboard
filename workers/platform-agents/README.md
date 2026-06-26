@@ -21,6 +21,11 @@ Cloudflare Think runtime for durable XeroFlow platform agents.
   - Durable Object state via `FinancialWatchAgent`.
   - Read-only `reviewFinancialWatch` tool backed by stored advisor reports, recommendations, and budget alerts.
   - No direct Xero, invoice, budget, or recommendation mutation tools.
+- `TrafficControllerAgent`
+  - Cloudflare Workers AI model from `THINK_MODEL`.
+  - Durable Object state via `TrafficControllerAgent`.
+  - Read-only `reviewTrafficControl` tool backed by recent spend, publishing, and finance agent signals.
+  - No direct budget, publishing, invoice, campaign, or Xero mutation tools.
 
 ## Local Checks
 
@@ -49,5 +54,6 @@ Pages flags still control runtime availability:
 - `SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED=true` enables proposal drafting from the authenticated app route only.
 - `PUBLISHING_PLANNER_AGENT_ENABLED=true` enables the publishing planner app and internal review/draft-only endpoints.
 - `FINANCIAL_WATCH_AGENT_ENABLED=true` enables the financial watch app and internal read-only endpoints.
+- `TRAFFIC_CONTROLLER_AGENT_ENABLED=true` enables the traffic controller app and internal read-only endpoints.
 
 The internal Worker bridge blocks `draftActions`; proposal and post creation remain in the Pages app behind normal user auth and write access.

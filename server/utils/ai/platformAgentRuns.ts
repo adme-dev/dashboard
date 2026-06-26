@@ -7,7 +7,7 @@ export type PlatformAgentType =
   | 'traffic_controller'
   | 'office_watch'
 
-export type PlatformAgentMode = 'read_only' | 'read_propose'
+export type PlatformAgentMode = 'read_only' | 'read_propose' | 'draft_only'
 
 export interface StartPlatformAgentRunInput {
   agentType: PlatformAgentType

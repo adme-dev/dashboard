@@ -43,11 +43,13 @@ describe('platform-agents worker', () => {
         expect.objectContaining({ className: 'SpendControllerAgent' }),
         expect.objectContaining({ className: 'PublishingPlannerAgent' }),
         expect.objectContaining({ className: 'FinancialWatchAgent' }),
+        expect.objectContaining({ className: 'TrafficControllerAgent' }),
       ]),
       bridges: expect.arrayContaining([
         expect.objectContaining({ path: '/tools/spend-controller/ask', mode: 'read_only' }),
         expect.objectContaining({ path: '/tools/publishing-planner/ask', mode: 'read_only_or_draft_only' }),
         expect.objectContaining({ path: '/tools/financial-watch/ask', mode: 'read_only' }),
+        expect.objectContaining({ path: '/tools/traffic-controller/ask', mode: 'read_only' }),
       ]),
     })
     expect(mockRouteAgentRequest).not.toHaveBeenCalled()
@@ -143,6 +145,48 @@ describe('platform-agents worker', () => {
         body: JSON.stringify({
           prompt: 'Review finance risk.',
           context: { tenantId: 'tenant-1' },
+          draftActions: false,
+        }),
+      })
+    )
+    await expect(res.json()).resolves.toMatchObject({ mode: 'read_only' })
+    fetchSpy.mockRestore()
+  })
+
+  it('proxies read-only Traffic Controller requests to the internal app endpoint', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      mode: 'read_only',
+      answer: 'Traffic review complete.',
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    const { handlePlatformAgentsFetch } = await import('~~/workers/platform-agents/src/index')
+
+    const res = await handlePlatformAgentsFetch(new Request('https://platform-agents.test/tools/traffic-controller/ask', {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret-key' },
+      body: JSON.stringify({
+        prompt: 'Review traffic.',
+        context: { clientId: 'client-1' },
+      }),
+    }), {
+      APP_BASE_URL: 'https://app.xeroflow.io',
+      INTERNAL_API_KEY: 'secret-key',
+    } as any)
+
+    expect(res.status).toBe(200)
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://app.xeroflow.io/api/internal/platform-agents/traffic-controller/ask',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          authorization: 'Bearer secret-key',
+          'content-type': 'application/json',
+        }),
+        body: JSON.stringify({
+          prompt: 'Review traffic.',
+          context: { clientId: 'client-1' },
           draftActions: false,
         }),
       })
@@ -347,6 +391,48 @@ describe('platform-agents worker', () => {
           prompt: 'Review finance risk.',
           context: {
             tenantId: 'tenant-1',
+            clientId: 'client-1',
+          },
+          draftActions: false,
+        }),
+      })
+    )
+    fetchSpy.mockRestore()
+  })
+
+  it('exposes a read-only Traffic Controller tool on the Think agent', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      mode: 'read_only',
+      recommendations: [{ title: 'Hold expansion' }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    const { TrafficControllerAgent } = await import('~~/workers/platform-agents/src/index')
+    const agent = new TrafficControllerAgent({} as any, {
+      APP_BASE_URL: 'https://app.xeroflow.io',
+      INTERNAL_API_KEY: 'secret-key',
+    } as any)
+
+    const tools = agent.getTools()
+    expect(Object.keys(tools)).toEqual(['reviewTrafficControl'])
+    await expect(tools.reviewTrafficControl.execute?.({
+      prompt: 'Review traffic.',
+      clientId: 'client-1',
+    }, {
+      toolCallId: 'tool-4',
+      messages: [],
+    } as any)).resolves.toMatchObject({
+      mode: 'read_only',
+    })
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://app.xeroflow.io/api/internal/platform-agents/traffic-controller/ask',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ authorization: 'Bearer secret-key' }),
+        body: JSON.stringify({
+          prompt: 'Review traffic.',
+          context: {
             clientId: 'client-1',
           },
           draftActions: false,

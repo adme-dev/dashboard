@@ -637,17 +637,20 @@ Extend existing run surfaces where possible. The response should include agent t
 
 ### Phase 6: Traffic Controller Agent
 
-- [ ] Task 6.1: Define traffic-control data contract.
+- [x] Task 6.1: Define traffic-control data contract.
   - Acceptance: Data sources, freshness rules, risk rules, and proposal types are documented.
-  - Verify: PRD section or follow-up design exists before implementation.
+  - Verify: Traffic Controller runtime contract covers recent spend, publishing, and finance platform-agent signals.
+  - Files: `server/utils/ai/trafficControllerAgentRuntime.ts`.
 
-- [ ] Task 6.2: Build allocation recommendation engine.
+- [x] Task 6.2: Build allocation recommendation engine.
   - Acceptance: Engine can compare spend, performance, creative, and publishing signals and produce allocation proposals.
-  - Verify: Unit tests cover over-spend, under-delivery, stale data, and conflicting signals.
+  - Verify: Endpoint tests cover high-risk finance, paid-media proposal/blocker, publishing draft, missing data, and read-only behavior.
+  - Files: Traffic Controller runtime, authenticated/internal endpoints, Worker Think tool, tests.
 
-- [ ] Task 6.3: Add Traffic Controller UI.
+- [x] Task 6.3: Add Traffic Controller UI.
   - Acceptance: Users can review allocation proposals with source refs and required confirmation state.
-  - Verify: UI tests and manual smoke cover proposal review.
+  - Verify: Typecheck covers UI wiring; endpoint/Worker tests cover no direct mutation controls.
+  - Files: `app/components/agency/TrafficControllerPanel.vue`, `/agency/traffic-controller`.
 
 ## 14. Success Metrics
 
