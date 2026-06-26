@@ -30,6 +30,7 @@ const props = defineProps<{
 
 const prompt = ref('What spend issues need attention today?')
 const pending = ref(false)
+const proposalPending = ref(false)
 const error = ref<string | null>(null)
 const result = ref<SpendControllerResponse | null>(null)
 
@@ -51,17 +52,19 @@ function usePreset(value: string) {
   prompt.value = value
 }
 
-async function askSpendController() {
+async function runSpendController(options: { draftActions?: boolean } = {}) {
   const cleanPrompt = prompt.value.trim()
-  if (!cleanPrompt || pending.value || props.disabled) return
+  if (!cleanPrompt || pending.value || proposalPending.value || props.disabled) return
 
-  pending.value = true
+  if (options.draftActions) proposalPending.value = true
+  else pending.value = true
   error.value = null
   try {
     result.value = await $fetch<SpendControllerResponse>('/api/agency/agents/spend-controller/ask', {
       method: 'POST',
       body: {
         prompt: cleanPrompt,
+        ...(options.draftActions ? { draftActions: true } : {}),
         context: {
           period: period.value,
           platform: props.platform,
@@ -72,12 +75,23 @@ async function askSpendController() {
     result.value = null
     if (err?.statusCode === 404 || err?.data?.statusCode === 404) {
       error.value = 'Spend Controller is not enabled in this environment.'
+    } else if (err?.statusCode === 403 || err?.data?.statusCode === 403) {
+      error.value = 'Spend Controller proposal mode is not enabled for this environment.'
     } else {
       error.value = err?.data?.statusMessage || err?.message || 'Spend Controller could not complete the review.'
     }
   } finally {
     pending.value = false
+    proposalPending.value = false
   }
+}
+
+function askSpendController() {
+  return runSpendController()
+}
+
+function draftActionPlans() {
+  return runSpendController({ draftActions: true })
 }
 </script>
 
@@ -105,7 +119,7 @@ async function askSpendController() {
         size="sm"
         icon="i-lucide-sparkles"
         :loading="pending"
-        :disabled="disabled || pending || !prompt.trim()"
+        :disabled="disabled || pending || proposalPending || !prompt.trim()"
         data-testid="ask-spend-controller"
         @click="askSpendController"
       >
@@ -158,12 +172,49 @@ async function askSpendController() {
         </div>
         <div v-else class="space-y-4">
           <div>
-            <div class="mb-2 flex flex-wrap items-center gap-2">
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-2">
               <UBadge color="neutral" variant="soft" size="xs">{{ result.mode.replace('_', ' ') }}</UBadge>
               <UBadge color="neutral" variant="soft" size="xs">{{ result.audit.toolCallCount }} tool call{{ result.audit.toolCallCount === 1 ? '' : 's' }}</UBadge>
               <UBadge color="success" variant="soft" size="xs">0 direct writes</UBadge>
+              </div>
+              <UButton
+                v-if="result.findings.length"
+                size="xs"
+                color="primary"
+                variant="soft"
+                icon="i-lucide-file-plus-2"
+                :loading="proposalPending"
+                :disabled="pending || proposalPending"
+                data-testid="draft-spend-controller-actions"
+                @click="draftActionPlans"
+              >
+                Draft action plans
+              </UButton>
             </div>
             <p class="text-sm text-default">{{ result.answer }}</p>
+          </div>
+
+          <div v-if="result.proposedActions.length" class="space-y-2">
+            <div
+              v-for="action in result.proposedActions"
+              :key="`${action.type}:${action.payloadRef || action.label}`"
+              class="rounded-md border border-default bg-success/5 p-3"
+            >
+              <div class="flex flex-wrap items-center gap-2">
+                <UBadge color="success" variant="soft" size="xs">Drafted</UBadge>
+                <p class="text-sm font-medium">{{ action.label }}</p>
+              </div>
+              <p class="mt-1 text-xs text-muted">
+                Requires approval in the existing campaign action flow before anything executes.
+              </p>
+              <ul v-if="action.rationale.length" class="mt-2 space-y-1 text-xs text-default">
+                <li v-for="reason in action.rationale" :key="reason" class="flex gap-2">
+                  <UIcon name="i-lucide-check" class="mt-0.5 size-3 text-success shrink-0" />
+                  <span>{{ reason }}</span>
+                </li>
+              </ul>
+            </div>
           </div>
 
           <div v-if="result.findings.length" class="space-y-3">

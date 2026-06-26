@@ -581,17 +581,17 @@ Extend existing run surfaces where possible. The response should include agent t
 
 ### Phase 3: Spend Controller Propose-Only
 
-- [ ] Task 3.1: Add action-plan proposal tool.
+- [x] Task 3.1: Add action-plan proposal tool.
   - Acceptance: Agent can draft campaign action plans through the existing plan endpoint and persist proposal refs.
   - Verify: Tests prove proposals are planned/draft only and do not execute.
   - Files likely touched: `workers/platform-agents/src/tools/spendActions.ts`, server proposal helpers, tests.
 
-- [ ] Task 3.2: Add proposal guardrails.
+- [x] Task 3.2: Add proposal guardrails.
   - Acceptance: Stale sync, missing budget, unsupported platform, duplicate pending action, or disabled live-write rails block proposals with explanation.
   - Verify: Guard tests cover each blocked condition.
   - Files likely touched: spend proposal utility, tests.
 
-- [ ] Task 3.3: Add proposed-action UI cards.
+- [x] Task 3.3: Add proposed-action UI cards.
   - Acceptance: Agent response displays action cards that link to existing approve/execute flow and cannot execute inline.
   - Verify: UI tests confirm no direct execute button exists in the agent panel.
   - Files likely touched: `app/components/social/SpendControllerPanel.vue`, spend action components, tests.

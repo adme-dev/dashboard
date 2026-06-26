@@ -1,5 +1,6 @@
-import { requireAuth } from '~~/server/utils/auth'
-import { queryRows } from '~~/server/utils/db'
+import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
+import { queryOne, queryRows } from '~~/server/utils/db'
+import { recordCampaignAction } from '~~/server/utils/campaignActionLog'
 import {
   buildPacingReview,
   PACING_REVIEW_SELECT_COLUMNS,
@@ -7,6 +8,9 @@ import {
 } from '~~/server/utils/socialSpendPacingReview'
 import {
   createSpendControllerReadOnlyResponse,
+  eligibleSpendControllerProposalItems,
+  normalizedSpendControllerDailyBudget,
+  type SpendControllerProposedAction,
 } from '~~/server/utils/ai/spendControllerAgent'
 import {
   completePlatformAgentRun,
@@ -16,6 +20,10 @@ import {
 
 function enabled() {
   return process.env.SPEND_CONTROLLER_AGENT_ENABLED === 'true'
+}
+
+function proposalsEnabled() {
+  return process.env.SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED === 'true'
 }
 
 function platformFilter(raw: unknown): 'meta' | 'google_ads' | null {
@@ -36,8 +44,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Spend Controller Agent is not enabled.' })
   }
 
-  const user = await requireAuth(event)
   const body = await readBody(event)
+  const draftActions = body?.draftActions === true
+  if (draftActions && !proposalsEnabled()) {
+    throw createError({ statusCode: 403, statusMessage: 'Spend Controller proposal mode is not enabled.' })
+  }
+
+  const user = draftActions ? await requireWriteAccess(event) : await requireAuth(event)
   const prompt = String(body?.prompt || '').trim()
   if (!prompt) {
     throw createError({ statusCode: 400, statusMessage: 'prompt required' })
@@ -79,7 +92,15 @@ export default defineEventHandler(async (event) => {
       params,
     )
     const review = buildPacingReview(rows, { now: new Date(), period })
-    const response = createSpendControllerReadOnlyResponse({ prompt, review })
+    const proposedActions = draftActions
+      ? await draftSpendControllerActions(review, user?.id ?? null)
+      : []
+    const response = createSpendControllerReadOnlyResponse({
+      prompt,
+      review,
+      mode: draftActions ? 'read_propose' : 'read_only',
+      proposedActions,
+    })
     const runId = run.ok ? run.runId : null
 
     if (run.ok) {
@@ -119,3 +140,67 @@ export default defineEventHandler(async (event) => {
     throw error
   }
 })
+
+async function draftSpendControllerActions(review: ReturnType<typeof buildPacingReview>, userId: string | null): Promise<SpendControllerProposedAction[]> {
+  const proposals: SpendControllerProposedAction[] = []
+  for (const item of eligibleSpendControllerProposalItems(review)) {
+    const recommendedDailyBudget = normalizedSpendControllerDailyBudget(item)
+    const existing = await queryOne<{ id: string, action_status: string }>(
+      `SELECT id::text, action_status
+       FROM campaign_action_log
+       WHERE media_spend_id = $1
+         AND action_type = 'budget_update'
+         AND action_status IN ('planned', 'approved')
+         AND metadata->>'source' = 'spend_controller_agent'
+         AND (new_value->>'dailyBudget')::numeric = $2
+       ORDER BY CASE WHEN action_status = 'approved' THEN 0 ELSE 1 END,
+                requested_at DESC
+       LIMIT 1`,
+      [item.mediaSpendId, recommendedDailyBudget]
+    )
+    if (existing) {
+      proposals.push({
+        type: 'campaign_action_plan',
+        label: `${item.campaignName}: planned budget action already exists`,
+        status: 'requires_confirmation',
+        payloadRef: existing.id,
+        rationale: [
+          'A matching planned or approved action already exists.',
+          item.recommendedAction,
+        ],
+      })
+      continue
+    }
+
+    const action = await recordCampaignAction({
+      mediaSpendId: item.mediaSpendId,
+      platform: item.platform === 'google' ? 'google_ads' : 'meta',
+      actionType: 'budget_update',
+      actionStatus: 'planned',
+      requestedBy: userId,
+      previousValue: { dailyBudget: item.currentDailyBudget },
+      newValue: { dailyBudget: recommendedDailyBudget },
+      reason: item.recommendedAction,
+      metadata: {
+        source: 'spend_controller_agent',
+        issueType: item.issueType,
+        pacingRatio: item.pacingRatio,
+        projectedMonthEnd: item.projectedMonthEnd,
+        monthlyBudget: item.budget,
+        campaignName: item.campaignName,
+      },
+    })
+
+    proposals.push({
+      type: 'campaign_action_plan',
+      label: `${item.campaignName}: draft daily budget ${recommendedDailyBudget}`,
+      status: 'requires_confirmation',
+      payloadRef: action.id,
+      rationale: [
+        item.recommendedAction,
+        'Drafted as a planned action only. Approval and execution remain separate.',
+      ],
+    })
+  }
+  return proposals
+}

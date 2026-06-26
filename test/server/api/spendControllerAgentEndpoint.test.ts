@@ -1,17 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockRequireAuth = vi.fn()
+const mockRequireWriteAccess = vi.fn()
 const mockQueryRows = vi.fn()
+const mockQueryOne = vi.fn()
+const mockRecordCampaignAction = vi.fn()
 const mockStartRun = vi.fn()
 const mockCompleteRun = vi.fn()
 const mockFailRun = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
+  requireWriteAccess: (...args: unknown[]) => mockRequireWriteAccess(...args),
 }))
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+}))
+
+vi.mock('~~/server/utils/campaignActionLog', () => ({
+  recordCampaignAction: (...args: unknown[]) => mockRecordCampaignAction(...args),
 }))
 
 vi.mock('~~/server/utils/ai/platformAgentRuns', () => ({
@@ -36,11 +45,15 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
     process.env = { ...oldEnv, SPEND_CONTROLLER_AGENT_ENABLED: 'true' }
     vi.resetModules()
     mockRequireAuth.mockReset()
+    mockRequireWriteAccess.mockReset()
     mockQueryRows.mockReset()
+    mockQueryOne.mockReset()
+    mockRecordCampaignAction.mockReset()
     mockStartRun.mockReset()
     mockCompleteRun.mockReset()
     mockFailRun.mockReset()
     mockRequireAuth.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' })
+    mockRequireWriteAccess.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' })
     mockStartRun.mockResolvedValue({ ok: true, runId: 'run-1' })
     mockCompleteRun.mockResolvedValue(undefined)
     mockFailRun.mockResolvedValue(undefined)
@@ -53,7 +66,7 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
         campaign_name: 'Lead Gen',
         campaign_status: 'ACTIVE',
         budget_allocated: '3000',
-        actual_spend: '2400',
+        actual_spend: '4200',
         impressions: '10000',
         clicks: '500',
         conversions: '4',
@@ -65,10 +78,18 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
         bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
         budget_type: 'daily',
         period: '2026-06',
-        synced_at: '2026-06-26T00:00:00.000Z',
+        synced_at: '2026-06-12T00:00:00.000Z',
         end_date: null,
       },
     ])
+    mockQueryOne.mockResolvedValue(null)
+    mockRecordCampaignAction.mockResolvedValue({
+      id: 'action-1',
+      mediaSpendId: 'spend-1',
+      platform: 'meta',
+      actionType: 'budget_update',
+      actionStatus: 'planned',
+    })
   })
 
   it('requires auth, builds a read-only spend response, and records the run', async () => {
@@ -117,5 +138,71 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
     await expect(handler({ body: { prompt: 'What needs attention?' } } as any)).rejects.toMatchObject({
       statusCode: 404,
     })
+  })
+
+  it('drafts planned action proposals only when proposal mode is enabled', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-12T10:00:00+10:00'))
+    process.env = {
+      ...oldEnv,
+      SPEND_CONTROLLER_AGENT_ENABLED: 'true',
+      SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED: 'true',
+    }
+    vi.resetModules()
+    const handler = (await import('~~/server/api/agency/agents/spend-controller/ask.post')).default
+
+    const result = await handler({
+      body: {
+        prompt: 'Draft safe budget actions.',
+        draftActions: true,
+        context: { period: '2026-06', platform: 'meta' },
+      },
+    } as any)
+
+    expect(mockRequireWriteAccess).toHaveBeenCalled()
+    expect(result.findings.length).toBeGreaterThan(0)
+    expect(result.recommendedActions.length).toBeGreaterThan(0)
+    expect(mockRecordCampaignAction).toHaveBeenCalledWith(expect.objectContaining({
+      mediaSpendId: 'spend-1',
+      platform: 'meta',
+      actionType: 'budget_update',
+      actionStatus: 'planned',
+      requestedBy: '11111111-1111-4111-8111-111111111111',
+      metadata: expect.objectContaining({
+        source: 'spend_controller_agent',
+        issueType: expect.any(String),
+      }),
+    }))
+    expect(result.mode).toBe('read_propose')
+    expect(result.proposedActions).toEqual([expect.objectContaining({
+      type: 'campaign_action_plan',
+      status: 'requires_confirmation',
+      payloadRef: 'action-1',
+    })])
+    expect(mockCompleteRun).toHaveBeenCalledWith(expect.objectContaining({
+      proposedActionCount: 1,
+    }))
+    vi.useRealTimers()
+  })
+
+  it('blocks proposal writes when the proposal flag is disabled', async () => {
+    process.env = {
+      ...oldEnv,
+      SPEND_CONTROLLER_AGENT_ENABLED: 'true',
+      SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED: 'false',
+    }
+    vi.resetModules()
+    const handler = (await import('~~/server/api/agency/agents/spend-controller/ask.post')).default
+
+    await expect(handler({
+      body: {
+        prompt: 'Draft safe budget actions.',
+        draftActions: true,
+        context: { period: '2026-06', platform: 'meta' },
+      },
+    } as any)).rejects.toMatchObject({
+      statusCode: 403,
+    })
+    expect(mockRecordCampaignAction).not.toHaveBeenCalled()
   })
 })

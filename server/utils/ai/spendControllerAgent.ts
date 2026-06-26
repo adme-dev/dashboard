@@ -12,6 +12,7 @@ export interface SpendControllerPacingItem {
   mtdSpend: number
   expectedToDate: number
   projectedMonthEnd: number
+  currentDailyBudget: number
   recommendedDailyBudget: number
   syncedAt: string | null
   recommendedAction: string
@@ -40,17 +41,25 @@ export interface SpendControllerFinding {
 }
 
 export interface SpendControllerResponse {
-  mode: 'read_only'
+  mode: 'read_only' | 'read_propose'
   answer: string
   findings: SpendControllerFinding[]
   recommendedActions: string[]
-  proposedActions: []
+  proposedActions: SpendControllerProposedAction[]
   audit: {
     modelFeatureKey: 'agent_spend_controller'
-    mode: 'read_only'
+    mode: 'read_only' | 'read_propose'
     toolCallCount: number
     blockedActionCount: number
   }
+}
+
+export interface SpendControllerProposedAction {
+  type: 'campaign_action_plan'
+  label: string
+  status: 'requires_confirmation' | 'blocked'
+  payloadRef?: string
+  rationale: string[]
 }
 
 const ISSUE_LABELS: Record<PacingReviewIssueType, string> = {
@@ -87,6 +96,9 @@ function sortFindings(a: SpendControllerPacingItem, b: SpendControllerPacingItem
 export function createSpendControllerReadOnlyResponse(input: {
   prompt: string
   review: SpendControllerPacingInput
+  mode?: 'read_only' | 'read_propose'
+  proposedActions?: SpendControllerProposedAction[]
+  blockedActionCount?: number
 }): SpendControllerResponse {
   const items = [...input.review.items].sort(sortFindings)
   const findings = items.slice(0, 8).map<SpendControllerFinding>((item) => ({
@@ -109,9 +121,11 @@ export function createSpendControllerReadOnlyResponse(input: {
         `I found ${summary.criticalCount} critical and ${summary.warningCount} warning spend pacing issue${summary.criticalCount + summary.warningCount === 1 ? '' : 's'} for ${input.review.period}.`,
         summary.projectedOverspend > 0 ? `Projected overspend is ${money(summary.projectedOverspend)}.` : '',
         summary.projectedUnderspend > 0 ? `Projected underspend is ${money(summary.projectedUnderspend)}.` : '',
-        'This read-only review did not change budgets or campaign settings.',
+        input.mode === 'read_propose'
+          ? 'Any drafted action remains planned and still requires approval before execution.'
+          : 'This read-only review did not change budgets or campaign settings.',
       ].filter(Boolean).join(' ')
-    : `No pacing issues need attention for ${input.review.period}. This read-only review did not change budgets or campaign settings.`
+    : `No pacing issues need attention for ${input.review.period}. ${input.mode === 'read_propose' ? 'No action plans were drafted.' : 'This read-only review did not change budgets or campaign settings.'}`
 
   const recommendedActions = findings.length
     ? [
@@ -122,16 +136,33 @@ export function createSpendControllerReadOnlyResponse(input: {
     : ['Keep monitoring spend pacing and connection freshness.']
 
   return {
-    mode: 'read_only',
+    mode: input.mode ?? 'read_only',
     answer,
     findings,
     recommendedActions,
-    proposedActions: [],
+    proposedActions: input.proposedActions ?? [],
     audit: {
       modelFeatureKey: 'agent_spend_controller',
-      mode: 'read_only',
+      mode: input.mode ?? 'read_only',
       toolCallCount: 1,
-      blockedActionCount: 0,
+      blockedActionCount: input.blockedActionCount ?? 0,
     },
   }
+}
+
+export function eligibleSpendControllerProposalItems(review: SpendControllerPacingInput) {
+  return review.items
+    .filter(item =>
+      item.severity !== 'info'
+      && item.issueType !== 'stale_sync'
+      && item.budget > 0
+      && Number.isFinite(item.recommendedDailyBudget)
+      && Number.isFinite(item.currentDailyBudget)
+    )
+    .sort(sortFindings)
+    .slice(0, 3)
+}
+
+export function normalizedSpendControllerDailyBudget(item: Pick<SpendControllerPacingItem, 'recommendedDailyBudget'>) {
+  return Math.max(0, Math.round(item.recommendedDailyBudget * 100) / 100)
 }

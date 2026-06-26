@@ -97,6 +97,70 @@ describe('SpendControllerPanel', () => {
     host.remove()
   })
 
+  it('drafts action plans explicitly after a read-only review', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        runId: 'run-1',
+        mode: 'read_only',
+        answer: 'I found 1 critical spend pacing issue.',
+        findings: [{
+          severity: 'critical',
+          title: 'Acme / Lead Gen is overpacing',
+          detail: 'Projected over budget.',
+          sourceRefs: [{ type: 'media_spend', id: 'spend-1', label: 'Lead Gen' }],
+        }],
+        recommendedActions: ['Review critical and warning pacing issues before changing budgets.'],
+        proposedActions: [],
+        audit: { modelFeatureKey: 'agent_spend_controller', toolCallCount: 1, blockedActionCount: 0 },
+      })
+      .mockResolvedValueOnce({
+        runId: 'run-2',
+        mode: 'read_propose',
+        answer: 'Any drafted action remains planned and still requires approval before execution.',
+        findings: [{
+          severity: 'critical',
+          title: 'Acme / Lead Gen is overpacing',
+          detail: 'Projected over budget.',
+          sourceRefs: [{ type: 'media_spend', id: 'spend-1', label: 'Lead Gen' }],
+        }],
+        recommendedActions: ['Use the existing action-plan approval flow for any budget change.'],
+        proposedActions: [{
+          type: 'campaign_action_plan',
+          label: 'Lead Gen: draft daily budget 0',
+          status: 'requires_confirmation',
+          payloadRef: 'action-1',
+          rationale: ['Drafted as a planned action only.'],
+        }],
+        audit: { modelFeatureKey: 'agent_spend_controller', toolCallCount: 1, blockedActionCount: 0 },
+      })
+    const { app, host } = mountPanel(fetchMock)
+
+    host.querySelector<HTMLButtonElement>('[data-testid="ask-spend-controller"]')?.click()
+    await flushUi()
+    host.querySelector<HTMLButtonElement>('[data-testid="draft-spend-controller-actions"]')?.click()
+    await flushUi()
+
+    expect(fetchMock.mock.calls[1]).toEqual([
+      '/api/agency/agents/spend-controller/ask',
+      {
+        method: 'POST',
+        body: {
+          prompt: 'What spend issues need attention today?',
+          draftActions: true,
+          context: {
+            period: '2026-06',
+            platform: 'meta',
+          },
+        },
+      },
+    ])
+    expect(host.textContent).toContain('Lead Gen: draft daily budget 0')
+    expect(host.textContent).toContain('Requires approval')
+
+    app.unmount()
+    host.remove()
+  })
+
   it('shows a dormant message when the endpoint is disabled', async () => {
     const fetchMock = vi.fn(async () => {
       const error = new Error('disabled') as Error & { statusCode?: number }

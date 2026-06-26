@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   createSpendControllerReadOnlyResponse,
+  normalizedSpendControllerDailyBudget,
   type SpendControllerPacingInput,
 } from '~~/server/utils/ai/spendControllerAgent'
 
@@ -30,6 +31,7 @@ function review(overrides: Partial<SpendControllerPacingInput> = {}): SpendContr
         mtdSpend: 2400,
         expectedToDate: 1800,
         projectedMonthEnd: 3750,
+        currentDailyBudget: 120,
         recommendedDailyBudget: 90,
         syncedAt: '2026-06-26T00:00:00.000Z',
         recommendedAction: 'Review delivery and reduce daily budget.',
@@ -46,6 +48,7 @@ function review(overrides: Partial<SpendControllerPacingInput> = {}): SpendContr
         mtdSpend: 100,
         expectedToDate: 800,
         projectedMonthEnd: 200,
+        currentDailyBudget: 30,
         recommendedDailyBudget: 0,
         syncedAt: '2026-06-20T00:00:00.000Z',
         recommendedAction: 'Sync spend before acting.',
@@ -102,5 +105,10 @@ describe('spend controller agent response builder', () => {
       mode: 'read_only',
       blockedActionCount: 0,
     })
+  })
+
+  it('normalizes negative overpacing budgets to zero for platform action plans', () => {
+    expect(normalizedSpendControllerDailyBudget({ recommendedDailyBudget: -70.25 })).toBe(0)
+    expect(normalizedSpendControllerDailyBudget({ recommendedDailyBudget: 82.347 })).toBe(82.35)
   })
 })
