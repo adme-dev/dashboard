@@ -564,12 +564,12 @@ Extend existing run surfaces where possible. The response should include agent t
   - Verify: Agent harness tests cover "what needs attention?" and no-data responses.
   - Files likely touched: `workers/platform-agents/src/agents/SpendControllerAgent.ts`, tests.
 
-- [ ] Task 2.3: Add Nuxt bridge endpoints.
+- [x] Task 2.3: Add Nuxt bridge endpoints.
   - Acceptance: `/api/agency/agents/spend-controller/session` and `/ask` exist, require auth, and enforce user scope.
   - Verify: API tests cover auth, validation, and response shape.
   - Files likely touched: `server/api/agency/agents/spend-controller/*.ts`, tests.
 
-- [ ] Task 2.4: Add Spend Controller panel UI.
+- [x] Task 2.4: Add Spend Controller panel UI.
   - Acceptance: `/agency/social/spend` shows a compact panel with context selector, prompt presets, answer, findings, and read-only mode badge.
   - Verify: Vue page tests cover render, prompt submit, loading, error, and findings.
   - Files likely touched: `app/pages/agency/social/spend.vue`, `app/components/social/SpendControllerPanel.vue`, tests.

@@ -498,6 +498,13 @@ const bankDiscrepancy = computed(() => {
         :live-budget-changes-enabled="liveBudgetChangesEnabled"
       />
 
+      <SpendControllerPanel
+        v-if="showPacingReview"
+        :month="selectedMonth"
+        :year="selectedYear"
+        :platform="selectedPlatform"
+      />
+
       <!-- Summary Cards -->
       <div v-if="spendData" class="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <!-- Total Spend -->
