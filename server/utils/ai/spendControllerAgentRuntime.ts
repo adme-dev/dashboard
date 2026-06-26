@@ -77,7 +77,7 @@ export async function runSpendControllerAgentRequest(input: SpendControllerAgent
     )
     const review = buildPacingReview(rows, { now: new Date(), period })
     const proposedActions = input.draftActions
-      ? await draftSpendControllerActions(review, input.userId ?? null)
+      ? await draftSpendControllerActions(review, input.userId ?? null, run.ok ? run.runId : null)
       : []
     const response = createSpendControllerReadOnlyResponse({
       prompt,
@@ -125,7 +125,7 @@ export async function runSpendControllerAgentRequest(input: SpendControllerAgent
   }
 }
 
-async function draftSpendControllerActions(review: ReturnType<typeof buildPacingReview>, userId: string | null): Promise<SpendControllerProposedAction[]> {
+async function draftSpendControllerActions(review: ReturnType<typeof buildPacingReview>, userId: string | null, agentRunId: string | null): Promise<SpendControllerProposedAction[]> {
   const proposals: SpendControllerProposedAction[] = []
   for (const item of eligibleSpendControllerProposalItems(review)) {
     const recommendedDailyBudget = normalizedSpendControllerDailyBudget(item)
@@ -167,6 +167,7 @@ async function draftSpendControllerActions(review: ReturnType<typeof buildPacing
       reason: item.recommendedAction,
       metadata: {
         source: 'spend_controller_agent',
+        agentRunId,
         issueType: item.issueType,
         pacingRatio: item.pacingRatio,
         projectedMonthEnd: item.projectedMonthEnd,

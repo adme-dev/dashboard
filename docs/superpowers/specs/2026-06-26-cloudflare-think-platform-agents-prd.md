@@ -542,15 +542,15 @@ Extend existing run surfaces where possible. The response should include agent t
   - Verify: Unit tests cover header validation, rejected invalid auth, prompt validation, and read-only bridge calls.
   - Files: `workers/platform-agents/src/index.ts`, `server/api/internal/platform-agents/spend-controller/ask.post.ts`, focused tests.
 
-- [ ] Task 1.4: Add shared agent run/audit storage.
-  - Acceptance: Runs, tool calls, findings, proposed actions, and blocked actions can be persisted and queried.
-  - Verify: Migration applies; utility tests cover insert/update/query.
-  - Files likely touched: `server/database/migrations/*`, `server/utils/ai/agentRuns.ts`, tests.
+- [x] Task 1.4: Add shared agent run/audit storage.
+  - Acceptance: Platform agent runs, tool counts, findings, proposed actions, blocked actions, and proposal decision counts can be persisted and queried through the existing `ai_agent_runs` and `campaign_action_log` audit rails.
+  - Verify: Platform-agent run tests, Model Ops API tests, and Spend Controller endpoint tests pass.
+  - Files: `server/utils/ai/platformAgentRuns.ts`, `server/utils/ai/spendControllerAgentRuntime.ts`, `server/api/admin/ai/model-ops/agent-runs.get.ts`, tests.
 
-- [ ] Task 1.5: Register Model Ops feature keys.
+- [x] Task 1.5: Register Model Ops feature keys.
   - Acceptance: Agent feature keys appear in AI Model Ops as runtime-controllable assignments.
-  - Verify: Model Ops assignment tests include agent keys.
-  - Files likely touched: `server/utils/ai/modelAssignments.ts`, `server/utils/ai/modelFeatureRegistry.ts`, tests.
+  - Verify: Model Ops registry and assignment tests include agent keys.
+  - Files: `server/utils/ai/modelRegistry.ts`, `server/utils/ai/modelAssignments.ts`, tests.
 
 ### Phase 2: Spend Controller Read-Only
 
@@ -574,10 +574,10 @@ Extend existing run surfaces where possible. The response should include agent t
   - Verify: Vue page tests cover render, prompt submit, loading, error, and findings.
   - Files likely touched: `app/pages/agency/social/spend.vue`, `app/components/social/SpendControllerPanel.vue`, tests.
 
-- [ ] Task 2.5: Add Model Ops run visibility.
-  - Acceptance: Spend Controller runs appear in agent run surfaces with model feature key, status, tool count, and errors.
-  - Verify: Model Ops tests cover agent run rendering.
-  - Files likely touched: `server/api/admin/ai/model-ops/agent-runs.get.ts`, `app/pages/admin/ai/model-ops.vue`, tests.
+- [x] Task 2.5: Add Model Ops run visibility.
+  - Acceptance: Spend Controller runs appear in agent run surfaces with model feature key, status, tool count, findings, proposal counts, blocked counts, and decision telemetry.
+  - Verify: Model Ops API and page tests cover platform-agent summary and recent-run rendering.
+  - Files: `server/api/admin/ai/model-ops/agent-runs.get.ts`, `app/pages/admin/ai/model-ops.vue`, tests.
 
 ### Phase 3: Spend Controller Propose-Only
 
@@ -596,10 +596,10 @@ Extend existing run surfaces where possible. The response should include agent t
   - Verify: UI tests confirm no direct execute button exists in the agent panel.
   - Files likely touched: `app/components/social/SpendControllerPanel.vue`, spend action components, tests.
 
-- [ ] Task 3.4: Record user decisions.
-  - Acceptance: accepted, rejected, edited, and ignored proposals are persisted against agent runs.
-  - Verify: API tests cover decision recording and Model Ops displays aggregate counts.
-  - Files likely touched: decision endpoint, `server/utils/ai/agentRuns.ts`, Model Ops UI, tests.
+- [x] Task 3.4: Record user decisions.
+  - Acceptance: accepted, rejected, edited, and ignored proposal decisions are persisted against agent runs through action metadata.
+  - Verify: API tests cover approval, cancellation, explicit ignored/edited decisions, and Model Ops displays aggregate counts.
+  - Files: `server/api/agency/social/spend/[id]/actions/[actionId]/*.ts`, `server/api/agency/agents/spend-controller/proposals/[actionId]/decision.post.ts`, Model Ops UI, tests.
 
 ### Phase 4: Publishing Planner Agent
 

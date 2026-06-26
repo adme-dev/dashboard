@@ -156,6 +156,19 @@ describe('SpendControllerPanel', () => {
     ])
     expect(host.textContent).toContain('Lead Gen: draft daily budget 0')
     expect(host.textContent).toContain('Requires approval')
+    host.querySelector<HTMLButtonElement>('[data-testid="ignore-spend-controller-proposal"]')?.click()
+    await flushUi()
+
+    expect(fetchMock.mock.calls[2]).toEqual([
+      '/api/agency/agents/spend-controller/proposals/action-1/decision',
+      {
+        method: 'POST',
+        body: {
+          decision: 'ignored',
+        },
+      },
+    ])
+    expect(host.textContent).toContain('Ignored')
 
     app.unmount()
     host.remove()

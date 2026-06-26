@@ -8,11 +8,17 @@ interface SpendControllerFinding {
 
 interface SpendControllerResponse {
   runId: string | null
-  mode: 'read_only'
+  mode: 'read_only' | 'read_propose'
   answer: string
   findings: SpendControllerFinding[]
   recommendedActions: string[]
-  proposedActions: []
+  proposedActions: Array<{
+    type: string
+    label: string
+    status: string
+    payloadRef?: string | null
+    rationale: string[]
+  }>
   audit: {
     modelFeatureKey: string
     toolCallCount: number
@@ -31,6 +37,8 @@ const props = defineProps<{
 const prompt = ref('What spend issues need attention today?')
 const pending = ref(false)
 const proposalPending = ref(false)
+const ignoredProposalRefs = ref<Set<string>>(new Set())
+const ignoredProposalPending = ref<Record<string, boolean>>({})
 const error = ref<string | null>(null)
 const result = ref<SpendControllerResponse | null>(null)
 
@@ -71,6 +79,7 @@ async function runSpendController(options: { draftActions?: boolean } = {}) {
         },
       },
     })
+    ignoredProposalRefs.value = new Set()
   } catch (err: any) {
     result.value = null
     if (err?.statusCode === 404 || err?.data?.statusCode === 404) {
@@ -92,6 +101,27 @@ function askSpendController() {
 
 function draftActionPlans() {
   return runSpendController({ draftActions: true })
+}
+
+async function markProposalIgnored(actionRef: string | null | undefined) {
+  if (!actionRef || ignoredProposalPending.value[actionRef]) return
+  ignoredProposalPending.value = { ...ignoredProposalPending.value, [actionRef]: true }
+  try {
+    await $fetch(`/api/agency/agents/spend-controller/proposals/${actionRef}/decision`, {
+      method: 'POST',
+      body: {
+        decision: 'ignored',
+      },
+    })
+    const next = new Set(ignoredProposalRefs.value)
+    next.add(actionRef)
+    ignoredProposalRefs.value = next
+  } catch (err: any) {
+    error.value = err?.data?.statusMessage || err?.message || 'Could not mark the proposal ignored.'
+  } finally {
+    const { [actionRef]: _done, ...rest } = ignoredProposalPending.value
+    ignoredProposalPending.value = rest
+  }
 }
 </script>
 
@@ -202,12 +232,27 @@ function draftActionPlans() {
               class="rounded-md border border-default bg-success/5 p-3"
             >
               <div class="flex flex-wrap items-center gap-2">
-                <UBadge color="success" variant="soft" size="xs">Drafted</UBadge>
+                <UBadge :color="action.payloadRef && ignoredProposalRefs.has(action.payloadRef) ? 'neutral' : 'success'" variant="soft" size="xs">
+                  {{ action.payloadRef && ignoredProposalRefs.has(action.payloadRef) ? 'Ignored' : 'Drafted' }}
+                </UBadge>
                 <p class="text-sm font-medium">{{ action.label }}</p>
               </div>
               <p class="mt-1 text-xs text-muted">
                 Requires approval in the existing campaign action flow before anything executes.
               </p>
+              <div v-if="action.payloadRef" class="mt-2">
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="soft"
+                  :loading="ignoredProposalPending[action.payloadRef]"
+                  :disabled="ignoredProposalRefs.has(action.payloadRef)"
+                  data-testid="ignore-spend-controller-proposal"
+                  @click="markProposalIgnored(action.payloadRef)"
+                >
+                  Mark ignored
+                </UButton>
+              </div>
               <ul v-if="action.rationale.length" class="mt-2 space-y-1 text-xs text-default">
                 <li v-for="reason in action.rationale" :key="reason" class="flex gap-2">
                   <UIcon name="i-lucide-check" class="mt-0.5 size-3 text-success shrink-0" />

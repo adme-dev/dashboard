@@ -8,6 +8,14 @@ type AgentSummaryRow = {
   running_runs: string | number | null
   orchestrator_read_tool_runs: string | number | null
   orchestrator_read_tool_failures: string | number | null
+  platform_agent_runs: string | number | null
+  platform_agent_failures: string | number | null
+  platform_agent_proposed_actions: string | number | null
+  platform_agent_blocked_actions: string | number | null
+  platform_agent_accepted_proposals: string | number | null
+  platform_agent_rejected_proposals: string | number | null
+  platform_agent_edited_proposals: string | number | null
+  platform_agent_ignored_proposals: string | number | null
   total_reports: string | number | null
   total_findings: string | number | null
   total_notifications: string | number | null
@@ -29,6 +37,10 @@ type AgentRunRow = {
   summary: unknown
   report_count: string | number | null
   unread_report_count: string | number | null
+  proposal_accepted_count: string | number | null
+  proposal_rejected_count: string | number | null
+  proposal_edited_count: string | number | null
+  proposal_ignored_count: string | number | null
   created_at: string
 }
 
@@ -68,6 +80,14 @@ function unavailable(reason = 'AI agent run table is not available yet.') {
       runningRuns: 0,
       orchestratorReadToolRuns: 0,
       orchestratorReadToolFailures: 0,
+      platformAgentRuns: 0,
+      platformAgentFailures: 0,
+      platformAgentProposedActions: 0,
+      platformAgentBlockedActions: 0,
+      platformAgentAcceptedProposals: 0,
+      platformAgentRejectedProposals: 0,
+      platformAgentEditedProposals: 0,
+      platformAgentIgnoredProposals: 0,
       totalReports: 0,
       totalFindings: 0,
       totalNotifications: 0,
@@ -92,6 +112,46 @@ export default eventHandler(async (event) => {
           COUNT(*) FILTER (WHERE r.status = 'running') AS running_runs,
           COUNT(*) FILTER (WHERE r.run_type = 'ai_orchestrator_read_tool') AS orchestrator_read_tool_runs,
           COUNT(*) FILTER (WHERE r.run_type = 'ai_orchestrator_read_tool' AND r.status <> 'completed') AS orchestrator_read_tool_failures,
+          COUNT(*) FILTER (WHERE r.summary->>'source' = 'platform_agent') AS platform_agent_runs,
+          COUNT(*) FILTER (WHERE r.summary->>'source' = 'platform_agent' AND r.status <> 'completed') AS platform_agent_failures,
+          COALESCE(SUM(NULLIF(r.summary->>'proposedActionCount', '')::int) FILTER (WHERE r.summary->>'source' = 'platform_agent'), 0) AS platform_agent_proposed_actions,
+          COALESCE(SUM(NULLIF(r.summary->>'blockedActionCount', '')::int) FILTER (WHERE r.summary->>'source' = 'platform_agent'), 0) AS platform_agent_blocked_actions,
+          (
+            SELECT COUNT(*)
+            FROM campaign_action_log cal
+            JOIN ai_agent_runs ar ON ar.id::text = cal.metadata->>'agentRunId'
+            WHERE ar.started_at >= NOW() - INTERVAL '30 days'
+              AND ar.summary->>'source' = 'platform_agent'
+              AND cal.metadata->>'source' = 'spend_controller_agent'
+              AND cal.metadata->>'proposalDecision' = 'accepted'
+          ) AS platform_agent_accepted_proposals,
+          (
+            SELECT COUNT(*)
+            FROM campaign_action_log cal
+            JOIN ai_agent_runs ar ON ar.id::text = cal.metadata->>'agentRunId'
+            WHERE ar.started_at >= NOW() - INTERVAL '30 days'
+              AND ar.summary->>'source' = 'platform_agent'
+              AND cal.metadata->>'source' = 'spend_controller_agent'
+              AND cal.metadata->>'proposalDecision' = 'rejected'
+          ) AS platform_agent_rejected_proposals,
+          (
+            SELECT COUNT(*)
+            FROM campaign_action_log cal
+            JOIN ai_agent_runs ar ON ar.id::text = cal.metadata->>'agentRunId'
+            WHERE ar.started_at >= NOW() - INTERVAL '30 days'
+              AND ar.summary->>'source' = 'platform_agent'
+              AND cal.metadata->>'source' = 'spend_controller_agent'
+              AND cal.metadata->>'proposalDecision' = 'edited'
+          ) AS platform_agent_edited_proposals,
+          (
+            SELECT COUNT(*)
+            FROM campaign_action_log cal
+            JOIN ai_agent_runs ar ON ar.id::text = cal.metadata->>'agentRunId'
+            WHERE ar.started_at >= NOW() - INTERVAL '30 days'
+              AND ar.summary->>'source' = 'platform_agent'
+              AND cal.metadata->>'source' = 'spend_controller_agent'
+              AND cal.metadata->>'proposalDecision' = 'ignored'
+          ) AS platform_agent_ignored_proposals,
           COALESCE(SUM(report_counts.report_count), 0) AS total_reports,
           COALESCE(SUM(r.findings_count), 0) AS total_findings,
           COALESCE(SUM(r.notifications_sent), 0) AS total_notifications,
@@ -120,10 +180,26 @@ export default eventHandler(async (event) => {
           r.summary,
           COALESCE(COUNT(rep.id), 0) AS report_count,
           COALESCE(COUNT(rep.id) FILTER (WHERE rep.is_read = false), 0) AS unread_report_count,
+          COALESCE(action_counts.accepted_count, 0) AS proposal_accepted_count,
+          COALESCE(action_counts.rejected_count, 0) AS proposal_rejected_count,
+          COALESCE(action_counts.edited_count, 0) AS proposal_edited_count,
+          COALESCE(action_counts.ignored_count, 0) AS proposal_ignored_count,
           r.created_at
         FROM ai_agent_runs r
         LEFT JOIN ai_agent_reports rep ON rep.run_id = r.id
-        GROUP BY r.id
+        LEFT JOIN (
+          SELECT
+            metadata->>'agentRunId' AS run_id,
+            COUNT(*) FILTER (WHERE metadata->>'proposalDecision' = 'accepted') AS accepted_count,
+            COUNT(*) FILTER (WHERE metadata->>'proposalDecision' = 'rejected') AS rejected_count,
+            COUNT(*) FILTER (WHERE metadata->>'proposalDecision' = 'edited') AS edited_count,
+            COUNT(*) FILTER (WHERE metadata->>'proposalDecision' = 'ignored') AS ignored_count
+          FROM campaign_action_log
+          WHERE metadata->>'source' = 'spend_controller_agent'
+            AND metadata->>'agentRunId' IS NOT NULL
+          GROUP BY metadata->>'agentRunId'
+        ) action_counts ON action_counts.run_id = r.id::text
+        GROUP BY r.id, action_counts.accepted_count, action_counts.rejected_count, action_counts.edited_count, action_counts.ignored_count
         ORDER BY r.created_at DESC
         LIMIT 25
       `),
@@ -143,6 +219,14 @@ export default eventHandler(async (event) => {
         runningRuns: toNumber(summary?.running_runs),
         orchestratorReadToolRuns: toNumber(summary?.orchestrator_read_tool_runs),
         orchestratorReadToolFailures: toNumber(summary?.orchestrator_read_tool_failures),
+        platformAgentRuns: toNumber(summary?.platform_agent_runs),
+        platformAgentFailures: toNumber(summary?.platform_agent_failures),
+        platformAgentProposedActions: toNumber(summary?.platform_agent_proposed_actions),
+        platformAgentBlockedActions: toNumber(summary?.platform_agent_blocked_actions),
+        platformAgentAcceptedProposals: toNumber(summary?.platform_agent_accepted_proposals),
+        platformAgentRejectedProposals: toNumber(summary?.platform_agent_rejected_proposals),
+        platformAgentEditedProposals: toNumber(summary?.platform_agent_edited_proposals),
+        platformAgentIgnoredProposals: toNumber(summary?.platform_agent_ignored_proposals),
         totalReports: toNumber(summary?.total_reports),
         totalFindings: toNumber(summary?.total_findings),
         totalNotifications: toNumber(summary?.total_notifications),
@@ -171,6 +255,12 @@ export default eventHandler(async (event) => {
           featureKey: typeof summary.featureKey === 'string' ? summary.featureKey : null,
           proposedActionCount: toNumber(summary.proposedActionCount),
           blockedActionCount: toNumber(summary.blockedActionCount),
+          proposalDecisionCounts: {
+            accepted: toNumber(row.proposal_accepted_count),
+            rejected: toNumber(row.proposal_rejected_count),
+            edited: toNumber(row.proposal_edited_count),
+            ignored: toNumber(row.proposal_ignored_count),
+          },
           summary,
           createdAt: row.created_at,
         }

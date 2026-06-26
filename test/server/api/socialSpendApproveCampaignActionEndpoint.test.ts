@@ -43,6 +43,9 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/approve', () => {
 
     expect(mockRequireWriteAccess).toHaveBeenCalled()
     expect(String(mockQueryOne.mock.calls[0][0])).toContain("action_status = 'approved'")
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain("'proposalDecision', 'accepted'")
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain("'proposalDecidedBy', $3::text")
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain("'proposalDecidedAt', NOW()::text")
     expect(String(mockQueryOne.mock.calls[0][0])).toContain("action_status = 'planned'")
     expect(String(mockQueryOne.mock.calls[0][0])).toContain('executed_at::text')
     expect(String(mockQueryOne.mock.calls[0][0])).not.toContain('executed_at =')

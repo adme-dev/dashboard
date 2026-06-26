@@ -320,6 +320,17 @@ type AgentRun = {
   reportCount: number
   unreadReportCount: number
   errorCount: number
+  source: string | null
+  agentType: string | null
+  featureKey: string | null
+  proposedActionCount: number
+  blockedActionCount: number
+  proposalDecisionCounts: {
+    accepted: number
+    rejected: number
+    edited: number
+    ignored: number
+  }
   summary: Record<string, unknown>
   createdAt: string
 }
@@ -334,6 +345,14 @@ type AgentRunsResponse = {
     runningRuns: number
     orchestratorReadToolRuns: number
     orchestratorReadToolFailures: number
+    platformAgentRuns: number
+    platformAgentFailures: number
+    platformAgentProposedActions: number
+    platformAgentBlockedActions: number
+    platformAgentAcceptedProposals: number
+    platformAgentRejectedProposals: number
+    platformAgentEditedProposals: number
+    platformAgentIgnoredProposals: number
     totalReports: number
     totalFindings: number
     totalNotifications: number
@@ -591,8 +610,8 @@ const agentRunCards = computed(() => {
   const summary = agentRunsData.value?.summary
   return [
     { label: 'Runs (30d)', value: (summary?.totalRuns ?? 0).toLocaleString(), icon: 'i-lucide-bot' },
-    { label: 'Read tools', value: (summary?.orchestratorReadToolRuns ?? 0).toLocaleString(), icon: 'i-lucide-search-check' },
-    { label: 'Reports', value: (summary?.totalReports ?? 0).toLocaleString(), icon: 'i-lucide-newspaper' },
+    { label: 'Platform agents', value: (summary?.platformAgentRuns ?? 0).toLocaleString(), icon: 'i-lucide-brain-circuit' },
+    { label: 'Proposals', value: (summary?.platformAgentProposedActions ?? 0).toLocaleString(), icon: 'i-lucide-file-plus-2' },
     { label: 'Avg duration', value: durationLabel(summary?.avgDurationMs ?? 0), icon: 'i-lucide-timer' },
   ]
 })
@@ -1599,7 +1618,7 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
           </div>
         </div>
 
-        <div class="mt-3 grid gap-3 text-sm sm:grid-cols-4">
+        <div class="mt-3 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-6">
           <div class="flex items-center justify-between gap-3 rounded-md border border-default p-3">
             <span class="text-muted">Completed</span>
             <UBadge color="success" variant="soft">{{ agentRunsData?.summary.completedRuns ?? 0 }}</UBadge>
@@ -1615,8 +1634,18 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
             </UBadge>
           </div>
           <div class="flex items-center justify-between gap-3 rounded-md border border-default p-3">
-            <span class="text-muted">Last run</span>
-            <span class="text-xs text-muted">{{ dateLabel(agentRunsData?.summary.lastRunAt ?? null) }}</span>
+            <span class="text-muted">Accepted proposals</span>
+            <UBadge color="success" variant="soft">{{ agentRunsData?.summary.platformAgentAcceptedProposals ?? 0 }}</UBadge>
+          </div>
+          <div class="flex items-center justify-between gap-3 rounded-md border border-default p-3">
+            <span class="text-muted">Rejected proposals</span>
+            <UBadge :color="(agentRunsData?.summary.platformAgentRejectedProposals ?? 0) > 0 ? 'warning' : 'neutral'" variant="soft">
+              {{ agentRunsData?.summary.platformAgentRejectedProposals ?? 0 }}
+            </UBadge>
+          </div>
+          <div class="flex items-center justify-between gap-3 rounded-md border border-default p-3">
+            <span class="text-muted">Edited proposals</span>
+            <UBadge color="info" variant="soft">{{ agentRunsData?.summary.platformAgentEditedProposals ?? 0 }}</UBadge>
           </div>
         </div>
 
@@ -1648,10 +1677,19 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
                 <td class="py-3 pr-4 text-xs text-muted">
                   <p>{{ run.checksPerformed.toLocaleString() }} checks / {{ run.findingsCount.toLocaleString() }} findings</p>
                   <p>{{ run.notificationsSent.toLocaleString() }} notifications</p>
+                  <p v-if="run.source === 'platform_agent'">
+                    {{ run.proposedActionCount.toLocaleString() }} proposals / {{ run.blockedActionCount.toLocaleString() }} blocked
+                  </p>
                 </td>
                 <td class="py-3 pr-4 text-xs text-muted">
                   <p>{{ run.reportCount.toLocaleString() }} reports</p>
                   <p>{{ run.unreadReportCount.toLocaleString() }} unread</p>
+                  <p v-if="run.source === 'platform_agent'">
+                    {{ run.proposalDecisionCounts.accepted.toLocaleString() }} accepted /
+                    {{ run.proposalDecisionCounts.rejected.toLocaleString() }} rejected /
+                    {{ run.proposalDecisionCounts.edited.toLocaleString() }} edited /
+                    {{ run.proposalDecisionCounts.ignored.toLocaleString() }} ignored
+                  </p>
                 </td>
                 <td class="py-3 pr-4 text-xs text-muted">{{ durationLabel(run.durationMs) }}</td>
                 <td class="py-3">

@@ -20,7 +20,10 @@ export default eventHandler(async (event) => {
          approved_at = NOW(),
          metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
            'approvedBy', $3::text,
-           'approvedAt', NOW()::text
+           'approvedAt', NOW()::text,
+           'proposalDecision', 'accepted',
+           'proposalDecidedBy', $3::text,
+           'proposalDecidedAt', NOW()::text
          )
      WHERE media_spend_id = $1
        AND id = $2
