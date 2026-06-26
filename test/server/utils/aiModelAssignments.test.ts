@@ -12,7 +12,8 @@ const {
   groqModelIdFromAssignment,
   modelProviderMatches,
   modelSpecForAssignment,
-  resolveAiModelAssignment
+  resolveAiModelAssignment,
+  supportedProvidersForFeature
 } = await import('~~/server/utils/ai/modelAssignments')
 
 describe('ai model assignment runtime resolver', () => {
@@ -102,5 +103,13 @@ describe('ai model assignment runtime resolver', () => {
     expect(modelSpecForAssignment('workers_ai', '@cf/meta/llama-3.1-8b-instruct')).toBe('workersai/@cf/meta/llama-3.1-8b-instruct')
     expect(groqModelIdFromAssignment('groq/openai/gpt-oss-120b')).toBe('openai/gpt-oss-120b')
     expect(modelProviderMatches('workers_ai', '@cf/meta/llama-3.1-8b-instruct')).toBe(true)
+  })
+
+  it('marks platform agent feature keys as runtime-controllable', () => {
+    expect(supportedProvidersForFeature('agent_spend_controller')).toEqual(['groq', 'anthropic', 'workers_ai'])
+    expect(supportedProvidersForFeature('agent_publishing_planner')).toEqual(['groq', 'anthropic', 'workers_ai'])
+    expect(supportedProvidersForFeature('agent_financial_watch')).toEqual(['groq', 'anthropic', 'workers_ai'])
+    expect(supportedProvidersForFeature('agent_traffic_controller')).toEqual(['groq', 'anthropic', 'workers_ai'])
+    expect(supportedProvidersForFeature('agent_office_watch')).toEqual(['groq', 'anthropic', 'workers_ai'])
   })
 })

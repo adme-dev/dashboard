@@ -67,6 +67,25 @@ describe('ai model registry', () => {
     expect(features.has('portal_ai_tool_loop')).toBe(true)
     expect(features.has('workers_ai_speech_to_text')).toBe(true)
     expect(features.has('workers_ai_text_to_speech')).toBe(true)
+    expect(features.has('agent_spend_controller')).toBe(true)
+    expect(features.has('agent_publishing_planner')).toBe(true)
+    expect(features.has('agent_financial_watch')).toBe(true)
+    expect(features.has('agent_traffic_controller')).toBe(true)
+    expect(features.has('agent_office_watch')).toBe(true)
+  })
+
+  it('registers platform agents as high-risk text surfaces for Model Ops', () => {
+    const rows = listAiModelMap()
+    const spendController = rows.find((row) => row.featureKey === 'agent_spend_controller')
+
+    expect(spendController).toMatchObject({
+      label: 'Spend Controller Agent',
+      surface: '/agency/social/spend',
+      owner: 'Growth',
+      provider: 'groq',
+      modality: 'text',
+      riskTier: 'high',
+    })
   })
 
   it('attaches warnings for rows with missing pricing metadata', () => {

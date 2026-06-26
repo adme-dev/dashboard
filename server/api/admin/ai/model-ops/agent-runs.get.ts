@@ -48,6 +48,10 @@ function errorCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0
 }
 
+function summaryObject(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {}
+}
+
 function isMissingAgentRunsError(error: unknown): boolean {
   const err = error as { code?: unknown, message?: unknown }
   return err?.code === '42P01' || String(err?.message || '').includes('ai_agent_runs')
@@ -146,23 +150,31 @@ export default eventHandler(async (event) => {
         lastRunAt: summary?.last_run_at ?? null,
         failureRate: totalRuns > 0 ? failedRuns / totalRuns : 0,
       },
-      recent: recentRows.map((row) => ({
-        id: row.id,
-        runType: row.run_type,
-        status: row.status,
-        statusBucket: statusBucket(row.status),
-        startedAt: row.started_at,
-        completedAt: row.completed_at,
-        durationMs: toNumber(row.duration_ms),
-        checksPerformed: toNumber(row.checks_performed),
-        findingsCount: toNumber(row.findings_count),
-        notificationsSent: toNumber(row.notifications_sent),
-        reportCount: toNumber(row.report_count),
-        unreadReportCount: toNumber(row.unread_report_count),
-        errorCount: errorCount(row.errors),
-        summary: row.summary && typeof row.summary === 'object' ? row.summary : {},
-        createdAt: row.created_at,
-      })),
+      recent: recentRows.map((row) => {
+        const summary = summaryObject(row.summary)
+        return {
+          id: row.id,
+          runType: row.run_type,
+          status: row.status,
+          statusBucket: statusBucket(row.status),
+          startedAt: row.started_at,
+          completedAt: row.completed_at,
+          durationMs: toNumber(row.duration_ms),
+          checksPerformed: toNumber(row.checks_performed),
+          findingsCount: toNumber(row.findings_count),
+          notificationsSent: toNumber(row.notifications_sent),
+          reportCount: toNumber(row.report_count),
+          unreadReportCount: toNumber(row.unread_report_count),
+          errorCount: errorCount(row.errors),
+          source: typeof summary.source === 'string' ? summary.source : null,
+          agentType: typeof summary.agentType === 'string' ? summary.agentType : null,
+          featureKey: typeof summary.featureKey === 'string' ? summary.featureKey : null,
+          proposedActionCount: toNumber(summary.proposedActionCount),
+          blockedActionCount: toNumber(summary.blockedActionCount),
+          summary,
+          createdAt: row.created_at,
+        }
+      }),
     }
   } catch (error) {
     if (isMissingAgentRunsError(error)) {

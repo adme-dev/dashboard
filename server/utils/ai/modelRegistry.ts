@@ -144,6 +144,66 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     sourceFile: 'server/api/agency/social/spend/pacing-review.get.ts'
   },
   {
+    featureKey: 'agent_spend_controller',
+    label: 'Spend Controller Agent',
+    surface: '/agency/social/spend',
+    owner: 'Growth',
+    provider: 'groq',
+    modelId: DEFAULT_AI_LOOP_MODEL,
+    fallback: DEFAULT_AI_LOOP_FALLBACK_MODEL,
+    modality: 'text',
+    riskTier: 'high',
+    sourceFile: 'workers/platform-agents/src/agents/SpendControllerAgent.ts'
+  },
+  {
+    featureKey: 'agent_publishing_planner',
+    label: 'Publishing Planner Agent',
+    surface: '/agency/social/publishing/planner',
+    owner: 'Creative',
+    provider: 'groq',
+    modelId: DEFAULT_AI_LOOP_MODEL,
+    fallback: DEFAULT_AI_LOOP_FALLBACK_MODEL,
+    modality: 'text',
+    riskTier: 'high',
+    sourceFile: 'workers/platform-agents/src/agents/PublishingPlannerAgent.ts'
+  },
+  {
+    featureKey: 'agent_financial_watch',
+    label: 'Financial Watch Agent',
+    surface: '/agency/ai/finance',
+    owner: 'Finance',
+    provider: 'anthropic',
+    modelId: CLAUDE_MODELS.SONNET_4_6,
+    fallback: DEFAULT_AI_LOOP_MODEL,
+    modality: 'text',
+    riskTier: 'high',
+    sourceFile: 'workers/platform-agents/src/agents/FinancialWatchAgent.ts'
+  },
+  {
+    featureKey: 'agent_traffic_controller',
+    label: 'Traffic Controller Agent',
+    surface: '/agency/social/spend',
+    owner: 'Growth',
+    provider: 'groq',
+    modelId: DEFAULT_AI_LOOP_MODEL,
+    fallback: DEFAULT_AI_LOOP_FALLBACK_MODEL,
+    modality: 'text',
+    riskTier: 'high',
+    sourceFile: 'workers/platform-agents/src/agents/TrafficControllerAgent.ts'
+  },
+  {
+    featureKey: 'agent_office_watch',
+    label: 'Office Watch Agent',
+    surface: '/office',
+    owner: 'Operations',
+    provider: 'groq',
+    modelId: GROQ_MODELS.REASONING_20B,
+    fallback: GROQ_MODELS.LLAMA_8B,
+    modality: 'text',
+    riskTier: 'medium',
+    sourceFile: 'workers/platform-agents/src/agents/OfficeWatchAgent.ts'
+  },
+  {
     featureKey: 'agency_ai_tool_loop',
     label: 'Agency AI tool loop',
     surface: '/agency/ai',

@@ -890,7 +890,15 @@ describe('GET /api/admin/ai/model-ops/agent-runs', () => {
         findings_count: '12',
         notifications_sent: '3',
         errors: [],
-        summary: { reportCount: 3, teamMembersProcessed: 5 },
+        summary: {
+          reportCount: 3,
+          teamMembersProcessed: 5,
+          source: 'platform_agent',
+          agentType: 'spend_controller',
+          featureKey: 'agent_spend_controller',
+          proposedActionCount: 2,
+          blockedActionCount: 1,
+        },
         report_count: '3',
         unread_report_count: '2',
         created_at: '2026-06-25T01:00:00.000Z',
@@ -927,6 +935,11 @@ describe('GET /api/admin/ai/model-ops/agent-runs', () => {
       reportCount: 3,
       unreadReportCount: 2,
       errorCount: 0,
+      source: 'platform_agent',
+      agentType: 'spend_controller',
+      featureKey: 'agent_spend_controller',
+      proposedActionCount: 2,
+      blockedActionCount: 1,
     })
     expect(JSON.stringify(result)).not.toContain('content')
   })
