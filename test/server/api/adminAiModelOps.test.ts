@@ -1086,7 +1086,9 @@ describe('POST /api/admin/ai/model-ops/platform-agents-check', () => {
     }
     mockRequireRole.mockReset()
     mockFetch.mockReset()
+    mockExecute.mockReset()
     mockRequireRole.mockResolvedValue({ id: 'user-1', role: 'admin' })
+    mockExecute.mockResolvedValue(undefined)
     vi.stubGlobal('fetch', mockFetch)
   })
 
@@ -1160,7 +1162,22 @@ describe('POST /api/admin/ai/model-ops/platform-agents-check', () => {
         name: 'platform-agents',
         runtime: 'cloudflare-think',
       },
+      telemetry: {
+        logged: true,
+        reason: null,
+      },
     })
+    expect(mockExecute.mock.calls[0]?.[0]).toContain('INSERT INTO ai_agent_runs')
+    expect(mockExecute.mock.calls[0]?.[1]).toEqual([
+      'completed',
+      expect.any(Number),
+      4,
+      0,
+      '[]',
+      expect.stringContaining('"agentType":"bridge_check"'),
+    ])
+    expect(mockExecute.mock.calls[0]?.[1][5]).toContain('"userId":"user-1"')
+    expect(mockExecute.mock.calls[0]?.[1][5]).toContain('"featureKey":"platform_agents_bridge"')
     expect(JSON.stringify(result)).not.toContain('secret')
   })
 
@@ -1177,6 +1194,48 @@ describe('POST /api/admin/ai/model-ops/platform-agents-check', () => {
         missingBridgeCount: 4,
       },
       error: 'Platform Agents health check failed.',
+      telemetry: {
+        logged: true,
+        reason: null,
+      },
+    })
+    expect(mockExecute.mock.calls[0]?.[1]).toEqual([
+      'failed',
+      expect.any(Number),
+      4,
+      5,
+      '[{"error":"Platform Agents health check failed."}]',
+      expect.stringContaining('"agentType":"bridge_check"'),
+    ])
+  })
+
+  it('returns the bridge result when telemetry logging is unavailable', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        worker: 'platform-agents',
+        runtime: 'cloudflare-think',
+        agents: [],
+        bridges: [
+          { path: '/tools/spend-controller/ask', mode: 'read_only' },
+          { path: '/tools/publishing-planner/ask', mode: 'read_only_or_draft_only' },
+          { path: '/tools/financial-watch/ask', mode: 'read_only' },
+          { path: '/tools/traffic-controller/ask', mode: 'read_only' },
+        ],
+      }),
+    })
+    mockExecute.mockRejectedValueOnce(new Error('relation "ai_agent_runs" does not exist'))
+
+    const result = await platformAgentsCheckHandler({} as any)
+
+    expect(result).toMatchObject({
+      ok: true,
+      telemetry: {
+        logged: false,
+        reason: 'AI agent run telemetry is unavailable.',
+      },
     })
   })
 })

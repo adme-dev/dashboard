@@ -1,4 +1,5 @@
 import { requireRole } from '~~/server/utils/auth'
+import { execute } from '~~/server/utils/db'
 
 const EXPECTED_PLATFORM_AGENT_BRIDGES = [
   '/tools/spend-controller/ask',
@@ -8,6 +9,36 @@ const EXPECTED_PLATFORM_AGENT_BRIDGES = [
 ] as const
 
 const DEFAULT_PLATFORM_AGENTS_WORKER_URL = 'https://platform-agents.adme-dev.workers.dev'
+
+type PlatformAgentsBridgeCheckResult = {
+  ok: boolean
+  mode: 'platform_agents_read_only_bridge_check'
+  summary: {
+    readOnly: boolean
+    workerReachable: boolean
+    workerHealthy: boolean
+    expectedBridges: number
+    reportedBridges: number
+    missingBridgeCount: number
+    reportedAgents: number
+  }
+  worker: {
+    status: number
+    host: string | null
+    name: string | null
+    runtime: string | null
+  }
+  bridges: Array<{
+    path: string
+    reported: boolean
+    mode: string | null
+  }>
+  error?: string
+  telemetry?: {
+    logged: boolean
+    reason: string | null
+  }
+}
 
 function present(value: unknown): boolean {
   return typeof value === 'string' && value.trim().length > 0 && !value.toLowerCase().includes('your_')
@@ -22,8 +53,62 @@ function host(value: string | undefined) {
   }
 }
 
+function durationSince(startedAtMs: number) {
+  const duration = Date.now() - startedAtMs
+  return Number.isFinite(duration) && duration >= 0 ? Math.round(duration) : 0
+}
+
+async function recordBridgeCheckRun(result: PlatformAgentsBridgeCheckResult, startedAtMs: number, userId: string | null) {
+  const errors = result.ok ? [] : [{ error: result.error || 'Platform Agents bridge check failed.' }]
+  const summary = {
+    source: 'platform_agent',
+    agentType: 'bridge_check',
+    featureKey: 'platform_agents_bridge',
+    mode: 'read_only',
+    userId,
+    route: '/admin/ai/model-ops',
+    worker: result.worker,
+    bridgeCheck: result.summary,
+    bridges: result.bridges,
+    proposedActionCount: 0,
+    blockedActionCount: 0,
+  }
+
+  await execute(`
+    INSERT INTO ai_agent_runs (
+      run_type,
+      status,
+      completed_at,
+      duration_ms,
+      checks_performed,
+      findings_count,
+      notifications_sent,
+      errors,
+      summary
+    )
+    VALUES (
+      'platform_agent_bridge_check',
+      $1,
+      NOW(),
+      $2,
+      $3,
+      $4,
+      0,
+      $5::jsonb,
+      $6::jsonb
+    )
+  `, [
+    result.ok ? 'completed' : 'failed',
+    durationSince(startedAtMs),
+    result.summary.expectedBridges,
+    result.summary.missingBridgeCount + (result.summary.workerHealthy ? 0 : 1),
+    JSON.stringify(errors),
+    JSON.stringify(summary),
+  ])
+}
+
 export default eventHandler(async (event) => {
-  await requireRole(event, ['admin', 'owner'])
+  const actor = await requireRole(event, ['admin', 'owner'])
 
   const expectedKey = process.env.INTERNAL_API_KEY?.trim()
   if (!expectedKey) {
@@ -39,6 +124,8 @@ export default eventHandler(async (event) => {
   const healthUrl = `${workerUrl.replace(/\/+$/, '')}/health`
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8_000)
+  const startedAtMs = Date.now()
+  let result: PlatformAgentsBridgeCheckResult
 
   try {
     const response = await fetch(healthUrl, {
@@ -61,7 +148,7 @@ export default eventHandler(async (event) => {
     }))
     const missingBridgeCount = bridgeResults.filter(bridge => !bridge.reported).length
 
-    return {
+    result = {
       ok: response.ok && body.ok === true && missingBridgeCount === 0,
       mode: 'platform_agents_read_only_bridge_check',
       summary: {
@@ -82,7 +169,7 @@ export default eventHandler(async (event) => {
       bridges: bridgeResults,
     }
   } catch (error: any) {
-    return {
+    result = {
       ok: false,
       mode: 'platform_agents_read_only_bridge_check',
       summary: {
@@ -106,4 +193,17 @@ export default eventHandler(async (event) => {
   } finally {
     clearTimeout(timeout)
   }
+
+  try {
+    await recordBridgeCheckRun(result, startedAtMs, typeof actor?.id === 'string' ? actor.id : null)
+    result.telemetry = { logged: true, reason: null }
+  } catch (error: any) {
+    console.warn('[Model Ops] Platform Agents bridge check telemetry unavailable:', error)
+    result.telemetry = {
+      logged: false,
+      reason: 'AI agent run telemetry is unavailable.',
+    }
+  }
+
+  return result
 })

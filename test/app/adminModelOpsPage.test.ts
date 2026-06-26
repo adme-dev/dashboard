@@ -478,7 +478,7 @@ describe('Admin AI Model Ops page', () => {
       },
       bridges: [],
     }
-    const { app, fetchMock, host } = await mountPage({ fetchResult })
+    const { app, fetchMock, host, refreshMocks } = await mountPage({ fetchResult })
 
     try {
       const button = host.querySelector('[data-testid="run-platform-agents-check"]') as HTMLButtonElement | null
@@ -490,6 +490,7 @@ describe('Admin AI Model Ops page', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/admin/ai/model-ops/platform-agents-check', { method: 'POST' })
       expect(host.textContent).toContain('Platform Agents bridge check complete')
       expect(host.textContent).toContain('4/4 bridges reported')
+      expect(refreshMocks['/api/admin/ai/model-ops/agent-runs']).toHaveBeenCalledTimes(1)
     } finally {
       app.unmount()
       host.remove()

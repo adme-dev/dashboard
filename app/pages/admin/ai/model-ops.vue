@@ -943,6 +943,7 @@ async function runPlatformAgentsCheck() {
     platformAgentsCheckResult.value = await $fetch<PlatformAgentsCheckResponse>('/api/admin/ai/model-ops/platform-agents-check', {
       method: 'POST',
     })
+    await refreshAgentRuns()
   } catch (err: any) {
     platformAgentsCheckError.value = err?.data?.statusMessage || err?.message || 'Platform Agents bridge check failed.'
   } finally {
