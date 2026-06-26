@@ -37,6 +37,12 @@ const publicRoutes = [
   // Internal crons — each enforces its own secret-header check inline
   '/api/internal/warmup',
   '/api/internal/attribution-cron',
+  '/api/internal/ai-agent/',
+  '/api/internal/ai-orchestrator/',
+  '/api/internal/chat-archive',
+  '/api/internal/email-to-board',
+  '/api/internal/platform-agents/',
+  '/api/internal/sync-spend',
   // agency-jobs queue bridge — workers/jobs-consumer POSTs each queue message
   // here; verifies x-cron-secret inline (no session cookie from the Worker).
   '/api/internal/process-job',

@@ -1,0 +1,77 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const validateSession = vi.fn()
+const kvGet = vi.fn()
+
+vi.mock('../../../server/utils/auth', () => ({
+  validateSession,
+  TransientAuthError: class TransientAuthError extends Error {},
+}))
+
+vi.mock('../../../server/utils/kv', () => ({
+  kvGet,
+  kvPut: vi.fn(),
+}))
+
+vi.mock('../../../server/utils/roleResolver', () => ({
+  resolveUserPermissions: vi.fn(),
+}))
+
+vi.mock('../../../server/utils/permissions', () => ({
+  isReadOnlyRole: vi.fn(() => false),
+}))
+
+type TestEvent = {
+  url: string
+  headers: Record<string, string | undefined>
+}
+
+const testGlobal = globalThis as typeof globalThis & {
+  defineEventHandler: <T>(fn: T) => T
+  getRequestURL: (event: TestEvent) => URL
+  getHeader: (event: TestEvent, key: string) => string | undefined
+  getCookie: (event: TestEvent, key: string) => string | undefined
+  deleteCookie: () => void
+}
+
+testGlobal.defineEventHandler = fn => fn
+testGlobal.getRequestURL = event => new URL(event.url)
+testGlobal.getHeader = (event, key) => event.headers[key.toLowerCase()]
+testGlobal.getCookie = () => undefined
+testGlobal.deleteCookie = vi.fn()
+
+const { default: handler } = await import('../../../server/middleware/auth')
+
+function fakeEvent(pathname: string): TestEvent {
+  return {
+    url: `https://app.xeroflow.io${pathname}`,
+    headers: {},
+  }
+}
+
+describe('auth middleware internal bearer endpoints', () => {
+  beforeEach(() => {
+    validateSession.mockReset()
+    kvGet.mockReset()
+  })
+
+  it.each([
+    '/api/internal/platform-agents/spend-controller/ask',
+    '/api/internal/platform-agents/publishing-planner/ask',
+    '/api/internal/ai-orchestrator/read-tool',
+    '/api/internal/ai-agent/daily-digest',
+    '/api/internal/email-to-board',
+    '/api/internal/sync-spend',
+    '/api/internal/chat-archive',
+  ])('lets %s reach its inline secret guard', async (pathname) => {
+    await expect(handler(fakeEvent(pathname))).resolves.toBeUndefined()
+    expect(validateSession).not.toHaveBeenCalled()
+  })
+
+  it('still requires a session for normal API routes', async () => {
+    await expect(handler(fakeEvent('/api/agency/social/spend'))).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'Authentication required',
+    })
+  })
+})
