@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
+import { resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 
 /**
  * Voice AI utilities — STT (OpenAI Whisper) and TTS (MyShell MeloTTS)
@@ -50,7 +51,13 @@ export async function speechToText(
       : audioBuffer
     // Whisper Large V3 Turbo accepts base64-encoded audio
     const base64Audio = Buffer.from(bytes).toString('base64')
-    const result = await ai.run('@cf/openai/whisper-large-v3-turbo', {
+    const assignment = await resolveAiModelAssignment({
+      featureKey: options.featureKey ?? 'workers_ai_speech_to_text',
+      defaultProvider: 'workers_ai',
+      defaultModelId: '@cf/openai/whisper-large-v3-turbo',
+      supportedProviders: ['workers_ai'],
+    })
+    const result = await ai.run(assignment.modelId, {
       audio: base64Audio,
     })
     const durationMs = Date.now() - start
@@ -60,7 +67,7 @@ export async function speechToText(
     await recordAiInvocation({
       featureKey: options.featureKey ?? 'workers_ai_speech_to_text',
       provider: 'workers_ai',
-      modelId: '@cf/openai/whisper-large-v3-turbo',
+      modelId: assignment.modelId,
       gatewayUsed: false,
       fallbackUsed: false,
       userId: options.userId,
@@ -70,6 +77,8 @@ export async function speechToText(
       latencyMs: durationMs,
       metadata: {
         inputBytes: bytes.byteLength,
+        modelAssignmentSource: assignment.source,
+        modelAssignmentIgnoredReason: assignment.ignoredReason,
         ...(options.metadata ?? {}),
       },
     })
@@ -120,7 +129,13 @@ export async function textToSpeech(
       : cleanText
 
     // MeloTTS uses `prompt` (not `text`) and `lang` parameters
-    const result = await ai.run('@cf/myshell-ai/melotts', {
+    const assignment = await resolveAiModelAssignment({
+      featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+      defaultProvider: 'workers_ai',
+      defaultModelId: '@cf/myshell-ai/melotts',
+      supportedProviders: ['workers_ai'],
+    })
+    const result = await ai.run(assignment.modelId, {
       prompt: truncated,
       lang: options.lang || 'en',
     })
@@ -138,7 +153,7 @@ export async function textToSpeech(
       await recordAiInvocation({
         featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
         provider: 'workers_ai',
-        modelId: '@cf/myshell-ai/melotts',
+        modelId: assignment.modelId,
         gatewayUsed: false,
         fallbackUsed: false,
         userId: options.userId,
@@ -149,6 +164,8 @@ export async function textToSpeech(
           outputBytes: bytes.byteLength,
           outputFormat: format,
           lang: options.lang || 'en',
+          modelAssignmentSource: assignment.source,
+          modelAssignmentIgnoredReason: assignment.ignoredReason,
           ...(options.metadata ?? {}),
         },
       })
@@ -177,9 +194,16 @@ export async function textToSpeech(
         await recordAiInvocation({
           featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
           provider: 'workers_ai',
-          modelId: '@cf/myshell-ai/melotts',
+          modelId: assignment.modelId,
           status: 'success',
-          metadata: { outputBytes: totalLength, outputFormat: format, lang: options.lang || 'en', ...(options.metadata ?? {}) },
+          metadata: {
+            outputBytes: totalLength,
+            outputFormat: format,
+            lang: options.lang || 'en',
+            modelAssignmentSource: assignment.source,
+            modelAssignmentIgnoredReason: assignment.ignoredReason,
+            ...(options.metadata ?? {}),
+          },
         })
         return { audioBuffer: merged.buffer.slice(0, totalLength), format }
       } finally {
@@ -194,9 +218,16 @@ export async function textToSpeech(
       await recordAiInvocation({
         featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
         provider: 'workers_ai',
-        modelId: '@cf/myshell-ai/melotts',
+        modelId: assignment.modelId,
         status: 'success',
-        metadata: { outputBytes: bytes.byteLength, outputFormat: format, lang: options.lang || 'en', ...(options.metadata ?? {}) },
+        metadata: {
+          outputBytes: bytes.byteLength,
+          outputFormat: format,
+          lang: options.lang || 'en',
+          modelAssignmentSource: assignment.source,
+          modelAssignmentIgnoredReason: assignment.ignoredReason,
+          ...(options.metadata ?? {}),
+        },
       })
       return { audioBuffer: result as ArrayBuffer, format }
     }

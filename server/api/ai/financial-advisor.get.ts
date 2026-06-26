@@ -15,6 +15,7 @@ import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateClaudeStructured, CLAUDE_MODELS } from '~~/server/utils/claudeClient'
+import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 import { z } from 'zod'
 import { query } from '~~/server/utils/db'
 import { embedRecommendation } from '~~/server/utils/advisorEmbedder'
@@ -322,11 +323,19 @@ export default eventHandler(async (event) => {
       }
     }
 
-    if (backend === 'claude') {
+    const assignment = await resolveAiModelAssignment({
+      featureKey: 'financial_advisor',
+      defaultProvider: backend === 'claude' ? 'anthropic' : 'groq',
+      defaultModelId: backend === 'claude' ? CLAUDE_MODELS.SONNET_4_6 : GROQ_MODELS.REASONING_120B,
+      defaultFallbackModelId: GROQ_MODELS.LLAMA_70B,
+      supportedProviders: ['groq', 'anthropic'],
+    })
+
+    if (assignment.provider === 'anthropic') {
       try {
         const result = await generateClaudeStructured(promptBody, {
           schema: AdvisorLLMSchema,
-          model: CLAUDE_MODELS.SONNET_4_6,
+          model: assignment.modelId,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
           featureKey: 'financial_advisor',
@@ -336,6 +345,8 @@ export default eventHandler(async (event) => {
             tenantId,
             requestedClientId,
             backend: 'claude',
+            modelAssignmentSource: assignment.source,
+            modelAssignmentIgnoredReason: assignment.ignoredReason,
           },
         })
         parsed = result.parsed
@@ -345,8 +356,9 @@ export default eventHandler(async (event) => {
         )
       } catch (err: any) {
         console.warn('[financial-advisor] Claude failed, falling back to Groq:', err?.message)
+        const fallbackModel = groqModelIdFromAssignment(assignment.fallbackModelId || GROQ_MODELS.REASONING_120B) as typeof GROQ_MODELS[keyof typeof GROQ_MODELS]
         parsed = parseGroq(await generateGroqInsight(promptBody, {
-          model: GROQ_MODELS.REASONING_120B,
+          model: fallbackModel,
           temperature: 0.3,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
@@ -357,13 +369,17 @@ export default eventHandler(async (event) => {
             tenantId,
             requestedClientId,
             backend: 'claude_fallback_groq',
+            modelAssignmentSource: assignment.source,
+            modelAssignmentIgnoredReason: assignment.ignoredReason,
           },
         }))
+        modelUsed = fallbackModel
       }
     } else {
       try {
+        const modelId = groqModelIdFromAssignment(assignment.modelId) as typeof GROQ_MODELS[keyof typeof GROQ_MODELS]
         parsed = parseGroq(await generateGroqInsight(promptBody, {
-          model: GROQ_MODELS.REASONING_120B,
+          model: modelId,
           temperature: 0.3,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
@@ -374,12 +390,16 @@ export default eventHandler(async (event) => {
             tenantId,
             requestedClientId,
             backend: 'groq',
+            modelAssignmentSource: assignment.source,
+            modelAssignmentIgnoredReason: assignment.ignoredReason,
           },
         }))
+        modelUsed = modelId
       } catch (err: any) {
         console.warn('[financial-advisor] REASONING_120B failed, falling back to LLAMA_70B:', err?.message)
+        const fallbackModel = groqModelIdFromAssignment(assignment.fallbackModelId || GROQ_MODELS.LLAMA_70B) as typeof GROQ_MODELS[keyof typeof GROQ_MODELS]
         parsed = parseGroq(await generateGroqInsight(promptBody, {
-          model: GROQ_MODELS.LLAMA_70B,
+          model: fallbackModel,
           temperature: 0.3,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
@@ -390,9 +410,11 @@ export default eventHandler(async (event) => {
             tenantId,
             requestedClientId,
             backend: 'groq_model_fallback',
+            modelAssignmentSource: assignment.source,
+            modelAssignmentIgnoredReason: assignment.ignoredReason,
           },
         }))
-        modelUsed = 'llama-3.3-70b-versatile'
+        modelUsed = fallbackModel
       }
     }
 

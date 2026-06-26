@@ -5,7 +5,8 @@
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
 import type { OfficeMeetingArtifactRow, OfficeMemberRow } from '~~/app/types/office'
 
@@ -82,7 +83,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'No meeting artifacts are available to search yet' })
   }
 
-  const answer = await generateGroqInsight(
+  const answer = await generateModelRoutedGroqInsight(
     [
       `Question: ${body.question}`,
       '',
@@ -94,7 +95,7 @@ export default defineEventHandler(async (event) => {
       'If the artifacts are insufficient, say what is missing.'
     ].join('\n'),
     {
-      model: GROQ_MODELS.LLAMA_70B,
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       temperature: 0.05,
       maxTokens: 1100,
       featureKey: 'office_meeting_cross_search',

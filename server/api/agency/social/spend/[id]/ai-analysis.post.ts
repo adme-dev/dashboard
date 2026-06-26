@@ -1,8 +1,9 @@
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS, type PacingReviewRow } from '~~/server/utils/socialSpendPacingReview'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateGroqInsight, GROQ_MODELS, type GroqModel } from '~~/server/utils/groqClient'
 import { buildAnalysisPrompt, parseAnalysisResult, buildAnalysisResponse, type AiAnalysisResult } from '~~/server/utils/spendAiAnalysis'
+import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 
 function requestIdFromEvent(event: any): string | null {
   const headers = event?.node?.req?.headers
@@ -71,7 +72,13 @@ export default eventHandler(async (event) => {
     },
   })
 
-  const modelId = GROQ_MODELS.REASONING_120B
+  const assignment = await resolveAiModelAssignment({
+    featureKey: 'social_spend_ai_analysis',
+    defaultProvider: 'groq',
+    defaultModelId: GROQ_MODELS.REASONING_120B,
+    supportedProviders: ['groq'],
+  })
+  const modelId = groqModelIdFromAssignment(assignment.modelId) as GroqModel
   let aiResult: AiAnalysisResult = { ok: false, proposedDailyBudget: null, rationale: '', confidence: 'low', riskFlags: [] }
   try {
     const raw = await generateGroqInsight(prompt, {
@@ -85,6 +92,8 @@ export default eventHandler(async (event) => {
       requestId: requestIdFromEvent(event),
       metadata: {
         route: '/api/agency/social/spend/[id]/ai-analysis',
+        modelAssignmentSource: assignment.source,
+        modelAssignmentIgnoredReason: assignment.ignoredReason,
         mediaSpendId: id,
         platform: item.platform,
         issueType: item.issueType,

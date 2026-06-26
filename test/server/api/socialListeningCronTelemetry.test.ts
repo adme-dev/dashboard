@@ -37,8 +37,9 @@ vi.mock('~~/server/utils/socialListening/sources/registry', () => ({
   LISTENING_SOURCES: [],
 }))
 
-vi.mock('~~/server/utils/groqClient', () => ({
-  generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
+vi.mock('~~/server/utils/groqClient', () => ({ GROQ_MODELS: { LLAMA_8B: 'llama-3.1-8b-instant' } }))
+vi.mock('~~/server/utils/ai/resolvedGroq', () => ({
+  generateModelRoutedGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
 vi.mock('~~/server/utils/socialListening/alerts', () => ({

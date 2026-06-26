@@ -302,10 +302,13 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
     if (ackPref?.auto_ack_assignments === true) {
       let draft = `👋 Got it — thanks ${assigner.name}, I'll take a look.`
       try {
-        const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
+        const [{ GROQ_MODELS }, { generateModelRoutedGroqInsight }] = await Promise.all([
+          import('~~/server/utils/groqClient'),
+          import('~~/server/utils/ai/resolvedGroq'),
+        ])
         const prompt = `Write a SHORT (max 18 words), professional acknowledgement message that "${assignee.name}" might send when assigned to "${params.taskTitle}" by ${assigner.name}. Be warm but business-like. No emoji except a single 👋 at the start. No preamble, just the message text.`
-        const aiDraft = await generateGroqInsight(prompt, {
-          model: GROQ_MODELS.LLAMA_8B,
+        const aiDraft = await generateModelRoutedGroqInsight(prompt, {
+          defaultModelId: GROQ_MODELS.LLAMA_8B,
           maxTokens: 60,
           temperature: 0.4,
           featureKey: 'task_assignment_auto_ack',

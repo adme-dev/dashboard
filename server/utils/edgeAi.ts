@@ -27,7 +27,39 @@ type EdgeGenerateOptions = {
   systemPrompt?: string
   maxTokens?: number
   temperature?: number
+  modelId?: string
 } & EdgeTelemetryOptions
+
+type WorkersAssignment = {
+  modelId: string
+  fallbackModelId: string | null
+  source: string | null
+  ignoredReason: string | null
+}
+
+async function resolveWorkersAssignment(input: {
+  featureKey: string
+  defaultModelId: string
+  defaultFallbackModelId?: string | null
+}): Promise<WorkersAssignment> {
+  try {
+    const { resolveAiModelAssignment } = await import('~~/server/utils/ai/modelAssignments')
+    return await resolveAiModelAssignment({
+      featureKey: input.featureKey,
+      defaultProvider: 'workers_ai',
+      defaultModelId: input.defaultModelId,
+      defaultFallbackModelId: input.defaultFallbackModelId ?? null,
+      supportedProviders: ['workers_ai'],
+    })
+  } catch {
+    return {
+      modelId: input.defaultModelId,
+      fallbackModelId: input.defaultFallbackModelId ?? null,
+      source: null,
+      ignoredReason: null,
+    }
+  }
+}
 
 async function recordEdgeInvocation(input: {
   featureKey: string
@@ -71,7 +103,14 @@ export async function edgeGenerate(
   if (!ai) return null
 
   const startedAt = Date.now()
-  const modelId = '@cf/meta/llama-3.1-8b-instruct'
+  const featureKey = options.featureKey ?? 'workers_ai_edge_generate'
+  const assignment = options.modelId
+    ? null
+    : await resolveWorkersAssignment({
+      featureKey,
+      defaultModelId: '@cf/meta/llama-3.1-8b-instruct',
+    })
+  const modelId = options.modelId ?? assignment?.modelId ?? '@cf/meta/llama-3.1-8b-instruct'
   try {
     const messages: Array<{ role: string; content: string }> = []
     if (options.systemPrompt) {
@@ -87,17 +126,22 @@ export async function edgeGenerate(
 
     const response = result?.response ?? null
     await recordEdgeInvocation({
-      featureKey: options.featureKey ?? 'workers_ai_edge_generate',
+      featureKey,
       modelId,
       options,
       latencyMs: Date.now() - startedAt,
-      metadata: { hasResponse: Boolean(response), maxTokens: options.maxTokens ?? 256 },
+      metadata: {
+        hasResponse: Boolean(response),
+        maxTokens: options.maxTokens ?? 256,
+        modelAssignmentSource: assignment?.source ?? null,
+        modelAssignmentIgnoredReason: assignment?.ignoredReason ?? null,
+      },
     })
     return response
   } catch (err) {
     console.error('[edgeAi] Generation failed:', err)
     await recordEdgeInvocation({
-      featureKey: options.featureKey ?? 'workers_ai_edge_generate',
+      featureKey,
       modelId,
       options,
       status: 'error',
@@ -122,7 +166,12 @@ export async function edgeClassify(
   if (!ai) return null
 
   const startedAt = Date.now()
-  const modelId = '@cf/meta/llama-3.1-8b-instruct'
+  const featureKey = options.featureKey ?? 'workers_ai_edge_classify'
+  const assignment = await resolveWorkersAssignment({
+    featureKey,
+    defaultModelId: '@cf/meta/llama-3.1-8b-instruct',
+  })
+  const modelId = assignment.modelId
   try {
     const categoryList = categories.map((c, i) => `${i + 1}. ${c}`).join('\n')
     const prompt = `Classify the following text into exactly ONE of these categories. Respond with ONLY valid JSON in format {"category":"<name>","confidence":<0.0-1.0>}.\n\nCategories:\n${categoryList}\n\nText: "${text}"`
@@ -138,11 +187,16 @@ export async function edgeClassify(
 
     const response = result?.response
     await recordEdgeInvocation({
-      featureKey: options.featureKey ?? 'workers_ai_edge_classify',
+      featureKey,
       modelId,
       options,
       latencyMs: Date.now() - startedAt,
-      metadata: { categories, hasResponse: Boolean(response) },
+      metadata: {
+        categories,
+        hasResponse: Boolean(response),
+        modelAssignmentSource: assignment.source,
+        modelAssignmentIgnoredReason: assignment.ignoredReason,
+      },
     })
     if (!response) return null
 
@@ -162,7 +216,7 @@ export async function edgeClassify(
   } catch (err) {
     console.error('[edgeAi] Classification failed:', err)
     await recordEdgeInvocation({
-      featureKey: options.featureKey ?? 'workers_ai_edge_classify',
+      featureKey,
       modelId,
       options,
       status: 'error',
@@ -205,10 +259,16 @@ export async function edgeGenerateWithLoRA(
   }
 
   // Try LoRA adapter first if provided
+  const featureKey = options.featureKey ?? 'workers_ai_edge_generate_lora'
+  const assignment = await resolveWorkersAssignment({
+    featureKey,
+    defaultModelId: '@cf/meta/llama-3.1-8b-instruct-fast',
+    defaultFallbackModelId: '@cf/meta/llama-3.1-8b-instruct',
+  })
   let loraError: string | null = null
   if (options.loraAdapter) {
     const startedAt = Date.now()
-    const loraModelId = '@cf/meta/llama-3.1-8b-instruct-fast'
+    const loraModelId = assignment.modelId
     try {
       const result = await ai.run(loraModelId, {
         ...baseParams,
@@ -216,11 +276,17 @@ export async function edgeGenerateWithLoRA(
       })
       if (result?.response) {
         await recordEdgeInvocation({
-          featureKey: options.featureKey ?? 'workers_ai_edge_generate_lora',
+          featureKey,
           modelId: loraModelId,
           options,
           latencyMs: Date.now() - startedAt,
-          metadata: { usedLora: true, adapterId: options.loraAdapter.id, adapterName: options.loraAdapter.name },
+          metadata: {
+            usedLora: true,
+            adapterId: options.loraAdapter.id,
+            adapterName: options.loraAdapter.name,
+            modelAssignmentSource: assignment.source,
+            modelAssignmentIgnoredReason: assignment.ignoredReason,
+          },
         })
         return { response: result.response, usedLora: true, adapterId: options.loraAdapter.id }
       }
@@ -232,12 +298,12 @@ export async function edgeGenerateWithLoRA(
 
   // Fall back to base model
   const startedAt = Date.now()
-  const modelId = '@cf/meta/llama-3.1-8b-instruct'
+  const modelId = assignment.fallbackModelId ?? '@cf/meta/llama-3.1-8b-instruct'
   try {
     const result = await ai.run(modelId, baseParams)
     const response = result?.response ?? null
     await recordEdgeInvocation({
-      featureKey: options.featureKey ?? 'workers_ai_edge_generate_lora',
+      featureKey,
       modelId,
       options,
       fallbackUsed: Boolean(options.loraAdapter),
@@ -248,13 +314,15 @@ export async function edgeGenerateWithLoRA(
         loraAdapterId: options.loraAdapter?.id ?? null,
         loraError,
         hasResponse: Boolean(response),
+        modelAssignmentSource: assignment.source,
+        modelAssignmentIgnoredReason: assignment.ignoredReason,
       },
     })
     return { response, usedLora: false, adapterId: null }
   } catch (err) {
     console.error('[edgeAi] Base generation failed:', err)
     await recordEdgeInvocation({
-      featureKey: options.featureKey ?? 'workers_ai_edge_generate_lora',
+      featureKey,
       modelId,
       options,
       fallbackUsed: Boolean(options.loraAdapter),

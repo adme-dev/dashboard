@@ -2,7 +2,8 @@
 // Auto-drafted follow-up for a stalled deal (P4.3). Groq writes the TEXT; the
 // prompt is assembled deterministically (buildCrmDraftPrompt is pure/TDD). The
 // draft is a SUGGESTION only — the rep edits/accepts/dismisses; nothing is sent.
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 export interface DraftContext {
   contactName: string | null
@@ -60,8 +61,8 @@ function parseDraft(raw: string, c: DraftContext): FollowUpDraft {
 }
 
 export async function draftFollowUp(c: DraftContext): Promise<FollowUpDraft> {
-  const raw = await generateGroqInsight(buildCrmDraftPrompt(c), {
-    model: GROQ_MODELS.LLAMA_70B,
+  const raw = await generateModelRoutedGroqInsight(buildCrmDraftPrompt(c), {
+    defaultModelId: GROQ_MODELS.LLAMA_70B,
     temperature: 0.4,
     maxTokens: 600,
     systemPrompt: 'You are a sales rep writing concise, genuine follow-up emails. Respond in valid JSON only.',

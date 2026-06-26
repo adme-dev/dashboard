@@ -1,5 +1,6 @@
 import { createError } from 'h3'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateGroqInsight, GROQ_MODELS, type GroqModel } from '~~/server/utils/groqClient'
+import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 
 interface CashFlowInsightsRequest {
   currentCash: number
@@ -90,8 +91,15 @@ Format your response as a JSON object with the following structure:
 Keep recommendations specific and actionable. Focus on the most impactful suggestions based on the data provided.
 `
 
+    const assignment = await resolveAiModelAssignment({
+      featureKey: 'cashflow_insights',
+      defaultProvider: 'groq',
+      defaultModelId: GROQ_MODELS.LLAMA_8B,
+      supportedProviders: ['groq'],
+    })
+    const modelId = groqModelIdFromAssignment(assignment.modelId) as GroqModel
     const responseContent = await generateGroqInsight(prompt, {
-      model: GROQ_MODELS.LLAMA_8B,
+      model: modelId,
       temperature: 0.3,
       maxTokens: 2000,
       featureKey: 'cashflow_insights',
@@ -111,6 +119,8 @@ Keep recommendations specific and actionable. Focus on the most impactful sugges
         burnRate: body.burnRate,
         outstandingReceivables: body.outstandingReceivables,
         overdueReceivables: body.overdueReceivables,
+        modelAssignmentSource: assignment.source,
+        modelAssignmentIgnoredReason: assignment.ignoredReason,
       },
       systemPrompt: 'You are an expert financial advisor specializing in cash flow management. Provide clear, actionable insights based on financial data. Always respond with valid JSON.'
     })
@@ -132,7 +142,7 @@ Keep recommendations specific and actionable. Focus on the most impactful sugges
     // Add metadata
     insights.metadata = {
       generatedAt: new Date().toISOString(),
-      model: GROQ_MODELS.LLAMA_8B,
+      model: modelId,
       dataPoints: {
         currentCash: body.currentCash,
         projectedEndBalance: body.projectedEndBalance,

@@ -7,7 +7,8 @@
 
 import { requireAuth } from '~~/server/utils/auth'
 import { edgeGenerate } from '~~/server/utils/edgeAi'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateGroqInsight, GROQ_MODELS, type GroqModel } from '~~/server/utils/groqClient'
+import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 
 interface CodeBlock {
   language: 'html' | 'css' | 'javascript' | 'unknown'
@@ -97,42 +98,24 @@ export default defineEventHandler(async (event) => {
 
   let reply = ''
   let model = 'fallback'
+  const assignment = await resolveAiModelAssignment({
+    featureKey: 'banner_code_assist',
+    defaultProvider: 'workers_ai',
+    defaultModelId: '@cf/meta/llama-3.1-8b-instruct',
+    defaultFallbackModelId: GROQ_MODELS.LLAMA_70B,
+    supportedProviders: ['workers_ai', 'groq'],
+  })
 
-  // Try Workers AI first
-  try {
-    const historyPrompt = recentHistory.length > 0
-      ? recentHistory.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${truncate(m.content, 1000)}`).join('\n\n') + '\n\nUser: '
-      : ''
-
-    const fullPrompt = historyPrompt + userPrompt
-
-    const aiResult = await edgeGenerate(event, fullPrompt, {
-      systemPrompt: SYSTEM_PROMPT,
-      maxTokens: 2000,
-      temperature: 0.4,
-      featureKey: 'banner_code_assist',
-      userId: user?.id ?? null,
-      metadata: {
-        route: '/api/agency/banner-studio/ai/code-assist',
-        providerPath: 'workers_ai',
-        action: action ?? 'general',
-        historyCount: recentHistory.length,
-      },
-    })
-
-    if (aiResult && aiResult.trim().length > 20) {
-      reply = aiResult
-      model = 'workers-ai'
-    }
-  } catch {
-    // Fall through to Groq
-  }
-
-  // Fallback to Groq (70B for better code generation)
-  if (!reply) {
+  if (assignment.provider === 'workers_ai') {
     try {
-      const groqResult = await generateGroqInsight(userPrompt, {
-        model: GROQ_MODELS.LLAMA_70B,
+      const historyPrompt = recentHistory.length > 0
+        ? recentHistory.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${truncate(m.content, 1000)}`).join('\n\n') + '\n\nUser: '
+        : ''
+
+      const fullPrompt = historyPrompt + userPrompt
+
+      const aiResult = await edgeGenerate(event, fullPrompt, {
+        modelId: assignment.modelId,
         systemPrompt: SYSTEM_PROMPT,
         maxTokens: 2000,
         temperature: 0.4,
@@ -140,6 +123,41 @@ export default defineEventHandler(async (event) => {
         userId: user?.id ?? null,
         metadata: {
           route: '/api/agency/banner-studio/ai/code-assist',
+          providerPath: 'workers_ai',
+          modelAssignmentSource: assignment.source,
+          modelAssignmentIgnoredReason: assignment.ignoredReason,
+          action: action ?? 'general',
+          historyCount: recentHistory.length,
+        },
+      })
+
+      if (aiResult && aiResult.trim().length > 20) {
+        reply = aiResult
+        model = 'workers-ai'
+      }
+    } catch {
+      // Fall through to Groq
+    }
+  }
+
+  // Fallback to Groq (70B for better code generation)
+  if (!reply) {
+    try {
+      const groqModel = groqModelIdFromAssignment(
+        assignment.provider === 'groq' ? assignment.modelId : assignment.fallbackModelId || GROQ_MODELS.LLAMA_70B
+      ) as GroqModel
+      const groqResult = await generateGroqInsight(userPrompt, {
+        model: groqModel,
+        systemPrompt: SYSTEM_PROMPT,
+        maxTokens: 2000,
+        temperature: 0.4,
+        featureKey: 'banner_code_assist',
+        userId: user?.id ?? null,
+        metadata: {
+          route: '/api/agency/banner-studio/ai/code-assist',
+          providerPath: assignment.provider === 'groq' ? 'groq' : 'groq_fallback',
+          modelAssignmentSource: assignment.source,
+          modelAssignmentIgnoredReason: assignment.ignoredReason,
           action: action ?? 'general',
           width: width ?? null,
           height: height ?? null,

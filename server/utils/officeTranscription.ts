@@ -1,6 +1,7 @@
 import { queryOne } from '~~/server/utils/db'
 import { downloadFileBuffer } from '~~/server/utils/storage'
-import { generateGroqInsight, GROQ_MODELS, transcribeGroqAudio } from '~~/server/utils/groqClient'
+import { GROQ_MODELS, transcribeGroqAudio } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { createMeetingActionItemsFromArtifact, ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
 import { ensureOfficeMeetingThreadChannel, ensureOfficeRecordingThreadChannel } from '~~/server/utils/officeThreads'
 import type { OfficeMeetingArtifactRow, OfficeRecordingRow } from '~~/app/types/office'
@@ -39,7 +40,7 @@ export async function generateMeetingSummaryFromTranscript(input: {
   context?: string
   transcript: string
 }) {
-  return cleanGeneratedMarkdown(await generateGroqInsight(
+  return cleanGeneratedMarkdown(await generateModelRoutedGroqInsight(
     [
       `Meeting/recording title: ${input.title}`,
       input.context ? `Context: ${input.context}` : '',
@@ -54,7 +55,7 @@ export async function generateMeetingSummaryFromTranscript(input: {
       '- Follow-up context'
     ].filter(Boolean).join('\n'),
     {
-      model: GROQ_MODELS.LLAMA_70B,
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       temperature: 0.1,
       maxTokens: 1600,
       systemPrompt: 'You summarize business meetings for an agency operations platform. Be specific, factual, and concise. Do not invent details not present in the transcript.',
@@ -72,7 +73,7 @@ export async function generateMeetingActionItemsFromTranscript(input: {
   title: string
   transcript: string
 }) {
-  const response = cleanGeneratedMarkdown(await generateGroqInsight(
+  const response = cleanGeneratedMarkdown(await generateModelRoutedGroqInsight(
     [
       `Meeting/recording title: ${input.title}`,
       '',
@@ -84,7 +85,7 @@ export async function generateMeetingActionItemsFromTranscript(input: {
       'If no action items are clearly present, return exactly: No action items identified.'
     ].join('\n'),
     {
-      model: GROQ_MODELS.LLAMA_70B,
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       temperature: 0,
       maxTokens: 1200,
       systemPrompt: 'You extract meeting action items. Only include actions supported by the transcript. Return bullet points only unless there are no clear actions.',

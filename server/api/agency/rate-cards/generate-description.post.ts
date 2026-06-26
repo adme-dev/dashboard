@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -31,8 +32,8 @@ ${notes ? `Context: ${notes}` : ''}
 ${webResearch ? `Industry research for context (use to inform the description but do not copy verbatim):\n${webResearch}\n` : ''}
 Write 2-3 paragraphs describing what this service includes, typical deliverables, and scope. Write in second person ("you'll receive", "your campaign"). Be specific to digital marketing. Do not include pricing in the description. Do not use markdown — write plain text with line breaks between paragraphs.`
 
-  const description = await generateGroqInsight(prompt, {
-    model: GROQ_MODELS.LLAMA_70B,
+  const description = await generateModelRoutedGroqInsight(prompt, {
+    defaultModelId: GROQ_MODELS.LLAMA_70B,
     temperature: 0.4,
     maxTokens: 600,
     featureKey: 'rate_card_description',

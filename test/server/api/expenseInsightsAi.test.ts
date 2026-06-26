@@ -33,6 +33,19 @@ vi.mock('~~/server/utils/groqClient', () => ({
   generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
+vi.mock('~~/server/utils/ai/modelAssignments', () => ({
+  resolveAiModelAssignment: vi.fn(async () => ({
+    provider: 'groq',
+    modelId: 'llama-3.3-70b-versatile',
+    fallbackModelId: null,
+    source: 'default',
+    ignoredReason: null,
+    modelSpec: 'groq/llama-3.3-70b-versatile',
+    fallbackModelSpec: null,
+  })),
+  groqModelIdFromAssignment: (modelId: string) => modelId.replace(/^groq\//, ''),
+}))
+
 const testGlobal = globalThis as typeof globalThis & {
   defineEventHandler: <T>(fn: T) => T
   $fetch: (...args: unknown[]) => Promise<unknown>
@@ -109,7 +122,7 @@ describe('GET /api/ai/expense-insights telemetry', () => {
     const result = await handler({ headers: { cookie: 'sid=1' } } satisfies TestEvent)
 
     expect(result.success).toBe(true)
-    expect(result.data.model).toBe('Groq Llama 3.3 70B')
+    expect(result.data.model).toBe('llama-3.3-70b-versatile')
     expect(mockFetch).toHaveBeenCalledWith('/api/xero/expenses', {
       headers: { cookie: 'sid=1' },
       query: { from: '2026-06-01', to: '2026-06-30' },
@@ -139,6 +152,8 @@ describe('GET /api/ai/expense-insights telemetry', () => {
         hasTaxSummary: true,
         subscriptionCount: 2,
         subscriptionTotal: 3000,
+        modelAssignmentSource: 'default',
+        modelAssignmentIgnoredReason: null,
       },
     }))
   })

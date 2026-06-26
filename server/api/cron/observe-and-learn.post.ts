@@ -9,7 +9,8 @@ import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { createWorkEventSource } from '~~/server/utils/ai/observe/source'
 import { runObservePass, ROUTINE_LOOKBACK_DAYS, type ObserveDeps } from '~~/server/utils/ai/observe/run'
 import { upsertMemory, listRecentMemories } from '~~/server/utils/ai/memory/store'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 export default defineEventHandler(async (event) => {
   const secret = getHeader(event, 'x-cron-secret')
@@ -68,8 +69,8 @@ export default defineEventHandler(async (event) => {
 
     // maxTokens is generous: gpt-oss-20b is a reasoning model that spends tokens thinking before the
     // JSON — 400 truncated the array mid-output (dry-run finding), losing good candidates. 1500 leaves room.
-    complete: prompt => generateGroqInsight(prompt, {
-      model: GROQ_MODELS.REASONING_20B,
+    complete: prompt => generateModelRoutedGroqInsight(prompt, {
+      defaultModelId: GROQ_MODELS.REASONING_20B,
       temperature: 0.2,
       maxTokens: 1500,
       featureKey: 'observe_and_learn_distillation',

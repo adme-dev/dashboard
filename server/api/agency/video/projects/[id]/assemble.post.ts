@@ -4,7 +4,8 @@ import { requireVideoProjectWriteAccess } from '~~/server/utils/video-asset-inte
 import { buildReviewableAssemblyPlan } from '~~/server/utils/video-asset-intelligence/buckets'
 import { buildAssemblyPrompt, parseAssemblyAiResponse, planFromAiAssembly, usableBucketItems, withProducerLaneSteps } from '~~/server/utils/video-asset-intelligence/aiAssembly'
 import { ensureDefaultBuckets, listBucketItemsForProject } from '~~/server/utils/video-asset-intelligence/db'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 const BodySchema = z.object({
   brief: z.string().min(1).max(4000),
@@ -34,10 +35,10 @@ export default defineEventHandler(async (event) => {
   const usable = usableBucketItems(bucketItems)
   if (usable.length) {
     try {
-      const response = await generateGroqInsight(
+      const response = await generateModelRoutedGroqInsight(
         buildAssemblyPrompt({ brief: body.brief, targetFormat: body.targetFormat, items: usable, selectedAsset: body.selectedAsset }),
         {
-          model: GROQ_MODELS.LLAMA_70B,
+          defaultModelId: GROQ_MODELS.LLAMA_70B,
           temperature: 0.2,
           maxTokens: 1200,
           featureKey: 'video_project_ai_assembly',

@@ -1,7 +1,8 @@
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { queryOne } from '~~/server/utils/db'
-import { generateGroqInsight } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
 import { videoAssetPublicUrl } from '~~/server/utils/video/assetLinks'
 import { getAccessibleVideoAsset } from '~~/server/utils/video/assets'
@@ -34,13 +35,14 @@ export default defineEventHandler(async (event) => {
     assetId: asset.id,
     prompt: asset.generationPrompt,
     modelId: asset.generationModelId,
-    captionGenerator: async ({ topic, platform, tone }) => generateGroqInsight(
+    captionGenerator: async ({ topic, platform, tone }) => generateModelRoutedGroqInsight(
       [
         `Write a ${tone} organic social media post for ${platform}.`,
         `Topic / brief: ${topic}`,
         'Return ONLY the post copy.',
       ].join('\n'),
       {
+        defaultModelId: GROQ_MODELS.LLAMA_70B,
         temperature: 0.7,
         maxTokens: 400,
         featureKey: 'video_asset_publish_social_caption',

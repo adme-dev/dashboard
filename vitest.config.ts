@@ -25,6 +25,7 @@ export default defineConfig({
       { find: '~/types', replacement: resolve(__dirname, 'app/types') },
       { find: '~/composables', replacement: resolve(__dirname, 'app/composables') },
       { find: '~/components', replacement: resolve(__dirname, 'app/components') },
+      { find: '@cloudflare/containers', replacement: resolve(__dirname, 'test/mocks/cloudflare-containers.ts') },
       { find: '~', replacement: resolve(__dirname, '.') },
       { find: '~~', replacement: resolve(__dirname, '.') },
       { find: '@', replacement: resolve(__dirname, '.') }

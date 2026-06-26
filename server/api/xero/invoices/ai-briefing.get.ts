@@ -1,7 +1,8 @@
 import { createError, getQuery } from 'h3'
 import { kvGet, kvPut } from '../../../utils/kv'
 import { getSelectedTenant } from '../../../utils/session'
-import { generateGroqInsight, GROQ_MODELS } from '../../../utils/groqClient'
+import { GROQ_MODELS } from '../../../utils/groqClient'
+import { generateModelRoutedGroqInsight } from '../../../utils/ai/resolvedGroq'
 
 /**
  * Owner-focused AI briefing for /invoices.
@@ -182,9 +183,9 @@ export default eventHandler(async (event) => {
 
   let parsed: any | null = null
   try {
-    const raw = await generateGroqInsight(buildPrompt(payload), {
-      model: GROQ_MODELS.REASONING_120B, // best JSON adherence + reasoning; the briefing
-                                         // drives owner decisions, worth the extra tokens
+    const raw = await generateModelRoutedGroqInsight(buildPrompt(payload), {
+      defaultModelId: GROQ_MODELS.REASONING_120B, // best JSON adherence + reasoning; the briefing
+                                                 // drives owner decisions, worth the extra tokens
       temperature: 0.2,
       maxTokens: 800,
       systemPrompt: SYSTEM_PROMPT,

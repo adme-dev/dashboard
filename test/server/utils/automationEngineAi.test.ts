@@ -18,7 +18,10 @@ vi.mock('~~/server/utils/groqClient', () => ({
   GROQ_MODELS: {
     LLAMA_8B: 'llama-3.1-8b-instant',
   },
-  generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
+}))
+
+vi.mock('~~/server/utils/ai/resolvedGroq', () => ({
+  generateModelRoutedGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
 const { evaluateAutomations } = await import('~~/server/utils/automationEngine')
@@ -61,7 +64,7 @@ describe('automationEngine AI telemetry', () => {
     })
 
     expect(mockGenerateGroqInsight).toHaveBeenCalledWith(expect.stringContaining('Launch campaign'), expect.objectContaining({
-      model: 'llama-3.1-8b-instant',
+      defaultModelId: 'llama-3.1-8b-instant',
       featureKey: 'board_automation_ai_insight',
       userId: 'actor-1',
       requestId: 'automation-1',
@@ -114,7 +117,7 @@ describe('automationEngine AI telemetry', () => {
     })
 
     expect(mockGenerateGroqInsight).toHaveBeenCalledWith(expect.stringContaining('Delivery Board'), expect.objectContaining({
-      model: 'llama-3.1-8b-instant',
+      defaultModelId: 'llama-3.1-8b-instant',
       featureKey: 'board_automation_ai_summary',
       userId: 'actor-1',
       requestId: 'automation-2',

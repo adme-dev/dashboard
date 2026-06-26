@@ -5,7 +5,8 @@
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
 import type { OfficeMeetingArtifactRow, OfficeMemberRow } from '~~/app/types/office'
 
@@ -86,7 +87,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Add notes, a summary, or a transcript before asking this meeting' })
   }
 
-  const answer = await generateGroqInsight(
+  const answer = await generateModelRoutedGroqInsight(
     [
       `Meeting: ${meeting.title}`,
       `Question: ${body.question}`,
@@ -99,7 +100,7 @@ export default defineEventHandler(async (event) => {
       'Keep the answer concise and include short source references like [1] where useful.'
     ].join('\n'),
     {
-      model: GROQ_MODELS.LLAMA_70B,
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       temperature: 0.05,
       maxTokens: 900,
       featureKey: 'office_meeting_question_answer',

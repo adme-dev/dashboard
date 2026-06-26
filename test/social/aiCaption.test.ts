@@ -11,7 +11,8 @@ const mockGenerate = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({ requireRole: (...a: unknown[]) => mockRequireRole(...a) }))
 vi.mock('~~/server/utils/permissions', () => ({ PERMISSIONS: { CREATIVE: ['owner'] } }))
-vi.mock('~~/server/utils/groqClient', () => ({ generateGroqInsight: (...a: unknown[]) => mockGenerate(...a) }))
+vi.mock('~~/server/utils/groqClient', () => ({ GROQ_MODELS: { LLAMA_70B: 'llama-3.3-70b-versatile' } }))
+vi.mock('~~/server/utils/ai/resolvedGroq', () => ({ generateModelRoutedGroqInsight: (...a: unknown[]) => mockGenerate(...a) }))
 
 const { default: handler } = await import('../../server/api/agency/social/publishing/ai/generate-caption.post')
 

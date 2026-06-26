@@ -271,7 +271,10 @@ async function executeGenerateAiInsight(
   config: Record<string, any>
 ): Promise<void> {
   try {
-    const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
+    const [{ GROQ_MODELS }, { generateModelRoutedGroqInsight }] = await Promise.all([
+      import('~~/server/utils/groqClient'),
+      import('~~/server/utils/ai/resolvedGroq'),
+    ])
 
     // Build a concise context string about the event
     const eventContext = [
@@ -283,10 +286,10 @@ async function executeGenerateAiInsight(
 
     const prompt = config.prompt || 'Analyze this board event and provide a brief, actionable insight for the team.'
 
-    const result = await generateGroqInsight(
+    const result = await generateModelRoutedGroqInsight(
       `${prompt}\n\nContext:\n${eventContext}`,
       {
-        model: GROQ_MODELS.LLAMA_8B,
+        defaultModelId: GROQ_MODELS.LLAMA_8B,
         temperature: 0.3,
         maxTokens: 500,
         featureKey: 'board_automation_ai_insight',
@@ -342,7 +345,10 @@ async function executeAiSummary(
   config: Record<string, any>
 ): Promise<void> {
   try {
-    const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
+    const [{ GROQ_MODELS }, { generateModelRoutedGroqInsight }] = await Promise.all([
+      import('~~/server/utils/groqClient'),
+      import('~~/server/utils/ai/resolvedGroq'),
+    ])
 
     // Fetch board summary stats
     const board = await queryOne<any>(`
@@ -362,10 +368,10 @@ async function executeAiSummary(
     const context = `Board: "${board.name}" — ${board.total_tasks} tasks total, ${board.done_tasks} done, ${board.overdue_tasks} overdue, ${board.blocked_tasks} blocked.`
     const prompt = config.prompt || 'Provide a concise board status summary with any recommendations for the team.'
 
-    const result = await generateGroqInsight(
+    const result = await generateModelRoutedGroqInsight(
       `${prompt}\n\n${context}`,
       {
-        model: GROQ_MODELS.LLAMA_8B,
+        defaultModelId: GROQ_MODELS.LLAMA_8B,
         temperature: 0.3,
         maxTokens: 500,
         featureKey: 'board_automation_ai_summary',

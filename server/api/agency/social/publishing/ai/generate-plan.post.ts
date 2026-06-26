@@ -1,6 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { generateGroqInsight } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { isPlannerAiEnabled } from '~~/server/utils/socialPublishing/plannerGate'
 import { parsePlanDrafts, spreadSchedule } from '~~/server/utils/socialPublishing/planGeneration'
 import type { SocialGeneratedDraft, SocialPublishPlatform } from '~/types'
@@ -31,7 +32,8 @@ export default defineEventHandler(async (event): Promise<{ posts: SocialGenerate
 
   let raw = ''
   try {
-    raw = await generateGroqInsight(prompt, {
+    raw = await generateModelRoutedGroqInsight(prompt, {
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       temperature: 0.8, maxTokens: 2000,
       systemPrompt: 'You are an expert social media strategist. Output ONLY valid JSON matching the requested shape — no prose, no code fences.',
       featureKey: 'social_publishing_plan',

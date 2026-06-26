@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockGenerateGroqInsight = vi.fn()
 
-vi.mock('~~/server/utils/groqClient', () => ({
-  generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
+vi.mock('~~/server/utils/groqClient', () => ({ GROQ_MODELS: { LLAMA_70B: 'llama-3.3-70b-versatile' } }))
+vi.mock('~~/server/utils/ai/resolvedGroq', () => ({
+  generateModelRoutedGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
 const { generateReportSummary } = await import('~~/server/utils/socialReporting/aiSummary')

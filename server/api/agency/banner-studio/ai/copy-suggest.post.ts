@@ -7,7 +7,8 @@
 
 import { requireAuth } from '~~/server/utils/auth'
 import { edgeGenerate } from '~~/server/utils/edgeAi'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateGroqInsight, GROQ_MODELS, type GroqModel } from '~~/server/utils/groqClient'
+import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 
 interface CopySuggestion {
   text: string
@@ -56,36 +57,20 @@ Requirements:
 Format: [{"text":"...","tone":"punchy"},{"text":"...","tone":"professional"},...] (exactly 5 items)`
 
   const systemPrompt = 'You are an expert advertising copywriter. Return only valid JSON arrays, no markdown code blocks.'
+  const assignment = await resolveAiModelAssignment({
+    featureKey: 'banner_copy_suggest',
+    defaultProvider: 'workers_ai',
+    defaultModelId: '@cf/meta/llama-3.1-8b-instruct',
+    defaultFallbackModelId: GROQ_MODELS.LLAMA_8B,
+    supportedProviders: ['workers_ai', 'groq'],
+  })
 
   let suggestions: CopySuggestion[] = []
 
-  // Try Workers AI first (fast, free)
-  try {
-    const aiResult = await edgeGenerate(event, prompt, {
-      systemPrompt,
-      maxTokens: 500,
-      temperature: 0.7,
-      featureKey: 'banner_copy_suggest',
-      userId: user?.id ?? null,
-      metadata: {
-        route: '/api/agency/banner-studio/ai/copy-suggest',
-        providerPath: 'workers_ai',
-        format: context?.format ?? null,
-      },
-    })
-
-    if (aiResult) {
-      suggestions = parseAiResponse(aiResult)
-    }
-  } catch {
-    // Fall through to Groq
-  }
-
-  // Fallback to Groq if Workers AI unavailable or failed
-  if (suggestions.length === 0) {
+  if (assignment.provider === 'workers_ai') {
     try {
-      const groqResult = await generateGroqInsight(prompt, {
-        model: GROQ_MODELS.LLAMA_8B,
+      const aiResult = await edgeGenerate(event, prompt, {
+        modelId: assignment.modelId,
         systemPrompt,
         maxTokens: 500,
         temperature: 0.7,
@@ -93,6 +78,39 @@ Format: [{"text":"...","tone":"punchy"},{"text":"...","tone":"professional"},...
         userId: user?.id ?? null,
         metadata: {
           route: '/api/agency/banner-studio/ai/copy-suggest',
+          providerPath: 'workers_ai',
+          modelAssignmentSource: assignment.source,
+          modelAssignmentIgnoredReason: assignment.ignoredReason,
+          format: context?.format ?? null,
+        },
+      })
+
+      if (aiResult) {
+        suggestions = parseAiResponse(aiResult)
+      }
+    } catch {
+      // Fall through to Groq
+    }
+  }
+
+  // Fallback to Groq if Workers AI unavailable or failed
+  if (suggestions.length === 0) {
+    try {
+      const groqModel = groqModelIdFromAssignment(
+        assignment.provider === 'groq' ? assignment.modelId : assignment.fallbackModelId || GROQ_MODELS.LLAMA_8B
+      ) as GroqModel
+      const groqResult = await generateGroqInsight(prompt, {
+        model: groqModel,
+        systemPrompt,
+        maxTokens: 500,
+        temperature: 0.7,
+        featureKey: 'banner_copy_suggest',
+        userId: user?.id ?? null,
+        metadata: {
+          route: '/api/agency/banner-studio/ai/copy-suggest',
+          providerPath: assignment.provider === 'groq' ? 'groq' : 'groq_fallback',
+          modelAssignmentSource: assignment.source,
+          modelAssignmentIgnoredReason: assignment.ignoredReason,
           hasProjectName: Boolean(context?.projectName),
           hasClientName: Boolean(context?.clientName),
           format: context?.format ?? null,

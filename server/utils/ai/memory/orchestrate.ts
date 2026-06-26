@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { getMemoriesByIds, listRecentMemories, listSharedMemories, listUserDepartments, stampUsed, upsertMemory, markEmbedded } from './store'
 import { selectTopMemories, type RetrieveCandidate } from './retrieve'
 import { renderMemoryBlock } from './render'
@@ -116,8 +117,8 @@ export interface DistillStoreDeps {
 const defaultDistillStoreDeps: DistillStoreDeps = {
   // The instruction lives in buildDistillPrompt (single source of truth); the system message just
   // pins the JSON-array contract for the model.
-  complete: prompt => generateGroqInsight(prompt, {
-    model: GROQ_MODELS.REASONING_20B,
+  complete: prompt => generateModelRoutedGroqInsight(prompt, {
+    defaultModelId: GROQ_MODELS.REASONING_20B,
     temperature: 0.2,
     maxTokens: 400,
     featureKey: 'ai_memory_distillation',

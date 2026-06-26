@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import { roleHasPermission } from '~~/server/utils/permissions'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS } from '~~/server/utils/socialSpendPacingReview'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
@@ -55,8 +56,8 @@ const defaultDeps: ProposeBudgetChangeDeps = {
       .map(i => ({ mediaSpendId: i.mediaSpendId, campaignName: i.campaignName, platform: i.platform, currentDailyBudget: i.currentDailyBudget, issueType: i.issueType }))
   },
   sanityCheck: change => sanityCheckBudgetChange(change, {
-    complete: prompt => generateGroqInsight(prompt, {
-      model: GROQ_MODELS.REASONING_20B,
+    complete: prompt => generateModelRoutedGroqInsight(prompt, {
+      defaultModelId: GROQ_MODELS.REASONING_20B,
       temperature: 0.1,
       maxTokens: 120,
       featureKey: 'budget_change_sanity_check',

@@ -18,6 +18,7 @@ const mockQueryRows = vi.fn()
 const mockExecute = vi.fn()
 const mockLoadGraph = vi.fn()
 const mockLoadReport = vi.fn()
+const mockFetch = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireRole: (...args: unknown[]) => mockRequireRole(...args)
@@ -51,6 +52,12 @@ const { default: agentRunsHandler } = await import(
 )
 const { default: orchestratorCheckHandler } = await import(
   '../../../../server/api/admin/ai/model-ops/orchestrator-check.post'
+)
+const { default: cloudflareModelsHandler } = await import(
+  '../../../../server/api/admin/ai/model-ops/cloudflare-models.get'
+)
+const { default: copilotHandler } = await import(
+  '../../../../server/api/admin/ai/model-ops/copilot.post'
 )
 const { default: assignmentPatchHandler } = await import(
   '../../../../server/api/admin/ai/model-ops/assignments/[featureKey].patch'
@@ -86,6 +93,23 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
     expect(result.rows.some((row: any) => row.featureKey === 'agency_ai_tool_loop')).toBe(true)
     expect(result.summary.totalRows).toBe(result.rows.length)
     expect(result.summary.overrideCount).toBe(0)
+    expect(result.summary.runtimeRoutedCount).toBeGreaterThan(0)
+    expect(result.summary.runtimeControllableCount).toBeGreaterThan(0)
+    expect(result.summary.runtimeWorkerSideCount).toBeGreaterThan(0)
+    expect(result.summary.runtimeDirectCount).toBeGreaterThanOrEqual(0)
+    expect(result.rows.find((row: any) => row.featureKey === 'agency_ai_tool_loop')).toMatchObject({
+      runtimeRoutingStatus: 'runtime_routed',
+      runtimeRoutingLabel: 'Runtime routed',
+      runtimeControlEnabled: true,
+    })
+    expect(result.rows.find((row: any) => row.featureKey === 'office_recording_transcription')).toMatchObject({
+      runtimeRoutingStatus: 'partial',
+      runtimeControlEnabled: true,
+    })
+    expect(result.rows.find((row: any) => row.featureKey === 'video_generation_worker_runtime')).toMatchObject({
+      runtimeRoutingStatus: 'worker_side',
+      runtimeControlEnabled: false,
+    })
     expect(result.assignments).toMatchObject({
       available: true,
       reason: null,
@@ -154,34 +178,39 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
 })
 
 describe('PATCH /api/admin/ai/model-ops/assignments/:featureKey', () => {
+  const oldEnv = { ...process.env }
+
   beforeEach(() => {
+    process.env = { ...oldEnv }
     mockRequireRole.mockReset()
     mockQueryRows.mockReset()
     mockExecute.mockReset()
+    mockFetch.mockReset()
     mockRequireRole.mockResolvedValue({ id: 'b4a0a130-48da-444b-8fdc-d91db8923318', role: 'admin' })
     mockQueryRows.mockResolvedValue([])
     mockExecute.mockResolvedValue(1)
+    vi.stubGlobal('fetch', mockFetch)
   })
 
   it('validates and saves an editable model assignment override', async () => {
     const result = await assignmentPatchHandler({
-      context: { params: { featureKey: 'social_spend_ai_analysis' } },
+      context: { params: { featureKey: 'banner_copy_suggest' } },
       body: {
-        provider: 'anthropic',
-        modelId: 'claude-sonnet-4-6',
+        provider: 'groq',
+        modelId: 'llama-3.3-70b-versatile',
         fallbackModelId: 'llama-3.3-70b-versatile',
-        notes: 'Use stronger reasoning for pacing review brief.',
+        notes: 'Use Groq for longer copy variants.',
       },
     } as any)
 
     expect(mockRequireRole).toHaveBeenCalledWith(expect.anything(), ['admin', 'owner'])
     expect(mockExecute.mock.calls[0]?.[0]).toContain('INSERT INTO ai_model_assignments')
     expect(mockExecute.mock.calls[0]?.[1]).toEqual([
-      'social_spend_ai_analysis',
-      'anthropic',
-      'claude-sonnet-4-6',
+      'banner_copy_suggest',
+      'groq',
       'llama-3.3-70b-versatile',
-      'Use stronger reasoning for pacing review brief.',
+      'llama-3.3-70b-versatile',
+      'Use Groq for longer copy variants.',
       'b4a0a130-48da-444b-8fdc-d91db8923318',
     ])
     expect(mockExecute.mock.calls[1]?.[0]).toContain('INSERT INTO ai_model_assignment_audit')
@@ -204,6 +233,305 @@ describe('PATCH /api/admin/ai/model-ops/assignments/:featureKey', () => {
     } as any)).rejects.toMatchObject({
       statusCode: 400,
       statusMessage: 'Unsupported model ID.',
+    })
+  })
+
+  it('accepts compatible models returned by the Cloudflare catalog', async () => {
+    process.env.CLOUDFLARE_ACCOUNT_ID = 'account-1'
+    process.env.CLOUDFLARE_API_TOKEN = 'token-1'
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        result: [{
+          id: '@cf/meta/llama-3.1-8b-instruct-fast-v2',
+          name: 'Llama 3.1 8B Instruct Fast V2',
+          provider: 'Cloudflare',
+          task: 'Text Generation',
+          tags: ['Cloudflare-hosted'],
+        }],
+      }),
+    })
+
+    await assignmentPatchHandler({
+      context: { params: { featureKey: 'banner_copy_suggest' } },
+      body: {
+        provider: 'workers_ai',
+        modelId: '@cf/meta/llama-3.1-8b-instruct-fast-v2',
+        fallbackModelId: null,
+      },
+    } as any)
+
+    expect(mockExecute.mock.calls[0]?.[1]).toEqual([
+      'banner_copy_suggest',
+      'workers_ai',
+      '@cf/meta/llama-3.1-8b-instruct-fast-v2',
+      null,
+      null,
+      'b4a0a130-48da-444b-8fdc-d91db8923318',
+    ])
+  })
+
+  it('uses Cloudflare runtime bindings when validating catalog-backed assignment saves', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        result: [{
+          id: '@cf/meta/llama-3.1-8b-instruct-fast-v3',
+          name: 'Llama 3.1 8B Instruct Fast V3',
+          provider: 'Cloudflare',
+          task: 'Text Generation',
+          tags: ['Cloudflare-hosted'],
+        }],
+      }),
+    })
+
+    await assignmentPatchHandler({
+      context: {
+        params: { featureKey: 'banner_copy_suggest' },
+        cloudflare: {
+          env: {
+            R2_ACCOUNT_ID: 'bound-account',
+            CLOUDFLARE_API_KEY: 'bound-token',
+          },
+        },
+      },
+      body: {
+        provider: 'workers_ai',
+        modelId: '@cf/meta/llama-3.1-8b-instruct-fast-v3',
+        fallbackModelId: null,
+      },
+    } as any)
+
+    expect(mockFetch.mock.calls[0]?.[0]).toContain('/accounts/bound-account/ai/models/search')
+    expect(mockExecute.mock.calls[0]?.[1]).toEqual([
+      'banner_copy_suggest',
+      'workers_ai',
+      '@cf/meta/llama-3.1-8b-instruct-fast-v3',
+      null,
+      null,
+      'b4a0a130-48da-444b-8fdc-d91db8923318',
+    ])
+  })
+
+  it('rejects providers that are not supported by the feature runtime', async () => {
+    await expect(assignmentPatchHandler({
+      context: { params: { featureKey: 'social_spend_ai_analysis' } },
+      body: { provider: 'anthropic', modelId: 'claude-sonnet-4-6' },
+    } as any)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Provider is not supported by this feature runtime yet.',
+    })
+  })
+
+  it('rejects features that are not wired to runtime assignments yet', async () => {
+    await expect(assignmentPatchHandler({
+      context: { params: { featureKey: 'video_generation_completion' } },
+      body: { provider: 'groq', modelId: 'llama-3.3-70b-versatile' },
+    } as any)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'This feature is not wired to runtime model assignments yet.',
+    })
+  })
+})
+
+describe('GET /api/admin/ai/model-ops/cloudflare-models', () => {
+  const oldEnv = { ...process.env }
+
+  beforeEach(() => {
+    process.env = { ...oldEnv }
+    delete process.env.CLOUDFLARE_ACCOUNT_ID
+    delete process.env.CLOUDFLARE_API_TOKEN
+    delete process.env.CF_API_TOKEN
+    mockRequireRole.mockReset()
+    mockQueryRows.mockReset()
+    mockFetch.mockReset()
+    mockRequireRole.mockResolvedValue({ id: 'user-1', role: 'admin' })
+    mockQueryRows.mockResolvedValue([])
+    vi.stubGlobal('fetch', mockFetch)
+  })
+
+  it('requires admin access and returns local fallback models when Cloudflare credentials are missing', async () => {
+    const result = await cloudflareModelsHandler({
+      node: { req: { url: '/api/admin/ai/model-ops/cloudflare-models?featureKey=banner_copy_suggest' } },
+    } as any)
+
+    expect(mockRequireRole).toHaveBeenCalledWith(expect.anything(), ['admin', 'owner'])
+    expect(result).toMatchObject({
+      available: false,
+      configured: false,
+      credentialSource: {
+        accountId: null,
+        token: null,
+      },
+      source: 'local_registry',
+    })
+    expect(result.summary.totalModels).toBeGreaterThan(0)
+    expect(result.summary.assignableModels).toBeGreaterThan(0)
+    expect(result.models[0]).toHaveProperty('recommendation')
+  })
+
+  it('returns Cloudflare catalog models with feature-specific recommendations', async () => {
+    process.env.CLOUDFLARE_ACCOUNT_ID = 'account-1'
+    process.env.CLOUDFLARE_API_TOKEN = 'token-1'
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        result: [
+          {
+            id: '@cf/meta/llama-3.1-8b-instruct',
+            name: 'Llama 3.1 8B Instruct',
+            provider: 'Cloudflare',
+            task: 'Text Generation',
+            capabilities: ['Function calling'],
+            tags: ['Cloudflare-hosted'],
+          },
+          {
+            id: 'flux-2-dev',
+            name: 'FLUX.2 Dev',
+            provider: 'Black Forest Labs',
+            task: 'Text-to-Image',
+            capabilities: ['Image generation'],
+            tags: ['Third-party'],
+          },
+        ],
+      }),
+    })
+
+    const result = await cloudflareModelsHandler({
+      node: { req: { url: '/api/admin/ai/model-ops/cloudflare-models?featureKey=banner_copy_suggest&search=llama' } },
+    } as any)
+
+    expect(mockFetch.mock.calls[0]?.[0]).toContain('/accounts/account-1/ai/models/search')
+    expect(mockFetch.mock.calls[0]?.[0]).toContain('per_page=250')
+    expect(result).toMatchObject({
+      available: true,
+      configured: true,
+      credentialSource: {
+        accountId: 'CLOUDFLARE_ACCOUNT_ID',
+        token: 'CLOUDFLARE_API_TOKEN',
+      },
+      source: 'cloudflare_api',
+      summary: {
+        filteredModels: 1,
+        assignableModels: 1,
+      },
+    })
+    expect(result.models[0]).toMatchObject({
+      id: '@cf/meta/llama-3.1-8b-instruct',
+      assignable: true,
+      recommendation: {
+        level: 'recommended',
+      },
+    })
+  })
+
+  it('uses documented local Cloudflare env aliases for catalog sync', async () => {
+    process.env.R2_ACCOUNT_ID = 'r2-account'
+    process.env.CLOUDFLARE_API_KEY = 'api-token'
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ result: [] }),
+    })
+
+    const result = await cloudflareModelsHandler({
+      node: { req: { url: '/api/admin/ai/model-ops/cloudflare-models?featureKey=banner_copy_suggest' } },
+    } as any)
+
+    expect(mockFetch.mock.calls[0]?.[0]).toContain('/accounts/r2-account/ai/models/search')
+    expect(mockFetch.mock.calls[0]?.[1]).toMatchObject({
+      headers: { Authorization: 'Bearer api-token' },
+    })
+    expect(result.credentialSource).toEqual({
+      accountId: 'R2_ACCOUNT_ID',
+      token: 'CLOUDFLARE_API_KEY',
+    })
+  })
+
+  it('uses Cloudflare Pages runtime bindings for catalog sync', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ result: [] }),
+    })
+
+    const result = await cloudflareModelsHandler({
+      node: { req: { url: '/api/admin/ai/model-ops/cloudflare-models?featureKey=banner_copy_suggest&refresh=1' } },
+      context: {
+        cloudflare: {
+          env: {
+            R2_ACCOUNT_ID: 'bound-account',
+            CLOUDFLARE_API_KEY: 'bound-token',
+          },
+        },
+      },
+    } as any)
+
+    expect(mockFetch.mock.calls[0]?.[0]).toContain('/accounts/bound-account/ai/models/search')
+    expect(mockFetch.mock.calls[0]?.[1]).toMatchObject({
+      headers: { Authorization: 'Bearer bound-token' },
+    })
+    expect(result.credentialSource).toEqual({
+      accountId: 'R2_ACCOUNT_ID',
+      token: 'CLOUDFLARE_API_KEY',
+    })
+  })
+})
+
+describe('POST /api/admin/ai/model-ops/copilot', () => {
+  beforeEach(() => {
+    mockRequireRole.mockReset()
+    mockQueryRows.mockReset()
+    mockExecute.mockReset()
+    mockRequireRole.mockResolvedValue({ id: 'user-1', role: 'admin' })
+    mockQueryRows
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        total_invocations: '12',
+        error_count: '1',
+        fallback_count: '3',
+        gateway_count: '9',
+      }])
+      .mockResolvedValueOnce([{ feature_key: 'banner_copy_suggest' }])
+      .mockResolvedValueOnce([{ model_id: '@cf/meta/llama-3.1-8b-instruct' }])
+      .mockResolvedValueOnce([{ feature_key: 'banner_copy_suggest' }])
+      .mockResolvedValueOnce([{
+        total_runs: '4',
+        failed_runs: '1',
+        orchestrator_read_tool_failures: '1',
+      }])
+  })
+
+  it('requires admin access and returns a read-only recommendation response', async () => {
+    const result = await copilotHandler({
+      body: {
+        prompt: 'Recommend the next safe assignment for banner copy.',
+        featureKey: 'banner_copy_suggest',
+      },
+    } as any)
+
+    expect(mockRequireRole).toHaveBeenCalledWith(expect.anything(), ['admin', 'owner'])
+    expect(mockExecute).not.toHaveBeenCalled()
+    expect(result.mode).toBe('read_only')
+    expect(result.answer).toContain('Banner Studio copy suggestion')
+    expect(result.context.runtimeControllableCount).toBeGreaterThan(0)
+    expect(result.context).toMatchObject({
+      telemetryAvailable: true,
+      fallbackRate: 0.25,
+      gatewayRate: 0.75,
+    })
+    expect(result.recommendedActions.length).toBeGreaterThan(0)
+    expect(result.proposedAssignment).toMatchObject({
+      featureKey: 'banner_copy_suggest',
+    })
+  })
+
+  it('rejects empty prompts', async () => {
+    await expect(copilotHandler({
+      body: {
+        prompt: '   ',
+      },
+    } as any)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Prompt is required.',
     })
   })
 })

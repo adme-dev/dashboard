@@ -31,7 +31,10 @@ vi.mock('~~/server/utils/groqClient', () => ({
   GROQ_MODELS: {
     LLAMA_8B: 'llama-3.1-8b-instant',
   },
-  generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
+}))
+
+vi.mock('~~/server/utils/ai/resolvedGroq', () => ({
+  generateModelRoutedGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
 const { default: handler } = await import('../../../../server/api/notifications/digest.get')
@@ -67,7 +70,7 @@ describe('GET /api/notifications/digest narrative telemetry', () => {
     expect(result.range).toBe('week')
     expect(result.boards[0].narrative).toBe('Creative has three updates needing your attention.')
     expect(mockGenerateGroqInsight).toHaveBeenCalledWith(expect.stringContaining('Creative'), expect.objectContaining({
-      model: 'llama-3.1-8b-instant',
+      defaultModelId: 'llama-3.1-8b-instant',
       featureKey: 'notification_digest_narrative',
       userId: 'user-1',
       requestId: 'week:board-1',

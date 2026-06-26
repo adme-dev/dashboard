@@ -5,6 +5,7 @@ import { extractLoopOutput, estimateCostUsd, type LoopOutput } from './toolLoop'
 import { buildPortalTools } from './portalTools'
 import { assertPortalScope, type PortalToolContext } from './portalTools/portalContext'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
+import { resolveAiModelAssignment, type RuntimeModelProvider } from '~~/server/utils/ai/modelAssignments'
 
 /**
  * The client-portal agentic loop (portal-agent spec §8). Deliberately a SEPARATE entry point from the
@@ -15,6 +16,18 @@ import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 const STEP_CAP = 5
 const DEADLINE_MS = 25_000
+const DEFAULT_LOOP_MODEL_SPEC = 'groq/openai/gpt-oss-120b'
+const DEFAULT_LOOP_FALLBACK_SPEC = 'groq/openai/gpt-oss-20b'
+
+function providerFromSpec(spec: string): RuntimeModelProvider {
+  if (spec.startsWith('anthropic/')) return 'anthropic'
+  if (spec.startsWith('workersai/')) return 'workers_ai'
+  return 'groq'
+}
+
+function modelIdFromSpec(spec: string): string {
+  return spec.replace(/^(groq|anthropic|workersai)\//, '')
+}
 
 export const PORTAL_SYSTEM_PREAMBLE = `You are the Portal Assistant for a client of a digital marketing agency.
 You help THIS client understand their own portal — their projects, approvals, invoices, briefs, leads, and social performance.
@@ -64,8 +77,19 @@ export async function runPortalToolLoop(opts: {
     experimental_telemetry: { isEnabled: true, recordInputs: false, recordOutputs: false, functionId: 'ai-portal-loop' },
   })
 
-  const primarySpec = opts.modelSpec ?? cfg.aiLoopModel
-  const fallbackSpec = opts.fallbackSpec ?? cfg.aiLoopFallbackModel
+  const configuredPrimarySpec = opts.modelSpec ?? cfg.aiLoopModel ?? DEFAULT_LOOP_MODEL_SPEC
+  const configuredFallbackSpec = opts.fallbackSpec ?? cfg.aiLoopFallbackModel ?? DEFAULT_LOOP_FALLBACK_SPEC
+  const assignment = opts.model
+    ? null
+    : await resolveAiModelAssignment({
+        featureKey: 'portal_ai_tool_loop',
+        defaultProvider: providerFromSpec(configuredPrimarySpec),
+        defaultModelId: modelIdFromSpec(configuredPrimarySpec),
+        defaultFallbackModelId: configuredFallbackSpec ? modelIdFromSpec(configuredFallbackSpec) : null,
+        supportedProviders: ['groq', 'anthropic', 'workers_ai'],
+      })
+  const primarySpec = opts.modelSpec ?? assignment?.modelSpec ?? configuredPrimarySpec
+  const fallbackSpec = opts.fallbackSpec ?? assignment?.fallbackModelSpec ?? configuredFallbackSpec
   const aiBinding = (opts.ctx.event?.context as any)?.cloudflare?.env?.AI
   let usedSpec: string = opts.model ? 'injected' : primarySpec
   let fallbackUsed = false
@@ -108,6 +132,8 @@ export async function runPortalToolLoop(opts: {
       toolCalls: out.toolCalls.map((call) => call.name).slice(0, 20),
       proposedTool: out.proposedAction?.toolName ?? null,
       injectedModel: Boolean(opts.model),
+      modelAssignmentSource: assignment?.source ?? 'default',
+      modelAssignmentIgnoredReason: assignment?.ignoredReason ?? null,
       ...(opts.metadata ?? {}),
     },
   })

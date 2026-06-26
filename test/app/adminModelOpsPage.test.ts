@@ -20,6 +20,11 @@ const modelMapResponse = {
     overrideCount: 0,
     editableCount: 11,
     blockedDuplicateCount: 1,
+    runtimeRoutedCount: 8,
+    runtimePartialCount: 1,
+    runtimeWorkerSideCount: 2,
+    runtimeDirectCount: 1,
+    runtimeControllableCount: 9,
   },
   config: {
     gateway: {
@@ -309,9 +314,9 @@ describe('Admin AI Model Ops page', () => {
       label: 'Social spend review panel analysis',
       surface: '/agency/social/spend',
       owner: 'Growth',
-      provider: 'anthropic',
-      modelId: 'claude-sonnet-4-6',
-      fallback: 'llama-3.3-70b-versatile',
+      provider: 'groq',
+      modelId: 'llama-3.3-70b-versatile',
+      fallback: null,
       modality: 'text',
       riskTier: 'high',
       sourceFile: 'server/api/agency/social/spend/[id]/ai-analysis.post.ts',
@@ -319,26 +324,36 @@ describe('Admin AI Model Ops page', () => {
       pricing: null,
       warnings: [],
       defaultProvider: 'groq',
-      defaultModelId: 'llama-3.3-70b-versatile',
+      defaultModelId: 'llama-3.1-8b-instant',
       defaultFallback: null,
-      assignedProvider: 'anthropic',
-      assignedModelId: 'claude-sonnet-4-6',
-      assignedFallback: 'llama-3.3-70b-versatile',
+      assignedProvider: 'groq',
+      assignedModelId: 'llama-3.3-70b-versatile',
+      assignedFallback: null,
       assignmentSource: 'override',
       assignmentEditable: true,
       assignmentNotes: 'Use stronger reasoning for brief.',
       assignmentUpdatedBy: 'user-1',
       assignmentUpdatedAt: '2026-06-25T01:00:00.000Z',
+      runtimeRoutingStatus: 'runtime_routed',
+      runtimeRoutingLabel: 'Runtime routed',
+      runtimeControlEnabled: true,
+      runtimeSupportedProviders: ['groq'],
+      runtimeNotes: null,
     }]
 
     const html = await render({ modelMap })
 
     expect(html).toContain('Model assignment brief')
-    expect(html).toContain('Editable surfaces')
+    expect(html).toContain('Runtime controlled')
+    expect(html).toContain('Runtime routed')
     expect(html).toContain('Overrides')
+    expect(html).toContain('Routing')
+    expect(html).toContain('Health')
     expect(html).toContain('Override')
-    expect(html).toContain('Default: llama-3.3-70b-versatile')
+    expect(html).toContain('Default: llama-3.1-8b-instant')
     expect(html).toContain('Use stronger reasoning for brief.')
+    expect(html).not.toContain('<th class="pb-2 pr-4">Provider</th>')
+    expect(html).not.toContain('<th class="pb-2 pr-4">Pricing</th>')
   })
 
   it('disables the manual read-check action when the internal secret is missing', async () => {
@@ -381,7 +396,7 @@ describe('Admin AI Model Ops page', () => {
       surface: '/agency/social/spend',
       owner: 'Growth',
       provider: 'groq',
-      modelId: 'llama-3.3-70b-versatile',
+      modelId: 'llama-3.1-8b-instant',
       fallback: null,
       modality: 'text',
       riskTier: 'high',
@@ -390,24 +405,29 @@ describe('Admin AI Model Ops page', () => {
       pricing: null,
       warnings: [],
       defaultProvider: 'groq',
-      defaultModelId: 'llama-3.3-70b-versatile',
+      defaultModelId: 'llama-3.1-8b-instant',
       defaultFallback: null,
       assignedProvider: 'groq',
-      assignedModelId: 'llama-3.3-70b-versatile',
+      assignedModelId: 'llama-3.1-8b-instant',
       assignedFallback: null,
       assignmentSource: 'default',
       assignmentEditable: true,
       assignmentNotes: null,
       assignmentUpdatedBy: null,
       assignmentUpdatedAt: null,
+      runtimeRoutingStatus: 'runtime_routed',
+      runtimeRoutingLabel: 'Runtime routed',
+      runtimeControlEnabled: true,
+      runtimeSupportedProviders: ['groq'],
+      runtimeNotes: null,
     }]
     const updated = clone(modelMap)
     updated.summary.overrideCount = 1
     updated.rows[0].assignmentSource = 'override'
-    updated.rows[0].provider = 'anthropic'
-    updated.rows[0].modelId = 'claude-sonnet-4-6'
-    updated.rows[0].assignedProvider = 'anthropic'
-    updated.rows[0].assignedModelId = 'claude-sonnet-4-6'
+    updated.rows[0].provider = 'groq'
+    updated.rows[0].modelId = 'llama-3.3-70b-versatile'
+    updated.rows[0].assignedProvider = 'groq'
+    updated.rows[0].assignedModelId = 'llama-3.3-70b-versatile'
     const fetchMock = vi.fn().mockResolvedValueOnce({
       rows: updated.rows,
       summary: updated.summary,
@@ -416,12 +436,10 @@ describe('Admin AI Model Ops page', () => {
     const { app, host } = await mountPage({ fetchMock, modelMap })
 
     try {
-      const selects = host.querySelectorAll('select')
-      ;(selects[0] as HTMLSelectElement).value = 'anthropic'
-      selects[0].dispatchEvent(new Event('change'))
-      await flushAsyncUi()
-      ;(selects[1] as HTMLSelectElement).value = 'claude-sonnet-4-6'
-      selects[1].dispatchEvent(new Event('change'))
+      const modelSelect = host.querySelector('[aria-label="Assigned model"]') as HTMLSelectElement | null
+      expect(modelSelect).toBeTruthy()
+      modelSelect!.value = 'llama-3.3-70b-versatile'
+      modelSelect!.dispatchEvent(new Event('change'))
       await flushAsyncUi()
 
       const buttons = Array.from(host.querySelectorAll('button'))
@@ -436,14 +454,345 @@ describe('Admin AI Model Ops page', () => {
         {
           method: 'PATCH',
           body: {
-            provider: 'anthropic',
-            modelId: 'claude-sonnet-4-6',
+            provider: 'groq',
+            modelId: 'llama-3.3-70b-versatile',
             fallbackModelId: null,
             notes: null,
           },
         }
       )
       expect(host.textContent).toContain('Updated Social spend review panel analysis.')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('opens the Cloudflare catalog picker and applies a recommended model to the assignment draft', async () => {
+    const modelMap = clone(modelMapResponse)
+    modelMap.rows = [{
+      featureKey: 'banner_copy_suggest',
+      label: 'Banner Studio copy suggestion',
+      surface: '/agency/banner-studio',
+      owner: 'Creative',
+      provider: 'workers_ai',
+      modelId: '@cf/meta/llama-3.1-8b-instruct',
+      fallback: 'llama-3.1-8b-instant',
+      modality: 'text',
+      riskTier: 'medium',
+      sourceFile: 'server/api/agency/banner-studio/ai/copy-suggest.post.ts',
+      status: 'production',
+      pricing: null,
+      warnings: [],
+      defaultProvider: 'workers_ai',
+      defaultModelId: '@cf/meta/llama-3.1-8b-instruct',
+      defaultFallback: 'llama-3.1-8b-instant',
+      assignedProvider: 'workers_ai',
+      assignedModelId: '@cf/meta/llama-3.1-8b-instruct',
+      assignedFallback: 'llama-3.1-8b-instant',
+      assignmentSource: 'default',
+      assignmentEditable: true,
+      assignmentNotes: null,
+      assignmentUpdatedBy: null,
+      assignmentUpdatedAt: null,
+      runtimeRoutingStatus: 'runtime_routed',
+      runtimeRoutingLabel: 'Runtime routed',
+      runtimeControlEnabled: true,
+      runtimeSupportedProviders: ['workers_ai', 'groq'],
+      runtimeNotes: null,
+    }]
+    const updated = clone(modelMap)
+    updated.summary.overrideCount = 1
+    updated.rows[0].assignmentSource = 'override'
+    updated.rows[0].modelId = '@cf/meta/llama-3.1-8b-instruct-fast'
+    updated.rows[0].assignedModelId = '@cf/meta/llama-3.1-8b-instruct-fast'
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        available: true,
+        configured: true,
+        credentialSource: {
+          accountId: 'CLOUDFLARE_ACCOUNT_ID',
+          token: 'CLOUDFLARE_API_TOKEN',
+        },
+        source: 'cloudflare_api',
+        reason: null,
+        fetchedAt: '2026-06-26T00:00:00.000Z',
+        feature: {
+          featureKey: 'banner_copy_suggest',
+          label: 'Banner Studio copy suggestion',
+          modality: 'text',
+          riskTier: 'medium',
+          runtimeSupportedProviders: ['workers_ai', 'groq'],
+        },
+        summary: {
+          totalModels: 1,
+          filteredModels: 1,
+          assignableModels: 1,
+          recommendedModels: 1,
+          providers: ['workers_ai'],
+          tasks: ['text_generation'],
+          capabilities: ['function_calling'],
+        },
+        models: [{
+          id: '@cf/meta/llama-3.1-8b-instruct-fast',
+          label: 'Llama 3.1 8B Instruct Fast',
+          modelId: '@cf/meta/llama-3.1-8b-instruct-fast',
+          provider: 'workers_ai',
+          providerLabel: 'Cloudflare',
+          task: 'text_generation',
+          taskLabel: 'Text generation',
+          modality: 'text',
+          author: 'Meta',
+          capabilities: ['function_calling'],
+          source: 'cloudflare_hosted',
+          status: 'production',
+          description: null,
+          assignable: true,
+          recommendation: {
+            level: 'recommended',
+            score: 84,
+            reasons: ['Runtime provider is supported for this feature.'],
+            blockers: [],
+          },
+        }],
+      })
+      .mockResolvedValueOnce({
+        rows: updated.rows,
+        summary: updated.summary,
+        assignments: updated.assignments,
+      })
+    const { app, host } = await mountPage({ fetchMock, modelMap })
+
+    try {
+      const browseButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Browse catalog'))
+      expect(browseButton).toBeTruthy()
+
+      browseButton?.click()
+      await flushAsyncUi()
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/ai/model-ops/cloudflare-models', {
+        query: {
+          featureKey: 'banner_copy_suggest',
+          search: undefined,
+          provider: undefined,
+          task: undefined,
+          capability: undefined,
+        },
+      })
+      expect(host.textContent).toContain('Cloudflare model catalog')
+      expect(host.textContent).toContain('Llama 3.1 8B Instruct Fast')
+
+      const useButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Use model'))
+      useButton?.click()
+      await flushAsyncUi()
+
+      const saveButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Save'))
+      expect(saveButton?.disabled).toBe(false)
+      saveButton?.click()
+      await flushAsyncUi()
+
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/admin/ai/model-ops/assignments/banner_copy_suggest',
+        {
+          method: 'PATCH',
+          body: {
+            provider: 'workers_ai',
+            modelId: '@cf/meta/llama-3.1-8b-instruct-fast',
+            fallbackModelId: 'llama-3.1-8b-instant',
+            notes: null,
+          },
+        }
+      )
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('runs Model Ops Copilot and applies a proposed assignment draft without saving it', async () => {
+    const modelMap = clone(modelMapResponse)
+    modelMap.rows = [{
+      featureKey: 'banner_copy_suggest',
+      label: 'Banner Studio copy suggestion',
+      surface: '/agency/banner-studio',
+      owner: 'Creative',
+      provider: 'workers_ai',
+      modelId: '@cf/meta/llama-3.1-8b-instruct',
+      fallback: 'llama-3.1-8b-instant',
+      modality: 'text',
+      riskTier: 'medium',
+      sourceFile: 'server/api/agency/banner-studio/ai/copy-suggest.post.ts',
+      status: 'production',
+      pricing: null,
+      warnings: [],
+      defaultProvider: 'workers_ai',
+      defaultModelId: '@cf/meta/llama-3.1-8b-instruct',
+      defaultFallback: 'llama-3.1-8b-instant',
+      assignedProvider: 'workers_ai',
+      assignedModelId: '@cf/meta/llama-3.1-8b-instruct',
+      assignedFallback: 'llama-3.1-8b-instant',
+      assignmentSource: 'default',
+      assignmentEditable: true,
+      assignmentNotes: null,
+      assignmentUpdatedBy: null,
+      assignmentUpdatedAt: null,
+      runtimeRoutingStatus: 'runtime_routed',
+      runtimeRoutingLabel: 'Runtime routed',
+      runtimeControlEnabled: true,
+      runtimeSupportedProviders: ['workers_ai', 'groq'],
+      runtimeNotes: null,
+    }]
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      mode: 'read_only',
+      answer: 'For Banner Studio copy suggestion, draft the faster Cloudflare-hosted model.',
+      findings: [{
+        severity: 'info',
+        title: 'Feature is runtime routed',
+        detail: 'The dashboard assignment resolver controls this feature.',
+        featureKey: 'banner_copy_suggest',
+      }],
+      recommendedActions: ['Review the draft and press Save if approved.'],
+      proposedAssignment: {
+        featureKey: 'banner_copy_suggest',
+        provider: 'workers_ai',
+        modelId: '@cf/meta/llama-3.1-8b-instruct-fast',
+        fallbackModelId: 'llama-3.1-8b-instant',
+        notes: 'Model Ops Copilot draft: faster Cloudflare-hosted model.',
+        rationale: ['Runtime provider is supported for this feature.'],
+      },
+      context: {
+        runtimeControllableCount: 1,
+        overrideCount: 0,
+        catalogSource: 'cloudflare_api',
+        catalogAvailable: true,
+        telemetryAvailable: true,
+        fallbackRate: 0,
+        errorRate: 0,
+        gatewayRate: 1,
+      },
+    })
+    const { app, host } = await mountPage({ fetchMock, modelMap })
+
+    try {
+      expect(host.textContent).toContain('Model Ops Copilot')
+
+      const featureSelect = host.querySelector('[aria-label="Copilot feature scope"]') as HTMLSelectElement | null
+      expect(featureSelect).toBeTruthy()
+      featureSelect!.value = 'banner_copy_suggest'
+      featureSelect!.dispatchEvent(new Event('change'))
+      await flushAsyncUi()
+
+      const askButton = host.querySelector('[data-testid="ask-model-ops-copilot"]') as HTMLButtonElement | null
+      askButton?.click()
+      await flushAsyncUi()
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/ai/model-ops/copilot', {
+        method: 'POST',
+        body: {
+          prompt: 'Review Model Ops and recommend the next safest model assignment change.',
+          featureKey: 'banner_copy_suggest',
+        },
+      })
+      expect(host.textContent).toContain('For Banner Studio copy suggestion')
+      expect(host.textContent).toContain('Requires Save')
+
+      const applyButton = host.querySelector('[data-testid="apply-copilot-assignment"]') as HTMLButtonElement | null
+      applyButton?.click()
+      await flushAsyncUi()
+
+      const saveButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Save'))
+      expect(saveButton?.disabled).toBe(false)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(host.textContent).toContain('Review it in the model map, then press Save')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('filters the compact model map by search text', async () => {
+    const modelMap = clone(modelMapResponse)
+    modelMap.rows = [
+      {
+        featureKey: 'banner_copy_suggest',
+        label: 'Banner Studio copy suggestion',
+        surface: '/agency/banner-studio',
+        owner: 'Creative',
+        provider: 'workers_ai',
+        modelId: '@cf/meta/llama-3.1-8b-instruct',
+        fallback: null,
+        modality: 'text',
+        riskTier: 'medium',
+        sourceFile: 'server/api/agency/banner-studio/ai/copy-suggest.post.ts',
+        status: 'production',
+        pricing: null,
+        warnings: [],
+        defaultProvider: 'workers_ai',
+        defaultModelId: '@cf/meta/llama-3.1-8b-instruct',
+        defaultFallback: null,
+        assignedProvider: 'workers_ai',
+        assignedModelId: '@cf/meta/llama-3.1-8b-instruct',
+        assignedFallback: null,
+        assignmentSource: 'default',
+        assignmentEditable: true,
+        assignmentNotes: null,
+        assignmentUpdatedBy: null,
+        assignmentUpdatedAt: null,
+        runtimeRoutingStatus: 'runtime_routed',
+        runtimeRoutingLabel: 'Runtime routed',
+        runtimeControlEnabled: true,
+        runtimeSupportedProviders: ['workers_ai', 'groq'],
+        runtimeNotes: null,
+      },
+      {
+        featureKey: 'financial_advisor',
+        label: 'Finance advisor',
+        surface: '/agency/finance',
+        owner: 'Finance',
+        provider: 'groq',
+        modelId: 'llama-3.3-70b-versatile',
+        fallback: null,
+        modality: 'text',
+        riskTier: 'high',
+        sourceFile: 'server/api/ai/financial-advisor.get.ts',
+        status: 'production',
+        pricing: null,
+        warnings: [],
+        defaultProvider: 'groq',
+        defaultModelId: 'llama-3.3-70b-versatile',
+        defaultFallback: null,
+        assignedProvider: 'groq',
+        assignedModelId: 'llama-3.3-70b-versatile',
+        assignedFallback: null,
+        assignmentSource: 'default',
+        assignmentEditable: true,
+        assignmentNotes: null,
+        assignmentUpdatedBy: null,
+        assignmentUpdatedAt: null,
+        runtimeRoutingStatus: 'runtime_routed',
+        runtimeRoutingLabel: 'Runtime routed',
+        runtimeControlEnabled: true,
+        runtimeSupportedProviders: ['groq', 'anthropic'],
+        runtimeNotes: null,
+      },
+    ]
+    const { app, host } = await mountPage({ modelMap })
+
+    try {
+      expect(host.textContent).toContain('2 of 2 rows')
+      expect(host.textContent).toContain('Banner Studio copy suggestion')
+      expect(host.textContent).toContain('Finance advisor')
+
+      const search = host.querySelector('[aria-label="Search model map"]') as HTMLInputElement | null
+      expect(search).toBeTruthy()
+      search!.value = 'finance'
+      search!.dispatchEvent(new Event('input'))
+      await flushAsyncUi()
+
+      expect(host.textContent).toContain('1 of 2 rows')
+      const table = host.querySelector('[data-testid="model-map-table"]')
+      expect(table?.textContent).toContain('Finance advisor')
+      expect(table?.textContent).not.toContain('Banner Studio copy suggestion')
     } finally {
       app.unmount()
       host.remove()

@@ -56,7 +56,10 @@ export default defineEventHandler(async (event) => {
 
   // 3. Generate via Groq.
   try {
-    const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
+    const [{ GROQ_MODELS }, { generateModelRoutedGroqInsight }] = await Promise.all([
+      import('~~/server/utils/groqClient'),
+      import('~~/server/utils/ai/resolvedGroq'),
+    ])
     const md = row.metadata || {}
     const ctx = [
       row.title ? `Title: ${row.title}` : null,
@@ -69,8 +72,8 @@ export default defineEventHandler(async (event) => {
 
     const prompt = `Explain in ONE short sentence (max 18 words) why a busy user received this notification. Be specific about who/what/why. No preamble.\n\n${ctx}`
 
-    const text = await generateGroqInsight(prompt, {
-      model: GROQ_MODELS.LLAMA_8B,
+    const text = await generateModelRoutedGroqInsight(prompt, {
+      defaultModelId: GROQ_MODELS.LLAMA_8B,
       maxTokens: 50,
       temperature: 0.2,
       featureKey: 'notification_why_explanation',

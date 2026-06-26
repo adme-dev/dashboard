@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { edgeClassify, edgeGenerateWithLoRA } from '~~/server/utils/edgeAi'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 export type AiIntent =
   | 'task_query'
@@ -217,8 +218,8 @@ Respond in this exact JSON format only, no other text:
 {"intent":"<category>","confidence":<0.0-1.0>,"entities":["entity1","entity2"]}`
 
   try {
-    const response = await generateGroqInsight(prompt, {
-      model: GROQ_MODELS.LLAMA_8B,
+    const response = await generateModelRoutedGroqInsight(prompt, {
+      defaultModelId: GROQ_MODELS.LLAMA_8B,
       temperature: 0.1,
       maxTokens: 150,
       featureKey: 'agency_ai_intent_groq_classifier',

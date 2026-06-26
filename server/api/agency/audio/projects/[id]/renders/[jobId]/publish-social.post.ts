@@ -6,7 +6,8 @@ import { getProjectWithCurrentTimeline, getRenderJob } from '~~/server/utils/aud
 import { renderPublicUrl } from '~~/server/utils/audio/renderLinks'
 import { queryOne } from '~~/server/utils/db'
 import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
-import { generateGroqInsight } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 const BodySchema = z.object({ format: z.string().min(1) })
 
@@ -38,13 +39,14 @@ export default defineEventHandler(async (event) => {
     projectId: id,
     jobId,
     prompt: project.project.title,
-    captionGenerator: async ({ topic, platform, tone }) => generateGroqInsight(
+    captionGenerator: async ({ topic, platform, tone }) => generateModelRoutedGroqInsight(
       [
         `Write a ${tone} organic social media post for ${platform}.`,
         `Topic / brief: ${topic}`,
         'Return ONLY the post copy.',
       ].join('\n'),
       {
+        defaultModelId: GROQ_MODELS.LLAMA_70B,
         temperature: 0.7,
         maxTokens: 400,
         featureKey: 'audio_render_publish_social_caption',

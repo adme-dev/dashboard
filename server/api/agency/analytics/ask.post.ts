@@ -10,7 +10,8 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { fetchCanonicalFact } from '~~/server/utils/canonicalFactQuery'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -63,10 +64,10 @@ export default defineEventHandler(async (event) => {
 
   let answer: string
   try {
-    answer = await generateGroqInsight(
+    answer = await generateModelRoutedGroqInsight(
       `Question: ${question}\n\nMetrics (JSON, currency AUD, the ONLY data you may use):\n${JSON.stringify(grounding)}`,
       {
-        model: GROQ_MODELS.LLAMA_70B,
+        defaultModelId: GROQ_MODELS.LLAMA_70B,
         temperature: 0.1,
         maxTokens: 600,
         featureKey: 'agency_analytics_ask',

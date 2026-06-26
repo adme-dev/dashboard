@@ -4,7 +4,8 @@ import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { queryOne, execute } from '~~/server/utils/db'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import type { AnomalyRow, AnomalyMetric } from '~~/server/utils/anomalyDetection/types'
 
 export default defineEventHandler(async (event) => {
@@ -34,8 +35,8 @@ export default defineEventHandler(async (event) => {
   const prompt = buildPrompt(row)
   let narrative: string
   try {
-    narrative = await generateGroqInsight(prompt, {
-      model: GROQ_MODELS.LLAMA_70B,
+    narrative = await generateModelRoutedGroqInsight(prompt, {
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       maxTokens: 600,
       featureKey: 'anomaly_driver_narrative',
       clientId: tenantId,

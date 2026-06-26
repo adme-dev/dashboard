@@ -15,7 +15,8 @@ import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 interface InsightsRow {
   churn_risk_score: number
@@ -132,8 +133,8 @@ async function generateAndStoreSummary(opts: {
   anomalyCount: number
 }): Promise<string | null> {
   try {
-    const text = await generateGroqInsight(buildSummaryPrompt(opts), {
-      model: GROQ_MODELS.LLAMA_70B,
+    const text = await generateModelRoutedGroqInsight(buildSummaryPrompt(opts), {
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       temperature: 0.2,
       maxTokens: 200,
       featureKey: 'customer_insights_summary',

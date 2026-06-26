@@ -10,7 +10,8 @@ import { collectForQuery } from '~~/server/utils/socialListening/collect'
 import { upsertMentions } from '~~/server/utils/socialListening/store'
 import { LISTENING_SOURCES } from '~~/server/utils/socialListening/sources/registry'
 import { enrichUnenriched } from '~~/server/utils/socialListening/enrich'
-import { generateGroqInsight } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { dispatchListeningAlerts } from '~~/server/utils/socialListening/alerts'
 import { createNotification } from '~~/server/utils/notifications'
 
@@ -35,7 +36,8 @@ export default defineEventHandler(async (event) => {
   // Enrich any mentions still missing sentiment/topics (this run's + any backlog). Fail-safe.
   const enriched = await enrichUnenriched(
     { queryRows, execute },
-    (prompt) => generateGroqInsight(prompt, {
+    (prompt) => generateModelRoutedGroqInsight(prompt, {
+      defaultModelId: GROQ_MODELS.LLAMA_8B,
       maxTokens: 500,
       featureKey: 'social_listening_enrichment',
       requestId: 'cron-sync-social-listening',

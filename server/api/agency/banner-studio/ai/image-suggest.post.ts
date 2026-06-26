@@ -7,7 +7,8 @@
 
 import { requireAuth } from '~~/server/utils/auth'
 import { edgeGenerate } from '~~/server/utils/edgeAi'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateGroqInsight, GROQ_MODELS, type GroqModel } from '~~/server/utils/groqClient'
+import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 
 interface ImageSuggestion {
   keyword: string
@@ -48,33 +49,20 @@ Return ONLY valid JSON array:
 [{"keyword":"search phrase","description":"what the image shows","style":"photo|illustration|abstract|pattern"},...]`
 
   const systemPrompt = 'You are an expert creative director. Return only valid JSON arrays, no markdown code blocks.'
+  const assignment = await resolveAiModelAssignment({
+    featureKey: 'banner_image_suggest',
+    defaultProvider: 'workers_ai',
+    defaultModelId: '@cf/meta/llama-3.1-8b-instruct',
+    defaultFallbackModelId: GROQ_MODELS.LLAMA_8B,
+    supportedProviders: ['workers_ai', 'groq'],
+  })
 
   let suggestions: ImageSuggestion[] = []
 
-  // Workers AI first
-  try {
-    const aiResult = await edgeGenerate(event, prompt, {
-      systemPrompt,
-      maxTokens: 400,
-      temperature: 0.7,
-      featureKey: 'banner_image_suggest',
-      userId: user?.id ?? null,
-      metadata: {
-        route: '/api/agency/banner-studio/ai/image-suggest',
-        providerPath: 'workers_ai',
-        textCount: texts.length,
-      },
-    })
-    if (aiResult) suggestions = parseResponse(aiResult)
-  } catch {
-    // Fall through to Groq
-  }
-
-  // Groq fallback
-  if (suggestions.length === 0) {
+  if (assignment.provider === 'workers_ai') {
     try {
-      const groqResult = await generateGroqInsight(prompt, {
-        model: GROQ_MODELS.LLAMA_8B,
+      const aiResult = await edgeGenerate(event, prompt, {
+        modelId: assignment.modelId,
         systemPrompt,
         maxTokens: 400,
         temperature: 0.7,
@@ -82,6 +70,36 @@ Return ONLY valid JSON array:
         userId: user?.id ?? null,
         metadata: {
           route: '/api/agency/banner-studio/ai/image-suggest',
+          providerPath: 'workers_ai',
+          modelAssignmentSource: assignment.source,
+          modelAssignmentIgnoredReason: assignment.ignoredReason,
+          textCount: texts.length,
+        },
+      })
+      if (aiResult) suggestions = parseResponse(aiResult)
+    } catch {
+      // Fall through to Groq
+    }
+  }
+
+  // Groq fallback
+  if (suggestions.length === 0) {
+    try {
+      const groqModel = groqModelIdFromAssignment(
+        assignment.provider === 'groq' ? assignment.modelId : assignment.fallbackModelId || GROQ_MODELS.LLAMA_8B
+      ) as GroqModel
+      const groqResult = await generateGroqInsight(prompt, {
+        model: groqModel,
+        systemPrompt,
+        maxTokens: 400,
+        temperature: 0.7,
+        featureKey: 'banner_image_suggest',
+        userId: user?.id ?? null,
+        metadata: {
+          route: '/api/agency/banner-studio/ai/image-suggest',
+          providerPath: assignment.provider === 'groq' ? 'groq' : 'groq_fallback',
+          modelAssignmentSource: assignment.source,
+          modelAssignmentIgnoredReason: assignment.ignoredReason,
           textCount: texts.length,
           hasProjectName: Boolean(projectName),
           hasClientName: Boolean(clientName),

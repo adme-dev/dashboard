@@ -5,7 +5,8 @@
 
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { runAllAnalyzers, type AnalysisResult, type AnalysisFinding } from '~~/server/utils/aiAgentAnalyzer'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { createNotification } from '~~/server/utils/notifications'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { sendAiDigestEmail } from '~~/server/utils/email'
@@ -182,8 +183,8 @@ export async function runAgentDigest(runType: AgentRunType): Promise<{ runId: st
 
         // Build prompt and generate report via Groq
         const prompt = buildReportPrompt(member.name, member.role, runType, userResults)
-        const reportContent = await generateGroqInsight(prompt, {
-          model: GROQ_MODELS.LLAMA_70B,
+        const reportContent = await generateModelRoutedGroqInsight(prompt, {
+          defaultModelId: GROQ_MODELS.LLAMA_70B,
           temperature: 0.3,
           maxTokens: 1500,
           featureKey: 'ai_agent_digest_report',

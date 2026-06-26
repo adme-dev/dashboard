@@ -1,8 +1,9 @@
 import { createError } from 'h3'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateGroqInsight, GROQ_MODELS, type GroqModel } from '~~/server/utils/groqClient'
 import { cachedFetch } from '~~/server/utils/kv'
+import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 
 export default defineEventHandler(async (event) => {
   const tokenSet = await getActiveTokenForSession(event)
@@ -136,8 +137,15 @@ Rules:
   try {
     const cacheKey = `ai:expense-insights:${tenantId}:${from}`
     const result = await cachedFetch(event, cacheKey, 3600, async () => {
+      const assignment = await resolveAiModelAssignment({
+        featureKey: 'expense_insights',
+        defaultProvider: 'groq',
+        defaultModelId: GROQ_MODELS.LLAMA_70B,
+        supportedProviders: ['groq'],
+      })
+      const modelId = groqModelIdFromAssignment(assignment.modelId) as GroqModel
       const raw = await generateGroqInsight(prompt, {
-        model: GROQ_MODELS.LLAMA_70B,
+        model: modelId,
         temperature: 0.2,
         maxTokens: 2000,
         featureKey: 'expense_insights',
@@ -157,6 +165,8 @@ Rules:
           hasTaxSummary: Boolean(tax),
           subscriptionCount: subs?.items?.length || 0,
           subscriptionTotal: subs?.total || 0,
+          modelAssignmentSource: assignment.source,
+          modelAssignmentIgnoredReason: assignment.ignoredReason,
         },
         systemPrompt,
       })
@@ -182,7 +192,7 @@ Rules:
           change: { amount: mom?.changeAmount || 0, percentage: mom?.change || 0 }
         },
         generatedAt: new Date().toISOString(),
-        model: 'Groq Llama 3.3 70B',
+        model: modelId,
       }
     })
 

@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { retrieveContext } from '~~/server/utils/aiContextRetriever'
 import { getRelevantPatterns } from '~~/server/utils/aiFeedbackProcessor'
 import { shouldUseToolLoop } from '~~/server/utils/ai/gate'
@@ -538,8 +539,8 @@ export async function processUserMessage(
             import('~~/server/utils/ai/controller/synthesize'),
           ])
           const cls = await classifyRequest(content, {
-            complete: p => generateGroqInsight(p, {
-              model: GROQ_MODELS.REASONING_20B,
+            complete: p => generateModelRoutedGroqInsight(p, {
+              defaultModelId: GROQ_MODELS.REASONING_20B,
               temperature: 0.1,
               maxTokens: 200,
               systemPrompt: 'Reply with ONLY JSON.',
@@ -570,8 +571,8 @@ export async function processUserMessage(
             // through to L1 rather than dead-ending on a synthesized "didn't find anything".
             if (results.some(r => r.text.trim())) {
               l2Answer = await synthesizeAnswer(content, results, {
-                complete: p => generateGroqInsight(p, {
-                  model: GROQ_MODELS.REASONING_120B,
+                complete: p => generateModelRoutedGroqInsight(p, {
+                  defaultModelId: GROQ_MODELS.REASONING_120B,
                   temperature: 0.2,
                   maxTokens: 1200,
                   systemPrompt: 'Combine the specialist findings into one grounded answer; invent nothing.',
@@ -653,8 +654,8 @@ export async function processUserMessage(
   // Fall back to Groq if neither the tool loop nor LoRA produced a response
   if (!usedToolLoop && !aiContent) {
     try {
-      aiContent = await generateGroqInsight(fullPrompt, {
-        model: selectedModel,
+      aiContent = await generateModelRoutedGroqInsight(fullPrompt, {
+        defaultModelId: selectedModel as typeof GROQ_MODELS[keyof typeof GROQ_MODELS],
         temperature: 0.3,
         maxTokens: 2000,
         featureKey: 'agency_ai_single_shot_fallback',

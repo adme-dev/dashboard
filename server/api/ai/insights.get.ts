@@ -1,4 +1,5 @@
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { cachedFetch } from '~~/server/utils/kv'
 import { getSelectedTenant } from '~~/server/utils/session'
 
@@ -521,10 +522,10 @@ export default eventHandler(async (event) => {
         `Health score: ${healthScore}/100 (${healthLabel(healthScore)})`
       ].filter(Boolean).join('. ')
 
-      const raw = await generateGroqInsight(
+      const raw = await generateModelRoutedGroqInsight(
         `Based on these financial metrics for an Australian marketing agency, write a single-sentence executive headline (max 25 words) summarising the financial position. Be specific and data-driven.\n\nData: ${dataSummary}`,
         {
-          model: GROQ_MODELS.LLAMA_8B,
+          defaultModelId: GROQ_MODELS.LLAMA_8B,
           temperature: 0.3,
           maxTokens: 100,
           featureKey: 'financial_insights_headline',
@@ -559,10 +560,10 @@ export default eventHandler(async (event) => {
     if (recommendations.length > 0) {
       try {
         const recSummary = recommendations.map(r => `${r.title}: ${r.description}`).join('\n')
-        const raw = await generateGroqInsight(
+        const raw = await generateModelRoutedGroqInsight(
           `Given these financial recommendations for an Australian marketing agency, provide 1-2 additional strategic recommendations in JSON array format. Each item should have: title, description, impact (high/medium/low), category.\n\nExisting recommendations:\n${recSummary}`,
           {
-            model: GROQ_MODELS.LLAMA_8B,
+            defaultModelId: GROQ_MODELS.LLAMA_8B,
             temperature: 0.3,
             maxTokens: 500,
             featureKey: 'financial_insights_recommendations',

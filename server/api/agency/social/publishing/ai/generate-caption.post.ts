@@ -1,6 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { generateGroqInsight } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 /**
  * POST /api/agency/social/publishing/ai/generate-caption
@@ -33,7 +34,8 @@ export default defineEventHandler(async (event) => {
     'Return ONLY the post copy — no preamble, no quotes, no explanation.',
   ].join('\n')
 
-  const caption = await generateGroqInsight(prompt, {
+  const caption = await generateModelRoutedGroqInsight(prompt, {
+    defaultModelId: GROQ_MODELS.LLAMA_70B,
     temperature: 0.7,
     maxTokens: 400,
     systemPrompt:

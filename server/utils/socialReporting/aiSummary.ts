@@ -1,7 +1,8 @@
 // server/utils/socialReporting/aiSummary.ts
 // Groq narrative over a reporting period's KPIs. Fail-safe: returns null on any error so a report
 // never breaks because the LLM is unavailable (same posture as the anomalies/digest narratives).
-import { generateGroqInsight } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 interface Kpi { value: number; deltaPct: number | null }
 interface OverviewKpis {
@@ -37,7 +38,8 @@ export async function generateReportSummary(
   telemetry: SummaryTelemetryOptions = {}
 ): Promise<string | null> {
   try {
-    const text = await generateGroqInsight(buildSummaryPrompt(clientName, periodLabel, k), {
+    const text = await generateModelRoutedGroqInsight(buildSummaryPrompt(clientName, periodLabel, k), {
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       maxTokens: 220,
       featureKey: 'social_reporting_ai_summary',
       userId: telemetry.userId ?? null,

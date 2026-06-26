@@ -6,7 +6,8 @@ import {
   type PacingReviewRow,
   type PacingReviewResult,
 } from '~~/server/utils/socialSpendPacingReview'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 function requestIdFromEvent(event: any): string | null {
   const headers = event?.node?.req?.headers
@@ -46,8 +47,8 @@ async function generateAiSummary(review: PacingReviewResult, context: {
 }): Promise<string | null> {
   if (review.items.length === 0) return null
   try {
-    const raw = await generateGroqInsight(buildAiPrompt(review), {
-      model: GROQ_MODELS.LLAMA_8B,
+    const raw = await generateModelRoutedGroqInsight(buildAiPrompt(review), {
+      defaultModelId: GROQ_MODELS.LLAMA_8B,
       temperature: 0.1,
       maxTokens: 220,
       systemPrompt: [

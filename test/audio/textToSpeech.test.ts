@@ -7,6 +7,11 @@ vi.mock('~~/server/utils/ai/invocationLedger', () => ({
   recordAiInvocation: (...args: unknown[]) => mockRecordAiInvocation(...args),
 }))
 
+vi.mock('~~/server/utils/db', () => ({
+  queryRows: vi.fn(async () => []),
+  execute: vi.fn(async () => 1),
+}))
+
 // Build a fake H3Event whose Workers AI binding returns whatever `run` yields.
 function eventWithAI(run: (model: string, inputs: any) => Promise<any>) {
   return { context: { cloudflare: { env: { AI: { run: vi.fn(run) } } } } } as any

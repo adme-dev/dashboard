@@ -33,7 +33,10 @@ vi.mock('~~/server/utils/groqClient', () => ({
   GROQ_MODELS: {
     LLAMA_8B: 'llama-3.1-8b-instant',
   },
-  generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
+}))
+
+vi.mock('~~/server/utils/ai/resolvedGroq', () => ({
+  generateModelRoutedGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
 const { default: handler } = await import('../../../../server/api/notifications/[id]/why.get')
@@ -67,7 +70,7 @@ describe('GET /api/notifications/:id/why telemetry', () => {
       cached: false,
     })
     expect(mockGenerateGroqInsight).toHaveBeenCalledWith(expect.stringContaining('New Task Assigned'), expect.objectContaining({
-      model: 'llama-3.1-8b-instant',
+      defaultModelId: 'llama-3.1-8b-instant',
       featureKey: 'notification_why_explanation',
       userId: 'user-1',
       requestId: 'notification-1',

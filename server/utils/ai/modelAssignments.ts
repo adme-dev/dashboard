@@ -5,6 +5,7 @@ import {
   listAiModelCatalogOptions,
   listAiModelMap,
   metadataForModel,
+  providerForModel,
   type AiModelMapRow
 } from '~~/server/utils/ai/modelRegistry'
 
@@ -20,6 +21,11 @@ export interface AiModelAssignmentRow extends AiModelMapRow {
   assignmentNotes: string | null
   assignmentUpdatedBy: string | null
   assignmentUpdatedAt: string | null
+  runtimeRoutingStatus: RuntimeRoutingStatus
+  runtimeRoutingLabel: string
+  runtimeControlEnabled: boolean
+  runtimeSupportedProviders: RuntimeModelProvider[]
+  runtimeNotes: string | null
 }
 
 export interface AiModelAssignmentOverride {
@@ -58,6 +64,153 @@ export interface AssignmentSummary {
   overrideCount: number
   editableCount: number
   blockedDuplicateCount: number
+  runtimeRoutedCount: number
+  runtimePartialCount: number
+  runtimeWorkerSideCount: number
+  runtimeDirectCount: number
+  runtimeControllableCount: number
+}
+
+export type RuntimeModelProvider = 'groq' | 'anthropic' | 'workers_ai' | 'minimax' | 'aigateway'
+export type RuntimeRoutingStatus = 'runtime_routed' | 'partial' | 'worker_side' | 'direct'
+
+export interface ResolvedAiModelAssignment {
+  featureKey: string
+  provider: RuntimeModelProvider
+  modelId: string
+  fallbackModelId: string | null
+  source: 'default' | 'override'
+  ignoredReason: string | null
+  modelSpec: string
+  fallbackModelSpec: string | null
+}
+
+export interface ResolveAiModelAssignmentInput {
+  featureKey: string
+  defaultProvider: RuntimeModelProvider
+  defaultModelId: string
+  defaultFallbackModelId?: string | null
+  supportedProviders?: RuntimeModelProvider[]
+}
+
+const FEATURE_RUNTIME_SUPPORTED_PROVIDERS: Record<string, RuntimeModelProvider[]> = {
+  agency_ai_tool_loop: ['groq', 'anthropic', 'workers_ai'],
+  agency_ai_l2_specialist_loop: ['groq', 'anthropic', 'workers_ai'],
+  portal_ai_tool_loop: ['groq', 'anthropic', 'workers_ai'],
+  ai_agent_digest_report: ['groq'],
+  agency_ai_l2_classifier: ['groq'],
+  agency_ai_l2_synthesis: ['groq'],
+  agency_ai_single_shot_fallback: ['groq'],
+  agency_ai_intent_lora_classifier: ['workers_ai'],
+  agency_ai_intent_edge_classifier: ['workers_ai'],
+  agency_ai_intent_groq_classifier: ['groq'],
+  ai_memory_distillation: ['groq'],
+  observe_and_learn_distillation: ['groq'],
+  social_spend_ai_analysis: ['groq'],
+  social_spend_pacing_summary: ['groq'],
+  budget_change_sanity_check: ['groq'],
+  social_publishing_plan: ['groq'],
+  social_publishing_caption: ['groq'],
+  social_reporting_ai_summary: ['groq'],
+  social_inbox_reply_draft: ['groq'],
+  social_listening_enrichment: ['groq'],
+  crm_followup_draft: ['groq'],
+  banner_image_suggest: ['workers_ai', 'groq'],
+  banner_copy_suggest: ['workers_ai', 'groq'],
+  banner_code_assist: ['workers_ai', 'groq'],
+  task_wiki_summary: ['groq'],
+  agency_task_assist_creation: ['groq'],
+  agency_task_assist_analysis: ['groq'],
+  board_automation_ai_insight: ['groq'],
+  board_automation_ai_summary: ['groq'],
+  agency_analytics_ai_summary: ['workers_ai', 'groq'],
+  agency_analytics_ask: ['groq'],
+  rate_card_description: ['groq'],
+  notification_digest_narrative: ['groq'],
+  notification_why_explanation: ['groq'],
+  task_assignment_auto_ack: ['groq'],
+  office_recording_transcription: ['groq'],
+  office_meeting_cross_search: ['groq'],
+  office_meeting_question_answer: ['groq'],
+  agency_ai_voice_stt: ['workers_ai'],
+  agency_ai_voice_tts: ['workers_ai'],
+  workers_ai_speech_to_text: ['workers_ai'],
+  workers_ai_text_to_speech: ['workers_ai'],
+  financial_advisor: ['groq', 'anthropic'],
+  cashflow_insights: ['groq'],
+  expense_insights: ['groq'],
+  anomaly_driver_narrative: ['groq'],
+  action_plan_generation: ['groq'],
+  financial_insights_headline: ['groq'],
+  financial_insights_recommendations: ['groq'],
+  xero_invoice_ai_briefing: ['groq'],
+  customer_insights_summary: ['groq'],
+  video_asset_publish_social_caption: ['groq'],
+  video_project_ai_assembly: ['groq'],
+  audio_render_publish_social_caption: ['groq'],
+  workers_ai_edge_generate: ['workers_ai'],
+  workers_ai_edge_classify: ['workers_ai'],
+  workers_ai_edge_summarize: ['workers_ai'],
+  workers_ai_edge_generate_lora: ['workers_ai'],
+}
+
+const FEATURE_RUNTIME_STATUS_OVERRIDES: Record<string, { status: RuntimeRoutingStatus, note: string }> = {
+  office_recording_transcription: {
+    status: 'partial',
+    note: 'Generated summary/action-item text is assignment-routed; raw Groq audio transcription still needs an audio-specific assignment path.',
+  },
+}
+
+function workerSideRuntimeFeature(row: AiModelMapRow) {
+  if (row.sourceFile.startsWith('workers/')) return true
+  return [
+    'video_generation_job',
+    'video_generation_worker_runtime',
+    'video_generation_completion',
+    'video_asset_intelligence_job',
+    'video_asset_intelligence_worker_runtime',
+    'audio_music_generation',
+    'audio_music_generation_worker_runtime',
+  ].includes(row.featureKey)
+}
+
+function runtimeRoutingForRow(row: AiModelMapRow) {
+  const supportedProviders = supportedProvidersForFeature(row.featureKey) ?? []
+  const override = FEATURE_RUNTIME_STATUS_OVERRIDES[row.featureKey]
+  if (override) {
+    return {
+      runtimeRoutingStatus: override.status,
+      runtimeRoutingLabel: 'Partially routed',
+      runtimeControlEnabled: supportedProviders.length > 0,
+      runtimeSupportedProviders: supportedProviders,
+      runtimeNotes: override.note,
+    }
+  }
+  if (supportedProviders.length > 0) {
+    return {
+      runtimeRoutingStatus: 'runtime_routed' as const,
+      runtimeRoutingLabel: 'Runtime routed',
+      runtimeControlEnabled: true,
+      runtimeSupportedProviders: supportedProviders,
+      runtimeNotes: null,
+    }
+  }
+  if (workerSideRuntimeFeature(row)) {
+    return {
+      runtimeRoutingStatus: 'worker_side' as const,
+      runtimeRoutingLabel: 'Worker-side rollout',
+      runtimeControlEnabled: false,
+      runtimeSupportedProviders: [],
+      runtimeNotes: 'Requires model assignment distribution into Workers or job payloads before dashboard overrides can affect runtime.',
+    }
+  }
+  return {
+    runtimeRoutingStatus: 'direct' as const,
+    runtimeRoutingLabel: 'Direct',
+    runtimeControlEnabled: false,
+    runtimeSupportedProviders: [],
+    runtimeNotes: 'Registered in the model map, but no runtime resolver is wired for this feature yet.',
+  }
 }
 
 function tableMissing(error: unknown) {
@@ -129,6 +282,7 @@ export function mergeAiModelAssignments(
     const warnings = buildWarnings(assignedModelId, meta)
     if (!assignmentEditable) warnings.push('Duplicate feature key; assignment editing disabled until split into unique keys')
 
+    const runtime = runtimeRoutingForRow(row)
     return {
       ...row,
       provider: assignedProvider,
@@ -148,6 +302,7 @@ export function mergeAiModelAssignments(
       assignmentNotes: override?.notes ?? null,
       assignmentUpdatedBy: override?.updatedBy ?? null,
       assignmentUpdatedAt: override?.updatedAt ?? null,
+      ...runtime,
     }
   })
 }
@@ -159,6 +314,11 @@ export function getAiModelAssignmentSummary(rows: AiModelAssignmentRow[]): Assig
     overrideCount: rows.filter((row) => row.assignmentSource === 'override').length,
     editableCount: rows.filter((row) => row.assignmentEditable).length,
     blockedDuplicateCount: rows.filter((row) => !row.assignmentEditable).length,
+    runtimeRoutedCount: rows.filter((row) => row.runtimeRoutingStatus === 'runtime_routed').length,
+    runtimePartialCount: rows.filter((row) => row.runtimeRoutingStatus === 'partial').length,
+    runtimeWorkerSideCount: rows.filter((row) => row.runtimeRoutingStatus === 'worker_side').length,
+    runtimeDirectCount: rows.filter((row) => row.runtimeRoutingStatus === 'direct').length,
+    runtimeControllableCount: rows.filter((row) => row.runtimeControlEnabled).length,
   }
 }
 
@@ -188,6 +348,93 @@ export function modelIdIsCatalogued(modelId: string, rows = listAiModelMap()) {
   const catalogued = listAiModelCatalogOptions().some((model) => model.modelId === modelId)
   if (catalogued) return true
   return rows.some((row) => row.modelId === modelId || row.fallback === modelId)
+}
+
+export function supportedProvidersForFeature(featureKey: string): RuntimeModelProvider[] | null {
+  return FEATURE_RUNTIME_SUPPORTED_PROVIDERS[featureKey] ?? null
+}
+
+export function modelProviderMatches(provider: string, modelId: string) {
+  return providerForModel(modelId) === provider
+}
+
+function runtimeProvider(value: string): RuntimeModelProvider {
+  if (value === 'workers-ai') return 'workers_ai'
+  if (value === 'aigateway') return 'aigateway'
+  return value as RuntimeModelProvider
+}
+
+export function modelSpecForAssignment(provider: string, modelId: string): string {
+  const normalizedProvider = runtimeProvider(provider)
+  if (normalizedProvider === 'workers_ai') {
+    return modelId.startsWith('workersai/') ? modelId : `workersai/${modelId}`
+  }
+  if (normalizedProvider === 'anthropic') {
+    return modelId.startsWith('anthropic/') ? modelId : `anthropic/${modelId}`
+  }
+  if (normalizedProvider === 'groq') {
+    return modelId.startsWith('groq/') ? modelId : `groq/${modelId}`
+  }
+  return modelId
+}
+
+export function groqModelIdFromAssignment(modelId: string) {
+  return modelId.replace(/^groq\//, '')
+}
+
+export async function resolveAiModelAssignment(input: ResolveAiModelAssignmentInput): Promise<ResolvedAiModelAssignment> {
+  const supportedProviders = input.supportedProviders
+    ?? supportedProvidersForFeature(input.featureKey)
+    ?? [input.defaultProvider]
+  const defaultProvider = runtimeProvider(input.defaultProvider)
+  const defaultFallback = input.defaultFallbackModelId ?? null
+  const defaults: ResolvedAiModelAssignment = {
+    featureKey: input.featureKey,
+    provider: defaultProvider,
+    modelId: input.defaultModelId,
+    fallbackModelId: defaultFallback,
+    source: 'default',
+    ignoredReason: null,
+    modelSpec: modelSpecForAssignment(defaultProvider, input.defaultModelId),
+    fallbackModelSpec: defaultFallback ? modelSpecForAssignment(providerForModel(defaultFallback), defaultFallback) : null,
+  }
+
+  const known = findEditableAssignmentFeature(input.featureKey)
+  if (!known.ok) return { ...defaults, ignoredReason: known.reason }
+
+  let result: AssignmentReadResult
+  try {
+    result = await readAiModelAssignmentOverrides([input.featureKey])
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { ...defaults, ignoredReason: `Model assignment lookup failed; using default. ${message}`.slice(0, 240) }
+  }
+  if (!result.available) return { ...defaults, ignoredReason: result.reason }
+
+  const override = result.overrides[0]
+  if (!override) return defaults
+
+  const overrideProvider = runtimeProvider(override.provider)
+  if (!supportedProviders.includes(overrideProvider)) {
+    return { ...defaults, ignoredReason: `Provider ${override.provider} is not supported for ${input.featureKey}.` }
+  }
+  if (!modelIdIsCatalogued(override.modelId)) {
+    return { ...defaults, ignoredReason: `Model ${override.modelId} is not catalogued.` }
+  }
+  if (!modelProviderMatches(overrideProvider, override.modelId)) {
+    return { ...defaults, ignoredReason: `Model ${override.modelId} does not belong to provider ${override.provider}.` }
+  }
+
+  return {
+    featureKey: input.featureKey,
+    provider: overrideProvider,
+    modelId: override.modelId,
+    fallbackModelId: override.fallbackModelId,
+    source: 'override',
+    ignoredReason: null,
+    modelSpec: modelSpecForAssignment(overrideProvider, override.modelId),
+    fallbackModelSpec: override.fallbackModelId ? modelSpecForAssignment(providerForModel(override.fallbackModelId), override.fallbackModelId) : null,
+  }
 }
 
 export async function upsertAiModelAssignment(input: {

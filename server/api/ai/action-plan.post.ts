@@ -1,5 +1,6 @@
 import { readBody, createError } from 'h3'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
 import { cachedFetch } from '~~/server/utils/kv'
 import { getSelectedTenant } from '~~/server/utils/session'
@@ -166,8 +167,8 @@ export default eventHandler(async (event) => {
 
     // ── 5. Generate action plan via Groq 70B ──
     try {
-      const raw = await generateGroqInsight(prompt, {
-        model: GROQ_MODELS.LLAMA_70B,
+      const raw = await generateModelRoutedGroqInsight(prompt, {
+        defaultModelId: GROQ_MODELS.LLAMA_70B,
         temperature: 0.2,
         maxTokens: 3000,
         featureKey: 'action_plan_generation',

@@ -4,16 +4,26 @@ const mockRequireAuth = vi.fn()
 const mockQueryRows = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
+  requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
 }))
 
 vi.mock('~~/server/utils/db', () => ({
-  queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  queryRows: (...args: unknown[]) => mockQueryRows(...args)
 }))
 
-;(globalThis as any).eventHandler = (fn: any) => fn
-;(globalThis as any).getRouterParam = (event: any, key: string) => event.params?.[key]
-;(globalThis as any).createError = (input: { statusCode: number, statusMessage: string }) => Object.assign(new Error(input.statusMessage), input)
+type TestEvent = {
+  params?: Record<string, string>
+}
+
+type TestGlobal = typeof globalThis & {
+  eventHandler: <T>(fn: T) => T
+  getRouterParam: (event: TestEvent, key: string) => string | undefined
+  createError: (input: { statusCode: number, statusMessage: string }) => Error & { statusCode: number, statusMessage: string }
+}
+
+;(globalThis as TestGlobal).eventHandler = fn => fn
+;(globalThis as TestGlobal).getRouterParam = (event, key) => event.params?.[key]
+;(globalThis as TestGlobal).createError = input => Object.assign(new Error(input.statusMessage), input)
 
 describe('GET /api/agency/social/spend/:id/actions', () => {
   beforeEach(() => {
@@ -41,17 +51,18 @@ describe('GET /api/agency/social/spend/:id/actions', () => {
         executed_at: '2026-06-10T03:02:00.000Z',
         previous_value: { dailyBudget: 120 },
         new_value: { dailyBudget: 95 },
+        metadata: { source: 'ai_recommendation' },
         reason: 'Overpacing against monthly budget',
         external_request_id: 'google-req-1',
-        error_message: null,
-      },
+        error_message: null
+      }
     ])
   })
 
   it('requires auth and returns normalized campaign action rows', async () => {
     const handler = (await import('~~/server/api/agency/social/spend/[id]/actions.get')).default
 
-    const result = await handler({ params: { id: 'spend-1' } } as any)
+    const result = await handler({ params: { id: 'spend-1' } } as never)
 
     expect(mockRequireAuth).toHaveBeenCalled()
     expect(mockQueryRows.mock.calls[0][1]).toEqual(['spend-1'])
@@ -83,19 +94,20 @@ describe('GET /api/agency/social/spend/:id/actions', () => {
         executedAt: '2026-06-10T03:02:00.000Z',
         previousValue: { dailyBudget: 120 },
         newValue: { dailyBudget: 95 },
+        metadata: { source: 'ai_recommendation' },
         reason: 'Overpacing against monthly budget',
         externalRequestId: 'google-req-1',
-        errorMessage: null,
-      },
+        errorMessage: null
+      }
     ])
   })
 
   it('rejects missing spend id', async () => {
     const handler = (await import('~~/server/api/agency/social/spend/[id]/actions.get')).default
 
-    await expect(handler({ params: {} } as any)).rejects.toMatchObject({
+    await expect(handler({ params: {} } as never)).rejects.toMatchObject({
       statusCode: 400,
-      statusMessage: 'id is required',
+      statusMessage: 'id is required'
     })
   })
 })

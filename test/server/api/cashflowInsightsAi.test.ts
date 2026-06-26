@@ -17,6 +17,19 @@ vi.mock('~~/server/utils/groqClient', () => ({
   generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
+vi.mock('~~/server/utils/ai/modelAssignments', () => ({
+  resolveAiModelAssignment: vi.fn(async () => ({
+    provider: 'groq',
+    modelId: 'llama-3.1-8b-instant',
+    fallbackModelId: null,
+    source: 'default',
+    ignoredReason: null,
+    modelSpec: 'groq/llama-3.1-8b-instant',
+    fallbackModelSpec: null,
+  })),
+  groqModelIdFromAssignment: (modelId: string) => modelId.replace(/^groq\//, ''),
+}))
+
 const testGlobal = globalThis as typeof globalThis & {
   eventHandler: <T>(fn: T) => T
   readBody: (event: TestEvent) => Promise<Record<string, unknown>>
@@ -96,6 +109,8 @@ describe('POST /api/ai/cashflow-insights telemetry', () => {
         burnRate: 1800,
         outstandingReceivables: 45000,
         overdueReceivables: 15000,
+        modelAssignmentSource: 'default',
+        modelAssignmentIgnoredReason: null,
       },
     }))
   })

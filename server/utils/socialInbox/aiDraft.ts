@@ -2,7 +2,8 @@
 // AI reply drafting via Groq. Returns structured {reply, confidence, risk}. Any failure
 // to call or parse fails SAFE: empty reply + confidence 0 + risk true, so the engine
 // downgrades to human approval rather than sending something unverified.
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import type { AutomationContext, ReplyDraft } from './automationTypes'
 
 const CHANNEL_HINT: Record<string, string> = {
@@ -46,8 +47,8 @@ export function parseDraftResponse(raw: string): ReplyDraft {
 /** Calls Groq. On any thrown error returns the fail-safe draft. */
 export async function generateReplyDraft(ctx: AutomationContext, brandPrompt: string): Promise<ReplyDraft> {
   try {
-    const out = await generateGroqInsight(buildDraftPrompt(ctx, brandPrompt), {
-      model: GROQ_MODELS.LLAMA_70B,
+    const out = await generateModelRoutedGroqInsight(buildDraftPrompt(ctx, brandPrompt), {
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       temperature: 0.3,
       maxTokens: 300,
       systemPrompt: 'You are a senior social media community manager. You write safe, on-brand, accurate replies and you flag anything sensitive for a human.',

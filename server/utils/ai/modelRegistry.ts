@@ -462,8 +462,9 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     label: 'Banner Studio image suggestion',
     surface: '/agency/banner-studio',
     owner: 'Creative',
-    provider: 'groq',
-    modelId: GROQ_MODELS.LLAMA_8B,
+    provider: 'workers_ai',
+    modelId: '@cf/meta/llama-3.1-8b-instruct',
+    fallback: GROQ_MODELS.LLAMA_8B,
     modality: 'text',
     riskTier: 'medium',
     sourceFile: 'server/api/agency/banner-studio/ai/image-suggest.post.ts'
@@ -473,8 +474,9 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     label: 'Banner Studio copy suggestion',
     surface: '/agency/banner-studio',
     owner: 'Creative',
-    provider: 'groq',
-    modelId: GROQ_MODELS.LLAMA_8B,
+    provider: 'workers_ai',
+    modelId: '@cf/meta/llama-3.1-8b-instruct',
+    fallback: GROQ_MODELS.LLAMA_8B,
     modality: 'text',
     riskTier: 'medium',
     sourceFile: 'server/api/agency/banner-studio/ai/copy-suggest.post.ts'
@@ -484,8 +486,9 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     label: 'Banner Studio code assist',
     surface: '/agency/banner-studio',
     owner: 'Creative',
-    provider: 'groq',
-    modelId: GROQ_MODELS.LLAMA_70B,
+    provider: 'workers_ai',
+    modelId: '@cf/meta/llama-3.1-8b-instruct',
+    fallback: GROQ_MODELS.LLAMA_70B,
     modality: 'text',
     riskTier: 'high',
     sourceFile: 'server/api/agency/banner-studio/ai/code-assist.post.ts'
@@ -844,7 +847,7 @@ export function buildWarnings(modelId: string, entry: ModelCatalogEntry): string
   return warnings
 }
 
-function providerForModel(modelId: string) {
+export function providerForModel(modelId: string) {
   if (modelId.startsWith('@cf/')) return 'workers_ai'
   if (modelId.startsWith('groq/')) return 'groq'
   if (modelId.startsWith('anthropic/')) return 'anthropic'

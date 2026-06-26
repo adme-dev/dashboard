@@ -138,7 +138,10 @@ export default defineEventHandler(async (event) => {
     // Failure is silent — frontend falls back to count badges + top items.
     if (wantNarrative && boards.length > 0) {
       try {
-        const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
+        const [{ GROQ_MODELS }, { generateModelRoutedGroqInsight }] = await Promise.all([
+          import('~~/server/utils/groqClient'),
+          import('~~/server/utils/ai/resolvedGroq'),
+        ])
         const top = boards.slice(0, 5)
         await Promise.allSettled(
           top.map(async (b) => {
@@ -147,8 +150,8 @@ export default defineEventHandler(async (event) => {
                 ? b.topItems.map(t => `"${t.taskTitle}" (${t.count} updates)`).join(', ')
                 : 'no specific items'
               const prompt = `Write ONE short sentence (max 20 words) summarising activity on the "${b.boardName}" board for a busy team member. Be specific and skimmable.\n\nActivity:\n- ${b.counts.mentioned} mentions of you\n- ${b.counts.assigned} assignments to you\n- ${b.counts.watching} from items you watch\n- ${b.counts.direct} other\n\nTop items: ${itemList}\n\nReturn just the sentence, no preamble.`
-              const text = await generateGroqInsight(prompt, {
-                model: GROQ_MODELS.LLAMA_8B,
+              const text = await generateModelRoutedGroqInsight(prompt, {
+                defaultModelId: GROQ_MODELS.LLAMA_8B,
                 maxTokens: 60,
                 temperature: 0.3,
                 featureKey: 'notification_digest_narrative',

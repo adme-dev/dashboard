@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryOne } from '~~/server/utils/db'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
 interface TaskAssistRequest {
   description?: string
@@ -127,8 +128,8 @@ Use ONLY valid IDs from the lists above.`
     const systemPrompt = `You are a project management AI assistant for a digital marketing agency. Analyze tasks and provide actionable recommendations. Always respond with valid JSON only, no markdown fences.`
 
     try {
-      const response = await generateGroqInsight(prompt, {
-        model: GROQ_MODELS.LLAMA_70B,
+      const response = await generateModelRoutedGroqInsight(prompt, {
+        defaultModelId: GROQ_MODELS.LLAMA_70B,
         temperature: 0.2,
         maxTokens: 1000,
         featureKey: 'agency_task_assist_analysis',
@@ -215,8 +216,8 @@ Rules:
   const systemPrompt = `You are a task creation assistant for a digital marketing agency. Parse natural language into structured task fields. Always respond with valid JSON only, no markdown fences.`
 
   try {
-    const response = await generateGroqInsight(prompt, {
-      model: GROQ_MODELS.LLAMA_70B,
+    const response = await generateModelRoutedGroqInsight(prompt, {
+      defaultModelId: GROQ_MODELS.LLAMA_70B,
       temperature: 0.2,
       maxTokens: 1000,
       featureKey: 'agency_task_assist_creation',

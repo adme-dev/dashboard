@@ -15,7 +15,8 @@
  */
 
 import { extractKeywords } from '~~/server/utils/aiContextRetriever'
-import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import {
   loadReport,
   searchNodes,
@@ -172,8 +173,8 @@ async function summarise(args: {
     .join('\n')
 
   try {
-    const response = await generateGroqInsight(prompt, {
-      model: SUMMARY_MODEL,
+    const response = await generateModelRoutedGroqInsight(prompt, {
+      defaultModelId: SUMMARY_MODEL,
       temperature: 0.2,
       maxTokens: SUMMARY_MAX_TOKENS,
       systemPrompt:

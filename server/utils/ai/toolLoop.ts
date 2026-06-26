@@ -6,6 +6,7 @@ import { DEFAULT_PERSONA, type Persona } from './personas'
 import { spotlightSystemClause } from './spotlight'
 import type { ToolContext } from './toolContext'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
+import { resolveAiModelAssignment, type RuntimeModelProvider } from '~~/server/utils/ai/modelAssignments'
 
 export interface LoopOutput {
   text: string
@@ -36,6 +37,19 @@ const PRICE_PER_MTOK: Record<string, { in: number, out: number }> = {
   'openai/gpt-oss-20b': { in: 0.10, out: 0.40 },
   'moonshotai/kimi-k2-instruct': { in: 1.0, out: 3.0 },
   'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
+}
+
+const DEFAULT_LOOP_MODEL_SPEC = 'groq/openai/gpt-oss-120b'
+const DEFAULT_LOOP_FALLBACK_SPEC = 'groq/openai/gpt-oss-20b'
+
+function providerFromSpec(spec: string): RuntimeModelProvider {
+  if (spec.startsWith('anthropic/')) return 'anthropic'
+  if (spec.startsWith('workersai/')) return 'workers_ai'
+  return 'groq'
+}
+
+function modelIdFromSpec(spec: string): string {
+  return spec.replace(/^(groq|anthropic|workersai)\//, '')
 }
 
 /** Estimate a turn's cost in USD from token usage + the model spec. Returns 0 when unknown. */
@@ -129,8 +143,19 @@ export async function runToolLoop(opts: {
     experimental_telemetry: { isEnabled: true, recordInputs: false, recordOutputs: false, functionId: 'ai-tool-loop' },
   })
 
-  const primarySpec = opts.modelSpec ?? cfg.aiLoopModel
-  const fallbackSpec = opts.fallbackSpec ?? cfg.aiLoopFallbackModel
+  const configuredPrimarySpec = opts.modelSpec ?? cfg.aiLoopModel ?? DEFAULT_LOOP_MODEL_SPEC
+  const configuredFallbackSpec = opts.fallbackSpec ?? cfg.aiLoopFallbackModel ?? DEFAULT_LOOP_FALLBACK_SPEC
+  const assignment = opts.model
+    ? null
+    : await resolveAiModelAssignment({
+        featureKey: opts.featureKey ?? 'agency_ai_tool_loop',
+        defaultProvider: providerFromSpec(configuredPrimarySpec),
+        defaultModelId: modelIdFromSpec(configuredPrimarySpec),
+        defaultFallbackModelId: configuredFallbackSpec ? modelIdFromSpec(configuredFallbackSpec) : null,
+        supportedProviders: ['groq', 'anthropic', 'workers_ai'],
+      })
+  const primarySpec = opts.modelSpec ?? assignment?.modelSpec ?? configuredPrimarySpec
+  const fallbackSpec = opts.fallbackSpec ?? assignment?.fallbackModelSpec ?? configuredFallbackSpec
   // Workers AI models (workersai/@cf/...) resolve via the request's edge AI binding.
   const aiBinding = (opts.ctx.event?.context as any)?.cloudflare?.env?.AI
   let usedSpec: string = opts.model ? 'injected' : primarySpec
@@ -175,6 +200,8 @@ export async function runToolLoop(opts: {
       toolCalls: out.toolCalls.map((call) => call.name).slice(0, 20),
       proposedTool: out.proposedAction?.toolName ?? null,
       injectedModel: Boolean(opts.model),
+      modelAssignmentSource: assignment?.source ?? 'default',
+      modelAssignmentIgnoredReason: assignment?.ignoredReason ?? null,
       ...(opts.metadata ?? {}),
     },
   })
