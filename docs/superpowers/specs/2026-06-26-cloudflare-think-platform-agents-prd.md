@@ -615,6 +615,8 @@ Extend existing run surfaces where possible. The response should include agent t
 - [ ] Task 4.3: Add planner agent panel.
   - Acceptance: Planner route supports campaign-scoped agent prompts and draft recommendation cards.
   - Verify: Vue tests cover generate, edit draft, discard, and accept-as-draft flows.
+  - Progress: Read-only planner review panel is wired into `/agency/social/publishing/planner` with dormant-state handling and Vue coverage.
+  - Remaining: Campaign-scoped prompts plus draft recommendation card edit, discard, and accept-as-draft flows.
 
 ### Phase 5: Financial Watch Agent
 

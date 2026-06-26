@@ -37,7 +37,10 @@ function bumpReload() { reloadKey.value++ }
     <div v-else-if="!clientId" class="rounded-lg border border-default p-10 text-center text-muted">
       Select a client to start planning.
     </div>
-    <SocialPublishingPlannerBoard v-else :client-id="clientId" :reload-key="reloadKey" />
+    <div v-else class="space-y-4">
+      <SocialPublishingPlannerAgentPanel :client-id="clientId" />
+      <SocialPublishingPlannerBoard :client-id="clientId" :reload-key="reloadKey" />
+    </div>
 
     <SocialPublishingCampaignManager v-if="enabled && clientId" v-model:open="showCampaigns" :client-id="clientId" @changed="bumpReload" />
     <SocialPublishingAiPlanModal v-if="enabled && aiEnabled && clientId" v-model:open="showAi" :client-id="clientId" @created="bumpReload" />
