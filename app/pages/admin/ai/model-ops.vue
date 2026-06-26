@@ -396,6 +396,32 @@ type OrchestratorCheckResponse = {
   }>
 }
 
+type PlatformAgentsCheckResponse = {
+  ok: boolean
+  mode: string
+  summary: {
+    readOnly: boolean
+    workerReachable: boolean
+    workerHealthy: boolean
+    expectedBridges: number
+    reportedBridges: number
+    missingBridgeCount: number
+    reportedAgents: number
+  }
+  worker: {
+    status: number
+    host: string | null
+    name: string | null
+    runtime: string | null
+  }
+  bridges: Array<{
+    path: string
+    reported: boolean
+    mode: string | null
+  }>
+  error?: string
+}
+
 type AssignmentDraft = {
   provider: string
   modelId: string
@@ -449,6 +475,9 @@ const {
 const orchestratorCheckPending = ref(false)
 const orchestratorCheckError = ref<string | null>(null)
 const orchestratorCheckResult = ref<OrchestratorCheckResponse | null>(null)
+const platformAgentsCheckPending = ref(false)
+const platformAgentsCheckError = ref<string | null>(null)
+const platformAgentsCheckResult = ref<PlatformAgentsCheckResponse | null>(null)
 const assignmentDrafts = reactive<Record<string, AssignmentDraft>>({})
 const assignmentSaving = reactive<Record<string, boolean>>({})
 const assignmentError = ref<string | null>(null)
@@ -475,6 +504,11 @@ const modelMapRiskFilter = ref(MODEL_MAP_ALL_FILTERS)
 const orchestratorManualCheckReady = computed(() => Boolean(data.value?.config.orchestrator.manualCheckReady))
 const orchestratorReadCheckDisabled = computed(() => orchestratorCheckPending.value || !orchestratorManualCheckReady.value)
 const orchestratorReadCheckUnavailableMessage = 'Set INTERNAL_API_KEY to enable manual read checks.'
+const platformAgentsCheckReady = computed(() => Boolean(
+  data.value?.config.platformAgents.internalApiKeyConfigured && data.value?.config.platformAgents.workerConfigured
+))
+const platformAgentsCheckDisabled = computed(() => platformAgentsCheckPending.value || !platformAgentsCheckReady.value)
+const platformAgentsCheckUnavailableMessage = 'Set INTERNAL_API_KEY and PLATFORM_AGENTS_WORKER_URL to enable platform bridge checks.'
 
 const cards = computed(() => {
   const summary = data.value?.summary
@@ -894,6 +928,25 @@ async function runOrchestratorCheck() {
     orchestratorCheckError.value = err?.data?.statusMessage || err?.message || 'Orchestrator check failed.'
   } finally {
     orchestratorCheckPending.value = false
+  }
+}
+
+async function runPlatformAgentsCheck() {
+  platformAgentsCheckResult.value = null
+  if (!platformAgentsCheckReady.value) {
+    platformAgentsCheckError.value = platformAgentsCheckUnavailableMessage
+    return
+  }
+  platformAgentsCheckPending.value = true
+  platformAgentsCheckError.value = null
+  try {
+    platformAgentsCheckResult.value = await $fetch<PlatformAgentsCheckResponse>('/api/admin/ai/model-ops/platform-agents-check', {
+      method: 'POST',
+    })
+  } catch (err: any) {
+    platformAgentsCheckError.value = err?.data?.statusMessage || err?.message || 'Platform Agents bridge check failed.'
+  } finally {
+    platformAgentsCheckPending.value = false
   }
 }
 
@@ -1439,9 +1492,24 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
               <h2 class="text-sm font-semibold text-highlighted">Platform Agents</h2>
               <p class="text-xs text-muted">Feature flags, Worker bridge prerequisites, and latest read-only run state.</p>
             </div>
-            <UBadge :color="data?.config.platformAgents.bridgeReady ? 'success' : 'warning'" variant="soft">
-              {{ data?.config.platformAgents.bridgeReady ? 'Ready' : 'Needs setup' }}
-            </UBadge>
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              <UBadge :color="data?.config.platformAgents.bridgeReady ? 'success' : 'warning'" variant="soft">
+                {{ data?.config.platformAgents.bridgeReady ? 'Ready' : 'Needs setup' }}
+              </UBadge>
+              <UButton
+                data-testid="run-platform-agents-check"
+                icon="i-lucide-shield-check"
+                color="neutral"
+                variant="soft"
+                size="sm"
+                :loading="platformAgentsCheckPending"
+                :disabled="platformAgentsCheckDisabled"
+                :title="platformAgentsCheckReady ? 'Run read-only platform bridge check' : platformAgentsCheckUnavailableMessage"
+                @click="runPlatformAgentsCheck()"
+              >
+                Check bridge
+              </UButton>
+            </div>
           </div>
         </template>
 
@@ -1483,6 +1551,26 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
             </p>
           </div>
         </div>
+
+        <UAlert
+          v-if="platformAgentsCheckError"
+          class="mt-4"
+          color="error"
+          variant="soft"
+          icon="i-lucide-triangle-alert"
+          title="Couldn't check Platform Agents"
+          :description="platformAgentsCheckError"
+        />
+
+        <UAlert
+          v-if="platformAgentsCheckResult"
+          class="mt-4"
+          :color="platformAgentsCheckResult.ok ? 'success' : 'warning'"
+          variant="soft"
+          icon="i-lucide-shield-check"
+          title="Platform Agents bridge check complete"
+          :description="`${platformAgentsCheckResult.summary.reportedBridges}/${platformAgentsCheckResult.summary.expectedBridges} bridges reported by ${platformAgentsCheckResult.worker.host || 'the Worker'}`"
+        />
 
         <div class="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
           <div class="rounded-md border border-default p-3">

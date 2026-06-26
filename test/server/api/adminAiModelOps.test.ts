@@ -53,6 +53,9 @@ const { default: agentRunsHandler } = await import(
 const { default: orchestratorCheckHandler } = await import(
   '../../../../server/api/admin/ai/model-ops/orchestrator-check.post'
 )
+const { default: platformAgentsCheckHandler } = await import(
+  '../../../../server/api/admin/ai/model-ops/platform-agents-check.post'
+)
 const { default: cloudflareModelsHandler } = await import(
   '../../../../server/api/admin/ai/model-ops/cloudflare-models.get'
 )
@@ -1069,5 +1072,111 @@ describe('POST /api/admin/ai/model-ops/orchestrator-check', () => {
     })
     expect(mockExecute.mock.calls[0]?.[0]).toContain('INSERT INTO ai_agent_runs')
     expect(JSON.stringify(result)).not.toContain('secret')
+  })
+})
+
+describe('POST /api/admin/ai/model-ops/platform-agents-check', () => {
+  const oldEnv = { ...process.env }
+
+  beforeEach(() => {
+    process.env = {
+      ...oldEnv,
+      INTERNAL_API_KEY: 'secret',
+      PLATFORM_AGENTS_WORKER_URL: 'https://platform-agents.example.workers.dev',
+    }
+    mockRequireRole.mockReset()
+    mockFetch.mockReset()
+    mockRequireRole.mockResolvedValue({ id: 'user-1', role: 'admin' })
+    vi.stubGlobal('fetch', mockFetch)
+  })
+
+  it('requires admin access before checking platform agent health', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, bridges: [], agents: [] }),
+    })
+
+    await platformAgentsCheckHandler({} as any)
+
+    expect(mockRequireRole).toHaveBeenCalledWith(expect.anything(), ['admin', 'owner'])
+  })
+
+  it('returns a configuration error when INTERNAL_API_KEY is missing', async () => {
+    delete process.env.INTERNAL_API_KEY
+
+    await expect(platformAgentsCheckHandler({} as any)).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'INTERNAL_API_KEY is not configured',
+    })
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('checks the Worker health endpoint without exposing secrets', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        worker: 'platform-agents',
+        runtime: 'cloudflare-think',
+        agents: [
+          { className: 'SpendControllerAgent' },
+          { className: 'PublishingPlannerAgent' },
+          { className: 'FinancialWatchAgent' },
+          { className: 'TrafficControllerAgent' },
+        ],
+        bridges: [
+          { path: '/tools/spend-controller/ask', mode: 'read_only' },
+          { path: '/tools/publishing-planner/ask', mode: 'read_only_or_draft_only' },
+          { path: '/tools/financial-watch/ask', mode: 'read_only' },
+          { path: '/tools/traffic-controller/ask', mode: 'read_only' },
+        ],
+      }),
+    })
+
+    const result = await platformAgentsCheckHandler({} as any)
+
+    expect(mockFetch.mock.calls[0]?.[0]).toBe('https://platform-agents.example.workers.dev/health')
+    expect(mockFetch.mock.calls[0]?.[1]).toMatchObject({
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    })
+    expect(result).toMatchObject({
+      ok: true,
+      mode: 'platform_agents_read_only_bridge_check',
+      summary: {
+        readOnly: true,
+        workerReachable: true,
+        workerHealthy: true,
+        expectedBridges: 4,
+        reportedBridges: 4,
+        missingBridgeCount: 0,
+        reportedAgents: 4,
+      },
+      worker: {
+        status: 200,
+        host: 'platform-agents.example.workers.dev',
+        name: 'platform-agents',
+        runtime: 'cloudflare-think',
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain('secret')
+  })
+
+  it('returns a failed diagnostic when the Worker health request fails', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('network failed'))
+
+    const result = await platformAgentsCheckHandler({} as any)
+
+    expect(result).toMatchObject({
+      ok: false,
+      summary: {
+        readOnly: true,
+        workerReachable: false,
+        missingBridgeCount: 4,
+      },
+      error: 'Platform Agents health check failed.',
+    })
   })
 })

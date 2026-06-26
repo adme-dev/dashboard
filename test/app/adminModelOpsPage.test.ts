@@ -367,6 +367,7 @@ describe('Admin AI Model Ops page', () => {
 
     expect(html).toContain('data-testid="platform-agent-readiness-card"')
     expect(html).toContain('Platform Agents')
+    expect(html).toContain('data-testid="run-platform-agents-check"')
     expect(html).toContain('5 / 5')
     expect(html).toContain('platform-agents.example.workers.dev')
     expect(html).toContain('Spend Controller')
@@ -449,7 +450,68 @@ describe('Admin AI Model Ops page', () => {
 
       expect(fetchMock).toHaveBeenCalledWith('/api/admin/ai/model-ops/orchestrator-check', { method: 'POST' })
       expect(host.textContent).toContain('Read-only orchestrator check complete')
-      expect(host.textContent).toContain('4/5 tools succeeded')
+    expect(host.textContent).toContain('4/5 tools succeeded')
+  } finally {
+    app.unmount()
+    host.remove()
+  }
+  })
+
+  it('shows the Platform Agents bridge check result after the action completes', async () => {
+    const fetchResult = {
+      ok: true,
+      mode: 'platform_agents_read_only_bridge_check',
+      summary: {
+        readOnly: true,
+        workerReachable: true,
+        workerHealthy: true,
+        expectedBridges: 4,
+        reportedBridges: 4,
+        missingBridgeCount: 0,
+        reportedAgents: 4,
+      },
+      worker: {
+        status: 200,
+        host: 'platform-agents.example.workers.dev',
+        name: 'platform-agents',
+        runtime: 'cloudflare-think',
+      },
+      bridges: [],
+    }
+    const { app, fetchMock, host } = await mountPage({ fetchResult })
+
+    try {
+      const button = host.querySelector('[data-testid="run-platform-agents-check"]') as HTMLButtonElement | null
+      expect(button).toBeTruthy()
+
+      button?.click()
+      await flushAsyncUi()
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/ai/model-ops/platform-agents-check', { method: 'POST' })
+      expect(host.textContent).toContain('Platform Agents bridge check complete')
+      expect(host.textContent).toContain('4/4 bridges reported')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('disables the Platform Agents bridge check when prerequisites are missing', async () => {
+    const modelMap = clone(modelMapResponse)
+    modelMap.config.platformAgents.internalApiKeyConfigured = false
+    modelMap.config.platformAgents.bridgeReady = false
+    const fetchMock = vi.fn()
+    const { app, host } = await mountPage({ fetchMock, modelMap })
+
+    try {
+      const button = host.querySelector('[data-testid="run-platform-agents-check"]') as HTMLButtonElement | null
+      expect(button).toBeTruthy()
+      expect(button?.disabled).toBe(true)
+
+      button?.click()
+      await flushAsyncUi()
+
+      expect(fetchMock).not.toHaveBeenCalled()
     } finally {
       app.unmount()
       host.remove()
