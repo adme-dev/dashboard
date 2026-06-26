@@ -625,11 +625,10 @@ Extend existing run surfaces where possible. The response should include agent t
   - Verify: Tool tests cover disconnected Xero, missing tenant, and scoped access.
   - Files: `server/utils/ai/financialWatchAgentRuntime.ts`, authenticated/internal endpoints, Worker Think tool, tests.
 
-- [ ] Task 5.2: Add watch memory.
+- [x] Task 5.2: Add watch memory.
   - Acceptance: Agent can persist recurring financial watch state and compare latest results to prior runs.
   - Verify: Tests cover new, unchanged, worsened, and resolved watch states.
-  - Progress: Financial Watch reads archived advisor reports, active recommendations, and budget alerts as stored context.
-  - Remaining: Persist explicit watch fingerprints and compare latest states to prior runs.
+  - Files: `platform_agent_watch_states` migration, Financial Watch fingerprint persistence, endpoint tests.
 
 - [x] Task 5.3: Add financial alert UI.
   - Acceptance: Finance surfaces show durable watch findings and draft recommendations.

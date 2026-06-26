@@ -1,4 +1,4 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryOne, queryRows } from '~~/server/utils/db'
 import {
   completePlatformAgentRun,
   failPlatformAgentRun,
@@ -16,6 +16,78 @@ export interface FinancialWatchAgentRuntimeInput {
 const toNumber = (value: unknown) => {
   const numberValue = Number(value)
   return Number.isFinite(numberValue) ? numberValue : 0
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function watchStatus(previous: { fingerprint: string, severity_score: number } | null, fingerprint: string, severityScore: number) {
+  if (!previous) return 'new'
+  if (severityScore === 0 && previous.severity_score > 0) return 'resolved'
+  if (fingerprint === previous.fingerprint) return 'unchanged'
+  if (severityScore > previous.severity_score) return 'worsened'
+  if (severityScore < previous.severity_score) return 'improved'
+  return 'unchanged'
+}
+
+async function persistFinancialWatchState(input: {
+  tenantId: string
+  clientId: string | null
+  fingerprint: string
+  severityScore: number
+  summary: Record<string, unknown>
+}) {
+  const scopeKey = input.clientId ? `client:${input.clientId}` : 'agency'
+  const previous = await queryOne<{ fingerprint: string, severity_score: number }>(
+    `SELECT fingerprint, severity_score
+     FROM platform_agent_watch_states
+     WHERE agent_type = 'financial_watch'
+       AND tenant_id = $1
+       AND scope_key = $2`,
+    [input.tenantId, scopeKey],
+  )
+  const stateStatus = watchStatus(previous, input.fingerprint, input.severityScore)
+  const row = await queryOne<any>(
+    `INSERT INTO platform_agent_watch_states
+       (agent_type, tenant_id, scope_key, fingerprint, previous_fingerprint, severity_score,
+        previous_severity_score, state_status, summary)
+     VALUES ('financial_watch', $1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+     ON CONFLICT (agent_type, tenant_id, scope_key)
+     DO UPDATE SET
+       previous_fingerprint = platform_agent_watch_states.fingerprint,
+       fingerprint = EXCLUDED.fingerprint,
+       previous_severity_score = platform_agent_watch_states.severity_score,
+       severity_score = EXCLUDED.severity_score,
+       state_status = EXCLUDED.state_status,
+       summary = EXCLUDED.summary,
+       last_seen_at = NOW(),
+       updated_at = NOW()
+     RETURNING state_status, previous_fingerprint, previous_severity_score`,
+    [
+      input.tenantId,
+      scopeKey,
+      input.fingerprint,
+      previous?.fingerprint ?? null,
+      input.severityScore,
+      previous?.severity_score ?? null,
+      stateStatus,
+      JSON.stringify(input.summary),
+    ],
+  )
+  return {
+    scopeKey,
+    status: row?.state_status || stateStatus,
+    previousFingerprint: row?.previous_fingerprint ?? previous?.fingerprint ?? null,
+    previousSeverityScore: row?.previous_severity_score ?? previous?.severity_score ?? null,
+  }
 }
 
 export async function runFinancialWatchAgentRequest(input: FinancialWatchAgentRuntimeInput) {
@@ -104,6 +176,31 @@ export async function runFinancialWatchAgentRequest(input: FinancialWatchAgentRu
           }
         : null,
     ].filter((value): value is { severity: string, title: string, detail: string } => Boolean(value))
+    const severityScore = (latestReport?.score != null && toNumber(latestReport.score) < 60 ? 2 : 0)
+      + highPriorityRecommendations
+      + activeBudgetAlerts
+      + (criticalBudgetAlerts * 2)
+      + financialAlerts.filter((alert: any) => alert?.level === 'critical').length * 2
+      + financialAlerts.filter((alert: any) => alert?.level === 'warning').length
+    const fingerprint = stableStringify({
+      latestReportId: latestReport?.id ?? null,
+      latestScore: latestReport?.score ?? null,
+      highPriorityRecommendationIds: recommendationRows.filter(row => row.priority === 'high').map(row => row.id).sort(),
+      activeBudgetAlertIds: budgetAlertRows.filter(row => row.status === 'active').map(row => row.id).sort(),
+      advisorAlerts: financialAlerts.map((alert: any) => `${alert?.level || 'info'}:${alert?.message || ''}`).sort(),
+    })
+    const watchState = await persistFinancialWatchState({
+      tenantId,
+      clientId: input.clientId ?? null,
+      fingerprint,
+      severityScore,
+      summary: {
+        latestReportId: latestReport?.id ?? null,
+        highPriorityRecommendations,
+        activeBudgetAlerts,
+        criticalBudgetAlerts,
+      },
+    })
 
     const response = {
       mode: 'read_only' as const,
@@ -129,6 +226,8 @@ export async function runFinancialWatchAgentRequest(input: FinancialWatchAgentRu
         criticalBudgetAlertCount: criticalBudgetAlerts,
         advisorAlertCount: financialAlerts.length,
         riskCount: risks.length,
+        watchState,
+        severityScore,
       },
       findings,
       recommendations: recommendationRows,
