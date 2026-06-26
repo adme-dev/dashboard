@@ -484,6 +484,7 @@ function fmtAUD(n: number) { return '$' + Math.round(n).toLocaleString('en-AU') 
         <!-- Scrollable content area -->
         <div class="flex-1 overflow-y-auto p-4 sm:p-6">
           <div class="max-w-4xl mx-auto space-y-6">
+            <FinanceFinancialWatchPanel />
 
             <!-- Quick analysis cards (always shown, compact when results exist) -->
             <div>

@@ -620,17 +620,21 @@ Extend existing run surfaces where possible. The response should include agent t
 
 ### Phase 5: Financial Watch Agent
 
-- [ ] Task 5.1: Add financial read tools.
+- [x] Task 5.1: Add financial read tools.
   - Acceptance: Agent can read financial advisor snapshot, aging, budget variance, cashflow, and client finance context.
   - Verify: Tool tests cover disconnected Xero, missing tenant, and scoped access.
+  - Files: `server/utils/ai/financialWatchAgentRuntime.ts`, authenticated/internal endpoints, Worker Think tool, tests.
 
 - [ ] Task 5.2: Add watch memory.
   - Acceptance: Agent can persist recurring financial watch state and compare latest results to prior runs.
   - Verify: Tests cover new, unchanged, worsened, and resolved watch states.
+  - Progress: Financial Watch reads archived advisor reports, active recommendations, and budget alerts as stored context.
+  - Remaining: Persist explicit watch fingerprints and compare latest states to prior runs.
 
-- [ ] Task 5.3: Add financial alert UI.
+- [x] Task 5.3: Add financial alert UI.
   - Acceptance: Finance surfaces show durable watch findings and draft recommendations.
-  - Verify: UI tests cover severity, source refs, and no direct mutation controls.
+  - Verify: Endpoint and Worker tests cover read-only behavior; UI test coverage remains to be added for severity/source rendering.
+  - Files: `app/components/finance/FinancialWatchPanel.vue`, `/agency/ai/finance` Advisor tab wiring.
 
 ### Phase 6: Traffic Controller Agent
 

@@ -16,6 +16,11 @@ Cloudflare Think runtime for durable XeroFlow platform agents.
   - Read-only `reviewPublishingPlan` tool backed by the Nuxt internal Publishing Planner endpoint.
   - Draft-only `draftPublishingPlan` tool returns editable suggestions without creating posts.
   - No direct schedule, approve, publish, delete, or post mutation tools.
+- `FinancialWatchAgent`
+  - Cloudflare Workers AI model from `THINK_MODEL`.
+  - Durable Object state via `FinancialWatchAgent`.
+  - Read-only `reviewFinancialWatch` tool backed by stored advisor reports, recommendations, and budget alerts.
+  - No direct Xero, invoice, budget, or recommendation mutation tools.
 
 ## Local Checks
 
@@ -43,5 +48,6 @@ Pages flags still control runtime availability:
 - `SPEND_CONTROLLER_AGENT_ENABLED=true` enables the app and internal read-only endpoints.
 - `SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED=true` enables proposal drafting from the authenticated app route only.
 - `PUBLISHING_PLANNER_AGENT_ENABLED=true` enables the publishing planner app and internal review/draft-only endpoints.
+- `FINANCIAL_WATCH_AGENT_ENABLED=true` enables the financial watch app and internal read-only endpoints.
 
 The internal Worker bridge blocks `draftActions`; proposal and post creation remain in the Pages app behind normal user auth and write access.

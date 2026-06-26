@@ -14,6 +14,11 @@ interface PublishingPlannerBridgeBody {
   context?: unknown
 }
 
+interface FinancialWatchBridgeBody {
+  prompt?: unknown
+  context?: unknown
+}
+
 export interface Env {
   AI: Ai
   APP_BASE_URL: string
@@ -21,6 +26,7 @@ export interface Env {
   THINK_MODEL?: string
   SpendControllerAgent: DurableObjectNamespace
   PublishingPlannerAgent: DurableObjectNamespace
+  FinancialWatchAgent: DurableObjectNamespace
 }
 
 function json(data: unknown, init?: ResponseInit): Response {
@@ -74,6 +80,10 @@ async function callPublishingPlannerAppBridge(env: Env, body: PublishingPlannerB
   return callAppBridge(env, '/api/internal/platform-agents/publishing-planner/ask', body)
 }
 
+async function callFinancialWatchAppBridge(env: Env, body: FinancialWatchBridgeBody) {
+  return callAppBridge(env, '/api/internal/platform-agents/financial-watch/ask', body)
+}
+
 async function handleSpendControllerBridge(request: Request, env: Env): Promise<Response> {
   const expected = expectedAuth(env)
   if (!expected || request.headers.get('authorization') !== expected) {
@@ -100,6 +110,23 @@ async function handlePublishingPlannerBridge(request: Request, env: Env): Promis
   const body = await request.json().catch(() => ({})) as PublishingPlannerBridgeBody
   try {
     const payload = await callPublishingPlannerAppBridge(env, body)
+    return json(payload)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const status = message === 'prompt required' ? 400 : 502
+    return json({ ok: false, error: message }, { status })
+  }
+}
+
+async function handleFinancialWatchBridge(request: Request, env: Env): Promise<Response> {
+  const expected = expectedAuth(env)
+  if (!expected || request.headers.get('authorization') !== expected) {
+    return json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json().catch(() => ({})) as FinancialWatchBridgeBody
+  try {
+    const payload = await callFinancialWatchAppBridge(env, body)
     return json(payload)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -208,6 +235,44 @@ export class PublishingPlannerAgent extends Think<Env> {
   }
 }
 
+export class FinancialWatchAgent extends Think<Env> {
+  override workspaceBash = false
+
+  getModel() {
+    const model = this.env.THINK_MODEL || '@cf/moonshotai/kimi-k2.7-code'
+    return createWorkersAI({ binding: this.env.AI })(model as any)
+  }
+
+  getSystemPrompt() {
+    return [
+      'You are the XeroFlow Financial Watch Agent.',
+      'Use stored financial advisor reports, active recommendations, and budget alerts to identify financial risk.',
+      'Never create invoices, send reminders, change budgets, update Xero, or mutate recommendations directly.',
+      'When action is needed, return an explainable read-only recommendation for a human to review in the app.',
+    ].join(' ')
+  }
+
+  getTools() {
+    return {
+      reviewFinancialWatch: tool({
+        description: 'Read stored financial advisor reports, recommendations, and budget alerts for a tenant. This never mutates Xero, invoices, budgets, or recommendations.',
+        inputSchema: z.object({
+          prompt: z.string().min(1).describe('The financial risk question to answer.'),
+          tenantId: z.string().min(1).describe('Tenant id for the stored financial watch signals.'),
+          clientId: z.string().optional().describe('Optional agency client id for scoped recommendations and budget alerts.'),
+        }),
+        execute: async ({ prompt, tenantId, clientId }) => callFinancialWatchAppBridge(this.env, {
+          prompt,
+          context: {
+            tenantId,
+            clientId,
+          },
+        }),
+      }),
+    }
+  }
+}
+
 export async function handlePlatformAgentsFetch(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
 
@@ -227,6 +292,11 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
           route: '/agents/publishing-planner-agent/{name}',
           mode: 'read-only-and-draft-only',
         },
+        {
+          className: 'FinancialWatchAgent',
+          route: '/agents/financial-watch-agent/{name}',
+          mode: 'read-only',
+        },
       ],
       bridges: [
         {
@@ -239,6 +309,11 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
           auth: 'INTERNAL_API_KEY',
           mode: 'read_only_or_draft_only',
         },
+        {
+          path: '/tools/financial-watch/ask',
+          auth: 'INTERNAL_API_KEY',
+          mode: 'read_only',
+        },
       ],
     })
   }
@@ -249,6 +324,10 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
 
   if (request.method === 'POST' && url.pathname === '/tools/publishing-planner/ask') {
     return handlePublishingPlannerBridge(request, env)
+  }
+
+  if (request.method === 'POST' && url.pathname === '/tools/financial-watch/ask') {
+    return handleFinancialWatchBridge(request, env)
   }
 
   const routed = await routeAgentRequest(request, env)
