@@ -54,6 +54,27 @@ const modelMapResponse = {
       manualCheckReady: true,
       readToolCount: 5,
     },
+    platformAgents: {
+      internalApiKeyConfigured: true,
+      workerConfigured: true,
+      workerHost: 'platform-agents.example.workers.dev',
+      bridgeReady: true,
+      enabledFlagCount: 5,
+      totalFlagCount: 5,
+      flags: [
+        { key: 'SPEND_CONTROLLER_AGENT_ENABLED', label: 'spend controller agent', enabled: true },
+        { key: 'SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED', label: 'spend controller agent proposals', enabled: true },
+        { key: 'PUBLISHING_PLANNER_AGENT_ENABLED', label: 'publishing planner agent', enabled: true },
+        { key: 'FINANCIAL_WATCH_AGENT_ENABLED', label: 'financial watch agent', enabled: true },
+        { key: 'TRAFFIC_CONTROLLER_AGENT_ENABLED', label: 'traffic controller agent', enabled: true },
+      ],
+      modes: [
+        { agent: 'Spend Controller', mode: 'Read-only + proposal drafts' },
+        { agent: 'Publishing Planner', mode: 'Read-only + draft suggestions' },
+        { agent: 'Financial Watch', mode: 'Read-only' },
+        { agent: 'Traffic Controller', mode: 'Read-only' },
+      ],
+    },
   },
   assignments: {
     available: true,
@@ -339,6 +360,18 @@ describe('Admin AI Model Ops page', () => {
     expect(html).toContain('Read tools')
     expect(html).toContain('5')
     expect(html).toContain('ai-orchestrator-agent.example.workers.dev')
+  })
+
+  it('renders platform agent bridge readiness and latest run state', async () => {
+    const html = await render()
+
+    expect(html).toContain('data-testid="platform-agent-readiness-card"')
+    expect(html).toContain('Platform Agents')
+    expect(html).toContain('5 / 5')
+    expect(html).toContain('platform-agents.example.workers.dev')
+    expect(html).toContain('Spend Controller')
+    expect(html).toContain('Read-only + proposal drafts')
+    expect(html).toContain('run-spend-1')
   })
 
   it('renders the model assignment brief and editable assignment controls', async () => {

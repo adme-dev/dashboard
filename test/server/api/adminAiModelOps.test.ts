@@ -85,6 +85,12 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
     process.env.AI_LOOP_BUDGET_USD = '0.50'
     process.env.INTERNAL_API_KEY = 'internal-secret'
     process.env.AI_ORCHESTRATOR_WORKER_URL = 'https://ai-orchestrator-agent.example.workers.dev'
+    process.env.PLATFORM_AGENTS_WORKER_URL = 'https://platform-agents.example.workers.dev'
+    process.env.SPEND_CONTROLLER_AGENT_ENABLED = 'true'
+    process.env.SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED = 'true'
+    process.env.PUBLISHING_PLANNER_AGENT_ENABLED = 'true'
+    process.env.FINANCIAL_WATCH_AGENT_ENABLED = 'true'
+    process.env.TRAFFIC_CONTROLLER_AGENT_ENABLED = 'true'
 
     const result = await modelMapHandler({})
 
@@ -137,6 +143,19 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
       manualCheckReady: true,
       readToolCount: 5,
     })
+    expect(result.config.platformAgents).toMatchObject({
+      internalApiKeyConfigured: true,
+      workerConfigured: true,
+      workerHost: 'platform-agents.example.workers.dev',
+      bridgeReady: true,
+      enabledFlagCount: 5,
+      totalFlagCount: 5,
+    })
+    expect(result.config.platformAgents.flags.every((flag: any) => flag.enabled)).toBe(true)
+    expect(result.config.platformAgents.modes).toContainEqual({
+      agent: 'Spend Controller',
+      mode: 'Read-only + proposal drafts',
+    })
   })
 
   it('treats a whitespace-only INTERNAL_API_KEY as not ready for manual orchestrator checks', async () => {
@@ -147,6 +166,10 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
     expect(result.config.orchestrator).toMatchObject({
       internalApiKeyConfigured: false,
       manualCheckReady: false,
+    })
+    expect(result.config.platformAgents).toMatchObject({
+      internalApiKeyConfigured: false,
+      bridgeReady: false,
     })
   })
 

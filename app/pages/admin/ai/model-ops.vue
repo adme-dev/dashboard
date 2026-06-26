@@ -82,6 +82,23 @@ type ModelMapResponse = {
       manualCheckReady: boolean
       readToolCount: number
     }
+    platformAgents: {
+      internalApiKeyConfigured: boolean
+      workerConfigured: boolean
+      workerHost: string | null
+      bridgeReady: boolean
+      enabledFlagCount: number
+      totalFlagCount: number
+      flags: Array<{
+        key: string
+        label: string
+        enabled: boolean
+      }>
+      modes: Array<{
+        agent: string
+        mode: string
+      }>
+    }
   }
   assignments: {
     available: boolean
@@ -616,6 +633,36 @@ const agentRunCards = computed(() => {
   ]
 })
 
+const latestPlatformAgentRuns = computed(() => {
+  const latest = new Map<string, AgentRun>()
+  for (const run of agentRunsData.value?.recent ?? []) {
+    if (run.source !== 'platform_agent' || !run.agentType) continue
+    if (!latest.has(run.agentType)) latest.set(run.agentType, run)
+  }
+  return latest
+})
+
+const platformAgentHealthRows = computed(() => {
+  const modeLabels: Record<string, string> = {
+    spend_controller: 'Read-only + proposal drafts',
+    publishing_planner: 'Read-only + draft suggestions',
+    financial_watch: 'Read-only',
+    traffic_controller: 'Read-only',
+  }
+  const featureLabels: Record<string, string> = {
+    spend_controller: 'Spend Controller',
+    publishing_planner: 'Publishing Planner',
+    financial_watch: 'Financial Watch',
+    traffic_controller: 'Traffic Controller',
+  }
+  return Object.entries(featureLabels).map(([agentType, label]) => ({
+    agentType,
+    label,
+    mode: modeLabels[agentType],
+    lastRun: latestPlatformAgentRuns.value.get(agentType) ?? null,
+  }))
+})
+
 function pricingLabel(row: ModelMapRow) {
   if (!row.pricing) return 'Unknown'
   if (row.pricing.unitPriceCents != null) {
@@ -649,6 +696,11 @@ function durationLabel(value: number) {
   if (value < 1000) return `${Math.round(value)}ms`
   if (value < 60_000) return `${(value / 1000).toFixed(1)}s`
   return `${Math.round(value / 60_000)}m`
+}
+
+function agentRunLabel(run: AgentRun | null) {
+  if (!run) return 'No run yet'
+  return `${run.status} / ${dateLabel(run.startedAt || run.createdAt)}`
 }
 
 function hydrateAssignmentDrafts() {
@@ -1379,6 +1431,93 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
           </div>
         </UCard>
       </div>
+
+      <UCard data-testid="platform-agent-readiness-card">
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-sm font-semibold text-highlighted">Platform Agents</h2>
+              <p class="text-xs text-muted">Feature flags, Worker bridge prerequisites, and latest read-only run state.</p>
+            </div>
+            <UBadge :color="data?.config.platformAgents.bridgeReady ? 'success' : 'warning'" variant="soft">
+              {{ data?.config.platformAgents.bridgeReady ? 'Ready' : 'Needs setup' }}
+            </UBadge>
+          </div>
+        </template>
+
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="rounded-md border border-default p-3">
+            <div class="flex items-center gap-2 text-muted">
+              <UIcon name="i-lucide-plug-zap" class="size-4" />
+              <span class="text-[10px] font-semibold uppercase tracking-wider">Bridge</span>
+            </div>
+            <p class="mt-1.5 text-lg font-semibold text-highlighted">
+              {{ data?.config.platformAgents.bridgeReady ? 'Ready' : 'Blocked' }}
+            </p>
+          </div>
+          <div class="rounded-md border border-default p-3">
+            <div class="flex items-center gap-2 text-muted">
+              <UIcon name="i-lucide-toggle-left" class="size-4" />
+              <span class="text-[10px] font-semibold uppercase tracking-wider">Flags</span>
+            </div>
+            <p class="mt-1.5 text-lg font-semibold text-highlighted">
+              {{ data?.config.platformAgents.enabledFlagCount ?? 0 }} / {{ data?.config.platformAgents.totalFlagCount ?? 0 }}
+            </p>
+          </div>
+          <div class="rounded-md border border-default p-3">
+            <div class="flex items-center gap-2 text-muted">
+              <UIcon name="i-lucide-cloud-cog" class="size-4" />
+              <span class="text-[10px] font-semibold uppercase tracking-wider">Worker</span>
+            </div>
+            <p class="mt-1.5 text-lg font-semibold text-highlighted">
+              {{ data?.config.platformAgents.workerConfigured ? 'Configured' : 'Missing' }}
+            </p>
+          </div>
+          <div class="rounded-md border border-default p-3">
+            <div class="flex items-center gap-2 text-muted">
+              <UIcon name="i-lucide-key-round" class="size-4" />
+              <span class="text-[10px] font-semibold uppercase tracking-wider">Internal key</span>
+            </div>
+            <p class="mt-1.5 text-lg font-semibold text-highlighted">
+              {{ data?.config.platformAgents.internalApiKeyConfigured ? 'Configured' : 'Missing' }}
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
+          <div class="rounded-md border border-default p-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge
+                v-for="flag in data?.config.platformAgents.flags ?? []"
+                :key="flag.key"
+                :color="flag.enabled ? 'success' : 'neutral'"
+                variant="soft"
+                size="sm"
+              >
+                {{ flag.label }}
+              </UBadge>
+            </div>
+            <p class="mt-3 text-xs text-muted">
+              Worker host: {{ data?.config.platformAgents.workerHost || '-' }}
+            </p>
+          </div>
+
+          <div class="rounded-md border border-default p-3">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div v-for="row in platformAgentHealthRows" :key="row.agentType" class="min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="truncate text-sm font-medium text-default">{{ row.label }}</p>
+                  <UBadge :color="row.lastRun ? agentRunStatusColor[row.lastRun.statusBucket] : 'neutral'" variant="soft" size="sm">
+                    {{ row.lastRun ? row.lastRun.status : 'No run' }}
+                  </UBadge>
+                </div>
+                <p class="mt-1 truncate text-xs text-muted">{{ row.mode }}</p>
+                <p class="mt-1 truncate font-mono text-[11px] text-muted">{{ agentRunLabel(row.lastRun) }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </UCard>
 
       <div class="grid gap-4 xl:grid-cols-5">
         <UCard :ui="{ body: 'p-4' }">

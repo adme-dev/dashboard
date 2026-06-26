@@ -204,9 +204,10 @@ async function markProposalIgnored(actionRef: string | null | undefined) {
           <div>
             <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div class="flex flex-wrap items-center gap-2">
-              <UBadge color="neutral" variant="soft" size="xs">{{ result.mode.replace('_', ' ') }}</UBadge>
-              <UBadge color="neutral" variant="soft" size="xs">{{ result.audit.toolCallCount }} tool call{{ result.audit.toolCallCount === 1 ? '' : 's' }}</UBadge>
-              <UBadge color="success" variant="soft" size="xs">0 direct writes</UBadge>
+                <UBadge color="neutral" variant="soft" size="xs">{{ result.mode.replace('_', ' ') }}</UBadge>
+                <UBadge color="neutral" variant="soft" size="xs">{{ result.audit.toolCallCount }} tool call{{ result.audit.toolCallCount === 1 ? '' : 's' }}</UBadge>
+                <UBadge v-if="result.runId" color="neutral" variant="soft" size="xs">Run {{ result.runId }}</UBadge>
+                <UBadge color="success" variant="soft" size="xs">0 direct writes</UBadge>
               </div>
               <UButton
                 v-if="result.findings.length"

@@ -90,6 +90,7 @@ describe('SpendControllerPanel', () => {
     })
     expect(host.textContent).toContain('I found 1 critical spend pacing issue.')
     expect(host.textContent).toContain('Acme / Lead Gen is overpacing')
+    expect(host.textContent).toContain('Run run-1')
     expect(host.textContent).toContain('0 direct writes')
     expect(host.textContent).not.toContain('Execute')
 

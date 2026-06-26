@@ -2,6 +2,13 @@ import { requireRole } from '~~/server/utils/auth'
 import { listAiModelAssignments } from '~~/server/utils/ai/modelAssignments'
 
 const ORCHESTRATOR_READ_TOOL_COUNT = 5
+const PLATFORM_AGENT_FLAGS = [
+  'SPEND_CONTROLLER_AGENT_ENABLED',
+  'SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED',
+  'PUBLISHING_PLANNER_AGENT_ENABLED',
+  'FINANCIAL_WATCH_AGENT_ENABLED',
+  'TRAFFIC_CONTROLLER_AGENT_ENABLED',
+] as const
 
 function present(value: unknown): boolean {
   return typeof value === 'string' && value.trim().length > 0 && !value.toLowerCase().includes('your_')
@@ -36,8 +43,17 @@ function aiConfigReadiness() {
   const workersAiEvalConfigured = present(process.env.CLOUDFLARE_ACCOUNT_ID) && present(process.env.CLOUDFLARE_API_KEY)
   const orchestratorWorkerUrl = process.env.AI_ORCHESTRATOR_WORKER_URL
   const orchestratorWorkerHost = host(orchestratorWorkerUrl)
+  const platformAgentsWorkerUrl = process.env.PLATFORM_AGENTS_WORKER_URL || 'https://platform-agents.adme-dev.workers.dev'
+  const platformAgentsWorkerHost = host(platformAgentsWorkerUrl)
   const internalApiKeyConfigured = present(process.env.INTERNAL_API_KEY)
   const orchestratorWorkerConfigured = present(orchestratorWorkerUrl) && orchestratorWorkerHost !== 'invalid-url'
+  const platformFlags = PLATFORM_AGENT_FLAGS.map(key => ({
+    key,
+    label: key.replace(/_ENABLED$/, '').replace(/_/g, ' ').toLowerCase(),
+    enabled: process.env[key] === 'true',
+  }))
+  const enabledPlatformFlags = platformFlags.filter(flag => flag.enabled).length
+  const platformAgentsWorkerConfigured = present(platformAgentsWorkerUrl) && platformAgentsWorkerHost !== 'invalid-url'
 
   return {
     gateway: {
@@ -78,6 +94,21 @@ function aiConfigReadiness() {
       workerHost: orchestratorWorkerHost,
       manualCheckReady: internalApiKeyConfigured,
       readToolCount: ORCHESTRATOR_READ_TOOL_COUNT,
+    },
+    platformAgents: {
+      internalApiKeyConfigured,
+      workerConfigured: platformAgentsWorkerConfigured,
+      workerHost: platformAgentsWorkerHost,
+      bridgeReady: internalApiKeyConfigured && platformAgentsWorkerConfigured && enabledPlatformFlags === PLATFORM_AGENT_FLAGS.length,
+      enabledFlagCount: enabledPlatformFlags,
+      totalFlagCount: PLATFORM_AGENT_FLAGS.length,
+      flags: platformFlags,
+      modes: [
+        { agent: 'Spend Controller', mode: 'Read-only + proposal drafts' },
+        { agent: 'Publishing Planner', mode: 'Read-only + draft suggestions' },
+        { agent: 'Financial Watch', mode: 'Read-only' },
+        { agent: 'Traffic Controller', mode: 'Read-only' },
+      ],
     },
   }
 }

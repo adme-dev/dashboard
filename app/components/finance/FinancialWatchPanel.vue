@@ -114,6 +114,7 @@ async function runFinancialWatch() {
           <div class="flex flex-wrap items-center gap-2">
             <UBadge color="neutral" variant="soft" size="xs">{{ result.mode.replace('_', ' ') }}</UBadge>
             <UBadge color="neutral" variant="soft" size="xs">{{ result.audit.toolCallCount }} reads</UBadge>
+            <UBadge v-if="result.runId" color="neutral" variant="soft" size="xs">Run {{ result.runId }}</UBadge>
             <UBadge color="success" variant="soft" size="xs">0 direct writes</UBadge>
           </div>
           <p class="text-sm text-default">{{ result.answer }}</p>
