@@ -4,6 +4,8 @@ import {
   failPlatformAgentRun,
   startPlatformAgentRun,
 } from '~~/server/utils/ai/platformAgentRuns'
+import { generateSocialPublishingPlanDrafts } from '~~/server/utils/socialPublishing/planGeneration'
+import type { SocialGeneratedDraft, SocialPublishPlatform } from '~/types'
 
 export interface PublishingPlannerAgentRuntimeInput {
   prompt: string
@@ -32,6 +34,22 @@ function statusCounts(rows: CountRow[]) {
   return Object.fromEntries(rows.map(row => [row.key || 'unknown', toNumber(row.count)]))
 }
 
+function stringFromContext(context: Record<string, unknown>, key: string) {
+  const value = context[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function numberFromContext(context: Record<string, unknown>, key: string) {
+  const value = Number(context[key])
+  return Number.isFinite(value) ? value : undefined
+}
+
+function platformsFromContext(context: Record<string, unknown>) {
+  return Array.isArray(context.platforms) && context.platforms.length
+    ? context.platforms.filter((value): value is SocialPublishPlatform => typeof value === 'string')
+    : undefined
+}
+
 export async function runPublishingPlannerAgentRequest(input: PublishingPlannerAgentRuntimeInput) {
   const prompt = input.prompt.trim()
   const context = input.context && typeof input.context === 'object' ? input.context : {}
@@ -39,17 +57,23 @@ export async function runPublishingPlannerAgentRequest(input: PublishingPlannerA
   if (!clientId) {
     throw createError({ statusCode: 400, statusMessage: 'clientId required' })
   }
+  const draftPlanRequested = context.draftPlan === true
+  const mode = draftPlanRequested ? 'draft_only' : 'read_only'
 
   const startedAtMs = Date.now()
   const run = await startPlatformAgentRun({
     agentType: 'publishing_planner',
     featureKey: 'agent_publishing_planner',
-    mode: 'read_only',
+    mode,
     userId: input.userId ?? null,
     clientId,
     route: input.route ?? '/agency/social/publishing/planner',
     prompt,
-    context: { clientId },
+    context: {
+      clientId,
+      draftPlan: draftPlanRequested,
+      campaignId: stringFromContext(context, 'campaignId'),
+    },
   })
 
   try {
@@ -128,6 +152,7 @@ export async function runPublishingPlannerAgentRequest(input: PublishingPlannerA
     const scheduledCount = toNumber(postsByStatus.scheduled) + toNumber(postsByStatus.approved)
     const draftCount = toNumber(postsByStatus.draft)
     const findings = []
+    let drafts: SocialGeneratedDraft[] = []
 
     if (activeAccounts === 0) {
       findings.push({
@@ -157,10 +182,26 @@ export async function runPublishingPlannerAgentRequest(input: PublishingPlannerA
         detail: `${erroredAccounts} account${erroredAccounts === 1 ? '' : 's'} need attention before publishing.`,
       })
     }
+    if (draftPlanRequested) {
+      drafts = await generateSocialPublishingPlanDrafts({
+        userId: input.userId ?? null,
+        clientId,
+        campaignId: stringFromContext(context, 'campaignId'),
+        brief: stringFromContext(context, 'brief') || prompt,
+        count: numberFromContext(context, 'count'),
+        dateFrom: stringFromContext(context, 'dateFrom'),
+        dateTo: stringFromContext(context, 'dateTo'),
+        tone: stringFromContext(context, 'tone'),
+        platforms: platformsFromContext(context),
+        route: input.route ?? '/agency/social/publishing/planner',
+      })
+    }
 
     const response = {
-      mode: 'read_only' as const,
-      answer: `Publishing planner review found ${scheduledCount} approved/scheduled post${scheduledCount === 1 ? '' : 's'}, ${draftCount} draft${draftCount === 1 ? '' : 's'}, ${queueCount} queued item${queueCount === 1 ? '' : 's'}, and ${enabledSlots} enabled slot${enabledSlots === 1 ? '' : 's'}.`,
+      mode,
+      answer: draftPlanRequested
+        ? `Publishing planner generated ${drafts.length} editable draft suggestion${drafts.length === 1 ? '' : 's'} and did not create, schedule, or publish any post.`
+        : `Publishing planner review found ${scheduledCount} approved/scheduled post${scheduledCount === 1 ? '' : 's'}, ${draftCount} draft${draftCount === 1 ? '' : 's'}, ${queueCount} queued item${queueCount === 1 ? '' : 's'}, and ${enabledSlots} enabled slot${enabledSlots === 1 ? '' : 's'}.`,
       summary: {
         clientId,
         postsByStatus,
@@ -186,10 +227,16 @@ export async function runPublishingPlannerAgentRequest(input: PublishingPlannerA
         draftCount > 0 && queueCount === 0 ? 'Move ready drafts into the queue or assign scheduled dates.' : null,
         'Use Generate Plan only as a draft creation step; scheduling and publishing still require approval.',
       ].filter((value): value is string => Boolean(value)),
-      proposedActions: [],
+      drafts,
+      proposedActions: drafts.map((draft, index) => ({
+        id: `draft-${index + 1}`,
+        type: 'create_social_post_draft',
+        title: `Draft ${index + 1}`,
+        draft,
+      })),
       audit: {
         modelFeatureKey: 'agent_publishing_planner',
-        toolCallCount: 7,
+        toolCallCount: draftPlanRequested ? 8 : 7,
         blockedActionCount: 0,
         runLoggingAvailable: run.ok,
       },
@@ -197,18 +244,19 @@ export async function runPublishingPlannerAgentRequest(input: PublishingPlannerA
 
     if (run.ok) {
       await completePlatformAgentRun({
-        runId: run.runId,
-        startedAtMs,
-        toolCallCount: response.audit.toolCallCount,
-        findingCount: response.findings.length,
-        proposedActionCount: 0,
-        blockedActionCount: 0,
-        summary: {
-          answerPreview: response.answer.slice(0, 240),
-          clientId,
-        },
-      })
-    }
+          runId: run.runId,
+          startedAtMs,
+          toolCallCount: response.audit.toolCallCount,
+          findingCount: response.findings.length,
+          proposedActionCount: drafts.length,
+          blockedActionCount: 0,
+          summary: {
+            answerPreview: response.answer.slice(0, 240),
+            clientId,
+            draftPlan: draftPlanRequested,
+          },
+        })
+      }
 
     return {
       runId: run.ok ? run.runId : null,

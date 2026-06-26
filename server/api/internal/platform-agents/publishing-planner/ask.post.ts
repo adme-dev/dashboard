@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   if (body?.draftActions === true) {
-    throw createError({ statusCode: 403, statusMessage: 'Internal Publishing Planner bridge is read-only.' })
+    throw createError({ statusCode: 403, statusMessage: 'Internal Publishing Planner bridge does not allow direct write actions.' })
   }
 
   const prompt = String(body?.prompt || '').trim()

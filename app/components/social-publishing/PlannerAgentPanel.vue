@@ -7,7 +7,7 @@ interface PlannerFinding {
 
 interface PlannerAgentResponse {
   runId: string | null
-  mode: 'read_only'
+  mode: 'read_only' | 'draft_only'
   answer: string
   summary: {
     clientId: string
@@ -29,7 +29,13 @@ interface PlannerAgentResponse {
   }
   findings: PlannerFinding[]
   recommendedActions: string[]
-  proposedActions: []
+  drafts?: PlannerDraft[]
+  proposedActions: Array<{
+    id: string
+    type: string
+    title: string
+    draft: PlannerDraft
+  }>
   audit: {
     modelFeatureKey: string
     toolCallCount: number
@@ -38,15 +44,35 @@ interface PlannerAgentResponse {
   }
 }
 
+interface PlannerDraft {
+  content: string
+  platforms: string[]
+  platform_overrides: Record<string, { content: string }>
+  hashtags: string[]
+  suggested_scheduled_at: string | null
+}
+
+interface PlannerCampaignOption {
+  id: string
+  name: string
+}
+
 const props = defineProps<{
   clientId: string
   disabled?: boolean
 }>()
+const emit = defineEmits<{
+  draftsCreated: [count: number]
+}>()
 
 const prompt = ref('Review this client publishing planner and tell me what needs attention.')
 const pending = ref(false)
+const accepting = ref(false)
 const error = ref<string | null>(null)
 const result = ref<PlannerAgentResponse | null>(null)
+const draftCards = ref<PlannerDraft[]>([])
+const campaigns = ref<PlannerCampaignOption[]>([])
+const selectedCampaignId = ref('none')
 
 const promptPresets = [
   'Review this client publishing planner and tell me what needs attention.',
@@ -54,27 +80,64 @@ const promptPresets = [
   'Check account connection readiness before scheduling anything.',
 ]
 
+const campaignItems = computed(() => [
+  { label: 'All campaigns', value: 'none' },
+  ...campaigns.value.map(campaign => ({ label: campaign.name, value: campaign.id })),
+])
+
+watch(() => props.clientId, async (clientId) => {
+  campaigns.value = []
+  selectedCampaignId.value = 'none'
+  if (!clientId) return
+  try {
+    campaigns.value = await $fetch<PlannerCampaignOption[]>('/api/agency/social/publishing/campaigns', {
+      query: { clientId },
+    })
+  } catch {
+    campaigns.value = []
+  }
+}, { immediate: true })
+
 function severityColor(severity: string) {
   return severity === 'warning' ? 'warning' : 'info'
 }
 
-async function askPlannerAgent() {
+async function runPlannerAgent(draftPlan = false) {
   const cleanPrompt = prompt.value.trim()
   if (!cleanPrompt || pending.value || props.disabled || !props.clientId) return
   pending.value = true
   error.value = null
+  if (draftPlan) draftCards.value = []
+  const context: Record<string, unknown> = {
+    clientId: props.clientId,
+  }
+  if (selectedCampaignId.value !== 'none') {
+    context.campaignId = selectedCampaignId.value
+  }
+  if (draftPlan) {
+    context.draftPlan = true
+    context.brief = cleanPrompt
+    context.count = 5
+    context.platforms = ['facebook', 'instagram']
+  }
   try {
     result.value = await $fetch<PlannerAgentResponse>('/api/agency/agents/publishing-planner/ask', {
       method: 'POST',
       body: {
         prompt: cleanPrompt,
-        context: {
-          clientId: props.clientId,
-        },
+        context,
       },
     })
+    draftCards.value = result.value.drafts ? result.value.drafts.map(draft => ({
+      content: draft.content,
+      platforms: [...draft.platforms],
+      platform_overrides: JSON.parse(JSON.stringify(draft.platform_overrides || {})),
+      hashtags: [...draft.hashtags],
+      suggested_scheduled_at: draft.suggested_scheduled_at,
+    })) : []
   } catch (err: any) {
     result.value = null
+    draftCards.value = []
     if (err?.statusCode === 404 || err?.data?.statusCode === 404) {
       error.value = 'Publishing Planner Agent is not enabled in this environment.'
     } else {
@@ -82,6 +145,57 @@ async function askPlannerAgent() {
     }
   } finally {
     pending.value = false
+  }
+}
+
+function askPlannerAgent() {
+  return runPlannerAgent(false)
+}
+
+function generateDrafts() {
+  return runPlannerAgent(true)
+}
+
+function discardDraft(index: number) {
+  draftCards.value.splice(index, 1)
+}
+
+function draftVariantPlatforms(draft: PlannerDraft) {
+  return Object.keys(draft.platform_overrides || {})
+}
+
+async function acceptDrafts() {
+  if (!draftCards.value.length || accepting.value || props.disabled || !props.clientId) return
+  accepting.value = true
+  let created = 0
+  try {
+    for (const draft of draftCards.value) {
+      await $fetch('/api/agency/social/publishing/posts', {
+        method: 'POST',
+        body: {
+          clientId: props.clientId,
+          campaignId: selectedCampaignId.value === 'none' ? undefined : selectedCampaignId.value,
+          content: draft.content,
+          platforms: draft.platforms,
+          platformOverrides: draft.platform_overrides,
+          hashtags: draft.hashtags,
+          scheduledAt: draft.suggested_scheduled_at,
+          status: 'draft',
+          metadata: {
+            source: 'publishing_planner_agent',
+            agentRunId: result.value?.runId ?? null,
+          },
+        },
+      })
+      created += 1
+    }
+    draftCards.value = []
+    emit('draftsCreated', created)
+  } catch (err: any) {
+    error.value = err?.data?.statusMessage || err?.message || 'Could not add all planner drafts.'
+    if (created) emit('draftsCreated', created)
+  } finally {
+    accepting.value = false
   }
 }
 </script>
@@ -102,20 +216,42 @@ async function askPlannerAgent() {
           <p class="mt-0.5 text-xs text-muted">Reviews campaigns, queue, slots, connected accounts, and upcoming scheduled posts.</p>
         </div>
       </div>
-      <UButton
-        size="sm"
-        icon="i-lucide-sparkles"
-        :loading="pending"
-        :disabled="disabled || pending || !clientId || !prompt.trim()"
-        data-testid="ask-publishing-planner-agent"
-        @click="askPlannerAgent"
-      >
-        Ask Planner
-      </UButton>
+      <div class="flex flex-wrap gap-2">
+        <UButton
+          size="sm"
+          icon="i-lucide-sparkles"
+          :loading="pending"
+          :disabled="disabled || pending || !clientId || !prompt.trim()"
+          data-testid="ask-publishing-planner-agent"
+          @click="askPlannerAgent"
+        >
+          Ask Planner
+        </UButton>
+        <UButton
+          size="sm"
+          icon="i-lucide-file-plus-2"
+          variant="soft"
+          :loading="pending"
+          :disabled="disabled || pending || !clientId || !prompt.trim()"
+          data-testid="generate-publishing-planner-drafts"
+          @click="generateDrafts"
+        >
+          Generate drafts
+        </UButton>
+      </div>
     </div>
 
     <div class="grid gap-4 p-4 lg:grid-cols-[minmax(280px,420px)_1fr]">
       <div class="space-y-3">
+        <USelectMenu
+          v-model="selectedCampaignId"
+          :items="campaignItems"
+          value-key="value"
+          label-key="label"
+          class="w-full"
+          :disabled="disabled || pending"
+          aria-label="Publishing Planner Agent campaign scope"
+        />
         <UTextarea
           v-model="prompt"
           :rows="3"
@@ -161,6 +297,48 @@ async function askPlannerAgent() {
             <UBadge color="success" variant="soft" size="xs">0 direct writes</UBadge>
           </div>
           <p class="text-sm text-default">{{ result.answer }}</p>
+
+          <div v-if="draftCards.length" class="space-y-3" data-testid="publishing-planner-draft-cards">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="text-xs font-medium uppercase text-muted">Editable draft suggestions</p>
+              <UButton
+                size="xs"
+                icon="i-lucide-plus"
+                :loading="accepting"
+                :disabled="accepting || !draftCards.length"
+                data-testid="accept-publishing-planner-drafts"
+                @click="acceptDrafts"
+              >
+                Add {{ draftCards.length }} draft{{ draftCards.length === 1 ? '' : 's' }}
+              </UButton>
+            </div>
+            <div v-for="(draft, index) in draftCards" :key="index" class="rounded-md border border-default p-3">
+              <div class="mb-2 flex flex-wrap items-center gap-2">
+                <UBadge v-for="platform in draft.platforms" :key="platform" size="xs" color="neutral" variant="soft">{{ platform }}</UBadge>
+                <span class="ml-auto text-xs text-muted">{{ draft.suggested_scheduled_at ? new Date(draft.suggested_scheduled_at).toLocaleString() : 'No schedule hint' }}</span>
+                <UButton
+                  size="xs"
+                  icon="i-lucide-x"
+                  color="error"
+                  variant="ghost"
+                  :disabled="accepting"
+                  :aria-label="`Discard draft ${index + 1}`"
+                  data-testid="discard-publishing-planner-draft"
+                  @click="discardDraft(index)"
+                />
+              </div>
+              <UTextarea v-model="draft.content" :rows="3" class="w-full" :disabled="accepting" />
+              <div v-if="draftVariantPlatforms(draft).length" class="mt-3 space-y-2">
+                <div v-for="platform in draftVariantPlatforms(draft)" :key="platform">
+                  <p class="mb-1 text-xs text-muted">{{ platform }}</p>
+                  <UTextarea v-model="draft.platform_overrides[platform].content" :rows="2" class="w-full" :disabled="accepting" />
+                </div>
+              </div>
+              <div v-if="draft.hashtags.length" class="mt-3 flex flex-wrap gap-1">
+                <UBadge v-for="tag in draft.hashtags" :key="tag" size="xs" color="primary" variant="soft">#{{ tag.replace(/^#/, '') }}</UBadge>
+              </div>
+            </div>
+          </div>
 
           <div class="grid gap-2 text-xs sm:grid-cols-4">
             <div class="rounded-md border border-default p-2">

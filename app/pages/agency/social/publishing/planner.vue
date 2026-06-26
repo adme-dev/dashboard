@@ -38,7 +38,7 @@ function bumpReload() { reloadKey.value++ }
       Select a client to start planning.
     </div>
     <div v-else class="space-y-4">
-      <SocialPublishingPlannerAgentPanel :client-id="clientId" />
+      <SocialPublishingPlannerAgentPanel :client-id="clientId" @drafts-created="bumpReload" />
       <SocialPublishingPlannerBoard :client-id="clientId" :reload-key="reloadKey" />
     </div>
 

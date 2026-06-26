@@ -608,15 +608,15 @@ Extend existing run surfaces where possible. The response should include agent t
   - Verify: API and Worker tests cover client scoping, internal auth, read-only bridge behavior, and Think tool exposure.
   - Files: `server/utils/ai/publishingPlannerAgentRuntime.ts`, `server/api/agency/agents/publishing-planner/ask.post.ts`, `server/api/internal/platform-agents/publishing-planner/ask.post.ts`, `workers/platform-agents/src/index.ts`, tests.
 
-- [ ] Task 4.2: Add draft-only plan tools.
+- [x] Task 4.2: Add draft-only plan tools.
   - Acceptance: Agent can call existing `generate-plan` and return editable draft suggestions.
   - Verify: Tests prove no schedule or publish mutation occurs.
+  - Files: shared planner generation utility, Publishing Planner agent runtime, internal bridge, Worker Think tool, tests.
 
-- [ ] Task 4.3: Add planner agent panel.
+- [x] Task 4.3: Add planner agent panel.
   - Acceptance: Planner route supports campaign-scoped agent prompts and draft recommendation cards.
   - Verify: Vue tests cover generate, edit draft, discard, and accept-as-draft flows.
-  - Progress: Read-only planner review panel is wired into `/agency/social/publishing/planner` with dormant-state handling and Vue coverage.
-  - Remaining: Campaign-scoped prompts plus draft recommendation card edit, discard, and accept-as-draft flows.
+  - Files: `app/components/social-publishing/PlannerAgentPanel.vue`, planner route wiring, Vue tests.
 
 ### Phase 5: Financial Watch Agent
 

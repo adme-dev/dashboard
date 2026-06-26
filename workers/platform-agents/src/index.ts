@@ -178,6 +178,32 @@ export class PublishingPlannerAgent extends Think<Env> {
           context: { clientId },
         }),
       }),
+      draftPublishingPlan: tool({
+        description: 'Generate editable draft-only social post suggestions for a client. This never schedules, publishes, approves, deletes, or creates posts.',
+        inputSchema: z.object({
+          prompt: z.string().min(1).describe('The draft plan brief or request.'),
+          clientId: z.string().min(1).describe('Client id to scope the draft plan.'),
+          campaignId: z.string().optional().describe('Optional campaign id for the generated draft suggestions.'),
+          count: z.number().int().min(1).max(14).optional().describe('Number of draft suggestions to return.'),
+          dateFrom: z.string().optional().describe('Optional ISO start date for suggested draft schedule hints.'),
+          dateTo: z.string().optional().describe('Optional ISO end date for suggested draft schedule hints.'),
+          tone: z.string().optional().describe('Optional tone for generated draft suggestions.'),
+          platforms: z.array(z.string()).optional().describe('Target social platforms for the draft suggestions.'),
+        }),
+        execute: async ({ prompt, clientId, campaignId, count, dateFrom, dateTo, tone, platforms }) => callPublishingPlannerAppBridge(this.env, {
+          prompt,
+          context: {
+            clientId,
+            campaignId,
+            count,
+            dateFrom,
+            dateTo,
+            tone,
+            platforms,
+            draftPlan: true,
+          },
+        }),
+      }),
     }
   }
 }
@@ -199,7 +225,7 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
         {
           className: 'PublishingPlannerAgent',
           route: '/agents/publishing-planner-agent/{name}',
-          mode: 'read-only',
+          mode: 'read-only-and-draft-only',
         },
       ],
       bridges: [
@@ -211,7 +237,7 @@ export async function handlePlatformAgentsFetch(request: Request, env: Env): Pro
         {
           path: '/tools/publishing-planner/ask',
           auth: 'INTERNAL_API_KEY',
-          mode: 'read_only',
+          mode: 'read_only_or_draft_only',
         },
       ],
     })

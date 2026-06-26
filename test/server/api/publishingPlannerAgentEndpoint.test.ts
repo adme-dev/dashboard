@@ -5,6 +5,7 @@ const mockQueryRows = vi.fn()
 const mockStartRun = vi.fn()
 const mockCompleteRun = vi.fn()
 const mockFailRun = vi.fn()
+const mockGenerateModelRoutedGroqInsight = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
@@ -18,6 +19,10 @@ vi.mock('~~/server/utils/ai/platformAgentRuns', () => ({
   startPlatformAgentRun: (...args: unknown[]) => mockStartRun(...args),
   completePlatformAgentRun: (...args: unknown[]) => mockCompleteRun(...args),
   failPlatformAgentRun: (...args: unknown[]) => mockFailRun(...args),
+}))
+
+vi.mock('~~/server/utils/ai/resolvedGroq', () => ({
+  generateModelRoutedGroqInsight: (...args: unknown[]) => mockGenerateModelRoutedGroqInsight(...args),
 }))
 
 ;(globalThis as any).defineEventHandler = (fn: any) => fn
@@ -40,10 +45,18 @@ describe('Publishing Planner Agent endpoints', () => {
     mockStartRun.mockReset()
     mockCompleteRun.mockReset()
     mockFailRun.mockReset()
+    mockGenerateModelRoutedGroqInsight.mockReset()
     mockRequireAuth.mockResolvedValue({ id: 'user-1' })
     mockStartRun.mockResolvedValue({ ok: true, runId: 'run-1' })
     mockCompleteRun.mockResolvedValue(undefined)
     mockFailRun.mockResolvedValue(undefined)
+    mockGenerateModelRoutedGroqInsight.mockResolvedValue(JSON.stringify({
+      posts: [{
+        content: 'Draft one',
+        variants: { instagram: 'Instagram draft one' },
+        hashtags: ['draft'],
+      }],
+    }))
     mockQueryRows
       .mockResolvedValueOnce([{ key: 'draft', count: '3' }, { key: 'scheduled', count: '2' }])
       .mockResolvedValueOnce([{ key: 'facebook', count: '1' }, { key: 'instagram', count: '1' }])
@@ -100,7 +113,7 @@ describe('Publishing Planner Agent endpoints', () => {
     expect(result.findings[0].title).toContain('Drafts are not in the queue')
   })
 
-  it('allows the internal bridge with INTERNAL_API_KEY and blocks draft mode', async () => {
+  it('allows the internal bridge with INTERNAL_API_KEY and blocks direct write actions', async () => {
     const handler = (await import('~~/server/api/internal/platform-agents/publishing-planner/ask.post')).default
 
     const result = await handler({
@@ -115,6 +128,47 @@ describe('Publishing Planner Agent endpoints', () => {
       headers: { authorization: 'Bearer secret-key' },
       body: { prompt: 'Draft plan.', draftActions: true, context: { clientId: 'client-1' } },
     } as any)).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('returns draft-only suggestions without writing posts', async () => {
+    const handler = (await import('~~/server/api/internal/platform-agents/publishing-planner/ask.post')).default
+
+    const result = await handler({
+      headers: { authorization: 'Bearer secret-key' },
+      body: {
+        prompt: 'Draft a week of posts.',
+        context: {
+          clientId: 'client-1',
+          draftPlan: true,
+          count: 1,
+          platforms: ['facebook', 'instagram'],
+        },
+      },
+    } as any)
+
+    expect(mockGenerateModelRoutedGroqInsight).toHaveBeenCalledWith(expect.stringContaining('Create a 1-post social media content plan'), expect.objectContaining({
+      featureKey: 'social_publishing_plan',
+      clientId: 'client-1',
+    }))
+    expect(mockCompleteRun).toHaveBeenCalledWith(expect.objectContaining({
+      runId: 'run-1',
+      toolCallCount: 8,
+      proposedActionCount: 1,
+    }))
+    expect(mockQueryRows).toHaveBeenCalledTimes(7)
+    expect(result).toMatchObject({
+      mode: 'draft_only',
+      drafts: [{
+        content: 'Draft one',
+        platforms: ['facebook', 'instagram'],
+        platform_overrides: { instagram: { content: 'Instagram draft one' } },
+        hashtags: ['draft'],
+      }],
+      proposedActions: [{
+        type: 'create_social_post_draft',
+      }],
+    })
+    expect(result.answer).toContain('did not create, schedule, or publish')
   })
 
   it('rejects disabled or unscoped requests', async () => {

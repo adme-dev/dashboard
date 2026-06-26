@@ -45,7 +45,7 @@ describe('platform-agents worker', () => {
       ]),
       bridges: expect.arrayContaining([
         expect.objectContaining({ path: '/tools/spend-controller/ask', mode: 'read_only' }),
-        expect.objectContaining({ path: '/tools/publishing-planner/ask', mode: 'read_only' }),
+        expect.objectContaining({ path: '/tools/publishing-planner/ask', mode: 'read_only_or_draft_only' }),
       ]),
     })
     expect(mockRouteAgentRequest).not.toHaveBeenCalled()
@@ -200,7 +200,7 @@ describe('platform-agents worker', () => {
     } as any)
 
     const tools = agent.getTools()
-    expect(Object.keys(tools)).toEqual(['reviewPublishingPlan'])
+    expect(Object.keys(tools)).toEqual(['reviewPublishingPlan', 'draftPublishingPlan'])
     await expect(tools.reviewPublishingPlan.execute?.({
       prompt: 'Review planner.',
       clientId: 'client-1',
@@ -215,6 +215,54 @@ describe('platform-agents worker', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ authorization: 'Bearer secret-key' }),
+      })
+    )
+    fetchSpy.mockRestore()
+  })
+
+  it('exposes a draft-only publishing planner tool on the Think agent', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      mode: 'draft_only',
+      drafts: [{ content: 'Draft one' }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    const { PublishingPlannerAgent } = await import('~~/workers/platform-agents/src/index')
+    const agent = new PublishingPlannerAgent({} as any, {
+      APP_BASE_URL: 'https://app.xeroflow.io',
+      INTERNAL_API_KEY: 'secret-key',
+    } as any)
+
+    const tools = agent.getTools()
+    await expect(tools.draftPublishingPlan.execute?.({
+      prompt: 'Draft launch posts.',
+      clientId: 'client-1',
+      campaignId: 'campaign-1',
+      count: 3,
+      platforms: ['facebook', 'instagram'],
+    }, {
+      toolCallId: 'tool-2',
+      messages: [],
+    } as any)).resolves.toMatchObject({
+      mode: 'draft_only',
+    })
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://app.xeroflow.io/api/internal/platform-agents/publishing-planner/ask',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ authorization: 'Bearer secret-key' }),
+        body: JSON.stringify({
+          prompt: 'Draft launch posts.',
+          context: {
+            clientId: 'client-1',
+            campaignId: 'campaign-1',
+            count: 3,
+            platforms: ['facebook', 'instagram'],
+            draftPlan: true,
+          },
+          draftActions: false,
+        }),
       })
     )
     fetchSpy.mockRestore()
