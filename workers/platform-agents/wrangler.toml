@@ -1,0 +1,27 @@
+name = "platform-agents"
+main = "src/index.ts"
+compatibility_date = "2026-06-26"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare Think runtime for durable platform agents. The first production
+# agent is SpendControllerAgent; proposal drafting and execution remain gated in
+# the Pages app.
+
+[ai]
+binding = "AI"
+
+[vars]
+APP_BASE_URL = "https://app.xeroflow.io"
+THINK_MODEL = "@cf/moonshotai/kimi-k2.7-code"
+
+[durable_objects]
+bindings = [
+  { name = "SpendControllerAgent", class_name = "SpendControllerAgent" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SpendControllerAgent"]
+
+# Secrets:
+#   INTERNAL_API_KEY - must match the Pages app secret for Worker -> app calls.

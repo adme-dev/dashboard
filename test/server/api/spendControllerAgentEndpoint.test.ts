@@ -31,6 +31,7 @@ vi.mock('~~/server/utils/ai/platformAgentRuns', () => ({
 
 ;(globalThis as any).defineEventHandler = (fn: any) => fn
 ;(globalThis as any).readBody = (event: any) => event.body || {}
+;(globalThis as any).getHeader = (event: any, name: string) => event.headers?.[name.toLowerCase()] ?? event.headers?.[name]
 ;(globalThis as any).createError = (input: any) => {
   const error = new Error(input.statusMessage || 'error') as Error & { statusCode?: number, statusMessage?: string }
   error.statusCode = input.statusCode
@@ -203,6 +204,57 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
     } as any)).rejects.toMatchObject({
       statusCode: 403,
     })
+    expect(mockRecordCampaignAction).not.toHaveBeenCalled()
+  })
+
+  it('allows the internal platform-agent bridge with INTERNAL_API_KEY in read-only mode', async () => {
+    process.env = {
+      ...oldEnv,
+      INTERNAL_API_KEY: 'secret-key',
+      SPEND_CONTROLLER_AGENT_ENABLED: 'true',
+    }
+    vi.resetModules()
+    const handler = (await import('~~/server/api/internal/platform-agents/spend-controller/ask.post')).default
+
+    const result = await handler({
+      headers: { authorization: 'Bearer secret-key' },
+      body: {
+        prompt: 'Review spend as a durable runtime.',
+        context: { period: '2026-06', platform: 'google' },
+      },
+    } as any)
+
+    expect(mockRequireAuth).not.toHaveBeenCalled()
+    expect(mockRequireWriteAccess).not.toHaveBeenCalled()
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['2026-06', 'google_ads'])
+    expect(mockStartRun).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'read_only',
+      route: '/internal/platform-agents/spend-controller',
+      userId: null,
+      context: { period: '2026-06', platform: 'google_ads' },
+    }))
+    expect(result.mode).toBe('read_only')
+    expect(result.proposedActions).toEqual([])
+  })
+
+  it('rejects unauthenticated and proposal-mode internal platform-agent calls', async () => {
+    process.env = {
+      ...oldEnv,
+      INTERNAL_API_KEY: 'secret-key',
+      SPEND_CONTROLLER_AGENT_ENABLED: 'true',
+    }
+    vi.resetModules()
+    const handler = (await import('~~/server/api/internal/platform-agents/spend-controller/ask.post')).default
+
+    await expect(handler({
+      headers: { authorization: 'Bearer wrong-key' },
+      body: { prompt: 'Review spend.' },
+    } as any)).rejects.toMatchObject({ statusCode: 401 })
+
+    await expect(handler({
+      headers: { authorization: 'Bearer secret-key' },
+      body: { prompt: 'Draft actions.', draftActions: true },
+    } as any)).rejects.toMatchObject({ statusCode: 403 })
     expect(mockRecordCampaignAction).not.toHaveBeenCalled()
   })
 })

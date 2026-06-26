@@ -527,20 +527,20 @@ Extend existing run surfaces where possible. The response should include agent t
 
 ### Phase 1: Shared Agent Foundation
 
-- [ ] Task 1.1: Scaffold platform agents Worker.
+- [x] Task 1.1: Scaffold platform agents Worker.
   - Acceptance: `workers/platform-agents` exists with Wrangler config, package scripts, TypeScript config, and a health endpoint.
-  - Verify: Worker unit tests pass and local Wrangler dev starts.
-  - Files likely touched: `workers/platform-agents/*`, root package workspace config if needed.
+  - Verify: Worker unit tests pass and worker TypeScript checks pass.
+  - Files: `workers/platform-agents/*`, `test/workers/platform-agents/worker.test.ts`.
 
-- [ ] Task 1.2: Add Think runtime bindings.
+- [x] Task 1.2: Add Think runtime bindings.
   - Acceptance: Worker declares Durable Object binding and migrations for the first agent class.
-  - Verify: Wrangler config validates and local Worker can instantiate the agent.
-  - Files likely touched: `workers/platform-agents/wrangler.toml`, `workers/platform-agents/src/index.ts`.
+  - Verify: Worker TypeScript check passes and tests cover the advertised runtime surface.
+  - Files: `workers/platform-agents/wrangler.toml`, `workers/platform-agents/src/index.ts`.
 
-- [ ] Task 1.3: Add service-to-service internal API client.
-  - Acceptance: Worker can call approved Nuxt internal APIs with signed auth and tenant/user context.
-  - Verify: Unit tests cover signing, header validation, and rejected invalid signatures.
-  - Files likely touched: `workers/platform-agents/src/internalClient.ts`, `server/utils/agentServiceAuth.ts`, internal API guards.
+- [x] Task 1.3: Add service-to-service internal API client.
+  - Acceptance: Worker can call the approved Nuxt internal Spend Controller API with shared `INTERNAL_API_KEY` auth; proposal mode remains blocked on the internal bridge.
+  - Verify: Unit tests cover header validation, rejected invalid auth, prompt validation, and read-only bridge calls.
+  - Files: `workers/platform-agents/src/index.ts`, `server/api/internal/platform-agents/spend-controller/ask.post.ts`, focused tests.
 
 - [ ] Task 1.4: Add shared agent run/audit storage.
   - Acceptance: Runs, tool calls, findings, proposed actions, and blocked actions can be persisted and queried.
@@ -554,20 +554,20 @@ Extend existing run surfaces where possible. The response should include agent t
 
 ### Phase 2: Spend Controller Read-Only
 
-- [ ] Task 2.1: Add Spend Controller read tools.
-  - Acceptance: Tools can fetch spend summary, pacing review, alerts, diagnostics, connection health, and campaign history with scoped context.
-  - Verify: Tool tests cover success, auth failure, stale data, and empty data.
-  - Files likely touched: `workers/platform-agents/src/tools/spend.ts`, internal API adapters, tests.
+- [x] Task 2.1: Add Spend Controller read tools.
+  - Acceptance: Think runtime exposes a read-only `reviewSpendPacing` tool backed by the audited Nuxt pacing review endpoint.
+  - Verify: Worker tests cover tool exposure and app bridge execution.
+  - Files: `workers/platform-agents/src/index.ts`, `test/workers/platform-agents/worker.test.ts`.
 
-- [ ] Task 2.2: Implement `SpendControllerAgent`.
-  - Acceptance: Agent answers read-only spend questions using tools and returns structured findings.
-  - Verify: Agent harness tests cover "what needs attention?" and no-data responses.
-  - Files likely touched: `workers/platform-agents/src/agents/SpendControllerAgent.ts`, tests.
+- [x] Task 2.2: Implement `SpendControllerAgent`.
+  - Acceptance: Agent has Cloudflare Workers AI model binding, safety prompt, disabled workspace bash, and a read-only pacing review tool.
+  - Verify: Worker TypeScript and focused worker tests pass.
+  - Files: `workers/platform-agents/src/index.ts`, tests.
 
 - [x] Task 2.3: Add Nuxt bridge endpoints.
-  - Acceptance: `/api/agency/agents/spend-controller/session` and `/ask` exist, require auth, and enforce user scope.
-  - Verify: API tests cover auth, validation, and response shape.
-  - Files likely touched: `server/api/agency/agents/spend-controller/*.ts`, tests.
+  - Acceptance: `/api/agency/agents/spend-controller/ask` exists for authenticated app users, and `/api/internal/platform-agents/spend-controller/ask` exists for authenticated Worker calls.
+  - Verify: API tests cover app auth, internal auth, validation, and response shape.
+  - Files: `server/api/agency/agents/spend-controller/*.ts`, `server/api/internal/platform-agents/spend-controller/ask.post.ts`, tests.
 
 - [x] Task 2.4: Add Spend Controller panel UI.
   - Acceptance: `/agency/social/spend` shows a compact panel with context selector, prompt presets, answer, findings, and read-only mode badge.

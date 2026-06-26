@@ -1,26 +1,25 @@
-import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { runSpendControllerAgentRequest } from '~~/server/utils/ai/spendControllerAgentRuntime'
 
 function enabled() {
   return process.env.SPEND_CONTROLLER_AGENT_ENABLED === 'true'
 }
 
-function proposalsEnabled() {
-  return process.env.SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED === 'true'
-}
-
 export default defineEventHandler(async (event) => {
+  const expectedKey = process.env.INTERNAL_API_KEY?.trim()
+  const authHeader = getHeader(event, 'authorization')
+  if (!expectedKey || authHeader !== `Bearer ${expectedKey}`) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+
   if (!enabled()) {
     throw createError({ statusCode: 404, statusMessage: 'Spend Controller Agent is not enabled.' })
   }
 
   const body = await readBody(event)
-  const draftActions = body?.draftActions === true
-  if (draftActions && !proposalsEnabled()) {
-    throw createError({ statusCode: 403, statusMessage: 'Spend Controller proposal mode is not enabled.' })
+  if (body?.draftActions === true) {
+    throw createError({ statusCode: 403, statusMessage: 'Internal Spend Controller bridge is read-only.' })
   }
 
-  const user = draftActions ? await requireWriteAccess(event) : await requireAuth(event)
   const prompt = String(body?.prompt || '').trim()
   if (!prompt) {
     throw createError({ statusCode: 400, statusMessage: 'prompt required' })
@@ -30,8 +29,8 @@ export default defineEventHandler(async (event) => {
   return runSpendControllerAgentRequest({
     prompt,
     context,
-    draftActions,
-    userId: user?.id ?? null,
-    route: '/agency/social/spend',
+    draftActions: false,
+    userId: null,
+    route: '/internal/platform-agents/spend-controller',
   })
 })

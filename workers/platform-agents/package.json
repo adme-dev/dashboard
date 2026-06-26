@@ -1,0 +1,25 @@
+{
+  "name": "platform-agents",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/think": "^0.10.0",
+    "agents": "^0.16.2",
+    "ai": "^6.0.197",
+    "workers-ai-provider": "^3.1.14",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260625.1",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.99.0"
+  }
+}
