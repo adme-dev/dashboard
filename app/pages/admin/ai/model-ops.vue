@@ -401,6 +401,7 @@ type PlatformAgentsCheckResponse = {
   mode: string
   summary: {
     readOnly: boolean
+    internalApiKeyConfigured: boolean
     workerReachable: boolean
     workerHealthy: boolean
     expectedBridges: number
@@ -505,10 +506,10 @@ const orchestratorManualCheckReady = computed(() => Boolean(data.value?.config.o
 const orchestratorReadCheckDisabled = computed(() => orchestratorCheckPending.value || !orchestratorManualCheckReady.value)
 const orchestratorReadCheckUnavailableMessage = 'Set INTERNAL_API_KEY to enable manual read checks.'
 const platformAgentsCheckReady = computed(() => Boolean(
-  data.value?.config.platformAgents.internalApiKeyConfigured && data.value?.config.platformAgents.workerConfigured
+  data.value?.config.platformAgents.workerConfigured
 ))
 const platformAgentsCheckDisabled = computed(() => platformAgentsCheckPending.value || !platformAgentsCheckReady.value)
-const platformAgentsCheckUnavailableMessage = 'Set INTERNAL_API_KEY and PLATFORM_AGENTS_WORKER_URL to enable platform bridge checks.'
+const platformAgentsCheckUnavailableMessage = 'Set PLATFORM_AGENTS_WORKER_URL to enable platform bridge checks.'
 
 const cards = computed(() => {
   const summary = data.value?.summary
@@ -1570,7 +1571,7 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
           variant="soft"
           icon="i-lucide-shield-check"
           title="Platform Agents bridge check complete"
-          :description="`${platformAgentsCheckResult.summary.reportedBridges}/${platformAgentsCheckResult.summary.expectedBridges} bridges reported by ${platformAgentsCheckResult.worker.host || 'the Worker'}`"
+          :description="`${platformAgentsCheckResult.summary.reportedBridges}/${platformAgentsCheckResult.summary.expectedBridges} bridges reported by ${platformAgentsCheckResult.worker.host || 'the Worker'}${platformAgentsCheckResult.summary.internalApiKeyConfigured ? '' : '; internal key is missing'}`"
         />
 
         <div class="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">

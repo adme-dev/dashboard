@@ -463,6 +463,7 @@ describe('Admin AI Model Ops page', () => {
       mode: 'platform_agents_read_only_bridge_check',
       summary: {
         readOnly: true,
+        internalApiKeyConfigured: true,
         workerReachable: true,
         workerHealthy: true,
         expectedBridges: 4,
@@ -497,9 +498,51 @@ describe('Admin AI Model Ops page', () => {
     }
   })
 
-  it('disables the Platform Agents bridge check when prerequisites are missing', async () => {
+  it('keeps the Platform Agents bridge check enabled when only the internal key is missing', async () => {
     const modelMap = clone(modelMapResponse)
     modelMap.config.platformAgents.internalApiKeyConfigured = false
+    modelMap.config.platformAgents.bridgeReady = false
+    const { app, fetchMock, host } = await mountPage({ modelMap, fetchResult: {
+      ok: false,
+      mode: 'platform_agents_read_only_bridge_check',
+      summary: {
+        readOnly: true,
+        internalApiKeyConfigured: false,
+        workerReachable: true,
+        workerHealthy: true,
+        expectedBridges: 4,
+        reportedBridges: 4,
+        missingBridgeCount: 0,
+        reportedAgents: 4,
+      },
+      worker: {
+        status: 200,
+        host: 'platform-agents.example.workers.dev',
+        name: 'platform-agents',
+        runtime: 'cloudflare-think',
+      },
+      bridges: [],
+    } })
+
+    try {
+      const button = host.querySelector('[data-testid="run-platform-agents-check"]') as HTMLButtonElement | null
+      expect(button).toBeTruthy()
+      expect(button?.disabled).toBe(false)
+
+      button?.click()
+      await flushAsyncUi()
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/ai/model-ops/platform-agents-check', { method: 'POST' })
+      expect(host.textContent).toContain('internal key is missing')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('disables the Platform Agents bridge check when the Worker URL is missing', async () => {
+    const modelMap = clone(modelMapResponse)
+    modelMap.config.platformAgents.workerConfigured = false
     modelMap.config.platformAgents.bridgeReady = false
     const fetchMock = vi.fn()
     const { app, host } = await mountPage({ fetchMock, modelMap })

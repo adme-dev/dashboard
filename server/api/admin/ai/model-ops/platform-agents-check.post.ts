@@ -15,6 +15,7 @@ type PlatformAgentsBridgeCheckResult = {
   mode: 'platform_agents_read_only_bridge_check'
   summary: {
     readOnly: boolean
+    internalApiKeyConfigured: boolean
     workerReachable: boolean
     workerHealthy: boolean
     expectedBridges: number
@@ -59,7 +60,9 @@ function durationSince(startedAtMs: number) {
 }
 
 async function recordBridgeCheckRun(result: PlatformAgentsBridgeCheckResult, startedAtMs: number, userId: string | null) {
-  const errors = result.ok ? [] : [{ error: result.error || 'Platform Agents bridge check failed.' }]
+  const errors = result.ok
+    ? []
+    : [{ error: result.error || 'Platform Agents bridge check failed.' }]
   const summary = {
     source: 'platform_agent',
     agentType: 'bridge_check',
@@ -101,7 +104,9 @@ async function recordBridgeCheckRun(result: PlatformAgentsBridgeCheckResult, sta
     result.ok ? 'completed' : 'failed',
     durationSince(startedAtMs),
     result.summary.expectedBridges,
-    result.summary.missingBridgeCount + (result.summary.workerHealthy ? 0 : 1),
+    result.summary.missingBridgeCount
+    + (result.summary.workerHealthy ? 0 : 1)
+    + (result.summary.internalApiKeyConfigured ? 0 : 1),
     JSON.stringify(errors),
     JSON.stringify(summary),
   ])
@@ -111,9 +116,7 @@ export default eventHandler(async (event) => {
   const actor = await requireRole(event, ['admin', 'owner'])
 
   const expectedKey = process.env.INTERNAL_API_KEY?.trim()
-  if (!expectedKey) {
-    throw createError({ statusCode: 503, statusMessage: 'INTERNAL_API_KEY is not configured' })
-  }
+  const internalApiKeyConfigured = present(expectedKey)
 
   const workerUrl = process.env.PLATFORM_AGENTS_WORKER_URL || DEFAULT_PLATFORM_AGENTS_WORKER_URL
   const workerHost = host(workerUrl)
@@ -149,10 +152,11 @@ export default eventHandler(async (event) => {
     const missingBridgeCount = bridgeResults.filter(bridge => !bridge.reported).length
 
     result = {
-      ok: response.ok && body.ok === true && missingBridgeCount === 0,
+      ok: response.ok && body.ok === true && missingBridgeCount === 0 && internalApiKeyConfigured,
       mode: 'platform_agents_read_only_bridge_check',
       summary: {
         readOnly: true,
+        internalApiKeyConfigured,
         workerReachable: response.ok,
         workerHealthy: body.ok === true,
         expectedBridges: EXPECTED_PLATFORM_AGENT_BRIDGES.length,
@@ -174,6 +178,7 @@ export default eventHandler(async (event) => {
       mode: 'platform_agents_read_only_bridge_check',
       summary: {
         readOnly: true,
+        internalApiKeyConfigured,
         workerReachable: false,
         workerHealthy: false,
         expectedBridges: EXPECTED_PLATFORM_AGENT_BRIDGES.length,

@@ -1104,14 +1104,49 @@ describe('POST /api/admin/ai/model-ops/platform-agents-check', () => {
     expect(mockRequireRole).toHaveBeenCalledWith(expect.anything(), ['admin', 'owner'])
   })
 
-  it('returns a configuration error when INTERNAL_API_KEY is missing', async () => {
+  it('runs the bridge diagnostic when INTERNAL_API_KEY is missing', async () => {
     delete process.env.INTERNAL_API_KEY
-
-    await expect(platformAgentsCheckHandler({} as any)).rejects.toMatchObject({
-      statusCode: 503,
-      statusMessage: 'INTERNAL_API_KEY is not configured',
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        worker: 'platform-agents',
+        runtime: 'cloudflare-think',
+        agents: [],
+        bridges: [
+          { path: '/tools/spend-controller/ask', mode: 'read_only' },
+          { path: '/tools/publishing-planner/ask', mode: 'read_only_or_draft_only' },
+          { path: '/tools/financial-watch/ask', mode: 'read_only' },
+          { path: '/tools/traffic-controller/ask', mode: 'read_only' },
+        ],
+      }),
     })
-    expect(mockFetch).not.toHaveBeenCalled()
+
+    const result = await platformAgentsCheckHandler({} as any)
+
+    expect(mockFetch.mock.calls[0]?.[0]).toBe('https://platform-agents.example.workers.dev/health')
+    expect(result).toMatchObject({
+      ok: false,
+      summary: {
+        internalApiKeyConfigured: false,
+        workerReachable: true,
+        workerHealthy: true,
+        missingBridgeCount: 0,
+      },
+      telemetry: {
+        logged: true,
+        reason: null,
+      },
+    })
+    expect(mockExecute.mock.calls[0]?.[1]).toEqual([
+      'failed',
+      expect.any(Number),
+      4,
+      1,
+      '[{"error":"Platform Agents bridge check failed."}]',
+      expect.stringContaining('"internalApiKeyConfigured":false'),
+    ])
   })
 
   it('checks the Worker health endpoint without exposing secrets', async () => {
@@ -1149,6 +1184,7 @@ describe('POST /api/admin/ai/model-ops/platform-agents-check', () => {
       mode: 'platform_agents_read_only_bridge_check',
       summary: {
         readOnly: true,
+        internalApiKeyConfigured: true,
         workerReachable: true,
         workerHealthy: true,
         expectedBridges: 4,
@@ -1190,6 +1226,7 @@ describe('POST /api/admin/ai/model-ops/platform-agents-check', () => {
       ok: false,
       summary: {
         readOnly: true,
+        internalApiKeyConfigured: true,
         workerReachable: false,
         missingBridgeCount: 4,
       },
