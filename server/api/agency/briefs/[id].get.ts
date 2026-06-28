@@ -112,12 +112,14 @@ export default defineEventHandler(async (event) => {
     try {
       briefLinkedTasks = await queryRows(`
         SELECT t.id, t.title,
-               ts.name AS status_name, ts.color AS status_color,
+               ts.name AS status_name, ts.color AS status_color, ts.is_final,
                d.name AS board_name,
+               t.assignee_id, am.name AS assignee_name,
                t.actual_hours, t.estimated_hours, t.budget_source
         FROM tasks t
         JOIN task_statuses ts ON t.status_id = ts.id
         JOIN departments d ON t.department_id = d.id
+        LEFT JOIN team_members am ON t.assignee_id = am.id
         WHERE t.brief_id = $1
         ORDER BY t.created_at
       `, [id])
@@ -216,7 +218,10 @@ export default defineEventHandler(async (event) => {
         title: t.title,
         statusName: t.status_name,
         statusColor: t.status_color,
+        isFinal: !!t.is_final,
         boardName: t.board_name,
+        assigneeId: t.assignee_id,
+        assigneeName: t.assignee_name,
         actualHours: t.actual_hours ? Number(t.actual_hours) : null,
         estimatedHours: t.estimated_hours ? Number(t.estimated_hours) : null,
         budgetSource: t.budget_source || 'manual',

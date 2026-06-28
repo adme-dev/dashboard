@@ -18,6 +18,7 @@ const timeEntries = computed(() => ((data.value as any)?.timeEntries || []) as a
 const expenses = computed(() => ((data.value as any)?.expenses || []) as any[])
 const taskStats = computed(() => (data.value as any)?.taskStats || { total: 0, completed: 0, inProgress: 0 })
 const invoices = computed(() => ((data.value as any)?.invoices || []) as any[])
+const sourceBrief = computed(() => (data.value as any)?.sourceBrief || null)
 
 // Format helpers
 const formatCurrency = (value: number) => {
@@ -171,6 +172,15 @@ watch(activeTab, (tab) => {
           />
         </template>
         <template #right>
+          <UButton
+            v-if="sourceBrief"
+            :to="`/agency/briefs/${sourceBrief.id}`"
+            :label="sourceBrief.referenceNumber || 'From brief'"
+            icon="i-lucide-file-text"
+            variant="ghost"
+            size="sm"
+            color="neutral"
+          />
           <UBadge v-if="project" :color="getStatusColor(project.status)" size="lg">
             {{ project.status.replace('_', ' ') }}
           </UBadge>

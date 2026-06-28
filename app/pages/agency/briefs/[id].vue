@@ -50,6 +50,22 @@ const canConvert = computed(() => {
   return brief.value.status === 'approved' && !brief.value.convertedToProjectId
 })
 
+// G9: roll the brief's linked tasks up to a project-level summary for the Linked Project card.
+const linkedProjectSummary = computed(() => {
+  const tasks = brief.value?.linkedTasks || []
+  const done = tasks.filter((t: any) => t.isFinal).length
+  // Distinct assignees (skip unassigned), preserving first-seen order.
+  const seen = new Set<string>()
+  const assignees: Array<{ id: string, name: string }> = []
+  for (const t of tasks as any[]) {
+    if (t.assigneeId && t.assigneeName && !seen.has(t.assigneeId)) {
+      seen.add(t.assigneeId)
+      assignees.push({ id: t.assigneeId, name: t.assigneeName })
+    }
+  }
+  return { total: tasks.length, done, assignees }
+})
+
 // Available status transitions based on current status
 const availableStatuses = computed(() => {
   if (!brief.value) return []
@@ -803,6 +819,21 @@ async function duplicateBrief() {
                   <UIcon name="i-lucide-external-link" class="size-4" />
                   {{ brief.project?.name || 'View Project' }}
                 </NuxtLink>
+                <div v-if="linkedProjectSummary.total" class="flex items-center justify-between gap-2">
+                  <span class="flex items-center gap-1.5 text-xs text-muted">
+                    <UIcon name="i-lucide-list-checks" class="size-3.5" />
+                    {{ linkedProjectSummary.done }}/{{ linkedProjectSummary.total }} tasks done
+                  </span>
+                  <UAvatarGroup v-if="linkedProjectSummary.assignees.length" size="2xs" :max="4">
+                    <UTooltip
+                      v-for="a in linkedProjectSummary.assignees"
+                      :key="a.id"
+                      :text="a.name"
+                    >
+                      <UAvatar :alt="a.name" />
+                    </UTooltip>
+                  </UAvatarGroup>
+                </div>
                 <p v-if="brief.convertedAt" class="text-xs text-muted">
                   Converted {{ formatDistanceToNow(new Date(brief.convertedAt), { addSuffix: true }) }}
                 </p>
@@ -886,6 +917,9 @@ async function duplicateBrief() {
                     :style="{ backgroundColor: lt.statusColor || '#6B7280' }"
                   />
                   <span class="truncate flex-1">{{ lt.title }}</span>
+                  <UTooltip v-if="lt.assigneeName" :text="lt.assigneeName">
+                    <UAvatar :alt="lt.assigneeName" size="3xs" />
+                  </UTooltip>
                   <UBadge v-if="lt.boardName" color="neutral" variant="subtle" size="xs">
                     {{ lt.boardName }}
                   </UBadge>
