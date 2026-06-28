@@ -120,4 +120,8 @@ Enrich the "Linked Project" card with task count + assignee avatars (one extra r
 - **Q1 (task assignment):** ✅ Resolved — manual stays as baseline; auto-assign is a new capability, AI-proposed / human-confirmed (see P1).
 - **Q3 (deadline/budget override):** ✅ Resolved — accounts-manager-owned via the budget tracker; conversion surfaces, never overwrites (see P2/G4).
 - **Q4 (auto-complete):** ✅ Resolved — human-in-the-loop with an AI-proposed completion alert (see P4).
-- **Q2 (`field_mapping`):** ⏳ Open — the automation direction leans toward reviving it. Decision needed: **revive** (and which target fields are in scope — e.g. task description enrichment, mapped due-date, mapped budget) **or remove** the dead config endpoint. P2 assumes revive-where-set.
+- **Q2 (`field_mapping`):** ✅ Resolved — **revive it** (Paul, 2026-06-28). Brief field values flow into the job per the template's mapping. Scope to confirm at P2 build time (task description enrichment + mapped due-date + mapped budget as the starting target set).
+
+## G11 — Converted tasks are invisible in the board (discovered 2026-06-28, High)
+
+`briefConversion.ts` creates tasks with **no `department_id`**, but the Tasks list (`tasks/index.get.ts:120`) and canonical task query (`tasks/index.post.ts:191`) **INNER JOIN `departments`** — so a department-less task is excluded from the list and Workflow board entirely. *Impact:* the tasks created from a brief don't appear in any work view; this likely explains much of why the brief→job flow feels broken. **Elevates P1: setting `department_id` is required for visibility, not optional.** Department resolution priority: `template_tasks.default_department_id` → brief template `auto_assign_department` → a guaranteed default department.
