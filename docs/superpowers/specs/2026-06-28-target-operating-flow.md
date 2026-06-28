@@ -47,6 +47,23 @@ HUMAN EXECUTION  (the firm boundary)
 
 The thread that connects them: **the brief/job is the structured substrate; the studios + Traffic Controller (over MCP) are the workers that fill and standardise it; the account manager is the human in the loop; platform execution stays manual.**
 
+## Per-role AI assistant layer (one assistant per employee, per job role)
+
+Every employee has a **role-specific AI assistant** — and the operating flow is how those assistants *do work together*: each role's assistant handles that role's slice of the brief→job pipeline.
+
+| Role | Their assistant's job in the flow |
+|---|---|
+| Account manager | Drafts the brief from a request, proposes budget allocation + assignees, confirms the auto-flow |
+| Media buyer | Preps the campaign setup to industry standard; readies what the human will create on the platform |
+| Designer / producer | Drives Banner / Video Studio for the creative the brief needs |
+| Finance / accounts | Owns budget/deadline overrides via the budget tracker |
+
+**Mapping (the "data system"):** role → assistant is already scaffolded — `team_members.user_role` + `role` + `department_id`, `server/utils/ai/rolePersona.ts` (role personas), per-user `team_members.ai_agent_preferences` (jsonb), and the AI tool loop that **scopes tools by RBAC role + persona allowlist**. The structured layer to formalise: a clear **role → persona → tool-scope → knowledge-scope** mapping so each assistant sees exactly its role's tools, data, and context.
+
+**Learning:** the assistants improve from each role's actual work — the existing **Observe & Learn** distiller + the **knowledge base / Vectorize** are the substrate. Each role's assistant captures patterns from that role's briefs/jobs/decisions and feeds them back (AI proposes, human confirms), so "industry standard" is *learned and enforced per role*, not hardcoded once.
+
+This makes the flow self-improving: the AM's assistant gets better at drafting conquesting briefs; the media buyer's gets better at the channel split; the standardisation pass sharpens over time.
+
 ## What this implies for sequencing (builds on committed work)
 
 1. **Make AM intake the trigger** — the account manager's request reliably produces a fully-shaped job (brief→job P0/P1 ✅ makes this possible; needs the AM-facing intake UX).
@@ -60,3 +77,4 @@ The thread that connects them: **the brief/job is the structured substrate; the 
 2. Which studio steps auto-trigger from which brief types (e.g. Meta AIA → banner; video campaign → video studio)?
 3. What concretely is "**industry standard**" for the Traffic Controller's clean-up pass — a checklist we can encode (required channel split, typed budget, disclaimers, deadline)?
 4. Sequencing vs the unmerged branches (dealer-feeds, brief-mapping, brief→job) — merge order before layering this on.
+5. Per-role assistants: formalise the **role → persona → tool-scope → knowledge-scope** map as a first-class data model (vs today's scattered `user_role`/`rolePersona`/`ai_agent_preferences`)? And what's the learning loop's feedback signal — explicit human confirm/edit, outcome metrics, or both?
