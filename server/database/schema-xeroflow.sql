@@ -125,8 +125,9 @@ CREATE TABLE template_tasks (
   depends_on_task_id UUID REFERENCES template_tasks(id),
   
   -- Assignment defaults
-  default_assignee_role VARCHAR(50) 
-    CHECK (default_assignee_role IN ('project_manager', 'consultant', 'client', 'any')),
+  default_role VARCHAR(100), -- e.g., 'Designer', 'Developer', 'Project Manager'
+  default_department_id UUID REFERENCES departments(id),
+  default_assignee_id UUID REFERENCES team_members(id), -- optional explicit assignee (highest-priority in resolver)
   
   -- Checklist items (stored as JSON array)
   checklist_items JSONB DEFAULT '[]'::jsonb,
