@@ -123,6 +123,16 @@ export default defineEventHandler(async (event) => {
       LIMIT 5
     `, [id])
 
+    // G9: the brief this project was converted from (reverse link). Best-effort.
+    let sourceBrief = null
+    try {
+      const sb = await queryOne(
+        `SELECT id, reference_number, title FROM briefs WHERE converted_to_project_id = $1 LIMIT 1`,
+        [id],
+      )
+      if (sb) sourceBrief = { id: sb.id, referenceNumber: sb.reference_number, title: sb.title }
+    } catch { /* graceful */ }
+
     return {
       project: {
         id: project.id,
@@ -149,6 +159,7 @@ export default defineEventHandler(async (event) => {
         createdAt: project.created_at,
         updatedAt: project.updated_at
       },
+      sourceBrief,
       timeEntries: timeEntries.map(te => ({
         id: te.id,
         date: te.date,
