@@ -11,6 +11,7 @@ import { deriveBriefAllocations } from '~~/server/utils/briefConversion/budgetAl
 import { validateBriefForConversion, type GatekeeperResult } from '~~/server/utils/briefConversion/gatekeeper'
 import { briefToMondayCampaignType, isMondayMappableTemplate } from '~~/server/utils/briefCampaignType'
 import { notifyTaskAssigned } from '~~/server/utils/notifications'
+import { notifyBriefConverted } from '~~/server/utils/briefNotifications'
 
 interface ConvertBriefOptions {
   briefId: string
@@ -53,7 +54,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
   // 1. Get brief with template info
   const brief = await queryOne(`
     SELECT
-      b.id, b.title, b.client_id, b.status, b.converted_to_project_id,
+      b.id, b.title, b.reference_number, b.client_id, b.status, b.converted_to_project_id,
       b.requested_deadline, b.budget_min, b.budget_max, b.budget_currency,
       b.quote_id, b.assigned_to,
       bt.project_template_id AS template_project_template_id,
@@ -382,6 +383,18 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       console.error('[Brief] gatekeeper note failed (non-fatal):', err)
     }
 
+    // G5: tell the brief owner + watchers their brief is now a job (was silent before).
+    notifyBriefConverted({
+      briefId,
+      briefTitle: brief.title || 'Untitled',
+      referenceNumber: brief.reference_number || '',
+      projectId: result.project.id,
+      projectName: result.project.name,
+      tasksCreated: result.tasksCreated,
+      ownerId: brief.assigned_to || null,
+      actorId: userId,
+    }).catch(err => console.error('[Brief] conversion notify failed:', err))
+
     return {
       project: result.project,
       tasksCreated: result.tasksCreated,
@@ -455,6 +468,18 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       JSON.stringify({ projectId: project.id }),
       `Converted to project "${project.name}"`
     ])
+
+    // G5: notify owner + watchers (no-template path).
+    notifyBriefConverted({
+      briefId,
+      briefTitle: brief.title || 'Untitled',
+      referenceNumber: brief.reference_number || '',
+      projectId: project.id,
+      projectName: project.name,
+      tasksCreated: 0,
+      ownerId: brief.assigned_to || null,
+      actorId: userId,
+    }).catch(err => console.error('[Brief] conversion notify failed:', err))
 
     return { project: { id: project.id, name: project.name }, tasksCreated: 0, budgetAllocationsCreated }
   }
