@@ -179,6 +179,12 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
           brief.auto_assign_department,
           fallbackDeptId,
         ])
+        if (!departmentId) {
+          throw createError({
+            statusCode: 422,
+            statusMessage: 'Cannot convert: no department resolved for task (set default_department_id on the template task, auto_assign_department on the brief template, or ensure an active department exists)',
+          })
+        }
         const { assigneeId } = resolveTaskAssignee({
           defaultAssigneeId: tt.default_assignee_id,
           defaultRole: tt.default_role,
