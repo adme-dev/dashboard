@@ -49,6 +49,11 @@ describe('deriveBriefAllocations', () => {
     expect(a.amount).toBe(600)
   })
 
+  it('does not let an explicit zero (or negative) max shadow a real min', () => {
+    expect(deriveBriefAllocations({ budgetMin: 600, budgetMax: 0, month: '2026-06' })[0].amount).toBe(600)
+    expect(deriveBriefAllocations({ budgetMin: 600, budgetMax: -5, month: '2026-06' })[0].amount).toBe(600)
+  })
+
   it('returns no allocation when there is no usable budget', () => {
     expect(deriveBriefAllocations({ budgetMin: null, budgetMax: null, month: '2026-06' })).toEqual([])
     expect(deriveBriefAllocations({ budgetMin: 0, budgetMax: 0, month: '2026-06' })).toEqual([])
