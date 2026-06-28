@@ -5,6 +5,8 @@
 
 import { queryOne, queryRows, execute, transaction } from '~~/server/utils/db'
 import { findBestMatch } from '~~/server/utils/rateCardMatcher'
+import { pickDepartmentId, resolveTaskAssignee } from '~~/server/utils/briefConversion/assignment'
+import { notifyTaskAssigned } from '~~/server/utils/notifications'
 
 interface ConvertBriefOptions {
   briefId: string
@@ -28,9 +30,9 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
     SELECT
       b.id, b.title, b.client_id, b.status, b.converted_to_project_id,
       b.requested_deadline, b.budget_min, b.budget_max, b.budget_currency,
-      b.quote_id,
+      b.quote_id, b.assigned_to,
       bt.project_template_id AS template_project_template_id,
-      bt.field_mapping, bt.auto_convert_on_approval
+      bt.field_mapping, bt.auto_convert_on_approval, bt.auto_assign_department
     FROM briefs b
     JOIN brief_templates bt ON b.template_id = bt.id
     WHERE b.id = $1
@@ -108,7 +110,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
         template.default_budget_amount || 0,
         projectStartDate.toISOString().split('T')[0],
         projectEndDate.toISOString().split('T')[0],
-        userId
+        brief.assigned_to || userId
       ])
       const project = projectResult.rows[0]
 
@@ -119,6 +121,14 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
         ORDER BY phase_id NULLS FIRST, sort_order
       `, [projectTemplateId])
       const templateTasks = tasksResult.rows
+
+      // Department fallback chain so every task is board-visible (tasks list INNER JOINs departments).
+      const fallbackDeptResult = await txClient.query(
+        `SELECT id FROM departments WHERE is_active = true ORDER BY sort_order NULLS LAST, created_at LIMIT 1`,
+      )
+      const fallbackDeptId: string | null = fallbackDeptResult.rows[0]?.id ?? null
+      const projectManagerId: string | null = brief.assigned_to || userId
+      const assignedForNotify: Array<{ taskId: string; assigneeId: string; title: string; dueDate: string }> = []
 
       // Fetch quote line items for auto-matching (if brief has a linked quote)
       let quoteLineItems: any[] = []
@@ -164,29 +174,48 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
           }
         }
 
-        await txClient.query(`
+        const departmentId = pickDepartmentId([
+          tt.default_department_id,
+          brief.auto_assign_department,
+          fallbackDeptId,
+        ])
+        const { assigneeId } = resolveTaskAssignee({
+          defaultAssigneeId: tt.default_assignee_id,
+          defaultRole: tt.default_role,
+          projectManagerId,
+        })
+        const dueDateStr = dueDate.toISOString().split('T')[0]
+
+        const insertedTask = await txClient.query(`
           INSERT INTO tasks (
-            project_id, title, description, priority,
-            task_type, estimated_hours, due_date, reporter_id,
+            project_id, department_id, title, description, priority,
+            task_type, estimated_hours, due_date, reporter_id, assignee_id,
             brief_id, budget_source, quote_line_item_id,
             estimated_cost, billing_rate
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          RETURNING id
         `, [
           project.id,
+          departmentId,
           tt.title,
           tt.description,
           tt.priority || 'medium',
           tt.task_type || 'task',
           tt.estimated_hours,
-          dueDate.toISOString().split('T')[0],
+          dueDateStr,
           userId,
+          assigneeId,
           briefId,
           budgetSource,
           matchedLineItemId,
           estimatedCost,
-          billingRate
+          billingRate,
         ])
         tasksCreated++
+
+        if (assigneeId && assigneeId !== userId) {
+          assignedForNotify.push({ taskId: insertedTask.rows[0].id, assigneeId, title: tt.title, dueDate: dueDateStr })
+        }
       }
 
       // Update template usage stats
@@ -214,10 +243,19 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
         `Converted to project "${project.name}" using template`
       ])
 
-      return { project: { id: project.id, name: project.name }, tasksCreated }
+      return { project: { id: project.id, name: project.name }, tasksCreated, assignedForNotify }
     })
 
-    return result
+    for (const a of result.assignedForNotify) {
+      notifyTaskAssigned({
+        assigneeId: a.assigneeId,
+        taskId: a.taskId,
+        taskTitle: a.title,
+        assignerId: userId,
+        dueDate: a.dueDate,
+      }).catch(err => console.error('[Brief] task-assigned notify failed:', err))
+    }
+    return { project: result.project, tasksCreated: result.tasksCreated }
   } else {
     // Simple project creation (no template)
     const projectStartDate = new Date(startDate)
@@ -235,7 +273,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       clientId,
       projectStartDate.toISOString().split('T')[0],
       projectEndDate.toISOString().split('T')[0],
-      userId
+      brief.assigned_to || userId
     ])
 
     // Update brief
