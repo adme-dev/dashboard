@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS template_tasks (
   -- Assignment
   default_role VARCHAR(100), -- e.g., 'Designer', 'Developer', 'Project Manager'
   default_department_id UUID REFERENCES departments(id),
+  default_assignee_id UUID REFERENCES team_members(id), -- optional explicit assignee (highest-priority in resolver)
 
   -- Task properties
   priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
