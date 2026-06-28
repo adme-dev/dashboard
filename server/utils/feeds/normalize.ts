@@ -6,7 +6,7 @@ function platformOf(raw: any): FeedPlatform {
 
 export function normalizeFeedSummary(raw: any): FeedSummary {
   return {
-    id: String(raw.id),
+    id: String(raw.id ?? ''),
     name: String(raw.name ?? ''),
     platform: platformOf(raw),
     isActive: raw.is_active !== false,
@@ -42,6 +42,6 @@ export function normalizeVehicle(raw: any): VehicleSummary {
     condition: raw.listing_type ?? raw.condition ?? null,
     stockNumber: raw.stock_number ?? null,
     url: raw.url ?? null,
-    image: image ?? null,
+    image,
   }
 }

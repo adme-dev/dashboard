@@ -8,6 +8,12 @@ describe('normalizeFeedSummary', () => {
     expect(normalizeFeedSummary({ id: '9', name: 'X', feed_type: 'facebook' }).platform).toBe('facebook')
     expect(normalizeFeedSummary({ id: '9', name: 'X', feed_type: 'google', is_active: false }).isActive).toBe(false)
   })
+  it('coerces a missing id to an empty string (never the literal "undefined")', () => {
+    expect(normalizeFeedSummary({ name: 'No id', feed_type: 'google' }).id).toBe('')
+  })
+  it('maps an unknown feed_type to google', () => {
+    expect(normalizeFeedSummary({ id: '1', name: 'X', feed_type: 'tiktok' }).platform).toBe('google')
+  })
 })
 
 describe('normalizeVehicle', () => {
