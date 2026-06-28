@@ -1,7 +1,7 @@
 # Automotive Dealer Feeds Plugin — Design Spec
 
 - **Date:** 2026-06-28
-- **Status:** Draft (approved in brainstorming; pending spec review → implementation plan)
+- **Status:** Approved (design + review decisions signed off 2026-06-28) → implementation plan next
 - **Authors:** Paul + Claude
 - **Repos touched:** `dashboard` (XeroFlow, Nuxt 4 / Neon / CF Pages) and `social-dashboard` (Vehicle Feed Platform, Nuxt 3 / Supabase / CF Pages)
 
@@ -21,7 +21,7 @@ All four consumers, read **and** write:
 3. **Scheduled feed-sync cache** — cron pulls each linked dealer's inventory/metrics into XeroFlow.
 4. **Spend & pacing AI** — inventory-aware pacing (e.g. flag spend on a near-empty feed).
 
-Dealer mapping must handle the **mixed** reality: link to an existing org/feeds, create feeds in an existing org, or onboard a dealer from scratch.
+Dealer mapping must handle the **mixed** reality: link to an existing org/feeds, or create feeds within an existing org. Onboarding a dealer from scratch (creating the org + source) is a fast-follow — see §13.
 
 ## 2. Confirmed system facts (verified against code, 2026-06-28)
 
@@ -132,29 +132,29 @@ All cache reads surface `fetched_at` (cross-DB staleness is explicit, never hidd
 1. **`create_feed`** — REST already has `POST /api/feeds`; add an MCP `create_feed` tool wrapping the same create function (parity for external hosts).
 2. **`search_inventory`** — net-new dealer/org-level vehicle query (not feed-scoped). REST endpoint + MCP tool, both wrapping a new `searchInventory(orgId|sellerRefs, filters)` built from existing `vehiclesClient` + `sellerMatches` + `applyVehicleFilters`.
 3. **Service-auth path** on `/api/feeds/*` (and MCP) — accept `x-feed-service-secret` + asserted `externalOrgId`, strictly org-scoped.
-4. **Onboarding (optional in v1, gated by `ensureOrg`/`linkSource`)** — `create_organization` + `link_source` (set DealerStudio/Autogate `source`) for greenfield dealers. Can ship in P4 if time-boxed.
+4. **Onboarding — deferred to a fast-follow (out of v1).** Creating an org + wiring a DealerStudio/Autogate `source` is the rarest, highest-blast-radius action, and social-dashboard already has a UI to onboard a dealer manually. v1 supports **linking** a freshly-created org (the "ops onboards in SD → links in XeroFlow" flow works day one); `ensureOrg`/`linkSource` stay as optional `FeedProvider` methods, unimplemented, until there's demand.
 
-> All of these reuse existing functions; the marginal cost of MCP parity over REST is thin wrappers.
+> Items 1–3 reuse existing functions; the marginal cost of MCP parity over REST is thin wrappers.
 
 ## 8. Consumer wiring
 
-- **Chatbot** — `server/utils/ai/tools/feeds*.ts`: `feed_list`, `feed_preview`, `inventory_search` (read, `auto`); `feed_create`, `feed_update` (`mutates`, propose→confirm); `feed_generate` (`mutates`, `riskTier:'rich_confirm'` — it changes what live ads serve). Registered in `server/utils/ai/tools/index.ts`. Gated behind a `FEEDS` permission group, re-checked at execute.
+- **Chatbot** — `server/utils/ai/tools/feeds*.ts`: `feed_list`, `feed_preview`, `inventory_search` (read, `auto`); `feed_create`, `feed_update` (`mutates`, propose→confirm); `feed_generate` (`mutates`, `riskTier:'rich_confirm'` — it changes what live ads serve). Registered in `server/utils/ai/tools/index.ts`. Gated behind the `FEEDS` permission group, re-checked at execute. **Reads go LIVE** (provider direct, bypassing the cache) so interactive freshness isn't gated by the sync cron. After any successful `feed_create`/`feed_update`/`feed_generate`, fire an **on-demand re-sync** of that feed so the cache reflects the change immediately.
 - **Brief & campaign automation** — on a linked client's `meta-aia`/`google-pmax` brief create/edit, auto-fill `auto_catalogue_id` / `auto_stock_feed_url` from the link and surface live inventory counts from the cache; C5 gatekeeper can require a valid linked feed (extends the completeness contract). Composes with `briefCampaignType.ts`.
-- **Feed-sync cron** — `server/api/cron/feed-sync.post.ts` (+ companion Worker, `x-cron-secret`): iterate `client_feed_links` → `getMetrics` + `searchInventory` via the REST provider → write `dealer_feed_cache` + KV → log to `dealer_feed_sync_logs`. Cadence ≈ every 6 h.
+- **Feed-sync cron** — `server/api/cron/feed-sync.post.ts` (+ companion Worker, `x-cron-secret`): iterate `client_feed_links` → `getMetrics` + `searchInventory` via the REST provider → write `dealer_feed_cache` + KV → log to `dealer_feed_sync_logs`. **Cadence = 6 h** (dealer inventory changes over hours/days; sub-hourly would just hammer SD's Meilisearch for negligible signal). The cache only governs *background* pacing — interactive reads are live (above) and writes trigger an on-demand re-sync — so 6 h staleness is bounded where it matters. `fetched_at` is always surfaced. 3 h is the dial if pacing needs to react faster later.
 - **Pacing AI** — new detector "spend continuing on near-empty / zero-stock feed" reads `dealer_feed_cache` (depends on the cron existing).
 
 ## 9. Write safety, RBAC, flag
 
 - Whole feature behind `DEALER_FEEDS_ENABLED` (default off), per XeroFlow convention.
 - Writes (`feed_create`/`feed_update`/`feed_generate`) PROPOSE only; the operator confirms in the existing propose→confirm UI before XeroFlow calls SD. `feed_generate` uses `rich_confirm`.
-- `FEEDS` permission group; marketing roles granted. Service-auth to SD is org-scoped; never cross-org.
+- **New `FEEDS` permission group** (not a reuse of `CLIENTS`): feeds change live ad delivery, so the capability is granted/revoked independently of general client management, and it cleanly scopes future direct providers. **Seeded onto every role that currently holds `CLIENTS`** → zero access regression on rollout. Service-auth to SD is org-scoped; never cross-org.
 
 ## 10. Phasing (scope = all four, sequenced to de-risk)
 
 - **P1 — Foundation:** `integration_configs` row + `client_feed_links` + `FeedProvider` interface/registry + `socialDashboardClient` (REST + service-auth). SD: service-auth path + `create_feed`/`search_inventory` (REST + MCP).
 - **P2 — Chatbot (headline):** native `feed_*` AiTools + propose→confirm + `FEEDS` RBAC; auto-exposed via XeroFlow MCP server.
 - **P3 — Sync cache:** `feed-sync` cron + companion Worker + `dealer_feed_cache`/`sync_logs` + KV.
-- **P4 — Automation + pacing:** brief auto-fill + gatekeeper requirement + inventory-aware pacing detector (needs P3); optional dealer onboarding (`ensureOrg`/`linkSource`).
+- **P4 — Automation + pacing:** brief auto-fill + gatekeeper requirement + inventory-aware pacing detector (needs P3). (Dealer onboarding is a fast-follow, out of v1 — see §13.)
 
 ## 11. Testing
 
@@ -172,6 +172,7 @@ All cache reads surface `fetched_at` (cross-DB staleness is explicit, never hidd
 
 ## 13. Out of scope (v1)
 
+- **Dealer onboarding** (`ensureOrg`/`linkSource` — creating the SD org + wiring its DealerStudio/Autogate source). Fast-follow; v1 links manually-created orgs. The optional interface methods are defined so it slots in later.
 - Bidirectional sync / writing XeroFlow data back into SD beyond feed management.
 - Direct Autogate/CarLoop providers (the interface is built so they slot in later).
 - Replacing SD's SSE MCP transport (left as-is for existing external consumers).
@@ -194,8 +195,8 @@ All cache reads surface `fetched_at` (cross-DB staleness is explicit, never hidd
 - `server/mcp/tools/*` add `create_feed` + `search_inventory`; wire service-auth into `sse.get.ts`/`message.post.ts`
 - env: `SOCIAL_DASHBOARD_SERVICE_SECRET`
 
-## 15. Open questions for review
+## 15. Decisions log (resolved at review, 2026-06-28)
 
-1. Onboarding (`ensureOrg`/`linkSource`) in P4 v1, or a fast follow?
-2. `FEEDS` as a new permission group vs reuse `CLIENTS`?
-3. Sync cadence (6 h default) and whether pacing needs fresher data.
+1. **Onboarding** → **deferred to a fast-follow** (out of v1). v1 links manually-created orgs; `ensureOrg`/`linkSource` left as unimplemented optional methods. Rationale: rarest action, highest blast radius, SD already has a manual onboarding UI.
+2. **Permission model** → **new `FEEDS` group**, seeded onto current `CLIENTS`-holders (zero access regression). Rationale: feeds change live ad delivery → grant/revoke independently; cleanly scopes future providers.
+3. **Sync cadence** → **6 h bulk sync**, with chatbot reads going **live** and an **on-demand re-sync after writes**. Rationale: inventory changes over hours/days; freshness is event-driven where it matters; 3 h is the dial if pacing later needs it.
