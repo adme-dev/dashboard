@@ -238,6 +238,60 @@ export async function notifyBriefAssigneeChanged(
 }
 
 /**
+ * Notify the brief owner + watchers when a brief is converted into a project (G5).
+ * The conversion previously emitted nothing — work materialised silently. Fire-and-forget:
+ * never throws into the conversion path.
+ */
+export async function notifyBriefConverted(params: {
+  briefId: string
+  briefTitle: string
+  referenceNumber: string
+  projectId: string
+  projectName: string
+  tasksCreated: number
+  ownerId: string | null
+  actorId: string
+}) {
+  try {
+    // Recipients = brief owner + watchers (notify_on_update), minus the converter.
+    const recipientIds = new Set<string>()
+    if (params.ownerId && params.ownerId !== params.actorId) recipientIds.add(params.ownerId)
+    const watchers = await queryRows(`
+      SELECT bw.user_id
+      FROM brief_watchers bw
+      WHERE bw.brief_id = $1
+        AND bw.user_id != $2
+        AND (bw.notify_on_update IS NULL OR bw.notify_on_update = true)
+    `, [params.briefId, params.actorId])
+    for (const w of watchers) recipientIds.add(w.user_id)
+    if (recipientIds.size === 0) return
+
+    const taskSuffix = params.tasksCreated > 0
+      ? ` with ${params.tasksCreated} task${params.tasksCreated === 1 ? '' : 's'}`
+      : ''
+
+    await createBulkNotifications(
+      [...recipientIds],
+      {
+        type: 'brief_converted',
+        title: 'Brief Converted to Project',
+        message: `"${params.briefTitle}" is now project "${params.projectName}"${taskSuffix}`,
+        link: `/agency/briefs/${params.briefId}`,
+        actorId: params.actorId,
+        metadata: {
+          briefId: params.briefId,
+          referenceNumber: params.referenceNumber,
+          projectId: params.projectId,
+          tasksCreated: params.tasksCreated,
+        }
+      }
+    )
+  } catch (error) {
+    console.error('[BriefNotifications] Failed to notify conversion:', error)
+  }
+}
+
+/**
  * Notify watchers/admins when a brief is submitted
  */
 export async function notifyBriefSubmitted(params: {

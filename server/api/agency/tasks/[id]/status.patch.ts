@@ -10,6 +10,7 @@ import { evaluateAutomations } from '~~/server/utils/automationEngine'
 import { evaluateLifecycleTransition } from '~~/server/utils/automation/lifecycleGuard'
 import { enqueue } from '~~/server/utils/queue'
 import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
+import { maybeProposeBriefCompletion } from '~~/server/utils/briefConversion/completionAlert'
 
 interface UpdateStatusBody {
   statusId: string
@@ -175,6 +176,13 @@ export default defineEventHandler(async (event) => {
         body.userId || '',
         Array.from(watcherIds)
       ).catch(err => console.error('Failed to send status change notification:', err))
+    }
+
+    // G6: when a task reaches a final status, propose completing the brief this project came
+    // from — only if every task is now done. AI-proposes / human-confirms, never auto-completes.
+    if (newStatus.is_final && currentTask.project_id) {
+      maybeProposeBriefCompletion({ projectId: currentTask.project_id, actorId: body.userId || null })
+        .catch(err => console.error('[Brief] completion proposal failed:', err))
     }
 
     return {

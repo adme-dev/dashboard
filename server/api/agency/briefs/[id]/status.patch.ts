@@ -131,6 +131,11 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    // Auto-convert / auto-quote on approval. Failures here used to be swallowed (the status
+    // change still returned success), so a brief could be "approved" with no project/quote and
+    // no signal. We now surface them as warnings + a brief_activities note (G10).
+    const warnings: string[] = []
+
     // Auto-convert to project on approval
     let autoConvertResult = null
     if (status === 'approved' && userId) {
@@ -152,8 +157,16 @@ export default defineEventHandler(async (event) => {
             })
           }
         }
-      } catch (convertError) {
+      } catch (convertError: any) {
         console.error('[Brief] Auto-convert failed:', convertError)
+        const msg = convertError?.statusMessage || convertError?.message || 'unknown error'
+        warnings.push(`Auto-convert to project failed: ${msg}`)
+        try {
+          await execute(
+            `INSERT INTO brief_activities (brief_id, user_id, activity_type, content) VALUES ($1, $2, 'commented', $3)`,
+            [id, userId, `⚠️ Auto-convert to project failed on approval: ${msg}`],
+          )
+        } catch { /* note is best-effort */ }
         // Don't throw — status change already succeeded
       }
     }
@@ -174,8 +187,16 @@ export default defineEventHandler(async (event) => {
             autoQuoteResult = await generateQuoteFromBrief(id, userId)
           }
         }
-      } catch (quoteError) {
+      } catch (quoteError: any) {
         console.error('[Brief] Auto-quote generation failed:', quoteError)
+        const msg = quoteError?.statusMessage || quoteError?.message || 'unknown error'
+        warnings.push(`Auto-quote generation failed: ${msg}`)
+        try {
+          await execute(
+            `INSERT INTO brief_activities (brief_id, user_id, activity_type, content) VALUES ($1, $2, 'commented', $3)`,
+            [id, userId, `⚠️ Auto-quote generation failed on approval: ${msg}`],
+          )
+        } catch { /* note is best-effort */ }
         // Don't throw — status change already succeeded
       }
     }
@@ -195,7 +216,8 @@ export default defineEventHandler(async (event) => {
         total: autoQuoteResult.total,
         lineItemCount: autoQuoteResult.lineItemCount,
         tasksLinked: autoQuoteResult.tasksLinked
-      } : null
+      } : null,
+      warnings: warnings.length ? warnings : undefined
     }
   } catch (error: any) {
     if (error.statusCode) throw error
