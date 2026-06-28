@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeFeedSummary, normalizeFeedDetail, normalizeVehicle } from '~~/server/utils/feeds/normalize'
+import { normalizeFeedSummary, normalizeFeedDetail, normalizeVehicle } from '~~/server/utils/feeds/providers/socialDashboardNormalize'
 
 describe('normalizeFeedSummary', () => {
   it('maps feed_type to platform and defaults is_active', () => {

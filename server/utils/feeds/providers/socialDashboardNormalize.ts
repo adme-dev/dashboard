@@ -1,4 +1,4 @@
-import type { FeedSummary, FeedDetail, VehicleSummary, FeedPlatform } from './types'
+import type { FeedSummary, FeedDetail, VehicleSummary, FeedPlatform } from '../types'
 
 function platformOf(raw: any): FeedPlatform {
   return raw?.feed_type === 'facebook' ? 'facebook' : 'google'

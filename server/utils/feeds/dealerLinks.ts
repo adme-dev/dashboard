@@ -1,6 +1,6 @@
 import { queryOne as dbQueryOne } from '~~/server/utils/db'
 import { SOCIAL_DASHBOARD_PROVIDER_ID } from './registry'
-import type { DealerLink } from './types'
+import type { DealerLink, FeedProviderContext } from './types'
 
 function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.map(String) : []
@@ -14,6 +14,11 @@ export function rowToDealerLink(row: any): DealerLink {
     sellerRefs: asStringArray(row.seller_refs),
     defaultFeedIds: asStringArray(row.default_feed_ids),
   }
+}
+
+/** Build the provider call-context from a link — keeps org scoping safe-by-construction. */
+export function linkToContext(link: DealerLink, actingUserEmail: string): FeedProviderContext {
+  return { actingUserEmail, externalOrgId: link.externalOrgId }
 }
 
 /** deps.queryOne is injected in tests; defaults to the real db helper at runtime. */

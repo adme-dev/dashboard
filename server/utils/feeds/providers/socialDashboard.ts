@@ -1,17 +1,24 @@
 import type { SocialDashboardClient } from '../socialDashboardClient'
-import { normalizeFeedSummary, normalizeFeedDetail, normalizeVehicle } from '../normalize'
+import { normalizeFeedSummary, normalizeFeedDetail, normalizeVehicle } from './socialDashboardNormalize'
 import type {
   FeedProvider, FeedProviderContext, DealerLink, FeedRef, CreateFeedSpec,
 } from '../types'
 
 export const SOCIAL_DASHBOARD_PROVIDER_ID = 'social-dashboard'
 
+function assertOrgMatch(ctx: FeedProviderContext, link: DealerLink) {
+  if (ctx.externalOrgId !== link.externalOrgId) {
+    throw new Error(`feed org mismatch: context org "${ctx.externalOrgId}" != link org "${link.externalOrgId}"`)
+  }
+}
+
 export function createSocialDashboardProvider(client: SocialDashboardClient): FeedProvider {
   return {
     id: SOCIAL_DASHBOARD_PROVIDER_ID,
     label: 'Social Dashboard (Vehicle Feed Platform)',
 
-    async listFeeds(ctx, _link) {
+    async listFeeds(ctx, link) {
+      assertOrgMatch(ctx, link)
       const r = await client.call<{ items?: any[] }>(ctx, 'GET', `/api/feeds`)
       return (r.items ?? []).map(normalizeFeedSummary)
     },
@@ -28,11 +35,13 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
     },
 
     async searchInventory(ctx, link: DealerLink, filters) {
+      assertOrgMatch(ctx, link)
       const r = await client.call<{ total?: number; items?: any[] }>(ctx, 'POST', `/api/feeds/search-inventory`, { sellerRefs: link.sellerRefs, filters })
       return { total: r.total ?? 0, items: (r.items ?? []).map(normalizeVehicle) }
     },
 
-    async createFeed(ctx, _link: DealerLink, spec: CreateFeedSpec): Promise<FeedRef> {
+    async createFeed(ctx, link: DealerLink, spec: CreateFeedSpec): Promise<FeedRef> {
+      assertOrgMatch(ctx, link)
       const r = await client.call<{ id: string }>(ctx, 'POST', `/api/feeds`, {
         name: spec.name,
         feed_type: spec.platform,

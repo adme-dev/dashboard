@@ -37,6 +37,13 @@ describe('socialDashboard provider', () => {
     expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds', { name: 'New', feed_type: 'facebook', filters: { a: 1 }, mappings: {}, source: undefined })
   })
 
+  it('throws when the context org does not match the link org', async () => {
+    const { client } = fakeClient({})
+    const p = createSocialDashboardProvider(client as any)
+    const badCtx = { actingUserEmail: 'p@x', externalOrgId: 'org-OTHER' }
+    await expect(p.searchInventory(badCtx as any, link, {})).rejects.toThrow(/org mismatch/i)
+  })
+
   it('generateFeed returns url + itemCount', async () => {
     const { client, call } = fakeClient({ 'POST /api/feeds/generate': { ok: true, url: 'https://feed.xml', itemCount: 42 } })
     const p = createSocialDashboardProvider(client as any)

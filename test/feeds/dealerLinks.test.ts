@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { rowToDealerLink, getDealerLink } from '~~/server/utils/feeds/dealerLinks'
+import { rowToDealerLink, getDealerLink, linkToContext } from '~~/server/utils/feeds/dealerLinks'
 
 const row = {
   client_id: 'c1', provider_id: 'social-dashboard', external_org_id: 'org-9',
@@ -19,6 +19,13 @@ describe('rowToDealerLink', () => {
   })
 })
 
+describe('linkToContext', () => {
+  it('derives the provider context org from the link', () => {
+    const link = { clientId: 'c1', providerId: 'social-dashboard', externalOrgId: 'org-9', sellerRefs: [], defaultFeedIds: [] }
+    expect(linkToContext(link, 'p@x')).toEqual({ actingUserEmail: 'p@x', externalOrgId: 'org-9' })
+  })
+})
+
 describe('getDealerLink', () => {
   it('returns null when no row', async () => {
     const queryOne = vi.fn(async () => null)
@@ -29,5 +36,6 @@ describe('getDealerLink', () => {
     const out = await getDealerLink('c1', 'social-dashboard', { queryOne: queryOne as any })
     expect(out?.externalOrgId).toBe('org-9')
     expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('client_feed_links'), ['c1', 'social-dashboard'])
+    expect(queryOne).toHaveBeenCalledWith(expect.stringContaining("status = 'active'"), ['c1', 'social-dashboard'])
   })
 })
