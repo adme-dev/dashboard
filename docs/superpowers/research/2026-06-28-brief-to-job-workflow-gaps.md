@@ -2,7 +2,7 @@
 
 - **Date:** 2026-06-28
 - **Author:** Paul + Claude
-- **Status:** Audit findings (code-verified) + proposed action plan — not yet scheduled
+- **Status:** Audit findings (code-verified) + action plan, **product decisions folded in 2026-06-28** (Q1/Q3/Q4 resolved; Q2 open) — not yet scheduled
 - **Scope:** The existing flow that turns a submitted brief into a project with tasks and assignees, and how it surfaces in the UI. No code changed by this audit.
 
 ## Method & caveat
@@ -21,6 +21,18 @@ Traced directly in source (not runtime — the browser could not be opened this 
 ## Root-cause synthesis
 
 **Conversion behaves as "instantiate a static project template" and discards almost all of the brief's intake data.** The brief is a rich, per-job form, but at conversion the field values, the assignee, the requested deadline, and the budget are all dropped; the resulting tasks are generic template boilerplate, assigned to nobody, and no one is notified. Most gaps below are facets of this one root cause.
+
+## Product direction & decisions (confirmed with Paul, 2026-06-28)
+
+The platform started **manual** (that's the legacy default these gaps reflect) and is **moving toward automation and flows — project-based, task-based, with subtasks from projects.** The operating model is **AI proposes / alerts; humans stay in the loop** — consistent with the platform's existing propose→confirm + anomaly-alert infrastructure and the marketing framing ("Agency operations, unified"; automations like *"Escalate to manager + flag overdue"*). So these gaps are **not pure bugs to silently auto-fix** — they're the on-ramp from manual to assisted automation, and each fix must keep a human override.
+
+Decisions on the four product questions:
+- **Q1 (task assignment):** manual is the legacy baseline and must keep working; auto-assignment is a *desired new capability*, delivered **AI-proposed / human-confirmed** (not silent). Manual assignment remains the fallback.
+- **Q3 (deadline & budget overrides):** owned by the **accounts manager**, via the existing **budget-tracker** section (`app/pages/cashflow`, `app/pages/agency/budget-health.vue`). So conversion must **surface** the brief's requested deadline/budget for the accounts manager to apply/override — **never silently overwrite** the project from the brief.
+- **Q4 (brief auto-complete):** **human-in-the-loop + AI proposing as an alert** when the project finishes — not automatic.
+- **Q2 (field_mapping):** not finalized; the "automation and flows" direction leans toward **reviving** it so brief data flows into the job, but confirm scope before building (see remaining open question).
+
+This reframes the plan from "fix dropped data" to "**carry the brief through, and let AI propose the automated step while a human (often the accounts manager) confirms.**"
 
 ---
 
@@ -75,20 +87,22 @@ Pick the canonical `template_tasks` definition and assignee column (recommend th
 - Set `projects.project_manager_id` from `brief.assigned_to` (fallback to converter) — **quick win, ~1 line + SELECT** (G2).
 - In the task INSERT, set `assignee_id` from the resolver and add a `task_assignees(role='assignee')` row (G1).
 - Notify each resolved assignee (`task_assigned`) — overlaps P3.
+
+**Operating model (per Q1):** the resolver is **AI-proposed / human-confirmed**, not silent — surface a "suggested assignees" step (reusing propose→confirm) the converter or PM accepts/edits, and keep **manual assignment as the fallback** so the legacy flow never breaks. Confident, unambiguous roles (e.g. `project_manager → brief owner`) may apply directly; ambiguous ones (`consultant`, free-text `default_role`) propose rather than guess.
 *Files:* `briefConversion.ts:167-188`, new resolver, `assigneeResolver.test.ts`. *Risk:* medium (assignment is visible behaviour).
 
 ### P2 — Carry the brief's data into the job (G3, G4) · **M/L**
 - **Apply `field_mapping`** (`Record<briefFieldKey, targetField>`): join `brief_field_values`, map to project/task fields per the config; at minimum enrich task/project description and any mapped scalar (deadline, budget). Define + document the supported target keys. (G3)
-- Apply brief `requested_deadline` → project `end_date` / proportional task due-dates; apply brief budget → project budget when present, overriding template defaults. (G4)
-*Files:* `briefConversion.ts`, a `applyFieldMapping()` unit, tests. *Risk:* medium — `field_mapping` is currently empty for all templates, so start by honouring it where set; no regression for unset templates.
+- **G4 (per Q3 — accounts-manager-owned):** do **not** silently overwrite the project from the brief. Instead **surface** the brief's `requested_deadline` and budget into the **budget-tracker** surface (`app/pages/cashflow` / `agency/budget-health.vue`) and the project for the **accounts manager to apply or override**; AI may *propose* the values. The template defaults stay authoritative until a human accepts the brief's numbers.
+*Files:* `briefConversion.ts`, a `applyFieldMapping()` unit, the budget-tracker surface, tests. *Risk:* medium — `field_mapping` is currently empty for all templates, so start by honouring it where set (no regression for unset templates); deadline/budget is surfaced-for-approval, not auto-applied.
 
 ### P3 — Notifications & failure surfacing (G5, G10) · **S/M**
 - Notify the brief owner on conversion ("Brief X → Project Y, N tasks") and assignees on task assignment (P1). (G5)
 - Stop swallowing auto-convert/auto-quote failures: write a `brief_activities` failure entry + notify the approver, and return a `warning` in the status response so the UI can surface it. (G10)
 *Files:* `status.patch.ts:134-181`, `briefConversion.ts`, `briefNotifications.ts`. *Risk:* low.
 
-### P4 — Status sync-back (G6) · **S** · optional/flagged
-When a converted project (or all its tasks) completes, optionally move the brief → `completed` (config per template or a global flag). *Files:* project/task completion path + `briefConversion` link lookup. *Risk:* low; gate behind a flag to avoid surprising existing workflows.
+### P4 — Status sync-back (G6) · **S** · human-in-the-loop + AI alert
+Per Q4: when a converted project (or all its tasks) completes, **do not auto-complete the brief.** Instead **AI proposes brief completion as an alert/notification** (reusing the propose→confirm + anomaly-alert pattern) that the owner/accounts manager confirms with one click. *Files:* project/task completion path + `briefConversion` link lookup + alert/notification emit. *Risk:* low — nothing changes state without a human accepting the proposal.
 
 ### P5 — UI rollup (G9) · **S/M**
 Enrich the "Linked Project" card with task count + assignee avatars (one extra read), and add a reverse project→brief link on the project page. Optionally a compact "from this brief" tasks list. *Files:* `briefs/[id].vue:790-810`, a small summary endpoint, project detail page. *Risk:* low (additive UI).
@@ -101,8 +115,9 @@ Enrich the "Linked Project" card with task count + assignee avatars (one extra r
 ### Suggested order
 **P0 → P1 → P3 (assignee notifications) → P2 → P5 → P4.** P0 unblocks P1; P1+P3 deliver the headline "assigned, and people are told"; P2 makes the job actually reflect the brief; P5/P4 close the UX/status loop.
 
-## Open questions for product
-1. Is **manual task assignment** intentional (G1), or should conversion auto-assign from template roles? (Determines whether P1 is a fix or a new capability.)
-2. Should `field_mapping` (G3) be revived, or removed as dead config? (If revived, what target fields are in scope?)
-3. Should brief **deadline/budget** override template defaults (G4), or are template defaults authoritative?
-4. Should brief status **auto-complete** when its project finishes (G6), or stay manual?
+## Product questions — status
+
+- **Q1 (task assignment):** ✅ Resolved — manual stays as baseline; auto-assign is a new capability, AI-proposed / human-confirmed (see P1).
+- **Q3 (deadline/budget override):** ✅ Resolved — accounts-manager-owned via the budget tracker; conversion surfaces, never overwrites (see P2/G4).
+- **Q4 (auto-complete):** ✅ Resolved — human-in-the-loop with an AI-proposed completion alert (see P4).
+- **Q2 (`field_mapping`):** ⏳ Open — the automation direction leans toward reviving it. Decision needed: **revive** (and which target fields are in scope — e.g. task description enrichment, mapped due-date, mapped budget) **or remove** the dead config endpoint. P2 assumes revive-where-set.
