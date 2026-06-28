@@ -235,7 +235,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       // Log activity
       await txClient.query(`
         INSERT INTO brief_activities (brief_id, user_id, activity_type, new_value, content)
-        VALUES ($1, $2, 'converted', $3, $4)
+        VALUES ($1, $2, 'converted_to_project', $3, $4)
       `, [
         briefId,
         userId,
@@ -286,7 +286,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
     // Log activity
     await execute(`
       INSERT INTO brief_activities (brief_id, user_id, activity_type, new_value, content)
-      VALUES ($1, $2, 'converted', $3, $4)
+      VALUES ($1, $2, 'converted_to_project', $3, $4)
     `, [
       briefId,
       userId,
