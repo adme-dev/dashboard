@@ -92,6 +92,19 @@ export default defineEventHandler(async (event) => {
       ${whereClause}
     `, params)
 
+    // Per-status totals across the whole (filtered) set, so pipeline widgets get true
+    // counts instead of sampling the current page.
+    const statusCountRows = await queryRows(`
+      SELECT b.status, COUNT(*)::int AS count
+      FROM briefs b
+      JOIN brief_templates bt ON b.template_id = bt.id
+      JOIN brief_categories bc ON bt.category_id = bc.id
+      ${whereClause}
+      GROUP BY b.status
+    `, params)
+    const statusCounts: Record<string, number> = {}
+    for (const r of statusCountRows as any[]) statusCounts[r.status] = Number(r.count)
+
     // Get briefs
     const briefs = await queryRows(`
       SELECT
@@ -214,6 +227,7 @@ export default defineEventHandler(async (event) => {
         commentCount: Number(b.comment_count) || 0,
         attachmentCount: Number(b.attachment_count) || 0
       })),
+      statusCounts,
       pagination: {
         total: Number(countResult?.total) || 0,
         limit,
