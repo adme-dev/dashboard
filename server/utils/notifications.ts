@@ -29,6 +29,8 @@ export type NotificationType =
   | 'brief_commented'
   | 'brief_assigned'
   | 'brief_submitted'
+  | 'brief_converted'
+  | 'brief_completion_proposed'
   | 'board_member_added'
   | 'anomaly_critical'
   | 'lead'

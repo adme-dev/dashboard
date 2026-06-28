@@ -35,12 +35,14 @@ export async function maybeProposeBriefCompletion(params: {
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE ts.is_final)::int AS final
       FROM tasks t
-      JOIN task_statuses ts ON t.status_id = ts.id
+      LEFT JOIN task_statuses ts ON t.status_id = ts.id
       WHERE t.project_id = $1
     `, [params.projectId])
     if (!counts || counts.total === 0 || counts.final < counts.total) return
 
-    // Dedup: a prior proposal note means we've already alerted — don't nag.
+    // Dedup: a prior proposal note means we've already alerted — don't nag. This is a
+    // read-then-write check (not race-safe): two tasks completing simultaneously could emit
+    // two proposals. Accepted — worst case is a duplicate notification, never state corruption.
     const already = await queryOne(`
       SELECT 1 FROM brief_activities
       WHERE brief_id = $1 AND activity_type = 'commented' AND content LIKE $2
@@ -57,7 +59,7 @@ export async function maybeProposeBriefCompletion(params: {
       `${PROPOSAL_PREFIX} all ${counts.total} task${counts.total === 1 ? '' : 's'} of the linked project are done — ready to mark this brief complete?`,
     ])
 
-    if (brief.assigned_to) {
+    if (brief.assigned_to && brief.assigned_to !== params.actorId) {
       await createNotification({
         userId: brief.assigned_to,
         type: 'brief_completion_proposed',
