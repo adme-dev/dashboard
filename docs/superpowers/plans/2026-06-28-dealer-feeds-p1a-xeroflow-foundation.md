@@ -24,7 +24,7 @@ P1a calls these; P1b (separate plan) implements the service-auth + the new `sear
 
 | Method | Path | Body / Query | Response |
 |---|---|---|---|
-| GET | `/api/feeds?type=<google\|facebook>` | — | `{ ok, items: RawFeed[] }` |
+| GET | `/api/feeds` (optional `?type=<google\|facebook>`) | — | `{ ok, items: RawFeed[] }` — **type omitted ⇒ ALL of the org's feeds** (both platforms); `listFeeds` relies on this |
 | GET | `/api/feeds/{id}` | — | `{ ok, item: RawFeed }` |
 | GET | `/api/feeds/{id}/preview?limit&offset` | — | `{ ok, total, items: RawVehicle[] }` |
 | POST | `/api/feeds/search-inventory` (NEW) | `{ sellerRefs, filters }` | `{ ok, total, items: RawVehicle[] }` |
