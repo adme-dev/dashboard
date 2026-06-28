@@ -1,0 +1,31 @@
+import { describe, it, expect } from 'vitest'
+import { normalizeFeedSummary, normalizeFeedDetail, normalizeVehicle } from '~~/server/utils/feeds/normalize'
+
+describe('normalizeFeedSummary', () => {
+  it('maps feed_type to platform and defaults is_active', () => {
+    expect(normalizeFeedSummary({ id: 7, name: 'GWM Google', feed_type: 'google', is_active: true }))
+      .toEqual({ id: '7', name: 'GWM Google', platform: 'google', isActive: true })
+    expect(normalizeFeedSummary({ id: '9', name: 'X', feed_type: 'facebook' }).platform).toBe('facebook')
+    expect(normalizeFeedSummary({ id: '9', name: 'X', feed_type: 'google', is_active: false }).isActive).toBe(false)
+  })
+})
+
+describe('normalizeVehicle', () => {
+  it('maps social-dashboard vehicle shape to VehicleSummary, first image, dap_price', () => {
+    const v = normalizeVehicle({ id: 'v1', make: 'Kia', model: 'Sportage', build_year: 2024, dap_price: 41990, listing_type: 'demo', stock_number: 'K123', url: 'https://x', images: ['a.jpg', 'b.jpg'] })
+    expect(v).toEqual({ id: 'v1', make: 'Kia', model: 'Sportage', year: 2024, price: 41990, condition: 'demo', stockNumber: 'K123', url: 'https://x', image: 'a.jpg' })
+  })
+  it('falls back to year/price/image scalars and nulls missing fields', () => {
+    const v = normalizeVehicle({ id: 2, make: 'Ford', model: 'Ranger', year: 2023, price: 60000, image: 'one.jpg' })
+    expect(v.year).toBe(2023); expect(v.price).toBe(60000); expect(v.image).toBe('one.jpg')
+    expect(normalizeVehicle({ id: 3, make: 'X', model: 'Y' }).image).toBeNull()
+  })
+})
+
+describe('normalizeFeedDetail', () => {
+  it('extends summary with filters/mappings/source', () => {
+    const d = normalizeFeedDetail({ id: '1', name: 'F', feed_type: 'google', is_active: true, filters: { a: 1 }, mappings: {}, source: { type: 'meilisearch' } })
+    expect(d.platform).toBe('google'); expect(d.filters).toEqual({ a: 1 }); expect(d.source).toEqual({ type: 'meilisearch' })
+    expect(normalizeFeedDetail({ id: '1', name: 'F', feed_type: 'google' }).source).toBeNull()
+  })
+})
