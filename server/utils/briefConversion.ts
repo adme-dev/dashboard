@@ -140,7 +140,10 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       // Gatekeeper (AI fills gaps, human confirms): compute gaps + proposals, never block.
       gatekeeper = validateBriefForConversion({
         templateSlug: brief.template_slug, isAdTemplate: isAdJob, campaignType,
-        allocations: proposedAllocations, budgetMin: brief.budget_min, budgetMax: brief.budget_max,
+        // `allocations` = human-captured allocations (none until the P2b form lands), NOT the
+        // AI's derived proposal — passing proposedAllocations here would make the gatekeeper
+        // think a typed allocation was already captured and suppress its proposal entirely.
+        allocations: [], budgetMin: brief.budget_min, budgetMax: brief.budget_max,
         currency: brief.budget_currency, requestedDeadline: brief.requested_deadline, month,
       })
     } catch (err) {

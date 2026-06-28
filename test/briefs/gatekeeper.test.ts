@@ -39,6 +39,12 @@ describe('validateBriefForConversion — ad job', () => {
     expect(r.ok).toBe(true)
   })
 
+  it('derives the proposal from budget_min when max is zero (mirrors the production call: allocations=[])', () => {
+    const r = validateBriefForConversion({ ...adBase, allocations: [], budgetMax: 0, budgetMin: 600 })
+    expect(r.proposals.find(p => p.field === 'budgetAllocation')?.proposedValue).toMatchObject({ amount: 600 })
+    expect(r.ok).toBe(true)
+  })
+
   it('flags a required budget gap (unfilled) when there is neither an allocation nor a budget', () => {
     const r = validateBriefForConversion({
       ...adBase, allocations: [], budgetMin: null, budgetMax: null,

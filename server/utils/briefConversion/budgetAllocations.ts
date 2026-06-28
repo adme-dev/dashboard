@@ -60,8 +60,14 @@ export interface DeriveBriefAllocationsInput {
  * brief carries no usable budget (nothing to propose — surface, don't invent).
  */
 export function deriveBriefAllocations(input: DeriveBriefAllocationsInput): JobBudgetAllocation[] {
-  const amount = num(input.budgetMax) ?? num(input.budgetMin)
-  if (amount == null || amount <= 0) return []
+  // Prefer a positive max, else a positive min. A literal 0 (or negative) max must NOT
+  // shadow a real min — `num(0) ?? num(min)` would wrongly keep 0 and drop the budget.
+  const max = num(input.budgetMax)
+  const min = num(input.budgetMin)
+  const amount = (max != null && max > 0) ? max
+    : (min != null && min > 0) ? min
+      : null
+  if (amount == null) return []
 
   const period: BudgetPeriod = input.period ?? 'monthly'
   return [{
