@@ -12,7 +12,7 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
     label: 'Social Dashboard (Vehicle Feed Platform)',
 
     async listFeeds(ctx, _link) {
-      const r = await client.call<{ items?: any[] }>(ctx, 'GET', `/api/feeds?type=google`)
+      const r = await client.call<{ items?: any[] }>(ctx, 'GET', `/api/feeds`)
       return (r.items ?? []).map(normalizeFeedSummary)
     },
 

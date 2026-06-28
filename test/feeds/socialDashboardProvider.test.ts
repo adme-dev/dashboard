@@ -13,10 +13,11 @@ function fakeClient(responses: Record<string, any>) {
 
 describe('socialDashboard provider', () => {
   it('listFeeds normalizes the items array', async () => {
-    const { client } = fakeClient({ 'GET /api/feeds?type=google': { ok: true, items: [{ id: 1, name: 'A', feed_type: 'google', is_active: true }] } })
+    const { client, call } = fakeClient({ 'GET /api/feeds': { ok: true, items: [{ id: 1, name: 'A', feed_type: 'google', is_active: true }] } })
     const p = createSocialDashboardProvider(client as any)
     const out = await p.listFeeds(ctx, link)
     expect(out).toEqual([{ id: '1', name: 'A', platform: 'google', isActive: true }])
+    expect(call).toHaveBeenCalledWith(ctx, 'GET', '/api/feeds')
   })
 
   it('searchInventory posts sellerRefs+filters and normalizes vehicles', async () => {
@@ -37,8 +38,9 @@ describe('socialDashboard provider', () => {
   })
 
   it('generateFeed returns url + itemCount', async () => {
-    const { client } = fakeClient({ 'POST /api/feeds/generate': { ok: true, url: 'https://feed.xml', itemCount: 42 } })
+    const { client, call } = fakeClient({ 'POST /api/feeds/generate': { ok: true, url: 'https://feed.xml', itemCount: 42 } })
     const p = createSocialDashboardProvider(client as any)
     expect(await p.generateFeed(ctx, ref, 'xml')).toEqual({ url: 'https://feed.xml', itemCount: 42 })
+    expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds/generate', { feedId: 'f1', format: 'xml' })
   })
 })
