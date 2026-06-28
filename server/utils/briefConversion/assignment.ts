@@ -15,7 +15,8 @@ export function pickDepartmentId(candidates: Array<string | null | undefined>): 
 }
 
 // A template task's free-text role counts as "the manager" when it names a PM/lead.
-const MANAGER_ROLE = /\b(project\s*manager|manager|pm|lead|account\s*lead)\b/i
+// Use negative lookbehind/lookahead to avoid matching inside hyphenated strings like "non-manager".
+const MANAGER_ROLE = /(?<![\w-])(project\s*manager|manager|pm|lead|account\s*lead)(?![\w-])/i
 
 export interface ResolveAssigneeInput {
   defaultAssigneeId?: string | null

@@ -11,6 +11,9 @@ describe('pickDepartmentId', () => {
   it('returns null when nothing usable', () => {
     expect(pickDepartmentId([null, undefined, '', '   '])).toBeNull()
   })
+  it('returns null for an empty candidate list', () => {
+    expect(pickDepartmentId([])).toBeNull()
+  })
 })
 
 describe('resolveTaskAssignee', () => {
@@ -32,6 +35,16 @@ describe('resolveTaskAssignee', () => {
   })
   it('does not invent a PM when none exists', () => {
     expect(resolveTaskAssignee({ defaultRole: 'manager', projectManagerId: null }))
+      .toEqual({ assigneeId: null, source: 'unassigned' })
+  })
+  it('does not treat hyphenated non-manager roles as manager', () => {
+    for (const role of ['non-manager', 'co-manager', 'manager-assistant']) {
+      expect(resolveTaskAssignee({ defaultRole: role, projectManagerId: 'pm-9' }))
+        .toEqual({ assigneeId: null, source: 'unassigned' })
+    }
+  })
+  it('treats a whitespace-only explicit assignee as not set', () => {
+    expect(resolveTaskAssignee({ defaultAssigneeId: '   ', defaultRole: 'Designer', projectManagerId: 'pm-9' }))
       .toEqual({ assigneeId: null, source: 'unassigned' })
   })
 })
