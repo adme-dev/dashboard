@@ -72,7 +72,7 @@ CREATE TABLE tasks (
   project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
   department_id UUID NOT NULL REFERENCES departments(id),
   parent_task_id UUID REFERENCES tasks(id) ON DELETE CASCADE, -- For subtasks
-  status_id UUID NOT NULL REFERENCES task_statuses(id),
+  status_id UUID REFERENCES task_statuses(id),
   title VARCHAR(255) NOT NULL,
   description TEXT,
   priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('urgent', 'high', 'medium', 'low')),

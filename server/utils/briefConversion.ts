@@ -185,6 +185,19 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
             statusMessage: 'Cannot convert: no department resolved for task (set default_department_id on the template task, auto_assign_department on the brief template, or ensure an active department exists)',
           })
         }
+        const statusResult = await txClient.query(
+          `SELECT id FROM task_statuses
+           WHERE (department_id IS NULL OR department_id = $1) AND is_default = true
+           ORDER BY department_id NULLS LAST LIMIT 1`,
+          [departmentId],
+        )
+        const statusId: string | null = statusResult.rows[0]?.id ?? null
+        if (!statusId) {
+          throw createError({
+            statusCode: 422,
+            statusMessage: 'Cannot convert: no default task status for the resolved department',
+          })
+        }
         const { assigneeId } = resolveTaskAssignee({
           defaultAssigneeId: tt.default_assignee_id,
           defaultRole: tt.default_role,
@@ -194,15 +207,16 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
 
         const insertedTask = await txClient.query(`
           INSERT INTO tasks (
-            project_id, department_id, title, description, priority,
+            project_id, department_id, status_id, title, description, priority,
             task_type, estimated_hours, due_date, reporter_id, assignee_id,
             brief_id, budget_source, quote_line_item_id,
             estimated_cost, billing_rate
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
           RETURNING id
         `, [
           project.id,
           departmentId,
+          statusId,
           tt.title,
           tt.description,
           tt.priority || 'medium',
@@ -252,7 +266,10 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       return { project: { id: project.id, name: project.name }, tasksCreated, assignedForNotify }
     })
 
+    const notified = new Set<string>()
     for (const a of result.assignedForNotify) {
+      if (notified.has(a.assigneeId)) continue
+      notified.add(a.assigneeId)
       notifyTaskAssigned({
         assigneeId: a.assigneeId,
         taskId: a.taskId,
