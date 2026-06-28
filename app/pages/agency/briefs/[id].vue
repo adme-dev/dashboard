@@ -53,7 +53,8 @@ const canConvert = computed(() => {
 // G9: roll the brief's linked tasks up to a project-level summary for the Linked Project card.
 const linkedProjectSummary = computed(() => {
   const tasks = brief.value?.linkedTasks || []
-  const done = tasks.filter((t: any) => t.isFinal).length
+  // "Done" = the modern status-category signal, NOT is_final (which also flags cancelled).
+  const done = tasks.filter((t: any) => t.statusCategory === 'done').length
   // Distinct assignees (skip unassigned), preserving first-seen order.
   const seen = new Set<string>()
   const assignees: Array<{ id: string, name: string }> = []
@@ -822,7 +823,7 @@ async function duplicateBrief() {
                 <div v-if="linkedProjectSummary.total" class="flex items-center justify-between gap-2">
                   <span class="flex items-center gap-1.5 text-xs text-muted">
                     <UIcon name="i-lucide-list-checks" class="size-3.5" />
-                    {{ linkedProjectSummary.done }}/{{ linkedProjectSummary.total }} tasks done
+                    {{ linkedProjectSummary.done }}/{{ linkedProjectSummary.total }} linked tasks done
                   </span>
                   <UAvatarGroup v-if="linkedProjectSummary.assignees.length" size="2xs" :max="4">
                     <UTooltip
