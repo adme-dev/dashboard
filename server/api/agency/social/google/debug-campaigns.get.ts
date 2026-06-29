@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { refreshGoogleToken, listAccessibleCustomers } from '~~/server/utils/googleAdsClient'
+import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 import { ofetch } from 'ofetch'
 
 /**
@@ -18,7 +19,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'accountId required' })
   }
 
-  const config = useRuntimeConfig()
+  const config = resolveGoogleAdsRuntimeConfig(undefined, event)
 
   // Get stored tokens for this account
   const conn = await queryOne<{

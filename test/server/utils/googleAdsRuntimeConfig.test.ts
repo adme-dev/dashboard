@@ -40,6 +40,43 @@ describe('resolveGoogleAdsRuntimeConfig', () => {
     })
   })
 
+  it('uses per-request Cloudflare bindings before cached or baked config', async () => {
+    mockGetCachedBinding.mockImplementation((key: string) => ({
+      GOOGLE_CLIENT_ID: 'cached-client-id',
+      GOOGLE_CLIENT_SECRET: 'cached-client-secret',
+      GOOGLE_DEVELOPER_TOKEN: 'cached-dev-token',
+      GOOGLE_ADS_LOGIN_CUSTOMER_ID: '1112223333'
+    }[key]))
+
+    const event = {
+      context: {
+        cloudflare: {
+          env: {
+            GOOGLE_CLIENT_ID: 'request-client-id',
+            GOOGLE_CLIENT_SECRET: 'request-client-secret',
+            GOOGLE_DEVELOPER_TOKEN: 'request-dev-token',
+            GOOGLE_ADS_LOGIN_CUSTOMER_ID: '4445556666'
+          }
+        }
+      }
+    }
+
+    const { resolveGoogleAdsRuntimeConfig } = await import('~~/server/utils/spendSync')
+    const h3Event = event as Parameters<typeof resolveGoogleAdsRuntimeConfig>[1]
+
+    expect(resolveGoogleAdsRuntimeConfig({
+      googleClientId: 'runtime-client-id',
+      googleClientSecret: 'runtime-client-secret',
+      googleDeveloperToken: 'runtime-dev-token',
+      googleAdsLoginCustomerId: '9876543210'
+    }, h3Event)).toEqual({
+      googleClientId: 'request-client-id',
+      googleClientSecret: 'request-client-secret',
+      googleDeveloperToken: 'request-dev-token',
+      googleAdsLoginCustomerId: '4445556666'
+    })
+  })
+
   it('falls back to Nuxt runtime config when bindings are unavailable', async () => {
     const { resolveGoogleAdsRuntimeConfig } = await import('~~/server/utils/spendSync')
 

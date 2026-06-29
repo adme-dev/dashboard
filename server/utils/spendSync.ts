@@ -7,6 +7,7 @@
 
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { getCachedBinding } from '~~/server/utils/email'
+import type { H3Event } from 'h3'
 
 // ─── Meta Spend Sync ────────────────────────────────────────────
 
@@ -290,10 +291,21 @@ interface GoogleAdsRuntimeConfig {
   googleAdsLoginCustomerId: string
 }
 
-export function resolveGoogleAdsRuntimeConfig(runtimeConfig?: Partial<GoogleAdsRuntimeConfig>): GoogleAdsRuntimeConfig {
+type CloudflareContext = {
+  cloudflare?: {
+    env?: Record<string, unknown>
+  }
+}
+
+export function resolveGoogleAdsRuntimeConfig(runtimeConfig?: Partial<GoogleAdsRuntimeConfig>, event?: H3Event): GoogleAdsRuntimeConfig {
   const config = runtimeConfig ?? (useRuntimeConfig() as Partial<GoogleAdsRuntimeConfig>)
-  const read = (runtimeKey: keyof GoogleAdsRuntimeConfig, envKey: string): string =>
-    getCachedBinding(envKey) || String(config[runtimeKey] || '') || process.env[envKey] || ''
+  const read = (runtimeKey: keyof GoogleAdsRuntimeConfig, envKey: string): string => {
+    const requestBinding = event
+      ? (event.context as CloudflareContext).cloudflare?.env?.[envKey]
+      : undefined
+    if (typeof requestBinding === 'string') return requestBinding
+    return getCachedBinding(envKey) || String(config[runtimeKey] || '') || process.env[envKey] || ''
+  }
 
   return {
     googleClientId: read('googleClientId', 'GOOGLE_CLIENT_ID'),

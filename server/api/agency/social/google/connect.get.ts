@@ -1,6 +1,7 @@
 import { setCookie, getRequestURL } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { getGoogleAuthUrl } from '~~/server/utils/googleAdsClient'
+import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 /**
  * GET /api/agency/social/google/connect
@@ -9,7 +10,8 @@ import { getGoogleAuthUrl } from '~~/server/utils/googleAdsClient'
 export default eventHandler(async (event) => {
   await requireAuth(event)
 
-  const config = useRuntimeConfig()
+  const runtimeConfig = useRuntimeConfig()
+  const config = resolveGoogleAdsRuntimeConfig(undefined, event)
   if (!config.googleClientId || !config.googleClientSecret) {
     throw createError({ statusCode: 500, statusMessage: 'Google Ads credentials not configured' })
   }
@@ -30,7 +32,7 @@ export default eventHandler(async (event) => {
   // matches the current environment (localhost, preview, production). If the
   // env var happens to be an absolute URL, only its pathname is kept.
   const reqUrl = getRequestURL(event)
-  const configured = config.googleRedirectUri
+  const configured = runtimeConfig.googleRedirectUri
   const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
   const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
 

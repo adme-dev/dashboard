@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { getMonthlySpend, refreshGoogleToken } from '~~/server/utils/googleAdsClient'
+import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 /**
  * GET /api/agency/social/google/insights?accountId=X&month=Y&year=Z
@@ -19,7 +20,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'accountId is required' })
   }
 
-  const config = useRuntimeConfig()
+  const config = resolveGoogleAdsRuntimeConfig(undefined, event)
 
   const conn = await queryOne<{
     id: string

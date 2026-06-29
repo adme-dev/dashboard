@@ -7,6 +7,7 @@ import {
   getCustomerInfo,
   listClientAccounts
 } from '~~/server/utils/googleAdsClient'
+import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 /**
  * GET /api/agency/social/google/callback
@@ -36,9 +37,10 @@ export default eventHandler(async (event) => {
 
     deleteCookie(event, 'google_oauth_state', { path: '/' })
 
-    const config = useRuntimeConfig()
+    const runtimeConfig = useRuntimeConfig()
+    const config = resolveGoogleAdsRuntimeConfig(undefined, event)
     const reqUrl = getRequestURL(event)
-    const configured = config.googleRedirectUri
+    const configured = runtimeConfig.googleRedirectUri
     const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
     const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
 
