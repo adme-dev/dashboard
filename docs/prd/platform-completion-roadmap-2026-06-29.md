@@ -116,7 +116,7 @@ These should not be direct-merged:
 | --- | --- | --- | --- | --- |
 | Paid media pacing and budget actions | `feature/meta-google-pacing-review` | 28 commits ahead of `main`; dirty files in `SpendCampaignHistorySlideover.vue` and `test/utils/socialSpendHistory.test.ts` | High | Extract into a fresh branch from `main`; build tests around action lifecycle, dedupe, and live budget toggle before UI merge. |
 | Paid media prod hotfix | `hotfix/social-pacing-prod-import` | 16 commits ahead, 567 behind `main` | High | Do not merge. Audit against pacing branch and cherry-pick only non-duplicated backend fixes. |
-| Social publishing | `origin/feat/social-publishing` | 12 commits ahead of `main` | Medium | Compare against current social publishing pages and PRD; port missing UX and endpoints as independent slices. |
+| Social publishing | `origin/feat/social-publishing` | Superseded content; commit identity not merged | Medium | Do not merge. Diff is captured in `docs/audits/social-publishing-diff-2026-06-29.md`; continue from current `main` PRD slices only. |
 | Media Studio SP2c | `feat/media-studio-sp2c` | 37 commits ahead; dirty docs plan | Medium | Rebase/extract carefully. Verify editor, versions, restore, waveform, delete/duplicate behavior. |
 | Video/AI producer harness | `.worktrees/publish-video-ai` | Large uncommitted diff, no committed delta over `main` | High | First commit or park changes on a branch, then split into reviewable slices. |
 | Video composite spike | `spike/video-composite-render` | 24 spike commits; dirty package files | Medium | Treat as R&D. Extract only proven production pieces, then archive branch/worktree. |
@@ -333,10 +333,10 @@ Goal: finish the social publishing suite without colliding with paid-social spen
 
 Tasks:
 
-- [ ] Compare current `app/pages/agency/social/publishing/*` with `docs/prd/social-publishing-enterprise-overhaul.md`.
-- [ ] Compare `origin/feat/social-publishing` against current `main`.
+- [x] Compare current `app/pages/agency/social/publishing/*` with `docs/prd/social-publishing-enterprise-overhaul.md`.
+- [x] Compare `origin/feat/social-publishing` against current `main`.
 - [x] Port missing shell/nav/counts as a first slice.
-- [ ] Port missing queue/planner/approvals/account polish in later slices.
+- [ ] Port remaining account/planner/approvals polish in later slices.
 - [ ] Keep social publishing APIs under `server/api/agency/social/publishing/**`.
 
 Acceptance:
@@ -662,7 +662,7 @@ Sprint 1 is shipped. Continue with the smallest next items that close real risk 
 1. **Admin live access QA:** complete for `Kellie White <accounts@adme.net.au>`; role is now `accounts`, Xero connection is active, and the role no longer carries the ADMIN group.
 2. **Paid-media branch audit:** complete. Use `docs/audits/paid-media-branch-audit-2026-06-29.md` for decisions; only the optional investigation endpoint / writer abstraction remain as possible fresh slices.
 3. **Live cross-route budget QA:** complete for June 2026. Budget keys and budget totals match across Spend, Meta, Google, Budget Health, and Analytics; remaining platform sync failures are account-access cleanup.
-4. **Social publishing diff:** compare `origin/feat/social-publishing` and `docs/prd/social-publishing-enterprise-overhaul.md` to the now-shipped publishing shell; port only missing queue/planner/accounts polish.
+4. **Social publishing diff:** complete. The old branch is superseded/cleanup-only; account search/filter polish is the first additive follow-up. Remaining social work is bulk scheduling, external approval comments/threading, dedicated GBP preview, and AI best-time/pre-check/reply suggestions.
 5. **Brief/job P2 planning:** turn the structured campaign budget model, revived `field_mapping`, and AM intake/deadline surfacing into a small implementation plan.
 6. **Dealer feeds P1b:** move to the sibling `social-dashboard` repo and add the service-auth/search/create-feed side needed by the XeroFlow provider.
 

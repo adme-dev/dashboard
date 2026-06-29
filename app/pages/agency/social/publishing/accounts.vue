@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
 import { useSocialPublishingClient } from '~/composables/useSocialPublishingClient'
+import {
+  filterSocialPublishingAccounts,
+  socialPublishingAccountsForPlatform,
+  stripSocialPublishingConnectQuery,
+} from '~/utils/socialPublishingAccounts'
 import type { SocialAccount } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -16,14 +21,34 @@ const { clientId } = useSocialPublishingClient()
 
 const accounts = ref<SocialAccount[]>([])
 const loading = ref(false)
+const search = ref('')
 
 const PLATFORMS = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'google-business']
 const META_PLATFORMS = ['facebook', 'instagram'] // both connect via the same Meta flow
 
+const filteredAccounts = computed(() => filterSocialPublishingAccounts(accounts.value, search.value))
+const searching = computed(() => search.value.trim().length > 0)
+const platformRows = computed(() =>
+  PLATFORMS.map(platform => ({
+    platform,
+    accounts: socialPublishingAccountsForPlatform(filteredAccounts.value, platform as SocialAccount['platform']),
+    total: socialPublishingAccountsForPlatform(accounts.value, platform as SocialAccount['platform']).length,
+  })).filter(row => !searching.value || row.accounts.length > 0)
+)
+
 async function load() {
-  if (!clientId.value) return
+  if (!clientId.value) {
+    accounts.value = []
+    return
+  }
+  const requestedClientId = clientId.value
   loading.value = true
-  try { accounts.value = await api.listAccounts(clientId.value) } finally { loading.value = false }
+  try {
+    const next = await api.listAccounts(requestedClientId)
+    if (clientId.value === requestedClientId) accounts.value = next
+  } finally {
+    if (clientId.value === requestedClientId) loading.value = false
+  }
 }
 watch(clientId, load, { immediate: true })
 
@@ -75,13 +100,17 @@ async function confirmSelection() {
   } finally { selecting.value = false }
 }
 
+function clearConnectQuery() {
+  router.replace({ query: stripSocialPublishingConnectQuery(route.query as Record<string, unknown>) })
+}
+
 onMounted(async () => {
   if (route.query.social_connected) {
     toast.add({ title: 'Page connected', color: 'success' })
-    await load(); router.replace({ query: {} })
+    await load(); clearConnectQuery()
   } else if (route.query.social_error) {
     toast.add({ title: 'Connection failed', description: String(route.query.social_error).replace(/_/g, ' '), color: 'error' })
-    router.replace({ query: {} })
+    clearConnectQuery()
   } else if (route.query.social_select) {
     selectToken.value = String(route.query.social_select)
     selectChosen.value = []
@@ -91,7 +120,7 @@ onMounted(async () => {
       selectChosen.value = selectPages.value.filter(p => p.status === 'connected').map(p => p.id)
     } catch { selectPages.value = []; toast.add({ title: 'Selection expired — please reconnect', color: 'warning' }) }
     if (selectPages.value.length) selectOpen.value = true
-    router.replace({ query: {} })
+    clearConnectQuery()
   }
 })
 </script>
@@ -107,28 +136,51 @@ onMounted(async () => {
       description="Connect Meta Pages for Facebook and Instagram publishing, or Google Business Profile locations for local posts. Other networks still need per-network app registration."
     />
 
+    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <UInput
+        v-model="search"
+        icon="i-lucide-search"
+        placeholder="Search accounts, IDs, platforms, or errors"
+        class="w-full sm:w-96"
+      />
+      <UBadge v-if="searching" color="neutral" variant="subtle">
+        {{ filteredAccounts.length }} of {{ accounts.length }} accounts
+      </UBadge>
+    </div>
+
+    <div v-if="loading" class="rounded-lg border border-default p-10 text-center text-sm text-muted">
+      Loading accounts...
+    </div>
+
+    <div v-else-if="searching && !filteredAccounts.length" class="rounded-lg border border-default p-10 text-center text-muted">
+      <UIcon name="i-lucide-search-x" class="size-8 mx-auto mb-2 opacity-50" />
+      No connected accounts match that search.
+    </div>
+
     <div class="space-y-2">
-      <div v-for="p in PLATFORMS" :key="p" class="rounded-lg border border-default p-3 space-y-3">
+      <div v-for="row in platformRows" :key="row.platform" class="rounded-lg border border-default p-3 space-y-3">
         <!-- Platform header: icon, name, connected count, connect/add action -->
         <div class="flex items-center gap-3">
-          <UIcon :name="`i-lucide-${p === 'google-business' ? 'store' : p === 'tiktok' ? 'music' : p}`" class="size-5 text-muted shrink-0" />
+          <UIcon :name="`i-lucide-${row.platform === 'google-business' ? 'store' : row.platform === 'tiktok' ? 'music' : row.platform}`" class="size-5 text-muted shrink-0" />
           <div class="flex-1 min-w-0 text-sm font-medium capitalize">
-            {{ p.replace('-', ' ') }}
-            <span v-if="accounts.some(x => x.platform === p)" class="text-xs text-muted font-normal">· {{ accounts.filter(x => x.platform === p).length }} connected</span>
+            {{ row.platform.replace('-', ' ') }}
+            <span v-if="row.total" class="text-xs text-muted font-normal">
+              · {{ searching ? `${row.accounts.length} shown of ${row.total}` : `${row.total} connected` }}
+            </span>
           </div>
           <UButton
-            v-if="p === 'facebook'"
-            size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
-          >{{ accounts.some(x => x.platform === p) ? 'Add more' : 'Connect' }}</UButton>
-          <template v-else-if="!accounts.some(x => x.platform === p)">
+            v-if="row.platform === 'facebook' && !searching"
+            size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(row.platform)"
+          >{{ row.total ? 'Add more' : 'Connect' }}</UButton>
+          <template v-else-if="!row.total && !searching">
             <UButton
-              v-if="p === 'google-business' && googleBusinessPublishingEnabled"
-              size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
+              v-if="row.platform === 'google-business' && googleBusinessPublishingEnabled"
+              size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(row.platform)"
             >Connect</UButton>
-            <UTooltip v-else-if="p === 'google-business'" text="Dormant until Google Business API approval and production secrets are enabled">
+            <UTooltip v-else-if="row.platform === 'google-business'" text="Dormant until Google Business API approval and production secrets are enabled">
               <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-lock">Dormant</UButton>
             </UTooltip>
-            <UTooltip v-else-if="p === 'instagram'" text="Instagram connects automatically with a linked Facebook Page">
+            <UTooltip v-else-if="row.platform === 'instagram'" text="Instagram connects automatically with a linked Facebook Page">
               <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-link-2">Via Facebook</UButton>
             </UTooltip>
             <UTooltip v-else text="Coming soon — needs platform app registration">
@@ -137,9 +189,9 @@ onMounted(async () => {
           </template>
         </div>
         <!-- Connected accounts: responsive wrapping grid of cards (handles many accounts) -->
-        <div v-if="accounts.some(x => x.platform === p)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div v-if="row.accounts.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           <div
-            v-for="a in accounts.filter(x => x.platform === p)" :key="a.id"
+            v-for="a in row.accounts" :key="a.id"
             class="flex items-center gap-2 rounded-md border border-default bg-elevated/30 px-3 py-2 min-w-0"
           >
             <div class="flex-1 min-w-0 text-sm truncate" :title="a.account_name || a.platform_account_id">{{ a.account_name || a.platform_account_id }}</div>
