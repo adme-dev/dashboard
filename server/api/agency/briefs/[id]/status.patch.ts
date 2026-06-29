@@ -208,7 +208,9 @@ export default defineEventHandler(async (event) => {
       autoConvert: autoConvertResult ? {
         projectId: autoConvertResult.project.id,
         projectName: autoConvertResult.project.name,
-        tasksCreated: autoConvertResult.tasksCreated
+        tasksCreated: autoConvertResult.tasksCreated,
+        budgetAllocationsCreated: autoConvertResult.budgetAllocationsCreated ?? 0,
+        gatekeeper: autoConvertResult.gatekeeper ?? null
       } : null,
       autoQuote: autoQuoteResult ? {
         quoteId: autoQuoteResult.quoteId,

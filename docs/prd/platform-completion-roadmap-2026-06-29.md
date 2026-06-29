@@ -1,9 +1,9 @@
 # Platform Completion Roadmap and PRD
 
 **Date:** 2026-06-29
-**Baseline app code:** `7f1a89ac`
+**Baseline app code:** `c5ab135f`
 **Roadmap checkpoint:** maintained on `main`; docs-only commits may sit ahead of the deployed app-code baseline.
-**Production:** `https://app.xeroflow.io` deployed from app code `7f1a89ac`
+**Production:** `https://app.xeroflow.io` deployed from app code `c5ab135f`
 **Purpose:** Convert the current branch/worktree backlog into an ordered build plan that completes missing product pieces without regressing features already on `main`.
 
 ## Executive Summary
@@ -39,7 +39,7 @@ Give ADME/XeroFlow one coherent agency operating platform where:
 - Smoke checks:
   - `https://app.xeroflow.io/auth/login` returned `200`.
   - `https://app.xeroflow.io/agency/analytics` returned `200`.
-- Sprint 1 production deployment URL: `https://93952147.agency-dashboard-6cm.pages.dev`.
+- Latest production deployment URL: `https://a8d95aab.agency-dashboard-6cm.pages.dev`.
 - Focused tests passed before deploy:
   - `test/server/utils/socialSpendAccuracy.test.ts`
   - `test/server/utils/socialSpendSummary.test.ts`
@@ -94,6 +94,8 @@ Completed follow-up verification:
 - Admin live access QA for `Kellie White <accounts@adme.net.au>`: role changed from `admin` to `accounts`, which maps to `FINANCE` only; `/api/xero/status` confirmed ADME Xero connection is active. See `docs/audits/admin-access-qa-2026-06-29.md`.
 - Live cross-route budget QA for June 2026: Spend summary, Meta/Google account campaign routes, Budget Health, and Analytics all agree on budget totals and campaign budget identity. See `docs/audits/budget-cross-route-qa-2026-06-29.md`.
 - Paid-media branch audit is complete. See `docs/audits/paid-media-branch-audit-2026-06-29.md`.
+- Social publishing branch/PRD diff is complete. The stale branch is superseded/cleanup-only, and the accounts route now has additive search/filter polish without changing the publishing contract. See `docs/audits/social-publishing-diff-2026-06-29.md`.
+- Brief/job P2 conversion handoff is complete: brief field mapping is carried into project descriptions, proposed per-channel budget allocations are created from brief campaign/budget data, gatekeeper gaps/proposals are recorded, and manual/auto convert responses now surface budget proposal/review metadata to the operator.
 
 ### Branches already handled or superseded
 
@@ -336,7 +338,8 @@ Tasks:
 - [x] Compare current `app/pages/agency/social/publishing/*` with `docs/prd/social-publishing-enterprise-overhaul.md`.
 - [x] Compare `origin/feat/social-publishing` against current `main`.
 - [x] Port missing shell/nav/counts as a first slice.
-- [ ] Port remaining account/planner/approvals polish in later slices.
+- [x] Port account search/filter polish as the first additive follow-up.
+- [ ] Port remaining planner/approvals polish in later slices.
 - [ ] Keep social publishing APIs under `server/api/agency/social/publishing/**`.
 
 Acceptance:
@@ -543,12 +546,12 @@ Description: Compare `origin/feat/social-publishing` and `docs/prd/social-publis
 
 Acceptance:
 
-- [ ] Missing pieces listed by route/component/API.
-- [ ] Superseded branch commits marked cleanup-only.
+- [x] Missing pieces listed by route/component/API.
+- [x] Superseded branch commits marked cleanup-only.
 
 Verify:
 
-- [ ] Written diff notes committed to docs or PR description.
+- [x] Written diff notes committed to docs or PR description.
 
 #### Task D2: Social Publishing Shell
 
@@ -663,7 +666,7 @@ Sprint 1 is shipped. Continue with the smallest next items that close real risk 
 2. **Paid-media branch audit:** complete. Use `docs/audits/paid-media-branch-audit-2026-06-29.md` for decisions; only the optional investigation endpoint / writer abstraction remain as possible fresh slices.
 3. **Live cross-route budget QA:** complete for June 2026. Budget keys and budget totals match across Spend, Meta, Google, Budget Health, and Analytics; remaining platform sync failures are account-access cleanup.
 4. **Social publishing diff:** complete. The old branch is superseded/cleanup-only; account search/filter polish is the first additive follow-up. Remaining social work is bulk scheduling, external approval comments/threading, dedicated GBP preview, and AI best-time/pre-check/reply suggestions.
-5. **Brief/job P2 planning:** turn the structured campaign budget model, revived `field_mapping`, and AM intake/deadline surfacing into a small implementation plan.
+5. **Brief/job P2 conversion handoff:** complete. Remaining brief/job work is the richer accounts-manager budget-tracker edit/override UI and Monday projection, not the initial conversion carry-through.
 6. **Dealer feeds P1b:** move to the sibling `social-dashboard` repo and add the service-auth/search/create-feed side needed by the XeroFlow provider.
 
 Do not start media/video or virtual office integration until spend/budget/admin behavior is stable.

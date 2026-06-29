@@ -118,6 +118,25 @@ const formatStatus = (status: string) => {
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
+function formatConversionFollowups(result: any): string {
+  const parts: string[] = []
+  const allocationCount = Number(result?.budgetAllocationsCreated ?? 0)
+  if (allocationCount > 0) {
+    parts.push(`${allocationCount} budget allocation${allocationCount === 1 ? '' : 's'} proposed`)
+  }
+
+  const gaps = Array.isArray(result?.gatekeeper?.gaps) ? result.gatekeeper.gaps : []
+  const required = gaps.filter((gap: any) => gap?.severity === 'required').length
+  const recommended = gaps.filter((gap: any) => gap?.severity === 'recommended').length
+  if (required > 0) {
+    parts.push(`${required} required review item${required === 1 ? '' : 's'}`)
+  } else if (recommended > 0) {
+    parts.push(`${recommended} recommended review item${recommended === 1 ? '' : 's'}`)
+  }
+
+  return parts.length ? `; ${parts.join('; ')}` : ''
+}
+
 // Get activity icon
 const getActivityIcon = (type: string) => {
   switch (type) {
@@ -254,7 +273,7 @@ async function updateStatus(status: BriefStatus) {
     if (result?.autoConvert?.projectId) {
       toast.add({
         title: 'Project Created',
-        description: `Auto-created project "${result.autoConvert.projectName}" with ${result.autoConvert.tasksCreated} tasks`,
+        description: `Auto-created project "${result.autoConvert.projectName}" with ${result.autoConvert.tasksCreated} tasks${formatConversionFollowups(result.autoConvert)}`,
         color: 'success',
         duration: 5000
       })
@@ -312,7 +331,7 @@ async function handleConvert() {
 
     toast.add({
       title: 'Project Created',
-      description: `Created "${result.project.name}" with ${result.tasksCreated} tasks`,
+      description: `Created "${result.project.name}" with ${result.tasksCreated} tasks${formatConversionFollowups(result)}`,
       color: 'success',
       duration: 5000
     })

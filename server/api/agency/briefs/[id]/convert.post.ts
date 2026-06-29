@@ -40,6 +40,8 @@ export default defineEventHandler(async (event) => {
       success: true,
       project: result.project,
       tasksCreated: result.tasksCreated,
+      budgetAllocationsCreated: result.budgetAllocationsCreated ?? 0,
+      gatekeeper: result.gatekeeper ?? null,
       message: `Created project "${result.project.name}" with ${result.tasksCreated} tasks`
     }
   } catch (error: any) {
