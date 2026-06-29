@@ -60,10 +60,10 @@ describe('social publishing navigation order', () => {
       compose: 'drafts',
       calendar: 'scheduled',
       approvals: 'pendingApprovals',
-      accounts: 'accounts'
+      accounts: 'accounts',
+      planner: 'campaigns'
     })
     expect(badgeKeys.queue).toBeUndefined()
-    expect(badgeKeys.planner).toBeUndefined()
     expect(badgeKeys.analytics).toBeUndefined()
   })
 

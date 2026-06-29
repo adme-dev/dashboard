@@ -1,6 +1,25 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { MANUAL_SYNC_RUN_TIMEOUT_MS } from '~~/server/utils/socialInbox/syncBudget'
 
+interface SocialInboxSyncChannelResult {
+  accountId: string
+  accountName?: string | null
+  platform: string
+  channelType: string
+  status: 'success' | 'error' | 'skipped'
+  synced: number
+  error?: string
+}
+
+interface SocialInboxSyncResult {
+  synced: number
+  automated?: number
+  breaches?: number
+  skipped?: number
+  timedOut?: boolean
+  channels?: SocialInboxSyncChannelResult[]
+}
+
 /**
  * POST /api/agency/social/inbox/accounts/sync
  * Manual "Refresh" — triggers the poll dispatcher immediately rather than waiting for the
@@ -10,13 +29,13 @@ import { MANUAL_SYNC_RUN_TIMEOUT_MS } from '~~/server/utils/socialInbox/syncBudg
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const body: { clientId?: string | null } = await readBody<{ clientId?: string | null }>(event).catch(() => ({}))
-  const result = await $fetch<{ synced: number; automated?: number; breaches?: number; skipped?: number; timedOut?: boolean }>('/api/cron/sync-social-inbox', {
+  const result = await $fetch<SocialInboxSyncResult>('/api/cron/sync-social-inbox', {
     method: 'POST',
     headers: { 'x-cron-secret': process.env.CRON_SECRET || '' },
     body: {
       ...(body?.clientId ? { clientId: body.clientId } : {}),
-      maxMs: MANUAL_SYNC_RUN_TIMEOUT_MS,
-    },
+      maxMs: MANUAL_SYNC_RUN_TIMEOUT_MS
+    }
   })
   return result
 })

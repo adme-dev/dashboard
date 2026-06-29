@@ -4,7 +4,7 @@ import { getSocialPublishingNavCounts } from '~~/server/utils/socialPublishingNa
 /**
  * GET /api/agency/social/publishing/nav-counts?clientId=
  * Live counts for the publishing suite tile-nav badges
- * ({ accounts, scheduled, pendingApprovals, drafts }). clientId optional.
+ * ({ accounts, scheduled, pendingApprovals, drafts, campaigns }). clientId optional.
  */
 export default defineEventHandler(async (event) => {
   await requireAuth(event)

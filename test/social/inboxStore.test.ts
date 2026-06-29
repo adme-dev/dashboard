@@ -1,21 +1,27 @@
-import { describe, it, expect, vi } from 'vitest'
-import { recordInbound } from '~~/server/utils/socialInbox/store'
+import { describe, it, expect } from 'vitest'
+import { recordInbound, recordOutbound, type DbRunner } from '~~/server/utils/socialInbox/store'
 import type { NormalizedEvent } from '~~/server/utils/socialInbox/types'
 
 const ev: NormalizedEvent = {
   platform: 'youtube', channelType: 'comment', platformConversationId: 'v1',
   participant: { id: 'u1', name: 'Jane' },
-  message: { platformMessageId: 'c1', direction: 'in', authorName: 'Jane', messageType: 'comment', content: 'hi' },
+  message: { platformMessageId: 'c1', direction: 'in', authorName: 'Jane', messageType: 'comment', content: 'hi' }
 }
 
 describe('recordInbound', () => {
   it('ensures the conversation then inserts the message and bumps counters', async () => {
     const calls: string[] = []
-    const db = {
-      queryOne: vi.fn(async (sql: string) => { calls.push(sql.trim().split('\n')[0]); return { id: 'conv-1' } }),
-      execute: vi.fn(async (sql: string) => { calls.push(sql.trim().split('\n')[0]); return 1 }),
+    const db: DbRunner = {
+      async queryOne<T = unknown>(sql: string) {
+        calls.push(sql.trim().split('\n')[0] ?? '')
+        return { id: 'conv-1' } as T
+      },
+      async execute(sql: string) {
+        calls.push(sql.trim().split('\n')[0] ?? '')
+        return 1
+      }
     }
-    const res = await recordInbound(db as any, 'client-1', 'acct-1', ev)
+    const res = await recordInbound(db, 'client-1', 'acct-1', ev)
     expect(res.conversationId).toBe('conv-1')
     expect(res.inserted).toBe(true)
     expect(calls[0]).toMatch(/INSERT INTO social_conversations/i)
@@ -26,14 +32,17 @@ describe('recordInbound', () => {
 
   it('is idempotent — a duplicate platform_message_id inserts no message AND bumps no counters', async () => {
     const calls: string[] = []
-    const db = {
-      queryOne: vi.fn(async (sql: string) => { calls.push(sql.trim().split('\n')[0]); return { id: 'conv-1' } }),
-      execute: vi.fn(async (sql: string) => {
+    const db: DbRunner = {
+      async queryOne<T = unknown>(sql: string) {
+        calls.push(sql.trim().split('\n')[0] ?? '')
+        return { id: 'conv-1' } as T
+      },
+      async execute(sql: string) {
         calls.push(sql.trim().split('\n')[0])
         return /INSERT INTO social_messages/i.test(sql) ? 0 : 1 // ON CONFLICT DO NOTHING → 0 rows
-      }),
+      }
     }
-    const res = await recordInbound(db as any, 'client-1', 'acct-1', ev)
+    const res = await recordInbound(db, 'client-1', 'acct-1', ev)
     expect(res.inserted).toBe(false)
     // critical: no counter bump when the message was a duplicate
     expect(calls.some(c => /UPDATE social_conversations/i.test(c))).toBe(false)
@@ -41,35 +50,68 @@ describe('recordInbound', () => {
 
   it('flags automation_state=pending when a new inbound is recorded', async () => {
     const fullSql: string[] = []
-    const db = {
-      queryOne: vi.fn(async () => ({ id: 'conv-1' })),
-      execute: vi.fn(async (sql: string) => { fullSql.push(sql); return 1 }), // 1 row → genuinely new
+    const db: DbRunner = {
+      async queryOne<T = unknown>() {
+        return { id: 'conv-1' } as T
+      },
+      async execute(sql: string) {
+        fullSql.push(sql)
+        return 1
+      }
     }
-    await recordInbound(db as any, 'client-1', 'acct-1', ev)
+    await recordInbound(db, 'client-1', 'acct-1', ev)
     expect(fullSql.some(s => /automation_state\s*=\s*'pending'/.test(s))).toBe(true)
   })
 
   it('uses author identity as the conversation participant fallback', async () => {
-    const params: any[][] = []
-    const db = {
-      queryOne: vi.fn(async (_sql: string, p: any[]) => { params.push(p); return { id: 'conv-1' } }),
-      execute: vi.fn(async () => 0),
+    const params: unknown[][] = []
+    const db: DbRunner = {
+      async queryOne<T = unknown>(_sql: string, p?: unknown[]) {
+        if (p) params.push(p)
+        return { id: 'conv-1' } as T
+      },
+      async execute() {
+        return 0
+      }
     }
-    await recordInbound(db as any, 'client-1', 'acct-1', {
+    await recordInbound(db, 'client-1', 'acct-1', {
       ...ev,
       participant: {},
-      message: { ...ev.message, authorId: 'author-1', authorName: 'Alex' },
+      message: { ...ev.message, authorId: 'author-1', authorName: 'Alex' }
     })
 
     expect(params[0]?.[6]).toBe('author-1')
     expect(params[0]?.[7]).toBe('Alex')
   })
 
+  it('fills a missing participant id when a later payload includes one', async () => {
+    let sql = ''
+    const db: DbRunner = {
+      async queryOne<T = unknown>(s: string) {
+        sql = s
+        return { id: 'conv-1' } as T
+      },
+      async execute() {
+        return 0
+      }
+    }
+    await recordInbound(db, 'client-1', 'acct-1', ev)
+
+    expect(sql).toMatch(/participant_id = COALESCE\(EXCLUDED\.participant_id, social_conversations\.participant_id\)/)
+  })
+
   it('stamps first_response_at (once) on the outbound update', async () => {
     const sqls: string[] = []
-    const db = { queryOne: async () => ({ id: 'c1' }), execute: async (sql: string) => { sqls.push(sql); return 1 } }
-    const { recordOutbound } = await import('~~/server/utils/socialInbox/store')
-    await recordOutbound(db as any, 'c1', 'cl1', { platformMessageId: 'p1', content: 'hi', sentByUserId: 'u1' })
+    const db: DbRunner = {
+      async queryOne<T = unknown>() {
+        return { id: 'c1' } as T
+      },
+      async execute(sql: string) {
+        sqls.push(sql)
+        return 1
+      }
+    }
+    await recordOutbound(db, 'c1', 'cl1', { platformMessageId: 'p1', content: 'hi', sentByUserId: 'u1' })
     expect(sqls.some(s => /first_response_at = COALESCE\(first_response_at, NOW\(\)\)/.test(s))).toBe(true)
   })
 })

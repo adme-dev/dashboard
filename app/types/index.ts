@@ -1327,6 +1327,7 @@ export interface SocialGeneratedDraft {
 
 // --- Social Inbox (Slice 2) ---
 export type SocialChannelType = 'comment' | 'dm' | 'mention' | 'review'
+export type SocialInboxPriority = 'low' | 'medium' | 'high' | 'urgent'
 
 export interface SocialConversation {
   id: string
@@ -1343,6 +1344,7 @@ export interface SocialConversation {
   last_message_direction: 'in' | 'out' | null
   unread_count: number
   message_count: number
+  priority: SocialInboxPriority | null
   rating: number | null
   tags: string[] | null
   created_at: string
@@ -1366,6 +1368,49 @@ export interface SocialMessage {
   is_internal_note: boolean
   platform_timestamp: string | null
   created_at: string
+}
+
+export interface SocialInboxSyncResult {
+  synced: number
+  automated?: number
+  breaches?: number
+  skipped?: number
+  timedOut?: boolean
+  channels?: SocialInboxSyncChannelResult[]
+}
+
+export interface SocialInboxSyncChannelResult {
+  accountId: string
+  accountName?: string | null
+  platform: string
+  channelType: string
+  status: 'success' | 'error' | 'skipped'
+  synced: number
+  error?: string
+}
+
+export interface SocialInboxAccountHealthCursor {
+  channel_type: string
+  last_synced_at: string | null
+  last_error: string | null
+}
+
+export interface SocialInboxAccountHealth {
+  id: string
+  client_id: string
+  platform: string
+  platform_account_id: string
+  account_name: string | null
+  is_active: boolean
+  last_error: string | null
+  token_expires_at: string | null
+  last_synced_at: string | null
+  cursor_count: number
+  cursor_error_count: number
+  conversation_count: number
+  latest_message_at: string | null
+  status: 'healthy' | 'attention' | 'reauth' | 'inactive' | 'not_synced'
+  cursors: SocialInboxAccountHealthCursor[]
 }
 
 // --- Social Inbox automation (Slice 2 Phase 2b) ---

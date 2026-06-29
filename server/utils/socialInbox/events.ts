@@ -16,10 +16,32 @@ export interface InboxEvent {
   type: string // 'message.added' | 'conversation.changed'
   conversationId?: string
   actorId?: string
+  actorName?: string
+  active?: boolean
   timestamp: number
 }
 
 type InboxEventListener = (event: InboxEvent) => void
+interface InboxRoomStub {
+  fetch(input: Request | string): Promise<Response>
+}
+
+interface InboxRoomNamespace {
+  idFromName(name: string): unknown
+  get(id: unknown): InboxRoomStub
+}
+
+interface InboxCloudflareContext {
+  cloudflare?: {
+    env?: {
+      SOCIAL_INBOX_ROOMS?: InboxRoomNamespace
+    }
+  }
+}
+
+interface H3NodeRequest {
+  on(event: 'close', listener: () => void): void
+}
 
 const MAX_EVENTS_PER_CLIENT = 200
 const EVENT_TTL_MS = 5 * 60 * 1000
@@ -28,13 +50,28 @@ const clientEvents = new Map<string, InboxEvent[]>()
 const clientListeners = new Map<string, Set<InboxEventListener>>()
 let eventCounter = 0
 
+function getInboxRoomNamespace(h3Event: H3Event): InboxRoomNamespace | undefined {
+  return (h3Event.context as InboxCloudflareContext).cloudflare?.env?.SOCIAL_INBOX_ROOMS
+}
+
+function getNodeRequest(h3Event: H3Event): H3NodeRequest | undefined {
+  return (h3Event.node as { req?: H3NodeRequest }).req
+}
+
 /**
  * Emit an inbox event: store it in the per-client buffer, notify in-isolate subscribers, and
  * (when a request context with the DO binding is available) forward it to the client's DO room.
  */
 export function emitInboxEvent(
-  params: { clientId: string; type: string; conversationId?: string; actorId?: string },
-  h3Event?: H3Event,
+  params: {
+    clientId: string
+    type: string
+    conversationId?: string
+    actorId?: string
+    actorName?: string
+    active?: boolean
+  },
+  h3Event?: H3Event
 ): InboxEvent {
   const event: InboxEvent = {
     id: ++eventCounter,
@@ -42,10 +79,14 @@ export function emitInboxEvent(
     type: params.type,
     conversationId: params.conversationId,
     actorId: params.actorId,
-    timestamp: Date.now(),
+    actorName: params.actorName,
+    active: params.active,
+    timestamp: Date.now()
   }
 
-  if (!clientEvents.has(params.clientId)) clientEvents.set(params.clientId, [])
+  if (!clientEvents.has(params.clientId)) {
+    clientEvents.set(params.clientId, [])
+  }
   const events = clientEvents.get(params.clientId)!
   events.push(event)
 
@@ -57,20 +98,22 @@ export function emitInboxEvent(
   const listeners = clientListeners.get(params.clientId)
   if (listeners) {
     for (const listener of listeners) {
-      try { listener(event) } catch { /* ignore listener errors */ }
+      try {
+        listener(event)
+      } catch { /* ignore listener errors */ }
     }
   }
 
   // Cross-isolate broadcast (production). Fire-and-forget; in-memory path still works without it.
   if (h3Event) {
     try {
-      const env = (h3Event.context as any).cloudflare?.env
-      if (env?.SOCIAL_INBOX_ROOMS) {
-        const stub = env.SOCIAL_INBOX_ROOMS.get(env.SOCIAL_INBOX_ROOMS.idFromName(params.clientId))
+      const room = getInboxRoomNamespace(h3Event)
+      if (room) {
+        const stub = room.get(room.idFromName(params.clientId))
         stub.fetch(new Request(`https://social-inbox-do/inbox/${params.clientId}/emit`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(event),
+          body: JSON.stringify(event)
         })).catch(() => {})
       }
     } catch { /* DO unavailable — in-memory events still work */ }
@@ -93,7 +136,9 @@ export function subscribeToInboxEvents(clientId: string, listener: InboxEventLis
   listeners.add(listener)
   return () => {
     listeners.delete(listener)
-    if (listeners.size === 0) clientListeners.delete(clientId)
+    if (listeners.size === 0) {
+      clientListeners.delete(clientId)
+    }
   }
 }
 
@@ -104,8 +149,15 @@ export function getLatestInboxEventId(clientId: string): number {
   return events[events.length - 1].id
 }
 
-function formatInbox(e: InboxEvent) {
-  return { type: e.type, conversationId: e.conversationId, actorId: e.actorId, timestamp: e.timestamp }
+export function formatInboxEvent(e: InboxEvent) {
+  return {
+    type: e.type,
+    conversationId: e.conversationId,
+    actorId: e.actorId,
+    actorName: e.actorName,
+    active: e.active,
+    timestamp: e.timestamp
+  }
 }
 
 function encodeSse(eventType: string, data: unknown, id?: string): Uint8Array {
@@ -114,7 +166,7 @@ function encodeSse(eventType: string, data: unknown, id?: string): Uint8Array {
     `event: ${eventType}`,
     `data: ${JSON.stringify(data)}`,
     '',
-    '',
+    ''
   ].filter(line => line !== null)
   return new TextEncoder().encode(lines.join('\n'))
 }
@@ -132,7 +184,7 @@ export async function streamInboxEvents(h3Event: H3Event, clientId: string, last
   setHeader(h3Event, 'Connection', 'keep-alive')
   setHeader(h3Event, 'X-Accel-Buffering', 'no')
 
-  const room = (h3Event.context as any).cloudflare?.env?.SOCIAL_INBOX_ROOMS
+  const room = getInboxRoomNamespace(h3Event)
   let isClosed = false
   const encoder = new TextEncoder()
   const cleanupFns: Array<() => void> = []
@@ -140,9 +192,13 @@ export async function streamInboxEvents(h3Event: H3Event, clientId: string, last
   const close = (controller?: ReadableStreamDefaultController) => {
     if (isClosed) return
     isClosed = true
-    for (const cleanup of cleanupFns.splice(0)) cleanup()
+    for (const cleanup of cleanupFns.splice(0)) {
+      cleanup()
+    }
     if (controller) {
-      try { controller.close() } catch { /* already closed */ }
+      try {
+        controller.close()
+      } catch { /* already closed */ }
     }
   }
 
@@ -166,7 +222,7 @@ export async function streamInboxEvents(h3Event: H3Event, clientId: string, last
         }
       }
 
-      const req = (h3Event.node as any)?.req
+      const req = getNodeRequest(h3Event)
       if (typeof req?.on === 'function') req.on('close', () => close(controller))
 
       if (room) {
@@ -178,7 +234,7 @@ export async function streamInboxEvents(h3Event: H3Event, clientId: string, last
           try {
             const res = await stub.fetch(`https://social-inbox-do/inbox/${clientId}/events?since=${lastSentId}`)
             if (!res.ok || isClosed) return
-            const data = await res.json() as { events: InboxEvent[]; lastEventId: number }
+            const data = await res.json() as { events: InboxEvent[], lastEventId: number }
             // If we're ahead of the DO (it cold-started and reset its counter), adopt its baseline so
             // the next real event isn't filtered out by our stale high-water mark.
             if (lastSentId > data.lastEventId) lastSentId = data.lastEventId
@@ -186,7 +242,7 @@ export async function streamInboxEvents(h3Event: H3Event, clientId: string, last
               if (isClosed) return
               if (ev.id <= lastSentId) continue
               lastSentId = ev.id
-              send('inbox_update', formatInbox(ev), String(ev.id))
+              send('inbox_update', formatInboxEvent(ev), String(ev.id))
             }
           } catch {
             // DO unreachable — client falls back to polling.
@@ -196,26 +252,32 @@ export async function streamInboxEvents(h3Event: H3Event, clientId: string, last
         // Generate the SSE response immediately, then catch up asynchronously.
         send('connected', { clientId, timestamp: Date.now() }, String(lastSentId))
         void pushSince()
-        const pollTimer = setInterval(() => { void pushSince() }, 2000)
-        const heartbeat = setInterval(() => { send('heartbeat', {}) }, 30000)
+        const pollTimer = setInterval(() => {
+          void pushSince()
+        }, 2000)
+        const heartbeat = setInterval(() => {
+          send('heartbeat', {})
+        }, 30000)
         cleanupFns.push(() => clearInterval(pollTimer), () => clearInterval(heartbeat))
         return
       }
 
       // Dev / no DO binding: single-isolate in-memory bus.
       for (const ev of getInboxEventsSince(clientId, lastEventId)) {
-        send('inbox_update', formatInbox(ev), String(ev.id))
+        send('inbox_update', formatInboxEvent(ev), String(ev.id))
       }
       send('connected', { clientId, timestamp: Date.now() }, String(getLatestInboxEventId(clientId) || lastEventId))
       const unsubscribe = subscribeToInboxEvents(clientId, (ev) => {
-        send('inbox_update', formatInbox(ev), String(ev.id))
+        send('inbox_update', formatInboxEvent(ev), String(ev.id))
       })
-      const heartbeat = setInterval(() => { sendComment('heartbeat') }, 30000)
+      const heartbeat = setInterval(() => {
+        sendComment('heartbeat')
+      }, 30000)
       cleanupFns.push(unsubscribe, () => clearInterval(heartbeat))
     },
     cancel() {
       close()
-    },
+    }
   })
 
   return sendStream(h3Event, stream)

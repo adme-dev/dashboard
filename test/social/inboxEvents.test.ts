@@ -1,9 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
+import type { H3Event } from 'h3'
 import {
   emitInboxEvent,
+  formatInboxEvent,
   getInboxEventsSince,
   getLatestInboxEventId,
-  subscribeToInboxEvents,
+  subscribeToInboxEvents
 } from '~~/server/utils/socialInbox/events'
 
 // Each test uses a unique clientId so the module-level bus doesn't leak state between tests.
@@ -49,9 +51,28 @@ describe('inbox event bus', () => {
     const fetchSpy = vi.fn(() => Promise.resolve(new Response('{}')))
     const stub = { fetch: fetchSpy }
     const env = { SOCIAL_INBOX_ROOMS: { idFromName: vi.fn(() => 'doid'), get: vi.fn(() => stub) } }
-    const h3Event = { context: { cloudflare: { env } } } as any
+    const h3Event = { context: { cloudflare: { env } } } as unknown as H3Event
     emitInboxEvent({ clientId: 'client-do', type: 'message.added', conversationId: 'x' }, h3Event)
     expect(env.SOCIAL_INBOX_ROOMS.idFromName).toHaveBeenCalledWith('client-do')
     expect(fetchSpy).toHaveBeenCalled()
+  })
+
+  it('keeps reply typing metadata in the client-facing event payload', () => {
+    const event = emitInboxEvent({
+      clientId: 'client-typing',
+      type: 'reply.typing',
+      conversationId: 'conv-1',
+      actorId: 'user-1',
+      actorName: 'Kelly',
+      active: true
+    })
+
+    expect(formatInboxEvent(event)).toMatchObject({
+      type: 'reply.typing',
+      conversationId: 'conv-1',
+      actorId: 'user-1',
+      actorName: 'Kelly',
+      active: true
+    })
   })
 })

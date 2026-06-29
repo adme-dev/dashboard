@@ -1,28 +1,29 @@
 // app/composables/useSocialInboxRealtime.ts
-// Live inbox updates via SSE with graceful degradation to polling. Server→client only (no
-// WebSocket/presence): on any event for the client's room the caller refreshes the list, and the
-// thread if the event's conversationId is the one open. Mirrors the board realtime fallback chain,
-// minus WebSocket. Used by both the agency inbox (endpoint carries ?clientId=) and the portal
-// (endpoint is fixed + session-scoped server-side).
+// Live inbox updates via SSE with graceful degradation to polling. Events are server→client
+// notifications; callers decide which events require a list refresh and which are UI-only
+// signals such as reply typing presence.
 import type { Ref } from 'vue'
 
 export interface InboxRealtimeEvent {
   type: string
   conversationId?: string
   actorId?: string
+  actorName?: string
+  active?: boolean
   timestamp: number
 }
 
 interface Options {
   onRefresh?: () => void
   onEvent?: (e: InboxRealtimeEvent) => void
+  shouldRefresh?: (e: InboxRealtimeEvent) => boolean
   pollInterval?: number
   autoConnect?: boolean
 }
 
 /** `endpoint` is the SSE URL without lastEventId, or null to stay disconnected. */
 export function useSocialInboxRealtime(endpoint: Ref<string | null>, options: Options = {}) {
-  const { onRefresh, onEvent, pollInterval = 15000, autoConnect = true } = options
+  const { onRefresh, onEvent, shouldRefresh = () => true, pollInterval = 15000, autoConnect = true } = options
 
   const connected = ref(false)
   const connectionType = ref<'sse' | 'polling'>('polling')
@@ -56,7 +57,7 @@ export function useSocialInboxRealtime(endpoint: Ref<string | null>, options: Op
         try {
           const data: InboxRealtimeEvent = JSON.parse(e.data)
           onEvent?.(data)
-          onRefresh?.()
+          if (shouldRefresh(data)) onRefresh?.()
         } catch { /* ignore malformed event */ }
       })
 
@@ -78,7 +79,10 @@ export function useSocialInboxRealtime(endpoint: Ref<string | null>, options: Op
   }
 
   function closeSSE() {
-    if (eventSource) { eventSource.close(); eventSource = null }
+    if (eventSource) {
+      eventSource.close()
+      eventSource = null
+    }
   }
 
   function startPolling() {
@@ -89,7 +93,10 @@ export function useSocialInboxRealtime(endpoint: Ref<string | null>, options: Op
   }
 
   function stopPolling() {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
   }
 
   function connect() {

@@ -9,8 +9,8 @@
 import type { NormalizedEvent } from './types'
 
 export interface DbRunner {
-  queryOne<T = any>(sql: string, params?: any[]): Promise<T | null>
-  execute(sql: string, params?: any[]): Promise<number>
+  queryOne<T = unknown>(sql: string, params?: unknown[]): Promise<T | null>
+  execute(sql: string, params?: unknown[]): Promise<number>
 }
 
 /** Ensure the conversation exists (identity/profile fields only — NO counter/last_message bump). */
@@ -24,6 +24,7 @@ async function ensureConversation(db: DbRunner, clientId: string, accountId: str
         permalink, participant_id, participant_name, participant_handle, rating, updated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW())
      ON CONFLICT (social_account_id, channel_type, platform_conversation_id) DO UPDATE SET
+       participant_id = COALESCE(EXCLUDED.participant_id, social_conversations.participant_id),
        participant_name = COALESCE(EXCLUDED.participant_name, social_conversations.participant_name),
        participant_handle = COALESCE(EXCLUDED.participant_handle, social_conversations.participant_handle),
        permalink = COALESCE(EXCLUDED.permalink, social_conversations.permalink),
@@ -31,8 +32,8 @@ async function ensureConversation(db: DbRunner, clientId: string, accountId: str
        updated_at = NOW()
     RETURNING id`,
     [clientId, accountId, ev.platform, ev.channelType, ev.platformConversationId,
-     ev.permalink ?? null, participantId, participantName, ev.participant.handle ?? null,
-     ev.rating ?? null],
+      ev.permalink ?? null, participantId, participantName, ev.participant.handle ?? null,
+      ev.rating ?? null]
   )
   if (!row) throw new Error('ensureConversation: no id returned')
   return row.id
@@ -47,8 +48,8 @@ async function insertMessage(db: DbRunner, conversationId: string, clientId: str
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
      ON CONFLICT (conversation_id, platform_message_id) WHERE platform_message_id IS NOT NULL DO NOTHING`,
     [conversationId, clientId, ev.message.platformMessageId, ev.message.direction,
-     ev.message.authorId ?? null, ev.message.authorName ?? null, ev.message.messageType,
-     ev.message.content ?? '', JSON.stringify(ev.message.attachments ?? []), ev.message.platformTimestamp ?? null],
+      ev.message.authorId ?? null, ev.message.authorName ?? null, ev.message.messageType,
+      ev.message.content ?? '', JSON.stringify(ev.message.attachments ?? []), ev.message.platformTimestamp ?? null]
   )
 }
 
@@ -65,7 +66,7 @@ async function bumpConversationForInbound(db: DbRunner, conversationId: string, 
        automation_state = 'pending',
        updated_at = NOW()
      WHERE id = $1`,
-    [conversationId, ev.message.platformTimestamp ?? null, (ev.message.content ?? '').slice(0, 200)],
+    [conversationId, ev.message.platformTimestamp ?? null, (ev.message.content ?? '').slice(0, 200)]
   )
 }
 
@@ -83,13 +84,13 @@ export async function recordInbound(db: DbRunner, clientId: string, accountId: s
 /** Record an outbound reply we just sent (direction='out'); always a genuinely-new row. */
 export async function recordOutbound(
   db: DbRunner, conversationId: string, clientId: string,
-  args: { platformMessageId: string | null; content: string; sentByUserId: string; messageType?: string },
+  args: { platformMessageId: string | null, content: string, sentByUserId: string, messageType?: string }
 ): Promise<void> {
   await db.execute(
     `INSERT INTO social_messages
        (conversation_id, client_id, platform_message_id, direction, message_type, content, sent_by_user_id, platform_timestamp)
      VALUES ($1,$2,$3,'out',$4,$5,$6, NOW())`,
-    [conversationId, clientId, args.platformMessageId, args.messageType ?? 'text', args.content, args.sentByUserId],
+    [conversationId, clientId, args.platformMessageId, args.messageType ?? 'text', args.content, args.sentByUserId]
   )
   await db.execute(
     `UPDATE social_conversations SET
@@ -98,6 +99,6 @@ export async function recordOutbound(
        first_response_at = COALESCE(first_response_at, NOW()),
        updated_at = NOW()
      WHERE id = $1`,
-    [conversationId, args.content.slice(0, 200)],
+    [conversationId, args.content.slice(0, 200)]
   )
 }

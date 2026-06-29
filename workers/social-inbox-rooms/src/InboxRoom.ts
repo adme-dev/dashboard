@@ -3,8 +3,8 @@
  *
  * Cross-isolate fan-out for the social engagement inbox (Slice 2d). One DO instance per
  * client_id. Mirrors BoardRoom but SSE-only: the dashboard's SSE endpoints poll `/events?since=`
- * to relay events that were emitted on a different isolate. Events flow server→client only, so
- * there is no WebSocket/presence handling here — the inbox UI just refreshes on each event.
+ * to relay events that were emitted on a different isolate. Events flow through this room as
+ * short-lived notifications; stateful presence still lives in the dashboard client.
  *
  * Events are held in-memory with TTL expiry (no SQLite); a missed event only costs a delayed
  * refresh, and the client also polls as a backstop, so durability isn't required.
@@ -17,10 +17,12 @@ interface InboxEvent {
   type: string
   conversationId?: string
   actorId?: string
+  actorName?: string
+  active?: boolean
   timestamp: number
 }
 
-interface Env {}
+type Env = Record<string, never>
 
 const MAX_EVENTS = 200
 const EVENT_TTL_MS = 5 * 60 * 1000
@@ -28,10 +30,6 @@ const EVENT_TTL_MS = 5 * 60 * 1000
 export class InboxRoom extends DurableObject<Env> {
   private events: InboxEvent[] = []
   private eventCounter = 0
-
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env)
-  }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
@@ -43,7 +41,7 @@ export class InboxRoom extends DurableObject<Env> {
         const stored: InboxEvent = {
           ...incoming,
           id: ++this.eventCounter,
-          timestamp: incoming.timestamp || Date.now(),
+          timestamp: incoming.timestamp || Date.now()
         }
         this.events.push(stored)
         this.trimOldEvents()
@@ -62,7 +60,7 @@ export class InboxRoom extends DurableObject<Env> {
       if (since > this.eventCounter) since = 0
       return Response.json({
         events: this.events.filter(e => e.id > since),
-        lastEventId: this.eventCounter,
+        lastEventId: this.eventCounter
       })
     }
 

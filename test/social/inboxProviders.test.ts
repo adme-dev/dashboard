@@ -76,7 +76,7 @@ describe('mapFacebookFeedComments', () => {
       paging: { cursors: { after: 'POST_AFTER' } },
     }
     const { items, nextCursor } = mapFacebookFeedComments(api)
-    expect(nextCursor).toBe('POST_AFTER')
+    expect(nextCursor).toBeNull()
     expect(items[0]).toMatchObject({
       channelType: 'comment',
       platformConversationId: 'page_1_post_1',
@@ -106,7 +106,7 @@ describe('mapInstagramMediaComments', () => {
       paging: { cursors: { after: 'MEDIA_AFTER' } },
     }
     const { items, nextCursor } = mapInstagramMediaComments(api)
-    expect(nextCursor).toBe('MEDIA_AFTER')
+    expect(nextCursor).toBeNull()
     expect(items[0]).toMatchObject({
       channelType: 'comment',
       platformConversationId: 'ig_media_1',

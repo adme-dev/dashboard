@@ -492,15 +492,16 @@ export function mapInstagramMediaComments(api: any): FetchInboxResult {
       })
     }
   }
-  return { items, nextCursor: api?.paging?.cursors?.after ?? null }
+  // The media cursor paginates media objects, not comments. Always rescan recent media; message
+  // idempotency prevents duplicates while keeping the webhook fallback on current comments.
+  return { items, nextCursor: null }
 }
 
-instagramProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
+instagramProvider.fetchInbox = async ({ accountId, accessToken }: FetchInboxParams): Promise<FetchInboxResult> => {
   const url = new URL(`${GRAPH_API_BASE}/${accountId}/media`)
   url.searchParams.set('fields', 'id,permalink,comments.limit(50){id,text,username,timestamp,from{id,username}}')
   url.searchParams.set('access_token', accessToken)
   url.searchParams.set('limit', '25')
-  if (cursor) url.searchParams.set('after', cursor)
   const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
   if (!res.ok) throw new Error(`instagram comments fetchInbox ${res.status}`)
   return mapInstagramMediaComments(await res.json())

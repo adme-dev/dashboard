@@ -283,16 +283,17 @@ export function mapFacebookFeedComments(api: any): FetchInboxResult {
       })
     }
   }
-  return { items, nextCursor: api?.paging?.cursors?.after ?? null }
+  // The feed cursor paginates posts, not comments. Keep comment polling anchored to the newest
+  // posts and let social_messages idempotency absorb duplicates between cron/manual syncs.
+  return { items, nextCursor: null }
 }
 
 facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelType }: FetchInboxParams): Promise<FetchInboxResult> => {
   if (channelType === 'comment') {
     const url = new URL(`${GRAPH_API_BASE}/${accountId}/feed`)
-  url.searchParams.set('fields', 'id,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url}')
+    url.searchParams.set('fields', 'id,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url}')
     url.searchParams.set('access_token', accessToken)
     url.searchParams.set('limit', '25')
-    if (cursor) url.searchParams.set('after', cursor)
     const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
     if (!res.ok) throw new Error(`facebook comments fetchInbox ${res.status}`)
     return mapFacebookFeedComments(await res.json())
