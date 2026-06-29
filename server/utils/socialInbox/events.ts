@@ -8,7 +8,7 @@
 // gracefully: if the DO binding is absent, the in-memory path still works; if SSE fails entirely,
 // the client falls back to polling.
 import type { H3Event } from 'h3'
-import { createEventStream } from 'h3'
+import { sendStream, setHeader } from 'h3'
 
 export interface InboxEvent {
   id: number
@@ -108,6 +108,17 @@ function formatInbox(e: InboxEvent) {
   return { type: e.type, conversationId: e.conversationId, actorId: e.actorId, timestamp: e.timestamp }
 }
 
+function encodeSse(eventType: string, data: unknown, id?: string): Uint8Array {
+  const lines = [
+    id ? `id: ${id}` : null,
+    `event: ${eventType}`,
+    `data: ${JSON.stringify(data)}`,
+    '',
+    '',
+  ].filter(line => line !== null)
+  return new TextEncoder().encode(lines.join('\n'))
+}
+
 /**
  * Open an SSE stream of a client's inbox events. Identical strategy to the board SSE endpoint:
  * when the DO binding exists (production) the DO is the single source and we poll it for deltas
@@ -116,51 +127,96 @@ function formatInbox(e: InboxEvent) {
  * the portal endpoint passes its session clientId so a client can never stream another tenant.
  */
 export async function streamInboxEvents(h3Event: H3Event, clientId: string, lastEventId: number) {
-  const eventStream = createEventStream(h3Event)
+  setHeader(h3Event, 'Content-Type', 'text/event-stream')
+  setHeader(h3Event, 'Cache-Control', 'no-cache')
+  setHeader(h3Event, 'Connection', 'keep-alive')
+  setHeader(h3Event, 'X-Accel-Buffering', 'no')
+
   const room = (h3Event.context as any).cloudflare?.env?.SOCIAL_INBOX_ROOMS
+  let isClosed = false
+  const encoder = new TextEncoder()
+  const cleanupFns: Array<() => void> = []
 
-  if (room) {
-    const stub = room.get(room.idFromName(clientId))
-    let lastSentId = lastEventId
-    const pushSince = async () => {
-      try {
-        const res = await stub.fetch(`https://social-inbox-do/inbox/${clientId}/events?since=${lastSentId}`)
-        if (!res.ok) return
-        const data = await res.json() as { events: InboxEvent[]; lastEventId: number }
-        // If we're ahead of the DO (it cold-started and reset its counter), adopt its baseline so
-        // the next real event isn't filtered out by our stale high-water mark.
-        if (lastSentId > data.lastEventId) lastSentId = data.lastEventId
-        for (const ev of data.events) {
-          if (ev.id <= lastSentId) continue
-          lastSentId = ev.id
-          await eventStream.push({ id: String(ev.id), event: 'inbox_update', data: JSON.stringify(formatInbox(ev)) })
-        }
-      } catch { /* DO unreachable — client falls back to polling */ }
+  const close = (controller?: ReadableStreamDefaultController) => {
+    if (isClosed) return
+    isClosed = true
+    for (const cleanup of cleanupFns.splice(0)) cleanup()
+    if (controller) {
+      try { controller.close() } catch { /* already closed */ }
     }
-    await pushSince()
-    await eventStream.push({ id: String(lastSentId), event: 'connected', data: JSON.stringify({ clientId, timestamp: Date.now() }) })
-    const pollTimer = setInterval(pushSince, 2000)
-    const heartbeat = setInterval(async () => {
-      try { await eventStream.push({ event: 'heartbeat', data: '{}' }) } catch { clearInterval(heartbeat) }
-    }, 30000)
-    eventStream.onClosed(async () => { clearInterval(pollTimer); clearInterval(heartbeat); await eventStream.close() })
-    return eventStream.send()
   }
 
-  // Dev / no DO binding: single-isolate in-memory bus.
-  for (const ev of getInboxEventsSince(clientId, lastEventId)) {
-    await eventStream.push({ id: String(ev.id), event: 'inbox_update', data: JSON.stringify(formatInbox(ev)) })
-  }
-  await eventStream.push({
-    id: String(getLatestInboxEventId(clientId) || lastEventId),
-    event: 'connected', data: JSON.stringify({ clientId, timestamp: Date.now() }),
+  const stream = new ReadableStream({
+    start(controller) {
+      const send = (eventType: string, data: unknown, id?: string) => {
+        if (isClosed) return
+        try {
+          controller.enqueue(encodeSse(eventType, data, id))
+        } catch {
+          close(controller)
+        }
+      }
+
+      const sendComment = (comment: string) => {
+        if (isClosed) return
+        try {
+          controller.enqueue(encoder.encode(`: ${comment}\n\n`))
+        } catch {
+          close(controller)
+        }
+      }
+
+      const req = (h3Event.node as any)?.req
+      if (typeof req?.on === 'function') req.on('close', () => close(controller))
+
+      if (room) {
+        const stub = room.get(room.idFromName(clientId))
+        let lastSentId = lastEventId
+
+        const pushSince = async () => {
+          if (isClosed) return
+          try {
+            const res = await stub.fetch(`https://social-inbox-do/inbox/${clientId}/events?since=${lastSentId}`)
+            if (!res.ok || isClosed) return
+            const data = await res.json() as { events: InboxEvent[]; lastEventId: number }
+            // If we're ahead of the DO (it cold-started and reset its counter), adopt its baseline so
+            // the next real event isn't filtered out by our stale high-water mark.
+            if (lastSentId > data.lastEventId) lastSentId = data.lastEventId
+            for (const ev of data.events) {
+              if (isClosed) return
+              if (ev.id <= lastSentId) continue
+              lastSentId = ev.id
+              send('inbox_update', formatInbox(ev), String(ev.id))
+            }
+          } catch {
+            // DO unreachable — client falls back to polling.
+          }
+        }
+
+        // Generate the SSE response immediately, then catch up asynchronously.
+        send('connected', { clientId, timestamp: Date.now() }, String(lastSentId))
+        void pushSince()
+        const pollTimer = setInterval(() => { void pushSince() }, 2000)
+        const heartbeat = setInterval(() => { send('heartbeat', {}) }, 30000)
+        cleanupFns.push(() => clearInterval(pollTimer), () => clearInterval(heartbeat))
+        return
+      }
+
+      // Dev / no DO binding: single-isolate in-memory bus.
+      for (const ev of getInboxEventsSince(clientId, lastEventId)) {
+        send('inbox_update', formatInbox(ev), String(ev.id))
+      }
+      send('connected', { clientId, timestamp: Date.now() }, String(getLatestInboxEventId(clientId) || lastEventId))
+      const unsubscribe = subscribeToInboxEvents(clientId, (ev) => {
+        send('inbox_update', formatInbox(ev), String(ev.id))
+      })
+      const heartbeat = setInterval(() => { sendComment('heartbeat') }, 30000)
+      cleanupFns.push(unsubscribe, () => clearInterval(heartbeat))
+    },
+    cancel() {
+      close()
+    },
   })
-  const unsubscribe = subscribeToInboxEvents(clientId, async (ev) => {
-    try { await eventStream.push({ id: String(ev.id), event: 'inbox_update', data: JSON.stringify(formatInbox(ev)) }) } catch { /* closed */ }
-  })
-  const heartbeat = setInterval(async () => {
-    try { await eventStream.push({ event: 'heartbeat', data: '{}' }) } catch { clearInterval(heartbeat) }
-  }, 30000)
-  eventStream.onClosed(async () => { unsubscribe(); clearInterval(heartbeat); await eventStream.close() })
-  return eventStream.send()
+
+  return sendStream(h3Event, stream)
 }
