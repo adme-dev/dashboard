@@ -38,6 +38,7 @@ const GROUPS = [
   { key: 'ADMIN', label: 'Admin Access', description: 'User management, settings, integrations', icon: 'i-lucide-shield' },
   { key: 'MANAGEMENT', label: 'Management', description: 'Reports, approvals, capacity planning', icon: 'i-lucide-bar-chart-3' },
   { key: 'FINANCE', label: 'Finance', description: 'Invoices, expenses, EOM, rate cards', icon: 'i-lucide-calculator' },
+  { key: 'INVOICE_OWN_CLIENTS', label: 'Client Billing', description: 'Invoices and billing for owned clients', icon: 'i-lucide-receipt' },
   { key: 'SALES', label: 'Sales', description: 'Quotes, pricing, retainers', icon: 'i-lucide-badge-dollar-sign' },
   { key: 'CLIENTS', label: 'Clients', description: 'Client management, portal, intake', icon: 'i-lucide-handshake' },
   { key: 'CREATIVE', label: 'Creative', description: 'Banner studio, proofs, ad preview', icon: 'i-lucide-palette' },

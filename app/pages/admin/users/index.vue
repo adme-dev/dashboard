@@ -94,12 +94,12 @@
 
         <template #role-cell="{ row }">
           <USelect
-            v-model="row.original.role"
+            :model-value="row.original.role"
             :items="roleOptions"
             value-key="value"
             size="xs"
-            class="w-36"
-            @update:model-value="updateUserRole(row.original.id, $event)"
+            class="w-48 min-w-48"
+            @update:model-value="updateUserRole(row.original, $event)"
           />
         </template>
 
@@ -437,9 +437,15 @@ const editForm = ref({ name: '', email: '', role: 'member' })
 
 const { data: rolesApiData } = useFetch<{ roles: Array<{ name: string; slug: string; isSystem: boolean; color: string; icon: string; description: string; permissionGroups: string[] }> }>('/api/admin/roles')
 
+const ROLE_LABEL_OVERRIDES: Record<string, string> = {
+  accounts: 'Accounts / Bookkeeper',
+}
+
+const roleLabel = (slug: string, fallback: string) => ROLE_LABEL_OVERRIDES[slug] || fallback
+
 const roleOptions = computed(() => {
   if (!rolesApiData.value?.roles) return [{ label: 'Member', value: 'member' }]
-  return rolesApiData.value.roles.map(r => ({ label: r.name, value: r.slug }))
+  return rolesApiData.value.roles.map(r => ({ label: roleLabel(r.slug, r.name), value: r.slug }))
 })
 
 const PERMISSION_GROUP_LABELS: Record<string, string> = {
@@ -458,7 +464,7 @@ const rolesPermissions = computed(() => {
   if (!rolesApiData.value?.roles) return []
   return rolesApiData.value.roles.map(r => ({
     value: r.slug,
-    label: r.name,
+    label: roleLabel(r.slug, r.name),
     icon: r.icon || 'i-lucide-user',
     description: r.description || '',
     canDo: r.permissionGroups.map((g: string) => PERMISSION_GROUP_LABELS[g] || g),
@@ -537,13 +543,17 @@ const formatDate = (date: string) => {
 
 const toast = useToast()
 
-const updateUserRole = async (userId: string, role: string) => {
+const updateUserRole = async (user: User, role: string) => {
+  if (user.role === role) return
+
   try {
-    await $fetch(`/api/auth/users/${userId}/role`, {
+    await $fetch(`/api/auth/users/${user.id}/role`, {
       method: 'PATCH',
       body: { userRole: role }
     })
+    user.role = role
     toast.add({ title: `Role updated to ${role}`, color: 'success' })
+    await refresh()
   } catch (err: any) {
     toast.add({ title: 'Failed to update role', description: err.data?.statusMessage || 'Please try again', color: 'error' })
   }

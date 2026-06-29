@@ -6,22 +6,29 @@
 import { requireRole } from '../../../utils/auth'
 import { queryRows } from '../../../utils/db'
 
+type AdminUserRow = {
+  id: string
+  name: string
+  email: string
+  avatar_url: string | null
+  role: string | null
+  title: string | null
+  is_active: boolean
+  monday_user_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+function userIdentityKey(user: AdminUserRow): string {
+  const email = user.email?.trim().toLowerCase()
+  return email ? `email:${email}` : `id:${user.id}`
+}
+
 export default eventHandler(async (event) => {
   await requireRole(event, ['admin', 'owner'])
 
   try {
-    const users = await queryRows<{
-      id: string
-      name: string
-      email: string
-      avatar_url: string
-      role: string
-      title: string | null
-      is_active: boolean
-      monday_user_id: string
-      created_at: string
-      updated_at: string
-    }>(`
+    const users = await queryRows<AdminUserRow>(`
       SELECT
         tm.id,
         tm.name,
@@ -39,8 +46,25 @@ export default eventHandler(async (event) => {
         tm.name ASC
     `)
 
+    const canonicalUsers: AdminUserRow[] = []
+    const canonicalIdBySourceId = new Map<string, string>()
+    const seen = new Map<string, AdminUserRow>()
+
+    for (const user of users) {
+      const key = userIdentityKey(user)
+      const canonical = seen.get(key)
+      if (canonical) {
+        canonicalIdBySourceId.set(user.id, canonical.id)
+        continue
+      }
+
+      seen.set(key, user)
+      canonicalUsers.push(user)
+      canonicalIdBySourceId.set(user.id, user.id)
+    }
+
     // Get teams for each user
-    const userIds = users.map(u => u.id)
+    const userIds = Array.from(new Set(users.map(u => u.id)))
     const memberships = userIds.length > 0 ? await queryRows<{
       user_id: string
       team_id: string
@@ -56,13 +80,16 @@ export default eventHandler(async (event) => {
     `, [userIds]) : []
 
     const teamsByUser = memberships.reduce((acc, m) => {
-      if (!acc[m.user_id]) acc[m.user_id] = []
-      acc[m.user_id].push({ id: m.team_id, name: m.team_name })
+      const canonicalUserId = canonicalIdBySourceId.get(m.user_id) || m.user_id
+      if (!acc[canonicalUserId]) acc[canonicalUserId] = []
+      if (!acc[canonicalUserId].some(team => team.id === m.team_id)) {
+        acc[canonicalUserId].push({ id: m.team_id, name: m.team_name })
+      }
       return acc
     }, {} as Record<string, Array<{ id: string; name: string }>>)
 
     return {
-      users: users.map(user => ({
+      users: canonicalUsers.map(user => ({
         id: user.id,
         name: user.name,
         email: user.email,

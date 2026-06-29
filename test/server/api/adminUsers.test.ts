@@ -90,6 +90,18 @@ describe('GET /api/admin/users', () => {
           updated_at: '2026-01-02T00:00:00.000Z'
         },
         {
+          id: 'member-import-duplicate',
+          name: 'Member User',
+          email: 'MEMBER@example.com',
+          avatar_url: null,
+          role: 'member',
+          title: 'Designer',
+          is_active: false,
+          monday_user_id: 'monday-member-1',
+          created_at: '2026-01-02T00:00:00.000Z',
+          updated_at: '2026-01-02T00:00:00.000Z'
+        },
+        {
           id: 'finance-1',
           name: 'Finance User',
           email: 'finance@example.com',
@@ -115,7 +127,9 @@ describe('GET /api/admin/users', () => {
         }
       ])
       .mockResolvedValueOnce([
-        { user_id: 'member-1', team_id: 'team-1', team_name: 'Studio' }
+        { user_id: 'member-1', team_id: 'team-1', team_name: 'Studio' },
+        { user_id: 'member-import-duplicate', team_id: 'team-2', team_name: 'Imported Monday' },
+        { user_id: 'member-import-duplicate', team_id: 'team-1', team_name: 'Studio' }
       ])
 
     const result = await getUsersHandler({} satisfies TestEvent)
@@ -130,8 +144,16 @@ describe('GET /api/admin/users', () => {
     ])
     expect(result.users.find((user: { id: string }) => user.id === 'inactive-1')?.status).toBe('inactive')
     expect(result.users.find((user: { id: string }) => user.id === 'member-1')?.teams).toEqual([
-      { id: 'team-1', name: 'Studio' }
+      { id: 'team-1', name: 'Studio' },
+      { id: 'team-2', name: 'Imported Monday' }
     ])
+    expect(mockQueryRows.mock.calls[1][1]).toEqual([[
+      'owner-1',
+      'member-1',
+      'member-import-duplicate',
+      'finance-1',
+      'inactive-1'
+    ]])
   })
 })
 
