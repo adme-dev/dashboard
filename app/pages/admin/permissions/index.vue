@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ middleware: ['role-admin'] })
+definePageMeta({ layout: 'admin', middleware: ['role-admin'] })
 
 const toast = useToast()
 const { isOwner } = useAuth()

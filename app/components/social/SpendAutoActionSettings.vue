@@ -44,15 +44,30 @@ async function save() {
     <p class="text-xs text-muted">
       On each pacing signal, act per severity. <b>Auto-propose</b> queues a budget adjustment for an admin to approve &amp; apply — it never changes a platform budget on its own.
     </p>
-    <div class="grid grid-cols-3 gap-3">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <UFormField label="Critical">
-        <USelect v-model="policy.perSeverity.critical" :items="modeItems" :disabled="loading || saving || !policy.enabled" />
+        <USelect
+          v-model="policy.perSeverity.critical"
+          :items="modeItems"
+          :disabled="loading || saving || !policy.enabled"
+          class="w-full min-w-40"
+        />
       </UFormField>
       <UFormField label="Warning">
-        <USelect v-model="policy.perSeverity.warning" :items="modeItems" :disabled="loading || saving || !policy.enabled" />
+        <USelect
+          v-model="policy.perSeverity.warning"
+          :items="modeItems"
+          :disabled="loading || saving || !policy.enabled"
+          class="w-full min-w-40"
+        />
       </UFormField>
       <UFormField label="Info">
-        <USelect v-model="policy.perSeverity.info" :items="modeItems" :disabled="loading || saving || !policy.enabled" />
+        <USelect
+          v-model="policy.perSeverity.info"
+          :items="modeItems"
+          :disabled="loading || saving || !policy.enabled"
+          class="w-full min-w-40"
+        />
       </UFormField>
     </div>
     <div class="flex justify-end">

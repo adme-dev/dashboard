@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue'
 
-definePageMeta({ middleware: ['role-admin'] })
+definePageMeta({ layout: 'admin', middleware: ['role-admin'] })
 
 type ModelMapRow = {
   featureKey: string

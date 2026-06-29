@@ -50,13 +50,65 @@ export default eventHandler(async (event) => {
      FROM social_connections sc
      LEFT JOIN agency_clients ac ON ac.id = sc.client_id
      LEFT JOIN media_spend ms ON ms.connection_id = sc.id AND ms.period = $1
-     WHERE sc.platform = 'google' AND sc.status = 'active'
+     WHERE sc.platform = 'google' AND (sc.status = 'active' OR ms.id IS NOT NULL)
      GROUP BY sc.id, ac.name
      ORDER BY COALESCE(SUM(ms.actual_spend), 0) DESC`,
     [period]
   )
 
-  return rows.map(r => ({
+  const unlinkedRows = await queryRows<{
+    id: string
+    account_id: string
+    account_name: string
+    status: string
+    metadata: any
+    client_id: string | null
+    client_name: string | null
+    total_spend: string
+    total_budget: string
+    total_impressions: string
+    total_clicks: string
+    total_conversions: string
+    total_commission: string
+    max_commission_rate: string | null
+    campaign_count: number
+    last_synced_at: string | null
+  }>(
+    `SELECT
+       CASE
+         WHEN ms.client_id IS NOT NULL THEN 'unlinked:google:client:' || ms.client_id::text
+         ELSE 'unlinked:google:unmapped'
+       END as id,
+       CASE
+         WHEN ms.client_id IS NOT NULL THEN 'unlinked:google:client:' || ms.client_id::text
+         ELSE 'unlinked:google:unmapped'
+       END as account_id,
+       CASE
+         WHEN ac.name IS NOT NULL THEN ac.name || ' (unlinked Google Ads spend)'
+         ELSE 'Unlinked Google Ads spend'
+       END as account_name,
+       'unlinked' as status,
+       jsonb_build_object('source', 'media_spend', 'connectionLinked', false) as metadata,
+       ms.client_id::text as client_id,
+       ac.name as client_name,
+       COALESCE(SUM(ms.actual_spend), 0) as total_spend,
+       COALESCE(SUM(ms.budget_allocated), 0) as total_budget,
+       COALESCE(SUM(ms.impressions), 0) as total_impressions,
+       COALESCE(SUM(ms.clicks), 0) as total_clicks,
+       COALESCE(SUM(ms.conversions), 0) as total_conversions,
+       COALESCE(SUM(ms.commission_amount), 0) as total_commission,
+       MAX(ms.commission_rate) as max_commission_rate,
+       COUNT(ms.id)::int as campaign_count,
+       MAX(ms.synced_at) as last_synced_at
+     FROM media_spend ms
+     LEFT JOIN agency_clients ac ON ac.id = ms.client_id
+     WHERE ms.period = $1 AND ms.platform = 'google_ads' AND ms.connection_id IS NULL
+     GROUP BY ms.client_id, ac.name
+     ORDER BY COALESCE(SUM(ms.actual_spend), 0) DESC`,
+    [period]
+  )
+
+  return [...rows, ...unlinkedRows].map(r => ({
     id: r.id,
     accountId: r.account_id,
     accountName: r.account_name,

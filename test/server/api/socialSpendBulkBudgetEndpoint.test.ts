@@ -74,6 +74,62 @@ describe('PATCH /api/agency/social/spend/bulk-budget', () => {
     expect(result).toEqual({ updated: true, count: 2, rollingSet: true, updatedRows: 2 })
   })
 
+  it('splits a grouped total budget evenly across unique spend rows when requested', async () => {
+    mockBody = {
+      spendIds: [
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+        '22222222-2222-4222-8222-222222222222',
+        '33333333-3333-4333-8333-333333333333',
+      ],
+      budgetAllocated: 1000,
+      allocationMode: 'even_total',
+      rolling: false,
+      note: 'Grouped total budget',
+    }
+    mockQueryRows.mockReset()
+    mockQueryRows
+      .mockResolvedValueOnce([
+        { id: '11111111-1111-4111-8111-111111111111', budget_allocated: '0', period: '2026-06', platform: 'meta' },
+        { id: '22222222-2222-4222-8222-222222222222', budget_allocated: '0', period: '2026-06', platform: 'meta' },
+        { id: '33333333-3333-4333-8333-333333333333', budget_allocated: '0', period: '2026-06', platform: 'meta' },
+      ])
+      .mockResolvedValueOnce([
+        { id: '11111111-1111-4111-8111-111111111111', budget_allocated: 333.34, budget_rolling: false },
+        { id: '22222222-2222-4222-8222-222222222222', budget_allocated: 333.33, budget_rolling: false },
+        { id: '33333333-3333-4333-8333-333333333333', budget_allocated: 333.33, budget_rolling: false },
+      ])
+    const handler = (await import('~~/server/api/agency/social/spend/bulk-budget.patch')).default
+
+    const result = await handler({} as any)
+
+    expect(mockQueryRows.mock.calls[1][1]).toEqual([
+      '11111111-1111-4111-8111-111111111111',
+      333.34,
+      '22222222-2222-4222-8222-222222222222',
+      333.33,
+      '33333333-3333-4333-8333-333333333333',
+      333.33,
+      false,
+    ])
+    expect(mockQueryOne).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('INSERT INTO budget_audit_log'),
+      ['11111111-1111-4111-8111-111111111111', 0, 333.34, 'user-1', 'Grouped total budget'],
+    )
+    expect(mockQueryOne).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('INSERT INTO budget_audit_log'),
+      ['22222222-2222-4222-8222-222222222222', 0, 333.33, 'user-1', 'Grouped total budget'],
+    )
+    expect(mockQueryOne).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('INSERT INTO budget_audit_log'),
+      ['33333333-3333-4333-8333-333333333333', 0, 333.33, 'user-1', 'Grouped total budget'],
+    )
+    expect(result).toEqual({ updated: true, count: 3, rollingSet: false, updatedRows: 3 })
+  })
+
   it('rejects if any requested spend row is missing', async () => {
     mockQueryRows.mockReset()
     mockQueryRows.mockResolvedValueOnce([

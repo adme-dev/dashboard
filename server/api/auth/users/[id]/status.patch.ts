@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Can't deactivate owners (unless you're also an owner)
-    if (targetUser.user_role === 'owner' && currentUser.userRole !== 'owner') {
+    if (targetUser.user_role === 'owner' && currentUser.role !== 'owner') {
       throw createError({
         statusCode: 403,
         statusMessage: 'Cannot deactivate an owner account'

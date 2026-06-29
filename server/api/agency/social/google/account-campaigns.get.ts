@@ -18,6 +18,32 @@ export default eventHandler(async (event) => {
   const month = parseInt(String(query.month)) || (now.getMonth() + 1)
   const year = parseInt(String(query.year)) || now.getFullYear()
   const period = `${year}-${String(month).padStart(2, '0')}`
+  const unlinkedPrefix = 'unlinked:google:'
+  const campaignQuery = connectionId.startsWith(unlinkedPrefix)
+    ? (() => {
+        const clientId = connectionId.startsWith(`${unlinkedPrefix}client:`)
+          ? connectionId.slice(`${unlinkedPrefix}client:`.length)
+          : null
+        return [
+          `SELECT id, campaign_id, campaign_name, actual_spend, budget_allocated, COALESCE(budget_rolling, false) as budget_rolling,
+             commission_rate, impressions, clicks,
+             conversions, campaign_type, campaign_status, synced_at
+           FROM media_spend
+           WHERE connection_id IS NULL AND period = $1 AND platform = 'google_ads'
+             AND ${clientId ? 'client_id = $2::uuid' : 'client_id IS NULL'}
+           ORDER BY actual_spend DESC`,
+          clientId ? [period, clientId] : [period],
+        ] as const
+      })()
+    : [
+        `SELECT id, campaign_id, campaign_name, actual_spend, budget_allocated, COALESCE(budget_rolling, false) as budget_rolling,
+           commission_rate, impressions, clicks,
+           conversions, campaign_type, campaign_status, synced_at
+         FROM media_spend
+         WHERE connection_id = $1 AND period = $2 AND platform = 'google_ads'
+         ORDER BY actual_spend DESC`,
+        [connectionId, period],
+      ] as const
 
   const rows = await queryRows<{
     id: string
@@ -33,15 +59,7 @@ export default eventHandler(async (event) => {
     campaign_type: string | null
     campaign_status: string | null
     synced_at: string | null
-  }>(
-    `SELECT id, campaign_id, campaign_name, actual_spend, budget_allocated, COALESCE(budget_rolling, false) as budget_rolling,
-       commission_rate, impressions, clicks,
-       conversions, campaign_type, campaign_status, synced_at
-     FROM media_spend
-     WHERE connection_id = $1 AND period = $2 AND platform = 'google_ads'
-     ORDER BY actual_spend DESC`,
-    [connectionId, period]
-  )
+  }>(campaignQuery[0], campaignQuery[1])
 
   return rows.map(r => ({
     id: r.id,

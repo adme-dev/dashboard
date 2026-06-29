@@ -3,11 +3,11 @@
  * PATCH /api/admin/users/:id
  */
 
-import { requireAuth } from '../../../utils/auth'
+import { requireRole } from '../../../utils/auth'
 import { queryOne } from '../../../utils/db'
 
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  await requireRole(event, ['admin', 'owner'])
 
   const userId = getRouterParam(event, 'id')
   if (!userId) {
@@ -16,6 +16,20 @@ export default eventHandler(async (event) => {
 
   const body = await readBody(event)
   const { name, email, role, isActive } = body
+
+  if (role !== undefined) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Use /api/auth/users/:id/role to change roles'
+    })
+  }
+
+  if (isActive !== undefined) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Use /api/auth/users/:id/status to change user status'
+    })
+  }
 
   try {
     const updates: string[] = []
@@ -29,14 +43,6 @@ export default eventHandler(async (event) => {
     if (email !== undefined) {
       updates.push(`email = $${paramIndex++}`)
       values.push(email)
-    }
-    if (role !== undefined) {
-      updates.push(`user_role = $${paramIndex++}`)
-      values.push(role)
-    }
-    if (isActive !== undefined) {
-      updates.push(`is_active = $${paramIndex++}`)
-      values.push(isActive)
     }
 
     if (updates.length === 0) {
@@ -56,6 +62,8 @@ export default eventHandler(async (event) => {
     return { success: true, user }
 
   } catch (error: any) {
+    if (error.statusCode) throw error
+
     console.error('[Admin Users Update] Error:', error)
     throw createError({
       statusCode: 500,

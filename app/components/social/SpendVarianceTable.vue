@@ -58,6 +58,7 @@ interface PacingReviewItem {
 
 const props = defineProps<{
   items: Array<{
+    groupKey?: string
     platform: string
     clientName: string
     clientCode: string | null
@@ -361,7 +362,9 @@ const filtered = computed(() => {
   return items
 })
 
-function itemKey(item: { platform: string; clientName: string }) {
+function itemKey(item: { groupKey?: string; platform: string; clientName: string; spendIds?: string[] }) {
+  if (item.groupKey) return item.groupKey
+  if (item.spendIds?.length) return `${item.platform}-${item.spendIds.join('-')}`
   return `${item.platform}-${item.clientName}`
 }
 

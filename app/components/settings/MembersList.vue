@@ -21,34 +21,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
-const { user, isAdmin, isOwner } = useAuth()
-
-// Role options (dynamic from API)
-const { data: rolesApiData } = useFetch<{ roles: Array<{ name: string; slug: string }> }>('/api/admin/roles')
-const roleOptions = computed(() => {
-  if (!rolesApiData.value?.roles) return [{ label: 'Member', value: 'member' }]
-  return rolesApiData.value.roles.map(r => ({ label: r.name, value: r.slug }))
-})
-
-// Change user role
-async function changeRole(member: TeamMember, newRole: string) {
-  if (member.userRole === newRole) return
-
-  try {
-    await $fetch(`/api/auth/users/${member.id}/role`, {
-      method: 'PATCH',
-      body: { userRole: newRole }
-    })
-    toast.add({ title: `Role updated to ${newRole}`, color: 'success' })
-    emit('refresh')
-  } catch (error: any) {
-    toast.add({
-      title: 'Failed to update role',
-      description: error.data?.statusMessage || 'Please try again',
-      color: 'error'
-    })
-  }
-}
+const { user, isAdmin } = useAuth()
 
 // Toggle active status
 async function toggleStatus(member: TeamMember) {
@@ -86,14 +59,6 @@ function getDropdownItems(member: TeamMember): DropdownMenuItem[] {
   return items
 }
 
-// Check if current user can edit this member's role
-function canEditRole(member: TeamMember) {
-  if (!isAdmin.value) return false
-  if (member.id === user.value?.id) return false
-  // Owners can edit anyone, admins can't edit owners
-  if (isOwner.value) return true
-  return member.userRole !== 'owner'
-}
 </script>
 
 <template>
@@ -162,17 +127,8 @@ function canEditRole(member: TeamMember) {
           class="hidden sm:inline-flex"
         />
 
-        <!-- User Role Select -->
-        <USelect
-          v-if="canEditRole(member)"
-          :model-value="member.userRole"
-          :items="roleOptions"
-          value-key="value"
-          color="neutral"
-          @update:model-value="(val) => changeRole(member, val)"
-        />
+        <!-- User Role Badge. Role changes live under Admin > Users. -->
         <UBadge
-          v-else
           :label="member.userRole"
           :color="member.userRole === 'owner' ? 'primary' : member.userRole === 'admin' ? 'info' : 'neutral'"
           variant="subtle"
