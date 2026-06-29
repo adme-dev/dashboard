@@ -78,6 +78,23 @@ const ctx: ExecutionContext = {
   override: false,
 }
 
+const approvedActionRow = (overrides: Record<string, unknown> = {}) => ({
+  platform: 'google_ads',
+  connection_id: 'connection-1',
+  campaign_id: 'campaign-1',
+  account_id: '1234567890',
+  access_token: 'access-token',
+  refresh_token: 'refresh-token',
+  token_expires_at: null,
+  current_daily: '100',
+  recommended_daily: '120',
+  budget_allocated: '1000',
+  actual_spend: '200',
+  period: '2026-06',
+  applied_today: false,
+  ...overrides,
+})
+
 describe('decideExecution', () => {
   it('rejects when the platform flag is off', () => {
     const d = decideExecution({ ...ctx, flagEnabled: false })
@@ -139,6 +156,56 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/execute', () => {
     expect(result).toEqual({ status: 'blocked', reason: 'already_applied', clampReasons: [] })
     expect(mockClaimApprovedAction).not.toHaveBeenCalled()
     expect(mockResolveMetaBudgetTarget).not.toHaveBeenCalled()
+    expect(mockUpdateGoogleCampaignDailyBudget).not.toHaveBeenCalled()
+  })
+
+  it('blocks before claiming or writing when live budget changes are disabled', async () => {
+    mockQueryOne.mockResolvedValueOnce(approvedActionRow())
+    mockGetSocialBudgetControlConfig.mockResolvedValueOnce({
+      liveBudgetChangesEnabled: false,
+      metaBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true,
+      maxMultiple: 2,
+      monthlyMarginPct: 0.1,
+    })
+
+    const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/[actionId]/execute.post')).default
+
+    const result = await handler({ params: { id: 'spend-1', actionId: 'action-1' } } as any)
+
+    expect(result).toEqual({ status: 'blocked', reason: 'writes_disabled', clampReasons: [] })
+    expect(mockClaimApprovedAction).not.toHaveBeenCalled()
+    expect(mockReleaseActionClaim).not.toHaveBeenCalled()
+    expect(mockResolveMetaBudgetTarget).not.toHaveBeenCalled()
+    expect(mockResolveGoogleWriteAuth).not.toHaveBeenCalled()
+    expect(mockUpdateGoogleCampaignDailyBudget).not.toHaveBeenCalled()
+  })
+
+  it('blocks before platform writes when the approved action claim is lost', async () => {
+    mockQueryOne.mockResolvedValueOnce(approvedActionRow())
+    mockClaimApprovedAction.mockResolvedValueOnce(false)
+
+    const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/[actionId]/execute.post')).default
+
+    const result = await handler({ params: { id: 'spend-1', actionId: 'action-1' } } as any)
+
+    expect(result).toEqual({ status: 'blocked', reason: 'already_executing', clampReasons: [] })
+    expect(mockReleaseActionClaim).not.toHaveBeenCalled()
+    expect(mockResolveGoogleWriteAuth).not.toHaveBeenCalled()
+    expect(mockUpdateGoogleCampaignDailyBudget).not.toHaveBeenCalled()
+  })
+
+  it('releases the claim when a post-claim guardrail blocks the write', async () => {
+    mockQueryOne.mockResolvedValueOnce(approvedActionRow({ applied_today: true }))
+    mockClaimApprovedAction.mockResolvedValueOnce(true)
+
+    const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/[actionId]/execute.post')).default
+
+    const result = await handler({ params: { id: 'spend-1', actionId: 'action-1' } } as any)
+
+    expect(result).toEqual({ status: 'blocked', reason: 'rate_limited_today', clampReasons: [] })
+    expect(mockReleaseActionClaim).toHaveBeenCalledWith({ execute: expect.any(Function) }, 'action-1')
+    expect(mockResolveGoogleWriteAuth).not.toHaveBeenCalled()
     expect(mockUpdateGoogleCampaignDailyBudget).not.toHaveBeenCalled()
   })
 })
