@@ -70,6 +70,12 @@ const clientName = computed(() => {
 
 useHead(() => ({ title: `${clientName.value} Analytics - XeroFlow Agency` }))
 
+if (import.meta.client) {
+  watch(clientName, (name) => {
+    document.title = `${name} Analytics - XeroFlow Agency`
+  }, { immediate: true })
+}
+
 const metricOptions = [
   { label: 'Spend', value: 'spend' },
   { label: 'Impressions', value: 'impressions' },
