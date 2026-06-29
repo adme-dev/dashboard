@@ -60,14 +60,14 @@ describe('SocialPublishingNav', () => {
   })
 
   it('shows a count badge only on badged tiles with a positive count', async () => {
-    const html = await render({ counts: { accounts: 5, scheduled: 3, pendingApprovals: 2, drafts: 7 } })
-    // exactly the four badged routes (accounts/calendar/approvals/compose) render a badge
-    expect(badgeCount(html)).toBe(4)
-    expect(badgeValues(html)).toEqual(['2', '3', '5', '7'])
+    const html = await render({ counts: { accounts: 5, scheduled: 3, pendingApprovals: 2, drafts: 7, campaigns: 4 } })
+    // accounts/calendar/approvals/compose/planner render badges when their counts are positive.
+    expect(badgeCount(html)).toBe(5)
+    expect(badgeValues(html)).toEqual(['2', '3', '4', '5', '7'])
   })
 
   it('hides badges when counts are zero or absent', async () => {
-    expect(badgeCount(await render({ counts: { accounts: 0, scheduled: 0, pendingApprovals: 0, drafts: 0 } }))).toBe(0)
+    expect(badgeCount(await render({ counts: { accounts: 0, scheduled: 0, pendingApprovals: 0, drafts: 0, campaigns: 0 } }))).toBe(0)
     expect(badgeCount(await render({ counts: null }))).toBe(0)
     expect(badgeCount(await render())).toBe(0)
   })

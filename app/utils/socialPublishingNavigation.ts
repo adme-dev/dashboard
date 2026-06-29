@@ -27,6 +27,7 @@ export type SocialPublishingNavCountKey
     | 'scheduled'
     | 'pendingApprovals'
     | 'drafts'
+    | 'campaigns'
 
 export interface SocialPublishingRouteGroup {
   key: SocialPublishingRouteGroupKey
@@ -119,7 +120,8 @@ export const SOCIAL_PUBLISHING_ROUTE_ORDER: SocialPublishingRouteItem[] = [
     label: 'Planner',
     icon: 'i-lucide-calendar-clock',
     to: '/agency/social/publishing/planner',
-    objective: 'Define recurring posting slots that queued posts can fill automatically.'
+    objective: 'Plan campaigns and campaign-owned drafts that flow into Compose, Queue, and Calendar.',
+    badgeKey: 'campaigns'
   },
   {
     key: 'queue',
