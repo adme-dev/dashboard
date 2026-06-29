@@ -83,7 +83,7 @@ const loading = computed(() => overviewStatus.value === 'pending')
 </script>
 
 <template>
-  <div class="h-full min-h-0 w-full overflow-y-auto p-4 sm:p-6 space-y-6">
+  <div class="w-full p-4 sm:p-6 space-y-6">
     <!-- Header -->
     <div class="flex items-center gap-3">
       <UButton

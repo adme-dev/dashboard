@@ -6,6 +6,7 @@ import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
 const route = useRoute()
 const open = ref(false)
 const selectedWorkspace = ref<string | null>(null)
+const isClientAnalyticsRoute = computed(() => route.path.startsWith('/agency/analytics/client/'))
 
 // The Activity Hub floating bubble is hidden on the full-screen Chat surface —
 // it duplicates chat and overlaps the bottom-anchored message composer.
@@ -515,7 +516,12 @@ watch([() => route.path, () => mainNav.value.length], () => {
 
     <UDashboardSearch :groups="groups" />
 
-    <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
+    <div
+      :class="[
+        'flex-1 min-w-0 min-h-0 flex flex-col',
+        isClientAnalyticsRoute ? 'overflow-y-auto' : 'overflow-hidden'
+      ]"
+    >
       <slot />
     </div>
 
