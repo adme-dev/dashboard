@@ -62,7 +62,22 @@ export default eventHandler(async (event) => {
      WHERE cal.id = $2 AND cal.media_spend_id = $1 AND cal.action_status = 'approved'`,
     [id, actionId]
   )
-  if (!row) throw createError({ statusCode: 404, statusMessage: 'Approved action not found' })
+  if (!row) {
+    const statusRow = await queryOne<{ action_status: string }>(
+      `SELECT action_status
+         FROM campaign_action_log
+        WHERE id = $2
+          AND media_spend_id = $1`,
+      [id, actionId],
+    )
+    if (statusRow?.action_status === 'executing') {
+      return { status: 'blocked', reason: 'already_executing', clampReasons: [] }
+    }
+    if (statusRow?.action_status === 'applied') {
+      return { status: 'blocked', reason: 'already_applied', clampReasons: [] }
+    }
+    throw createError({ statusCode: 404, statusMessage: 'Approved action not found' })
+  }
 
   // NOTE (Phase 1 limitation, accepted for the admin-manual flag-gated rollout):
   // - media_spend is not tenant-scoped, so the write-enable flag/caps come from the
