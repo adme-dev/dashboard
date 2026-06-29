@@ -3,28 +3,24 @@ const { data, status } = await useFetch('/api/agency/social/spend/summary')
 
 const spendData = computed(() => data.value as any)
 
+// Endpoint returns { items:[{platform, spend, budget}], totals } — not top-level meta/google.
+const PLATFORM_META: Record<string, { name: string, icon: string, color: string }> = {
+  meta: { name: 'Meta Ads', icon: 'i-lucide-facebook', color: '#1877F2' },
+  facebook: { name: 'Meta Ads', icon: 'i-lucide-facebook', color: '#1877F2' },
+  google: { name: 'Google Ads', icon: 'i-lucide-chrome', color: '#4285F4' },
+  google_ads: { name: 'Google Ads', icon: 'i-lucide-chrome', color: '#4285F4' },
+  tiktok: { name: 'TikTok Ads', icon: 'i-lucide-music', color: '#000000' },
+}
+
 const platforms = computed(() => {
-  if (!spendData.value) return []
-  const items: { name: string; icon: string; spend: number; budget: number; color: string }[] = []
-  if (spendData.value.meta) {
-    items.push({
-      name: 'Meta Ads',
-      icon: 'i-lucide-facebook',
-      spend: spendData.value.meta.totalSpend || 0,
-      budget: spendData.value.meta.totalBudget || 0,
-      color: '#1877F2',
+  const rawItems = (spendData.value?.items || []) as any[]
+  return rawItems
+    .filter((it: any) => (it.spend || 0) > 0 || (it.budget || 0) > 0)
+    .map((it: any) => {
+      const key = String(it.platform || '').toLowerCase()
+      const meta = PLATFORM_META[key] || { name: it.platform || 'Unknown', icon: 'i-lucide-megaphone', color: '#6B7280' }
+      return { name: meta.name, icon: meta.icon, color: meta.color, spend: it.spend || 0, budget: it.budget || 0 }
     })
-  }
-  if (spendData.value.google) {
-    items.push({
-      name: 'Google Ads',
-      icon: 'i-lucide-chrome',
-      spend: spendData.value.google.totalSpend || 0,
-      budget: spendData.value.google.totalBudget || 0,
-      color: '#4285F4',
-    })
-  }
-  return items
 })
 
 const totalSpend = computed(() => platforms.value.reduce((s, p) => s + p.spend, 0))

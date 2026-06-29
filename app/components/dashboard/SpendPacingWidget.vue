@@ -7,11 +7,12 @@ const dayOfMonth = now.getDate()
 const monthProgress = dayOfMonth / daysInMonth
 
 const platforms = computed(() => {
-  const raw = (data.value as any)?.platforms || (data.value as any)?.summary || []
+  // Endpoint returns { items:[{platform, spend, budget}], totals }, not platforms/totalSpend.
+  const raw = (data.value as any)?.items || (data.value as any)?.platforms || []
   if (Array.isArray(raw)) {
     return raw.map((p: any) => {
-      const spent = p.totalSpend || 0
-      const budget = p.totalBudget || 0
+      const spent = p.spend ?? p.totalSpend ?? 0
+      const budget = p.budget ?? p.totalBudget ?? 0
       const pacing = budget > 0 ? (spent / (budget * monthProgress)) * 100 : 0
       const projected = budget > 0 ? (spent / monthProgress) : 0
       return { ...p, spent, budget, pacing, projected }

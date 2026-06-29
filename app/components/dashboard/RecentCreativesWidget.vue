@@ -16,20 +16,25 @@ const formatSize = (bytes: number) => {
   return `${bytes} B`
 }
 
+// Keyed to the real creative_proofs status enum (no 'pending_review'/'final' exist).
 const proofStatusColors: Record<string, string> = {
   draft: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
-  pending_review: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  internal_review: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  client_review: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   changes_requested: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-  final: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  archived: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-500',
 }
 
 const proofStatusLabels: Record<string, string> = {
   draft: 'Draft',
-  pending_review: 'In Review',
+  internal_review: 'Internal Review',
+  client_review: 'Client Review',
   changes_requested: 'Changes',
   approved: 'Approved',
-  final: 'Final',
+  rejected: 'Rejected',
+  archived: 'Archived',
 }
 
 const timeAgo = (date: string) => {

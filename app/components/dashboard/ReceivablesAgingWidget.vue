@@ -9,17 +9,20 @@ const topContacts = computed(() => (agingData.value?.topContacts || []).slice(0,
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v)
 
+// Keys match the endpoint's real bucket values (current/1-30/31-60/61-90/90+).
 const bucketColors: Record<string, string> = {
   current: 'bg-emerald-500',
-  '30': 'bg-amber-500',
-  '60': 'bg-orange-500',
-  '90': 'bg-red-500',
+  '1-30': 'bg-amber-500',
+  '31-60': 'bg-orange-500',
+  '61-90': 'bg-red-500',
+  '90+': 'bg-red-700',
 }
 const bucketLabels: Record<string, string> = {
   current: 'Current',
-  '30': '30 days',
-  '60': '60 days',
-  '90': '90+ days',
+  '1-30': '1–30 days',
+  '31-60': '31–60 days',
+  '61-90': '61–90 days',
+  '90+': '90+ days',
 }
 
 const bucketWidths = computed(() => {

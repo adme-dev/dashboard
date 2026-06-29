@@ -1,15 +1,17 @@
 <script setup lang="ts">
 const { data, status } = await useFetch('/api/agency/projects/profitability')
 
+// Endpoint returns commission-based profitability grouped by client: { clients, summary }.
 const profitData = computed(() => data.value as any)
-const projects = computed(() => (profitData.value?.projects || []).slice(0, 6))
+const projects = computed(() => (profitData.value?.clients || []).slice(0, 6))
 const avgMargin = computed(() => profitData.value?.summary?.avgMargin || 0)
 const atRiskCount = computed(() => projects.value.filter((p: any) => (p.margin || 0) < 15).length)
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v)
 
-const maxRevenue = computed(() => Math.max(...projects.value.map((p: any) => p.revenue || 0), 1))
+// Bar size = managed media spend (the volume metric).
+const maxSpend = computed(() => Math.max(...projects.value.map((p: any) => p.spend || 0), 1))
 
 function marginColor(margin: number) {
   if (margin >= 30) return 'text-emerald-600 dark:text-emerald-400'
@@ -71,12 +73,12 @@ function barColor(margin: number) {
             <div
               class="h-full rounded-full transition-all duration-500"
               :class="barColor(project.margin || 0)"
-              :style="{ width: `${Math.min(((project.revenue || 0) / maxRevenue) * 100, 100)}%` }"
+              :style="{ width: `${Math.min(((project.spend || 0) / maxSpend) * 100, 100)}%` }"
             />
           </div>
           <div class="flex justify-between text-[10px] text-[var(--ui-text-muted)]">
-            <span>{{ formatCurrency(project.revenue || 0) }} revenue</span>
-            <span>{{ formatCurrency(project.cost || 0) }} cost</span>
+            <span>{{ formatCurrency(project.spend || 0) }} spend</span>
+            <span>{{ formatCurrency(project.commission || 0) }} commission</span>
           </div>
         </div>
       </div>

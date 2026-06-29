@@ -24,8 +24,10 @@ const status = computed(() => {
 const data = computed(() => {
   // Try the new endpoint first
   const analyticsResult = analyticsData.value as any
-  if (analyticsResult?.days?.length) {
-    return { days: analyticsResult.days }
+  // This endpoint returns a bare array of day rows (not { days }) — handle both.
+  const analyticsDays = Array.isArray(analyticsResult) ? analyticsResult : analyticsResult?.days
+  if (analyticsDays?.length) {
+    return { days: analyticsDays }
   }
 
   // Fallback: merge Meta + Google
