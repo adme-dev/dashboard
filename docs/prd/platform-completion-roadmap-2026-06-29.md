@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-29
 **Baseline app code:** `7f1a89ac`
-**Current roadmap checkpoint:** `main` / `origin/main` at `58e7f80b`
+**Roadmap checkpoint:** maintained on `main`; docs-only commits may sit ahead of the deployed app-code baseline.
 **Production:** `https://app.xeroflow.io` deployed from app code `7f1a89ac`
 **Purpose:** Convert the current branch/worktree backlog into an ordered build plan that completes missing product pieces without regressing features already on `main`.
 
@@ -34,8 +34,8 @@ Give ADME/XeroFlow one coherent agency operating platform where:
 
 ### Clean and deployed
 
-- `main` is clean and equal to `origin/main` at roadmap checkpoint `58e7f80b`.
-- Production deploy succeeded from app code `7f1a89ac`; `58e7f80b` is docs-only.
+- `main` is kept clean and equal to `origin/main` after each roadmap checkpoint.
+- Production deploy succeeded from app code `7f1a89ac`; later roadmap/audit commits are docs-only unless noted otherwise.
 - Smoke checks:
   - `https://app.xeroflow.io/auth/login` returned `200`.
   - `https://app.xeroflow.io/agency/analytics` returned `200`.
@@ -87,9 +87,12 @@ Completed product outcomes:
 
 Known remaining verification:
 
-- Live browser QA for Kelly/bookkeeper sidebar access after assigning finance/Xero access.
 - Live cross-route budget comparison using real campaigns on Spend, Meta, Google, Budget Health, and Analytics.
 - Formal branch audit notes for still-unmerged paid-media pacing/hotfix branches.
+
+Completed follow-up verification:
+
+- Admin live access QA for `Kellie White <accounts@adme.net.au>`: role changed from `admin` to `accounts`, which maps to `FINANCE` only; `/api/xero/status` confirmed ADME Xero connection is active. See `docs/audits/admin-access-qa-2026-06-29.md`.
 
 ### Branches already handled or superseded
 
@@ -655,7 +658,7 @@ Verify:
 
 Sprint 1 is shipped. Continue with the smallest next items that close real risk without reviving stale branches wholesale:
 
-1. **Admin live access QA:** assign/verify Kelly-style bookkeeper finance/Xero visibility and confirm restricted admin-only surfaces remain hidden.
+1. **Admin live access QA:** complete for `Kellie White <accounts@adme.net.au>`; role is now `accounts`, Xero connection is active, and the role no longer carries the ADMIN group.
 2. **Paid-media branch audit:** complete. Use `docs/audits/paid-media-branch-audit-2026-06-29.md` for decisions; only the optional investigation endpoint / writer abstraction remain as possible fresh slices.
 3. **Live cross-route budget QA:** use real campaigns to confirm Spend, Meta, Google, Budget Health, and Analytics show the same budget identity and values.
 4. **Social publishing diff:** compare `origin/feat/social-publishing` and `docs/prd/social-publishing-enterprise-overhaul.md` to the now-shipped publishing shell; port only missing queue/planner/accounts polish.
