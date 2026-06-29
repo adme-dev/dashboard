@@ -2,7 +2,8 @@
 const { data, status } = await useFetch('/api/agency/clients')
 
 const clients = computed(() => {
-  const raw = (data.value as any)?.clients || []
+  // /api/agency/clients returns a bare array (not { clients }); tolerate both shapes.
+  const raw = Array.isArray(data.value) ? (data.value as any[]) : ((data.value as any)?.clients || [])
   return raw.slice(0, 6)
 })
 

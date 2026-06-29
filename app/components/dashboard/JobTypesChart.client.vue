@@ -4,10 +4,11 @@ const { data, status } = await useFetch('/api/agency/briefs/categories')
 const categories = computed(() => {
   const raw = (data.value as any)?.categories || data.value || []
   if (!Array.isArray(raw)) return []
-  return raw.filter((c: any) => c && (c.count > 0 || c.amount > 0))
+  // Endpoint emits briefCount (not count/amount); keep old names as defensive fallbacks.
+  return raw.filter((c: any) => c && (c.briefCount ?? c.count ?? c.amount ?? 0) > 0)
 })
 
-const total = computed(() => categories.value.reduce((s: number, c: any) => s + (c.count || c.amount || 0), 0))
+const total = computed(() => categories.value.reduce((s: number, c: any) => s + (c.briefCount ?? c.count ?? c.amount ?? 0), 0))
 
 const palette = ['#2563eb', '#14b8a6', '#f97316', '#a855f7', '#22c55e', '#eab308', '#6366f1', '#ef4444']
 
@@ -16,7 +17,7 @@ const chartData = computed(() => {
   if (!categories.value.length || total.value === 0) return []
   let cumulative = 0
   return categories.value.map((c: any, i: number) => {
-    const value = c.count || c.amount || 0
+    const value = c.briefCount ?? c.count ?? c.amount ?? 0
     const pct = (value / total.value) * 100
     const start = cumulative
     cumulative += pct

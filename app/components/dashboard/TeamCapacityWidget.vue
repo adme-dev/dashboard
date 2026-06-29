@@ -10,8 +10,9 @@ const members = computed(() => {
 })
 
 function getCapacityStatus(member: any) {
-  const util = member.utilizationPercent || member.utilization || 0
-  const tasks = member.taskCount || member.activeTasks || 0
+  // Endpoint emits utilizationRate (a 0-100 percentage) + activeProjects, not the names below.
+  const util = member.utilizationRate ?? member.utilizationPercent ?? member.utilization ?? 0
+  const tasks = member.activeProjects ?? member.taskCount ?? member.activeTasks ?? 0
   if (util > 100 || tasks > 10) return 'overbooked'
   if (util > 80 || tasks > 7) return 'busy'
   if (util > 50 || tasks > 4) return 'limited'

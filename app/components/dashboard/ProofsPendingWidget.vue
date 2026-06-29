@@ -6,7 +6,8 @@ const { data, status } = await useFetch('/api/agency/proofs')
 const pendingProofs = computed(() => {
   const proofs = (data.value as any)?.proofs || []
   return proofs
-    .filter((p: any) => p.status === 'pending_review' || p.status === 'changes_requested')
+    // Real creative_proofs statuses awaiting action (no 'pending_review' exists in the enum).
+    .filter((p: any) => ['internal_review', 'client_review', 'changes_requested'].includes(p.status))
     .sort((a: any, b: any) => {
       if (a.isUrgent && !b.isUrgent) return -1
       if (!a.isUrgent && b.isUrgent) return 1
@@ -17,11 +18,13 @@ const pendingProofs = computed(() => {
 })
 
 const statusColors: Record<string, string> = {
-  pending_review: 'warning',
+  internal_review: 'warning',
+  client_review: 'info',
   changes_requested: 'error',
 }
 const statusLabels: Record<string, string> = {
-  pending_review: 'Pending Review',
+  internal_review: 'Internal Review',
+  client_review: 'Client Review',
   changes_requested: 'Changes Requested',
 }
 </script>
@@ -60,9 +63,9 @@ const statusLabels: Record<string, string> = {
             <UBadge :color="statusColors[proof.status] || 'neutral'" variant="subtle" size="xs">
               {{ statusLabels[proof.status] || proof.status }}
             </UBadge>
-            <span v-if="proof.unresolvedComments" class="text-xs text-[var(--ui-text-muted)] flex items-center gap-0.5">
+            <span v-if="proof.stats?.unresolvedComments" class="text-xs text-[var(--ui-text-muted)] flex items-center gap-0.5">
               <UIcon name="i-lucide-message-circle" class="w-3 h-3" />
-              {{ proof.unresolvedComments }}
+              {{ proof.stats.unresolvedComments }}
             </span>
             <span v-if="proof.dueDate" class="text-xs text-[var(--ui-text-muted)]">
               Due {{ formatDistanceToNow(parseISO(proof.dueDate), { addSuffix: true }) }}
