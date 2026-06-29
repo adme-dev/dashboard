@@ -14,43 +14,28 @@ onMounted(async () => {
 })
 
 const recent = computed(() => notifications.value.slice(0, 5))
+const badges = computed(() => unreadCount.value > 0 ? [{ label: `${unreadCount.value} unread`, color: 'primary' as const }] : [])
 </script>
 
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-bell" class="w-4 h-4 text-[var(--ui-text-muted)]" />
-          <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Notifications</h3>
-          <UBadge v-if="unreadCount > 0" color="primary" variant="subtle" size="xs">
-            {{ unreadCount }}
-          </UBadge>
-        </div>
-        <div class="flex items-center gap-1">
-          <UButton v-if="unreadCount > 0" variant="ghost" color="neutral" size="xs" @click="markAllAsRead()">
-            Mark all read
-          </UButton>
-          <UButton to="/agency/inbox" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
-            Inbox
-          </UButton>
-        </div>
-      </div>
+  <DashboardWidgetShell
+    title="Notifications"
+    icon="i-lucide-bell"
+    :badges="badges"
+    to="/agency/inbox"
+    view-all-label="Inbox"
+    :loading="!loaded"
+    :is-empty="!recent.length"
+    empty-text="No notifications yet"
+    empty-icon="i-lucide-bell-off"
+  >
+    <template v-if="unreadCount > 0" #header-actions>
+      <UButton variant="ghost" color="neutral" size="xs" @click="markAllAsRead()">
+        Mark all read
+      </UButton>
     </template>
 
-    <!-- Loading state -->
-    <div v-if="!loaded" class="space-y-3">
-      <div v-for="i in 3" :key="i" class="flex items-start gap-3">
-        <USkeleton class="w-8 h-8 rounded-full shrink-0" />
-        <div class="flex-1 space-y-1.5">
-          <USkeleton class="h-3 w-3/4" />
-          <USkeleton class="h-3 w-1/2" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Notification list -->
-    <div v-else-if="recent.length" class="space-y-1">
+    <div class="space-y-1">
       <div
         v-for="notif in recent"
         :key="notif.id"
@@ -77,13 +62,5 @@ const recent = computed(() => notifications.value.slice(0, 5))
         </div>
       </div>
     </div>
-
-    <!-- Empty state -->
-    <div v-else class="text-center py-6">
-      <div class="w-10 h-10 rounded-full bg-[var(--ui-bg-elevated)] flex items-center justify-center mx-auto mb-2">
-        <UIcon name="i-lucide-bell-off" class="w-5 h-5 text-[var(--ui-text-muted)]" />
-      </div>
-      <p class="text-sm text-[var(--ui-text-muted)]">No notifications yet</p>
-    </div>
-  </UCard>
+  </DashboardWidgetShell>
 </template>

@@ -3,7 +3,8 @@ import { formatDistanceToNow, parseISO } from 'date-fns'
 
 const { data, status } = await useFetch('/api/agency/proofs')
 
-const pendingProofs = computed(() => {
+const CAP = 5
+const allPending = computed(() => {
   const proofs = (data.value as any)?.proofs || []
   return proofs
     // Real creative_proofs statuses awaiting action (no 'pending_review' exists in the enum).
@@ -14,7 +15,13 @@ const pendingProofs = computed(() => {
       if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
       return 0
     })
-    .slice(0, 8)
+})
+const pendingProofs = computed(() => allPending.value.slice(0, CAP))
+const badges = computed(() => {
+  const changes = allPending.value.filter((p: any) => p.status === 'changes_requested').length
+  const out: { label: string | number, color?: any }[] = [{ label: `${allPending.value.length} pending`, color: 'warning' }]
+  if (changes) out.push({ label: `${changes} changes`, color: 'error' })
+  return out
 })
 
 const statusColors: Record<string, string> = {
@@ -30,28 +37,19 @@ const statusLabels: Record<string, string> = {
 </script>
 
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-eye" class="w-4 h-4 text-[var(--ui-text-muted)]" />
-          <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Proofs Pending</h3>
-          <UBadge v-if="pendingProofs.length" color="warning" variant="subtle" size="xs">{{ pendingProofs.length }}</UBadge>
-        </div>
-        <UButton to="/agency/proofs" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
-          All Proofs
-        </UButton>
-      </div>
-    </template>
-
-    <div v-if="status === 'pending'" class="space-y-3">
-      <USkeleton v-for="i in 4" :key="i" class="h-10 w-full rounded" />
-    </div>
-    <div v-else-if="!pendingProofs.length" class="text-center py-6 text-[var(--ui-text-muted)]">
-      <UIcon name="i-lucide-check-circle" class="w-8 h-8 mx-auto mb-2 text-emerald-500 opacity-60" />
-      <p class="text-sm">All proofs reviewed</p>
-    </div>
-    <div v-else class="space-y-2">
+  <DashboardWidgetShell
+    title="Proofs Pending"
+    icon="i-lucide-eye"
+    :badges="badges"
+    to="/agency/proofs"
+    view-all-label="All proofs"
+    :loading="status === 'pending'"
+    :is-empty="!pendingProofs.length"
+    empty-text="All proofs reviewed"
+    empty-icon="i-lucide-check-circle"
+    :more-count="Math.max(allPending.length - pendingProofs.length, 0)"
+  >
+    <div class="space-y-2">
       <div v-for="proof in pendingProofs" :key="proof.id" class="flex items-start gap-3 p-2.5 rounded-lg hover:bg-[var(--ui-bg-elevated)] transition-colors">
         <div class="shrink-0 mt-0.5">
           <UIcon v-if="proof.isUrgent" name="i-lucide-alert-circle" class="w-4 h-4 text-red-500" />
@@ -74,5 +72,5 @@ const statusLabels: Record<string, string> = {
         </div>
       </div>
     </div>
-  </UCard>
+  </DashboardWidgetShell>
 </template>

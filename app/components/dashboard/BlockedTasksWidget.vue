@@ -5,7 +5,8 @@ const { data, status } = await useFetch('/api/agency/tasks', {
   query: { excludeCompleted: 'true', limit: 30 },
 })
 
-const blockedTasks = computed(() => {
+const CAP = 5
+const allBlocked = computed(() => {
   const tasks = (data.value as any)?.tasks || []
   return tasks
     .filter((t: any) => t.isBlocked || t.status?.name?.toLowerCase() === 'stuck' || t.status?.name?.toLowerCase() === 'blocked')
@@ -15,33 +16,30 @@ const blockedTasks = computed(() => {
       return { ...t, daysBlocked }
     })
     .sort((a: any, b: any) => b.daysBlocked - a.daysBlocked)
-    .slice(0, 10)
+})
+const blockedTasks = computed(() => allBlocked.value.slice(0, CAP))
+const badges = computed(() => {
+  const stale = allBlocked.value.filter((t: any) => t.daysBlocked > 3).length
+  const out: { label: string | number, color?: any }[] = [{ label: `${allBlocked.value.length} blocked`, color: 'error' }]
+  if (stale) out.push({ label: `${stale} >3d`, color: 'error' })
+  return out
 })
 </script>
 
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-ban" class="w-4 h-4 text-red-500" />
-          <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Blocked Tasks</h3>
-          <UBadge v-if="blockedTasks.length" color="error" variant="subtle" size="xs">{{ blockedTasks.length }}</UBadge>
-        </div>
-        <UButton to="/agency/tasks" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
-          All Tasks
-        </UButton>
-      </div>
-    </template>
-
-    <div v-if="status === 'pending'" class="space-y-3">
-      <USkeleton v-for="i in 4" :key="i" class="h-12 w-full rounded" />
-    </div>
-    <div v-else-if="!blockedTasks.length" class="text-center py-6 text-[var(--ui-text-muted)]">
-      <UIcon name="i-lucide-check-circle" class="w-8 h-8 mx-auto mb-2 text-emerald-500 opacity-60" />
-      <p class="text-sm">No blocked tasks</p>
-    </div>
-    <div v-else class="space-y-2">
+  <DashboardWidgetShell
+    title="Blocked Tasks"
+    icon="i-lucide-ban"
+    :badges="badges"
+    to="/agency/tasks"
+    view-all-label="All tasks"
+    :loading="status === 'pending'"
+    :is-empty="!blockedTasks.length"
+    empty-text="No blocked tasks"
+    empty-icon="i-lucide-check-circle"
+    :more-count="Math.max(allBlocked.length - blockedTasks.length, 0)"
+  >
+    <div class="space-y-2">
       <div
         v-for="task in blockedTasks"
         :key="task.id"
@@ -60,5 +58,5 @@ const blockedTasks = computed(() => {
         </UBadge>
       </div>
     </div>
-  </UCard>
+  </DashboardWidgetShell>
 </template>
