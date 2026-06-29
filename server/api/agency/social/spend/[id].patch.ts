@@ -24,8 +24,8 @@ export default eventHandler(async (event) => {
   }
 
   // Get current budget and period before update
-  const current = await queryOne<{ id: string; budget_allocated: string; period: string; platform: string }>(
-    `SELECT id, budget_allocated::text, period, platform FROM media_spend WHERE id = $1`,
+  const current = await queryOne<{ id: string; budget_allocated: string; period: string; platform: string; client_id: string | null }>(
+    `SELECT id, budget_allocated::text, period, platform, client_id::text FROM media_spend WHERE id = $1`,
     [id]
   )
 
@@ -61,6 +61,7 @@ export default eventHandler(async (event) => {
     tenantId,
     period: current.period,
     platform: current.platform,
+    clientId: current.client_id,
   }).catch(() => {})
 
   return { updated: true, id: row!.id, budgetAllocated: row!.budget_allocated, rolling: row!.budget_rolling }

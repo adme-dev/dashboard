@@ -39,8 +39,9 @@ export default eventHandler(async (event) => {
     budget_allocated: string
     period: string
     platform: string
+    client_id: string | null
   }>(
-    `SELECT id::text, budget_allocated::text, period, platform
+    `SELECT id::text, budget_allocated::text, period, platform, client_id::text
      FROM media_spend
      WHERE id = ANY($1::uuid[])`,
     [uniqueSpendIds]
@@ -109,9 +110,9 @@ export default eventHandler(async (event) => {
     ).catch(() => {})
   }
 
-  const cacheTargets = new Map<string, { period: string; platform: string }>()
+  const cacheTargets = new Map<string, { period: string; platform: string; clientId: string | null }>()
   for (const row of currentRows) {
-    cacheTargets.set(`${row.period}:${row.platform}`, { period: row.period, platform: row.platform })
+    cacheTargets.set(`${row.period}:${row.platform}:${row.client_id || 'all'}`, { period: row.period, platform: row.platform, clientId: row.client_id })
   }
   Promise.all(
     Array.from(cacheTargets.values()).map(target =>

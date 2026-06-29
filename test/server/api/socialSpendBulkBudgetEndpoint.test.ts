@@ -41,8 +41,8 @@ describe('PATCH /api/agency/social/spend/bulk-budget', () => {
     mockGetSelectedTenant.mockResolvedValue('tenant-1')
     mockQueryRows
       .mockResolvedValueOnce([
-        { id: '11111111-1111-4111-8111-111111111111', budget_allocated: '2500', period: '2026-06', platform: 'meta' },
-        { id: '22222222-2222-4222-8222-222222222222', budget_allocated: '2000', period: '2026-06', platform: 'google_ads' },
+        { id: '11111111-1111-4111-8111-111111111111', budget_allocated: '2500', period: '2026-06', platform: 'meta', client_id: 'client-1' },
+        { id: '22222222-2222-4222-8222-222222222222', budget_allocated: '2000', period: '2026-06', platform: 'google_ads', client_id: 'client-1' },
       ])
       .mockResolvedValueOnce([
         { id: '11111111-1111-4111-8111-111111111111', budget_allocated: 3000, budget_rolling: true },
@@ -69,8 +69,8 @@ describe('PATCH /api/agency/social/spend/bulk-budget', () => {
       expect.stringContaining('INSERT INTO budget_audit_log'),
       ['22222222-2222-4222-8222-222222222222', 2000, 3000, 'user-1', 'Monthly budget update'],
     )
-    expect(mockInvalidateSpendPeriodCaches).toHaveBeenCalledWith({}, { tenantId: 'tenant-1', period: '2026-06', platform: 'meta' })
-    expect(mockInvalidateSpendPeriodCaches).toHaveBeenCalledWith({}, { tenantId: 'tenant-1', period: '2026-06', platform: 'google_ads' })
+    expect(mockInvalidateSpendPeriodCaches).toHaveBeenCalledWith({}, { tenantId: 'tenant-1', period: '2026-06', platform: 'meta', clientId: 'client-1' })
+    expect(mockInvalidateSpendPeriodCaches).toHaveBeenCalledWith({}, { tenantId: 'tenant-1', period: '2026-06', platform: 'google_ads', clientId: 'client-1' })
     expect(result).toEqual({ updated: true, count: 2, rollingSet: true, updatedRows: 2 })
   })
 
@@ -90,9 +90,9 @@ describe('PATCH /api/agency/social/spend/bulk-budget', () => {
     mockQueryRows.mockReset()
     mockQueryRows
       .mockResolvedValueOnce([
-        { id: '11111111-1111-4111-8111-111111111111', budget_allocated: '0', period: '2026-06', platform: 'meta' },
-        { id: '22222222-2222-4222-8222-222222222222', budget_allocated: '0', period: '2026-06', platform: 'meta' },
-        { id: '33333333-3333-4333-8333-333333333333', budget_allocated: '0', period: '2026-06', platform: 'meta' },
+        { id: '11111111-1111-4111-8111-111111111111', budget_allocated: '0', period: '2026-06', platform: 'meta', client_id: 'client-1' },
+        { id: '22222222-2222-4222-8222-222222222222', budget_allocated: '0', period: '2026-06', platform: 'meta', client_id: 'client-1' },
+        { id: '33333333-3333-4333-8333-333333333333', budget_allocated: '0', period: '2026-06', platform: 'meta', client_id: 'client-1' },
       ])
       .mockResolvedValueOnce([
         { id: '11111111-1111-4111-8111-111111111111', budget_allocated: 333.34, budget_rolling: false },
@@ -133,7 +133,7 @@ describe('PATCH /api/agency/social/spend/bulk-budget', () => {
   it('rejects if any requested spend row is missing', async () => {
     mockQueryRows.mockReset()
     mockQueryRows.mockResolvedValueOnce([
-      { id: '11111111-1111-4111-8111-111111111111', budget_allocated: '2500', period: '2026-06', platform: 'meta' },
+      { id: '11111111-1111-4111-8111-111111111111', budget_allocated: '2500', period: '2026-06', platform: 'meta', client_id: 'client-1' },
     ])
     const handler = (await import('~~/server/api/agency/social/spend/bulk-budget.patch')).default
 
