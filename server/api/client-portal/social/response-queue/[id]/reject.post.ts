@@ -2,6 +2,8 @@
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryOne, execute, queryRows } from '~~/server/utils/db'
 import { loadClientApprovable } from '~~/server/utils/socialInbox/portal'
+import { recordSocialInboxApprovalEvent } from '~~/server/utils/socialInbox/clientApprovals'
+import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 
 /** POST /api/client-portal/social/response-queue/:id/reject — client declines a routed draft. */
 export default defineEventHandler(async (event) => {
@@ -22,5 +24,14 @@ export default defineEventHandler(async (event) => {
     [id, `client:${client.id}`, client.clientId])
   if (rejected !== 1) throw createError({ statusCode: 409, statusMessage: 'already being processed' })
   await execute(`UPDATE social_conversations SET automation_state = NULL, updated_at = NOW() WHERE id = $1`, [row.conversation_id])
+  await recordSocialInboxApprovalEvent({ queryOne, execute }, {
+    conversationId: row.conversation_id,
+    clientId: client.clientId,
+    actorId: `client:${client.id}`,
+    eventType: 'client_approval_rejected',
+    content: 'Client rejected the reply draft.',
+    metadata: { response_queue_id: id }
+  })
+  emitInboxEvent({ clientId: client.clientId, type: 'conversation.changed', conversationId: row.conversation_id, actorId: `client:${client.id}` }, event)
   return { ok: true }
 })

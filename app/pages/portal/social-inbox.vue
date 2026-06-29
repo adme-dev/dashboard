@@ -13,22 +13,32 @@ const canApprove = computed(() => !!user.value?.permissions?.canApproveWork)
 const { conversations, loading, approvals, load, open, loadApprovals, approve, reject } = usePortalSocialInbox()
 const toast = useToast()
 
+function fetchErrorDescription(error: unknown) {
+  const e = error as { data?: { statusMessage?: string }, message?: string }
+  return e.data?.statusMessage || e.message
+}
+
 const tab = ref('inbox')
 const tabItems = computed(() => [
   { label: 'Inbox', value: 'inbox', icon: 'i-lucide-messages-square' },
   {
     label: approvals.value.length ? `Approvals (${approvals.value.length})` : 'Approvals',
-    value: 'approvals', icon: 'i-lucide-check-circle',
-  },
+    value: 'approvals', icon: 'i-lucide-check-circle'
+  }
 ])
 
 // ── Inbox (read-only) ──────────────────────────────────────────────────────
 const selectedId = ref<string | null>(null)
-const thread = ref<{ conversation: SocialConversation | null; messages: SocialMessage[] }>({ conversation: null, messages: [] })
+const thread = ref<{ conversation: SocialConversation | null, messages: SocialMessage[] }>({ conversation: null, messages: [] })
 const filters = ref<Record<string, string>>({ status: 'open' })
 
-async function reload() { await load(filters.value) }
-async function onFilter(f: Record<string, string>) { filters.value = f; await reload() }
+async function reload() {
+  await load(filters.value)
+}
+async function onFilter(f: Record<string, string>) {
+  filters.value = f
+  await reload()
+}
 async function select(id: string) {
   selectedId.value = id
   thread.value = await open(id)
@@ -41,10 +51,10 @@ async function onApprove(id: string, content: string) {
   busyId.value = id
   try {
     await approve(id, content)
-    toast.add({ title: 'Response approved & sent', color: 'success' })
+    toast.add({ title: 'Response approved', description: 'The agency team will send it from their queue.', color: 'success' })
     await Promise.all([loadApprovals(), reload()])
-  } catch (e: any) {
-    toast.add({ title: 'Approval failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Approval failed', description: fetchErrorDescription(e), color: 'error' })
   } finally {
     busyId.value = null
   }
@@ -55,8 +65,8 @@ async function onReject(id: string) {
     await reject(id)
     toast.add({ title: 'Response rejected', color: 'success' })
     await loadApprovals()
-  } catch (e: any) {
-    toast.add({ title: 'Reject failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Reject failed', description: fetchErrorDescription(e), color: 'error' })
   } finally {
     busyId.value = null
   }
@@ -66,25 +76,40 @@ async function onReject(id: string) {
 // Refresh the list + approvals on any event, and the open thread if it's the affected conversation.
 const sseEndpoint = ref<string | null>('/api/client-portal/social/events')
 useSocialInboxRealtime(sseEndpoint, {
-  onRefresh: () => { reload(); loadApprovals() },
+  onRefresh: () => {
+    reload()
+    loadApprovals()
+  },
   onEvent: async (e) => {
     if (e.conversationId && e.conversationId === selectedId.value) {
       thread.value = await open(selectedId.value)
     }
-  },
+  }
 })
 
-onMounted(async () => { await Promise.all([reload(), loadApprovals()]) })
+onMounted(async () => {
+  await Promise.all([reload(), loadApprovals()])
+})
 </script>
 
 <template>
   <div class="h-[calc(100vh-4rem)] flex flex-col">
     <div class="flex items-center gap-3 px-6 py-4 border-b border-default">
       <div>
-        <h1 class="text-xl font-semibold">Social</h1>
-        <p class="text-sm text-muted mt-0.5">Comments and reviews across your connected social accounts.</p>
+        <h1 class="text-xl font-semibold">
+          Social
+        </h1>
+        <p class="text-sm text-muted mt-0.5">
+          Comments and reviews across your connected social accounts.
+        </p>
       </div>
-      <UTabs v-model="tab" :items="tabItems" class="ml-auto w-auto" :content="false" size="sm" />
+      <UTabs
+        v-model="tab"
+        :items="tabItems"
+        class="ml-auto w-auto"
+        :content="false"
+        size="sm"
+      />
     </div>
     <div class="px-6">
       <PortalSocialSectionNav />
@@ -93,8 +118,11 @@ onMounted(async () => { await Promise.all([reload(), loadApprovals()]) })
     <!-- Inbox -->
     <div v-show="tab === 'inbox'" class="flex-1 grid grid-cols-[320px_1fr] min-h-0">
       <SocialInboxSidebar
-        :conversations="conversations" :selected-id="selectedId" :loading="loading"
-        @select="select" @filter="onFilter"
+        :conversations="conversations"
+        :selected-id="selectedId"
+        :loading="loading"
+        @select="select"
+        @filter="onFilter"
       />
       <SocialInboxThread :conversation="selectedConv" :messages="thread.messages" class="min-h-0" />
     </div>
@@ -106,12 +134,16 @@ onMounted(async () => { await Promise.all([reload(), loadApprovals()]) })
       </div>
       <div v-else class="max-w-2xl space-y-4">
         <p class="text-sm text-muted">
-          These AI-drafted replies are waiting for your approval before they're sent.
+          These reply drafts are waiting for your approval before the agency team sends them.
         </p>
         <SocialInboxPortalApprovalCard
-          v-for="a in approvals" :key="a.id"
-          :approval="a" :can-approve="canApprove" :busy="busyId === a.id"
-          @approve="onApprove" @reject="onReject"
+          v-for="a in approvals"
+          :key="a.id"
+          :approval="a"
+          :can-approve="canApprove"
+          :busy="busyId === a.id"
+          @approve="onApprove"
+          @reject="onReject"
         />
       </div>
     </div>

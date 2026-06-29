@@ -79,7 +79,7 @@ export function pacingSummaryForSpendRow(row: SpendPacingRow, items: readonly Sp
   if (!matches.length) return null
   return {
     count: matches.length,
-    highestSeverity: matches[0].severity,
+    highestSeverity: matches[0].severity
   }
 }
 
@@ -112,13 +112,13 @@ export function projectedMonthEndForSpendRow(row: SpendPacingRow, items: readonl
     return {
       value: money(aiProjectedTotal),
       variance: money(aiProjectedTotal - aiBudgetTotal),
-      source: 'ai-review',
+      source: 'ai-review'
     }
   }
   return {
     value: money(row.spend ?? 0),
     variance: money((row.spend ?? 0) - (row.budget ?? 0)),
-    source: (row.spend ?? 0) > 0 ? 'row-pacing' : 'none',
+    source: (row.spend ?? 0) > 0 ? 'row-pacing' : 'none'
   }
 }
 
@@ -129,26 +129,26 @@ export function lastActionForSpendRow(row: SpendPacingRow, items: readonly Spend
   return {
     label: primary.severity === 'critical' ? 'Review needed' : 'Monitor',
     tone: primary.severity === 'critical' ? 'critical' : primary.severity === 'warning' ? 'warning' : 'neutral',
-    detail: primary.recommendedAction || issueLabel(primary.issueType),
+    detail: primary.recommendedAction || issueLabel(primary.issueType)
   }
 }
 
 export function budgetControlForSpendRow(
   row: SpendPacingRow,
-  settings: SpendBudgetControlSettings | null | undefined,
+  settings: SpendBudgetControlSettings | null | undefined
 ): SpendBudgetControlState {
   if ((row.budget ?? 0) <= 0) {
     return {
       label: 'No budget',
       tone: 'warning',
-      detail: 'Set a campaign budget before AI can recommend or apply budget changes.',
+      detail: 'Set a campaign budget before AI can recommend or apply budget changes.'
     }
   }
   if (!(row.spendIds ?? []).length) {
     return {
       label: 'No mapping',
       tone: 'warning',
-      detail: 'Map this spend row to source campaigns before live budget changes can be applied.',
+      detail: 'Map this spend row to source campaigns before live budget changes can be applied.'
     }
   }
 
@@ -164,27 +164,27 @@ export function budgetControlForSpendRow(
     return {
       label: 'Blocked',
       tone: 'neutral',
-      detail: `${platformLabel} budget writes are not supported yet.`,
+      detail: `${platformLabel} budget writes are not supported yet.`
     }
   }
   if (!settings?.liveBudgetChangesEnabled) {
     return {
       label: 'Recommend only',
       tone: 'neutral',
-      detail: 'AI can recommend changes, but live budget writes are off.',
+      detail: 'AI can recommend changes, but live budget writes are off.'
     }
   }
   if (!platformEnabled) {
     return {
       label: 'Blocked',
       tone: 'warning',
-      detail: `${platformLabel} budget writes are disabled in budget control settings.`,
+      detail: `${platformLabel} budget writes are disabled in budget control settings.`
     }
   }
   return {
     label: 'Live armed',
     tone: 'warning',
-    detail: `${platformLabel} budget writes are enabled for mapped campaigns.`,
+    detail: `${platformLabel} budget writes are enabled for mapped campaigns.`
   }
 }
 
@@ -200,6 +200,7 @@ function issueLabel(issue: string | null | undefined) {
   if (issue === 'overpacing') return 'Overspending'
   if (issue === 'underpacing') return 'Under-delivering'
   if (issue === 'zero_conversion') return 'No conversions'
+  if (issue === 'negative_social_feedback') return 'Negative social feedback'
   if (issue === 'stale_sync') return 'Stale data'
   if (issue === 'paused_with_budget') return 'Paused with budget'
   if (issue === 'no_spend') return 'No spend'

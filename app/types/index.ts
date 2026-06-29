@@ -1354,6 +1354,30 @@ export interface SocialConversation {
   sla_due_at?: string | null
   first_response_at?: string | null
   sla_breached?: boolean
+  // Enterprise native workflow links
+  linked_task_id?: string | null
+  linked_client_request_id?: string | null
+  native_linked_by?: string | null
+  native_linked_at?: string | null
+  linked_social_campaign_id?: string | null
+  paid_media_platform?: string | null
+  paid_media_connection_id?: string | null
+  paid_media_account_id?: string | null
+  paid_media_campaign_id?: string | null
+  paid_media_campaign_name?: string | null
+  paid_media_linked_at?: string | null
+  linked_task?: {
+    id: string
+    title: string
+    status_name: string | null
+    project_name: string | null
+  } | null
+  linked_client_request?: {
+    id: string
+    title: string
+    status: string | null
+    request_type: string | null
+  } | null
 }
 
 export interface SocialMessage {
@@ -1368,6 +1392,59 @@ export interface SocialMessage {
   is_internal_note: boolean
   platform_timestamp: string | null
   created_at: string
+}
+
+export interface SocialInboxCaseTimelineItem {
+  id: string
+  source: 'social_message' | 'conversation_event' | 'task_activity' | 'client_request_message'
+  type: string
+  occurred_at: string | null
+  actor_name: string | null
+  content: string | null
+  is_internal: boolean
+  metadata: {
+    direction?: 'in' | 'out'
+    platform_message_id?: string | null
+    message_type?: string | null
+    linked_task_id?: string | null
+    linked_client_request_id?: string | null
+    task_id?: string
+    task_title?: string
+    old_value?: unknown
+    new_value?: unknown
+    client_request_id?: string
+    client_request_title?: string
+    request_status?: string | null
+    author_type?: 'client' | 'team'
+  } | null
+}
+
+export type SocialInboxTriageSentiment = 'positive' | 'neutral' | 'negative' | 'urgent'
+export type SocialInboxTriageRisk = 'low' | 'medium' | 'high'
+
+export type SocialInboxTriageAction
+  = | { type: 'link_task', taskId: string, reason: string }
+    | { type: 'create_social_case', title: string, description: string, reason: string }
+    | { type: 'client_approval', reason: string }
+
+export interface SocialInboxAiTriageResult {
+  summary: string
+  sentiment: SocialInboxTriageSentiment
+  riskLevel: SocialInboxTriageRisk
+  suggestedPriority: SocialInboxPriority | null
+  suggestedTags: string[]
+  approvalRecommended: boolean
+  actions: SocialInboxTriageAction[]
+}
+
+export type SocialInboxAiActionInput
+  = | { type: 'link_task', taskId?: string, reason?: string }
+    | { type: 'create_social_case', departmentId?: string, projectId?: string, title?: string, description?: string, reason?: string }
+
+export interface SocialInboxAiActionProposal {
+  proposalId: string
+  toolName: 'link_social_conversation_task' | 'create_social_case_task'
+  resolved: Record<string, unknown>
 }
 
 export interface SocialInboxSyncResult {
@@ -1449,7 +1526,7 @@ export interface SocialResponseQueueItem {
   rule_id: string | null
   draft_content: string
   confidence: number | null
-  status: 'pending' | 'approved' | 'rejected' | 'sent' | 'failed' | 'skipped'
+  status: 'pending' | 'approved' | 'rejected' | 'sent' | 'failed' | 'skipped' | 'sending'
   effective_mode: 'approval' | 'autopilot'
   approver_type: 'staff' | 'client' | 'none'
   approved_by: string | null

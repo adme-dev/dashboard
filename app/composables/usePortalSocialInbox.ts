@@ -15,6 +15,12 @@ interface PortalApproval {
   permalink: string | null
   inbound_preview: string | null
   rating: number | null
+  recent_messages: Array<{
+    direction: 'in' | 'out'
+    author_name: string | null
+    content: string | null
+    occurred_at: string | null
+  }>
 }
 
 export function usePortalSocialInbox() {
@@ -32,8 +38,8 @@ export function usePortalSocialInbox() {
   }
 
   async function open(id: string) {
-    return await $fetch<{ conversation: SocialConversation; messages: SocialMessage[] }>(
-      `/api/client-portal/social/conversations/${id}`,
+    return await $fetch<{ conversation: SocialConversation, messages: SocialMessage[] }>(
+      `/api/client-portal/social/conversations/${id}`
     )
   }
 
@@ -42,15 +48,15 @@ export function usePortalSocialInbox() {
   }
 
   async function approve(id: string, content?: string) {
-    return await $fetch<{ ok: boolean; platformMessageId?: string }>(
+    return await $fetch<{ ok: boolean, status?: string }>(
       `/api/client-portal/social/response-queue/${id}/approve`,
-      { method: 'POST', body: { content } },
+      { method: 'POST', body: { content } }
     )
   }
 
   async function reject(id: string) {
     return await $fetch<{ ok: boolean }>(
-      `/api/client-portal/social/response-queue/${id}/reject`, { method: 'POST' },
+      `/api/client-portal/social/response-queue/${id}/reject`, { method: 'POST' }
     )
   }
 

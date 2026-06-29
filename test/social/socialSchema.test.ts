@@ -40,4 +40,21 @@ describe('social publishing migrations', () => {
       expect(sql).toContain(col)
     }
   })
+
+  it('213 social inbox campaign identity links inbox feedback to paid media', () => {
+    const sql = mig('213_social_inbox_campaign_identity.sql')
+    for (const col of [
+      'linked_social_campaign_id',
+      'paid_media_platform',
+      'paid_media_connection_id',
+      'paid_media_account_id',
+      'paid_media_campaign_id',
+      'paid_media_campaign_name',
+      'paid_media_linked_at'
+    ]) {
+      expect(sql).toContain(col)
+    }
+    expect(sql).toMatch(/idx_social_conv_paid_media_identity/)
+    expect(sql).toMatch(/idx_social_conv_campaign_feedback/)
+  })
 })

@@ -11,4 +11,14 @@ describe('buildSocialInboxConversationDetailQuery', () => {
     expect(q.sql).toMatch(/m\.direction = 'in'/)
     expect(q.sql).toMatch(/ORDER BY m\.platform_timestamp DESC NULLS LAST, m\.created_at DESC/)
   })
+
+  it('surfaces native task and client request summaries scoped to the conversation client', () => {
+    const q = buildSocialInboxConversationDetailQuery('conv-1')
+
+    expect(q.sql).toMatch(/LEFT JOIN tasks linked_task ON linked_task\.id = c\.linked_task_id/)
+    expect(q.sql).toMatch(/LEFT JOIN projects linked_project ON linked_project\.id = linked_task\.project_id AND linked_project\.client_id = c\.client_id/)
+    expect(q.sql).toMatch(/LEFT JOIN client_requests linked_request ON linked_request\.id = c\.linked_client_request_id AND linked_request\.client_id = c\.client_id/)
+    expect(q.sql).toMatch(/END AS linked_task/)
+    expect(q.sql).toMatch(/END AS linked_client_request/)
+  })
 })

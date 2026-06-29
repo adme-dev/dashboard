@@ -9,10 +9,14 @@ const props = defineProps<{
   disabled?: boolean
   disabledReason?: string
   sending?: boolean
+  approvalRequesting?: boolean
   conversationId?: string | null
   typingWarning?: string | null
 }>()
-const emit = defineEmits<{ send: [content: string] }>()
+const emit = defineEmits<{
+  send: [content: string]
+  requestApproval: [content: string]
+}>()
 
 const draft = ref('')
 const aiDrafting = ref(false)
@@ -95,6 +99,15 @@ function send() {
   const c = draft.value.trim()
   if (!c) return
   emit('send', c)
+  draft.value = ''
+  void notifyTyping(false, { force: true })
+  clearTypingTimer()
+}
+
+function requestApproval() {
+  const c = draft.value.trim()
+  if (!c) return
+  emit('requestApproval', c)
   draft.value = ''
   void notifyTyping(false, { force: true })
   clearTypingTimer()
@@ -191,10 +204,20 @@ onBeforeUnmount(() => {
             @click="aiDraft"
           />
           <UButton
+            v-if="conversationId"
+            label="Client approval"
+            icon="i-lucide-shield-check"
+            color="neutral"
+            variant="subtle"
+            :loading="approvalRequesting"
+            :disabled="disabled || sending || approvalRequesting || !draft.trim()"
+            @click="requestApproval"
+          />
+          <UButton
             label="Send reply"
             icon="i-lucide-send"
             :loading="sending"
-            :disabled="disabled || !draft.trim()"
+            :disabled="disabled || approvalRequesting || !draft.trim()"
             @click="send"
           />
         </div>

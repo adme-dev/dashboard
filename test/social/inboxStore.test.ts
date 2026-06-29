@@ -100,6 +100,40 @@ describe('recordInbound', () => {
     expect(sql).toMatch(/participant_id = COALESCE\(EXCLUDED\.participant_id, social_conversations\.participant_id\)/)
   })
 
+  it('persists optional campaign identity fields on inbound conversations', async () => {
+    const params: unknown[][] = []
+    let sql = ''
+    const db: DbRunner = {
+      async queryOne<T = unknown>(s: string, p?: unknown[]) {
+        sql = s
+        if (p) params.push(p)
+        return { id: 'conv-1' } as T
+      },
+      async execute() {
+        return 0
+      }
+    }
+    await recordInbound(db, 'client-1', 'acct-1', {
+      ...ev,
+      campaignIdentity: {
+        linkedSocialCampaignId: 'f1a191a4-c8d6-47ff-9d8d-5d7c14ec3875',
+        paidMediaConnectionId: 'not-a-uuid',
+        paidMediaPlatform: 'facebook',
+        paidMediaAccountId: 'act_123',
+        paidMediaCampaignId: 'camp-1',
+        paidMediaCampaignName: 'EOFY Lead Gen'
+      }
+    })
+
+    expect(sql).toMatch(/paid_media_campaign_id = COALESCE\(EXCLUDED\.paid_media_campaign_id, social_conversations\.paid_media_campaign_id\)/)
+    expect(params[0]?.[10]).toBe('f1a191a4-c8d6-47ff-9d8d-5d7c14ec3875')
+    expect(params[0]?.[11]).toBe('facebook')
+    expect(params[0]?.[12]).toBeNull()
+    expect(params[0]?.[13]).toBe('act_123')
+    expect(params[0]?.[14]).toBe('camp-1')
+    expect(params[0]?.[15]).toBe('EOFY Lead Gen')
+  })
+
   it('stamps first_response_at (once) on the outbound update', async () => {
     const sqls: string[] = []
     const db: DbRunner = {

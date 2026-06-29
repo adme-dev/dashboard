@@ -7,7 +7,7 @@ import {
   pacingSeverityRank,
   pacingSummaryForSpendRow,
   projectedMonthEndForSpendRow,
-  reasonCodesForSpendRow,
+  reasonCodesForSpendRow
 } from '~~/app/utils/socialSpendPacingTable'
 
 const reviewItems = [
@@ -20,7 +20,7 @@ const reviewItems = [
     severity: 'warning',
     budget: 1000,
     projectedMonthEnd: 650,
-    recommendedAction: 'Increase delivery.',
+    recommendedAction: 'Increase delivery.'
   },
   {
     mediaSpendId: 'spend-2',
@@ -31,7 +31,7 @@ const reviewItems = [
     severity: 'critical',
     budget: 1200,
     projectedMonthEnd: 1800,
-    recommendedAction: 'Reduce daily budget.',
+    recommendedAction: 'Reduce daily budget.'
   },
   {
     mediaSpendId: 'spend-3',
@@ -42,8 +42,8 @@ const reviewItems = [
     severity: 'warning',
     budget: 900,
     projectedMonthEnd: 920,
-    recommendedAction: 'Check conversion tracking.',
-  },
+    recommendedAction: 'Check conversion tracking.'
+  }
 ] as const
 
 describe('socialSpendPacingTable', () => {
@@ -51,7 +51,7 @@ describe('socialSpendPacingTable', () => {
     const matches = pacingItemsForSpendRow({
       platform: 'google',
       clientName: 'Acme',
-      spendIds: ['spend-2'],
+      spendIds: ['spend-2']
     }, reviewItems)
 
     expect(matches.map(item => item.campaignName)).toEqual(['Performance Max'])
@@ -60,7 +60,7 @@ describe('socialSpendPacingTable', () => {
   it('falls back to client and platform matching when spend ids are missing', () => {
     const matches = pacingItemsForSpendRow({
       platform: 'google_ads',
-      clientName: 'Acme',
+      clientName: 'Acme'
     }, reviewItems)
 
     expect(matches.map(item => item.campaignName)).toEqual(['Performance Max', 'Brand Search'])
@@ -69,10 +69,10 @@ describe('socialSpendPacingTable', () => {
   it('summarizes the highest severity and recommendation count for a spend row', () => {
     expect(pacingSummaryForSpendRow({
       platform: 'google_ads',
-      clientName: 'Acme',
+      clientName: 'Acme'
     }, reviewItems)).toEqual({
       count: 2,
-      highestSeverity: 'critical',
+      highestSeverity: 'critical'
     })
   })
 
@@ -80,7 +80,7 @@ describe('socialSpendPacingTable', () => {
     expect(['info', 'critical', 'warning'].sort((a, b) => pacingSeverityRank(a) - pacingSeverityRank(b))).toEqual([
       'critical',
       'warning',
-      'info',
+      'info'
     ])
   })
 
@@ -90,11 +90,11 @@ describe('socialSpendPacingTable', () => {
       clientName: 'Acme',
       budget: 1200,
       spend: 1000,
-      lastSyncedAt: new Date().toISOString(),
+      lastSyncedAt: new Date().toISOString()
     }, reviewItems)).toEqual({
       label: 'Action needed',
       tone: 'critical',
-      reason: 'Overspending',
+      reason: 'Overspending'
     })
   })
 
@@ -104,11 +104,11 @@ describe('socialSpendPacingTable', () => {
       clientName: 'Clean',
       budget: 0,
       spend: 50,
-      lastSyncedAt: null,
+      lastSyncedAt: null
     }, [])).toEqual({
       label: 'Setup needed',
       tone: 'warning',
-      reason: 'Missing budget',
+      reason: 'Missing budget'
     })
   })
 
@@ -117,22 +117,22 @@ describe('socialSpendPacingTable', () => {
       platform: 'google_ads',
       clientName: 'Acme',
       budget: 1200,
-      spend: 1000,
+      spend: 1000
     }, reviewItems)).toEqual({
       value: 2450,
       variance: 250,
-      source: 'ai-review',
+      source: 'ai-review'
     })
   })
 
   it('summarizes the current row action state from AI recommendations', () => {
     expect(lastActionForSpendRow({
       platform: 'google_ads',
-      clientName: 'Acme',
+      clientName: 'Acme'
     }, reviewItems)).toEqual({
       label: 'Review needed',
       tone: 'critical',
-      detail: 'Reduce daily budget.',
+      detail: 'Reduce daily budget.'
     })
   })
 
@@ -141,15 +141,15 @@ describe('socialSpendPacingTable', () => {
       platform: 'google_ads',
       clientName: 'Acme',
       budget: 1200,
-      spendIds: ['spend-1'],
+      spendIds: ['spend-1']
     }, {
       liveBudgetChangesEnabled: true,
       metaBudgetWritesEnabled: true,
-      googleBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true
     })).toEqual({
       label: 'Live armed',
       tone: 'warning',
-      detail: 'Google Ads budget writes are enabled for mapped campaigns.',
+      detail: 'Google Ads budget writes are enabled for mapped campaigns.'
     })
   })
 
@@ -158,15 +158,15 @@ describe('socialSpendPacingTable', () => {
       platform: 'meta',
       clientName: 'Acme',
       budget: 1200,
-      spendIds: ['spend-1'],
+      spendIds: ['spend-1']
     }, {
       liveBudgetChangesEnabled: false,
       metaBudgetWritesEnabled: true,
-      googleBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true
     })).toEqual({
       label: 'Recommend only',
       tone: 'neutral',
-      detail: 'AI can recommend changes, but live budget writes are off.',
+      detail: 'AI can recommend changes, but live budget writes are off.'
     })
   })
 
@@ -175,47 +175,70 @@ describe('socialSpendPacingTable', () => {
       platform: 'google_ads',
       clientName: 'Acme',
       budget: 0,
-      spendIds: ['spend-1'],
+      spendIds: ['spend-1']
     }, {
       liveBudgetChangesEnabled: true,
       metaBudgetWritesEnabled: true,
-      googleBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true
     }).label).toBe('No budget')
 
     expect(budgetControlForSpendRow({
       platform: 'google_ads',
       clientName: 'Acme',
       budget: 1200,
-      spendIds: [],
+      spendIds: []
     }, {
       liveBudgetChangesEnabled: true,
       metaBudgetWritesEnabled: true,
-      googleBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true
     }).label).toBe('No mapping')
 
     expect(budgetControlForSpendRow({
       platform: 'linkedin',
       clientName: 'Acme',
       budget: 1200,
-      spendIds: ['spend-1'],
+      spendIds: ['spend-1']
     }, {
       liveBudgetChangesEnabled: true,
       metaBudgetWritesEnabled: true,
-      googleBudgetWritesEnabled: true,
+      googleBudgetWritesEnabled: true
     }).label).toBe('Blocked')
   })
 
   it('returns compact reason codes from matched recommendations or row health', () => {
     expect(reasonCodesForSpendRow({
       platform: 'google_ads',
-      clientName: 'Acme',
+      clientName: 'Acme'
     }, reviewItems)).toEqual(['Overspending', 'Under-delivering'])
 
     expect(reasonCodesForSpendRow({
       platform: 'meta',
       clientName: 'Clean',
       budget: 0,
-      spend: 50,
+      spend: 50
     }, [])).toEqual(['Missing budget'])
+  })
+
+  it('labels linked negative social feedback warnings for spend health', () => {
+    expect(healthForSpendRow({
+      platform: 'meta',
+      clientName: 'Acme',
+      spendIds: ['spend-social'],
+      budget: 1200,
+      spend: 900
+    }, [{
+      mediaSpendId: 'spend-social',
+      clientName: 'Acme',
+      platform: 'meta',
+      issueType: 'negative_social_feedback',
+      severity: 'warning',
+      budget: 1200,
+      projectedMonthEnd: 1200,
+      recommendedAction: 'Review recent comments.'
+    }])).toEqual({
+      label: 'Watch',
+      tone: 'warning',
+      reason: 'Negative social feedback'
+    })
   })
 })

@@ -1,13 +1,34 @@
 <script setup lang="ts">
-import type { SocialConversation, SocialInboxPriority } from '~/types'
+import type {
+  SocialConversation,
+  SocialInboxAiActionInput,
+  SocialInboxAiActionProposal,
+  SocialInboxAiTriageResult,
+  SocialInboxCaseTimelineItem,
+  SocialInboxPriority
+} from '~/types'
 import { getSocialInboxCapabilities } from '~/utils/socialInboxCapabilities'
 
-const props = defineProps<{ conversation: SocialConversation | null }>()
+const props = defineProps<{
+  conversation: SocialConversation | null
+  timeline?: SocialInboxCaseTimelineItem[]
+  timelineLoading?: boolean
+  aiTriage?: SocialInboxAiTriageResult | null
+  aiTriageLoading?: boolean
+  aiActionBusy?: string | null
+  aiActionProposals?: Record<string, SocialInboxAiActionProposal>
+}>()
 const emit = defineEmits<{
   status: [s: 'open' | 'snoozed' | 'closed']
   markRead: []
   assigned: [userId: string | null]
   triage: [patch: { priority?: SocialInboxPriority | null, tags?: string[] }]
+  nativeLinks: [patch: { linked_task_id?: string | null, linked_client_request_id?: string | null }]
+  aiTriage: []
+  aiApplyTriage: [patch: { priority?: SocialInboxPriority | null, tags?: string[] }]
+  aiProposeAction: [payload: { actionKey: string, input: SocialInboxAiActionInput }]
+  aiConfirmAction: [payload: { actionKey: string, proposal: SocialInboxAiActionProposal }]
+  changed: []
 }>()
 
 interface TeamMember {
@@ -33,6 +54,8 @@ watch(() => props.conversation, (c) => {
   status.value = c?.status ?? 'open'
   priority.value = c?.priority ?? NO_PRIORITY
   tags.value = [...(c?.tags ?? [])]
+  linkedTaskId.value = c?.linked_task_id ?? ''
+  linkedClientRequestId.value = c?.linked_client_request_id ?? ''
 })
 watch(status, (s) => {
   if (props.conversation && s !== props.conversation.status) {
@@ -82,6 +105,35 @@ function saveTags() {
   emit('triage', { tags: tags.value })
 }
 
+const linkedTaskId = ref(props.conversation?.linked_task_id ?? '')
+const linkedClientRequestId = ref(props.conversation?.linked_client_request_id ?? '')
+const linkedTaskDirty = computed(() => linkedTaskId.value.trim() !== (props.conversation?.linked_task_id ?? ''))
+const linkedClientRequestDirty = computed(() => linkedClientRequestId.value.trim() !== (props.conversation?.linked_client_request_id ?? ''))
+const linkedTaskLabel = computed(() => props.conversation?.linked_task?.title || props.conversation?.linked_task_id || '')
+const linkedClientRequestLabel = computed(() => props.conversation?.linked_client_request?.title || props.conversation?.linked_client_request_id || '')
+
+function linkTask() {
+  if (!props.conversation || !linkedTaskDirty.value) return
+  emit('nativeLinks', { linked_task_id: linkedTaskId.value.trim() || null })
+}
+
+function unlinkTask() {
+  if (!props.conversation) return
+  linkedTaskId.value = ''
+  emit('nativeLinks', { linked_task_id: null })
+}
+
+function linkClientRequest() {
+  if (!props.conversation || !linkedClientRequestDirty.value) return
+  emit('nativeLinks', { linked_client_request_id: linkedClientRequestId.value.trim() || null })
+}
+
+function unlinkClientRequest() {
+  if (!props.conversation) return
+  linkedClientRequestId.value = ''
+  emit('nativeLinks', { linked_client_request_id: null })
+}
+
 const noteText = ref('')
 const toast = useToast()
 async function addNote() {
@@ -89,6 +141,7 @@ async function addNote() {
   try {
     await $fetch(`/api/agency/social/inbox/conversations/${props.conversation.id}/note`, { method: 'POST', body: { content: noteText.value.trim() } })
     noteText.value = ''
+    emit('changed')
     toast.add({ title: 'Note added', color: 'success' })
   } catch (e: unknown) {
     toast.add({ title: 'Failed', description: fetchErrorDescription(e), color: 'error' })
@@ -148,6 +201,127 @@ const capabilities = computed(() => getSocialInboxCapabilities(props.conversatio
         />
       </template>
     </UFormField>
+    <div class="space-y-3 rounded-md border border-default bg-elevated/40 p-3">
+      <div class="flex items-center gap-2 text-xs font-medium text-muted">
+        <UIcon name="i-lucide-workflow" class="size-3.5" />
+        Native workflow
+      </div>
+      <UFormField label="Task ID">
+        <div
+          v-if="conversation.linked_task_id"
+          class="mb-2 flex min-w-0 items-center justify-between gap-2 rounded-md bg-default/40 px-2 py-1.5 text-xs"
+        >
+          <span class="min-w-0 truncate text-default">{{ linkedTaskLabel }}</span>
+          <UBadge
+            v-if="conversation.linked_task?.status_name"
+            color="neutral"
+            variant="subtle"
+            size="xs"
+          >
+            {{ conversation.linked_task.status_name }}
+          </UBadge>
+        </div>
+        <UInput
+          v-model="linkedTaskId"
+          placeholder="Paste task id"
+          class="w-full"
+          size="sm"
+        />
+        <template #help>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <UButton
+              size="xs"
+              variant="ghost"
+              icon="i-lucide-link"
+              label="Link"
+              :disabled="!linkedTaskDirty"
+              @click="linkTask"
+            />
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-unlink"
+              label="Unlink"
+              :disabled="!conversation.linked_task_id"
+              @click="unlinkTask"
+            />
+            <UButton
+              v-if="conversation.linked_task_id"
+              :to="`/agency/tasks/${conversation.linked_task_id}`"
+              size="xs"
+              variant="ghost"
+              icon="i-lucide-external-link"
+              label="Open"
+            />
+          </div>
+        </template>
+      </UFormField>
+      <UFormField label="Client request ID">
+        <div
+          v-if="conversation.linked_client_request_id"
+          class="mb-2 flex min-w-0 items-center justify-between gap-2 rounded-md bg-default/40 px-2 py-1.5 text-xs"
+        >
+          <span class="min-w-0 truncate text-default">{{ linkedClientRequestLabel }}</span>
+          <UBadge
+            v-if="conversation.linked_client_request?.status"
+            color="neutral"
+            variant="subtle"
+            size="xs"
+          >
+            {{ conversation.linked_client_request.status }}
+          </UBadge>
+        </div>
+        <UInput
+          v-model="linkedClientRequestId"
+          placeholder="Paste request id"
+          class="w-full"
+          size="sm"
+        />
+        <template #help>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <UButton
+              size="xs"
+              variant="ghost"
+              icon="i-lucide-link"
+              label="Link"
+              :disabled="!linkedClientRequestDirty"
+              @click="linkClientRequest"
+            />
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-unlink"
+              label="Unlink"
+              :disabled="!conversation.linked_client_request_id"
+              @click="unlinkClientRequest"
+            />
+          </div>
+        </template>
+      </UFormField>
+      <p
+        v-if="conversation.native_linked_at"
+        class="text-xs text-muted"
+      >
+        Last linked {{ new Date(conversation.native_linked_at).toLocaleString() }}
+      </p>
+    </div>
+    <SocialInboxCaseTimeline
+      :items="timeline ?? []"
+      :loading="timelineLoading"
+    />
+    <SocialInboxAiTriagePanel
+      :conversation="conversation"
+      :triage="aiTriage"
+      :loading="aiTriageLoading"
+      :busy-key="aiActionBusy"
+      :proposals="aiActionProposals"
+      @run="emit('aiTriage')"
+      @apply-triage="emit('aiApplyTriage', $event)"
+      @propose-action="emit('aiProposeAction', $event)"
+      @confirm-action="emit('aiConfirmAction', $event)"
+    />
     <UBadge v-if="slaBadge" :color="slaBadge.color" variant="subtle">
       {{ slaBadge.label }}
     </UBadge>

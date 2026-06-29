@@ -2,6 +2,8 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { buildCampaignBudgetIdentity } from '~~/server/utils/campaignBudgetIdentity'
+import { buildSocialCampaignFeedbackKey } from '~~/server/utils/socialInbox/campaignFeedback'
+import { loadSocialCampaignFeedbackLookup } from '~~/server/utils/socialInbox/campaignFeedbackLookup'
 
 /**
  * GET /api/agency/social/google/account-campaigns?connectionId=X&month=Y&year=Z
@@ -37,7 +39,7 @@ export default eventHandler(async (event) => {
            WHERE connection_id IS NULL AND period = $1 AND platform = 'google_ads'
              AND ${clientId ? 'client_id = $2::uuid' : 'client_id IS NULL'}
            ORDER BY actual_spend DESC`,
-          clientId ? [period, clientId] : [period],
+          clientId ? [period, clientId] : [period]
         ]
       })()
     : [
@@ -49,7 +51,7 @@ export default eventHandler(async (event) => {
          FROM media_spend
          WHERE connection_id = $1 AND period = $2 AND platform = 'google_ads'
          ORDER BY actual_spend DESC`,
-        [connectionId, period],
+        [connectionId, period]
       ]
 
   const rows = await queryRows<{
@@ -70,6 +72,10 @@ export default eventHandler(async (event) => {
     connection_id: string | null
     budget_account_id: string | null
   }>(campaignQuery[0], campaignQuery[1])
+  const feedbackByKey = await loadSocialCampaignFeedbackLookup(
+    rows.map(r => ({ clientId: r.client_id, campaignId: r.campaign_id })),
+    { platform: 'google_ads', period }
+  )
 
   return rows.map((r) => {
     const budgetIdentity = buildCampaignBudgetIdentity({
@@ -83,6 +89,11 @@ export default eventHandler(async (event) => {
       mediaSpendId: r.id,
       period
     })
+    const socialFeedback = feedbackByKey.get(buildSocialCampaignFeedbackKey({
+      clientId: r.client_id,
+      platform: 'google_ads',
+      campaignId: r.campaign_id
+    }) ?? '')
 
     return {
       id: r.id,
@@ -102,6 +113,7 @@ export default eventHandler(async (event) => {
       campaignType: r.campaign_type,
       campaignStatus: r.campaign_status,
       syncedAt: r.synced_at,
+      socialFeedback: socialFeedback ?? null
     }
   })
 })

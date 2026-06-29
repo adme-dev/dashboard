@@ -13,27 +13,63 @@ export interface DbRunner {
   execute(sql: string, params?: unknown[]): Promise<number>
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function textOrNull(value: unknown): string | null {
+  if (value == null) return null
+  const text = String(value).trim()
+  return text.length ? text : null
+}
+
+function uuidOrNull(value: unknown): string | null {
+  const text = textOrNull(value)
+  return text && UUID_RE.test(text) ? text : null
+}
+
 /** Ensure the conversation exists (identity/profile fields only — NO counter/last_message bump). */
 async function ensureConversation(db: DbRunner, clientId: string, accountId: string, ev: NormalizedEvent): Promise<string> {
   const participantId = ev.participant.id ?? ev.message.authorId ?? null
   const participantName = ev.participant.name ?? ev.message.authorName ?? null
+  const campaignIdentity = ev.campaignIdentity ?? {}
+  const linkedSocialCampaignId = uuidOrNull(campaignIdentity.linkedSocialCampaignId)
+  const paidMediaConnectionId = uuidOrNull(campaignIdentity.paidMediaConnectionId)
+  const paidMediaPlatform = textOrNull(campaignIdentity.paidMediaPlatform)
+  const paidMediaAccountId = textOrNull(campaignIdentity.paidMediaAccountId)
+  const paidMediaCampaignId = textOrNull(campaignIdentity.paidMediaCampaignId)
+  const paidMediaCampaignName = textOrNull(campaignIdentity.paidMediaCampaignName)
 
   const row = await db.queryOne<{ id: string }>(
     `INSERT INTO social_conversations
        (client_id, social_account_id, platform, channel_type, platform_conversation_id,
-        permalink, participant_id, participant_name, participant_handle, rating, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW())
+        permalink, participant_id, participant_name, participant_handle, rating,
+        linked_social_campaign_id, paid_media_platform, paid_media_connection_id,
+        paid_media_account_id, paid_media_campaign_id, paid_media_campaign_name,
+        paid_media_linked_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+       CASE WHEN $12::text IS NOT NULL OR $13::uuid IS NOT NULL OR $14::text IS NOT NULL OR $15::text IS NOT NULL THEN NOW() ELSE NULL END,
+       NOW())
      ON CONFLICT (social_account_id, channel_type, platform_conversation_id) DO UPDATE SET
        participant_id = COALESCE(EXCLUDED.participant_id, social_conversations.participant_id),
        participant_name = COALESCE(EXCLUDED.participant_name, social_conversations.participant_name),
        participant_handle = COALESCE(EXCLUDED.participant_handle, social_conversations.participant_handle),
        permalink = COALESCE(EXCLUDED.permalink, social_conversations.permalink),
        rating = COALESCE(EXCLUDED.rating, social_conversations.rating),
+       linked_social_campaign_id = COALESCE(EXCLUDED.linked_social_campaign_id, social_conversations.linked_social_campaign_id),
+       paid_media_platform = COALESCE(EXCLUDED.paid_media_platform, social_conversations.paid_media_platform),
+       paid_media_connection_id = COALESCE(EXCLUDED.paid_media_connection_id, social_conversations.paid_media_connection_id),
+       paid_media_account_id = COALESCE(EXCLUDED.paid_media_account_id, social_conversations.paid_media_account_id),
+       paid_media_campaign_id = COALESCE(EXCLUDED.paid_media_campaign_id, social_conversations.paid_media_campaign_id),
+       paid_media_campaign_name = COALESCE(EXCLUDED.paid_media_campaign_name, social_conversations.paid_media_campaign_name),
+       paid_media_linked_at = CASE
+         WHEN EXCLUDED.paid_media_linked_at IS NOT NULL THEN NOW()
+         ELSE social_conversations.paid_media_linked_at
+       END,
        updated_at = NOW()
     RETURNING id`,
     [clientId, accountId, ev.platform, ev.channelType, ev.platformConversationId,
       ev.permalink ?? null, participantId, participantName, ev.participant.handle ?? null,
-      ev.rating ?? null]
+      ev.rating ?? null, linkedSocialCampaignId, paidMediaPlatform, paidMediaConnectionId,
+      paidMediaAccountId, paidMediaCampaignId, paidMediaCampaignName]
   )
   if (!row) throw new Error('ensureConversation: no id returned')
   return row.id

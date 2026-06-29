@@ -1,14 +1,19 @@
 import { computeCampaignBudgetPacing } from '~~/server/utils/budgetPacing'
 import { SPEND_BUDGET_ACTION_SYNC_STALE_HOURS, spendSyncAgeHours } from '~~/server/utils/spendSyncFreshness'
+import {
+  parseSocialCampaignFeedbackSummary,
+  type SocialCampaignFeedbackSummary
+} from '~~/server/utils/socialInbox/campaignFeedback'
 
 export type PacingReviewPlatform = 'meta' | 'google'
-export type PacingReviewIssueType =
-  | 'overpacing'
-  | 'underpacing'
-  | 'no_spend'
-  | 'paused_with_budget'
-  | 'stale_sync'
-  | 'zero_conversion'
+export type PacingReviewIssueType
+  = | 'overpacing'
+    | 'underpacing'
+    | 'no_spend'
+    | 'paused_with_budget'
+    | 'stale_sync'
+    | 'zero_conversion'
+    | 'negative_social_feedback'
 export type PacingReviewSeverity = 'critical' | 'warning' | 'info'
 
 export interface PacingReviewRow {
@@ -33,6 +38,10 @@ export interface PacingReviewRow {
   period: string
   synced_at: string | null
   end_date: string | null
+  social_feedback_count?: number | string | null
+  social_negative_feedback_count?: number | string | null
+  social_feedback_latest_at?: string | null
+  social_feedback_examples?: unknown
 }
 
 /**
@@ -101,6 +110,7 @@ export interface PacingReviewItem {
   syncedAt: string | null
   recommendedAction: string
   canApplyAutomatically: false
+  socialFeedback?: SocialCampaignFeedbackSummary
 }
 
 export interface PacingReviewSummary {
@@ -196,8 +206,17 @@ function performanceFromRow(row: PacingReviewRow, spend: number): PacingReviewPe
     lostImpressionShareBudget: nullableNum(row.lost_impression_share_budget),
     lostImpressionShareRank: nullableNum(row.lost_impression_share_rank),
     bidStrategy: row.bid_strategy,
-    budgetType: row.budget_type,
+    budgetType: row.budget_type
   }
+}
+
+function socialFeedbackFromRow(row: PacingReviewRow): SocialCampaignFeedbackSummary | null {
+  return parseSocialCampaignFeedbackSummary({
+    totalCount: row.social_feedback_count,
+    negativeCount: row.social_negative_feedback_count,
+    latestAt: row.social_feedback_latest_at,
+    examples: row.social_feedback_examples
+  })
 }
 
 function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severity: PacingReviewSeverity, now: Date): PacingReviewItem | null {
@@ -205,13 +224,14 @@ function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severi
   if (!platform) return null
   const budget = money(num(row.budget_allocated))
   const spend = money(num(row.actual_spend))
+  const socialFeedback = socialFeedbackFromRow(row)
   const pacing = computeCampaignBudgetPacing({
     monthlyBudget: budget,
     mtdSpend: spend,
     period: row.period,
     now,
     campaignStatus: row.campaign_status,
-    endDate: row.end_date,
+    endDate: row.end_date
   })
   return {
     mediaSpendId: row.media_spend_id,
@@ -233,6 +253,7 @@ function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severi
     syncedAt: row.synced_at,
     recommendedAction: '',
     canApplyAutomatically: false,
+    ...(socialFeedback ? { socialFeedback } : {})
   }
 }
 
@@ -244,6 +265,7 @@ function withAction(item: PacingReviewItem): PacingReviewItem {
     paused_with_budget: 'Re-enable the campaign or move the allocated budget to an active campaign.',
     stale_sync: 'Sync spend before acting; current pacing may be based on stale platform data.',
     zero_conversion: 'Check conversion tracking and campaign objective before allowing more budget to run.',
+    negative_social_feedback: 'Review recent social comments or reviews before scaling budget, creative, or audience delivery.'
   }
   return { ...item, recommendedAction: actionByIssue[item.issueType] }
 }
@@ -259,7 +281,7 @@ export function summarizePacingReview(items: PacingReviewItem[]): PacingReviewSu
       .reduce((sum, i) => sum + Math.max(0, i.projectedMonthEnd - i.budget), 0)),
     projectedUnderspend: money(items
       .filter(i => i.issueType === 'underpacing' || i.issueType === 'no_spend')
-      .reduce((sum, i) => sum + Math.max(0, i.budget - i.projectedMonthEnd), 0)),
+      .reduce((sum, i) => sum + Math.max(0, i.budget - i.projectedMonthEnd), 0))
   }
 }
 
@@ -279,7 +301,7 @@ export function buildPacingReview(rows: PacingReviewRow[], opts: { now?: Date, p
       period: row.period,
       now,
       campaignStatus: row.campaign_status,
-      endDate: row.end_date,
+      endDate: row.end_date
     })
 
     if (spendSyncAgeHours(row.synced_at, now) >= SPEND_BUDGET_ACTION_SYNC_STALE_HOURS && budget > 0) {
@@ -312,6 +334,12 @@ export function buildPacingReview(rows: PacingReviewRow[], opts: { now?: Date, p
       const item = baseItem(row, 'zero_conversion', 'warning', now)
       if (item) items.push(withAction(item))
     }
+
+    const socialFeedback = socialFeedbackFromRow(row)
+    if (budget > 0 && !isPausedStatus(row.campaign_status) && (socialFeedback?.negativeCount ?? 0) > 0) {
+      const item = baseItem(row, 'negative_social_feedback', 'warning', now)
+      if (item) items.push(withAction(item))
+    }
   }
 
   items.sort((a, b) => {
@@ -325,6 +353,6 @@ export function buildPacingReview(rows: PacingReviewRow[], opts: { now?: Date, p
     period: opts.period,
     generatedAt: now.toISOString(),
     items,
-    summary: summarizePacingReview(items),
+    summary: summarizePacingReview(items)
   }
 }

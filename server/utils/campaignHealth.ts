@@ -25,7 +25,9 @@ export interface HealthInput {
   engagementRateRanking?: string | null
   conversionRateRanking?: string | null
   impressionShare?: number | null
-  target: { targetCostPerResult: number; targetCtr?: number | null; maxFrequency?: number | null } | null
+  socialFeedbackCount?: number | null
+  negativeSocialFeedbackCount?: number | null
+  target: { targetCostPerResult: number, targetCtr?: number | null, maxFrequency?: number | null } | null
 }
 
 export interface CampaignHealthResult {
@@ -37,26 +39,55 @@ export interface CampaignHealthResult {
 
 const money = (n: number) => `$${n.toFixed(2)}`
 
+function socialFeedbackReason(count: number): string {
+  return `${count} negative social ${count === 1 ? 'comment/review' : 'comments/reviews'} linked to this campaign`
+}
+
 export function scoreCampaignHealth(input: HealthInput): CampaignHealthResult {
   const target = input.target
+  const negativeSocialFeedbackCount = Math.max(0, Math.trunc(input.negativeSocialFeedbackCount ?? 0))
   if (!target || !(target.targetCostPerResult > 0)) {
+    if (negativeSocialFeedbackCount > 0) {
+      return {
+        score: 40,
+        verdict: 'hold',
+        confidence: 'low',
+        reasons: [socialFeedbackReason(negativeSocialFeedbackCount), 'No KPI target set for this result type']
+      }
+    }
     return { score: null, verdict: 'no-target', confidence: 'low', reasons: ['No KPI target set for this result type'] }
   }
 
   const results = input.resultCount || 0
-  const confidence: CampaignHealthResult['confidence'] =
-    results >= CONFIDENCE_RESULTS.high ? 'high' : results >= CONFIDENCE_RESULTS.med ? 'med' : 'low'
+  const confidence: CampaignHealthResult['confidence']
+    = results >= CONFIDENCE_RESULTS.high ? 'high' : results >= CONFIDENCE_RESULTS.med ? 'med' : 'low'
 
   // Hard case: spending with nothing to show
   if (results === 0 && input.spend >= ZERO_RESULT_SPEND_MULT * target.targetCostPerResult) {
-    return { score: 10, verdict: 'cut', confidence: 'high', reasons: [`Spent ${money(input.spend)} with zero results`] }
+    return {
+      score: 10,
+      verdict: 'cut',
+      confidence: 'high',
+      reasons: [
+        `Spent ${money(input.spend)} with zero results`,
+        ...(negativeSocialFeedbackCount > 0 ? [socialFeedbackReason(negativeSocialFeedbackCount)] : [])
+      ]
+    }
   }
   if (confidence === 'low') {
+    if (negativeSocialFeedbackCount > 0) {
+      return {
+        score: 40,
+        verdict: 'hold',
+        confidence,
+        reasons: [socialFeedbackReason(negativeSocialFeedbackCount), `Not enough results yet (under ${CONFIDENCE_RESULTS.med})`]
+      }
+    }
     return { score: null, verdict: 'insufficient', confidence, reasons: [`Not enough results yet (under ${CONFIDENCE_RESULTS.med})`] }
   }
 
   let score = BASELINE
-  const reasons: Array<{ text: string; weight: number }> = []
+  const reasons: Array<{ text: string, weight: number }> = []
 
   // Efficiency (primary signal)
   const cpr = input.costPerResult
@@ -85,9 +116,15 @@ export function scoreCampaignHealth(input: HealthInput): CampaignHealthResult {
 
   // Fatigue (Meta)
   if (input.frequency != null) {
-    if (input.frequency > FATIGUE.high) { score -= 15; reasons.push({ text: `Frequency ${input.frequency.toFixed(1)} — heavy creative fatigue`, weight: 14 }) }
-    else if (input.frequency > FATIGUE.med) { score -= 10; reasons.push({ text: `Frequency ${input.frequency.toFixed(1)} — creative fatigue`, weight: 9 }) }
-    else if (input.frequency <= FATIGUE.healthy) { score += 5 }
+    if (input.frequency > FATIGUE.high) {
+      score -= 15
+      reasons.push({ text: `Frequency ${input.frequency.toFixed(1)} — heavy creative fatigue`, weight: 14 })
+    } else if (input.frequency > FATIGUE.med) {
+      score -= 10
+      reasons.push({ text: `Frequency ${input.frequency.toFixed(1)} — creative fatigue`, weight: 9 })
+    } else if (input.frequency <= FATIGUE.healthy) {
+      score += 5
+    }
   }
 
   // Relevance: Meta rankings
@@ -95,13 +132,16 @@ export function scoreCampaignHealth(input: HealthInput): CampaignHealthResult {
   const rankings: Array<[string, string | null | undefined]> = [
     ['Quality', input.qualityRanking],
     ['Engagement', input.engagementRateRanking],
-    ['Conversion', input.conversionRateRanking],
+    ['Conversion', input.conversionRateRanking]
   ]
   for (const [label, r] of rankings) {
     if (!r) continue
     const u = r.toUpperCase()
     if (u.includes('ABOVE_AVERAGE')) relevance += 5
-    else if (u.includes('BELOW_AVERAGE')) { relevance -= 5; reasons.push({ text: `${label} ranking below average`, weight: 6 }) }
+    else if (u.includes('BELOW_AVERAGE')) {
+      relevance -= 5
+      reasons.push({ text: `${label} ranking below average`, weight: 6 })
+    }
   }
   relevance = Math.max(-RELEVANCE_CAP, Math.min(RELEVANCE_CAP, relevance))
   score += relevance
@@ -109,7 +149,16 @@ export function scoreCampaignHealth(input: HealthInput): CampaignHealthResult {
   // Google: impression share as a relevance proxy
   if (input.impressionShare != null) {
     if (input.impressionShare >= 70) score += 8
-    else if (input.impressionShare < 30) { score -= 8; reasons.push({ text: `Low impression share ${input.impressionShare.toFixed(0)}%`, weight: 8 }) }
+    else if (input.impressionShare < 30) {
+      score -= 8
+      reasons.push({ text: `Low impression share ${input.impressionShare.toFixed(0)}%`, weight: 8 })
+    }
+  }
+
+  if (negativeSocialFeedbackCount > 0) {
+    const penalty = Math.min(25, 8 + negativeSocialFeedbackCount * 4)
+    score -= penalty
+    reasons.push({ text: socialFeedbackReason(negativeSocialFeedbackCount), weight: penalty + 2 })
   }
 
   score = Math.max(0, Math.min(100, Math.round(score)))
@@ -121,6 +170,7 @@ export function scoreCampaignHealth(input: HealthInput): CampaignHealthResult {
   else if (score <= VERDICT_BANDS.cut) verdict = 'cut'
   else verdict = 'hold'
   if (verdict === 'scale' && confidence === 'med') verdict = 'hold' // never upgrade on medium confidence
+  if (verdict === 'scale' && negativeSocialFeedbackCount > 0) verdict = 'hold'
 
   reasons.sort((a, b) => b.weight - a.weight)
   return { score, verdict, confidence, reasons: reasons.slice(0, 3).map(r => r.text) }

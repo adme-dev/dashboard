@@ -4,12 +4,20 @@ import {
   buildPacingReview,
   PACING_REVIEW_SELECT_COLUMNS,
   type PacingReviewRow,
-  type PacingReviewResult,
+  type PacingReviewResult
 } from '~~/server/utils/socialSpendPacingReview'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 
-function requestIdFromEvent(event: any): string | null {
+interface RequestHeaderEvent {
+  node?: {
+    req?: {
+      headers?: Record<string, string | string[] | undefined>
+    }
+  }
+}
+
+function requestIdFromEvent(event: RequestHeaderEvent): string | null {
   const headers = event?.node?.req?.headers
   const value = headers?.['cf-ray'] ?? headers?.['x-request-id']
   if (Array.isArray(value)) return value[0] || null
@@ -35,7 +43,7 @@ function buildAiPrompt(review: PacingReviewResult): string {
     expectedToDate: item.expectedToDate,
     projectedMonthEnd: item.projectedMonthEnd,
     recommendedDailyBudget: item.recommendedDailyBudget,
-    action: item.recommendedAction,
+    action: item.recommendedAction
   }))
   return JSON.stringify({ period: review.period, summary: review.summary, items }, null, 2)
 }
@@ -56,16 +64,16 @@ async function generateAiSummary(review: PacingReviewResult, context: {
         'Summarize only the JSON numbers provided.',
         'Keep it under 90 words.',
         'Prioritize what the media buyer should review first.',
-        'Do not claim any changes were made.',
+        'Do not claim any changes were made.'
       ].join(' '),
       featureKey: 'social_spend_pacing_summary',
       userId: context.userId,
       requestId: context.requestId,
-      metadata: context.metadata,
+      metadata: context.metadata
     })
     return raw.trim() || null
-  } catch (err: any) {
-    console.warn('[pacing-review] AI summary failed:', err?.message || err)
+  } catch (err: unknown) {
+    console.warn('[pacing-review] AI summary failed:', err instanceof Error ? err.message : err)
     return null
   }
 }
@@ -80,7 +88,7 @@ export default eventHandler(async (event) => {
   const period = `${year}-${String(month).padStart(2, '0')}`
   const selectedPlatform = platformFilter(q.platform)
 
-  const params: any[] = [period]
+  const params: unknown[] = [period]
   let where = `WHERE ms.period = $1 AND ms.platform IN ('meta', 'google_ads')`
   if (selectedPlatform) {
     params.push(selectedPlatform)
@@ -88,26 +96,71 @@ export default eventHandler(async (event) => {
   }
 
   const rows = await queryRows<PacingReviewRow>(
-    `SELECT ${PACING_REVIEW_SELECT_COLUMNS}
+    `WITH social_campaign_feedback AS (
+       SELECT
+         c.client_id,
+         CASE
+           WHEN LOWER(COALESCE(c.paid_media_platform, c.platform)) IN ('facebook', 'instagram', 'meta', 'meta_ads') THEN 'meta'
+           WHEN LOWER(COALESCE(c.paid_media_platform, c.platform)) IN ('google', 'google_ads', 'google_adwords') THEN 'google_ads'
+           ELSE LOWER(COALESCE(c.paid_media_platform, c.platform))
+         END AS paid_media_platform,
+         c.paid_media_campaign_id,
+         COUNT(*)::int AS social_feedback_count,
+         COUNT(*) FILTER (
+           WHERE COALESCE(c.sentiment, 0) < 0 OR COALESCE(c.rating, 5) <= 2
+         )::int AS social_negative_feedback_count,
+         MAX(c.last_message_at)::text AS social_feedback_latest_at,
+         COALESCE(
+           jsonb_agg(
+             jsonb_build_object(
+               'conversationId', c.id::text,
+               'channelType', c.channel_type,
+               'preview', c.last_message_preview,
+               'permalink', c.permalink,
+               'sentiment', c.sentiment,
+               'rating', c.rating,
+               'lastMessageAt', c.last_message_at
+             )
+             ORDER BY c.last_message_at DESC NULLS LAST
+           ) FILTER (
+             WHERE COALESCE(c.sentiment, 0) < 0 OR COALESCE(c.rating, 5) <= 2
+           ),
+           '[]'::jsonb
+         ) AS social_feedback_examples
+       FROM social_conversations c
+       WHERE c.paid_media_campaign_id IS NOT NULL
+         AND c.last_message_at >= to_date($1, 'YYYY-MM')
+         AND c.last_message_at < to_date($1, 'YYYY-MM') + INTERVAL '1 month'
+       GROUP BY c.client_id, 2, c.paid_media_campaign_id
+     )
+     SELECT ${PACING_REVIEW_SELECT_COLUMNS},
+       COALESCE(scf.social_feedback_count, 0)::int AS social_feedback_count,
+       COALESCE(scf.social_negative_feedback_count, 0)::int AS social_negative_feedback_count,
+       scf.social_feedback_latest_at,
+       COALESCE(scf.social_feedback_examples, '[]'::jsonb) AS social_feedback_examples
      FROM media_spend ms
      LEFT JOIN agency_clients ac ON ac.id = ms.client_id
+     LEFT JOIN social_campaign_feedback scf
+       ON scf.client_id = ms.client_id
+      AND scf.paid_media_platform = ms.platform
+      AND scf.paid_media_campaign_id = ms.campaign_id
      ${where}
      ORDER BY ms.actual_spend DESC`,
-    params,
+    params
   )
 
   const review = buildPacingReview(rows, { now, period })
   const includeAi = q.ai !== '0' && q.ai !== 'false'
   const aiSummary = includeAi
     ? await generateAiSummary(review, {
-      userId: user.id,
-      requestId: requestIdFromEvent(event),
-      metadata: {
-        route: '/api/agency/social/spend/pacing-review',
-        period,
-        platform: selectedPlatform ?? 'all',
-      },
-    })
+        userId: user.id,
+        requestId: requestIdFromEvent(event),
+        metadata: {
+          route: '/api/agency/social/spend/pacing-review',
+          period,
+          platform: selectedPlatform ?? 'all'
+        }
+      })
     : null
 
   return { ...review, aiSummary }

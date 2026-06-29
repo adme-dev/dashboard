@@ -5,7 +5,7 @@ const base: HealthInput = {
   platform: 'meta', costPerResult: 20, resultCount: 50, spend: 1000,
   ctr: null, frequency: null, qualityRanking: null, engagementRateRanking: null,
   conversionRateRanking: null, impressionShare: null,
-  target: { targetCostPerResult: 25, targetCtr: null, maxFrequency: null },
+  target: { targetCostPerResult: 25, targetCtr: null, maxFrequency: null }
 }
 
 describe('scoreCampaignHealth', () => {
@@ -42,5 +42,16 @@ describe('scoreCampaignHealth', () => {
   it('never upgrades to scale on medium confidence', () => {
     const r = scoreCampaignHealth({ ...base, costPerResult: 12, resultCount: 10, frequency: 1.5 })
     expect(r.verdict).toBe('hold') // would be scale at high confidence
+  })
+  it('downgrades otherwise scalable campaigns when negative social feedback is linked', () => {
+    const r = scoreCampaignHealth({ ...base, costPerResult: 15, resultCount: 60, frequency: 1.8, negativeSocialFeedbackCount: 2 })
+    expect(r.verdict).toBe('hold')
+    expect(r.reasons.some(reason => /negative social/i.test(reason))).toBe(true)
+  })
+  it('surfaces negative social feedback even before KPI health has enough data', () => {
+    const r = scoreCampaignHealth({ ...base, resultCount: 2, costPerResult: 20, negativeSocialFeedbackCount: 1 })
+    expect(r.verdict).toBe('hold')
+    expect(r.score).toBe(40)
+    expect(r.reasons[0]).toMatch(/negative social/i)
   })
 })

@@ -105,6 +105,12 @@ const { alertsFor } = useSpendAlerts()
 const budgetModalOpen = ref(false)
 const budgetModalTarget = ref<any>(null)
 
+interface CampaignSocialFeedbackSummary {
+  negativeCount?: number | string | null
+  totalCount?: number | string | null
+  latestAt?: string | null
+}
+
 function openBudgetModal(camp: any, e?: MouseEvent) {
   e?.stopPropagation()
   budgetModalTarget.value = {
@@ -122,6 +128,13 @@ function openBudgetModal(camp: any, e?: MouseEvent) {
     alerts: alertsFor([camp.id])
   }
   budgetModalOpen.value = true
+}
+
+function socialFeedbackTooltip(feedback: CampaignSocialFeedbackSummary | null | undefined) {
+  const negative = Number(feedback?.negativeCount ?? 0)
+  const total = Number(feedback?.totalCount ?? 0)
+  const latest = feedback?.latestAt ? ` Latest ${formatSyncTime(feedback.latestAt)}.` : ''
+  return `${negative} negative of ${total || negative} linked social feedback item${(total || negative) === 1 ? '' : 's'}.${latest}`
 }
 
 // After a save, re-fetch the affected account's campaigns to reflect the change.
@@ -759,6 +772,15 @@ async function confirmDisconnect() {
                               <p class="font-medium text-sm flex items-center gap-1.5">
                                 <span class="truncate">{{ camp.campaignName }}</span>
                                 <SocialSpendAlertBadge :alerts="alertsFor([camp.id])" />
+                                <UTooltip
+                                  v-if="(camp as any).socialFeedback?.negativeCount"
+                                  :text="socialFeedbackTooltip((camp as any).socialFeedback)"
+                                >
+                                  <UBadge color="warning" variant="subtle" size="xs" class="gap-1">
+                                    <UIcon name="i-lucide-message-circle-warning" class="size-3" />
+                                    {{ (camp as any).socialFeedback.negativeCount }}
+                                  </UBadge>
+                                </UTooltip>
                               </p>
                               <p class="text-xs text-muted">{{ camp.campaignId }}</p>
                             </td>

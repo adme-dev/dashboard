@@ -7,7 +7,7 @@ export function normalizeInboxItem(platform: string, item: InboxItem): Normalize
   const participant = {
     ...(item.participant ?? {}),
     id: item.participant?.id ?? item.authorId,
-    name: item.participant?.name ?? item.authorName,
+    name: item.participant?.name ?? item.authorName
   }
 
   return {
@@ -15,6 +15,7 @@ export function normalizeInboxItem(platform: string, item: InboxItem): Normalize
     channelType: item.channelType,
     platformConversationId: item.platformConversationId,
     permalink: item.permalink,
+    campaignIdentity: item.campaignIdentity,
     participant,
     rating: item.rating,
     message: {
@@ -25,8 +26,8 @@ export function normalizeInboxItem(platform: string, item: InboxItem): Normalize
       messageType: item.messageType ?? (item.channelType === 'review' ? 'review' : 'comment'),
       content: item.content,
       attachments: item.attachments,
-      platformTimestamp: item.platformTimestamp,
-    },
+      platformTimestamp: item.platformTimestamp
+    }
   }
 }
 
@@ -56,8 +57,8 @@ export function normalizeMetaMentionWebhook(platform: string, change: any): Norm
       authorName: v.sender_name ?? v.from?.name,
       messageType: 'mention',
       content: v.message ?? v.text ?? '',
-      platformTimestamp: v.created_time ? new Date(v.created_time * 1000).toISOString() : undefined,
-    },
+      platformTimestamp: v.created_time ? new Date(v.created_time * 1000).toISOString() : undefined
+    }
   }
 }
 
@@ -91,8 +92,8 @@ export function normalizeMetaMessageWebhook(platform: string, messaging: any): N
       messageType: attachments?.length ? (attachments[0]!.type || 'file') : 'text',
       content,
       attachments,
-      platformTimestamp: messaging?.timestamp ? new Date(Number(messaging.timestamp)).toISOString() : undefined,
-    },
+      platformTimestamp: messaging?.timestamp ? new Date(Number(messaging.timestamp)).toISOString() : undefined
+    }
   }
 }
 
@@ -114,8 +115,8 @@ export function normalizeMetaCommentWebhook(platform: string, change: any): Norm
       authorName: v.from?.name,
       messageType: 'comment',
       content: v.message ?? '',
-      platformTimestamp: v.created_time ? new Date(v.created_time * 1000).toISOString() : undefined,
-    },
+      platformTimestamp: v.created_time ? new Date(v.created_time * 1000).toISOString() : undefined
+    }
   }
 }
 
@@ -140,7 +141,7 @@ export function normalizeIgCommentWebhook(change: any): NormalizedEvent | null {
       authorId: v.from?.id,
       authorName: v.from?.username,
       messageType: 'comment',
-      content: v.text ?? '',
-    },
+      content: v.text ?? ''
+    }
   }
 }
