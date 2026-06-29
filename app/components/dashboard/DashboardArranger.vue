@@ -49,8 +49,8 @@ function reset() {
 
 <template>
   <div>
-    <UButton icon="i-lucide-layout-dashboard" color="neutral" variant="outline" size="sm" @click="open = true">
-      Customize
+    <UButton icon="i-lucide-layout-dashboard" color="neutral" variant="ghost" size="sm" @click="open = true">
+      Arrange
     </UButton>
 
     <UModal v-model:open="open" title="Customize dashboard" :ui="{ content: 'max-w-3xl' }">
