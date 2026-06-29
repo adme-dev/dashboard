@@ -106,6 +106,13 @@ export function useDashboardWidgets() {
     return activeWidgets.value.includes(widgetId)
   }
 
+  // CSS `order` value for a widget = its index in the active list (hidden → pushed last,
+  // but hidden widgets aren't rendered anyway). Drives reorder-by-flex on the page.
+  function widgetOrder(widgetId: string) {
+    const i = activeWidgets.value.indexOf(widgetId)
+    return i < 0 ? 999 : i
+  }
+
   // Widgets available for user's role
   const availableWidgets = computed(() => {
     const role = user.value?.role || 'member'
@@ -248,6 +255,7 @@ export function useDashboardWidgets() {
     rightWidgets,
     allWidgets: ALL_WIDGETS,
     isVisible,
+    widgetOrder,
     toggleWidget,
     reorderWidgets,
     pinItem,
