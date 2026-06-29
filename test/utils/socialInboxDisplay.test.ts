@@ -25,4 +25,12 @@ describe('getSocialInboxIdentityDisplay', () => {
       reason: 'The platform did not provide a display name for this interaction.'
     })
   })
+
+  it('explains unavailable Google Business reviewer identities', () => {
+    expect(getSocialInboxIdentityDisplay({ platform: 'google-business', name: null })).toEqual({
+      label: 'Google reviewer unavailable',
+      unavailable: true,
+      reason: 'Google Business Profile did not provide a reviewer display name for this review.'
+    })
+  })
 })

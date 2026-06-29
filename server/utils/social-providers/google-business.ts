@@ -59,7 +59,7 @@ interface GBPPostBody {
   languageCode: string
   summary: string
   topicType: 'STANDARD' | 'OFFER' | 'EVENT'
-  media?: Array<{ mediaFormat: string; sourceUrl: string }>
+  media?: Array<{ mediaFormat: string, sourceUrl: string }>
   callToAction?: {
     actionType: 'BOOK' | 'ORDER' | 'SHOP' | 'LEARN_MORE' | 'SIGN_UP' | 'CALL'
     url: string
@@ -84,9 +84,9 @@ interface GoogleAPIError {
     status?: string
     details?: Array<{
       '@type'?: string
-      reason?: string
-      domain?: string
-      metadata?: Record<string, string>
+      'reason'?: string
+      'domain'?: string
+      'metadata'?: Record<string, string>
     }>
   }
 }
@@ -146,7 +146,7 @@ function failResult(error: string): PostResult {
  * Parse a date string (YYYY-MM-DD) into the Google API Date object format.
  * @see https://developers.google.com/my-business/reference/rest/Shared.Types/Date_
  */
-function parseDate(dateStr: string): { year: number; month: number; day: number } {
+function parseDate(dateStr: string): { year: number, month: number, day: number } {
   const [year, month, day] = dateStr.split('-').map(Number)
   return { year: year ?? 0, month: month ?? 0, day: day ?? 0 }
 }
@@ -155,7 +155,7 @@ function parseDate(dateStr: string): { year: number; month: number; day: number 
  * Parse a time string (HH:MM) into the Google API TimeOfDay format.
  * @see https://developers.google.com/my-business/reference/rest/Shared.Types/TimeOfDay
  */
-function parseTime(timeStr: string): { hours: number; minutes: number } {
+function parseTime(timeStr: string): { hours: number, minutes: number } {
   const [hours, minutes] = timeStr.split(':').map(Number)
   return { hours: hours ?? 0, minutes: minutes ?? 0 }
 }
@@ -167,20 +167,32 @@ function buildLocalPostsPath(accountId: string, locationId: string): string {
   return `${GBP_API_BASE}/accounts/${accountId}/locations/${locationId}/localPosts`
 }
 
+export function buildGoogleBusinessLocationResourceName(accountId: string): string {
+  const value = accountId.trim().replace(/^\/+/, '')
+  if (/^accounts\/[^/]+\/locations\/[^/]+$/.test(value)) return value
+
+  const [googleBusinessAccountId, googleBusinessLocationId] = value.split(':')
+  if (googleBusinessAccountId && googleBusinessLocationId) {
+    return `accounts/${encodeURIComponent(googleBusinessAccountId)}/locations/${encodeURIComponent(googleBusinessLocationId)}`
+  }
+
+  throw new Error('Google Business account/location could not be resolved for review sync')
+}
+
 /**
  * Build the media array for the post body from MediaItem[].
  * GBP supports PHOTO and VIDEO media formats.
  */
 function buildMediaItems(
   media: PostParams['media']
-): Array<{ mediaFormat: string; sourceUrl: string }> {
+): Array<{ mediaFormat: string, sourceUrl: string }> {
   if (!media?.length) return []
 
-  return media.map(item => {
+  return media.map((item) => {
     const mediaFormat = item.type === 'video' ? 'VIDEO' : 'PHOTO'
     return {
       mediaFormat,
-      sourceUrl: item.url,
+      sourceUrl: item.url
     }
   })
 }
@@ -233,8 +245,8 @@ export const googleBusinessProvider: SocialPostProvider = {
       // Validate locationId — required for GBP posts
       if (!gbpOptions.locationId) {
         return failResult(
-          'Google Business Profile requires a locationId in options. ' +
-            'Set options.locationId to your GBP location ID.'
+          'Google Business Profile requires a locationId in options. '
+          + 'Set options.locationId to your GBP location ID.'
         )
       }
 
@@ -246,7 +258,7 @@ export const googleBusinessProvider: SocialPostProvider = {
       const body: GBPPostBody = {
         languageCode,
         summary: content,
-        topicType,
+        topicType
       }
 
       // Add media (photos/videos)
@@ -259,7 +271,7 @@ export const googleBusinessProvider: SocialPostProvider = {
       if (gbpOptions.callToAction) {
         body.callToAction = {
           actionType: gbpOptions.callToAction.actionType,
-          url: gbpOptions.callToAction.url,
+          url: gbpOptions.callToAction.url
         }
       }
 
@@ -267,7 +279,7 @@ export const googleBusinessProvider: SocialPostProvider = {
       if (gbpOptions.event && (topicType === 'EVENT' || topicType === 'OFFER')) {
         const schedule: GBPEventSchedule = {
           startDate: parseDate(gbpOptions.event.startDate),
-          endDate: parseDate(gbpOptions.event.endDate),
+          endDate: parseDate(gbpOptions.event.endDate)
         }
 
         if (gbpOptions.event.startTime) {
@@ -279,7 +291,7 @@ export const googleBusinessProvider: SocialPostProvider = {
 
         body.event = {
           title: gbpOptions.event.title,
-          schedule,
+          schedule
         }
       }
 
@@ -298,13 +310,13 @@ export const googleBusinessProvider: SocialPostProvider = {
       }
 
       // Create the local post
-      const res = await $fetch<{ name: string; searchUrl?: string }>(endpoint, {
+      const res = await $fetch<{ name: string, searchUrl?: string }>(endpoint, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
         },
-        body,
+        body
       })
 
       // Extract the post ID from the resource name
@@ -312,27 +324,47 @@ export const googleBusinessProvider: SocialPostProvider = {
       const postId = res.name?.split('/').pop() || res.name || ''
 
       // Build a viewable URL — GBP posts are visible on the business listing
-      const postUrl =
-        res.searchUrl || `https://business.google.com/posts/l/${gbpOptions.locationId}/${postId}`
+      const postUrl
+        = res.searchUrl || `https://business.google.com/posts/l/${gbpOptions.locationId}/${postId}`
 
       return {
         platformPostId: postId,
         url: postUrl,
-        status: 'success',
+        status: 'success'
       }
     } catch (err: unknown) {
       console.error('[Google Business Provider] Post failed:', err)
       return parseGBPError(err)
     }
-  },
+  }
 }
 
 // --- Slice 2 inbox: Google Business reviews ---
 const GBP_STAR: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 }
 
+interface GoogleBusinessReview {
+  name?: string | null
+  reviewId?: string | null
+  reviewer?: { displayName?: string | null } | null
+  comment?: string | null
+  starRating?: string | null
+  createTime?: string | null
+}
+
+interface GoogleBusinessReviewListResponse {
+  reviews?: GoogleBusinessReview[]
+  nextPageToken?: string | null
+}
+
+interface GoogleBusinessReplyError {
+  error?: {
+    message?: string | null
+  }
+}
+
 /** Pure: map a GBP reviews.list response to InboxItems + next cursor. */
-export function mapGoogleReviews(api: any): FetchInboxResult {
-  const items: InboxItem[] = (api?.reviews ?? []).map((r: any) => ({
+export function mapGoogleReviews(api: GoogleBusinessReviewListResponse): FetchInboxResult {
+  const items: InboxItem[] = (api.reviews ?? []).map(r => ({
     channelType: 'review' as const,
     // full resource name (accounts/*/locations/*/reviews/*) so reply() can target it directly
     platformConversationId: String(r.name ?? r.reviewId ?? ''),
@@ -342,14 +374,14 @@ export function mapGoogleReviews(api: any): FetchInboxResult {
     content: r.comment ?? '',
     messageType: 'review',
     rating: GBP_STAR[r.starRating] ?? undefined,
-    platformTimestamp: r.createTime,
+    platformTimestamp: r.createTime
   }))
   return { items, nextCursor: api?.nextPageToken ?? null }
 }
 
 googleBusinessProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
-  // accountId = the location resource name `accounts/{acct}/locations/{loc}` (set at connect time)
-  const url = new URL(`${GBP_API_BASE}/${accountId}/reviews`)
+  const locationResourceName = buildGoogleBusinessLocationResourceName(accountId)
+  const url = new URL(`${GBP_API_BASE}/${locationResourceName}/reviews`)
   url.searchParams.set('pageSize', '50')
   if (cursor) url.searchParams.set('pageToken', cursor)
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
@@ -361,10 +393,10 @@ googleBusinessProvider.reply = async ({ accessToken, conversationId, content }: 
   // conversationId = full review resource name; reply endpoint is `.../reviews/{id}/reply` (PUT)
   const res = await fetch(`${GBP_API_BASE}/${conversationId}/reply`, {
     method: 'PUT',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ comment: content }),
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment: content })
   })
-  const j: any = await res.json().catch(() => ({}))
+  const j = await res.json().catch((): GoogleBusinessReplyError => ({})) as GoogleBusinessReplyError
   return res.ok
     ? { platformMessageId: String(conversationId), status: 'success' }
     : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }

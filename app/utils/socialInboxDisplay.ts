@@ -27,6 +27,14 @@ export function getSocialInboxIdentityDisplay(input: SocialInboxIdentityInput): 
     }
   }
 
+  if (platform === 'google-business') {
+    return {
+      label: 'Google reviewer unavailable',
+      unavailable: true,
+      reason: 'Google Business Profile did not provide a reviewer display name for this review.'
+    }
+  }
+
   return {
     label: 'Unknown user',
     unavailable: true,

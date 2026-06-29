@@ -16,7 +16,7 @@ import {
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
   if (!isGoogleBusinessPublishingEnabled(event)) {
-    throw createError({ statusCode: 404, statusMessage: 'Google Business publishing is disabled' })
+    throw createError({ statusCode: 404, statusMessage: 'Google Business connection is disabled' })
   }
 
   const clientId = getQuery(event).clientId as string

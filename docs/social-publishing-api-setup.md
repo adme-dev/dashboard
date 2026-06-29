@@ -3,6 +3,7 @@
 Last checked: 2026-06-04
 
 This is the setup reminder for `/agency/social/publishing/accounts` OAuth connections.
+Those account connections are reused by publishing and by the engagement inbox review sync.
 
 Domain split:
 
@@ -47,7 +48,7 @@ Notes:
 - The `Google My Business API` v4 service is needed for Local Posts (`mybusiness.googleapis.com/v4/.../localPosts`).
 - If the legacy service page fails to load or is not visible, the project is probably still not approved.
 - Workspace users can also receive `403 PERMISSION_DENIED` if Google Business Profile Manager is disabled in Google Workspace Admin.
-- The dashboard ships this channel dormant. Keep `GOOGLE_BUSINESS_PUBLISHING_ENABLED=false` or unset until Google approves API access and production OAuth secrets are ready.
+- The dashboard ships this channel dormant. Keep `GOOGLE_BUSINESS_PUBLISHING_ENABLED=false` or unset until Google approves API access and production OAuth secrets are ready. The flag currently gates the Google Business connection, so reviews cannot be connected while it is off.
 
 Production activation:
 
@@ -58,13 +59,17 @@ Production activation:
    - `SOCIAL_OAUTH_STATE_SECRET`
 2. Set `GOOGLE_BUSINESS_PUBLISHING_ENABLED=true`.
 3. Reconnect each Google Business Profile location from `/agency/social/publishing/accounts`.
-4. Publish a low-risk local post and confirm it appears in Google Business Profile Manager.
+4. Run a manual inbox refresh from `/agency/social/inbox` and confirm the Google Business review channel reports healthy in the account health drawer.
+5. Check `/agency/social/inbox/reviews` for imported reviews.
+6. Publish a low-risk local post and confirm it appears in Google Business Profile Manager if local posts are being activated at the same time.
 
 Reference links:
 
 - Prerequisites: `https://developers.google.com/my-business/content/prereqs`
 - Basic setup: `https://developers.google.com/my-business/content/basic-setup`
 - OAuth setup: `https://developers.google.com/my-business/content/implement-oauth`
+- Reviews list API: `https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews/list`
+- Review reply API: `https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews/updateReply`
 - Local Posts API: `https://developers.google.com/my-business/reference/rest/v4/accounts.locations.localPosts/create`
 
 ## Facebook and Instagram Publishing
