@@ -1,8 +1,8 @@
 # Platform Completion Roadmap and PRD
 
 **Date:** 2026-06-29
-**Baseline:** `main` / `origin/main` at `cb6939a5`
-**Production:** `https://app.xeroflow.io` deployed from `cb6939a5`
+**Baseline:** `main` / `origin/main` at `7f1a89ac`
+**Production:** `https://app.xeroflow.io` deployed from `7f1a89ac`
 **Purpose:** Convert the current branch/worktree backlog into an ordered build plan that completes missing product pieces without regressing features already on `main`.
 
 ## Executive Summary
@@ -34,10 +34,11 @@ Give ADME/XeroFlow one coherent agency operating platform where:
 ### Clean and deployed
 
 - `main` is clean and equal to `origin/main`.
-- Production deploy succeeded from `cb6939a5`.
+- Production deploy succeeded from `7f1a89ac`.
 - Smoke checks:
   - `https://app.xeroflow.io/auth/login` returned `200`.
   - `https://app.xeroflow.io/agency/analytics` returned `200`.
+- Sprint 1 production deployment URL: `https://93952147.agency-dashboard-6cm.pages.dev`.
 - Focused tests passed before deploy:
   - `test/server/utils/socialSpendAccuracy.test.ts`
   - `test/server/utils/socialSpendSummary.test.ts`
@@ -45,6 +46,49 @@ Give ADME/XeroFlow one coherent agency operating platform where:
   - `test/server/api/socialSpendBulkBudgetEndpoint.test.ts`
   - `test/server/api/socialAccountSpendEndpoint.test.ts`
   - `test/server/api/adminUsers.test.ts`
+
+### Sprint 1 shipped on main
+
+The first roadmap sprint has been implemented and deployed. Relevant commits:
+
+- `35630800` `fix: complete platform roadmap sprint fixes`
+- `989bb1c9` `fix: improve analytics insights tab`
+- `97a2abf3` `fix: add canonical campaign budget identity`
+- `6dde4877` `fix: dedupe active campaign budget actions`
+- `21fd14db` `fix: consolidate admin access management`
+- `de8be3a1` `fix: degrade optional analytics source shape errors`
+- `7eb27b1c` `test: cover cross-route campaign budget keys`
+- `ab5d9ea8` `fix: add canonical social publishing calendar route`
+- `5c4e4f7c` `feat: enrich social publishing analytics`
+- `885ec5ce` `feat: enhance social publishing approvals`
+- `fa386ba7` `fix: clear rejected social approval requests`
+- `df2b1a5f` `feat: add publishing analytics AI summary`
+- `9dc0a928` `fix: show publishing planner campaign count`
+- `30aa941d` `fix: handle duplicate spend action executes`
+- `8c11b7b7` `test: cover spend action execute guardrails`
+- `3dc6a453` `fix: block stale spend budget actions`
+- `60dd93ba` `fix: invalidate analytics budget caches`
+- `e0a362ed` `test: cover single spend budget edits`
+- `a42bd7ec` `fix: align social dashboard feed provider`
+- `7f1a89ac` `fix: use content body scroll for client analytics`
+
+Completed product outcomes:
+
+- Admin user management now uses the canonical admin app shell and user API contract.
+- Spend budgets now use canonical campaign budget identity across spend, Meta, Google, Budget Health, and Analytics API paths.
+- Duplicate active spend actions are blocked by budget key, and duplicate/late execute requests return safe blocks instead of creating hidden duplicates.
+- Stale spend sync data blocks budget action planning/execution.
+- Single budget edits and bulk budget edits invalidate spend and analytics caches.
+- Analytics blended metrics and internal benchmarks degrade when optional source shapes are unavailable instead of throwing avoidable 500s.
+- The Analytics Insights tab has content and the client analytics route uses the agency content-body scroll surface.
+- Social publishing has the first integrated shell/navigation/counts/analytics/approvals pass.
+- The social-dashboard dealer feed provider contract is aligned with the sibling app's feed API shape.
+
+Known remaining verification:
+
+- Live browser QA for Kelly/bookkeeper sidebar access after assigning finance/Xero access.
+- Live cross-route budget comparison using real campaigns on Spend, Meta, Google, Budget Health, and Analytics.
+- Formal branch audit notes for still-unmerged paid-media pacing/hotfix branches.
 
 ### Branches already handled or superseded
 
@@ -195,7 +239,7 @@ Tasks:
   - [ ] `/agency/analytics/client/09164a83-ac69-43a7-9763-27474019f15b`
   - [ ] Meta Ads, Google Ads, Budget Health routes
 - [ ] Record current API responses for user search, spend summary, budget health, blended analytics.
-- [ ] Add/extend regression tests for duplicate prevention and budget immutability.
+- [x] Add/extend regression tests for duplicate prevention and budget immutability.
 
 Verification:
 
@@ -210,20 +254,20 @@ Tasks:
 
 - [ ] Audit `feature/meta-google-pacing-review` commit-by-commit against current `main`.
 - [ ] Audit `hotfix/social-pacing-prod-import` for backend fixes not already present.
-- [ ] Define canonical action lifecycle model.
-- [ ] Define canonical budget mapping key.
-- [ ] Port database migrations only after checking existing schema.
-- [ ] Port lifecycle helpers and tests first.
-- [ ] Port API endpoints for plan/approve/cancel/apply actions.
-- [ ] Port UI components only after endpoint tests pass.
-- [ ] Keep live apply disabled or guarded unless owner explicitly enables it.
+- [x] Define canonical action lifecycle model.
+- [x] Define canonical budget mapping key.
+- [x] Port database migrations only after checking existing schema.
+- [x] Port lifecycle helpers and tests first.
+- [x] Port API endpoints for plan/approve/cancel/apply actions.
+- [x] Port UI components only after endpoint tests pass.
+- [x] Keep live apply disabled or guarded unless owner explicitly enables it.
 
 Acceptance:
 
-- [ ] No duplicate planned/approved action rows for same campaign/action/period.
-- [ ] Budget updates invalidate all relevant cache keys.
-- [ ] Applying action writes an audit record before/after platform call.
-- [ ] Stale sync or missing campaign id blocks proposal/apply with an explanation.
+- [x] No duplicate planned/approved action rows for same campaign/action/period.
+- [x] Budget updates invalidate all relevant cache keys.
+- [x] Applying action writes an audit record before/after platform call.
+- [x] Stale sync or missing campaign id blocks proposal/apply with an explanation.
 
 Verification:
 
@@ -237,16 +281,16 @@ Goal: finish the practical admin access gaps reported during use.
 
 Tasks:
 
-- [ ] Map all admin/user/role routes and remove duplicate navigation paths.
-- [ ] Verify user listing query returns full tenant user set.
+- [x] Map all admin/user/role routes and remove duplicate navigation paths.
+- [x] Verify user listing query returns full tenant user set.
 - [ ] Verify role assignment writes expected role/permission records.
 - [ ] Confirm sidebar access for finance/bookkeeper role, including Xero/Zero surfaces.
-- [ ] Ensure admin pages are SPA routes and do not hard reload.
+- [x] Ensure admin pages are SPA routes and do not hard reload.
 
 Acceptance:
 
 - [ ] A bookkeeper can be granted finance/Xero visibility without owner-level access.
-- [ ] Searching users does not duplicate rows or hide valid users.
+- [x] Searching users does not duplicate rows or hide valid users.
 - [ ] Admin role edits are reflected in sidebar state.
 
 Verification:
@@ -260,17 +304,17 @@ Goal: make analytics, budget health, Meta, and Google routes agree on budget own
 
 Tasks:
 
-- [ ] Identify every API that reads campaign budgets.
-- [ ] Route each through the canonical budget mapping helper.
-- [ ] Add tests for Meta/Google/platform alias handling.
-- [ ] Add graceful fallback for blended metrics/internal benchmarks 500 paths.
-- [ ] Confirm client analytics full-width natural scrolling remains intact.
+- [x] Identify every API that reads campaign budgets.
+- [x] Route each through the canonical budget mapping helper.
+- [x] Add tests for Meta/Google/platform alias handling.
+- [x] Add graceful fallback for blended metrics/internal benchmarks 500 paths.
+- [x] Confirm client analytics full-width natural scrolling remains intact.
 
 Acceptance:
 
 - [ ] Same campaign shows same budget on Spend, Meta, Google, Budget Health, and Analytics.
-- [ ] Missing benchmark data returns an empty/degraded state, not a 500.
-- [ ] Client analytics body scrolls naturally, full width.
+- [x] Missing benchmark data returns an empty/degraded state, not a 500.
+- [x] Client analytics body scrolls naturally, full width.
 
 Verification:
 
@@ -286,7 +330,7 @@ Tasks:
 
 - [ ] Compare current `app/pages/agency/social/publishing/*` with `docs/prd/social-publishing-enterprise-overhaul.md`.
 - [ ] Compare `origin/feat/social-publishing` against current `main`.
-- [ ] Port missing shell/nav/counts as a first slice.
+- [x] Port missing shell/nav/counts as a first slice.
 - [ ] Port missing queue/planner/approvals/account polish in later slices.
 - [ ] Keep social publishing APIs under `server/api/agency/social/publishing/**`.
 
@@ -373,9 +417,9 @@ Description: Add tests and browser smoke notes that capture current expected beh
 
 Acceptance:
 
-- [ ] Tests fail if spend summary duplicates grouped campaigns.
-- [ ] Tests fail if bulk budget creation creates duplicate rows for the same key.
-- [ ] Tests cover `google` vs `google_ads` platform aliases.
+- [x] Tests fail if spend summary duplicates grouped campaigns.
+- [x] Tests fail if bulk budget creation creates duplicate rows for the same key.
+- [x] Tests cover `google` vs `google_ads` platform aliases.
 
 Verify:
 
@@ -387,14 +431,14 @@ Description: Centralize budget identity into one helper used by Spend, Meta, Goo
 
 Acceptance:
 
-- [ ] Key includes tenant/client/platform/account/campaign external id/period.
-- [ ] Null or missing external ids are handled explicitly.
-- [ ] Existing routes use helper instead of ad hoc matching.
+- [x] Key includes tenant/client/platform/account/campaign external id/period.
+- [x] Null or missing external ids are handled explicitly.
+- [x] Existing routes use helper instead of ad hoc matching.
 
 Verify:
 
-- [ ] Unit tests for key generation and platform aliases.
-- [ ] Existing spend and analytics tests pass.
+- [x] Unit tests for key generation and platform aliases.
+- [x] Existing spend and analytics tests pass.
 
 #### Task A3: Pacing Action Lifecycle Backend
 
@@ -402,14 +446,14 @@ Description: Extract lifecycle model from pacing branches: planned, approved, ca
 
 Acceptance:
 
-- [ ] Duplicate planned/approved actions are blocked.
-- [ ] Cancellation and apply audit are durable.
-- [ ] Existing approved action state is returned consistently to UI.
+- [x] Duplicate planned/approved actions are blocked.
+- [x] Cancellation and apply audit are durable.
+- [x] Existing approved action state is returned consistently to UI.
 
 Verify:
 
 - [ ] `pnpm exec vitest run test/utils/socialSpendHistory.test.ts`
-- [ ] API tests for approve/cancel/apply endpoints.
+- [x] API tests for approve/cancel/apply endpoints.
 
 #### Task A4: Spend Controller UI Integration
 
@@ -417,9 +461,9 @@ Description: Reconcile action history, live budget toggle, controller panel, and
 
 Acceptance:
 
-- [ ] Dropdowns are not squashed at desktop or mobile widths.
-- [ ] Action states are visible and understandable.
-- [ ] Live budget controls are disabled unless backend says apply is safe.
+- [x] Dropdowns are not squashed at desktop or mobile widths.
+- [x] Action states are visible and understandable.
+- [x] Live budget controls are disabled unless backend says apply is safe.
 
 Verify:
 
@@ -434,9 +478,9 @@ Description: Document and consolidate duplicate admin/user/role routes.
 
 Acceptance:
 
-- [ ] One canonical users route.
-- [ ] One canonical roles/permissions route.
-- [ ] Redirects or nav links point to canonical SPA route.
+- [x] One canonical users route.
+- [x] One canonical roles/permissions route.
+- [x] Redirects or nav links point to canonical SPA route.
 
 Verify:
 
@@ -465,8 +509,8 @@ Description: Fix 500 responses from blended metrics/internal benchmarks by retur
 
 Acceptance:
 
-- [ ] No unhandled 500 for missing benchmark data.
-- [ ] UI can render empty/degraded state.
+- [x] No unhandled 500 for missing benchmark data.
+- [x] UI can render empty/degraded state.
 
 Verify:
 
@@ -479,12 +523,12 @@ Description: Make Meta, Google, Budget Health, Analytics, and Spend resolve budg
 
 Acceptance:
 
-- [ ] Same campaign resolves same budget in every route.
-- [ ] Budget edits invalidate all affected route caches.
+- [x] Same campaign resolves same budget in every route.
+- [x] Budget edits invalidate all affected route caches.
 
 Verify:
 
-- [ ] Cross-route fixture tests.
+- [x] Cross-route fixture tests.
 
 ### Epic D: Social Publishing
 
@@ -507,8 +551,8 @@ Description: Add/finish shared shell/nav/counts for publishing routes.
 
 Acceptance:
 
-- [ ] Calendar, compose, queue, approvals, accounts, planner, analytics share nav.
-- [ ] Counts load from one endpoint and degrade safely.
+- [x] Calendar, compose, queue, approvals, accounts, planner, analytics share nav.
+- [x] Counts load from one endpoint and degrade safely.
 
 Verify:
 
@@ -606,15 +650,16 @@ Verify:
 - [ ] Production-like render smoke test.
 - [ ] `npm run build`
 
-## Recommended First Sprint
+## Next Active Queue
 
-Start with the work that protects revenue and prevents future regressions:
+Sprint 1 is shipped. Continue with the smallest next items that close real risk without reviving stale branches wholesale:
 
-1. Task A1: Current-State Regression Harness
-2. Task A2: Canonical Campaign Budget Key
-3. Task A3: Pacing Action Lifecycle Backend
-4. Task C1: Blended Metrics Failure Handling
-5. Task B1/B2: Admin route and bookkeeper access flow
+1. **Admin live access QA:** assign/verify Kelly-style bookkeeper finance/Xero visibility and confirm restricted admin-only surfaces remain hidden.
+2. **Paid-media branch audit:** complete. Use `docs/audits/paid-media-branch-audit-2026-06-29.md` for decisions; only the optional investigation endpoint / writer abstraction remain as possible fresh slices.
+3. **Live cross-route budget QA:** use real campaigns to confirm Spend, Meta, Google, Budget Health, and Analytics show the same budget identity and values.
+4. **Social publishing diff:** compare `origin/feat/social-publishing` and `docs/prd/social-publishing-enterprise-overhaul.md` to the now-shipped publishing shell; port only missing queue/planner/accounts polish.
+5. **Brief/job P2 planning:** turn the structured campaign budget model, revived `field_mapping`, and AM intake/deadline surfacing into a small implementation plan.
+6. **Dealer feeds P1b:** move to the sibling `social-dashboard` repo and add the service-auth/search/create-feed side needed by the XeroFlow provider.
 
 Do not start media/video or virtual office integration until spend/budget/admin behavior is stable.
 
