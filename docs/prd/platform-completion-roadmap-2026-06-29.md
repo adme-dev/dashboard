@@ -1,8 +1,9 @@
 # Platform Completion Roadmap and PRD
 
 **Date:** 2026-06-29
-**Baseline:** `main` / `origin/main` at `7f1a89ac`
-**Production:** `https://app.xeroflow.io` deployed from `7f1a89ac`
+**Baseline app code:** `7f1a89ac`
+**Current roadmap checkpoint:** `main` / `origin/main` at `58e7f80b`
+**Production:** `https://app.xeroflow.io` deployed from app code `7f1a89ac`
 **Purpose:** Convert the current branch/worktree backlog into an ordered build plan that completes missing product pieces without regressing features already on `main`.
 
 ## Executive Summary
@@ -33,8 +34,8 @@ Give ADME/XeroFlow one coherent agency operating platform where:
 
 ### Clean and deployed
 
-- `main` is clean and equal to `origin/main`.
-- Production deploy succeeded from `7f1a89ac`.
+- `main` is clean and equal to `origin/main` at roadmap checkpoint `58e7f80b`.
+- Production deploy succeeded from app code `7f1a89ac`; `58e7f80b` is docs-only.
 - Smoke checks:
   - `https://app.xeroflow.io/auth/login` returned `200`.
   - `https://app.xeroflow.io/agency/analytics` returned `200`.
