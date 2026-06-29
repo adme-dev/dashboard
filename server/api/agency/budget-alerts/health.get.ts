@@ -121,7 +121,7 @@ export default defineEventHandler(async (event) => {
         ms.end_date::text as end_date,
         COALESCE(ms.budget_rolling, false) as budget_rolling,
         COALESCE(ms.budget_allocated, 0) as monthly_budget,
-        COALESCE(SUM(ds.spend), 0) as mtd_spend,
+        COALESCE(ms.actual_spend, 0) as mtd_spend,
         COALESCE(SUM(ds.impressions), 0) as impressions,
         COALESCE(SUM(ds.clicks), 0) as clicks,
         COALESCE(SUM(ds.conversions), 0) as conversions,

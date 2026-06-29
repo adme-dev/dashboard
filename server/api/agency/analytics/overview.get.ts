@@ -81,8 +81,8 @@ export default defineEventHandler(async (event) => {
         SUM(clicks) as clicks,
         SUM(conversions) as conversions,
         SUM(revenue) as revenue,
-        COUNT(DISTINCT campaign_id) as campaign_count,
-        COUNT(DISTINCT CASE WHEN budget_rolling THEN campaign_id END) as rolling_count
+        COUNT(DISTINCT id) as campaign_count,
+        COUNT(DISTINCT CASE WHEN budget_rolling THEN id END) as rolling_count
       FROM cam
       GROUP BY platform
       ORDER BY spend DESC
@@ -118,8 +118,8 @@ export default defineEventHandler(async (event) => {
         SUM(cam.conversions) as conversions,
         SUM(cam.revenue) as revenue,
         ARRAY_AGG(DISTINCT cam.platform) as platforms,
-        COUNT(DISTINCT cam.campaign_id) as campaign_count,
-        COUNT(DISTINCT CASE WHEN cam.budget_rolling THEN cam.campaign_id END) as rolling_count
+        COUNT(DISTINCT cam.id) as campaign_count,
+        COUNT(DISTINCT CASE WHEN cam.budget_rolling THEN cam.id END) as rolling_count
       FROM cam
       LEFT JOIN agency_clients c ON cam.client_id = c.id
       GROUP BY cam.client_id, c.name

@@ -87,12 +87,13 @@ Completed product outcomes:
 
 Known remaining verification:
 
-- Live cross-route budget comparison using real campaigns on Spend, Meta, Google, Budget Health, and Analytics.
-- Formal branch audit notes for still-unmerged paid-media pacing/hotfix branches.
+- None for Sprint 1 admin, spend, budget, and paid-media branch audit items.
 
 Completed follow-up verification:
 
 - Admin live access QA for `Kellie White <accounts@adme.net.au>`: role changed from `admin` to `accounts`, which maps to `FINANCE` only; `/api/xero/status` confirmed ADME Xero connection is active. See `docs/audits/admin-access-qa-2026-06-29.md`.
+- Live cross-route budget QA for June 2026: Spend summary, Meta/Google account campaign routes, Budget Health, and Analytics all agree on budget totals and campaign budget identity. See `docs/audits/budget-cross-route-qa-2026-06-29.md`.
+- Paid-media branch audit is complete. See `docs/audits/paid-media-branch-audit-2026-06-29.md`.
 
 ### Branches already handled or superseded
 
@@ -660,7 +661,7 @@ Sprint 1 is shipped. Continue with the smallest next items that close real risk 
 
 1. **Admin live access QA:** complete for `Kellie White <accounts@adme.net.au>`; role is now `accounts`, Xero connection is active, and the role no longer carries the ADMIN group.
 2. **Paid-media branch audit:** complete. Use `docs/audits/paid-media-branch-audit-2026-06-29.md` for decisions; only the optional investigation endpoint / writer abstraction remain as possible fresh slices.
-3. **Live cross-route budget QA:** use real campaigns to confirm Spend, Meta, Google, Budget Health, and Analytics show the same budget identity and values.
+3. **Live cross-route budget QA:** complete for June 2026. Budget keys and budget totals match across Spend, Meta, Google, Budget Health, and Analytics; remaining platform sync failures are account-access cleanup.
 4. **Social publishing diff:** compare `origin/feat/social-publishing` and `docs/prd/social-publishing-enterprise-overhaul.md` to the now-shipped publishing shell; port only missing queue/planner/accounts polish.
 5. **Brief/job P2 planning:** turn the structured campaign budget model, revived `field_mapping`, and AM intake/deadline surfacing into a small implementation plan.
 6. **Dealer feeds P1b:** move to the sibling `social-dashboard` repo and add the service-auth/search/create-feed side needed by the XeroFlow provider.

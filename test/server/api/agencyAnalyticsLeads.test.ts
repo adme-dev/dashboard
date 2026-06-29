@@ -32,6 +32,15 @@ vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args)
 }))
 
+vi.mock('~~/server/utils/session', () => ({
+  getSelectedTenant: vi.fn().mockResolvedValue('tenant-1')
+}))
+
+vi.mock('~~/server/utils/analyticsCache', () => ({
+  analyticsCacheKey: (...args: unknown[]) => args.map(String).join(':'),
+  cachedAnalytics: (_event: unknown, _key: string, _options: unknown, fetcher: () => Promise<unknown>) => fetcher()
+}))
+
 vi.mock('~~/server/utils/platformDeepLinks', () => ({
   buildCampaignDeepLink: () => null
 }))
@@ -127,6 +136,8 @@ describe('agency analytics lead metrics', () => {
       avgResponseMinutes: 30
     })
     expect(result.previousPeriod).toMatchObject({ leads: 5, costPerLead: 16 })
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COUNT(DISTINCT id) as campaign_count')
+    expect(String(mockQueryRows.mock.calls[1]?.[0])).toContain('COUNT(DISTINCT cam.id) as campaign_count')
     const leadSql = String(mockQueryRows.mock.calls[3]?.[0])
     expect(leadSql).toContain('FROM leads l')
     expect(leadSql).not.toContain('destination_type = \'portal\'')

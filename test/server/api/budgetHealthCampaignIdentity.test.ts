@@ -58,6 +58,7 @@ describe('GET /api/agency/budget-alerts/health campaign identity', () => {
 
     const result = await handler({} as any)
 
+    expect(String(mockQueryRows.mock.calls[2][0])).toContain('COALESCE(ms.actual_spend, 0) as mtd_spend')
     expect(result.campaigns[0]).toMatchObject({
       mediaSpendId: 'spend-1',
       budgetKey: 'tenant:tenant-1|client:client-1|platform:meta|account:act-1|campaign:campaign-1|period:2026-06',
