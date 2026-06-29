@@ -8,7 +8,7 @@ const activeTab = ref<'overview' | 'insights'>('overview')
 const tabItems = [
   { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
   { label: 'Insights', value: 'insights', icon: 'i-lucide-gauge' }
-]
+] as const
 
 interface AnalyticsOverview {
   totals: Record<string, number | null>
@@ -151,13 +151,35 @@ async function syncAll() {
     <AnalyticsFilterBar />
 
     <!-- Tabs (filter bar above stays shared across both) -->
-    <UTabs
-      v-model="activeTab"
-      :items="tabItems"
-      class="w-full"
-    />
+    <div
+      class="inline-flex w-full sm:w-auto items-center gap-1 rounded-lg border border-default bg-elevated p-1"
+      role="tablist"
+      aria-label="Analytics sections"
+    >
+      <UButton
+        v-for="item in tabItems"
+        :id="`analytics-${item.value}-tab`"
+        :key="item.value"
+        :icon="item.icon"
+        :label="item.label"
+        :color="activeTab === item.value ? 'primary' : 'neutral'"
+        :variant="activeTab === item.value ? 'solid' : 'ghost'"
+        size="sm"
+        class="flex-1 justify-center sm:flex-none"
+        role="tab"
+        :aria-selected="activeTab === item.value"
+        :aria-controls="`analytics-${item.value}-panel`"
+        @click="activeTab = item.value"
+      />
+    </div>
 
-    <div v-show="activeTab === 'overview'" class="space-y-6">
+    <div
+      v-show="activeTab === 'overview'"
+      id="analytics-overview-panel"
+      class="space-y-6"
+      role="tabpanel"
+      aria-labelledby="analytics-overview-tab"
+    >
       <!-- Ask box -->
       <AgencyAnalyticsAskBox
         :start-date="filters.startDate"
@@ -265,7 +287,13 @@ async function syncAll() {
     </div><!-- /Overview tab -->
 
     <!-- Insights tab -->
-    <div v-show="activeTab === 'insights'" class="space-y-6">
+    <div
+      v-show="activeTab === 'insights'"
+      id="analytics-insights-panel"
+      class="space-y-6"
+      role="tabpanel"
+      aria-labelledby="analytics-insights-tab"
+    >
       <AgencyAnalyticsBenchmarks
         :start-date="filters.startDate"
         :end-date="filters.endDate"
