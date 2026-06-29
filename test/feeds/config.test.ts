@@ -21,6 +21,15 @@ describe('loadSocialDashboardConfig', () => {
   it('returns baseUrl + secret when both present', async () => {
     const queryOne = vi.fn(async () => ({ settings: { baseUrl: 'https://sd.example' } }))
     const cfg = await loadSocialDashboardConfig({ env: { SOCIAL_DASHBOARD_SERVICE_SECRET: 's' }, queryOne: queryOne as any })
-    expect(cfg).toEqual({ baseUrl: 'https://sd.example', serviceSecret: 's' })
+    expect(cfg).toEqual({ baseUrl: 'https://sd.example', serviceSecret: 's', accessToken: undefined })
+  })
+
+  it('loads an optional social-dashboard access token', async () => {
+    const queryOne = vi.fn(async () => ({ settings: { baseUrl: 'https://sd.example' } }))
+    const cfg = await loadSocialDashboardConfig({
+      env: { SOCIAL_DASHBOARD_SERVICE_SECRET: 's', SOCIAL_DASHBOARD_ACCESS_TOKEN: 'jwt' },
+      queryOne: queryOne as any,
+    })
+    expect(cfg).toEqual({ baseUrl: 'https://sd.example', serviceSecret: 's', accessToken: 'jwt' })
   })
 })

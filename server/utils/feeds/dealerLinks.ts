@@ -1,5 +1,5 @@
 import { queryOne as dbQueryOne } from '~~/server/utils/db'
-import { SOCIAL_DASHBOARD_PROVIDER_ID } from './registry'
+import { SOCIAL_DASHBOARD_PROVIDER_ID } from './constants'
 import type { DealerLink, FeedProviderContext } from './types'
 
 function asStringArray(v: unknown): string[] {

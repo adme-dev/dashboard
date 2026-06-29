@@ -12,18 +12,25 @@ describe('buildServiceHeaders', () => {
       'x-feed-org-id': 'org-123',
     })
   })
+
+  it('adds Authorization when a social-dashboard access token is configured', () => {
+    expect(buildServiceHeaders(ctx, 'sekret', 'jwt')).toMatchObject({
+      Authorization: 'Bearer jwt',
+    })
+  })
 })
 
 describe('createSocialDashboardClient.call', () => {
   it('strips a trailing slash, sends headers + JSON body, returns parsed json', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true, id: 'f1' }), { status: 200 }))
-    const client = createSocialDashboardClient({ baseUrl: 'https://sd.example/', serviceSecret: 'sekret', fetchImpl: fetchImpl as any })
+    const client = createSocialDashboardClient({ baseUrl: 'https://sd.example/', serviceSecret: 'sekret', accessToken: 'jwt', fetchImpl: fetchImpl as any })
     const out = await client.call(ctx, 'POST', '/api/feeds', { name: 'X' })
     expect(out).toEqual({ ok: true, id: 'f1' })
     const [url, init] = fetchImpl.mock.calls[0]
     expect(url).toBe('https://sd.example/api/feeds')
     expect((init as any).method).toBe('POST')
     expect((init as any).headers['x-feed-service-secret']).toBe('sekret')
+    expect((init as any).headers.Authorization).toBe('Bearer jwt')
     expect((init as any).body).toBe(JSON.stringify({ name: 'X' }))
   })
 
