@@ -70,7 +70,7 @@ describe('social publishing navigation order', () => {
   it('maps every ordered route into a sidebar-ready nav item', () => {
     expect(socialPublishingNavItems(() => {}).map(item => item.to)).toEqual([
       '/agency/social/publishing/accounts',
-      '/agency/social/publishing',
+      '/agency/social/publishing/calendar',
       '/agency/social/publishing/compose',
       '/agency/social/publishing/approvals',
       '/agency/social/publishing/planner',
@@ -80,7 +80,7 @@ describe('social publishing navigation order', () => {
   })
 
   it('matches route paths to the correct publishing workflow item', () => {
-    expect(socialPublishingRouteForPath('/agency/social/publishing')?.key).toBe('calendar')
+    expect(socialPublishingRouteForPath('/agency/social/publishing/calendar')?.key).toBe('calendar')
     expect(socialPublishingRouteForPath('/agency/social/publishing/compose')?.key).toBe('compose')
     expect(socialPublishingRouteForPath('/agency/social/publishing/accounts')?.key).toBe('accounts')
     expect(socialPublishingRouteForPath('/agency/social/inbox')).toBeUndefined()

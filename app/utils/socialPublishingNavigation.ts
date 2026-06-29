@@ -91,8 +91,7 @@ export const SOCIAL_PUBLISHING_ROUTE_ORDER: SocialPublishingRouteItem[] = [
     group: 'schedule',
     label: 'Calendar',
     icon: 'i-lucide-calendar-days',
-    to: '/agency/social/publishing',
-    exact: true,
+    to: '/agency/social/publishing/calendar',
     objective: 'Use the calendar as the hub for planning, reviewing, and opening scheduled posts.',
     badgeKey: 'scheduled'
   },

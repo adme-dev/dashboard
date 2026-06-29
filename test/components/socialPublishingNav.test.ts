@@ -24,7 +24,7 @@ const stubs: Record<string, unknown> = {
   UTooltip: { name: 'UTooltip', props: ['text'], template: '<span><slot /></span>' }
 }
 
-async function render(props: Record<string, unknown> = {}, routePath = '/agency/social/publishing') {
+async function render(props: Record<string, unknown> = {}, routePath = '/agency/social/publishing/calendar') {
   ;(globalThis as any).useRoute = () => ({ path: routePath, query: {} })
   const app = createSSRApp({ render: () => h(SocialPublishingNav, props) })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
@@ -56,8 +56,7 @@ describe('SocialPublishingNav', () => {
     expect(html).toContain('href="/agency/social/publishing/compose"')
     expect(html).toContain('href="/agency/social/publishing/accounts"')
     expect(html).toContain('href="/agency/social/publishing/queue"')
-    // Calendar is the suite root
-    expect(html).toContain('href="/agency/social/publishing"')
+    expect(html).toContain('href="/agency/social/publishing/calendar"')
   })
 
   it('shows a count badge only on badged tiles with a positive count', async () => {
