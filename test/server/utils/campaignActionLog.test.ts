@@ -13,6 +13,7 @@ describe('recordCampaignAction', () => {
       id: 'action-1',
       media_spend_id: 'spend-1',
       platform: 'google_ads',
+      budget_key: 'tenant:tenant-1|client:client-1|platform:google_ads|account:123|campaign:campaign-1|period:2026-06',
       action_type: 'budget_update',
       action_status: 'pending',
       requested_by: 'user-1',
@@ -37,6 +38,7 @@ describe('recordCampaignAction', () => {
     const result = await recordCampaignAction({
       mediaSpendId: 'spend-1',
       platform: 'google',
+      budgetKey: 'tenant:tenant-1|client:client-1|platform:google_ads|account:123|campaign:campaign-1|period:2026-06',
       actionType: 'budget_update',
       actionStatus: 'pending',
       requestedBy: 'user-1',
@@ -50,11 +52,13 @@ describe('recordCampaignAction', () => {
 
     expect(mockQueryOne).toHaveBeenCalledOnce()
     expect(String(mockQueryOne.mock.calls[0][0])).toContain('INSERT INTO campaign_action_log')
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain('budget_key')
     expect(String(mockQueryOne.mock.calls[0][0])).toContain('cancelled_by')
     expect(String(mockQueryOne.mock.calls[0][0])).toContain('cancelled_at')
     expect(mockQueryOne.mock.calls[0][1]).toEqual([
       'spend-1',
       'google_ads',
+      'tenant:tenant-1|client:client-1|platform:google_ads|account:123|campaign:campaign-1|period:2026-06',
       'budget_update',
       'pending',
       'user-1',
@@ -74,6 +78,7 @@ describe('recordCampaignAction', () => {
       id: 'action-1',
       mediaSpendId: 'spend-1',
       platform: 'google',
+      budgetKey: 'tenant:tenant-1|client:client-1|platform:google_ads|account:123|campaign:campaign-1|period:2026-06',
       actionType: 'budget_update',
       actionStatus: 'pending',
       requestedBy: 'user-1',

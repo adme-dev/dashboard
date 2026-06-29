@@ -1,9 +1,12 @@
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { recordCampaignAction } from '~~/server/utils/campaignActionLog'
+import { getSelectedTenant } from '~~/server/utils/session'
+import { buildCampaignBudgetIdentity } from '~~/server/utils/campaignBudgetIdentity'
 
 export default eventHandler(async (event) => {
   const user = await requireWriteAccess(event)
+  const tenantId = await getSelectedTenant(event)
 
   const id = getRouterParam(event, 'id')
   if (!id) {
@@ -20,57 +23,65 @@ export default eventHandler(async (event) => {
     id: string
     platform: 'meta' | 'google_ads'
     campaign_name: string | null
+    client_id: string | null
+    campaign_id: string | null
+    connection_id: string | null
+    account_id: string | null
+    period: string | null
   }>(
-    `SELECT id::text, platform, campaign_name
-     FROM media_spend
-     WHERE id = $1`,
+    `SELECT ms.id::text,
+            ms.platform,
+            ms.campaign_name,
+            ms.client_id::text,
+            ms.campaign_id,
+            ms.connection_id::text,
+            sc.account_id,
+            ms.period
+     FROM media_spend ms
+     LEFT JOIN social_connections sc ON sc.id = ms.connection_id
+     WHERE ms.id = $1`,
     [id]
   )
   if (!spend) {
     throw createError({ statusCode: 404, statusMessage: 'Spend record not found' })
   }
 
-  const existing = await queryOne<PlannedActionRow>(
-    `SELECT id::text,
-            media_spend_id::text,
-            platform,
-            action_type,
-            action_status,
-            requested_by::text,
-            requested_at::text,
-            approved_by::text,
-            approved_at::text,
-            cancelled_by::text,
-            cancelled_at::text,
-            executed_at::text,
-            previous_value,
-            new_value,
-            reason,
-            external_request_id,
-            error_message
-     FROM campaign_action_log
-     WHERE media_spend_id = $1
-       AND action_type = 'budget_update'
-       AND (
-         action_status = 'planned'
-         OR action_status = 'approved'
-       )
-       AND metadata->>'source' = $3
-       AND (new_value->>'dailyBudget')::numeric = $2
-     ORDER BY CASE WHEN action_status = 'approved' THEN 0 ELSE 1 END,
-              COALESCE(approved_at, requested_at) DESC
-     LIMIT 1`,
-    [id, recommendedDailyBudget, source]
-  )
+  const budgetIdentity = buildCampaignBudgetIdentity({
+    tenantId,
+    clientId: spend.client_id,
+    platform: spend.platform,
+    accountId: spend.account_id,
+    connectionId: spend.connection_id,
+    campaignExternalId: spend.campaign_id,
+    campaignName: spend.campaign_name,
+    mediaSpendId: spend.id,
+    period: spend.period,
+  })
+  if (!budgetIdentity.key) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Campaign is not eligible for budget actions: ${budgetIdentity.issues.join(', ')}`,
+    })
+  }
+
+  const existing = await findActiveBudgetAction({
+    budgetKey: budgetIdentity.key,
+    platform: spend.platform,
+    clientId: budgetIdentity.clientId,
+    campaignExternalId: budgetIdentity.campaignExternalId!,
+    accountId: budgetIdentity.accountId!,
+    period: budgetIdentity.period!,
+  })
   if (existing) {
     return { planned: false, existing: true, action: normalizePlannedAction(existing) }
   }
 
-  const action = await recordCampaignAction({
+  const actionInput = {
     mediaSpendId: id,
     platform: spend.platform,
+    budgetKey: budgetIdentity.key,
     actionType: 'budget_update',
-    actionStatus: 'planned',
+    actionStatus: 'planned' as const,
     requestedBy: user.id,
     previousValue: { dailyBudget: currentDailyBudget },
     newValue: { dailyBudget: recommendedDailyBudget },
@@ -78,6 +89,13 @@ export default eventHandler(async (event) => {
     metadata: {
       source,
       recommendationResourceName,
+      budgetKey: budgetIdentity.key,
+      budgetPeriod: budgetIdentity.period,
+      campaignExternalId: budgetIdentity.campaignExternalId,
+      accountId: budgetIdentity.accountId,
+      connectionId: spend.connection_id,
+      clientId: budgetIdentity.clientId,
+      budgetIdentityIssues: budgetIdentity.issues,
       issueType: typeof body?.issueType === 'string' ? body.issueType : null,
       pacingRatio: numberOrNull(body?.pacingRatio),
       projectedMonthEnd: numberOrNull(body?.projectedMonthEnd),
@@ -96,9 +114,25 @@ export default eventHandler(async (event) => {
           }
         : {}),
     },
-  })
+  }
 
-  return { planned: true, action }
+  try {
+    const action = await recordCampaignAction(actionInput)
+
+    return { planned: true, action }
+  } catch (err) {
+    if (!isActiveBudgetKeyConflict(err)) throw err
+    const racedExisting = await findActiveBudgetAction({
+      budgetKey: budgetIdentity.key,
+      platform: spend.platform,
+      clientId: budgetIdentity.clientId,
+      campaignExternalId: budgetIdentity.campaignExternalId!,
+      accountId: budgetIdentity.accountId!,
+      period: budgetIdentity.period!,
+    })
+    if (!racedExisting) throw err
+    return { planned: false, existing: true, action: normalizePlannedAction(racedExisting) }
+  }
 })
 
 function parseBudgetNumber(value: unknown, field: string) {
@@ -118,6 +152,7 @@ interface PlannedActionRow {
   id: string
   media_spend_id: string
   platform: 'meta' | 'google_ads'
+  budget_key: string | null
   action_type: string
   action_status: string
   requested_by: string | null
@@ -139,6 +174,7 @@ function normalizePlannedAction(row: PlannedActionRow) {
     id: row.id,
     mediaSpendId: row.media_spend_id,
     platform: row.platform === 'google_ads' ? 'google' : 'meta',
+    budgetKey: row.budget_key,
     actionType: row.action_type,
     actionStatus: row.action_status,
     requestedBy: row.requested_by,
@@ -154,4 +190,68 @@ function normalizePlannedAction(row: PlannedActionRow) {
     externalRequestId: row.external_request_id,
     errorMessage: row.error_message,
   }
+}
+
+async function findActiveBudgetAction(input: {
+  budgetKey: string
+  platform: 'meta' | 'google_ads'
+  clientId: string
+  campaignExternalId: string
+  accountId: string
+  period: string
+}) {
+  return queryOne<PlannedActionRow>(
+    `SELECT cal.id::text,
+            cal.media_spend_id::text,
+            cal.platform,
+            cal.budget_key,
+            cal.action_type,
+            cal.action_status,
+            cal.requested_by::text,
+            cal.requested_at::text,
+            cal.approved_by::text,
+            cal.approved_at::text,
+            cal.cancelled_by::text,
+            cal.cancelled_at::text,
+            cal.executed_at::text,
+            cal.previous_value,
+            cal.new_value,
+            cal.reason,
+            cal.external_request_id,
+            cal.error_message
+     FROM campaign_action_log cal
+     LEFT JOIN media_spend active_ms ON active_ms.id = cal.media_spend_id
+     LEFT JOIN social_connections active_sc ON active_sc.id = active_ms.connection_id
+     WHERE cal.action_type = 'budget_update'
+       AND cal.action_status IN ('planned', 'approved', 'executing')
+       AND (
+         cal.budget_key = $1
+         OR (
+           cal.budget_key IS NULL
+           AND cal.platform = $2
+           AND active_ms.period = $3
+           AND active_ms.client_id = $4::uuid
+           AND active_ms.campaign_id = $5
+           AND COALESCE(active_sc.account_id, active_ms.connection_id::text, 'unlinked') = $6
+         )
+       )
+     ORDER BY CASE WHEN cal.action_status = 'approved' THEN 0 ELSE 1 END,
+              COALESCE(cal.approved_at, cal.requested_at) DESC
+     LIMIT 1`,
+    [
+      input.budgetKey,
+      input.platform,
+      input.period,
+      input.clientId,
+      input.campaignExternalId,
+      input.accountId,
+    ]
+  )
+}
+
+function isActiveBudgetKeyConflict(err: unknown): boolean {
+  const error = err as { code?: string, constraint?: string, message?: string } | null
+  if (!error || error.code !== '23505') return false
+  return error.constraint === 'idx_campaign_action_log_active_budget_key'
+    || String(error.message || '').includes('idx_campaign_action_log_active_budget_key')
 }

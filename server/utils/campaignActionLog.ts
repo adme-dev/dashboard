@@ -2,11 +2,12 @@ import { queryOne } from '~~/server/utils/db'
 
 export type CampaignActionPlatform = 'meta' | 'google'
 export type CampaignActionDbPlatform = 'meta' | 'google_ads'
-export type CampaignActionStatus = 'planned' | 'pending' | 'approved' | 'applied' | 'failed' | 'skipped' | 'cancelled'
+export type CampaignActionStatus = 'planned' | 'pending' | 'approved' | 'executing' | 'applied' | 'failed' | 'skipped' | 'cancelled'
 
 export interface RecordCampaignActionInput {
   mediaSpendId: string
   platform: CampaignActionPlatform | CampaignActionDbPlatform
+  budgetKey?: string | null
   actionType: string
   actionStatus?: CampaignActionStatus
   requestedBy?: string | null
@@ -27,6 +28,7 @@ export interface CampaignActionLogEntry {
   id: string
   mediaSpendId: string
   platform: CampaignActionPlatform
+  budgetKey: string | null
   actionType: string
   actionStatus: CampaignActionStatus
   requestedBy: string | null
@@ -48,6 +50,7 @@ interface CampaignActionLogRow {
   id: string
   media_spend_id: string
   platform: CampaignActionDbPlatform
+  budget_key: string | null
   action_type: string
   action_status: CampaignActionStatus
   requested_by: string | null
@@ -70,6 +73,7 @@ export async function recordCampaignAction(input: RecordCampaignActionInput): Pr
     `INSERT INTO campaign_action_log (
        media_spend_id,
        platform,
+       budget_key,
        action_type,
        action_status,
        requested_by,
@@ -84,10 +88,11 @@ export async function recordCampaignAction(input: RecordCampaignActionInput): Pr
        external_request_id,
        error_message,
        metadata
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $14, $15, $16::jsonb)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16, $17::jsonb)
      RETURNING id::text,
                media_spend_id::text,
                platform,
+               budget_key,
                action_type,
                action_status,
                requested_by::text,
@@ -106,6 +111,7 @@ export async function recordCampaignAction(input: RecordCampaignActionInput): Pr
     [
       input.mediaSpendId,
       toDbPlatform(input.platform),
+      input.budgetKey ?? null,
       input.actionType,
       input.actionStatus ?? 'planned',
       input.requestedBy ?? null,
@@ -140,6 +146,7 @@ function fromDbRow(row: CampaignActionLogRow): CampaignActionLogEntry {
     id: row.id,
     mediaSpendId: row.media_spend_id,
     platform: fromDbPlatform(row.platform),
+    budgetKey: row.budget_key,
     actionType: row.action_type,
     actionStatus: row.action_status,
     requestedBy: row.requested_by,
