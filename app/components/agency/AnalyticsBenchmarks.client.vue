@@ -23,13 +23,18 @@ interface BenchmarksResponse {
   clients: LeaderboardClient[]
 }
 
+const query = computed(() => {
+  const q: Record<string, string> = {
+    startDate: props.startDate,
+    endDate: props.endDate,
+  }
+  if (props.clientId) q.clientId = props.clientId
+  return q
+})
+
 const { data, status } = await useFetch<BenchmarksResponse>('/api/agency/analytics/internal-benchmarks', {
-  query: {
-    startDate: () => props.startDate,
-    endDate: () => props.endDate,
-    clientId: () => props.clientId ?? undefined
-  },
-  watch: [() => props.startDate, () => props.endDate, () => props.clientId]
+  query,
+  watch: [query]
 })
 
 const loading = computed(() => status.value === 'pending')

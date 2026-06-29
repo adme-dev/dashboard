@@ -12,6 +12,7 @@ import { queryRows } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { summarize, percentileRank } from '~~/server/utils/benchmarks'
+import { isOptionalAnalyticsSourceError } from '~~/server/utils/analyticsSourceErrors'
 
 interface ClientMetrics {
   engagementRate: number | null
@@ -27,15 +28,38 @@ const METRICS: Array<{ key: keyof ClientMetrics, lowerIsBetter: boolean }> = [
   { key: 'cpa', lowerIsBetter: true }
 ]
 
+function emptyInternalBenchmarksPayload(startDate: string, endDate: string) {
+  const metrics: Record<string, unknown> = {}
+  for (const { key, lowerIsBetter } of METRICS) {
+    metrics[key] = {
+      lowerIsBetter,
+      portfolio: summarize([]),
+      client: null,
+    }
+  }
+  return {
+    window: { startDate, endDate },
+    clientCount: 0,
+    metrics,
+    clients: [],
+    degraded: true,
+    warnings: ['Analytics source tables are unavailable; showing an empty benchmark view.'],
+  }
+}
+
+function assertDateOnly(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw createError({ statusCode: 400, statusMessage: `${field} must be a YYYY-MM-DD date` })
+  }
+  return value
+}
+
 export default defineEventHandler(async (event) => {
   await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
   const q = getQuery(event)
-  const startDate = q.startDate as string
-  const endDate = q.endDate as string
+  const startDate = assertDateOnly(q.startDate, 'startDate')
+  const endDate = assertDateOnly(q.endDate, 'endDate')
   const clientId = (q.clientId as string) || undefined
-  if (!startDate || !endDate) {
-    throw createError({ statusCode: 400, statusMessage: 'startDate and endDate are required' })
-  }
 
   try {
     const [ga4Rows, spendRows, leadRows] = await Promise.all([
@@ -149,6 +173,10 @@ export default defineEventHandler(async (event) => {
 
     return { window: { startDate, endDate }, clientCount: metricsByClient.size, metrics, clients }
   } catch (error) {
+    if (isOptionalAnalyticsSourceError(error)) {
+      console.warn('Internal benchmarks degraded:', (error as any)?.message ?? error)
+      return emptyInternalBenchmarksPayload(startDate, endDate)
+    }
     console.error('Internal benchmarks failed:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to compute internal benchmarks' })
   }

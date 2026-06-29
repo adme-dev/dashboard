@@ -1,5 +1,6 @@
 import { createError, eventHandler, readBody } from 'h3'
 import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { xeroFetch } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
@@ -13,7 +14,7 @@ import { getSelectedTenant } from '../../../utils/session'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
-  await requireRole(event, ['owner', 'admin'])
+  await requireRole(event, [...PERMISSIONS.FINANCE])
   const token = await getActiveTokenForSession(event)
   const tenantId = await getSelectedTenant(event)
   if (!tenantId) {

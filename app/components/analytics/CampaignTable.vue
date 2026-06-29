@@ -29,11 +29,38 @@ const pageSize = 20
 const expandedId = ref<string | null>(null)
 
 interface CampaignRow {
-  campaignId: string
+  campaignId: string | null
+  rowKey?: string
+  mediaSpendId: string
   campaignName: string
   platform: string
   campaignStatus?: string | null
-  [key: string]: unknown
+  campaignType?: string | null
+  clientId?: string | null
+  clientName?: string | null
+  spend: number
+  budget: number
+  budgetRolling?: boolean
+  impressions: number
+  clicks: number
+  conversions: number
+  revenue: number
+  cpc: number | null
+  cpm: number | null
+  ctr: number | null
+  roas: number | null
+  costPerConversion: number | null
+  conversionRate: number | null
+  leadCount?: number
+  costPerLead?: number | null
+  reach?: number | null
+  costPerResult?: number | null
+  resultType?: string | null
+  bidStrategy?: string | null
+  budgetType?: string | null
+  endDate?: string | null
+  health?: unknown
+  deepLinkUrl?: string | null
 }
 
 interface CampaignsResponse {
@@ -49,7 +76,12 @@ const cache = reactive<Map<string, {
   extraMetrics?: Record<string, unknown> | null
 }>>(new Map())
 
-function toggleExpand(id: string) {
+function campaignIdentity(row: CampaignRow): string {
+  return String(row.rowKey || row.mediaSpendId || row.campaignId || `${row.platform}:${row.campaignName}`)
+}
+
+function toggleExpand(row: CampaignRow) {
+  const id = campaignIdentity(row)
   expandedId.value = expandedId.value === id ? null : id
 }
 
@@ -311,16 +343,16 @@ watch(search, () => {
           </tr>
         </thead>
         <tbody>
-          <template v-for="row in campaigns" :key="row.campaignId">
+          <template v-for="row in campaigns" :key="campaignIdentity(row)">
             <tr
               class="border-b border-default/50 hover:bg-elevated/30 transition-colors cursor-pointer"
-              @click="toggleExpand(row.campaignId)"
+              @click="toggleExpand(row)"
             >
               <!-- 1. campaignName — always visible, never gated -->
               <td class="px-3 py-2.5 max-w-[280px]">
                 <div class="flex items-center gap-2">
                   <UIcon
-                    :name="expandedId === row.campaignId ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                    :name="expandedId === campaignIdentity(row) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
                     class="w-3.5 h-3.5 text-muted shrink-0"
                   />
                   <UIcon :name="getPlatformIcon(row.platform)" class="w-4 h-4 text-muted shrink-0" />
@@ -466,7 +498,7 @@ watch(search, () => {
             </tr>
 
             <!-- Expanded detail row (full-width) -->
-            <tr v-if="expandedId === row.campaignId" class="bg-elevated/20">
+            <tr v-if="expandedId === campaignIdentity(row)" class="bg-elevated/20">
               <td :colspan="visibleColumns.length" class="px-6 py-4">
                 <!-- Header with campaign name + deep link -->
                 <div class="flex items-center gap-3 mb-4">

@@ -16,7 +16,7 @@
  * Mirrors the ADME "APRIL 2026 Inv FINAL" PDF format.
  */
 
-definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const toast = useToast()
 

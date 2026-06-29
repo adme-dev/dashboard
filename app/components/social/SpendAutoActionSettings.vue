@@ -44,29 +44,32 @@ async function save() {
     <p class="text-xs text-muted">
       On each pacing signal, act per severity. <b>Auto-propose</b> queues a budget adjustment for an admin to approve &amp; apply — it never changes a platform budget on its own.
     </p>
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <UFormField label="Critical">
-        <USelect
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <UFormField label="Critical" class="min-w-0">
+        <USelectMenu
           v-model="policy.perSeverity.critical"
           :items="modeItems"
+          value-key="value"
           :disabled="loading || saving || !policy.enabled"
-          class="w-full min-w-40"
+          class="w-full md:max-w-56"
         />
       </UFormField>
-      <UFormField label="Warning">
-        <USelect
+      <UFormField label="Warning" class="min-w-0">
+        <USelectMenu
           v-model="policy.perSeverity.warning"
           :items="modeItems"
+          value-key="value"
           :disabled="loading || saving || !policy.enabled"
-          class="w-full min-w-40"
+          class="w-full md:max-w-56"
         />
       </UFormField>
-      <UFormField label="Info">
-        <USelect
+      <UFormField label="Info" class="min-w-0">
+        <USelectMenu
           v-model="policy.perSeverity.info"
           :items="modeItems"
+          value-key="value"
           :disabled="loading || saving || !policy.enabled"
-          class="w-full min-w-40"
+          class="w-full md:max-w-56"
         />
       </UFormField>
     </div>

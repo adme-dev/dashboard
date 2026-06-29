@@ -15,22 +15,49 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
 import { buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import { previousWindow } from '~~/server/utils/ga4Funnel'
 import { resolveCanonicalChannel } from '~~/server/utils/channelTaxonomy'
-import { cachedAnalytics, analyticsCacheKey } from '~~/server/utils/analyticsCache'
+import { cachedAnalytics, analyticsCacheKey, isProvisionalWindow } from '~~/server/utils/analyticsCache'
+import { isOptionalAnalyticsSourceError } from '~~/server/utils/analyticsSourceErrors'
 import {
   buildBlended,
   buildBlendedComparison,
   type BlendedInput
 } from '~~/server/utils/blendedMetrics'
 
+function emptyBlendedPayload(endDate: string) {
+  const blended = buildBlended({
+    spendByChannel: {},
+    leadsByChannel: {},
+    conversionsByChannel: {},
+    revenueByChannel: {},
+    sessionsByChannel: {},
+  })
+  return {
+    ...blended,
+    comparison: buildBlendedComparison(blended.totals, blended.totals),
+    hasGa4: false,
+    conversionBasis: 'platform-reported',
+    degraded: true,
+    warnings: ['Analytics source tables are unavailable; showing an empty blended view.'],
+    _cache: {
+      generatedAt: new Date().toISOString(),
+      provisional: isProvisionalWindow(endDate, new Date().toISOString().slice(0, 10)),
+    },
+  }
+}
+
+function assertDateOnly(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw createError({ statusCode: 400, statusMessage: `${field} must be a YYYY-MM-DD date` })
+  }
+  return value
+}
+
 export default defineEventHandler(async (event) => {
   await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
   const q = getQuery(event)
-  const startDate = q.startDate as string
-  const endDate = q.endDate as string
+  const startDate = assertDateOnly(q.startDate, 'startDate')
+  const endDate = assertDateOnly(q.endDate, 'endDate')
   const clientId = (q.clientId as string) || undefined
-  if (!startDate || !endDate) {
-    throw createError({ statusCode: 400, statusMessage: 'startDate and endDate are required' })
-  }
 
   // Aggregate one window into a canonical-channel BlendedInput.
   const aggregate = async (start: string, end: string): Promise<{ input: BlendedInput, ga4RowCount: number }> => {
@@ -125,6 +152,10 @@ export default defineEventHandler(async (event) => {
       }
     })
   } catch (error) {
+    if (isOptionalAnalyticsSourceError(error)) {
+      console.warn('Analytics blended degraded:', (error as any)?.message ?? error)
+      return emptyBlendedPayload(endDate)
+    }
     console.error('Analytics blended failed:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch blended metrics' })
   }

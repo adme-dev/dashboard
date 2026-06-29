@@ -34,8 +34,9 @@ export default eventHandler(async (event) => {
         tm.created_at,
         tm.updated_at
       FROM team_members tm
-      WHERE tm.is_active = true
-      ORDER BY tm.name ASC
+      ORDER BY
+        CASE WHEN tm.is_active THEN 0 ELSE 1 END,
+        tm.name ASC
     `)
 
     // Get teams for each user

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 type Recommendation = {
   id: string

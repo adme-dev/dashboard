@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const { data, pending, error, lastUpdated, isLive, refresh } = useGetOutRealtime()
 

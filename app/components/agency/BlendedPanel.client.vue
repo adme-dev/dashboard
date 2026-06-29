@@ -27,9 +27,18 @@ interface BlendedResponse {
   conversionBasis: string
 }
 
+const query = computed(() => {
+  const q: Record<string, string> = {
+    startDate: props.startDate,
+    endDate: props.endDate,
+  }
+  if (props.clientId) q.clientId = props.clientId
+  return q
+})
+
 const { data, pending } = await useFetch<BlendedResponse>('/api/agency/analytics/blended', {
-  query: { startDate: () => props.startDate, endDate: () => props.endDate, clientId: () => props.clientId ?? undefined },
-  watch: [() => props.startDate, () => props.endDate, () => props.clientId]
+  query,
+  watch: [query]
 })
 
 const hasData = computed(() => !pending.value && !!data.value && data.value.channels.length > 0)

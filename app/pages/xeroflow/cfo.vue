@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const { data: yoy }         = await useFetch<any>('/api/xero/get-out/yoy',                { lazy: true, server: false })
 const { data: ytd }         = await useFetch<any>('/api/xero/get-out/ytd',                { lazy: true, server: false })

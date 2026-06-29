@@ -99,6 +99,11 @@ const adminNavItems = [
     to: '/admin/users'
   },
   {
+    label: 'Roles & Permissions',
+    icon: 'i-lucide-shield-check',
+    to: '/admin/permissions'
+  },
+  {
     label: 'Settings',
     icon: 'i-lucide-settings',
     to: '/admin/settings'

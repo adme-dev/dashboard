@@ -62,7 +62,7 @@ describe('GET /api/admin/users', () => {
     mockRequireRole.mockResolvedValue({ id: 'owner-1', role: 'owner' })
   })
 
-  it('returns all active users for an owner', async () => {
+  it('returns the full user roster for an owner, including inactive users', async () => {
     mockQueryRows
       .mockResolvedValueOnce([
         {
@@ -100,6 +100,18 @@ describe('GET /api/admin/users', () => {
           monday_user_id: null,
           created_at: '2026-01-03T00:00:00.000Z',
           updated_at: '2026-01-03T00:00:00.000Z'
+        },
+        {
+          id: 'inactive-1',
+          name: 'Inactive User',
+          email: 'inactive@example.com',
+          avatar_url: null,
+          role: 'member',
+          title: null,
+          is_active: false,
+          monday_user_id: null,
+          created_at: '2026-01-04T00:00:00.000Z',
+          updated_at: '2026-01-04T00:00:00.000Z'
         }
       ])
       .mockResolvedValueOnce([
@@ -109,11 +121,14 @@ describe('GET /api/admin/users', () => {
     const result = await getUsersHandler({} satisfies TestEvent)
 
     expect(mockRequireRole).toHaveBeenCalledWith({}, ['admin', 'owner'])
+    expect(String(mockQueryRows.mock.calls[0][0])).not.toContain('tm.is_active = true')
     expect(result.users.map((user: { id: string }) => user.id)).toEqual([
       'owner-1',
       'member-1',
-      'finance-1'
+      'finance-1',
+      'inactive-1'
     ])
+    expect(result.users.find((user: { id: string }) => user.id === 'inactive-1')?.status).toBe('inactive')
     expect(result.users.find((user: { id: string }) => user.id === 'member-1')?.teams).toEqual([
       { id: 'team-1', name: 'Studio' }
     ])

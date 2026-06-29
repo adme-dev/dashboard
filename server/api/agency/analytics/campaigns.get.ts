@@ -17,6 +17,19 @@ import { scoreCampaignHealth } from '~~/server/utils/campaignHealth'
 
 const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform', 'lead_count', 'cost_per_lead', 'reach', 'cost_per_result', 'end_date', 'health_score'] as const
 
+function campaignRowKey(row: {
+  platform?: string | null
+  client_id?: string | null
+  campaign_id?: string | null
+  media_spend_id?: string | null
+  campaign_name?: string | null
+}): string {
+  const platform = row.platform || 'unknown'
+  const client = row.client_id || 'unmapped'
+  const campaign = row.campaign_id || row.media_spend_id || row.campaign_name || 'unknown'
+  return `${platform}:${client}:${campaign}`
+}
+
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const q = getQuery(event)
@@ -72,11 +85,21 @@ export default defineEventHandler(async (event) => {
   try {
     // Count total (only campaigns with spend in the day-accurate window)
     const countResult = await queryOne(`
-      SELECT COUNT(DISTINCT ms.campaign_id) as count
-      FROM media_spend ms
-      JOIN (SELECT media_spend_id FROM daily_spend WHERE spend_date BETWEEN $1 AND $2 GROUP BY media_spend_id) d
-        ON d.media_spend_id = ms.id
-      ${where}
+      SELECT COUNT(*) as count
+      FROM (
+        SELECT 1
+        FROM media_spend ms
+        JOIN (SELECT media_spend_id FROM daily_spend WHERE spend_date BETWEEN $1 AND $2 GROUP BY media_spend_id) d
+          ON d.media_spend_id = ms.id
+        ${where}
+        GROUP BY
+          ms.platform,
+          ms.client_id,
+          COALESCE(ms.campaign_id, ms.id::text),
+          ms.campaign_name,
+          ms.campaign_type,
+          ms.campaign_status
+      ) grouped_campaigns
     `, params)
     const total = Number(countResult?.count || 0)
 
@@ -218,6 +241,7 @@ export default defineEventHandler(async (event) => {
       const deepLinkUrl = buildCampaignDeepLink(r.platform, r.campaign_id, connectionData)
 
       return {
+        rowKey: campaignRowKey(r),
         campaignId: r.campaign_id,
         campaignName: r.campaign_name,
         platform: r.platform,

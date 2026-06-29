@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 type AnomalySeverity = 'critical' | 'warning' | 'info'
 type AnomalyType = 'profitability' | 'revenue' | 'expenses' | 'cashflow' | 'receivables' | 'budget' | 'adspend' | 'clients' | 'transactions' | 'ga4'

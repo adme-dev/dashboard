@@ -244,8 +244,8 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     )
   }
 
-  // XeroFlow — owner + admin only AND Xero connected
-  if (canAccessAdmin.value && xeroConnected.value) {
+  // XeroFlow — finance-capable users AND Xero connected.
+  if (canAccessFinance.value && xeroConnected.value) {
     items.push(
       { type: 'label' as const, label: 'XeroFlow' },
       { label: 'Xero Dashboard', icon: 'i-lucide-layout-dashboard', to: '/xeroflow', onSelect: close },
@@ -350,7 +350,8 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
       icon: 'i-lucide-shield',
       children: [
         { label: 'User Management', icon: 'i-lucide-users', to: '/admin/users', onSelect: close },
-        { label: 'Teams', icon: 'i-lucide-users-round', to: '/admin/teams', onSelect: close }
+        { label: 'Teams', icon: 'i-lucide-users-round', to: '/admin/teams', onSelect: close },
+        { label: 'Roles & Permissions', icon: 'i-lucide-shield-check', to: '/admin/permissions', onSelect: close }
       ]
     })
   }

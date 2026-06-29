@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CalendarDate, today, getLocalTimeZone } from '@internationalized/date'
 
-definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 // ── Types ──
 type TenantPnL = {
