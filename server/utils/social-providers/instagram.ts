@@ -18,8 +18,10 @@ import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaIt
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { buildMessengerSend } from './facebook'
 import { mapIgMediaInsights, mapIgAccountInsights } from '~~/server/utils/socialReporting/normalize'
+import { fetchWithTimeout } from './http'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
+const INBOX_FETCH_TIMEOUT_MS = 12_000
 
 /** Max time (ms) to wait for video container processing */
 const VIDEO_POLL_TIMEOUT_MS = 60_000
@@ -495,11 +497,11 @@ export function mapInstagramMediaComments(api: any): FetchInboxResult {
 
 instagramProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
   const url = new URL(`${GRAPH_API_BASE}/${accountId}/media`)
-  url.searchParams.set('fields', 'id,permalink,comments.limit(50){id,text,username,timestamp,from}')
+  url.searchParams.set('fields', 'id,permalink,comments.limit(50){id,text,username,timestamp,from{id,username}}')
   url.searchParams.set('access_token', accessToken)
   url.searchParams.set('limit', '25')
   if (cursor) url.searchParams.set('after', cursor)
-  const res = await fetch(url)
+  const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
   if (!res.ok) throw new Error(`instagram comments fetchInbox ${res.status}`)
   return mapInstagramMediaComments(await res.json())
 }

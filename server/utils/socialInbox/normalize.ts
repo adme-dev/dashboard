@@ -4,12 +4,18 @@ import type { InboxItem, NormalizedEvent } from './types'
 
 /** Map a provider-fetched InboxItem (already half-normalized) into a NormalizedEvent. */
 export function normalizeInboxItem(platform: string, item: InboxItem): NormalizedEvent {
+  const participant = {
+    ...(item.participant ?? {}),
+    id: item.participant?.id ?? item.authorId,
+    name: item.participant?.name ?? item.authorName,
+  }
+
   return {
     platform,
     channelType: item.channelType,
     platformConversationId: item.platformConversationId,
     permalink: item.permalink,
-    participant: item.participant ?? {},
+    participant,
     rating: item.rating,
     message: {
       platformMessageId: item.platformMessageId,

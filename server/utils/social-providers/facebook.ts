@@ -11,8 +11,10 @@
 import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { mapFbPostInsights, mapFbAccountInsights } from '~~/server/utils/socialReporting/normalize'
+import { fetchWithTimeout } from './http'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
+const INBOX_FETCH_TIMEOUT_MS = 12_000
 
 // ── Error helpers ──────────────────────────────────────────────
 
@@ -287,11 +289,11 @@ export function mapFacebookFeedComments(api: any): FetchInboxResult {
 facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelType }: FetchInboxParams): Promise<FetchInboxResult> => {
   if (channelType === 'comment') {
     const url = new URL(`${GRAPH_API_BASE}/${accountId}/feed`)
-    url.searchParams.set('fields', 'id,permalink_url,comments.limit(50){id,message,from,created_time,permalink_url}')
+  url.searchParams.set('fields', 'id,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url}')
     url.searchParams.set('access_token', accessToken)
     url.searchParams.set('limit', '25')
     if (cursor) url.searchParams.set('after', cursor)
-    const res = await fetch(url)
+    const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
     if (!res.ok) throw new Error(`facebook comments fetchInbox ${res.status}`)
     return mapFacebookFeedComments(await res.json())
   }
@@ -299,11 +301,11 @@ facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelTy
   // Reviews (recommendations). Page comments also have a polling fallback above because webhooks
   // can be unavailable during app-review/subscription gaps.
   const url = new URL(`${GRAPH_API_BASE}/${accountId}/ratings`)
-  url.searchParams.set('fields', 'reviewer,review_text,recommendation_type,created_time,open_graph_story')
+  url.searchParams.set('fields', 'reviewer{id,name},review_text,recommendation_type,created_time,open_graph_story')
   url.searchParams.set('access_token', accessToken)
   url.searchParams.set('limit', '50')
   if (cursor) url.searchParams.set('after', cursor)
-  const res = await fetch(url)
+  const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
   if (!res.ok) throw new Error(`facebook fetchInbox ${res.status}`)
   return mapFacebookRatings(await res.json())
 }

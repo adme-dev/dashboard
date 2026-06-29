@@ -32,6 +32,20 @@ describe('normalizeInboxItem', () => {
     expect(ev.rating).toBe(5)
     expect(ev.message.messageType).toBe('review')
   })
+
+  it('uses the message author as the participant fallback', () => {
+    const item: InboxItem = {
+      channelType: 'comment',
+      platformConversationId: 'post_1',
+      platformMessageId: 'comment_1',
+      authorId: 'author_1',
+      authorName: 'Alex',
+      content: 'Nice car',
+    }
+
+    const ev = normalizeInboxItem('facebook', item)
+    expect(ev.participant).toMatchObject({ id: 'author_1', name: 'Alex' })
+  })
 })
 
 describe('normalizeMetaCommentWebhook', () => {

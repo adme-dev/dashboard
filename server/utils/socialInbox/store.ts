@@ -15,6 +15,9 @@ export interface DbRunner {
 
 /** Ensure the conversation exists (identity/profile fields only — NO counter/last_message bump). */
 async function ensureConversation(db: DbRunner, clientId: string, accountId: string, ev: NormalizedEvent): Promise<string> {
+  const participantId = ev.participant.id ?? ev.message.authorId ?? null
+  const participantName = ev.participant.name ?? ev.message.authorName ?? null
+
   const row = await db.queryOne<{ id: string }>(
     `INSERT INTO social_conversations
        (client_id, social_account_id, platform, channel_type, platform_conversation_id,
@@ -26,9 +29,9 @@ async function ensureConversation(db: DbRunner, clientId: string, accountId: str
        permalink = COALESCE(EXCLUDED.permalink, social_conversations.permalink),
        rating = COALESCE(EXCLUDED.rating, social_conversations.rating),
        updated_at = NOW()
-     RETURNING id`,
+    RETURNING id`,
     [clientId, accountId, ev.platform, ev.channelType, ev.platformConversationId,
-     ev.permalink ?? null, ev.participant.id ?? null, ev.participant.name ?? null, ev.participant.handle ?? null,
+     ev.permalink ?? null, participantId, participantName, ev.participant.handle ?? null,
      ev.rating ?? null],
   )
   if (!row) throw new Error('ensureConversation: no id returned')

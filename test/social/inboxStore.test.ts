@@ -49,6 +49,22 @@ describe('recordInbound', () => {
     expect(fullSql.some(s => /automation_state\s*=\s*'pending'/.test(s))).toBe(true)
   })
 
+  it('uses author identity as the conversation participant fallback', async () => {
+    const params: any[][] = []
+    const db = {
+      queryOne: vi.fn(async (_sql: string, p: any[]) => { params.push(p); return { id: 'conv-1' } }),
+      execute: vi.fn(async () => 0),
+    }
+    await recordInbound(db as any, 'client-1', 'acct-1', {
+      ...ev,
+      participant: {},
+      message: { ...ev.message, authorId: 'author-1', authorName: 'Alex' },
+    })
+
+    expect(params[0]?.[6]).toBe('author-1')
+    expect(params[0]?.[7]).toBe('Alex')
+  })
+
   it('stamps first_response_at (once) on the outbound update', async () => {
     const sqls: string[] = []
     const db = { queryOne: async () => ({ id: 'c1' }), execute: async (sql: string) => { sqls.push(sql); return 1 } }
