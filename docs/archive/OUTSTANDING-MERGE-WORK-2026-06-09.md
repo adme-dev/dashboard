@@ -3,6 +3,8 @@
 **Created:** 2026-06-09
 **Baseline:** `origin/main` = `6be8b385` (local `main` = origin = production, all identical).
 
+> **Superseded for current planning:** use `docs/prd/platform-completion-roadmap-2026-06-29.md` for the current deployed baseline, branch/worktree audit, PRD, roadmap, and implementation task list. This file remains as historical context from the June 9 merge cleanup.
+
 This tracks everything **not yet on `main`** plus the finish-work on features already merged. Work through it top-to-bottom; each item says what it is, where it lives, why it isn't merged, and the steps to land it. Treat each as its own PR — do **not** bulk-merge (the leftover branches are stale/spike/blocked and would conflict or break prod).
 
 ## Already done (reference — no action)
