@@ -84,6 +84,35 @@ describe('agency analytics degraded responses', () => {
     })
   })
 
+  it('returns an empty degraded blended payload when optional analytics sources have incompatible schema', async () => {
+    mockQueryRows.mockRejectedValueOnce(Object.assign(
+      new Error('COALESCE types uuid and character varying cannot be matched in media_spend'),
+      { code: '42804' }
+    ))
+
+    const result = await blendedHandler({
+      query: { startDate: '2026-06-01', endDate: '2026-06-30' },
+    })
+
+    expect(result).toMatchObject({
+      channels: [],
+      totals: {
+        channel: 'All channels',
+        spend: 0,
+        leads: 0,
+        conversions: 0,
+        revenue: 0,
+        sessions: 0,
+        cpl: null,
+        cpa: null,
+        roas: null,
+      },
+      hasGa4: false,
+      conversionBasis: 'platform-reported',
+      degraded: true,
+    })
+  })
+
   it('returns an empty degraded internal benchmark payload when optional analytics tables are unavailable', async () => {
     mockQueryRows.mockRejectedValueOnce(Object.assign(new Error('relation "daily_spend" does not exist'), { code: '42P01' }))
 
@@ -98,6 +127,36 @@ describe('agency analytics degraded responses', () => {
       degraded: true,
     })
     expect(Object.values(result.metrics).every((metric: any) => metric.portfolio.count === 0 && metric.client === null)).toBe(true)
+  })
+
+  it('returns an empty degraded internal benchmark payload when optional analytics sources have incompatible schema', async () => {
+    mockQueryRows.mockRejectedValueOnce(Object.assign(
+      new Error('COALESCE types uuid and character varying cannot be matched in media_spend'),
+      { code: '42804' }
+    ))
+
+    const result = await internalBenchmarksHandler({
+      query: { startDate: '2026-06-01', endDate: '2026-06-30', clientId: 'client-1' },
+    })
+
+    expect(result).toMatchObject({
+      window: { startDate: '2026-06-01', endDate: '2026-06-30' },
+      clientCount: 0,
+      clients: [],
+      degraded: true,
+    })
+    expect(Object.values(result.metrics).every((metric: any) => metric.portfolio.count === 0 && metric.client === null)).toBe(true)
+  })
+
+  it('keeps unrelated analytics failures visible', async () => {
+    mockQueryRows.mockRejectedValueOnce(Object.assign(new Error('connection refused'), { code: '08006' }))
+
+    await expect(blendedHandler({
+      query: { startDate: '2026-06-01', endDate: '2026-06-30' },
+    })).rejects.toMatchObject({
+      statusCode: 500,
+      statusMessage: 'Failed to fetch blended metrics',
+    })
   })
 
   it('rejects literal undefined analytics dates before querying blended metrics', async () => {
