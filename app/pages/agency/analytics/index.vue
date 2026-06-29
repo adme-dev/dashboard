@@ -1,5 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'agency', middleware: ['role-media'] })
+useHead({ title: 'Analytics - XeroFlow Agency' })
 
 const route = useRoute()
 const { filters, apiQuery } = useAnalytics()

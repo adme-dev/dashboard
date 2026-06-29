@@ -68,6 +68,8 @@ const clientName = computed(() => {
   return clients[0]?.clientName || 'Client'
 })
 
+useHead(() => ({ title: `${clientName.value} Analytics - XeroFlow Agency` }))
+
 const metricOptions = [
   { label: 'Spend', value: 'spend' },
   { label: 'Impressions', value: 'impressions' },
