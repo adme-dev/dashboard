@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockRequireAuth = vi.fn()
+const mockGetSelectedTenant = vi.fn()
 const mockQueryRows = vi.fn()
 const mockCachedFetch = vi.fn(async (_event, _key, _ttl, fetcher) => fetcher())
 let mockQuery: Record<string, unknown> = { month: 6, year: 2026 }
@@ -11,6 +12,10 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+}))
+
+vi.mock('~~/server/utils/session', () => ({
+  getSelectedTenant: (...args: unknown[]) => mockGetSelectedTenant(...args),
 }))
 
 vi.mock('~~/server/utils/kv', () => ({
@@ -25,6 +30,7 @@ describe('social account spend endpoints', () => {
     vi.clearAllMocks()
     mockQuery = { month: 6, year: 2026 }
     mockRequireAuth.mockResolvedValue({ id: 'user-1' })
+    mockGetSelectedTenant.mockResolvedValue('tenant-1')
     mockQueryRows
       .mockResolvedValueOnce([
         {
@@ -143,8 +149,57 @@ describe('social account spend endpoints', () => {
         id: 'spend-1',
         campaignName: 'Manual Meta campaign',
         budget: 500,
+        budgetKey: null,
+        budgetActionable: false,
       }),
     ])
+  })
+
+  it('returns a canonical budget key for connected Meta campaign rows', async () => {
+    mockQuery = { connectionId: 'connection-1', month: 6, year: 2026 }
+    mockQueryRows.mockReset()
+    mockQueryRows
+      .mockResolvedValueOnce([
+        {
+          id: 'spend-1',
+          campaign_id: 'campaign-1',
+          campaign_name: 'Connected Meta campaign',
+          actual_spend: 100,
+          budget_allocated: 500,
+          budget_rolling: false,
+          commission_rate: null,
+          impressions: 1000,
+          clicks: 50,
+          conversions: 3,
+          campaign_type: null,
+          campaign_status: 'ACTIVE',
+          synced_at: '2026-06-20T00:00:00.000Z',
+          reach: null,
+          cost_per_result: null,
+          result_type: null,
+          end_date: null,
+          bid_strategy: null,
+          budget_type: null,
+          client_id: 'client-1',
+          connection_id: 'connection-1',
+          budget_account_id: 'act-1',
+          frequency: null,
+          quality_ranking: null,
+          engagement_rate_ranking: null,
+          conversion_rate_ranking: null,
+          impression_share: null,
+        },
+      ])
+      .mockResolvedValueOnce([])
+    const handler = (await import('~~/server/api/agency/social/meta/account-campaigns.get')).default
+
+    const result = await handler({} as any)
+
+    expect(result[0]).toMatchObject({
+      budgetKey: 'tenant:tenant-1|client:client-1|platform:meta|account:act-1|campaign:campaign-1|period:2026-06',
+      budgetActionable: true,
+      budgetIdentityIssues: [],
+    })
   })
 
   it('returns Google campaign rows for a synthetic unlinked unmapped group', async () => {
@@ -179,7 +234,43 @@ describe('social account spend endpoints', () => {
         id: 'spend-1',
         campaignName: 'Manual Google campaign',
         budget: 500,
+        budgetKey: null,
+        budgetActionable: false,
       }),
     ])
+  })
+
+  it('returns a canonical budget key for connected Google campaign rows', async () => {
+    mockQuery = { connectionId: 'connection-1', month: 6, year: 2026 }
+    mockQueryRows.mockReset()
+    mockQueryRows.mockResolvedValueOnce([
+      {
+        id: 'spend-1',
+        campaign_id: 'campaign-1',
+        campaign_name: 'Connected Google campaign',
+        actual_spend: 100,
+        budget_allocated: 500,
+        budget_rolling: false,
+        commission_rate: null,
+        impressions: 1000,
+        clicks: 50,
+        conversions: 3,
+        campaign_type: null,
+        campaign_status: 'ENABLED',
+        synced_at: '2026-06-20T00:00:00.000Z',
+        client_id: 'client-1',
+        connection_id: 'connection-1',
+        budget_account_id: '123',
+      },
+    ])
+    const handler = (await import('~~/server/api/agency/social/google/account-campaigns.get')).default
+
+    const result = await handler({} as any)
+
+    expect(result[0]).toMatchObject({
+      budgetKey: 'tenant:tenant-1|client:client-1|platform:google_ads|account:123|campaign:campaign-1|period:2026-06',
+      budgetActionable: true,
+      budgetIdentityIssues: [],
+    })
   })
 })

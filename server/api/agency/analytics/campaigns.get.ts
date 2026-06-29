@@ -7,6 +7,7 @@
  */
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { getSelectedTenant } from '~~/server/utils/session'
 import { computeMetrics, toNum, toDateOnly, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import { buildCampaignDeepLink } from '~~/server/utils/platformDeepLinks'
 import {
@@ -14,24 +15,13 @@ import {
   leadSourceForPlatformSql
 } from '~~/server/utils/leads/portalAnalytics'
 import { scoreCampaignHealth } from '~~/server/utils/campaignHealth'
+import { buildCampaignBudgetIdentity, normalizeBudgetPlatform } from '~~/server/utils/campaignBudgetIdentity'
 
 const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform', 'lead_count', 'cost_per_lead', 'reach', 'cost_per_result', 'end_date', 'health_score'] as const
 
-function campaignRowKey(row: {
-  platform?: string | null
-  client_id?: string | null
-  campaign_id?: string | null
-  media_spend_id?: string | null
-  campaign_name?: string | null
-}): string {
-  const platform = row.platform || 'unknown'
-  const client = row.client_id || 'unmapped'
-  const campaign = row.campaign_id || row.media_spend_id || row.campaign_name || 'unknown'
-  return `${platform}:${client}:${campaign}`
-}
-
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
+  const tenantId = await getSelectedTenant(event)
   const q = getQuery(event)
 
   const startDate = q.startDate as string
@@ -41,7 +31,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const clientId = q.clientId as string | undefined
-  const platforms = q.platform ? String(q.platform).split(',').map(p => p.trim()).filter(Boolean) : null
+  const platforms = q.platform
+    ? String(q.platform).split(',').map(p => p.trim()).filter(Boolean).map(p => normalizeBudgetPlatform(p))
+    : null
   const requestedSort = String(q.sortBy || '')
   const sortBy = ALLOWED_SORT.includes(requestedSort as typeof ALLOWED_SORT[number])
     ? requestedSort
@@ -89,12 +81,14 @@ export default defineEventHandler(async (event) => {
       FROM (
         SELECT 1
         FROM media_spend ms
+        LEFT JOIN social_connections sc ON ms.connection_id = sc.id
         JOIN (SELECT media_spend_id FROM daily_spend WHERE spend_date BETWEEN $1 AND $2 GROUP BY media_spend_id) d
           ON d.media_spend_id = ms.id
         ${where}
         GROUP BY
           ms.platform,
           ms.client_id,
+          COALESCE(sc.account_id, ms.connection_id::text, 'unlinked'),
           COALESCE(ms.campaign_id, ms.id::text),
           ms.campaign_name,
           ms.campaign_type,
@@ -133,6 +127,7 @@ export default defineEventHandler(async (event) => {
           ms.campaign_status,
           ms.client_id,
           c.name as client_name,
+          COALESCE(sc.account_id, ms.connection_id::text, 'unlinked') as budget_account_group,
           SUM(d.spend) as spend,
           SUM(ms.budget_allocated) as budget,
           BOOL_OR(ms.budget_rolling) as budget_rolling,
@@ -151,6 +146,8 @@ export default defineEventHandler(async (event) => {
           (array_agg(ms.end_date ORDER BY ms.synced_at DESC NULLS LAST))[1] as end_date,
           (array_agg(ms.bid_strategy ORDER BY ms.synced_at DESC NULLS LAST))[1] as bid_strategy,
           (array_agg(ms.budget_type ORDER BY ms.synced_at DESC NULLS LAST))[1] as budget_type,
+          (array_agg(ms.period ORDER BY ms.synced_at DESC NULLS LAST))[1] as budget_period,
+          COUNT(DISTINCT ms.period)::int as budget_period_count,
           MAX(ms.synced_at) as last_synced,
           (array_agg(ms.id ORDER BY ms.synced_at DESC NULLS LAST))[1] as media_spend_id,
           (array_agg(ms.connection_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_id,
@@ -161,7 +158,15 @@ export default defineEventHandler(async (event) => {
         LEFT JOIN agency_clients c ON ms.client_id = c.id
         LEFT JOIN social_connections sc ON ms.connection_id = sc.id
         ${where}
-        GROUP BY ms.campaign_id, ms.campaign_name, ms.platform, ms.campaign_type, ms.campaign_status, ms.client_id, c.name
+        GROUP BY
+          ms.campaign_id,
+          ms.campaign_name,
+          ms.platform,
+          ms.campaign_type,
+          ms.campaign_status,
+          ms.client_id,
+          c.name,
+          COALESCE(sc.account_id, ms.connection_id::text, 'unlinked')
       )
       SELECT
         c.*,
@@ -239,9 +244,27 @@ export default defineEventHandler(async (event) => {
         connectionData = { accountId: r.connection_account_id, metadata }
       }
       const deepLinkUrl = buildCampaignDeepLink(r.platform, r.campaign_id, connectionData)
+      const budgetPeriod = Number(r.budget_period_count) === 1
+        ? r.budget_period
+        : null
+      const budgetIdentity = buildCampaignBudgetIdentity({
+        tenantId,
+        clientId: r.client_id,
+        platform: r.platform,
+        accountId: r.connection_account_id,
+        connectionId: r.connection_id,
+        campaignExternalId: r.campaign_id,
+        campaignName: r.campaign_name,
+        mediaSpendId: r.media_spend_id,
+        period: budgetPeriod
+      })
 
       return {
-        rowKey: campaignRowKey(r),
+        rowKey: budgetIdentity.fallbackKey,
+        budgetKey: budgetIdentity.key,
+        budgetActionable: budgetIdentity.actionable,
+        budgetIdentityIssues: budgetIdentity.issues,
+        budgetPeriod: budgetIdentity.period,
         campaignId: r.campaign_id,
         campaignName: r.campaign_name,
         platform: r.platform,

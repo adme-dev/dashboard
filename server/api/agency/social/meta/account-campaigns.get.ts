@@ -1,7 +1,9 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { getSelectedTenant } from '~~/server/utils/session'
 import { toDateOnly } from '~~/server/utils/analyticsMetrics'
 import { scoreCampaignHealth } from '~~/server/utils/campaignHealth'
+import { buildCampaignBudgetIdentity } from '~~/server/utils/campaignBudgetIdentity'
 
 /**
  * GET /api/agency/social/meta/account-campaigns?connectionId=X&month=Y&year=Z
@@ -9,6 +11,7 @@ import { scoreCampaignHealth } from '~~/server/utils/campaignHealth'
  */
 export default eventHandler(async (event) => {
   await requireAuth(event)
+  const tenantId = await getSelectedTenant(event)
 
   const query = getQuery(event)
   const connectionId = String(query.connectionId || '')
@@ -32,7 +35,9 @@ export default eventHandler(async (event) => {
              conversions, campaign_type, campaign_status, synced_at,
              reach, cost_per_result, result_type, end_date, bid_strategy, budget_type,
              client_id, frequency, quality_ranking, engagement_rate_ranking,
-             conversion_rate_ranking, impression_share
+             conversion_rate_ranking, impression_share,
+             connection_id::text as connection_id,
+             (SELECT account_id FROM social_connections sc WHERE sc.id = media_spend.connection_id) as budget_account_id
            FROM media_spend
            WHERE connection_id IS NULL AND period = $1 AND platform = 'meta'
              AND ${clientId ? 'client_id = $2::uuid' : 'client_id IS NULL'}
@@ -46,7 +51,9 @@ export default eventHandler(async (event) => {
            conversions, campaign_type, campaign_status, synced_at,
            reach, cost_per_result, result_type, end_date, bid_strategy, budget_type,
            client_id, frequency, quality_ranking, engagement_rate_ranking,
-           conversion_rate_ranking, impression_share
+           conversion_rate_ranking, impression_share,
+           connection_id::text as connection_id,
+           (SELECT account_id FROM social_connections sc WHERE sc.id = media_spend.connection_id) as budget_account_id
          FROM media_spend
          WHERE connection_id = $1 AND period = $2 AND platform = 'meta'
          ORDER BY actual_spend DESC`,
@@ -74,6 +81,8 @@ export default eventHandler(async (event) => {
     bid_strategy: string | null
     budget_type: string | null
     client_id: string | null
+    connection_id: string | null
+    budget_account_id: string | null
     frequency: number | null
     quality_ranking: string | null
     engagement_rate_ranking: string | null
@@ -89,45 +98,63 @@ export default eventHandler(async (event) => {
     : []
   const targetByKey = new Map(targetRows.map(t => [`${t.client_id}|${t.result_type}`, t]))
 
-  return rows.map(r => ({
-    id: r.id,
-    campaignId: r.campaign_id || r.id,
-    campaignName: r.campaign_name,
-    spend: r.actual_spend,
-    budget: r.budget_allocated,
-    rolling: r.budget_rolling,
-    commissionRate: r.commission_rate || 0,
-    impressions: r.impressions,
-    clicks: r.clicks,
-    conversions: r.conversions,
-    campaignType: r.campaign_type,
-    campaignStatus: r.campaign_status,
-    syncedAt: r.synced_at,
-    reach: r.reach != null ? Number(r.reach) : null,
-    costPerResult: r.cost_per_result != null ? Number(r.cost_per_result) : null,
-    resultType: r.result_type,
-    endDate: toDateOnly(r.end_date),
-    bidStrategy: r.bid_strategy,
-    budgetType: r.budget_type,
-    health: scoreCampaignHealth({
+  return rows.map((r) => {
+    const budgetIdentity = buildCampaignBudgetIdentity({
+      tenantId,
+      clientId: r.client_id,
       platform: 'meta',
-      costPerResult: r.cost_per_result == null ? null : Number(r.cost_per_result),
-      resultCount: Number(r.conversions) || 0,
-      spend: Number(r.actual_spend) || 0,
-      ctr: Number(r.impressions) > 0 ? (Number(r.clicks) / Number(r.impressions)) * 100 : null,
-      frequency: r.frequency == null ? null : Number(r.frequency),
-      qualityRanking: r.quality_ranking,
-      engagementRateRanking: r.engagement_rate_ranking,
-      conversionRateRanking: r.conversion_rate_ranking,
-      impressionShare: r.impression_share == null ? null : Number(r.impression_share),
-      target: (() => {
-        const t = r.result_type ? targetByKey.get(`${r.client_id}|${r.result_type}`) : null
-        return t ? {
-          targetCostPerResult: Number(t.target_cost_per_result),
-          targetCtr: t.target_ctr == null ? null : Number(t.target_ctr),
-          maxFrequency: t.max_frequency == null ? null : Number(t.max_frequency),
-        } : null
-      })(),
-    }),
-  }))
+      accountId: r.budget_account_id,
+      connectionId: r.connection_id,
+      campaignExternalId: r.campaign_id,
+      campaignName: r.campaign_name,
+      mediaSpendId: r.id,
+      period
+    })
+
+    return {
+      id: r.id,
+      budgetKey: budgetIdentity.key,
+      budgetActionable: budgetIdentity.actionable,
+      budgetIdentityIssues: budgetIdentity.issues,
+      budgetPeriod: budgetIdentity.period,
+      campaignId: r.campaign_id || r.id,
+      campaignName: r.campaign_name,
+      spend: r.actual_spend,
+      budget: r.budget_allocated,
+      rolling: r.budget_rolling,
+      commissionRate: r.commission_rate || 0,
+      impressions: r.impressions,
+      clicks: r.clicks,
+      conversions: r.conversions,
+      campaignType: r.campaign_type,
+      campaignStatus: r.campaign_status,
+      syncedAt: r.synced_at,
+      reach: r.reach != null ? Number(r.reach) : null,
+      costPerResult: r.cost_per_result != null ? Number(r.cost_per_result) : null,
+      resultType: r.result_type,
+      endDate: toDateOnly(r.end_date),
+      bidStrategy: r.bid_strategy,
+      budgetType: r.budget_type,
+      health: scoreCampaignHealth({
+        platform: 'meta',
+        costPerResult: r.cost_per_result == null ? null : Number(r.cost_per_result),
+        resultCount: Number(r.conversions) || 0,
+        spend: Number(r.actual_spend) || 0,
+        ctr: Number(r.impressions) > 0 ? (Number(r.clicks) / Number(r.impressions)) * 100 : null,
+        frequency: r.frequency == null ? null : Number(r.frequency),
+        qualityRanking: r.quality_ranking,
+        engagementRateRanking: r.engagement_rate_ranking,
+        conversionRateRanking: r.conversion_rate_ranking,
+        impressionShare: r.impression_share == null ? null : Number(r.impression_share),
+        target: (() => {
+          const t = r.result_type ? targetByKey.get(`${r.client_id}|${r.result_type}`) : null
+          return t ? {
+            targetCostPerResult: Number(t.target_cost_per_result),
+            targetCtr: t.target_ctr == null ? null : Number(t.target_ctr),
+            maxFrequency: t.max_frequency == null ? null : Number(t.max_frequency),
+          } : null
+        })(),
+      }),
+    }
+  })
 })

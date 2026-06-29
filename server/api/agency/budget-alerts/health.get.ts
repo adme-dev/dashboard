@@ -9,9 +9,12 @@
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { computeCampaignBudgetPacing, statusSeverityRank } from '~~/server/utils/budgetPacing'
+import { getSelectedTenant } from '~~/server/utils/session'
+import { buildCampaignBudgetIdentity } from '~~/server/utils/campaignBudgetIdentity'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
+  const tenantId = await getSelectedTenant(event)
   const query = getQuery(event)
 
   const now = new Date()
@@ -109,6 +112,8 @@ export default defineEventHandler(async (event) => {
         ms.id::text as media_spend_id,
         ms.campaign_id,
         COALESCE(ms.campaign_name, 'Unnamed campaign') as campaign_name,
+        ms.connection_id::text as connection_id,
+        sc.account_id as budget_account_id,
         COALESCE(ac.id::text, 'unmapped') as client_id,
         COALESCE(ac.name, 'Unmapped') as client_name,
         ms.platform,
@@ -123,9 +128,10 @@ export default defineEventHandler(async (event) => {
         MAX(ms.synced_at)::text as last_synced_at
       FROM media_spend ms
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
+      LEFT JOIN social_connections sc ON sc.id = ms.connection_id
       LEFT JOIN daily_spend ds ON ds.media_spend_id = ms.id
       WHERE ms.period = $1
-      GROUP BY ms.id, ac.id, ac.name
+      GROUP BY ms.id, ac.id, ac.name, sc.account_id
     `, [period])
 
     const campaigns = campaignRows.map((r: any) => {
@@ -139,9 +145,24 @@ export default defineEventHandler(async (event) => {
         campaignStatus: r.campaign_status,
         endDate: r.end_date
       })
+      const budgetIdentity = buildCampaignBudgetIdentity({
+        tenantId,
+        clientId: r.client_id === 'unmapped' ? null : r.client_id,
+        platform: r.platform,
+        accountId: r.budget_account_id,
+        connectionId: r.connection_id,
+        campaignExternalId: r.campaign_id,
+        campaignName: r.campaign_name,
+        mediaSpendId: r.media_spend_id,
+        period
+      })
 
       return {
         mediaSpendId: r.media_spend_id,
+        budgetKey: budgetIdentity.key,
+        budgetActionable: budgetIdentity.actionable,
+        budgetIdentityIssues: budgetIdentity.issues,
+        budgetPeriod: budgetIdentity.period,
         campaignId: r.campaign_id,
         campaignName: r.campaign_name,
         clientId: r.client_id,

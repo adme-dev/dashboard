@@ -12,6 +12,7 @@ const testGlobal = globalThis as typeof globalThis & {
 }
 
 const mockRequireAuth = vi.fn()
+const mockGetSelectedTenant = vi.fn()
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
 
@@ -28,12 +29,17 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
 }))
 
+vi.mock('~~/server/utils/session', () => ({
+  getSelectedTenant: (...args: unknown[]) => mockGetSelectedTenant(...args),
+}))
+
 const { default: campaignsHandler } = await import('../../../../server/api/agency/analytics/campaigns.get')
 
 describe('GET /api/agency/analytics/campaigns', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRequireAuth.mockResolvedValue({ id: 'user-1' })
+    mockGetSelectedTenant.mockResolvedValue('tenant-1')
     mockQueryOne.mockResolvedValue({ count: '2' })
     mockQueryRows
       .mockResolvedValueOnce([
@@ -66,6 +72,9 @@ describe('GET /api/agency/analytics/campaigns', () => {
           last_synced: '2026-06-29T00:00:00.000Z',
           media_spend_id: 'spend-meta',
           connection_id: 'conn-meta',
+          budget_account_id: 'act-meta',
+          budget_period: '2026-06',
+          budget_period_count: '1',
           connection_account_id: 'act-meta',
           connection_metadata: '{}',
           lead_count: '2',
@@ -105,6 +114,9 @@ describe('GET /api/agency/analytics/campaigns', () => {
           last_synced: '2026-06-29T00:00:00.000Z',
           media_spend_id: 'spend-google',
           connection_id: 'conn-google',
+          budget_account_id: '123',
+          budget_period: '2026-06',
+          budget_period_count: '1',
           connection_account_id: '123',
           connection_metadata: '{}',
           lead_count: '0',
@@ -132,8 +144,13 @@ describe('GET /api/agency/analytics/campaigns', () => {
     ])
     expect(new Set(result.campaigns.map((row: any) => row.rowKey)).size).toBe(2)
     expect(result.campaigns.map((row: any) => row.rowKey)).toEqual([
-      'meta:client-1:shared-campaign-id',
-      'google_ads:client-2:shared-campaign-id',
+      'tenant:tenant-1|client:client-1|platform:meta|account:act-meta|campaign:shared-campaign-id|period:2026-06',
+      'tenant:tenant-1|client:client-2|platform:google_ads|account:123|campaign:shared-campaign-id|period:2026-06',
     ])
+    expect(result.campaigns.map((row: any) => row.budgetKey)).toEqual([
+      'tenant:tenant-1|client:client-1|platform:meta|account:act-meta|campaign:shared-campaign-id|period:2026-06',
+      'tenant:tenant-1|client:client-2|platform:google_ads|account:123|campaign:shared-campaign-id|period:2026-06',
+    ])
+    expect(result.campaigns.every((row: any) => row.budgetActionable === true)).toBe(true)
   })
 })
