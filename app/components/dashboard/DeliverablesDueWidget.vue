@@ -28,31 +28,28 @@ const tasksByDay = computed(() => {
 const totalDueThisWeek = computed(() =>
   tasksByDay.value.reduce((sum, day) => sum + day.tasks.length, 0)
 )
+
+const badges = computed(() => {
+  const today = tasksByDay.value.find(d => d.isToday)?.tasks.length || 0
+  const out: { label: string | number, color?: any }[] = [{ label: `${totalDueThisWeek.value} this week`, color: 'info' }]
+  if (today) out.unshift({ label: `${today} today`, color: 'warning' })
+  return out
+})
 </script>
 
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-calendar-clock" class="w-4 h-4 text-[var(--ui-text-muted)]" />
-          <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Due This Week</h3>
-          <UBadge v-if="totalDueThisWeek" color="info" variant="subtle" size="xs">{{ totalDueThisWeek }}</UBadge>
-        </div>
-        <UButton to="/agency/tasks" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
-          All Tasks
-        </UButton>
-      </div>
-    </template>
-
-    <div v-if="status === 'pending'" class="space-y-3">
-      <USkeleton v-for="i in 5" :key="i" class="h-10 w-full rounded" />
-    </div>
-    <div v-else-if="!totalDueThisWeek" class="text-center py-6 text-[var(--ui-text-muted)]">
-      <UIcon name="i-lucide-calendar-check" class="w-8 h-8 mx-auto mb-2 text-emerald-500 opacity-60" />
-      <p class="text-sm">Nothing due this week</p>
-    </div>
-    <div v-else class="space-y-3">
+  <DashboardWidgetShell
+    title="Due This Week"
+    icon="i-lucide-calendar-clock"
+    :badges="badges"
+    to="/agency/tasks"
+    view-all-label="All tasks"
+    :loading="status === 'pending'"
+    :is-empty="!totalDueThisWeek"
+    empty-text="Nothing due this week"
+    empty-icon="i-lucide-calendar-check"
+  >
+    <div class="space-y-3">
       <div v-for="day in tasksByDay" :key="day.label">
         <div v-if="day.tasks.length" class="space-y-1">
           <p
@@ -78,5 +75,5 @@ const totalDueThisWeek = computed(() =>
         </div>
       </div>
     </div>
-  </UCard>
+  </DashboardWidgetShell>
 </template>

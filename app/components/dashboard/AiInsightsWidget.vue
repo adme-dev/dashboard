@@ -87,48 +87,25 @@ function relativeTime(dateStr: string): string {
     return dateStr
   }
 }
+
+const badges = computed(() => {
+  const unread = reports.value.filter(r => r.isRead === false).length
+  return unread ? [{ label: `${unread} unread`, color: 'info' as const }] : []
+})
 </script>
 
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-brain" class="w-4 h-4 text-[var(--ui-text-muted)]" />
-          <h3 class="font-semibold text-[var(--ui-text-highlighted)]">AI Insights</h3>
-        </div>
-        <UButton
-          to="/agency/ai/chat"
-          variant="link"
-          color="neutral"
-          size="xs"
-          trailing-icon="i-lucide-arrow-right"
-        >
-          View All
-        </UButton>
-      </div>
-    </template>
-
-    <!-- Loading -->
-    <div v-if="status === 'pending'" class="space-y-3">
-      <div v-for="i in 5" :key="i" class="flex items-start gap-3">
-        <USkeleton class="h-7 w-7 rounded-full shrink-0" />
-        <div class="flex-1 space-y-1.5">
-          <USkeleton class="h-4 w-3/4 rounded" />
-          <USkeleton class="h-3 w-full rounded" />
-          <USkeleton class="h-3 w-1/3 rounded" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Empty state -->
-    <div v-else-if="!reports.length" class="text-center py-6">
-      <UIcon name="i-lucide-sparkles" class="w-8 h-8 text-[var(--ui-text-dimmed)] mx-auto mb-2" />
-      <p class="text-sm text-[var(--ui-text-muted)]">No AI insights yet</p>
-    </div>
-
-    <!-- Insights list -->
-    <div v-else class="space-y-1">
+  <DashboardWidgetShell
+    title="AI Insights"
+    icon="i-lucide-brain"
+    :badges="badges"
+    to="/agency/ai/chat"
+    :loading="status === 'pending'"
+    :is-empty="!reports.length"
+    empty-text="No AI insights yet"
+    empty-icon="i-lucide-sparkles"
+  >
+    <div class="space-y-1">
       <NuxtLink
         v-for="report in reports"
         :key="report.id"
@@ -181,7 +158,7 @@ function relativeTime(dateStr: string): string {
         />
       </NuxtLink>
     </div>
-  </UCard>
+  </DashboardWidgetShell>
 </template>
 
 <style scoped>

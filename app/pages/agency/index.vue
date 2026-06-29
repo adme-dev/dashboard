@@ -6,7 +6,7 @@ definePageMeta({ title: 'Dashboard' })
 const { user, isManager, isAdmin } = useAuth()
 const {
   activeWidgets, pinnedItems, availableWidgets, widgetCategories, allWidgets,
-  isVisible, toggleWidget, pinItem, unpinItem,
+  isVisible, widgetOrder, toggleWidget, pinItem, unpinItem,
   loadPreferences, savePreferences, resetToDefaults, applyPersona, saving,
   loaded: prefsLoaded, preferences,
 } = useDashboardWidgets()
@@ -216,6 +216,7 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
             <UButton color="neutral" variant="ghost" icon="i-lucide-settings-2" size="sm" @click="showCustomize = true">
               Customize
             </UButton>
+            <DashboardArranger />
             <UButton to="/agency/workflow" color="neutral" variant="outline" icon="i-lucide-kanban" size="sm">
               Workflow
             </UButton>
@@ -305,10 +306,10 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
         <!-- Left Column (2/3) -->
-        <div class="xl:col-span-2 space-y-6">
+        <div class="xl:col-span-2 flex flex-col gap-6">
 
           <!-- My Work -->
-          <UCard v-if="isVisible('my-work')">
+          <UCard v-if="isVisible('my-work')" :style="{ order: widgetOrder('my-work') }">
             <template #header>
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -440,7 +441,7 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Boards -->
-          <UCard v-if="isVisible('boards')">
+          <UCard v-if="isVisible('boards')" :style="{ order: widgetOrder('boards') }">
             <template #header>
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -493,9 +494,9 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
 
           <!-- Completion Trends Chart -->
           <ClientOnly v-if="isVisible('completion-trends')">
-            <DashboardCompletionTrendsChart />
+            <DashboardCompletionTrendsChart :style="{ order: widgetOrder('completion-trends') }" />
             <template #fallback>
-              <UCard>
+              <UCard :style="{ order: widgetOrder('completion-trends') }">
                 <USkeleton class="w-full h-[200px] rounded-lg" />
               </UCard>
             </template>
@@ -503,9 +504,9 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
 
           <!-- Workload Overview Chart -->
           <ClientOnly v-if="isVisible('workload-overview')">
-            <DashboardWorkloadChart />
+            <DashboardWorkloadChart :style="{ order: widgetOrder('workload-overview') }" />
             <template #fallback>
-              <UCard>
+              <UCard :style="{ order: widgetOrder('workload-overview') }">
                 <USkeleton class="w-full h-[200px] rounded-lg" />
               </UCard>
             </template>
@@ -513,16 +514,16 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
 
           <!-- Job Types Chart -->
           <ClientOnly v-if="isVisible('job-types')">
-            <DashboardJobTypesChart />
+            <DashboardJobTypesChart :style="{ order: widgetOrder('job-types') }" />
             <template #fallback>
-              <UCard>
+              <UCard :style="{ order: widgetOrder('job-types') }">
                 <USkeleton class="w-full h-[200px] rounded-lg" />
               </UCard>
             </template>
           </ClientOnly>
 
           <!-- Workspaces -->
-          <UCard v-if="isVisible('workspaces')">
+          <UCard v-if="isVisible('workspaces')" :style="{ order: widgetOrder('workspaces') }">
             <template #header>
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -554,7 +555,7 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Financial KPIs -->
-          <UCard v-if="isVisible('financial-kpis')">
+          <UCard v-if="isVisible('financial-kpis')" :style="{ order: widgetOrder('financial-kpis') }">
             <template #header>
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-bar-chart-3" class="w-4 h-4 text-[var(--ui-text-muted)]" />
@@ -575,45 +576,45 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Client Health (left) -->
-          <DashboardClientHealthWidget v-if="isVisible('client-health')" />
+          <DashboardClientHealthWidget v-if="isVisible('client-health')" :style="{ order: widgetOrder('client-health') }" />
 
           <!-- Briefs Pipeline (left) -->
-          <DashboardBriefsPipelineWidget v-if="isVisible('briefs-pipeline')" />
+          <DashboardBriefsPipelineWidget v-if="isVisible('briefs-pipeline')" :style="{ order: widgetOrder('briefs-pipeline') }" />
 
           <!-- Spend Pacing (left) -->
-          <DashboardSpendPacingWidget v-if="isVisible('spend-pacing')" />
+          <DashboardSpendPacingWidget v-if="isVisible('spend-pacing')" :style="{ order: widgetOrder('spend-pacing') }" />
 
           <!-- Platform Performance (left, client-only) -->
           <ClientOnly v-if="isVisible('platform-performance')">
-            <DashboardPlatformPerformanceWidget />
+            <DashboardPlatformPerformanceWidget :style="{ order: widgetOrder('platform-performance') }" />
             <template #fallback>
-              <UCard>
+              <UCard :style="{ order: widgetOrder('platform-performance') }">
                 <USkeleton class="w-full h-[200px] rounded-lg" />
               </UCard>
             </template>
           </ClientOnly>
 
           <!-- Team Capacity (left) -->
-          <DashboardTeamCapacityWidget v-if="isVisible('team-capacity')" />
+          <DashboardTeamCapacityWidget v-if="isVisible('team-capacity')" :style="{ order: widgetOrder('team-capacity') }" />
 
           <!-- Deliverables Due This Week (left) -->
-          <DashboardDeliverablesDueWidget v-if="isVisible('deliverables-due')" />
+          <DashboardDeliverablesDueWidget v-if="isVisible('deliverables-due')" :style="{ order: widgetOrder('deliverables-due') }" />
 
           <!-- Revenue Snapshot (left) -->
-          <DashboardRevenueSnapshotWidget v-if="isVisible('revenue-snapshot')" />
+          <DashboardRevenueSnapshotWidget v-if="isVisible('revenue-snapshot')" :style="{ order: widgetOrder('revenue-snapshot') }" />
 
           <!-- Project Profitability (left) -->
-          <DashboardProjectProfitabilityWidget v-if="isVisible('project-profitability')" />
+          <DashboardProjectProfitabilityWidget v-if="isVisible('project-profitability')" :style="{ order: widgetOrder('project-profitability') }" />
         </div>
 
         <!-- Right Column (1/3) -->
-        <div class="space-y-6">
+        <div class="flex flex-col gap-6">
 
           <!-- Notifications -->
-          <DashboardNotifications v-if="isVisible('notifications')" />
+          <DashboardNotifications v-if="isVisible('notifications')" :style="{ order: widgetOrder('notifications') }" />
 
           <!-- Quick Actions -->
-          <UCard v-if="isVisible('quick-actions')">
+          <UCard v-if="isVisible('quick-actions')" :style="{ order: widgetOrder('quick-actions') }">
             <template #header>
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-zap" class="w-4 h-4 text-[var(--ui-text-muted)]" />
@@ -634,7 +635,7 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Time This Week -->
-          <UCard v-if="isVisible('time-this-week')">
+          <UCard v-if="isVisible('time-this-week')" :style="{ order: widgetOrder('time-this-week') }">
             <template #header>
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -659,7 +660,7 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Team Utilization -->
-          <UCard v-if="isVisible('team-utilization')">
+          <UCard v-if="isVisible('team-utilization')" :style="{ order: widgetOrder('team-utilization') }">
             <template #header>
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -696,7 +697,7 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Budget Alerts -->
-          <UCard v-if="isVisible('budget-alerts') && budgetAlerts.length">
+          <UCard v-if="isVisible('budget-alerts') && budgetAlerts.length" :style="{ order: widgetOrder('budget-alerts') }">
             <template #header>
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-shield-alert" class="w-4 h-4 text-amber-500" />
@@ -722,40 +723,40 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Ad Spend Widget -->
-          <DashboardAdSpendWidget v-if="isVisible('ad-spend')" />
+          <DashboardAdSpendWidget v-if="isVisible('ad-spend')" :style="{ order: widgetOrder('ad-spend') }" />
 
           <!-- Proofs Pending (right) -->
-          <DashboardProofsPendingWidget v-if="isVisible('proofs-pending')" />
+          <DashboardProofsPendingWidget v-if="isVisible('proofs-pending')" :style="{ order: widgetOrder('proofs-pending') }" />
 
           <!-- My Clients (right) -->
-          <DashboardMyClientsWidget v-if="isVisible('my-clients')" />
+          <DashboardMyClientsWidget v-if="isVisible('my-clients')" :style="{ order: widgetOrder('my-clients') }" />
 
           <!-- Campaign Alerts (right) -->
-          <DashboardCampaignAlertsWidget v-if="isVisible('campaign-alerts')" />
+          <DashboardCampaignAlertsWidget v-if="isVisible('campaign-alerts')" :style="{ order: widgetOrder('campaign-alerts') }" />
 
           <!-- Unassigned Work (right) -->
-          <DashboardUnassignedWorkWidget v-if="isVisible('unassigned-work')" />
+          <DashboardUnassignedWorkWidget v-if="isVisible('unassigned-work')" :style="{ order: widgetOrder('unassigned-work') }" />
 
           <!-- Blocked Tasks (right) -->
-          <DashboardBlockedTasksWidget v-if="isVisible('blocked-tasks')" />
+          <DashboardBlockedTasksWidget v-if="isVisible('blocked-tasks')" :style="{ order: widgetOrder('blocked-tasks') }" />
 
           <!-- Cash Position (right) -->
-          <DashboardCashPositionWidget v-if="isVisible('cash-position')" />
+          <DashboardCashPositionWidget v-if="isVisible('cash-position')" :style="{ order: widgetOrder('cash-position') }" />
 
           <!-- Receivables Aging (right) -->
-          <DashboardReceivablesAgingWidget v-if="isVisible('receivables-aging')" />
+          <DashboardReceivablesAgingWidget v-if="isVisible('receivables-aging')" :style="{ order: widgetOrder('receivables-aging') }" />
 
           <!-- Overhead Burn (right) -->
-          <DashboardOverheadBurnWidget v-if="isVisible('overhead-burn')" />
+          <DashboardOverheadBurnWidget v-if="isVisible('overhead-burn')" :style="{ order: widgetOrder('overhead-burn') }" />
 
           <!-- Recent Creatives (right) -->
-          <DashboardRecentCreativesWidget v-if="isVisible('recent-creatives')" />
+          <DashboardRecentCreativesWidget v-if="isVisible('recent-creatives')" :style="{ order: widgetOrder('recent-creatives') }" />
 
           <!-- AI Insights (right) -->
-          <DashboardAiInsightsWidget v-if="isVisible('ai-insights')" />
+          <DashboardAiInsightsWidget v-if="isVisible('ai-insights')" :style="{ order: widgetOrder('ai-insights') }" />
 
           <!-- AI Training (right) -->
-          <DashboardAiTrainingWidget v-if="isVisible('ai-training')" />
+          <DashboardAiTrainingWidget v-if="isVisible('ai-training')" :style="{ order: widgetOrder('ai-training') }" />
 
         </div>
       </div>

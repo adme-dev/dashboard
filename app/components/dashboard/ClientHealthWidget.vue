@@ -1,13 +1,18 @@
 <script setup lang="ts">
 const { data, status } = await useFetch('/api/agency/clients')
 
-const clients = computed(() => {
-  // /api/agency/clients returns a bare array (not { clients }); tolerate both shapes.
+const CAP = 5
+// /api/agency/clients returns a bare array (not { clients }); tolerate both shapes.
+const allClients = computed(() => {
   const raw = Array.isArray(data.value) ? (data.value as any[]) : ((data.value as any)?.clients || [])
-  return raw.slice(0, 8).map((c: any) => ({
-    ...c,
-    health: getHealth(c),
-  }))
+  return raw.map((c: any) => ({ ...c, health: getHealth(c) }))
+})
+const clients = computed(() => allClients.value.slice(0, CAP))
+const badges = computed(() => {
+  const atRisk = allClients.value.filter((c: any) => c.health === 'red').length
+  const out: { label: string | number, color?: any }[] = [{ label: `${allClients.value.length} total` }]
+  if (atRisk) out.push({ label: `${atRisk} at risk`, color: 'error' })
+  return out
 })
 
 function getHealth(client: any) {
@@ -34,27 +39,19 @@ const formatCurrency = (v: number) =>
 </script>
 
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-heart-pulse" class="w-4 h-4 text-[var(--ui-text-muted)]" />
-          <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Client Health</h3>
-        </div>
-        <UButton to="/agency/clients" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
-          All Clients
-        </UButton>
-      </div>
-    </template>
-
-    <div v-if="status === 'pending'" class="space-y-3">
-      <USkeleton v-for="i in 5" :key="i" class="h-10 w-full rounded" />
-    </div>
-    <div v-else-if="!clients.length" class="text-center py-6 text-[var(--ui-text-muted)]">
-      <UIcon name="i-lucide-heart-pulse" class="w-8 h-8 mx-auto mb-2 opacity-40" />
-      <p class="text-sm">No client data available</p>
-    </div>
-    <div v-else class="divide-y divide-[var(--ui-border)]">
+  <DashboardWidgetShell
+    title="Client Health"
+    icon="i-lucide-heart-pulse"
+    :badges="badges"
+    to="/agency/clients"
+    view-all-label="All clients"
+    :loading="status === 'pending'"
+    :is-empty="!clients.length"
+    empty-text="No client data available"
+    empty-icon="i-lucide-heart-pulse"
+    :more-count="Math.max(allClients.length - clients.length, 0)"
+  >
+    <div class="divide-y divide-[var(--ui-border)]">
       <div v-for="client in clients" :key="client.id" class="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
         <div class="w-2 h-2 rounded-full shrink-0" :class="healthColors[client.health]" />
         <div class="flex-1 min-w-0">
@@ -69,5 +66,5 @@ const formatCurrency = (v: number) =>
         </div>
       </div>
     </div>
-  </UCard>
+  </DashboardWidgetShell>
 </template>

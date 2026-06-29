@@ -372,7 +372,7 @@
 import { h } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 
-definePageMeta({ middleware: ['role-admin'] })
+definePageMeta({ layout: 'admin', middleware: ['role-admin'] })
 
 interface User {
   id: string
@@ -632,7 +632,7 @@ const saveTeams = async () => {
 const toggleUserStatus = async (user: User) => {
   try {
     const newStatus = user.status === 'active' ? false : true
-    await $fetch(`/api/admin/users/${user.id}`, {
+    await $fetch(`/api/auth/users/${user.id}/status`, {
       method: 'PATCH',
       body: { isActive: newStatus }
     })
@@ -654,7 +654,7 @@ const removeUser = async () => {
   if (!userToRemove.value) return
 
   try {
-    await $fetch(`/api/admin/users/${userToRemove.value.id}`, {
+    await $fetch(`/api/auth/users/${userToRemove.value.id}/status`, {
       method: 'PATCH',
       body: { isActive: false }
     })

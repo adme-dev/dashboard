@@ -2,10 +2,12 @@
 import { format, parseISO } from 'date-fns'
 
 const { data, status } = await useFetch('/api/agency/tasks', {
-  query: { excludeCompleted: 'true', limit: 10 },
+  // Fetch a wider window than we show so the unassigned count/badge is honest.
+  query: { excludeCompleted: 'true', limit: 50 },
 })
 
-const unassignedTasks = computed(() => {
+const CAP = 5
+const allUnassigned = computed(() => {
   const tasks = (data.value as any)?.tasks || []
   return tasks
     .filter((t: any) => !t.assigneeId && !t.assignee)
@@ -17,7 +19,13 @@ const unassignedTasks = computed(() => {
       if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
       return 0
     })
-    .slice(0, 10)
+})
+const unassignedTasks = computed(() => allUnassigned.value.slice(0, CAP))
+const badges = computed(() => {
+  const urgent = allUnassigned.value.filter((t: any) => t.priority === 'urgent' || t.priority === 'high').length
+  const out: { label: string | number, color?: any }[] = [{ label: `${allUnassigned.value.length} unassigned`, color: 'warning' }]
+  if (urgent) out.push({ label: `${urgent} urgent`, color: 'error' })
+  return out
 })
 
 const priorityColors: Record<string, string> = {
@@ -35,28 +43,19 @@ const priorityIcons: Record<string, string> = {
 </script>
 
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-inbox" class="w-4 h-4 text-[var(--ui-text-muted)]" />
-          <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Unassigned Work</h3>
-          <UBadge v-if="unassignedTasks.length" color="warning" variant="subtle" size="xs">{{ unassignedTasks.length }}</UBadge>
-        </div>
-        <UButton to="/agency/tasks" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
-          All Tasks
-        </UButton>
-      </div>
-    </template>
-
-    <div v-if="status === 'pending'" class="space-y-3">
-      <USkeleton v-for="i in 5" :key="i" class="h-10 w-full rounded" />
-    </div>
-    <div v-else-if="!unassignedTasks.length" class="text-center py-6 text-[var(--ui-text-muted)]">
-      <UIcon name="i-lucide-check-circle" class="w-8 h-8 mx-auto mb-2 text-emerald-500 opacity-60" />
-      <p class="text-sm">All tasks assigned</p>
-    </div>
-    <div v-else class="space-y-1">
+  <DashboardWidgetShell
+    title="Unassigned Work"
+    icon="i-lucide-inbox"
+    :badges="badges"
+    to="/agency/tasks"
+    view-all-label="All tasks"
+    :loading="status === 'pending'"
+    :is-empty="!unassignedTasks.length"
+    empty-text="All tasks assigned"
+    empty-icon="i-lucide-check-circle"
+    :more-count="Math.max(allUnassigned.length - unassignedTasks.length, 0)"
+  >
+    <div class="space-y-1">
       <div v-for="task in unassignedTasks" :key="task.id" class="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-[var(--ui-bg-elevated)] transition-colors">
         <UIcon :name="priorityIcons[task.priority] || 'i-lucide-minus'" class="w-4 h-4 shrink-0" :class="priorityColors[task.priority]" />
         <div class="flex-1 min-w-0">
@@ -69,5 +68,5 @@ const priorityIcons: Record<string, string> = {
         <UBadge v-if="task.department?.name" variant="subtle" color="neutral" size="xs">{{ task.department.name }}</UBadge>
       </div>
     </div>
-  </UCard>
+  </DashboardWidgetShell>
 </template>

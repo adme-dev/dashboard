@@ -69,13 +69,6 @@ async function sendInvite() {
   }
 }
 
-// Role options (dynamic from API)
-const { data: rolesApiData } = useFetch<{ roles: Array<{ name: string; slug: string }> }>('/api/admin/roles')
-const roleOptions = computed(() => {
-  if (!rolesApiData.value?.roles) return [{ value: 'member', label: 'Member' }]
-  return rolesApiData.value.roles.map(r => ({ value: r.slug, label: r.name }))
-})
-
 // Resend invitation
 async function resendInvitation(inviteId: string) {
   try {
@@ -102,7 +95,7 @@ async function revokeInvitation(inviteId: string) {
   <div>
     <UPageCard
       title="Team Members"
-      description="Manage your team members and their roles."
+      description="View team members and invite standard members. Role changes are managed under Admin > Users."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
@@ -214,15 +207,6 @@ async function revokeInvitation(inviteId: string) {
                 type="email"
                 placeholder="colleague@example.com"
                 icon="i-lucide-mail"
-              />
-            </UFormField>
-
-            <UFormField label="Role">
-              <USelect
-                v-model="inviteForm.role"
-                :items="roleOptions"
-                value-key="value"
-                option-key="value"
               />
             </UFormField>
 

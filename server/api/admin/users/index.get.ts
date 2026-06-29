@@ -3,14 +3,11 @@
  * GET /api/admin/users
  */
 
-import { requireAuth } from '../../../utils/auth'
+import { requireRole } from '../../../utils/auth'
 import { queryRows } from '../../../utils/db'
 
-// Roles an `owner` viewer is allowed to see in the users list.
-const OWNER_VISIBLE_ROLES = ['owner', 'account_manager']
-
 export default eventHandler(async (event) => {
-  const viewer = await requireAuth(event)
+  await requireRole(event, ['admin', 'owner'])
 
   try {
     const users = await queryRows<{
@@ -41,13 +38,8 @@ export default eventHandler(async (event) => {
       ORDER BY tm.name ASC
     `)
 
-    // Owners only see other owners and account managers in the list.
-    const visibleUsers = viewer.role === 'owner'
-      ? users.filter(u => OWNER_VISIBLE_ROLES.includes(u.role))
-      : users
-
     // Get teams for each user
-    const userIds = visibleUsers.map(u => u.id)
+    const userIds = users.map(u => u.id)
     const memberships = userIds.length > 0 ? await queryRows<{
       user_id: string
       team_id: string
@@ -69,7 +61,7 @@ export default eventHandler(async (event) => {
     }, {} as Record<string, Array<{ id: string; name: string }>>)
 
     return {
-      users: visibleUsers.map(user => ({
+      users: users.map(user => ({
         id: user.id,
         name: user.name,
         email: user.email,

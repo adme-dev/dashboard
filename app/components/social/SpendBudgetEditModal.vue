@@ -40,6 +40,13 @@ const editBudget = ref('')
 const editCommissionRate = ref('')
 const editRolling = ref(false)
 const saving = ref(false)
+const isGroupedTarget = computed(() => (props.target?.spendIds?.length ?? 0) > 1)
+const budgetFieldHelp = computed(() => {
+  if (isGroupedTarget.value) {
+    return `Total monthly budget split across ${props.target?.spendIds?.length ?? 0} linked campaigns.`
+  }
+  return "The internal budget you're pacing this campaign against."
+})
 
 interface HistoryEntry {
   id: string
@@ -158,10 +165,19 @@ async function save() {
   }
   saving.value = true
   try {
-    const body: Record<string, unknown> = { spendIds: t.spendIds, budgetAllocated: budget, rolling: editRolling.value }
+    const body: Record<string, unknown> = {
+      spendIds: t.spendIds,
+      budgetAllocated: budget,
+      allocationMode: t.spendIds.length > 1 ? 'even_total' : 'per_record',
+      rolling: editRolling.value,
+    }
     if (commRate != null) body.commissionRate = commRate
     await $fetch('/api/agency/social/spend/bulk-budget', { method: 'PATCH', body })
-    toast.add({ title: 'Budget updated', description: `${t.title} budget set to ${fmt(budget)}`, color: 'success' })
+    toast.add({
+      title: 'Budget updated',
+      description: `${t.title} budget set to ${fmt(budget)}${t.spendIds.length > 1 ? ' total' : ''}`,
+      color: 'success',
+    })
     open.value = false
     emit('saved')
   } catch (e: any) {
@@ -256,7 +272,7 @@ async function save() {
 
         <!-- Edit form -->
         <div class="px-4 sm:px-5 py-4 space-y-4">
-          <UFormField label="Monthly budget" help="The internal budget you're pacing this campaign against.">
+          <UFormField :label="isGroupedTarget ? 'Monthly total budget' : 'Monthly budget'" :help="budgetFieldHelp">
             <UInput
               v-model="editBudget"
               type="number"

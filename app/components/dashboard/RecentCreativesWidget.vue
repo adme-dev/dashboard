@@ -8,7 +8,8 @@ const { data, status } = await useFetch('/api/agency/dashboard/recent-creatives'
   watch: [activeFilter],
 })
 
-const creatives = computed(() => (data.value as any)?.creatives || [])
+// Cap to 3 rows of the 3-col grid so the card height stays bounded.
+const creatives = computed(() => ((data.value as any)?.creatives || []).slice(0, 9))
 
 const formatSize = (bytes: number) => {
   if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`

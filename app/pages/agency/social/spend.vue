@@ -498,7 +498,7 @@ const bankDiscrepancy = computed(() => {
         :live-budget-changes-enabled="liveBudgetChangesEnabled"
       />
 
-      <SpendControllerPanel
+      <SocialSpendControllerPanel
         v-if="showPacingReview"
         :month="selectedMonth"
         :year="selectedYear"
@@ -702,7 +702,7 @@ const bankDiscrepancy = computed(() => {
             {{ pacingReview.aiSummary }}
           </div>
         </div>
-        <SpendAutoActionSettings v-if="showPacingReview" class="mb-3" />
+        <SocialSpendAutoActionSettings v-if="showPacingReview" class="mb-3" />
         <SocialSpendVarianceTable
           :items="spendData.items"
           :totals="spendData.totals"

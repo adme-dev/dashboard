@@ -2,7 +2,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { cachedFetch } from '~~/server/utils/kv'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { labelSpendSummaryGroup } from '~~/server/utils/socialSpendAccuracy'
+import { buildSpendSummaryItems, buildSpendSummaryTotals, type SpendSummaryRow } from '~~/server/utils/socialSpendSummary'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -24,7 +24,9 @@ export default eventHandler(async (event) => {
     let sql = `
       SELECT
         ms.platform,
+        ms.client_id::text as client_id,
         ac.name as client_name,
+        sc.account_id as account_id,
         sc.account_name as account_name,
         MIN(ms.campaign_name) as sample_campaign_name,
         ac.xero_contact_id as client_ref,
@@ -55,9 +57,9 @@ export default eventHandler(async (event) => {
       params.push(platform)
     }
 
-    sql += ` GROUP BY ms.platform, ms.client_id, ac.name, ac.xero_contact_id, sc.account_name ORDER BY total_spend DESC`
+    sql += ` GROUP BY ms.platform, ms.client_id, ac.name, ac.xero_contact_id, sc.account_id, sc.account_name ORDER BY total_spend DESC`
 
-    const rows = await queryRows<any>(sql, params)
+    const rows = await queryRows<SpendSummaryRow>(sql, params)
     const jobPlatform = platform === 'google_ads' ? 'google' : platform
     const latestSyncJobs = await queryRows<{
       platform: string
@@ -81,49 +83,12 @@ export default eventHandler(async (event) => {
       jobPlatform && jobPlatform !== 'all' ? [period, jobPlatform] : [period]
     )
 
-    const summary = rows.map((r: any) => {
-      const budget = parseFloat(r.total_budget) || 0
-      const spend = parseFloat(r.total_spend) || 0
-      const variance = budget > 0 ? spend - budget : 0
-      const variancePercent = budget > 0 ? ((spend - budget) / budget) * 100 : 0
-
-      return {
-        platform: r.platform,
-        clientName: labelSpendSummaryGroup({
-          clientName: r.client_name || null,
-          accountName: r.account_name || null,
-          campaignName: r.sample_campaign_name || null,
-          platform: r.platform || null,
-        }),
-        clientCode: r.client_ref || null,
-        owner: r.owner_id ? { id: r.owner_id, name: r.owner_name || null } : null,
-        budget,
-        spend,
-        commission: parseFloat(r.total_commission) || 0,
-        variance,
-        variancePercent: Math.round(variancePercent * 10) / 10,
-        impressions: parseInt(r.total_impressions) || 0,
-        clicks: parseInt(r.total_clicks) || 0,
-        conversions: parseInt(r.total_conversions) || 0,
-        campaignCount: r.campaign_count,
-        spendIds: r.spend_ids || [],
-        rolling: r.is_rolling || false,
-        commissionRate: parseFloat(r.commission_rate) || 0,
-        lastSyncedAt: r.last_synced_at || null,
-      }
-    })
-
-    const totals = {
-      budget: summary.reduce((s, r) => s + r.budget, 0),
-      spend: summary.reduce((s, r) => s + r.spend, 0),
-      commission: summary.reduce((s, r) => s + r.commission, 0),
-      variance: summary.reduce((s, r) => s + r.variance, 0),
-    }
-
-    const lastSyncedAt = rows.reduce((latest: string | null, r: any) => {
-      if (!r.last_synced_at) return latest
-      if (!latest) return r.last_synced_at
-      return r.last_synced_at > latest ? r.last_synced_at : latest
+    const summary = buildSpendSummaryItems(rows)
+    const totals = buildSpendSummaryTotals(summary)
+    const lastSyncedAt = summary.reduce((latest: string | null, item) => {
+      if (!item.lastSyncedAt) return latest
+      if (!latest) return item.lastSyncedAt
+      return item.lastSyncedAt > latest ? item.lastSyncedAt : latest
     }, null as string | null)
 
     return {

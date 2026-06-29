@@ -2,10 +2,20 @@
 const { data, status } = await useFetch('/api/agency/projects/profitability')
 
 // Endpoint returns commission-based profitability grouped by client: { clients, summary }.
+const CAP = 5
 const profitData = computed(() => data.value as any)
-const projects = computed(() => (profitData.value?.clients || []).slice(0, 6))
+const allProjects = computed(() => (profitData.value?.clients || []))
+const projects = computed(() => allProjects.value.slice(0, CAP))
 const avgMargin = computed(() => profitData.value?.summary?.avgMargin || 0)
-const atRiskCount = computed(() => projects.value.filter((p: any) => (p.margin || 0) < 15).length)
+const atRiskCount = computed(() => allProjects.value.filter((p: any) => (p.margin || 0) < 15).length)
+const badges = computed(() => {
+  const out: { label: string | number, color?: any }[] = [{
+    label: `${avgMargin.value.toFixed(1)}% avg margin`,
+    color: avgMargin.value >= 30 ? 'success' : avgMargin.value >= 15 ? 'warning' : 'error',
+  }]
+  if (atRiskCount.value) out.push({ label: `${atRiskCount.value} at risk`, color: 'error' })
+  return out
+})
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v)
@@ -27,41 +37,19 @@ function barColor(margin: number) {
 </script>
 
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-calculator" class="w-4 h-4 text-[var(--ui-text-muted)]" />
-          <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Project Profitability</h3>
-        </div>
-        <UButton to="/agency/projects" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
-          All Projects
-        </UButton>
-      </div>
-    </template>
-
-    <div v-if="status === 'pending'" class="space-y-3">
-      <USkeleton v-for="i in 4" :key="i" class="h-12 w-full rounded" />
-    </div>
-    <div v-else-if="!projects.length" class="text-center py-6 text-[var(--ui-text-muted)]">
-      <UIcon name="i-lucide-calculator" class="w-8 h-8 mx-auto mb-2 opacity-40" />
-      <p class="text-sm">No profitability data</p>
-    </div>
-    <div v-else>
-      <!-- Summary -->
-      <div class="flex items-center gap-4 mb-4">
-        <div class="flex items-center gap-1.5">
-          <span class="text-xs text-[var(--ui-text-muted)]">Avg margin:</span>
-          <span class="text-sm font-semibold" :class="marginColor(avgMargin)">{{ avgMargin.toFixed(1) }}%</span>
-        </div>
-        <div v-if="atRiskCount" class="flex items-center gap-1.5">
-          <span class="text-xs text-[var(--ui-text-muted)]">At risk:</span>
-          <UBadge color="error" variant="subtle" size="xs">{{ atRiskCount }}</UBadge>
-        </div>
-      </div>
-
-      <!-- Project bars -->
-      <div class="space-y-3">
+  <DashboardWidgetShell
+    title="Project Profitability"
+    icon="i-lucide-calculator"
+    :badges="badges"
+    to="/agency/projects"
+    view-all-label="All projects"
+    :loading="status === 'pending'"
+    :is-empty="!projects.length"
+    empty-text="No profitability data"
+    empty-icon="i-lucide-calculator"
+    :more-count="Math.max(allProjects.length - projects.length, 0)"
+  >
+    <div class="space-y-3">
         <div v-for="project in projects" :key="project.id || project.name" class="space-y-1">
           <div class="flex items-center justify-between">
             <span class="text-sm text-[var(--ui-text-highlighted)] truncate flex-1">{{ project.name }}</span>
@@ -82,6 +70,5 @@ function barColor(margin: number) {
           </div>
         </div>
       </div>
-    </div>
-  </UCard>
+  </DashboardWidgetShell>
 </template>

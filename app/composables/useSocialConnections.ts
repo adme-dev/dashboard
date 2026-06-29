@@ -1,6 +1,7 @@
 import type { SocialConnection, MetaSpendRecord, CampaignDailySpendResponse, SocialPlatform } from '~/types'
 
 interface SpendSummaryItem {
+  groupKey: string
   platform: string
   clientName: string
   clientCode: string | null
