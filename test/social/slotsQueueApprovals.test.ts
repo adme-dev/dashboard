@@ -120,6 +120,8 @@ describe('approval workflow', () => {
     await reject({ params: { id: 'P1' }, body: { reason: 'fix the copy' } } as any)
     const [sql, params] = mockQueryOne.mock.calls[0]
     expect(sql).toMatch(/status = 'draft'/)
+    expect(sql).toMatch(/approval_requested_at = NULL/)
+    expect(sql).toMatch(/approval_requested_by = NULL/)
     expect(params[1]).toBe('fix the copy')
     expect(mockCreateNotification.mock.calls[0][0].message).toContain('fix the copy')
   })

@@ -14,9 +14,22 @@ export default defineEventHandler(async (event) => {
   const b = await readBody(event)
 
   const post = await queryOne<any>(
-    `UPDATE social_posts
-        SET status = 'draft', rejection_reason = $2, approved_by = NULL, approved_at = NULL, updated_at = NOW()
-      WHERE id = $1 RETURNING id, content, approval_requested_by`,
+    `WITH existing AS (
+        SELECT id, content, approval_requested_by
+          FROM social_posts
+         WHERE id = $1
+      )
+      UPDATE social_posts p
+         SET status = 'draft',
+             rejection_reason = $2,
+             approved_by = NULL,
+             approved_at = NULL,
+             approval_requested_at = NULL,
+             approval_requested_by = NULL,
+             updated_at = NOW()
+        FROM existing
+       WHERE p.id = existing.id
+      RETURNING p.id, p.content, existing.approval_requested_by`,
     [id, b.reason ?? null],
   )
   if (!post) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
