@@ -20,11 +20,12 @@ import { createNotification } from '~~/server/utils/notifications'
  * cursor and records them idempotently. Meta comments arrive separately via the webhook.
  */
 const POLL_CHANNELS: Record<string, Array<'comment' | 'review'>> = {
+  facebook: ['comment', 'review'],
+  instagram: ['comment'],
   youtube: ['comment'],
   linkedin: ['comment'],
   tiktok: ['comment'],
   'google-business': ['review'],
-  facebook: ['review'],
 }
 
 export default defineEventHandler(async (event) => {
@@ -33,10 +34,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const accounts = await queryRows<any>(
-    `SELECT id, client_id, platform, platform_account_id, access_token
-       FROM social_accounts WHERE is_active = TRUE AND access_token IS NOT NULL`,
-  )
+  const body: { clientId?: string | null } = await readBody<{ clientId?: string | null }>(event).catch(() => ({}))
+  const params: any[] = []
+  let sql = `SELECT id, client_id, platform, platform_account_id, access_token
+       FROM social_accounts WHERE is_active = TRUE AND access_token IS NOT NULL`
+  if (body?.clientId) {
+    params.push(body.clientId)
+    sql += ` AND client_id = $${params.length}`
+  }
+
+  const accounts = await queryRows<any>(sql, params)
 
   let synced = 0
   for (const acct of accounts) {
@@ -51,6 +58,7 @@ export default defineEventHandler(async (event) => {
         const { items, nextCursor } = await provider.fetchInbox({
           accountId: acct.platform_account_id,
           accessToken: acct.access_token,
+          channelType: channel,
           cursor: cur?.cursor ?? null,
         })
         for (const item of items.filter(i => i.channelType === channel)) {

@@ -258,8 +258,46 @@ export function mapFacebookRatings(api: any): FetchInboxResult {
   return { items, nextCursor: api?.paging?.cursors?.after ?? null }
 }
 
-facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
-  // Reviews (recommendations). Page comments arrive via the Meta webhook, not this poll.
+/** Pure: map a Facebook page feed response with nested comments to InboxItems. */
+export function mapFacebookFeedComments(api: any): FetchInboxResult {
+  const items: InboxItem[] = []
+  for (const post of api?.data ?? []) {
+    const postId = String(post?.id ?? '')
+    if (!postId) continue
+    for (const c of post?.comments?.data ?? []) {
+      const commentId = String(c?.id ?? '')
+      if (!commentId) continue
+      items.push({
+        channelType: 'comment',
+        platformConversationId: postId,
+        permalink: c?.permalink_url ?? post?.permalink_url,
+        participant: { id: c?.from?.id, name: c?.from?.name },
+        platformMessageId: commentId,
+        authorId: c?.from?.id,
+        authorName: c?.from?.name,
+        content: c?.message ?? '',
+        messageType: 'comment',
+        platformTimestamp: c?.created_time,
+      })
+    }
+  }
+  return { items, nextCursor: api?.paging?.cursors?.after ?? null }
+}
+
+facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelType }: FetchInboxParams): Promise<FetchInboxResult> => {
+  if (channelType === 'comment') {
+    const url = new URL(`${GRAPH_API_BASE}/${accountId}/feed`)
+    url.searchParams.set('fields', 'id,permalink_url,comments.limit(50){id,message,from,created_time,permalink_url}')
+    url.searchParams.set('access_token', accessToken)
+    url.searchParams.set('limit', '25')
+    if (cursor) url.searchParams.set('after', cursor)
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`facebook comments fetchInbox ${res.status}`)
+    return mapFacebookFeedComments(await res.json())
+  }
+
+  // Reviews (recommendations). Page comments also have a polling fallback above because webhooks
+  // can be unavailable during app-review/subscription gaps.
   const url = new URL(`${GRAPH_API_BASE}/${accountId}/ratings`)
   url.searchParams.set('fields', 'reviewer,review_text,recommendation_type,created_time,open_graph_story')
   url.searchParams.set('access_token', accessToken)

@@ -8,9 +8,11 @@ import { requireAuth } from '~~/server/utils/auth'
  */
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
+  const body: { clientId?: string | null } = await readBody<{ clientId?: string | null }>(event).catch(() => ({}))
   const result = await $fetch<{ synced: number }>('/api/cron/sync-social-inbox', {
     method: 'POST',
     headers: { 'x-cron-secret': process.env.CRON_SECRET || '' },
+    body: body?.clientId ? { clientId: body.clientId } : {},
   })
   return result
 })

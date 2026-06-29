@@ -42,7 +42,10 @@ export function useSocialInbox(clientId: Ref<string | null>) {
   }
 
   async function refresh() {
-    return await $fetch<{ synced: number }>('/api/agency/social/inbox/accounts/sync', { method: 'POST' })
+    return await $fetch<{ synced: number }>('/api/agency/social/inbox/accounts/sync', {
+      method: 'POST',
+      body: { clientId: clientId.value },
+    })
   }
 
   return { conversations, loading, load, open, reply, setStatus, markRead, refresh }

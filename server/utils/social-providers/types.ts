@@ -72,6 +72,8 @@ export interface AccountMetric {
 export interface FetchInboxParams {
   accountId: string
   accessToken: string
+  /** Optional channel hint for providers that support multiple inbox surfaces. */
+  channelType?: 'comment' | 'dm' | 'mention' | 'review'
   /** opaque cursor from the last sync (page token / ISO ts / last id) */
   cursor?: string | null
 }

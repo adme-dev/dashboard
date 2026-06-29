@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { mapYouTubeThreads } from '~~/server/utils/social-providers/youtube'
 import { mapGoogleReviews } from '~~/server/utils/social-providers/google-business'
-import { mapFacebookRatings } from '~~/server/utils/social-providers/facebook'
+import { mapFacebookFeedComments, mapFacebookRatings } from '~~/server/utils/social-providers/facebook'
+import { mapInstagramMediaComments } from '~~/server/utils/social-providers/instagram'
 import { mapLinkedInComments } from '~~/server/utils/social-providers/linkedin'
 import { mapTikTokComments } from '~~/server/utils/social-providers/tiktok'
 
@@ -53,6 +54,68 @@ describe('mapFacebookRatings', () => {
     const { items, nextCursor } = mapFacebookRatings(api)
     expect(nextCursor).toBe('AFTER')
     expect(items[0]).toMatchObject({ channelType: 'review', content: 'Recommend!', authorName: 'Pat', rating: 5 })
+  })
+})
+
+describe('mapFacebookFeedComments', () => {
+  it('maps page feed comments to InboxItems threaded by post id', () => {
+    const api = {
+      data: [{
+        id: 'page_1_post_1',
+        permalink_url: 'https://facebook.com/page/posts/1',
+        comments: {
+          data: [{
+            id: 'fb_comment_1',
+            message: 'Is this still available?',
+            from: { id: 'fb_user_1', name: 'Alex' },
+            created_time: '2026-06-28T01:02:03+0000',
+            permalink_url: 'https://facebook.com/comment/1',
+          }],
+        },
+      }],
+      paging: { cursors: { after: 'POST_AFTER' } },
+    }
+    const { items, nextCursor } = mapFacebookFeedComments(api)
+    expect(nextCursor).toBe('POST_AFTER')
+    expect(items[0]).toMatchObject({
+      channelType: 'comment',
+      platformConversationId: 'page_1_post_1',
+      platformMessageId: 'fb_comment_1',
+      authorName: 'Alex',
+      content: 'Is this still available?',
+      permalink: 'https://facebook.com/comment/1',
+    })
+  })
+})
+
+describe('mapInstagramMediaComments', () => {
+  it('maps media comments to InboxItems threaded by media id', () => {
+    const api = {
+      data: [{
+        id: 'ig_media_1',
+        permalink: 'https://instagram.com/p/abc',
+        comments: {
+          data: [{
+            id: 'ig_comment_1',
+            text: 'Love this',
+            username: 'alex_insta',
+            timestamp: '2026-06-28T01:02:03+0000',
+          }],
+        },
+      }],
+      paging: { cursors: { after: 'MEDIA_AFTER' } },
+    }
+    const { items, nextCursor } = mapInstagramMediaComments(api)
+    expect(nextCursor).toBe('MEDIA_AFTER')
+    expect(items[0]).toMatchObject({
+      channelType: 'comment',
+      platformConversationId: 'ig_media_1',
+      platformMessageId: 'ig_comment_1',
+      participant: { name: 'alex_insta', handle: 'alex_insta' },
+      authorName: 'alex_insta',
+      content: 'Love this',
+      permalink: 'https://instagram.com/p/abc',
+    })
   })
 })
 

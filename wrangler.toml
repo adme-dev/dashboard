@@ -175,6 +175,12 @@ name = "BOARD_ROOMS"
 class_name = "BoardRoom"
 script_name = "board-events-worker"
 
+# Social Inbox Events — Durable Objects (hosted in separate worker)
+[[durable_objects.bindings]]
+name = "SOCIAL_INBOX_ROOMS"
+class_name = "InboxRoom"
+script_name = "social-inbox-rooms"
+
 # Banner Rooms — Durable Objects for real-time banner collaboration
 [[durable_objects.bindings]]
 name = "BANNER_ROOMS"

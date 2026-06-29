@@ -14,7 +14,8 @@
  * Reference: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/content-publishing
  */
 
-import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, ReplyParams, ReplyResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
+import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, ReplyParams, ReplyResult, FetchInboxParams, FetchInboxResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
+import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { buildMessengerSend } from './facebook'
 import { mapIgMediaInsights, mapIgAccountInsights } from '~~/server/utils/socialReporting/normalize'
 
@@ -462,6 +463,45 @@ async function postStory(
 /** Pure: build an IG comment-reply request. commentId = the IG comment to reply under. */
 export function buildIgCommentReply(commentId: string, content: string, accessToken: string) {
   return { url: `${GRAPH_API_BASE}/${commentId}/replies`, body: { message: content, access_token: accessToken } }
+}
+
+/** Pure: map an Instagram media list response with nested comments to InboxItems. */
+export function mapInstagramMediaComments(api: any): FetchInboxResult {
+  const items: InboxItem[] = []
+  for (const media of api?.data ?? []) {
+    const mediaId = String(media?.id ?? '')
+    if (!mediaId) continue
+    for (const c of media?.comments?.data ?? []) {
+      const commentId = String(c?.id ?? '')
+      if (!commentId) continue
+      const username = c?.username ?? c?.from?.username
+      const userId = c?.from?.id
+      items.push({
+        channelType: 'comment',
+        platformConversationId: mediaId,
+        permalink: c?.permalink_url ?? media?.permalink,
+        participant: { id: userId, name: username, handle: username },
+        platformMessageId: commentId,
+        authorId: userId,
+        authorName: username,
+        content: c?.text ?? '',
+        messageType: 'comment',
+        platformTimestamp: c?.timestamp,
+      })
+    }
+  }
+  return { items, nextCursor: api?.paging?.cursors?.after ?? null }
+}
+
+instagramProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
+  const url = new URL(`${GRAPH_API_BASE}/${accountId}/media`)
+  url.searchParams.set('fields', 'id,permalink,comments.limit(50){id,text,username,timestamp,from}')
+  url.searchParams.set('access_token', accessToken)
+  url.searchParams.set('limit', '25')
+  if (cursor) url.searchParams.set('after', cursor)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`instagram comments fetchInbox ${res.status}`)
+  return mapInstagramMediaComments(await res.json())
 }
 
 instagramProvider.reply = async ({ accountId, accessToken, conversationId, content, channelType, viaPageId }: ReplyParams): Promise<ReplyResult> => {
