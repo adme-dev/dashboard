@@ -12,6 +12,7 @@ import { splitDailyBudget } from '~~/server/utils/budgetSplit'
 import { executeAdSetSplitWrites } from '~~/server/utils/budgetSplitExecutor'
 import { kvDelete } from '~~/server/utils/kv'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
+import { isSpendSyncStale } from '~~/server/utils/spendSyncFreshness'
 
 export default eventHandler(async (event) => {
   const user = await requireRole(event, ['owner', 'admin'])
@@ -36,6 +37,7 @@ export default eventHandler(async (event) => {
     budget_allocated: string
     actual_spend: string
     period: string | null
+    synced_at: string | null
     applied_today: boolean
   }>(
     `SELECT cal.platform,
@@ -50,6 +52,7 @@ export default eventHandler(async (event) => {
             COALESCE(ms.budget_allocated, 0)::text AS budget_allocated,
             COALESCE(ms.actual_spend, 0)::text     AS actual_spend,
             ms.period,
+            ms.synced_at::text AS synced_at,
             EXISTS (
               SELECT 1 FROM campaign_action_log x
               WHERE x.media_spend_id = cal.media_spend_id
@@ -77,6 +80,10 @@ export default eventHandler(async (event) => {
       return { status: 'blocked', reason: 'already_applied', clampReasons: [] }
     }
     throw createError({ statusCode: 404, statusMessage: 'Approved action not found' })
+  }
+
+  if (isSpendSyncStale(row.synced_at)) {
+    return { status: 'blocked', reason: 'stale_sync', clampReasons: [] }
   }
 
   // NOTE (Phase 1 limitation, accepted for the admin-manual flag-gated rollout):

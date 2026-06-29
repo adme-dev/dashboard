@@ -3,6 +3,7 @@ import { queryOne } from '~~/server/utils/db'
 import { recordCampaignAction } from '~~/server/utils/campaignActionLog'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { buildCampaignBudgetIdentity } from '~~/server/utils/campaignBudgetIdentity'
+import { isSpendSyncStale } from '~~/server/utils/spendSyncFreshness'
 
 export default eventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -28,6 +29,7 @@ export default eventHandler(async (event) => {
     connection_id: string | null
     account_id: string | null
     period: string | null
+    synced_at: string | null
   }>(
     `SELECT ms.id::text,
             ms.platform,
@@ -36,7 +38,8 @@ export default eventHandler(async (event) => {
             ms.campaign_id,
             ms.connection_id::text,
             sc.account_id,
-            ms.period
+            ms.period,
+            ms.synced_at::text
      FROM media_spend ms
      LEFT JOIN social_connections sc ON sc.id = ms.connection_id
      WHERE ms.id = $1`,
@@ -61,6 +64,12 @@ export default eventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: `Campaign is not eligible for budget actions: ${budgetIdentity.issues.join(', ')}`,
+    })
+  }
+  if (isSpendSyncStale(spend.synced_at)) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Campaign spend data is stale or has never synced; sync spend before planning a budget action',
     })
   }
 

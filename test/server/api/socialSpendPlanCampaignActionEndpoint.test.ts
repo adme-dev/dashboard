@@ -5,6 +5,7 @@ const mockGetSelectedTenant = vi.fn()
 const mockQueryOne = vi.fn()
 const mockRecordCampaignAction = vi.fn()
 let mockBody: Record<string, unknown> = {}
+const freshSyncedAt = () => new Date().toISOString()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireWriteAccess: (...args: unknown[]) => mockRequireWriteAccess(...args),
@@ -51,6 +52,7 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         connection_id: 'connection-1',
         account_id: '123',
         period: '2026-06',
+        synced_at: freshSyncedAt(),
       })
       .mockResolvedValueOnce(null)
     mockRecordCampaignAction.mockResolvedValue({
@@ -146,6 +148,7 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         connection_id: 'connection-1',
         account_id: '123',
         period: '2026-06',
+        synced_at: freshSyncedAt(),
       })
       .mockResolvedValueOnce({
         id: 'action-existing',
@@ -222,6 +225,7 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         connection_id: 'connection-1',
         account_id: '123',
         period: '2026-06',
+        synced_at: freshSyncedAt(),
       })
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
@@ -276,12 +280,35 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
       connection_id: 'connection-1',
       account_id: 'act-1',
       period: '2026-06',
+      synced_at: freshSyncedAt(),
     })
     const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/plan.post')).default
 
     await expect(handler({ params: { id: 'spend-1' } } as any)).rejects.toMatchObject({
       statusCode: 400,
       statusMessage: 'Campaign is not eligible for budget actions: missing_campaign_external_id',
+    })
+    expect(mockRecordCampaignAction).not.toHaveBeenCalled()
+  })
+
+  it('rejects stale spend sync data before planning a budget action', async () => {
+    mockQueryOne.mockReset()
+    mockQueryOne.mockResolvedValueOnce({
+      id: 'spend-1',
+      platform: 'meta',
+      campaign_name: 'Brand Awareness',
+      client_id: 'client-1',
+      campaign_id: 'campaign-1',
+      connection_id: 'connection-1',
+      account_id: 'act-1',
+      period: '2026-06',
+      synced_at: '2000-01-01T00:00:00.000Z',
+    })
+    const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/plan.post')).default
+
+    await expect(handler({ params: { id: 'spend-1' } } as any)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'Campaign spend data is stale or has never synced; sync spend before planning a budget action',
     })
     expect(mockRecordCampaignAction).not.toHaveBeenCalled()
   })

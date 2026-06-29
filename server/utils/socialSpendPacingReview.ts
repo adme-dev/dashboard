@@ -1,4 +1,5 @@
 import { computeCampaignBudgetPacing } from '~~/server/utils/budgetPacing'
+import { SPEND_BUDGET_ACTION_SYNC_STALE_HOURS, spendSyncAgeHours } from '~~/server/utils/spendSyncFreshness'
 
 export type PacingReviewPlatform = 'meta' | 'google'
 export type PacingReviewIssueType =
@@ -177,13 +178,6 @@ function isPausedStatus(status: string | null): boolean {
   return PAUSED_STATUS_TOKENS.some(token => normalized.includes(token))
 }
 
-function syncAgeHours(syncedAt: string | null, now: Date): number {
-  if (!syncedAt) return Infinity
-  const parsed = new Date(syncedAt)
-  if (Number.isNaN(parsed.getTime())) return Infinity
-  return (now.getTime() - parsed.getTime()) / 3_600_000
-}
-
 function performanceFromRow(row: PacingReviewRow, spend: number): PacingReviewPerformance {
   const impressions = num(row.impressions)
   const clicks = num(row.clicks)
@@ -288,8 +282,8 @@ export function buildPacingReview(rows: PacingReviewRow[], opts: { now?: Date, p
       endDate: row.end_date,
     })
 
-    if (syncAgeHours(row.synced_at, now) >= 48 && budget > 0) {
-      const severity = syncAgeHours(row.synced_at, now) >= 72 ? 'critical' : 'warning'
+    if (spendSyncAgeHours(row.synced_at, now) >= SPEND_BUDGET_ACTION_SYNC_STALE_HOURS && budget > 0) {
+      const severity = spendSyncAgeHours(row.synced_at, now) >= 72 ? 'critical' : 'warning'
       const item = baseItem(row, 'stale_sync', severity, now)
       if (item) items.push(withAction(item))
     }

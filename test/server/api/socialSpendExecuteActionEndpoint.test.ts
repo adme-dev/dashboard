@@ -15,6 +15,7 @@ const mockResolveGoogleWriteAuth = vi.fn()
 const mockKvDelete = vi.fn()
 const mockResolveGoogleAdsRuntimeConfig = vi.fn()
 let mockBody: Record<string, unknown> = {}
+const freshSyncedAt = () => new Date().toISOString()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireRole: (...args: unknown[]) => mockRequireRole(...args),
@@ -91,6 +92,7 @@ const approvedActionRow = (overrides: Record<string, unknown> = {}) => ({
   budget_allocated: '1000',
   actual_spend: '200',
   period: '2026-06',
+  synced_at: freshSyncedAt(),
   applied_today: false,
   ...overrides,
 })
@@ -177,6 +179,20 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/execute', () => {
     expect(mockClaimApprovedAction).not.toHaveBeenCalled()
     expect(mockReleaseActionClaim).not.toHaveBeenCalled()
     expect(mockResolveMetaBudgetTarget).not.toHaveBeenCalled()
+    expect(mockResolveGoogleWriteAuth).not.toHaveBeenCalled()
+    expect(mockUpdateGoogleCampaignDailyBudget).not.toHaveBeenCalled()
+  })
+
+  it('blocks stale spend sync data before claiming or writing an approved action', async () => {
+    mockQueryOne.mockResolvedValueOnce(approvedActionRow({ synced_at: '2000-01-01T00:00:00.000Z' }))
+
+    const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/[actionId]/execute.post')).default
+
+    const result = await handler({ params: { id: 'spend-1', actionId: 'action-1' } } as any)
+
+    expect(result).toEqual({ status: 'blocked', reason: 'stale_sync', clampReasons: [] })
+    expect(mockClaimApprovedAction).not.toHaveBeenCalled()
+    expect(mockReleaseActionClaim).not.toHaveBeenCalled()
     expect(mockResolveGoogleWriteAuth).not.toHaveBeenCalled()
     expect(mockUpdateGoogleCampaignDailyBudget).not.toHaveBeenCalled()
   })
