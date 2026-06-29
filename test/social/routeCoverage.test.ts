@@ -128,4 +128,12 @@ describe('social route navigation coverage', () => {
       expect(source).toContain('w-56 max-w-full')
     }
   })
+
+  it('keeps publishing analytics connected to the existing AI reporting summary', () => {
+    const source = read('app/pages/agency/social/publishing/analytics.vue')
+
+    expect(source).toContain('aiSummary')
+    expect(source).toContain('generateSummary')
+    expect(source).toContain('/api/agency/social/publishing/analytics/overview')
+  })
 })

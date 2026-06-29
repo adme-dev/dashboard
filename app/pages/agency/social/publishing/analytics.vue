@@ -6,7 +6,16 @@ import { SOCIAL_PLATFORM_FILTER_OPTIONS } from '~~/app/utils/socialReportSchedul
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const { clientId } = useSocialPublishingClient()
-const { overview, posts, loading, days, platform, load: loadReporting } = useSocialReporting(clientId)
+const {
+  overview,
+  posts,
+  aiSummary,
+  loading,
+  days,
+  platform,
+  load: loadReporting,
+  generateSummary,
+} = useSocialReporting(clientId)
 
 interface WorkflowOverview {
   counts: { published: number; scheduled: number; failed: number; drafts: number }
@@ -15,6 +24,7 @@ interface WorkflowOverview {
 
 const workflow = ref<WorkflowOverview | null>(null)
 const workflowLoading = ref(false)
+const summarising = ref(false)
 
 const dayOptions = [
   { label: 'Last 7 days', value: 7 },
@@ -41,6 +51,16 @@ async function loadWorkflow() {
 
 async function reload() {
   await Promise.all([loadWorkflow(), loadReporting()])
+}
+
+async function onSummarise() {
+  if (!overview.value) return
+  summarising.value = true
+  try {
+    await generateSummary('this client')
+  } finally {
+    summarising.value = false
+  }
 }
 
 watch(clientId, reload, { immediate: true })
@@ -148,6 +168,31 @@ function kpiValue(kpi: ReportKpi, format: (value: number) => string) {
             </UBadge>
           </div>
         </div>
+
+        <section class="rounded-lg border border-default p-4 bg-default mt-6">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 text-sm font-semibold">
+                <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
+                AI performance summary
+              </div>
+              <p v-if="aiSummary" class="mt-3 text-sm whitespace-pre-wrap">{{ aiSummary }}</p>
+              <p v-else class="mt-3 text-sm text-muted">
+                Generate a concise readout of publishing performance for this period.
+              </p>
+            </div>
+            <UButton
+              size="sm"
+              variant="subtle"
+              icon="i-lucide-wand-2"
+              :loading="summarising"
+              :disabled="!overview"
+              @click="onSummarise"
+            >
+              Summarise
+            </UButton>
+          </div>
+        </section>
 
         <div class="grid xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)] gap-6 mt-6">
           <section class="rounded-lg border border-default p-4 bg-default">
