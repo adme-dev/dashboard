@@ -10,13 +10,16 @@ interface AgencyClientOption {
 
 type AgencyClientsResponse = AgencyClientOption[] | { clients?: AgencyClientOption[] }
 
-const { data: clientsData } = await useFetch<AgencyClientsResponse>('/api/agency/clients', { query: { limit: 200 } })
+const { data: clientsData } = useFetch<AgencyClientsResponse>('/api/agency/clients', {
+  query: { limit: 200 },
+  server: false
+})
 const clients = computed<AgencyClientOption[]>(() => {
   const d = clientsData.value
   return Array.isArray(d) ? d : (d?.clients ?? [])
 })
 const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
-const clientId = ref<string | null>(clients.value[0]?.id ?? null)
+const clientId = ref<string | null>(null)
 const search = ref('')
 const platform = ref('all')
 const status = ref('open')
@@ -45,15 +48,29 @@ const query = computed(() => ({
   limit: 80
 }))
 
-const { data: wallPosts, pending, error, refresh } = await useFetch<SocialEngagementWallPost[]>(
+const { data: wallPosts, pending, error, refresh } = useFetch<SocialEngagementWallPost[]>(
   '/api/agency/social/inbox/wall',
-  { query, watch: [query], default: () => [] }
+  {
+    query,
+    watch: false,
+    immediate: false,
+    server: false,
+    default: () => []
+  }
 )
 
 const errorDescription = computed(() => {
   const e = error.value as { data?: { statusMessage?: string }, message?: string } | null
   return e?.data?.statusMessage || e?.message || 'Try again'
 })
+
+watch(clients, (nextClients) => {
+  if (!clientId.value && nextClients[0]) clientId.value = nextClients[0].id
+}, { immediate: true })
+
+watch(query, () => {
+  if (clientId.value) refresh()
+}, { immediate: true })
 
 function postImage(post: SocialEngagementWallPost) {
   return post.source_post_media?.[0]?.thumbnailUrl || post.source_post_media?.[0]?.url || null
