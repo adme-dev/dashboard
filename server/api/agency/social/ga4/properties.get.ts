@@ -2,6 +2,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, execute } from '~~/server/utils/db'
 import { refreshGoogleToken } from '~~/server/utils/googleAdsClient'
 import { listGa4Properties } from '~~/server/utils/ga4Client'
+import { resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 
 /**
  * GET /api/agency/social/ga4/properties
@@ -10,7 +11,7 @@ import { listGa4Properties } from '~~/server/utils/ga4Client'
  */
 export default eventHandler(async (event) => {
   await requireAuth(event)
-  const config = useRuntimeConfig()
+  const config = resolveGoogleOAuthRuntimeConfig(event)
 
   const conns = await queryRows<{
     id: string; account_name: string; access_token: string

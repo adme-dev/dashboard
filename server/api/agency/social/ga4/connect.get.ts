@@ -1,7 +1,8 @@
-import { setCookie, getRequestURL } from 'h3'
+import { setCookie } from 'h3'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getGa4AuthUrl } from '~~/server/utils/ga4Client'
+import { GA4_CALLBACK_PATH, buildGoogleOAuthRedirectUri, resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 
 /**
  * GET /api/agency/social/ga4/connect
@@ -10,7 +11,7 @@ import { getGa4AuthUrl } from '~~/server/utils/ga4Client'
 export default eventHandler(async (event) => {
   await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
 
-  const config = useRuntimeConfig()
+  const config = resolveGoogleOAuthRuntimeConfig(event)
   if (!config.googleClientId || !config.googleClientSecret) {
     throw createError({ statusCode: 500, statusMessage: 'Google credentials not configured' })
   }
@@ -24,10 +25,7 @@ export default eventHandler(async (event) => {
     maxAge: 60 * 10
   })
 
-  const reqUrl = getRequestURL(event)
-  const configured = config.ga4RedirectUri
-  const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
-  const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
+  const redirectUri = buildGoogleOAuthRedirectUri(event, config.ga4RedirectUri, GA4_CALLBACK_PATH)
 
   return { url: getGa4AuthUrl(config.googleClientId, redirectUri, state) }
 })

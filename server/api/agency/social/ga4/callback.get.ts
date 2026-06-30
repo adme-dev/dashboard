@@ -1,8 +1,9 @@
-import { getCookie, deleteCookie, sendRedirect, getRequestURL } from 'h3'
+import { getCookie, deleteCookie, sendRedirect } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { exchangeGoogleCode } from '~~/server/utils/googleAdsClient'
 import { getGoogleUserInfo, GA4_SCOPE } from '~~/server/utils/ga4Client'
+import { GA4_CALLBACK_PATH, buildGoogleOAuthRedirectUri, resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 
 /**
  * GET /api/agency/social/ga4/callback
@@ -30,11 +31,8 @@ export default eventHandler(async (event) => {
     }
     deleteCookie(event, 'ga4_oauth_state', { path: '/' })
 
-    const config = useRuntimeConfig()
-    const reqUrl = getRequestURL(event)
-    const configured = config.ga4RedirectUri
-    const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
-    const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
+    const config = resolveGoogleOAuthRuntimeConfig(event)
+    const redirectUri = buildGoogleOAuthRedirectUri(event, config.ga4RedirectUri, GA4_CALLBACK_PATH)
 
     const tokens = await exchangeGoogleCode(code, config.googleClientId, config.googleClientSecret, redirectUri)
     const expiresAt = tokens.expires_in
