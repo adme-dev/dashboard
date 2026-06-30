@@ -13,11 +13,11 @@ import {
   getSocialOauthStateSecret
 } from '~~/server/utils/socialOAuth/env'
 
-const ACCOUNTS_PATH = '/agency/social/publishing/accounts'
+const GOOGLE_BUSINESS_SETTINGS_PATH = '/agency/social/inbox/settings'
 
-function accountsPath(query: Record<string, string>) {
+function googleBusinessSettingsPath(query: Record<string, string>) {
   const params = new URLSearchParams(query)
-  return `${ACCOUNTS_PATH}?${params.toString()}`
+  return `${GOOGLE_BUSINESS_SETTINGS_PATH}?${params.toString()}`
 }
 
 /**
@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
   const googleConfig = getGoogleBusinessOAuthConfig(event)
   const secret = getSocialOauthStateSecret(event)
   const redirectUri = buildGoogleBusinessRedirectUri(event)
-  const fail = (reason: string, clientId?: string) => sendRedirect(event, accountsPath({
+  const fail = (reason: string, clientId?: string) => sendRedirect(event, googleBusinessSettingsPath({
     social_error: reason,
     ...(clientId ? { client: clientId } : {})
   }), 302)
@@ -70,7 +70,7 @@ export default defineEventHandler(async (event) => {
     const rows = mapGoogleBusinessLocationsToAccountRows(locations, accessToken, refreshToken, expiresAt)
     const res = await upsertSocialAccount({ queryOne, execute }, state.clientId, rows[0]!, state.userId)
     if (res.status === 'conflict') return fail('location_owned_by_another_client', state.clientId)
-    return sendRedirect(event, accountsPath({ social_connected: '1', client: state.clientId }), 302)
+    return sendRedirect(event, googleBusinessSettingsPath({ social_connected: '1', client: state.clientId }), 302)
   }
 
   const nonce = crypto.randomUUID()
@@ -88,5 +88,5 @@ export default defineEventHandler(async (event) => {
   if (!stored) return fail('selection_unavailable', state.clientId)
 
   const sel = signState({ nonce, clientId: state.clientId, userId: state.userId }, secret)
-  return sendRedirect(event, accountsPath({ social_select: sel, client: state.clientId }), 302)
+  return sendRedirect(event, googleBusinessSettingsPath({ social_select: sel, client: state.clientId }), 302)
 })

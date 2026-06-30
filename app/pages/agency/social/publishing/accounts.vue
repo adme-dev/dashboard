@@ -14,8 +14,6 @@ const api = useSocialPublishing()
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
-const config = useRuntimeConfig()
-const googleBusinessPublishingEnabled = computed(() => Boolean(config.public.googleBusinessPublishingEnabled))
 
 const { clientId } = useSocialPublishingClient()
 
@@ -23,7 +21,7 @@ const accounts = ref<SocialAccount[]>([])
 const loading = ref(false)
 const search = ref('')
 
-const PLATFORMS = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'google-business']
+const PLATFORMS = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube']
 const META_PLATFORMS = ['facebook', 'instagram'] // both connect via the same Meta flow
 
 const filteredAccounts = computed(() => filterSocialPublishingAccounts(accounts.value, search.value))
@@ -63,8 +61,6 @@ function connect(platform: string) {
   if (!clientId.value) return
   if (META_PLATFORMS.includes(platform)) {
     window.location.href = `/api/agency/social/publishing/accounts/connect/meta?clientId=${encodeURIComponent(clientId.value)}`
-  } else if (platform === 'google-business') {
-    window.location.href = `/api/agency/social/publishing/accounts/connect/google-business?clientId=${encodeURIComponent(clientId.value)}`
   }
 }
 
@@ -133,7 +129,7 @@ onMounted(async () => {
     <UAlert
       icon="i-lucide-info" color="info" variant="subtle" class="mb-5"
       title="Publishing accounts"
-      description="Connect Meta Pages for Facebook and Instagram publishing, or Google Business Profile locations for local posts. Other networks still need per-network app registration."
+      description="Connect Meta Pages for Facebook and Instagram publishing. Google Business Profile review connections live in Engagement > Inbox Settings."
     />
 
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -161,7 +157,7 @@ onMounted(async () => {
       <div v-for="row in platformRows" :key="row.platform" class="rounded-lg border border-default p-3 space-y-3">
         <!-- Platform header: icon, name, connected count, connect/add action -->
         <div class="flex items-center gap-3">
-          <UIcon :name="`i-lucide-${row.platform === 'google-business' ? 'store' : row.platform === 'tiktok' ? 'music' : row.platform}`" class="size-5 text-muted shrink-0" />
+          <UIcon :name="`i-lucide-${row.platform === 'tiktok' ? 'music' : row.platform}`" class="size-5 text-muted shrink-0" />
           <div class="flex-1 min-w-0 text-sm font-medium capitalize">
             {{ row.platform.replace('-', ' ') }}
             <span v-if="row.total" class="text-xs text-muted font-normal">
@@ -173,14 +169,7 @@ onMounted(async () => {
             size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(row.platform)"
           >{{ row.total ? 'Add more' : 'Connect' }}</UButton>
           <template v-else-if="!row.total && !searching">
-            <UButton
-              v-if="row.platform === 'google-business' && googleBusinessPublishingEnabled"
-              size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(row.platform)"
-            >Connect</UButton>
-            <UTooltip v-else-if="row.platform === 'google-business'" text="Dormant until Google Business API approval and production secrets are enabled">
-              <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-lock">Dormant</UButton>
-            </UTooltip>
-            <UTooltip v-else-if="row.platform === 'instagram'" text="Instagram connects automatically with a linked Facebook Page">
+            <UTooltip v-if="row.platform === 'instagram'" text="Instagram connects automatically with a linked Facebook Page">
               <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-link-2">Via Facebook</UButton>
             </UTooltip>
             <UTooltip v-else text="Coming soon — needs platform app registration">

@@ -32,6 +32,7 @@ describe('getSocialPublishingNavCounts', () => {
     expect(sql).toContain('social_posts')
     expect(sql).toContain('social_campaigns')
     expect(sql).toContain('is_active')
+    expect(sql).toContain("platform <> 'google-business'")
     expect(sql).toContain("status = 'scheduled'")
     expect(sql).toContain("status = 'draft'")
     // pending-approval predicate mirrors approvals/badge.get.ts

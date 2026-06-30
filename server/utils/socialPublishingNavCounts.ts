@@ -26,6 +26,7 @@ export async function getSocialPublishingNavCounts(
     `SELECT
        (SELECT COUNT(*)::int FROM social_accounts
          WHERE is_active = true
+           AND platform <> 'google-business'
            AND ($1::uuid IS NULL OR client_id = $1)) AS accounts,
        (SELECT COUNT(*)::int FROM social_posts
          WHERE status = 'scheduled'
