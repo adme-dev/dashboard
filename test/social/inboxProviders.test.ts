@@ -127,6 +127,8 @@ describe('mapFacebookFeedComments', () => {
     const api = {
       data: [{
         id: 'page_1_post_1',
+        message: 'Monster Sale Weekend\nFriday 9am - 5pm',
+        full_picture: 'https://cdn.example.com/facebook-post.jpg',
         permalink_url: 'https://facebook.com/page/posts/1',
         comments: {
           data: [{
@@ -148,7 +150,17 @@ describe('mapFacebookFeedComments', () => {
       platformMessageId: 'fb_comment_1',
       authorName: 'Alex',
       content: 'Is this still available?',
-      permalink: 'https://facebook.com/comment/1'
+      permalink: 'https://facebook.com/comment/1',
+      metadata: {
+        sourcePost: {
+          id: 'page_1_post_1',
+          platform: 'facebook',
+          title: 'Monster Sale Weekend',
+          text: 'Monster Sale Weekend\nFriday 9am - 5pm',
+          imageUrl: 'https://cdn.example.com/facebook-post.jpg',
+          permalink: 'https://facebook.com/page/posts/1'
+        }
+      }
     })
   })
 
@@ -197,6 +209,9 @@ describe('mapInstagramMediaComments', () => {
       data: [{
         id: 'ig_media_1',
         permalink: 'https://instagram.com/p/abc',
+        caption: 'New model arrival\nBook a test drive.',
+        media_type: 'IMAGE',
+        media_url: 'https://cdn.example.com/instagram-media.jpg',
         comments: {
           data: [{
             id: 'ig_comment_1',
@@ -217,7 +232,18 @@ describe('mapInstagramMediaComments', () => {
       participant: { name: 'alex_insta', handle: 'alex_insta' },
       authorName: 'alex_insta',
       content: 'Love this',
-      permalink: 'https://instagram.com/p/abc'
+      permalink: 'https://instagram.com/p/abc',
+      metadata: {
+        sourcePost: {
+          id: 'ig_media_1',
+          platform: 'instagram',
+          title: 'New model arrival',
+          text: 'New model arrival\nBook a test drive.',
+          imageUrl: 'https://cdn.example.com/instagram-media.jpg',
+          mediaType: 'IMAGE',
+          permalink: 'https://instagram.com/p/abc'
+        }
+      }
     })
   })
 

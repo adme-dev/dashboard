@@ -98,6 +98,20 @@ async function insertMessage(db: DbRunner, conversationId: string, clientId: str
   )
 }
 
+async function mergeDuplicateMessageMetadata(db: DbRunner, conversationId: string, ev: NormalizedEvent): Promise<void> {
+  const metadata = ev.message.metadata ?? {}
+  if (!ev.message.platformMessageId || !Object.keys(metadata).length) return
+
+  await db.execute(
+    `UPDATE social_messages SET
+       metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+     WHERE conversation_id = $1
+       AND platform_message_id = $2
+       AND COALESCE(metadata, '{}'::jsonb) IS DISTINCT FROM (COALESCE(metadata, '{}'::jsonb) || $3::jsonb)`,
+    [conversationId, ev.message.platformMessageId, JSON.stringify(metadata)]
+  )
+}
+
 /** Advance conversation counters + last_message snapshot for a genuinely-new inbound message. */
 async function bumpConversationForInbound(db: DbRunner, conversationId: string, ev: NormalizedEvent): Promise<void> {
   await db.execute(
@@ -144,6 +158,8 @@ export async function recordInbound(db: DbRunner, clientId: string, accountId: s
     } else {
       await bumpConversationForInbound(db, conversationId, ev)
     }
+  } else {
+    await mergeDuplicateMessageMetadata(db, conversationId, ev)
   }
   return { conversationId, inserted: affected > 0 }
 }

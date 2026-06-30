@@ -4,10 +4,23 @@ import {
   getSocialInboxAccountContextDisplay,
   getSocialInboxIdentityDisplay
 } from '~/utils/socialInboxDisplay'
+import {
+  getSocialInboxSourcePost,
+  getSocialInboxSourcePostImage,
+  getSocialInboxSourcePostTitle
+} from '~/utils/socialInboxSourcePost'
 import { groupSocialInboxMessages } from '~/utils/socialInboxThread'
 
 const props = defineProps<{ conversation: SocialConversation | null, messages: SocialMessage[] }>()
 const threadItems = computed(() => groupSocialInboxMessages(props.messages))
+const sourcePost = computed(() => getSocialInboxSourcePost(props.messages))
+const sourcePostImage = computed(() => getSocialInboxSourcePostImage(sourcePost.value))
+const sourcePostTitle = computed(() => getSocialInboxSourcePostTitle(sourcePost.value))
+const sourcePostText = computed(() => {
+  const text = sourcePost.value?.text?.trim()
+  if (!text) return null
+  return text === sourcePostTitle.value ? null : text
+})
 function fmt(iso: string | null) {
   return iso ? new Date(iso).toLocaleString() : ''
 }
@@ -79,6 +92,56 @@ function bubbleClass(message: SocialMessage) {
       </div>
       <div v-if="conversation.channel_type === 'review' && conversation.rating" class="mt-1 text-warning text-sm">
         {{ '★'.repeat(conversation.rating) }}{{ '☆'.repeat(5 - conversation.rating) }}
+      </div>
+      <div
+        v-if="sourcePost"
+        class="mt-3 overflow-hidden rounded-md border border-default bg-elevated/30"
+      >
+        <div class="flex gap-3 p-3">
+          <img
+            v-if="sourcePostImage"
+            :src="sourcePostImage"
+            :alt="sourcePostTitle || 'Original post image'"
+            class="size-20 shrink-0 rounded object-cover sm:size-24"
+            loading="lazy"
+            referrerpolicy="no-referrer"
+          >
+          <div
+            v-else
+            class="flex size-20 shrink-0 items-center justify-center rounded bg-muted/20 text-muted sm:size-24"
+          >
+            <UIcon name="i-lucide-image" class="size-5" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex min-w-0 items-center gap-2 text-xs text-muted">
+              <UIcon name="i-lucide-newspaper" class="size-3 shrink-0" />
+              <span class="truncate">Original post</span>
+            </div>
+            <p
+              v-if="sourcePostTitle"
+              class="mt-1 line-clamp-2 text-sm font-medium"
+            >
+              {{ sourcePostTitle }}
+            </p>
+            <p
+              v-if="sourcePostText"
+              class="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted"
+            >
+              {{ sourcePostText }}
+            </p>
+            <UButton
+              v-if="sourcePost.permalink"
+              :to="sourcePost.permalink"
+              target="_blank"
+              icon="i-lucide-external-link"
+              size="xs"
+              variant="link"
+              class="mt-1 px-0"
+            >
+              Open post
+            </UButton>
+          </div>
+        </div>
       </div>
     </div>
     <div class="flex-1 overflow-y-auto p-4 space-y-3">

@@ -22,6 +22,16 @@ import { fetchWithTimeout } from './http'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 const INBOX_FETCH_TIMEOUT_MS = 12_000
+type SourcePostMetadata = NonNullable<NonNullable<InboxItem['metadata']>['sourcePost']>
+
+interface InstagramMediaNode {
+  id?: unknown
+  permalink?: unknown
+  caption?: unknown
+  media_type?: unknown
+  media_url?: unknown
+  thumbnail_url?: unknown
+}
 
 /** Max time (ms) to wait for video container processing */
 const VIDEO_POLL_TIMEOUT_MS = 60_000
@@ -467,12 +477,57 @@ export function buildIgCommentReply(commentId: string, content: string, accessTo
   return { url: `${GRAPH_API_BASE}/${commentId}/replies`, body: { message: content, access_token: accessToken } }
 }
 
+function readText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const text = value.trim()
+  return text.length ? text : undefined
+}
+
+function firstLine(value: unknown): string | undefined {
+  const text = readText(value)
+  if (!text) return undefined
+  return text.split(/\r?\n/).map(line => line.trim()).find(Boolean)?.slice(0, 160)
+}
+
+function instagramSourcePost(media: InstagramMediaNode): SourcePostMetadata | undefined {
+  const mediaType = readText(media?.media_type)
+  const imageUrl = mediaType === 'VIDEO'
+    ? readText(media?.thumbnail_url) ?? readText(media?.media_url)
+    : readText(media?.media_url) ?? readText(media?.thumbnail_url)
+  const text = readText(media?.caption)
+  const id = readText(media?.id)
+  const title = firstLine(text)
+  const thumbnailUrl = readText(media?.thumbnail_url)
+  const permalink = readText(media?.permalink)
+  if (!id && !title && !text && !imageUrl && !permalink) return undefined
+
+  const sourcePost: SourcePostMetadata = { platform: 'instagram' }
+  if (id) sourcePost.id = id
+  if (title) sourcePost.title = title
+  if (text) sourcePost.text = text
+  if (imageUrl) sourcePost.imageUrl = imageUrl
+  if (thumbnailUrl) sourcePost.thumbnailUrl = thumbnailUrl
+  if (mediaType) sourcePost.mediaType = mediaType
+  if (permalink) sourcePost.permalink = permalink
+  return sourcePost
+}
+
+function withSourcePost(
+  metadata: InboxItem['metadata'] | undefined,
+  sourcePost: SourcePostMetadata | undefined
+): InboxItem['metadata'] | undefined {
+  return sourcePost && Object.keys(sourcePost).length
+    ? { ...(metadata ?? {}), sourcePost }
+    : metadata
+}
+
 /** Pure: map an Instagram media list response with nested comments to InboxItems. */
 export function mapInstagramMediaComments(api: any, opts: { accountId?: string } = {}): FetchInboxResult {
   const items: InboxItem[] = []
   for (const media of api?.data ?? []) {
     const mediaId = String(media?.id ?? '')
     if (!mediaId) continue
+    const sourcePost = instagramSourcePost(media)
     for (const c of media?.comments?.data ?? []) {
       const commentId = String(c?.id ?? '')
       if (!commentId) continue
@@ -488,6 +543,7 @@ export function mapInstagramMediaComments(api: any, opts: { accountId?: string }
         authorName: username,
         content: c?.text ?? '',
         messageType: 'comment',
+        metadata: withSourcePost(undefined, sourcePost),
         platformTimestamp: c?.timestamp,
       })
 
@@ -509,7 +565,7 @@ export function mapInstagramMediaComments(api: any, opts: { accountId?: string }
           authorName: replyUsername,
           content: reply?.text ?? '',
           messageType: 'comment_reply',
-          metadata: { source: 'platform_sync' },
+          metadata: withSourcePost({ source: 'platform_sync' }, sourcePost),
           platformTimestamp: reply?.timestamp,
         })
       }
@@ -522,7 +578,7 @@ export function mapInstagramMediaComments(api: any, opts: { accountId?: string }
 
 instagramProvider.fetchInbox = async ({ accountId, accessToken }: FetchInboxParams): Promise<FetchInboxResult> => {
   const url = new URL(`${GRAPH_API_BASE}/${accountId}/media`)
-  url.searchParams.set('fields', 'id,permalink,comments.limit(50){id,text,username,timestamp,from{id,username},replies.limit(50){id,text,username,timestamp,from{id,username}}}')
+  url.searchParams.set('fields', 'id,permalink,caption,media_type,media_url,thumbnail_url,comments.limit(50){id,text,username,timestamp,from{id,username},replies.limit(50){id,text,username,timestamp,from{id,username}}}')
   url.searchParams.set('access_token', accessToken)
   url.searchParams.set('limit', '25')
   const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })

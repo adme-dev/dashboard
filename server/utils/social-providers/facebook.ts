@@ -15,6 +15,26 @@ import { fetchWithTimeout } from './http'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 const INBOX_FETCH_TIMEOUT_MS = 12_000
+type SourcePostMetadata = NonNullable<NonNullable<InboxItem['metadata']>['sourcePost']>
+
+interface FacebookPostAttachment {
+  media?: {
+    image?: { src?: unknown }
+    source?: unknown
+  }
+  type?: unknown
+  title?: unknown
+  description?: unknown
+  url?: unknown
+}
+
+interface FacebookFeedPost {
+  id?: unknown
+  message?: unknown
+  full_picture?: unknown
+  permalink_url?: unknown
+  attachments?: { data?: FacebookPostAttachment[] }
+}
 
 // ── Error helpers ──────────────────────────────────────────────
 
@@ -100,6 +120,58 @@ function buildPostUrl(rawId: string): string {
     return `https://www.facebook.com/${parts[0]}/posts/${parts[1]}`
   }
   return `https://www.facebook.com/${rawId}`
+}
+
+function readText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const text = value.trim()
+  return text.length ? text : undefined
+}
+
+function firstLine(value: unknown): string | undefined {
+  const text = readText(value)
+  if (!text) return undefined
+  return text.split(/\r?\n/).map(line => line.trim()).find(Boolean)?.slice(0, 160)
+}
+
+function firstAttachment(post: FacebookFeedPost): FacebookPostAttachment | undefined {
+  return Array.isArray(post?.attachments?.data) ? post.attachments.data.find(Boolean) : undefined
+}
+
+function facebookPostImage(post: FacebookFeedPost): string | undefined {
+  const attachment = firstAttachment(post)
+  return readText(post?.full_picture)
+    ?? readText(attachment?.media?.image?.src)
+    ?? readText(attachment?.media?.source)
+}
+
+function facebookSourcePost(post: FacebookFeedPost): SourcePostMetadata | undefined {
+  const attachment = firstAttachment(post)
+  const id = readText(post?.id)
+  const text = readText(post?.message) ?? readText(attachment?.description)
+  const title = firstLine(attachment?.title) ?? firstLine(text)
+  const imageUrl = facebookPostImage(post)
+  const permalink = readText(post?.permalink_url) ?? readText(attachment?.url)
+  const mediaType = readText(attachment?.type)
+  if (!id && !title && !text && !imageUrl && !permalink) return undefined
+
+  const sourcePost: SourcePostMetadata = { platform: 'facebook' }
+  if (id) sourcePost.id = id
+  if (title) sourcePost.title = title
+  if (text) sourcePost.text = text
+  if (imageUrl) sourcePost.imageUrl = imageUrl
+  if (mediaType) sourcePost.mediaType = mediaType
+  if (permalink) sourcePost.permalink = permalink
+  return sourcePost
+}
+
+function withSourcePost(
+  metadata: InboxItem['metadata'] | undefined,
+  sourcePost: SourcePostMetadata | undefined
+): InboxItem['metadata'] | undefined {
+  return sourcePost && Object.keys(sourcePost).length
+    ? { ...(metadata ?? {}), sourcePost }
+    : metadata
 }
 
 // ── Provider implementation ────────────────────────────────────
@@ -266,6 +338,7 @@ export function mapFacebookFeedComments(api: any, opts: { accountId?: string } =
   for (const post of api?.data ?? []) {
     const postId = String(post?.id ?? '')
     if (!postId) continue
+    const sourcePost = facebookSourcePost(post)
     for (const c of post?.comments?.data ?? []) {
       const commentId = String(c?.id ?? '')
       if (!commentId) continue
@@ -279,6 +352,7 @@ export function mapFacebookFeedComments(api: any, opts: { accountId?: string } =
         authorName: c?.from?.name,
         content: c?.message ?? '',
         messageType: 'comment',
+        metadata: withSourcePost(undefined, sourcePost),
         platformTimestamp: c?.created_time,
       })
 
@@ -300,7 +374,7 @@ export function mapFacebookFeedComments(api: any, opts: { accountId?: string } =
           authorName: reply?.from?.name,
           content: reply?.message ?? '',
           messageType: 'comment_reply',
-          metadata: { source: 'platform_sync' },
+          metadata: withSourcePost({ source: 'platform_sync' }, sourcePost),
           platformTimestamp: reply?.created_time,
         })
       }
@@ -314,7 +388,7 @@ export function mapFacebookFeedComments(api: any, opts: { accountId?: string } =
 facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelType }: FetchInboxParams): Promise<FetchInboxResult> => {
   if (channelType === 'comment') {
     const url = new URL(`${GRAPH_API_BASE}/${accountId}/feed`)
-    url.searchParams.set('fields', 'id,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url}}')
+    url.searchParams.set('fields', 'id,message,permalink_url,full_picture,attachments{media,type,title,description,url},comments.limit(50){id,message,from{id,name},created_time,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url}}')
     url.searchParams.set('access_token', accessToken)
     url.searchParams.set('limit', '25')
     const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })

@@ -48,6 +48,46 @@ describe('recordInbound', () => {
     expect(calls.some(c => /UPDATE social_conversations/i.test(c))).toBe(false)
   })
 
+  it('merges metadata onto duplicate messages without bumping counters', async () => {
+    const sqls: string[] = []
+    const params: unknown[][] = []
+    const db: DbRunner = {
+      async queryOne<T = unknown>() {
+        return { id: 'conv-1' } as T
+      },
+      async execute(sql: string, p?: unknown[]) {
+        sqls.push(sql)
+        if (p) params.push(p)
+        return /INSERT INTO social_messages/i.test(sql) ? 0 : 1
+      }
+    }
+
+    const res = await recordInbound(db, 'client-1', 'acct-1', {
+      ...ev,
+      message: {
+        ...ev.message,
+        metadata: {
+          sourcePost: {
+            id: 'post-1',
+            title: 'Monster Sale Weekend',
+            imageUrl: 'https://cdn.example.com/post.jpg'
+          }
+        }
+      }
+    })
+
+    expect(res.inserted).toBe(false)
+    expect(sqls.some(s => /UPDATE social_messages/i.test(s))).toBe(true)
+    expect(sqls.some(s => /UPDATE social_conversations/i.test(s))).toBe(false)
+    expect(params.flat()).toContain(JSON.stringify({
+      sourcePost: {
+        id: 'post-1',
+        title: 'Monster Sale Weekend',
+        imageUrl: 'https://cdn.example.com/post.jpg'
+      }
+    }))
+  })
+
   it('flags automation_state=pending when a new inbound is recorded', async () => {
     const fullSql: string[] = []
     const db: DbRunner = {
