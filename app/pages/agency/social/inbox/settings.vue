@@ -5,12 +5,7 @@ definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
-const config = useRuntimeConfig()
 const socialApi = useSocialPublishing()
-const googleBusinessEnabled = computed(() =>
-  config.public.googleBusinessPublishingEnabled === true
-  || config.public.googleBusinessPublishingEnabled === 'true'
-)
 
 const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
 const clients = computed<any[]>(() => { const d = clientsData.value as any; return Array.isArray(d) ? d : (d?.clients ?? []) })
@@ -33,11 +28,43 @@ const { data: policies, refresh: refreshPolicies } = await useFetch<SocialSlaPol
 const googleBusinessAccounts = ref<SocialAccount[]>([])
 const googleBusinessLoading = ref(false)
 const googleBusinessDisconnecting = ref<string | null>(null)
+const googleBusinessSyncing = ref(false)
+const savingReply = ref(false)
+const deletingReply = ref<string | null>(null)
+const savingPolicy = ref(false)
+const deletingPolicy = ref<string | null>(null)
+
+const currentClientName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || 'Selected client')
+const googleBusinessConnectedCount = computed(() => googleBusinessAccounts.value.filter(account => account.is_active && !account.last_error).length)
+const googleBusinessIssueCount = computed(() =>
+  googleBusinessAccounts.value.filter(account => !account.is_active || account.last_error || isExpired(account.token_expires_at)).length
+)
+const googleBusinessLastSyncAt = computed(() =>
+  googleBusinessAccounts.value
+    .map(account => account.last_synced_at)
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null
+)
+
+function isExpired(value: string | null | undefined) {
+  return Boolean(value && Date.parse(value) < Date.now())
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return 'Not synced yet'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'Not synced yet' : date.toLocaleString()
+}
+
+function formatTokenExpiry(value: string | null | undefined) {
+  if (!value) return 'No expiry recorded'
+  return isExpired(value) ? `Expired ${formatDateTime(value)}` : `Expires ${formatDateTime(value)}`
+}
 
 function accountState(a: SocialAccount): { label: string; color: string } {
   if (!a.is_active) return { label: 'Disconnected', color: 'error' }
   if (a.last_error) return { label: 'Error', color: 'error' }
-  if (a.token_expires_at && new Date(a.token_expires_at) < new Date()) return { label: 'Token expired', color: 'warning' }
+  if (isExpired(a.token_expires_at)) return { label: 'Token expired', color: 'warning' }
   return { label: 'Connected', color: 'success' }
 }
 
@@ -72,6 +99,27 @@ watch(clientId, () => {
 function connectGoogleBusiness() {
   if (!clientId.value) return
   window.location.href = `/api/agency/social/publishing/accounts/connect/google-business?clientId=${encodeURIComponent(clientId.value)}`
+}
+
+async function syncGoogleBusinessReviews() {
+  if (!clientId.value) return
+  googleBusinessSyncing.value = true
+  try {
+    const result = await $fetch<{ synced?: number; skipped?: number; timedOut?: boolean }>('/api/agency/social/inbox/accounts/sync', {
+      method: 'POST',
+      body: { clientId: clientId.value }
+    })
+    await refreshGoogleBusinessAccounts()
+    toast.add({
+      title: result.timedOut ? 'Review sync partially completed' : 'Review sync complete',
+      description: `${result.synced ?? 0} synced${result.skipped ? `, ${result.skipped} skipped` : ''}`,
+      color: result.timedOut ? 'warning' : 'success'
+    })
+  } catch (e: any) {
+    toast.add({ title: 'Review sync failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } finally {
+    googleBusinessSyncing.value = false
+  }
 }
 
 async function disconnectGoogleBusiness(account: SocialAccount) {
@@ -161,167 +209,378 @@ onMounted(async () => {
 const newReply = reactive({ name: '', content: '', category: '' })
 async function addReply() {
   if (!newReply.name.trim() || !newReply.content.trim()) return
-  await $fetch('/api/agency/social/inbox/saved-replies', { method: 'POST', body: { ...newReply, client_id: clientId.value } })
-  newReply.name = ''; newReply.content = ''; newReply.category = ''
-  await refreshReplies(); toast.add({ title: 'Saved reply added', color: 'success' })
+  savingReply.value = true
+  try {
+    await $fetch('/api/agency/social/inbox/saved-replies', { method: 'POST', body: { ...newReply, client_id: clientId.value } })
+    newReply.name = ''; newReply.content = ''; newReply.category = ''
+    await refreshReplies(); toast.add({ title: 'Saved reply added', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: 'Saved reply failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } finally {
+    savingReply.value = false
+  }
 }
-async function delReply(id: string) { await $fetch(`/api/agency/social/inbox/saved-replies/${id}`, { method: 'DELETE' }); await refreshReplies() }
+async function delReply(id: string) {
+  deletingReply.value = id
+  try {
+    await $fetch(`/api/agency/social/inbox/saved-replies/${id}`, { method: 'DELETE' })
+    await refreshReplies()
+  } catch (e: any) {
+    toast.add({ title: 'Delete failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } finally {
+    deletingReply.value = null
+  }
+}
 
 const ALL_CHANNELS = '__all__'
 const newPolicy = reactive({ channel_type: ALL_CHANNELS, target_minutes: 240 })
 const CHANNELS = [{ label: 'All channels', value: ALL_CHANNELS }, { label: 'Comments', value: 'comment' }, { label: 'Reviews', value: 'review' }]
 async function savePolicy() {
-  await $fetch('/api/agency/social/inbox/sla-policies', { method: 'POST', body: { client_id: clientId.value, channel_type: newPolicy.channel_type === ALL_CHANNELS ? null : newPolicy.channel_type, target_minutes: newPolicy.target_minutes } })
-  await refreshPolicies(); toast.add({ title: 'SLA policy saved', color: 'success' })
+  if (!clientId.value || !newPolicy.target_minutes || newPolicy.target_minutes < 1) return
+  savingPolicy.value = true
+  try {
+    await $fetch('/api/agency/social/inbox/sla-policies', { method: 'POST', body: { client_id: clientId.value, channel_type: newPolicy.channel_type === ALL_CHANNELS ? null : newPolicy.channel_type, target_minutes: newPolicy.target_minutes } })
+    await refreshPolicies(); toast.add({ title: 'SLA policy saved', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: 'SLA policy failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } finally {
+    savingPolicy.value = false
+  }
 }
-async function delPolicy(id: string) { await $fetch(`/api/agency/social/inbox/sla-policies/${id}`, { method: 'DELETE' }); await refreshPolicies() }
+async function delPolicy(id: string) {
+  deletingPolicy.value = id
+  try {
+    await $fetch(`/api/agency/social/inbox/sla-policies/${id}`, { method: 'DELETE' })
+    await refreshPolicies()
+  } catch (e: any) {
+    toast.add({ title: 'Delete failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } finally {
+    deletingPolicy.value = null
+  }
+}
 </script>
 
 <template>
-  <div class="p-6 space-y-8 max-w-5xl">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-xl font-semibold">Inbox Settings</h1>
-      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56 max-w-full" />
-    </div>
-
-    <SocialSuiteSectionNav />
-
-    <section class="space-y-3">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 class="font-medium">Google Business Profile</h2>
-          <p class="mt-1 text-sm text-muted">
-            Connect locations here for Google reviews, review replies, and engagement inbox syncing.
+  <div class="flex h-full min-h-0 w-full flex-col overflow-y-auto">
+    <div class="w-full min-w-0 space-y-6 p-4 sm:p-6">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+          <h1 class="text-xl font-semibold">Inbox Settings</h1>
+          <p class="mt-1 max-w-3xl text-sm text-muted">
+            Manage review connections, saved replies, and response targets for {{ currentClientName }}.
           </p>
         </div>
-        <UButton
-          icon="i-lucide-store"
-          :disabled="!clientId || !googleBusinessEnabled"
-          @click="connectGoogleBusiness"
-        >
-          Connect Google Business
-        </UButton>
+        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <USelectMenu
+            v-model="clientId"
+            :items="clientOptions"
+            value-key="value"
+            placeholder="Select client"
+            class="w-full sm:w-64"
+          />
+          <UButton to="/agency/social/inbox" icon="i-lucide-inbox" variant="subtle">
+            Open inbox
+          </UButton>
+        </div>
       </div>
 
-      <UAlert
-        v-if="!googleBusinessEnabled"
-        icon="i-lucide-lock"
-        color="warning"
-        variant="subtle"
-        title="Google Business connection is disabled"
-        description="Enable the Google Business Profile connection flag and OAuth credentials before connecting locations."
-      />
+      <SocialSuiteSectionNav />
 
-      <div v-if="googleBusinessLoading" class="rounded-lg border border-default p-6 text-center text-sm text-muted">
-        Loading Google Business locations...
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div class="rounded-lg border border-default p-4">
+          <p class="text-xs font-medium uppercase text-muted">Google Business</p>
+          <p class="mt-2 text-2xl font-semibold">{{ googleBusinessConnectedCount }}</p>
+          <p class="mt-1 text-xs text-muted">connected locations</p>
+        </div>
+        <div class="rounded-lg border border-default p-4">
+          <p class="text-xs font-medium uppercase text-muted">Saved replies</p>
+          <p class="mt-2 text-2xl font-semibold">{{ replies?.length || 0 }}</p>
+          <p class="mt-1 text-xs text-muted">available templates</p>
+        </div>
+        <div class="rounded-lg border border-default p-4">
+          <p class="text-xs font-medium uppercase text-muted">SLA policies</p>
+          <p class="mt-2 text-2xl font-semibold">{{ policies?.length || 0 }}</p>
+          <p class="mt-1 text-xs text-muted">response targets</p>
+        </div>
       </div>
 
-      <div v-else-if="!googleBusinessAccounts.length" class="rounded-lg border border-dashed border-default p-6 text-sm text-muted">
-        No Google Business Profile locations are connected for this client.
-      </div>
-
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div
-          v-for="account in googleBusinessAccounts"
-          :key="account.id"
-          class="rounded-lg border border-default p-4 space-y-3"
-        >
-          <div class="flex items-start gap-3">
-            <UIcon name="i-lucide-store" class="mt-0.5 size-5 text-muted shrink-0" />
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium" :title="account.account_name || account.platform_account_id">
-                {{ account.account_name || account.platform_account_id }}
-              </div>
-              <div class="mt-0.5 truncate text-xs text-muted">
-                {{ account.platform_account_id }}
-              </div>
+      <section class="rounded-lg border border-default">
+        <div class="flex flex-wrap items-start justify-between gap-4 border-b border-default p-4 sm:p-5">
+          <div class="flex min-w-0 gap-3">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <UIcon name="i-lucide-store" class="size-5" />
             </div>
-            <UBadge :color="(accountState(account).color as any)" variant="subtle" size="sm">
-              {{ accountState(account).label }}
-            </UBadge>
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="font-semibold">Google Business Profile</h2>
+                <UBadge v-if="googleBusinessIssueCount" color="warning" variant="subtle" size="sm">
+                  {{ googleBusinessIssueCount }} need attention
+                </UBadge>
+                <UBadge v-else-if="googleBusinessAccounts.length" color="success" variant="subtle" size="sm">
+                  Ready for reviews
+                </UBadge>
+              </div>
+              <p class="mt-1 max-w-3xl text-sm text-muted">
+                Connect the client locations that should feed Google reviews into the engagement inbox.
+              </p>
+              <p class="mt-2 text-xs text-muted">
+                Last review sync: {{ formatDateTime(googleBusinessLastSyncAt) }}
+              </p>
+            </div>
           </div>
-          <div v-if="account.last_error" class="text-xs text-error">
-            {{ account.last_error }}
-          </div>
-          <div class="flex justify-end">
+          <div class="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
             <UButton
-              size="xs"
-              variant="ghost"
-              color="error"
-              icon="i-lucide-unlink"
-              :loading="googleBusinessDisconnecting === account.id"
-              @click="disconnectGoogleBusiness(account)"
+              icon="i-lucide-link"
+              :disabled="!clientId"
+              @click="connectGoogleBusiness"
             >
-              Disconnect
+              Connect locations
+            </UButton>
+            <UButton
+              icon="i-lucide-refresh-cw"
+              variant="subtle"
+              :loading="googleBusinessLoading"
+              :disabled="!clientId"
+              @click="refreshGoogleBusinessAccounts"
+            >
+              Refresh status
+            </UButton>
+            <UButton
+              icon="i-lucide-download-cloud"
+              variant="subtle"
+              :loading="googleBusinessSyncing"
+              :disabled="!clientId || !googleBusinessAccounts.length"
+              @click="syncGoogleBusinessReviews"
+            >
+              Sync reviews
             </UButton>
           </div>
         </div>
-      </div>
-    </section>
 
-    <section class="space-y-3">
-      <h2 class="font-medium">Saved replies</h2>
-      <div class="grid grid-cols-[1fr_2fr_auto] gap-2 items-end">
-        <UFormField label="Name"><UInput v-model="newReply.name" placeholder="Thanks" class="w-full" /></UFormField>
-        <UFormField label="Content ( {{variables}} allowed )"><UInput v-model="newReply.content" placeholder="Thanks {{name}}!" class="w-full" /></UFormField>
-        <UButton label="Add" :disabled="!newReply.name.trim() || !newReply.content.trim()" @click="addReply" />
-      </div>
-      <div class="space-y-1">
-        <div v-for="r in replies" :key="r.id" class="flex items-center justify-between rounded border border-default p-2 text-sm">
-          <div><span class="font-medium">{{ r.name }}</span> <span class="text-muted">— {{ r.content }}</span> <span class="text-xs text-muted">({{ r.usage_count }} uses)</span></div>
-          <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" @click="delReply(r.id)" />
-        </div>
-      </div>
-    </section>
+        <div class="p-4 sm:p-5">
+          <UAlert
+            v-if="!clientId"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-info"
+            title="Select a client"
+            description="Choose a client before connecting Google Business Profile locations."
+          />
 
-    <section class="space-y-3">
-      <h2 class="font-medium">SLA policies</h2>
-      <div class="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
-        <UFormField label="Channel"><USelect v-model="newPolicy.channel_type" :items="CHANNELS" value-key="value" class="w-full" /></UFormField>
-        <UFormField label="First-response target (min)"><UInput v-model.number="newPolicy.target_minutes" type="number" min="1" class="w-full" /></UFormField>
-        <UButton label="Save" @click="savePolicy" />
-      </div>
-      <div class="space-y-1">
-        <div v-for="p in policies" :key="p.id" class="flex items-center justify-between rounded border border-default p-2 text-sm">
-          <div>{{ p.channel_type || 'all channels' }} — {{ p.target_minutes }}m {{ p.enabled ? '' : '(disabled)' }}</div>
-          <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" @click="delPolicy(p.id)" />
-        </div>
-      </div>
-    </section>
-
-    <UModal v-model:open="selectOpen">
-      <template #content>
-        <div class="p-6 space-y-4">
-          <div>
-            <h2 class="text-lg font-semibold">Choose Google Business locations</h2>
-            <p class="text-sm text-muted mt-0.5">Pick the locations that belong to this client.</p>
+          <div v-else-if="googleBusinessLoading" class="rounded-lg border border-default p-8 text-center text-sm text-muted">
+            Loading Google Business locations...
           </div>
-          <div class="space-y-2 max-h-80 overflow-auto">
-            <label
-              v-for="location in selectLocations"
-              :key="location.id"
-              class="flex items-center gap-3 rounded-lg border border-default p-3"
-              :class="location.status === 'conflict' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-elevated'"
+
+          <div v-else-if="!googleBusinessAccounts.length" class="rounded-lg border border-dashed border-default p-8 text-center">
+            <UIcon name="i-lucide-store" class="mx-auto size-8 text-muted" />
+            <h3 class="mt-3 text-sm font-medium">No Google Business locations connected</h3>
+            <p class="mx-auto mt-1 max-w-xl text-sm text-muted">
+              Connect functioning Google Business Profile locations here. Once connected, reviews will sync into the inbox and reviews route.
+            </p>
+            <UButton
+              class="mt-4"
+              icon="i-lucide-link"
+              @click="connectGoogleBusiness"
             >
-              <UCheckbox
-                :model-value="selectChosen.includes(location.id)"
-                :disabled="location.status === 'conflict'"
-                @update:model-value="(value: any) => toggleLocation(location.id, !!value)"
-              />
-              <div class="min-w-0 flex-1">
-                <div class="text-sm font-medium truncate">{{ location.name }}</div>
-                <div v-if="location.subtitle" class="text-xs text-muted truncate">{{ location.subtitle }}</div>
-              </div>
-              <UBadge v-if="location.status === 'connected'" color="success" variant="subtle" size="sm">Connected</UBadge>
-              <UBadge v-else-if="location.status === 'conflict'" color="warning" variant="subtle" size="sm">Another client</UBadge>
-            </label>
+              Connect Google Business
+            </UButton>
           </div>
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" label="Cancel" @click="selectOpen = false" />
-            <UButton label="Connect selected" icon="i-lucide-link" :loading="selecting" :disabled="!selectChosen.length" @click="confirmSelection" />
+
+          <div v-else class="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+            <div
+              v-for="account in googleBusinessAccounts"
+              :key="account.id"
+              class="rounded-lg border border-default p-4"
+            >
+              <div class="flex items-start gap-3">
+                <UIcon name="i-lucide-map-pin" class="mt-0.5 size-5 shrink-0 text-muted" />
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm font-medium" :title="account.account_name || account.platform_account_id">
+                    {{ account.account_name || account.platform_account_id }}
+                  </div>
+                  <div class="mt-0.5 truncate text-xs text-muted">
+                    {{ account.platform_account_id }}
+                  </div>
+                </div>
+                <UBadge :color="(accountState(account).color as any)" variant="subtle" size="sm">
+                  {{ accountState(account).label }}
+                </UBadge>
+              </div>
+              <div class="mt-4 grid grid-cols-1 gap-2 text-xs text-muted sm:grid-cols-2">
+                <div>
+                  <span class="block font-medium text-default">Last sync</span>
+                  {{ formatDateTime(account.last_synced_at) }}
+                </div>
+                <div>
+                  <span class="block font-medium text-default">Token</span>
+                  {{ formatTokenExpiry(account.token_expires_at) }}
+                </div>
+              </div>
+              <div v-if="account.last_error" class="mt-3 rounded-md bg-error/10 p-2 text-xs text-error">
+                {{ account.last_error }}
+              </div>
+              <div class="mt-4 flex justify-end">
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="error"
+                  icon="i-lucide-unlink"
+                  :loading="googleBusinessDisconnecting === account.id"
+                  @click="disconnectGoogleBusiness(account)"
+                >
+                  Disconnect
+                </UButton>
+              </div>
+            </div>
           </div>
         </div>
-      </template>
-    </UModal>
+      </section>
+
+      <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <section class="rounded-lg border border-default">
+          <div class="border-b border-default p-4 sm:p-5">
+            <div class="flex items-start gap-3">
+              <UIcon name="i-lucide-message-square-text" class="mt-0.5 size-5 text-muted" />
+              <div>
+                <h2 class="font-semibold">Saved replies</h2>
+                <p class="mt-1 text-sm text-muted">Reusable snippets for common comment and review responses.</p>
+              </div>
+            </div>
+          </div>
+          <div class="space-y-4 p-4 sm:p-5">
+            <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(12rem,0.8fr)_minmax(18rem,2fr)_auto] lg:items-end">
+              <UFormField label="Name">
+                <UInput v-model="newReply.name" placeholder="Thank you" class="w-full" />
+              </UFormField>
+              <UFormField label="Reply text" help="{{name}} style variables are supported.">
+                <UTextarea v-model="newReply.content" placeholder="Thanks {{name}}! We appreciate the review." :rows="2" class="w-full" />
+              </UFormField>
+              <UButton
+                icon="i-lucide-plus"
+                :loading="savingReply"
+                :disabled="!newReply.name.trim() || !newReply.content.trim()"
+                @click="addReply"
+              >
+                Add reply
+              </UButton>
+            </div>
+            <div v-if="!replies?.length" class="rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted">
+              No saved replies yet.
+            </div>
+            <div v-else class="space-y-2">
+              <div v-for="r in replies" :key="r.id" class="flex items-start justify-between gap-3 rounded-lg border border-default p-3 text-sm">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-medium">{{ r.name }}</span>
+                    <UBadge variant="subtle" color="neutral" size="xs">{{ r.usage_count }} uses</UBadge>
+                  </div>
+                  <p class="mt-1 line-clamp-2 text-muted">{{ r.content }}</p>
+                </div>
+                <UButton
+                  icon="i-lucide-trash-2"
+                  size="xs"
+                  variant="ghost"
+                  color="error"
+                  :loading="deletingReply === r.id"
+                  @click="delReply(r.id)"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-default">
+          <div class="border-b border-default p-4 sm:p-5">
+            <div class="flex items-start gap-3">
+              <UIcon name="i-lucide-timer" class="mt-0.5 size-5 text-muted" />
+              <div>
+                <h2 class="font-semibold">SLA policies</h2>
+                <p class="mt-1 text-sm text-muted">First-response targets used by inbox health and reporting.</p>
+              </div>
+            </div>
+          </div>
+          <div class="space-y-4 p-4 sm:p-5">
+            <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto] lg:items-end">
+              <UFormField label="Channel">
+                <USelect v-model="newPolicy.channel_type" :items="CHANNELS" value-key="value" class="w-full" />
+              </UFormField>
+              <UFormField label="First-response target">
+                <div class="flex items-center gap-2">
+                  <UInput v-model.number="newPolicy.target_minutes" type="number" min="1" class="w-full" />
+                  <span class="shrink-0 text-sm text-muted">minutes</span>
+                </div>
+              </UFormField>
+              <UButton
+                icon="i-lucide-save"
+                :loading="savingPolicy"
+                :disabled="!clientId || !newPolicy.target_minutes || newPolicy.target_minutes < 1"
+                @click="savePolicy"
+              >
+                Save target
+              </UButton>
+            </div>
+            <div v-if="!policies?.length" class="rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted">
+              No SLA policies yet.
+            </div>
+            <div v-else class="space-y-2">
+              <div v-for="p in policies" :key="p.id" class="flex items-center justify-between gap-3 rounded-lg border border-default p-3 text-sm">
+                <div class="min-w-0">
+                  <div class="font-medium capitalize">{{ p.channel_type || 'All channels' }}</div>
+                  <div class="text-xs text-muted">
+                    First response within {{ p.target_minutes }} minutes
+                    <span v-if="!p.enabled"> - disabled</span>
+                  </div>
+                </div>
+                <UButton
+                  icon="i-lucide-trash-2"
+                  size="xs"
+                  variant="ghost"
+                  color="error"
+                  :loading="deletingPolicy === p.id"
+                  @click="delPolicy(p.id)"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <UModal v-model:open="selectOpen">
+        <template #content>
+          <div class="w-[min(92vw,44rem)] p-6">
+            <div class="space-y-4">
+              <div>
+                <h2 class="text-lg font-semibold">Choose Google Business locations</h2>
+                <p class="mt-0.5 text-sm text-muted">Pick the locations that belong to {{ currentClientName }}.</p>
+              </div>
+              <div class="max-h-96 space-y-2 overflow-auto pr-1">
+                <label
+                  v-for="location in selectLocations"
+                  :key="location.id"
+                  class="flex items-center gap-3 rounded-lg border border-default p-3"
+                  :class="location.status === 'conflict' ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-elevated'"
+                >
+                  <UCheckbox
+                    :model-value="selectChosen.includes(location.id)"
+                    :disabled="location.status === 'conflict'"
+                    @update:model-value="(value: any) => toggleLocation(location.id, !!value)"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-sm font-medium">{{ location.name }}</div>
+                    <div v-if="location.subtitle" class="truncate text-xs text-muted">{{ location.subtitle }}</div>
+                  </div>
+                  <UBadge v-if="location.status === 'connected'" color="success" variant="subtle" size="sm">Connected</UBadge>
+                  <UBadge v-else-if="location.status === 'conflict'" color="warning" variant="subtle" size="sm">Another client</UBadge>
+                </label>
+              </div>
+              <div class="flex justify-end gap-2">
+                <UButton color="neutral" variant="ghost" label="Cancel" @click="selectOpen = false" />
+                <UButton label="Connect selected" icon="i-lucide-link" :loading="selecting" :disabled="!selectChosen.length" @click="confirmSelection" />
+              </div>
+            </div>
+          </div>
+        </template>
+      </UModal>
+    </div>
   </div>
 </template>

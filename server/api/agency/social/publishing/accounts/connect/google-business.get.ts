@@ -6,7 +6,7 @@ import {
   buildGoogleBusinessRedirectUri,
   getGoogleBusinessOAuthConfig,
   getSocialOauthStateSecret,
-  isGoogleBusinessPublishingEnabled
+  isGoogleBusinessConnectionEnabled
 } from '~~/server/utils/socialOAuth/env'
 
 /**
@@ -15,8 +15,8 @@ import {
  */
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
-  if (!isGoogleBusinessPublishingEnabled(event)) {
-    throw createError({ statusCode: 404, statusMessage: 'Google Business connection is disabled' })
+  if (!isGoogleBusinessConnectionEnabled(event)) {
+    throw createError({ statusCode: 503, statusMessage: 'Google Business credentials not configured' })
   }
 
   const clientId = getQuery(event).clientId as string

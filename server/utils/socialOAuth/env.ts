@@ -74,6 +74,12 @@ export function isGoogleBusinessPublishingEnabled(event?: H3Event): boolean {
   return getConfiguredValue(event, 'GOOGLE_BUSINESS_PUBLISHING_ENABLED') === 'true'
 }
 
+export function isGoogleBusinessConnectionEnabled(event?: H3Event): boolean {
+  if (isGoogleBusinessPublishingEnabled(event)) return true
+  const { clientId, clientSecret } = getGoogleBusinessOAuthConfig(event)
+  return Boolean(clientId && clientSecret)
+}
+
 export function buildGoogleBusinessRedirectUri(event: H3Event): string {
   const { redirectUri } = getGoogleBusinessOAuthConfig(event)
   const base = getConfiguredValue(event, 'SOCIAL_OAUTH_REDIRECT_BASE') || getRequestURL(event).origin

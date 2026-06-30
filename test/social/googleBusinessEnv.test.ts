@@ -6,7 +6,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 vi.mock('~~/server/utils/email', () => ({ getCachedBinding: () => undefined }))
 vi.stubGlobal('useRuntimeConfig', () => ({}))
 
-import { getGoogleBusinessOAuthConfig, getSocialOauthStateSecret, isGoogleBusinessPublishingEnabled } from '~~/server/utils/socialOAuth/env'
+import {
+  getGoogleBusinessOAuthConfig,
+  getSocialOauthStateSecret,
+  isGoogleBusinessConnectionEnabled,
+  isGoogleBusinessPublishingEnabled
+} from '~~/server/utils/socialOAuth/env'
 
 const VALID_CLIENT_ID = '65723781223-abcDEF_hyphen.apps.googleusercontent.com'
 const KEYS = [
@@ -69,5 +74,20 @@ describe('isGoogleBusinessPublishingEnabled', () => {
   it('turns on only when explicitly enabled', () => {
     process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED = 'true'
     expect(isGoogleBusinessPublishingEnabled()).toBe(true)
+  })
+})
+
+describe('isGoogleBusinessConnectionEnabled', () => {
+  beforeEach(clearKeys)
+  afterEach(clearKeys)
+
+  it('allows review connections when valid Google Business OAuth credentials exist', () => {
+    process.env.GOOGLE_BUSINESS_CLIENT_ID = VALID_CLIENT_ID
+    process.env.GOOGLE_BUSINESS_CLIENT_SECRET = 'a-secret'
+    expect(isGoogleBusinessConnectionEnabled()).toBe(true)
+  })
+
+  it('keeps the connection disabled when credentials are missing', () => {
+    expect(isGoogleBusinessConnectionEnabled()).toBe(false)
   })
 })
