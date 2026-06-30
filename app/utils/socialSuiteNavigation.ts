@@ -60,6 +60,12 @@ export const SOCIAL_SUITE_SECTIONS: SocialSuiteSection[] = [
         objective: 'Handle inbound comments, messages, and assigned social conversations.'
       },
       {
+        label: 'Wall',
+        icon: 'i-lucide-panels-top-left',
+        to: '/agency/social/inbox/wall',
+        objective: 'Review engagement grouped by the public post that generated the comments, replies, and reviews.'
+      },
+      {
         label: 'Reply Queue',
         icon: 'i-lucide-bot-message-square',
         to: '/agency/social/inbox/approvals',

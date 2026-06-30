@@ -17,7 +17,7 @@ describe('social suite navigation', () => {
   it('keeps the sidebar routes grouped by operational objective', () => {
     expect(SOCIAL_SUITE_SECTIONS.map(section => section.items.map(item => item.label))).toEqual([
       ['Accounts', 'Calendar', 'Compose', 'Approvals', 'Planner', 'Queue', 'Wall'],
-      ['Inbox', 'Reply Queue', 'Reviews', 'Automation', 'Inbox Analytics', 'Inbox Settings'],
+      ['Inbox', 'Wall', 'Reply Queue', 'Reviews', 'Automation', 'Inbox Analytics', 'Inbox Settings'],
       ['Publishing Analytics', 'Reporting'],
       ['Listening']
     ])
@@ -36,6 +36,7 @@ describe('social suite navigation', () => {
       'Wall',
       'Engagement',
       'Inbox',
+      'Wall',
       'Reply Queue',
       'Reviews',
       'Automation',
