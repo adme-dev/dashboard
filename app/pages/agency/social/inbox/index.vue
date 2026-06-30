@@ -36,6 +36,7 @@ const clients = computed<AgencyClientOption[]>(() => {
 })
 const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
 const clientId = ref<string | null>(clients.value[0]?.id ?? null)
+const route = useRoute()
 const { user, fetchUser } = useAuth()
 if (!user.value) await fetchUser()
 
@@ -82,9 +83,11 @@ watch(clientId, () => {
   typingByConversation.value = {}
   reload()
 })
-onMounted(() => {
-  reload()
+onMounted(async () => {
+  await reload()
   typingCleanupTimer = setInterval(pruneTypingPresence, 4000)
+  const requestedConversation = typeof route.query.conversation === 'string' ? route.query.conversation : null
+  if (requestedConversation) await select(requestedConversation)
 })
 onBeforeUnmount(() => {
   if (typingCleanupTimer) clearInterval(typingCleanupTimer)

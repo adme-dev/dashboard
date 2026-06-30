@@ -29,6 +29,7 @@ const agencySocialRouteNavs = new Map([
   ['app/pages/agency/social/inbox/index.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/inbox/reviews.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/inbox/settings.vue', 'SocialSuiteSectionNav'],
+  ['app/pages/agency/social/inbox/wall.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/listening/index.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/reporting/index.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/publishing/accounts.vue', 'SocialPublishingShell'],
