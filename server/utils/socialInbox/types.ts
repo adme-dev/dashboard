@@ -20,6 +20,9 @@ export interface SocialInboxMessageMetadata {
     thumbnailUrl?: string
     mediaType?: string
     permalink?: string
+    publishedAt?: string
+    authorName?: string
+    authorAvatarUrl?: string
   }
   [key: string]: unknown
 }

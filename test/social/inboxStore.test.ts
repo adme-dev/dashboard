@@ -247,6 +247,51 @@ describe('recordInbound', () => {
     expect(updateSqls[0]).not.toMatch(/automation_state\s*=\s*'pending'/)
   })
 
+  it('projects source post metadata onto the conversation row', async () => {
+    let sql = ''
+    const params: unknown[][] = []
+    const db: DbRunner = {
+      async queryOne<T = unknown>(s: string, p?: unknown[]) {
+        sql = s
+        if (p) params.push(p)
+        return { id: 'conv-1' } as T
+      },
+      async execute() {
+        return 0
+      }
+    }
+
+    await recordInbound(db, 'client-1', 'acct-1', {
+      ...ev,
+      message: {
+        ...ev.message,
+        metadata: {
+          sourcePost: {
+            id: 'post-1',
+            platform: 'facebook',
+            title: 'GWS Monster Sale Weekend',
+            text: 'Trading hours and offers',
+            imageUrl: 'https://cdn.example.com/post.jpg',
+            thumbnailUrl: 'https://cdn.example.com/post-thumb.jpg',
+            mediaType: 'image',
+            permalink: 'https://facebook.com/post/1',
+            publishedAt: '2026-06-25T04:00:00Z'
+          }
+        }
+      }
+    })
+
+    expect(sql).toMatch(/source_post_id/)
+    expect(sql).toMatch(/source_post_media/)
+    expect(sql).toMatch(/source_post_published_at/)
+    expect(sql).toMatch(/source_post_id = COALESCE/)
+    expect(params[0]).toContain('post-1')
+    expect(params[0]).toContain('https://facebook.com/post/1')
+    expect(params[0]).toContain('GWS Monster Sale Weekend')
+    expect(params[0]).toContain('Trading hours and offers')
+    expect(params[0]).toContain('2026-06-25T04:00:00Z')
+  })
+
   it('stamps first_response_at (once) on the outbound update', async () => {
     const sqls: string[] = []
     const db: DbRunner = {
