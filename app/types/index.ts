@@ -1452,6 +1452,46 @@ export interface SocialWallPost extends SocialPost {
   metrics_by_platform: Record<string, SocialWallMetric>
 }
 
+export interface SocialEngagementWallConversationSummary {
+  id: string
+  participant_name: string | null
+  participant_handle: string | null
+  channel_type: string
+  status: string
+  assigned_to: string | null
+  unread_count: number
+  rating: number | null
+  last_message_preview: string | null
+  last_message_at: string | null
+  latest_author_name: string | null
+  latest_author_avatar_url: string | null
+}
+
+export interface SocialEngagementWallPost {
+  key: string
+  client_id: string
+  platform: string
+  social_account_id: string | null
+  account_name: string | null
+  platform_account_id: string | null
+  source_post_id: string | null
+  source_post_url: string | null
+  source_post_title: string | null
+  source_post_content: string | null
+  source_post_media: Array<{ url: string, type?: string | null, thumbnailUrl?: string | null }>
+  source_post_author_name: string | null
+  source_post_author_avatar_url: string | null
+  source_post_published_at: string | null
+  linked_social_post_id: string | null
+  campaign_name: string | null
+  status_summary: { open: number, snoozed: number, closed: number }
+  unread_count: number
+  conversation_count: number
+  message_count: number
+  latest_activity_at: string | null
+  latest_conversations: SocialEngagementWallConversationSummary[]
+}
+
 export interface SocialInboxCaseTimelineItem {
   id: string
   source: 'social_message' | 'conversation_event' | 'task_activity' | 'client_request_message'
