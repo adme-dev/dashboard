@@ -19,7 +19,14 @@ const sourcePostTitle = computed(() => getSocialInboxSourcePostTitle(sourcePost.
 const sourcePostText = computed(() => {
   const text = sourcePost.value?.text?.trim()
   if (!text) return null
-  return text === sourcePostTitle.value ? null : text
+  const title = sourcePostTitle.value?.trim()
+  if (!title) return text
+  const lines = text.split(/\r?\n/)
+  const firstContentLineIndex = lines.findIndex(line => line.trim())
+  if (firstContentLineIndex >= 0 && lines[firstContentLineIndex]?.trim() === title) {
+    return lines.slice(firstContentLineIndex + 1).join('\n').trim() || null
+  }
+  return text === title ? null : text
 })
 function fmt(iso: string | null) {
   return iso ? new Date(iso).toLocaleString() : ''
@@ -103,7 +110,8 @@ function bubbleClass(message: SocialMessage) {
             :src="sourcePostImage"
             :alt="sourcePostTitle || 'Original post image'"
             class="size-20 shrink-0 rounded object-cover sm:size-24"
-            loading="lazy"
+            loading="eager"
+            fetchpriority="high"
             referrerpolicy="no-referrer"
           >
           <div
