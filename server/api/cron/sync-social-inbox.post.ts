@@ -11,6 +11,7 @@ import { onInboundRecorded } from '~~/server/utils/socialInbox/workflow'
 import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 import { findBreaches } from '~~/server/utils/socialInbox/sla'
 import { getSocialInboxPollChannels, type SocialInboxPollChannel } from '~~/server/utils/socialInbox/syncChannels'
+import { resolveSocialInboxAccessToken } from '~~/server/utils/socialInbox/tokenRefresh'
 import {
   DEFAULT_SYNC_RUN_TIMEOUT_MS,
   PROVIDER_SYNC_TIMEOUT_MS,
@@ -46,6 +47,8 @@ interface SocialInboxAccountRow {
   platform_account_id: string
   account_name: string | null
   access_token: string
+  refresh_token: string | null
+  token_expires_at: string | null
 }
 
 function getErrorMessage(error: unknown) {
@@ -61,7 +64,7 @@ export default defineEventHandler(async (event) => {
   const body: { clientId?: string | null, maxMs?: number | null } = await readBody<{ clientId?: string | null, maxMs?: number | null }>(event).catch(() => ({}))
   const budget = createSyncBudget(normaliseSyncMaxMs(body?.maxMs, DEFAULT_SYNC_RUN_TIMEOUT_MS))
   const params: SqlParam[] = []
-  let sql = `SELECT id, client_id, platform, platform_account_id, account_name, access_token
+  let sql = `SELECT id, client_id, platform, platform_account_id, account_name, access_token, refresh_token, token_expires_at
        FROM social_accounts WHERE is_active = TRUE AND access_token IS NOT NULL`
   if (body?.clientId) {
     params.push(body.clientId)
@@ -76,7 +79,8 @@ export default defineEventHandler(async (event) => {
   const channels: SocialInboxSyncChannelRun[] = []
   for (const acct of accounts) {
     const provider = getProvider(acct.platform)
-    if (!provider?.fetchInbox) continue
+    const fetchInbox = provider?.fetchInbox
+    if (!fetchInbox) continue
     for (const channel of getSocialInboxPollChannels(acct.platform)) {
       const channelRun: SocialInboxSyncChannelRun = {
         accountId: acct.id,
@@ -101,12 +105,19 @@ export default defineEventHandler(async (event) => {
       )
       try {
         const { items, nextCursor } = await withSyncTimeout(
-          provider.fetchInbox({
-            accountId: acct.platform_account_id,
-            accessToken: acct.access_token,
-            channelType: channel,
-            cursor: cur?.cursor ?? null
-          }),
+          (async () => {
+            const accessToken = await resolveSocialInboxAccessToken({
+              event,
+              db: { execute },
+              account: acct
+            })
+            return fetchInbox({
+              accountId: acct.platform_account_id,
+              accessToken,
+              channelType: channel,
+              cursor: cur?.cursor ?? null
+            })
+          })(),
           providerTimeoutMs,
           `${acct.platform}:${channel}`
         )
