@@ -345,7 +345,7 @@ const GBP_STAR: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FI
 interface GoogleBusinessReview {
   name?: string | null
   reviewId?: string | null
-  reviewer?: { displayName?: string | null; profilePhotoUrl?: string | null } | null
+  reviewer?: { displayName?: string | null, profilePhotoUrl?: string | null } | null
   comment?: string | null
   starRating?: string | null
   createTime?: string | null

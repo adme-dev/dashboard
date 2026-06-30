@@ -23,6 +23,24 @@ import { fetchWithTimeout } from './http'
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 const INBOX_FETCH_TIMEOUT_MS = 12_000
 type SourcePostMetadata = NonNullable<NonNullable<InboxItem['metadata']>['sourcePost']>
+type JsonObject = Record<string, unknown>
+
+interface InstagramActor {
+  id?: unknown
+  username?: unknown
+}
+
+interface InstagramCommentNode {
+  id?: unknown
+  text?: unknown
+  username?: unknown
+  timestamp?: unknown
+  permalink_url?: unknown
+  like_count?: unknown
+  reply_count?: unknown
+  from?: InstagramActor
+  replies?: { data?: InstagramCommentNode[] }
+}
 
 interface InstagramMediaNode {
   id?: unknown
@@ -31,6 +49,11 @@ interface InstagramMediaNode {
   media_type?: unknown
   media_url?: unknown
   thumbnail_url?: unknown
+  comments?: { data?: InstagramCommentNode[] }
+}
+
+interface InstagramMediaResponse {
+  data?: InstagramMediaNode[]
 }
 
 /** Max time (ms) to wait for video container processing */
@@ -68,7 +91,7 @@ interface InstagramContainerBody {
 }
 
 function parseGraphError(err: unknown): PostResult {
-  const raw = err as { data?: GraphAPIError; statusCode?: number; message?: string }
+  const raw = err as { data?: GraphAPIError, statusCode?: number, message?: string }
   const graphErr = raw?.data?.error
 
   // Rate limit
@@ -84,7 +107,7 @@ function parseGraphError(err: unknown): PostResult {
   // Content policy
   if (graphErr?.error_subcode === 1346003 || graphErr?.error_subcode === 1404102) {
     return failResult(
-      `Content policy violation: ${graphErr?.message || "Your post was flagged by Instagram's content policies."}`
+      `Content policy violation: ${graphErr?.message || 'Your post was flagged by Instagram\'s content policies.'}`
     )
   }
 
@@ -109,6 +132,10 @@ function readNumber(value: unknown): number | undefined {
   return undefined
 }
 
+function readObject(value: unknown): JsonObject | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : undefined
+}
+
 // ── Helpers ────────────────────────────────────────────────────
 
 /**
@@ -119,18 +146,18 @@ async function waitForContainerReady(
   containerId: string,
   accessToken: string,
   timeoutMs: number = VIDEO_POLL_TIMEOUT_MS
-): Promise<{ ready: boolean; error?: string }> {
+): Promise<{ ready: boolean, error?: string }> {
   const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
-    const res = await $fetch<{ status_code: string; status?: string }>(
+    const res = await $fetch<{ status_code: string, status?: string }>(
       `${GRAPH_API_BASE}/${containerId}`,
       {
         method: 'GET',
         params: {
           fields: 'status_code,status',
-          access_token: accessToken,
-        },
+          access_token: accessToken
+        }
       }
     )
 
@@ -143,14 +170,14 @@ async function waitForContainerReady(
     if (status === 'ERROR') {
       return {
         ready: false,
-        error: `Container processing failed: ${res.status || 'Unknown error'}`,
+        error: `Container processing failed: ${res.status || 'Unknown error'}`
       }
     }
 
     if (status === 'EXPIRED') {
       return {
         ready: false,
-        error: 'Container expired before it could be published. Please try again.',
+        error: 'Container expired before it could be published. Please try again.'
       }
     }
 
@@ -173,7 +200,7 @@ async function createItemContainer(
 ): Promise<string> {
   const body: InstagramContainerBody = {
     access_token: accessToken,
-    is_carousel_item: options?.isCarouselItem ?? false,
+    is_carousel_item: options?.isCarouselItem ?? false
   }
 
   if (item.type === 'image') {
@@ -189,7 +216,7 @@ async function createItemContainer(
 
   const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
-    body,
+    body
   })
 
   return res.id
@@ -207,8 +234,8 @@ async function publishContainer(
     method: 'POST',
     body: {
       creation_id: containerId,
-      access_token: accessToken,
-    },
+      access_token: accessToken
+    }
   })
 }
 
@@ -222,8 +249,8 @@ async function getPostUrl(postId: string, accessToken: string): Promise<string> 
       method: 'GET',
       params: {
         fields: 'permalink',
-        access_token: accessToken,
-      },
+        access_token: accessToken
+      }
     })
     return res.permalink || `https://www.instagram.com/p/${postId}/`
   } catch {
@@ -281,20 +308,20 @@ export const instagramProvider: SocialPostProvider = {
         method: 'POST',
         body: {
           message: content,
-          access_token: accessToken,
-        },
+          access_token: accessToken
+        }
       })
 
       return {
         platformPostId: res.id,
         url: await getPostUrl(postId, accessToken),
-        status: 'success',
+        status: 'success'
       }
     } catch (err: unknown) {
       console.error('[Instagram Provider] Comment failed:', err)
       return parseGraphError(err)
     }
-  },
+  }
 }
 
 // ── Post type implementations ──────────────────────────────────
@@ -310,7 +337,7 @@ async function postSingleImage(
   const body: InstagramContainerBody = {
     image_url: image.url,
     caption,
-    access_token: accessToken,
+    access_token: accessToken
   }
 
   if (image.alt) {
@@ -323,7 +350,7 @@ async function postSingleImage(
 
   const container = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
-    body,
+    body
   })
 
   // Step 2: Publish
@@ -333,7 +360,7 @@ async function postSingleImage(
   return {
     platformPostId: published.id,
     url,
-    status: 'success',
+    status: 'success'
   }
 }
 
@@ -349,7 +376,7 @@ async function postReel(
     video_url: video.url,
     caption,
     media_type: 'REELS',
-    access_token: accessToken,
+    access_token: accessToken
   }
 
   if (options?.collaborators?.length) {
@@ -358,7 +385,7 @@ async function postReel(
 
   const container = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
-    body,
+    body
   })
 
   // Step 2: Poll until ready
@@ -374,7 +401,7 @@ async function postReel(
   return {
     platformPostId: published.id,
     url,
-    status: 'success',
+    status: 'success'
   }
 }
 
@@ -387,9 +414,9 @@ async function postCarousel(
 ): Promise<PostResult> {
   // Step 1: Create individual item containers (in parallel)
   const itemIds = await Promise.all(
-    media.map(async item => {
+    media.map(async (item) => {
       const containerId = await createItemContainer(accountId, accessToken, item, {
-        isCarouselItem: true,
+        isCarouselItem: true
       })
 
       // If video, wait for it to finish processing
@@ -409,7 +436,7 @@ async function postCarousel(
     media_type: 'CAROUSEL',
     caption,
     children: itemIds.join(','),
-    access_token: accessToken,
+    access_token: accessToken
   }
 
   if (options?.collaborators?.length) {
@@ -418,7 +445,7 @@ async function postCarousel(
 
   const carouselContainer = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
-    body,
+    body
   })
 
   // Step 3: Publish the carousel
@@ -428,7 +455,7 @@ async function postCarousel(
   return {
     platformPostId: published.id,
     url,
-    status: 'success',
+    status: 'success'
   }
 }
 
@@ -440,7 +467,7 @@ async function postStory(
   // Step 1: Create story container
   const body: InstagramContainerBody = {
     media_type: 'STORIES',
-    access_token: accessToken,
+    access_token: accessToken
   }
 
   if (media.type === 'image') {
@@ -451,7 +478,7 @@ async function postStory(
 
   const container = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
-    body,
+    body
   })
 
   // Step 2: If video, poll until ready
@@ -469,7 +496,7 @@ async function postStory(
   return {
     platformPostId: published.id,
     url,
-    status: 'success',
+    status: 'success'
   }
 }
 
@@ -527,63 +554,64 @@ function withSourcePost(
     : metadata
 }
 
-function instagramCommentMetadata(raw: any, sourcePost: SourcePostMetadata | undefined, seed?: InboxItem['metadata']): InboxItem['metadata'] | undefined {
+function instagramCommentMetadata(raw: InstagramCommentNode, sourcePost: SourcePostMetadata | undefined, seed?: InboxItem['metadata']): InboxItem['metadata'] | undefined {
   const metadata: InboxItem['metadata'] = { ...(seed ?? {}) }
   const likeCount = readNumber(raw?.like_count)
   const replyCount = Array.isArray(raw?.replies?.data) ? raw.replies.data.length : readNumber(raw?.reply_count)
-  const username = raw?.username ?? raw?.from?.username
+  const username = readText(raw?.username) ?? readText(raw?.from?.username)
   if (likeCount != null) metadata.likeCount = likeCount
   if (replyCount != null) metadata.replyCount = replyCount
-  if (username) metadata.authorProfileUrl = `https://www.instagram.com/${String(username).replace(/^@/, '')}/`
+  if (username) metadata.authorProfileUrl = `https://www.instagram.com/${username.replace(/^@/, '')}/`
   return withSourcePost(Object.keys(metadata).length ? metadata : undefined, sourcePost)
 }
 
 /** Pure: map an Instagram media list response with nested comments to InboxItems. */
-export function mapInstagramMediaComments(api: any, opts: { accountId?: string } = {}): FetchInboxResult {
+export function mapInstagramMediaComments(api: unknown, opts: { accountId?: string } = {}): FetchInboxResult {
+  const payload = api as InstagramMediaResponse | undefined
   const items: InboxItem[] = []
-  for (const media of api?.data ?? []) {
-    const mediaId = String(media?.id ?? '')
+  for (const media of payload?.data ?? []) {
+    const mediaId = readText(media?.id) ?? ''
     if (!mediaId) continue
     const sourcePost = instagramSourcePost(media)
     for (const c of media?.comments?.data ?? []) {
-      const commentId = String(c?.id ?? '')
+      const commentId = readText(c?.id) ?? ''
       if (!commentId) continue
-      const username = c?.username ?? c?.from?.username
-      const userId = c?.from?.id
+      const username = readText(c?.username) ?? readText(c?.from?.username)
+      const userId = readText(c?.from?.id)
       items.push({
         channelType: 'comment',
         platformConversationId: mediaId,
-        permalink: c?.permalink_url ?? media?.permalink,
+        permalink: readText(c?.permalink_url) ?? readText(media?.permalink),
         participant: { id: userId, name: username, handle: username },
         platformMessageId: commentId,
         authorId: userId,
         authorName: username,
-        content: c?.text ?? '',
+        content: readText(c?.text) ?? '',
         messageType: 'comment',
         metadata: instagramCommentMetadata(c, sourcePost),
-        platformTimestamp: c?.timestamp,
+        platformTimestamp: readText(c?.timestamp)
       })
 
       for (const reply of c?.replies?.data ?? []) {
-        const replyId = String(reply?.id ?? '')
+        const replyId = readText(reply?.id) ?? ''
         if (!replyId) continue
-        const replyUsername = reply?.username ?? reply?.from?.username
-        const replyUserId = reply?.from?.id ? String(reply.from.id) : undefined
+        const replyUsername = readText(reply?.username) ?? readText(reply?.from?.username)
+        const replyUserId = readText(reply?.from?.id)
         const isBusinessReply = Boolean(opts.accountId && replyUserId === opts.accountId)
         items.push({
           channelType: 'comment',
           platformConversationId: mediaId,
-          permalink: reply?.permalink_url ?? c?.permalink_url ?? media?.permalink,
+          permalink: readText(reply?.permalink_url) ?? readText(c?.permalink_url) ?? readText(media?.permalink),
           participant: { id: replyUserId, name: replyUsername, handle: replyUsername },
           platformMessageId: replyId,
           parentPlatformMessageId: commentId,
           direction: isBusinessReply ? 'out' : 'in',
           authorId: replyUserId,
           authorName: replyUsername,
-          content: reply?.text ?? '',
+          content: readText(reply?.text) ?? '',
           messageType: 'comment_reply',
           metadata: instagramCommentMetadata(reply, sourcePost, { source: 'platform_sync' }),
-          platformTimestamp: reply?.timestamp,
+          platformTimestamp: readText(reply?.timestamp)
         })
       }
     }
@@ -608,18 +636,18 @@ instagramProvider.reply = async ({ accountId, accessToken, conversationId, conte
     // IG DMs send via the connected Page's Send API (recipient = IGSID = conversationId).
     const { url, body } = buildMessengerSend(viaPageId || accountId, conversationId, content, accessToken)
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const j: any = await res.json().catch(() => ({}))
+    const j: JsonObject = await res.json().catch(() => ({}))
     return res.ok && j.message_id
       ? { platformMessageId: String(j.message_id), status: 'success' }
-      : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
+      : { platformMessageId: '', status: 'failed', error: readText(readObject(j.error)?.message) ?? `http ${res.status}` }
   }
   // comment / mention → reply on the comment via the IG /replies edge.
   const { url, body } = buildIgCommentReply(conversationId, content, accessToken)
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  const j: any = await res.json().catch(() => ({}))
+  const j: JsonObject = await res.json().catch(() => ({}))
   return res.ok && j.id
     ? { platformMessageId: String(j.id), status: 'success' }
-    : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
+    : { platformMessageId: '', status: 'failed', error: readText(readObject(j.error)?.message) ?? `http ${res.status}` }
 }
 
 // --- Slice 3 reporting: organic metrics collection ---
@@ -629,7 +657,7 @@ instagramProvider.fetchPostMetrics = async ({ accessToken, posts }: FetchPostMet
   for (const p of posts) {
     try {
       const insRes = await fetch(`${GRAPH_API_BASE}/${p.platformPostId}/insights?metric=impressions,reach,likes,comments,saved,shares,video_views&access_token=${encodeURIComponent(accessToken)}`)
-      const ins: any = await insRes.json().catch(() => ({}))
+      const ins: JsonObject = await insRes.json().catch(() => ({}))
       out.push(mapIgMediaInsights(p.postId, p.platformPostId, ins))
     } catch { /* skip this post; others still collect */ }
   }
@@ -639,8 +667,8 @@ instagramProvider.fetchPostMetrics = async ({ accessToken, posts }: FetchPostMet
 instagramProvider.fetchAccountMetrics = async ({ accountId, accessToken }: FetchAccountMetricsParams): Promise<AccountMetric> => {
   const tok = encodeURIComponent(accessToken)
   const insRes = await fetch(`${GRAPH_API_BASE}/${accountId}/insights?metric=impressions,reach,profile_views&period=day&access_token=${tok}`)
-  const ins: any = await insRes.json().catch(() => ({}))
+  const ins: JsonObject = await insRes.json().catch(() => ({}))
   const acctRes = await fetch(`${GRAPH_API_BASE}/${accountId}?fields=followers_count&access_token=${tok}`)
-  const acct: any = await acctRes.json().catch(() => ({}))
-  return mapIgAccountInsights(ins, acct?.followers_count)
+  const acct: JsonObject = await acctRes.json().catch(() => ({}))
+  return mapIgAccountInsights(ins, readNumber(acct.followers_count))
 }

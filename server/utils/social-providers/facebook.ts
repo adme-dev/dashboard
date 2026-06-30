@@ -8,7 +8,7 @@
  * Reference: https://developers.facebook.com/docs/video-api/guides/reels-publishing
  */
 
-import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
+import type { SocialPostProvider, PostParams, PostResult, CommentParams, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { mapFbPostInsights, mapFbAccountInsights } from '~~/server/utils/socialReporting/normalize'
 import { fetchWithTimeout } from './http'
@@ -16,6 +16,25 @@ import { fetchWithTimeout } from './http'
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 const INBOX_FETCH_TIMEOUT_MS = 12_000
 type SourcePostMetadata = NonNullable<NonNullable<InboxItem['metadata']>['sourcePost']>
+type JsonObject = Record<string, unknown>
+
+interface FacebookActor {
+  id?: unknown
+  name?: unknown
+  picture?: unknown
+}
+
+interface FacebookCommentNode {
+  id?: unknown
+  permalink_url?: unknown
+  from?: FacebookActor
+  message?: unknown
+  created_time?: unknown
+  like_count?: unknown
+  comment_count?: unknown
+  comments?: { data?: FacebookCommentNode[] }
+  replies?: { data?: FacebookCommentNode[] }
+}
 
 interface FacebookPostAttachment {
   media?: {
@@ -34,6 +53,24 @@ interface FacebookFeedPost {
   full_picture?: unknown
   permalink_url?: unknown
   attachments?: { data?: FacebookPostAttachment[] }
+  comments?: { data?: FacebookCommentNode[] }
+}
+
+interface FacebookRatingNode {
+  open_graph_story?: { id?: unknown }
+  reviewer?: FacebookActor
+  created_time?: unknown
+  review_text?: unknown
+  recommendation_type?: unknown
+}
+
+interface FacebookRatingsResponse {
+  data?: FacebookRatingNode[]
+  paging?: { cursors?: { after?: string | null } }
+}
+
+interface FacebookFeedResponse {
+  data?: FacebookFeedPost[]
 }
 
 // ── Error helpers ──────────────────────────────────────────────
@@ -49,15 +86,15 @@ interface GraphAPIError {
 }
 
 function parseGraphError(err: unknown): PostResult {
-  const raw = err as { data?: GraphAPIError; statusCode?: number; message?: string }
+  const raw = err as { data?: GraphAPIError, statusCode?: number, message?: string }
   const graphErr = raw?.data?.error
 
   // Rate limit
   if (
-    raw?.statusCode === 429 ||
-    graphErr?.code === 4 ||
-    graphErr?.code === 32 ||
-    (graphErr?.type === 'OAuthException' && graphErr?.message?.toLowerCase().includes('rate'))
+    raw?.statusCode === 429
+    || graphErr?.code === 4
+    || graphErr?.code === 32
+    || (graphErr?.type === 'OAuthException' && graphErr?.message?.toLowerCase().includes('rate'))
   ) {
     return failResult('Rate limit exceeded. Please wait and try again later.')
   }
@@ -70,7 +107,7 @@ function parseGraphError(err: unknown): PostResult {
   // Content policy violations
   if (graphErr?.error_subcode === 1346003 || graphErr?.error_subcode === 1404102) {
     return failResult(
-      `Content policy violation: ${graphErr?.message || "Your post was flagged by Facebook's content policies."}`
+      `Content policy violation: ${graphErr?.message || 'Your post was flagged by Facebook\'s content policies.'}`
     )
   }
 
@@ -104,8 +141,8 @@ async function uploadUnpublishedPhoto(
     body: {
       url: imageUrl,
       published: false,
-      access_token: accessToken,
-    },
+      access_token: accessToken
+    }
   })
   return res.id
 }
@@ -132,6 +169,10 @@ function readNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value)
   return undefined
+}
+
+function readObject(value: unknown): JsonObject | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : undefined
 }
 
 function firstLine(value: unknown): string | undefined {
@@ -180,13 +221,15 @@ function withSourcePost(
     : metadata
 }
 
-function facebookAuthorAvatar(from: any): string | undefined {
-  return readText(from?.picture?.data?.url)
-    ?? readText(from?.picture?.url)
+function facebookAuthorAvatar(from: FacebookActor | undefined): string | undefined {
+  const picture = readObject(from?.picture)
+  const pictureData = readObject(picture?.data)
+  return readText(pictureData?.url)
+    ?? readText(picture?.url)
     ?? readText(from?.picture)
 }
 
-function facebookCommentMetadata(raw: any, sourcePost: SourcePostMetadata | undefined, seed?: InboxItem['metadata']): InboxItem['metadata'] | undefined {
+function facebookCommentMetadata(raw: FacebookCommentNode, sourcePost: SourcePostMetadata | undefined, seed?: InboxItem['metadata']): InboxItem['metadata'] | undefined {
   const metadata: InboxItem['metadata'] = { ...(seed ?? {}) }
   const authorAvatarUrl = facebookAuthorAvatar(raw?.from)
   const likeCount = readNumber(raw?.like_count)
@@ -215,13 +258,13 @@ export const facebookProvider: SocialPostProvider = {
           body: {
             message: content,
             link: options.link,
-            access_token: accessToken,
-          },
+            access_token: accessToken
+          }
         })
         return {
           platformPostId: res.id,
           url: buildPostUrl(res.id),
-          status: 'success',
+          status: 'success'
         }
       }
 
@@ -231,13 +274,13 @@ export const facebookProvider: SocialPostProvider = {
           method: 'POST',
           body: {
             message: content,
-            access_token: accessToken,
-          },
+            access_token: accessToken
+          }
         })
         return {
           platformPostId: res.id,
           url: buildPostUrl(res.id),
-          status: 'success',
+          status: 'success'
         }
       }
 
@@ -250,13 +293,13 @@ export const facebookProvider: SocialPostProvider = {
           body: {
             file_url: video.url,
             description: content,
-            access_token: accessToken,
-          },
+            access_token: accessToken
+          }
         })
         return {
           platformPostId: res.id,
           url: `https://www.facebook.com/${accountId}/videos/${res.id}`,
-          status: 'success',
+          status: 'success'
         }
       }
 
@@ -271,14 +314,14 @@ export const facebookProvider: SocialPostProvider = {
           body: {
             message: content,
             attached_media: [{ media_fbid: photoId }],
-            access_token: accessToken,
-          },
+            access_token: accessToken
+          }
         })
 
         return {
           platformPostId: res.id,
           url: buildPostUrl(res.id),
-          status: 'success',
+          status: 'success'
         }
       }
 
@@ -296,14 +339,14 @@ export const facebookProvider: SocialPostProvider = {
           body: {
             message: content,
             attached_media: attachedMedia,
-            access_token: accessToken,
-          },
+            access_token: accessToken
+          }
         })
 
         return {
           platformPostId: res.id,
           url: buildPostUrl(res.id),
-          status: 'success',
+          status: 'success'
         }
       }
 
@@ -322,83 +365,96 @@ export const facebookProvider: SocialPostProvider = {
         method: 'POST',
         body: {
           message: content,
-          access_token: accessToken,
-        },
+          access_token: accessToken
+        }
       })
 
       return {
         platformPostId: res.id,
         url: `https://www.facebook.com/${postId}`,
-        status: 'success',
+        status: 'success'
       }
     } catch (err: unknown) {
       console.error('[Facebook Provider] Comment failed:', err)
       return parseGraphError(err)
     }
-  },
+  }
 }
 
 // --- Slice 2 inbox: Facebook recommendations (reviews) ---
 /** Pure: map a Facebook page `ratings` edge response to InboxItems + next cursor. */
-export function mapFacebookRatings(api: any): FetchInboxResult {
-  const items: InboxItem[] = (api?.data ?? []).map((r: any) => ({
-    channelType: 'review' as const,
-    platformConversationId: String(r.open_graph_story?.id ?? r.reviewer?.id ?? ''),
-    participant: { id: r.reviewer?.id, name: r.reviewer?.name },
-    platformMessageId: String(r.open_graph_story?.id ?? `${r.reviewer?.id}_${r.created_time}`),
-    authorName: r.reviewer?.name,
-    content: r.review_text ?? '',
-    messageType: 'review',
-    rating: r.recommendation_type === 'positive' ? 5 : r.recommendation_type === 'negative' ? 1 : undefined,
-    platformTimestamp: r.created_time,
-  }))
-  return { items, nextCursor: api?.paging?.cursors?.after ?? null }
+export function mapFacebookRatings(api: unknown): FetchInboxResult {
+  const payload = api as FacebookRatingsResponse | undefined
+  const items: InboxItem[] = (payload?.data ?? []).map((r) => {
+    const reviewerId = readText(r.reviewer?.id)
+    const reviewerName = readText(r.reviewer?.name)
+    const storyId = readText(r.open_graph_story?.id)
+    const createdTime = readText(r.created_time)
+    const recommendationType = readText(r.recommendation_type)
+
+    return {
+      channelType: 'review' as const,
+      platformConversationId: storyId ?? reviewerId ?? '',
+      participant: { id: reviewerId, name: reviewerName },
+      platformMessageId: storyId ?? [reviewerId, createdTime].filter(Boolean).join('_'),
+      authorName: reviewerName,
+      content: readText(r.review_text) ?? '',
+      messageType: 'review',
+      rating: recommendationType === 'positive' ? 5 : recommendationType === 'negative' ? 1 : undefined,
+      platformTimestamp: createdTime
+    }
+  })
+  return { items, nextCursor: payload?.paging?.cursors?.after ?? null }
 }
 
 /** Pure: map a Facebook page feed response with nested comments to InboxItems. */
-export function mapFacebookFeedComments(api: any, opts: { accountId?: string } = {}): FetchInboxResult {
+export function mapFacebookFeedComments(api: unknown, opts: { accountId?: string } = {}): FetchInboxResult {
+  const payload = api as FacebookFeedResponse | undefined
   const items: InboxItem[] = []
-  for (const post of api?.data ?? []) {
-    const postId = String(post?.id ?? '')
+  for (const post of payload?.data ?? []) {
+    const postId = readText(post?.id) ?? ''
     if (!postId) continue
     const sourcePost = facebookSourcePost(post)
     for (const c of post?.comments?.data ?? []) {
-      const commentId = String(c?.id ?? '')
+      const commentId = readText(c?.id) ?? ''
       if (!commentId) continue
+      const authorId = readText(c?.from?.id)
+      const authorName = readText(c?.from?.name)
       items.push({
         channelType: 'comment',
         platformConversationId: postId,
-        permalink: c?.permalink_url ?? post?.permalink_url,
-        participant: { id: c?.from?.id, name: c?.from?.name },
+        permalink: readText(c?.permalink_url) ?? readText(post?.permalink_url),
+        participant: { id: authorId, name: authorName },
         platformMessageId: commentId,
-        authorId: c?.from?.id,
-        authorName: c?.from?.name,
-        content: c?.message ?? '',
+        authorId,
+        authorName,
+        content: readText(c?.message) ?? '',
         messageType: 'comment',
         metadata: facebookCommentMetadata(c, sourcePost),
-        platformTimestamp: c?.created_time,
+        platformTimestamp: readText(c?.created_time)
       })
 
       const replies = c?.comments?.data ?? c?.replies?.data ?? []
       for (const reply of replies) {
-        const replyId = String(reply?.id ?? '')
+        const replyId = readText(reply?.id) ?? ''
         if (!replyId) continue
-        const authorId = reply?.from?.id ? String(reply.from.id) : undefined
-        const isPageReply = Boolean(opts.accountId && authorId === opts.accountId)
+        const replyAuthorId = readText(reply?.from?.id)
+        const replyAuthorName = readText(reply?.from?.name)
+        const isPageReply = Boolean(opts.accountId && replyAuthorId === opts.accountId)
         items.push({
           channelType: 'comment',
           platformConversationId: postId,
-          permalink: reply?.permalink_url ?? c?.permalink_url ?? post?.permalink_url,
-          participant: { id: authorId, name: reply?.from?.name },
+          permalink: readText(reply?.permalink_url) ?? readText(c?.permalink_url) ?? readText(post?.permalink_url),
+          participant: { id: replyAuthorId, name: replyAuthorName },
           platformMessageId: replyId,
           parentPlatformMessageId: commentId,
           direction: isPageReply ? 'out' : 'in',
-          authorId,
-          authorName: reply?.from?.name,
-          content: reply?.message ?? '',
+          authorId: replyAuthorId,
+          authorName: replyAuthorName,
+          content: readText(reply?.message) ?? '',
           messageType: 'comment_reply',
           metadata: facebookCommentMetadata(reply, sourcePost, { source: 'platform_sync' }),
-          platformTimestamp: reply?.created_time,
+          platformTimestamp: readText(reply?.created_time)
         })
       }
     }
@@ -440,8 +496,8 @@ export function buildMessengerSend(pageId: string, recipientId: string, content:
       recipient: { id: recipientId },
       message: { text: content },
       messaging_type: 'RESPONSE',
-      access_token: accessToken,
-    },
+      access_token: accessToken
+    }
   }
 }
 
@@ -451,21 +507,21 @@ facebookProvider.reply = async ({ accountId, accessToken, conversationId, conten
   if (channelType === 'dm') {
     const { url, body } = buildMessengerSend(accountId, conversationId, content, accessToken)
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const j: any = await res.json().catch(() => ({}))
+    const j: JsonObject = await res.json().catch(() => ({}))
     return res.ok && j.message_id
       ? { platformMessageId: String(j.message_id), status: 'success' }
-      : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
+      : { platformMessageId: '', status: 'failed', error: readText(readObject(j.error)?.message) ?? `http ${res.status}` }
   }
   // conversationId = the comment id (from webhook) or object id; reply posts a comment on it.
   const res = await fetch(`${GRAPH_API_BASE}/${conversationId}/comments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: content, access_token: accessToken }),
+    body: JSON.stringify({ message: content, access_token: accessToken })
   })
-  const j: any = await res.json().catch(() => ({}))
+  const j: JsonObject = await res.json().catch(() => ({}))
   return res.ok && j.id
     ? { platformMessageId: String(j.id), status: 'success' }
-    : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
+    : { platformMessageId: '', status: 'failed', error: readText(readObject(j.error)?.message) ?? `http ${res.status}` }
 }
 
 // --- Slice 3 reporting: organic metrics collection ---
@@ -476,12 +532,15 @@ facebookProvider.fetchPostMetrics = async ({ accessToken, posts }: FetchPostMetr
     try {
       const tok = encodeURIComponent(accessToken)
       const insRes = await fetch(`${GRAPH_API_BASE}/${p.platformPostId}/insights?metric=post_impressions,post_impressions_unique,post_clicks,post_video_views,post_reactions_by_type_total&access_token=${tok}`)
-      const ins: any = await insRes.json().catch(() => ({}))
+      const ins: JsonObject = await insRes.json().catch(() => ({}))
       // comments/shares aren't insight metrics — read them off the post object.
       const fldRes = await fetch(`${GRAPH_API_BASE}/${p.platformPostId}?fields=comments.summary(true).limit(0),shares&access_token=${tok}`)
-      const fld: any = await fldRes.json().catch(() => ({}))
+      const fld: JsonObject = await fldRes.json().catch(() => ({}))
+      const comments = readObject(fld.comments)
+      const commentSummary = readObject(comments?.summary)
+      const shares = readObject(fld.shares)
       out.push(mapFbPostInsights(p.postId, p.platformPostId, ins, {
-        comments: fld?.comments?.summary?.total_count, shares: fld?.shares?.count,
+        comments: readNumber(commentSummary?.total_count), shares: readNumber(shares?.count)
       }))
     } catch { /* skip this post; others still collect */ }
   }
@@ -491,8 +550,8 @@ facebookProvider.fetchPostMetrics = async ({ accessToken, posts }: FetchPostMetr
 facebookProvider.fetchAccountMetrics = async ({ accountId, accessToken }: FetchAccountMetricsParams): Promise<AccountMetric> => {
   const tok = encodeURIComponent(accessToken)
   const insRes = await fetch(`${GRAPH_API_BASE}/${accountId}/insights?metric=page_impressions,page_impressions_unique,page_views_total&period=day&access_token=${tok}`)
-  const ins: any = await insRes.json().catch(() => ({}))
+  const ins: JsonObject = await insRes.json().catch(() => ({}))
   const pageRes = await fetch(`${GRAPH_API_BASE}/${accountId}?fields=fan_count&access_token=${tok}`)
-  const page: any = await pageRes.json().catch(() => ({}))
-  return mapFbAccountInsights(ins, page?.fan_count)
+  const page: JsonObject = await pageRes.json().catch(() => ({}))
+  return mapFbAccountInsights(ins, readNumber(page.fan_count))
 }

@@ -60,14 +60,6 @@ const filteredPosts = computed(() => {
   })
 })
 
-function postMedia(post: SocialWallPost) {
-  return post.media_urls?.find(Boolean) || null
-}
-
-function isVideo(url: string | null) {
-  return Boolean(url && /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(url))
-}
-
 function statusColor(status: string): 'success' | 'info' | 'error' | 'warning' | 'neutral' {
   if (status === 'published') return 'success'
   if (status === 'scheduled' || status === 'approved') return 'info'
@@ -107,6 +99,26 @@ function platformResultLinks(post: SocialWallPost) {
 
 function previewContent(post: SocialWallPost) {
   return post.content?.trim() || 'No copy saved for this post.'
+}
+
+function previewPlatforms(post: SocialWallPost): SocialPublishPlatform[] {
+  return post.platforms.slice(0, 1)
+}
+
+function previewPageName(post: SocialWallPost) {
+  const primaryPlatform = post.platforms[0]
+  const account = post.accounts.find(item => item.platform === primaryPlatform) ?? post.accounts[0]
+  return account?.account_name || post.campaign_name || 'Your Brand'
+}
+
+function resolvePreview(post: SocialWallPost) {
+  return (platform: string) => {
+    const override = post.platform_overrides?.[platform]
+    return {
+      content: override?.content?.trim() || post.content || '',
+      mediaUrls: override?.mediaUrls?.length ? override.mediaUrls : post.media_urls || []
+    }
+  }
 }
 </script>
 
@@ -174,25 +186,15 @@ function previewContent(post: SocialWallPost) {
         :key="post.id"
         class="flex min-h-0 flex-col overflow-hidden rounded-md border border-default bg-default"
       >
-        <div class="aspect-[16/10] bg-elevated">
-          <video
-            v-if="isVideo(postMedia(post))"
-            :src="postMedia(post) || undefined"
-            class="size-full object-cover"
-            muted
-            controls
-            preload="metadata"
-          />
-          <img
-            v-else-if="postMedia(post)"
-            :src="postMedia(post) || undefined"
-            alt=""
-            class="size-full object-cover"
-            loading="lazy"
-            referrerpolicy="no-referrer"
-          >
-          <div v-else class="flex size-full items-center justify-center text-muted">
-            <UIcon name="i-lucide-file-text" class="size-8" />
+        <div class="border-b border-default bg-elevated p-3">
+          <div class="overflow-x-auto pb-1">
+            <div class="flex min-w-[380px] justify-center">
+              <SocialPublishingPlatformPreviewPane
+                :platforms="previewPlatforms(post)"
+                :page-name="previewPageName(post)"
+                :resolve="resolvePreview(post)"
+              />
+            </div>
           </div>
         </div>
 
