@@ -468,7 +468,7 @@ export function buildIgCommentReply(commentId: string, content: string, accessTo
 }
 
 /** Pure: map an Instagram media list response with nested comments to InboxItems. */
-export function mapInstagramMediaComments(api: any): FetchInboxResult {
+export function mapInstagramMediaComments(api: any, opts: { accountId?: string } = {}): FetchInboxResult {
   const items: InboxItem[] = []
   for (const media of api?.data ?? []) {
     const mediaId = String(media?.id ?? '')
@@ -490,6 +490,29 @@ export function mapInstagramMediaComments(api: any): FetchInboxResult {
         messageType: 'comment',
         platformTimestamp: c?.timestamp,
       })
+
+      for (const reply of c?.replies?.data ?? []) {
+        const replyId = String(reply?.id ?? '')
+        if (!replyId) continue
+        const replyUsername = reply?.username ?? reply?.from?.username
+        const replyUserId = reply?.from?.id ? String(reply.from.id) : undefined
+        const isBusinessReply = Boolean(opts.accountId && replyUserId === opts.accountId)
+        items.push({
+          channelType: 'comment',
+          platformConversationId: mediaId,
+          permalink: reply?.permalink_url ?? c?.permalink_url ?? media?.permalink,
+          participant: { id: replyUserId, name: replyUsername, handle: replyUsername },
+          platformMessageId: replyId,
+          parentPlatformMessageId: commentId,
+          direction: isBusinessReply ? 'out' : 'in',
+          authorId: replyUserId,
+          authorName: replyUsername,
+          content: reply?.text ?? '',
+          messageType: 'comment_reply',
+          metadata: { source: 'platform_sync' },
+          platformTimestamp: reply?.timestamp,
+        })
+      }
     }
   }
   // The media cursor paginates media objects, not comments. Always rescan recent media; message
@@ -499,12 +522,12 @@ export function mapInstagramMediaComments(api: any): FetchInboxResult {
 
 instagramProvider.fetchInbox = async ({ accountId, accessToken }: FetchInboxParams): Promise<FetchInboxResult> => {
   const url = new URL(`${GRAPH_API_BASE}/${accountId}/media`)
-  url.searchParams.set('fields', 'id,permalink,comments.limit(50){id,text,username,timestamp,from{id,username}}')
+  url.searchParams.set('fields', 'id,permalink,comments.limit(50){id,text,username,timestamp,from{id,username},replies.limit(50){id,text,username,timestamp,from{id,username}}}')
   url.searchParams.set('access_token', accessToken)
   url.searchParams.set('limit', '25')
   const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
   if (!res.ok) throw new Error(`instagram comments fetchInbox ${res.status}`)
-  return mapInstagramMediaComments(await res.json())
+  return mapInstagramMediaComments(await res.json(), { accountId })
 }
 
 instagramProvider.reply = async ({ accountId, accessToken, conversationId, content, channelType, viaPageId }: ReplyParams): Promise<ReplyResult> => {

@@ -20,12 +20,14 @@ export function normalizeInboxItem(platform: string, item: InboxItem): Normalize
     rating: item.rating,
     message: {
       platformMessageId: item.platformMessageId,
-      direction: 'in',
+      direction: item.direction ?? 'in',
       authorId: item.authorId,
       authorName: item.authorName ?? item.participant?.name,
       messageType: item.messageType ?? (item.channelType === 'review' ? 'review' : 'comment'),
       content: item.content,
       attachments: item.attachments,
+      parentPlatformMessageId: item.parentPlatformMessageId,
+      metadata: item.metadata,
       platformTimestamp: item.platformTimestamp
     }
   }

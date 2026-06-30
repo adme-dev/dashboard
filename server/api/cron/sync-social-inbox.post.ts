@@ -127,18 +127,21 @@ export default defineEventHandler(async (event) => {
             timedOut = true
             break
           }
-          const res = await recordInbound({ queryOne, execute }, acct.client_id, acct.id, normalizeInboxItem(acct.platform, item))
+          const normalized = normalizeInboxItem(acct.platform, item)
+          const res = await recordInbound({ queryOne, execute }, acct.client_id, acct.id, normalized)
           if (res.inserted) {
             synced++
             channelRun.synced++
             emitInboxEvent({ clientId: acct.client_id, type: 'message.added', conversationId: res.conversationId }, event)
-            await onInboundRecorded({ queryOne, queryRows, execute }, {
-              notifyAssigned: (userId, conversationId, clientId) => createNotification({
-                userId, type: 'social_assigned', title: 'New conversation assigned',
-                message: 'A social conversation was auto-assigned to you.',
-                link: `/agency/social/inbox?c=${conversationId}`, metadata: { conversationId, clientId }
-              }).then(() => {})
-            }, { conversationId: res.conversationId, clientId: acct.client_id, channelType: item.channelType })
+            if (normalized.message.direction === 'in') {
+              await onInboundRecorded({ queryOne, queryRows, execute }, {
+                notifyAssigned: (userId, conversationId, clientId) => createNotification({
+                  userId, type: 'social_assigned', title: 'New conversation assigned',
+                  message: 'A social conversation was auto-assigned to you.',
+                  link: `/agency/social/inbox?c=${conversationId}`, metadata: { conversationId, clientId }
+                }).then(() => {})
+              }, { conversationId: res.conversationId, clientId: acct.client_id, channelType: item.channelType })
+            }
           }
         }
         await execute(

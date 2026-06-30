@@ -134,6 +134,79 @@ describe('recordInbound', () => {
     expect(params[0]?.[15]).toBe('EOFY Lead Gen')
   })
 
+  it('links provider-synced outbound replies to their parent platform message and metadata', async () => {
+    const sqls: string[] = []
+    const params: unknown[][] = []
+    const db: DbRunner = {
+      async queryOne<T = unknown>(sql: string, p?: unknown[]) {
+        sqls.push(sql)
+        if (p) params.push(p)
+        if (/INSERT INTO social_messages/i.test(sql)) return { inserted: true } as T
+        return { id: 'conv-1' } as T
+      },
+      async execute(sql: string, p?: unknown[]) {
+        sqls.push(sql)
+        if (p) params.push(p)
+        return 1
+      }
+    }
+
+    const res = await recordInbound(db, 'client-1', 'acct-1', {
+      ...ev,
+      message: {
+        platformMessageId: 'reply-1',
+        parentPlatformMessageId: 'c1',
+        direction: 'out',
+        authorId: 'page-1',
+        authorName: 'Northern Peugeot',
+        messageType: 'comment_reply',
+        content: 'Thanks for asking.',
+        metadata: { source: 'platform_sync' }
+      }
+    })
+
+    const insertSql = sqls.find(s => /INSERT INTO social_messages/i.test(s)) ?? ''
+    const insertParams = params.find(p => p[2] === 'reply-1') ?? []
+    expect(res.inserted).toBe(true)
+    expect(insertSql).toMatch(/parent_message_id/)
+    expect(insertSql).toMatch(/SELECT id FROM social_messages/)
+    expect(insertSql).toMatch(/metadata/)
+    expect(insertParams).toContain('c1')
+    expect(insertParams).toContain(JSON.stringify({ source: 'platform_sync' }))
+  })
+
+  it('does not mark automation pending for provider-synced outbound replies', async () => {
+    const updateSqls: string[] = []
+    const db: DbRunner = {
+      async queryOne<T = unknown>(sql: string) {
+        if (/INSERT INTO social_messages/i.test(sql)) return { inserted: true } as T
+        return { id: 'conv-1' } as T
+      },
+      async execute(sql: string) {
+        if (/UPDATE social_conversations/i.test(sql)) updateSqls.push(sql)
+        return 1
+      }
+    }
+
+    await recordInbound(db, 'client-1', 'acct-1', {
+      ...ev,
+      message: {
+        platformMessageId: 'reply-1',
+        parentPlatformMessageId: 'c1',
+        direction: 'out',
+        authorId: 'page-1',
+        authorName: 'Northern Peugeot',
+        messageType: 'comment_reply',
+        content: 'Thanks for asking.',
+        metadata: { source: 'platform_sync' }
+      }
+    })
+
+    expect(updateSqls).toHaveLength(1)
+    expect(updateSqls[0]).toMatch(/last_message_direction = 'out'/)
+    expect(updateSqls[0]).not.toMatch(/automation_state\s*=\s*'pending'/)
+  })
+
   it('stamps first_response_at (once) on the outbound update', async () => {
     const sqls: string[] = []
     const db: DbRunner = {

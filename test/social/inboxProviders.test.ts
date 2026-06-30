@@ -57,6 +57,35 @@ describe('mapGoogleReviews', () => {
     expect(items[0]).toMatchObject({ channelType: 'review', platformMessageId: 'r1', rating: 5, content: 'Great service' })
   })
 
+  it('maps GBP owner replies as outbound child messages under the review', () => {
+    const api = { reviews: [{
+      reviewId: 'r1',
+      comment: 'Great service',
+      starRating: 'FIVE',
+      reviewer: { displayName: 'Sam' },
+      createTime: '2026-06-01T00:00:00Z',
+      name: 'accounts/1/locations/2/reviews/r1',
+      reviewReply: {
+        comment: 'Thanks Sam, appreciate the review.',
+        updateTime: '2026-06-02T00:00:00Z'
+      }
+    }] }
+
+    const { items } = mapGoogleReviews(api)
+
+    expect(items).toHaveLength(2)
+    expect(items[1]).toMatchObject({
+      channelType: 'review',
+      platformConversationId: 'accounts/1/locations/2/reviews/r1',
+      platformMessageId: 'r1:reply',
+      parentPlatformMessageId: 'r1',
+      direction: 'out',
+      messageType: 'review_reply',
+      content: 'Thanks Sam, appreciate the review.',
+      platformTimestamp: '2026-06-02T00:00:00Z'
+    })
+  })
+
   it('fetches reviews using the Google location resource path even when the account row stores a composite id', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       reviews: [{
@@ -122,6 +151,44 @@ describe('mapFacebookFeedComments', () => {
       permalink: 'https://facebook.com/comment/1'
     })
   })
+
+  it('maps Facebook page replies as outbound child messages under the source comment', () => {
+    const api = {
+      data: [{
+        id: 'page_1_post_1',
+        permalink_url: 'https://facebook.com/page/posts/1',
+        comments: {
+          data: [{
+            id: 'fb_comment_1',
+            message: 'Is this still available?',
+            from: { id: 'fb_user_1', name: 'Alex' },
+            created_time: '2026-06-28T01:02:03+0000',
+            comments: {
+              data: [{
+                id: 'fb_reply_1',
+                message: 'Yes, it is still available.',
+                from: { id: 'page_1', name: 'Northern Peugeot' },
+                created_time: '2026-06-28T01:05:00+0000'
+              }]
+            }
+          }]
+        }
+      }]
+    }
+
+    const { items } = mapFacebookFeedComments(api, { accountId: 'page_1' })
+
+    expect(items).toHaveLength(2)
+    expect(items[1]).toMatchObject({
+      channelType: 'comment',
+      platformConversationId: 'page_1_post_1',
+      platformMessageId: 'fb_reply_1',
+      parentPlatformMessageId: 'fb_comment_1',
+      direction: 'out',
+      authorName: 'Northern Peugeot',
+      content: 'Yes, it is still available.'
+    })
+  })
 })
 
 describe('mapInstagramMediaComments', () => {
@@ -151,6 +218,45 @@ describe('mapInstagramMediaComments', () => {
       authorName: 'alex_insta',
       content: 'Love this',
       permalink: 'https://instagram.com/p/abc'
+    })
+  })
+
+  it('maps Instagram business replies as outbound child messages under the source comment', () => {
+    const api = {
+      data: [{
+        id: 'ig_media_1',
+        permalink: 'https://instagram.com/p/abc',
+        comments: {
+          data: [{
+            id: 'ig_comment_1',
+            text: 'Love this',
+            username: 'alex_insta',
+            timestamp: '2026-06-28T01:02:03+0000',
+            replies: {
+              data: [{
+                id: 'ig_reply_1',
+                text: 'Thanks Alex.',
+                username: 'northernpeugeot',
+                from: { id: 'ig_business_1', username: 'northernpeugeot' },
+                timestamp: '2026-06-28T01:03:00+0000'
+              }]
+            }
+          }]
+        }
+      }]
+    }
+
+    const { items } = mapInstagramMediaComments(api, { accountId: 'ig_business_1' })
+
+    expect(items).toHaveLength(2)
+    expect(items[1]).toMatchObject({
+      channelType: 'comment',
+      platformConversationId: 'ig_media_1',
+      platformMessageId: 'ig_reply_1',
+      parentPlatformMessageId: 'ig_comment_1',
+      direction: 'out',
+      authorName: 'northernpeugeot',
+      content: 'Thanks Alex.'
     })
   })
 })

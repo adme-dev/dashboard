@@ -349,6 +349,11 @@ interface GoogleBusinessReview {
   comment?: string | null
   starRating?: string | null
   createTime?: string | null
+  reviewReply?: {
+    comment?: string | null
+    updateTime?: string | null
+    reviewReplyState?: string | null
+  } | null
 }
 
 interface GoogleBusinessReviewListResponse {
@@ -364,18 +369,42 @@ interface GoogleBusinessReplyError {
 
 /** Pure: map a GBP reviews.list response to InboxItems + next cursor. */
 export function mapGoogleReviews(api: GoogleBusinessReviewListResponse): FetchInboxResult {
-  const items: InboxItem[] = (api.reviews ?? []).map(r => ({
-    channelType: 'review' as const,
-    // full resource name (accounts/*/locations/*/reviews/*) so reply() can target it directly
-    platformConversationId: String(r.name ?? r.reviewId ?? ''),
-    participant: { name: r.reviewer?.displayName },
-    platformMessageId: String(r.reviewId ?? r.name ?? ''),
-    authorName: r.reviewer?.displayName,
-    content: r.comment ?? '',
-    messageType: 'review',
-    rating: GBP_STAR[r.starRating] ?? undefined,
-    platformTimestamp: r.createTime
-  }))
+  const items: InboxItem[] = []
+  for (const r of api.reviews ?? []) {
+    const platformConversationId = String(r.name ?? r.reviewId ?? '')
+    const platformMessageId = String(r.reviewId ?? r.name ?? '')
+    items.push({
+      channelType: 'review' as const,
+      // full resource name (accounts/*/locations/*/reviews/*) so reply() can target it directly
+      platformConversationId,
+      participant: { name: r.reviewer?.displayName },
+      platformMessageId,
+      authorName: r.reviewer?.displayName,
+      content: r.comment ?? '',
+      messageType: 'review',
+      rating: GBP_STAR[r.starRating] ?? undefined,
+      platformTimestamp: r.createTime
+    })
+
+    if (r.reviewReply?.comment) {
+      items.push({
+        channelType: 'review',
+        platformConversationId,
+        participant: {},
+        platformMessageId: `${platformMessageId}:reply`,
+        parentPlatformMessageId: platformMessageId,
+        direction: 'out',
+        authorName: 'Owner response',
+        content: r.reviewReply.comment,
+        messageType: 'review_reply',
+        metadata: {
+          source: 'platform_sync',
+          reviewReplyState: r.reviewReply.reviewReplyState ?? null
+        },
+        platformTimestamp: r.reviewReply.updateTime ?? undefined
+      })
+    }
+  }
   return { items, nextCursor: api?.nextPageToken ?? null }
 }
 

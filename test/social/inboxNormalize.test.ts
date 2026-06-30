@@ -68,6 +68,28 @@ describe('normalizeInboxItem', () => {
       paidMediaCampaignName: 'EOFY Lead Gen'
     })
   })
+
+  it('preserves provider-synced outbound reply metadata and parent linkage', () => {
+    const item: InboxItem = {
+      channelType: 'comment',
+      platformConversationId: 'post_1',
+      platformMessageId: 'reply_1',
+      parentPlatformMessageId: 'comment_1',
+      direction: 'out',
+      participant: { id: 'page_1', name: 'Northern Peugeot' },
+      authorId: 'page_1',
+      authorName: 'Northern Peugeot',
+      content: 'Thanks for asking.',
+      messageType: 'comment_reply',
+      metadata: { source: 'platform_sync' }
+    }
+
+    const ev = normalizeInboxItem('facebook', item)
+
+    expect(ev.message.direction).toBe('out')
+    expect(ev.message.parentPlatformMessageId).toBe('comment_1')
+    expect(ev.message.metadata).toMatchObject({ source: 'platform_sync' })
+  })
 })
 
 describe('normalizeMetaCommentWebhook', () => {

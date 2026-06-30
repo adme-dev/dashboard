@@ -28,8 +28,9 @@ function uuidOrNull(value: unknown): string | null {
 
 /** Ensure the conversation exists (identity/profile fields only — NO counter/last_message bump). */
 async function ensureConversation(db: DbRunner, clientId: string, accountId: string, ev: NormalizedEvent): Promise<string> {
-  const participantId = ev.participant.id ?? ev.message.authorId ?? null
-  const participantName = ev.participant.name ?? ev.message.authorName ?? null
+  const isOutbound = ev.message.direction === 'out'
+  const participantId = isOutbound ? null : (ev.participant.id ?? ev.message.authorId ?? null)
+  const participantName = isOutbound ? null : (ev.participant.name ?? ev.message.authorName ?? null)
   const campaignIdentity = ev.campaignIdentity ?? {}
   const linkedSocialCampaignId = uuidOrNull(campaignIdentity.linkedSocialCampaignId)
   const paidMediaConnectionId = uuidOrNull(campaignIdentity.paidMediaConnectionId)
@@ -80,12 +81,20 @@ async function insertMessage(db: DbRunner, conversationId: string, clientId: str
   return db.execute(
     `INSERT INTO social_messages
        (conversation_id, client_id, platform_message_id, direction, author_id, author_name,
-        message_type, content, attachments, platform_timestamp)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
+        message_type, content, attachments, platform_timestamp, parent_message_id, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,
+       CASE WHEN $11::text IS NULL THEN NULL ELSE (
+         SELECT id FROM social_messages
+         WHERE conversation_id = $1 AND platform_message_id = $11
+         ORDER BY created_at ASC
+         LIMIT 1
+       ) END,
+       $12::jsonb)
      ON CONFLICT (conversation_id, platform_message_id) WHERE platform_message_id IS NOT NULL DO NOTHING`,
     [conversationId, clientId, ev.message.platformMessageId, ev.message.direction,
       ev.message.authorId ?? null, ev.message.authorName ?? null, ev.message.messageType,
-      ev.message.content ?? '', JSON.stringify(ev.message.attachments ?? []), ev.message.platformTimestamp ?? null]
+      ev.message.content ?? '', JSON.stringify(ev.message.attachments ?? []), ev.message.platformTimestamp ?? null,
+      ev.message.parentPlatformMessageId ?? null, JSON.stringify(ev.message.metadata ?? {})]
   )
 }
 
@@ -106,6 +115,22 @@ async function bumpConversationForInbound(db: DbRunner, conversationId: string, 
   )
 }
 
+/** Advance conversation counters + last_message snapshot for a genuinely-new outbound platform reply. */
+async function bumpConversationForOutbound(db: DbRunner, conversationId: string, ev: NormalizedEvent): Promise<void> {
+  await db.execute(
+    `UPDATE social_conversations SET
+       last_message_at = GREATEST(COALESCE(last_message_at, '-infinity'::timestamptz), COALESCE($2::timestamptz, NOW())),
+       last_message_preview = $3,
+       last_message_direction = 'out',
+       message_count = message_count + 1,
+       unread_count = 0,
+       first_response_at = COALESCE(first_response_at, COALESCE($2::timestamptz, NOW())),
+       updated_at = NOW()
+     WHERE id = $1`,
+    [conversationId, ev.message.platformTimestamp ?? null, (ev.message.content ?? '').slice(0, 200)]
+  )
+}
+
 /**
  * Record an inbound event: ensure the conversation, idempotently insert the message,
  * and only bump counters/last_message when the message was actually new.
@@ -113,7 +138,13 @@ async function bumpConversationForInbound(db: DbRunner, conversationId: string, 
 export async function recordInbound(db: DbRunner, clientId: string, accountId: string, ev: NormalizedEvent) {
   const conversationId = await ensureConversation(db, clientId, accountId, ev)
   const affected = await insertMessage(db, conversationId, clientId, ev)
-  if (affected > 0) await bumpConversationForInbound(db, conversationId, ev)
+  if (affected > 0) {
+    if (ev.message.direction === 'out') {
+      await bumpConversationForOutbound(db, conversationId, ev)
+    } else {
+      await bumpConversationForInbound(db, conversationId, ev)
+    }
+  }
   return { conversationId, inserted: affected > 0 }
 }
 

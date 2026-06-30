@@ -3,6 +3,11 @@
 export type ChannelType = 'comment' | 'dm' | 'mention' | 'review'
 export type Direction = 'in' | 'out'
 
+export interface SocialInboxMessageMetadata {
+  source?: 'platform_sync' | 'provider_sync' | 'xeroflow'
+  [key: string]: unknown
+}
+
 export interface SocialInboxCampaignIdentity {
   linkedSocialCampaignId?: string | null
   paidMediaPlatform?: string | null
@@ -28,6 +33,8 @@ export interface NormalizedEvent {
     messageType: string
     content: string
     attachments?: Array<{ url: string, type: string }>
+    parentPlatformMessageId?: string
+    metadata?: SocialInboxMessageMetadata
     platformTimestamp?: string // ISO
   }
   rating?: number // reviews
@@ -41,11 +48,14 @@ export interface InboxItem {
   campaignIdentity?: SocialInboxCampaignIdentity
   participant: { id?: string, name?: string, handle?: string }
   platformMessageId: string
+  parentPlatformMessageId?: string
+  direction?: Direction
   authorId?: string
   authorName?: string
   content: string
   messageType?: string
   attachments?: Array<{ url: string, type: string }>
+  metadata?: SocialInboxMessageMetadata
   platformTimestamp?: string
   rating?: number
 }

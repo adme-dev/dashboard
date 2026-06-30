@@ -4,8 +4,10 @@ import {
   getSocialInboxAccountContextDisplay,
   getSocialInboxIdentityDisplay
 } from '~/utils/socialInboxDisplay'
+import { groupSocialInboxMessages } from '~/utils/socialInboxThread'
 
-defineProps<{ conversation: SocialConversation | null, messages: SocialMessage[] }>()
+const props = defineProps<{ conversation: SocialConversation | null, messages: SocialMessage[] }>()
+const threadItems = computed(() => groupSocialInboxMessages(props.messages))
 function fmt(iso: string | null) {
   return iso ? new Date(iso).toLocaleString() : ''
 }
@@ -18,6 +20,25 @@ function accountFor(conversation: SocialConversation | null | undefined) {
     accountName: conversation.social_account_name,
     platformAccountId: conversation.social_account_platform_id
   })
+}
+function isPlatformSyncedReply(message: SocialMessage) {
+  return message.direction === 'out' && message.metadata?.source === 'platform_sync'
+}
+function messageLabel(message: SocialMessage) {
+  if (message.direction === 'out') {
+    return isPlatformSyncedReply(message) ? 'Replied on platform' : ''
+  }
+  return identityLabel(props.conversation?.platform, message.author_name).label
+}
+function messageLabelTitle(message: SocialMessage) {
+  if (message.direction === 'out') {
+    return isPlatformSyncedReply(message) ? 'Synced from the native platform reply thread.' : undefined
+  }
+  return identityLabel(props.conversation?.platform, message.author_name).reason || undefined
+}
+function bubbleClass(message: SocialMessage) {
+  if (message.is_internal_note) return 'bg-warning/10 border border-warning/30'
+  return message.direction === 'out' ? 'bg-primary text-inverted' : 'bg-elevated'
 }
 </script>
 
@@ -64,33 +85,66 @@ function accountFor(conversation: SocialConversation | null | undefined) {
       <div v-if="!conversation" class="text-sm text-muted">
         Select a conversation to view it.
       </div>
-      <div
-        v-for="m in messages"
-        :key="m.id"
-        class="flex"
-        :class="m.direction === 'out' ? 'justify-end' : 'justify-start'"
-      >
-        <div
-          class="max-w-[75%] rounded-lg px-3 py-2 text-sm"
-          :class="m.is_internal_note
-            ? 'bg-warning/10 border border-warning/30'
-            : m.direction === 'out' ? 'bg-primary text-inverted' : 'bg-elevated'"
-        >
+      <template v-for="item in threadItems" :key="item.message.id">
+        <div class="space-y-2">
           <div
-            v-if="m.direction === 'in'"
-            class="text-xs text-muted mb-0.5"
-            :title="identityLabel(conversation?.platform, m.author_name).reason || undefined"
+            class="flex"
+            :class="item.message.direction === 'out' ? 'justify-end' : 'justify-start'"
           >
-            {{ identityLabel(conversation?.platform, m.author_name).label }}
+            <div
+              class="max-w-[75%] rounded-lg px-3 py-2 text-sm"
+              :class="bubbleClass(item.message)"
+            >
+              <div
+                v-if="messageLabel(item.message)"
+                class="text-xs mb-0.5"
+                :class="item.message.direction === 'out' ? 'opacity-75' : 'text-muted'"
+                :title="messageLabelTitle(item.message)"
+              >
+                {{ messageLabel(item.message) }}
+              </div>
+              <p class="whitespace-pre-wrap break-words">
+                {{ item.message.content }}
+              </p>
+              <div class="text-[10px] opacity-60 mt-1">
+                {{ fmt(item.message.platform_timestamp || item.message.created_at) }}
+              </div>
+            </div>
           </div>
-          <p class="whitespace-pre-wrap break-words">
-            {{ m.content }}
-          </p>
-          <div class="text-[10px] opacity-60 mt-1">
-            {{ fmt(m.platform_timestamp || m.created_at) }}
+
+          <div
+            v-if="item.replies.length"
+            class="ml-3 space-y-2 border-l border-default pl-3"
+          >
+            <div
+              v-for="reply in item.replies"
+              :key="reply.id"
+              class="flex"
+              :class="reply.direction === 'out' ? 'justify-end' : 'justify-start'"
+            >
+              <div
+                class="max-w-[72%] rounded-lg px-3 py-2 text-sm"
+                :class="bubbleClass(reply)"
+              >
+                <div
+                  v-if="messageLabel(reply)"
+                  class="text-xs mb-0.5"
+                  :class="reply.direction === 'out' ? 'opacity-75' : 'text-muted'"
+                  :title="messageLabelTitle(reply)"
+                >
+                  {{ messageLabel(reply) }}
+                </div>
+                <p class="whitespace-pre-wrap break-words">
+                  {{ reply.content }}
+                </p>
+                <div class="text-[10px] opacity-60 mt-1">
+                  {{ fmt(reply.platform_timestamp || reply.created_at) }}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </template>
     </div>
   </div>
 </template>

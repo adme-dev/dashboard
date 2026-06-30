@@ -261,7 +261,7 @@ export function mapFacebookRatings(api: any): FetchInboxResult {
 }
 
 /** Pure: map a Facebook page feed response with nested comments to InboxItems. */
-export function mapFacebookFeedComments(api: any): FetchInboxResult {
+export function mapFacebookFeedComments(api: any, opts: { accountId?: string } = {}): FetchInboxResult {
   const items: InboxItem[] = []
   for (const post of api?.data ?? []) {
     const postId = String(post?.id ?? '')
@@ -281,6 +281,29 @@ export function mapFacebookFeedComments(api: any): FetchInboxResult {
         messageType: 'comment',
         platformTimestamp: c?.created_time,
       })
+
+      const replies = c?.comments?.data ?? c?.replies?.data ?? []
+      for (const reply of replies) {
+        const replyId = String(reply?.id ?? '')
+        if (!replyId) continue
+        const authorId = reply?.from?.id ? String(reply.from.id) : undefined
+        const isPageReply = Boolean(opts.accountId && authorId === opts.accountId)
+        items.push({
+          channelType: 'comment',
+          platformConversationId: postId,
+          permalink: reply?.permalink_url ?? c?.permalink_url ?? post?.permalink_url,
+          participant: { id: authorId, name: reply?.from?.name },
+          platformMessageId: replyId,
+          parentPlatformMessageId: commentId,
+          direction: isPageReply ? 'out' : 'in',
+          authorId,
+          authorName: reply?.from?.name,
+          content: reply?.message ?? '',
+          messageType: 'comment_reply',
+          metadata: { source: 'platform_sync' },
+          platformTimestamp: reply?.created_time,
+        })
+      }
     }
   }
   // The feed cursor paginates posts, not comments. Keep comment polling anchored to the newest
@@ -291,12 +314,12 @@ export function mapFacebookFeedComments(api: any): FetchInboxResult {
 facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelType }: FetchInboxParams): Promise<FetchInboxResult> => {
   if (channelType === 'comment') {
     const url = new URL(`${GRAPH_API_BASE}/${accountId}/feed`)
-    url.searchParams.set('fields', 'id,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url}')
+    url.searchParams.set('fields', 'id,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url}}')
     url.searchParams.set('access_token', accessToken)
     url.searchParams.set('limit', '25')
     const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
     if (!res.ok) throw new Error(`facebook comments fetchInbox ${res.status}`)
-    return mapFacebookFeedComments(await res.json())
+    return mapFacebookFeedComments(await res.json(), { accountId })
   }
 
   // Reviews (recommendations). Page comments also have a polling fallback above because webhooks

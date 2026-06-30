@@ -1386,12 +1386,16 @@ export interface SocialMessage {
   id: string
   conversation_id: string
   platform_message_id: string | null
+  parent_message_id?: string | null
   direction: 'in' | 'out'
+  author_id?: string | null
   author_name: string | null
   message_type: string
   content: string | null
   attachments: Array<{ url: string; type: string }>
   is_internal_note: boolean
+  sent_by_user_id?: string | null
+  metadata?: Record<string, unknown> | null
   platform_timestamp: string | null
   created_at: string
 }
