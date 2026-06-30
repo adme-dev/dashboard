@@ -15,6 +15,14 @@ const maps = ref<Ga4Map[]>([])
 const clientOptions = ref<ClientOption[]>([])
 const selectedClient = reactive<Record<string, string>>({}) // propertyId -> clientId
 
+const hasConnections = computed(() => connections.value.length > 0)
+const hasErroredConnection = computed(() => connections.value.some(conn => Boolean(conn.lastError)))
+const connectButtonLabel = computed(() => {
+  if (hasErroredConnection.value) return 'Reconnect'
+  if (hasConnections.value) return 'Add Google account'
+  return 'Connect Google Analytics'
+})
+
 function relativeTime(iso: string | null): string {
   if (!iso) return 'never'
   const diffMs = Date.now() - new Date(iso).getTime()
@@ -87,7 +95,7 @@ onMounted(() => { loadClients(); loadProperties() })
           <span class="font-semibold">Google Analytics 4</span>
         </div>
         <div class="flex gap-2">
-          <UButton size="sm" variant="soft" icon="i-lucide-link" @click="connect">Connect Google Analytics</UButton>
+          <UButton size="sm" variant="soft" icon="i-lucide-link" @click="connect">{{ connectButtonLabel }}</UButton>
           <UButton size="sm" variant="ghost" icon="i-lucide-refresh-cw" :disabled="!connections.length" @click="syncNow">Sync now</UButton>
         </div>
       </div>

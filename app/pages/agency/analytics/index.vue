@@ -115,7 +115,7 @@ async function syncAll() {
     } else if (errors.length === 0) {
       toast.add({ title: 'Sync complete', description: 'All platforms synced successfully', color: 'success' })
     } else {
-      toast.add({ title: 'Sync failed', description: 'All platforms had errors. Check your connections in Social Hub.', color: 'error' })
+      toast.add({ title: 'Sync failed', description: 'All platforms had errors. Check platform connections and analytics data sources.', color: 'error' })
     }
   } catch (err: unknown) {
     const isTimeout = err instanceof Error && err.name === 'AbortError'
@@ -123,7 +123,7 @@ async function syncAll() {
       title: isTimeout ? 'Sync timed out' : 'Sync failed',
       description: isTimeout
         ? 'The sync took too long. Some platforms may have synced — try refreshing.'
-        : 'Could not sync platforms. Check your connections in Social Hub.',
+        : 'Could not sync platforms. Check platform connections and analytics data sources.',
       color: 'error'
     })
   } finally {
@@ -135,7 +135,7 @@ async function syncAll() {
 <template>
   <div class="h-full overflow-y-auto p-6 space-y-6">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-bold text-default">
           Analytics
@@ -144,14 +144,24 @@ async function syncAll() {
           Cross-platform marketing performance
         </p>
       </div>
-      <UButton
-        icon="i-lucide-refresh-cw"
-        label="Sync All Platforms"
-        size="sm"
-        variant="outline"
-        :loading="syncing"
-        @click="syncAll"
-      />
+      <div class="flex flex-wrap items-center gap-2">
+        <UButton
+          to="/agency/analytics/connections"
+          icon="i-lucide-plug"
+          label="Data Sources"
+          size="sm"
+          color="neutral"
+          variant="soft"
+        />
+        <UButton
+          icon="i-lucide-refresh-cw"
+          label="Sync All Platforms"
+          size="sm"
+          variant="outline"
+          :loading="syncing"
+          @click="syncAll"
+        />
+      </div>
     </div>
 
     <!-- Filter Bar -->

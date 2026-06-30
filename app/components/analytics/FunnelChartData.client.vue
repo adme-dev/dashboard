@@ -156,7 +156,7 @@ function deltaIcon(delta: number | null): string {
         No GA4 property is mapped for this client yet.
       </p>
       <UButton
-        to="/agency/social/ga4"
+        to="/agency/analytics/connections"
         icon="i-lucide-link"
         label="Map a property"
         size="sm"
