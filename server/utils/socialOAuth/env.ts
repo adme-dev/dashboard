@@ -28,6 +28,7 @@ function firstConfigured(values: Array<string | undefined | null>): string {
 
 function resolveGoogleBusinessClientId(event: H3Event | undefined, runtimeValue: unknown): string {
   const candidates = [
+    getConfiguredValue(event, 'GOOGLE_CLIENT_ID'),
     getConfiguredValue(event, 'GOOGLE_BUSINESS_OAUTH_CLIENT_ID'),
     getConfiguredValue(event, 'NUXT_GOOGLE_BUSINESS_CLIENT_ID'),
     getConfiguredValue(event, 'GOOGLE_BUSINESS_CLIENT_ID'),
@@ -45,6 +46,7 @@ export function getSocialOauthStateSecret(event?: H3Event): string {
     getConfiguredValue(event, 'GOOGLE_BUSINESS_OAUTH_CLIENT_SECRET'),
     getConfiguredValue(event, 'NUXT_GOOGLE_BUSINESS_CLIENT_SECRET'),
     getConfiguredValue(event, 'GOOGLE_BUSINESS_CLIENT_SECRET'),
+    getConfiguredValue(event, 'GOOGLE_CLIENT_SECRET'),
     String(config.googleBusinessClientSecret || '')
   ])
 }
@@ -58,6 +60,7 @@ export function getGoogleBusinessOAuthConfig(event?: H3Event): {
   return {
     clientId: resolveGoogleBusinessClientId(event, config.googleBusinessClientId),
     clientSecret: firstConfigured([
+      getConfiguredValue(event, 'GOOGLE_CLIENT_SECRET'),
       getConfiguredValue(event, 'GOOGLE_BUSINESS_OAUTH_CLIENT_SECRET'),
       getConfiguredValue(event, 'NUXT_GOOGLE_BUSINESS_CLIENT_SECRET'),
       getConfiguredValue(event, 'GOOGLE_BUSINESS_CLIENT_SECRET'),
