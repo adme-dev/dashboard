@@ -63,8 +63,8 @@ function bubbleClass(message: SocialMessage) {
 </script>
 
 <template>
-  <div class="flex flex-col h-full min-h-0">
-    <div v-if="conversation" class="p-4 border-b border-default">
+  <div class="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+    <div v-if="conversation" class="shrink-0 border-b border-default p-4">
       <div class="flex items-start gap-2">
         <div class="min-w-0 flex-1">
           <div class="flex min-w-0 items-center gap-2">
@@ -100,9 +100,11 @@ function bubbleClass(message: SocialMessage) {
       <div v-if="conversation.channel_type === 'review' && conversation.rating" class="mt-1 text-warning text-sm">
         {{ '★'.repeat(conversation.rating) }}{{ '☆'.repeat(5 - conversation.rating) }}
       </div>
+    </div>
+    <div class="flex-1 min-h-0 w-full overflow-y-auto p-4 space-y-3">
       <div
-        v-if="sourcePost"
-        class="mt-3 overflow-hidden rounded-md border border-default bg-elevated/30"
+        v-if="conversation && sourcePost"
+        class="overflow-hidden rounded-md border border-default bg-elevated/30"
       >
         <div class="flex gap-3 p-3">
           <img
@@ -151,19 +153,17 @@ function bubbleClass(message: SocialMessage) {
           </div>
         </div>
       </div>
-    </div>
-    <div class="flex-1 overflow-y-auto p-4 space-y-3">
       <div v-if="!conversation" class="text-sm text-muted">
         Select a conversation to view it.
       </div>
-      <template v-for="item in threadItems" :key="item.message.id">
+      <template v-for="item in threadItems" v-else :key="item.message.id">
         <div class="space-y-2">
           <div
             class="flex"
             :class="item.message.direction === 'out' ? 'justify-end' : 'justify-start'"
           >
             <div
-              class="max-w-[75%] rounded-lg px-3 py-2 text-sm"
+              class="max-w-[92%] rounded-lg px-3 py-2 text-sm xl:max-w-[56rem]"
               :class="bubbleClass(item.message)"
             >
               <div
@@ -194,7 +194,7 @@ function bubbleClass(message: SocialMessage) {
               :class="reply.direction === 'out' ? 'justify-end' : 'justify-start'"
             >
               <div
-                class="max-w-[72%] rounded-lg px-3 py-2 text-sm"
+                class="max-w-[88%] rounded-lg px-3 py-2 text-sm xl:max-w-[52rem]"
                 :class="bubbleClass(reply)"
               >
                 <div

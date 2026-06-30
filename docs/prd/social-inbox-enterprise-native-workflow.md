@@ -158,7 +158,7 @@ Acceptance:
 
 ### Phase 6: Reporting
 
-- [ ] Task 6.1: Add conversion and SLA analytics.
+- [x] Task 6.1: Add conversion and SLA analytics.
 - [ ] Task 6.2: Add client/platform/channel/assignee filters.
 - [ ] Task 6.3: Add exportable operational report.
 

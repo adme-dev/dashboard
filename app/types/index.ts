@@ -1576,12 +1576,36 @@ export interface SocialSlaPolicy {
 export interface SocialInboxAnalytics {
   total: number
   open: number
+  closed: number
+  responded: number
+  responseRatePct: number
+  avgFirstResponseMinutes: number
+  slaTracked: number
+  breaches: number
+  dueSoon: number
+  overdueOpen: number
+  withinSlaPct: number | null
+  linkedTasks: number
+  linkedClientRequests: number
+  converted: number
+  conversionRatePct: number
+  automationRatePct: number
+  byChannel: SocialInboxAnalyticsBreakdown[]
+  byPlatform: SocialInboxAnalyticsBreakdown[]
+}
+
+export interface SocialInboxAnalyticsBreakdown {
+  key: string
+  label: string
+  total: number
+  open: number
   responded: number
   avgFirstResponseMinutes: number
   slaTracked: number
   breaches: number
   withinSlaPct: number | null
-  automationRatePct: number
+  converted: number
+  conversionRatePct: number
 }
 
 export interface AudioAsset {

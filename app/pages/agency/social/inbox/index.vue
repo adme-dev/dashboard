@@ -446,7 +446,7 @@ useSocialInboxRealtime(sseEndpoint, {
         </UBadge>
       </span>
     </div>
-    <div class="flex-1 grid grid-cols-[320px_minmax(0,1fr)_300px] min-h-0">
+    <div class="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)_300px] overflow-hidden">
       <SocialInboxSidebar
         :conversations="conversations"
         :selected-id="selectedId"
@@ -456,8 +456,8 @@ useSocialInboxRealtime(sseEndpoint, {
         @filter="onFilter"
         @load-more="onLoadMore"
       />
-      <div class="flex flex-col min-h-0">
-        <SocialInboxThread :conversation="selectedConv" :messages="thread.messages" class="flex-1 min-h-0" />
+      <div class="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+        <SocialInboxThread :conversation="selectedConv" :messages="thread.messages" class="min-h-0 w-full flex-1" />
         <SocialInboxComposer
           v-if="selectedConv"
           :sending="sending"
@@ -471,6 +471,7 @@ useSocialInboxRealtime(sseEndpoint, {
         />
       </div>
       <SocialInboxActionPanel
+        class="h-full min-h-0 w-full"
         :conversation="selectedConv"
         :timeline="timeline"
         :timeline-loading="timelineLoading"
