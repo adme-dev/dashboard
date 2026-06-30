@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { SocialConversation, SocialMessage } from '~/types'
-import { getSocialInboxIdentityDisplay } from '~/utils/socialInboxDisplay'
+import {
+  getSocialInboxAccountContextDisplay,
+  getSocialInboxIdentityDisplay
+} from '~/utils/socialInboxDisplay'
 
 defineProps<{ conversation: SocialConversation | null, messages: SocialMessage[] }>()
 function fmt(iso: string | null) {
@@ -9,25 +12,40 @@ function fmt(iso: string | null) {
 function identityLabel(platform: string | null | undefined, name: string | null | undefined) {
   return getSocialInboxIdentityDisplay({ platform, name })
 }
+function accountFor(conversation: SocialConversation | null | undefined) {
+  if (!conversation) return null
+  return getSocialInboxAccountContextDisplay({
+    accountName: conversation.social_account_name,
+    platformAccountId: conversation.social_account_platform_id
+  })
+}
 </script>
 
 <template>
   <div class="flex flex-col h-full min-h-0">
     <div v-if="conversation" class="p-4 border-b border-default">
-      <div class="flex items-center gap-2">
-        <span
-          class="font-semibold truncate"
-          :class="identityLabel(conversation.platform, conversation.participant_name).unavailable ? 'text-muted' : ''"
-          :title="identityLabel(conversation.platform, conversation.participant_name).reason || undefined"
-        >
-          {{ identityLabel(conversation.platform, conversation.participant_name).label }}
-        </span>
-        <UBadge color="neutral" variant="subtle" size="xs">
-          {{ conversation.platform }}
-        </UBadge>
-        <UBadge color="neutral" variant="subtle" size="xs">
-          {{ conversation.channel_type }}
-        </UBadge>
+      <div class="flex items-start gap-2">
+        <div class="min-w-0 flex-1">
+          <div class="flex min-w-0 items-center gap-2">
+            <span
+              class="font-semibold truncate"
+              :class="identityLabel(conversation.platform, conversation.participant_name).unavailable ? 'text-muted' : ''"
+              :title="identityLabel(conversation.platform, conversation.participant_name).reason || undefined"
+            >
+              {{ identityLabel(conversation.platform, conversation.participant_name).label }}
+            </span>
+            <UBadge color="neutral" variant="subtle" size="xs">
+              {{ conversation.platform }}
+            </UBadge>
+            <UBadge color="neutral" variant="subtle" size="xs">
+              {{ conversation.channel_type }}
+            </UBadge>
+          </div>
+          <div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
+            <UIcon name="i-lucide-panels-top-left" class="size-3 shrink-0" />
+            <span class="truncate">{{ accountFor(conversation) ? `via ${accountFor(conversation)}` : 'Account not linked' }}</span>
+          </div>
+        </div>
         <UButton
           v-if="conversation.permalink"
           :to="conversation.permalink"

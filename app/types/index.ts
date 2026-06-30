@@ -1333,6 +1333,8 @@ export interface SocialConversation {
   id: string
   client_id: string
   social_account_id: string | null
+  social_account_name?: string | null
+  social_account_platform_id?: string | null
   platform: string
   channel_type: SocialChannelType
   permalink: string | null

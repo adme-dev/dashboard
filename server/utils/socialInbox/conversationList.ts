@@ -37,8 +37,11 @@ export function buildSocialInboxConversationListQuery(input: SocialInboxConversa
   let sql = `
     SELECT
       c.*,
-      COALESCE(c.participant_name, latest_in.author_name) AS participant_name
+      COALESCE(c.participant_name, latest_in.author_name) AS participant_name,
+      a.account_name AS social_account_name,
+      a.platform_account_id AS social_account_platform_id
     FROM social_conversations c
+    LEFT JOIN social_accounts a ON a.id = c.social_account_id
     LEFT JOIN LATERAL (
       SELECT author_name
       FROM social_messages m
@@ -73,6 +76,8 @@ export function buildSocialInboxConversationListQuery(input: SocialInboxConversa
       c.participant_name ILIKE $${idx} ESCAPE '\\'
       OR c.participant_handle ILIKE $${idx} ESCAPE '\\'
       OR latest_in.author_name ILIKE $${idx} ESCAPE '\\'
+      OR a.account_name ILIKE $${idx} ESCAPE '\\'
+      OR a.platform_account_id ILIKE $${idx} ESCAPE '\\'
       OR c.last_message_preview ILIKE $${idx} ESCAPE '\\'
       OR EXISTS (
         SELECT 1

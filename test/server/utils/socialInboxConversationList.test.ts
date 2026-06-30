@@ -6,6 +6,9 @@ describe('buildSocialInboxConversationListQuery', () => {
     const q = buildSocialInboxConversationListQuery({ clientId: 'client-1', status: 'open', limit: 25, offset: 50 })
 
     expect(q.params).toEqual(['client-1', 'open', 25, 50])
+    expect(q.sql).toMatch(/a\.account_name AS social_account_name/)
+    expect(q.sql).toMatch(/a\.platform_account_id AS social_account_platform_id/)
+    expect(q.sql).toMatch(/LEFT JOIN social_accounts a ON a\.id = c\.social_account_id/)
     expect(q.sql).toMatch(/c\.client_id = \$1/)
     expect(q.sql).toMatch(/c\.status = \$2/)
     expect(q.sql).toMatch(/LIMIT \$3/)
@@ -17,6 +20,8 @@ describe('buildSocialInboxConversationListQuery', () => {
 
     expect(q.params).toContain('%policy%')
     expect(q.sql).toMatch(/c\.participant_name ILIKE/)
+    expect(q.sql).toMatch(/a\.account_name ILIKE/)
+    expect(q.sql).toMatch(/a\.platform_account_id ILIKE/)
     expect(q.sql).toMatch(/c\.last_message_preview ILIKE/)
     expect(q.sql).toMatch(/EXISTS \(/)
     expect(q.sql).toMatch(/sm\.content ILIKE/)

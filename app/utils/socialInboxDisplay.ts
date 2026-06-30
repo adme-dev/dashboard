@@ -3,6 +3,11 @@ export interface SocialInboxIdentityInput {
   name: string | null | undefined
 }
 
+export interface SocialInboxAccountContextInput {
+  accountName?: string | null
+  platformAccountId?: string | null
+}
+
 export interface SocialInboxIdentityDisplay {
   label: string
   unavailable: boolean
@@ -21,7 +26,7 @@ export function getSocialInboxIdentityDisplay(input: SocialInboxIdentityInput): 
   if (META_PLATFORMS.has(platform)) {
     const network = platform === 'instagram' ? 'Instagram' : 'Facebook'
     return {
-      label: `${network} user unavailable`,
+      label: `Unidentified ${network} user`,
       unavailable: true,
       reason: 'Meta did not provide this user profile for the interaction.'
     }
@@ -29,15 +34,23 @@ export function getSocialInboxIdentityDisplay(input: SocialInboxIdentityInput): 
 
   if (platform === 'google-business') {
     return {
-      label: 'Google reviewer unavailable',
+      label: 'Unidentified Google reviewer',
       unavailable: true,
       reason: 'Google Business Profile did not provide a reviewer display name for this review.'
     }
   }
 
   return {
-    label: 'Unknown user',
+    label: 'Unidentified user',
     unavailable: true,
     reason: 'The platform did not provide a display name for this interaction.'
   }
+}
+
+export function getSocialInboxAccountContextDisplay(input: SocialInboxAccountContextInput): string | null {
+  const accountName = input.accountName?.trim()
+  if (accountName) return accountName
+
+  const platformAccountId = input.platformAccountId?.trim()
+  return platformAccountId || null
 }

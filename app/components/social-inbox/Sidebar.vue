@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { SocialConversation } from '~/types'
-import { getSocialInboxIdentityDisplay } from '~/utils/socialInboxDisplay'
+import {
+  getSocialInboxAccountContextDisplay,
+  getSocialInboxIdentityDisplay
+} from '~/utils/socialInboxDisplay'
 
 defineProps<{ conversations: SocialConversation[], selectedId: string | null, loading?: boolean, hasMore?: boolean }>()
 const emit = defineEmits<{ select: [id: string], filter: [f: Record<string, string>], loadMore: [] }>()
@@ -71,6 +74,12 @@ function relative(iso: string | null) {
 function identityFor(c: SocialConversation) {
   return getSocialInboxIdentityDisplay({ platform: c.platform, name: c.participant_name })
 }
+function accountFor(c: SocialConversation) {
+  return getSocialInboxAccountContextDisplay({
+    accountName: c.social_account_name,
+    platformAccountId: c.social_account_platform_id
+  })
+}
 </script>
 
 <template>
@@ -129,6 +138,10 @@ function identityFor(c: SocialConversation) {
         <p class="text-sm text-muted truncate mt-0.5">
           {{ c.last_message_preview || '—' }}
         </p>
+        <div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
+          <UIcon name="i-lucide-panels-top-left" class="size-3 shrink-0" />
+          <span class="truncate">{{ accountFor(c) ? `via ${accountFor(c)}` : 'Account not linked' }}</span>
+        </div>
         <div class="flex items-center gap-1 mt-1.5">
           <UBadge :color="(PLATFORM_COLOR[c.platform] || 'neutral') as any" variant="subtle" size="xs">
             {{ c.platform }}

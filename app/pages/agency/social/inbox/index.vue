@@ -376,13 +376,16 @@ useSocialInboxRealtime(sseEndpoint, {
       <h1 class="text-lg font-semibold">
         Engagement Inbox
       </h1>
-      <USelectMenu
-        v-model="clientId"
-        :items="clientOptions"
-        value-key="value"
-        placeholder="Select client"
-        class="w-56 max-w-full"
-      />
+      <div class="flex min-w-0 items-center gap-2">
+        <span class="text-xs font-medium text-muted">Inbox client</span>
+        <USelectMenu
+          v-model="clientId"
+          :items="clientOptions"
+          value-key="value"
+          placeholder="Inbox client"
+          class="w-56 max-w-full"
+        />
+      </div>
       <UButton
         to="/agency/social/inbox/reviews"
         label="Reviews"
