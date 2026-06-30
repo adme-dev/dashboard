@@ -3,6 +3,7 @@ import { verifyState, signState } from '~~/server/utils/socialOAuth/state'
 import {
   discoverGoogleBusinessLocations,
   exchangeGoogleBusinessCode,
+  getGoogleBusinessDiscoveryErrorReason,
   mapGoogleBusinessLocationsToAccountRows
 } from '~~/server/utils/socialOAuth/googleBusiness'
 import { putPending } from '~~/server/utils/socialOAuth/pending'
@@ -61,8 +62,8 @@ export default defineEventHandler(async (event) => {
   let locations
   try {
     locations = await discoverGoogleBusinessLocations(accessToken)
-  } catch {
-    return fail('location_list_failed', state.clientId)
+  } catch (error) {
+    return fail(getGoogleBusinessDiscoveryErrorReason(error), state.clientId)
   }
   if (!locations.length) return fail('no_locations', state.clientId)
 

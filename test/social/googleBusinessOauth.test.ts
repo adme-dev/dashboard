@@ -8,6 +8,7 @@ import {
   buildGoogleBusinessAuthUrl,
   mapGoogleBusinessLocationsToAccountRows,
   discoverGoogleBusinessLocations,
+  getGoogleBusinessDiscoveryErrorReason,
   GOOGLE_BUSINESS_SCOPE,
   type GoogleBusinessLocationSelection
 } from '~~/server/utils/socialOAuth/googleBusiness'
@@ -105,5 +106,25 @@ describe('discoverGoogleBusinessLocations', () => {
     })
     const sel = await discoverGoogleBusinessLocations('AT')
     expect(sel).toEqual([])
+  })
+})
+
+describe('getGoogleBusinessDiscoveryErrorReason', () => {
+  it('classifies quota-zero / access-not-approved responses separately from generic location failures', () => {
+    expect(getGoogleBusinessDiscoveryErrorReason({
+      statusCode: 429,
+      data: { error: { status: 'RESOURCE_EXHAUSTED', message: "Quota exceeded for quota metric 'Requests'." } }
+    })).toBe('google_business_api_access_not_approved')
+  })
+
+  it('classifies disabled API responses', () => {
+    expect(getGoogleBusinessDiscoveryErrorReason({
+      statusCode: 403,
+      data: { error: { status: 'PERMISSION_DENIED', message: 'My Business Account Management API has not been used in project before or it is disabled.' } }
+    })).toBe('google_business_api_disabled')
+  })
+
+  it('keeps unknown discovery errors generic', () => {
+    expect(getGoogleBusinessDiscoveryErrorReason(new Error('socket closed'))).toBe('location_list_failed')
   })
 })

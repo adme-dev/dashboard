@@ -206,6 +206,30 @@ export async function discoverGoogleBusinessLocations(accessToken: string): Prom
   return discovered
 }
 
+export function getGoogleBusinessDiscoveryErrorReason(error: unknown): string {
+  const raw = error as {
+    status?: number
+    statusCode?: number
+    data?: {
+      error?: {
+        code?: number
+        message?: string
+        status?: string
+      }
+    }
+    message?: string
+  }
+  const statusCode = raw.statusCode || raw.status || raw.data?.error?.code || null
+  const googleStatus = raw.data?.error?.status || ''
+  const message = raw.data?.error?.message || raw.message || ''
+  const haystack = `${googleStatus} ${message}`.toLowerCase()
+
+  if (statusCode === 429 && haystack.includes('quota')) return 'google_business_api_access_not_approved'
+  if (statusCode === 403 && (haystack.includes('disabled') || haystack.includes('has not been used'))) return 'google_business_api_disabled'
+  if (statusCode === 403) return 'google_business_permission_denied'
+  return 'location_list_failed'
+}
+
 export function mapGoogleBusinessLocationsToAccountRows(
   locations: GoogleBusinessLocationSelection[],
   accessToken: string,

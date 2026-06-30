@@ -137,6 +137,21 @@ async function disconnectGoogleBusiness(account: SocialAccount) {
 
 const transientConnectQueryKeys = new Set(['social_connected', 'social_error', 'social_select'])
 
+const googleBusinessConnectErrorMessages: Record<string, string> = {
+  google_business_api_access_not_approved: 'Google Business API access is not approved for this Google Cloud project yet. Google shows 0 QPM quota, so location discovery is blocked until Basic API Access is approved.',
+  google_business_api_disabled: 'The required Google Business Profile APIs are disabled or still propagating in Google Cloud.',
+  google_business_permission_denied: 'The selected Google account does not have permission to list Business Profile accounts for this project.',
+  no_locations: 'The selected Google account did not return any Business Profile locations.',
+  token_exchange_failed: 'Google returned the account approval but the token exchange failed. Reconnect and try again.',
+  google_business_not_configured: 'Google Business OAuth credentials are not configured for this environment.',
+  location_list_failed: 'Google Business location discovery failed.'
+}
+
+function googleBusinessConnectErrorMessage(reason: unknown) {
+  const key = String(reason || '')
+  return googleBusinessConnectErrorMessages[key] || key.replace(/_/g, ' ')
+}
+
 function clearConnectQuery() {
   router.replace({
     query: Object.fromEntries(
@@ -182,7 +197,7 @@ onMounted(async () => {
   } else if (route.query.social_error) {
     toast.add({
       title: 'Google Business connection failed',
-      description: String(route.query.social_error).replace(/_/g, ' '),
+      description: googleBusinessConnectErrorMessage(route.query.social_error),
       color: 'error'
     })
     clearConnectQuery()

@@ -23,15 +23,22 @@ export default defineEventHandler(async (event) => {
   if (pending.platform === 'google-business') {
     const locations = pending.googleBusiness?.locations ?? []
     const ids = locations.map(location => location.id)
-    const existing = ids.length
-      ? await queryRows<{ platform_account_id: string, client_id: string }>(
-          `SELECT platform_account_id, client_id FROM social_accounts WHERE platform = 'google-business' AND platform_account_id = ANY($1)`,
-          [ids])
+    const locationIds = locations.map(location => location.locationId).filter(Boolean)
+    const existing = ids.length || locationIds.length
+      ? await queryRows<{ platform_account_id: string, google_business_location_id: string | null, client_id: string }>(
+          `SELECT platform_account_id, metadata->>'googleBusinessLocationId' AS google_business_location_id, client_id
+             FROM social_accounts
+            WHERE platform = 'google-business'
+              AND (platform_account_id = ANY($1) OR metadata->>'googleBusinessLocationId' = ANY($2))`,
+          [ids, locationIds])
       : []
     const owner = new Map(existing.map(e => [e.platform_account_id, e.client_id]))
+    for (const e of existing) {
+      if (e.google_business_location_id) owner.set(e.google_business_location_id, e.client_id)
+    }
 
     return locations.map((location) => {
-      const ownerId = owner.get(location.id)
+      const ownerId = owner.get(location.id) || owner.get(location.locationId)
       const status = !ownerId ? 'new' : ownerId === pending.clientId ? 'connected' : 'conflict'
       return {
         id: location.id,

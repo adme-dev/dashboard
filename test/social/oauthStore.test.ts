@@ -60,4 +60,53 @@ describe('upsertSocialAccount', () => {
     const update = d.queryOne.mock.calls.find((c: any[]) => /UPDATE social_accounts/.test(c[0]))!
     expect(update[0]).toMatch(/refresh_token = COALESCE/)
   })
+
+  it('updates an existing Google Business location found by metadata location id', async () => {
+    const d = {
+      queryOne: vi.fn(async (sql: string) => {
+        if (/platform_account_id = \$2/.test(sql)) return null
+        if (/metadata->>'googleBusinessLocationId'/.test(sql)) return { id: 'gbp1', client_id: 'clientA' }
+        if (/UPDATE social_accounts/.test(sql)) return { id: 'gbp1' }
+        return null
+      }),
+      execute: vi.fn(async () => 1)
+    }
+    const r = await upsertSocialAccount(d as any, 'clientA', {
+      platform: 'google-business',
+      platform_account_id: 'new-account:loc1',
+      account_name: 'Store',
+      access_token: 'AT',
+      refresh_token: 'RT',
+      token_expires_at: '2026-08-01T00:00:00.000Z',
+      metadata: { googleBusinessLocationId: 'loc1' }
+    }, 'userX')
+
+    expect(r).toEqual({ status: 'updated', id: 'gbp1' })
+    const update = d.queryOne.mock.calls.find((c: any[]) => /UPDATE social_accounts/.test(c[0]))!
+    expect(update[0]).toMatch(/platform_account_id = \$2/)
+    expect(update[1]).toContain('new-account:loc1')
+  })
+
+  it('reports a conflict when the same Google Business location id belongs to another client', async () => {
+    const d = {
+      queryOne: vi.fn(async (sql: string) => {
+        if (/platform_account_id = \$2/.test(sql)) return null
+        if (/metadata->>'googleBusinessLocationId'/.test(sql)) return { id: 'gbp1', client_id: 'clientB' }
+        if (/FROM agency_clients/.test(sql)) return { name: 'Other Client' }
+        return null
+      }),
+      execute: vi.fn(async () => 1)
+    }
+    const r = await upsertSocialAccount(d as any, 'clientA', {
+      platform: 'google-business',
+      platform_account_id: 'new-account:loc1',
+      account_name: 'Store',
+      access_token: 'AT',
+      token_expires_at: '2026-08-01T00:00:00.000Z',
+      metadata: { googleBusinessLocationId: 'loc1' }
+    }, 'userX')
+
+    expect(r).toEqual({ status: 'conflict', conflictClientName: 'Other Client' })
+    expect(d.queryOne).not.toHaveBeenCalledWith(expect.stringMatching(/INSERT INTO social_accounts/), expect.anything())
+  })
 })
