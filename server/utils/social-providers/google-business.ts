@@ -345,7 +345,7 @@ const GBP_STAR: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FI
 interface GoogleBusinessReview {
   name?: string | null
   reviewId?: string | null
-  reviewer?: { displayName?: string | null } | null
+  reviewer?: { displayName?: string | null; profilePhotoUrl?: string | null } | null
   comment?: string | null
   starRating?: string | null
   createTime?: string | null
@@ -382,6 +382,7 @@ export function mapGoogleReviews(api: GoogleBusinessReviewListResponse): FetchIn
       authorName: r.reviewer?.displayName,
       content: r.comment ?? '',
       messageType: 'review',
+      metadata: r.reviewer?.profilePhotoUrl ? { authorAvatarUrl: r.reviewer.profilePhotoUrl } : undefined,
       rating: GBP_STAR[r.starRating] ?? undefined,
       platformTimestamp: r.createTime
     })

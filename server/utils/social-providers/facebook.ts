@@ -128,6 +128,12 @@ function readText(value: unknown): string | undefined {
   return text.length ? text : undefined
 }
 
+function readNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value)
+  return undefined
+}
+
 function firstLine(value: unknown): string | undefined {
   const text = readText(value)
   if (!text) return undefined
@@ -172,6 +178,23 @@ function withSourcePost(
   return sourcePost && Object.keys(sourcePost).length
     ? { ...(metadata ?? {}), sourcePost }
     : metadata
+}
+
+function facebookAuthorAvatar(from: any): string | undefined {
+  return readText(from?.picture?.data?.url)
+    ?? readText(from?.picture?.url)
+    ?? readText(from?.picture)
+}
+
+function facebookCommentMetadata(raw: any, sourcePost: SourcePostMetadata | undefined, seed?: InboxItem['metadata']): InboxItem['metadata'] | undefined {
+  const metadata: InboxItem['metadata'] = { ...(seed ?? {}) }
+  const authorAvatarUrl = facebookAuthorAvatar(raw?.from)
+  const likeCount = readNumber(raw?.like_count)
+  const replyCount = readNumber(raw?.comment_count)
+  if (authorAvatarUrl) metadata.authorAvatarUrl = authorAvatarUrl
+  if (likeCount != null) metadata.likeCount = likeCount
+  if (replyCount != null) metadata.replyCount = replyCount
+  return withSourcePost(Object.keys(metadata).length ? metadata : undefined, sourcePost)
 }
 
 // ── Provider implementation ────────────────────────────────────
@@ -352,7 +375,7 @@ export function mapFacebookFeedComments(api: any, opts: { accountId?: string } =
         authorName: c?.from?.name,
         content: c?.message ?? '',
         messageType: 'comment',
-        metadata: withSourcePost(undefined, sourcePost),
+        metadata: facebookCommentMetadata(c, sourcePost),
         platformTimestamp: c?.created_time,
       })
 
@@ -374,7 +397,7 @@ export function mapFacebookFeedComments(api: any, opts: { accountId?: string } =
           authorName: reply?.from?.name,
           content: reply?.message ?? '',
           messageType: 'comment_reply',
-          metadata: withSourcePost({ source: 'platform_sync' }, sourcePost),
+          metadata: facebookCommentMetadata(reply, sourcePost, { source: 'platform_sync' }),
           platformTimestamp: reply?.created_time,
         })
       }
@@ -388,7 +411,7 @@ export function mapFacebookFeedComments(api: any, opts: { accountId?: string } =
 facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelType }: FetchInboxParams): Promise<FetchInboxResult> => {
   if (channelType === 'comment') {
     const url = new URL(`${GRAPH_API_BASE}/${accountId}/feed`)
-    url.searchParams.set('fields', 'id,message,permalink_url,full_picture,attachments{media,type,title,description,url},comments.limit(50){id,message,from{id,name},created_time,permalink_url,comments.limit(50){id,message,from{id,name},created_time,permalink_url}}')
+    url.searchParams.set('fields', 'id,message,permalink_url,full_picture,attachments{media,type,title,description,url},comments.limit(50){id,message,from{id,name,picture},created_time,permalink_url,like_count,comment_count,comments.limit(50){id,message,from{id,name,picture},created_time,permalink_url,like_count,comment_count}}')
     url.searchParams.set('access_token', accessToken)
     url.searchParams.set('limit', '25')
     const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })

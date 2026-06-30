@@ -24,6 +24,7 @@ describe('social publishing navigation order', () => {
       'approvals',
       'planner',
       'queue',
+      'wall',
       'analytics'
     ])
   })
@@ -48,7 +49,7 @@ describe('social publishing navigation order', () => {
       ['calendar', 'planner', 'queue'],
       ['approvals'],
       ['accounts'],
-      ['analytics']
+      ['wall', 'analytics']
     ])
   })
 
@@ -64,6 +65,7 @@ describe('social publishing navigation order', () => {
       planner: 'campaigns'
     })
     expect(badgeKeys.queue).toBeUndefined()
+    expect(badgeKeys.wall).toBeUndefined()
     expect(badgeKeys.analytics).toBeUndefined()
   })
 
@@ -75,6 +77,7 @@ describe('social publishing navigation order', () => {
       '/agency/social/publishing/approvals',
       '/agency/social/publishing/planner',
       '/agency/social/publishing/queue',
+      '/agency/social/publishing/wall',
       '/agency/social/publishing/analytics'
     ])
   })
@@ -83,13 +86,14 @@ describe('social publishing navigation order', () => {
     expect(socialPublishingRouteForPath('/agency/social/publishing/calendar')?.key).toBe('calendar')
     expect(socialPublishingRouteForPath('/agency/social/publishing/compose')?.key).toBe('compose')
     expect(socialPublishingRouteForPath('/agency/social/publishing/accounts')?.key).toBe('accounts')
+    expect(socialPublishingRouteForPath('/agency/social/publishing/wall')?.key).toBe('wall')
     expect(socialPublishingRouteForPath('/agency/social/inbox')).toBeUndefined()
   })
 
   it('reports the active workflow step with one-based position context', () => {
     expect(socialPublishingStepForPath('/agency/social/publishing/planner')).toMatchObject({
       position: 5,
-      total: 7,
+      total: 8,
       item: { key: 'planner' }
     })
     expect(socialPublishingStepForPath('/agency/social/listening')).toBeNull()

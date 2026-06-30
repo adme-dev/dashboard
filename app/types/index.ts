@@ -1382,6 +1382,27 @@ export interface SocialConversation {
   } | null
 }
 
+export interface SocialMessageMetadata {
+  source?: 'platform_sync' | 'provider_sync' | 'xeroflow'
+  authorAvatarUrl?: string
+  authorProfileUrl?: string
+  likeCount?: number
+  replyCount?: number
+  reactionCount?: number
+  reactionSummary?: Record<string, number>
+  sourcePost?: {
+    id?: string
+    platform?: string
+    title?: string
+    text?: string
+    imageUrl?: string
+    thumbnailUrl?: string
+    mediaType?: string
+    permalink?: string
+  }
+  [key: string]: unknown
+}
+
 export interface SocialMessage {
   id: string
   conversation_id: string
@@ -1395,9 +1416,37 @@ export interface SocialMessage {
   attachments: Array<{ url: string; type: string }>
   is_internal_note: boolean
   sent_by_user_id?: string | null
-  metadata?: Record<string, unknown> | null
+  metadata?: SocialMessageMetadata | null
   platform_timestamp: string | null
   created_at: string
+}
+
+export interface SocialWallAccount {
+  id: string
+  platform: SocialPublishPlatform
+  account_name: string | null
+  platform_account_id: string
+}
+
+export interface SocialWallMetric {
+  impressions: number
+  engagements: number
+  clicks: number
+  reach: number
+  likes: number
+  comments_count: number
+  shares: number
+  saves: number
+  video_views: number
+  reactions: number
+}
+
+export interface SocialWallPost extends SocialPost {
+  campaign_name: string | null
+  campaign_color: string | null
+  accounts: SocialWallAccount[]
+  metrics: SocialWallMetric
+  metrics_by_platform: Record<string, SocialWallMetric>
 }
 
 export interface SocialInboxCaseTimelineItem {

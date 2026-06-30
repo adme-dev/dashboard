@@ -5,6 +5,12 @@ export type Direction = 'in' | 'out'
 
 export interface SocialInboxMessageMetadata {
   source?: 'platform_sync' | 'provider_sync' | 'xeroflow'
+  authorAvatarUrl?: string
+  authorProfileUrl?: string
+  likeCount?: number
+  replyCount?: number
+  reactionCount?: number
+  reactionSummary?: Record<string, number>
   sourcePost?: {
     id?: string
     platform?: string

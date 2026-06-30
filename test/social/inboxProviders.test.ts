@@ -49,12 +49,18 @@ describe('mapGoogleReviews', () => {
   it('maps GBP reviews to InboxItems with numeric rating', () => {
     const api = { reviews: [{
       reviewId: 'r1', comment: 'Great service', starRating: 'FIVE',
-      reviewer: { displayName: 'Sam' }, createTime: '2026-06-01T00:00:00Z',
+      reviewer: { displayName: 'Sam', profilePhotoUrl: 'https://lh3.googleusercontent.com/sam.jpg' }, createTime: '2026-06-01T00:00:00Z',
       name: 'accounts/1/locations/2/reviews/r1'
     }], nextPageToken: 'NX' }
     const { items, nextCursor } = mapGoogleReviews(api)
     expect(nextCursor).toBe('NX')
-    expect(items[0]).toMatchObject({ channelType: 'review', platformMessageId: 'r1', rating: 5, content: 'Great service' })
+    expect(items[0]).toMatchObject({
+      channelType: 'review',
+      platformMessageId: 'r1',
+      rating: 5,
+      content: 'Great service',
+      metadata: { authorAvatarUrl: 'https://lh3.googleusercontent.com/sam.jpg' }
+    })
   })
 
   it('maps GBP owner replies as outbound child messages under the review', () => {
@@ -134,7 +140,9 @@ describe('mapFacebookFeedComments', () => {
           data: [{
             id: 'fb_comment_1',
             message: 'Is this still available?',
-            from: { id: 'fb_user_1', name: 'Alex' },
+            from: { id: 'fb_user_1', name: 'Alex', picture: { data: { url: 'https://cdn.example.com/alex.jpg' } } },
+            like_count: 3,
+            comment_count: 1,
             created_time: '2026-06-28T01:02:03+0000',
             permalink_url: 'https://facebook.com/comment/1'
           }]
@@ -159,7 +167,10 @@ describe('mapFacebookFeedComments', () => {
           text: 'Monster Sale Weekend\nFriday 9am - 5pm',
           imageUrl: 'https://cdn.example.com/facebook-post.jpg',
           permalink: 'https://facebook.com/page/posts/1'
-        }
+        },
+        authorAvatarUrl: 'https://cdn.example.com/alex.jpg',
+        likeCount: 3,
+        replyCount: 1
       }
     })
   })
@@ -217,7 +228,9 @@ describe('mapInstagramMediaComments', () => {
             id: 'ig_comment_1',
             text: 'Love this',
             username: 'alex_insta',
-            timestamp: '2026-06-28T01:02:03+0000'
+            like_count: 4,
+            timestamp: '2026-06-28T01:02:03+0000',
+            replies: { data: [] }
           }]
         }
       }],
@@ -242,7 +255,10 @@ describe('mapInstagramMediaComments', () => {
           imageUrl: 'https://cdn.example.com/instagram-media.jpg',
           mediaType: 'IMAGE',
           permalink: 'https://instagram.com/p/abc'
-        }
+        },
+        authorProfileUrl: 'https://www.instagram.com/alex_insta/',
+        likeCount: 4,
+        replyCount: 0
       }
     })
   })

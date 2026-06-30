@@ -103,6 +103,12 @@ function failResult(error: string): PostResult {
   return { platformPostId: '', url: '', status: 'failed', error }
 }
 
+function readNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value)
+  return undefined
+}
+
 // ── Helpers ────────────────────────────────────────────────────
 
 /**
@@ -521,6 +527,17 @@ function withSourcePost(
     : metadata
 }
 
+function instagramCommentMetadata(raw: any, sourcePost: SourcePostMetadata | undefined, seed?: InboxItem['metadata']): InboxItem['metadata'] | undefined {
+  const metadata: InboxItem['metadata'] = { ...(seed ?? {}) }
+  const likeCount = readNumber(raw?.like_count)
+  const replyCount = Array.isArray(raw?.replies?.data) ? raw.replies.data.length : readNumber(raw?.reply_count)
+  const username = raw?.username ?? raw?.from?.username
+  if (likeCount != null) metadata.likeCount = likeCount
+  if (replyCount != null) metadata.replyCount = replyCount
+  if (username) metadata.authorProfileUrl = `https://www.instagram.com/${String(username).replace(/^@/, '')}/`
+  return withSourcePost(Object.keys(metadata).length ? metadata : undefined, sourcePost)
+}
+
 /** Pure: map an Instagram media list response with nested comments to InboxItems. */
 export function mapInstagramMediaComments(api: any, opts: { accountId?: string } = {}): FetchInboxResult {
   const items: InboxItem[] = []
@@ -543,7 +560,7 @@ export function mapInstagramMediaComments(api: any, opts: { accountId?: string }
         authorName: username,
         content: c?.text ?? '',
         messageType: 'comment',
-        metadata: withSourcePost(undefined, sourcePost),
+        metadata: instagramCommentMetadata(c, sourcePost),
         platformTimestamp: c?.timestamp,
       })
 
@@ -565,7 +582,7 @@ export function mapInstagramMediaComments(api: any, opts: { accountId?: string }
           authorName: replyUsername,
           content: reply?.text ?? '',
           messageType: 'comment_reply',
-          metadata: withSourcePost({ source: 'platform_sync' }, sourcePost),
+          metadata: instagramCommentMetadata(reply, sourcePost, { source: 'platform_sync' }),
           platformTimestamp: reply?.timestamp,
         })
       }
@@ -578,7 +595,7 @@ export function mapInstagramMediaComments(api: any, opts: { accountId?: string }
 
 instagramProvider.fetchInbox = async ({ accountId, accessToken }: FetchInboxParams): Promise<FetchInboxResult> => {
   const url = new URL(`${GRAPH_API_BASE}/${accountId}/media`)
-  url.searchParams.set('fields', 'id,permalink,caption,media_type,media_url,thumbnail_url,comments.limit(50){id,text,username,timestamp,from{id,username},replies.limit(50){id,text,username,timestamp,from{id,username}}}')
+  url.searchParams.set('fields', 'id,permalink,caption,media_type,media_url,thumbnail_url,comments.limit(50){id,text,username,timestamp,like_count,from{id,username},replies.limit(50){id,text,username,timestamp,like_count,from{id,username}}}')
   url.searchParams.set('access_token', accessToken)
   url.searchParams.set('limit', '25')
   const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })

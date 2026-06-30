@@ -38,7 +38,8 @@ const agencySocialRouteNavs = new Map([
   ['app/pages/agency/social/publishing/compose.vue', 'SocialPublishingShell'],
   ['app/pages/agency/social/publishing/index.vue', '/agency/social/publishing/calendar'],
   ['app/pages/agency/social/publishing/planner.vue', 'SocialPublishingShell'],
-  ['app/pages/agency/social/publishing/queue.vue', 'SocialPublishingShell']
+  ['app/pages/agency/social/publishing/queue.vue', 'SocialPublishingShell'],
+  ['app/pages/agency/social/publishing/wall.vue', 'SocialPublishingShell']
 ])
 
 const portalSocialRouteNavs = new Map([
@@ -112,8 +113,7 @@ describe('social route navigation coverage', () => {
     const stackedInboxHeaders = [
       'app/pages/agency/social/inbox/analytics.vue',
       'app/pages/agency/social/inbox/approvals.vue',
-      'app/pages/agency/social/inbox/automation.vue',
-      'app/pages/agency/social/inbox/settings.vue'
+      'app/pages/agency/social/inbox/automation.vue'
     ]
 
     for (const routeFile of compactInboxHeaders) {
@@ -127,6 +127,10 @@ describe('social route navigation coverage', () => {
       expect(source).toContain('flex flex-wrap')
       expect(source).toContain('w-56 max-w-full')
     }
+
+    const settingsSource = read('app/pages/agency/social/inbox/settings.vue')
+    expect(settingsSource).toContain('flex flex-wrap')
+    expect(settingsSource).toContain('w-full sm:w-64')
   })
 
   it('keeps publishing analytics connected to the existing AI reporting summary', () => {

@@ -31,6 +31,21 @@ const sourcePostText = computed(() => {
 function fmt(iso: string | null) {
   return iso ? new Date(iso).toLocaleString() : ''
 }
+function fmtShort(iso: string | null) {
+  if (!iso) return ''
+  const date = new Date(iso)
+  const diffMs = Date.now() - date.getTime()
+  if (Number.isFinite(diffMs) && diffMs >= 0) {
+    const minutes = Math.floor(diffMs / 60_000)
+    if (minutes < 1) return 'now'
+    if (minutes < 60) return `${minutes}m`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h`
+    const days = Math.floor(hours / 24)
+    if (days < 7) return `${days}d`
+  }
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+}
 function identityLabel(platform: string | null | undefined, name: string | null | undefined) {
   return getSocialInboxIdentityDisplay({ platform, name })
 }
@@ -46,7 +61,8 @@ function isPlatformSyncedReply(message: SocialMessage) {
 }
 function messageLabel(message: SocialMessage) {
   if (message.direction === 'out') {
-    return isPlatformSyncedReply(message) ? 'Replied on platform' : ''
+    if (isPlatformSyncedReply(message)) return message.author_name || 'Replied on platform'
+    return message.author_name || ''
   }
   return identityLabel(props.conversation?.platform, message.author_name).label
 }
@@ -59,6 +75,41 @@ function messageLabelTitle(message: SocialMessage) {
 function bubbleClass(message: SocialMessage) {
   if (message.is_internal_note) return 'bg-warning/10 border border-warning/30'
   return message.direction === 'out' ? 'bg-primary text-inverted' : 'bg-elevated'
+}
+function metadataNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value)
+  return null
+}
+function metadataString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+function messageAvatarUrl(message: SocialMessage) {
+  return metadataString(message.metadata?.authorAvatarUrl)
+}
+function messageAuthorProfileUrl(message: SocialMessage) {
+  return metadataString(message.metadata?.authorProfileUrl)
+}
+function messageInitials(message: SocialMessage) {
+  const label = messageLabel(message) || message.author_name || props.conversation?.participant_name || props.conversation?.platform || '?'
+  const parts = label.split(/\s+/).filter(Boolean)
+  const initials = parts.length > 1
+    ? `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`
+    : label.slice(0, 2)
+  return initials.toUpperCase()
+}
+function messageStats(message: SocialMessage) {
+  const likes = metadataNumber(message.metadata?.likeCount)
+  const replies = metadataNumber(message.metadata?.replyCount)
+  const reactions = metadataNumber(message.metadata?.reactionCount)
+  return [
+    likes && likes > 0 ? { key: 'likes', icon: 'i-lucide-thumbs-up', value: likes, label: likes === 1 ? 'like' : 'likes' } : null,
+    replies && replies > 0 ? { key: 'replies', icon: 'i-lucide-message-circle', value: replies, label: replies === 1 ? 'reply' : 'replies' } : null,
+    reactions && reactions > 0 ? { key: 'reactions', icon: 'i-lucide-heart', value: reactions, label: reactions === 1 ? 'reaction' : 'reactions' } : null
+  ].filter(Boolean) as Array<{ key: string, icon: string, value: number, label: string }>
+}
+function messageTime(message: SocialMessage) {
+  return message.platform_timestamp || message.created_at
 }
 </script>
 
@@ -159,26 +210,74 @@ function bubbleClass(message: SocialMessage) {
       <template v-for="item in threadItems" v-else :key="item.message.id">
         <div class="space-y-2">
           <div
-            class="flex"
+            class="flex items-end gap-2"
             :class="item.message.direction === 'out' ? 'justify-end' : 'justify-start'"
           >
+            <NuxtLink
+              v-if="item.message.direction !== 'out' && messageAuthorProfileUrl(item.message)"
+              :to="messageAuthorProfileUrl(item.message) || ''"
+              target="_blank"
+              class="mb-1 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted/20 text-[11px] font-semibold text-muted ring-1 ring-default"
+              :aria-label="`${messageLabel(item.message)} profile`"
+            >
+              <img
+                v-if="messageAvatarUrl(item.message)"
+                :src="messageAvatarUrl(item.message) || undefined"
+                :alt="messageLabel(item.message)"
+                class="size-full object-cover"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              >
+              <span v-else>{{ messageInitials(item.message) }}</span>
+            </NuxtLink>
+            <div
+              v-else-if="item.message.direction !== 'out'"
+              class="mb-1 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted/20 text-[11px] font-semibold text-muted ring-1 ring-default"
+              :title="messageLabel(item.message)"
+            >
+              <img
+                v-if="messageAvatarUrl(item.message)"
+                :src="messageAvatarUrl(item.message) || undefined"
+                :alt="messageLabel(item.message)"
+                class="size-full object-cover"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              >
+              <span v-else>{{ messageInitials(item.message) }}</span>
+            </div>
             <div
               class="max-w-[92%] rounded-lg px-3 py-2 text-sm xl:max-w-[56rem]"
               :class="bubbleClass(item.message)"
             >
-              <div
-                v-if="messageLabel(item.message)"
-                class="text-xs mb-0.5"
-                :class="item.message.direction === 'out' ? 'opacity-75' : 'text-muted'"
-                :title="messageLabelTitle(item.message)"
-              >
-                {{ messageLabel(item.message) }}
+              <div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span
+                  v-if="messageLabel(item.message)"
+                  class="text-xs font-medium"
+                  :class="item.message.direction === 'out' ? 'opacity-80' : 'text-muted'"
+                  :title="messageLabelTitle(item.message)"
+                >
+                  {{ messageLabel(item.message) }}
+                </span>
+                <span
+                  class="text-[10px] opacity-60"
+                  :title="fmt(messageTime(item.message))"
+                >
+                  {{ fmtShort(messageTime(item.message)) }}
+                </span>
               </div>
               <p class="whitespace-pre-wrap break-words">
                 {{ item.message.content }}
               </p>
-              <div class="text-[10px] opacity-60 mt-1">
-                {{ fmt(item.message.platform_timestamp || item.message.created_at) }}
+              <div v-if="messageStats(item.message).length" class="mt-2 flex flex-wrap items-center gap-2 text-[10px] opacity-70">
+                <span
+                  v-for="stat in messageStats(item.message)"
+                  :key="stat.key"
+                  class="inline-flex items-center gap-1"
+                  :title="`${stat.value} ${stat.label}`"
+                >
+                  <UIcon :name="stat.icon" class="size-3" />
+                  {{ stat.value }}
+                </span>
               </div>
             </div>
           </div>
@@ -190,26 +289,74 @@ function bubbleClass(message: SocialMessage) {
             <div
               v-for="reply in item.replies"
               :key="reply.id"
-              class="flex"
+              class="flex items-end gap-2"
               :class="reply.direction === 'out' ? 'justify-end' : 'justify-start'"
             >
+              <NuxtLink
+                v-if="reply.direction !== 'out' && messageAuthorProfileUrl(reply)"
+                :to="messageAuthorProfileUrl(reply) || ''"
+                target="_blank"
+                class="mb-1 flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted/20 text-[10px] font-semibold text-muted ring-1 ring-default"
+                :aria-label="`${messageLabel(reply)} profile`"
+              >
+                <img
+                  v-if="messageAvatarUrl(reply)"
+                  :src="messageAvatarUrl(reply) || undefined"
+                  :alt="messageLabel(reply)"
+                  class="size-full object-cover"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                >
+                <span v-else>{{ messageInitials(reply) }}</span>
+              </NuxtLink>
+              <div
+                v-else-if="reply.direction !== 'out'"
+                class="mb-1 flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted/20 text-[10px] font-semibold text-muted ring-1 ring-default"
+                :title="messageLabel(reply)"
+              >
+                <img
+                  v-if="messageAvatarUrl(reply)"
+                  :src="messageAvatarUrl(reply) || undefined"
+                  :alt="messageLabel(reply)"
+                  class="size-full object-cover"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                >
+                <span v-else>{{ messageInitials(reply) }}</span>
+              </div>
               <div
                 class="max-w-[88%] rounded-lg px-3 py-2 text-sm xl:max-w-[52rem]"
                 :class="bubbleClass(reply)"
               >
-                <div
-                  v-if="messageLabel(reply)"
-                  class="text-xs mb-0.5"
-                  :class="reply.direction === 'out' ? 'opacity-75' : 'text-muted'"
-                  :title="messageLabelTitle(reply)"
-                >
-                  {{ messageLabel(reply) }}
+                <div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span
+                    v-if="messageLabel(reply)"
+                    class="text-xs font-medium"
+                    :class="reply.direction === 'out' ? 'opacity-80' : 'text-muted'"
+                    :title="messageLabelTitle(reply)"
+                  >
+                    {{ messageLabel(reply) }}
+                  </span>
+                  <span
+                    class="text-[10px] opacity-60"
+                    :title="fmt(messageTime(reply))"
+                  >
+                    {{ fmtShort(messageTime(reply)) }}
+                  </span>
                 </div>
                 <p class="whitespace-pre-wrap break-words">
                   {{ reply.content }}
                 </p>
-                <div class="text-[10px] opacity-60 mt-1">
-                  {{ fmt(reply.platform_timestamp || reply.created_at) }}
+                <div v-if="messageStats(reply).length" class="mt-2 flex flex-wrap items-center gap-2 text-[10px] opacity-70">
+                  <span
+                    v-for="stat in messageStats(reply)"
+                    :key="stat.key"
+                    class="inline-flex items-center gap-1"
+                    :title="`${stat.value} ${stat.label}`"
+                  >
+                    <UIcon :name="stat.icon" class="size-3" />
+                    {{ stat.value }}
+                  </span>
                 </div>
               </div>
             </div>

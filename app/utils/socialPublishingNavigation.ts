@@ -8,6 +8,7 @@ export type SocialPublishingRouteKey
     | 'approvals'
     | 'planner'
     | 'queue'
+    | 'wall'
     | 'analytics'
 
 /**
@@ -71,7 +72,7 @@ export const SOCIAL_PUBLISHING_ROUTE_GROUPS: SocialPublishingRouteGroup[] = [
 
 /**
  * Canonical flat order: accounts → calendar → compose → approvals → planner →
- * queue → analytics. This drives the global agency sidebar (via
+ * queue → wall → analytics. This drives the global agency sidebar (via
  * socialSuiteNavigation) and the step indicator, so it is intentionally kept
  * setup-first and stable. The in-page tile nav re-presents these by the five
  * suite groups below (Create → Schedule → Review → Connect → Measure) — group
@@ -130,6 +131,14 @@ export const SOCIAL_PUBLISHING_ROUTE_ORDER: SocialPublishingRouteItem[] = [
     icon: 'i-lucide-list-ordered',
     to: '/agency/social/publishing/queue',
     objective: 'Prioritize queued posts before they take the next available posting slot.'
+  },
+  {
+    key: 'wall',
+    group: 'measure',
+    label: 'Wall',
+    icon: 'i-lucide-layout-grid',
+    to: '/agency/social/publishing/wall',
+    objective: 'Review the managed post wall with creative, copy, accounts, status, and engagement at a glance.'
   },
   {
     key: 'analytics',
