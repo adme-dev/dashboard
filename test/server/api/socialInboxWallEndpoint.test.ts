@@ -15,11 +15,11 @@ testGlobal.defineEventHandler = <T>(fn: T) => fn
 testGlobal.getQuery = (event: TestEvent) => event.query ?? {}
 testGlobal.createError = (input: { statusCode: number, statusMessage: string }) => Object.assign(new Error(input.statusMessage), input)
 
-const mockRequireAuth = vi.fn()
+const mockRequireSocialClientAccess = vi.fn()
 const mockQueryRows = vi.fn()
 
-vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
+vi.mock('~~/server/utils/social/clientAccess', () => ({
+  requireSocialClientAccess: (...args: unknown[]) => mockRequireSocialClientAccess(...args)
 }))
 
 vi.mock('~~/server/utils/db', () => ({
@@ -31,7 +31,7 @@ const handler = importedHandler as TestHandler
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockRequireAuth.mockResolvedValue({ id: 'user-1' })
+  mockRequireSocialClientAccess.mockResolvedValue({ id: 'user-1' })
   mockQueryRows.mockResolvedValue([])
 })
 
@@ -47,6 +47,20 @@ describe('GET /api/agency/social/inbox/wall', () => {
     await expect(handler({ query: { clientId: 'client-1', status: 'deleted' } })).rejects.toMatchObject({
       statusCode: 400,
       statusMessage: 'Unsupported status filter'
+    })
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.any(Object), 'client-1')
+    expect(mockQueryRows).not.toHaveBeenCalled()
+  })
+
+  it('propagates scoped client access denial before querying', async () => {
+    mockRequireSocialClientAccess.mockRejectedValueOnce(Object.assign(new Error('No access to this client'), {
+      statusCode: 403,
+      statusMessage: 'No access to this client'
+    }))
+
+    await expect(handler({ query: { clientId: 'client-2' } })).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'No access to this client'
     })
     expect(mockQueryRows).not.toHaveBeenCalled()
   })
@@ -77,6 +91,7 @@ describe('GET /api/agency/social/inbox/wall', () => {
     })
 
     const [, params] = mockQueryRows.mock.calls[0]
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.any(Object), 'client-1')
     expect(params).toEqual(['client-1', 'facebook', 'open', '%sale%', 120])
     expect(result).toEqual([
       expect.objectContaining({

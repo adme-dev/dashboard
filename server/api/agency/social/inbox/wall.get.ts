@@ -1,5 +1,5 @@
-import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { buildSocialInboxWallQuery, normalizeSocialInboxWallRows } from '~~/server/utils/socialInbox/wall'
 
 const VALID_STATUSES = new Set(['open', 'snoozed', 'closed'])
@@ -19,10 +19,10 @@ function queryNumber(value: unknown) {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const q = getQuery(event)
   const clientId = queryString(q.clientId)
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
 
   const status = queryString(q.status)
   if (status && !VALID_STATUSES.has(status)) {
