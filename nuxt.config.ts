@@ -271,10 +271,10 @@ export default defineNuxtConfig({
     '/resources/**': { prerender: true },
     '/platform/**': { prerender: true },
     '/banner-studio': { prerender: true },
-    '/auth/**': { prerender: true },
     '/sign-in': { prerender: true },
 
-    // Keep all auth-gated routes as client-only SPA
+    // Keep auth and auth-gated routes as client-only SPA
+    '/auth/**': { ssr: false },
     '/agency': { ssr: false },
     '/agency/**': { ssr: false },
     '/portal': { ssr: false },
@@ -321,7 +321,7 @@ export default defineNuxtConfig({
     appManifest: false
   },
 
-  compatibilityDate: '2024-07-11',
+  compatibilityDate: '2024-12-01',
 
   nitro: {
     preset: 'cloudflare_pages',

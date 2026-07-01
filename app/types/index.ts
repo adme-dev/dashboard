@@ -1416,7 +1416,7 @@ export interface SocialMessage {
   author_name: string | null
   message_type: string
   content: string | null
-  attachments: Array<{ url: string; type: string }>
+  attachments: Array<{ url: string, type: string }>
   is_internal_note: boolean
   sent_by_user_id?: string | null
   metadata?: SocialMessageMetadata | null

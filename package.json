@@ -11,6 +11,7 @@
     "dev:wrangler": "npx wrangler pages dev -- npm run dev",
     "dev:all": "concurrently \"pnpm dev\" \"pnpm zero:dev\"",
     "preview": "nuxt preview",
+    "preview:pages": "wrangler --cwd dist pages dev --compatibility-date 2024-12-01 --compatibility-flag nodejs_compat --compatibility-flag no_handle_cross_request_promise_resolution",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "typecheck": "NODE_OPTIONS='--max-old-space-size=16384' nuxt typecheck",
