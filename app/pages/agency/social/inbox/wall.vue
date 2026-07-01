@@ -10,7 +10,7 @@ interface AgencyClientOption {
 
 type AgencyClientsResponse = AgencyClientOption[] | { clients?: AgencyClientOption[] }
 
-const { data: clientsData } = useFetch<AgencyClientsResponse>('/api/agency/clients', {
+const { data: clientsData, pending: clientsPending } = useFetch<AgencyClientsResponse>('/api/agency/clients', {
   query: { limit: 200 },
   server: false
 })
@@ -23,6 +23,7 @@ const clientId = ref<string | null>(null)
 const search = ref('')
 const platform = ref('all')
 const status = ref('open')
+const refreshedAt = ref<Date | null>(null)
 
 const platformOptions = [
   { label: 'All platforms', value: 'all' },
@@ -59,6 +60,23 @@ const { data: wallPosts, pending, error, refresh } = useFetch<SocialEngagementWa
   }
 )
 
+const selectedClientName = computed(() => clients.value.find(c => c.id === clientId.value)?.name ?? null)
+const isLoading = computed(() => clientsPending.value || pending.value)
+const wallSummary = computed(() => {
+  const posts = wallPosts.value
+  return [
+    { label: 'Source posts', value: posts.length, icon: 'i-lucide-panels-top-left' },
+    { label: 'Threads', value: posts.reduce((sum, post) => sum + post.conversation_count, 0), icon: 'i-lucide-messages-square' },
+    { label: 'Unread', value: posts.reduce((sum, post) => sum + post.unread_count, 0), icon: 'i-lucide-mail-warning' },
+    { label: 'Messages', value: posts.reduce((sum, post) => sum + post.message_count, 0), icon: 'i-lucide-message-circle' }
+  ]
+})
+const headerDetail = computed(() => {
+  if (selectedClientName.value) return selectedClientName.value
+  if (clientsPending.value) return 'Loading clients'
+  return 'Client required'
+})
+const refreshedLabel = computed(() => refreshedAt.value ? `Updated ${fmtDate(refreshedAt.value.toISOString())}` : null)
 const errorDescription = computed(() => {
   const e = error.value as { data?: { statusMessage?: string }, message?: string } | null
   return e?.data?.statusMessage || e?.message || 'Try again'
@@ -69,8 +87,14 @@ watch(clients, (nextClients) => {
 }, { immediate: true })
 
 watch(query, () => {
-  if (clientId.value) refresh()
+  if (clientId.value) refreshWall()
 }, { immediate: true })
+
+async function refreshWall() {
+  if (!clientId.value) return
+  await refresh()
+  if (!error.value) refreshedAt.value = new Date()
+}
 
 function postImage(post: SocialEngagementWallPost) {
   return post.source_post_media?.[0]?.thumbnailUrl || post.source_post_media?.[0]?.url || null
@@ -89,6 +113,14 @@ function fmtDate(value: string | null) {
     minute: '2-digit'
   })
 }
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat().format(value)
+}
+
+function visibleConversations(post: SocialEngagementWallPost) {
+  return post.latest_conversations.slice(0, 4)
+}
 </script>
 
 <template>
@@ -99,7 +131,10 @@ function fmtDate(value: string | null) {
           Engagement Wall
         </h1>
         <p class="text-sm text-muted">
-          Comments, reviews, replies, and moderation work by source post.
+          {{ headerDetail }}
+          <template v-if="refreshedLabel">
+            · {{ refreshedLabel }}
+          </template>
         </p>
       </div>
       <div class="ml-auto flex flex-wrap items-center gap-2">
@@ -115,7 +150,8 @@ function fmtDate(value: string | null) {
           label="Refresh"
           variant="subtle"
           :loading="pending"
-          @click="refresh"
+          :disabled="!clientId"
+          @click="refreshWall"
         />
       </div>
     </div>
@@ -124,24 +160,47 @@ function fmtDate(value: string | null) {
       <SocialSuiteSectionNav />
     </div>
 
+    <div class="grid gap-3 border-t border-default p-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div
+        v-for="item in wallSummary"
+        :key="item.label"
+        class="flex min-h-20 items-center gap-3 rounded-md border border-default bg-elevated px-4 py-3"
+      >
+        <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-default text-muted">
+          <UIcon :name="item.icon" class="size-4" />
+        </div>
+        <div class="min-w-0">
+          <div class="text-xs font-medium text-muted">
+            {{ item.label }}
+          </div>
+          <div class="text-2xl font-semibold tabular-nums">
+            {{ formatCount(item.value) }}
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="grid gap-2 border-y border-default p-4 lg:grid-cols-[minmax(0,1fr)_12rem_12rem]">
       <UInput
         v-model="search"
         icon="i-lucide-search"
         placeholder="Search posts, comments, accounts"
         class="w-full"
+        :disabled="!clientId"
       />
       <USelectMenu
         v-model="platform"
         :items="platformOptions"
         value-key="value"
         class="w-full"
+        :disabled="!clientId"
       />
       <USelectMenu
         v-model="status"
         :items="statusOptions"
         value-key="value"
         class="w-full"
+        :disabled="!clientId"
       />
     </div>
 
@@ -155,7 +214,7 @@ function fmtDate(value: string | null) {
       class="m-4"
     />
 
-    <div v-if="pending" class="grid gap-4 p-4 lg:grid-cols-2 2xl:grid-cols-3">
+    <div v-if="isLoading" class="grid gap-4 p-4 lg:grid-cols-2 2xl:grid-cols-3">
       <USkeleton
         v-for="i in 6"
         :key="i"
@@ -163,8 +222,16 @@ function fmtDate(value: string | null) {
       />
     </div>
 
+    <div v-else-if="!clients.length" class="p-8 text-center text-sm text-muted">
+      No agency clients are available.
+    </div>
+
+    <div v-else-if="!clientId" class="p-8 text-center text-sm text-muted">
+      Client required.
+    </div>
+
     <div v-else-if="!wallPosts.length" class="p-8 text-center text-sm text-muted">
-      No engagement-bearing posts match the current filters.
+      No source-post engagement matches the current filters.
     </div>
 
     <div v-else class="grid gap-4 p-4 lg:grid-cols-2 2xl:grid-cols-3">
@@ -205,7 +272,10 @@ function fmtDate(value: string | null) {
             <h2 class="mt-1 line-clamp-2 text-sm font-semibold">
               {{ postTitle(post) }}
             </h2>
-            <p class="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted">
+            <p
+              v-if="post.source_post_content"
+              class="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted"
+            >
               {{ post.source_post_content }}
             </p>
             <p class="mt-2 truncate text-xs text-muted">
@@ -251,7 +321,7 @@ function fmtDate(value: string | null) {
 
         <div class="flex flex-1 flex-col p-3">
           <div
-            v-for="conversation in post.latest_conversations.slice(0, 3)"
+            v-for="conversation in visibleConversations(post)"
             :key="conversation.id"
             class="border-t border-default py-3 first:border-t-0 first:pt-0 last:pb-0"
           >

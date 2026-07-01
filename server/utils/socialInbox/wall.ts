@@ -1,3 +1,5 @@
+import type { SocialEngagementWallConversationSummary, SocialEngagementWallPost } from '~/types'
+
 export interface SocialInboxWallInput {
   clientId: string
   platform?: string | null
@@ -14,6 +16,8 @@ export interface SocialInboxWallQuery {
 }
 
 const MAX_LIMIT = 120
+const MAX_SEARCH_LENGTH = 160
+const LATEST_CONVERSATION_LIMIT = 5
 
 function escapeLike(value: string) {
   return value.replace(/[\\%_]/g, match => `\\${match}`)
@@ -24,9 +28,138 @@ function clampLimit(limit: number | undefined) {
   return Math.min(Math.max(Math.trunc(limit || 60), 1), MAX_LIMIT)
 }
 
+function cleanText(value: string | null | undefined) {
+  if (typeof value !== 'string') return null
+  const text = value.trim()
+  return text.length ? text : null
+}
+
+function parseJson(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+function recordOrNull(value: unknown): Record<string, unknown> | null {
+  const parsed = parseJson(value)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  return parsed as Record<string, unknown>
+}
+
+function arrayOrEmpty(value: unknown): unknown[] {
+  const parsed = parseJson(value)
+  return Array.isArray(parsed) ? parsed : []
+}
+
+function stringOrNull(value: unknown) {
+  if (typeof value !== 'string') return null
+  const text = value.trim()
+  return text.length ? text : null
+}
+
+function numberOrZero(value: unknown) {
+  const n = Number(value ?? 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+function normalizeStatusSummary(value: unknown): SocialEngagementWallPost['status_summary'] {
+  const summary = recordOrNull(value)
+  return {
+    open: numberOrZero(summary?.open),
+    snoozed: numberOrZero(summary?.snoozed),
+    closed: numberOrZero(summary?.closed)
+  }
+}
+
+function normalizeMedia(value: unknown): SocialEngagementWallPost['source_post_media'] {
+  return arrayOrEmpty(value).flatMap((item) => {
+    const media = recordOrNull(item)
+    const url = stringOrNull(media?.url)
+    if (!url) return []
+
+    return [{
+      url,
+      type: stringOrNull(media?.type),
+      thumbnailUrl: stringOrNull(media?.thumbnailUrl)
+    }]
+  })
+}
+
+function normalizeConversations(value: unknown): SocialEngagementWallConversationSummary[] {
+  return arrayOrEmpty(value).flatMap((item) => {
+    const row = recordOrNull(item)
+    const id = stringOrNull(row?.id)
+    if (!id) return []
+
+    return [{
+      id,
+      participant_name: stringOrNull(row?.participant_name),
+      participant_handle: stringOrNull(row?.participant_handle),
+      channel_type: stringOrNull(row?.channel_type) ?? 'comment',
+      status: stringOrNull(row?.status) ?? 'open',
+      assigned_to: stringOrNull(row?.assigned_to),
+      unread_count: numberOrZero(row?.unread_count),
+      rating: numberOrNull(row?.rating),
+      last_message_preview: stringOrNull(row?.last_message_preview),
+      last_message_at: stringOrNull(row?.last_message_at),
+      latest_author_name: stringOrNull(row?.latest_author_name),
+      latest_author_avatar_url: stringOrNull(row?.latest_author_avatar_url)
+    }]
+  }).slice(0, LATEST_CONVERSATION_LIMIT)
+}
+
+export function normalizeSocialInboxWallRows(rows: unknown[]): SocialEngagementWallPost[] {
+  return rows.flatMap((item) => {
+    const row = recordOrNull(item)
+    const key = stringOrNull(row?.key)
+    const clientId = stringOrNull(row?.client_id)
+    const platform = stringOrNull(row?.platform)
+    if (!key || !clientId || !platform) return []
+
+    return [{
+      key,
+      client_id: clientId,
+      platform,
+      social_account_id: stringOrNull(row?.social_account_id),
+      account_name: stringOrNull(row?.account_name),
+      platform_account_id: stringOrNull(row?.platform_account_id),
+      source_post_id: stringOrNull(row?.source_post_id),
+      source_post_url: stringOrNull(row?.source_post_url),
+      source_post_title: stringOrNull(row?.source_post_title),
+      source_post_content: stringOrNull(row?.source_post_content),
+      source_post_media: normalizeMedia(row?.source_post_media),
+      source_post_author_name: stringOrNull(row?.source_post_author_name),
+      source_post_author_avatar_url: stringOrNull(row?.source_post_author_avatar_url),
+      source_post_published_at: stringOrNull(row?.source_post_published_at),
+      linked_social_post_id: stringOrNull(row?.linked_social_post_id),
+      campaign_name: stringOrNull(row?.campaign_name),
+      status_summary: normalizeStatusSummary(row?.status_summary),
+      unread_count: numberOrZero(row?.unread_count),
+      conversation_count: numberOrZero(row?.conversation_count),
+      message_count: numberOrZero(row?.message_count),
+      latest_activity_at: stringOrNull(row?.latest_activity_at),
+      latest_conversations: normalizeConversations(row?.latest_conversations)
+    }]
+  })
+}
+
 export function buildSocialInboxWallQuery(input: SocialInboxWallInput): SocialInboxWallQuery {
-  const params: unknown[] = [input.clientId]
-  let where = 'WHERE c.client_id = $1'
+  const params: unknown[] = [input.clientId.trim()]
+  let where = `WHERE c.client_id = $1
+    AND (
+      c.source_post_id IS NOT NULL
+      OR c.source_post_url IS NOT NULL
+      OR c.linked_social_post_id IS NOT NULL
+    )`
 
   for (const [column, value] of [
     ['c.platform', input.platform],
@@ -34,13 +167,14 @@ export function buildSocialInboxWallQuery(input: SocialInboxWallInput): SocialIn
     ['c.status', input.status],
     ['c.assigned_to', input.assignedTo]
   ] as const) {
-    if (value) {
-      params.push(value)
+    const text = cleanText(value)
+    if (text) {
+      params.push(text)
       where += ` AND ${column} = $${params.length}`
     }
   }
 
-  const search = input.search?.trim()
+  const search = cleanText(input.search)?.slice(0, MAX_SEARCH_LENGTH)
   if (search) {
     params.push(`%${escapeLike(search)}%`)
     const idx = params.length
@@ -91,6 +225,42 @@ export function buildSocialInboxWallQuery(input: SocialInboxWallInput): SocialIn
       JOIN filtered_conversations fc ON fc.id = m.conversation_id
       WHERE m.direction = 'in'
       ORDER BY m.conversation_id, m.platform_timestamp DESC NULLS LAST, m.created_at DESC
+    ),
+    ranked_conversations AS (
+      SELECT
+        fc.*,
+        lm.author_name AS latest_author_name,
+        lm.metadata AS latest_metadata,
+        ROW_NUMBER() OVER (
+          PARTITION BY fc.wall_key
+          ORDER BY fc.last_message_at DESC NULLS LAST, fc.id
+        ) AS rn
+      FROM filtered_conversations fc
+      LEFT JOIN latest_messages lm ON lm.conversation_id = fc.id
+    ),
+    latest_conversation_summaries AS (
+      SELECT
+        rc.wall_key,
+        COALESCE(jsonb_agg(
+          jsonb_build_object(
+            'id', rc.id,
+            'participant_name', rc.participant_name,
+            'participant_handle', rc.participant_handle,
+            'channel_type', rc.channel_type,
+            'status', rc.status,
+            'assigned_to', rc.assigned_to,
+            'unread_count', rc.unread_count,
+            'rating', rc.rating,
+            'last_message_preview', rc.last_message_preview,
+            'last_message_at', rc.last_message_at,
+            'latest_author_name', rc.latest_author_name,
+            'latest_author_avatar_url', rc.latest_metadata->>'authorAvatarUrl'
+          )
+          ORDER BY rc.last_message_at DESC NULLS LAST
+        ), '[]'::jsonb) AS latest_conversations
+      FROM ranked_conversations rc
+      WHERE rc.rn <= ${LATEST_CONVERSATION_LIMIT}
+      GROUP BY rc.wall_key
     )
     SELECT
       fc.wall_key AS key,
@@ -121,26 +291,10 @@ export function buildSocialInboxWallQuery(input: SocialInboxWallInput): SocialIn
       COUNT(*)::int AS conversation_count,
       COALESCE(SUM(fc.message_count), 0)::int AS message_count,
       MAX(fc.last_message_at)::text AS latest_activity_at,
-      COALESCE(jsonb_agg(
-        jsonb_build_object(
-          'id', fc.id,
-          'participant_name', fc.participant_name,
-          'participant_handle', fc.participant_handle,
-          'channel_type', fc.channel_type,
-          'status', fc.status,
-          'assigned_to', fc.assigned_to,
-          'unread_count', fc.unread_count,
-          'rating', fc.rating,
-          'last_message_preview', fc.last_message_preview,
-          'last_message_at', fc.last_message_at,
-          'latest_author_name', lm.author_name,
-          'latest_author_avatar_url', lm.metadata->>'authorAvatarUrl'
-        )
-        ORDER BY fc.last_message_at DESC NULLS LAST
-      ), '[]'::jsonb) AS latest_conversations
+      COALESCE(lcs.latest_conversations, '[]'::jsonb) AS latest_conversations
     FROM filtered_conversations fc
-    LEFT JOIN latest_messages lm ON lm.conversation_id = fc.id
-    GROUP BY fc.wall_key
+    LEFT JOIN latest_conversation_summaries lcs ON lcs.wall_key = fc.wall_key
+    GROUP BY fc.wall_key, lcs.latest_conversations
     ORDER BY MAX(fc.last_message_at) DESC NULLS LAST
     LIMIT ${limitRef}`
 
