@@ -102,6 +102,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
   - [x] Unexpected dispatch failures after claim are persisted as failed publish attempts instead of leaving rows in `publishing`.
   - [x] Add the Pages-to-Worker start/service-binding kickoff for explicit schedule and approval auto-schedule transitions.
   - [x] Add an admin readiness check for Pages flags, secret presence, service-binding/fallback transport, and Worker `/health`.
+  - [x] Require readiness to verify every active Workflow kind, not only the publishing workflow.
   - [ ] Cut over scheduled publishing from cron after production verification.
 - [ ] Extend Cloudflare Workflows to automation workloads.
   - [x] Document the durable workflow direction for social inbox automation before cutover.
@@ -161,6 +162,7 @@ Start with P0 for posts only:
 - [x] Agency Workflows worker typecheck passes after the inbound kickoff wiring: `pnpm --dir workers/agency-workflows run typecheck`.
 - [x] Production build passes after the inbound kickoff wiring: `pnpm run build` completed Nuxt, Nitro Cloudflare Pages output, and `scripts/wrap-worker.mjs`.
 - [x] Built Pages worker config includes the `AGENCY_WORKFLOWS` service binding and `AGENCY_WORKFLOWS_ENABLED=true` in `dist/_worker.js/wrangler.json`.
+- [x] Workflow readiness now degrades when any required Workflow kind is missing; focused readiness tests pass: `pnpm exec vitest run test/server/utils/agencyWorkflowsClient.test.ts test/server/api/socialPublishingWorkflowReadiness.test.ts` reported 14 tests passing.
 - [x] Diff integrity passes; token-shaped scans found only known dummy fixtures in `test/social/socialInboxTokenRefresh.test.ts` on tracked lines and no matches in untracked files.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.

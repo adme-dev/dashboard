@@ -265,7 +265,10 @@ describe('agency workflow client', () => {
       ok: true,
       worker: 'agency-workflows',
       enabled: true,
-      workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+      workflows: [
+        { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+      ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
     const result = await checkAgencyWorkflowReadiness(eventWithEnv({
@@ -286,7 +289,10 @@ describe('agency workflow client', () => {
         ok: true,
         worker: 'agency-workflows',
         enabled: true,
-        workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+        workflows: [
+          { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
+          { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+        ]
       }
     })
     expect(bindingFetch).toHaveBeenCalledOnce()
@@ -301,7 +307,10 @@ describe('agency workflow client', () => {
       ok: true,
       worker: 'agency-workflows',
       enabled: false,
-      workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+      workflows: [
+        { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+      ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
     const result = await checkAgencyWorkflowReadiness(eventWithEnv({
@@ -319,12 +328,38 @@ describe('agency workflow client', () => {
     })
   })
 
+  it('reports degraded readiness when the Worker is missing a required workflow kind', async () => {
+    const bindingFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      worker: 'agency-workflows',
+      enabled: true,
+      workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await checkAgencyWorkflowReadiness(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }))
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 'degraded',
+      enabled: true,
+      transport: 'service-binding',
+      missingWorkflows: ['social.inbox.automation']
+    })
+  })
+
   it('falls back to Worker URL health when no service binding is available', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       ok: true,
       worker: 'agency-workflows',
       enabled: true,
-      workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+      workflows: [
+        { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+      ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
     const result = await checkAgencyWorkflowReadiness(eventWithEnv({

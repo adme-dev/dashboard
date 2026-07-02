@@ -115,6 +115,7 @@ export interface AgencyWorkflowReadinessResult {
   transport?: WorkflowTransport
   httpStatus?: number
   worker?: AgencyWorkflowReadinessWorker
+  missingWorkflows?: AgencyWorkflowKind[]
   error?: string
 }
 
@@ -331,15 +332,17 @@ export async function checkAgencyWorkflowReadiness(
       return result
     }
 
+    const missingWorkflows = missingRequiredWorkflows(worker.workflows)
     const ready = worker.ok === true
       && worker.enabled === true
-      && hasSocialPublishingWorkflow(worker.workflows)
+      && missingWorkflows.length === 0
     const result: AgencyWorkflowReadinessResult = {
       ok: ready,
       status: ready ? 'ready' : 'degraded',
       ...config,
       transport: target.transport,
-      worker
+      worker,
+      ...(missingWorkflows.length ? { missingWorkflows } : {})
     }
     if (ready) {
       console.info('agency-workflows.readiness.ready', {
@@ -507,10 +510,18 @@ function readinessWorker(body: Record<string, unknown>): AgencyWorkflowReadiness
   }
 }
 
-function hasSocialPublishingWorkflow(workflows: unknown[] | undefined): boolean {
+function missingRequiredWorkflows(workflows: unknown[] | undefined): AgencyWorkflowKind[] {
+  const required: AgencyWorkflowKind[] = [
+    SOCIAL_PUBLISHING_WORKFLOW_KIND,
+    SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
+  ]
+  return required.filter(kind => !hasWorkflowKind(workflows, kind))
+}
+
+function hasWorkflowKind(workflows: unknown[] | undefined, kind: AgencyWorkflowKind): boolean {
   return Boolean(workflows?.some((workflow) => {
     if (!workflow || typeof workflow !== 'object') return false
-    return (workflow as { kind?: unknown }).kind === SOCIAL_PUBLISHING_WORKFLOW_KIND
+    return (workflow as { kind?: unknown }).kind === kind
   }))
 }
 
@@ -612,6 +623,7 @@ function logReadinessFailure(result: AgencyWorkflowReadinessResult) {
     transport: result.transport,
     httpStatus: result.httpStatus,
     workerEnabled: result.worker?.enabled,
+    missingWorkflows: result.missingWorkflows,
     error: result.error
   })
 }
