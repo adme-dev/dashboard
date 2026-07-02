@@ -1,15 +1,14 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { queryOne, queryRows, execute } from '~~/server/utils/db'
+import { queryOne } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
-import { publishPost, type PublishableAccount, type PublishablePost } from '~~/server/utils/socialPublishing'
-import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
+import { claimAndPublishSocialPost } from '~~/server/utils/socialPublishing/dispatch'
 
-interface SocialPostRow extends PublishablePost {
+interface SocialPostRow {
+  id: string
   status: string
   approved_at: string | null
   client_id: string
-  account_ids: string[] | null
 }
 
 /**
@@ -34,44 +33,20 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Post must be approved before publishing' })
   }
 
-  const claimed = await queryOne<SocialPostRow>(
-    `UPDATE social_posts
-        SET status='publishing', last_attempt_at=NOW(), updated_at=NOW()
-      WHERE id=$1 AND client_id=$2 AND status = 'approved'
-      RETURNING *`,
-    [id, post.client_id]
-  )
-  if (!claimed) {
+  const dispatch = await claimAndPublishSocialPost({
+    postId: id,
+    clientId: post.client_id,
+    claimStatuses: ['approved'],
+    source: 'manual',
+    actorId: user.id,
+    auditAction: 'post_published'
+  })
+  if (dispatch.skipped) {
     throw createError({ statusCode: 409, statusMessage: 'Post is already being published or changed state' })
   }
 
-  const accounts = await queryRows<PublishableAccount>(
-    `SELECT id, platform, platform_account_id, access_token, refresh_token, token_expires_at, account_name, last_error, metadata
-       FROM social_accounts
-      WHERE id = ANY($1) AND client_id = $2 AND is_active = TRUE`,
-    [claimed.account_ids ?? [], claimed.client_id]
-  )
-
-  const outcome = await publishPost({ ...claimed, accounts })
-
-  await execute(
-    `UPDATE social_posts SET status=$2, platform_results=$3::jsonb,
-       publish_attempts=publish_attempts+1,
-       published_at=CASE WHEN $2 IN ('published','partially_published') THEN COALESCE(published_at, NOW()) ELSE published_at END,
-       updated_at=NOW()
-     WHERE id=$1 AND client_id=$4`,
-    [id, outcome.status, JSON.stringify(outcome.platformResults), claimed.client_id]
-  )
-  await recordSocialPublishingAudit({
-    clientId: claimed.client_id,
-    postId: id,
-    actorId: user.id,
-    action: 'post_published',
-    metadata: {
-      status: outcome.status,
-      targets: Object.keys(outcome.platformResults)
-    }
-  })
-
-  return outcome
+  return {
+    status: dispatch.status,
+    platformResults: dispatch.platformResults
+  }
 })

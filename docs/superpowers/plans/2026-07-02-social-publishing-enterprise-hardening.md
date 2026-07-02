@@ -94,6 +94,13 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
 
 - [x] Add audit entries for create/update/request/approve/reject/schedule/publish/disconnect.
 - [x] Add structured logs for publish attempts and provider failures.
+- [x] Add a Cloudflare Workflows publishing callback bridge.
+  - [x] Standalone `agency-workflows` Worker calls the Pages internal publish callback with `x-workflow-secret`.
+  - [x] Pages callback validates the workflow secret, feature flag, and payload before touching publishing state.
+  - [x] Manual publish, cron dispatch, and workflow callback share one atomic claim/publish/persist dispatcher.
+  - [x] Already-claimed or already-published posts return an idempotent skipped acknowledgement instead of double-publishing.
+  - [x] Unexpected dispatch failures after claim are persisted as failed publish attempts instead of leaving rows in `publishing`.
+  - [ ] Add the Pages-to-Worker start/service-binding kickoff and cut over scheduled publishing from cron after production verification.
 - [x] Add backlog and repeated-failure alerts for scheduler and metrics sync.
   - [x] Scheduler dispatch returns health and warns on saturated due backlog / exhausted retries.
   - [x] Metrics sync returns health and warns on provider/account/post metric failures.
@@ -130,7 +137,9 @@ Start with P0 for posts only:
 - [x] Targeted hardening lint passes for the new provider OAuth, publishing guards/readiness, token refresh, theme smoke script, and focused access/audit/metrics tests.
 - [x] Production build passes: `pnpm run build` completed Nuxt client, SSR, Nitro Cloudflare Pages output, and `scripts/wrap-worker.mjs`.
 - [x] Social publishing regression suite is now a first-class package script: `pnpm run test:social-publishing`.
+- [x] Workflow callback focused tests pass: `pnpm exec vitest run test/server/api/socialPublishingWorkflowCallback.test.ts test/server/middleware/authInternalBypass.test.ts test/social/publishDispatch.test.ts` reported 24 tests passing.
+- [x] Workflow callback scoped lint passes across the callback route, shared dispatcher, workflow contract, refactored manual/cron routes, middleware, and focused tests.
 - [x] Diff integrity passes; token-shaped scans found only known dummy fixtures in `test/social/socialInboxTokenRefresh.test.ts` on tracked lines and no matches in untracked files.
-- [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; the social publishing/inbox diagnostics in publishing guards, plan generation, and the inbox typing route were fixed, and a filtered social-slice rerun produced no matching diagnostics before the run was stopped.
+- [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.
 - [ ] Live provider smoke remains blocked until production Meta/Google/YouTube/LinkedIn/TikTok app credentials and approved test accounts are available.

@@ -43,6 +43,7 @@ const publicRoutes = [
   '/api/internal/email-to-board',
   '/api/internal/platform-agents/',
   '/api/internal/sync-spend',
+  '/api/internal/workflows/',
   // agency-jobs queue bridge — workers/jobs-consumer POSTs each queue message
   // here; verifies x-cron-secret inline (no session cookie from the Worker).
   '/api/internal/process-job',

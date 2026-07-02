@@ -77,7 +77,8 @@ describe('manual publish endpoint', () => {
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(event, 'C1')
     expect(mockPublishPost).toHaveBeenCalledOnce()
     expect(mockQueryOne.mock.calls[1][0]).toContain('UPDATE social_posts')
-    expect(mockQueryOne.mock.calls[1][0]).toContain('status = \'approved\'')
+    expect(mockQueryOne.mock.calls[1][0]).toContain('status = ANY($3::text[])')
+    expect(mockQueryOne.mock.calls[1][1]).toEqual(['P1', 'C1', ['approved'], null])
     expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('last_error'), [['a1'], 'C1'])
     // final UPDATE persists status + platform_results
     const finalUpdate = mockExecute.mock.calls.find(call => String(call[0]).includes('published_at=CASE'))!
@@ -111,24 +112,32 @@ describe('dispatcher cron — idempotent claim', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.CRON_SECRET = 'test-secret'
-    mockQueryRows.mockResolvedValue([{ id: 'P1' }]) // one due post
-    mockQueryOne.mockResolvedValue({ id: 'P1', client_id: 'C1', status: 'scheduled', account_ids: ['a1'], platforms: ['facebook'] })
+    mockQueryRows
+      .mockResolvedValueOnce([{ id: 'P1' }]) // one due post
+      .mockResolvedValue([{ id: 'a1', platform: 'facebook', platform_account_id: 'fb-1', access_token: 'token', account_name: 'Facebook' }])
+    mockQueryOne.mockResolvedValue({ id: 'P1', client_id: 'C1', status: 'publishing', account_ids: ['a1'], platforms: ['facebook'] })
     mockPublishPost.mockResolvedValue({ status: 'published', platformResults: {} })
   })
   const evt: TestEvent = { headers: { 'x-cron-secret': 'test-secret' } }
 
-  it('publishes a due post when the claim wins (execute→1)', async () => {
-    mockExecute.mockResolvedValueOnce(1).mockResolvedValue(1) // claim wins, then final update
+  it('publishes a due post when the atomic claim wins', async () => {
+    mockExecute.mockResolvedValue(1)
     const res = await cronH(evt)
     expect(res.processed).toBe(1)
     expect(mockPublishPost).toHaveBeenCalledOnce()
     expect(mockQueryRows.mock.calls[0][0]).toContain('status = \'scheduled\'')
-    expect(mockExecute.mock.calls[0][0]).toContain('status = \'scheduled\'')
+    expect(mockQueryOne.mock.calls[0][0]).toContain('UPDATE social_posts')
+    expect(mockQueryOne.mock.calls[0][0]).toContain('status = ANY($3::text[])')
+    expect(mockQueryOne.mock.calls[0][1]).toEqual(['P1', null, ['scheduled'], 3])
     expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('last_error'), [['a1'], 'C1'])
   })
 
-  it('skips the post when the claim loses (execute→0): no double publish', async () => {
-    mockExecute.mockResolvedValueOnce(0) // another tick already claimed it
+  it('skips the post when the claim loses: no double publish', async () => {
+    mockQueryOne.mockReset()
+    mockQueryOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'publishing' })
+      .mockResolvedValueOnce({ due_backlog: 0, exhausted_failures: 0, oldest_due_at: null })
     const res = await cronH(evt)
     expect(res.processed).toBe(0)
     expect(mockPublishPost).not.toHaveBeenCalled()
@@ -139,10 +148,16 @@ describe('dispatcher cron — idempotent claim', () => {
   })
 
   it('returns dispatcher health and warns when due backlog is saturated', async () => {
+    mockQueryOne.mockReset()
+    mockQueryRows.mockReset()
     mockQueryRows
       .mockResolvedValueOnce(Array.from({ length: 10 }, (_, index) => ({ id: `P${index}` })))
       .mockResolvedValue([])
-    mockExecute.mockResolvedValue(0)
+    for (let index = 0; index < 10; index++) {
+      mockQueryOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: `P${index}`, client_id: 'C1', status: 'publishing' })
+    }
     mockQueryOne.mockResolvedValueOnce({
       due_backlog: 23,
       exhausted_failures: 4,

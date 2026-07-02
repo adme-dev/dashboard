@@ -5,20 +5,20 @@ const kvGet = vi.fn()
 
 vi.mock('../../../server/utils/auth', () => ({
   validateSession,
-  TransientAuthError: class TransientAuthError extends Error {},
+  TransientAuthError: class TransientAuthError extends Error {}
 }))
 
 vi.mock('../../../server/utils/kv', () => ({
   kvGet,
-  kvPut: vi.fn(),
+  kvPut: vi.fn()
 }))
 
 vi.mock('../../../server/utils/roleResolver', () => ({
-  resolveUserPermissions: vi.fn(),
+  resolveUserPermissions: vi.fn()
 }))
 
 vi.mock('../../../server/utils/permissions', () => ({
-  isReadOnlyRole: vi.fn(() => false),
+  isReadOnlyRole: vi.fn(() => false)
 }))
 
 type TestEvent = {
@@ -45,7 +45,7 @@ const { default: handler } = await import('../../../server/middleware/auth')
 function fakeEvent(pathname: string): TestEvent {
   return {
     url: `https://app.xeroflow.io${pathname}`,
-    headers: {},
+    headers: {}
   }
 }
 
@@ -63,6 +63,7 @@ describe('auth middleware internal bearer endpoints', () => {
     '/api/internal/email-to-board',
     '/api/internal/sync-spend',
     '/api/internal/chat-archive',
+    '/api/internal/workflows/social-publishing/publish'
   ])('lets %s reach its inline secret guard', async (pathname) => {
     await expect(handler(fakeEvent(pathname))).resolves.toBeUndefined()
     expect(validateSession).not.toHaveBeenCalled()
@@ -71,7 +72,7 @@ describe('auth middleware internal bearer endpoints', () => {
   it('still requires a session for normal API routes', async () => {
     await expect(handler(fakeEvent('/api/agency/social/spend'))).rejects.toMatchObject({
       statusCode: 401,
-      statusMessage: 'Authentication required',
+      statusMessage: 'Authentication required'
     })
   })
 })
