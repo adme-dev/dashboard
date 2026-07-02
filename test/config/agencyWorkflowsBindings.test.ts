@@ -28,6 +28,16 @@ describe('agency workflows worker config', () => {
     })
   })
 
+  it('declares the social inbox automation workflow binding', () => {
+    const config = parse(readFileSync('workers/agency-workflows/wrangler.toml', 'utf8')) as WorkflowToml
+
+    expect(config.workflows).toContainEqual({
+      name: 'social-inbox-automation-workflow',
+      binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW',
+      class_name: 'SocialInboxAutomationWorkflow'
+    })
+  })
+
   it('keeps the workflow worker deployable through a root package script', () => {
     const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
       scripts?: Record<string, string>

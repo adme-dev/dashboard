@@ -2,10 +2,14 @@ import { WorkflowEntrypoint } from 'cloudflare:workers'
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 
 import {
+  SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
   SOCIAL_PUBLISHING_WORKFLOW_KIND,
   type AgencyWorkflowEnv,
+  type SocialInboxAutomationWorkflowPayload,
   type SocialPublishingWorkflowPayload,
+  buildSocialInboxAutomationWorkflowInstanceId,
   buildSocialPublishingWorkflowInstanceId,
+  normalizeSocialInboxAutomationWorkflowPayload,
   normalizeSocialPublishingWorkflowPayload,
   parseWorkflowRequestBody,
   workflowFeatureEnabled
@@ -87,6 +91,36 @@ export class SocialPublishingWorkflow extends WorkflowEntrypoint<AgencyWorkflowE
   }
 }
 
+export class SocialInboxAutomationWorkflow extends WorkflowEntrypoint<AgencyWorkflowEnv, SocialInboxAutomationWorkflowPayload> {
+  async run(event: WorkflowEvent<SocialInboxAutomationWorkflowPayload>, step: WorkflowStep) {
+    const payload = normalizeSocialInboxAutomationWorkflowPayload(event.payload)
+
+    return await step.do(
+      'run social inbox automation through Pages',
+      { retries: { limit: 3, delay: '30 seconds', backoff: 'exponential' }, timeout: '2 minutes' },
+      async () => {
+        const response = await fetch(`${appBaseUrl(this.env)}/api/internal/workflows/social-inbox/automation`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-workflow-secret': callbackSecret(this.env)
+          },
+          body: JSON.stringify(payload)
+        })
+        const text = await response.text()
+        if (!response.ok) {
+          throw new Error(`Pages inbox automation callback failed: ${response.status} ${text.slice(0, 200)}`)
+        }
+        return {
+          ok: true,
+          status: response.status,
+          bodyText: text ? text.slice(0, 1000) : null
+        }
+      }
+    )
+  }
+}
+
 export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWorkflowEnv): Promise<Response> {
   const url = new URL(request.url)
 
@@ -95,7 +129,10 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
       ok: true,
       worker: 'agency-workflows',
       enabled: workflowFeatureEnabled(env),
-      workflows: [{ kind: SOCIAL_PUBLISHING_WORKFLOW_KIND, binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+      workflows: [
+        { kind: SOCIAL_PUBLISHING_WORKFLOW_KIND, binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
+        { kind: SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND, binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+      ]
     })
   }
 
@@ -106,10 +143,15 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
 
     try {
       const body = parseWorkflowRequestBody(await readJson(request))
-      const instance = await env.SOCIAL_PUBLISHING_WORKFLOW.create({
-        id: buildSocialPublishingWorkflowInstanceId(body.payload),
-        params: body.payload
-      })
+      const instance = body.workflow === SOCIAL_PUBLISHING_WORKFLOW_KIND
+        ? await env.SOCIAL_PUBLISHING_WORKFLOW.create({
+            id: buildSocialPublishingWorkflowInstanceId(body.payload),
+            params: body.payload
+          })
+        : await env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.create({
+            id: buildSocialInboxAutomationWorkflowInstanceId(body.payload),
+            params: body.payload
+          })
       return json({ ok: true, workflow: body.workflow, instanceId: instance.id, status: await instance.status() })
     } catch (error) {
       return json({ ok: false, error: errorMessage(error) }, { status: 400 })
@@ -122,11 +164,13 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
 
     const workflow = url.searchParams.get('workflow')
     const instanceId = url.searchParams.get('instanceId')
-    if (workflow !== SOCIAL_PUBLISHING_WORKFLOW_KIND || !instanceId) {
+    if (!instanceId || (workflow !== SOCIAL_PUBLISHING_WORKFLOW_KIND && workflow !== SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND)) {
       return json({ ok: false, error: 'workflow and instanceId are required' }, { status: 400 })
     }
 
-    const instance = await env.SOCIAL_PUBLISHING_WORKFLOW.get(instanceId)
+    const instance = workflow === SOCIAL_PUBLISHING_WORKFLOW_KIND
+      ? await env.SOCIAL_PUBLISHING_WORKFLOW.get(instanceId)
+      : await env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.get(instanceId)
     return json({ ok: true, workflow, instanceId: instance.id, status: await instance.status() })
   }
 

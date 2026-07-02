@@ -4,6 +4,12 @@ import {
   type SocialPublishingWorkflowPayload,
   type SocialPublishingWorkflowTrigger
 } from '~~/server/utils/agencyWorkflows/socialPublishing'
+import {
+  SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
+  normalizeSocialInboxAutomationWorkflowPayload,
+  type SocialInboxAutomationWorkflowPayload,
+  type SocialInboxAutomationWorkflowTrigger
+} from '~~/server/utils/agencyWorkflows/socialInboxAutomation'
 
 const AGENCY_WORKFLOWS_BINDING = 'AGENCY_WORKFLOWS'
 const WORKFLOW_START_URL = 'https://agency-workflows.internal/workflows/start'
@@ -14,18 +20,22 @@ const MAX_ERROR_LENGTH = 300
 const WORKFLOW_REQUEST_TIMEOUT_MS = 5_000
 
 type WorkflowTransport = 'service-binding' | 'fetch'
+type AgencyWorkflowKind = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
+type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload
 
 interface AgencyWorkflowServiceBinding {
   fetch: (request: Request) => Promise<Response>
 }
 
-export interface StartSocialPublishingWorkflowEvent {
+export interface AgencyWorkflowEvent {
   context?: {
     cloudflare?: {
       env?: Record<string, unknown>
     }
   }
 }
+
+export type StartSocialPublishingWorkflowEvent = AgencyWorkflowEvent
 
 export interface StartSocialPublishingWorkflowInput {
   postId: string
@@ -36,22 +46,31 @@ export interface StartSocialPublishingWorkflowInput {
   fetchImpl?: (request: Request) => Promise<Response>
 }
 
-export interface StartSocialPublishingWorkflowSuccess {
+export interface StartSocialInboxAutomationWorkflowInput {
+  conversationId: string
+  clientId: string
+  messageId?: string
+  trigger: SocialInboxAutomationWorkflowTrigger
+  requestedBy?: string
+  fetchImpl?: (request: Request) => Promise<Response>
+}
+
+export interface StartAgencyWorkflowSuccess<TWorkflow extends AgencyWorkflowKind> {
   ok: true
   enabled: true
   transport: WorkflowTransport
-  workflow: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
+  workflow: TWorkflow
   instanceId?: string
   status?: unknown
 }
 
-export interface StartSocialPublishingWorkflowDisabled {
+export interface StartAgencyWorkflowDisabled {
   ok: false
   enabled: false
   reason: 'disabled'
 }
 
-export interface StartSocialPublishingWorkflowFailure {
+export interface StartAgencyWorkflowFailure {
   ok: false
   enabled: true
   reason: 'not_configured' | 'bad_response' | 'request_failed'
@@ -60,10 +79,18 @@ export interface StartSocialPublishingWorkflowFailure {
   error?: string
 }
 
+export type StartSocialPublishingWorkflowDisabled = StartAgencyWorkflowDisabled
+export type StartSocialPublishingWorkflowFailure = StartAgencyWorkflowFailure
+
 export type StartSocialPublishingWorkflowResult
-  = StartSocialPublishingWorkflowSuccess
-    | StartSocialPublishingWorkflowDisabled
-    | StartSocialPublishingWorkflowFailure
+  = StartAgencyWorkflowSuccess<typeof SOCIAL_PUBLISHING_WORKFLOW_KIND>
+    | StartAgencyWorkflowDisabled
+    | StartAgencyWorkflowFailure
+
+export type StartSocialInboxAutomationWorkflowResult
+  = StartAgencyWorkflowSuccess<typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND>
+    | StartAgencyWorkflowDisabled
+    | StartAgencyWorkflowFailure
 
 export type AgencyWorkflowReadinessStatus = 'ready' | 'disabled' | 'not_configured' | 'unreachable' | 'degraded'
 
@@ -98,7 +125,7 @@ interface WorkflowRequestTarget {
 }
 
 export async function startSocialPublishingWorkflow(
-  event: StartSocialPublishingWorkflowEvent,
+  event: AgencyWorkflowEvent,
   input: StartSocialPublishingWorkflowInput
 ): Promise<StartSocialPublishingWorkflowResult> {
   const env = getCloudflareEnv(event)
@@ -122,23 +149,16 @@ export async function startSocialPublishingWorkflow(
       requestedBy: input.requestedBy
     })
   } catch (error) {
-    const result = failedResult('request_failed', {
-      postId: input.postId,
-      clientId: input.clientId,
-      error: safeError(error)
-    })
-    logFailure(input, result)
+    const result = failedResult('request_failed', { error: safeError(error) })
+    logPublishingFailure(input, result)
     return result
   }
 
   const secret = envText(env, 'WORKFLOW_SERVICE_SECRET')
-  const target = secret ? buildWorkflowStartTarget(env, payload, secret, input.fetchImpl) : null
+  const target = secret ? buildWorkflowStartTarget(env, SOCIAL_PUBLISHING_WORKFLOW_KIND, payload, secret, input.fetchImpl) : null
   if (!target) {
-    const result = failedResult('not_configured', {
-      postId: payload.postId,
-      clientId: payload.clientId
-    })
-    logFailure(payload, result)
+    const result = failedResult('not_configured')
+    logPublishingFailure(payload, result)
     return result
   }
 
@@ -148,17 +168,15 @@ export async function startSocialPublishingWorkflow(
 
     if (!response.ok) {
       const result = failedResult('bad_response', {
-        postId: payload.postId,
-        clientId: payload.clientId,
         transport: target.transport,
         status: response.status,
         error: responseError(body, response.statusText, [secret])
       })
-      logFailure(payload, result)
+      logPublishingFailure(payload, result)
       return result
     }
 
-    const result = successResult(target.transport, body)
+    const result = successResult(SOCIAL_PUBLISHING_WORKFLOW_KIND, target.transport, body)
     console.info('agency-workflows.social-publishing.start.succeeded', {
       postId: payload.postId,
       clientId: payload.clientId,
@@ -168,18 +186,87 @@ export async function startSocialPublishingWorkflow(
     return result
   } catch (error) {
     const result = failedResult('request_failed', {
-      postId: payload.postId,
-      clientId: payload.clientId,
       transport: target.transport,
       error: safeError(error, [secret])
     })
-    logFailure(payload, result)
+    logPublishingFailure(payload, result)
+    return result
+  }
+}
+
+export async function startSocialInboxAutomationWorkflow(
+  event: AgencyWorkflowEvent,
+  input: StartSocialInboxAutomationWorkflowInput
+): Promise<StartSocialInboxAutomationWorkflowResult> {
+  const env = getCloudflareEnv(event)
+
+  if (envText(env, 'AGENCY_WORKFLOWS_ENABLED') !== 'true') {
+    console.info('agency-workflows.social-inbox.automation.start.disabled', {
+      conversationId: input.conversationId,
+      clientId: input.clientId
+    })
+    return { ok: false, enabled: false, reason: 'disabled' }
+  }
+
+  let payload: SocialInboxAutomationWorkflowPayload
+  try {
+    payload = normalizeSocialInboxAutomationWorkflowPayload({
+      kind: SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
+      conversationId: input.conversationId,
+      clientId: input.clientId,
+      messageId: input.messageId,
+      trigger: input.trigger,
+      requestedBy: input.requestedBy
+    })
+  } catch (error) {
+    const result = failedResult('request_failed', { error: safeError(error) })
+    logInboxAutomationFailure(input, result)
+    return result
+  }
+
+  const secret = envText(env, 'WORKFLOW_SERVICE_SECRET')
+  const target = secret ? buildWorkflowStartTarget(env, SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND, payload, secret, input.fetchImpl) : null
+  if (!target) {
+    const result = failedResult('not_configured')
+    logInboxAutomationFailure(payload, result)
+    return result
+  }
+
+  try {
+    const response = await target.send(target.request)
+    const body = await readResponseBody(response)
+
+    if (!response.ok) {
+      const result = failedResult('bad_response', {
+        transport: target.transport,
+        status: response.status,
+        error: responseError(body, response.statusText, [secret])
+      })
+      logInboxAutomationFailure(payload, result)
+      return result
+    }
+
+    const result = successResult(SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND, target.transport, body)
+    console.info('agency-workflows.social-inbox.automation.start.succeeded', {
+      conversationId: payload.conversationId,
+      clientId: payload.clientId,
+      messageId: payload.messageId,
+      transport: target.transport,
+      instanceId: result.instanceId
+    })
+    return result
+  } catch (error) {
+    const result = failedResult('request_failed', {
+      transport: target.transport,
+      error: safeError(error, [secret])
+    })
+    logInboxAutomationFailure(payload, result)
     return result
   }
 }
 
 export async function checkAgencyWorkflowReadiness(
-  event: StartSocialPublishingWorkflowEvent,
+  event: AgencyWorkflowEvent,
   input: CheckAgencyWorkflowReadinessInput = {}
 ): Promise<AgencyWorkflowReadinessResult> {
   const env = getCloudflareEnv(event)
@@ -277,7 +364,7 @@ export async function checkAgencyWorkflowReadiness(
   }
 }
 
-function getCloudflareEnv(event: StartSocialPublishingWorkflowEvent): Record<string, unknown> {
+function getCloudflareEnv(event: AgencyWorkflowEvent): Record<string, unknown> {
   return event.context?.cloudflare?.env ?? {}
 }
 
@@ -289,12 +376,13 @@ function envText(env: Record<string, unknown>, key: string): string {
 
 function buildWorkflowStartTarget(
   env: Record<string, unknown>,
-  payload: SocialPublishingWorkflowPayload,
+  workflow: AgencyWorkflowKind,
+  payload: AgencyWorkflowPayload,
   secret: string,
   fetchImpl?: (request: Request) => Promise<Response>
 ): WorkflowRequestTarget | null {
   const body = JSON.stringify({
-    workflow: SOCIAL_PUBLISHING_WORKFLOW_KIND,
+    workflow,
     payload
   })
 
@@ -426,13 +514,17 @@ function hasSocialPublishingWorkflow(workflows: unknown[] | undefined): boolean 
   }))
 }
 
-function successResult(transport: WorkflowTransport, body: Record<string, unknown>): StartSocialPublishingWorkflowSuccess {
+function successResult<TWorkflow extends AgencyWorkflowKind>(
+  workflow: TWorkflow,
+  transport: WorkflowTransport,
+  body: Record<string, unknown>
+): StartAgencyWorkflowSuccess<TWorkflow> {
   const instanceId = typeof body.instanceId === 'string' ? body.instanceId : undefined
   return {
     ok: true,
     enabled: true,
     transport,
-    workflow: SOCIAL_PUBLISHING_WORKFLOW_KIND,
+    workflow,
     ...(instanceId ? { instanceId } : {}),
     ...('status' in body ? { status: body.status } : {})
   }
@@ -441,13 +533,11 @@ function successResult(transport: WorkflowTransport, body: Record<string, unknow
 function failedResult(
   reason: 'not_configured' | 'bad_response' | 'request_failed',
   context: {
-    postId: string
-    clientId: string
     transport?: WorkflowTransport
     status?: number
     error?: string
-  }
-): StartSocialPublishingWorkflowFailure {
+  } = {}
+): StartAgencyWorkflowFailure {
   return {
     ok: false,
     enabled: true,
@@ -483,13 +573,28 @@ function redact(input: string, redactions: string[]): string {
   return output
 }
 
-function logFailure(
+function logPublishingFailure(
   payload: { postId: string, clientId: string },
-  result: StartSocialPublishingWorkflowFailure
+  result: StartAgencyWorkflowFailure
 ) {
   console.warn('agency-workflows.social-publishing.start.failed', {
     postId: payload.postId,
     clientId: payload.clientId,
+    reason: result.reason,
+    transport: result.transport,
+    status: result.status,
+    error: result.error
+  })
+}
+
+function logInboxAutomationFailure(
+  payload: { conversationId: string, clientId: string, messageId?: string },
+  result: StartAgencyWorkflowFailure
+) {
+  console.warn('agency-workflows.social-inbox.automation.start.failed', {
+    conversationId: payload.conversationId,
+    clientId: payload.clientId,
+    messageId: payload.messageId,
     reason: result.reason,
     transport: result.transport,
     status: result.status,

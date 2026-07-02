@@ -1,8 +1,13 @@
 export const SOCIAL_PUBLISHING_WORKFLOW_KIND = 'social.post.publish' as const
+export const SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND = 'social.inbox.automation' as const
+const WORKFLOW_INSTANCE_ID_MAX_LENGTH = 100
 
-export type SupportedWorkflowKind = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
+export type SupportedWorkflowKind
+  = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
+    | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
 
 export type SocialPublishingWorkflowTrigger = 'manual' | 'schedule' | 'cron' | 'retry'
+export type SocialInboxAutomationWorkflowTrigger = 'inbound' | 'cron' | 'retry' | 'manual'
 
 export interface SocialPublishingWorkflowPayload {
   kind: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
@@ -13,10 +18,18 @@ export interface SocialPublishingWorkflowPayload {
   requestedBy?: string
 }
 
-export interface WorkflowRequestBody {
-  workflow: SupportedWorkflowKind
-  payload: SocialPublishingWorkflowPayload
+export interface SocialInboxAutomationWorkflowPayload {
+  kind: typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
+  conversationId: string
+  clientId: string
+  messageId?: string
+  trigger: SocialInboxAutomationWorkflowTrigger
+  requestedBy?: string
 }
+
+export type WorkflowRequestBody
+  = { workflow: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND, payload: SocialPublishingWorkflowPayload }
+    | { workflow: typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND, payload: SocialInboxAutomationWorkflowPayload }
 
 export interface WorkflowFeatureEnv {
   AGENCY_WORKFLOWS_ENABLED?: string
@@ -37,6 +50,7 @@ export interface AgencyWorkflowEnv extends WorkflowFeatureEnv {
   WORKFLOW_SERVICE_SECRET?: string
   WORKFLOW_CALLBACK_SECRET?: string
   SOCIAL_PUBLISHING_WORKFLOW: WorkflowBindingLike<SocialPublishingWorkflowPayload>
+  SOCIAL_INBOX_AUTOMATION_WORKFLOW: WorkflowBindingLike<SocialInboxAutomationWorkflowPayload>
 }
 
 export function workflowFeatureEnabled(env: WorkflowFeatureEnv): boolean {
@@ -46,13 +60,19 @@ export function workflowFeatureEnabled(env: WorkflowFeatureEnv): boolean {
 export function parseWorkflowRequestBody(input: unknown): WorkflowRequestBody {
   const body = objectInput(input)
   const workflow = String(body.workflow ?? '')
-  if (workflow !== SOCIAL_PUBLISHING_WORKFLOW_KIND) {
-    throw new Error(`Unsupported workflow: ${workflow || 'missing'}`)
+  if (workflow === SOCIAL_PUBLISHING_WORKFLOW_KIND) {
+    return {
+      workflow,
+      payload: normalizeSocialPublishingWorkflowPayload(body.payload)
+    }
   }
-  return {
-    workflow,
-    payload: normalizeSocialPublishingWorkflowPayload(body.payload)
+  if (workflow === SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND) {
+    return {
+      workflow,
+      payload: normalizeSocialInboxAutomationWorkflowPayload(body.payload)
+    }
   }
+  throw new Error(`Unsupported workflow: ${workflow || 'missing'}`)
 }
 
 export function normalizeSocialPublishingWorkflowPayload(input: unknown): SocialPublishingWorkflowPayload {
@@ -77,9 +97,39 @@ export function buildSocialPublishingWorkflowInstanceId(payload: SocialPublishin
   return `social-publish-${instancePart(payload.clientId)}-${instancePart(payload.postId)}`.slice(0, 256)
 }
 
+export function normalizeSocialInboxAutomationWorkflowPayload(input: unknown): SocialInboxAutomationWorkflowPayload {
+  const body = objectInput(input)
+  const conversationId = requiredText(body.conversationId, 'conversationId')
+  const clientId = requiredText(body.clientId, 'clientId')
+  const messageId = optionalText(body.messageId)
+  const requestedBy = optionalText(body.requestedBy)
+  const trigger = normalizeInboxAutomationTrigger(body.trigger)
+
+  return {
+    kind: SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
+    conversationId,
+    clientId,
+    ...(messageId ? { messageId } : {}),
+    trigger,
+    ...(requestedBy ? { requestedBy } : {})
+  }
+}
+
+export function buildSocialInboxAutomationWorkflowInstanceId(payload: SocialInboxAutomationWorkflowPayload): string {
+  const discriminator = payload.messageId || payload.trigger
+  return `social-inbox-auto-${instancePart(payload.clientId)}-${instancePart(payload.conversationId)}-${instancePart(discriminator)}`
+    .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
+}
+
 function normalizeTrigger(input: unknown): SocialPublishingWorkflowTrigger {
   const value = optionalText(input) ?? 'manual'
   if (value === 'manual' || value === 'schedule' || value === 'cron' || value === 'retry') return value
+  throw new Error(`Unsupported trigger: ${value}`)
+}
+
+function normalizeInboxAutomationTrigger(input: unknown): SocialInboxAutomationWorkflowTrigger {
+  const value = optionalText(input) ?? 'inbound'
+  if (value === 'inbound' || value === 'cron' || value === 'retry' || value === 'manual') return value
   throw new Error(`Unsupported trigger: ${value}`)
 }
 

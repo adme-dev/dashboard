@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   checkAgencyWorkflowReadiness,
+  startSocialInboxAutomationWorkflow,
   startSocialPublishingWorkflow,
   type StartSocialPublishingWorkflowEvent
 } from '../../../server/utils/agencyWorkflows/client'
@@ -79,6 +80,55 @@ describe('agency workflow client', () => {
     expect(mockConsoleInfo).toHaveBeenCalledWith(
       'agency-workflows.social-publishing.start.succeeded',
       expect.objectContaining({ postId: 'post-1', clientId: 'client-1', transport: 'service-binding' })
+    )
+  })
+
+  it('starts social inbox automation through the Cloudflare service binding', async () => {
+    const bindingFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      workflow: 'social.inbox.automation',
+      instanceId: 'social-inbox-auto-client-1-conversation-1-message-1',
+      status: { status: 'queued' }
+    }), { status: 202, headers: { 'content-type': 'application/json' } }))
+
+    const result = await startSocialInboxAutomationWorkflow(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }), {
+      conversationId: 'conversation-1',
+      clientId: 'client-1',
+      messageId: 'message-1',
+      trigger: 'inbound'
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      enabled: true,
+      transport: 'service-binding',
+      workflow: 'social.inbox.automation',
+      instanceId: 'social-inbox-auto-client-1-conversation-1-message-1',
+      status: { status: 'queued' }
+    })
+    expect(bindingFetch).toHaveBeenCalledOnce()
+
+    const request = bindingFetch.mock.calls[0][0] as Request
+    expect(request.url).toBe('https://agency-workflows.internal/workflows/start')
+    expect(request.method).toBe('POST')
+    expect(request.headers.get('authorization')).toBe('Bearer workflow-secret')
+    expect(await request.json()).toEqual({
+      workflow: 'social.inbox.automation',
+      payload: {
+        kind: 'social.inbox.automation',
+        conversationId: 'conversation-1',
+        clientId: 'client-1',
+        messageId: 'message-1',
+        trigger: 'inbound'
+      }
+    })
+    expect(mockConsoleInfo).toHaveBeenCalledWith(
+      'agency-workflows.social-inbox.automation.start.succeeded',
+      expect.objectContaining({ conversationId: 'conversation-1', clientId: 'client-1', transport: 'service-binding' })
     )
   })
 

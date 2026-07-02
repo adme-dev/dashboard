@@ -18,3 +18,8 @@ AGENCY_WORKFLOWS_ENABLED = "false"
 name = "social-publishing-workflow"
 binding = "SOCIAL_PUBLISHING_WORKFLOW"
 class_name = "SocialPublishingWorkflow"
+
+[[workflows]]
+name = "social-inbox-automation-workflow"
+binding = "SOCIAL_INBOX_AUTOMATION_WORKFLOW"
+class_name = "SocialInboxAutomationWorkflow"
