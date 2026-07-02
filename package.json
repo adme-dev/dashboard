@@ -19,6 +19,7 @@
     "deploy:preview": "pnpm build && wrangler --cwd dist pages deploy --project-name agency-dashboard --branch preview --commit-dirty=true",
     "deploy:production": "pnpm build && wrangler --cwd dist pages deploy --project-name agency-dashboard --branch main --commit-dirty=true",
     "deploy:workflows": "pnpm --dir workers/agency-workflows run deploy",
+    "deploy:workflows:dry-run": "pnpm --dir workers/agency-workflows run deploy:dry-run",
     "deploy:workers": "node scripts/deploy-workers.mjs",
     "test": "vitest",
     "test:run": "vitest run",

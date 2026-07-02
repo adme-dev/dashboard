@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --config wrangler.toml",
+    "deploy:dry-run": "WRANGLER_WRITE_LOGS=false wrangler deploy --config wrangler.toml --dry-run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

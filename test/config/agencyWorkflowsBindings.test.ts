@@ -63,7 +63,9 @@ describe('agency workflows worker config', () => {
     }
 
     expect(packageJson.scripts?.['deploy:workflows']).toBe('pnpm --dir workers/agency-workflows run deploy')
+    expect(packageJson.scripts?.['deploy:workflows:dry-run']).toBe('pnpm --dir workers/agency-workflows run deploy:dry-run')
     expect(workerPackageJson.scripts?.deploy).toBe('wrangler deploy --config wrangler.toml')
+    expect(workerPackageJson.scripts?.['deploy:dry-run']).toBe('WRANGLER_WRITE_LOGS=false wrangler deploy --config wrangler.toml --dry-run')
   })
 
   it('binds the Pages app to the agency workflows worker', () => {
