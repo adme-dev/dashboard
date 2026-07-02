@@ -120,6 +120,21 @@ describe('agency workflow status endpoint', () => {
     })
   })
 
+  it('derives a brief lifecycle check workflow instance id from identity query fields', async () => {
+    mockQuery = {
+      workflow: 'brief.lifecycle.check',
+      briefId: 'brief 1',
+      trigger: 'submit'
+    }
+
+    await workflowStatus({ context: {} })
+
+    expect(mockGetAgencyWorkflowStatus).toHaveBeenCalledWith(expect.anything(), {
+      workflow: 'brief.lifecycle.check',
+      instanceId: 'brief-lifecycle-brief-1-submit'
+    })
+  })
+
   it('rejects missing workflow status query params before contacting the Worker', async () => {
     mockQuery = { workflow: 'social.post.publish', clientId: 'client-1' }
 

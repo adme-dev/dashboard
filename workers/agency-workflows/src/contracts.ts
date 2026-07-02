@@ -1,18 +1,21 @@
 export const SOCIAL_PUBLISHING_WORKFLOW_KIND = 'social.post.publish' as const
 export const SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND = 'social.inbox.automation' as const
 export const SOCIAL_SPEND_REVIEW_WORKFLOW_KIND = 'social.spend.review' as const
+export const BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND = 'brief.lifecycle.check' as const
 const WORKFLOW_INSTANCE_ID_MAX_LENGTH = 100
 
 export type SupportedWorkflowKind
   = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
     | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
     | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
+    | typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
 
 export type SocialPublishingWorkflowTrigger = 'manual' | 'schedule' | 'cron' | 'retry'
 export type SocialInboxAutomationWorkflowTrigger = 'inbound' | 'cron' | 'retry' | 'manual'
 export type SocialSpendReviewWorkflowTrigger = 'cron' | 'manual' | 'retry'
 export type SocialSpendReviewWorkflowScope = 'all' | 'client' | 'platform'
 export type SocialSpendReviewPlatform = 'all' | 'meta' | 'google_ads'
+export type BriefLifecycleCheckWorkflowTrigger = 'submit' | 'manual' | 'cron' | 'retry'
 
 export interface SocialPublishingWorkflowPayload {
   kind: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
@@ -42,10 +45,19 @@ export interface SocialSpendReviewWorkflowPayload {
   requestedBy?: string
 }
 
+export interface BriefLifecycleCheckWorkflowPayload {
+  kind: typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
+  briefId: string
+  trigger: BriefLifecycleCheckWorkflowTrigger
+  clientId?: string
+  requestedBy?: string
+}
+
 export type WorkflowRequestBody
   = { workflow: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND, payload: SocialPublishingWorkflowPayload }
     | { workflow: typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND, payload: SocialInboxAutomationWorkflowPayload }
     | { workflow: typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND, payload: SocialSpendReviewWorkflowPayload }
+    | { workflow: typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND, payload: BriefLifecycleCheckWorkflowPayload }
 
 export interface WorkflowFeatureEnv {
   AGENCY_WORKFLOWS_ENABLED?: string
@@ -68,6 +80,7 @@ export interface AgencyWorkflowEnv extends WorkflowFeatureEnv {
   SOCIAL_PUBLISHING_WORKFLOW: WorkflowBindingLike<SocialPublishingWorkflowPayload>
   SOCIAL_INBOX_AUTOMATION_WORKFLOW: WorkflowBindingLike<SocialInboxAutomationWorkflowPayload>
   SOCIAL_SPEND_REVIEW_WORKFLOW: WorkflowBindingLike<SocialSpendReviewWorkflowPayload>
+  BRIEF_LIFECYCLE_CHECK_WORKFLOW: WorkflowBindingLike<BriefLifecycleCheckWorkflowPayload>
 }
 
 export function workflowFeatureEnabled(env: WorkflowFeatureEnv): boolean {
@@ -93,6 +106,12 @@ export function parseWorkflowRequestBody(input: unknown): WorkflowRequestBody {
     return {
       workflow,
       payload: normalizeSocialSpendReviewWorkflowPayload(body.payload)
+    }
+  }
+  if (workflow === BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND) {
+    return {
+      workflow,
+      payload: normalizeBriefLifecycleCheckWorkflowPayload(body.payload)
     }
   }
   throw new Error(`Unsupported workflow: ${workflow || 'missing'}`)
@@ -179,6 +198,27 @@ export function buildSocialSpendReviewWorkflowInstanceId(payload: SocialSpendRev
     .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
 }
 
+export function normalizeBriefLifecycleCheckWorkflowPayload(input: unknown): BriefLifecycleCheckWorkflowPayload {
+  const body = objectInput(input)
+  const briefId = requiredText(body.briefId, 'briefId')
+  const trigger = normalizeBriefLifecycleCheckTrigger(body.trigger)
+  const clientId = optionalText(body.clientId)
+  const requestedBy = optionalText(body.requestedBy)
+
+  return {
+    kind: BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+    briefId,
+    trigger,
+    ...(clientId ? { clientId } : {}),
+    ...(requestedBy ? { requestedBy } : {})
+  }
+}
+
+export function buildBriefLifecycleCheckWorkflowInstanceId(payload: BriefLifecycleCheckWorkflowPayload): string {
+  return `brief-lifecycle-${instancePart(payload.briefId)}-${instancePart(payload.trigger)}`
+    .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
+}
+
 function normalizeTrigger(input: unknown): SocialPublishingWorkflowTrigger {
   const value = optionalText(input) ?? 'manual'
   if (value === 'manual' || value === 'schedule' || value === 'cron' || value === 'retry') return value
@@ -216,6 +256,12 @@ function normalizePeriod(input: unknown): string {
   const value = requiredText(input, 'period')
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) throw new Error('period must be YYYY-MM')
   return value
+}
+
+function normalizeBriefLifecycleCheckTrigger(input: unknown): BriefLifecycleCheckWorkflowTrigger {
+  const value = optionalText(input) ?? 'manual'
+  if (value === 'submit' || value === 'manual' || value === 'cron' || value === 'retry') return value
+  throw new Error(`Unsupported trigger: ${value}`)
 }
 
 function requiredText(input: unknown, field: string): string {

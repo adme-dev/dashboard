@@ -19,7 +19,8 @@ const readyPayload = {
     workflows: [
       { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
       { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: true },
-      { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true }
+      { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
+      { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true }
     ]
   }
 }
@@ -60,7 +61,7 @@ describe('agency workflows production smoke script', () => {
   it('validates production-ready readiness with all required workflow bindings', () => {
     expect(smoke.validateReadinessPayload(readyPayload)).toEqual({
       transport: 'service-binding',
-      workflows: ['social.post.publish', 'social.inbox.automation', 'social.spend.review']
+      workflows: ['social.post.publish', 'social.inbox.automation', 'social.spend.review', 'brief.lifecycle.check']
     })
   })
 
@@ -74,7 +75,8 @@ describe('agency workflows production smoke script', () => {
         workflows: [
           { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
           { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false },
-          { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true }
+          { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
+          { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true }
         ]
       }
     })).toThrow(/Missing workflow bindings: social\.inbox\.automation/)
@@ -105,7 +107,7 @@ describe('agency workflows production smoke script', () => {
       })
     )
     expect(log.mock.calls.flat().join('\n')).not.toContain('secret-token')
-    expect(log).toHaveBeenCalledWith('OK readiness transport=service-binding workflows=social.post.publish,social.inbox.automation,social.spend.review')
+    expect(log).toHaveBeenCalledWith('OK readiness transport=service-binding workflows=social.post.publish,social.inbox.automation,social.spend.review,brief.lifecycle.check')
     expect(log).toHaveBeenCalledWith(expect.stringContaining('SKIP status lookup'))
   })
 

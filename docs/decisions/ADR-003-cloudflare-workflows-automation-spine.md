@@ -94,8 +94,12 @@ Prefer cron, queues, or direct route execution when:
    approval-gated.
 4. CRM/opportunity follow-ups: use Workflows for due follow-ups, waits, and
    reminders where a missed callback or duplicate reminder matters.
-5. Brief-to-job lifecycle checks: use Workflows for SLA waits, conversion
-   follow-ups, and completion confirmation.
+5. Brief-to-job lifecycle checks: a read-only `brief.lifecycle.check` Workflow
+   foundation now exists for deterministic per-brief lifecycle/completeness
+   checks, Worker readiness/status inspection, and production smoke
+   enforcement. Conversion, assignment, comments, and notifications remain in
+   app-owned approval-safe paths until their workflow cutover rules are
+   explicitly reviewed.
 6. Video/audio generation: use Workflows for provider polling, callback waits,
    asset persistence, and failure recovery where the provider submission ID is
    the idempotency anchor.

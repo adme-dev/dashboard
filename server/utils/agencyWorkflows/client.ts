@@ -5,6 +5,12 @@ import {
   type SocialPublishingWorkflowTrigger
 } from '~~/server/utils/agencyWorkflows/socialPublishing'
 import {
+  BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+  normalizeBriefLifecycleCheckWorkflowPayload,
+  type BriefLifecycleCheckWorkflowPayload,
+  type BriefLifecycleCheckWorkflowTrigger
+} from '~~/server/utils/agencyWorkflows/briefLifecycleCheck'
+import {
   SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
   normalizeSocialInboxAutomationWorkflowPayload,
   type SocialInboxAutomationWorkflowPayload,
@@ -32,7 +38,8 @@ const WORKFLOW_REQUEST_TIMEOUT_MS = 5_000
 type WorkflowTransport = 'service-binding' | 'fetch'
 export type AgencyWorkflowKind = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
   | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
-type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload | SocialSpendReviewWorkflowPayload
+  | typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
+type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload | SocialSpendReviewWorkflowPayload | BriefLifecycleCheckWorkflowPayload
 
 interface AgencyWorkflowServiceBinding {
   fetch: (request: Request) => Promise<Response>
@@ -76,6 +83,14 @@ export interface StartSocialSpendReviewWorkflowInput {
   fetchImpl?: (request: Request) => Promise<Response>
 }
 
+export interface StartBriefLifecycleCheckWorkflowInput {
+  briefId: string
+  trigger: BriefLifecycleCheckWorkflowTrigger
+  clientId?: string
+  requestedBy?: string
+  fetchImpl?: (request: Request) => Promise<Response>
+}
+
 export interface StartAgencyWorkflowSuccess<TWorkflow extends AgencyWorkflowKind> {
   ok: true
   enabled: true
@@ -115,6 +130,11 @@ export type StartSocialInboxAutomationWorkflowResult
 
 export type StartSocialSpendReviewWorkflowResult
   = StartAgencyWorkflowSuccess<typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND>
+    | StartAgencyWorkflowDisabled
+    | StartAgencyWorkflowFailure
+
+export type StartBriefLifecycleCheckWorkflowResult
+  = StartAgencyWorkflowSuccess<typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND>
     | StartAgencyWorkflowDisabled
     | StartAgencyWorkflowFailure
 
@@ -374,6 +394,75 @@ export async function startSocialSpendReviewWorkflow(
       error: safeError(error, [secret])
     })
     logSpendReviewFailure(payload, result)
+    return result
+  }
+}
+
+export async function startBriefLifecycleCheckWorkflow(
+  event: AgencyWorkflowEvent,
+  input: StartBriefLifecycleCheckWorkflowInput
+): Promise<StartBriefLifecycleCheckWorkflowResult> {
+  const env = getCloudflareEnv(event)
+
+  if (envText(env, 'AGENCY_WORKFLOWS_ENABLED') !== 'true') {
+    console.info('agency-workflows.brief-lifecycle.check.start.disabled', {
+      briefId: input.briefId,
+      clientId: input.clientId
+    })
+    return { ok: false, enabled: false, reason: 'disabled' }
+  }
+
+  let payload: BriefLifecycleCheckWorkflowPayload
+  try {
+    payload = normalizeBriefLifecycleCheckWorkflowPayload({
+      kind: BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+      briefId: input.briefId,
+      trigger: input.trigger,
+      clientId: input.clientId,
+      requestedBy: input.requestedBy
+    })
+  } catch (error) {
+    const result = failedResult('request_failed', { error: safeError(error) })
+    logBriefLifecycleCheckFailure(input, result)
+    return result
+  }
+
+  const secret = envText(env, 'WORKFLOW_SERVICE_SECRET')
+  const target = secret ? buildWorkflowStartTarget(env, BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND, payload, secret, input.fetchImpl) : null
+  if (!target) {
+    const result = failedResult('not_configured')
+    logBriefLifecycleCheckFailure(payload, result)
+    return result
+  }
+
+  try {
+    const response = await target.send(target.request)
+    const body = await readResponseBody(response)
+
+    if (!response.ok) {
+      const result = failedResult('bad_response', {
+        transport: target.transport,
+        status: response.status,
+        error: responseError(body, response.statusText, [secret])
+      })
+      logBriefLifecycleCheckFailure(payload, result)
+      return result
+    }
+
+    const result = successResult(BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND, target.transport, body)
+    console.info('agency-workflows.brief-lifecycle.check.start.succeeded', {
+      briefId: payload.briefId,
+      clientId: payload.clientId,
+      transport: target.transport,
+      instanceId: result.instanceId
+    })
+    return result
+  } catch (error) {
+    const result = failedResult('request_failed', {
+      transport: target.transport,
+      error: safeError(error, [secret])
+    })
+    logBriefLifecycleCheckFailure(payload, result)
     return result
   }
 }
@@ -720,7 +809,8 @@ function missingRequiredWorkflows(workflows: unknown[] | undefined): AgencyWorkf
   const required: AgencyWorkflowKind[] = [
     SOCIAL_PUBLISHING_WORKFLOW_KIND,
     SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
-    SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
+    SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
+    BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
   ]
   return required.filter(kind => !hasWorkflowKind(workflows, kind))
 }
@@ -829,6 +919,20 @@ function logSpendReviewFailure(
     scope: payload.scope,
     clientId: payload.clientId,
     platform: payload.platform,
+    reason: result.reason,
+    transport: result.transport,
+    status: result.status,
+    error: result.error
+  })
+}
+
+function logBriefLifecycleCheckFailure(
+  payload: { briefId: string, clientId?: string },
+  result: StartAgencyWorkflowFailure
+) {
+  console.warn('agency-workflows.brief-lifecycle.check.start.failed', {
+    briefId: payload.briefId,
+    clientId: payload.clientId,
     reason: result.reason,
     transport: result.transport,
     status: result.status,

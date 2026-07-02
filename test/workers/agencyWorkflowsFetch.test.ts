@@ -36,6 +36,7 @@ function workflowEnv(overrides: Record<string, unknown> = {}) {
     SOCIAL_PUBLISHING_WORKFLOW: workflowBinding(),
     SOCIAL_INBOX_AUTOMATION_WORKFLOW: workflowBinding(),
     SOCIAL_SPEND_REVIEW_WORKFLOW: workflowBinding(),
+    BRIEF_LIFECYCLE_CHECK_WORKFLOW: workflowBinding(),
     ...overrides
   }
 }
@@ -55,7 +56,8 @@ describe('agency workflows worker fetch handler', () => {
       workflows: [
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: true },
-        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true }
+        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
+        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true }
       ]
     })
   })
@@ -74,7 +76,8 @@ describe('agency workflows worker fetch handler', () => {
       workflows: [
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false },
-        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true }
+        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
+        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true }
       ]
     })
   })
@@ -164,6 +167,48 @@ describe('agency workflows worker fetch handler', () => {
     expect(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.create).not.toHaveBeenCalled()
   })
 
+  it('starts brief lifecycle checks on the brief lifecycle binding', async () => {
+    const env = workflowEnv()
+    const response = await handleAgencyWorkflowsFetch(
+      new Request('https://agency-workflows.example.com/workflows/start', {
+        method: 'POST',
+        headers: {
+          'authorization': 'Bearer workflow-secret',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          workflow: 'brief.lifecycle.check',
+          payload: {
+            briefId: 'brief-1',
+            clientId: 'client-1',
+            trigger: 'submit'
+          }
+        })
+      }),
+      env as never
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      workflow: 'brief.lifecycle.check',
+      instanceId: 'brief-lifecycle-brief-1-submit',
+      status: { status: 'queued' }
+    })
+    expect(env.BRIEF_LIFECYCLE_CHECK_WORKFLOW.create).toHaveBeenCalledWith({
+      id: 'brief-lifecycle-brief-1-submit',
+      params: {
+        kind: 'brief.lifecycle.check',
+        briefId: 'brief-1',
+        clientId: 'client-1',
+        trigger: 'submit'
+      }
+    })
+    expect(env.SOCIAL_PUBLISHING_WORKFLOW.create).not.toHaveBeenCalled()
+    expect(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.create).not.toHaveBeenCalled()
+    expect(env.SOCIAL_SPEND_REVIEW_WORKFLOW.create).not.toHaveBeenCalled()
+  })
+
   it('treats duplicate deterministic social publishing workflow starts as idempotent success', async () => {
     const publishingWorkflow = workflowBinding()
     publishingWorkflow.create.mockRejectedValueOnce(new Error('Workflow instance already exists'))
@@ -239,5 +284,27 @@ describe('agency workflows worker fetch handler', () => {
     expect(env.SOCIAL_SPEND_REVIEW_WORKFLOW.get).toHaveBeenCalledWith('spend-instance-1')
     expect(env.SOCIAL_PUBLISHING_WORKFLOW.get).not.toHaveBeenCalled()
     expect(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.get).not.toHaveBeenCalled()
+  })
+
+  it('reads brief lifecycle check instance status from the brief lifecycle binding', async () => {
+    const env = workflowEnv()
+    const response = await handleAgencyWorkflowsFetch(
+      new Request('https://agency-workflows.example.com/workflows/status?workflow=brief.lifecycle.check&instanceId=brief-lifecycle-brief-1-submit', {
+        headers: { authorization: 'Bearer workflow-secret' }
+      }),
+      env as never
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      workflow: 'brief.lifecycle.check',
+      instanceId: 'brief-lifecycle-brief-1-submit',
+      status: { status: 'running' }
+    })
+    expect(env.BRIEF_LIFECYCLE_CHECK_WORKFLOW.get).toHaveBeenCalledWith('brief-lifecycle-brief-1-submit')
+    expect(env.SOCIAL_PUBLISHING_WORKFLOW.get).not.toHaveBeenCalled()
+    expect(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.get).not.toHaveBeenCalled()
+    expect(env.SOCIAL_SPEND_REVIEW_WORKFLOW.get).not.toHaveBeenCalled()
   })
 })

@@ -50,6 +50,16 @@ describe('agency workflows worker config', () => {
     })
   })
 
+  it('declares the brief lifecycle check workflow binding', () => {
+    const config = parse(readFileSync('workers/agency-workflows/wrangler.toml', 'utf8')) as WorkflowToml
+
+    expect(config.workflows).toContainEqual({
+      name: 'brief-lifecycle-check-workflow',
+      binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW',
+      class_name: 'BriefLifecycleCheckWorkflow'
+    })
+  })
+
   it('enables the workflow control plane explicitly in deploy config', () => {
     const workerConfig = parse(readFileSync('workers/agency-workflows/wrangler.toml', 'utf8')) as WorkflowToml
     const pagesConfig = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml

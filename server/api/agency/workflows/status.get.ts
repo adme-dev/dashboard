@@ -11,6 +11,11 @@ import {
   normalizeSocialInboxAutomationWorkflowPayload
 } from '~~/server/utils/agencyWorkflows/socialInboxAutomation'
 import {
+  BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+  buildBriefLifecycleCheckWorkflowInstanceId,
+  normalizeBriefLifecycleCheckWorkflowPayload
+} from '~~/server/utils/agencyWorkflows/briefLifecycleCheck'
+import {
   SOCIAL_PUBLISHING_WORKFLOW_KIND,
   buildSocialPublishingWorkflowInstanceId,
   normalizeSocialPublishingWorkflowPayload
@@ -27,6 +32,7 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
  * GET /api/agency/workflows/status?workflow=social.post.publish&clientId=&postId=&scheduledAt=
  * GET /api/agency/workflows/status?workflow=social.inbox.automation&clientId=&conversationId=&messageId=
  * GET /api/agency/workflows/status?workflow=social.spend.review&period=&scope=&clientId=&platform=
+ * GET /api/agency/workflows/status?workflow=brief.lifecycle.check&briefId=&trigger=
  * Admin-only operational diagnostic for a single Cloudflare Workflow instance. Operators may pass an
  * exact instanceId or the workflow payload identity fields used to derive the deterministic instanceId.
  */
@@ -53,6 +59,7 @@ function isAgencyWorkflowKind(input: string): input is AgencyWorkflowKind {
   return input === SOCIAL_PUBLISHING_WORKFLOW_KIND
     || input === SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
     || input === SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
+    || input === BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
 }
 
 function resolveWorkflowInstanceId(workflow: AgencyWorkflowKind, query: Record<string, unknown>): string {
@@ -80,13 +87,22 @@ function resolveWorkflowInstanceId(workflow: AgencyWorkflowKind, query: Record<s
       }))
     }
 
-    return buildSocialSpendReviewWorkflowInstanceId(normalizeSocialSpendReviewWorkflowPayload({
+    if (workflow === SOCIAL_SPEND_REVIEW_WORKFLOW_KIND) {
+      return buildSocialSpendReviewWorkflowInstanceId(normalizeSocialSpendReviewWorkflowPayload({
+        kind: workflow,
+        period: query.period,
+        scope: query.scope || 'all',
+        clientId: query.clientId,
+        platform: query.platform,
+        trigger: query.trigger || 'cron'
+      }))
+    }
+
+    return buildBriefLifecycleCheckWorkflowInstanceId(normalizeBriefLifecycleCheckWorkflowPayload({
       kind: workflow,
-      period: query.period,
-      scope: query.scope || 'all',
       clientId: query.clientId,
-      platform: query.platform,
-      trigger: query.trigger || 'cron'
+      briefId: query.briefId,
+      trigger: query.trigger || 'manual'
     }))
   } catch {
     throw createError({ statusCode: 400, statusMessage: 'instanceId or workflow identity fields are required' })

@@ -4,9 +4,12 @@ import {
   SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
   SOCIAL_PUBLISHING_WORKFLOW_KIND,
   SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
+  BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+  buildBriefLifecycleCheckWorkflowInstanceId,
   buildSocialInboxAutomationWorkflowInstanceId,
   buildSocialPublishingWorkflowInstanceId,
   buildSocialSpendReviewWorkflowInstanceId,
+  normalizeBriefLifecycleCheckWorkflowPayload,
   normalizeSocialInboxAutomationWorkflowPayload,
   normalizeSocialPublishingWorkflowPayload,
   normalizeSocialSpendReviewWorkflowPayload,
@@ -152,6 +155,39 @@ describe('agency workflow contracts', () => {
     expect(buildSocialSpendReviewWorkflowInstanceId(payload)).toBe('social-spend-review-2026-07-client-Client-456')
   })
 
+  it('normalizes a brief lifecycle check workflow payload', () => {
+    const payload = normalizeBriefLifecycleCheckWorkflowPayload({
+      briefId: ' brief-123 ',
+      clientId: ' client-456 ',
+      trigger: 'submit',
+      requestedBy: 'user-1'
+    })
+
+    expect(payload).toEqual({
+      kind: BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+      briefId: 'brief-123',
+      clientId: 'client-456',
+      trigger: 'submit',
+      requestedBy: 'user-1'
+    })
+  })
+
+  it('rejects malformed brief lifecycle check workflow payloads', () => {
+    expect(() => normalizeBriefLifecycleCheckWorkflowPayload({ trigger: 'submit' }))
+      .toThrow('briefId required')
+    expect(() => normalizeBriefLifecycleCheckWorkflowPayload({ briefId: 'brief-1', trigger: 'publish' }))
+      .toThrow('Unsupported trigger: publish')
+  })
+
+  it('builds a deterministic workflow instance id for brief lifecycle checks', () => {
+    const payload = normalizeBriefLifecycleCheckWorkflowPayload({
+      briefId: 'Brief With Spaces',
+      trigger: 'submit'
+    })
+
+    expect(buildBriefLifecycleCheckWorkflowInstanceId(payload)).toBe('brief-lifecycle-Brief-With-Spaces-submit')
+  })
+
   it('parses the stable start-workflow request envelope', () => {
     const body = parseWorkflowRequestBody({
       workflow: SOCIAL_PUBLISHING_WORKFLOW_KIND,
@@ -182,6 +218,17 @@ describe('agency workflow contracts', () => {
     expect(body.workflow).toBe(SOCIAL_SPEND_REVIEW_WORKFLOW_KIND)
     expect(body.payload.period).toBe('2026-07')
     expect(body.payload.scope).toBe('all')
+  })
+
+  it('parses the brief lifecycle check workflow request envelope', () => {
+    const body = parseWorkflowRequestBody({
+      workflow: BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+      payload: { briefId: 'brief-1', trigger: 'submit' }
+    })
+
+    expect(body.workflow).toBe(BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND)
+    expect(body.payload.briefId).toBe('brief-1')
+    expect(body.payload.trigger).toBe('submit')
   })
 
   it('keeps workflow starts disabled unless explicitly enabled', () => {

@@ -5,14 +5,18 @@ import {
   SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
   SOCIAL_PUBLISHING_WORKFLOW_KIND,
   SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
+  BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
   type AgencyWorkflowEnv,
+  type BriefLifecycleCheckWorkflowPayload,
   type SocialInboxAutomationWorkflowPayload,
   type SocialPublishingWorkflowPayload,
   type SocialSpendReviewWorkflowPayload,
   type WorkflowBindingLike,
+  buildBriefLifecycleCheckWorkflowInstanceId,
   buildSocialInboxAutomationWorkflowInstanceId,
   buildSocialPublishingWorkflowInstanceId,
   buildSocialSpendReviewWorkflowInstanceId,
+  normalizeBriefLifecycleCheckWorkflowPayload,
   normalizeSocialInboxAutomationWorkflowPayload,
   normalizeSocialPublishingWorkflowPayload,
   normalizeSocialSpendReviewWorkflowPayload,
@@ -156,6 +160,36 @@ export class SocialSpendReviewWorkflow extends WorkflowEntrypoint<AgencyWorkflow
   }
 }
 
+export class BriefLifecycleCheckWorkflow extends WorkflowEntrypoint<AgencyWorkflowEnv, BriefLifecycleCheckWorkflowPayload> {
+  async run(event: WorkflowEvent<BriefLifecycleCheckWorkflowPayload>, step: WorkflowStep) {
+    const payload = normalizeBriefLifecycleCheckWorkflowPayload(event.payload)
+
+    return await step.do(
+      'run brief lifecycle check through Pages',
+      { retries: { limit: 2, delay: '1 minute', backoff: 'exponential' }, timeout: '2 minutes' },
+      async () => {
+        const response = await fetch(`${appBaseUrl(this.env)}/api/internal/workflows/briefs/lifecycle-check`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-workflow-secret': callbackSecret(this.env)
+          },
+          body: JSON.stringify(payload)
+        })
+        const text = await response.text()
+        if (!response.ok) {
+          throw new Error(`Pages brief lifecycle callback failed: ${response.status} ${text.slice(0, 200)}`)
+        }
+        return {
+          ok: true,
+          status: response.status,
+          bodyText: text ? text.slice(0, 1000) : null
+        }
+      }
+    )
+  }
+}
+
 export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWorkflowEnv): Promise<Response> {
   const url = new URL(request.url)
 
@@ -180,7 +214,9 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
         ? await startPublishingWorkflowInstance(env, body.payload)
         : body.workflow === SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
           ? await startInboxAutomationWorkflowInstance(env, body.payload)
-          : await startSpendReviewWorkflowInstance(env, body.payload)
+          : body.workflow === SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
+            ? await startSpendReviewWorkflowInstance(env, body.payload)
+            : await startBriefLifecycleCheckWorkflowInstance(env, body.payload)
       return json({
         ok: true,
         workflow: body.workflow,
@@ -207,7 +243,9 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
       ? await env.SOCIAL_PUBLISHING_WORKFLOW.get(instanceId)
       : workflow === SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
         ? await env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.get(instanceId)
-        : await env.SOCIAL_SPEND_REVIEW_WORKFLOW.get(instanceId)
+        : workflow === SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
+          ? await env.SOCIAL_SPEND_REVIEW_WORKFLOW.get(instanceId)
+          : await env.BRIEF_LIFECYCLE_CHECK_WORKFLOW.get(instanceId)
     return json({ ok: true, workflow, instanceId: instance.id, status: await instance.status() })
   }
 
@@ -235,6 +273,11 @@ async function startInboxAutomationWorkflowInstance(env: AgencyWorkflowEnv, payl
 async function startSpendReviewWorkflowInstance(env: AgencyWorkflowEnv, payload: SocialSpendReviewWorkflowPayload) {
   const instanceId = buildSocialSpendReviewWorkflowInstanceId(payload)
   return await startWorkflowInstance(env.SOCIAL_SPEND_REVIEW_WORKFLOW, instanceId, payload)
+}
+
+async function startBriefLifecycleCheckWorkflowInstance(env: AgencyWorkflowEnv, payload: BriefLifecycleCheckWorkflowPayload) {
+  const instanceId = buildBriefLifecycleCheckWorkflowInstanceId(payload)
+  return await startWorkflowInstance(env.BRIEF_LIFECYCLE_CHECK_WORKFLOW, instanceId, payload)
 }
 
 async function startWorkflowInstance<TPayload>(
@@ -270,14 +313,20 @@ function workflowHealth(env: AgencyWorkflowEnv) {
       kind: SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
       binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW',
       bindingConfigured: isWorkflowBinding(env.SOCIAL_SPEND_REVIEW_WORKFLOW)
+    },
+    {
+      kind: BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+      binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW',
+      bindingConfigured: isWorkflowBinding(env.BRIEF_LIFECYCLE_CHECK_WORKFLOW)
     }
   ]
 }
 
-function isSupportedWorkflowKind(input: string | null): input is typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND {
+function isSupportedWorkflowKind(input: string | null): input is typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND | typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND {
   return input === SOCIAL_PUBLISHING_WORKFLOW_KIND
     || input === SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
     || input === SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
+    || input === BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
 }
 
 function isWorkflowBinding(input: unknown): boolean {
