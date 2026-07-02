@@ -1,7 +1,7 @@
 import { getAgencyWorkflowReadiness } from '~~/server/utils/agencyWorkflows/readinessRoute'
 
 /**
- * GET /api/agency/social/publishing/workflows/readiness
- * Compatibility alias for the agency-wide Workflows readiness diagnostic.
+ * GET /api/agency/workflows/readiness
+ * Admin-only operational diagnostic for the Pages-to-Worker Workflow handoff.
  */
 export default defineEventHandler(event => getAgencyWorkflowReadiness(event))
