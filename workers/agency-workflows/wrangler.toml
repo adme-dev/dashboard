@@ -1,0 +1,19 @@
+name = "agency-workflows"
+main = "src/index.ts"
+compatibility_date = "2026-07-02"
+
+[observability]
+enabled = true
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+AGENCY_WORKFLOWS_ENABLED = "false"
+
+# Secrets, not plaintext vars:
+#   wrangler secret put WORKFLOW_SERVICE_SECRET
+#   wrangler secret put WORKFLOW_CALLBACK_SECRET
+
+[[workflows]]
+name = "social-publishing-workflow"
+binding = "SOCIAL_PUBLISHING_WORKFLOW"
+class_name = "SocialPublishingWorkflow"
