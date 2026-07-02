@@ -2,7 +2,16 @@ name: ci
 
 on:
   push:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
@@ -27,7 +36,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         run: pnpm run lint
@@ -36,6 +45,10 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
         continue-on-error: true
+
+      - name: Social publishing regression tests
+        run: pnpm run test:social-publishing
+        timeout-minutes: 15
 
   deploy:
     needs: ci
@@ -59,7 +72,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build
         run: pnpm run build
@@ -72,4 +85,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=agency-dashboard --commit-dirty=true
+          command: pages deploy dist --project-name=agency-dashboard --branch=main --commit-dirty=true
+
+      - name: Smoke production origin
+        run: curl --fail --retry 5 --retry-delay 5 --silent --show-error --head https://agency-dashboard-6cm.pages.dev/

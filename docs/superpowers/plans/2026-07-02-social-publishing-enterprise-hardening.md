@@ -103,6 +103,14 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
   - [x] Support both `SOCIAL_SMOKE_*` and `SOCIAL_PUBLISHING_SMOKE_*` auth env aliases.
   - [ ] Run authenticated smoke against local or production social publishing routes.
 
+## P6 - Release Gates
+
+- [x] Add a strict social publishing regression command for the hardening suite.
+- [x] Run the social publishing regression command in CI before production deploys.
+- [x] Run CI on pull requests to `main`, not only pushes.
+- [x] Use frozen lockfile installs in CI.
+- [x] Smoke the public Cloudflare Pages origin after production deploy.
+
 ## First Implementation Slice
 
 Start with P0 for posts only:
@@ -120,6 +128,7 @@ Start with P0 for posts only:
 - [x] Expanded social publishing/inbox/AI test surface passes: `pnpm exec vitest run test/social test/server/utils/socialPublishingNavCounts.test.ts test/server/api/publishingPlannerAgentEndpoint.test.ts test/app/publishingPlannerAgentPanel.test.ts test/ai/tools/scheduleSocialPost.test.ts test/ai/executors.test.ts` reported 96 files and 611 tests passing.
 - [x] Targeted hardening lint passes for the new provider OAuth, publishing guards/readiness, token refresh, theme smoke script, and focused access/audit/metrics tests.
 - [x] Production build passes: `pnpm run build` completed Nuxt client, SSR, Nitro Cloudflare Pages output, and `scripts/wrap-worker.mjs`.
+- [x] Social publishing regression suite is now a first-class package script: `pnpm run test:social-publishing`.
 - [x] Diff integrity passes; token-shaped scans found only known dummy fixtures in `test/social/socialInboxTokenRefresh.test.ts` on tracked lines and no matches in untracked files.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; the social publishing/inbox diagnostics in publishing guards, plan generation, and the inbox typing route were fixed, and a filtered social-slice rerun produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.
