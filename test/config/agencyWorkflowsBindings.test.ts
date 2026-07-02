@@ -86,6 +86,15 @@ describe('agency workflows worker config', () => {
     expect(socialPublishingTestCommand).toContain('test/config/agencyWorkflowsBindings.test.ts')
   })
 
+  it('runs authenticated Workflows smoke after production deploy when CI auth secrets are configured', () => {
+    const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
+
+    expect(workflow).toContain('Smoke agency workflows readiness')
+    expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN')
+    expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_COOKIE')
+    expect(workflow).toContain('pnpm run smoke:agency-workflows')
+  })
+
   it('binds the Pages app to the agency workflows worker', () => {
     const config = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml
 

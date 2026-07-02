@@ -83,3 +83,14 @@ jobs:
 
       - name: Smoke production origin
         run: curl --fail --retry 5 --retry-delay 5 --silent --show-error --head https://agency-dashboard-6cm.pages.dev/
+
+      - name: Smoke agency workflows readiness
+        env:
+          AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN }}
+          AGENCY_WORKFLOWS_SMOKE_COOKIE: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_COOKIE }}
+        run: |
+          if [ -z "$AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN" ] && [ -z "$AGENCY_WORKFLOWS_SMOKE_COOKIE" ]; then
+            echo "Skipping authenticated Workflows smoke: configure AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN or AGENCY_WORKFLOWS_SMOKE_COOKIE to enable it."
+            exit 0
+          fi
+          pnpm run smoke:agency-workflows
