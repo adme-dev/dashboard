@@ -110,7 +110,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
 - [x] Run CI on pull requests to `main`, not only pushes.
 - [x] Use frozen lockfile installs in CI.
 - [x] Run the strict regression gate before soft repo-wide lint/typecheck checks.
-- [x] Timebox soft lint/typecheck so repo-wide debt cannot stall deploy indefinitely.
+- [x] Timebox soft lint/typecheck with both workflow and shell-level limits so repo-wide debt cannot stall deploy indefinitely.
 - [x] Smoke the public Cloudflare Pages origin after production deploy.
 
 ## First Implementation Slice
