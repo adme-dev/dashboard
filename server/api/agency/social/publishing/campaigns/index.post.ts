@@ -2,6 +2,7 @@ import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
 import { isPlannerEnabled } from '~~/server/utils/socialPublishing/plannerGate'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /** POST /api/agency/social/publishing/campaigns */
 export default defineEventHandler(async (event) => {
@@ -9,6 +10,7 @@ export default defineEventHandler(async (event) => {
   if (!isPlannerEnabled()) throw createError({ statusCode: 404, statusMessage: 'Planner not enabled' })
   const b = await readBody(event)
   if (!b.clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, b.clientId)
   if (!b.name?.trim()) throw createError({ statusCode: 400, statusMessage: 'name required' })
   return await queryOne(
     `INSERT INTO social_campaigns

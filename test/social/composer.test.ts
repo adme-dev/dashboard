@@ -4,7 +4,7 @@ import {
   emptyComposerState,
   missingAccountPlatforms,
   resolveComposerContent,
-  syncComposerAccountIds,
+  syncComposerAccountIds
 } from '../../app/composables/useSocialComposer'
 
 describe('resolveComposerContent', () => {
@@ -32,6 +32,7 @@ describe('composerToBody', () => {
     expect(body.platformOverrides).toEqual({})
     expect(body.mediaUrls).toBeNull()
     expect(body.tags).toBeNull()
+    expect(body).not.toHaveProperty('status')
   })
   it('drops scheduledAt in "now" mode', () => {
     const s = { ...emptyComposerState(), scheduleMode: 'now' as const, scheduledAt: '2026-06-10T00:00:00Z' }
@@ -50,7 +51,7 @@ describe('composer account binding', () => {
   const accounts = [
     { id: 'fb1', platform: 'facebook' as const, is_active: true, last_error: null },
     { id: 'ig1', platform: 'instagram' as const, is_active: true, last_error: null },
-    { id: 'old', platform: 'linkedin' as const, is_active: false, last_error: null },
+    { id: 'old', platform: 'linkedin' as const, is_active: false, last_error: null }
   ]
 
   it('auto-selects the only active account for each selected platform', () => {
@@ -63,5 +64,21 @@ describe('composer account binding', () => {
 
   it('reports platforms that still need a selected account', () => {
     expect(missingAccountPlatforms(['facebook', 'linkedin'], ['fb1'], accounts)).toEqual(['linkedin'])
+  })
+
+  it('does not bind accounts that require reconnect', () => {
+    const reconnectAccounts = [
+      { id: 'fb1', platform: 'facebook' as const, is_active: true, last_error: null },
+      { id: 'expired', platform: 'facebook' as const, is_active: true, last_error: null, requires_reconnect: true }
+    ]
+    expect(syncComposerAccountIds(['facebook'], ['expired'], reconnectAccounts)).toEqual(['fb1'])
+    expect(missingAccountPlatforms(['facebook'], ['expired'], reconnectAccounts)).toEqual(['facebook'])
+  })
+
+  it('keeps non-publishing account attention selectable', () => {
+    const attentionAccounts = [
+      { id: 'webhook', platform: 'facebook' as const, is_active: true, last_error: 'webhook subscribe failed: timeout', requires_reconnect: false, connection_health: 'attention' as const }
+    ]
+    expect(syncComposerAccountIds(['facebook'], ['webhook'], attentionAccounts)).toEqual(['webhook'])
   })
 })

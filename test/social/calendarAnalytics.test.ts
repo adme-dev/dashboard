@@ -9,11 +9,15 @@ g.createError = (i: { statusCode: number; statusMessage: string }) => Object.ass
 const mockRequireAuth = vi.fn()
 const mockQueryRows = vi.fn()
 const mockQueryOne = vi.fn()
+const mockRequireSocialClientAccess = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: (...a: unknown[]) => mockRequireAuth(...a) }))
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
   queryOne: (...a: unknown[]) => mockQueryOne(...a),
+}))
+vi.mock('~~/server/utils/social/clientAccess', () => ({
+  requireSocialClientAccess: (...a: unknown[]) => mockRequireSocialClientAccess(...a),
 }))
 
 const { default: calendarH } = await import('../../server/api/agency/social/publishing/calendar.get')
@@ -25,6 +29,7 @@ beforeEach(() => {
   mockRequireAuth.mockResolvedValue({ id: 'U1' })
   mockQueryRows.mockResolvedValue([])
   mockQueryOne.mockResolvedValue(null)
+  mockRequireSocialClientAccess.mockResolvedValue({ id: 'U1' })
 })
 
 describe('calendar.get', () => {
@@ -35,6 +40,7 @@ describe('calendar.get', () => {
     mockQueryRows.mockResolvedValueOnce([{ id: 'P1', thumbnail: 'a.jpg' }])
     const res = await calendarH({ query: { clientId: 'C1', from: '2026-06-01', to: '2026-07-01' } } as any)
     expect(res).toHaveLength(1)
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.anything(), 'C1')
     const [sql, params] = mockQueryRows.mock.calls[0]
     expect(sql).toContain('(media_urls)[1] AS thumbnail')
     expect(params).toEqual(['C1', '2026-06-01', '2026-07-01'])
@@ -44,6 +50,7 @@ describe('calendar.get', () => {
 describe('analytics/overview.get', () => {
   it('returns zeroed cards when nothing exists', async () => {
     const res = await overviewH({ query: { clientId: 'C1' } } as any)
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.anything(), 'C1')
     expect(res.counts).toEqual({ published: 0, scheduled: 0, failed: 0, drafts: 0 })
     expect(res.metrics).toEqual({ impressions: 0, engagements: 0, clicks: 0 })
   })
@@ -52,6 +59,7 @@ describe('analytics/overview.get', () => {
       .mockResolvedValueOnce({ published: 3, scheduled: 2, failed: 1, drafts: 5 })
       .mockResolvedValueOnce({ impressions: 100, engagements: 20, clicks: 8 })
     const res = await overviewH({ query: { clientId: 'C1' } } as any)
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.anything(), 'C1')
     expect(res.counts.published).toBe(3)
     expect(res.metrics.impressions).toBe(100)
   })
@@ -68,11 +76,14 @@ describe('wall.get', () => {
     const res = await wallH({ query: { clientId: 'C1', limit: '40' } } as any)
 
     expect(res).toHaveLength(1)
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.anything(), 'C1')
     const [sql, params] = mockQueryRows.mock.calls[0]
     expect(sql).toContain('FROM social_posts p')
     expect(sql).toContain('LEFT JOIN LATERAL')
     expect(sql).toContain('social_post_metrics')
     expect(sql).toContain('social_accounts')
+    expect(sql).toContain('linked_social_post_id = p.id')
+    expect(sql).toContain('conversation_count')
     expect(params).toEqual(['C1', 40])
   })
 })

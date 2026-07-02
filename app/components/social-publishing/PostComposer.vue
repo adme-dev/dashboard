@@ -2,6 +2,12 @@
 import type { DateValue } from '@internationalized/date'
 import { isoToScheduleParts, partsToIso } from '~/utils/socialSchedule'
 import { insertAtCaret } from '~/utils/insertAtCaret'
+import {
+  LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS,
+  socialPublishingPlatformIcon,
+  socialPublishingPlatformLabel,
+  socialPublishingPlatformLimit
+} from '~/utils/socialPublishingPlatforms'
 import type { SocialAccount, SocialPublishPlatform } from '~/types'
 import { syncComposerAccountIds, useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
 
@@ -13,15 +19,8 @@ const props = defineProps<{
   accountsLoading?: boolean
 }>()
 
-const PLATFORM_OPTIONS: { value: SocialPublishPlatform; label: string; icon: string; limit: number }[] = [
-  { value: 'facebook', label: 'Facebook', icon: 'i-lucide-facebook', limit: 63206 },
-  { value: 'instagram', label: 'Instagram', icon: 'i-lucide-instagram', limit: 2200 },
-  { value: 'linkedin', label: 'LinkedIn', icon: 'i-lucide-linkedin', limit: 3000 },
-  { value: 'tiktok', label: 'TikTok', icon: 'i-lucide-music', limit: 2200 },
-  { value: 'youtube', label: 'YouTube', icon: 'i-lucide-youtube', limit: 5000 },
-  { value: 'google-business', label: 'Google Business', icon: 'i-lucide-store', limit: 1500 },
-]
-const labelFor = (p: string) => PLATFORM_OPTIONS.find(o => o.value === p)?.label ?? p
+const PLATFORM_OPTIONS = LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS
+const labelFor = socialPublishingPlatformLabel
 
 const activeAccounts = computed(() => props.accounts.filter(account => account.is_active && !account.last_error))
 
@@ -65,7 +64,7 @@ watch(
 
 // tightest character limit across selected networks, for the base counter
 const tightestLimit = computed(() => {
-  const limits = state.value.platforms.map(p => PLATFORM_OPTIONS.find(o => o.value === p)?.limit ?? 99999)
+  const limits = state.value.platforms.map(platform => socialPublishingPlatformLimit(platform))
   return limits.length ? Math.min(...limits) : 0
 })
 const overBase = computed(() => tightestLimit.value > 0 && state.value.content.length > tightestLimit.value)
@@ -281,7 +280,7 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
         class="flex flex-wrap items-center gap-3 rounded-md bg-elevated/40 px-3 py-2"
       >
         <div class="flex min-w-36 items-center gap-2 text-sm font-medium">
-          <UIcon :name="PLATFORM_OPTIONS.find(item => item.value === platform)?.icon || 'i-lucide-share-2'" class="size-4 text-muted" />
+          <UIcon :name="socialPublishingPlatformIcon(platform)" class="size-4 text-muted" />
           {{ labelFor(platform) }}
         </div>
         <USelectMenu
@@ -301,7 +300,7 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
         >
           <span>No connected {{ labelFor(platform) }} account.</span>
           <UButton
-            v-if="platform === 'facebook'"
+            v-if="['facebook', 'instagram', 'google-business'].includes(platform)"
             :to="accountsRoute"
             size="xs"
             variant="subtle"

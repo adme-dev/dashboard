@@ -1,20 +1,35 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   proposeScheduleSocialPost, proposalToSocialPostBody, scheduleSocialPostTool,
-  type ScheduleSocialPostDeps,
+  type ScheduleSocialPostDeps
 } from '~~/server/utils/ai/tools/scheduleSocialPost'
 import { registry } from '~~/server/utils/ai/tools'
-import type { ToolContext } from '~~/server/utils/ai/toolContext'
+import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 
-const ctx = (role = 'producer') => ({ userId: 'u1', userRole: role, conversationId: 'c1', event: { headers: {} } as any }) as ToolContext
+type ScheduleToolData = {
+  proposalId?: string
+  resolved?: Record<string, unknown>
+  disambiguation?: { field?: string, options?: unknown[] }
+}
+
+const ctx = (role = 'producer'): ToolContext => ({
+  userId: 'u1',
+  userRole: role,
+  conversationId: 'c1',
+  event: { headers: {} } as unknown as ToolContext['event']
+})
 
 const deps = (over: Partial<ScheduleSocialPostDeps> = {}): ScheduleSocialPostDeps => ({
   findClients: vi.fn().mockResolvedValue([{ id: 'cl1', name: 'Acme' }]),
   propose: vi.fn().mockResolvedValue('prop-1'),
-  ...over,
+  ...over
 })
 
-const data = (r: any) => { expect(r.ok).toBe(true); return (r as any).data }
+const data = (result: ToolResult): ScheduleToolData => {
+  expect(result.ok).toBe(true)
+  if (!result.ok) throw new Error(result.error)
+  return result.data as ScheduleToolData
+}
 
 describe('proposeScheduleSocialPost', () => {
   it('PROPOSES a draft (no scheduledAt) for the resolved client — never posts directly', async () => {
@@ -30,6 +45,21 @@ describe('proposeScheduleSocialPost', () => {
   it('marks status "scheduled" when a scheduledAt is given', async () => {
     const r = await proposeScheduleSocialPost({ clientName: 'Acme', content: 'Launch', scheduledAt: '2026-07-01T09:00:00Z' }, ctx(), deps())
     expect(data(r).resolved).toMatchObject({ status: 'scheduled', scheduledAt: '2026-07-01T09:00:00Z' })
+  })
+
+  it('rejects planned platforms before creating a proposal', async () => {
+    const d = deps()
+    const result = await proposeScheduleSocialPost({
+      clientName: 'Acme',
+      content: 'Launch',
+      platforms: ['facebook', 'youtube']
+    }, ctx(), d)
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('YouTube publishing is not production-ready')
+    })
+    expect(d.propose).not.toHaveBeenCalled()
   })
 
   it('returns a disambiguation (no proposal) when several clients match', async () => {
@@ -69,7 +99,7 @@ describe('proposalToSocialPostBody', () => {
   it('maps a resolved proposal to the publishing endpoint body (drops empty optionals)', () => {
     const body = proposalToSocialPostBody({
       clientId: 'cl1', content: 'Hi', platforms: ['instagram'], scheduledAt: '2026-07-01T09:00:00Z',
-      status: 'scheduled', linkUrl: null, firstComment: null,
+      status: 'scheduled', linkUrl: null, firstComment: null
     })
     expect(body).toMatchObject({ clientId: 'cl1', content: 'Hi', platforms: ['instagram'], scheduledAt: '2026-07-01T09:00:00Z', status: 'scheduled' })
     expect(body.linkUrl).toBeUndefined()

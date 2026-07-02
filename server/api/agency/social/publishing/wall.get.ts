@@ -1,5 +1,5 @@
-import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * GET /api/agency/social/publishing/wall?clientId=&limit=
@@ -8,10 +8,10 @@ import { queryRows } from '~~/server/utils/db'
  * record rather than inbox conversations, so it reflects everything we manage.
  */
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const q = getQuery(event)
   const clientId = q.clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
 
   const limit = Math.min(Math.max(Number(q.limit) || 120, 1), 250)
 
@@ -21,6 +21,13 @@ export default defineEventHandler(async (event) => {
         c.name AS campaign_name,
         c.color AS campaign_color,
         COALESCE(accounts.accounts, '[]'::jsonb) AS accounts,
+        jsonb_build_object(
+          'conversation_count', COALESCE(engagement.conversation_count, 0),
+          'open_count', COALESCE(engagement.open_count, 0),
+          'unread_count', COALESCE(engagement.unread_count, 0),
+          'message_count', COALESCE(engagement.message_count, 0),
+          'latest_activity_at', engagement.latest_activity_at
+        ) AS engagement,
         jsonb_build_object(
           'impressions', COALESCE(metrics.impressions, 0),
           'engagements', COALESCE(metrics.engagements, 0),
@@ -50,6 +57,16 @@ export default defineEventHandler(async (event) => {
          WHERE p.account_ids IS NOT NULL
            AND sa.id = ANY(p.account_ids)
        ) accounts ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT
+           COUNT(*)::int AS conversation_count,
+           COUNT(*) FILTER (WHERE c.status = 'open')::int AS open_count,
+           COALESCE(SUM(c.unread_count), 0)::int AS unread_count,
+           COALESCE(SUM(c.message_count), 0)::int AS message_count,
+           MAX(c.last_message_at)::text AS latest_activity_at
+         FROM social_conversations c
+         WHERE c.linked_social_post_id = p.id
+       ) engagement ON TRUE
        LEFT JOIN LATERAL (
          SELECT
            COALESCE(SUM(m.impressions), 0)::int AS impressions,

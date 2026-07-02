@@ -5,16 +5,22 @@ import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 import { pickByExactName, type NamedRef } from './createTask'
+import { productionReadyPublishPlatformsError } from '~~/server/utils/socialPublishing/platformReadiness'
 
 const params = z.object({
   clientName: z.string(),
   content: z.string(),
-  platforms: z.array(z.string()).optional(),   // e.g. ['facebook','instagram']; the publishing endpoint stores as-is
-  scheduledAt: z.string().optional(),          // ISO datetime; present → status 'scheduled', absent → 'draft'
+  platforms: z.array(z.string()).optional(), // e.g. ['facebook','instagram']; the publishing endpoint stores as-is
+  scheduledAt: z.string().optional(), // ISO datetime; present → status 'scheduled', absent → 'draft'
   linkUrl: z.string().optional(),
-  firstComment: z.string().optional(),
+  firstComment: z.string().optional()
 })
 type Args = z.infer<typeof params>
+
+function proposalRecord(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== 'object') return {}
+  return payload as Record<string, unknown>
+}
 
 export type ScheduleSocialPostDeps = {
   /** Fuzzy client resolution against agency_clients (ILIKE, %/_ escaped). May return 0, 1, or many. */
@@ -24,15 +30,15 @@ export type ScheduleSocialPostDeps = {
 }
 
 const defaultDeps: ScheduleSocialPostDeps = {
-  findClients: async (name) =>
+  findClients: async name =>
     queryRows<NamedRef>(
       `SELECT id, name FROM agency_clients
         WHERE name ILIKE $1 AND is_active = true
         ORDER BY (lower(name) = lower($2)) DESC, name
         LIMIT 6`,
-      [`%${escapeLike(name)}%`, name],
+      [`%${escapeLike(name)}%`, name]
     ),
-  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId ?? null, 'propose_schedule_post', payload),
+  propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId ?? null, 'propose_schedule_post', payload)
 }
 
 /**
@@ -46,6 +52,8 @@ export async function proposeScheduleSocialPost(args: Args, ctx: ToolContext, de
   if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a post outside a conversation.')
   const content = args.content?.trim()
   if (!content) return fail('A post needs some content.')
+  const platformError = productionReadyPublishPlatformsError(args.platforms ?? [])
+  if (platformError) return fail(platformError)
 
   const matches = pickByExactName(await deps.findClients(args.clientName, ctx), args.clientName)
   if (matches.length === 0) return fail(`No client matching "${args.clientName}".`)
@@ -60,22 +68,23 @@ export async function proposeScheduleSocialPost(args: Args, ctx: ToolContext, de
     scheduledAt: args.scheduledAt ?? null,
     status: args.scheduledAt ? 'scheduled' : 'draft',
     linkUrl: args.linkUrl?.trim() || null,
-    firstComment: args.firstComment?.trim() || null,
+    firstComment: args.firstComment?.trim() || null
   }
   const proposalId = await deps.propose(ctx, resolved)
   return ok({ proposalId, resolved })
 }
 
 /** Map a stored propose_schedule_post proposal to the /api/agency/social/publishing/posts body. */
-export function proposalToSocialPostBody(payload: any) {
+export function proposalToSocialPostBody(payload: unknown) {
+  const proposal = proposalRecord(payload)
   return {
-    clientId: payload?.clientId,
-    content: payload?.content,
-    platforms: payload?.platforms ?? [],
-    scheduledAt: payload?.scheduledAt ?? undefined,
-    status: payload?.status ?? 'draft',
-    linkUrl: payload?.linkUrl ?? undefined,
-    firstComment: payload?.firstComment ?? undefined,
+    clientId: proposal.clientId,
+    content: proposal.content,
+    platforms: proposal.platforms ?? [],
+    scheduledAt: proposal.scheduledAt ?? undefined,
+    status: proposal.status ?? 'draft',
+    linkUrl: proposal.linkUrl ?? undefined,
+    firstComment: proposal.firstComment ?? undefined
   }
 }
 
@@ -89,5 +98,5 @@ export const scheduleSocialPostTool: AiTool<Args> = {
   parameters: params,
   mutates: true,
   requiredPermission: 'CREATIVE',
-  handler: (a, c) => proposeScheduleSocialPost(a, c),
+  handler: (a, c) => proposeScheduleSocialPost(a, c)
 }

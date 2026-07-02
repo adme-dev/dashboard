@@ -1,14 +1,14 @@
-import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * GET /api/agency/social/publishing/analytics/overview?clientId=
  * Top-line publishing analytics. Deep reporting lands in slice #3.
  */
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const clientId = getQuery(event).clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
 
   const counts = await queryOne<{ published: number; scheduled: number; failed: number; drafts: number }>(
     `SELECT

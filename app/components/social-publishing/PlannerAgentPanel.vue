@@ -180,7 +180,6 @@ async function acceptDrafts() {
           platformOverrides: draft.platform_overrides,
           hashtags: draft.hashtags,
           scheduledAt: draft.suggested_scheduled_at,
-          status: 'draft',
           metadata: {
             source: 'publishing_planner_agent',
             agentRunId: result.value?.runId ?? null,

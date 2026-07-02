@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
+import { LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS } from '~/utils/socialPublishingPlatforms'
 import type { SocialSlot, SocialPublishPlatform } from '~/types'
 
 /**
@@ -25,11 +26,7 @@ const TIMES = Array.from({ length: 48 }, (_, i) => {
   const m = i % 2 ? '30' : '00'
   return `${h}:${m}`
 })
-const PLATFORMS: { value: SocialPublishPlatform; label: string }[] = [
-  { value: 'facebook', label: 'Facebook' }, { value: 'instagram', label: 'Instagram' },
-  { value: 'linkedin', label: 'LinkedIn' }, { value: 'tiktok', label: 'TikTok' },
-  { value: 'youtube', label: 'YouTube' }, { value: 'google-business', label: 'Google Business' },
-]
+const PLATFORMS = LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS.map(({ value, label }) => ({ value, label }))
 
 const form = ref({ dayOfWeek: 1, timeOfDay: '09:00', platforms: [] as SocialPublishPlatform[] })
 

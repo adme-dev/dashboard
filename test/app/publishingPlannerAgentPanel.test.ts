@@ -239,7 +239,6 @@ describe('PlannerAgentPanel', () => {
         platformOverrides: { instagram: { content: 'Instagram draft two' } },
         hashtags: ['two'],
         scheduledAt: '2026-07-01T01:00:00.000Z',
-        status: 'draft',
         metadata: {
           source: 'publishing_planner_agent',
           agentRunId: 'run-2',

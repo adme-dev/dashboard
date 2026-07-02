@@ -285,11 +285,50 @@ describe('recordInbound', () => {
     expect(sql).toMatch(/source_post_media/)
     expect(sql).toMatch(/source_post_published_at/)
     expect(sql).toMatch(/source_post_id = COALESCE/)
-    expect(params[0]).toContain('post-1')
-    expect(params[0]).toContain('https://facebook.com/post/1')
-    expect(params[0]).toContain('GWS Monster Sale Weekend')
-    expect(params[0]).toContain('Trading hours and offers')
-    expect(params[0]).toContain('2026-06-25T04:00:00Z')
+    const insertParams = params.find(p => p.includes('https://facebook.com/post/1')) ?? []
+    expect(insertParams).toContain('post-1')
+    expect(insertParams).toContain('https://facebook.com/post/1')
+    expect(insertParams).toContain('GWS Monster Sale Weekend')
+    expect(insertParams).toContain('Trading hours and offers')
+    expect(insertParams).toContain('2026-06-25T04:00:00Z')
+  })
+
+  it('links source post ids to managed social_posts platform results', async () => {
+    const managedPostId = '7199deac-8d5c-4c2e-b7fa-0f8fded50b8d'
+    const sqls: string[] = []
+    const params: unknown[][] = []
+    const db: DbRunner = {
+      async queryOne<T = unknown>(sql: string, p?: unknown[]) {
+        sqls.push(sql)
+        if (p) params.push(p)
+        if (/FROM social_posts p/i.test(sql)) return { id: managedPostId } as T
+        return { id: 'conv-1' } as T
+      },
+      async execute() {
+        return 0
+      }
+    }
+
+    await recordInbound(db, 'client-1', 'acct-1', {
+      ...ev,
+      platform: 'facebook',
+      message: {
+        ...ev.message,
+        metadata: {
+          sourcePost: {
+            id: 'page_123_post_456',
+            platform: 'facebook',
+            title: 'Managed post',
+          }
+        }
+      }
+    })
+
+    const linkQuery = sqls.find(sql => /FROM social_posts p/i.test(sql)) ?? ''
+    expect(linkQuery).toMatch(/jsonb_each\(p\.platform_results\)/)
+    expect(linkQuery).toMatch(/platformPostId/)
+    expect(params.some(p => p.includes('client-1') && p.includes('facebook') && p.includes('page_123_post_456'))).toBe(true)
+    expect(params.some(p => p.includes(managedPostId))).toBe(true)
   })
 
   it('stamps first_response_at (once) on the outbound update', async () => {

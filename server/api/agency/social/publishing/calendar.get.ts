@@ -1,15 +1,15 @@
-import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * GET /api/agency/social/publishing/calendar?clientId=&from=&to=
  * Posts scheduled (or published) within [from, to) for the calendar hub.
  */
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const q = getQuery(event)
   const clientId = q.clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
   const from = (q.from as string) || new Date(Date.now() - 30 * 864e5).toISOString()
   const to = (q.to as string) || new Date(Date.now() + 60 * 864e5).toISOString()
 

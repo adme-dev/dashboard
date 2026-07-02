@@ -1,13 +1,13 @@
-import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
 
 /**
  * GET /api/agency/social/publishing/approvals/badge?clientId=
  * Count of posts awaiting approval (for the nav badge). clientId optional.
  */
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const clientId = getQuery(event).clientId as string | undefined
+  await requireSocialClientScope(event, clientId)
   const params: any[] = []
   let sql = `SELECT COUNT(*)::int AS count FROM social_posts
               WHERE approval_requested_at IS NOT NULL AND approved_at IS NULL

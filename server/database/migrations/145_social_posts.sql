@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS social_posts (
   first_comment TEXT,
   platforms TEXT[] NOT NULL DEFAULT '{}'::text[],
   account_ids UUID[],
-  platform_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,  -- {instagram:{content,mediaUrls},...}
+  publish_targets JSONB,
+  platform_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,  -- {instagram:{content,mediaUrls,options},...}
   tags TEXT[],
   scheduled_at TIMESTAMPTZ,
   timezone TEXT NOT NULL DEFAULT 'Australia/Sydney',
@@ -35,6 +36,6 @@ CREATE TABLE IF NOT EXISTS social_posts (
 );
 CREATE INDEX IF NOT EXISTS idx_social_posts_client ON social_posts(client_id, status);
 CREATE INDEX IF NOT EXISTS idx_social_posts_due ON social_posts(scheduled_at)
-  WHERE status IN ('approved','scheduled');
+  WHERE status = 'scheduled';
 CREATE INDEX IF NOT EXISTS idx_social_posts_queue ON social_posts(client_id, queue_position)
   WHERE queue_position IS NOT NULL AND status IN ('draft','scheduled');

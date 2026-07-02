@@ -4,6 +4,7 @@ import { exchangeMetaCode, exchangeForLongLivedToken } from '~~/server/utils/met
 import { listManagedPages, mapPagesToAccountRows, subscribePageWebhook, type ManagedPage } from '~~/server/utils/socialOAuth/meta'
 import { upsertSocialAccount, markWebhookSubscribed } from '~~/server/utils/socialOAuth/store'
 import { putPending } from '~~/server/utils/socialOAuth/pending'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 const ACCOUNTS_PATH = '/agency/social/publishing/accounts'
 
@@ -26,12 +27,17 @@ export default defineEventHandler(async (event) => {
   const redirectUri = `${base}/api/agency/social/publishing/accounts/callback/meta`
   const fail = (reason: string, clientId?: string) => sendRedirect(event, accountsPath({
     social_error: reason,
-    ...(clientId ? { client: clientId } : {}),
+    ...(clientId ? { client: clientId } : {})
   }), 302)
 
   if (q.error) return fail(String(q.error_description || q.error))
-  const state = verifyState<{ clientId: string; userId: string }>(String(q.state || ''), secret, 600_000)
+  const state = verifyState<{ clientId: string, userId: string }>(String(q.state || ''), secret, 600_000)
   if (!state) return fail('invalid_state')
+  try {
+    await requireSocialClientAccess(event, state.clientId)
+  } catch {
+    return fail('client_access_required', state.clientId)
+  }
   if (!q.code) return fail('no_code')
 
   let userToken: string
@@ -46,7 +52,11 @@ export default defineEventHandler(async (event) => {
   }
 
   let pages: ManagedPage[]
-  try { pages = await listManagedPages(userToken) } catch { return fail('page_list_failed', state.clientId) }
+  try {
+    pages = await listManagedPages(userToken)
+  } catch {
+    return fail('page_list_failed', state.clientId)
+  }
   if (!pages.length) return fail('no_pages', state.clientId)
 
   // 1 page → finalize inline.

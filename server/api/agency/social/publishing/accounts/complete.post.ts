@@ -4,9 +4,12 @@ import { queryOne, execute } from '~~/server/utils/db'
 import { verifyState } from '~~/server/utils/socialOAuth/state'
 import { mapPagesToAccountRows, subscribePageWebhook } from '~~/server/utils/socialOAuth/meta'
 import { mapGoogleBusinessLocationsToAccountRows } from '~~/server/utils/socialOAuth/googleBusiness'
+import { mapYouTubeChannelsToAccountRows } from '~~/server/utils/socialOAuth/youtube'
+import { mapLinkedInOrganizationsToAccountRows } from '~~/server/utils/socialOAuth/linkedin'
 import { upsertSocialAccount, markWebhookSubscribed } from '~~/server/utils/socialOAuth/store'
 import { getPending, delPending } from '~~/server/utils/socialOAuth/pending'
 import { getSocialOauthStateSecret } from '~~/server/utils/socialOAuth/env'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * POST /api/agency/social/publishing/accounts/complete  body { token, pageIds: string[] }
@@ -26,6 +29,7 @@ export default defineEventHandler(async (event) => {
 
   const pending = await getPending(event, sel.nonce)
   if (!pending) throw createError({ statusCode: 410, statusMessage: 'selection expired' })
+  await requireSocialClientAccess(event, pending.clientId)
   // Consume the pending entry up front so a captured token can't be replayed (the second attempt 410s).
   await delPending(event, sel.nonce)
 
@@ -41,6 +45,56 @@ export default defineEventHandler(async (event) => {
       chosen,
       google.accessToken,
       google.refreshToken,
+      pending.expiresAt
+    )
+    for (const row of rows) {
+      const res = await upsertSocialAccount({ queryOne, execute }, pending.clientId, row, String(user.id))
+      if (res.status === 'conflict') {
+        conflicts.push(`${row.account_name} -> ${res.conflictClientName || 'another client'}`)
+      } else {
+        connected.push(row.account_name)
+      }
+    }
+    return { connected, conflicts }
+  }
+
+  if (pending.platform === 'youtube') {
+    const youtube = pending.youtube
+    if (!youtube) throw createError({ statusCode: 410, statusMessage: 'selection expired' })
+    const chosen = youtube.channels.filter(channel => pageIds.includes(channel.id))
+    if (!chosen.length) throw createError({ statusCode: 400, statusMessage: 'no matching channels' })
+
+    const connected: string[] = []
+    const conflicts: string[] = []
+    const rows = mapYouTubeChannelsToAccountRows(
+      chosen,
+      youtube.accessToken,
+      youtube.refreshToken,
+      pending.expiresAt
+    )
+    for (const row of rows) {
+      const res = await upsertSocialAccount({ queryOne, execute }, pending.clientId, row, String(user.id))
+      if (res.status === 'conflict') {
+        conflicts.push(`${row.account_name} -> ${res.conflictClientName || 'another client'}`)
+      } else {
+        connected.push(row.account_name)
+      }
+    }
+    return { connected, conflicts }
+  }
+
+  if (pending.platform === 'linkedin') {
+    const linkedin = pending.linkedin
+    if (!linkedin) throw createError({ statusCode: 410, statusMessage: 'selection expired' })
+    const chosen = linkedin.organizations.filter(organization => pageIds.includes(organization.id))
+    if (!chosen.length) throw createError({ statusCode: 400, statusMessage: 'no matching organizations' })
+
+    const connected: string[] = []
+    const conflicts: string[] = []
+    const rows = mapLinkedInOrganizationsToAccountRows(
+      chosen,
+      linkedin.accessToken,
+      linkedin.refreshToken,
       pending.expiresAt
     )
     for (const row of rows) {

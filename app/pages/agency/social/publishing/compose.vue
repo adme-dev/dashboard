@@ -107,7 +107,7 @@ async function upsert(extra: Record<string, any> = {}): Promise<string | null> {
 async function saveDraft() {
   saving.value = true
   try {
-    const id = await upsert({ status: 'draft' })
+    const id = await upsert()
     if (id) toast.add({ title: 'Draft saved', color: 'success' })
   } catch (e: any) {
     toast.add({ title: 'Save failed', description: e?.data?.statusMessage, color: 'error' })
@@ -117,7 +117,7 @@ async function saveDraft() {
 async function requestApproval() {
   saving.value = true
   try {
-    const id = await upsert({ status: 'draft' })
+    const id = await upsert()
     if (id) { await api.requestApproval(id); toast.add({ title: 'Sent for approval', color: 'success' }) }
   } catch (e: any) {
     toast.add({ title: 'Could not request approval', description: e?.data?.statusMessage, color: 'error' })
@@ -128,16 +128,19 @@ async function primaryAction() {
   saving.value = true
   try {
     if (state.value.scheduleMode === 'now') {
-      const id = await upsert({ status: 'approved' })
+      const id = await upsert()
       if (!id) return
-      await api.publishNow(id)
-      toast.add({ title: 'Published', color: 'success' })
+      await api.requestApproval(id)
+      toast.add({ title: 'Sent for approval', color: 'success' })
     } else if (state.value.scheduleMode === 'schedule') {
       if (!state.value.scheduledAt) { toast.add({ title: 'Pick a date to schedule', color: 'warning' }); return }
-      const id = await upsert({ status: 'scheduled' })
-      if (id) toast.add({ title: 'Scheduled', color: 'success' })
+      const id = await upsert()
+      if (id) {
+        await api.requestApproval(id)
+        toast.add({ title: 'Scheduled draft sent for approval', color: 'success' })
+      }
     } else {
-      const id = await upsert({ status: 'draft' })
+      const id = await upsert()
       if (id) toast.add({ title: 'Added — arrange timing in the Queue', color: 'success' })
     }
   } catch (e: any) {
@@ -146,8 +149,8 @@ async function primaryAction() {
 }
 
 const primaryLabel = computed(() => ({
-  now: 'Save & publish now',
-  schedule: 'Schedule post',
+  now: 'Send for approval',
+  schedule: 'Schedule for approval',
   queue: 'Add to queue',
 }[state.value.scheduleMode]))
 </script>

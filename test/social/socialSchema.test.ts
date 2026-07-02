@@ -19,10 +19,10 @@ describe('social publishing migrations', () => {
     expect(sql).toMatch(/UNIQUE \(platform, platform_account_id\)/)
   })
 
-  it('145 social_posts declares platform_overrides + tags + queue + result columns', () => {
+  it('145 social_posts declares publish targets + overrides + tags + queue + result columns', () => {
     const sql = mig('145_social_posts.sql')
     expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS social_posts/)
-    for (const col of ['platform_overrides', 'tags', 'platform_results', 'queue_position', 'publish_attempts']) {
+    for (const col of ['publish_targets', 'platform_overrides', 'tags', 'platform_results', 'queue_position', 'publish_attempts']) {
       expect(sql).toContain(col)
     }
     // status check constraint covers the full lifecycle
@@ -56,5 +56,12 @@ describe('social publishing migrations', () => {
     }
     expect(sql).toMatch(/idx_social_conv_paid_media_identity/)
     expect(sql).toMatch(/idx_social_conv_campaign_feedback/)
+  })
+
+  it('218 backfills managed-post links from publishing platform results', () => {
+    const sql = mig('218_social_inbox_managed_post_link_backfill.sql')
+    expect(sql).toMatch(/jsonb_each\(p\.platform_results\)/)
+    expect(sql).toMatch(/linked_social_post_id = managed_matches\.post_id/)
+    expect(sql).toMatch(/platformPostId/)
   })
 })

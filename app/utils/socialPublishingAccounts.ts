@@ -3,7 +3,7 @@ import type { SocialAccount, SocialPublishPlatform } from '~/types'
 const TRANSIENT_CONNECT_QUERY_KEYS = new Set([
   'social_connected',
   'social_error',
-  'social_select',
+  'social_select'
 ])
 
 function normaliseSearch(value: string): string {
@@ -23,6 +23,10 @@ export function filterSocialPublishingAccounts(
       account.platform_account_id,
       account.platform,
       account.last_error,
+      account.connection_health,
+      account.connection_health_label,
+      account.connection_health_reason,
+      account.linked_facebook_account_name
     ]
 
     return fields.some(field => String(field ?? '').toLowerCase().includes(query))

@@ -10,7 +10,7 @@ import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
-  const body = await readBody<{ active?: boolean }>(event).catch(() => ({}))
+  const body = await readBody<{ active?: boolean }>(event).catch((): { active?: boolean } => ({}))
 
   const conv = await queryOne<{ client_id: string }>(
     `SELECT client_id FROM social_conversations WHERE id = $1`,

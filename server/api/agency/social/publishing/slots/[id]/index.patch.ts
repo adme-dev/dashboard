@@ -1,6 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * PATCH /api/agency/social/publishing/slots/:id
@@ -21,6 +22,12 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const b = await readBody(event)
+  const existing = await queryOne<{ id: string; client_id: string }>(
+    'SELECT id, client_id FROM social_slot_schedules WHERE id = $1',
+    [id]
+  )
+  if (!existing) throw createError({ statusCode: 404, statusMessage: 'Slot not found' })
+  await requireSocialClientAccess(event, existing.client_id)
 
   const sets: string[] = []
   const params: any[] = []
@@ -33,8 +40,9 @@ export default defineEventHandler(async (event) => {
 
   sets.push('updated_at = NOW()')
   params.push(id)
+  params.push(existing.client_id)
   const row = await queryOne(
-    `UPDATE social_slot_schedules SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+    `UPDATE social_slot_schedules SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND client_id = $${params.length} RETURNING *`,
     params,
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Slot not found' })

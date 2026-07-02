@@ -25,13 +25,14 @@ describe('social publishing account helpers', () => {
     account({ id: 'fb-1', platform: 'facebook', account_name: 'ADME Facebook' }),
     account({ id: 'ig-1', platform: 'instagram', account_name: 'ADME Instagram' }),
     account({ id: 'gbp-1', platform: 'google-business', platform_account_id: 'locations/123' }),
-    account({ id: 'fb-2', platform: 'facebook', account_name: 'Second Page', last_error: 'token expired' }),
+    account({ id: 'fb-2', platform: 'facebook', account_name: 'Second Page', last_error: 'token expired', connection_health_label: 'Reconnect required' }),
   ]
 
   it('filters accounts by name, platform id, platform, and error without duplicating rows', () => {
     expect(filterSocialPublishingAccounts(accounts, 'adme').map(a => a.id)).toEqual(['fb-1', 'ig-1'])
     expect(filterSocialPublishingAccounts(accounts, 'locations/123').map(a => a.id)).toEqual(['gbp-1'])
     expect(filterSocialPublishingAccounts(accounts, 'token').map(a => a.id)).toEqual(['fb-2'])
+    expect(filterSocialPublishingAccounts(accounts, 'reconnect').map(a => a.id)).toEqual(['fb-2'])
     expect(new Set(filterSocialPublishingAccounts(accounts, 'facebook').map(a => a.id)).size).toBe(2)
   })
 

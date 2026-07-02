@@ -3,10 +3,10 @@ import { buildVideoStudioSocialDraft, defaultPlatformsForVideoFormat } from '~~/
 
 describe('defaultPlatformsForVideoFormat', () => {
   it('maps render formats to platform presets', () => {
-    expect(defaultPlatformsForVideoFormat('reels_9x16')).toEqual(['instagram', 'tiktok', 'youtube'])
-    expect(defaultPlatformsForVideoFormat('square_1x1')).toEqual(['facebook', 'instagram', 'linkedin'])
-    expect(defaultPlatformsForVideoFormat('youtube_16x9')).toEqual(['youtube', 'facebook', 'linkedin'])
-    expect(defaultPlatformsForVideoFormat('9:16')).toEqual(['instagram', 'tiktok', 'youtube'])
+    expect(defaultPlatformsForVideoFormat('reels_9x16')).toEqual(['instagram', 'facebook'])
+    expect(defaultPlatformsForVideoFormat('square_1x1')).toEqual(['facebook', 'instagram'])
+    expect(defaultPlatformsForVideoFormat('youtube_16x9')).toEqual(['facebook'])
+    expect(defaultPlatformsForVideoFormat('9:16')).toEqual(['instagram', 'facebook'])
   })
 })
 
@@ -22,7 +22,7 @@ describe('buildVideoStudioSocialDraft', () => {
       assetId: 'asset-1',
       prompt: 'wheels turning through sand',
       modelId: 'aigateway/seedance-i2v',
-      captionGenerator: async (brief) => `Caption for ${brief.platform}: ${brief.topic}`,
+      captionGenerator: async brief => `Caption for ${brief.platform}: ${brief.topic}`
     })
 
     expect(draft).toMatchObject({
@@ -30,7 +30,7 @@ describe('buildVideoStudioSocialDraft', () => {
       createdBy: 'user-1',
       content: 'Caption for instagram: wheels turning through sand',
       mediaUrls: ['https://app.xeroflow.io/renders/job/reels.mp4'],
-      platforms: ['instagram', 'tiktok', 'youtube'],
+      platforms: ['instagram', 'facebook'],
       tags: ['video-studio', 'reels_9x16'],
       metadata: {
         source: 'video_studio',
@@ -39,8 +39,8 @@ describe('buildVideoStudioSocialDraft', () => {
         assetId: 'asset-1',
         format: 'reels_9x16',
         prompt: 'wheels turning through sand',
-        modelId: 'aigateway/seedance-i2v',
-      },
+        modelId: 'aigateway/seedance-i2v'
+      }
     })
   })
 })

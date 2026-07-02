@@ -2,6 +2,7 @@ import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { isPlannerAiEnabled } from '~~/server/utils/socialPublishing/plannerGate'
 import { generateSocialPublishingPlanDrafts } from '~~/server/utils/socialPublishing/planGeneration'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import type { SocialGeneratedDraft } from '~/types'
 
 /**
@@ -13,9 +14,12 @@ export default defineEventHandler(async (event): Promise<{ posts: SocialGenerate
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
   if (!isPlannerAiEnabled()) throw createError({ statusCode: 404, statusMessage: 'Planner AI not enabled' })
   const b = await readBody(event)
+  const clientId = typeof b?.clientId === 'string' ? b.clientId : null
+  if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
   const posts = await generateSocialPublishingPlanDrafts({
     userId: user?.id ?? null,
-    clientId: typeof b?.clientId === 'string' ? b.clientId : null,
+    clientId,
     campaignId: typeof b?.campaignId === 'string' ? b.campaignId : null,
     brief: b?.brief,
     count: b?.count,

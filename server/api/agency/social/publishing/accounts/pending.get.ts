@@ -4,6 +4,7 @@ import { queryRows } from '~~/server/utils/db'
 import { verifyState } from '~~/server/utils/socialOAuth/state'
 import { getPending } from '~~/server/utils/socialOAuth/pending'
 import { getSocialOauthStateSecret } from '~~/server/utils/socialOAuth/env'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * GET ...accounts/pending?token=  → the page names for the selection modal (NEVER any token).
@@ -19,6 +20,7 @@ export default defineEventHandler(async (event) => {
 
   const pending = await getPending(event, sel.nonce)
   if (!pending) throw createError({ statusCode: 410, statusMessage: 'expired' })
+  await requireSocialClientAccess(event, pending.clientId)
 
   if (pending.platform === 'google-business') {
     const locations = pending.googleBusiness?.locations ?? []
@@ -45,6 +47,52 @@ export default defineEventHandler(async (event) => {
         name: location.name,
         subtitle: location.address || location.accountName,
         platform: 'google-business',
+        status
+      }
+    })
+  }
+
+  if (pending.platform === 'youtube') {
+    const channels = pending.youtube?.channels ?? []
+    const ids = channels.map(channel => channel.id)
+    const existing = ids.length
+      ? await queryRows<{ platform_account_id: string, client_id: string }>(
+          `SELECT platform_account_id, client_id FROM social_accounts WHERE platform = 'youtube' AND platform_account_id = ANY($1)`,
+          [ids])
+      : []
+    const owner = new Map(existing.map(e => [e.platform_account_id, e.client_id]))
+
+    return channels.map((channel) => {
+      const ownerId = owner.get(channel.id)
+      const status = !ownerId ? 'new' : ownerId === pending.clientId ? 'connected' : 'conflict'
+      return {
+        id: channel.id,
+        name: channel.name,
+        subtitle: channel.handle || 'YouTube channel',
+        platform: 'youtube',
+        status
+      }
+    })
+  }
+
+  if (pending.platform === 'linkedin') {
+    const organizations = pending.linkedin?.organizations ?? []
+    const ids = organizations.map(organization => organization.id)
+    const existing = ids.length
+      ? await queryRows<{ platform_account_id: string, client_id: string }>(
+          `SELECT platform_account_id, client_id FROM social_accounts WHERE platform = 'linkedin' AND platform_account_id = ANY($1)`,
+          [ids])
+      : []
+    const owner = new Map(existing.map(e => [e.platform_account_id, e.client_id]))
+
+    return organizations.map((organization) => {
+      const ownerId = owner.get(organization.id)
+      const status = !ownerId ? 'new' : ownerId === pending.clientId ? 'connected' : 'conflict'
+      return {
+        id: organization.id,
+        name: organization.name,
+        subtitle: organization.vanityName || 'LinkedIn organization',
+        platform: 'linkedin',
         status
       }
     })

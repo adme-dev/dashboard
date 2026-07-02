@@ -10,7 +10,7 @@ export interface VideoStudioDraftInput {
   assetId?: string | null
   prompt?: string | null
   modelId?: string | null
-  captionGenerator?: (brief: { topic: string; platform: SocialPublishPlatform; tone: string }) => Promise<string>
+  captionGenerator?: (brief: { topic: string, platform: SocialPublishPlatform, tone: string }) => Promise<string>
 }
 
 export interface VideoStudioDraft {
@@ -24,9 +24,9 @@ export interface VideoStudioDraft {
 }
 
 export function defaultPlatformsForVideoFormat(format: string): SocialPublishPlatform[] {
-  if (format === 'reels_9x16' || format === '9:16') return ['instagram', 'tiktok', 'youtube']
-  if (format === 'square_1x1' || format === '1:1') return ['facebook', 'instagram', 'linkedin']
-  if (format === 'youtube_16x9' || format === '16:9') return ['youtube', 'facebook', 'linkedin']
+  if (format === 'reels_9x16' || format === '9:16') return ['instagram', 'facebook']
+  if (format === 'square_1x1' || format === '1:1') return ['facebook', 'instagram']
+  if (format === 'youtube_16x9' || format === '16:9') return ['facebook']
   return ['facebook', 'instagram']
 }
 
@@ -52,7 +52,7 @@ export async function buildVideoStudioSocialDraft(input: VideoStudioDraftInput):
       assetId: input.assetId ?? null,
       format: input.format,
       prompt: input.prompt ?? null,
-      modelId: input.modelId ?? null,
-    },
+      modelId: input.modelId ?? null
+    }
   }
 }

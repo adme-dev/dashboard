@@ -120,7 +120,12 @@ async function reschedule(post: SocialPost, day: Date) {
   const prev = post.scheduled_at
   post.scheduled_at = scheduledAt // optimistic move to the new day
   try {
-    await api.updatePost(post.id, { scheduledAt })
+    if (post.status === 'approved' || post.status === 'scheduled') {
+      await api.schedulePost(post.id, { scheduledAt })
+      post.status = 'scheduled'
+    } else {
+      await api.updatePost(post.id, { scheduledAt })
+    }
     toast.add({ title: 'Post rescheduled', description: `Moved to ${format(day, 'd MMM')}`, color: 'success' })
   } catch (e: any) {
     post.scheduled_at = prev // rollback

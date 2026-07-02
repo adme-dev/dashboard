@@ -1,6 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * POST /api/agency/social/publishing/slots
@@ -10,6 +11,7 @@ export default defineEventHandler(async (event) => {
   await requireRole(event, PERMISSIONS.CREATIVE)
   const b = await readBody(event)
   if (!b.clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, b.clientId)
   if (b.dayOfWeek == null || !b.timeOfDay) throw createError({ statusCode: 400, statusMessage: 'dayOfWeek and timeOfDay required' })
 
   const row = await queryOne(

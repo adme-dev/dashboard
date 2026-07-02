@@ -13,12 +13,13 @@ import {
   getGoogleBusinessOAuthConfig,
   getSocialOauthStateSecret
 } from '~~/server/utils/socialOAuth/env'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
-const GOOGLE_BUSINESS_SETTINGS_PATH = '/agency/social/inbox/settings'
+const GOOGLE_BUSINESS_ACCOUNTS_PATH = '/agency/social/publishing/accounts'
 
-function googleBusinessSettingsPath(query: Record<string, string>) {
+function googleBusinessAccountsPath(query: Record<string, string>) {
   const params = new URLSearchParams(query)
-  return `${GOOGLE_BUSINESS_SETTINGS_PATH}?${params.toString()}`
+  return `${GOOGLE_BUSINESS_ACCOUNTS_PATH}?${params.toString()}`
 }
 
 /**
@@ -31,7 +32,7 @@ export default defineEventHandler(async (event) => {
   const googleConfig = getGoogleBusinessOAuthConfig(event)
   const secret = getSocialOauthStateSecret(event)
   const redirectUri = buildGoogleBusinessRedirectUri(event)
-  const fail = (reason: string, clientId?: string) => sendRedirect(event, googleBusinessSettingsPath({
+  const fail = (reason: string, clientId?: string) => sendRedirect(event, googleBusinessAccountsPath({
     social_error: reason,
     ...(clientId ? { client: clientId } : {})
   }), 302)
@@ -39,6 +40,11 @@ export default defineEventHandler(async (event) => {
   if (q.error) return fail(String(q.error_description || q.error))
   const state = verifyState<{ clientId: string, userId: string, platform?: string }>(String(q.state || ''), secret, 600_000)
   if (!state || state.platform !== 'google-business') return fail('invalid_state')
+  try {
+    await requireSocialClientAccess(event, state.clientId)
+  } catch {
+    return fail('client_access_required', state.clientId)
+  }
   if (!q.code) return fail('no_code', state.clientId)
   if (!googleConfig.clientId || !googleConfig.clientSecret) return fail('google_business_not_configured', state.clientId)
 
@@ -71,7 +77,7 @@ export default defineEventHandler(async (event) => {
     const rows = mapGoogleBusinessLocationsToAccountRows(locations, accessToken, refreshToken, expiresAt)
     const res = await upsertSocialAccount({ queryOne, execute }, state.clientId, rows[0]!, state.userId)
     if (res.status === 'conflict') return fail('location_owned_by_another_client', state.clientId)
-    return sendRedirect(event, googleBusinessSettingsPath({ social_connected: '1', client: state.clientId }), 302)
+    return sendRedirect(event, googleBusinessAccountsPath({ social_connected: '1', client: state.clientId }), 302)
   }
 
   const nonce = crypto.randomUUID()
@@ -89,5 +95,5 @@ export default defineEventHandler(async (event) => {
   if (!stored) return fail('selection_unavailable', state.clientId)
 
   const sel = signState({ nonce, clientId: state.clientId, userId: state.userId }, secret)
-  return sendRedirect(event, googleBusinessSettingsPath({ social_select: sel, client: state.clientId }), 302)
+  return sendRedirect(event, googleBusinessAccountsPath({ social_select: sel, client: state.clientId }), 302)
 })

@@ -2,6 +2,7 @@ import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { signState } from '~~/server/utils/socialOAuth/state'
 import { buildMetaAuthUrl, isSocialDmEnabled } from '~~/server/utils/socialOAuth/meta'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * GET /api/agency/social/publishing/accounts/connect/meta?clientId=
@@ -11,6 +12,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
   const clientId = getQuery(event).clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
 
   const appId = process.env.META_APP_ID
   if (!appId) throw createError({ statusCode: 503, statusMessage: 'Meta app not configured' })

@@ -4,6 +4,8 @@
 import type { H3Event } from 'h3'
 import type { ManagedPage } from './meta'
 import type { GoogleBusinessLocationSelection } from './googleBusiness'
+import type { YouTubeChannelSelection } from './youtube'
+import type { LinkedInOrganizationSelection } from './linkedin'
 
 const TTL_SECONDS = 600
 const key = (nonce: string) => `social_oauth_pending:${nonce}`
@@ -11,13 +13,23 @@ const key = (nonce: string) => `social_oauth_pending:${nonce}`
 export interface PendingConnection {
   clientId: string
   userId: string
-  platform?: 'meta' | 'google-business'
+  platform?: 'meta' | 'google-business' | 'youtube' | 'linkedin'
   expiresAt: string | null
   pages?: ManagedPage[]
   googleBusiness?: {
     accessToken: string
     refreshToken: string | null
     locations: GoogleBusinessLocationSelection[]
+  }
+  youtube?: {
+    accessToken: string
+    refreshToken: string | null
+    channels: YouTubeChannelSelection[]
+  }
+  linkedin?: {
+    accessToken: string
+    refreshToken: string | null
+    organizations: LinkedInOrganizationSelection[]
   }
 }
 

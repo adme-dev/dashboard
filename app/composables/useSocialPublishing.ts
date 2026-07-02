@@ -24,6 +24,9 @@ export function useSocialPublishing() {
   const publishNow = (id: string) =>
     $fetch(`${base}/posts/${id}/publish`, { method: 'POST' })
 
+  const schedulePost = (id: string, body: { scheduledAt: string; timezone?: string }) =>
+    $fetch<SocialPost>(`${base}/posts/${id}/schedule`, { method: 'POST', body })
+
   const requestApproval = (id: string) =>
     $fetch(`${base}/posts/${id}/request-approval`, { method: 'POST' })
 
@@ -70,7 +73,7 @@ export function useSocialPublishing() {
     $fetch<{ count: number }>(`${base}/approvals/badge`, { query: clientId ? { clientId } : {} })
 
   return {
-    listPosts, getPost, createPost, updatePost, deletePost, publishNow,
+    listPosts, getPost, createPost, updatePost, deletePost, publishNow, schedulePost,
     requestApproval, approve, reject,
     listAccounts, deleteAccount,
     listSlots, createSlot, updateSlot, deleteSlot,

@@ -1,17 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+import { publishPost } from '~~/server/utils/socialPublishing'
+
+const { postSpy, executeSpy, refreshSpy } = vi.hoisted(() => ({
+  postSpy: vi.fn(async () => ({ platformPostId: 'gbp_1', url: 'https://business.google.com/x', status: 'success' })),
+  executeSpy: vi.fn(async () => 1),
+  refreshSpy: vi.fn(async () => ({ access_token: 'FRESH', refresh_token: 'FRESH_RT', expires_in: 3600, token_type: 'Bearer' }))
+}))
+
 // publishPost dispatches through the provider registry and, for GBP, refreshes tokens
 // + persists them. Mock every side-effecting dependency so we only exercise the
 // GBP target-resolution logic (resolvePublishTarget) added to socialPublishing.ts.
-const postSpy = vi.fn(async () => ({ platformPostId: 'gbp_1', url: 'https://business.google.com/x', status: 'success' }))
 vi.mock('~~/server/utils/social-providers/registry', () => ({
   getProviderOrThrow: () => ({ identifier: 'google-business', name: 'GBP', post: postSpy })
 }))
 
-const executeSpy = vi.fn(async () => 1)
 vi.mock('~~/server/utils/db', () => ({ execute: (...a: unknown[]) => executeSpy(...a) }))
 
-const refreshSpy = vi.fn(async () => ({ access_token: 'FRESH', refresh_token: 'FRESH_RT', expires_in: 3600, token_type: 'Bearer' }))
 vi.mock('~~/server/utils/socialOAuth/googleBusiness', () => ({
   refreshGoogleBusinessToken: (...a: unknown[]) => refreshSpy(...a)
 }))
@@ -20,10 +25,9 @@ vi.mock('~~/server/utils/socialOAuth/env', () => ({
   getGoogleBusinessOAuthConfig: () => ({ clientId: 'cid', clientSecret: 'sec', redirectUri: '/cb' })
 }))
 
-import { publishPost } from '~~/server/utils/socialPublishing'
-
-const FUTURE = new Date(Date.now() + 3600_000).toISOString()
+const FUTURE = new Date(Date.now() + 30 * 24 * 3600_000).toISOString()
 const PAST = new Date(Date.now() - 1000).toISOString()
+const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
 function gbpPost(account: Record<string, unknown>) {
   return {
@@ -41,6 +45,7 @@ beforeEach(() => {
   postSpy.mockClear()
   executeSpy.mockClear()
   refreshSpy.mockClear()
+  warnSpy.mockClear()
 })
 
 describe('publishPost — Google Business Profile target resolution', () => {
@@ -85,8 +90,10 @@ describe('publishPost — Google Business Profile target resolution', () => {
     expect(executeSpy).toHaveBeenCalledTimes(1)
     const [sql, params] = executeSpy.mock.calls[0] as [string, unknown[]]
     expect(sql).toMatch(/UPDATE social_accounts/)
-    expect(params[0]).toBe('FRESH') // access_token
-    expect(params[3]).toBe('a1') // WHERE id = account row id
+    expect(sql).toMatch(/last_error = NULL/)
+    expect(params[0]).toBe('a1') // WHERE id = account row id
+    expect(params[1]).toBe('FRESH') // access_token
+    expect(params[2]).toBe('FRESH_RT') // refresh_token
   })
 
   it('fails the platform (no provider call) when account/location cannot be resolved', async () => {
@@ -99,5 +106,11 @@ describe('publishPost — Google Business Profile target resolution', () => {
     expect(res.platformResults['google-business']!.status).toBe('failed')
     expect(res.platformResults['google-business']!.error).toMatch(/account\/location/)
     expect(postSpy).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith('social-publish.target_failed', expect.objectContaining({
+      postId: 'P',
+      platform: 'google-business',
+      accountId: 'a1',
+      error: 'Google Business Profile account is missing account/location metadata'
+    }))
   })
 })

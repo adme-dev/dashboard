@@ -50,6 +50,27 @@ function sourcePostFromEvent(ev: NormalizedEvent) {
   }
 }
 
+async function resolveLinkedSocialPostId(
+  db: DbRunner,
+  clientId: string,
+  platform: string,
+  sourcePostId: string | null
+): Promise<string | null> {
+  if (!sourcePostId) return null
+  const row = await db.queryOne<{ id: string }>(
+    `SELECT p.id
+       FROM social_posts p
+       JOIN LATERAL jsonb_each(p.platform_results) AS result(key, value) ON TRUE
+      WHERE p.client_id = $1
+        AND COALESCE(result.value->>'platform', split_part(result.key, ':', 1)) = $2
+        AND result.value->>'platformPostId' = $3
+      ORDER BY p.published_at DESC NULLS LAST, p.updated_at DESC NULLS LAST
+      LIMIT 1`,
+    [clientId, platform, sourcePostId]
+  )
+  return row?.id ?? null
+}
+
 /** Ensure the conversation exists (identity/profile fields only — NO counter/last_message bump). */
 async function ensureConversation(db: DbRunner, clientId: string, accountId: string, ev: NormalizedEvent): Promise<string> {
   const isOutbound = ev.message.direction === 'out'
@@ -63,6 +84,7 @@ async function ensureConversation(db: DbRunner, clientId: string, accountId: str
   const paidMediaCampaignId = textOrNull(campaignIdentity.paidMediaCampaignId)
   const paidMediaCampaignName = textOrNull(campaignIdentity.paidMediaCampaignName)
   const sourcePost = sourcePostFromEvent(ev)
+  const linkedSocialPostId = await resolveLinkedSocialPostId(db, clientId, ev.platform, sourcePost?.id ?? null)
 
   const row = await db.queryOne<{ id: string }>(
     `INSERT INTO social_conversations
@@ -72,10 +94,11 @@ async function ensureConversation(db: DbRunner, clientId: string, accountId: str
         paid_media_account_id, paid_media_campaign_id, paid_media_campaign_name,
         source_post_id, source_post_url, source_post_title, source_post_content,
         source_post_media, source_post_author_name, source_post_author_avatar_url,
-        source_post_published_at,
+        source_post_published_at, linked_social_post_id,
         paid_media_linked_at, updated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
        $17,$18,$19,$20,$21::jsonb,$22,$23,$24::timestamptz,
+       $25::uuid,
        CASE WHEN $12::text IS NOT NULL OR $13::uuid IS NOT NULL OR $14::text IS NOT NULL OR $15::text IS NOT NULL THEN NOW() ELSE NULL END,
        NOW())
      ON CONFLICT (social_account_id, channel_type, platform_conversation_id) DO UPDATE SET
@@ -101,6 +124,7 @@ async function ensureConversation(db: DbRunner, clientId: string, accountId: str
        source_post_author_name = COALESCE(EXCLUDED.source_post_author_name, social_conversations.source_post_author_name),
        source_post_author_avatar_url = COALESCE(EXCLUDED.source_post_author_avatar_url, social_conversations.source_post_author_avatar_url),
        source_post_published_at = COALESCE(EXCLUDED.source_post_published_at, social_conversations.source_post_published_at),
+       linked_social_post_id = COALESCE(EXCLUDED.linked_social_post_id, social_conversations.linked_social_post_id),
        paid_media_linked_at = CASE
          WHEN EXCLUDED.paid_media_linked_at IS NOT NULL THEN NOW()
          ELSE social_conversations.paid_media_linked_at
@@ -114,7 +138,7 @@ async function ensureConversation(db: DbRunner, clientId: string, accountId: str
       sourcePost?.id ?? null, sourcePost?.url ?? null, sourcePost?.title ?? null,
       sourcePost?.content ?? null, JSON.stringify(sourcePost?.media ?? []),
       sourcePost?.authorName ?? null, sourcePost?.authorAvatarUrl ?? null,
-      sourcePost?.publishedAt ?? null]
+      sourcePost?.publishedAt ?? null, linkedSocialPostId]
   )
   if (!row) throw new Error('ensureConversation: no id returned')
   return row.id

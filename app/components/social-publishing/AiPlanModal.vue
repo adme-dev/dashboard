@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
 import { useSocialPlanner } from '~/composables/useSocialPlanner'
+import { LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS } from '~/utils/socialPublishingPlatforms'
 import type { SocialCampaignWithCounts, SocialGeneratedDraft, SocialPublishPlatform } from '~/types'
 
 /**
@@ -15,11 +16,7 @@ const emit = defineEmits<{ created: [number] }>()
 const planner = useSocialPlanner()
 const toast = useToast()
 
-const PLATFORMS: { value: SocialPublishPlatform; label: string }[] = [
-  { value: 'facebook', label: 'Facebook' }, { value: 'instagram', label: 'Instagram' },
-  { value: 'linkedin', label: 'LinkedIn' }, { value: 'tiktok', label: 'TikTok' },
-  { value: 'youtube', label: 'YouTube' }, { value: 'google-business', label: 'Google Business' },
-]
+const PLATFORMS = LIVE_SOCIAL_PUBLISHING_PLATFORM_OPTIONS.map(({ value, label }) => ({ value, label }))
 const TONES = [
   { value: 'professional', label: 'Professional' }, { value: 'friendly', label: 'Friendly' },
   { value: 'bold', label: 'Bold' }, { value: 'playful', label: 'Playful' },
@@ -124,7 +121,6 @@ async function acceptAll() {
         platformOverrides: d.platform_overrides,
         hashtags: d.hashtags,
         scheduledAt: d.suggested_scheduled_at,
-        status: 'draft', // HARD: drafts only — never schedule/publish here
       })
       n++
     }

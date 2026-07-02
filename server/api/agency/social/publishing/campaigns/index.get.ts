@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { isPlannerEnabled } from '~~/server/utils/socialPublishing/plannerGate'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /** GET /api/agency/social/publishing/campaigns?clientId= → SocialCampaignWithCounts[] */
 export default defineEventHandler(async (event) => {
@@ -8,6 +9,7 @@ export default defineEventHandler(async (event) => {
   if (!isPlannerEnabled()) return []
   const clientId = getQuery(event).clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
   return await queryRows(
     `SELECT c.*,
             COUNT(p.id)::int AS post_count,

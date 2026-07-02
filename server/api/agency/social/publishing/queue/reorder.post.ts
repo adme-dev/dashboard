@@ -1,6 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { transaction } from '~~/server/utils/db'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * POST /api/agency/social/publishing/queue/reorder
@@ -10,6 +11,7 @@ export default defineEventHandler(async (event) => {
   await requireRole(event, PERMISSIONS.CREATIVE)
   const b = await readBody(event)
   if (!b.clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, b.clientId)
   const orderedIds: string[] = Array.isArray(b.orderedIds) ? b.orderedIds : []
   if (!orderedIds.length) throw createError({ statusCode: 400, statusMessage: 'orderedIds required' })
 

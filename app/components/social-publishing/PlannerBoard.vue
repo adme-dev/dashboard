@@ -94,9 +94,16 @@ async function onDrop(lane: SocialPlannerLane) {
     if (lane === 'needs_approval') {
       await $fetch(`/api/agency/social/publishing/posts/${post.id}/request-approval`, { method: 'POST' })
     } else if (lane === 'draft') {
-      await planner.updatePost(post.id, { status: 'draft', approvalRequestedAt: null, approvedAt: null })
+      posts.value = prev
+      toast.add({
+        title: 'Approval state is controlled',
+        description: 'Use the approval workflow to reject or revise the post.',
+        color: 'neutral',
+      })
+      return
     } else if (lane === 'scheduled') {
-      await planner.updatePost(post.id, { status: 'scheduled' })
+      await $fetch(`/api/agency/social/publishing/posts/${post.id}/request-approval`, { method: 'POST' })
+      toast.add({ title: 'Sent for approval', color: 'success' })
     }
     await load()
   } catch (e: any) {

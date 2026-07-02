@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * GET /api/agency/social/publishing/posts?clientId=&status=&limit=
@@ -10,6 +11,7 @@ export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const clientId = q.clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
   const limit = Math.min(Number(q.limit) || 100, 500)
 
   const params: any[] = [clientId]

@@ -36,24 +36,24 @@ export function emptyComposerState(): ComposerState {
     scheduleMode: 'schedule',
     scheduledAt: null,
     timezone: 'Australia/Sydney',
-    creativeId: null,
+    creativeId: null
   }
 }
 
 /** Pure: resolve the effective content for one platform (base + override). Mirrors the server. */
 export function resolveComposerContent(
   state: Pick<ComposerState, 'content' | 'mediaUrls' | 'customizePerNetwork' | 'platformOverrides'>,
-  platform: string,
-): { content: string; mediaUrls: string[] } {
+  platform: string
+): { content: string, mediaUrls: string[] } {
   const ov = state.customizePerNetwork ? state.platformOverrides[platform] : undefined
   return {
     content: ov?.content ?? state.content,
-    mediaUrls: ov?.mediaUrls ?? state.mediaUrls,
+    mediaUrls: ov?.mediaUrls ?? state.mediaUrls
   }
 }
 
 /** Pure: serialize composer state to the posts API body. */
-export function composerToBody(state: ComposerState, clientId: string): Record<string, any> {
+export function composerToBody(state: ComposerState, clientId: string): Record<string, unknown> {
   return {
     clientId,
     content: state.content,
@@ -67,23 +67,29 @@ export function composerToBody(state: ComposerState, clientId: string): Record<s
     tags: state.tags.length ? state.tags : null,
     scheduledAt: state.scheduleMode === 'now' ? null : state.scheduledAt,
     timezone: state.timezone,
-    status: 'draft',
-    metadata: state.creativeId ? { creativeId: state.creativeId } : {},
+    metadata: state.creativeId ? { creativeId: state.creativeId } : {}
   }
 }
 
-type ComposerAccount = Pick<SocialAccount, 'id' | 'platform' | 'is_active' | 'last_error'>
+type ComposerAccount = Pick<SocialAccount, 'id' | 'platform' | 'is_active' | 'last_error' | 'requires_reconnect' | 'connection_health'>
+
+function isSelectablePublishingAccount(account: ComposerAccount): boolean {
+  if (!account.is_active) return false
+  if (account.requires_reconnect || account.connection_health === 'reconnect' || account.connection_health === 'disconnected') return false
+  if (!account.connection_health && account.last_error) return false
+  return true
+}
 
 function activeAccountById(accounts: ComposerAccount[]) {
   return new Map(accounts
-    .filter(account => account.is_active && !account.last_error)
+    .filter(isSelectablePublishingAccount)
     .map(account => [account.id, account]))
 }
 
 export function syncComposerAccountIds(
   platforms: SocialPublishPlatform[],
   accountIds: string[],
-  accounts: ComposerAccount[],
+  accounts: ComposerAccount[]
 ): string[] {
   const selectedPlatforms = new Set(platforms)
   const byId = activeAccountById(accounts)
@@ -97,7 +103,7 @@ export function syncComposerAccountIds(
     if (hasSelectedAccount) continue
 
     const platformAccounts = accounts.filter(account =>
-      account.platform === platform && account.is_active && !account.last_error)
+      account.platform === platform && isSelectablePublishingAccount(account))
     if (platformAccounts.length === 1) next.push(platformAccounts[0]!.id)
   }
 
@@ -107,7 +113,7 @@ export function syncComposerAccountIds(
 export function missingAccountPlatforms(
   platforms: SocialPublishPlatform[],
   accountIds: string[],
-  accounts: ComposerAccount[],
+  accounts: ComposerAccount[]
 ): SocialPublishPlatform[] {
   const byId = activeAccountById(accounts)
   return platforms.filter(platform =>
@@ -122,6 +128,7 @@ export function useSocialComposer() {
   }
 
   function loadFromPost(post: SocialPost) {
+    const creativeId = post.metadata?.creativeId
     state.value = {
       id: post.id,
       content: post.content ?? '',
@@ -137,14 +144,14 @@ export function useSocialComposer() {
       scheduleMode: post.scheduled_at ? 'schedule' : 'now',
       scheduledAt: post.scheduled_at,
       timezone: post.timezone ?? 'Australia/Sydney',
-      creativeId: (post.metadata as any)?.creativeId ?? null,
+      creativeId: typeof creativeId === 'string' ? creativeId : null
     }
   }
 
   function setOverride(platform: string, patch: SocialPlatformOverride) {
     state.value.platformOverrides = {
       ...state.value.platformOverrides,
-      [platform]: { ...state.value.platformOverrides[platform], ...patch },
+      [platform]: { ...state.value.platformOverrides[platform], ...patch }
     }
   }
 

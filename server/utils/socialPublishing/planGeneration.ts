@@ -1,12 +1,17 @@
+import { createError } from 'h3'
+import { GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
+import {
+  SUPPORTED_SOCIAL_PUBLISH_PLATFORMS,
+  assertProductionReadyPublishPlatforms
+} from '~~/server/utils/socialPublishing/platformReadiness'
+import type { SocialGeneratedDraft, SocialPublishPlatform } from '~/types'
+
 export interface RawDraft {
   content: string
   variants: Record<string, string>
   hashtags: string[]
 }
-
-import { GROQ_MODELS } from '~~/server/utils/groqClient'
-import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
-import type { SocialGeneratedDraft, SocialPublishPlatform } from '~/types'
 
 export interface GenerateSocialPublishingPlanDraftsInput {
   userId?: string | null
@@ -21,19 +26,36 @@ export interface GenerateSocialPublishingPlanDraftsInput {
   route?: string
 }
 
+const SUPPORTED_PLAN_PLATFORM_SET = new Set(SUPPORTED_SOCIAL_PUBLISH_PLATFORMS)
+
 /** Parse the model's JSON response into clean draft rows. Tolerant of ```json fences; [] on garbage. */
 export function parsePlanDrafts(raw: string): RawDraft[] {
   const cleaned = String(raw ?? '').replace(/```json/gi, '').replace(/```/g, '').trim()
-  let parsed: any
-  try { parsed = JSON.parse(cleaned) } catch { return [] }
-  const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.posts) ? parsed.posts : []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(cleaned)
+  } catch {
+    return []
+  }
+  const parsedRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed as { posts?: unknown }
+    : null
+  const list = Array.isArray(parsed) ? parsed : Array.isArray(parsedRecord?.posts) ? parsedRecord.posts : []
   const out: RawDraft[] = []
   for (const p of list) {
-    if (!p || typeof p.content !== 'string' || !p.content.trim()) continue
+    if (!p || typeof p !== 'object' || Array.isArray(p)) continue
+    const draft = p as { content?: unknown, variants?: unknown, hashtags?: unknown }
+    if (typeof draft.content !== 'string' || !draft.content.trim()) continue
+    const variants = draft.variants && typeof draft.variants === 'object' && !Array.isArray(draft.variants)
+      ? Object.fromEntries(
+          Object.entries(draft.variants as Record<string, unknown>)
+            .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+        )
+      : {}
     out.push({
-      content: p.content.trim(),
-      variants: (p.variants && typeof p.variants === 'object') ? p.variants : {},
-      hashtags: Array.isArray(p.hashtags) ? p.hashtags.filter((h: any) => typeof h === 'string') : [],
+      content: draft.content.trim(),
+      variants,
+      hashtags: Array.isArray(draft.hashtags) ? draft.hashtags.filter((h): h is string => typeof h === 'string') : []
     })
   }
   return out
@@ -46,7 +68,7 @@ export function spreadSchedule(count: number, fromISO: string, toISO: string): s
   const to = new Date(toISO).getTime()
   const span = to - from
   return Array.from({ length: count }, (_, i) =>
-    new Date(from + Math.round((span * (i + 1)) / (count + 1))).toISOString(),
+    new Date(from + Math.round((span * (i + 1)) / (count + 1))).toISOString()
   )
 }
 
@@ -56,7 +78,7 @@ export async function generateSocialPublishingPlanDrafts(input: GenerateSocialPu
 
   const count = Math.min(Math.max(Number(input.count ?? 5), 1), 14)
   const tone = String(input.tone || 'friendly')
-  const platforms = Array.isArray(input.platforms) && input.platforms.length ? input.platforms : ['facebook'] as SocialPublishPlatform[]
+  const platforms = normalizePlanPlatforms(input.platforms)
 
   const prompt = [
     `Create a ${count}-post social media content plan for a digital marketing agency client.`,
@@ -64,7 +86,7 @@ export async function generateSocialPublishingPlanDrafts(input: GenerateSocialPu
     `Tone: ${tone}. Target platforms: ${platforms.join(', ')}.`,
     'For EACH post provide a default "content" plus per-platform "variants" tailored to each platform (Instagram = visual/emoji/hashtags, LinkedIn = professional, etc.), and 2-5 "hashtags".',
     'Return ONLY valid JSON of the exact shape:',
-    '{"posts":[{"content":"...","variants":{"instagram":"...","linkedin":"..."},"hashtags":["..."]}]}',
+    '{"posts":[{"content":"...","variants":{"instagram":"...","linkedin":"..."},"hashtags":["..."]}]}'
   ].join('\n')
 
   let raw = ''
@@ -81,8 +103,8 @@ export async function generateSocialPublishingPlanDrafts(input: GenerateSocialPu
         route: input.route ?? '/api/agency/social/publishing/ai/generate-plan',
         platformCount: platforms.length,
         postCount: count,
-        hasCampaignId: Boolean(input.campaignId),
-      },
+        hasCampaignId: Boolean(input.campaignId)
+      }
     })
   } catch {
     throw createError({ statusCode: 502, statusMessage: 'AI generation failed — please retry' })
@@ -101,7 +123,23 @@ export async function generateSocialPublishingPlanDrafts(input: GenerateSocialPu
       platforms,
       platform_overrides: overrides,
       hashtags: draft.hashtags,
-      suggested_scheduled_at: times[index] ?? null,
+      suggested_scheduled_at: times[index] ?? null
     }
   })
+}
+
+function normalizePlanPlatforms(value: unknown): SocialPublishPlatform[] {
+  const normalizedPlatforms = Array.isArray(value) && value.length
+    ? Array.from(new Set(value.filter((platform): platform is string => typeof platform === 'string' && platform.trim().length > 0).map(platform => platform.trim())))
+    : []
+  const platforms = normalizedPlatforms.length ? normalizedPlatforms : ['facebook']
+
+  for (const platform of platforms) {
+    if (!SUPPORTED_PLAN_PLATFORM_SET.has(platform)) {
+      throw createError({ statusCode: 400, statusMessage: `Unsupported platform: ${platform}` })
+    }
+  }
+
+  assertProductionReadyPublishPlatforms(platforms)
+  return platforms as SocialPublishPlatform[]
 }

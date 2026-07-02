@@ -2,6 +2,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { isPlannerEnabled } from '~~/server/utils/socialPublishing/plannerGate'
 import { deriveLane, needsAttention } from '~~/server/utils/socialPublishing/lanes'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import type { SocialBoardPost } from '~/types'
 
 /** GET /api/agency/social/publishing/board?clientId=&campaignId= → SocialBoardPost[] */
@@ -11,6 +12,7 @@ export default defineEventHandler(async (event): Promise<SocialBoardPost[]> => {
   const q = getQuery(event)
   const clientId = q.clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
 
   const params: any[] = [clientId]
   let where = 'p.client_id = $1'

@@ -1215,13 +1215,30 @@ export type SocialPostStatus =
 export interface SocialPlatformOverride {
   content?: string
   mediaUrls?: string[]
+  options?: Record<string, unknown>
+}
+
+export interface SocialPublishTarget {
+  platform: SocialPublishPlatform
+  accountId: string
+  options?: Record<string, unknown>
 }
 
 export interface SocialPlatformResult {
   status: string
+  platform?: SocialPublishPlatform
+  accountId?: string
+  platformAccountId?: string
+  accountName?: string | null
   platformPostId?: string
   url?: string
   error?: string | null
+  firstComment?: {
+    status: string
+    platformPostId?: string
+    url?: string
+    error?: string | null
+  }
 }
 
 export interface SocialPost {
@@ -1235,6 +1252,7 @@ export interface SocialPost {
   first_comment: string | null
   platforms: SocialPublishPlatform[]
   account_ids: string[] | null
+  publish_targets: SocialPublishTarget[] | null
   platform_overrides: Record<string, SocialPlatformOverride>
   tags: string[] | null
   scheduled_at: string | null
@@ -1269,6 +1287,14 @@ export interface SocialAccount {
   token_expires_at: string | null
   last_synced_at: string | null
   metadata?: Record<string, any>
+  has_refresh_token?: boolean
+  linked_facebook_account_id?: string | null
+  linked_facebook_account_name?: string | null
+  connection_health?: 'healthy' | 'attention' | 'reconnect' | 'disconnected'
+  connection_health_label?: string
+  connection_health_reason?: string | null
+  requires_reconnect?: boolean
+  days_until_expiry?: number | null
   created_at: string
 }
 
@@ -1444,10 +1470,19 @@ export interface SocialWallMetric {
   reactions: number
 }
 
+export interface SocialWallEngagement {
+  conversation_count: number
+  open_count: number
+  unread_count: number
+  message_count: number
+  latest_activity_at: string | null
+}
+
 export interface SocialWallPost extends SocialPost {
   campaign_name: string | null
   campaign_color: string | null
   accounts: SocialWallAccount[]
+  engagement: SocialWallEngagement
   metrics: SocialWallMetric
   metrics_by_platform: Record<string, SocialWallMetric>
 }

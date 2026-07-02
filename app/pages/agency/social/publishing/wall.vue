@@ -312,6 +312,36 @@ function resolvePreview(post: SocialWallPost) {
             </div>
           </div>
 
+          <div
+            v-if="post.engagement?.conversation_count"
+            class="grid grid-cols-3 gap-2 rounded-md border border-default p-2 text-center text-xs"
+          >
+            <div>
+              <div class="font-semibold">
+                {{ formatNumber(post.engagement.conversation_count) }}
+              </div>
+              <div class="text-muted">
+                Inbox
+              </div>
+            </div>
+            <div>
+              <div class="font-semibold">
+                {{ formatNumber(post.engagement.open_count) }}
+              </div>
+              <div class="text-muted">
+                Open
+              </div>
+            </div>
+            <div>
+              <div class="font-semibold">
+                {{ formatNumber(post.engagement.unread_count) }}
+              </div>
+              <div class="text-muted">
+                Unread
+              </div>
+            </div>
+          </div>
+
           <div v-if="platformResultLinks(post).length" class="flex flex-wrap justify-end gap-2">
             <UButton
               v-for="link in platformResultLinks(post)"

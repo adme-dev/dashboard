@@ -51,3 +51,15 @@ export async function requireSocialClientAccess(event: H3Event, clientId: string
 
   return user
 }
+
+export async function requireAllSocialClientAccess(event: H3Event) {
+  const user = await requireAuth(event)
+  if (!hasAllSocialClientAccess(user)) {
+    throw createError({ statusCode: 403, statusMessage: 'No access to all social clients' })
+  }
+  return user
+}
+
+export async function requireSocialClientScope(event: H3Event, clientId: string | undefined) {
+  return clientId ? requireSocialClientAccess(event, clientId) : requireAllSocialClientAccess(event)
+}

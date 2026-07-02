@@ -8,6 +8,7 @@ import {
   getSocialOauthStateSecret,
   isGoogleBusinessConnectionEnabled
 } from '~~/server/utils/socialOAuth/env'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
 /**
  * GET /api/agency/social/publishing/accounts/connect/google-business?clientId=
@@ -21,6 +22,7 @@ export default defineEventHandler(async (event) => {
 
   const clientId = getQuery(event).clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialClientAccess(event, clientId)
 
   const googleConfig = getGoogleBusinessOAuthConfig(event)
   if (!googleConfig.clientId || !googleConfig.clientSecret) {

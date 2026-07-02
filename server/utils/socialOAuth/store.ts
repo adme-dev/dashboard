@@ -4,7 +4,7 @@
 // duplicated just because it was authorized through a different Google account container.
 
 export interface AccountRow {
-  platform: 'facebook' | 'instagram' | 'google-business'
+  platform: 'facebook' | 'instagram' | 'google-business' | 'youtube' | 'linkedin' | 'tiktok'
   platform_account_id: string
   account_name: string
   access_token: string
