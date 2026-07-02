@@ -3,10 +3,17 @@ import { parse } from 'smol-toml'
 import { describe, expect, it } from 'vitest'
 
 interface WorkflowToml {
+  workers_dev?: boolean
   workflows?: Array<Record<string, unknown>>
 }
 
 describe('agency workflows worker config', () => {
+  it('does not expose the control worker on workers.dev by default', () => {
+    const config = parse(readFileSync('workers/agency-workflows/wrangler.toml', 'utf8')) as WorkflowToml
+
+    expect(config.workers_dev).toBe(false)
+  })
+
   it('declares the social publishing workflow binding', () => {
     const config = parse(readFileSync('workers/agency-workflows/wrangler.toml', 'utf8')) as WorkflowToml
 

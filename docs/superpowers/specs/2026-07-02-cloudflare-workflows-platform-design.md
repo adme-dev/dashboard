@@ -24,6 +24,8 @@ Create a standalone `workers/agency-workflows` Worker. It owns Workflow definiti
 
 The Pages app remains the authentication, authorization, and database authority. Workflow steps call back into explicit Pages internal endpoints with a shared secret. That avoids duplicating Nitro server utilities inside the Worker and keeps provider writes scoped to existing server-side guards.
 
+The Worker should not be exposed on `workers.dev` by default. Pages should invoke it through a service binding once the trigger endpoint is ready; any public route should be added explicitly with the same shared-secret control surface.
+
 ## First Workflow
 
 `SocialPublishingWorkflow` accepts:
