@@ -8,6 +8,8 @@
   "scripts": {
     "build": "NODE_OPTIONS='--max-old-space-size=16384' nuxt build && node scripts/wrap-worker.mjs",
     "dev": "NODE_OPTIONS='--max-old-space-size=16384' nuxt dev",
+    "graphify:rebuild": "sh scripts/regenerate-graphify.sh",
+    "graphify:upload": "node --env-file=.env scripts/upload-graphify.mjs graphify-out",
     "dev:wrangler": "npx wrangler pages dev -- npm run dev",
     "dev:all": "concurrently \"pnpm dev\" \"pnpm zero:dev\"",
     "preview": "nuxt preview",

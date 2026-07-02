@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * One-shot bootstrap: uploads a local graphify-out/ folder to R2 so the
- * dashboard can read it before the GitHub Action takes over.
+ * One-shot bootstrap: uploads local graphify-out artifacts to R2 so the
+ * dashboard can read them before the GitHub Action takes over.
  *
  * Usage (Node 20.6+ for --env-file):
- *   node --env-file=.env scripts/upload-graphify.mjs <local-path> <r2-prefix>
+ *   node --env-file=.env scripts/upload-graphify.mjs <local-path> <r2-prefix> [--full]
  *
  * Example:
  *   node --env-file=.env scripts/upload-graphify.mjs \
@@ -12,12 +12,16 @@
  *     graphify/promotion-knoxgwmhaval
  *
  * The r2-prefix becomes the project_repos.graphify_path value.
- * Skips the cache/ subfolder (massive, dashboard never reads it).
+ * Default uploads only the primary architecture contract files that the
+ * dashboard reads. Pass --full to include wiki/ and obsidian/ for human review.
+ * The cache/ subfolder is always skipped.
  */
 
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { promises as fs } from 'node:fs'
 import { join, relative, basename } from 'node:path'
+
+const PRIMARY_FILES = new Set(['.graphify_python', 'graph.json', 'GRAPH_REPORT.md', 'index.md', 'log.md'])
 
 function contentTypeFor(filename) {
   if (filename.endsWith('.json')) return 'application/json'
@@ -39,11 +43,13 @@ async function* walk(dir) {
 }
 
 async function main() {
-  const [, , localPath, r2Prefix] = process.argv
+  const [, , localPath, r2Prefix, ...options] = process.argv
   if (!localPath || !r2Prefix) {
-    console.error('Usage: node --env-file=.env scripts/upload-graphify.mjs <local-path> <r2-prefix>')
+    console.error('Usage: node --env-file=.env scripts/upload-graphify.mjs <local-path> <r2-prefix> [--full]')
     process.exit(1)
   }
+
+  const fullUpload = options.includes('--full') || process.env.GRAPHIFY_UPLOAD_FULL === '1'
 
   const accountId = process.env.R2_ACCOUNT_ID
   const accessKeyId = process.env.R2_ACCESS_KEY_ID
@@ -73,6 +79,8 @@ async function main() {
 
   for await (const file of walk(localPath)) {
     const rel = relative(localPath, file)
+    if (!fullUpload && !PRIMARY_FILES.has(rel)) continue
+
     const key = `${prefix}/${rel}`
     const body = await fs.readFile(file)
     await client.send(
@@ -91,6 +99,7 @@ async function main() {
   console.log(
     `\nUploaded ${count} files (${(bytes / 1024 / 1024).toFixed(2)} MB) to r2://${bucket}/${prefix}/`,
   )
+  console.log(`Upload scope: ${fullUpload ? 'full graphify-out vault' : 'primary architecture artifacts'}`)
   console.log(`\nUse this as graphify_path when connecting the repo: ${prefix}`)
 }
 

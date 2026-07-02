@@ -116,7 +116,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
     - [x] Include normalized `scheduledAt` in deterministic `social.post.publish` Workflow instance ids for scheduled/cron attempts while keeping manual starts per-post.
     - [x] Require workflow and cron fallback claims to match the row's current `scheduled_at` and only publish when that timestamp is due, so callbacks from old reschedules skip instead of publishing early.
   - [ ] Cut over scheduled publishing from cron after production verification.
-    - [ ] Regenerate/update Graphy after Workflows architecture changes so `graphify-out/` reflects the current `agency-workflows` Worker, Pages callbacks, cron fallback, and service-binding topology.
+    - [x] Regenerate/update Graphy after Workflows architecture changes so `graphify-out/` reflects the current `agency-workflows` Worker, Pages callbacks, cron fallback, and service-binding topology.
     - [ ] Run `pnpm run smoke:agency-workflows` against production with admin auth.
     - [ ] Run `pnpm run readiness:agency-workflows` and clear/acknowledge Graphy/auth smoke blockers before flipping the cutover flag.
     - [ ] Flip `AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY` to `"true"` in `wrangler.toml`.
@@ -197,7 +197,7 @@ Start with P0 for posts only:
 - [x] Workflows Worker package deploy scripts are now explicit: `wrangler deploy --config wrangler.toml` and `WRANGLER_WRITE_LOGS=false wrangler deploy --config wrangler.toml --dry-run`; config regression test, scoped lint, Worker typecheck, and dry-run verification pass.
 - [x] Agency Workflows readiness gate added as `pnpm run readiness:agency-workflows`; focused tests cover current Graphy validation, stale Graphy blocking, missing Graphy remediation through locally installed Obsidian, local workflow gates, and authenticated-smoke blocking when no admin auth is provided.
 - [x] Scheduled publishing Workflow cutover blocker fixed: schedule/cron Workflow ids now include `scheduledAt`, workflow callbacks pass `scheduledAt` into the atomic claim, and cron direct fallback claims also require the selected `scheduled_at`; focused tests and `pnpm run test:social-publishing` pass.
-- [ ] Local Graphy is currently present but stale for the Workflows cutover track: `graphify-out/GRAPH_REPORT.md` was generated on 2026-06-15, before the July 2026 Workflows architecture changes. Regenerate the local Graphy/Obsidian vault and upload refreshed artifacts before enabling `AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY=true`.
+- [x] Local Graphy/Graphify is refreshed for the Workflows cutover track: `pnpm run graphify:rebuild` generated clean artifacts on 2026-07-02 after excluding generated/runtime directories, with 3,448 indexed files, 8,399 nodes, and 7,737 edges. The R2 upload target is `graphify/dashboard`; see `docs/graphify.md`.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.
 - [ ] Live provider smoke remains blocked until production Meta/Google/YouTube/LinkedIn/TikTok app credentials and approved test accounts are available.
