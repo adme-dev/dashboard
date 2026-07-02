@@ -16,6 +16,7 @@ concurrency:
 jobs:
   ci:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
 
     strategy:
       matrix:
@@ -38,22 +39,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Social publishing regression tests
+        run: pnpm run test:social-publishing
+        timeout-minutes: 15
+
       - name: Lint
         run: pnpm run lint
         continue-on-error: true
+        timeout-minutes: 8
 
       - name: Typecheck
         run: pnpm run typecheck
         continue-on-error: true
-
-      - name: Social publishing regression tests
-        run: pnpm run test:social-publishing
         timeout-minutes: 15
 
   deploy:
     needs: ci
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       deployments: write
