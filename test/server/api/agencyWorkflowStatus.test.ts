@@ -104,6 +104,22 @@ describe('agency workflow status endpoint', () => {
     })
   })
 
+  it('derives a social spend review workflow instance id from identity query fields', async () => {
+    mockQuery = {
+      workflow: 'social.spend.review',
+      period: '2026-07',
+      scope: 'platform',
+      platform: 'google'
+    }
+
+    await workflowStatus({ context: {} })
+
+    expect(mockGetAgencyWorkflowStatus).toHaveBeenCalledWith(expect.anything(), {
+      workflow: 'social.spend.review',
+      instanceId: 'social-spend-review-2026-07-platform-google_ads'
+    })
+  })
+
   it('rejects missing workflow status query params before contacting the Worker', async () => {
     mockQuery = { workflow: 'social.post.publish', clientId: 'client-1' }
 

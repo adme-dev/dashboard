@@ -1,13 +1,18 @@
 export const SOCIAL_PUBLISHING_WORKFLOW_KIND = 'social.post.publish' as const
 export const SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND = 'social.inbox.automation' as const
+export const SOCIAL_SPEND_REVIEW_WORKFLOW_KIND = 'social.spend.review' as const
 const WORKFLOW_INSTANCE_ID_MAX_LENGTH = 100
 
 export type SupportedWorkflowKind
   = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
     | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
+    | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
 
 export type SocialPublishingWorkflowTrigger = 'manual' | 'schedule' | 'cron' | 'retry'
 export type SocialInboxAutomationWorkflowTrigger = 'inbound' | 'cron' | 'retry' | 'manual'
+export type SocialSpendReviewWorkflowTrigger = 'cron' | 'manual' | 'retry'
+export type SocialSpendReviewWorkflowScope = 'all' | 'client' | 'platform'
+export type SocialSpendReviewPlatform = 'all' | 'meta' | 'google_ads'
 
 export interface SocialPublishingWorkflowPayload {
   kind: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
@@ -27,9 +32,20 @@ export interface SocialInboxAutomationWorkflowPayload {
   requestedBy?: string
 }
 
+export interface SocialSpendReviewWorkflowPayload {
+  kind: typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
+  period: string
+  trigger: SocialSpendReviewWorkflowTrigger
+  scope: SocialSpendReviewWorkflowScope
+  clientId?: string
+  platform?: SocialSpendReviewPlatform
+  requestedBy?: string
+}
+
 export type WorkflowRequestBody
   = { workflow: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND, payload: SocialPublishingWorkflowPayload }
     | { workflow: typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND, payload: SocialInboxAutomationWorkflowPayload }
+    | { workflow: typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND, payload: SocialSpendReviewWorkflowPayload }
 
 export interface WorkflowFeatureEnv {
   AGENCY_WORKFLOWS_ENABLED?: string
@@ -51,6 +67,7 @@ export interface AgencyWorkflowEnv extends WorkflowFeatureEnv {
   WORKFLOW_CALLBACK_SECRET?: string
   SOCIAL_PUBLISHING_WORKFLOW: WorkflowBindingLike<SocialPublishingWorkflowPayload>
   SOCIAL_INBOX_AUTOMATION_WORKFLOW: WorkflowBindingLike<SocialInboxAutomationWorkflowPayload>
+  SOCIAL_SPEND_REVIEW_WORKFLOW: WorkflowBindingLike<SocialSpendReviewWorkflowPayload>
 }
 
 export function workflowFeatureEnabled(env: WorkflowFeatureEnv): boolean {
@@ -70,6 +87,12 @@ export function parseWorkflowRequestBody(input: unknown): WorkflowRequestBody {
     return {
       workflow,
       payload: normalizeSocialInboxAutomationWorkflowPayload(body.payload)
+    }
+  }
+  if (workflow === SOCIAL_SPEND_REVIEW_WORKFLOW_KIND) {
+    return {
+      workflow,
+      payload: normalizeSocialSpendReviewWorkflowPayload(body.payload)
     }
   }
   throw new Error(`Unsupported workflow: ${workflow || 'missing'}`)
@@ -123,6 +146,39 @@ export function buildSocialInboxAutomationWorkflowInstanceId(payload: SocialInbo
     .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
 }
 
+export function normalizeSocialSpendReviewWorkflowPayload(input: unknown): SocialSpendReviewWorkflowPayload {
+  const body = objectInput(input)
+  const period = normalizePeriod(body.period)
+  const requestedBy = optionalText(body.requestedBy)
+  const trigger = normalizeSpendReviewTrigger(body.trigger)
+  const scope = normalizeSpendReviewScope(body.scope)
+  const clientId = optionalText(body.clientId)
+  const platform = normalizeSpendReviewPlatform(body.platform)
+
+  if (scope === 'client' && !clientId) throw new Error('clientId required for client scope')
+  if (scope === 'platform' && (!platform || platform === 'all')) throw new Error('platform required for platform scope')
+
+  return {
+    kind: SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
+    period,
+    trigger,
+    scope,
+    ...(clientId ? { clientId } : {}),
+    ...(platform ? { platform } : {}),
+    ...(requestedBy ? { requestedBy } : {})
+  }
+}
+
+export function buildSocialSpendReviewWorkflowInstanceId(payload: SocialSpendReviewWorkflowPayload): string {
+  const discriminator = payload.scope === 'client'
+    ? payload.clientId || 'unknown'
+    : payload.scope === 'platform'
+      ? payload.platform || 'unknown'
+      : 'all'
+  return `social-spend-review-${instancePart(payload.period)}-${instancePart(payload.scope)}-${instancePart(discriminator)}`
+    .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
+}
+
 function normalizeTrigger(input: unknown): SocialPublishingWorkflowTrigger {
   const value = optionalText(input) ?? 'manual'
   if (value === 'manual' || value === 'schedule' || value === 'cron' || value === 'retry') return value
@@ -133,6 +189,33 @@ function normalizeInboxAutomationTrigger(input: unknown): SocialInboxAutomationW
   const value = optionalText(input) ?? 'inbound'
   if (value === 'inbound' || value === 'cron' || value === 'retry' || value === 'manual') return value
   throw new Error(`Unsupported trigger: ${value}`)
+}
+
+function normalizeSpendReviewTrigger(input: unknown): SocialSpendReviewWorkflowTrigger {
+  const value = optionalText(input) ?? 'cron'
+  if (value === 'cron' || value === 'manual' || value === 'retry') return value
+  throw new Error(`Unsupported trigger: ${value}`)
+}
+
+function normalizeSpendReviewScope(input: unknown): SocialSpendReviewWorkflowScope {
+  const value = optionalText(input) ?? 'all'
+  if (value === 'all' || value === 'client' || value === 'platform') return value
+  throw new Error(`Unsupported scope: ${value}`)
+}
+
+function normalizeSpendReviewPlatform(input: unknown): SocialSpendReviewPlatform | undefined {
+  const value = optionalText(input)
+  if (!value) return undefined
+  if (value === 'all' || value === 'meta' || value === 'google_ads' || value === 'google') {
+    return value === 'google' ? 'google_ads' : value
+  }
+  throw new Error(`Unsupported platform: ${value}`)
+}
+
+function normalizePeriod(input: unknown): string {
+  const value = requiredText(input, 'period')
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) throw new Error('period must be YYYY-MM')
+  return value
 }
 
 function requiredText(input: unknown, field: string): string {

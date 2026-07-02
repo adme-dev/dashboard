@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest'
 import {
   SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
   SOCIAL_PUBLISHING_WORKFLOW_KIND,
+  SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
   buildSocialInboxAutomationWorkflowInstanceId,
   buildSocialPublishingWorkflowInstanceId,
+  buildSocialSpendReviewWorkflowInstanceId,
   normalizeSocialInboxAutomationWorkflowPayload,
   normalizeSocialPublishingWorkflowPayload,
+  normalizeSocialSpendReviewWorkflowPayload,
   parseWorkflowRequestBody,
   workflowFeatureEnabled
 } from '../../workers/agency-workflows/src/contracts'
@@ -108,6 +111,47 @@ describe('agency workflow contracts', () => {
     expect(instanceId.length).toBeLessThanOrEqual(100)
   })
 
+  it('normalizes a social spend review workflow payload', () => {
+    const payload = normalizeSocialSpendReviewWorkflowPayload({
+      period: '2026-07',
+      trigger: 'manual',
+      scope: 'platform',
+      platform: 'google',
+      requestedBy: 'user-1'
+    })
+
+    expect(payload).toEqual({
+      kind: SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
+      period: '2026-07',
+      trigger: 'manual',
+      scope: 'platform',
+      platform: 'google_ads',
+      requestedBy: 'user-1'
+    })
+  })
+
+  it('rejects malformed social spend review workflow payloads', () => {
+    expect(() => normalizeSocialSpendReviewWorkflowPayload({ trigger: 'cron', scope: 'all' }))
+      .toThrow('period required')
+    expect(() => normalizeSocialSpendReviewWorkflowPayload({ period: '2026-13', trigger: 'cron', scope: 'all' }))
+      .toThrow('period must be YYYY-MM')
+    expect(() => normalizeSocialSpendReviewWorkflowPayload({ period: '2026-07', trigger: 'cron', scope: 'client' }))
+      .toThrow('clientId required for client scope')
+    expect(() => normalizeSocialSpendReviewWorkflowPayload({ period: '2026-07', trigger: 'cron', scope: 'platform' }))
+      .toThrow('platform required for platform scope')
+  })
+
+  it('builds a deterministic workflow instance id for spend review automation', () => {
+    const payload = normalizeSocialSpendReviewWorkflowPayload({
+      period: '2026-07',
+      trigger: 'cron',
+      scope: 'client',
+      clientId: 'Client/456'
+    })
+
+    expect(buildSocialSpendReviewWorkflowInstanceId(payload)).toBe('social-spend-review-2026-07-client-Client-456')
+  })
+
   it('parses the stable start-workflow request envelope', () => {
     const body = parseWorkflowRequestBody({
       workflow: SOCIAL_PUBLISHING_WORKFLOW_KIND,
@@ -127,6 +171,17 @@ describe('agency workflow contracts', () => {
     expect(body.workflow).toBe(SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND)
     expect(body.payload.conversationId).toBe('conversation-1')
     expect(body.payload.messageId).toBe('message-1')
+  })
+
+  it('parses the social spend review workflow request envelope', () => {
+    const body = parseWorkflowRequestBody({
+      workflow: SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
+      payload: { period: '2026-07', scope: 'all', trigger: 'cron' }
+    })
+
+    expect(body.workflow).toBe(SOCIAL_SPEND_REVIEW_WORKFLOW_KIND)
+    expect(body.payload.period).toBe('2026-07')
+    expect(body.payload.scope).toBe('all')
   })
 
   it('keeps workflow starts disabled unless explicitly enabled', () => {

@@ -23,3 +23,8 @@ class_name = "SocialPublishingWorkflow"
 name = "social-inbox-automation-workflow"
 binding = "SOCIAL_INBOX_AUTOMATION_WORKFLOW"
 class_name = "SocialInboxAutomationWorkflow"
+
+[[workflows]]
+name = "social-spend-review-workflow"
+binding = "SOCIAL_SPEND_REVIEW_WORKFLOW"
+class_name = "SocialSpendReviewWorkflow"

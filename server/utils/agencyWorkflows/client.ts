@@ -10,6 +10,14 @@ import {
   type SocialInboxAutomationWorkflowPayload,
   type SocialInboxAutomationWorkflowTrigger
 } from '~~/server/utils/agencyWorkflows/socialInboxAutomation'
+import {
+  SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
+  normalizeSocialSpendReviewWorkflowPayload,
+  type SocialSpendReviewWorkflowPayload,
+  type SocialSpendReviewWorkflowScope,
+  type SocialSpendReviewWorkflowTrigger,
+  type SocialSpendReviewPlatform
+} from '~~/server/utils/agencyWorkflows/socialSpendReview'
 
 const AGENCY_WORKFLOWS_BINDING = 'AGENCY_WORKFLOWS'
 const WORKFLOW_START_URL = 'https://agency-workflows.internal/workflows/start'
@@ -23,7 +31,8 @@ const WORKFLOW_REQUEST_TIMEOUT_MS = 5_000
 
 type WorkflowTransport = 'service-binding' | 'fetch'
 export type AgencyWorkflowKind = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
-type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload
+  | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
+type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload | SocialSpendReviewWorkflowPayload
 
 interface AgencyWorkflowServiceBinding {
   fetch: (request: Request) => Promise<Response>
@@ -53,6 +62,16 @@ export interface StartSocialInboxAutomationWorkflowInput {
   clientId: string
   messageId?: string
   trigger: SocialInboxAutomationWorkflowTrigger
+  requestedBy?: string
+  fetchImpl?: (request: Request) => Promise<Response>
+}
+
+export interface StartSocialSpendReviewWorkflowInput {
+  period: string
+  trigger: SocialSpendReviewWorkflowTrigger
+  scope: SocialSpendReviewWorkflowScope
+  clientId?: string
+  platform?: SocialSpendReviewPlatform
   requestedBy?: string
   fetchImpl?: (request: Request) => Promise<Response>
 }
@@ -91,6 +110,11 @@ export type StartSocialPublishingWorkflowResult
 
 export type StartSocialInboxAutomationWorkflowResult
   = StartAgencyWorkflowSuccess<typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND>
+    | StartAgencyWorkflowDisabled
+    | StartAgencyWorkflowFailure
+
+export type StartSocialSpendReviewWorkflowResult
+  = StartAgencyWorkflowSuccess<typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND>
     | StartAgencyWorkflowDisabled
     | StartAgencyWorkflowFailure
 
@@ -275,6 +299,81 @@ export async function startSocialInboxAutomationWorkflow(
       error: safeError(error, [secret])
     })
     logInboxAutomationFailure(payload, result)
+    return result
+  }
+}
+
+export async function startSocialSpendReviewWorkflow(
+  event: AgencyWorkflowEvent,
+  input: StartSocialSpendReviewWorkflowInput
+): Promise<StartSocialSpendReviewWorkflowResult> {
+  const env = getCloudflareEnv(event)
+
+  if (envText(env, 'AGENCY_WORKFLOWS_ENABLED') !== 'true') {
+    console.info('agency-workflows.social-spend.review.start.disabled', {
+      period: input.period,
+      scope: input.scope,
+      clientId: input.clientId,
+      platform: input.platform
+    })
+    return { ok: false, enabled: false, reason: 'disabled' }
+  }
+
+  let payload: SocialSpendReviewWorkflowPayload
+  try {
+    payload = normalizeSocialSpendReviewWorkflowPayload({
+      kind: SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
+      period: input.period,
+      trigger: input.trigger,
+      scope: input.scope,
+      clientId: input.clientId,
+      platform: input.platform,
+      requestedBy: input.requestedBy
+    })
+  } catch (error) {
+    const result = failedResult('request_failed', { error: safeError(error) })
+    logSpendReviewFailure(input, result)
+    return result
+  }
+
+  const secret = envText(env, 'WORKFLOW_SERVICE_SECRET')
+  const target = secret ? buildWorkflowStartTarget(env, SOCIAL_SPEND_REVIEW_WORKFLOW_KIND, payload, secret, input.fetchImpl) : null
+  if (!target) {
+    const result = failedResult('not_configured')
+    logSpendReviewFailure(payload, result)
+    return result
+  }
+
+  try {
+    const response = await target.send(target.request)
+    const body = await readResponseBody(response)
+
+    if (!response.ok) {
+      const result = failedResult('bad_response', {
+        transport: target.transport,
+        status: response.status,
+        error: responseError(body, response.statusText, [secret])
+      })
+      logSpendReviewFailure(payload, result)
+      return result
+    }
+
+    const result = successResult(SOCIAL_SPEND_REVIEW_WORKFLOW_KIND, target.transport, body)
+    console.info('agency-workflows.social-spend.review.start.succeeded', {
+      period: payload.period,
+      scope: payload.scope,
+      clientId: payload.clientId,
+      platform: payload.platform,
+      transport: target.transport,
+      instanceId: result.instanceId
+    })
+    return result
+  } catch (error) {
+    const result = failedResult('request_failed', {
+      transport: target.transport,
+      error: safeError(error, [secret])
+    })
+    logSpendReviewFailure(payload, result)
     return result
   }
 }
@@ -620,7 +719,8 @@ function readinessWorker(body: Record<string, unknown>): AgencyWorkflowReadiness
 function missingRequiredWorkflows(workflows: unknown[] | undefined): AgencyWorkflowKind[] {
   const required: AgencyWorkflowKind[] = [
     SOCIAL_PUBLISHING_WORKFLOW_KIND,
-    SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
+    SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
+    SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
   ]
   return required.filter(kind => !hasWorkflowKind(workflows, kind))
 }
@@ -713,6 +813,22 @@ function logInboxAutomationFailure(
     conversationId: payload.conversationId,
     clientId: payload.clientId,
     messageId: payload.messageId,
+    reason: result.reason,
+    transport: result.transport,
+    status: result.status,
+    error: result.error
+  })
+}
+
+function logSpendReviewFailure(
+  payload: { period: string, scope: string, clientId?: string, platform?: string },
+  result: StartAgencyWorkflowFailure
+) {
+  console.warn('agency-workflows.social-spend.review.start.failed', {
+    period: payload.period,
+    scope: payload.scope,
+    clientId: payload.clientId,
+    platform: payload.platform,
     reason: result.reason,
     transport: result.transport,
     status: result.status,

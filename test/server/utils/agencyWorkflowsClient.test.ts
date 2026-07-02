@@ -5,6 +5,7 @@ import {
   getAgencyWorkflowStatus,
   startSocialInboxAutomationWorkflow,
   startSocialPublishingWorkflow,
+  startSocialSpendReviewWorkflow,
   type StartSocialPublishingWorkflowEvent
 } from '../../../server/utils/agencyWorkflows/client'
 
@@ -130,6 +131,57 @@ describe('agency workflow client', () => {
     expect(mockConsoleInfo).toHaveBeenCalledWith(
       'agency-workflows.social-inbox.automation.start.succeeded',
       expect.objectContaining({ conversationId: 'conversation-1', clientId: 'client-1', transport: 'service-binding' })
+    )
+  })
+
+  it('starts social spend review through the Cloudflare service binding', async () => {
+    const bindingFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      workflow: 'social.spend.review',
+      instanceId: 'social-spend-review-2026-07-client-client-1',
+      status: { status: 'queued' }
+    }), { status: 202, headers: { 'content-type': 'application/json' } }))
+
+    const result = await startSocialSpendReviewWorkflow(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }), {
+      period: '2026-07',
+      trigger: 'manual',
+      scope: 'client',
+      clientId: 'client-1',
+      requestedBy: 'user-1'
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      enabled: true,
+      transport: 'service-binding',
+      workflow: 'social.spend.review',
+      instanceId: 'social-spend-review-2026-07-client-client-1',
+      status: { status: 'queued' }
+    })
+    expect(bindingFetch).toHaveBeenCalledOnce()
+
+    const request = bindingFetch.mock.calls[0][0] as Request
+    expect(request.url).toBe('https://agency-workflows.internal/workflows/start')
+    expect(request.method).toBe('POST')
+    expect(request.headers.get('authorization')).toBe('Bearer workflow-secret')
+    expect(await request.json()).toEqual({
+      workflow: 'social.spend.review',
+      payload: {
+        kind: 'social.spend.review',
+        period: '2026-07',
+        trigger: 'manual',
+        scope: 'client',
+        clientId: 'client-1',
+        requestedBy: 'user-1'
+      }
+    })
+    expect(mockConsoleInfo).toHaveBeenCalledWith(
+      'agency-workflows.social-spend.review.start.succeeded',
+      expect.objectContaining({ period: '2026-07', scope: 'client', clientId: 'client-1', transport: 'service-binding' })
     )
   })
 
@@ -268,7 +320,8 @@ describe('agency workflow client', () => {
       enabled: true,
       workflows: [
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
-        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
+        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' }
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
@@ -292,7 +345,8 @@ describe('agency workflow client', () => {
         enabled: true,
         workflows: [
           { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
-          { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+          { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
+          { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' }
         ]
       }
     })
@@ -310,7 +364,8 @@ describe('agency workflow client', () => {
       enabled: false,
       workflows: [
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
-        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
+        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' }
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
@@ -334,7 +389,10 @@ describe('agency workflow client', () => {
       ok: true,
       worker: 'agency-workflows',
       enabled: true,
-      workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+      workflows: [
+        { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+      ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
     const result = await checkAgencyWorkflowReadiness(eventWithEnv({
@@ -348,7 +406,7 @@ describe('agency workflow client', () => {
       status: 'degraded',
       enabled: true,
       transport: 'service-binding',
-      missingWorkflows: ['social.inbox.automation']
+      missingWorkflows: ['social.spend.review']
     })
   })
 
@@ -359,7 +417,8 @@ describe('agency workflow client', () => {
       enabled: true,
       workflows: [
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
-        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false }
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false },
+        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true }
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
@@ -379,7 +438,8 @@ describe('agency workflow client', () => {
         enabled: true,
         workflows: [
           { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
-          { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false }
+          { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false },
+          { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true }
         ]
       }
     })
@@ -392,7 +452,8 @@ describe('agency workflow client', () => {
       enabled: true,
       workflows: [
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
-        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
+        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' }
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 

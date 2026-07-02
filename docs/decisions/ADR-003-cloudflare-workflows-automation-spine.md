@@ -86,8 +86,11 @@ Prefer cron, queues, or direct route execution when:
    `AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY`.
 2. Social inbox automation: foundation exists for new inbound conversation
    events behind `AGENCY_WORKFLOWS_ENABLED`.
-3. Paid-media pacing and budget escalation: move per-campaign escalation review
-   to Workflows once budget write/apply semantics are fully idempotent and
+3. Paid-media pacing and budget escalation: a read-only `social.spend.review`
+   Workflow foundation now exists for deterministic per-period review
+   instances, Worker readiness/status inspection, and production smoke
+   enforcement. Budget proposal/apply behavior remains in the existing
+   human-approved chain until write semantics are fully idempotent and
    approval-gated.
 4. CRM/opportunity follow-ups: use Workflows for due follow-ups, waits, and
    reminders where a missed callback or duplicate reminder matters.

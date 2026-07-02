@@ -4,14 +4,18 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import {
   SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
   SOCIAL_PUBLISHING_WORKFLOW_KIND,
+  SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
   type AgencyWorkflowEnv,
   type SocialInboxAutomationWorkflowPayload,
   type SocialPublishingWorkflowPayload,
+  type SocialSpendReviewWorkflowPayload,
   type WorkflowBindingLike,
   buildSocialInboxAutomationWorkflowInstanceId,
   buildSocialPublishingWorkflowInstanceId,
+  buildSocialSpendReviewWorkflowInstanceId,
   normalizeSocialInboxAutomationWorkflowPayload,
   normalizeSocialPublishingWorkflowPayload,
+  normalizeSocialSpendReviewWorkflowPayload,
   parseWorkflowRequestBody,
   workflowFeatureEnabled
 } from './contracts'
@@ -122,6 +126,36 @@ export class SocialInboxAutomationWorkflow extends WorkflowEntrypoint<AgencyWork
   }
 }
 
+export class SocialSpendReviewWorkflow extends WorkflowEntrypoint<AgencyWorkflowEnv, SocialSpendReviewWorkflowPayload> {
+  async run(event: WorkflowEvent<SocialSpendReviewWorkflowPayload>, step: WorkflowStep) {
+    const payload = normalizeSocialSpendReviewWorkflowPayload(event.payload)
+
+    return await step.do(
+      'run social spend review through Pages',
+      { retries: { limit: 2, delay: '1 minute', backoff: 'exponential' }, timeout: '2 minutes' },
+      async () => {
+        const response = await fetch(`${appBaseUrl(this.env)}/api/internal/workflows/social-spend/review`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-workflow-secret': callbackSecret(this.env)
+          },
+          body: JSON.stringify(payload)
+        })
+        const text = await response.text()
+        if (!response.ok) {
+          throw new Error(`Pages spend review callback failed: ${response.status} ${text.slice(0, 200)}`)
+        }
+        return {
+          ok: true,
+          status: response.status,
+          bodyText: text ? text.slice(0, 1000) : null
+        }
+      }
+    )
+  }
+}
+
 export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWorkflowEnv): Promise<Response> {
   const url = new URL(request.url)
 
@@ -144,7 +178,9 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
       const body = parseWorkflowRequestBody(await readJson(request))
       const { instance, existing } = body.workflow === SOCIAL_PUBLISHING_WORKFLOW_KIND
         ? await startPublishingWorkflowInstance(env, body.payload)
-        : await startInboxAutomationWorkflowInstance(env, body.payload)
+        : body.workflow === SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
+          ? await startInboxAutomationWorkflowInstance(env, body.payload)
+          : await startSpendReviewWorkflowInstance(env, body.payload)
       return json({
         ok: true,
         workflow: body.workflow,
@@ -163,13 +199,15 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
 
     const workflow = url.searchParams.get('workflow')
     const instanceId = url.searchParams.get('instanceId')
-    if (!instanceId || (workflow !== SOCIAL_PUBLISHING_WORKFLOW_KIND && workflow !== SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND)) {
+    if (!instanceId || !isSupportedWorkflowKind(workflow)) {
       return json({ ok: false, error: 'workflow and instanceId are required' }, { status: 400 })
     }
 
     const instance = workflow === SOCIAL_PUBLISHING_WORKFLOW_KIND
       ? await env.SOCIAL_PUBLISHING_WORKFLOW.get(instanceId)
-      : await env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.get(instanceId)
+      : workflow === SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
+        ? await env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.get(instanceId)
+        : await env.SOCIAL_SPEND_REVIEW_WORKFLOW.get(instanceId)
     return json({ ok: true, workflow, instanceId: instance.id, status: await instance.status() })
   }
 
@@ -192,6 +230,11 @@ async function startPublishingWorkflowInstance(env: AgencyWorkflowEnv, payload: 
 async function startInboxAutomationWorkflowInstance(env: AgencyWorkflowEnv, payload: SocialInboxAutomationWorkflowPayload) {
   const instanceId = buildSocialInboxAutomationWorkflowInstanceId(payload)
   return await startWorkflowInstance(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW, instanceId, payload)
+}
+
+async function startSpendReviewWorkflowInstance(env: AgencyWorkflowEnv, payload: SocialSpendReviewWorkflowPayload) {
+  const instanceId = buildSocialSpendReviewWorkflowInstanceId(payload)
+  return await startWorkflowInstance(env.SOCIAL_SPEND_REVIEW_WORKFLOW, instanceId, payload)
 }
 
 async function startWorkflowInstance<TPayload>(
@@ -222,8 +265,19 @@ function workflowHealth(env: AgencyWorkflowEnv) {
       kind: SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
       binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW',
       bindingConfigured: isWorkflowBinding(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW)
+    },
+    {
+      kind: SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
+      binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW',
+      bindingConfigured: isWorkflowBinding(env.SOCIAL_SPEND_REVIEW_WORKFLOW)
     }
   ]
+}
+
+function isSupportedWorkflowKind(input: string | null): input is typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND {
+  return input === SOCIAL_PUBLISHING_WORKFLOW_KIND
+    || input === SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
+    || input === SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
 }
 
 function isWorkflowBinding(input: unknown): boolean {
