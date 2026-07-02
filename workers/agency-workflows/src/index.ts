@@ -7,6 +7,7 @@ import {
   type AgencyWorkflowEnv,
   type SocialInboxAutomationWorkflowPayload,
   type SocialPublishingWorkflowPayload,
+  type WorkflowBindingLike,
   buildSocialInboxAutomationWorkflowInstanceId,
   buildSocialPublishingWorkflowInstanceId,
   normalizeSocialInboxAutomationWorkflowPayload,
@@ -141,16 +142,16 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
 
     try {
       const body = parseWorkflowRequestBody(await readJson(request))
-      const instance = body.workflow === SOCIAL_PUBLISHING_WORKFLOW_KIND
-        ? await env.SOCIAL_PUBLISHING_WORKFLOW.create({
-            id: buildSocialPublishingWorkflowInstanceId(body.payload),
-            params: body.payload
-          })
-        : await env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.create({
-            id: buildSocialInboxAutomationWorkflowInstanceId(body.payload),
-            params: body.payload
-          })
-      return json({ ok: true, workflow: body.workflow, instanceId: instance.id, status: await instance.status() })
+      const { instance, existing } = body.workflow === SOCIAL_PUBLISHING_WORKFLOW_KIND
+        ? await startPublishingWorkflowInstance(env, body.payload)
+        : await startInboxAutomationWorkflowInstance(env, body.payload)
+      return json({
+        ok: true,
+        workflow: body.workflow,
+        instanceId: instance.id,
+        status: await instance.status(),
+        ...(existing ? { existing: true } : {})
+      })
     } catch (error) {
       return json({ ok: false, error: errorMessage(error) }, { status: 400 })
     }
@@ -177,6 +178,37 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function isAlreadyExistingWorkflow(error: unknown): boolean {
+  return /already exists|already exist|duplicate/i.test(errorMessage(error))
+}
+
+async function startPublishingWorkflowInstance(env: AgencyWorkflowEnv, payload: SocialPublishingWorkflowPayload) {
+  const instanceId = buildSocialPublishingWorkflowInstanceId(payload)
+  return await startWorkflowInstance(env.SOCIAL_PUBLISHING_WORKFLOW, instanceId, payload)
+}
+
+async function startInboxAutomationWorkflowInstance(env: AgencyWorkflowEnv, payload: SocialInboxAutomationWorkflowPayload) {
+  const instanceId = buildSocialInboxAutomationWorkflowInstanceId(payload)
+  return await startWorkflowInstance(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW, instanceId, payload)
+}
+
+async function startWorkflowInstance<TPayload>(
+  binding: WorkflowBindingLike<TPayload>,
+  instanceId: string,
+  payload: TPayload
+) {
+  let existing = false
+  const instance = await binding.create({
+    id: instanceId,
+    params: payload
+  }).catch(async (error: unknown) => {
+    if (!isAlreadyExistingWorkflow(error)) throw error
+    existing = true
+    return await binding.get(instanceId)
+  })
+  return { instance, existing }
 }
 
 function workflowHealth(env: AgencyWorkflowEnv) {

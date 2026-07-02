@@ -108,6 +108,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
   - [x] Make Worker health degrade when a required Cloudflare Workflow binding is missing.
   - [x] Add a repeatable authenticated production smoke gate for Workflows readiness and optional instance status lookup.
   - [x] Add a dormant Workflow-primary scheduled publishing cutover path behind `AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY=false`.
+  - [x] Make deterministic Workflow starts idempotent so duplicate cron ticks reuse an existing Workflow instance instead of falling back to direct publish.
   - [ ] Cut over scheduled publishing from cron after production verification.
     - [ ] Run `pnpm run smoke:agency-workflows` against production with admin auth.
     - [ ] Flip `AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY` to `"true"` in `wrangler.toml`.
@@ -184,6 +185,7 @@ Start with P0 for posts only:
 - [x] Diff integrity passes; token-shaped scans found only expected secret handling code and known dummy `workflow-secret` fixtures in focused Workflows tests.
 - [x] Authenticated Workflows production smoke gate added as `pnpm run smoke:agency-workflows`; it validates `/api/agency/workflows/readiness` with admin auth, requires service-binding transport, verifies both required Workflow bindings, and can optionally validate `/api/agency/workflows/status` for a known instance id.
 - [x] Dormant scheduled publishing cutover path added: when both `AGENCY_WORKFLOWS_ENABLED=true` and `AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY=true`, cron starts deterministic `social.post.publish` Workflow instances for due posts; if kickoff fails, cron falls back to the existing atomic direct publish path.
+- [x] Workflow start idempotency fix passes focused Worker tests, Worker typecheck, scoped lint, and the social publishing regression suite; duplicate deterministic instance creation now returns the existing instance as a successful start.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.
 - [ ] Live provider smoke remains blocked until production Meta/Google/YouTube/LinkedIn/TikTok app credentials and approved test accounts are available.

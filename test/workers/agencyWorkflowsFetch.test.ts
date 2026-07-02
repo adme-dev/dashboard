@@ -118,6 +118,42 @@ describe('agency workflows worker fetch handler', () => {
     expect(env.SOCIAL_PUBLISHING_WORKFLOW.create).not.toHaveBeenCalled()
   })
 
+  it('treats duplicate deterministic social publishing workflow starts as idempotent success', async () => {
+    const publishingWorkflow = workflowBinding()
+    publishingWorkflow.create.mockRejectedValueOnce(new Error('Workflow instance already exists'))
+    const env = workflowEnv({ SOCIAL_PUBLISHING_WORKFLOW: publishingWorkflow })
+
+    const response = await handleAgencyWorkflowsFetch(
+      new Request('https://agency-workflows.example.com/workflows/start', {
+        method: 'POST',
+        headers: {
+          'authorization': 'Bearer workflow-secret',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          workflow: 'social.post.publish',
+          payload: {
+            postId: 'post-1',
+            clientId: 'client-1',
+            scheduledAt: '2026-07-02T03:00:00.000Z',
+            trigger: 'cron'
+          }
+        })
+      }),
+      env as never
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      workflow: 'social.post.publish',
+      instanceId: 'social-publish-client-1-post-1',
+      existing: true,
+      status: { status: 'running' }
+    })
+    expect(publishingWorkflow.get).toHaveBeenCalledWith('social-publish-client-1-post-1')
+  })
+
   it('reads social inbox automation instance status from the inbox binding', async () => {
     const env = workflowEnv()
     const response = await handleAgencyWorkflowsFetch(
