@@ -125,6 +125,9 @@ AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f
 #   Uncomment after deploying workers/ai-orchestrator-agent so Model Ops can show Worker readiness.
 # AI_ORCHESTRATOR_WORKER_URL = "https://ai-orchestrator-agent.<subdomain>.workers.dev"
 # APP_URL is set in CF Pages dashboard to avoid binding conflict
+# Cloudflare Workflows control plane. Secrets are managed in Cloudflare:
+# WORKFLOW_SERVICE_SECRET and WORKFLOW_CALLBACK_SECRET.
+AGENCY_WORKFLOWS_ENABLED = "true"
 # MCP server (Phase 1) — non-secret plaintext vars MUST live here, not the CF dashboard:
 # deployConfig bakes [vars] into the Direct-Upload deploy config, which REPLACES dashboard
 # plaintext vars (secrets survive). MCP_INTERNAL_SECRET + MCP_HANDSHAKE_SECRET stay as dashboard secrets.

@@ -4,10 +4,12 @@ import { describe, expect, it } from 'vitest'
 
 interface WorkflowToml {
   workers_dev?: boolean
+  vars?: Record<string, unknown>
   workflows?: Array<Record<string, unknown>>
 }
 
 interface PagesToml {
+  vars?: Record<string, unknown>
   services?: Array<Record<string, unknown>>
 }
 
@@ -36,6 +38,14 @@ describe('agency workflows worker config', () => {
       binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW',
       class_name: 'SocialInboxAutomationWorkflow'
     })
+  })
+
+  it('enables the workflow control plane explicitly in deploy config', () => {
+    const workerConfig = parse(readFileSync('workers/agency-workflows/wrangler.toml', 'utf8')) as WorkflowToml
+    const pagesConfig = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml
+
+    expect(workerConfig.vars?.AGENCY_WORKFLOWS_ENABLED).toBe('true')
+    expect(pagesConfig.vars?.AGENCY_WORKFLOWS_ENABLED).toBe('true')
   })
 
   it('keeps the workflow worker deployable through a root package script', () => {

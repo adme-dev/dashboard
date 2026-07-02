@@ -8,7 +8,7 @@ enabled = true
 
 [vars]
 APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
-AGENCY_WORKFLOWS_ENABLED = "false"
+AGENCY_WORKFLOWS_ENABLED = "true"
 
 # Secrets, not plaintext vars:
 #   wrangler secret put WORKFLOW_SERVICE_SECRET
