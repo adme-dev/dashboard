@@ -141,6 +141,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
 
 - [x] Add a strict social publishing regression command for the hardening suite.
 - [x] Run the social publishing regression command in CI before production deploys.
+  - [x] Include the Workflows readiness governance tests in `pnpm run test:social-publishing` so CI protects the automation-spine decision and readiness gate wiring.
 - [x] Run CI on pull requests to `main`, not only pushes.
 - [x] Use frozen lockfile installs in CI.
 - [x] Keep known repo-wide lint/typecheck debt out of the deploy-critical lane until those checks are reliable enough to enforce.
@@ -201,6 +202,7 @@ Start with P0 for posts only:
 - [x] Local Graphy/Graphify is refreshed for the Workflows cutover track: `pnpm run graphify:rebuild` generated clean artifacts on 2026-07-02 after excluding generated/runtime directories, with 3,448 indexed files, 8,399 nodes, and 7,737 edges. The R2 upload target is `graphify/dashboard`; see `docs/graphify.md`.
 - [x] Project purpose and Workflows automation spine are documented: `docs/project-purpose.md` defines the product purpose and enterprise readiness bar, and `docs/decisions/ADR-003-cloudflare-workflows-automation-spine.md` records where Workflows should replace cron-only automation.
 - [x] Agency Workflows readiness now checks automation governance docs before Graphy and Worker checks; focused readiness script tests cover valid governance docs, missing ADR-003, stale Graphy, and missing authenticated production smoke.
+- [x] Deploy-critical social publishing regression suite now includes `test/config/agencyWorkflowsReadinessScript.test.ts` and `test/config/agencyWorkflowsBindings.test.ts`; local `pnpm run test:social-publishing` reported 100 files and 641 tests passing.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.
 - [ ] Live provider smoke remains blocked until production Meta/Google/YouTube/LinkedIn/TikTok app credentials and approved test accounts are available.

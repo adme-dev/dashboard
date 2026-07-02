@@ -76,6 +76,16 @@ describe('agency workflows worker config', () => {
     expect(packageJson.scripts?.['readiness:agency-workflows']).toBe('node scripts/agency-workflows-readiness.mjs')
   })
 
+  it('keeps Workflows readiness governance tests in the deploy-critical social publishing suite', () => {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      scripts?: Record<string, string>
+    }
+    const socialPublishingTestCommand = packageJson.scripts?.['test:social-publishing'] ?? ''
+
+    expect(socialPublishingTestCommand).toContain('test/config/agencyWorkflowsReadinessScript.test.ts')
+    expect(socialPublishingTestCommand).toContain('test/config/agencyWorkflowsBindings.test.ts')
+  })
+
   it('binds the Pages app to the agency workflows worker', () => {
     const config = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml
 
