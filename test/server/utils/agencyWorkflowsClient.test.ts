@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  checkAgencyWorkflowReadiness,
   startSocialPublishingWorkflow,
   type StartSocialPublishingWorkflowEvent
 } from '../../../server/utils/agencyWorkflows/client'
@@ -20,6 +21,9 @@ function eventWithEnv(env: Record<string, unknown>): StartSocialPublishingWorkfl
 describe('agency workflow client', () => {
   beforeEach(() => {
     process.env = { ...oldEnv }
+    delete process.env.AGENCY_WORKFLOWS_ENABLED
+    delete process.env.AGENCY_WORKFLOWS_URL
+    delete process.env.WORKFLOW_SERVICE_SECRET
     vi.clearAllMocks()
   })
 
@@ -165,5 +169,148 @@ describe('agency workflow client', () => {
       status: 409,
       transport: 'service-binding'
     })
+  })
+
+  it('reports readiness as disabled without contacting the Worker', async () => {
+    const bindingFetch = vi.fn()
+
+    const result = await checkAgencyWorkflowReadiness(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'false',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }))
+
+    expect(result).toEqual({
+      ok: false,
+      status: 'disabled',
+      enabled: false,
+      bindingConfigured: true,
+      fallbackUrlConfigured: false,
+      serviceSecretConfigured: true
+    })
+    expect(bindingFetch).not.toHaveBeenCalled()
+  })
+
+  it('reports readiness as not_configured when required workflow config is missing', async () => {
+    const bindingFetch = vi.fn()
+
+    const result = await checkAgencyWorkflowReadiness(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }))
+
+    expect(result).toEqual({
+      ok: false,
+      status: 'not_configured',
+      enabled: true,
+      bindingConfigured: true,
+      fallbackUrlConfigured: false,
+      serviceSecretConfigured: false
+    })
+    expect(bindingFetch).not.toHaveBeenCalled()
+  })
+
+  it('checks Worker health through the Cloudflare service binding', async () => {
+    const bindingFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      worker: 'agency-workflows',
+      enabled: true,
+      workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await checkAgencyWorkflowReadiness(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }))
+
+    expect(result).toEqual({
+      ok: true,
+      status: 'ready',
+      enabled: true,
+      bindingConfigured: true,
+      fallbackUrlConfigured: false,
+      serviceSecretConfigured: true,
+      transport: 'service-binding',
+      worker: {
+        ok: true,
+        worker: 'agency-workflows',
+        enabled: true,
+        workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+      }
+    })
+    expect(bindingFetch).toHaveBeenCalledOnce()
+    const request = bindingFetch.mock.calls[0][0] as Request
+    expect(request.url).toBe('https://agency-workflows.internal/health')
+    expect(request.method).toBe('GET')
+    expect(request.headers.has('authorization')).toBe(false)
+  })
+
+  it('reports degraded readiness when Pages is enabled but the Worker health is disabled', async () => {
+    const bindingFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      worker: 'agency-workflows',
+      enabled: false,
+      workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await checkAgencyWorkflowReadiness(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }))
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 'degraded',
+      enabled: true,
+      transport: 'service-binding',
+      worker: { ok: true, enabled: false }
+    })
+  })
+
+  it('falls back to Worker URL health when no service binding is available', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      worker: 'agency-workflows',
+      enabled: true,
+      workflows: [{ kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' }]
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await checkAgencyWorkflowReadiness(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS_URL: 'https://agency-workflows.example.com'
+    }), { fetchImpl })
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: 'ready',
+      transport: 'fetch',
+      fallbackUrlConfigured: true
+    })
+    const request = fetchImpl.mock.calls[0][0] as Request
+    expect(request.url).toBe('https://agency-workflows.example.com/health')
+  })
+
+  it('reports unreachable readiness without leaking the service secret', async () => {
+    const bindingFetch = vi.fn(async () => {
+      throw new Error('network failed for workflow-secret')
+    })
+
+    const result = await checkAgencyWorkflowReadiness(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }))
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 'unreachable',
+      enabled: true,
+      transport: 'service-binding'
+    })
+    expect(JSON.stringify(result)).not.toContain('workflow-secret')
+    expect(JSON.stringify(mockConsoleWarn.mock.calls)).not.toContain('workflow-secret')
   })
 })
