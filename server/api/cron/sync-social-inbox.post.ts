@@ -8,6 +8,7 @@ import { processPendingAutomation } from '~~/server/utils/socialInbox/automation
 import { generateReplyDraft } from '~~/server/utils/socialInbox/aiDraft'
 import { dispatchReply } from '~~/server/utils/socialInbox/dispatch'
 import { onInboundRecorded } from '~~/server/utils/socialInbox/workflow'
+import { startSocialInboxAutomationWorkflow } from '~~/server/utils/agencyWorkflows/client'
 import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 import { findBreaches } from '~~/server/utils/socialInbox/sla'
 import { getSocialInboxPollChannels, type SocialInboxPollChannel } from '~~/server/utils/socialInbox/syncChannels'
@@ -139,8 +140,15 @@ export default defineEventHandler(async (event) => {
                   userId, type: 'social_assigned', title: 'New conversation assigned',
                   message: 'A social conversation was auto-assigned to you.',
                   link: `/agency/social/inbox?c=${conversationId}`, metadata: { conversationId, clientId }
-                }).then(() => {})
-              }, { conversationId: res.conversationId, clientId: acct.client_id, channelType: item.channelType })
+                }).then(() => {}),
+                startAutomationWorkflow: workflow =>
+                  startSocialInboxAutomationWorkflow(event, workflow).then(() => {})
+              }, {
+                conversationId: res.conversationId,
+                clientId: acct.client_id,
+                channelType: item.channelType,
+                messageId: normalized.message.platformMessageId ?? undefined
+              })
             }
           }
         }

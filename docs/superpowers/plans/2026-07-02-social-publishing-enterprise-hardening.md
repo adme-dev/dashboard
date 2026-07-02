@@ -106,8 +106,9 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
 - [ ] Extend Cloudflare Workflows to automation workloads.
   - [x] Document the durable workflow direction for social inbox automation before cutover.
   - [x] Add a `social.inbox.automation` Workflow foundation that calls a single-conversation Pages callback through the shared automation engine.
-  - [ ] Start inbox automation workflows from new inbound events behind the existing `AGENCY_WORKFLOWS_ENABLED` gate.
+  - [x] Start inbox automation workflows from new inbound events behind the existing `AGENCY_WORKFLOWS_ENABLED` gate.
   - [ ] Evaluate the same Workflows pattern for other long-running automation jobs before adding more cron-only loops.
+    - Recommendation: use Cloudflare Workflows for event-triggered or retry-sensitive automation runs, including social reports, spend watchdog/escalations, CRM/opportunity follow-ups, brief-to-job lifecycle checks, and video generation jobs. Keep cron workers as sweep/recovery triggers rather than the primary execution engine when the job has per-item retries, waits, callbacks, or operational audit requirements.
 - [x] Add backlog and repeated-failure alerts for scheduler and metrics sync.
   - [x] Scheduler dispatch returns health and warns on saturated due backlog / exhausted retries.
   - [x] Metrics sync returns health and warns on provider/account/post metric failures.
@@ -155,6 +156,11 @@ Start with P0 for posts only:
 - [x] Agency Workflows worker typecheck passes: `pnpm --dir workers/agency-workflows run typecheck`.
 - [x] Social publishing regression suite passes after the inbox automation Workflow foundation: `pnpm run test:social-publishing` reported 96 files and 613 tests passing.
 - [x] Production build passes after the inbox automation Workflow foundation: `pnpm run build` completed Nuxt, Nitro Cloudflare Pages output, and `scripts/wrap-worker.mjs`.
+- [x] Social inbox inbound Workflow kickoff focused tests pass: `pnpm exec vitest run test/social/inboxWorkflow.test.ts test/server/utils/agencyWorkflowsClient.test.ts test/workers/agencyWorkflowsContracts.test.ts test/workers/agencyWorkflowsFetch.test.ts test/server/api/socialInboxAutomationWorkflowCallback.test.ts test/config/agencyWorkflowsBindings.test.ts` reported 37 tests passing.
+- [x] Social inbox inbound Workflow kickoff scoped lint passes across `server/utils/socialInbox/workflow.ts`, `server/api/cron/sync-social-inbox.post.ts`, and `test/social/inboxWorkflow.test.ts`.
+- [x] Agency Workflows worker typecheck passes after the inbound kickoff wiring: `pnpm --dir workers/agency-workflows run typecheck`.
+- [x] Production build passes after the inbound kickoff wiring: `pnpm run build` completed Nuxt, Nitro Cloudflare Pages output, and `scripts/wrap-worker.mjs`.
+- [x] Built Pages worker config includes the `AGENCY_WORKFLOWS` service binding and `AGENCY_WORKFLOWS_ENABLED=true` in `dist/_worker.js/wrangler.json`.
 - [x] Diff integrity passes; token-shaped scans found only known dummy fixtures in `test/social/socialInboxTokenRefresh.test.ts` on tracked lines and no matches in untracked files.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.
