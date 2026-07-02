@@ -352,6 +352,39 @@ describe('agency workflow client', () => {
     })
   })
 
+  it('reports degraded readiness when Worker health reports a missing workflow binding', async () => {
+    const bindingFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: false,
+      worker: 'agency-workflows',
+      enabled: true,
+      workflows: [
+        { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false }
+      ]
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await checkAgencyWorkflowReadiness(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }))
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 'degraded',
+      enabled: true,
+      transport: 'service-binding',
+      worker: {
+        ok: false,
+        enabled: true,
+        workflows: [
+          { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
+          { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false }
+        ]
+      }
+    })
+  })
+
   it('falls back to Worker URL health when no service binding is available', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       ok: true,

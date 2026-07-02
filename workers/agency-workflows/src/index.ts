@@ -125,14 +125,12 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
   const url = new URL(request.url)
 
   if (request.method === 'GET' && url.pathname === '/health') {
+    const workflows = workflowHealth(env)
     return json({
-      ok: true,
+      ok: workflows.every(workflow => workflow.bindingConfigured),
       worker: 'agency-workflows',
       enabled: workflowFeatureEnabled(env),
-      workflows: [
-        { kind: SOCIAL_PUBLISHING_WORKFLOW_KIND, binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
-        { kind: SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND, binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
-      ]
+      workflows
     })
   }
 
@@ -179,6 +177,30 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function workflowHealth(env: AgencyWorkflowEnv) {
+  return [
+    {
+      kind: SOCIAL_PUBLISHING_WORKFLOW_KIND,
+      binding: 'SOCIAL_PUBLISHING_WORKFLOW',
+      bindingConfigured: isWorkflowBinding(env.SOCIAL_PUBLISHING_WORKFLOW)
+    },
+    {
+      kind: SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
+      binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW',
+      bindingConfigured: isWorkflowBinding(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW)
+    }
+  ]
+}
+
+function isWorkflowBinding(input: unknown): boolean {
+  return Boolean(
+    input
+    && typeof input === 'object'
+    && typeof (input as { create?: unknown }).create === 'function'
+    && typeof (input as { get?: unknown }).get === 'function'
+  )
 }
 
 export default {

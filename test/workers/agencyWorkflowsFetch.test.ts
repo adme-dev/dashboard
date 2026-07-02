@@ -52,8 +52,26 @@ describe('agency workflows worker fetch handler', () => {
       worker: 'agency-workflows',
       enabled: true,
       workflows: [
-        { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
-        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' }
+        { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: true }
+      ]
+    })
+  })
+
+  it('reports degraded health when a workflow binding is missing', async () => {
+    const response = await handleAgencyWorkflowsFetch(
+      new Request('https://agency-workflows.example.com/health'),
+      workflowEnv({ SOCIAL_INBOX_AUTOMATION_WORKFLOW: undefined }) as never
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      worker: 'agency-workflows',
+      enabled: true,
+      workflows: [
+        { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
+        { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false }
       ]
     })
   })
