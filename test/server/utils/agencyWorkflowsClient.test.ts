@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   checkAgencyWorkflowReadiness,
+  getAgencyWorkflowStatus,
   startSocialInboxAutomationWorkflow,
   startSocialPublishingWorkflow,
   type StartSocialPublishingWorkflowEvent
@@ -397,5 +398,92 @@ describe('agency workflow client', () => {
     })
     expect(JSON.stringify(result)).not.toContain('workflow-secret')
     expect(JSON.stringify(mockConsoleWarn.mock.calls)).not.toContain('workflow-secret')
+  })
+
+  it('reads workflow instance status through the Cloudflare service binding', async () => {
+    const bindingFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      workflow: 'social.inbox.automation',
+      instanceId: 'social-inbox-auto-client-1-conversation-1-message-1',
+      status: { status: 'running' }
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await getAgencyWorkflowStatus(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }), {
+      workflow: 'social.inbox.automation',
+      instanceId: 'social-inbox-auto-client-1-conversation-1-message-1'
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      enabled: true,
+      transport: 'service-binding',
+      workflow: 'social.inbox.automation',
+      instanceId: 'social-inbox-auto-client-1-conversation-1-message-1',
+      status: { status: 'running' }
+    })
+    const request = bindingFetch.mock.calls[0][0] as Request
+    expect(request.url).toBe('https://agency-workflows.internal/workflows/status?workflow=social.inbox.automation&instanceId=social-inbox-auto-client-1-conversation-1-message-1')
+    expect(request.method).toBe('GET')
+    expect(request.headers.get('authorization')).toBe('Bearer workflow-secret')
+  })
+
+  it('falls back to the Worker URL for workflow instance status', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      workflow: 'social.post.publish',
+      instanceId: 'social-publish-client-1-post-1',
+      status: { status: 'complete' }
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await getAgencyWorkflowStatus(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS_URL: 'https://agency-workflows.example.com/base'
+    }), {
+      workflow: 'social.post.publish',
+      instanceId: 'social-publish-client-1-post-1',
+      fetchImpl
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      enabled: true,
+      transport: 'fetch',
+      workflow: 'social.post.publish',
+      instanceId: 'social-publish-client-1-post-1'
+    })
+    const request = fetchImpl.mock.calls[0][0] as Request
+    expect(request.url).toBe('https://agency-workflows.example.com/base/workflows/status?workflow=social.post.publish&instanceId=social-publish-client-1-post-1')
+    expect(request.headers.get('authorization')).toBe('Bearer workflow-secret')
+  })
+
+  it('returns a safe status failure without leaking the service secret', async () => {
+    const bindingFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: false,
+      error: 'lookup failed for workflow-secret'
+    }), { status: 500, headers: { 'content-type': 'application/json' } }))
+
+    const result = await getAgencyWorkflowStatus(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }), {
+      workflow: 'social.post.publish',
+      instanceId: 'social-publish-client-1-post-1'
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      enabled: true,
+      reason: 'bad_response',
+      transport: 'service-binding',
+      status: 500,
+      error: 'lookup failed for [redacted]'
+    })
+    expect(JSON.stringify(result)).not.toContain('workflow-secret')
   })
 })

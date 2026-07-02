@@ -104,6 +104,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
   - [x] Add an admin readiness check for Pages flags, secret presence, service-binding/fallback transport, and Worker `/health`.
   - [x] Require readiness to verify every active Workflow kind, not only the publishing workflow.
   - [x] Add an agency-wide Workflows readiness route and keep the social publishing route as a compatibility alias.
+  - [x] Add an admin workflow instance status lookup through the Pages-to-Worker service binding/fallback transport.
   - [ ] Cut over scheduled publishing from cron after production verification.
 - [ ] Extend Cloudflare Workflows to automation workloads.
   - [x] Document the durable workflow direction for social inbox automation before cutover.
@@ -167,7 +168,10 @@ Start with P0 for posts only:
 - [x] Agency-wide Workflows readiness route focused tests pass: `pnpm exec vitest run test/server/api/socialPublishingWorkflowReadiness.test.ts test/server/utils/agencyWorkflowsClient.test.ts test/config/agencyWorkflowsBindings.test.ts test/workers/agencyWorkflowsContracts.test.ts test/workers/agencyWorkflowsFetch.test.ts` reported 33 tests passing.
 - [x] Agency-wide Workflows readiness route scoped lint passes across the canonical route, compatibility alias, shared handler, and focused route test.
 - [x] Production build passes after the agency-wide Workflows readiness route: `pnpm run build` completed Nuxt, Nitro Cloudflare Pages output, and `scripts/wrap-worker.mjs`; generated route chunks include both `/api/agency/workflows/readiness` and the social publishing compatibility alias.
-- [x] Diff integrity passes; token-shaped scans found only known dummy fixtures in `test/social/socialInboxTokenRefresh.test.ts` on tracked lines and no matches in untracked files.
+- [x] Workflow instance status focused tests pass: `pnpm exec vitest run test/server/utils/agencyWorkflowsClient.test.ts test/server/api/agencyWorkflowStatus.test.ts test/workers/agencyWorkflowsContracts.test.ts test/workers/agencyWorkflowsFetch.test.ts test/config/agencyWorkflowsBindings.test.ts` reported 37 tests passing.
+- [x] Workflow instance status scoped lint passes across the workflow client, admin status route, and focused tests.
+- [x] Production build passes after the workflow instance status route: `pnpm run build` completed Nuxt, Nitro Cloudflare Pages output, and `scripts/wrap-worker.mjs`; generated route chunks include `/api/agency/workflows/status`.
+- [x] Diff integrity passes; token-shaped scans found only expected secret handling code and known dummy `workflow-secret` fixtures in focused Workflows tests.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.
 - [ ] Live provider smoke remains blocked until production Meta/Google/YouTube/LinkedIn/TikTok app credentials and approved test accounts are available.

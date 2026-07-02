@@ -14,13 +14,15 @@ import {
 const AGENCY_WORKFLOWS_BINDING = 'AGENCY_WORKFLOWS'
 const WORKFLOW_START_URL = 'https://agency-workflows.internal/workflows/start'
 const WORKFLOW_HEALTH_URL = 'https://agency-workflows.internal/health'
+const WORKFLOW_STATUS_URL = 'https://agency-workflows.internal/workflows/status'
 const WORKFLOW_START_PATH = '/workflows/start'
 const WORKFLOW_HEALTH_PATH = '/health'
+const WORKFLOW_STATUS_PATH = '/workflows/status'
 const MAX_ERROR_LENGTH = 300
 const WORKFLOW_REQUEST_TIMEOUT_MS = 5_000
 
 type WorkflowTransport = 'service-binding' | 'fetch'
-type AgencyWorkflowKind = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
+export type AgencyWorkflowKind = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
 type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload
 
 interface AgencyWorkflowServiceBinding {
@@ -98,6 +100,12 @@ export interface CheckAgencyWorkflowReadinessInput {
   fetchImpl?: (request: Request) => Promise<Response>
 }
 
+export interface GetAgencyWorkflowStatusInput {
+  workflow: AgencyWorkflowKind
+  instanceId: string
+  fetchImpl?: (request: Request) => Promise<Response>
+}
+
 export interface AgencyWorkflowReadinessWorker {
   ok?: boolean
   worker?: string
@@ -118,6 +126,11 @@ export interface AgencyWorkflowReadinessResult {
   missingWorkflows?: AgencyWorkflowKind[]
   error?: string
 }
+
+export type GetAgencyWorkflowStatusResult
+  = StartAgencyWorkflowSuccess<AgencyWorkflowKind>
+    | StartAgencyWorkflowDisabled
+    | StartAgencyWorkflowFailure
 
 interface WorkflowRequestTarget {
   transport: WorkflowTransport
@@ -367,6 +380,59 @@ export async function checkAgencyWorkflowReadiness(
   }
 }
 
+export async function getAgencyWorkflowStatus(
+  event: AgencyWorkflowEvent,
+  input: GetAgencyWorkflowStatusInput
+): Promise<GetAgencyWorkflowStatusResult> {
+  const env = getCloudflareEnv(event)
+
+  if (envText(env, 'AGENCY_WORKFLOWS_ENABLED') !== 'true') {
+    console.info('agency-workflows.status.disabled', {
+      workflow: input.workflow,
+      instanceId: input.instanceId
+    })
+    return { ok: false, enabled: false, reason: 'disabled' }
+  }
+
+  const secret = envText(env, 'WORKFLOW_SERVICE_SECRET')
+  const target = secret ? buildWorkflowStatusTarget(env, input.workflow, input.instanceId, secret, input.fetchImpl) : null
+  if (!target) {
+    const result = failedResult('not_configured')
+    logStatusFailure(input, result)
+    return result
+  }
+
+  try {
+    const response = await target.send(target.request)
+    const body = await readResponseBody(response)
+
+    if (!response.ok) {
+      const result = failedResult('bad_response', {
+        transport: target.transport,
+        status: response.status,
+        error: responseError(body, response.statusText, [secret])
+      })
+      logStatusFailure(input, result)
+      return result
+    }
+
+    const result = successResult(input.workflow, target.transport, body)
+    console.info('agency-workflows.status.succeeded', {
+      workflow: input.workflow,
+      instanceId: input.instanceId,
+      transport: target.transport
+    })
+    return result
+  } catch (error) {
+    const result = failedResult('request_failed', {
+      transport: target.transport,
+      error: safeError(error, [secret])
+    })
+    logStatusFailure(input, result)
+    return result
+  }
+}
+
 function getCloudflareEnv(event: AgencyWorkflowEvent): Record<string, unknown> {
   return event.context?.cloudflare?.env ?? {}
 }
@@ -433,6 +499,33 @@ function buildWorkflowReadinessTarget(
   }
 }
 
+function buildWorkflowStatusTarget(
+  env: Record<string, unknown>,
+  workflow: AgencyWorkflowKind,
+  instanceId: string,
+  secret: string,
+  fetchImpl?: (request: Request) => Promise<Response>
+): WorkflowRequestTarget | null {
+  const binding = env[AGENCY_WORKFLOWS_BINDING]
+  if (isServiceBinding(binding)) {
+    return {
+      transport: 'service-binding',
+      request: workflowStatusRequest(WORKFLOW_STATUS_URL, workflow, instanceId, secret),
+      send: request => binding.fetch(request)
+    }
+  }
+
+  const url = workflowServiceUrl(envText(env, 'AGENCY_WORKFLOWS_URL'), WORKFLOW_STATUS_PATH)
+  const fetcher = fetchImpl ?? globalThis.fetch
+  if (!url || typeof fetcher !== 'function') return null
+
+  return {
+    transport: 'fetch',
+    request: workflowStatusRequest(url, workflow, instanceId, secret),
+    send: request => fetcher(request)
+  }
+}
+
 function isServiceBinding(input: unknown): input is AgencyWorkflowServiceBinding {
   return Boolean(input && typeof input === 'object' && typeof (input as AgencyWorkflowServiceBinding).fetch === 'function')
 }
@@ -454,6 +547,20 @@ function workflowHealthRequest(url: string): Request {
   const signal = workflowRequestSignal()
   return new Request(url, {
     method: 'GET',
+    ...(signal ? { signal } : {})
+  })
+}
+
+function workflowStatusRequest(url: string, workflow: AgencyWorkflowKind, instanceId: string, secret: string): Request {
+  const target = new URL(url)
+  target.searchParams.set('workflow', workflow)
+  target.searchParams.set('instanceId', instanceId)
+  const signal = workflowRequestSignal()
+  return new Request(target.toString(), {
+    method: 'GET',
+    headers: {
+      authorization: `Bearer ${secret}`
+    },
     ...(signal ? { signal } : {})
   })
 }
@@ -624,6 +731,20 @@ function logReadinessFailure(result: AgencyWorkflowReadinessResult) {
     httpStatus: result.httpStatus,
     workerEnabled: result.worker?.enabled,
     missingWorkflows: result.missingWorkflows,
+    error: result.error
+  })
+}
+
+function logStatusFailure(
+  input: { workflow: AgencyWorkflowKind, instanceId: string },
+  result: StartAgencyWorkflowFailure
+) {
+  console.warn('agency-workflows.status.failed', {
+    workflow: input.workflow,
+    instanceId: input.instanceId,
+    reason: result.reason,
+    transport: result.transport,
+    status: result.status,
     error: result.error
   })
 }
