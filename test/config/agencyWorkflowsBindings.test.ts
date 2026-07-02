@@ -68,6 +68,14 @@ describe('agency workflows worker config', () => {
     expect(workerPackageJson.scripts?.['deploy:dry-run']).toBe('WRANGLER_WRITE_LOGS=false wrangler deploy --config wrangler.toml --dry-run')
   })
 
+  it('keeps the workflow readiness gate available as a root package script', () => {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      scripts?: Record<string, string>
+    }
+
+    expect(packageJson.scripts?.['readiness:agency-workflows']).toBe('node scripts/agency-workflows-readiness.mjs')
+  })
+
   it('binds the Pages app to the agency workflows worker', () => {
     const config = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml
 
