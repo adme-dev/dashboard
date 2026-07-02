@@ -7,6 +7,8 @@ import { spawn } from 'node:child_process'
 const DEFAULT_GRAPHIFY_DIR = 'graphify-out'
 const DEFAULT_GRAPHIFY_MAX_AGE_DAYS = 7
 const DEFAULT_OBSIDIAN_APP_PATH = '/Applications/Obsidian.app'
+const PROJECT_PURPOSE_PATH = 'docs/project-purpose.md'
+const WORKFLOWS_ADR_PATH = 'docs/decisions/ADR-003-cloudflare-workflows-automation-spine.md'
 
 const AUTH_ENV_NAMES = [
   'AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN',
@@ -67,6 +69,10 @@ function parseGraphJson(graphPath) {
       ? parsed.edges
       : []
   return { nodes, edges }
+}
+
+function includesAll(content, phrases) {
+  return phrases.every(phrase => content.includes(phrase))
 }
 
 export function resolveReadinessConfig(env = process.env) {
@@ -161,6 +167,64 @@ export function checkGraphifyArtifacts({
   }
 }
 
+export function checkAutomationGovernanceDocs({ rootDir = process.cwd() } = {}) {
+  const purposePath = join(rootDir, PROJECT_PURPOSE_PATH)
+  const adrPath = join(rootDir, WORKFLOWS_ADR_PATH)
+  const remediation = [
+    `Restore ${PROJECT_PURPOSE_PATH} and ${WORKFLOWS_ADR_PATH}.`,
+    'Automation changes must preserve the product purpose, enterprise readiness bar, and Workflows automation-spine decision.'
+  ].join(' ')
+
+  if (!existsSync(purposePath)) {
+    return {
+      ok: false,
+      reason: `Project purpose document is missing: ${PROJECT_PURPOSE_PATH}`,
+      remediation
+    }
+  }
+  if (!existsSync(adrPath)) {
+    return {
+      ok: false,
+      reason: `Workflows automation spine ADR-003 is missing: ${WORKFLOWS_ADR_PATH}`,
+      remediation
+    }
+  }
+
+  const purpose = readFileSync(purposePath, 'utf8')
+  const adr = readFileSync(adrPath, 'utf8')
+  const purposeMarkers = [
+    'Graphify stays current',
+    '## Enterprise Bar',
+    'server-side authorization and tenant/client scoping'
+  ]
+  const adrMarkers = [
+    'Use Cloudflare Workflows as the durable automation spine',
+    'The Nuxt app remains the source of truth',
+    'Every Workflow instance ID must be deterministic',
+    'App callbacks must validate shared secrets'
+  ]
+
+  if (!includesAll(purpose, purposeMarkers)) {
+    return {
+      ok: false,
+      reason: `${PROJECT_PURPOSE_PATH} is missing required enterprise-readiness markers.`,
+      remediation
+    }
+  }
+  if (!includesAll(adr, adrMarkers)) {
+    return {
+      ok: false,
+      reason: `${WORKFLOWS_ADR_PATH} is missing required Workflows governance markers.`,
+      remediation
+    }
+  }
+
+  return {
+    ok: true,
+    files: [PROJECT_PURPOSE_PATH, WORKFLOWS_ADR_PATH]
+  }
+}
+
 function commandStep(name, command, args) {
   return { name, command, args }
 }
@@ -195,6 +259,15 @@ export async function runAgencyWorkflowsReadiness({
   const steps = []
 
   steps.push(await runStep(commandStep('git status', 'git', ['status', '--short', '--branch']), runCommand))
+
+  const governance = checkAutomationGovernanceDocs()
+  steps.push({
+    name: 'automation governance docs',
+    status: governance.ok ? 'pass' : 'blocked',
+    output: governance.ok
+      ? `Governance docs present: ${governance.files.join(', ')}`
+      : `${governance.reason}\n${governance.remediation}`
+  })
 
   const graphify = checkGraphifyArtifacts({
     graphifyDir: config.graphifyDir,
