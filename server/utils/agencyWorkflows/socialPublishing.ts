@@ -11,6 +11,8 @@ export interface SocialPublishingWorkflowPayload {
   requestedBy?: string
 }
 
+const WORKFLOW_INSTANCE_ID_MAX_LENGTH = 100
+
 export function normalizeSocialPublishingWorkflowPayload(input: unknown): SocialPublishingWorkflowPayload {
   const body = objectInput(input)
   const kind = requiredText(body.kind, 'kind')
@@ -32,6 +34,12 @@ export function normalizeSocialPublishingWorkflowPayload(input: unknown): Social
     ...(scheduledAt ? { scheduledAt } : {}),
     ...(requestedBy ? { requestedBy } : {})
   }
+}
+
+export function buildSocialPublishingWorkflowInstanceId(payload: SocialPublishingWorkflowPayload): string {
+  const attempt = payload.scheduledAt ? `-${workflowInstancePart(payload.scheduledAt)}` : ''
+  return `social-publish-${workflowInstancePart(payload.clientId)}-${workflowInstancePart(payload.postId)}${attempt}`
+    .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
 }
 
 export function socialPublishingWorkflowClaimStatuses(
@@ -77,4 +85,9 @@ function objectInput(input: unknown): Record<string, unknown> {
     throw new Error('Expected object payload')
   }
   return input as Record<string, unknown>
+}
+
+function workflowInstancePart(input: string): string {
+  const value = input.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '')
+  return value || 'unknown'
 }

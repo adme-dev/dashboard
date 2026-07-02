@@ -11,6 +11,8 @@ export interface SocialInboxAutomationWorkflowPayload {
   requestedBy?: string
 }
 
+const WORKFLOW_INSTANCE_ID_MAX_LENGTH = 100
+
 export function normalizeSocialInboxAutomationWorkflowPayload(input: unknown): SocialInboxAutomationWorkflowPayload {
   const body = objectInput(input)
   const kind = requiredText(body.kind, 'kind')
@@ -32,6 +34,12 @@ export function normalizeSocialInboxAutomationWorkflowPayload(input: unknown): S
     ...(messageId ? { messageId } : {}),
     ...(requestedBy ? { requestedBy } : {})
   }
+}
+
+export function buildSocialInboxAutomationWorkflowInstanceId(payload: SocialInboxAutomationWorkflowPayload): string {
+  const discriminator = payload.messageId || payload.trigger
+  return `social-inbox-auto-${workflowInstancePart(payload.clientId)}-${workflowInstancePart(payload.conversationId)}-${workflowInstancePart(discriminator)}`
+    .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
 }
 
 function normalizeTrigger(input: unknown): SocialInboxAutomationWorkflowTrigger {
@@ -57,4 +65,9 @@ function objectInput(input: unknown): Record<string, unknown> {
     throw new Error('Expected object payload')
   }
   return input as Record<string, unknown>
+}
+
+function workflowInstancePart(input: string): string {
+  const value = input.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '')
+  return value || 'unknown'
 }

@@ -63,12 +63,64 @@ describe('agency workflow status endpoint', () => {
     })
   })
 
+  it('derives a scheduled publishing workflow instance id from identity query fields', async () => {
+    mockQuery = {
+      workflow: 'social.post.publish',
+      clientId: 'client 1',
+      postId: 'post 1',
+      scheduledAt: '2026-07-02T03:00:00.000Z',
+      trigger: 'cron'
+    }
+    mockGetAgencyWorkflowStatus.mockResolvedValue({
+      ok: true,
+      enabled: true,
+      transport: 'service-binding',
+      workflow: 'social.post.publish',
+      instanceId: 'social-publish-client-1-post-1-2026-07-02T03-00-00-000Z',
+      status: { status: 'running' }
+    })
+
+    await workflowStatus({ context: {} })
+
+    expect(mockGetAgencyWorkflowStatus).toHaveBeenCalledWith(expect.anything(), {
+      workflow: 'social.post.publish',
+      instanceId: 'social-publish-client-1-post-1-2026-07-02T03-00-00-000Z'
+    })
+  })
+
+  it('derives a social inbox automation workflow instance id from identity query fields', async () => {
+    mockQuery = {
+      workflow: 'social.inbox.automation',
+      clientId: 'client 1',
+      conversationId: 'conversation 1',
+      messageId: 'message 1'
+    }
+
+    await workflowStatus({ context: {} })
+
+    expect(mockGetAgencyWorkflowStatus).toHaveBeenCalledWith(expect.anything(), {
+      workflow: 'social.inbox.automation',
+      instanceId: 'social-inbox-auto-client-1-conversation-1-message-1'
+    })
+  })
+
   it('rejects missing workflow status query params before contacting the Worker', async () => {
-    mockQuery = { workflow: 'social.post.publish' }
+    mockQuery = { workflow: 'social.post.publish', clientId: 'client-1' }
 
     await expect(workflowStatus({ context: {} })).rejects.toMatchObject({
       statusCode: 400,
-      statusMessage: 'workflow and instanceId are required'
+      statusMessage: 'instanceId or workflow identity fields are required'
+    })
+
+    expect(mockGetAgencyWorkflowStatus).not.toHaveBeenCalled()
+  })
+
+  it('rejects a missing workflow before contacting the Worker', async () => {
+    mockQuery = { instanceId: 'instance-1' }
+
+    await expect(workflowStatus({ context: {} })).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'workflow is required'
     })
 
     expect(mockGetAgencyWorkflowStatus).not.toHaveBeenCalled()
