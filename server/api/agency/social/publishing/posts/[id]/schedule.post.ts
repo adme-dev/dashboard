@@ -3,6 +3,7 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
 import { normalizeScheduledAt, requireSocialPostClientAccess } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
+import { startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/client'
 
 /**
  * POST /api/agency/social/publishing/posts/:id/schedule
@@ -47,6 +48,13 @@ export default defineEventHandler(async (event) => {
     actorId: user.id,
     action: 'post_scheduled',
     metadata: { scheduledAt, timezone }
+  })
+  await startSocialPublishingWorkflow(event, {
+    postId: id,
+    clientId: existing.client_id,
+    scheduledAt,
+    trigger: 'schedule',
+    requestedBy: user.id
   })
   return row
 })

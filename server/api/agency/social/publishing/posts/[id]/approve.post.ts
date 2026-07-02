@@ -4,11 +4,14 @@ import { queryOne } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { requireSocialPostClientAccess } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
+import { startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/client'
 
 interface ApprovedPost {
   id: string
   content: string | null
   approval_requested_by: string | null
+  status: string | null
+  scheduled_at: string | null
 }
 
 /**
@@ -30,7 +33,8 @@ export default defineEventHandler(async (event) => {
             approved_by = $2,
             approved_at = NOW(),
             rejection_reason = NULL, updated_at = NOW()
-      WHERE id = $1 AND client_id = $3 RETURNING id, content, approval_requested_by`,
+      WHERE id = $1 AND client_id = $3
+      RETURNING id, content, approval_requested_by, status, scheduled_at`,
     [id, user.id, existing.client_id]
   )
   if (!post) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
@@ -55,6 +59,16 @@ export default defineEventHandler(async (event) => {
     } catch (err) {
       console.error('[social] approve notification failed:', err)
     }
+  }
+
+  if (post.status === 'scheduled' && post.scheduled_at) {
+    await startSocialPublishingWorkflow(event, {
+      postId: id,
+      clientId: existing.client_id,
+      scheduledAt: post.scheduled_at,
+      trigger: 'schedule',
+      requestedBy: user.id
+    })
   }
 
   return { ok: true }
