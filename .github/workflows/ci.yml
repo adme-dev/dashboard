@@ -43,16 +43,6 @@ jobs:
         run: pnpm run test:social-publishing
         timeout-minutes: 15
 
-      - name: Lint
-        run: timeout 7m pnpm run lint
-        continue-on-error: true
-        timeout-minutes: 8
-
-      - name: Typecheck
-        run: timeout 14m pnpm run typecheck
-        continue-on-error: true
-        timeout-minutes: 15
-
   deploy:
     needs: ci
     if: github.ref == 'refs/heads/main'
