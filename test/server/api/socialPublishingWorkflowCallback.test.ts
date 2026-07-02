@@ -153,7 +153,9 @@ describe('social publishing workflow callback', () => {
     })
     expect(mockQueryOne.mock.calls[0][0]).toContain('UPDATE social_posts')
     expect(mockQueryOne.mock.calls[0][0]).toContain('status = ANY($3::text[])')
-    expect(mockQueryOne.mock.calls[0][1]).toEqual(['post-1', 'client-1', ['scheduled'], 3])
+    expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at = $5::timestamptz')
+    expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at <= NOW()')
+    expect(mockQueryOne.mock.calls[0][1]).toEqual(['post-1', 'client-1', ['scheduled'], 3, '2026-07-02T00:00:00.000Z'])
     expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('last_error'), [['acct-1'], 'client-1'])
     expect(mockPublishPost).toHaveBeenCalledWith(expect.objectContaining({
       id: 'post-1',
@@ -188,6 +190,33 @@ describe('social publishing workflow callback', () => {
       postId: 'post-1',
       currentStatus: 'published'
     }))
+  })
+
+  it('skips stale scheduled workflow callbacks after a post has been rescheduled', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'post-1',
+        client_id: 'client-1',
+        status: 'scheduled',
+        scheduled_at: '2026-07-03T00:00:00.000Z'
+      })
+
+    const result = await workflowCallback({
+      headers: { 'x-workflow-secret': 'workflow-secret' },
+      body: validPayload()
+    })
+
+    expect(result.result).toMatchObject({
+      ok: true,
+      skipped: true,
+      reason: 'not_claimed',
+      currentStatus: 'scheduled'
+    })
+    expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at = $5::timestamptz')
+    expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at <= NOW()')
+    expect(mockQueryOne.mock.calls[0][1]).toEqual(['post-1', 'client-1', ['scheduled'], 3, '2026-07-02T00:00:00.000Z'])
+    expect(mockPublishPost).not.toHaveBeenCalled()
   })
 
   it('persists a failed attempt when dispatch throws after the claim', async () => {

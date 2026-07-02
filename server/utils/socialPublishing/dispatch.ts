@@ -7,6 +7,7 @@ export type SocialPublishingDispatchSource = 'manual' | 'cron' | 'workflow'
 export interface ClaimAndPublishSocialPostInput {
   postId: string
   clientId?: string | null
+  scheduledAt?: string | null
   claimStatuses: readonly string[]
   maxAttempts?: number | null
   source: SocialPublishingDispatchSource
@@ -54,8 +55,9 @@ export async function claimAndPublishSocialPost(
         AND ($2::text IS NULL OR client_id=$2)
         AND status = ANY($3::text[])
         AND ($4::int IS NULL OR publish_attempts < $4)
+        AND ($5::timestamptz IS NULL OR (scheduled_at = $5::timestamptz AND scheduled_at <= NOW()))
       RETURNING *`,
-    [input.postId, input.clientId ?? null, claimStatuses, input.maxAttempts ?? null]
+    [input.postId, input.clientId ?? null, claimStatuses, input.maxAttempts ?? null, input.scheduledAt ?? null]
   )
 
   if (!claimed) {

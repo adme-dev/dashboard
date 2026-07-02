@@ -94,7 +94,9 @@ export function normalizeSocialPublishingWorkflowPayload(input: unknown): Social
 }
 
 export function buildSocialPublishingWorkflowInstanceId(payload: SocialPublishingWorkflowPayload): string {
-  return `social-publish-${instancePart(payload.clientId)}-${instancePart(payload.postId)}`.slice(0, 256)
+  const attempt = payload.scheduledAt ? `-${instancePart(payload.scheduledAt)}` : ''
+  return `social-publish-${instancePart(payload.clientId)}-${instancePart(payload.postId)}${attempt}`
+    .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
 }
 
 export function normalizeSocialInboxAutomationWorkflowPayload(input: unknown): SocialInboxAutomationWorkflowPayload {

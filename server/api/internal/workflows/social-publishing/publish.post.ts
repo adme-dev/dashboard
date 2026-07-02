@@ -26,6 +26,7 @@ export default defineEventHandler(async (event) => {
   const result = await claimAndPublishSocialPost({
     postId: payload.postId,
     clientId: payload.clientId,
+    scheduledAt: payload.scheduledAt ?? null,
     claimStatuses: socialPublishingWorkflowClaimStatuses(payload.trigger),
     maxAttempts: socialPublishingWorkflowMaxAttempts(payload.trigger),
     source: 'workflow',

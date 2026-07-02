@@ -43,10 +43,22 @@ describe('agency workflow contracts', () => {
     })).toThrow('scheduledAt must be a valid ISO datetime')
   })
 
-  it('builds a deterministic workflow instance id per social post', () => {
+  it('builds a deterministic workflow instance id per social post schedule attempt', () => {
     const payload = normalizeSocialPublishingWorkflowPayload({
       postId: 'Post_123',
-      clientId: 'Client_456'
+      clientId: 'Client_456',
+      scheduledAt: '2026-07-02T03:00:00.000Z',
+      trigger: 'schedule'
+    })
+
+    expect(buildSocialPublishingWorkflowInstanceId(payload)).toBe('social-publish-Client_456-Post_123-2026-07-02T03-00-00-000Z')
+  })
+
+  it('keeps manual social publishing workflow ids stable per post', () => {
+    const payload = normalizeSocialPublishingWorkflowPayload({
+      postId: 'Post_123',
+      clientId: 'Client_456',
+      trigger: 'manual'
     })
 
     expect(buildSocialPublishingWorkflowInstanceId(payload)).toBe('social-publish-Client_456-Post_123')

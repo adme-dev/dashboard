@@ -82,7 +82,7 @@ describe('manual publish endpoint', () => {
     expect(mockPublishPost).toHaveBeenCalledOnce()
     expect(mockQueryOne.mock.calls[1][0]).toContain('UPDATE social_posts')
     expect(mockQueryOne.mock.calls[1][0]).toContain('status = ANY($3::text[])')
-    expect(mockQueryOne.mock.calls[1][1]).toEqual(['P1', 'C1', ['approved'], null])
+    expect(mockQueryOne.mock.calls[1][1]).toEqual(['P1', 'C1', ['approved'], null, null])
     expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('last_error'), [['a1'], 'C1'])
     // final UPDATE persists status + platform_results
     const finalUpdate = mockExecute.mock.calls.find(call => String(call[0]).includes('published_at=CASE'))!
@@ -141,7 +141,8 @@ describe('dispatcher cron — idempotent claim', () => {
     expect(mockQueryRows.mock.calls[0][0]).toContain('status = \'scheduled\'')
     expect(mockQueryOne.mock.calls[0][0]).toContain('UPDATE social_posts')
     expect(mockQueryOne.mock.calls[0][0]).toContain('status = ANY($3::text[])')
-    expect(mockQueryOne.mock.calls[0][1]).toEqual(['P1', null, ['scheduled'], 3])
+    expect(mockQueryOne.mock.calls[0][0]).toContain('scheduled_at = $5::timestamptz')
+    expect(mockQueryOne.mock.calls[0][1]).toEqual(['P1', null, ['scheduled'], 3, '2026-07-02T00:00:00.000Z'])
     expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('last_error'), [['a1'], 'C1'])
   })
 

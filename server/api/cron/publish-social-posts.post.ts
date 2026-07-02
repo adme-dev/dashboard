@@ -66,6 +66,7 @@ export default defineEventHandler(async (event) => {
 
     const dispatch = await claimAndPublishSocialPost({
       postId: post.id,
+      scheduledAt: post.scheduled_at,
       claimStatuses: ['scheduled'],
       maxAttempts: 3,
       source: 'cron'

@@ -147,11 +147,11 @@ describe('agency workflows worker fetch handler', () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       workflow: 'social.post.publish',
-      instanceId: 'social-publish-client-1-post-1',
+      instanceId: 'social-publish-client-1-post-1-2026-07-02T03-00-00-000Z',
       existing: true,
       status: { status: 'running' }
     })
-    expect(publishingWorkflow.get).toHaveBeenCalledWith('social-publish-client-1-post-1')
+    expect(publishingWorkflow.get).toHaveBeenCalledWith('social-publish-client-1-post-1-2026-07-02T03-00-00-000Z')
   })
 
   it('reads social inbox automation instance status from the inbox binding', async () => {
