@@ -58,8 +58,12 @@ describe('agency workflows worker config', () => {
     const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
       scripts?: Record<string, string>
     }
+    const workerPackageJson = JSON.parse(readFileSync('workers/agency-workflows/package.json', 'utf8')) as {
+      scripts?: Record<string, string>
+    }
 
     expect(packageJson.scripts?.['deploy:workflows']).toBe('pnpm --dir workers/agency-workflows run deploy')
+    expect(workerPackageJson.scripts?.deploy).toBe('wrangler deploy --config wrangler.toml')
   })
 
   it('binds the Pages app to the agency workflows worker', () => {
