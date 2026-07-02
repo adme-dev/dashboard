@@ -125,7 +125,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
   - [x] Document the durable workflow direction for social inbox automation before cutover.
   - [x] Add a `social.inbox.automation` Workflow foundation that calls a single-conversation Pages callback through the shared automation engine.
   - [x] Start inbox automation workflows from new inbound events behind the existing `AGENCY_WORKFLOWS_ENABLED` gate.
-  - [ ] Evaluate the same Workflows pattern for other long-running automation jobs before adding more cron-only loops.
+  - [x] Evaluate the same Workflows pattern for other long-running automation jobs before adding more cron-only loops.
     - Recommendation: use Cloudflare Workflows for event-triggered or retry-sensitive automation runs, including social reports, spend watchdog/escalations, CRM/opportunity follow-ups, brief-to-job lifecycle checks, and video generation jobs. Keep cron workers as sweep/recovery triggers rather than the primary execution engine when the job has per-item retries, waits, callbacks, or operational audit requirements.
 - [x] Add backlog and repeated-failure alerts for scheduler and metrics sync.
   - [x] Scheduler dispatch returns health and warns on saturated due backlog / exhausted retries.
@@ -198,6 +198,7 @@ Start with P0 for posts only:
 - [x] Agency Workflows readiness gate added as `pnpm run readiness:agency-workflows`; focused tests cover current Graphy validation, stale Graphy blocking, missing Graphy remediation through locally installed Obsidian, local workflow gates, and authenticated-smoke blocking when no admin auth is provided.
 - [x] Scheduled publishing Workflow cutover blocker fixed: schedule/cron Workflow ids now include `scheduledAt`, workflow callbacks pass `scheduledAt` into the atomic claim, and cron direct fallback claims also require the selected `scheduled_at`; focused tests and `pnpm run test:social-publishing` pass.
 - [x] Local Graphy/Graphify is refreshed for the Workflows cutover track: `pnpm run graphify:rebuild` generated clean artifacts on 2026-07-02 after excluding generated/runtime directories, with 3,448 indexed files, 8,399 nodes, and 7,737 edges. The R2 upload target is `graphify/dashboard`; see `docs/graphify.md`.
+- [x] Project purpose and Workflows automation spine are documented: `docs/project-purpose.md` defines the product purpose and enterprise readiness bar, and `docs/decisions/ADR-003-cloudflare-workflows-automation-spine.md` records where Workflows should replace cron-only automation.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.
 - [ ] Live provider smoke remains blocked until production Meta/Google/YouTube/LinkedIn/TikTok app credentials and approved test accounts are available.

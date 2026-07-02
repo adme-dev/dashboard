@@ -7,6 +7,8 @@ Internal operations dashboard for a digital marketing agency. Manages work (boar
 ## Project Links
 
 - Source repository: https://github.com/adme-dev/dashboard
+- Project purpose: [docs/project-purpose.md](docs/project-purpose.md)
+- Graphify architecture artifacts: [docs/graphify.md](docs/graphify.md)
 
 ## Feature Highlights
 
@@ -42,6 +44,7 @@ Internal operations dashboard for a digital marketing agency. Manages work (boar
 - **Cloudflare Pages** — hosting (`nitro.preset: 'cloudflare_pages'`)
 - **Cloudflare R2** — object storage (file uploads, exports)
 - **Cloudflare Workers** — edge functions (email worker, queue consumer)
+- **Cloudflare Workflows** — durable automation for scheduled publishing and retry-sensitive orchestration
 - **Cloudflare KV** — edge caching for tokens, sessions, reports
 - **Cloudflare Queues** — background job processing with retry and DLQ
 - **Cloudflare Durable Objects** — real-time chat rooms and board events
@@ -75,6 +78,7 @@ workers/
   board-events/     # BoardRoom Durable Object (real-time board collaboration)
   chat-rooms/       # ChatRoom Durable Object (real-time chat)
   email-worker/     # Inbound email processing (Cloudflare Email Routing)
+  agency-workflows/ # Durable Cloudflare Workflows orchestration
 ```
 
 ## Getting Started
@@ -144,6 +148,8 @@ The app starts on http://localhost:3000. Cloudflare bindings (KV, Queues, AI, Ve
 | `pnpm test` | Run Vitest tests |
 | `pnpm lint` | Lint with ESLint |
 | `pnpm typecheck` | Run Nuxt type checking |
+| `pnpm graphify:rebuild` | Rebuild local Graphify architecture artifacts |
+| `pnpm readiness:agency-workflows` | Run Workflows cutover readiness checks |
 
 ## Deploying to Cloudflare Pages
 
