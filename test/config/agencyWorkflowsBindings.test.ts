@@ -48,6 +48,12 @@ describe('agency workflows worker config', () => {
     expect(pagesConfig.vars?.AGENCY_WORKFLOWS_ENABLED).toBe('true')
   })
 
+  it('keeps scheduled publishing workflow-primary cutover explicitly dormant until production smoke passes', () => {
+    const pagesConfig = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml
+
+    expect(pagesConfig.vars?.AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY).toBe('false')
+  })
+
   it('keeps the workflow worker deployable through a root package script', () => {
     const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
       scripts?: Record<string, string>

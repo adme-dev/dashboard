@@ -128,6 +128,9 @@ AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f
 # Cloudflare Workflows control plane. Secrets are managed in Cloudflare:
 # WORKFLOW_SERVICE_SECRET and WORKFLOW_CALLBACK_SECRET.
 AGENCY_WORKFLOWS_ENABLED = "true"
+# Workflow-primary scheduled publishing cutover. Keep false until
+# `pnpm run smoke:agency-workflows` passes against production with admin auth.
+AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY = "false"
 # MCP server (Phase 1) — non-secret plaintext vars MUST live here, not the CF dashboard:
 # deployConfig bakes [vars] into the Direct-Upload deploy config, which REPLACES dashboard
 # plaintext vars (secrets survive). MCP_INTERNAL_SECRET + MCP_HANDSHAKE_SECRET stay as dashboard secrets.

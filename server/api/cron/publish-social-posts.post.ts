@@ -1,6 +1,13 @@
 import { defineEventHandler, getHeader, createError } from 'h3'
 import { queryRows, queryOne } from '~~/server/utils/db'
+import { startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/client'
 import { claimAndPublishSocialPost } from '~~/server/utils/socialPublishing/dispatch'
+
+interface DuePostRow {
+  id: string
+  client_id: string
+  scheduled_at: string | null
+}
 
 interface DispatchHealthRow {
   due_backlog?: number | string | null
@@ -29,22 +36,42 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const due = await queryRows<{ id: string }>(
-    `SELECT id FROM social_posts
+  const due = await queryRows<DuePostRow>(
+    `SELECT id, client_id, scheduled_at::text
+       FROM social_posts
       WHERE scheduled_at <= NOW() AND status = 'scheduled' AND publish_attempts < 3
       ORDER BY scheduled_at ASC LIMIT 10`
   )
 
-  const results: Array<{ id: string, status: string }> = []
-  for (const { id } of due) {
+  const results: Array<{ id: string, status: string, workflowInstanceId?: string }> = []
+  for (const post of due) {
+    if (scheduledPublishingWorkflowPrimary()) {
+      const started = await startSocialPublishingWorkflow(event, {
+        postId: post.id,
+        clientId: post.client_id,
+        scheduledAt: post.scheduled_at ?? undefined,
+        trigger: 'cron',
+        requestedBy: 'social-dispatch-cron'
+      })
+      if (started.ok) {
+        results.push({ id: post.id, status: 'workflow_started', workflowInstanceId: started.instanceId })
+        continue
+      }
+      console.warn('social-dispatch.workflow-start.failed', {
+        postId: post.id,
+        clientId: post.client_id,
+        reason: started.reason
+      })
+    }
+
     const dispatch = await claimAndPublishSocialPost({
-      postId: id,
+      postId: post.id,
       claimStatuses: ['scheduled'],
       maxAttempts: 3,
       source: 'cron'
     })
     if (dispatch.skipped) continue
-    results.push({ id, status: dispatch.status ?? 'failed' })
+    results.push({ id: post.id, status: dispatch.status ?? 'failed' })
   }
 
   const health = dispatchHealth(await queryOne<DispatchHealthRow>(
@@ -70,6 +97,11 @@ export default defineEventHandler(async (event) => {
   console.log('social-dispatch.run', { due: due.length, processed: results.length, health })
   return { processed: results.length, results, health }
 })
+
+function scheduledPublishingWorkflowPrimary(): boolean {
+  return process.env.AGENCY_WORKFLOWS_ENABLED === 'true'
+    && process.env.AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY === 'true'
+}
 
 function dispatchHealth(row: DispatchHealthRow | null): DispatchHealth {
   const dueBacklog = Number(row?.due_backlog ?? 0)
