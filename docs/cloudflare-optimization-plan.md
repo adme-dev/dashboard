@@ -8,7 +8,7 @@
 |-------|-----------|--------|
 | Frontend | Nuxt 4 (SPA mode, Cloudflare Pages) | Deployed |
 | Backend | Nitro (Cloudflare Pages Functions) | Deployed |
-| Database | Neon Serverless Postgres | Connected (direct) |
+| Database | Neon Serverless Postgres via Cloudflare Hyperdrive | Active; `DATABASE_URL` fallback |
 | AI/LLM | Groq SDK (direct API calls) | Connected (direct) |
 | Object Storage | Cloudflare R2 | Connected |
 | Email | Resend | Connected |
@@ -17,7 +17,7 @@
 
 ### Key Bottlenecks Identified
 
-1. **Database connections**: Every request creates a new TCP+TLS connection to Neon (no connection pooling at the edge)
+1. **Database connections**: Hyperdrive now provides the primary edge TCP connection pool for Pages and DB-writing Workers; remaining work is observability, fallback verification, and hot-query measurement.
 2. **Xero API latency**: `cash-flow-forecast` makes 4 sequential Xero API calls (~2-4s total), token validation adds 2-3 DB queries per request
 3. **AI calls unmonitored**: Groq calls go direct — no caching, rate limiting, cost tracking, or fallback routing
 4. **In-memory state lost**: Board events bus uses module-level `Map` — each Cloudflare Pages isolate gets its own empty state
@@ -62,50 +62,35 @@
 
 ### Phase 1b — Cloudflare Hyperdrive
 
-**What**: Add Cloudflare Hyperdrive binding to accelerate database queries at the edge.
+**What**: Cloudflare Hyperdrive is the active production database path for the Pages app and standalone DB-writing Workers.
 
-**Why**: Hyperdrive provides edge-level connection pooling + query result caching. It maintains persistent connections from Cloudflare's edge to Neon, eliminating cold-start connection overhead entirely. Works on top of Neon's pooler for double optimization.
+**Why**: Hyperdrive provides edge-level TCP connection pooling for Neon Postgres. It maintains persistent connections from Cloudflare's edge to Neon and avoids every request paying a fresh connection setup cost.
 
 **Changes**:
 
-1. **`wrangler.toml`** — Add Hyperdrive binding:
+1. **`wrangler.toml`** — Pages app binding:
    ```toml
    [[hyperdrive]]
    binding = "HYPERDRIVE"
-   id = "<your-hyperdrive-config-id>"
+   id = "900b4b74ec41462cbbabebd0aa8775aa"
    ```
 
-2. **`server/utils/db.ts`** — Use Hyperdrive connection string when available:
-   ```ts
-   export function getDb() {
-     if (!pool) {
-       // Hyperdrive binding provides an optimized connection string at the edge
-       const connectionString = process.env.HYPERDRIVE?.connectionString
-         || process.env.DATABASE_URL
-       pool = new Pool({ connectionString })
-     }
-     return pool
-   }
-   ```
+2. **Standalone DB-writing Workers** — `workers/leads-delivery-worker/`, `workers/audio-jobs/`, `workers/video-generation/`, and `workers/asset-intelligence/` declare the same `HYPERDRIVE` binding id so queue consumers write through the same pooled Neon path.
 
-3. **Create Hyperdrive config** (one-time CLI command):
-   ```bash
-   npx wrangler hyperdrive create agency-db \
-     --connection-string="postgresql://user:pass@ep-xxxx-pooler.us-east-2.aws.neon.tech/dbname?sslmode=require"
-   ```
+3. **`server/utils/db.ts`** — The shared Pages DB utility attempts `event.context.cloudflare.env.HYPERDRIVE.connectionString` first, then falls back to `DATABASE_URL` for local development and non-Cloudflare execution.
 
 **How it works**:
-- Cloudflare maintains warm TCP connections to Neon from edge locations
-- Your code uses the same `Pool` from `@neondatabase/serverless` — zero API changes
-- Hyperdrive provides the connection string via a binding, bypassing DNS + TLS handshake
-- Falls back to `DATABASE_URL` for local development (no Hyperdrive locally)
+- Cloudflare maintains warm TCP connections to Neon from edge locations.
+- Pages uses the shared dual-driver DB layer: Hyperdrive over `pg` in Cloudflare, Neon HTTP via `DATABASE_URL` as the local/fallback path.
+- Standalone queue Workers stash `env.HYPERDRIVE.connectionString` on `globalThis` and use local `pg` adapters.
+- Pages app and standalone DB-writing Workers share the same `HYPERDRIVE` binding id: `900b4b74ec41462cbbabebd0aa8775aa`.
 
 **Verification**:
-- `wrangler hyperdrive get agency-db` to confirm config
-- P50 query latency should drop to <10ms for cached queries
-- Monitor via Cloudflare dashboard → Hyperdrive → Analytics
+- `pnpm exec vitest run test/config/cloudflareHyperdriveBindings.test.ts` verifies the Pages binding, standalone worker bindings, DB fallback path, and this plan's production status.
+- Cloudflare dashboard -> Hyperdrive -> Analytics should show production query traffic.
+- For live incidents, confirm Pages still has `DATABASE_URL` as a fallback secret while Hyperdrive remains the primary path.
 
-**Status**: Implemented in code, requires Hyperdrive config creation via CLI
+**Status**: Active in production. The binding is configured in the root Pages app and the DB-writing standalone Workers; no new Hyperdrive creation step is required for the current production path.
 
 ---
 
@@ -334,7 +319,7 @@ Currently, several operations use fire-and-forget patterns that silently fail:
 | Phase | What | Impact | Effort | Dependencies |
 |-------|------|--------|--------|-------------|
 | **1a** | Neon Pooler | High | Trivial | None (env var) |
-| **1b** | Hyperdrive | High | Low | Hyperdrive CLI setup |
+| **1b** | Hyperdrive | High | Complete | Active binding + config drift tests |
 | **1c** | AI Gateway | High | Low | Gateway dashboard setup |
 | **2a** | Xero Token KV | High | Medium | KV namespace creation |
 | **2b** | Xero Report KV | High | Medium | 2a |
@@ -369,8 +354,9 @@ Currently, several operations use fire-and-forget patterns that silently fail:
 
 ### Phase 1
 - [ ] Update `DATABASE_URL` to use Neon `-pooler` hostname
-- [ ] Create Hyperdrive config: `npx wrangler hyperdrive create agency-db --connection-string="..."`
-- [ ] Copy Hyperdrive ID into `wrangler.toml`
+- [x] Confirm Hyperdrive config id `900b4b74ec41462cbbabebd0aa8775aa` is bound in the Pages app.
+- [x] Confirm DB-writing standalone Workers use the same `HYPERDRIVE` binding id.
+- [x] Add config drift tests for Hyperdrive bindings and documentation status.
 - [ ] Create AI Gateway: Dashboard → AI → AI Gateway → Create
 - [ ] Set `AI_GATEWAY_URL` environment variable in Pages settings
 - [ ] Enable AI Gateway caching (TTL: 3600s) and rate limiting (100 req/min)
@@ -400,6 +386,6 @@ Currently, several operations use fire-and-forget patterns that silently fail:
 | `server/utils/groqClient.ts` | AI Gateway `baseURL` routing |
 | `server/api/ai/cashflow-insights.post.ts` | Refactored to use shared `groqClient.ts` |
 | `nuxt.config.ts` | Added `aiGatewayUrl` runtime config |
-| `wrangler.toml` | Hyperdrive binding placeholder |
+| `wrangler.toml` | Active Hyperdrive binding for the Pages app |
 | `.env.example` | New environment variable documentation |
 | `docs/cloudflare-optimization-plan.md` | This document |

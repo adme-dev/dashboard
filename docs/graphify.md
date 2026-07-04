@@ -42,9 +42,9 @@ the latest generation timestamp.
 
 Current clean dashboard rebuild, generated on 2026-07-04:
 
-- Files indexed: 3,458
-- Graph nodes: 8,490
-- Graph edges: 7,917
+- Files indexed: 3,459
+- Graph nodes: 8,492
+- Graph edges: 7,918
 
 Graphify's extractor does not directly parse `.vue` single-file components in
 this setup. The dashboard graph currently covers supported JS/TS/Python/etc.
