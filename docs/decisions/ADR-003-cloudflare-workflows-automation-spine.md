@@ -133,6 +133,10 @@ Prefer cron, queues, or direct route execution when:
   provider adapter has been reviewed for Worker-side execution.
 - Workflow readiness must verify required bindings for every active workflow
   kind.
+- Diagnostic readiness/status smoke may use `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET`
+  as a dedicated machine credential, but only on the Workflows readiness and
+  status endpoints. The same value must be stored as a Cloudflare Pages secret
+  and a GitHub Actions secret for CI deploy smoke.
 - Production cutovers require Graphify freshness, focused tests, Worker
   typecheck/dry-run, authenticated smoke, and production origin smoke.
 

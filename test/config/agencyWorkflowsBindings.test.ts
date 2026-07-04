@@ -131,6 +131,7 @@ describe('agency workflows worker config', () => {
 
     expect(packageJson.scripts?.['smoke:agency-workflows:ci']).toBe('node scripts/agency-workflows-ci-smoke-gate.mjs')
     expect(workflow).toContain('Smoke agency workflows readiness')
+    expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET')
     expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN')
     expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_COOKIE')
     expect(workflow).toContain('pnpm run smoke:agency-workflows:ci')

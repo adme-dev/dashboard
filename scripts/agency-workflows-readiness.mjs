@@ -11,6 +11,7 @@ const PROJECT_PURPOSE_PATH = 'docs/project-purpose.md'
 const WORKFLOWS_ADR_PATH = 'docs/decisions/ADR-003-cloudflare-workflows-automation-spine.md'
 
 const AUTH_ENV_NAMES = [
+  'AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET',
   'AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN',
   'SOCIAL_SMOKE_AUTH_TOKEN',
   'SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN',
@@ -299,8 +300,8 @@ export async function runAgencyWorkflowsReadiness({
       name: 'authenticated production smoke',
       status: 'blocked',
       output: [
-        'Missing admin auth input.',
-        'Set AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN or AGENCY_WORKFLOWS_SMOKE_COOKIE, then rerun pnpm run readiness:agency-workflows.'
+        'Missing Workflows smoke auth input.',
+        'Set AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET, AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN, or AGENCY_WORKFLOWS_SMOKE_COOKIE, then rerun pnpm run readiness:agency-workflows.'
       ].join(' ')
     })
   }

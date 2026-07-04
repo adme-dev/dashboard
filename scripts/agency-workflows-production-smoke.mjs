@@ -4,16 +4,18 @@ const DEFAULT_BASE_URL = 'https://agency-dashboard-6cm.pages.dev'
 const READINESS_PATH = '/api/agency/workflows/readiness'
 const STATUS_PATH = '/api/agency/workflows/status'
 const REQUIRED_WORKFLOWS = ['social.post.publish', 'social.inbox.automation', 'social.spend.review', 'brief.lifecycle.check', 'crm.followup.review']
+const SHARED_SECRET_HEADER = 'x-workflow-smoke-secret'
 
 function usage() {
   return [
     'Agency Workflows authenticated production smoke.',
     '',
     'Required:',
-    '  One admin auth input:',
-    '    AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN=<admin jwt>',
-    '    SOCIAL_SMOKE_AUTH_TOKEN=<admin jwt>',
-    '    SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN=<admin jwt>',
+    '  One smoke auth input:',
+    '    AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET=<machine shared secret>',
+    '    or AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN=<admin jwt>',
+    '    or SOCIAL_SMOKE_AUTH_TOKEN=<admin jwt>',
+    '    or SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN=<admin jwt>',
     '    or AGENCY_WORKFLOWS_SMOKE_COOKIE="auth_token=...; auth_token_client=..."',
     '',
     'Optional:',
@@ -41,6 +43,7 @@ function endpoint(baseUrl, path) {
 }
 
 export function resolveSmokeConfig(env = process.env) {
+  const sharedSecret = option(env, 'AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET')
   const authToken = optionAny(env, [
     'AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN',
     'SOCIAL_SMOKE_AUTH_TOKEN',
@@ -50,8 +53,8 @@ export function resolveSmokeConfig(env = process.env) {
   const statusWorkflow = option(env, 'AGENCY_WORKFLOWS_SMOKE_STATUS_WORKFLOW')
   const statusInstanceId = option(env, 'AGENCY_WORKFLOWS_SMOKE_STATUS_INSTANCE_ID')
 
-  if (!authToken && !cookie) {
-    throw new Error('Missing admin auth input.\n\n' + usage())
+  if (!sharedSecret && !authToken && !cookie) {
+    throw new Error('Missing Workflows smoke auth input.\n\n' + usage())
   }
 
   if (Boolean(statusWorkflow) !== Boolean(statusInstanceId)) {
@@ -60,6 +63,7 @@ export function resolveSmokeConfig(env = process.env) {
 
   return {
     baseUrl: option(env, 'AGENCY_WORKFLOWS_SMOKE_BASE_URL', DEFAULT_BASE_URL),
+    sharedSecret,
     authToken,
     cookie,
     statusWorkflow,
@@ -71,7 +75,9 @@ export function authHeaders(config) {
   const headers = {
     accept: 'application/json'
   }
-  if (config.authToken) {
+  if (config.sharedSecret) {
+    headers[SHARED_SECRET_HEADER] = config.sharedSecret
+  } else if (config.authToken) {
     headers.authorization = `Bearer ${config.authToken}`
   } else if (config.cookie) {
     headers.cookie = config.cookie

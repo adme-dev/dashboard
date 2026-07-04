@@ -6,6 +6,7 @@ import { runAgencyWorkflowsProductionSmoke } from './agency-workflows-production
 
 const DEFAULT_WRANGLER_CONFIG = 'wrangler.toml'
 const AUTH_ENV_NAMES = [
+  'AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET',
   'AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN',
   'SOCIAL_SMOKE_AUTH_TOKEN',
   'SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN',
@@ -56,7 +57,7 @@ export function evaluateCiSmokeGate({
         activeCutoverFlags.length
           ? `Active cutover flags: ${activeCutoverFlags.join(', ')}.`
           : 'AGENCY_WORKFLOWS_CI_REQUIRE_SMOKE_AUTH=true.',
-        'Configure AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN or AGENCY_WORKFLOWS_SMOKE_COOKIE as a GitHub Actions secret.'
+        'Configure AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET as a GitHub Actions secret, or use AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN/AGENCY_WORKFLOWS_SMOKE_COOKIE as an operator fallback.'
       ].join(' ')
     }
   }

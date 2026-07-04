@@ -108,6 +108,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
   - [x] Allow admin workflow status lookup by deterministic workflow payload identity fields as well as exact instance id, so operators can inspect scheduled publishing and inbox automation instances without manually reconstructing Cloudflare Workflow ids.
   - [x] Make Worker health degrade when a required Cloudflare Workflow binding is missing.
   - [x] Add a repeatable authenticated production smoke gate for Workflows readiness and optional instance status lookup.
+  - [x] Add a dedicated `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET` machine credential for Workflows readiness/status diagnostics, with GitHub Actions and Cloudflare Pages secrets sharing the same value and admin JWT/cookie kept as operator fallbacks.
   - [x] Add a dormant Workflow-primary scheduled publishing cutover path behind `AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY=false`.
   - [x] Make deterministic Workflow starts idempotent so duplicate cron ticks reuse an existing Workflow instance instead of falling back to direct publish.
   - [x] Pin the `agency-workflows` package deploy script to its Worker config and add explicit dry-run scripts so root Pages deploy metadata cannot break Worker verification/deploys.
@@ -155,7 +156,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
 - [x] Use frozen lockfile installs in CI.
 - [x] Keep known repo-wide lint/typecheck debt out of the deploy-critical lane until those checks are reliable enough to enforce.
 - [x] Smoke the public Cloudflare Pages origin after production deploy.
-- [x] Run authenticated Workflows smoke after production deploy when `AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN` or `AGENCY_WORKFLOWS_SMOKE_COOKIE` is configured in GitHub secrets; CI may skip only while all Workflow primary/write cutover flags are dormant, and fails closed if a cutover flag is enabled without smoke auth.
+- [x] Run authenticated Workflows smoke after production deploy when `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET`, `AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN`, or `AGENCY_WORKFLOWS_SMOKE_COOKIE` is configured in GitHub secrets; CI may skip only while all Workflow primary/write cutover flags are dormant, and fails closed if a cutover flag is enabled without smoke auth.
 
 ## First Implementation Slice
 
@@ -229,8 +230,10 @@ Start with P0 for posts only:
 - [x] CRM follow-up Workflow controlled write cutover focused tests pass: `pnpm exec vitest run test/server/api/crmFollowupReviewWorkflowCallback.test.ts test/server/api/crmTaskRemindersCron.test.ts` reported 2 files and 11 tests passing.
 - [x] Local Graphy/Graphify refreshed and uploaded after the CRM follow-up controlled write cutover: `pnpm run graphify:rebuild` indexed 3,458 files, generated 8,490 graph nodes and 7,917 edges, then uploaded the primary artifacts to `r2://agency-files/graphify/dashboard/`.
 - [x] CRM follow-up controlled write cutover deploy gates pass locally: focused CRM/config tests (`26/26`), scoped ESLint, `pnpm --dir workers/agency-workflows run typecheck`, `pnpm run test:social-publishing` (`100 files / 646 tests`), `pnpm run build`, and `pnpm run deploy:workflows:dry-run` all completed successfully.
-- [x] `pnpm run readiness:agency-workflows` passed git-status reporting, automation governance docs, fresh Graphy artifacts, workflow config tests, Worker typecheck, and Worker deploy dry-run; it remains locally blocked only by missing `AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN` / `AGENCY_WORKFLOWS_SMOKE_COOKIE` for authenticated production smoke.
+- [x] `pnpm run readiness:agency-workflows` passed git-status reporting, automation governance docs, fresh Graphy artifacts, workflow config tests, Worker typecheck, and Worker deploy dry-run; authenticated production smoke now prefers `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET` and still accepts admin token/cookie fallbacks.
 - [x] Workflows CI smoke gate hardening added: `pnpm run smoke:agency-workflows:ci` runs the authenticated production smoke when CI auth is configured, skips only for dormant cutover flags, and blocks active Workflow primary/write cutovers without smoke auth.
+- [x] Workflows post-deploy smoke moved off short-lived user sessions: readiness/status routes accept `x-workflow-smoke-secret` only when it matches the Pages `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET`, while all other requests continue through admin RBAC.
+- [x] Local Graphy/Graphify refreshed after the Workflows smoke shared-secret gate: `pnpm run graphify:rebuild` indexed 3,460 files, generated 8,498 graph nodes and 7,927 edges. Upload target remains `r2://agency-files/graphify/dashboard/`.
 - [x] Hyperdrive production posture reconciled: `docs/cloudflare-optimization-plan.md` now documents the active Pages/Worker `HYPERDRIVE` binding id, and `test/config/cloudflareHyperdriveBindings.test.ts` guards against config/documentation drift in the deploy-critical social suite.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.

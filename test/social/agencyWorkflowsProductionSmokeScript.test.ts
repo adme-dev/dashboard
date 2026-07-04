@@ -33,6 +33,7 @@ describe('agency workflows production smoke script', () => {
     const script = readFileSync(resolve(ROOT, 'scripts/agency-workflows-production-smoke.mjs'), 'utf8')
 
     expect(pkg.scripts['smoke:agency-workflows']).toBe('node scripts/agency-workflows-production-smoke.mjs')
+    expect(script).toContain('AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET')
     expect(script).toContain('AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN')
     expect(script).toContain('SOCIAL_SMOKE_AUTH_TOKEN')
     expect(script).toContain('SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN')
@@ -49,15 +50,35 @@ describe('agency workflows production smoke script', () => {
     expect(workflow).not.toContain('Skipping authenticated Workflows smoke')
   })
 
-  it('fails fast without explicit admin auth input', () => {
-    expect(() => smoke.resolveSmokeConfig({})).toThrow(/Missing admin auth input/)
+  it('fails fast without explicit smoke auth input', () => {
+    expect(() => smoke.resolveSmokeConfig({})).toThrow(/Missing Workflows smoke auth input/)
   })
 
   it('requires status workflow and instance id to be provided together', () => {
     expect(() => smoke.resolveSmokeConfig({
-      AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: 'token',
+      AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret',
       AGENCY_WORKFLOWS_SMOKE_STATUS_WORKFLOW: 'social.post.publish'
     })).toThrow(/must be provided together/)
+  })
+
+  it('accepts a dedicated machine smoke shared secret before user auth fallbacks', () => {
+    expect(smoke.resolveSmokeConfig({
+      AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret',
+      AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: 'admin-token'
+    })).toMatchObject({
+      baseUrl: 'https://agency-dashboard-6cm.pages.dev',
+      sharedSecret: 'machine-secret',
+      authToken: 'admin-token'
+    })
+
+    expect(smoke.authHeaders({
+      sharedSecret: 'machine-secret',
+      authToken: 'admin-token',
+      cookie: 'auth_token=admin'
+    })).toEqual({
+      'accept': 'application/json',
+      'x-workflow-smoke-secret': 'machine-secret'
+    })
   })
 
   it('accepts the social smoke auth aliases for operational reuse', () => {
@@ -121,6 +142,34 @@ describe('agency workflows production smoke script', () => {
     expect(log.mock.calls.flat().join('\n')).not.toContain('secret-token')
     expect(log).toHaveBeenCalledWith('OK readiness transport=service-binding workflows=social.post.publish,social.inbox.automation,social.spend.review,brief.lifecycle.check,crm.followup.review')
     expect(log).toHaveBeenCalledWith(expect.stringContaining('SKIP status lookup'))
+  })
+
+  it('runs readiness-only smoke with the machine shared secret without logging it', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(readyPayload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }))
+    const log = vi.fn()
+
+    await smoke.runAgencyWorkflowsProductionSmoke({
+      env: {
+        AGENCY_WORKFLOWS_SMOKE_BASE_URL: 'https://agency-dashboard-6cm.pages.dev',
+        AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret'
+      },
+      fetchImpl,
+      log
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://agency-dashboard-6cm.pages.dev/api/agency/workflows/readiness',
+      expect.objectContaining({
+        headers: {
+          'accept': 'application/json',
+          'x-workflow-smoke-secret': 'machine-secret'
+        }
+      })
+    )
+    expect(log.mock.calls.flat().join('\n')).not.toContain('machine-secret')
   })
 
   it('runs optional status lookup for a live workflow instance', async () => {
@@ -209,12 +258,12 @@ describe('agency workflows production smoke script', () => {
     })
   })
 
-  it('runs the existing production smoke when CI auth is configured', async () => {
+  it('runs the existing production smoke when CI shared-secret auth is configured', async () => {
     const smokeRunner = vi.fn(async () => undefined)
     const log = vi.fn()
 
     await ciSmokeGate.runCiSmokeGate({
-      env: { AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: 'secret-token' },
+      env: { AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret' },
       pagesVars: {
         AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY: 'false',
         AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED: 'false',
@@ -225,9 +274,10 @@ describe('agency workflows production smoke script', () => {
     })
 
     expect(smokeRunner).toHaveBeenCalledWith({
-      env: { AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: 'secret-token' },
+      env: { AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret' },
       log
     })
-    expect(log.mock.calls.flat().join('\n')).not.toContain('secret-token')
+    expect(log.mock.calls.flat().join('\n')).toContain('AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET')
+    expect(log.mock.calls.flat().join('\n')).not.toContain('machine-secret')
   })
 })

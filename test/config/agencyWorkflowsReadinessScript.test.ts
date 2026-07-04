@@ -200,9 +200,9 @@ describe('agency workflows readiness script', () => {
     }
   })
 
-  it('includes production smoke when admin auth is configured', async () => {
+  it('includes production smoke when shared-secret auth is configured', async () => {
     const config = resolveReadinessConfig({
-      AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: 'admin-token'
+      AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret'
     })
 
     expect(config.hasProductionSmokeAuth).toBe(true)

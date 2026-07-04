@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockRequireRole = vi.fn()
 const mockGetAgencyWorkflowStatus = vi.fn()
+const originalSmokeSecret = process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
 let mockQuery: Record<string, unknown> = {}
 
 vi.mock('~~/server/utils/auth', () => ({
@@ -14,12 +15,14 @@ vi.mock('~~/server/utils/agencyWorkflows/client', () => ({
 
 vi.mock('h3', () => ({
   defineEventHandler: <T>(fn: T) => fn,
+  getHeader: (event: TestEvent, name: string) => event.headers?.[name.toLowerCase()],
   getQuery: () => mockQuery,
   createError: (input: { statusCode: number, statusMessage: string }) => Object.assign(new Error(input.statusMessage), input)
 }))
 
 interface TestEvent {
   context: Record<string, unknown>
+  headers?: Record<string, string>
 }
 
 const { default: handler } = await import('../../../server/api/agency/workflows/status.get')
@@ -28,6 +31,7 @@ const workflowStatus = handler as (event: TestEvent) => Promise<unknown>
 describe('agency workflow status endpoint', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
     mockQuery = {
       workflow: 'social.inbox.automation',
       instanceId: 'social-inbox-auto-client-1-conversation-1-message-1'
@@ -41,6 +45,14 @@ describe('agency workflow status endpoint', () => {
       instanceId: 'social-inbox-auto-client-1-conversation-1-message-1',
       status: { status: 'running' }
     })
+  })
+
+  afterEach(() => {
+    if (originalSmokeSecret) {
+      process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET = originalSmokeSecret
+    } else {
+      delete process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
+    }
   })
 
   it('requires admin role and proxies a workflow instance status lookup', async () => {
@@ -60,6 +72,26 @@ describe('agency workflow status endpoint', () => {
       workflow: 'social.inbox.automation',
       instanceId: 'social-inbox-auto-client-1-conversation-1-message-1',
       status: { status: 'running' }
+    })
+  })
+
+  it('accepts the machine smoke shared secret without requiring an admin session', async () => {
+    process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET = 'machine-secret'
+    const event: TestEvent = {
+      context: {},
+      headers: { 'x-workflow-smoke-secret': 'machine-secret' }
+    }
+
+    const result = await workflowStatus(event)
+
+    expect(mockRequireRole).not.toHaveBeenCalled()
+    expect(mockGetAgencyWorkflowStatus).toHaveBeenCalledWith(event, {
+      workflow: 'social.inbox.automation',
+      instanceId: 'social-inbox-auto-client-1-conversation-1-message-1'
+    })
+    expect(result).toMatchObject({
+      ok: true,
+      workflow: 'social.inbox.automation'
     })
   })
 

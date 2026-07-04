@@ -81,6 +81,21 @@ Required production deployment steps:
 
 Full runbook: `workers/asset-intelligence/DEPLOYMENT.md`.
 
+### Agency Workflows Smoke
+
+`AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET` is the preferred machine credential for
+the production Workflows smoke gate. Store the same random value in both places:
+
+- Cloudflare Pages production secret for `agency-dashboard`, so
+  `/api/agency/workflows/readiness` and `/api/agency/workflows/status` can
+  validate `x-workflow-smoke-secret`.
+- GitHub Actions repository secret, so the deploy job can run
+  `pnpm run smoke:agency-workflows:ci` after Cloudflare Pages deploys.
+
+This is a diagnostic-only credential. It does not replace
+`WORKFLOW_SERVICE_SECRET` or `WORKFLOW_CALLBACK_SECRET`, and it should not be
+set only on the separate `agency-workflows` Worker.
+
 ## Environment-Specific Configuration
 
 ### Development (Local)
@@ -204,6 +219,7 @@ ls -la .dev.vars
 | `XERO_CLIENT_SECRET` | No | Xero OAuth client secret |
 | `GROQ_API_KEY` | No | AI features API key |
 | `MONDAY_API_TOKEN` | No | Monday.com integration |
+| `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET` | No | Machine credential for post-deploy Workflows readiness/status smoke |
 | `R2_*` | No | Cloudflare R2 storage |
 
 *Required for magic link authentication to work

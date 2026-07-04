@@ -86,6 +86,7 @@ jobs:
 
       - name: Smoke agency workflows readiness
         env:
+          AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET }}
           AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN }}
           AGENCY_WORKFLOWS_SMOKE_COOKIE: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_COOKIE }}
         run: pnpm run smoke:agency-workflows:ci

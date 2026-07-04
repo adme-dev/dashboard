@@ -57,5 +57,7 @@ Each workflow gets its own typed payload contract and a deterministic instance-i
 1. Deploy the Worker with starts disabled.
 2. Set `WORKFLOW_SERVICE_SECRET` and `WORKFLOW_CALLBACK_SECRET` as Worker secrets.
 3. Add a Pages service binding once the Pages trigger endpoint is ready.
-4. Manually start one social publishing workflow in a test tenant.
-5. Add the Pages cutover flag only after status, callback, audit, and idempotency evidence is available.
+4. Set matching `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET` values in Cloudflare Pages
+   production secrets and GitHub Actions repository secrets for deploy smoke.
+5. Manually start one social publishing workflow in a test tenant.
+6. Add the Pages cutover flag only after status, callback, audit, and idempotency evidence is available.

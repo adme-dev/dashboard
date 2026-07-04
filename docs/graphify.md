@@ -42,9 +42,9 @@ the latest generation timestamp.
 
 Current clean dashboard rebuild, generated on 2026-07-04:
 
-- Files indexed: 3,459
-- Graph nodes: 8,492
-- Graph edges: 7,918
+- Files indexed: 3,460
+- Graph nodes: 8,498
+- Graph edges: 7,927
 
 Graphify's extractor does not directly parse `.vue` single-file components in
 this setup. The dashboard graph currently covers supported JS/TS/Python/etc.
@@ -83,4 +83,5 @@ pnpm run readiness:agency-workflows
 
 The readiness gate blocks Workflows cutover when Graphify artifacts are missing,
 stale, or invalid. Authenticated production smoke is a separate gate and still
-requires `AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN` or an equivalent auth cookie.
+requires `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET`, `AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN`,
+or an equivalent auth cookie.

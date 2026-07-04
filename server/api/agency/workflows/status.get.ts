@@ -1,10 +1,10 @@
 import { createError, defineEventHandler, getQuery } from 'h3'
 
-import { requireRole } from '~~/server/utils/auth'
 import {
   getAgencyWorkflowStatus,
   type AgencyWorkflowKind
 } from '~~/server/utils/agencyWorkflows/client'
+import { requireAgencyWorkflowDiagnosticAccess } from '~~/server/utils/agencyWorkflows/diagnosticAuth'
 import {
   SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
   buildSocialInboxAutomationWorkflowInstanceId,
@@ -30,7 +30,6 @@ import {
   buildCrmFollowupReviewWorkflowInstanceId,
   normalizeCrmFollowupReviewWorkflowPayload
 } from '~~/server/utils/agencyWorkflows/crmFollowupReview'
-import { PERMISSIONS } from '~~/server/utils/permissions'
 
 /**
  * GET /api/agency/workflows/status?workflow=&instanceId=
@@ -43,7 +42,7 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
  * exact instanceId or the workflow payload identity fields used to derive the deterministic instanceId.
  */
 export default defineEventHandler(async (event) => {
-  await requireRole(event, PERMISSIONS.ADMIN)
+  await requireAgencyWorkflowDiagnosticAccess(event)
 
   const query = getQuery(event)
   const workflow = typeof query.workflow === 'string' ? query.workflow.trim() : ''

@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockRequireRole = vi.fn()
 const mockCheckAgencyWorkflowReadiness = vi.fn()
+const originalSmokeSecret = process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
 
 interface TestEvent {
   context: Record<string, unknown>
+  headers?: Record<string, string>
 }
 
 vi.mock('~~/server/utils/auth', () => ({
@@ -13,6 +15,10 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/agencyWorkflows/client', () => ({
   checkAgencyWorkflowReadiness: (...args: unknown[]) => mockCheckAgencyWorkflowReadiness(...args)
+}))
+
+vi.mock('h3', () => ({
+  getHeader: (event: TestEvent, name: string) => event.headers?.[name.toLowerCase()]
 }))
 
 ;(globalThis as { defineEventHandler?: <T>(fn: T) => T }).defineEventHandler = <T>(fn: T) => fn
@@ -25,6 +31,7 @@ const agencyWorkflowReadiness = agencyHandler as (event: TestEvent) => Promise<u
 describe('agency workflow readiness endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
     mockRequireRole.mockResolvedValue({ id: 'admin-1', role: 'admin' })
     mockCheckAgencyWorkflowReadiness.mockResolvedValue({
       ok: true,
@@ -35,6 +42,14 @@ describe('agency workflow readiness endpoints', () => {
       serviceSecretConfigured: true,
       transport: 'service-binding'
     })
+  })
+
+  afterEach(() => {
+    if (originalSmokeSecret) {
+      process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET = originalSmokeSecret
+    } else {
+      delete process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
+    }
   })
 
   it('requires admin role and returns workflow readiness from the canonical agency endpoint', async () => {
@@ -61,6 +76,20 @@ describe('agency workflow readiness endpoints', () => {
     const result = await publishingWorkflowReadiness(event)
 
     expect(mockRequireRole).toHaveBeenCalledWith(event, ['owner', 'admin'])
+    expect(mockCheckAgencyWorkflowReadiness).toHaveBeenCalledWith(event)
+    expect(result).toMatchObject({ ok: true, status: 'ready' })
+  })
+
+  it('accepts the machine smoke shared secret without requiring an admin session', async () => {
+    process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET = 'machine-secret'
+    const event: TestEvent = {
+      context: {},
+      headers: { 'x-workflow-smoke-secret': 'machine-secret' }
+    }
+
+    const result = await agencyWorkflowReadiness(event)
+
+    expect(mockRequireRole).not.toHaveBeenCalled()
     expect(mockCheckAgencyWorkflowReadiness).toHaveBeenCalledWith(event)
     expect(result).toMatchObject({ ok: true, status: 'ready' })
   })
