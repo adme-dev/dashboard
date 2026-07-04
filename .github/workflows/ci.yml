@@ -88,9 +88,4 @@ jobs:
         env:
           AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN }}
           AGENCY_WORKFLOWS_SMOKE_COOKIE: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_COOKIE }}
-        run: |
-          if [ -z "$AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN" ] && [ -z "$AGENCY_WORKFLOWS_SMOKE_COOKIE" ]; then
-            echo "Skipping authenticated Workflows smoke: configure AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN or AGENCY_WORKFLOWS_SMOKE_COOKIE to enable it."
-            exit 0
-          fi
-          pnpm run smoke:agency-workflows
+        run: pnpm run smoke:agency-workflows:ci

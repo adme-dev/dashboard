@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 
 const ROOT = resolve(__dirname, '../..')
 const smoke = await import('../../scripts/agency-workflows-production-smoke.mjs')
+const ciSmokeGate = await import('../../scripts/agency-workflows-ci-smoke-gate.mjs')
 
 const readyPayload = {
   ok: true,
@@ -37,6 +38,15 @@ describe('agency workflows production smoke script', () => {
     expect(script).toContain('SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN')
     expect(script).toContain('AGENCY_WORKFLOWS_SMOKE_COOKIE')
     expect(script).not.toMatch(/eyJ[a-zA-Z0-9_%.-]+/)
+  })
+
+  it('wires the CI smoke gate through package scripts and GitHub Actions', () => {
+    const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8'))
+    const workflow = readFileSync(resolve(ROOT, '.github/workflows/ci.yml'), 'utf8')
+
+    expect(pkg.scripts['smoke:agency-workflows:ci']).toBe('node scripts/agency-workflows-ci-smoke-gate.mjs')
+    expect(workflow).toContain('pnpm run smoke:agency-workflows:ci')
+    expect(workflow).not.toContain('Skipping authenticated Workflows smoke')
   })
 
   it('fails fast without explicit admin auth input', () => {
@@ -145,5 +155,79 @@ describe('agency workflows production smoke script', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2)
     expect(String(fetchImpl.mock.calls[1][0])).toBe('https://agency-dashboard-6cm.pages.dev/api/agency/workflows/status?workflow=social.post.publish&instanceId=social-publish-client-1-post-1')
     expect(log).toHaveBeenCalledWith('OK status workflow=social.post.publish instanceId=social-publish-client-1-post-1 state=running')
+  })
+
+  it('lets CI skip authenticated smoke only while Workflow cutover flags stay dormant', () => {
+    expect(ciSmokeGate.evaluateCiSmokeGate({
+      env: {},
+      pagesVars: {
+        AGENCY_WORKFLOWS_ENABLED: 'true',
+        AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY: 'false',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED: 'false',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY: 'false'
+      }
+    })).toMatchObject({
+      ok: true,
+      status: 'skipped',
+      authConfigured: false,
+      activeCutoverFlags: []
+    })
+  })
+
+  it('blocks CI when a Workflow primary/write cutover flag is enabled without smoke auth', () => {
+    expect(ciSmokeGate.evaluateCiSmokeGate({
+      env: {},
+      pagesVars: {
+        AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY: 'true',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED: 'true',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY: 'false'
+      }
+    })).toMatchObject({
+      ok: false,
+      status: 'blocked',
+      authConfigured: false,
+      activeCutoverFlags: [
+        'AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED',
+        'AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY'
+      ]
+    })
+  })
+
+  it('can require CI smoke auth even before a cutover flag is enabled', () => {
+    expect(ciSmokeGate.evaluateCiSmokeGate({
+      env: { AGENCY_WORKFLOWS_CI_REQUIRE_SMOKE_AUTH: 'true' },
+      pagesVars: {
+        AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY: 'false',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED: 'false',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY: 'false'
+      }
+    })).toMatchObject({
+      ok: false,
+      status: 'blocked',
+      authConfigured: false,
+      activeCutoverFlags: []
+    })
+  })
+
+  it('runs the existing production smoke when CI auth is configured', async () => {
+    const smokeRunner = vi.fn(async () => undefined)
+    const log = vi.fn()
+
+    await ciSmokeGate.runCiSmokeGate({
+      env: { AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: 'secret-token' },
+      pagesVars: {
+        AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY: 'false',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED: 'false',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY: 'false'
+      },
+      smokeRunner,
+      log
+    })
+
+    expect(smokeRunner).toHaveBeenCalledWith({
+      env: { AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: 'secret-token' },
+      log
+    })
+    expect(log.mock.calls.flat().join('\n')).not.toContain('secret-token')
   })
 })

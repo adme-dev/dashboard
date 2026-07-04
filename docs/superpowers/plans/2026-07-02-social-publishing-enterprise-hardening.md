@@ -155,7 +155,7 @@ Make the social content calendar, scheduler, publishing dispatch, provider conne
 - [x] Use frozen lockfile installs in CI.
 - [x] Keep known repo-wide lint/typecheck debt out of the deploy-critical lane until those checks are reliable enough to enforce.
 - [x] Smoke the public Cloudflare Pages origin after production deploy.
-- [x] Run authenticated Workflows smoke after production deploy when `AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN` or `AGENCY_WORKFLOWS_SMOKE_COOKIE` is configured in GitHub secrets, skipping explicitly when neither secret exists.
+- [x] Run authenticated Workflows smoke after production deploy when `AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN` or `AGENCY_WORKFLOWS_SMOKE_COOKIE` is configured in GitHub secrets; CI may skip only while all Workflow primary/write cutover flags are dormant, and fails closed if a cutover flag is enabled without smoke auth.
 
 ## First Implementation Slice
 
@@ -230,6 +230,7 @@ Start with P0 for posts only:
 - [x] Local Graphy/Graphify refreshed and uploaded after the CRM follow-up controlled write cutover: `pnpm run graphify:rebuild` indexed 3,458 files, generated 8,490 graph nodes and 7,917 edges, then uploaded the primary artifacts to `r2://agency-files/graphify/dashboard/`.
 - [x] CRM follow-up controlled write cutover deploy gates pass locally: focused CRM/config tests (`26/26`), scoped ESLint, `pnpm --dir workers/agency-workflows run typecheck`, `pnpm run test:social-publishing` (`100 files / 646 tests`), `pnpm run build`, and `pnpm run deploy:workflows:dry-run` all completed successfully.
 - [x] `pnpm run readiness:agency-workflows` passed git-status reporting, automation governance docs, fresh Graphy artifacts, workflow config tests, Worker typecheck, and Worker deploy dry-run; it remains locally blocked only by missing `AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN` / `AGENCY_WORKFLOWS_SMOKE_COOKIE` for authenticated production smoke.
+- [x] Workflows CI smoke gate hardening added: `pnpm run smoke:agency-workflows:ci` runs the authenticated production smoke when CI auth is configured, skips only for dormant cutover flags, and blocks active Workflow primary/write cutovers without smoke auth.
 - [ ] Full Nuxt typecheck remains blocked by repository-wide type debt outside this slice. A longer `pnpm run typecheck` emitted repo-wide diagnostics after approximately 4 minutes; a filtered server-side rerun for the workflow callback/dispatcher files produced no matching diagnostics before the run was stopped.
 - [ ] Authenticated browser smoke remains blocked until an explicit `SOCIAL_SMOKE_AUTH_TOKEN`, `SOCIAL_PUBLISHING_SMOKE_AUTH_TOKEN`, `SOCIAL_SMOKE_STORAGE_STATE`, or `SOCIAL_PUBLISHING_SMOKE_STORAGE_STATE` is provided.
 - [ ] Live provider smoke remains blocked until production Meta/Google/YouTube/LinkedIn/TikTok app credentials and approved test accounts are available.

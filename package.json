@@ -29,6 +29,7 @@
     "test:social-publishing": "vitest run test/social test/server/utils/socialPublishingNavCounts.test.ts test/server/api/publishingPlannerAgentEndpoint.test.ts test/app/publishingPlannerAgentPanel.test.ts test/ai/tools/scheduleSocialPost.test.ts test/ai/executors.test.ts test/config/agencyWorkflowsReadinessScript.test.ts test/config/agencyWorkflowsBindings.test.ts",
     "readiness:agency-workflows": "node scripts/agency-workflows-readiness.mjs",
     "smoke:agency-workflows": "node scripts/agency-workflows-production-smoke.mjs",
+    "smoke:agency-workflows:ci": "node scripts/agency-workflows-ci-smoke-gate.mjs",
     "smoke:social-publishing-theme": "node scripts/social-publishing-theme-smoke.mjs",
     "eval:ai:export": "tsx --tsconfig .nuxt/tsconfig.server.json scripts/export-ai-tools.ts",
     "eval:ai": "promptfoo eval -c evals/ai-tools/promptfooconfig.yaml",

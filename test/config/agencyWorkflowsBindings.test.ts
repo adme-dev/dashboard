@@ -124,12 +124,16 @@ describe('agency workflows worker config', () => {
   })
 
   it('runs authenticated Workflows smoke after production deploy when CI auth secrets are configured', () => {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      scripts?: Record<string, string>
+    }
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
 
+    expect(packageJson.scripts?.['smoke:agency-workflows:ci']).toBe('node scripts/agency-workflows-ci-smoke-gate.mjs')
     expect(workflow).toContain('Smoke agency workflows readiness')
     expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN')
     expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_COOKIE')
-    expect(workflow).toContain('pnpm run smoke:agency-workflows')
+    expect(workflow).toContain('pnpm run smoke:agency-workflows:ci')
   })
 
   it('binds the Pages app to the agency workflows worker', () => {
