@@ -84,6 +84,13 @@ describe('agency workflows worker config', () => {
     expect(pagesConfig.vars?.AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY).toBe('false')
   })
 
+  it('keeps CRM follow-up workflow writes and primary cron delegation explicitly dormant', () => {
+    const pagesConfig = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml
+
+    expect(pagesConfig.vars?.AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED).toBe('false')
+    expect(pagesConfig.vars?.AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY).toBe('false')
+  })
+
   it('keeps the workflow worker deployable through a root package script', () => {
     const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
       scripts?: Record<string, string>

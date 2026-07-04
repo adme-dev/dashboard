@@ -1,6 +1,8 @@
 import { defineEventHandler, getHeader, readBody, createError, type H3Event } from 'h3'
 import { queryRows } from '~~/server/utils/db'
 import { partitionReminders, type ReminderTask } from '~~/server/utils/crm/activation'
+import { recordFieldChanges } from '~~/server/utils/crm/audit'
+import { createNotification } from '~~/server/utils/notifications'
 import {
   CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
   normalizeCrmFollowupReviewWorkflowPayload
@@ -9,9 +11,10 @@ import {
 /**
  * POST /api/internal/workflows/crm/followup-review
  *
- * Durable read-only CRM follow-up callback for the agency-workflows Worker.
+ * Durable CRM follow-up callback for the agency-workflows Worker.
  * It reports due reminder pressure through the existing anti-flood partitioning
- * logic. It does not create notifications or mark crm_tasks.reminded_at.
+ * logic by default. Notification/reminded_at writes are opt-in via
+ * AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED.
  */
 export default defineEventHandler(async (event) => {
   requireWorkflowCallbackSecret(event)
@@ -37,16 +40,28 @@ export default defineEventHandler(async (event) => {
     payload.scope === 'client' ? [reviewCutoff.toISOString(), payload.clientId as string] : [reviewCutoff.toISOString()]
   )
   const { toNotify, toDrain } = partitionReminders(tasks, reviewCutoff)
-  const summary = summarizeReminderPressure(tasks, toNotify.length, toDrain.length, reviewCutoff)
+  const writesEnabled = process.env.AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED === 'true'
+  const writeSummary = writesEnabled
+    ? await processReminderWrites({ bucket: payload.bucket, tasksToNotify: toNotify, tasksToDrain: toDrain, reviewCutoff })
+    : emptyWriteSummary('review')
+  const summary = {
+    ...summarizeReminderPressure(tasks, toNotify.length, toDrain.length, reviewCutoff),
+    ...writeSummary
+  }
 
   console.info('agency-workflows.crm-followup.review.completed', {
     bucket: payload.bucket,
     scope: payload.scope,
     clientId: payload.clientId,
+    mode: summary.mode,
     considered: summary.considered,
     notifyCandidateCount: summary.notifyCandidateCount,
     drainCandidateCount: summary.drainCandidateCount,
-    overdueCount: summary.overdueCount
+    overdueCount: summary.overdueCount,
+    notifiedCount: summary.notifiedCount,
+    notificationFailureCount: summary.notificationFailureCount,
+    markedRemindedCount: summary.markedRemindedCount,
+    auditFailureCount: summary.auditFailureCount
   })
 
   return {
@@ -61,6 +76,118 @@ export default defineEventHandler(async (event) => {
     }
   }
 })
+
+interface ClaimedReminderRow {
+  id: string
+  client_id: string
+  reminded_at: string
+}
+
+interface ProcessReminderWritesInput {
+  bucket: string
+  tasksToNotify: ReminderTask[]
+  tasksToDrain: ReminderTask[]
+  reviewCutoff: Date
+}
+
+function emptyWriteSummary(mode: 'review' | 'write') {
+  return {
+    mode,
+    notifiedCount: 0,
+    notificationFailureCount: 0,
+    drainedCount: 0,
+    markedRemindedCount: 0,
+    skippedAlreadyProcessedCount: 0,
+    auditFailureCount: 0
+  }
+}
+
+async function processReminderWrites(input: ProcessReminderWritesInput) {
+  const candidates = [...input.tasksToNotify, ...input.tasksToDrain]
+  if (!candidates.length) return emptyWriteSummary('write')
+
+  const candidateIds = candidates.map(task => task.id)
+  const remindedAt = input.reviewCutoff.toISOString()
+  const claimed = await queryRows<ClaimedReminderRow>(
+    `UPDATE crm_tasks
+        SET reminded_at = $1::timestamptz
+      WHERE id = ANY($2::uuid[])
+        AND deleted_at IS NULL
+        AND status IN ('pending','in_progress')
+        AND reminder_at IS NOT NULL
+        AND reminded_at IS NULL
+        AND reminder_at < $1::timestamptz
+      RETURNING id::text AS id, client_id::text AS client_id, reminded_at::text AS reminded_at`,
+    [remindedAt, candidateIds]
+  )
+  const claimedIds = new Set(claimed.map(row => row.id))
+  const notifyTasks = input.tasksToNotify.filter(task => claimedIds.has(task.id))
+  const drainedTasks = input.tasksToDrain.filter(task => claimedIds.has(task.id))
+
+  let notifiedCount = 0
+  let notificationFailureCount = 0
+  for (const task of notifyTasks) {
+    const overdue = task.due_at ? new Date(task.due_at).getTime() < input.reviewCutoff.getTime() : false
+    try {
+      await createNotification({
+        userId: task.assigned_to!,
+        type: overdue ? 'task_overdue' : 'task_due_soon',
+        title: overdue ? 'CRM task overdue' : 'CRM task reminder',
+        message: overdue ? `"${task.title}" is overdue` : `Reminder: "${task.title}"`,
+        link: '/agency/crm',
+        metadata: {
+          crmTaskId: task.id,
+          clientId: task.client_id,
+          workflow: CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
+          bucket: input.bucket
+        },
+        reason: 'assigned'
+      })
+      notifiedCount++
+    } catch (error) {
+      notificationFailureCount++
+      console.warn('agency-workflows.crm-followup.review.notification.failed', {
+        taskId: task.id,
+        clientId: task.client_id,
+        bucket: input.bucket,
+        error: safeError(error)
+      })
+    }
+  }
+
+  let auditFailureCount = 0
+  for (const row of claimed) {
+    try {
+      await recordFieldChanges({
+        clientId: row.client_id,
+        entityType: 'task',
+        entityId: row.id,
+        before: { reminded_at: null },
+        after: { reminded_at: remindedAt },
+        fields: ['reminded_at'],
+        actor: null
+      })
+    } catch (error) {
+      auditFailureCount++
+      console.warn('agency-workflows.crm-followup.review.audit.failed', {
+        taskId: row.id,
+        clientId: row.client_id,
+        bucket: input.bucket,
+        error: safeError(error)
+      })
+    }
+  }
+
+  return {
+    mode: 'write' as const,
+    notifiedCount,
+    notificationFailureCount,
+    drainedCount: drainedTasks.length,
+    markedRemindedCount: claimed.length,
+    skippedAlreadyProcessedCount: candidateIds.length - claimed.length,
+    auditFailureCount
+  }
+}
 
 function summarizeReminderPressure(
   tasks: ReminderTask[],
@@ -93,6 +220,10 @@ function requireWorkflowCallbackSecret(event: H3Event) {
   if (getHeader(event, 'x-workflow-secret') !== expected) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
+}
+
+function safeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 async function readWorkflowPayload(event: H3Event) {

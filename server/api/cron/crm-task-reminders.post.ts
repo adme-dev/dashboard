@@ -9,11 +9,48 @@ import { defineEventHandler, getHeader, createError } from 'h3'
 import { queryRows, execute } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { partitionReminders, type ReminderTask } from '~~/server/utils/crm/activation'
+import { startCrmFollowupReviewWorkflow } from '~~/server/utils/agencyWorkflows/client'
 
 export default defineEventHandler(async (event) => {
   const secret = getHeader(event, 'x-cron-secret')
   if (!import.meta.dev && secret !== process.env.CRON_SECRET) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+
+  if (process.env.AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY === 'true') {
+    if (process.env.AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED !== 'true') {
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'CRM follow-up Workflow primary requires AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED=true'
+      })
+    }
+
+    const bucket = previousCompletedHourBucket()
+    const result = await startCrmFollowupReviewWorkflow(event, {
+      bucket,
+      scope: 'all',
+      trigger: 'cron'
+    })
+    if (!result.ok) {
+      throw createError({
+        statusCode: 503,
+        statusMessage: `CRM follow-up Workflow delegation failed: ${result.reason}`
+      })
+    }
+
+    const delegated = {
+      ok: true,
+      delegated: true,
+      workflow: 'crm.followup.review',
+      bucket,
+      result
+    }
+    console.log('[crm-cron] task-reminders delegated', {
+      workflow: delegated.workflow,
+      bucket,
+      instanceId: result.instanceId
+    })
+    return delegated
   }
 
   const now = new Date()
@@ -27,7 +64,7 @@ export default defineEventHandler(async (event) => {
         AND reminded_at IS NULL
         AND reminder_at <= NOW()
       ORDER BY reminder_at ASC
-      LIMIT 500`,
+      LIMIT 500`
   )
 
   const { toNotify, toDrain } = partitionReminders(tasks, now)
@@ -43,7 +80,7 @@ export default defineEventHandler(async (event) => {
         message: overdue ? `"${t.title}" is overdue` : `Reminder: "${t.title}"`,
         link: '/agency/crm',
         metadata: { crmTaskId: t.id, clientId: t.client_id },
-        reason: 'assigned',
+        reason: 'assigned'
       })
       notified++
     } catch (e) {
@@ -62,3 +99,8 @@ export default defineEventHandler(async (event) => {
   console.log('[crm-cron] task-reminders', result)
   return result
 })
+
+function previousCompletedHourBucket(now = new Date()): string {
+  const currentHourStart = Math.floor(now.getTime() / 3600000) * 3600000
+  return new Date(currentHourStart - 3600000).toISOString().slice(0, 13)
+}

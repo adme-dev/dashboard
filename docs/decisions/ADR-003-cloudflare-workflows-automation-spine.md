@@ -92,12 +92,18 @@ Prefer cron, queues, or direct route execution when:
    enforcement. Budget proposal/apply behavior remains in the existing
    human-approved chain until write semantics are fully idempotent and
    approval-gated.
-4. CRM/opportunity follow-ups: a read-only `crm.followup.review` Workflow
-   foundation now exists for deterministic hourly review instances, due-reminder
-   pressure summaries, Worker readiness/status inspection, and production smoke
-   enforcement. The existing CRM reminder cron remains the only notification and
-   `reminded_at` writer until write semantics are idempotent, approval-safe, and
-   explicitly cut over.
+4. CRM/opportunity follow-ups: `crm.followup.review` now has a controlled write
+   cutover path. It remains read-only unless
+   `AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED=true`. In write mode the Pages
+   callback atomically claims still-unreminded CRM tasks with
+   `UPDATE ... WHERE reminded_at IS NULL`, then creates assigned-user
+   notifications, drains anti-flood backlog, stamps `reminded_at`, records
+   best-effort CRM audit rows for the stamp, and logs aggregate counts. The
+   legacy `crm-task-reminders` cron remains the primary writer unless
+   `AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY=true`, at which point it delegates the
+   previous completed hourly bucket to Workflows and fails closed when Workflow
+   start is unavailable to avoid duplicate writers. Rollout order is writes flag
+   first, production verification, then primary delegation.
 5. Brief-to-job lifecycle checks: a read-only `brief.lifecycle.check` Workflow
    foundation now exists for deterministic per-brief lifecycle/completeness
    checks, Worker readiness/status inspection, and production smoke

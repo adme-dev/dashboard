@@ -131,6 +131,11 @@ AGENCY_WORKFLOWS_ENABLED = "true"
 # Workflow-primary scheduled publishing cutover. Keep false until
 # `pnpm run smoke:agency-workflows` passes against production with admin auth.
 AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY = "false"
+# CRM follow-up Workflow cutover remains doubly dormant:
+# - WRITES enables the Workflow callback to create notifications and stamp crm_tasks.reminded_at.
+# - PRIMARY makes the legacy crm-task-reminders cron delegate to the Workflow instead of writing directly.
+AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED = "false"
+AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY = "false"
 # MCP server (Phase 1) — non-secret plaintext vars MUST live here, not the CF dashboard:
 # deployConfig bakes [vars] into the Direct-Upload deploy config, which REPLACES dashboard
 # plaintext vars (secrets survive). MCP_INTERNAL_SECRET + MCP_HANDSHAKE_SECRET stay as dashboard secrets.
