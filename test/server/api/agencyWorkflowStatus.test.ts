@@ -135,6 +135,23 @@ describe('agency workflow status endpoint', () => {
     })
   })
 
+  it('derives a crm follow-up review workflow instance id from identity query fields', async () => {
+    mockQuery = {
+      workflow: 'crm.followup.review',
+      bucket: '2026-07-04T05:42:00.000Z',
+      scope: 'client',
+      clientId: 'client 1',
+      trigger: 'cron'
+    }
+
+    await workflowStatus({ context: {} })
+
+    expect(mockGetAgencyWorkflowStatus).toHaveBeenCalledWith(expect.anything(), {
+      workflow: 'crm.followup.review',
+      instanceId: 'crm-followup-review-2026-07-04T05-client-client-1'
+    })
+  })
+
   it('rejects missing workflow status query params before contacting the Worker', async () => {
     mockQuery = { workflow: 'social.post.publish', clientId: 'client-1' }
 

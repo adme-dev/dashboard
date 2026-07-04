@@ -24,6 +24,13 @@ import {
   type SocialSpendReviewWorkflowTrigger,
   type SocialSpendReviewPlatform
 } from '~~/server/utils/agencyWorkflows/socialSpendReview'
+import {
+  CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
+  normalizeCrmFollowupReviewWorkflowPayload,
+  type CrmFollowupReviewWorkflowPayload,
+  type CrmFollowupReviewWorkflowScope,
+  type CrmFollowupReviewWorkflowTrigger
+} from '~~/server/utils/agencyWorkflows/crmFollowupReview'
 
 const AGENCY_WORKFLOWS_BINDING = 'AGENCY_WORKFLOWS'
 const WORKFLOW_START_URL = 'https://agency-workflows.internal/workflows/start'
@@ -39,7 +46,8 @@ type WorkflowTransport = 'service-binding' | 'fetch'
 export type AgencyWorkflowKind = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
   | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
   | typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
-type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload | SocialSpendReviewWorkflowPayload | BriefLifecycleCheckWorkflowPayload
+  | typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
+type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload | SocialSpendReviewWorkflowPayload | BriefLifecycleCheckWorkflowPayload | CrmFollowupReviewWorkflowPayload
 
 interface AgencyWorkflowServiceBinding {
   fetch: (request: Request) => Promise<Response>
@@ -91,6 +99,15 @@ export interface StartBriefLifecycleCheckWorkflowInput {
   fetchImpl?: (request: Request) => Promise<Response>
 }
 
+export interface StartCrmFollowupReviewWorkflowInput {
+  bucket: string
+  trigger: CrmFollowupReviewWorkflowTrigger
+  scope: CrmFollowupReviewWorkflowScope
+  clientId?: string
+  requestedBy?: string
+  fetchImpl?: (request: Request) => Promise<Response>
+}
+
 export interface StartAgencyWorkflowSuccess<TWorkflow extends AgencyWorkflowKind> {
   ok: true
   enabled: true
@@ -135,6 +152,11 @@ export type StartSocialSpendReviewWorkflowResult
 
 export type StartBriefLifecycleCheckWorkflowResult
   = StartAgencyWorkflowSuccess<typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND>
+    | StartAgencyWorkflowDisabled
+    | StartAgencyWorkflowFailure
+
+export type StartCrmFollowupReviewWorkflowResult
+  = StartAgencyWorkflowSuccess<typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND>
     | StartAgencyWorkflowDisabled
     | StartAgencyWorkflowFailure
 
@@ -463,6 +485,78 @@ export async function startBriefLifecycleCheckWorkflow(
       error: safeError(error, [secret])
     })
     logBriefLifecycleCheckFailure(payload, result)
+    return result
+  }
+}
+
+export async function startCrmFollowupReviewWorkflow(
+  event: AgencyWorkflowEvent,
+  input: StartCrmFollowupReviewWorkflowInput
+): Promise<StartCrmFollowupReviewWorkflowResult> {
+  const env = getCloudflareEnv(event)
+
+  if (envText(env, 'AGENCY_WORKFLOWS_ENABLED') !== 'true') {
+    console.info('agency-workflows.crm-followup.review.start.disabled', {
+      bucket: input.bucket,
+      scope: input.scope,
+      clientId: input.clientId
+    })
+    return { ok: false, enabled: false, reason: 'disabled' }
+  }
+
+  let payload: CrmFollowupReviewWorkflowPayload
+  try {
+    payload = normalizeCrmFollowupReviewWorkflowPayload({
+      kind: CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
+      bucket: input.bucket,
+      trigger: input.trigger,
+      scope: input.scope,
+      clientId: input.clientId,
+      requestedBy: input.requestedBy
+    })
+  } catch (error) {
+    const result = failedResult('request_failed', { error: safeError(error) })
+    logCrmFollowupReviewFailure(input, result)
+    return result
+  }
+
+  const secret = envText(env, 'WORKFLOW_SERVICE_SECRET')
+  const target = secret ? buildWorkflowStartTarget(env, CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND, payload, secret, input.fetchImpl) : null
+  if (!target) {
+    const result = failedResult('not_configured')
+    logCrmFollowupReviewFailure(payload, result)
+    return result
+  }
+
+  try {
+    const response = await target.send(target.request)
+    const body = await readResponseBody(response)
+
+    if (!response.ok) {
+      const result = failedResult('bad_response', {
+        transport: target.transport,
+        status: response.status,
+        error: responseError(body, response.statusText, [secret])
+      })
+      logCrmFollowupReviewFailure(payload, result)
+      return result
+    }
+
+    const result = successResult(CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND, target.transport, body)
+    console.info('agency-workflows.crm-followup.review.start.succeeded', {
+      bucket: payload.bucket,
+      scope: payload.scope,
+      clientId: payload.clientId,
+      transport: target.transport,
+      instanceId: result.instanceId
+    })
+    return result
+  } catch (error) {
+    const result = failedResult('request_failed', {
+      transport: target.transport,
+      error: safeError(error, [secret])
+    })
+    logCrmFollowupReviewFailure(payload, result)
     return result
   }
 }
@@ -810,7 +904,8 @@ function missingRequiredWorkflows(workflows: unknown[] | undefined): AgencyWorkf
     SOCIAL_PUBLISHING_WORKFLOW_KIND,
     SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
     SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
-    BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
+    BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+    CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
   ]
   return required.filter(kind => !hasWorkflowKind(workflows, kind))
 }
@@ -932,6 +1027,21 @@ function logBriefLifecycleCheckFailure(
 ) {
   console.warn('agency-workflows.brief-lifecycle.check.start.failed', {
     briefId: payload.briefId,
+    clientId: payload.clientId,
+    reason: result.reason,
+    transport: result.transport,
+    status: result.status,
+    error: result.error
+  })
+}
+
+function logCrmFollowupReviewFailure(
+  payload: { bucket: string, scope: string, clientId?: string },
+  result: StartAgencyWorkflowFailure
+) {
+  console.warn('agency-workflows.crm-followup.review.start.failed', {
+    bucket: payload.bucket,
+    scope: payload.scope,
     clientId: payload.clientId,
     reason: result.reason,
     transport: result.transport,

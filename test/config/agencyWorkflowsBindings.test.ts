@@ -60,6 +60,16 @@ describe('agency workflows worker config', () => {
     })
   })
 
+  it('declares the crm follow-up review workflow binding', () => {
+    const config = parse(readFileSync('workers/agency-workflows/wrangler.toml', 'utf8')) as WorkflowToml
+
+    expect(config.workflows).toContainEqual({
+      name: 'crm-followup-review-workflow',
+      binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW',
+      class_name: 'CrmFollowupReviewWorkflow'
+    })
+  })
+
   it('enables the workflow control plane explicitly in deploy config', () => {
     const workerConfig = parse(readFileSync('workers/agency-workflows/wrangler.toml', 'utf8')) as WorkflowToml
     const pagesConfig = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml

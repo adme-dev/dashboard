@@ -33,3 +33,8 @@ class_name = "SocialSpendReviewWorkflow"
 name = "brief-lifecycle-check-workflow"
 binding = "BRIEF_LIFECYCLE_CHECK_WORKFLOW"
 class_name = "BriefLifecycleCheckWorkflow"
+
+[[workflows]]
+name = "crm-followup-review-workflow"
+binding = "CRM_FOLLOWUP_REVIEW_WORKFLOW"
+class_name = "CrmFollowupReviewWorkflow"

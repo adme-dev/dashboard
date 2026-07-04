@@ -92,8 +92,12 @@ Prefer cron, queues, or direct route execution when:
    enforcement. Budget proposal/apply behavior remains in the existing
    human-approved chain until write semantics are fully idempotent and
    approval-gated.
-4. CRM/opportunity follow-ups: use Workflows for due follow-ups, waits, and
-   reminders where a missed callback or duplicate reminder matters.
+4. CRM/opportunity follow-ups: a read-only `crm.followup.review` Workflow
+   foundation now exists for deterministic hourly review instances, due-reminder
+   pressure summaries, Worker readiness/status inspection, and production smoke
+   enforcement. The existing CRM reminder cron remains the only notification and
+   `reminded_at` writer until write semantics are idempotent, approval-safe, and
+   explicitly cut over.
 5. Brief-to-job lifecycle checks: a read-only `brief.lifecycle.check` Workflow
    foundation now exists for deterministic per-brief lifecycle/completeness
    checks, Worker readiness/status inspection, and production smoke

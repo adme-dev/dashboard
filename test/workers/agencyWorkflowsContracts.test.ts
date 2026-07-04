@@ -5,11 +5,14 @@ import {
   SOCIAL_PUBLISHING_WORKFLOW_KIND,
   SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
   BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
+  CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
   buildBriefLifecycleCheckWorkflowInstanceId,
+  buildCrmFollowupReviewWorkflowInstanceId,
   buildSocialInboxAutomationWorkflowInstanceId,
   buildSocialPublishingWorkflowInstanceId,
   buildSocialSpendReviewWorkflowInstanceId,
   normalizeBriefLifecycleCheckWorkflowPayload,
+  normalizeCrmFollowupReviewWorkflowPayload,
   normalizeSocialInboxAutomationWorkflowPayload,
   normalizeSocialPublishingWorkflowPayload,
   normalizeSocialSpendReviewWorkflowPayload,
@@ -188,6 +191,47 @@ describe('agency workflow contracts', () => {
     expect(buildBriefLifecycleCheckWorkflowInstanceId(payload)).toBe('brief-lifecycle-Brief-With-Spaces-submit')
   })
 
+  it('normalizes a crm follow-up review workflow payload', () => {
+    const payload = normalizeCrmFollowupReviewWorkflowPayload({
+      bucket: '2026-07-04T05:42:00.000Z',
+      trigger: 'manual',
+      scope: 'client',
+      clientId: ' client-456 ',
+      requestedBy: 'user-1'
+    })
+
+    expect(payload).toEqual({
+      kind: CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
+      bucket: '2026-07-04T05',
+      trigger: 'manual',
+      scope: 'client',
+      clientId: 'client-456',
+      requestedBy: 'user-1'
+    })
+  })
+
+  it('rejects malformed crm follow-up review workflow payloads', () => {
+    expect(() => normalizeCrmFollowupReviewWorkflowPayload({ trigger: 'cron', scope: 'all' }))
+      .toThrow('bucket required')
+    expect(() => normalizeCrmFollowupReviewWorkflowPayload({ bucket: 'tomorrow', trigger: 'cron', scope: 'all' }))
+      .toThrow('bucket must be a valid ISO datetime or YYYY-MM-DDTHH')
+    expect(() => normalizeCrmFollowupReviewWorkflowPayload({ bucket: '2026-07-04T05', trigger: 'cron', scope: 'client' }))
+      .toThrow('clientId required for client scope')
+    expect(() => normalizeCrmFollowupReviewWorkflowPayload({ bucket: '2026-07-04T05', trigger: 'publish', scope: 'all' }))
+      .toThrow('Unsupported trigger: publish')
+  })
+
+  it('builds a deterministic workflow instance id for crm follow-up reviews', () => {
+    const payload = normalizeCrmFollowupReviewWorkflowPayload({
+      bucket: '2026-07-04T05',
+      trigger: 'cron',
+      scope: 'client',
+      clientId: 'Client/456'
+    })
+
+    expect(buildCrmFollowupReviewWorkflowInstanceId(payload)).toBe('crm-followup-review-2026-07-04T05-client-Client-456')
+  })
+
   it('parses the stable start-workflow request envelope', () => {
     const body = parseWorkflowRequestBody({
       workflow: SOCIAL_PUBLISHING_WORKFLOW_KIND,
@@ -229,6 +273,17 @@ describe('agency workflow contracts', () => {
     expect(body.workflow).toBe(BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND)
     expect(body.payload.briefId).toBe('brief-1')
     expect(body.payload.trigger).toBe('submit')
+  })
+
+  it('parses the crm follow-up review workflow request envelope', () => {
+    const body = parseWorkflowRequestBody({
+      workflow: CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
+      payload: { bucket: '2026-07-04T05', scope: 'all', trigger: 'cron' }
+    })
+
+    expect(body.workflow).toBe(CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND)
+    expect(body.payload.bucket).toBe('2026-07-04T05')
+    expect(body.payload.scope).toBe('all')
   })
 
   it('keeps workflow starts disabled unless explicitly enabled', () => {

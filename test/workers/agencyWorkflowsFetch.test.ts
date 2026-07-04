@@ -37,6 +37,7 @@ function workflowEnv(overrides: Record<string, unknown> = {}) {
     SOCIAL_INBOX_AUTOMATION_WORKFLOW: workflowBinding(),
     SOCIAL_SPEND_REVIEW_WORKFLOW: workflowBinding(),
     BRIEF_LIFECYCLE_CHECK_WORKFLOW: workflowBinding(),
+    CRM_FOLLOWUP_REVIEW_WORKFLOW: workflowBinding(),
     ...overrides
   }
 }
@@ -57,7 +58,8 @@ describe('agency workflows worker fetch handler', () => {
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: true },
         { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
-        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true }
+        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true },
+        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW', bindingConfigured: true }
       ]
     })
   })
@@ -77,7 +79,8 @@ describe('agency workflows worker fetch handler', () => {
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false },
         { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
-        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true }
+        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true },
+        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW', bindingConfigured: true }
       ]
     })
   })
@@ -209,6 +212,51 @@ describe('agency workflows worker fetch handler', () => {
     expect(env.SOCIAL_SPEND_REVIEW_WORKFLOW.create).not.toHaveBeenCalled()
   })
 
+  it('starts crm follow-up reviews on the crm follow-up review binding', async () => {
+    const env = workflowEnv()
+    const response = await handleAgencyWorkflowsFetch(
+      new Request('https://agency-workflows.example.com/workflows/start', {
+        method: 'POST',
+        headers: {
+          'authorization': 'Bearer workflow-secret',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          workflow: 'crm.followup.review',
+          payload: {
+            bucket: '2026-07-04T05:42:00.000Z',
+            scope: 'client',
+            clientId: 'client-1',
+            trigger: 'cron'
+          }
+        })
+      }),
+      env as never
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      workflow: 'crm.followup.review',
+      instanceId: 'crm-followup-review-2026-07-04T05-client-client-1',
+      status: { status: 'queued' }
+    })
+    expect(env.CRM_FOLLOWUP_REVIEW_WORKFLOW.create).toHaveBeenCalledWith({
+      id: 'crm-followup-review-2026-07-04T05-client-client-1',
+      params: {
+        kind: 'crm.followup.review',
+        bucket: '2026-07-04T05',
+        scope: 'client',
+        clientId: 'client-1',
+        trigger: 'cron'
+      }
+    })
+    expect(env.SOCIAL_PUBLISHING_WORKFLOW.create).not.toHaveBeenCalled()
+    expect(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.create).not.toHaveBeenCalled()
+    expect(env.SOCIAL_SPEND_REVIEW_WORKFLOW.create).not.toHaveBeenCalled()
+    expect(env.BRIEF_LIFECYCLE_CHECK_WORKFLOW.create).not.toHaveBeenCalled()
+  })
+
   it('treats duplicate deterministic social publishing workflow starts as idempotent success', async () => {
     const publishingWorkflow = workflowBinding()
     publishingWorkflow.create.mockRejectedValueOnce(new Error('Workflow instance already exists'))
@@ -306,5 +354,28 @@ describe('agency workflows worker fetch handler', () => {
     expect(env.SOCIAL_PUBLISHING_WORKFLOW.get).not.toHaveBeenCalled()
     expect(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.get).not.toHaveBeenCalled()
     expect(env.SOCIAL_SPEND_REVIEW_WORKFLOW.get).not.toHaveBeenCalled()
+  })
+
+  it('reads crm follow-up review instance status from the crm follow-up review binding', async () => {
+    const env = workflowEnv()
+    const response = await handleAgencyWorkflowsFetch(
+      new Request('https://agency-workflows.example.com/workflows/status?workflow=crm.followup.review&instanceId=crm-followup-review-2026-07-04T05-all-all', {
+        headers: { authorization: 'Bearer workflow-secret' }
+      }),
+      env as never
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      workflow: 'crm.followup.review',
+      instanceId: 'crm-followup-review-2026-07-04T05-all-all',
+      status: { status: 'running' }
+    })
+    expect(env.CRM_FOLLOWUP_REVIEW_WORKFLOW.get).toHaveBeenCalledWith('crm-followup-review-2026-07-04T05-all-all')
+    expect(env.SOCIAL_PUBLISHING_WORKFLOW.get).not.toHaveBeenCalled()
+    expect(env.SOCIAL_INBOX_AUTOMATION_WORKFLOW.get).not.toHaveBeenCalled()
+    expect(env.SOCIAL_SPEND_REVIEW_WORKFLOW.get).not.toHaveBeenCalled()
+    expect(env.BRIEF_LIFECYCLE_CHECK_WORKFLOW.get).not.toHaveBeenCalled()
   })
 })

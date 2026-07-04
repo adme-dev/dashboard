@@ -2,13 +2,16 @@ export const SOCIAL_PUBLISHING_WORKFLOW_KIND = 'social.post.publish' as const
 export const SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND = 'social.inbox.automation' as const
 export const SOCIAL_SPEND_REVIEW_WORKFLOW_KIND = 'social.spend.review' as const
 export const BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND = 'brief.lifecycle.check' as const
+export const CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND = 'crm.followup.review' as const
 const WORKFLOW_INSTANCE_ID_MAX_LENGTH = 100
+const REVIEW_BUCKET_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}$/
 
 export type SupportedWorkflowKind
   = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
     | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
     | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
     | typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
+    | typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
 
 export type SocialPublishingWorkflowTrigger = 'manual' | 'schedule' | 'cron' | 'retry'
 export type SocialInboxAutomationWorkflowTrigger = 'inbound' | 'cron' | 'retry' | 'manual'
@@ -16,6 +19,8 @@ export type SocialSpendReviewWorkflowTrigger = 'cron' | 'manual' | 'retry'
 export type SocialSpendReviewWorkflowScope = 'all' | 'client' | 'platform'
 export type SocialSpendReviewPlatform = 'all' | 'meta' | 'google_ads'
 export type BriefLifecycleCheckWorkflowTrigger = 'submit' | 'manual' | 'cron' | 'retry'
+export type CrmFollowupReviewWorkflowTrigger = 'cron' | 'manual' | 'retry'
+export type CrmFollowupReviewWorkflowScope = 'all' | 'client'
 
 export interface SocialPublishingWorkflowPayload {
   kind: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
@@ -53,11 +58,21 @@ export interface BriefLifecycleCheckWorkflowPayload {
   requestedBy?: string
 }
 
+export interface CrmFollowupReviewWorkflowPayload {
+  kind: typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
+  bucket: string
+  trigger: CrmFollowupReviewWorkflowTrigger
+  scope: CrmFollowupReviewWorkflowScope
+  clientId?: string
+  requestedBy?: string
+}
+
 export type WorkflowRequestBody
   = { workflow: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND, payload: SocialPublishingWorkflowPayload }
     | { workflow: typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND, payload: SocialInboxAutomationWorkflowPayload }
     | { workflow: typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND, payload: SocialSpendReviewWorkflowPayload }
     | { workflow: typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND, payload: BriefLifecycleCheckWorkflowPayload }
+    | { workflow: typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND, payload: CrmFollowupReviewWorkflowPayload }
 
 export interface WorkflowFeatureEnv {
   AGENCY_WORKFLOWS_ENABLED?: string
@@ -81,6 +96,7 @@ export interface AgencyWorkflowEnv extends WorkflowFeatureEnv {
   SOCIAL_INBOX_AUTOMATION_WORKFLOW: WorkflowBindingLike<SocialInboxAutomationWorkflowPayload>
   SOCIAL_SPEND_REVIEW_WORKFLOW: WorkflowBindingLike<SocialSpendReviewWorkflowPayload>
   BRIEF_LIFECYCLE_CHECK_WORKFLOW: WorkflowBindingLike<BriefLifecycleCheckWorkflowPayload>
+  CRM_FOLLOWUP_REVIEW_WORKFLOW: WorkflowBindingLike<CrmFollowupReviewWorkflowPayload>
 }
 
 export function workflowFeatureEnabled(env: WorkflowFeatureEnv): boolean {
@@ -112,6 +128,12 @@ export function parseWorkflowRequestBody(input: unknown): WorkflowRequestBody {
     return {
       workflow,
       payload: normalizeBriefLifecycleCheckWorkflowPayload(body.payload)
+    }
+  }
+  if (workflow === CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND) {
+    return {
+      workflow,
+      payload: normalizeCrmFollowupReviewWorkflowPayload(body.payload)
     }
   }
   throw new Error(`Unsupported workflow: ${workflow || 'missing'}`)
@@ -219,6 +241,32 @@ export function buildBriefLifecycleCheckWorkflowInstanceId(payload: BriefLifecyc
     .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
 }
 
+export function normalizeCrmFollowupReviewWorkflowPayload(input: unknown): CrmFollowupReviewWorkflowPayload {
+  const body = objectInput(input)
+  const bucket = normalizeReviewBucket(body.bucket)
+  const trigger = normalizeCrmFollowupReviewTrigger(body.trigger)
+  const scope = normalizeCrmFollowupReviewScope(body.scope)
+  const clientId = optionalText(body.clientId)
+  const requestedBy = optionalText(body.requestedBy)
+
+  if (scope === 'client' && !clientId) throw new Error('clientId required for client scope')
+
+  return {
+    kind: CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
+    bucket,
+    trigger,
+    scope,
+    ...(clientId ? { clientId } : {}),
+    ...(requestedBy ? { requestedBy } : {})
+  }
+}
+
+export function buildCrmFollowupReviewWorkflowInstanceId(payload: CrmFollowupReviewWorkflowPayload): string {
+  const discriminator = payload.scope === 'client' ? payload.clientId || 'unknown' : 'all'
+  return `crm-followup-review-${instancePart(payload.bucket)}-${instancePart(payload.scope)}-${instancePart(discriminator)}`
+    .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
+}
+
 function normalizeTrigger(input: unknown): SocialPublishingWorkflowTrigger {
   const value = optionalText(input) ?? 'manual'
   if (value === 'manual' || value === 'schedule' || value === 'cron' || value === 'retry') return value
@@ -262,6 +310,27 @@ function normalizeBriefLifecycleCheckTrigger(input: unknown): BriefLifecycleChec
   const value = optionalText(input) ?? 'manual'
   if (value === 'submit' || value === 'manual' || value === 'cron' || value === 'retry') return value
   throw new Error(`Unsupported trigger: ${value}`)
+}
+
+function normalizeCrmFollowupReviewTrigger(input: unknown): CrmFollowupReviewWorkflowTrigger {
+  const value = optionalText(input) ?? 'cron'
+  if (value === 'cron' || value === 'manual' || value === 'retry') return value
+  throw new Error(`Unsupported trigger: ${value}`)
+}
+
+function normalizeCrmFollowupReviewScope(input: unknown): CrmFollowupReviewWorkflowScope {
+  const value = optionalText(input) ?? 'all'
+  if (value === 'all' || value === 'client') return value
+  throw new Error(`Unsupported scope: ${value}`)
+}
+
+function normalizeReviewBucket(input: unknown): string {
+  const value = requiredText(input, 'bucket')
+  if (REVIEW_BUCKET_PATTERN.test(value)) return value
+
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) throw new Error('bucket must be a valid ISO datetime or YYYY-MM-DDTHH')
+  return new Date(timestamp).toISOString().slice(0, 13)
 }
 
 function requiredText(input: unknown, field: string): string {

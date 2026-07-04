@@ -4,6 +4,7 @@ import {
   checkAgencyWorkflowReadiness,
   getAgencyWorkflowStatus,
   startBriefLifecycleCheckWorkflow,
+  startCrmFollowupReviewWorkflow,
   startSocialInboxAutomationWorkflow,
   startSocialPublishingWorkflow,
   startSocialSpendReviewWorkflow,
@@ -235,6 +236,57 @@ describe('agency workflow client', () => {
     )
   })
 
+  it('starts crm follow-up review through the Cloudflare service binding', async () => {
+    const bindingFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      workflow: 'crm.followup.review',
+      instanceId: 'crm-followup-review-2026-07-04T05-client-client-1',
+      status: { status: 'queued' }
+    }), { status: 202, headers: { 'content-type': 'application/json' } }))
+
+    const result = await startCrmFollowupReviewWorkflow(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }), {
+      bucket: '2026-07-04T05:42:00.000Z',
+      trigger: 'manual',
+      scope: 'client',
+      clientId: 'client-1',
+      requestedBy: 'user-1'
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      enabled: true,
+      transport: 'service-binding',
+      workflow: 'crm.followup.review',
+      instanceId: 'crm-followup-review-2026-07-04T05-client-client-1',
+      status: { status: 'queued' }
+    })
+    expect(bindingFetch).toHaveBeenCalledOnce()
+
+    const request = bindingFetch.mock.calls[0][0] as Request
+    expect(request.url).toBe('https://agency-workflows.internal/workflows/start')
+    expect(request.method).toBe('POST')
+    expect(request.headers.get('authorization')).toBe('Bearer workflow-secret')
+    expect(await request.json()).toEqual({
+      workflow: 'crm.followup.review',
+      payload: {
+        kind: 'crm.followup.review',
+        bucket: '2026-07-04T05',
+        trigger: 'manual',
+        scope: 'client',
+        clientId: 'client-1',
+        requestedBy: 'user-1'
+      }
+    })
+    expect(mockConsoleInfo).toHaveBeenCalledWith(
+      'agency-workflows.crm-followup.review.start.succeeded',
+      expect.objectContaining({ bucket: '2026-07-04T05', scope: 'client', clientId: 'client-1', transport: 'service-binding' })
+    )
+  })
+
   it('stays inert when workflows are not explicitly enabled', async () => {
     const bindingFetch = vi.fn()
 
@@ -372,7 +424,8 @@ describe('agency workflow client', () => {
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
         { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' },
-        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW' }
+        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW' },
+        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW' }
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
@@ -398,7 +451,8 @@ describe('agency workflow client', () => {
           { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
           { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
           { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' },
-          { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW' }
+          { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW' },
+          { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW' }
         ]
       }
     })
@@ -418,7 +472,8 @@ describe('agency workflow client', () => {
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
         { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' },
-        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW' }
+        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW' },
+        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW' }
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
@@ -445,7 +500,8 @@ describe('agency workflow client', () => {
       workflows: [
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
-        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' }
+        { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' },
+        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW' }
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
@@ -460,7 +516,7 @@ describe('agency workflow client', () => {
       status: 'degraded',
       enabled: true,
       transport: 'service-binding',
-      missingWorkflows: ['brief.lifecycle.check']
+      missingWorkflows: ['crm.followup.review']
     })
   })
 
@@ -473,7 +529,8 @@ describe('agency workflow client', () => {
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false },
         { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
-        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true }
+        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true },
+        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW', bindingConfigured: true }
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
@@ -495,7 +552,8 @@ describe('agency workflow client', () => {
           { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW', bindingConfigured: true },
           { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false },
           { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
-          { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true }
+          { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true },
+          { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW', bindingConfigured: true }
         ]
       }
     })
@@ -510,7 +568,8 @@ describe('agency workflow client', () => {
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
         { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW' },
-        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW' }
+        { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW' },
+        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW' }
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
