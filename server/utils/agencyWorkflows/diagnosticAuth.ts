@@ -21,8 +21,24 @@ export type AgencyWorkflowDiagnosticAccess
   = | AgencyWorkflowDiagnosticAdminAccess
     | AgencyWorkflowDiagnosticSmokeAccess
 
+interface AgencyWorkflowDiagnosticEventContext {
+  cloudflare?: {
+    env?: Record<string, unknown>
+  }
+}
+
 function option(env: NodeJS.ProcessEnv, name: string): string {
   return String(env[name] ?? '').trim()
+}
+
+function eventEnvOption(event: H3Event, name: string): string {
+  const value = (event.context as AgencyWorkflowDiagnosticEventContext).cloudflare?.env?.[name]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function smokeSecret(event: H3Event, env: NodeJS.ProcessEnv): string {
+  return eventEnvOption(event, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_ENV)
+    || option(env, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_ENV)
 }
 
 function sha256(input: string): Buffer {
@@ -37,7 +53,7 @@ export function hasValidAgencyWorkflowSmokeSecret(
   event: H3Event,
   env: NodeJS.ProcessEnv = process.env
 ): boolean {
-  const expected = option(env, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_ENV)
+  const expected = smokeSecret(event, env)
   if (!expected) return false
 
   const actual = String(getHeader(event, AGENCY_WORKFLOWS_SMOKE_SECRET_HEADER) ?? '').trim()

@@ -95,6 +95,29 @@ describe('agency workflow status endpoint', () => {
     })
   })
 
+  it('reads the machine smoke shared secret from Cloudflare Pages bindings', async () => {
+    const event: TestEvent = {
+      context: {
+        cloudflare: {
+          env: { AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'pages-secret' }
+        }
+      },
+      headers: { 'x-workflow-smoke-secret': 'pages-secret' }
+    }
+
+    const result = await workflowStatus(event)
+
+    expect(mockRequireRole).not.toHaveBeenCalled()
+    expect(mockGetAgencyWorkflowStatus).toHaveBeenCalledWith(event, {
+      workflow: 'social.inbox.automation',
+      instanceId: 'social-inbox-auto-client-1-conversation-1-message-1'
+    })
+    expect(result).toMatchObject({
+      ok: true,
+      workflow: 'social.inbox.automation'
+    })
+  })
+
   it('derives a scheduled publishing workflow instance id from identity query fields', async () => {
     mockQuery = {
       workflow: 'social.post.publish',

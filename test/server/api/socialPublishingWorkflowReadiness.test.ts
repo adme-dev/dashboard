@@ -93,4 +93,21 @@ describe('agency workflow readiness endpoints', () => {
     expect(mockCheckAgencyWorkflowReadiness).toHaveBeenCalledWith(event)
     expect(result).toMatchObject({ ok: true, status: 'ready' })
   })
+
+  it('reads the machine smoke shared secret from Cloudflare Pages bindings', async () => {
+    const event: TestEvent = {
+      context: {
+        cloudflare: {
+          env: { AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'pages-secret' }
+        }
+      },
+      headers: { 'x-workflow-smoke-secret': 'pages-secret' }
+    }
+
+    const result = await agencyWorkflowReadiness(event)
+
+    expect(mockRequireRole).not.toHaveBeenCalled()
+    expect(mockCheckAgencyWorkflowReadiness).toHaveBeenCalledWith(event)
+    expect(result).toMatchObject({ ok: true, status: 'ready' })
+  })
 })
