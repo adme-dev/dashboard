@@ -64,11 +64,15 @@ describe('agency workflows production smoke script', () => {
   it('accepts a dedicated machine smoke shared secret before user auth fallbacks', () => {
     expect(smoke.resolveSmokeConfig({
       AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret',
-      AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: 'admin-token'
+      AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: 'admin-token',
+      AGENCY_WORKFLOWS_SMOKE_READINESS_ATTEMPTS: '3',
+      AGENCY_WORKFLOWS_SMOKE_READINESS_RETRY_DELAY_MS: '25'
     })).toMatchObject({
       baseUrl: 'https://agency-dashboard-6cm.pages.dev',
       sharedSecret: 'machine-secret',
-      authToken: 'admin-token'
+      authToken: 'admin-token',
+      readinessAttempts: 3,
+      readinessRetryDelayMs: 25
     })
 
     expect(smoke.authHeaders({
@@ -170,6 +174,44 @@ describe('agency workflows production smoke script', () => {
       })
     )
     expect(log.mock.calls.flat().join('\n')).not.toContain('machine-secret')
+  })
+
+  it('retries readiness while the production alias is still serving stale auth code', async () => {
+    const staleAuthPayload = {
+      error: true,
+      statusCode: 401,
+      statusMessage: 'Authentication required',
+      message: 'Authentication required'
+    }
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(staleAuthPayload), {
+        status: 401,
+        headers: { 'content-type': 'application/json' }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(readyPayload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      }))
+    const log = vi.fn()
+    const waitImpl = vi.fn(async () => undefined)
+
+    await smoke.runAgencyWorkflowsProductionSmoke({
+      env: {
+        AGENCY_WORKFLOWS_SMOKE_BASE_URL: 'https://agency-dashboard-6cm.pages.dev',
+        AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret',
+        AGENCY_WORKFLOWS_SMOKE_READINESS_ATTEMPTS: '2',
+        AGENCY_WORKFLOWS_SMOKE_READINESS_RETRY_DELAY_MS: '10'
+      },
+      fetchImpl,
+      log,
+      waitImpl
+    })
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(waitImpl).toHaveBeenCalledWith(10)
+    expect(log).toHaveBeenCalledWith('WAIT readiness attempt 1/2 returned HTTP 401; retrying in 10ms.')
+    expect(log.mock.calls.flat().join('\n')).not.toContain('machine-secret')
+    expect(log).toHaveBeenCalledWith('OK readiness transport=service-binding workflows=social.post.publish,social.inbox.automation,social.spend.review,brief.lifecycle.check,crm.followup.review')
   })
 
   it('runs optional status lookup for a live workflow instance', async () => {

@@ -40,11 +40,11 @@ Open `graphify-out/obsidian` as an Obsidian vault for local architecture review.
 Use `graphify-out/index.md` first for high-level counts, top communities, and
 the latest generation timestamp.
 
-Current clean dashboard rebuild, generated on 2026-07-04:
+Current clean dashboard rebuild, generated on 2026-07-05:
 
 - Files indexed: 3,460
-- Graph nodes: 8,498
-- Graph edges: 7,927
+- Graph nodes: 8,500
+- Graph edges: 7,931
 
 Graphify's extractor does not directly parse `.vue` single-file components in
 this setup. The dashboard graph currently covers supported JS/TS/Python/etc.

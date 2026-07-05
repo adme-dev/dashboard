@@ -5,6 +5,9 @@ const READINESS_PATH = '/api/agency/workflows/readiness'
 const STATUS_PATH = '/api/agency/workflows/status'
 const REQUIRED_WORKFLOWS = ['social.post.publish', 'social.inbox.automation', 'social.spend.review', 'brief.lifecycle.check', 'crm.followup.review']
 const SHARED_SECRET_HEADER = 'x-workflow-smoke-secret'
+const DEFAULT_READINESS_ATTEMPTS = 18
+const DEFAULT_READINESS_RETRY_DELAY_MS = 5000
+const RETRYABLE_READINESS_STATUS = new Set([401, 404, 408, 425, 429, 500, 502, 503, 504])
 
 function usage() {
   return [
@@ -22,6 +25,8 @@ function usage() {
     `  AGENCY_WORKFLOWS_SMOKE_BASE_URL=${DEFAULT_BASE_URL}`,
     '  AGENCY_WORKFLOWS_SMOKE_STATUS_WORKFLOW=social.post.publish',
     '  AGENCY_WORKFLOWS_SMOKE_STATUS_INSTANCE_ID=<cloudflare workflow instance id>',
+    `  AGENCY_WORKFLOWS_SMOKE_READINESS_ATTEMPTS=${DEFAULT_READINESS_ATTEMPTS}`,
+    `  AGENCY_WORKFLOWS_SMOKE_READINESS_RETRY_DELAY_MS=${DEFAULT_READINESS_RETRY_DELAY_MS}`,
     ''
   ].join('\n')
 }
@@ -40,6 +45,16 @@ function optionAny(env, names, fallback = '') {
 
 function endpoint(baseUrl, path) {
   return new URL(path, baseUrl).toString()
+}
+
+function integerOption(env, name, fallback, { min, max }) {
+  const raw = option(env, name)
+  if (!raw) return fallback
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}.`)
+  }
+  return value
 }
 
 export function resolveSmokeConfig(env = process.env) {
@@ -67,7 +82,9 @@ export function resolveSmokeConfig(env = process.env) {
     authToken,
     cookie,
     statusWorkflow,
-    statusInstanceId
+    statusInstanceId,
+    readinessAttempts: integerOption(env, 'AGENCY_WORKFLOWS_SMOKE_READINESS_ATTEMPTS', DEFAULT_READINESS_ATTEMPTS, { min: 1, max: 60 }),
+    readinessRetryDelayMs: integerOption(env, 'AGENCY_WORKFLOWS_SMOKE_READINESS_RETRY_DELAY_MS', DEFAULT_READINESS_RETRY_DELAY_MS, { min: 0, max: 60000 })
   }
 }
 
@@ -92,6 +109,15 @@ async function readJson(response) {
     return JSON.parse(text)
   } catch {
     throw new Error(`Expected JSON response, received: ${text.slice(0, 160)}`)
+  }
+}
+
+class SmokeHttpError extends Error {
+  constructor(label, status, body) {
+    super(`${label} returned HTTP ${status}: ${JSON.stringify(body)}`)
+    this.name = 'SmokeHttpError'
+    this.status = status
+    this.body = body
   }
 }
 
@@ -174,22 +200,53 @@ async function getJson(fetchImpl, url, config, label) {
   })
   const body = await readJson(response)
   if (!response.ok) {
-    throw new Error(`${label} returned HTTP ${response.status}: ${JSON.stringify(body)}`)
+    throw new SmokeHttpError(label, response.status, body)
   }
   return body
+}
+
+function retryableReadinessError(error) {
+  if (error instanceof SmokeHttpError) {
+    return RETRYABLE_READINESS_STATUS.has(error.status)
+  }
+  return error instanceof TypeError
+}
+
+function readinessRetrySummary(error) {
+  if (error instanceof SmokeHttpError) return `HTTP ${error.status}`
+  return error instanceof Error ? error.name || 'fetch error' : 'fetch error'
+}
+
+const defaultWait = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+async function getReadinessJson(fetchImpl, url, config, log, waitImpl) {
+  for (let attempt = 1; attempt <= config.readinessAttempts; attempt += 1) {
+    try {
+      return await getJson(fetchImpl, url, config, 'Readiness')
+    } catch (error) {
+      if (attempt >= config.readinessAttempts || !retryableReadinessError(error)) {
+        throw error
+      }
+      log(`WAIT readiness attempt ${attempt}/${config.readinessAttempts} returned ${readinessRetrySummary(error)}; retrying in ${config.readinessRetryDelayMs}ms.`)
+      await waitImpl(config.readinessRetryDelayMs)
+    }
+  }
+
+  throw new Error('Readiness retry loop exited unexpectedly.')
 }
 
 export async function runAgencyWorkflowsProductionSmoke({
   env = process.env,
   fetchImpl = globalThis.fetch,
-  log = console.log
+  log = console.log,
+  waitImpl = defaultWait
 } = {}) {
   if (typeof fetchImpl !== 'function') {
     throw new Error('No fetch implementation is available.')
   }
 
   const config = resolveSmokeConfig(env)
-  const readiness = await getJson(fetchImpl, endpoint(config.baseUrl, READINESS_PATH), config, 'Readiness')
+  const readiness = await getReadinessJson(fetchImpl, endpoint(config.baseUrl, READINESS_PATH), config, log, waitImpl)
   const readinessSummary = validateReadinessPayload(readiness)
   log(`OK readiness transport=${readinessSummary.transport} workflows=${readinessSummary.workflows.join(',')}`)
 
