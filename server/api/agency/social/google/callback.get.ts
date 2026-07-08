@@ -3,6 +3,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
   exchangeGoogleCode,
+  GOOGLE_ADS_OAUTH_SCOPES,
   listAccessibleCustomers,
   getCustomerInfo,
   listClientAccounts
@@ -120,7 +121,7 @@ export default eventHandler(async (event) => {
           tokens.access_token,
           tokens.refresh_token || null,
           expiresAt,
-          ['https://www.googleapis.com/auth/adwords'],
+          tokens.scope ? tokens.scope.split(/\s+/).filter(Boolean) : GOOGLE_ADS_OAUTH_SCOPES,
           'active',
           JSON.stringify({
             currencyCode: account.currencyCode,

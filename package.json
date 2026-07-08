@@ -34,6 +34,7 @@
     "eval:ai:export": "tsx --tsconfig .nuxt/tsconfig.server.json scripts/export-ai-tools.ts",
     "eval:ai": "promptfoo eval -c evals/ai-tools/promptfooconfig.yaml",
     "eval:ai:injection": "promptfoo eval -c evals/ai-tools/injection.yaml",
+    "audit:inventory-feeds": "node --env-file=.env node_modules/tsx/dist/cli.mjs --tsconfig .nuxt/tsconfig.server.json scripts/audit-inventory-feeds.ts",
     "zero:dev": "npx @rocicorp/zero-cache serve",
     "db:setup": "cd server/database && psql $DATABASE_URL -f schema.sql",
     "db:seed": "psql $DATABASE_URL -f server/database/seed-coa.sql",

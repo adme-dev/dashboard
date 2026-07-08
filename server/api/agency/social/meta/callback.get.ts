@@ -4,7 +4,8 @@ import { queryOne } from '~~/server/utils/db'
 import {
   exchangeMetaCode,
   exchangeForLongLivedToken,
-  getAdAccounts
+  getAdAccounts,
+  META_MARKETING_OAUTH_SCOPES
 } from '~~/server/utils/metaClient'
 
 /**
@@ -84,7 +85,7 @@ export default eventHandler(async (event) => {
           account.name,
           longToken.access_token,
           expiresAt,
-          ['ads_management', 'pages_read_engagement'],
+          META_MARKETING_OAUTH_SCOPES,
           'active',
           JSON.stringify({
             actId: account.id,

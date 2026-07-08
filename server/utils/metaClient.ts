@@ -9,6 +9,18 @@ import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
 
+export const META_MARKETING_OAUTH_SCOPES = [
+  'ads_management',
+  'ads_read',
+  'pages_show_list',
+  'pages_read_engagement',
+  'pages_manage_ads',
+  'pages_manage_metadata',
+  'leads_retrieval',
+  'business_management',
+  'catalog_management',
+]
+
 // ============================================
 // Types
 // ============================================
@@ -118,7 +130,7 @@ export function getMetaAuthUrl(appId: string, redirectUri: string, state: string
     client_id: appId,
     redirect_uri: redirectUri,
     state,
-    scope: 'ads_management,ads_read,pages_show_list,pages_read_engagement,pages_manage_ads,pages_manage_metadata,leads_retrieval,business_management',
+    scope: META_MARKETING_OAUTH_SCOPES.join(','),
     response_type: 'code'
   })
   return `https://www.facebook.com/v25.0/dialog/oauth?${params.toString()}`

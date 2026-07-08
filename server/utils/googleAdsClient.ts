@@ -10,6 +10,11 @@ const GOOGLE_ADS_BASE = 'https://googleads.googleapis.com/v23'
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
+export const GOOGLE_ADS_OAUTH_SCOPES = [
+  'https://www.googleapis.com/auth/adwords',
+  'https://www.googleapis.com/auth/content',
+]
+
 // ============================================
 // Types
 // ============================================
@@ -62,9 +67,10 @@ export function getGoogleAuthUrl(clientId: string, redirectUri: string, state: s
     client_id: clientId,
     redirect_uri: redirectUri,
     state,
-    scope: 'https://www.googleapis.com/auth/adwords',
+    scope: GOOGLE_ADS_OAUTH_SCOPES.join(' '),
     response_type: 'code',
     access_type: 'offline',
+    include_granted_scopes: 'true',
     prompt: 'consent'
   })
   return `${GOOGLE_OAUTH_BASE}?${params.toString()}`

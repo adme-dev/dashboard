@@ -2,7 +2,8 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
   exchangeForLongLivedToken,
-  getAdAccounts
+  getAdAccounts,
+  META_MARKETING_OAUTH_SCOPES
 } from '~~/server/utils/metaClient'
 import { ofetch } from 'ofetch'
 
@@ -79,7 +80,7 @@ export default eventHandler(async (event) => {
         me.name,
         longLivedToken,
         expiresAt,
-        ['ads_management', 'pages_read_engagement'],
+        META_MARKETING_OAUTH_SCOPES,
         'active',
         JSON.stringify({ userId: me.id, userName: me.name, manualToken: true }),
         user.id
@@ -109,7 +110,7 @@ export default eventHandler(async (event) => {
         account.name,
         longLivedToken,
         expiresAt,
-        ['ads_management', 'pages_read_engagement'],
+        META_MARKETING_OAUTH_SCOPES,
         'active',
         JSON.stringify({
           actId: account.id,
