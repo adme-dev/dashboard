@@ -78,6 +78,12 @@ describe('agency workflows worker config', () => {
     expect(pagesConfig.vars?.AGENCY_WORKFLOWS_ENABLED).toBe('true')
   })
 
+  it('keeps a deployed CI smoke verifier hash in Pages config', () => {
+    const pagesConfig = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml
+
+    expect(pagesConfig.vars?.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256).toMatch(/^[a-f0-9]{64}$/)
+  })
+
   it('keeps scheduled publishing workflow-primary cutover explicitly dormant until production smoke passes', () => {
     const pagesConfig = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml
 

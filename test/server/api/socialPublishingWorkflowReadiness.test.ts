@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mockRequireRole = vi.fn()
 const mockCheckAgencyWorkflowReadiness = vi.fn()
 const originalSmokeSecret = process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
+const originalSmokeSecretHash = process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256
+const machineSecretHash = '6f5df3d61a2290cbda9a27d584fa7e509c2811da8fd67eab0dc5c39c3789bb7e'
 
 interface TestEvent {
   context: Record<string, unknown>
@@ -32,6 +34,7 @@ describe('agency workflow readiness endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     delete process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
+    delete process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256
     mockRequireRole.mockResolvedValue({ id: 'admin-1', role: 'admin' })
     mockCheckAgencyWorkflowReadiness.mockResolvedValue({
       ok: true,
@@ -49,6 +52,11 @@ describe('agency workflow readiness endpoints', () => {
       process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET = originalSmokeSecret
     } else {
       delete process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
+    }
+    if (originalSmokeSecretHash) {
+      process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256 = originalSmokeSecretHash
+    } else {
+      delete process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256
     }
   })
 
@@ -102,6 +110,23 @@ describe('agency workflow readiness endpoints', () => {
         }
       },
       headers: { 'x-workflow-smoke-secret': 'pages-secret' }
+    }
+
+    const result = await agencyWorkflowReadiness(event)
+
+    expect(mockRequireRole).not.toHaveBeenCalled()
+    expect(mockCheckAgencyWorkflowReadiness).toHaveBeenCalledWith(event)
+    expect(result).toMatchObject({ ok: true, status: 'ready' })
+  })
+
+  it('accepts a machine smoke shared secret matching the deployed hash verifier', async () => {
+    const event: TestEvent = {
+      context: {
+        cloudflare: {
+          env: { AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256: machineSecretHash }
+        }
+      },
+      headers: { 'x-workflow-smoke-secret': 'machine-secret' }
     }
 
     const result = await agencyWorkflowReadiness(event)

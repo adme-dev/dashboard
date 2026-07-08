@@ -6,6 +6,7 @@ import { requireRole, type User } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 
 export const AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_ENV = 'AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET'
+export const AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_HASH_ENV = 'AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256'
 export const AGENCY_WORKFLOWS_SMOKE_SECRET_HEADER = 'x-workflow-smoke-secret'
 
 export interface AgencyWorkflowDiagnosticAdminAccess {
@@ -27,8 +28,9 @@ interface AgencyWorkflowDiagnosticEventContext {
   }
 }
 
-function option(env: NodeJS.ProcessEnv, name: string): string {
-  return String(env[name] ?? '').trim()
+function option(env: NodeJS.ProcessEnv | Record<string, unknown>, name: string): string {
+  const value = env[name]
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function eventEnvOption(event: H3Event, name: string): string {
@@ -36,30 +38,56 @@ function eventEnvOption(event: H3Event, name: string): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function smokeSecret(event: H3Event, env: NodeJS.ProcessEnv): string {
-  return eventEnvOption(event, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_ENV)
-    || option(env, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_ENV)
+function uniqueOptions(values: string[]): string[] {
+  return [...new Set(values.map(value => value.trim()).filter(Boolean))]
+}
+
+function smokeSecrets(event: H3Event, env: NodeJS.ProcessEnv): string[] {
+  return uniqueOptions([
+    eventEnvOption(event, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_ENV),
+    option(env, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_ENV)
+  ])
+}
+
+function smokeSecretHashes(event: H3Event, env: NodeJS.ProcessEnv): string[] {
+  return uniqueOptions([
+    eventEnvOption(event, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_HASH_ENV),
+    option(env, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_HASH_ENV)
+  ])
+    .flatMap(value => value.split(/[\s,]+/))
+    .map(value => value.toLowerCase())
+    .filter(value => /^[a-f0-9]{64}$/.test(value))
 }
 
 function sha256(input: string): Buffer {
   return createHash('sha256').update(input).digest()
 }
 
+function sha256Hex(input: string): string {
+  return createHash('sha256').update(input).digest('hex')
+}
+
 function timingSafeSecretEqual(actual: string, expected: string): boolean {
   return timingSafeEqual(sha256(actual), sha256(expected))
+}
+
+function timingSafeHexEqual(actual: string, expected: string): boolean {
+  return timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'))
 }
 
 export function hasValidAgencyWorkflowSmokeSecret(
   event: H3Event,
   env: NodeJS.ProcessEnv = process.env
 ): boolean {
-  const expected = smokeSecret(event, env)
-  if (!expected) return false
-
   const actual = String(getHeader(event, AGENCY_WORKFLOWS_SMOKE_SECRET_HEADER) ?? '').trim()
   if (!actual) return false
 
-  return timingSafeSecretEqual(actual, expected)
+  const actualHash = sha256Hex(actual)
+  if (smokeSecretHashes(event, env).some(expectedHash => timingSafeHexEqual(actualHash, expectedHash))) {
+    return true
+  }
+
+  return smokeSecrets(event, env).some(expected => timingSafeSecretEqual(actual, expected))
 }
 
 export async function requireAgencyWorkflowDiagnosticAccess(
