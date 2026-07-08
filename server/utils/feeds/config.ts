@@ -11,10 +11,11 @@ export function isDealerFeedsEnabled(env: Env = process.env): boolean {
 export interface SocialDashboardConfig { baseUrl: string; serviceSecret: string; accessToken?: string }
 
 export async function loadSocialDashboardConfig(
-  deps: { env?: Env; queryOne?: typeof dbQueryOne } = {},
+  deps: { env?: Env; runtimeEnv?: Env; queryOne?: typeof dbQueryOne } = {},
 ): Promise<SocialDashboardConfig | null> {
   const env = deps.env ?? process.env
-  const serviceSecret = env.SOCIAL_DASHBOARD_SERVICE_SECRET
+  const runtimeEnv = deps.runtimeEnv ?? {}
+  const serviceSecret = runtimeEnv.SOCIAL_DASHBOARD_SERVICE_SECRET || env.SOCIAL_DASHBOARD_SERVICE_SECRET
   if (!serviceSecret) return null
   const queryOne = deps.queryOne ?? dbQueryOne
   const row = await queryOne(
@@ -23,12 +24,12 @@ export async function loadSocialDashboardConfig(
   )
   const baseUrl = (row?.settings as any)?.baseUrl
   if (!baseUrl) return null
-  const accessToken = env.SOCIAL_DASHBOARD_ACCESS_TOKEN || undefined
+  const accessToken = runtimeEnv.SOCIAL_DASHBOARD_ACCESS_TOKEN || env.SOCIAL_DASHBOARD_ACCESS_TOKEN || undefined
   return { baseUrl: String(baseUrl), serviceSecret, accessToken }
 }
 
 export async function getSocialDashboardClient(
-  deps: { env?: Env; queryOne?: typeof dbQueryOne; fetchImpl?: typeof fetch } = {},
+  deps: { env?: Env; runtimeEnv?: Env; queryOne?: typeof dbQueryOne; fetchImpl?: typeof fetch } = {},
 ): Promise<SocialDashboardClient | null> {
   const cfg = await loadSocialDashboardConfig(deps)
   if (!cfg) return null
