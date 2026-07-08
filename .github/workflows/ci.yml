@@ -81,10 +81,14 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v4
+        env:
+          AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET }}
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=agency-dashboard --branch=main --commit-dirty=true
+          secrets: |
+            AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
 
       - name: Smoke production origin
         run: curl --fail --retry 5 --retry-delay 5 --silent --show-error --head https://agency-dashboard-6cm.pages.dev/

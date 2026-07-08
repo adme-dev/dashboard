@@ -142,6 +142,8 @@ describe('agency workflows worker config', () => {
     expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_COOKIE')
     expect(workflow).toContain('Sync agency workflows smoke verifier')
     expect(workflow).toContain('node scripts/sync-agency-workflows-smoke-verifier.mjs')
+    expect(workflow).toContain('secrets: |')
+    expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET')
     expect(workflow).toContain('pnpm run smoke:agency-workflows:ci')
   })
 
