@@ -68,6 +68,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Sync agency workflows smoke verifier
+        env:
+          AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET }}
+        run: node scripts/sync-agency-workflows-smoke-verifier.mjs
+
       - name: Build
         run: pnpm run build
         timeout-minutes: 20
