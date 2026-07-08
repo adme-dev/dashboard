@@ -7,6 +7,7 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
 
 export const AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_ENV = 'AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET'
 export const AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_HASH_ENV = 'AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256'
+export const AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_HASH_CONFIG = 'agencyWorkflowsSmokeSharedSecretSha256'
 export const AGENCY_WORKFLOWS_SMOKE_SECRET_HEADER = 'x-workflow-smoke-secret'
 
 export interface AgencyWorkflowDiagnosticAdminAccess {
@@ -38,6 +39,16 @@ function eventEnvOption(event: H3Event, name: string): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function runtimeConfigOption(name: string): string {
+  try {
+    if (typeof useRuntimeConfig !== 'function') return ''
+    const value = (useRuntimeConfig() as Record<string, unknown>)[name]
+    return typeof value === 'string' ? value.trim() : ''
+  } catch {
+    return ''
+  }
+}
+
 function uniqueOptions(values: string[]): string[] {
   return [...new Set(values.map(value => value.trim()).filter(Boolean))]
 }
@@ -52,7 +63,8 @@ function smokeSecrets(event: H3Event, env: NodeJS.ProcessEnv): string[] {
 function smokeSecretHashes(event: H3Event, env: NodeJS.ProcessEnv): string[] {
   return uniqueOptions([
     eventEnvOption(event, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_HASH_ENV),
-    option(env, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_HASH_ENV)
+    option(env, AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_HASH_ENV),
+    runtimeConfigOption(AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_HASH_CONFIG)
   ])
     .flatMap(value => value.split(/[\s,]+/))
     .map(value => value.toLowerCase())

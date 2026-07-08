@@ -48,6 +48,7 @@ describe('agency workflow readiness endpoints', () => {
   })
 
   afterEach(() => {
+    vi.unstubAllGlobals()
     if (originalSmokeSecret) {
       process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET = originalSmokeSecret
     } else {
@@ -126,6 +127,22 @@ describe('agency workflow readiness endpoints', () => {
           env: { AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256: machineSecretHash }
         }
       },
+      headers: { 'x-workflow-smoke-secret': 'machine-secret' }
+    }
+
+    const result = await agencyWorkflowReadiness(event)
+
+    expect(mockRequireRole).not.toHaveBeenCalled()
+    expect(mockCheckAgencyWorkflowReadiness).toHaveBeenCalledWith(event)
+    expect(result).toMatchObject({ ok: true, status: 'ready' })
+  })
+
+  it('accepts a machine smoke shared secret matching the runtime config hash verifier', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      agencyWorkflowsSmokeSharedSecretSha256: machineSecretHash
+    }))
+    const event: TestEvent = {
+      context: {},
       headers: { 'x-workflow-smoke-secret': 'machine-secret' }
     }
 

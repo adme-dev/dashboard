@@ -88,6 +88,7 @@ export default defineNuxtConfig({
     jwtSecret: process.env.JWT_SECRET || '',
     sessionSecret: process.env.SESSION_SECRET || '',
     cronSecret: process.env.CRON_SECRET || '',
+    agencyWorkflowsSmokeSharedSecretSha256: process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256 || '',
     // Secret for signing public render links (V1.4). Unset → public render links fail closed in prod.
     renderLinkSecret: process.env.RENDER_LINK_SECRET || '',
 

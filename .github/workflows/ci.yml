@@ -80,7 +80,6 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
       - name: Deploy to Cloudflare Pages
-        id: deploy
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -92,7 +91,6 @@ jobs:
 
       - name: Smoke agency workflows readiness
         env:
-          AGENCY_WORKFLOWS_SMOKE_BASE_URL: ${{ steps.deploy.outputs.deployment-url }}
           AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET }}
           AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN }}
           AGENCY_WORKFLOWS_SMOKE_COOKIE: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_COOKIE }}
