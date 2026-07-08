@@ -7,7 +7,11 @@ const link: DealerLink = { clientId: 'c1', providerId: 'social-dashboard', exter
 const ref: FeedRef = { providerId: 'social-dashboard', feedId: 'f1', platform: 'google' }
 
 function fakeClient(responses: Record<string, any>) {
-  const call = vi.fn(async (_ctx, method: string, path: string) => responses[`${method} ${path}`])
+  const call = vi.fn(async (_ctx, method: string, path: string) => {
+    const response = responses[`${method} ${path}`]
+    if (response instanceof Error) throw response
+    return response
+  })
   return { client: { call }, call }
 }
 
@@ -33,12 +37,46 @@ describe('socialDashboard provider', () => {
     })
   })
 
-  it('createFeed returns a FeedRef from the new id', async () => {
-    const { client, call } = fakeClient({ 'POST /api/feeds': { ok: true, id: 'new9' } })
+  it('createFeed upserts by external identity and returns a FeedRef', async () => {
+    const { client, call } = fakeClient({ 'POST /api/feeds/upsert-external': { ok: true, feedId: 'new9', created: true } })
     const p = createSocialDashboardProvider(client as any)
-    const out = await p.createFeed(ctx, link, { name: 'New', platform: 'facebook', filters: { a: 1 } })
+    const out = await p.createFeed(ctx, link, {
+      name: 'New',
+      platform: 'facebook',
+      filters: { a: 1 },
+      externalCampaignId: 'cmp-1',
+    })
     expect(out).toEqual({ providerId: 'social-dashboard', feedId: 'new9', platform: 'facebook' })
-    expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds', { name: 'New', feed_type: 'facebook', organization_id: 'org-1', filters: { a: 1 }, mappings: {}, source: undefined })
+    expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds/upsert-external', {
+      name: 'New',
+      feed_type: 'facebook',
+      organization_id: 'org-1',
+      filters: { a: 1 },
+      mappings: {},
+      source: undefined,
+      externalKey: undefined,
+      externalClientId: 'c1',
+      externalCampaignId: 'cmp-1',
+      externalFeedId: undefined,
+    })
+  })
+
+  it('createFeed falls back to legacy create when upsert endpoint is unavailable', async () => {
+    const { client, call } = fakeClient({
+      'POST /api/feeds/upsert-external': new Error('social-dashboard POST /api/feeds/upsert-external → 404: missing'),
+      'POST /api/feeds': { ok: true, id: 'legacy9' },
+    })
+    const p = createSocialDashboardProvider(client as any)
+    const out = await p.createFeed(ctx, link, { name: 'Legacy', platform: 'google', filters: { b: 2 } })
+    expect(out).toEqual({ providerId: 'social-dashboard', feedId: 'legacy9', platform: 'google' })
+    expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds', {
+      name: 'Legacy',
+      feed_type: 'google',
+      organization_id: 'org-1',
+      filters: { b: 2 },
+      mappings: {},
+      source: undefined,
+    })
   })
 
   it('throws when the context org does not match the link org', async () => {

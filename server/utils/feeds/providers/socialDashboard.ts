@@ -91,6 +91,32 @@ function normalizeMetricsResult(raw: any): FeedMetrics {
   }
 }
 
+function upsertNotAvailable(error: unknown): boolean {
+  return /POST \/api\/feeds\/upsert-external → 404/.test(error instanceof Error ? error.message : String(error))
+}
+
+function createPayload(link: DealerLink, spec: CreateFeedSpec): Record<string, unknown> {
+  return {
+    name: spec.name,
+    feed_type: spec.platform,
+    organization_id: link.externalOrgId,
+    filters: spec.filters ?? {},
+    mappings: spec.mappings ?? {},
+    source: spec.source,
+  }
+}
+
+function upsertPayload(link: DealerLink, spec: CreateFeedSpec): Record<string, unknown> {
+  const payload = createPayload(link, spec)
+  return {
+    ...payload,
+    externalKey: spec.externalKey,
+    externalClientId: spec.externalClientId ?? link.clientId,
+    externalCampaignId: spec.externalCampaignId,
+    externalFeedId: spec.externalFeedId,
+  }
+}
+
 export function createSocialDashboardProvider(client: SocialDashboardClient): FeedProvider {
   return {
     id: SOCIAL_DASHBOARD_PROVIDER_ID,
@@ -125,15 +151,14 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
 
     async createFeed(ctx, link: DealerLink, spec: CreateFeedSpec): Promise<FeedRef> {
       assertOrgMatch(ctx, link)
-      const r = await client.call<{ id: string }>(ctx, 'POST', `/api/feeds`, {
-        name: spec.name,
-        feed_type: spec.platform,
-        organization_id: link.externalOrgId,
-        filters: spec.filters ?? {},
-        mappings: spec.mappings ?? {},
-        source: spec.source,
-      })
-      return { providerId: SOCIAL_DASHBOARD_PROVIDER_ID, feedId: String(r.id), platform: spec.platform }
+      try {
+        const r = await client.call<{ id?: string; feedId?: string }>(ctx, 'POST', `/api/feeds/upsert-external`, upsertPayload(link, spec))
+        return { providerId: SOCIAL_DASHBOARD_PROVIDER_ID, feedId: String(r.feedId || r.id), platform: spec.platform }
+      } catch (error) {
+        if (!upsertNotAvailable(error)) throw error
+        const r = await client.call<{ id: string }>(ctx, 'POST', `/api/feeds`, createPayload(link, spec))
+        return { providerId: SOCIAL_DASHBOARD_PROVIDER_ID, feedId: String(r.id), platform: spec.platform }
+      }
     },
 
     async updateFeed(ctx, ref: FeedRef, patch) {

@@ -44,6 +44,10 @@ export interface CreateFeedSpec {
   filters?: Record<string, unknown>
   mappings?: Record<string, unknown>
   source?: Record<string, unknown>
+  externalKey?: string
+  externalClientId?: string
+  externalCampaignId?: string
+  externalFeedId?: string
 }
 
 export interface FeedProvider {
