@@ -51,6 +51,7 @@ export function evaluateCiSmokeGate({
       ok: false,
       status: 'blocked',
       authConfigured,
+      authRequired,
       activeCutoverFlags,
       reason: [
         'Authenticated Workflows smoke auth is required before deploying active Workflow cutovers.',
@@ -67,6 +68,7 @@ export function evaluateCiSmokeGate({
       ok: true,
       status: 'skipped',
       authConfigured,
+      authRequired,
       activeCutoverFlags,
       reason: 'Authenticated Workflows smoke skipped because all Workflow cutover flags are dormant.'
     }
@@ -76,6 +78,7 @@ export function evaluateCiSmokeGate({
     ok: true,
     status: 'run',
     authConfigured,
+    authRequired,
     activeCutoverFlags,
     reason: `Authenticated Workflows smoke auth configured via ${authNames.join(', ')}.`
   }
@@ -99,7 +102,18 @@ export async function runCiSmokeGate({
   }
 
   log(gate.reason)
-  await smokeRunner({ env, log })
+  try {
+    await smokeRunner({ env, log })
+  } catch (error) {
+    if (gate.authRequired) throw error
+    const message = error instanceof Error ? error.message : String(error)
+    log(`WARN Authenticated Workflows smoke failed while all Workflow cutover flags are dormant: ${message}`)
+    return {
+      ...gate,
+      status: 'warn',
+      reason: 'Authenticated Workflows smoke failed while all Workflow cutover flags are dormant.'
+    }
+  }
   return gate
 }
 

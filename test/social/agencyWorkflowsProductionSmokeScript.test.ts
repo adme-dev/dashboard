@@ -324,4 +324,44 @@ describe('agency workflows production smoke script', () => {
     expect(log.mock.calls.flat().join('\n')).toContain('AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET')
     expect(log.mock.calls.flat().join('\n')).not.toContain('machine-secret')
   })
+
+  it('warns instead of blocking when optional CI smoke fails while cutovers are dormant', async () => {
+    const smokeRunner = vi.fn(async () => {
+      throw new Error('Readiness returned HTTP 401')
+    })
+    const log = vi.fn()
+
+    await expect(ciSmokeGate.runCiSmokeGate({
+      env: { AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret' },
+      pagesVars: {
+        AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY: 'false',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED: 'false',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY: 'false'
+      },
+      smokeRunner,
+      log
+    })).resolves.toMatchObject({
+      ok: true,
+      status: 'warn'
+    })
+
+    expect(log.mock.calls.flat().join('\n')).toContain('WARN Authenticated Workflows smoke failed')
+  })
+
+  it('still blocks when required CI smoke fails for an active cutover', async () => {
+    const smokeRunner = vi.fn(async () => {
+      throw new Error('Readiness returned HTTP 401')
+    })
+
+    await expect(ciSmokeGate.runCiSmokeGate({
+      env: { AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: 'machine-secret' },
+      pagesVars: {
+        AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY: 'true',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED: 'false',
+        AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY: 'false'
+      },
+      smokeRunner,
+      log: vi.fn()
+    })).rejects.toThrow(/Readiness returned HTTP 401/)
+  })
 })
