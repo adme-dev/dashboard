@@ -94,6 +94,7 @@ export function authHeaders(config) {
   }
   if (config.sharedSecret) {
     headers[SHARED_SECRET_HEADER] = config.sharedSecret
+    headers.authorization = `Bearer ${config.sharedSecret}`
   } else if (config.authToken) {
     headers.authorization = `Bearer ${config.authToken}`
   } else if (config.cookie) {

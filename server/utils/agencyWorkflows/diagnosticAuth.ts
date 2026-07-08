@@ -87,11 +87,20 @@ function timingSafeHexEqual(actual: string, expected: string): boolean {
   return timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'))
 }
 
+function smokeSecretHeader(event: H3Event): string {
+  const explicit = String(getHeader(event, AGENCY_WORKFLOWS_SMOKE_SECRET_HEADER) ?? '').trim()
+  if (explicit) return explicit
+
+  const authorization = String(getHeader(event, 'authorization') ?? '').trim()
+  const match = authorization.match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() ?? ''
+}
+
 export function hasValidAgencyWorkflowSmokeSecret(
   event: H3Event,
   env: NodeJS.ProcessEnv = process.env
 ): boolean {
-  const actual = String(getHeader(event, AGENCY_WORKFLOWS_SMOKE_SECRET_HEADER) ?? '').trim()
+  const actual = smokeSecretHeader(event)
   if (!actual) return false
 
   const actualHash = sha256Hex(actual)

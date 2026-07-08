@@ -81,6 +81,7 @@ describe('agency workflows production smoke script', () => {
       cookie: 'auth_token=admin'
     })).toEqual({
       'accept': 'application/json',
+      authorization: 'Bearer machine-secret',
       'x-workflow-smoke-secret': 'machine-secret'
     })
   })
@@ -169,6 +170,7 @@ describe('agency workflows production smoke script', () => {
       expect.objectContaining({
         headers: {
           'accept': 'application/json',
+          authorization: 'Bearer machine-secret',
           'x-workflow-smoke-secret': 'machine-secret'
         }
       })
