@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDealerFeedHandoffSummary } from '~/utils/dealerFeedHandoff'
+
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 type AgencyClient = {
@@ -930,6 +932,33 @@ const feedWorkbookCheckpointDescription = computed(() => {
   return 'Create the project checklist now so filters, CSV stock lists, platform QA, and approvals have an owner.'
 })
 
+const feedWorkbookProjectRoute = computed(() =>
+  openFeedWorkbookProject.value ? `/agency/projects/${openFeedWorkbookProject.value.id}` : ''
+)
+
+const dealerFeedHandoffSummary = computed(() => {
+  const option = selectedClientOption.value
+  if (!option) return ''
+
+  return formatDealerFeedHandoffSummary({
+    clientName: option.name,
+    clientId: selectedClientId.value || option.clientId || undefined,
+    feedName: feedForm.name.trim() || undefined,
+    platform: feedForm.platform,
+    storeCode: feedForm.storeCode.trim() || undefined,
+    workbookName: openFeedWorkbookProject.value?.name || feedWorkbookProjectName(option.name),
+    workbookUrl: feedWorkbookProjectRoute.value || undefined,
+    workbookStatus: feedWorkbookStatusLabel.value,
+    externalOrgId: selectedLink.value?.externalOrgId,
+    sellerRefs: parseList(mappingForm.sellerRefsText),
+    filterChips: activeFilterChips.value,
+    stockListMode: feedForm.stockListMode,
+    stockRefCount: stockRefCount.value,
+    readiness: draftPreview.value?.readiness,
+    generatedFeedUrl: generatedFeedUrl.value || undefined
+  })
+})
+
 async function startFeedWorkbook() {
   const option = selectedClientOption.value
   if (!option) {
@@ -1122,6 +1151,54 @@ async function copyGeneratedUrl(url: string) {
     description: 'Clipboard access was blocked. The URL field is selected so you can copy it manually.',
     color: 'warning'
   })
+}
+
+async function copyDealerFeedHandoff() {
+  const summary = dealerFeedHandoffSummary.value
+  if (!summary) {
+    toast.add({ title: 'Select a client first', color: 'error' })
+    return
+  }
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(summary)
+      toast.add({
+        title: 'Feed handoff copied',
+        description: 'Paste it into Slack or the Monday item.',
+        color: 'success'
+      })
+      return
+    }
+
+    if (typeof document !== 'undefined') {
+      const textarea = document.createElement('textarea')
+      textarea.value = summary
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.left = '-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      const copied = document.execCommand('copy')
+      document.body.removeChild(textarea)
+      if (copied) {
+        toast.add({
+          title: 'Feed handoff copied',
+          description: 'Paste it into Slack or the Monday item.',
+          color: 'success'
+        })
+        return
+      }
+    }
+
+    throw new Error('Clipboard unavailable')
+  } catch {
+    toast.add({
+      title: 'Could not copy handoff',
+      description: 'Copy the visible feed URL and workbook details manually.',
+      color: 'warning'
+    })
+  }
 }
 
 async function shareFeed(feed: FeedSummary) {
@@ -2149,17 +2226,29 @@ watch(debouncedDraftPreviewSignature, () => {
                           {{ feedWorkbookCheckpointDescription }}
                         </p>
                       </div>
-                      <UButton
-                        :icon="feedWorkbookButtonIcon"
-                        color="neutral"
-                        variant="outline"
-                        :disabled="!selectedClientOption || feedWorkbookPending || feedWorkbookProjectPending"
-                        :loading="startingFeedWorkbook || feedWorkbookProjectPending"
-                        class="w-full justify-center lg:w-auto"
-                        @click="startFeedWorkbook"
-                      >
-                        {{ feedWorkbookButtonLabel }}
-                      </UButton>
+                      <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                        <UButton
+                          icon="i-lucide-copy"
+                          color="neutral"
+                          variant="outline"
+                          :disabled="!selectedClientOption"
+                          class="w-full justify-center sm:w-auto"
+                          @click="copyDealerFeedHandoff"
+                        >
+                          Copy handoff
+                        </UButton>
+                        <UButton
+                          :icon="feedWorkbookButtonIcon"
+                          color="neutral"
+                          variant="outline"
+                          :disabled="!selectedClientOption || feedWorkbookPending || feedWorkbookProjectPending"
+                          :loading="startingFeedWorkbook || feedWorkbookProjectPending"
+                          class="w-full justify-center sm:w-auto"
+                          @click="startFeedWorkbook"
+                        >
+                          {{ feedWorkbookButtonLabel }}
+                        </UButton>
+                      </div>
                     </div>
 
                     <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
