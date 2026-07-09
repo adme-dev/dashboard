@@ -287,6 +287,12 @@ const feedWorkbookHandoffItems = [
   { label: 'Launch', description: 'Platform import, approval checkpoint, monitoring and handoff', icon: 'i-lucide-rocket' }
 ]
 
+const feedBuildCheckpointItems = [
+  { label: 'Brief captured', icon: 'i-lucide-clipboard-check' },
+  { label: 'Validation fixes tracked', icon: 'i-lucide-shield-alert' },
+  { label: 'Feed URL QA assigned', icon: 'i-lucide-link-2' }
+]
+
 const parseList = (value: string) =>
   value
     .split(/[\n,]/)
@@ -850,6 +856,20 @@ const feedWorkbookClientNote = computed(() => {
   if (openFeedWorkbookProject.value) return openFeedWorkbookProject.value.name
   if (!selectedClientOption.value.clientId) return 'Starting will create the agency client, map the ad account, and create the workbook.'
   return feedWorkbookProjectName(selectedClientOption.value.name)
+})
+
+const feedWorkbookCheckpointTitle = computed(() => {
+  if (openFeedWorkbookProject.value) return 'Workbook is tracking this feed setup'
+  if (!selectedClientOption.value) return 'Select a client to attach workflow'
+  return 'Start the workbook before launch'
+})
+
+const feedWorkbookCheckpointDescription = computed(() => {
+  if (!selectedClientOption.value) return 'The feed workbook will hold the campaign requirements, Slack handoff, validation fixes, and launch QA.'
+  if (openFeedWorkbookProject.value) return 'Use the workbook for campaign requirements, validation fixes, approval notes, and post-launch monitoring.'
+  if (!feedWorkbookTemplate.value) return 'The workbook template is not loaded yet. Refresh after the template migration is available.'
+  if (!selectedClientOption.value.clientId) return 'Starting the workbook will create the agency client, connect the ad account, and open the project checklist.'
+  return 'Create the project checklist now so filters, CSV stock lists, platform QA, and approvals have an owner.'
 })
 
 async function startFeedWorkbook() {
@@ -2007,6 +2027,56 @@ watch(debouncedDraftPreviewSignature, () => {
                           </div>
                         </div>
                       </template>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <UIcon name="i-lucide-list-checks" class="size-4 text-primary" />
+                          <h3 class="text-sm font-semibold text-highlighted">
+                            Workflow checkpoint
+                          </h3>
+                          <UBadge
+                            :color="feedWorkbookStatusColor"
+                            variant="subtle"
+                            size="xs"
+                          >
+                            {{ feedWorkbookStatusLabel }}
+                          </UBadge>
+                        </div>
+                        <p class="mt-1 text-sm font-medium text-highlighted">
+                          {{ feedWorkbookCheckpointTitle }}
+                        </p>
+                        <p class="mt-1 max-w-3xl text-sm text-muted">
+                          {{ feedWorkbookCheckpointDescription }}
+                        </p>
+                      </div>
+                      <UButton
+                        :icon="feedWorkbookButtonIcon"
+                        color="neutral"
+                        variant="outline"
+                        :disabled="!selectedClientOption || feedWorkbookPending || feedWorkbookProjectPending"
+                        :loading="startingFeedWorkbook || feedWorkbookProjectPending"
+                        class="w-full justify-center lg:w-auto"
+                        @click="startFeedWorkbook"
+                      >
+                        {{ feedWorkbookButtonLabel }}
+                      </UButton>
+                    </div>
+
+                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <div
+                        v-for="item in feedBuildCheckpointItems"
+                        :key="item.label"
+                        class="flex min-w-0 items-center gap-2 rounded-md border border-default bg-default px-3 py-2"
+                      >
+                        <UIcon :name="item.icon" class="size-4 shrink-0 text-muted" />
+                        <span class="truncate text-xs font-medium text-muted">
+                          {{ item.label }}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
