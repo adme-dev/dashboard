@@ -41,6 +41,59 @@ describe('socialDashboard provider', () => {
     })
   })
 
+  it('previews a draft feed spec with validation before creating the feed', async () => {
+    const { client, call } = fakeClient({
+      'POST /api/feeds/preview': {
+        ok: true,
+        total: 7,
+        matchedTotal: 7,
+        validatedTotal: 5,
+        invalidTotal: 2,
+        invalidSummaries: [
+          { id: 'v1', issues: [{ field: 'url', message: 'url is required' }] }
+        ],
+        items: [
+          {
+            id: 'v2',
+            make: 'Hyundai',
+            model: 'Tucson',
+            build_year: 2025,
+            dap_price: 52990,
+            listing_type: 'New',
+            stock_number: 'BH123',
+            images: ['https://inventory.example/tucson.jpg'],
+            url: 'https://dealer.example/tucson'
+          }
+        ]
+      }
+    })
+    const p = createSocialDashboardProvider(client)
+
+    const out = await p.previewInventory(ctx, link, {
+      name: 'Meta Blood Hyundai',
+      platform: 'facebook',
+      filters: { condition: ['New'] },
+      mappings: { id: 'vehicle_id' },
+      platformSettings: { catalog_id: 'cat-1' },
+      source: { type: 'meilisearch' }
+    }, { limit: 8, offset: 0 })
+
+    expect(out.total).toBe(7)
+    expect(out.items[0]).toMatchObject({ id: 'v2', make: 'Hyundai', url: 'https://dealer.example/tucson' })
+    expect(out.validation).toMatchObject({ matchedTotal: 7, validatedTotal: 5, invalidTotal: 2 })
+    expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds/preview', {
+      filters: { condition: ['New'], sellerIds: ['kia-springvale'] },
+      limit: 8,
+      offset: 0,
+      validateForFeed: {
+        feedType: 'facebook',
+        mappings: { id: 'vehicle_id' },
+        platformSettings: { catalog_id: 'cat-1', feed_name: 'Meta Blood Hyundai' },
+        source: { type: 'meilisearch' }
+      }
+    })
+  })
+
   it('previews existing feeds with linked dealer seller refs and feed source settings', async () => {
     const { client, call } = fakeClient({
       'GET /api/feeds/f1': {

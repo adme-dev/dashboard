@@ -200,3 +200,62 @@ All cache reads surface `fetched_at` (cross-DB staleness is explicit, never hidd
 1. **Onboarding** → **deferred to a fast-follow** (out of v1). v1 links manually-created orgs; `ensureOrg`/`linkSource` left as unimplemented optional methods. Rationale: rarest action, highest blast radius, SD already has a manual onboarding UI.
 2. **Permission model** → **new `FEEDS` group**, seeded onto current `CLIENTS`-holders (zero access regression). Rationale: feeds change live ad delivery → grant/revoke independently; cleanly scopes future providers.
 3. **Sync cadence** → **6 h bulk sync**, with chatbot reads going **live** and an **on-demand re-sync after writes**. Rationale: inventory changes over hours/days; freshness is event-driven where it matters; 3 h is the dial if pacing later needs it.
+
+## 16. 2026-07-09 Implementation Update: Feed Workbooks, Readiness, and AI Enrichment
+
+The `/agency/dealer-feeds` SPA now treats feed setup as an operational workbook, not just an isolated catalog admin screen.
+
+### Dashboard workflow
+
+1. Select a dealer from the combined agency/social client picker.
+2. Save or update the feed workspace mapping. Social-only ad-account clients are converted into agency clients when needed.
+3. Start the **Dealer Feed Workbook** from the same screen. This opens an existing active workbook project for the client or creates one from the seeded project template.
+4. Configure feed details: platform, Google store code when needed, condition, make/model, title keywords, year/price/kilometre ranges, and campaign CSV stock include/exclude lists.
+5. Review dynamic catalog readiness before creating the feed. The readiness preview separates matched vehicles from feed-valid vehicles and groups blockers by fix mode.
+6. Create the feed, preview it, copy/share the generated feed URL, then complete platform import and first-refresh monitoring in the workbook project.
+
+### Project-template connection
+
+Migration `server/database/migrations/219_dealer_feed_workbook_template.sql` seeds a system project template named **Dealer Feed Workbook**.
+
+The template contains five phases:
+
+- Feed Intake & Access
+- Inventory Readiness
+- Campaign Feed Build
+- Platform Activation & QA
+- Launch Monitoring & Handoff
+
+The tasks explicitly cover Monday-style project work, Slack handoff, source-data remediation, CSV stock-list checks, Google store-code setup, Meta/Google platform import, preview/link QA, and first-refresh monitoring.
+
+### Workflow creation fix
+
+`POST /api/agency/templates/:id/use` now creates workflow-compatible tasks from project templates:
+
+- project inserts no longer use the stale `created_by` column
+- task inserts resolve department and default status before project creation
+- template task types unsupported by the task board are normalised (`approval` becomes `review`, `deliverable` becomes `task`)
+- instantiated tasks carry `department_id`, `status_id`, `reporter_id`, and `last_modified_by`
+
+This is what makes the Feed Workbook usable in the existing task/project workflow surface.
+
+### Readiness and enrichment scheme
+
+Readiness groups feed validation blockers into four fix modes:
+
+- **Source fix:** URL, price, image, VIN/stock number, mileage, make, model, year, availability, and sale status must come from the inventory source, verified VDP, dealer data, or platform mapping.
+- **AI assist:** title formatting, condition-label normalisation, description drafting, and issue summaries can be assisted by AI only when grounded in verified source data.
+- **Mapping:** Google store code, fulfillment, platform settings, feed ownership, or source-field mapping must be fixed in setup.
+- **Review:** anything outside the known buckets stays manual until a rule is added.
+
+AI must not invent source-backed commercial facts. The intended AI role is triage, normalisation, and operator assistance, not synthetic inventory data generation.
+
+### Platform requirements notes
+
+Google Merchant Center vehicle ads require exact feed headers and will reject missing required vehicle data. The current implementation therefore validates store code for Google/in-store use, URL/link fields, price, image, condition, make/model/year, and mileage before the feed is treated as ready.
+
+Meta catalogs also require valid item-level commercial fields for vehicle ads to publish correctly. The current readiness layer intentionally treats missing URL, price, and image as source-required blockers rather than AI-fillable fields.
+
+### Graphify/Wiki note
+
+After changes to dealer feed architecture or workbook behaviour, regenerate and upload Graphify so the task wiki and model-ops context see the new feed surfaces. The local command is `pnpm run graphify:rebuild`; upload target remains `graphify/dashboard` per `docs/graphify.md`. No repository-local `Exidium` target was found in this codebase; that target needs a separate repo/path if it is an external knowledge system.

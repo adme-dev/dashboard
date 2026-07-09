@@ -145,6 +145,62 @@ describe('project template write routes', () => {
 
     expect(mockRequireWriteAccess).toHaveBeenCalled()
     expect(mockRequireAuth).not.toHaveBeenCalled()
+    expect(String(mockQueryOne.mock.calls[2]?.[0])).not.toContain('created_by')
+  })
+
+  it('creates workflow-compatible tasks when instantiating a template', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({
+        id: 'template-1',
+        name: 'Template',
+        estimated_duration_days: 7,
+        department_id: 'dept-1'
+      })
+      .mockResolvedValueOnce({ id: 'client-1', name: 'Client' })
+      .mockResolvedValueOnce({ id: 'status-1' })
+      .mockResolvedValueOnce({
+        id: 'project-1',
+        name: 'Project',
+        client_id: 'client-1',
+        status: 'active',
+        budget_type: 'time_materials',
+        budget_amount: 0,
+        start_date: '2026-06-26',
+        end_date: '2026-07-03',
+        created_at: '2026-06-26T00:00:00.000Z'
+      })
+      .mockResolvedValueOnce({ id: 'task-1' })
+      .mockResolvedValue({})
+      .mockResolvedValue({})
+    mockQueryRows.mockResolvedValueOnce([
+      {
+        id: 'template-task-1',
+        title: 'Approval checkpoint',
+        description: 'Approve the setup',
+        priority: 'high',
+        task_type: 'approval',
+        estimated_hours: 1,
+        start_day_offset: 0,
+        duration_days: 1,
+        default_department_id: null
+      }
+    ])
+
+    const result = await useTemplate({
+      params: { id: 'template-1' },
+      body: { clientId: 'client-1', projectName: 'Project', startDate: '2026-06-26' }
+    })
+
+    expect(result.tasksCreated).toBe(1)
+    const taskInsertSql = String(mockQueryOne.mock.calls[4]?.[0])
+    const taskInsertParams = mockQueryOne.mock.calls[4]?.[1] as unknown[]
+    expect(taskInsertSql).toContain('department_id')
+    expect(taskInsertSql).toContain('status_id')
+    expect(taskInsertSql).toContain('reporter_id')
+    expect(taskInsertSql).not.toContain('created_by')
+    expect(taskInsertParams).toContain('dept-1')
+    expect(taskInsertParams).toContain('status-1')
+    expect(taskInsertParams).toContain('review')
   })
 
   it('requires write access before updating or deleting a template', async () => {

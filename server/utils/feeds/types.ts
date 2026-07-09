@@ -39,6 +39,31 @@ export interface FeedValidationIssueSummary {
   issues: unknown[]
 }
 
+export type FeedReadinessStatus = 'unknown' | 'empty' | 'ready' | 'partial' | 'blocked'
+export type FeedReadinessFixMode = 'source_required' | 'ai_assisted' | 'mapping_required' | 'manual_review'
+
+export interface FeedReadinessIssueGroup {
+  key: string
+  label: string
+  field: string
+  count: number
+  fixMode: FeedReadinessFixMode
+  sampleIds: string[]
+  messages: string[]
+}
+
+export interface FeedReadinessSummary {
+  status: FeedReadinessStatus
+  matchedTotal: number
+  validatedTotal: number
+  invalidTotal: number
+  issueGroups: FeedReadinessIssueGroup[]
+  sourceRequiredCount: number
+  aiAssistedCount: number
+  mappingRequiredCount: number
+  manualReviewCount: number
+}
+
 export interface FeedPreviewValidation {
   matchedTotal: number
   validatedTotal: number
@@ -52,6 +77,7 @@ export interface FeedPreviewResult {
   total: number
   items: VehicleSummary[]
   validation?: FeedPreviewValidation
+  readiness?: FeedReadinessSummary
 }
 
 export interface FeedMetrics { inventory: number, active: number, issues: number, fetchedAt: string }
@@ -72,12 +98,22 @@ export interface CreateFeedSpec {
   externalFeedId?: string
 }
 
+export interface PreviewInventorySpec {
+  name?: string
+  platform: FeedPlatform
+  filters: Record<string, unknown>
+  mappings?: Record<string, unknown>
+  platformSettings?: Record<string, unknown>
+  source?: Record<string, unknown>
+}
+
 export interface FeedProvider {
   id: string
   label: string
   listFeeds(ctx: FeedProviderContext, link: DealerLink): Promise<FeedSummary[]>
   getFeed(ctx: FeedProviderContext, ref: FeedRef): Promise<FeedDetail>
   previewFeed(ctx: FeedProviderContext, link: DealerLink, ref: FeedRef, opts: { limit?: number, offset?: number, search?: string }): Promise<FeedPreviewResult>
+  previewInventory(ctx: FeedProviderContext, link: DealerLink, spec: PreviewInventorySpec, opts: { limit?: number, offset?: number }): Promise<FeedPreviewResult>
   searchInventory(ctx: FeedProviderContext, link: DealerLink, filters: Record<string, unknown>): Promise<{ total: number, items: VehicleSummary[] }>
   createFeed(ctx: FeedProviderContext, link: DealerLink, spec: CreateFeedSpec): Promise<FeedRef>
   updateFeed(ctx: FeedProviderContext, ref: FeedRef, patch: Record<string, unknown>): Promise<void>

@@ -1,6 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { getDealerLink, linkToContext } from '~~/server/utils/feeds/dealerLinks'
 import { getSocialDashboardClient, isDealerFeedsEnabled } from '~~/server/utils/feeds/config'
+import { summarizeFeedReadiness } from '~~/server/utils/feeds/readiness'
 import { getFeedProvider } from '~~/server/utils/feeds/registry'
 import { cloudflareRuntimeEnv, mergedRuntimeEnv } from '~~/server/utils/feeds/serverContext'
 import type { FeedPlatform } from '~~/server/utils/feeds/types'
@@ -75,5 +76,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return { ok: true, preview }
+  return {
+    ok: true,
+    preview: {
+      ...preview,
+      readiness: summarizeFeedReadiness(preview.validation)
+    }
+  }
 })

@@ -31,6 +31,35 @@ type DealerFeedLink = {
   updatedAt: string
 }
 
+type FeedWorkbookTemplate = {
+  id: string
+  name: string
+  description: string | null
+  tags: string[] | null
+  estimatedDurationDays: number | null
+  estimatedHours: number
+  phaseCount: number
+  taskCount: number
+}
+
+type FeedWorkbookTemplatesResponse = {
+  templates: FeedWorkbookTemplate[]
+}
+
+type ProjectSummary = {
+  id: string
+  name: string
+  status: string
+}
+
+type UseTemplateResponse = {
+  project: {
+    id: string
+    name: string
+  }
+  tasksCreated: number
+}
+
 type FeedSummary = {
   id: string
   name: string
@@ -66,19 +95,49 @@ type FeedPreviewValidation = {
   showingFallbackCandidates?: boolean
 }
 
+type FeedReadinessStatus = 'unknown' | 'empty' | 'ready' | 'partial' | 'blocked'
+type FeedReadinessFixMode = 'source_required' | 'ai_assisted' | 'mapping_required' | 'manual_review'
+
+type FeedReadinessIssueGroup = {
+  key: string
+  label: string
+  field: string
+  count: number
+  fixMode: FeedReadinessFixMode
+  sampleIds: string[]
+  messages: string[]
+}
+
+type FeedReadinessSummary = {
+  status: FeedReadinessStatus
+  matchedTotal: number
+  validatedTotal: number
+  invalidTotal: number
+  issueGroups: FeedReadinessIssueGroup[]
+  sourceRequiredCount: number
+  aiAssistedCount: number
+  mappingRequiredCount: number
+  manualReviewCount: number
+}
+
 type FeedPreviewState = {
   feed: FeedSummary
   total: number
   items: VehicleSummary[]
   validation?: FeedPreviewValidation
+  readiness?: FeedReadinessSummary
 }
 
 type DraftPreviewState = {
   total: number
   items: VehicleSummary[]
+  validation?: FeedPreviewValidation
+  readiness?: FeedReadinessSummary
 }
 
 const toast = useToast()
+
+const FEED_WORKBOOK_TEMPLATE_NAME = 'Dealer Feed Workbook'
 
 const selectedClientOptionId = ref('')
 const feedRows = ref<FeedSummary[]>([])
@@ -99,6 +158,7 @@ const stockListFileInput = ref<HTMLInputElement | null>(null)
 const savingLink = ref(false)
 const savingFeed = ref(false)
 const deletingLink = ref(false)
+const startingFeedWorkbook = ref(false)
 
 const mappingForm = reactive({
   externalOrgId: '',
@@ -143,8 +203,23 @@ const {
   default: () => ({ ok: false, links: [] })
 })
 
+const {
+  data: feedWorkbookTemplatesData,
+  pending: feedWorkbookPending,
+  refresh: refreshFeedWorkbookTemplate
+} = useFetch<FeedWorkbookTemplatesResponse>('/api/agency/templates', {
+  query: { search: FEED_WORKBOOK_TEMPLATE_NAME, limit: 10 },
+  server: false,
+  default: () => ({ templates: [] })
+})
+
 const clientRows = computed(() => clientOptionsData.value?.items || [])
 const links = computed(() => linksData.value?.links || [])
+const feedWorkbookTemplate = computed(() =>
+  (feedWorkbookTemplatesData.value?.templates || []).find(template => template.name === FEED_WORKBOOK_TEMPLATE_NAME)
+  || (feedWorkbookTemplatesData.value?.templates || []).find(template => template.tags?.includes('feed-workbook'))
+  || null
+)
 
 const clientOptions = computed(() =>
   clientRows.value.map(client => ({ label: client.label, value: client.id }))
@@ -344,10 +419,26 @@ function buildFeedFilters(): Record<string, unknown> {
   return filters
 }
 
+function buildFeedPlatformSettings(): Record<string, unknown> {
+  return feedForm.platform === 'google' && feedForm.storeCode.trim()
+    ? { store_code: feedForm.storeCode.trim() }
+    : {}
+}
+
+function buildDraftPreviewBody() {
+  return {
+    name: feedForm.name.trim() || undefined,
+    platform: feedForm.platform,
+    filters: buildFeedFilters(),
+    platformSettings: buildFeedPlatformSettings(),
+    limit: 8
+  }
+}
+
 const stockRefCount = computed(() => stockRefsFromText(feedForm.stockRefsText).length)
 const draftPreviewSignature = computed(() =>
   selectedLink.value
-    ? JSON.stringify({ clientId: selectedClientId.value, filters: buildFeedFilters() })
+    ? JSON.stringify({ clientId: selectedClientId.value, ...buildDraftPreviewBody() })
     : ''
 )
 const debouncedDraftPreviewSignature = refDebounced(draftPreviewSignature, 450)
@@ -557,6 +648,69 @@ function hiddenValidationSummaryCount(validation?: FeedPreviewValidation) {
   return Math.max(0, (validation?.invalidSummaries.length || 0) - 3)
 }
 
+function readinessStatusColor(status?: FeedReadinessStatus) {
+  if (status === 'ready') return 'success'
+  if (status === 'partial') return 'warning'
+  if (status === 'blocked') return 'error'
+  return 'neutral'
+}
+
+function readinessStatusLabel(status?: FeedReadinessStatus) {
+  if (status === 'ready') return 'Ready'
+  if (status === 'partial') return 'Partial'
+  if (status === 'blocked') return 'Blocked'
+  if (status === 'empty') return 'No matches'
+  return 'Checking'
+}
+
+function readinessPercent(readiness?: FeedReadinessSummary) {
+  if (!readiness?.matchedTotal) return 0
+  return Math.max(0, Math.min(100, Math.round((readiness.validatedTotal / readiness.matchedTotal) * 100)))
+}
+
+function readinessTitle(readiness?: FeedReadinessSummary, platform: FeedSummary['platform'] = feedForm.platform) {
+  if (!readiness || readiness.status === 'unknown') return 'Validation pending'
+  if (readiness.status === 'empty') return 'No vehicles match these filters'
+  if (readiness.status === 'ready') return `${formatCount(readiness.validatedTotal)} vehicles ready for ${feedValidationLabel(platform)}`
+  if (readiness.status === 'partial') {
+    return `${formatCount(readiness.validatedTotal)} of ${formatCount(readiness.matchedTotal)} vehicles are feed-ready`
+  }
+  return `${formatCount(readiness.matchedTotal)} matched, but none pass ${feedValidationLabel(platform)} validation`
+}
+
+function readinessDescription(readiness?: FeedReadinessSummary) {
+  if (!readiness || readiness.status === 'unknown') return 'Changing filters checks the candidate catalog rows before a feed is created.'
+  if (readiness.status === 'empty') return 'Widen the filters or check the dealership seller refs.'
+  if (readiness.status === 'ready') return 'The selected inventory has the required catalog fields.'
+  if (readiness.status === 'partial') return 'The feed can publish now, but the blocked rows below need source or enrichment fixes.'
+  return 'The inventory scope is matching, but required catalog fields are missing.'
+}
+
+function readinessIssueGroups(readiness?: FeedReadinessSummary) {
+  return readiness?.issueGroups.slice(0, 4) || []
+}
+
+function fixModeLabel(mode: FeedReadinessFixMode) {
+  if (mode === 'source_required') return 'Source fix'
+  if (mode === 'ai_assisted') return 'AI assist'
+  if (mode === 'mapping_required') return 'Mapping'
+  return 'Review'
+}
+
+function fixModeColor(mode: FeedReadinessFixMode) {
+  if (mode === 'source_required') return 'warning'
+  if (mode === 'ai_assisted') return 'primary'
+  if (mode === 'mapping_required') return 'info'
+  return 'neutral'
+}
+
+function fixModeDescription(mode: FeedReadinessFixMode) {
+  if (mode === 'source_required') return 'Must come from the inventory source or verified VDP.'
+  if (mode === 'ai_assisted') return 'Can be normalized or drafted from verified source data.'
+  if (mode === 'mapping_required') return 'Needs feed setup or platform mapping.'
+  return 'Needs manual review before publishing.'
+}
+
 function emptyPreviewMessage(preview: FeedPreviewState) {
   if (preview.validation && preview.validation.matchedTotal > 0) {
     return preview.validation.invalidSummaries.length
@@ -616,6 +770,83 @@ async function ensureAgencyClientForSelection(): Promise<string> {
   return client.id
 }
 
+function feedWorkbookProjectName(clientName: string) {
+  return `${clientName} Feed Workbook`
+}
+
+function isOpenFeedWorkbookProject(project: ProjectSummary, projectName: string) {
+  const name = project.name.trim().toLowerCase()
+  if (project.status === 'completed' || project.status === 'cancelled') return false
+  return name === projectName.trim().toLowerCase() || name.includes('feed workbook')
+}
+
+async function findExistingFeedWorkbookProject(clientId: string, projectName: string) {
+  const projects = await $fetch<ProjectSummary[]>('/api/agency/projects', {
+    query: { clientId }
+  })
+  return projects.find(project => isOpenFeedWorkbookProject(project, projectName)) || null
+}
+
+async function startFeedWorkbook() {
+  const option = selectedClientOption.value
+  if (!option) {
+    toast.add({ title: 'Select a client first', color: 'error' })
+    return
+  }
+
+  let template = feedWorkbookTemplate.value
+  if (!template) {
+    await refreshFeedWorkbookTemplate()
+    template = feedWorkbookTemplate.value
+  }
+
+  if (!template) {
+    toast.add({
+      title: 'Feed Workbook template not found',
+      description: 'Run the dealer feed workbook migration, then refresh this page.',
+      color: 'warning'
+    })
+    return
+  }
+
+  startingFeedWorkbook.value = true
+  try {
+    const clientId = await ensureAgencyClientForSelection()
+    const projectName = feedWorkbookProjectName(option.name)
+    const existingProject = await findExistingFeedWorkbookProject(clientId, projectName)
+
+    if (existingProject) {
+      toast.add({ title: 'Opening existing Feed Workbook', color: 'success' })
+      await navigateTo(`/agency/projects/${existingProject.id}`)
+      return
+    }
+
+    const result = await $fetch<UseTemplateResponse>(`/api/agency/templates/${template.id}/use`, {
+      method: 'POST',
+      body: {
+        clientId,
+        projectName,
+        startDate: new Date().toISOString().split('T')[0]
+      }
+    })
+
+    toast.add({
+      title: 'Feed Workbook created',
+      description: `Created ${result.tasksCreated} workflow tasks for ${option.name}.`,
+      color: 'success'
+    })
+    await navigateTo(`/agency/projects/${result.project.id}`)
+  } catch (error: unknown) {
+    toast.add({
+      title: 'Failed to start Feed Workbook',
+      description: errorMessage(error, 'Please try again'),
+      color: 'error'
+    })
+  } finally {
+    startingFeedWorkbook.value = false
+  }
+}
+
 async function loadFeeds() {
   feedRows.value = []
   feedsError.value = ''
@@ -658,16 +889,15 @@ async function loadDraftPreview() {
       `/api/admin/dealer-feeds/${selectedClientId.value}/preview`,
       {
         method: 'POST',
-        body: {
-          filters: buildFeedFilters(),
-          limit: 8
-        }
+        body: buildDraftPreviewBody()
       }
     )
     if (draftPreviewRequestId.value !== requestId) return
     draftPreview.value = {
       total: result.preview.total,
-      items: result.preview.items || []
+      items: result.preview.items || [],
+      ...(result.preview.validation ? { validation: result.preview.validation } : {}),
+      ...(result.preview.readiness ? { readiness: result.preview.readiness } : {})
     }
   } catch (error: unknown) {
     if (draftPreviewRequestId.value !== requestId) return
@@ -685,7 +915,7 @@ async function previewFeed(feed: FeedSummary) {
   generatedFeedUrl.value = ''
   generatedFeedMeta.value = null
   try {
-    const result = await $fetch<{ ok: boolean, preview: { total: number, items: VehicleSummary[], validation?: FeedPreviewValidation } }>(
+    const result = await $fetch<{ ok: boolean, preview: { total: number, items: VehicleSummary[], validation?: FeedPreviewValidation, readiness?: FeedReadinessSummary } }>(
       `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/preview`,
       { query: { platform: feed.platform, limit: 20, offset: 0, search: feedPreviewSearch.value.trim() || undefined } }
     )
@@ -693,7 +923,8 @@ async function previewFeed(feed: FeedSummary) {
       feed,
       total: result.preview.total,
       items: result.preview.items || [],
-      ...(result.preview.validation ? { validation: result.preview.validation } : {})
+      ...(result.preview.validation ? { validation: result.preview.validation } : {}),
+      ...(result.preview.readiness ? { readiness: result.preview.readiness } : {})
     }
   } catch (error: unknown) {
     toast.add({
@@ -845,9 +1076,7 @@ async function createFeed() {
         name: feedForm.name.trim(),
         platform: feedForm.platform,
         filters: buildFeedFilters(),
-        platformSettings: feedForm.platform === 'google' && feedForm.storeCode.trim()
-          ? { store_code: feedForm.storeCode.trim() }
-          : {}
+        platformSettings: buildFeedPlatformSettings()
       }
     })
     toast.add({ title: 'Feed create request sent', color: 'success' })
@@ -1038,6 +1267,40 @@ watch(debouncedDraftPreviewSignature, () => {
                       {{ selectedLink.externalOrgId }}
                     </p>
                   </div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-default bg-elevated/40 px-3 py-3">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                      <UIcon name="i-lucide-list-checks" class="size-5 text-primary" />
+                      <p class="text-sm font-medium text-highlighted">
+                        Feed Workbook
+                      </p>
+                      <UBadge
+                        :color="feedWorkbookTemplate ? 'success' : 'warning'"
+                        variant="subtle"
+                        size="xs"
+                      >
+                        {{ feedWorkbookTemplate ? `${feedWorkbookTemplate.taskCount} tasks` : 'Template pending' }}
+                      </UBadge>
+                    </div>
+                    <p class="mt-1 text-sm text-muted">
+                      Monday-style project checklist with Slack handoff, readiness fixes, and platform QA.
+                    </p>
+                  </div>
+                  <UButton
+                    icon="i-lucide-play"
+                    color="neutral"
+                    variant="outline"
+                    :disabled="!selectedClientOption || feedWorkbookPending"
+                    :loading="startingFeedWorkbook"
+                    class="justify-center"
+                    @click="startFeedWorkbook"
+                  >
+                    Start workbook
+                  </UButton>
                 </div>
               </div>
 
@@ -1475,28 +1738,39 @@ watch(debouncedDraftPreviewSignature, () => {
 
                     <div class="rounded-lg border border-default bg-elevated/30 p-4">
                       <div class="flex items-start justify-between gap-3">
-                        <div>
+                        <div class="min-w-0">
                           <div class="flex items-center gap-2">
-                            <UIcon name="i-lucide-radar" class="size-4 text-primary" />
+                            <UIcon name="i-lucide-shield-check" class="size-4 text-primary" />
                             <h3 class="text-sm font-semibold text-highlighted">
-                              Live match
+                              Catalog readiness
                             </h3>
                           </div>
-                          <p class="mt-2 text-2xl font-semibold text-highlighted">
-                            {{ draftPreviewPending && !draftPreview ? '...' : formatCount(draftPreview?.total || 0) }}
-                          </p>
-                          <p class="text-xs text-muted">
-                            saleable vehicles
-                          </p>
+                          <div class="mt-2 flex items-end gap-2">
+                            <p class="text-2xl font-semibold text-highlighted">
+                              {{ draftPreviewPending && !draftPreview ? '...' : formatCount(draftPreview?.readiness?.validatedTotal ?? draftPreview?.total ?? 0) }}
+                            </p>
+                            <p class="pb-1 text-xs text-muted">
+                              feed-ready
+                            </p>
+                          </div>
                         </div>
-                        <UButton
-                          icon="i-lucide-refresh-cw"
-                          color="neutral"
-                          variant="ghost"
-                          size="xs"
-                          :loading="draftPreviewPending"
-                          @click="loadDraftPreview"
-                        />
+                        <div class="flex items-center gap-1">
+                          <UBadge
+                            :color="readinessStatusColor(draftPreview?.readiness?.status)"
+                            variant="subtle"
+                            size="xs"
+                          >
+                            {{ readinessStatusLabel(draftPreview?.readiness?.status) }}
+                          </UBadge>
+                          <UButton
+                            icon="i-lucide-refresh-cw"
+                            color="neutral"
+                            variant="ghost"
+                            size="xs"
+                            :loading="draftPreviewPending"
+                            @click="loadDraftPreview"
+                          />
+                        </div>
                       </div>
 
                       <UAlert
@@ -1504,43 +1778,117 @@ watch(debouncedDraftPreviewSignature, () => {
                         icon="i-lucide-alert-circle"
                         color="error"
                         variant="subtle"
-                        title="Live match failed"
+                        title="Readiness failed"
                         :description="draftPreviewError"
                         class="mt-3"
                       />
 
-                      <div
-                        v-else-if="draftPreview?.items.length"
-                        class="mt-3 space-y-2"
-                      >
-                        <div
-                          v-for="vehicle in draftPreview.items.slice(0, 3)"
-                          :key="vehicle.id"
-                          class="flex min-w-0 items-center gap-2 rounded-md border border-default bg-default px-2 py-2"
-                        >
-                          <div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
-                            <img
-                              v-if="vehicle.image"
-                              :src="vehicle.image"
-                              :alt="[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')"
-                              class="h-full w-full object-cover"
-                            >
-                            <UIcon
-                              v-else
-                              name="i-lucide-car"
-                              class="size-4 text-muted"
+                      <template v-else>
+                        <div class="mt-3">
+                          <div class="h-2 overflow-hidden rounded-full bg-muted">
+                            <div
+                              class="h-full rounded-full bg-primary transition-all"
+                              :style="{ width: `${readinessPercent(draftPreview?.readiness)}%` }"
                             />
                           </div>
-                          <div class="min-w-0">
-                            <p class="truncate text-xs font-medium text-highlighted">
-                              {{ [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.id }}
+                          <p class="mt-2 text-sm font-medium text-highlighted">
+                            {{ readinessTitle(draftPreview?.readiness, feedForm.platform) }}
+                          </p>
+                          <p class="mt-1 text-xs text-muted">
+                            {{ readinessDescription(draftPreview?.readiness) }}
+                          </p>
+                        </div>
+
+                        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+                          <div class="rounded-md border border-default bg-default px-2 py-2">
+                            <p class="text-sm font-semibold text-highlighted">
+                              {{ formatCount(draftPreview?.readiness?.matchedTotal ?? draftPreview?.total ?? 0) }}
                             </p>
-                            <p class="truncate text-xs text-muted">
-                              {{ vehicle.stockNumber || vehicle.condition || 'Vehicle' }}
+                            <p class="text-[11px] text-muted">
+                              matched
+                            </p>
+                          </div>
+                          <div class="rounded-md border border-default bg-default px-2 py-2">
+                            <p class="text-sm font-semibold text-success">
+                              {{ formatCount(draftPreview?.readiness?.validatedTotal ?? 0) }}
+                            </p>
+                            <p class="text-[11px] text-muted">
+                              valid
+                            </p>
+                          </div>
+                          <div class="rounded-md border border-default bg-default px-2 py-2">
+                            <p class="text-sm font-semibold text-warning">
+                              {{ formatCount(draftPreview?.readiness?.invalidTotal ?? 0) }}
+                            </p>
+                            <p class="text-[11px] text-muted">
+                              blocked
                             </p>
                           </div>
                         </div>
-                      </div>
+
+                        <div
+                          v-if="readinessIssueGroups(draftPreview?.readiness).length"
+                          class="mt-3 space-y-2"
+                        >
+                          <div
+                            v-for="group in readinessIssueGroups(draftPreview?.readiness)"
+                            :key="group.key"
+                            class="rounded-md border border-default bg-default px-3 py-2"
+                          >
+                            <div class="flex items-center justify-between gap-2">
+                              <p class="text-xs font-medium text-highlighted">
+                                {{ group.label }}
+                              </p>
+                              <UBadge
+                                :color="fixModeColor(group.fixMode)"
+                                variant="subtle"
+                                size="xs"
+                              >
+                                {{ fixModeLabel(group.fixMode) }}
+                              </UBadge>
+                            </div>
+                            <p class="mt-1 text-xs text-muted">
+                              {{ formatCount(group.count) }} issue{{ group.count === 1 ? '' : 's' }}. {{ fixModeDescription(group.fixMode) }}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div
+                          v-if="draftPreview?.items.length"
+                          class="mt-3 space-y-2"
+                        >
+                          <p class="text-xs font-medium text-muted">
+                            Sample vehicles
+                          </p>
+                          <div
+                            v-for="vehicle in draftPreview.items.slice(0, 3)"
+                            :key="vehicle.id"
+                            class="flex min-w-0 items-center gap-2 rounded-md border border-default bg-default px-2 py-2"
+                          >
+                            <div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+                              <img
+                                v-if="vehicle.image"
+                                :src="vehicle.image"
+                                :alt="[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')"
+                                class="h-full w-full object-cover"
+                              >
+                              <UIcon
+                                v-else
+                                name="i-lucide-car"
+                                class="size-4 text-muted"
+                              />
+                            </div>
+                            <div class="min-w-0">
+                              <p class="truncate text-xs font-medium text-highlighted">
+                                {{ [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.id }}
+                              </p>
+                              <p class="truncate text-xs text-muted">
+                                {{ vehicle.stockNumber || vehicle.condition || 'Vehicle' }}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
                     </div>
                   </div>
 

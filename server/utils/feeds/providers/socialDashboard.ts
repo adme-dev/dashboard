@@ -3,7 +3,7 @@ import { normalizeFeedSummary, normalizeFeedDetail, normalizeVehicle } from './s
 import { SOCIAL_DASHBOARD_PROVIDER_ID } from '../constants'
 import type {
   FeedProvider, FeedProviderContext, DealerLink, FeedRef, CreateFeedSpec, FeedMetrics,
-  FeedPreviewValidation, FeedValidationIssueSummary
+  FeedPreviewResult, FeedPreviewValidation, FeedValidationIssueSummary, PreviewInventorySpec
 } from '../types'
 
 type UnknownRecord = Record<string, unknown>
@@ -195,6 +195,54 @@ function validationPlatformSettings(detail: { name?: string, platformSettings?: 
   return settings
 }
 
+async function previewInventoryForSpec(
+  client: SocialDashboardClient,
+  ctx: FeedProviderContext,
+  link: DealerLink,
+  spec: PreviewInventorySpec,
+  opts: { limit?: number, offset?: number }
+): Promise<FeedPreviewResult> {
+  const limit = opts.limit ?? 20
+  const offset = opts.offset ?? 0
+  const filters = buildInventoryPreviewFilters(spec.filters, link.sellerRefs)
+  const r = await client.call<PreviewResponse>(ctx, 'POST', `/api/feeds/preview`, {
+    filters,
+    limit,
+    offset,
+    validateForFeed: {
+      feedType: spec.platform,
+      mappings: spec.mappings ?? {},
+      platformSettings: validationPlatformSettings({
+        name: spec.name,
+        platformSettings: spec.platformSettings
+      }),
+      source: spec.source
+    }
+  })
+  const validatedItems = array(r.items)
+  const matchedTotal = previewMatchedTotal(r)
+  const validatedTotal = previewValidatedTotal(r, validatedItems.length)
+  let items = validatedItems
+  let showingFallbackCandidates = false
+
+  if (offset === 0 && validatedItems.length === 0 && matchedTotal > 0 && validatedTotal === 0) {
+    const fallback = await client.call<PreviewResponse>(ctx, 'POST', `/api/feeds/preview`, {
+      filters,
+      limit,
+      offset
+    })
+    items = array(fallback.items)
+    showingFallbackCandidates = items.length > 0
+  }
+
+  const validation = normalizePreviewValidation(r, showingFallbackCandidates, validatedItems.length)
+  return {
+    total: matchedTotal,
+    items: items.map(normalizeVehicle),
+    ...(validation ? { validation } : {})
+  }
+}
+
 function upsertNotAvailable(error: unknown): boolean {
   return /POST \/api\/feeds\/upsert-external → 404/.test(error instanceof Error ? error.message : String(error))
 }
@@ -242,46 +290,22 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
       assertOrgMatch(ctx, link)
       const detailResult = await client.call<{ item: unknown }>(ctx, 'GET', `/api/feeds/${ref.feedId}`)
       const detail = normalizeFeedDetail(detailResult.item)
-      const limit = opts.limit ?? 20
-      const offset = opts.offset ?? 0
-      const filters = buildInventoryPreviewFilters({
+      return previewInventoryForSpec(client, ctx, link, {
+        name: detail.name,
+        platform: ref.platform,
+        filters: {
         ...detail.filters,
         ...(opts.search?.trim() ? { search: opts.search.trim() } : {})
-      }, link.sellerRefs)
+        },
+        mappings: detail.mappings,
+        platformSettings: detail.platformSettings,
+        source: detail.source ?? undefined
+      }, opts)
+    },
 
-      const r = await client.call<PreviewResponse>(ctx, 'POST', `/api/feeds/preview`, {
-        filters,
-        limit,
-        offset,
-        validateForFeed: {
-          feedType: ref.platform,
-          mappings: detail.mappings,
-          platformSettings: validationPlatformSettings(detail),
-          source: detail.source ?? undefined
-        }
-      })
-      const validatedItems = array(r.items)
-      const matchedTotal = previewMatchedTotal(r)
-      const validatedTotal = previewValidatedTotal(r, validatedItems.length)
-      let items = validatedItems
-      let showingFallbackCandidates = false
-
-      if (offset === 0 && validatedItems.length === 0 && matchedTotal > 0 && validatedTotal === 0) {
-        const fallback = await client.call<PreviewResponse>(ctx, 'POST', `/api/feeds/preview`, {
-          filters,
-          limit,
-          offset
-        })
-        items = array(fallback.items)
-        showingFallbackCandidates = items.length > 0
-      }
-
-      const validation = normalizePreviewValidation(r, showingFallbackCandidates, validatedItems.length)
-      return {
-        total: matchedTotal,
-        items: items.map(normalizeVehicle),
-        ...(validation ? { validation } : {})
-      }
+    async previewInventory(ctx, link: DealerLink, spec, opts) {
+      assertOrgMatch(ctx, link)
+      return previewInventoryForSpec(client, ctx, link, spec, opts)
     },
 
     async searchInventory(ctx, link: DealerLink, filters) {

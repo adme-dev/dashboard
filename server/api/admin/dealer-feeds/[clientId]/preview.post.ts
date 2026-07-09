@@ -2,11 +2,23 @@ import { requireRole } from '~~/server/utils/auth'
 import { getDealerLink, linkToContext } from '~~/server/utils/feeds/dealerLinks'
 import { getSocialDashboardClient, isDealerFeedsEnabled } from '~~/server/utils/feeds/config'
 import { normalizeDealerFeedFilters } from '~~/server/utils/feeds/filterInput'
+import { summarizeFeedReadiness } from '~~/server/utils/feeds/readiness'
 import { getFeedProvider } from '~~/server/utils/feeds/registry'
 import { cloudflareRuntimeEnv, mergedRuntimeEnv } from '~~/server/utils/feeds/serverContext'
+import type { FeedPlatform } from '~~/server/utils/feeds/types'
+
+function parsePlatform(value: unknown): FeedPlatform {
+  if (value === 'google' || value === 'facebook') return value
+  throw createError({ statusCode: 400, statusMessage: 'platform must be google or facebook' })
+}
 
 function bodyObject(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function optionalBodyObject(value: unknown): Record<string, unknown> | undefined {
+  const parsed = bodyObject(value)
+  return Object.keys(parsed).length ? parsed : undefined
 }
 
 function parseBoundedInt(value: unknown, fallback: number, max: number): number {
@@ -34,18 +46,30 @@ export default defineEventHandler(async (event) => {
 
   const body = bodyObject(await readBody(event))
   const provider = getFeedProvider(link.providerId, { socialDashboardClient })
-  const preview = await provider.searchInventory(
+  const preview = await provider.previewInventory(
     linkToContext(link, user.email),
     link,
-    normalizeDealerFeedFilters(body.filters)
+    {
+      name: typeof body.name === 'string' ? body.name.trim() : undefined,
+      platform: parsePlatform(body.platform),
+      filters: normalizeDealerFeedFilters(body.filters),
+      mappings: bodyObject(body.mappings),
+      platformSettings: bodyObject(body.platformSettings),
+      source: optionalBodyObject(body.source)
+    },
+    {
+      limit: parseBoundedInt(body.limit, 12, 50),
+      offset: 0
+    }
   )
 
-  const limit = parseBoundedInt(body.limit, 12, 50)
   return {
     ok: true,
     preview: {
       total: preview.total,
-      items: preview.items.slice(0, limit)
+      items: preview.items,
+      ...(preview.validation ? { validation: preview.validation } : {}),
+      readiness: summarizeFeedReadiness(preview.validation)
     }
   }
 })
