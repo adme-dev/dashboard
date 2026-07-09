@@ -185,6 +185,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   const socialItems: NavigationMenuItem[] = []
   if (canAccessMediaBuying.value) {
     socialItems.push(...socialSpendSuiteNavItems(close))
+    socialItems.push({ label: 'Dealer Feeds', icon: 'i-lucide-rss', to: '/agency/dealer-feeds', onSelect: close })
   }
   if (canAccessCreative.value) {
     socialItems.push(...socialSuiteNavItems(close))

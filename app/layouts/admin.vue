@@ -107,11 +107,6 @@ const adminNavItems = [
     label: 'Settings',
     icon: 'i-lucide-settings',
     to: '/admin/settings'
-  },
-  {
-    label: 'Connections',
-    icon: 'i-lucide-plug',
-    to: '/admin/connections/integrations'
   }
 ]
 </script>
