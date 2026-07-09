@@ -38,12 +38,35 @@ type FeedSummary = {
   isActive: boolean
 }
 
+type VehicleSummary = {
+  id: string
+  make: string
+  model: string
+  year: number | null
+  price: number | null
+  condition: string | null
+  stockNumber: string | null
+  url: string | null
+  image: string | null
+}
+
+type FeedPreviewState = {
+  feed: FeedSummary
+  total: number
+  items: VehicleSummary[]
+}
+
 const toast = useToast()
 
 const selectedClientOptionId = ref('')
 const feedRows = ref<FeedSummary[]>([])
 const feedsPending = ref(false)
 const feedsError = ref('')
+const previewPendingFeedId = ref('')
+const generatingFeedKey = ref('')
+const feedPreview = ref<FeedPreviewState | null>(null)
+const generatedFeedUrl = ref('')
+const generatedFeedMeta = ref<{ feedName: string, format: 'xml' | 'csv', itemCount: number } | null>(null)
 const savingLink = ref(false)
 const savingFeed = ref(false)
 const deletingLink = ref(false)
@@ -199,6 +222,9 @@ async function ensureAgencyClientForSelection(): Promise<string> {
 async function loadFeeds() {
   feedRows.value = []
   feedsError.value = ''
+  feedPreview.value = null
+  generatedFeedUrl.value = ''
+  generatedFeedMeta.value = null
 
   if (!selectedClientId.value || !selectedLink.value) return
 
@@ -210,6 +236,72 @@ async function loadFeeds() {
     feedsError.value = errorMessage(error, 'Failed to load dealer feeds')
   } finally {
     feedsPending.value = false
+  }
+}
+
+async function previewFeed(feed: FeedSummary) {
+  if (!selectedClientId.value) return
+
+  previewPendingFeedId.value = feed.id
+  generatedFeedUrl.value = ''
+  generatedFeedMeta.value = null
+  try {
+    const result = await $fetch<{ ok: boolean, preview: { total: number, items: VehicleSummary[] } }>(
+      `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/preview`,
+      { query: { platform: feed.platform, limit: 20, offset: 0 } }
+    )
+    feedPreview.value = {
+      feed,
+      total: result.preview.total,
+      items: result.preview.items || []
+    }
+  } catch (error: unknown) {
+    toast.add({
+      title: 'Failed to preview feed',
+      description: errorMessage(error, 'Please try again'),
+      color: 'error'
+    })
+  } finally {
+    previewPendingFeedId.value = ''
+  }
+}
+
+async function copyGeneratedUrl(url: string) {
+  if (!url) return
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url)
+      toast.add({ title: 'Feed URL copied', color: 'success' })
+    }
+  } catch {
+    toast.add({ title: 'Feed URL ready', description: url, color: 'success' })
+  }
+}
+
+async function shareFeed(feed: FeedSummary, format: 'xml' | 'csv') {
+  if (!selectedClientId.value) return
+
+  generatingFeedKey.value = `${feed.id}:${format}`
+  try {
+    const result = await $fetch<{ ok: boolean, generated: { url: string, itemCount: number } }>(
+      `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/generate`,
+      {
+        method: 'POST',
+        body: { platform: feed.platform, format }
+      }
+    )
+    generatedFeedUrl.value = result.generated.url
+    generatedFeedMeta.value = { feedName: feed.name || feed.id, format, itemCount: result.generated.itemCount }
+    await copyGeneratedUrl(result.generated.url)
+  } catch (error: unknown) {
+    toast.add({
+      title: 'Failed to generate feed URL',
+      description: errorMessage(error, 'Please try again'),
+      color: 'error'
+    })
+  } finally {
+    generatingFeedKey.value = ''
   }
 }
 
@@ -331,7 +423,8 @@ const feedColumns = [
   { accessorKey: 'name', header: 'Feed' },
   { accessorKey: 'platform', header: 'Platform' },
   { accessorKey: 'id', header: 'Feed ID' },
-  { accessorKey: 'isActive', header: 'Status' }
+  { accessorKey: 'isActive', header: 'Status' },
+  { id: 'actions', header: '' }
 ]
 
 watch(clientRows, (rows) => {
@@ -726,7 +819,159 @@ watch([selectedClientOptionId, links], async () => {
                     {{ row.original.isActive ? 'Active' : 'Inactive' }}
                   </UBadge>
                 </template>
+
+                <template #actions-cell="{ row }">
+                  <div class="flex justify-end gap-1">
+                    <UTooltip text="Preview vehicles">
+                      <UButton
+                        icon="i-lucide-eye"
+                        variant="ghost"
+                        color="neutral"
+                        size="xs"
+                        :loading="previewPendingFeedId === row.original.id"
+                        @click="previewFeed(row.original)"
+                      />
+                    </UTooltip>
+                    <UTooltip text="Copy XML feed URL">
+                      <UButton
+                        icon="i-lucide-file-code-2"
+                        variant="ghost"
+                        color="neutral"
+                        size="xs"
+                        :loading="generatingFeedKey === `${row.original.id}:xml`"
+                        @click="shareFeed(row.original, 'xml')"
+                      />
+                    </UTooltip>
+                    <UTooltip text="Copy CSV feed URL">
+                      <UButton
+                        icon="i-lucide-table"
+                        variant="ghost"
+                        color="neutral"
+                        size="xs"
+                        :loading="generatingFeedKey === `${row.original.id}:csv`"
+                        @click="shareFeed(row.original, 'csv')"
+                      />
+                    </UTooltip>
+                  </div>
+                </template>
               </UTable>
+
+              <div
+                v-if="generatedFeedUrl"
+                class="border-t border-default p-5"
+              >
+                <div class="rounded-lg border border-default bg-elevated/40 p-4">
+                  <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="min-w-0">
+                      <p class="text-sm font-medium text-highlighted">
+                        Shareable {{ generatedFeedMeta?.format?.toUpperCase() }} feed URL
+                      </p>
+                      <p class="mt-1 text-sm text-muted">
+                        {{ generatedFeedMeta?.feedName }} · {{ generatedFeedMeta?.itemCount ?? 0 }} items
+                      </p>
+                      <p class="mt-2 break-all font-mono text-xs text-muted">
+                        {{ generatedFeedUrl }}
+                      </p>
+                    </div>
+                    <div class="flex shrink-0 gap-2">
+                      <UButton
+                        icon="i-lucide-copy"
+                        color="neutral"
+                        variant="outline"
+                        @click="copyGeneratedUrl(generatedFeedUrl)"
+                      >
+                        Copy
+                      </UButton>
+                      <UButton
+                        icon="i-lucide-external-link"
+                        color="neutral"
+                        variant="ghost"
+                        :to="generatedFeedUrl"
+                        target="_blank"
+                      >
+                        Open
+                      </UButton>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                v-if="feedPreview"
+                class="border-t border-default p-5"
+              >
+                <div class="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h3 class="text-sm font-semibold text-highlighted">
+                      Preview: {{ feedPreview.feed.name || feedPreview.feed.id }}
+                    </h3>
+                    <p class="text-sm text-muted">
+                      Showing {{ feedPreview.items.length }} of {{ feedPreview.total }} vehicles.
+                    </p>
+                  </div>
+                  <UBadge color="neutral" variant="subtle">
+                    {{ feedPreview.feed.platform === 'google' ? 'Google' : 'Facebook' }}
+                  </UBadge>
+                </div>
+
+                <div
+                  v-if="feedPreview.items.length === 0"
+                  class="rounded-lg border border-default bg-elevated/40 px-4 py-6 text-center text-sm text-muted"
+                >
+                  No vehicles returned for this feed preview.
+                </div>
+
+                <div
+                  v-else
+                  class="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3"
+                >
+                  <article
+                    v-for="vehicle in feedPreview.items"
+                    :key="vehicle.id"
+                    class="overflow-hidden rounded-lg border border-default bg-elevated/40"
+                  >
+                    <div class="flex gap-3 p-3">
+                      <div class="h-20 w-28 shrink-0 overflow-hidden rounded-md bg-muted">
+                        <img
+                          v-if="vehicle.image"
+                          :src="vehicle.image"
+                          :alt="[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')"
+                          class="h-full w-full object-cover"
+                        >
+                        <div
+                          v-else
+                          class="flex h-full w-full items-center justify-center"
+                        >
+                          <UIcon name="i-lucide-car" class="size-6 text-muted" />
+                        </div>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="truncate text-sm font-medium text-highlighted">
+                          {{ [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.id }}
+                        </p>
+                        <p class="mt-1 text-xs text-muted">
+                          {{ vehicle.stockNumber || 'No stock number' }}
+                        </p>
+                        <p class="mt-2 text-sm font-medium text-highlighted">
+                          {{ vehicle.price == null ? 'Price unavailable' : new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(vehicle.price) }}
+                        </p>
+                        <UButton
+                          v-if="vehicle.url"
+                          icon="i-lucide-external-link"
+                          variant="link"
+                          color="primary"
+                          size="xs"
+                          class="mt-1 px-0"
+                          :to="vehicle.url"
+                          target="_blank"
+                        >
+                          Listing
+                        </UButton>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </div>
             </template>
           </div>
         </section>
