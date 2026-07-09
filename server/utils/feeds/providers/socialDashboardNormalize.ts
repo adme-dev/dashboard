@@ -27,6 +27,7 @@ export function normalizeFeedDetail(raw: unknown): FeedDetail {
     ...normalizeFeedSummary(value),
     filters: asRecord(value.filters),
     mappings: asRecord(value.mappings),
+    platformSettings: asRecord(value.platform_settings),
     source: value.source == null ? null : asRecord(value.source)
   }
 }

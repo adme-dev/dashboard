@@ -108,7 +108,7 @@ function createPayload(link: DealerLink, spec: CreateFeedSpec): Record<string, u
     name: spec.name,
     feed_type: spec.platform,
     organization_id: link.externalOrgId,
-    filters: spec.filters ?? {},
+    filters: buildInventoryPreviewFilters(spec.filters ?? {}, link.sellerRefs),
     mappings: spec.mappings ?? {},
     platform_settings: spec.platformSettings ?? {},
     source: spec.source
@@ -142,14 +142,26 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
       return normalizeFeedDetail(r.item)
     },
 
-    async previewFeed(ctx, ref: FeedRef, opts) {
-      const params = new URLSearchParams({
-        limit: String(opts.limit ?? 20),
-        offset: String(opts.offset ?? 0)
+    async previewFeed(ctx, link: DealerLink, ref: FeedRef, opts) {
+      assertOrgMatch(ctx, link)
+      const detailResult = await client.call<{ item: unknown }>(ctx, 'GET', `/api/feeds/${ref.feedId}`)
+      const detail = normalizeFeedDetail(detailResult.item)
+      const filters = buildInventoryPreviewFilters({
+        ...detail.filters,
+        ...(opts.search?.trim() ? { search: opts.search.trim() } : {})
+      }, link.sellerRefs)
+
+      const r = await client.call<{ total?: number, items?: unknown[] }>(ctx, 'POST', `/api/feeds/preview`, {
+        filters,
+        limit: opts.limit ?? 20,
+        offset: opts.offset ?? 0,
+        validateForFeed: {
+          feedType: ref.platform,
+          mappings: detail.mappings,
+          platformSettings: detail.platformSettings,
+          source: detail.source ?? undefined
+        }
       })
-      if (opts.search?.trim()) params.set('search', opts.search.trim())
-      const q = `?${params.toString()}`
-      const r = await client.call<{ total?: number, items?: unknown[] }>(ctx, 'GET', `/api/feeds/${ref.feedId}/preview${q}`)
       return { total: r.total ?? 0, items: (r.items ?? []).map(normalizeVehicle) }
     },
 

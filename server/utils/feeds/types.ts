@@ -18,6 +18,7 @@ export interface FeedSummary { id: string, name: string, platform: FeedPlatform,
 export interface FeedDetail extends FeedSummary {
   filters: Record<string, unknown>
   mappings: Record<string, unknown>
+  platformSettings: Record<string, unknown>
   source: Record<string, unknown> | null
 }
 
@@ -56,7 +57,7 @@ export interface FeedProvider {
   label: string
   listFeeds(ctx: FeedProviderContext, link: DealerLink): Promise<FeedSummary[]>
   getFeed(ctx: FeedProviderContext, ref: FeedRef): Promise<FeedDetail>
-  previewFeed(ctx: FeedProviderContext, ref: FeedRef, opts: { limit?: number, offset?: number, search?: string }): Promise<{ total: number, items: VehicleSummary[] }>
+  previewFeed(ctx: FeedProviderContext, link: DealerLink, ref: FeedRef, opts: { limit?: number, offset?: number, search?: string }): Promise<{ total: number, items: VehicleSummary[] }>
   searchInventory(ctx: FeedProviderContext, link: DealerLink, filters: Record<string, unknown>): Promise<{ total: number, items: VehicleSummary[] }>
   createFeed(ctx: FeedProviderContext, link: DealerLink, spec: CreateFeedSpec): Promise<FeedRef>
   updateFeed(ctx: FeedProviderContext, ref: FeedRef, patch: Record<string, unknown>): Promise<void>

@@ -8,7 +8,7 @@ const link: DealerLink = { clientId: 'c1', providerId: 'social-dashboard', exter
 const ref: FeedRef = { providerId: 'social-dashboard', feedId: 'f1', platform: 'google' }
 
 function fakeClient(responses: Record<string, unknown>) {
-  const call = vi.fn(async (_ctx, method: string, path: string) => {
+  const call = vi.fn(async (_ctx, method: string, path: string, _body?: unknown) => {
     const response = responses[`${method} ${path}`]
     if (response instanceof Error) throw response
     return response
@@ -38,11 +38,36 @@ describe('socialDashboard provider', () => {
     })
   })
 
-  it('passes search terms to feed preview requests', async () => {
-    const { client, call } = fakeClient({ 'GET /api/feeds/f1/preview?limit=20&offset=0&search=tucson': { ok: true, total: 0, items: [] } })
+  it('previews existing feeds with linked dealer seller refs and feed source settings', async () => {
+    const { client, call } = fakeClient({
+      'GET /api/feeds/f1': {
+        ok: true,
+        item: {
+          id: 'f1',
+          name: 'Blood Hyundai',
+          feed_type: 'facebook',
+          filters: { makes: ['Hyundai'] },
+          mappings: { rules: [] },
+          platform_settings: { catalog_id: 'cat-1' },
+          source: { type: 'meilisearch', url: 'https://inventory.example' }
+        }
+      },
+      'POST /api/feeds/preview': { ok: true, total: 0, items: [] }
+    })
     const p = createSocialDashboardProvider(client)
-    await p.previewFeed(ctx, ref, { limit: 20, offset: 0, search: ' tucson ' })
-    expect(call).toHaveBeenCalledWith(ctx, 'GET', '/api/feeds/f1/preview?limit=20&offset=0&search=tucson')
+    await p.previewFeed(ctx, link, { ...ref, platform: 'facebook' }, { limit: 20, offset: 0, search: ' tucson ' })
+    expect(call).toHaveBeenCalledWith(ctx, 'GET', '/api/feeds/f1')
+    expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds/preview', {
+      filters: { makes: ['Hyundai'], search: 'tucson', sellerIds: ['kia-springvale'] },
+      limit: 20,
+      offset: 0,
+      validateForFeed: {
+        feedType: 'facebook',
+        mappings: { rules: [] },
+        platformSettings: { catalog_id: 'cat-1' },
+        source: { type: 'meilisearch', url: 'https://inventory.example' }
+      }
+    })
   })
 
   it('createFeed upserts by external identity and returns a FeedRef', async () => {
@@ -51,7 +76,7 @@ describe('socialDashboard provider', () => {
     const out = await p.createFeed(ctx, link, {
       name: 'New',
       platform: 'facebook',
-      filters: { a: 1 },
+      filters: { a: 1, sellerIds: ['kia-springvale'] },
       platformSettings: { store_code: 'BLOOD-HYUNDAI' },
       externalCampaignId: 'cmp-1'
     })
@@ -60,7 +85,7 @@ describe('socialDashboard provider', () => {
       name: 'New',
       feed_type: 'facebook',
       organization_id: 'org-1',
-      filters: { a: 1 },
+      filters: { a: 1, sellerIds: ['kia-springvale'] },
       mappings: {},
       platform_settings: { store_code: 'BLOOD-HYUNDAI' },
       source: undefined,
@@ -83,7 +108,7 @@ describe('socialDashboard provider', () => {
       name: 'Legacy',
       feed_type: 'google',
       organization_id: 'org-1',
-      filters: { b: 2 },
+      filters: { b: 2, sellerIds: ['kia-springvale'] },
       mappings: {},
       platform_settings: {},
       source: undefined

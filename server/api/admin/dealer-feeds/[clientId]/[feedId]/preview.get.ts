@@ -40,6 +40,7 @@ export default defineEventHandler(async (event) => {
   const provider = getFeedProvider(link.providerId, { socialDashboardClient })
   const preview = await provider.previewFeed(
     linkToContext(link, user.email),
+    link,
     {
       providerId: link.providerId,
       feedId,
