@@ -275,10 +275,29 @@ async function copyGeneratedUrl(url: string) {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(url)
       toast.add({ title: 'Feed URL copied', color: 'success' })
+      return
+    }
+
+    if (typeof document !== 'undefined') {
+      const textarea = document.createElement('textarea')
+      textarea.value = url
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.left = '-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      const copied = document.execCommand('copy')
+      document.body.removeChild(textarea)
+      if (copied) {
+        toast.add({ title: 'Feed URL copied', color: 'success' })
+        return
+      }
     }
   } catch {
-    toast.add({ title: 'Feed URL ready', description: url, color: 'success' })
+    // Fall through to visible URL panel.
   }
+
+  toast.add({ title: 'Feed URL ready', description: url, color: 'success' })
 }
 
 async function shareFeed(feed: FeedSummary) {
@@ -286,19 +305,16 @@ async function shareFeed(feed: FeedSummary) {
 
   generatingFeedKey.value = feed.id
   try {
-    const result = await $fetch<{ ok: boolean, generated: { url: string, itemCount: number } }>(
-      `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/generate`,
-      {
-        method: 'POST',
-        body: { platform: feed.platform }
-      }
+    const result = await $fetch<{ ok: boolean, feedUrl: string, url?: string }>(
+      `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/url`
     )
-    generatedFeedUrl.value = result.generated.url
-    generatedFeedMeta.value = { feedName: feed.name || feed.id, itemCount: result.generated.itemCount }
-    await copyGeneratedUrl(result.generated.url)
+    const url = result.feedUrl || result.url || ''
+    generatedFeedUrl.value = url
+    generatedFeedMeta.value = { feedName: feed.name || feed.id, itemCount: 0 }
+    await copyGeneratedUrl(url)
   } catch (error: unknown) {
     toast.add({
-      title: 'Failed to generate feed URL',
+      title: 'Failed to prepare feed URL',
       description: errorMessage(error, 'Please try again'),
       color: 'error'
     })
@@ -922,7 +938,7 @@ watch([selectedClientOptionId, links], async () => {
                   <UInput
                     v-model="feedPreviewSearch"
                     icon="i-lucide-search"
-                    placeholder="Search make, model, stock number, VIN"
+                    placeholder="Search title, condition, stock number, kilometres"
                     class="w-full"
                     @keyup.enter="previewFeed(feedPreview.feed)"
                   />

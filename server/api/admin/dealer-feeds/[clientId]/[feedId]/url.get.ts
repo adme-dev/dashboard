@@ -19,13 +19,11 @@ export default defineEventHandler(async (event) => {
   if (!link) throw createError({ statusCode: 404, statusMessage: 'Dealer feed link not found for client' })
 
   const baseUrl = await resolveSocialDashboardBaseUrl({ runtimeEnv: cloudflareRuntimeEnv(event) })
+  const url = buildSocialDashboardFeedServeUrl(baseUrl, feedId)
 
   return {
     ok: true,
-    generated: {
-      url: buildSocialDashboardFeedServeUrl(baseUrl, feedId),
-      itemCount: 0,
-      format: 'xml'
-    }
+    feedUrl: url,
+    url
   }
 })
