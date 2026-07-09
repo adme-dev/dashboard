@@ -73,6 +73,11 @@ type FeedPreviewState = {
   validation?: FeedPreviewValidation
 }
 
+type DraftPreviewState = {
+  total: number
+  items: VehicleSummary[]
+}
+
 const toast = useToast()
 
 const selectedClientOptionId = ref('')
@@ -83,6 +88,10 @@ const previewPendingFeedId = ref('')
 const generatingFeedKey = ref('')
 const feedPreview = ref<FeedPreviewState | null>(null)
 const feedPreviewSearch = ref('')
+const draftPreview = ref<DraftPreviewState | null>(null)
+const draftPreviewPending = ref(false)
+const draftPreviewError = ref('')
+const draftPreviewRequestId = ref(0)
 const generatedFeedUrl = ref('')
 const generatedFeedMeta = ref<{ feedName: string, itemCount: number } | null>(null)
 const generatedFeedUrlInput = ref<HTMLInputElement | null>(null)
@@ -336,6 +345,69 @@ function buildFeedFilters(): Record<string, unknown> {
 }
 
 const stockRefCount = computed(() => stockRefsFromText(feedForm.stockRefsText).length)
+const draftPreviewSignature = computed(() =>
+  selectedLink.value
+    ? JSON.stringify({ clientId: selectedClientId.value, filters: buildFeedFilters() })
+    : ''
+)
+const debouncedDraftPreviewSignature = refDebounced(draftPreviewSignature, 450)
+
+function rangeChip(label: string, minValue: number | string | null, maxValue: number | string | null, prefix = '') {
+  const min = finiteFormNumber(minValue)
+  const max = finiteFormNumber(maxValue)
+  if (min === undefined && max === undefined) return ''
+  if (min !== undefined && max !== undefined) return `${label}: ${prefix}${formatCount(min)}-${prefix}${formatCount(max)}`
+  if (min !== undefined) return `${label}: from ${prefix}${formatCount(min)}`
+  return `${label}: to ${prefix}${formatCount(max)}`
+}
+
+const activeFilterChips = computed(() => {
+  const chips: string[] = []
+  const conditions = Array.from(new Set(feedForm.condition.map(String).map(item => item.trim()).filter(Boolean)))
+  const makes = parseList(feedForm.makeText)
+  const models = parseList(feedForm.modelText)
+  const search = feedForm.search.trim()
+  const stockRefs = stockRefsFromText(feedForm.stockRefsText)
+
+  if (conditions.length) chips.push(`Condition: ${conditions.join(', ')}`)
+  if (makes.length) chips.push(`Make: ${makes.join(', ')}`)
+  if (models.length) chips.push(`Model: ${models.join(', ')}`)
+  if (search) chips.push(`Title: ${search}`)
+  const year = rangeChip('Year', feedForm.yearMin, feedForm.yearMax)
+  const price = rangeChip('Price', feedForm.priceMin, feedForm.priceMax, '$')
+  const kms = rangeChip('Kms', feedForm.kmsMin, feedForm.kmsMax)
+  if (year) chips.push(year)
+  if (price) chips.push(price)
+  if (kms) chips.push(kms)
+  if (feedForm.stockListMode === 'include' && stockRefs.length) chips.push(`Only ${formatCount(stockRefs.length)} stock refs`)
+  if (feedForm.stockListMode === 'exclude' && stockRefs.length) chips.push(`Exclude ${formatCount(stockRefs.length)} stock refs`)
+  return chips
+})
+
+function conditionSelected(value: string) {
+  return feedForm.condition.includes(value)
+}
+
+function toggleCondition(value: string) {
+  feedForm.condition = conditionSelected(value)
+    ? feedForm.condition.filter(item => item !== value)
+    : [...feedForm.condition, value]
+}
+
+function clearFeedFilters() {
+  feedForm.condition = []
+  feedForm.makeText = ''
+  feedForm.modelText = ''
+  feedForm.search = ''
+  feedForm.yearMin = null
+  feedForm.yearMax = null
+  feedForm.priceMin = null
+  feedForm.priceMax = null
+  feedForm.kmsMin = null
+  feedForm.kmsMax = null
+  feedForm.stockListMode = 'off'
+  feedForm.stockRefsText = ''
+}
 
 async function handleStockListFile(event: Event) {
   const input = event.target as HTMLInputElement
@@ -551,7 +623,11 @@ async function loadFeeds() {
   generatedFeedUrl.value = ''
   generatedFeedMeta.value = null
 
-  if (!selectedClientId.value || !selectedLink.value) return
+  if (!selectedClientId.value || !selectedLink.value) {
+    draftPreview.value = null
+    draftPreviewError.value = ''
+    return
+  }
 
   feedsPending.value = true
   try {
@@ -561,6 +637,44 @@ async function loadFeeds() {
     feedsError.value = errorMessage(error, 'Failed to load dealer feeds')
   } finally {
     feedsPending.value = false
+  }
+}
+
+async function loadDraftPreview() {
+  if (!selectedClientId.value || !selectedLink.value) {
+    draftPreview.value = null
+    draftPreviewError.value = ''
+    draftPreviewPending.value = false
+    return
+  }
+
+  const requestId = draftPreviewRequestId.value + 1
+  draftPreviewRequestId.value = requestId
+  draftPreviewPending.value = true
+  draftPreviewError.value = ''
+
+  try {
+    const result = await $fetch<{ ok: boolean, preview: DraftPreviewState }>(
+      `/api/admin/dealer-feeds/${selectedClientId.value}/preview`,
+      {
+        method: 'POST',
+        body: {
+          filters: buildFeedFilters(),
+          limit: 8
+        }
+      }
+    )
+    if (draftPreviewRequestId.value !== requestId) return
+    draftPreview.value = {
+      total: result.preview.total,
+      items: result.preview.items || []
+    }
+  } catch (error: unknown) {
+    if (draftPreviewRequestId.value !== requestId) return
+    draftPreview.value = null
+    draftPreviewError.value = errorMessage(error, 'Live match could not be loaded')
+  } finally {
+    if (draftPreviewRequestId.value === requestId) draftPreviewPending.value = false
   }
 }
 
@@ -793,6 +907,10 @@ watch(clientRows, (rows) => {
 watch([selectedClientOptionId, links], async () => {
   populateMappingForm()
   await loadFeeds()
+}, { immediate: true })
+
+watch(debouncedDraftPreviewSignature, () => {
+  void loadDraftPreview()
 }, { immediate: true })
 </script>
 
@@ -1087,170 +1205,352 @@ watch([selectedClientOptionId, links], async () => {
               </div>
 
               <template v-else>
-                <div class="space-y-5 border-b border-default p-5">
-                  <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
-                    <UFormField label="Feed name">
-                      <UInput
-                        v-model="feedForm.name"
-                        placeholder="Primary inventory feed"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Platform">
-                      <USelect
-                        v-model="feedForm.platform"
-                        :items="platformOptions"
-                        value-key="value"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Store code">
-                      <UInput
-                        v-model="feedForm.storeCode"
-                        placeholder="Google only"
-                        :disabled="feedForm.platform !== 'google'"
-                        class="w-full"
-                      />
-                    </UFormField>
-                  </div>
-
-                  <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                    <UFormField label="Condition">
-                      <USelectMenu
-                        v-model="feedForm.condition"
-                        :items="conditionOptions"
-                        value-key="value"
-                        multiple
-                        placeholder="All saleable vehicles"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Make">
-                      <UInput
-                        v-model="feedForm.makeText"
-                        placeholder="Hyundai, Kia"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Model">
-                      <UInput
-                        v-model="feedForm.modelText"
-                        placeholder="Tucson, i30"
-                        class="w-full"
-                      />
-                    </UFormField>
-                  </div>
-
-                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_repeat(6,minmax(7rem,1fr))]">
-                    <UFormField label="Title keywords">
-                      <UInput
-                        v-model="feedForm.search"
-                        icon="i-lucide-search"
-                        placeholder="hybrid, runout, SUV"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Year from">
-                      <UInput
-                        v-model.number="feedForm.yearMin"
-                        type="number"
-                        min="1900"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Year to">
-                      <UInput
-                        v-model.number="feedForm.yearMax"
-                        type="number"
-                        min="1900"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Price from">
-                      <UInput
-                        v-model.number="feedForm.priceMin"
-                        type="number"
-                        min="0"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Price to">
-                      <UInput
-                        v-model.number="feedForm.priceMax"
-                        type="number"
-                        min="0"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Kms from">
-                      <UInput
-                        v-model.number="feedForm.kmsMin"
-                        type="number"
-                        min="0"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Kms to">
-                      <UInput
-                        v-model.number="feedForm.kmsMax"
-                        type="number"
-                        min="0"
-                        class="w-full"
-                      />
-                    </UFormField>
-                  </div>
-
-                  <div class="grid grid-cols-1 gap-3 lg:grid-cols-[180px_minmax(0,1fr)_auto]">
-                    <UFormField label="Stock list">
-                      <USelect
-                        v-model="feedForm.stockListMode"
-                        :items="stockListModeOptions"
-                        value-key="value"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <UFormField label="Stock, VIN or vehicle IDs">
-                      <UTextarea
-                        v-model="feedForm.stockRefsText"
-                        placeholder="BH123, VIN123456789"
-                        :rows="3"
-                        :disabled="feedForm.stockListMode === 'off'"
-                        class="w-full"
-                      />
-                    </UFormField>
-                    <div class="flex flex-col justify-end gap-2">
-                      <input
-                        ref="stockListFileInput"
-                        type="file"
-                        accept=".csv,text/csv"
-                        class="hidden"
-                        @change="handleStockListFile"
+                <div class="space-y-4 border-b border-default p-5">
+                  <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                    <div class="mb-3 flex items-center gap-2">
+                      <UIcon name="i-lucide-rss" class="size-4 text-primary" />
+                      <h3 class="text-sm font-semibold text-highlighted">
+                        Feed details
+                      </h3>
+                    </div>
+                    <div
+                      class="grid grid-cols-1 gap-3"
+                      :class="feedForm.platform === 'google' ? 'lg:grid-cols-[minmax(0,1fr)_14rem_12rem]' : 'lg:grid-cols-[minmax(0,1fr)_14rem]'"
+                    >
+                      <UFormField label="Feed name">
+                        <UInput
+                          v-model="feedForm.name"
+                          placeholder="Meta Blood Hyundai"
+                          class="w-full"
+                        />
+                      </UFormField>
+                      <UFormField label="Platform">
+                        <USelect
+                          v-model="feedForm.platform"
+                          :items="platformOptions"
+                          value-key="value"
+                          class="w-full"
+                        />
+                      </UFormField>
+                      <UFormField
+                        v-if="feedForm.platform === 'google'"
+                        label="Google store code"
                       >
-                      <UButton
-                        icon="i-lucide-upload"
-                        color="neutral"
-                        variant="outline"
-                        class="justify-center"
-                        @click="stockListFileInput?.click()"
-                      >
-                        Upload CSV
-                      </UButton>
-                      <UBadge
-                        color="neutral"
-                        variant="subtle"
-                        class="justify-center"
-                      >
-                        {{ formatCount(stockRefCount) }} refs
-                      </UBadge>
+                        <UInput
+                          v-model="feedForm.storeCode"
+                          placeholder="Store code"
+                          class="w-full"
+                        />
+                      </UFormField>
                     </div>
                   </div>
 
-                  <div class="flex justify-end">
+                  <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                    <div class="mb-3 flex items-center gap-2">
+                      <UIcon name="i-lucide-filter" class="size-4 text-primary" />
+                      <h3 class="text-sm font-semibold text-highlighted">
+                        Vehicle scope
+                      </h3>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.85fr)]">
+                      <UFormField label="Title keywords">
+                        <UInput
+                          v-model="feedForm.search"
+                          icon="i-lucide-search"
+                          placeholder="hybrid, runout, SUV"
+                          class="w-full"
+                        />
+                      </UFormField>
+
+                      <div>
+                        <p class="mb-2 text-sm font-medium text-highlighted">
+                          Condition
+                        </p>
+                        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <button
+                            type="button"
+                            class="min-h-10 rounded-md border px-3 text-sm font-medium transition"
+                            :class="feedForm.condition.length === 0 ? 'border-primary bg-primary/10 text-primary' : 'border-default bg-default text-muted hover:bg-elevated'"
+                            @click="feedForm.condition = []"
+                          >
+                            All
+                          </button>
+                          <button
+                            v-for="option in conditionOptions"
+                            :key="option.value"
+                            type="button"
+                            class="min-h-10 rounded-md border px-3 text-sm font-medium transition"
+                            :class="conditionSelected(option.value) ? 'border-primary bg-primary/10 text-primary' : 'border-default bg-default text-muted hover:bg-elevated'"
+                            @click="toggleCondition(option.value)"
+                          >
+                            {{ option.label }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      <UFormField label="Make">
+                        <UInput
+                          v-model="feedForm.makeText"
+                          placeholder="Hyundai, Kia"
+                          class="w-full"
+                        />
+                      </UFormField>
+                      <UFormField label="Model">
+                        <UInput
+                          v-model="feedForm.modelText"
+                          placeholder="Tucson, i30"
+                          class="w-full"
+                        />
+                      </UFormField>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                    <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                      <p class="mb-3 text-sm font-medium text-highlighted">
+                        Year
+                      </p>
+                      <div class="grid grid-cols-2 gap-2">
+                        <UInput
+                          v-model.number="feedForm.yearMin"
+                          type="number"
+                          min="1900"
+                          placeholder="From"
+                          aria-label="Year from"
+                          class="w-full"
+                        />
+                        <UInput
+                          v-model.number="feedForm.yearMax"
+                          type="number"
+                          min="1900"
+                          placeholder="To"
+                          aria-label="Year to"
+                          class="w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                      <p class="mb-3 text-sm font-medium text-highlighted">
+                        Price
+                      </p>
+                      <div class="grid grid-cols-2 gap-2">
+                        <UInput
+                          v-model.number="feedForm.priceMin"
+                          type="number"
+                          min="0"
+                          placeholder="From"
+                          aria-label="Price from"
+                          class="w-full"
+                        />
+                        <UInput
+                          v-model.number="feedForm.priceMax"
+                          type="number"
+                          min="0"
+                          placeholder="To"
+                          aria-label="Price to"
+                          class="w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                      <p class="mb-3 text-sm font-medium text-highlighted">
+                        Kilometres
+                      </p>
+                      <div class="grid grid-cols-2 gap-2">
+                        <UInput
+                          v-model.number="feedForm.kmsMin"
+                          type="number"
+                          min="0"
+                          placeholder="From"
+                          aria-label="Kilometres from"
+                          class="w-full"
+                        />
+                        <UInput
+                          v-model.number="feedForm.kmsMax"
+                          type="number"
+                          min="0"
+                          placeholder="To"
+                          aria-label="Kilometres to"
+                          class="w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                      <div class="flex items-center gap-2">
+                        <UIcon name="i-lucide-file-spreadsheet" class="size-4 text-primary" />
+                        <h3 class="text-sm font-semibold text-highlighted">
+                          Campaign stock list
+                        </h3>
+                      </div>
+                      <UBadge color="neutral" variant="subtle">
+                        {{ formatCount(stockRefCount) }} refs
+                      </UBadge>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 lg:grid-cols-[14rem_minmax(0,1fr)_auto]">
+                      <UFormField label="Mode">
+                        <USelect
+                          v-model="feedForm.stockListMode"
+                          :items="stockListModeOptions"
+                          value-key="value"
+                          class="w-full"
+                        />
+                      </UFormField>
+                      <UFormField label="Stock, VIN or vehicle IDs">
+                        <UTextarea
+                          v-model="feedForm.stockRefsText"
+                          placeholder="BH123, VIN123456789"
+                          :rows="3"
+                          :disabled="feedForm.stockListMode === 'off'"
+                          class="w-full"
+                        />
+                      </UFormField>
+                      <div class="flex items-end">
+                        <input
+                          ref="stockListFileInput"
+                          type="file"
+                          accept=".csv,text/csv"
+                          class="hidden"
+                          @change="handleStockListFile"
+                        >
+                        <UButton
+                          icon="i-lucide-upload"
+                          color="neutral"
+                          variant="outline"
+                          class="w-full justify-center lg:w-auto"
+                          @click="stockListFileInput?.click()"
+                        >
+                          Upload CSV
+                        </UButton>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                    <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-2">
+                          <UIcon name="i-lucide-sliders-horizontal" class="size-4 text-primary" />
+                          <h3 class="text-sm font-semibold text-highlighted">
+                            Active filters
+                          </h3>
+                        </div>
+                        <UButton
+                          v-if="activeFilterChips.length"
+                          icon="i-lucide-x"
+                          color="neutral"
+                          variant="ghost"
+                          size="xs"
+                          @click="clearFeedFilters"
+                        >
+                          Clear
+                        </UButton>
+                      </div>
+                      <div class="mt-3 flex flex-wrap gap-2">
+                        <UBadge
+                          v-if="!activeFilterChips.length"
+                          color="neutral"
+                          variant="subtle"
+                        >
+                          All saleable inventory
+                        </UBadge>
+                        <UBadge
+                          v-for="chip in activeFilterChips"
+                          :key="chip"
+                          color="neutral"
+                          variant="subtle"
+                        >
+                          {{ chip }}
+                        </UBadge>
+                      </div>
+                    </div>
+
+                    <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <div class="flex items-center gap-2">
+                            <UIcon name="i-lucide-radar" class="size-4 text-primary" />
+                            <h3 class="text-sm font-semibold text-highlighted">
+                              Live match
+                            </h3>
+                          </div>
+                          <p class="mt-2 text-2xl font-semibold text-highlighted">
+                            {{ draftPreviewPending && !draftPreview ? '...' : formatCount(draftPreview?.total || 0) }}
+                          </p>
+                          <p class="text-xs text-muted">
+                            saleable vehicles
+                          </p>
+                        </div>
+                        <UButton
+                          icon="i-lucide-refresh-cw"
+                          color="neutral"
+                          variant="ghost"
+                          size="xs"
+                          :loading="draftPreviewPending"
+                          @click="loadDraftPreview"
+                        />
+                      </div>
+
+                      <UAlert
+                        v-if="draftPreviewError"
+                        icon="i-lucide-alert-circle"
+                        color="error"
+                        variant="subtle"
+                        title="Live match failed"
+                        :description="draftPreviewError"
+                        class="mt-3"
+                      />
+
+                      <div
+                        v-else-if="draftPreview?.items.length"
+                        class="mt-3 space-y-2"
+                      >
+                        <div
+                          v-for="vehicle in draftPreview.items.slice(0, 3)"
+                          :key="vehicle.id"
+                          class="flex min-w-0 items-center gap-2 rounded-md border border-default bg-default px-2 py-2"
+                        >
+                          <div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+                            <img
+                              v-if="vehicle.image"
+                              :src="vehicle.image"
+                              :alt="[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')"
+                              class="h-full w-full object-cover"
+                            >
+                            <UIcon
+                              v-else
+                              name="i-lucide-car"
+                              class="size-4 text-muted"
+                            />
+                          </div>
+                          <div class="min-w-0">
+                            <p class="truncate text-xs font-medium text-highlighted">
+                              {{ [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.id }}
+                            </p>
+                            <p class="truncate text-xs text-muted">
+                              {{ vehicle.stockNumber || vehicle.condition || 'Vehicle' }}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                     <UButton
                       icon="i-lucide-plus"
                       color="primary"
                       class="w-full justify-center sm:w-auto"
                       :loading="savingFeed"
+                      :disabled="!feedForm.name.trim()"
                       @click="createFeed"
                     >
                       Create feed
