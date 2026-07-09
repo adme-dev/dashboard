@@ -35,7 +35,7 @@ describe('socialDashboard provider', () => {
     expect(out.total).toBe(1)
     expect(out.items[0]).toMatchObject({ id: 'v1', make: 'Kia', price: 56990, image: 'x.jpg' })
     expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds/preview', {
-      filters: { makes: ['Kia'], sellerIds: ['kia-springvale'] },
+      filters: { makes: ['Kia'], onlyActive: true, sellerIds: ['kia-springvale'] },
       limit: 100,
       offset: 0
     })
@@ -82,7 +82,7 @@ describe('socialDashboard provider', () => {
     expect(out.items[0]).toMatchObject({ id: 'v2', make: 'Hyundai', url: 'https://dealer.example/tucson' })
     expect(out.validation).toMatchObject({ matchedTotal: 7, validatedTotal: 5, invalidTotal: 2 })
     expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds/preview', {
-      filters: { condition: ['New'], sellerIds: ['kia-springvale'] },
+      filters: { condition: ['New'], onlyActive: true, sellerIds: ['kia-springvale'] },
       limit: 8,
       offset: 0,
       validateForFeed: {
@@ -114,7 +114,7 @@ describe('socialDashboard provider', () => {
     await p.previewFeed(ctx, link, { ...ref, platform: 'facebook' }, { limit: 20, offset: 0, search: ' tucson ' })
     expect(call).toHaveBeenCalledWith(ctx, 'GET', '/api/feeds/f1')
     expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds/preview', {
-      filters: { makes: ['Hyundai'], search: 'tucson', sellerIds: ['kia-springvale'] },
+      filters: { makes: ['Hyundai'], search: 'tucson', onlyActive: true, sellerIds: ['kia-springvale'] },
       limit: 20,
       offset: 0,
       validateForFeed: {
@@ -200,7 +200,7 @@ describe('socialDashboard provider', () => {
       { id: 'v1', issues: [{ field: 'image_link', message: 'Image is required' }] }
     ])
     expect(call).toHaveBeenNthCalledWith(2, ctx, 'POST', '/api/feeds/preview', {
-      filters: { makes: ['Hyundai'], sellerIds: ['kia-springvale'] },
+      filters: { makes: ['Hyundai'], onlyActive: true, sellerIds: ['kia-springvale'] },
       limit: 20,
       offset: 0,
       validateForFeed: {
@@ -211,7 +211,7 @@ describe('socialDashboard provider', () => {
       }
     })
     expect(call).toHaveBeenNthCalledWith(3, ctx, 'POST', '/api/feeds/preview', {
-      filters: { makes: ['Hyundai'], sellerIds: ['kia-springvale'] },
+      filters: { makes: ['Hyundai'], onlyActive: true, sellerIds: ['kia-springvale'] },
       limit: 20,
       offset: 0
     })
@@ -232,7 +232,7 @@ describe('socialDashboard provider', () => {
       name: 'New',
       feed_type: 'facebook',
       organization_id: 'org-1',
-      filters: { a: 1, sellerIds: ['kia-springvale'] },
+      filters: { a: 1, sellerIds: ['kia-springvale'], onlyActive: true },
       mappings: {},
       platform_settings: { store_code: 'BLOOD-HYUNDAI' },
       source: undefined,
@@ -255,7 +255,7 @@ describe('socialDashboard provider', () => {
       name: 'Legacy',
       feed_type: 'google',
       organization_id: 'org-1',
-      filters: { b: 2, sellerIds: ['kia-springvale'] },
+      filters: { b: 2, onlyActive: true, sellerIds: ['kia-springvale'] },
       mappings: {},
       platform_settings: {},
       source: undefined
@@ -288,14 +288,21 @@ describe('buildInventoryPreviewFilters', () => {
     expect(buildInventoryPreviewFilters(
       { sellerIds: ['kia-springvale', 'other'], makes: ['Kia'] },
       ['kia-springvale']
-    )).toEqual({ sellerIds: ['kia-springvale'], makes: ['Kia'] })
+    )).toEqual({ sellerIds: ['kia-springvale'], makes: ['Kia'], onlyActive: true })
   })
 
   it('forces an empty seller match when requested sellers are outside the link', () => {
     expect(buildInventoryPreviewFilters(
       { sellerIds: ['other'] },
       ['kia-springvale']
-    )).toEqual({ sellerIds: ['__no_matching_seller__'] })
+    )).toEqual({ sellerIds: ['__no_matching_seller__'], onlyActive: true })
+  })
+
+  it('keeps inventory previews saleable-only even without seller refs', () => {
+    expect(buildInventoryPreviewFilters(
+      { makes: ['Kia'], onlyActive: false },
+      []
+    )).toEqual({ makes: ['Kia'], onlyActive: true })
   })
 
   it('expands rulesets without a seller across linked seller refs and removes manual include bypasses', () => {
@@ -303,6 +310,7 @@ describe('buildInventoryPreviewFilters', () => {
       { rulesets: [{ id: 'r1', sellerId: '', makes: ['Kia'] }], manualIncludeIds: ['v1'] },
       ['seller-a', 'seller-b']
     )).toEqual({
+      onlyActive: true,
       rulesets: [
         { id: 'r1:seller-a', sellerId: 'seller-a', makes: ['Kia'] },
         { id: 'r1:seller-b', sellerId: 'seller-b', makes: ['Kia'] }

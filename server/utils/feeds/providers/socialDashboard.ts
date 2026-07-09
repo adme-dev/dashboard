@@ -58,7 +58,7 @@ function noMatchingSellerId(): string {
 export function buildInventoryPreviewFilters(filters: Record<string, unknown>, sellerRefs: string[]): Record<string, unknown> {
   const allowed = uniqueStrings(sellerRefs)
   const input = filters && typeof filters === 'object' ? filters : {}
-  const base: Record<string, unknown> = { ...input }
+  const base: Record<string, unknown> = { ...input, onlyActive: true }
 
   if (!allowed.length) return base
 

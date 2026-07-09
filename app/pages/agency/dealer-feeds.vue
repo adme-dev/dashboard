@@ -416,7 +416,7 @@ function addRangeFilter(filters: Record<string, unknown>, key: string, minValue:
 }
 
 function buildFeedFilters(): Record<string, unknown> {
-  const filters: Record<string, unknown> = {}
+  const filters: Record<string, unknown> = { onlyActive: true }
   const conditions = Array.from(new Set(feedForm.condition.map(String).map(item => item.trim()).filter(Boolean)))
   const makes = parseList(feedForm.makeText)
   const models = parseList(feedForm.modelText)
