@@ -2,10 +2,25 @@ import type { SocialDashboardClient } from '../socialDashboardClient'
 import { normalizeFeedSummary, normalizeFeedDetail, normalizeVehicle } from './socialDashboardNormalize'
 import { SOCIAL_DASHBOARD_PROVIDER_ID } from '../constants'
 import type {
-  FeedProvider, FeedProviderContext, DealerLink, FeedRef, CreateFeedSpec, FeedMetrics
+  FeedProvider, FeedProviderContext, DealerLink, FeedRef, CreateFeedSpec, FeedMetrics,
+  FeedPreviewValidation, FeedValidationIssueSummary
 } from '../types'
 
 type UnknownRecord = Record<string, unknown>
+type PreviewResponse = {
+  total?: unknown
+  matchedTotal?: unknown
+  matched_total?: unknown
+  validatedTotal?: unknown
+  validated_total?: unknown
+  invalidTotal?: unknown
+  invalid_total?: unknown
+  candidateLimit?: unknown
+  candidate_limit?: unknown
+  invalidSummaries?: unknown
+  invalid_summaries?: unknown
+  items?: unknown
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -23,8 +38,17 @@ function strings(value: unknown): string[] {
     : []
 }
 
+function array(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map(String).map(s => s.trim()).filter(Boolean)))
+}
+
+function finiteNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 function noMatchingSellerId(): string {
@@ -99,6 +123,69 @@ function normalizeMetricsResult(raw: unknown): FeedMetrics {
   }
 }
 
+function normalizeInvalidSummaries(value: unknown): FeedValidationIssueSummary[] {
+  return array(value)
+    .map((summary) => {
+      const item = isRecord(summary) ? summary : {}
+      const id = item.id ?? item.vehicleId ?? item.vehicle_id ?? item.stockNumber ?? item.stock_number ?? null
+      const issues = array(item.issues).length
+        ? array(item.issues)
+        : [item.issue, item.message].filter(Boolean)
+
+      return {
+        id: id == null ? null : String(id),
+        issues
+      }
+    })
+    .filter(summary => summary.id || summary.issues.length)
+}
+
+function previewMatchedTotal(r: PreviewResponse): number {
+  return finiteNumber(r.matchedTotal ?? r.matched_total ?? r.total)
+}
+
+function previewValidatedTotal(r: PreviewResponse, validatedItemCount: number): number {
+  return finiteNumber(r.validatedTotal ?? r.validated_total, validatedItemCount)
+}
+
+function normalizePreviewValidation(
+  r: PreviewResponse,
+  showingFallbackCandidates: boolean,
+  validatedItemCount: number
+): FeedPreviewValidation | undefined {
+  const hasValidationMetadata = [
+    r.matchedTotal,
+    r.matched_total,
+    r.validatedTotal,
+    r.validated_total,
+    r.invalidTotal,
+    r.invalid_total,
+    r.candidateLimit,
+    r.candidate_limit,
+    r.invalidSummaries,
+    r.invalid_summaries
+  ].some(value => value !== undefined)
+
+  if (!hasValidationMetadata && !showingFallbackCandidates) return undefined
+
+  const matchedTotal = previewMatchedTotal(r)
+  const validatedTotal = previewValidatedTotal(r, validatedItemCount)
+  const invalidTotal = finiteNumber(
+    r.invalidTotal ?? r.invalid_total,
+    Math.max(matchedTotal - validatedTotal, 0)
+  )
+  const candidateLimit = r.candidateLimit ?? r.candidate_limit
+
+  return {
+    matchedTotal,
+    validatedTotal,
+    invalidTotal,
+    candidateLimit: candidateLimit === undefined ? undefined : finiteNumber(candidateLimit),
+    invalidSummaries: normalizeInvalidSummaries(r.invalidSummaries ?? r.invalid_summaries),
+    showingFallbackCandidates
+  }
+}
+
 function upsertNotAvailable(error: unknown): boolean {
   return /POST \/api\/feeds\/upsert-external → 404/.test(error instanceof Error ? error.message : String(error))
 }
@@ -146,15 +233,17 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
       assertOrgMatch(ctx, link)
       const detailResult = await client.call<{ item: unknown }>(ctx, 'GET', `/api/feeds/${ref.feedId}`)
       const detail = normalizeFeedDetail(detailResult.item)
+      const limit = opts.limit ?? 20
+      const offset = opts.offset ?? 0
       const filters = buildInventoryPreviewFilters({
         ...detail.filters,
         ...(opts.search?.trim() ? { search: opts.search.trim() } : {})
       }, link.sellerRefs)
 
-      const r = await client.call<{ total?: number, items?: unknown[] }>(ctx, 'POST', `/api/feeds/preview`, {
+      const r = await client.call<PreviewResponse>(ctx, 'POST', `/api/feeds/preview`, {
         filters,
-        limit: opts.limit ?? 20,
-        offset: opts.offset ?? 0,
+        limit,
+        offset,
         validateForFeed: {
           feedType: ref.platform,
           mappings: detail.mappings,
@@ -162,7 +251,28 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
           source: detail.source ?? undefined
         }
       })
-      return { total: r.total ?? 0, items: (r.items ?? []).map(normalizeVehicle) }
+      const validatedItems = array(r.items)
+      const matchedTotal = previewMatchedTotal(r)
+      const validatedTotal = previewValidatedTotal(r, validatedItems.length)
+      let items = validatedItems
+      let showingFallbackCandidates = false
+
+      if (offset === 0 && validatedItems.length === 0 && matchedTotal > 0 && validatedTotal === 0) {
+        const fallback = await client.call<PreviewResponse>(ctx, 'POST', `/api/feeds/preview`, {
+          filters,
+          limit,
+          offset
+        })
+        items = array(fallback.items)
+        showingFallbackCandidates = items.length > 0
+      }
+
+      const validation = normalizePreviewValidation(r, showingFallbackCandidates, validatedItems.length)
+      return {
+        total: matchedTotal,
+        items: items.map(normalizeVehicle),
+        ...(validation ? { validation } : {})
+      }
     },
 
     async searchInventory(ctx, link: DealerLink, filters) {

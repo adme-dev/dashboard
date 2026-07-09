@@ -9,7 +9,10 @@ const ref: FeedRef = { providerId: 'social-dashboard', feedId: 'f1', platform: '
 
 function fakeClient(responses: Record<string, unknown>) {
   const call = vi.fn(async (_ctx, method: string, path: string, _body?: unknown) => {
-    const response = responses[`${method} ${path}`]
+    const key = `${method} ${path}`
+    const response = Array.isArray(responses[key])
+      ? (responses[key] as unknown[]).shift()
+      : responses[key]
     if (response instanceof Error) throw response
     return response
   })
@@ -67,6 +70,97 @@ describe('socialDashboard provider', () => {
         platformSettings: { catalog_id: 'cat-1' },
         source: { type: 'meilisearch', url: 'https://inventory.example' }
       }
+    })
+  })
+
+  it('falls back to raw scoped inventory when feed validation returns no valid vehicles', async () => {
+    const { client, call } = fakeClient({
+      'GET /api/feeds/f1': {
+        ok: true,
+        item: {
+          id: 'f1',
+          name: 'Blood Hyundai',
+          feed_type: 'facebook',
+          filters: { makes: ['Hyundai'] },
+          mappings: { rules: [] },
+          platform_settings: { catalog_id: 'cat-1' },
+          source: { type: 'meilisearch' }
+        }
+      },
+      'POST /api/feeds/preview': [
+        {
+          ok: true,
+          total: 88,
+          matchedTotal: 88,
+          validatedTotal: 0,
+          invalidTotal: 88,
+          candidateLimit: 500,
+          invalidSummaries: [
+            { id: 'v1', issues: [{ field: 'image_link', message: 'Image is required' }] }
+          ],
+          items: []
+        },
+        {
+          ok: true,
+          total: 88,
+          items: [
+            {
+              id: 'v1',
+              make: 'Hyundai',
+              model: 'Tucson',
+              build_year: 2025,
+              dap_price: 51990,
+              listing_type: 'New',
+              stock_number: 'B123',
+              images: ['https://inventory.example/tucson.jpg']
+            }
+          ]
+        }
+      ]
+    })
+    const p = createSocialDashboardProvider(client)
+
+    const out = await p.previewFeed(ctx, link, { ...ref, platform: 'facebook' }, { limit: 20, offset: 0 })
+
+    expect(out.total).toBe(88)
+    expect(out.items).toEqual([
+      {
+        id: 'v1',
+        make: 'Hyundai',
+        model: 'Tucson',
+        year: 2025,
+        price: 51990,
+        condition: 'New',
+        stockNumber: 'B123',
+        url: null,
+        image: 'https://inventory.example/tucson.jpg'
+      }
+    ])
+    expect(out.validation).toMatchObject({
+      matchedTotal: 88,
+      validatedTotal: 0,
+      invalidTotal: 88,
+      candidateLimit: 500,
+      showingFallbackCandidates: true
+    })
+    expect(out.validation?.invalidSummaries).toEqual([
+      { id: 'v1', issues: [{ field: 'image_link', message: 'Image is required' }] }
+    ])
+    expect(call).toHaveBeenNthCalledWith(2, ctx, 'POST', '/api/feeds/preview', {
+      filters: { makes: ['Hyundai'], sellerIds: ['kia-springvale'] },
+      limit: 20,
+      offset: 0,
+      validateForFeed: {
+        feedType: 'facebook',
+        mappings: { rules: [] },
+        platformSettings: { catalog_id: 'cat-1' },
+        source: { type: 'meilisearch' }
+      }
+    })
+    expect(call).toHaveBeenNthCalledWith(3, ctx, 'POST', '/api/feeds/preview', {
+      filters: { makes: ['Hyundai'], sellerIds: ['kia-springvale'] },
+      limit: 20,
+      offset: 0
     })
   })
 

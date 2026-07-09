@@ -50,10 +50,25 @@ type VehicleSummary = {
   image: string | null
 }
 
+type FeedValidationIssueSummary = {
+  id: string | null
+  issues: unknown[]
+}
+
+type FeedPreviewValidation = {
+  matchedTotal: number
+  validatedTotal: number
+  invalidTotal: number
+  candidateLimit?: number
+  invalidSummaries: FeedValidationIssueSummary[]
+  showingFallbackCandidates?: boolean
+}
+
 type FeedPreviewState = {
   feed: FeedSummary
   total: number
   items: VehicleSummary[]
+  validation?: FeedPreviewValidation
 }
 
 const toast = useToast()
@@ -174,6 +189,94 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+function formatCount(value: number | null | undefined) {
+  return new Intl.NumberFormat('en-AU').format(Number(value) || 0)
+}
+
+function feedPlatformLabel(platform: FeedSummary['platform']) {
+  return platform === 'google' ? 'Google' : 'Facebook'
+}
+
+function feedValidationLabel(platform: FeedSummary['platform']) {
+  return platform === 'google' ? 'Google feed' : 'Facebook catalog'
+}
+
+function previewCountLabel(preview: FeedPreviewState) {
+  if (preview.validation?.showingFallbackCandidates) {
+    return `Showing ${formatCount(preview.items.length)} raw matches of ${formatCount(preview.validation.matchedTotal || preview.total)} matched vehicles.`
+  }
+
+  if (preview.validation && preview.validation.matchedTotal !== preview.validation.validatedTotal) {
+    return `Showing ${formatCount(preview.items.length)} feed-valid vehicles of ${formatCount(preview.validation.matchedTotal)} matched vehicles.`
+  }
+
+  return `Showing ${formatCount(preview.items.length)} of ${formatCount(preview.total)} vehicles.`
+}
+
+function hasPreviewValidationWarning(preview: FeedPreviewState) {
+  const validation = preview.validation
+  return Boolean(validation && validation.matchedTotal > 0 && validation.validatedTotal === 0)
+}
+
+function validationWarningTitle(preview: FeedPreviewState) {
+  const validation = preview.validation
+  if (!validation) return ''
+  return `${formatCount(validation.matchedTotal)} vehicles matched, but 0 currently pass ${feedValidationLabel(preview.feed.platform)} validation`
+}
+
+function validationWarningDescription(preview: FeedPreviewState) {
+  if (preview.validation?.showingFallbackCandidates) {
+    return 'Showing raw matched vehicles below so you can diagnose the feed setup. The live feed may still be empty until the validation issues are fixed.'
+  }
+  return 'The inventory match is working, but the feed output is empty. Check the validation issues and feed field mappings.'
+}
+
+function validationIssueText(issue: unknown): string {
+  if (typeof issue === 'string') return issue
+  if (typeof issue === 'number' || typeof issue === 'boolean') return String(issue)
+  if (issue && typeof issue === 'object') {
+    const value = issue as Record<string, unknown>
+    const field = typeof value.field === 'string' ? value.field : ''
+    const message = typeof value.message === 'string'
+      ? value.message
+      : typeof value.reason === 'string'
+        ? value.reason
+        : ''
+    if (field && message) return `${field}: ${message}`
+    if (message) return message
+    if (field) return field
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return 'Validation issue'
+    }
+  }
+  return 'Validation issue'
+}
+
+function validationSummaryIssues(summary: FeedValidationIssueSummary) {
+  return summary.issues.map(validationIssueText).join(', ')
+}
+
+function visibleValidationSummaries(validation?: FeedPreviewValidation) {
+  return validation?.invalidSummaries.slice(0, 3) || []
+}
+
+function hiddenValidationSummaryCount(validation?: FeedPreviewValidation) {
+  return Math.max(0, (validation?.invalidSummaries.length || 0) - 3)
+}
+
+function emptyPreviewMessage(preview: FeedPreviewState) {
+  if (preview.validation && preview.validation.matchedTotal > 0) {
+    return preview.validation.invalidSummaries.length
+      ? 'No feed-valid vehicles returned. Check the validation issues above.'
+      : 'No feed-valid vehicles returned. The matched inventory is being filtered out by feed validation.'
+  }
+  return preview.total > 0
+    ? 'Vehicles matched this feed, but no preview rows were returned.'
+    : 'No vehicles returned for this feed preview.'
+}
+
 function populateMappingForm() {
   const link = selectedLink.value
   mappingForm.externalOrgId = link?.externalOrgId || ''
@@ -249,14 +352,15 @@ async function previewFeed(feed: FeedSummary) {
   generatedFeedUrl.value = ''
   generatedFeedMeta.value = null
   try {
-    const result = await $fetch<{ ok: boolean, preview: { total: number, items: VehicleSummary[] } }>(
+    const result = await $fetch<{ ok: boolean, preview: { total: number, items: VehicleSummary[], validation?: FeedPreviewValidation } }>(
       `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/preview`,
       { query: { platform: feed.platform, limit: 20, offset: 0, search: feedPreviewSearch.value.trim() || undefined } }
     )
     feedPreview.value = {
       feed,
       total: result.preview.total,
-      items: result.preview.items || []
+      items: result.preview.items || [],
+      ...(result.preview.validation ? { validation: result.preview.validation } : {})
     }
   } catch (error: unknown) {
     toast.add({
@@ -944,11 +1048,11 @@ watch([selectedClientOptionId, links], async () => {
                         Preview: {{ feedPreview.feed.name || feedPreview.feed.id }}
                       </h3>
                       <p class="text-sm text-muted">
-                        Showing {{ feedPreview.items.length }} of {{ feedPreview.total }} vehicles.
+                        {{ previewCountLabel(feedPreview) }}
                       </p>
                     </div>
                     <UBadge color="neutral" variant="subtle">
-                      {{ feedPreview.feed.platform === 'google' ? 'Google' : 'Facebook' }}
+                      {{ feedPlatformLabel(feedPreview.feed.platform) }}
                     </UBadge>
                   </div>
 
@@ -971,11 +1075,53 @@ watch([selectedClientOptionId, links], async () => {
                     </UButton>
                   </div>
 
+                  <UAlert
+                    v-if="hasPreviewValidationWarning(feedPreview)"
+                    icon="i-lucide-triangle-alert"
+                    color="warning"
+                    variant="subtle"
+                    :title="validationWarningTitle(feedPreview)"
+                    :description="validationWarningDescription(feedPreview)"
+                    class="mb-4"
+                  />
+
+                  <div
+                    v-if="visibleValidationSummaries(feedPreview.validation).length"
+                    class="mb-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-3"
+                  >
+                    <div class="mb-2 flex items-center gap-2">
+                      <UIcon name="i-lucide-list-warning" class="size-4 text-warning" />
+                      <p class="text-xs font-semibold uppercase text-warning">
+                        First validation issues
+                      </p>
+                    </div>
+                    <ul class="space-y-2 text-sm">
+                      <li
+                        v-for="summary in visibleValidationSummaries(feedPreview.validation)"
+                        :key="`${summary.id || 'vehicle'}-${validationSummaryIssues(summary)}`"
+                        class="grid gap-1 sm:grid-cols-[10rem_minmax(0,1fr)]"
+                      >
+                        <span class="truncate font-mono text-xs text-muted">
+                          {{ summary.id || 'Vehicle' }}
+                        </span>
+                        <span class="text-default">
+                          {{ validationSummaryIssues(summary) }}
+                        </span>
+                      </li>
+                    </ul>
+                    <p
+                      v-if="hiddenValidationSummaryCount(feedPreview.validation)"
+                      class="mt-2 text-xs text-muted"
+                    >
+                      {{ hiddenValidationSummaryCount(feedPreview.validation) }} more issue summaries returned by the feed platform.
+                    </p>
+                  </div>
+
                   <div
                     v-if="feedPreview.items.length === 0"
                     class="rounded-lg border border-default bg-elevated/40 px-4 py-6 text-center text-sm text-muted"
                   >
-                    No vehicles returned for this feed preview.
+                    {{ emptyPreviewMessage(feedPreview) }}
                   </div>
 
                   <div

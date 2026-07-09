@@ -34,6 +34,26 @@ export interface VehicleSummary {
   image: string | null
 }
 
+export interface FeedValidationIssueSummary {
+  id: string | null
+  issues: unknown[]
+}
+
+export interface FeedPreviewValidation {
+  matchedTotal: number
+  validatedTotal: number
+  invalidTotal: number
+  candidateLimit?: number
+  invalidSummaries: FeedValidationIssueSummary[]
+  showingFallbackCandidates?: boolean
+}
+
+export interface FeedPreviewResult {
+  total: number
+  items: VehicleSummary[]
+  validation?: FeedPreviewValidation
+}
+
 export interface FeedMetrics { inventory: number, active: number, issues: number, fetchedAt: string }
 
 /** Asserted identity passed to the provider on every call (becomes the service-auth headers). */
@@ -57,7 +77,7 @@ export interface FeedProvider {
   label: string
   listFeeds(ctx: FeedProviderContext, link: DealerLink): Promise<FeedSummary[]>
   getFeed(ctx: FeedProviderContext, ref: FeedRef): Promise<FeedDetail>
-  previewFeed(ctx: FeedProviderContext, link: DealerLink, ref: FeedRef, opts: { limit?: number, offset?: number, search?: string }): Promise<{ total: number, items: VehicleSummary[] }>
+  previewFeed(ctx: FeedProviderContext, link: DealerLink, ref: FeedRef, opts: { limit?: number, offset?: number, search?: string }): Promise<FeedPreviewResult>
   searchInventory(ctx: FeedProviderContext, link: DealerLink, filters: Record<string, unknown>): Promise<{ total: number, items: VehicleSummary[] }>
   createFeed(ctx: FeedProviderContext, link: DealerLink, spec: CreateFeedSpec): Promise<FeedRef>
   updateFeed(ctx: FeedProviderContext, ref: FeedRef, patch: Record<string, unknown>): Promise<void>
