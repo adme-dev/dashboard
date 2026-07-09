@@ -7,6 +7,17 @@ type AgencyClient = {
   isActive?: boolean
 }
 
+type DealerFeedClientOption = {
+  id: string
+  label: string
+  name: string
+  source: 'agency' | 'social'
+  clientId: string | null
+  isActive: boolean
+  socialConnectionIds: string[]
+  socialPlatforms: string[]
+}
+
 type DealerFeedLink = {
   id: string
   clientId: string
@@ -29,7 +40,7 @@ type FeedSummary = {
 
 const toast = useToast()
 
-const selectedClientId = ref('')
+const selectedClientOptionId = ref('')
 const feedRows = ref<FeedSummary[]>([])
 const feedsPending = ref(false)
 const feedsError = ref('')
@@ -48,9 +59,13 @@ const feedForm = reactive({
   platform: 'google' as 'google' | 'facebook'
 })
 
-const { data: clientsData, pending: clientsPending } = useFetch<AgencyClient[]>('/api/agency/clients', {
+const {
+  data: clientOptionsData,
+  pending: clientsPending,
+  refresh: refreshClientOptions
+} = useFetch<{ items: DealerFeedClientOption[] }>('/api/admin/dealer-feed-client-options', {
   server: false,
-  default: () => []
+  default: () => ({ items: [] })
 })
 
 const {
@@ -63,15 +78,27 @@ const {
   default: () => ({ ok: false, links: [] })
 })
 
-const clients = computed(() => clientsData.value || [])
+const clientRows = computed(() => clientOptionsData.value?.items || [])
 const links = computed(() => linksData.value?.links || [])
 
 const clientOptions = computed(() =>
-  clients.value.map(client => ({ label: client.name, value: client.id }))
+  clientRows.value.map(client => ({ label: client.label, value: client.id }))
 )
 
-const selectedClient = computed(() =>
-  clients.value.find(client => client.id === selectedClientId.value) || null
+const selectedClientOption = computed(() =>
+  clientRows.value.find(client => client.id === selectedClientOptionId.value) || null
+)
+
+const selectedClientId = computed(() => selectedClientOption.value?.clientId || '')
+
+const selectedClient = computed<AgencyClient | null>(() =>
+  selectedClientOption.value
+    ? {
+        id: selectedClientOption.value.clientId || selectedClientOption.value.socialConnectionIds.join(', '),
+        name: selectedClientOption.value.name,
+        isActive: selectedClientOption.value.isActive
+      }
+    : null
 )
 
 const selectedLink = computed(() =>
@@ -80,7 +107,10 @@ const selectedLink = computed(() =>
 
 const linkedClientIds = computed(() => new Set(links.value.map(link => link.clientId)))
 const unmappedClientCount = computed(() =>
-  clients.value.filter(client => !linkedClientIds.value.has(client.id)).length
+  clientRows.value.filter((client) => {
+    if (client.source === 'social') return true
+    return client.clientId ? !linkedClientIds.value.has(client.clientId) : true
+  }).length
 )
 
 const stats = computed(() => [
@@ -118,6 +148,47 @@ function populateMappingForm() {
   mappingForm.defaultFeedIdsText = link?.defaultFeedIds.join(', ') || ''
 }
 
+async function createOrFindAgencyClient(option: DealerFeedClientOption): Promise<AgencyClient> {
+  try {
+    return await $fetch<AgencyClient>('/api/agency/clients', {
+      method: 'POST',
+      body: {
+        name: option.name,
+        billingType: 'project',
+        notes: `Created from Dealer Feeds for connected ad accounts: ${option.socialPlatforms.join(', ')}`
+      }
+    })
+  } catch (error: unknown) {
+    if (!/already exists|409/.test(errorMessage(error, ''))) throw error
+
+    await refreshClientOptions()
+    const existing = clientRows.value.find(client =>
+      client.source === 'agency' && client.name.toLowerCase() === option.name.toLowerCase()
+    )
+    if (existing?.clientId) return { id: existing.clientId, name: existing.name, isActive: existing.isActive }
+    throw error
+  }
+}
+
+async function ensureAgencyClientForSelection(): Promise<string> {
+  const option = selectedClientOption.value
+  if (!option) throw new Error('Select a client first')
+  if (option.clientId) return option.clientId
+
+  const client = await createOrFindAgencyClient(option)
+
+  await Promise.all(option.socialConnectionIds.map(connectionId =>
+    $fetch('/api/agency/social/spend/map-account', {
+      method: 'POST',
+      body: { connectionId, clientId: client.id }
+    })
+  ))
+
+  await refreshClientOptions()
+  selectedClientOptionId.value = `client:${client.id}`
+  return client.id
+}
+
 async function loadFeeds() {
   feedRows.value = []
   feedsError.value = ''
@@ -136,7 +207,7 @@ async function loadFeeds() {
 }
 
 async function saveMapping() {
-  if (!selectedClientId.value) {
+  if (!selectedClientOption.value) {
     toast.add({ title: 'Select a client first', color: 'error' })
     return
   }
@@ -147,10 +218,11 @@ async function saveMapping() {
 
   savingLink.value = true
   try {
+    const clientId = await ensureAgencyClientForSelection()
     await $fetch('/api/admin/dealer-feed-links', {
       method: 'POST',
       body: {
-        clientId: selectedClientId.value,
+        clientId,
         externalOrgId: mappingForm.externalOrgId.trim(),
         sellerRefs: parseList(mappingForm.sellerRefsText),
         defaultFeedIds: parseList(mappingForm.defaultFeedIdsText)
@@ -226,6 +298,7 @@ async function createFeed() {
 }
 
 async function refreshView() {
+  await refreshClientOptions()
   await refreshLinks()
   await loadFeeds()
 }
@@ -257,13 +330,13 @@ const feedColumns = [
   { accessorKey: 'isActive', header: 'Status' }
 ]
 
-watch(clients, (rows) => {
-  if (!selectedClientId.value && rows.length > 0) {
-    selectedClientId.value = rows[0].id
+watch(clientRows, (rows) => {
+  if (!selectedClientOptionId.value && rows.length > 0) {
+    selectedClientOptionId.value = rows[0].id
   }
 }, { immediate: true })
 
-watch([selectedClientId, links], async () => {
+watch([selectedClientOptionId, links], async () => {
   populateMappingForm()
   await loadFeeds()
 }, { immediate: true })
@@ -338,7 +411,7 @@ watch([selectedClientId, links], async () => {
           <div class="space-y-4 p-5">
             <UFormField label="Client">
               <USelectMenu
-                v-model="selectedClientId"
+                v-model="selectedClientOptionId"
                 :items="clientOptions"
                 value-key="value"
                 :loading="clientsPending"
@@ -459,7 +532,7 @@ watch([selectedClientId, links], async () => {
                 <button
                   type="button"
                   class="text-left text-sm font-medium text-primary hover:underline"
-                  @click="selectedClientId = row.original.clientId"
+                  @click="selectedClientOptionId = `client:${row.original.clientId}`"
                 >
                   {{ row.original.clientName || row.original.clientId }}
                 </button>
@@ -498,7 +571,7 @@ watch([selectedClientId, links], async () => {
                   variant="ghost"
                   color="neutral"
                   size="xs"
-                  @click="selectedClientId = row.original.clientId"
+                  @click="selectedClientOptionId = `client:${row.original.clientId}`"
                 />
               </template>
             </UTable>
