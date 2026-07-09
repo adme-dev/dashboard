@@ -130,6 +130,13 @@ const parseList = (value: string) =>
     .map(item => item.trim())
     .filter(Boolean)
 
+const slugifySellerRef = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
 function errorMessage(error: unknown, fallback: string) {
   if (error && typeof error === 'object') {
     const maybeError = error as {
@@ -144,7 +151,7 @@ function errorMessage(error: unknown, fallback: string) {
 function populateMappingForm() {
   const link = selectedLink.value
   mappingForm.externalOrgId = link?.externalOrgId || ''
-  mappingForm.sellerRefsText = link?.sellerRefs.join(', ') || ''
+  mappingForm.sellerRefsText = link?.sellerRefs.join(', ') || (selectedClient.value ? slugifySellerRef(selectedClient.value.name) : '')
   mappingForm.defaultFeedIdsText = link?.defaultFeedIds.join(', ') || ''
 }
 
@@ -211,10 +218,6 @@ async function saveMapping() {
     toast.add({ title: 'Select a client first', color: 'error' })
     return
   }
-  if (!mappingForm.externalOrgId.trim()) {
-    toast.add({ title: 'External org ID is required', color: 'error' })
-    return
-  }
 
   savingLink.value = true
   try {
@@ -223,12 +226,13 @@ async function saveMapping() {
       method: 'POST',
       body: {
         clientId,
-        externalOrgId: mappingForm.externalOrgId.trim(),
+        externalOrgId: mappingForm.externalOrgId.trim() || undefined,
         sellerRefs: parseList(mappingForm.sellerRefsText),
-        defaultFeedIds: parseList(mappingForm.defaultFeedIdsText)
+        defaultFeedIds: parseList(mappingForm.defaultFeedIdsText),
+        platforms: selectedClientOption.value.socialPlatforms
       }
     })
-    toast.add({ title: 'Dealer feed mapping saved', color: 'success' })
+    toast.add({ title: 'Feed workspace ready', color: 'success' })
     await refreshLinks()
     populateMappingForm()
     await loadFeeds()
@@ -316,7 +320,7 @@ const formatDate = (value: string) => {
 
 const linkColumns = [
   { accessorKey: 'clientName', header: 'Client' },
-  { accessorKey: 'externalOrgId', header: 'Social org' },
+  { accessorKey: 'externalOrgId', header: 'Feed workspace' },
   { accessorKey: 'sellerRefs', header: 'Seller refs' },
   { accessorKey: 'defaultFeedIds', header: 'Default feeds' },
   { accessorKey: 'updatedAt', header: 'Updated' },
@@ -347,7 +351,7 @@ watch([selectedClientOptionId, links], async () => {
     <template #header>
       <UDashboardNavbar
         title="Dealer Feeds"
-        description="Connect XeroFlow clients to social-dashboard inventory feeds for Google and Facebook catalogs."
+        description="Set up dealership inventory feeds for Google and Facebook catalogs."
       >
         <template #leading>
           <UDashboardSidebarCollapse />
@@ -401,10 +405,10 @@ watch([selectedClientOptionId, links], async () => {
         <section class="rounded-lg border border-default bg-default">
           <div class="border-b border-default px-5 py-4">
             <h2 class="text-base font-semibold text-highlighted">
-              Client mapping
+              Feed setup
             </h2>
             <p class="mt-1 text-sm text-muted">
-              Map one XeroFlow client to one social-dashboard organization.
+              Select a dealership, confirm its inventory seller refs, then create feeds.
             </p>
           </div>
 
@@ -444,30 +448,52 @@ watch([selectedClientOptionId, links], async () => {
               </div>
             </div>
 
-            <UFormField label="Social-dashboard org ID" required>
-              <UInput
-                v-model="mappingForm.externalOrgId"
-                placeholder="00000000-0000-4000-8000-000000000001"
-                class="w-full"
-              />
-            </UFormField>
+            <div class="rounded-lg border border-default bg-elevated/40 px-3 py-3">
+              <div class="flex items-start gap-3">
+                <UIcon
+                  :name="selectedLink ? 'i-lucide-check-circle-2' : 'i-lucide-wand-sparkles'"
+                  :class="selectedLink ? 'text-success' : 'text-primary'"
+                  class="mt-0.5 size-5 shrink-0"
+                />
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-highlighted">
+                    {{ selectedLink ? 'Feed workspace connected' : 'Feed workspace will be created automatically' }}
+                  </p>
+                  <p class="mt-1 text-sm text-muted">
+                    {{ selectedLink ? 'This client is linked to social-dashboard and can list or create catalog feeds.' : 'No social-dashboard org ID is needed. Saving will create or reuse the matching workspace in social-dashboard.' }}
+                  </p>
+                  <p
+                    v-if="selectedLink"
+                    class="mt-2 break-all font-mono text-xs text-muted"
+                  >
+                    {{ selectedLink.externalOrgId }}
+                  </p>
+                </div>
+              </div>
+            </div>
 
-            <UFormField label="Seller refs">
+            <UFormField label="Inventory seller refs">
               <UTextarea
                 v-model="mappingForm.sellerRefsText"
-                placeholder="dealer-seller-id, dealership-slug"
+                placeholder="Auto-filled from the dealership name"
                 :rows="3"
                 class="w-full"
               />
+              <template #help>
+                Used to keep inventory scoped to this dealership. Edit only if the inventory slug differs.
+              </template>
             </UFormField>
 
-            <UFormField label="Default feed IDs">
+            <UFormField label="Existing feed IDs">
               <UTextarea
                 v-model="mappingForm.defaultFeedIdsText"
-                placeholder="Optional social-dashboard feed IDs"
+                placeholder="Optional existing feed IDs"
                 :rows="2"
                 class="w-full"
               />
+              <template #help>
+                Optional. Leave blank when setting up a new dealership feed workspace.
+              </template>
             </UFormField>
 
             <div class="flex flex-wrap items-center gap-2">
@@ -477,7 +503,7 @@ watch([selectedClientOptionId, links], async () => {
                 :loading="savingLink"
                 @click="saveMapping"
               >
-                Save mapping
+                {{ selectedLink ? 'Update setup' : 'Set up feeds' }}
               </UButton>
               <UButton
                 v-if="selectedLink"
@@ -502,7 +528,7 @@ watch([selectedClientOptionId, links], async () => {
                     Connected mappings
                   </h2>
                   <p class="mt-1 text-sm text-muted">
-                    Active XeroFlow to social-dashboard feed ownership links.
+                    Active dealership feed workspaces.
                   </p>
                 </div>
                 <UBadge color="neutral" variant="subtle">
@@ -519,7 +545,7 @@ watch([selectedClientOptionId, links], async () => {
               v-else-if="links.length === 0"
               icon="i-lucide-link"
               title="No dealer feed mappings"
-              description="Select a client and save its social-dashboard organization to make feeds visible here."
+              description="Select a client and set up feeds to make its workspace visible here."
               class="py-12"
             />
 
@@ -605,7 +631,7 @@ watch([selectedClientOptionId, links], async () => {
                 color="warning"
                 variant="subtle"
                 title="No mapping for this client"
-                description="Save the client mapping first, then this panel can list and create feeds through social-dashboard."
+                description="Set up feeds first, then this panel can list and create Google or Facebook catalog feeds."
               />
             </div>
 
