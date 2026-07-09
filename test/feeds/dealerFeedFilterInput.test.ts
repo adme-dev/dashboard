@@ -39,6 +39,23 @@ describe('normalizeDealerFeedFilters', () => {
     expect(out.kms).toEqual({ min: 10000, max: 25000 })
   })
 
+  it('keeps the explicit saleable inventory flag and drops attempts to disable it', () => {
+    expect(normalizeDealerFeedFilters({
+      makes: ['Hyundai'],
+      onlyActive: true,
+    })).toEqual({
+      makes: ['Hyundai'],
+      onlyActive: true,
+    })
+
+    expect(normalizeDealerFeedFilters({
+      makes: ['Hyundai'],
+      onlyActive: false,
+    })).toEqual({
+      makes: ['Hyundai'],
+    })
+  })
+
   it('returns an empty filter object for malformed input', () => {
     expect(normalizeDealerFeedFilters(null)).toEqual({})
     expect(normalizeDealerFeedFilters(['condition'])).toEqual({})

@@ -80,6 +80,13 @@ type VehicleSummary = {
 }
 
 type StockListMode = 'off' | 'include' | 'exclude'
+type FeedPresetId = 'all-saleable' | 'new' | 'demo' | 'used' | 'stock-list'
+
+type FeedPreset = {
+  id: FeedPresetId
+  label: string
+  icon: string
+}
 
 type FeedValidationIssueSummary = {
   id: string | null
@@ -278,6 +285,14 @@ const stockListModeOptions = [
   { label: 'No stock list', value: 'off' },
   { label: 'Only listed cars', value: 'include' },
   { label: 'Exclude listed cars', value: 'exclude' }
+]
+
+const feedPresets: FeedPreset[] = [
+  { id: 'all-saleable', label: 'All saleable', icon: 'i-lucide-shield-check' },
+  { id: 'new', label: 'New cars', icon: 'i-lucide-sparkles' },
+  { id: 'demo', label: 'Demo cars', icon: 'i-lucide-gauge' },
+  { id: 'used', label: 'Used cars', icon: 'i-lucide-refresh-cw' },
+  { id: 'stock-list', label: 'CSV stock list', icon: 'i-lucide-file-spreadsheet' }
 ]
 
 const feedWorkbookHandoffItems = [
@@ -492,6 +507,35 @@ const activeFilterChips = computed(() => {
   return chips
 })
 
+function hasRangeFilter(minValue: number | string | null, maxValue: number | string | null) {
+  return finiteFormNumber(minValue) !== undefined || finiteFormNumber(maxValue) !== undefined
+}
+
+function hasTextOrRangeFilters() {
+  return Boolean(
+    parseList(feedForm.makeText).length
+    || parseList(feedForm.modelText).length
+    || feedForm.search.trim()
+    || hasRangeFilter(feedForm.yearMin, feedForm.yearMax)
+    || hasRangeFilter(feedForm.priceMin, feedForm.priceMax)
+    || hasRangeFilter(feedForm.kmsMin, feedForm.kmsMax)
+  )
+}
+
+function singleConditionPreset(value: string) {
+  return feedForm.condition.length === 1 && feedForm.condition[0] === value
+}
+
+const selectedFeedPresetId = computed<FeedPresetId | 'custom'>(() => {
+  if (feedForm.stockListMode === 'include') return 'stock-list'
+  if (feedForm.stockListMode !== 'off' || hasTextOrRangeFilters()) return 'custom'
+  if (singleConditionPreset('New')) return 'new'
+  if (singleConditionPreset('Demo')) return 'demo'
+  if (singleConditionPreset('Used')) return 'used'
+  if (feedForm.condition.length === 0) return 'all-saleable'
+  return 'custom'
+})
+
 function conditionSelected(value: string) {
   return feedForm.condition.includes(value)
 }
@@ -515,6 +559,20 @@ function clearFeedFilters() {
   feedForm.kmsMax = null
   feedForm.stockListMode = 'off'
   feedForm.stockRefsText = ''
+}
+
+function applyFeedPreset(preset: FeedPreset) {
+  const existingStockRefs = feedForm.stockRefsText
+
+  clearFeedFilters()
+
+  if (preset.id === 'new') feedForm.condition = ['New']
+  if (preset.id === 'demo') feedForm.condition = ['Demo']
+  if (preset.id === 'used') feedForm.condition = ['Used']
+  if (preset.id === 'stock-list') {
+    feedForm.stockListMode = 'include'
+    feedForm.stockRefsText = existingStockRefs
+  }
 }
 
 async function handleStockListFile(event: Event) {
@@ -1647,6 +1705,37 @@ watch(debouncedDraftPreviewSignature, () => {
                   </div>
 
                   <div class="rounded-lg border border-default bg-elevated/30 p-4">
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                      <div class="flex items-center gap-2">
+                        <UIcon name="i-lucide-layout-template" class="size-4 text-primary" />
+                        <h3 class="text-sm font-semibold text-highlighted">
+                          Campaign preset
+                        </h3>
+                      </div>
+                      <UBadge
+                        color="success"
+                        variant="subtle"
+                        icon="i-lucide-lock"
+                      >
+                        Saleable only
+                      </UBadge>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 md:grid-cols-5">
+                      <UButton
+                        v-for="preset in feedPresets"
+                        :key="preset.id"
+                        :icon="preset.icon"
+                        :color="selectedFeedPresetId === preset.id ? 'primary' : 'neutral'"
+                        :variant="selectedFeedPresetId === preset.id ? 'solid' : 'outline'"
+                        class="justify-center"
+                        @click="applyFeedPreset(preset)"
+                      >
+                        {{ preset.label }}
+                      </UButton>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border border-default bg-elevated/30 p-4">
                     <div class="mb-3 flex items-center gap-2">
                       <UIcon name="i-lucide-filter" class="size-4 text-primary" />
                       <h3 class="text-sm font-semibold text-highlighted">
@@ -1857,11 +1946,11 @@ watch(debouncedDraftPreviewSignature, () => {
                       </div>
                       <div class="mt-3 flex flex-wrap gap-2">
                         <UBadge
-                          v-if="!activeFilterChips.length"
-                          color="neutral"
+                          color="success"
                           variant="subtle"
+                          icon="i-lucide-lock"
                         >
-                          All saleable inventory
+                          Saleable inventory only
                         </UBadge>
                         <UBadge
                           v-for="chip in activeFilterChips"
@@ -1870,6 +1959,13 @@ watch(debouncedDraftPreviewSignature, () => {
                           variant="subtle"
                         >
                           {{ chip }}
+                        </UBadge>
+                        <UBadge
+                          v-if="!activeFilterChips.length"
+                          color="neutral"
+                          variant="subtle"
+                        >
+                          No campaign filter
                         </UBadge>
                       </div>
                     </div>
