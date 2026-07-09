@@ -67,7 +67,7 @@ describe('socialDashboard provider', () => {
       validateForFeed: {
         feedType: 'facebook',
         mappings: { rules: [] },
-        platformSettings: { catalog_id: 'cat-1' },
+        platformSettings: { catalog_id: 'cat-1', feed_name: 'Blood Hyundai' },
         source: { type: 'meilisearch', url: 'https://inventory.example' }
       }
     })
@@ -153,7 +153,7 @@ describe('socialDashboard provider', () => {
       validateForFeed: {
         feedType: 'facebook',
         mappings: { rules: [] },
-        platformSettings: { catalog_id: 'cat-1' },
+        platformSettings: { catalog_id: 'cat-1', feed_name: 'Blood Hyundai' },
         source: { type: 'meilisearch' }
       }
     })

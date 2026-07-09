@@ -3,6 +3,7 @@ import { getDealerLink, linkToContext } from '~~/server/utils/feeds/dealerLinks'
 import { getSocialDashboardClient, isDealerFeedsEnabled } from '~~/server/utils/feeds/config'
 import { getFeedProvider } from '~~/server/utils/feeds/registry'
 import { cloudflareRuntimeEnv, mergedRuntimeEnv } from '~~/server/utils/feeds/serverContext'
+import { normalizeDealerFeedFilters } from '~~/server/utils/feeds/filterInput'
 import type { FeedPlatform } from '~~/server/utils/feeds/types'
 
 function parsePlatform(value: unknown): FeedPlatform {
@@ -39,7 +40,7 @@ export default defineEventHandler(async (event) => {
   const feed = await provider.createFeed(linkToContext(link, user.email), link, {
     name,
     platform: parsePlatform(body.platform),
-    filters: bodyObject(body.filters),
+    filters: normalizeDealerFeedFilters(body.filters),
     mappings: bodyObject(body.mappings),
     platformSettings: bodyObject(body.platformSettings),
     source: body.source && typeof body.source === 'object' && !Array.isArray(body.source) ? body.source : undefined,

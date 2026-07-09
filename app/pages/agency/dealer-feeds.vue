@@ -50,6 +50,8 @@ type VehicleSummary = {
   image: string | null
 }
 
+type StockListMode = 'off' | 'include' | 'exclude'
+
 type FeedValidationIssueSummary = {
   id: string | null
   issues: unknown[]
@@ -84,6 +86,7 @@ const feedPreviewSearch = ref('')
 const generatedFeedUrl = ref('')
 const generatedFeedMeta = ref<{ feedName: string, itemCount: number } | null>(null)
 const generatedFeedUrlInput = ref<HTMLInputElement | null>(null)
+const stockListFileInput = ref<HTMLInputElement | null>(null)
 const savingLink = ref(false)
 const savingFeed = ref(false)
 const deletingLink = ref(false)
@@ -97,7 +100,19 @@ const mappingForm = reactive({
 const feedForm = reactive({
   name: '',
   platform: 'google' as 'google' | 'facebook',
-  storeCode: ''
+  storeCode: '',
+  condition: [] as string[],
+  makeText: '',
+  modelText: '',
+  search: '',
+  yearMin: null as number | null,
+  yearMax: null as number | null,
+  priceMin: null as number | null,
+  priceMax: null as number | null,
+  kmsMin: null as number | null,
+  kmsMax: null as number | null,
+  stockListMode: 'off' as StockListMode,
+  stockRefsText: ''
 })
 
 const {
@@ -165,6 +180,18 @@ const platformOptions = [
   { label: 'Facebook Catalog', value: 'facebook' }
 ]
 
+const conditionOptions = [
+  { label: 'New', value: 'New' },
+  { label: 'Demo', value: 'Demo' },
+  { label: 'Used', value: 'Used' }
+]
+
+const stockListModeOptions = [
+  { label: 'No stock list', value: 'off' },
+  { label: 'Only listed cars', value: 'include' },
+  { label: 'Exclude listed cars', value: 'exclude' }
+]
+
 const parseList = (value: string) =>
   value
     .split(/[\n,]/)
@@ -177,6 +204,198 @@ const slugifySellerRef = (value: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+
+function parseCsvRows(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let inQuotes = false
+  let i = 0
+  const value = text.slice(0, 1_000_000)
+
+  while (i < value.length) {
+    const ch = value[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (value[i + 1] === '"') {
+          cell += '"'
+          i += 2
+          continue
+        }
+        inQuotes = false
+        i += 1
+        continue
+      }
+      cell += ch
+      i += 1
+      continue
+    }
+    if (ch === '"') {
+      inQuotes = true
+      i += 1
+      continue
+    }
+    if (ch === ',') {
+      row.push(cell)
+      cell = ''
+      i += 1
+      continue
+    }
+    if (ch === '\r') {
+      i += 1
+      continue
+    }
+    if (ch === '\n') {
+      row.push(cell)
+      if (row.some(part => part.trim())) rows.push(row)
+      row = []
+      cell = ''
+      i += 1
+      continue
+    }
+    cell += ch
+    i += 1
+  }
+
+  row.push(cell)
+  if (row.some(part => part.trim())) rows.push(row)
+  return rows
+}
+
+function normalizeCsvHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+function stockRefsFromText(value: string): string[] {
+  const rows = parseCsvRows(value)
+  if (!rows.length) return []
+
+  const stockHeaders = new Set([
+    'id',
+    'vehicle_id',
+    'vehicleid',
+    'stock',
+    'stock_no',
+    'stock_num',
+    'stock_number',
+    'stocknumber',
+    'stock_id',
+    'vin'
+  ])
+  const headers = rows[0].map(normalizeCsvHeader)
+  const headerIndexes = headers
+    .map((header, index) => stockHeaders.has(header) ? index : -1)
+    .filter(index => index >= 0)
+  const indexes = headerIndexes.length ? headerIndexes : [0]
+  const dataRows = headerIndexes.length ? rows.slice(1) : rows
+
+  return Array.from(new Set(
+    dataRows
+      .slice(0, 5000)
+      .flatMap(row => indexes.map(index => row[index] || ''))
+      .map(ref => ref.trim())
+      .filter(Boolean)
+  ))
+}
+
+function finiteFormNumber(value: number | string | null): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function addRangeFilter(filters: Record<string, unknown>, key: string, minValue: number | string | null, maxValue: number | string | null) {
+  const min = finiteFormNumber(minValue)
+  const max = finiteFormNumber(maxValue)
+  if (min === undefined && max === undefined) return
+  filters[key] = {
+    ...(min !== undefined ? { min } : {}),
+    ...(max !== undefined ? { max } : {})
+  }
+}
+
+function buildFeedFilters(): Record<string, unknown> {
+  const filters: Record<string, unknown> = {}
+  const conditions = Array.from(new Set(feedForm.condition.map(String).map(item => item.trim()).filter(Boolean)))
+  const makes = parseList(feedForm.makeText)
+  const models = parseList(feedForm.modelText)
+  const stockRefs = stockRefsFromText(feedForm.stockRefsText)
+
+  if (conditions.length) filters.condition = conditions
+  if (makes.length) filters.makes = makes
+  if (models.length) filters.models = models
+  if (feedForm.search.trim()) filters.search = feedForm.search.trim()
+  addRangeFilter(filters, 'years', feedForm.yearMin, feedForm.yearMax)
+  addRangeFilter(filters, 'price', feedForm.priceMin, feedForm.priceMax)
+  addRangeFilter(filters, 'kms', feedForm.kmsMin, feedForm.kmsMax)
+
+  if (feedForm.stockListMode === 'include' && stockRefs.length) filters.includeIds = stockRefs
+  if (feedForm.stockListMode === 'exclude' && stockRefs.length) filters.excludeIds = stockRefs
+
+  return filters
+}
+
+const stockRefCount = computed(() => stockRefsFromText(feedForm.stockRefsText).length)
+
+async function handleStockListFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  try {
+    if (file.size > 1_000_000) {
+      toast.add({
+        title: 'CSV is too large',
+        description: 'Upload a stock list under 1 MB.',
+        color: 'error'
+      })
+      return
+    }
+
+    const refs = stockRefsFromText(await file.text())
+    if (!refs.length) {
+      toast.add({
+        title: 'No stock refs found',
+        description: 'Use a stock_number, stock, vin, vehicle_id, or id column.',
+        color: 'error'
+      })
+      return
+    }
+
+    feedForm.stockRefsText = refs.join('\n')
+    if (feedForm.stockListMode === 'off') feedForm.stockListMode = 'include'
+    toast.add({
+      title: 'Stock list loaded',
+      description: `${formatCount(refs.length)} stock/VIN refs ready for this feed.`,
+      color: 'success'
+    })
+  } catch (error: unknown) {
+    toast.add({
+      title: 'CSV could not be read',
+      description: errorMessage(error, 'Please try another CSV file.'),
+      color: 'error'
+    })
+  } finally {
+    input.value = ''
+  }
+}
+
+function resetFeedForm() {
+  feedForm.name = ''
+  feedForm.storeCode = ''
+  feedForm.condition = []
+  feedForm.makeText = ''
+  feedForm.modelText = ''
+  feedForm.search = ''
+  feedForm.yearMin = null
+  feedForm.yearMax = null
+  feedForm.priceMin = null
+  feedForm.priceMax = null
+  feedForm.kmsMin = null
+  feedForm.kmsMax = null
+  feedForm.stockListMode = 'off'
+  feedForm.stockRefsText = ''
+}
 
 function errorMessage(error: unknown, fallback: string) {
   if (error && typeof error === 'object') {
@@ -499,6 +718,10 @@ async function createFeed() {
     toast.add({ title: 'Feed name is required', color: 'error' })
     return
   }
+  if (feedForm.stockListMode !== 'off' && stockRefCount.value === 0) {
+    toast.add({ title: 'Stock list is empty', color: 'error' })
+    return
+  }
 
   savingFeed.value = true
   try {
@@ -507,14 +730,14 @@ async function createFeed() {
       body: {
         name: feedForm.name.trim(),
         platform: feedForm.platform,
+        filters: buildFeedFilters(),
         platformSettings: feedForm.platform === 'google' && feedForm.storeCode.trim()
           ? { store_code: feedForm.storeCode.trim() }
           : {}
       }
     })
     toast.add({ title: 'Feed create request sent', color: 'success' })
-    feedForm.name = ''
-    feedForm.storeCode = ''
+    resetFeedForm()
     await loadFeeds()
   } catch (error: unknown) {
     toast.add({
@@ -864,35 +1087,169 @@ watch([selectedClientOptionId, links], async () => {
               </div>
 
               <template v-else>
-                <div class="grid grid-cols-1 gap-3 border-b border-default p-5 lg:grid-cols-[minmax(0,1fr)_180px_180px_auto]">
-                  <UFormField label="Feed name">
-                    <UInput
-                      v-model="feedForm.name"
-                      placeholder="Primary inventory feed"
-                      class="w-full"
-                    />
-                  </UFormField>
-                  <UFormField label="Platform">
-                    <USelect
-                      v-model="feedForm.platform"
-                      :items="platformOptions"
-                      value-key="value"
-                      class="w-full"
-                    />
-                  </UFormField>
-                  <UFormField label="Store code">
-                    <UInput
-                      v-model="feedForm.storeCode"
-                      placeholder="Google only"
-                      :disabled="feedForm.platform !== 'google'"
-                      class="w-full"
-                    />
-                  </UFormField>
-                  <div class="flex items-end">
+                <div class="space-y-5 border-b border-default p-5">
+                  <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+                    <UFormField label="Feed name">
+                      <UInput
+                        v-model="feedForm.name"
+                        placeholder="Primary inventory feed"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Platform">
+                      <USelect
+                        v-model="feedForm.platform"
+                        :items="platformOptions"
+                        value-key="value"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Store code">
+                      <UInput
+                        v-model="feedForm.storeCode"
+                        placeholder="Google only"
+                        :disabled="feedForm.platform !== 'google'"
+                        class="w-full"
+                      />
+                    </UFormField>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                    <UFormField label="Condition">
+                      <USelectMenu
+                        v-model="feedForm.condition"
+                        :items="conditionOptions"
+                        value-key="value"
+                        multiple
+                        placeholder="All saleable vehicles"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Make">
+                      <UInput
+                        v-model="feedForm.makeText"
+                        placeholder="Hyundai, Kia"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Model">
+                      <UInput
+                        v-model="feedForm.modelText"
+                        placeholder="Tucson, i30"
+                        class="w-full"
+                      />
+                    </UFormField>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_repeat(6,minmax(7rem,1fr))]">
+                    <UFormField label="Title keywords">
+                      <UInput
+                        v-model="feedForm.search"
+                        icon="i-lucide-search"
+                        placeholder="hybrid, runout, SUV"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Year from">
+                      <UInput
+                        v-model.number="feedForm.yearMin"
+                        type="number"
+                        min="1900"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Year to">
+                      <UInput
+                        v-model.number="feedForm.yearMax"
+                        type="number"
+                        min="1900"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Price from">
+                      <UInput
+                        v-model.number="feedForm.priceMin"
+                        type="number"
+                        min="0"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Price to">
+                      <UInput
+                        v-model.number="feedForm.priceMax"
+                        type="number"
+                        min="0"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Kms from">
+                      <UInput
+                        v-model.number="feedForm.kmsMin"
+                        type="number"
+                        min="0"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Kms to">
+                      <UInput
+                        v-model.number="feedForm.kmsMax"
+                        type="number"
+                        min="0"
+                        class="w-full"
+                      />
+                    </UFormField>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-3 lg:grid-cols-[180px_minmax(0,1fr)_auto]">
+                    <UFormField label="Stock list">
+                      <USelect
+                        v-model="feedForm.stockListMode"
+                        :items="stockListModeOptions"
+                        value-key="value"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <UFormField label="Stock, VIN or vehicle IDs">
+                      <UTextarea
+                        v-model="feedForm.stockRefsText"
+                        placeholder="BH123, VIN123456789"
+                        :rows="3"
+                        :disabled="feedForm.stockListMode === 'off'"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <div class="flex flex-col justify-end gap-2">
+                      <input
+                        ref="stockListFileInput"
+                        type="file"
+                        accept=".csv,text/csv"
+                        class="hidden"
+                        @change="handleStockListFile"
+                      >
+                      <UButton
+                        icon="i-lucide-upload"
+                        color="neutral"
+                        variant="outline"
+                        class="justify-center"
+                        @click="stockListFileInput?.click()"
+                      >
+                        Upload CSV
+                      </UButton>
+                      <UBadge
+                        color="neutral"
+                        variant="subtle"
+                        class="justify-center"
+                      >
+                        {{ formatCount(stockRefCount) }} refs
+                      </UBadge>
+                    </div>
+                  </div>
+
+                  <div class="flex justify-end">
                     <UButton
                       icon="i-lucide-plus"
                       color="primary"
-                      class="w-full justify-center lg:w-auto"
+                      class="w-full justify-center sm:w-auto"
                       :loading="savingFeed"
                       @click="createFeed"
                     >

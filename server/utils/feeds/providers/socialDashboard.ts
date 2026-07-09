@@ -186,6 +186,15 @@ function normalizePreviewValidation(
   }
 }
 
+function validationPlatformSettings(detail: { name?: string, platformSettings?: Record<string, unknown> }): Record<string, unknown> {
+  const settings = detail.platformSettings && typeof detail.platformSettings === 'object'
+    ? { ...detail.platformSettings }
+    : {}
+  const name = String(detail.name ?? '').trim()
+  if (name && typeof settings.feed_name !== 'string') settings.feed_name = name
+  return settings
+}
+
 function upsertNotAvailable(error: unknown): boolean {
   return /POST \/api\/feeds\/upsert-external → 404/.test(error instanceof Error ? error.message : String(error))
 }
@@ -247,7 +256,7 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
         validateForFeed: {
           feedType: ref.platform,
           mappings: detail.mappings,
-          platformSettings: detail.platformSettings,
+          platformSettings: validationPlatformSettings(detail),
           source: detail.source ?? undefined
         }
       })
