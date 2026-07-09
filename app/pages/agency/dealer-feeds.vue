@@ -159,6 +159,10 @@ const savingLink = ref(false)
 const savingFeed = ref(false)
 const deletingLink = ref(false)
 const startingFeedWorkbook = ref(false)
+const feedWorkbookProjectPending = ref(false)
+const feedWorkbookProjectError = ref('')
+const feedWorkbookProjectRequestId = ref(0)
+const openFeedWorkbookProject = ref<ProjectSummary | null>(null)
 
 const mappingForm = reactive({
   externalOrgId: '',
@@ -274,6 +278,13 @@ const stockListModeOptions = [
   { label: 'No stock list', value: 'off' },
   { label: 'Only listed cars', value: 'include' },
   { label: 'Exclude listed cars', value: 'exclude' }
+]
+
+const feedWorkbookHandoffItems = [
+  { label: 'Intake', description: 'Monday brief, Slack thread, Meta and Google access', icon: 'i-lucide-inbox' },
+  { label: 'Readiness', description: 'Saleable stock, URLs, prices, images, condition and store code', icon: 'i-lucide-shield-check' },
+  { label: 'Build', description: 'Campaign filters, CSV stock list, feed URL and preview QA', icon: 'i-lucide-sliders-horizontal' },
+  { label: 'Launch', description: 'Platform import, approval checkpoint, monitoring and handoff', icon: 'i-lucide-rocket' }
 ]
 
 const parseList = (value: string) =>
@@ -787,6 +798,60 @@ async function findExistingFeedWorkbookProject(clientId: string, projectName: st
   return projects.find(project => isOpenFeedWorkbookProject(project, projectName)) || null
 }
 
+async function loadFeedWorkbookProject() {
+  const option = selectedClientOption.value
+  const clientId = selectedClientId.value
+  const requestId = feedWorkbookProjectRequestId.value + 1
+  feedWorkbookProjectRequestId.value = requestId
+  openFeedWorkbookProject.value = null
+  feedWorkbookProjectError.value = ''
+
+  if (!option || !clientId) {
+    feedWorkbookProjectPending.value = false
+    return
+  }
+
+  feedWorkbookProjectPending.value = true
+  try {
+    const project = await findExistingFeedWorkbookProject(clientId, feedWorkbookProjectName(option.name))
+    if (feedWorkbookProjectRequestId.value !== requestId) return
+    openFeedWorkbookProject.value = project
+  } catch (error: unknown) {
+    if (feedWorkbookProjectRequestId.value !== requestId) return
+    feedWorkbookProjectError.value = errorMessage(error, 'Workbook state could not be loaded')
+  } finally {
+    if (feedWorkbookProjectRequestId.value === requestId) feedWorkbookProjectPending.value = false
+  }
+}
+
+const feedWorkbookStatusLabel = computed(() => {
+  if (feedWorkbookProjectPending.value) return 'Checking'
+  if (!feedWorkbookTemplate.value) return 'Template pending'
+  if (openFeedWorkbookProject.value) return 'Open workbook'
+  return 'Ready to start'
+})
+
+const feedWorkbookStatusColor = computed(() => {
+  if (!feedWorkbookTemplate.value || feedWorkbookProjectError.value) return 'warning'
+  if (openFeedWorkbookProject.value) return 'success'
+  return 'neutral'
+})
+
+const feedWorkbookButtonLabel = computed(() =>
+  openFeedWorkbookProject.value ? 'Open workbook' : 'Start workbook'
+)
+
+const feedWorkbookButtonIcon = computed(() =>
+  openFeedWorkbookProject.value ? 'i-lucide-arrow-up-right' : 'i-lucide-play'
+)
+
+const feedWorkbookClientNote = computed(() => {
+  if (!selectedClientOption.value) return 'Select a client to attach feed setup to a project workflow.'
+  if (openFeedWorkbookProject.value) return openFeedWorkbookProject.value.name
+  if (!selectedClientOption.value.clientId) return 'Starting will create the agency client, map the ad account, and create the workbook.'
+  return feedWorkbookProjectName(selectedClientOption.value.name)
+})
+
 async function startFeedWorkbook() {
   const option = selectedClientOption.value
   if (!option) {
@@ -811,9 +876,14 @@ async function startFeedWorkbook() {
 
   startingFeedWorkbook.value = true
   try {
+    if (openFeedWorkbookProject.value && option.clientId) {
+      await navigateTo(`/agency/projects/${openFeedWorkbookProject.value.id}`)
+      return
+    }
+
     const clientId = await ensureAgencyClientForSelection()
     const projectName = feedWorkbookProjectName(option.name)
-    const existingProject = await findExistingFeedWorkbookProject(clientId, projectName)
+    const existingProject = openFeedWorkbookProject.value || await findExistingFeedWorkbookProject(clientId, projectName)
 
     if (existingProject) {
       toast.add({ title: 'Opening existing Feed Workbook', color: 'success' })
@@ -1096,6 +1166,7 @@ async function createFeed() {
 async function refreshView() {
   await refreshClientOptions()
   await refreshLinks()
+  await loadFeedWorkbookProject()
   await loadFeeds()
 }
 
@@ -1136,6 +1207,10 @@ watch(clientRows, (rows) => {
 watch([selectedClientOptionId, links], async () => {
   populateMappingForm()
   await loadFeeds()
+}, { immediate: true })
+
+watch([selectedClientOptionId, clientRows], () => {
+  void loadFeedWorkbookProject()
 }, { immediate: true })
 
 watch(debouncedDraftPreviewSignature, () => {
@@ -1271,36 +1346,79 @@ watch(debouncedDraftPreviewSignature, () => {
               </div>
 
               <div class="rounded-lg border border-default bg-elevated/40 px-3 py-3">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2">
-                      <UIcon name="i-lucide-list-checks" class="size-5 text-primary" />
-                      <p class="text-sm font-medium text-highlighted">
-                        Feed Workbook
+                <div class="flex flex-col gap-4">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <UIcon name="i-lucide-list-checks" class="size-5 text-primary" />
+                        <p class="text-sm font-medium text-highlighted">
+                          Feed Workbook
+                        </p>
+                        <UBadge
+                          :color="feedWorkbookStatusColor"
+                          variant="subtle"
+                          size="xs"
+                        >
+                          {{ feedWorkbookStatusLabel }}
+                        </UBadge>
+                        <UBadge
+                          v-if="feedWorkbookTemplate"
+                          color="neutral"
+                          variant="subtle"
+                          size="xs"
+                        >
+                          {{ feedWorkbookTemplate.taskCount }} tasks
+                        </UBadge>
+                      </div>
+                      <p class="mt-1 break-words text-sm text-muted">
+                        {{ feedWorkbookClientNote }}
                       </p>
-                      <UBadge
-                        :color="feedWorkbookTemplate ? 'success' : 'warning'"
-                        variant="subtle"
-                        size="xs"
+                      <p
+                        v-if="openFeedWorkbookProject"
+                        class="mt-1 break-all font-mono text-xs text-muted"
                       >
-                        {{ feedWorkbookTemplate ? `${feedWorkbookTemplate.taskCount} tasks` : 'Template pending' }}
-                      </UBadge>
+                        {{ openFeedWorkbookProject.id }}
+                      </p>
                     </div>
-                    <p class="mt-1 text-sm text-muted">
-                      Monday-style project checklist with Slack handoff, readiness fixes, and platform QA.
-                    </p>
+                    <UButton
+                      :icon="feedWorkbookButtonIcon"
+                      color="neutral"
+                      variant="outline"
+                      :disabled="!selectedClientOption || feedWorkbookPending || feedWorkbookProjectPending"
+                      :loading="startingFeedWorkbook || feedWorkbookProjectPending"
+                      class="justify-center"
+                      @click="startFeedWorkbook"
+                    >
+                      {{ feedWorkbookButtonLabel }}
+                    </UButton>
                   </div>
-                  <UButton
-                    icon="i-lucide-play"
-                    color="neutral"
-                    variant="outline"
-                    :disabled="!selectedClientOption || feedWorkbookPending"
-                    :loading="startingFeedWorkbook"
-                    class="justify-center"
-                    @click="startFeedWorkbook"
-                  >
-                    Start workbook
-                  </UButton>
+
+                  <UAlert
+                    v-if="feedWorkbookProjectError"
+                    icon="i-lucide-alert-circle"
+                    color="warning"
+                    variant="subtle"
+                    title="Workbook state unavailable"
+                    :description="feedWorkbookProjectError"
+                  />
+
+                  <div class="grid grid-cols-1 gap-x-4 gap-y-3 border-t border-default pt-3 sm:grid-cols-2">
+                    <div
+                      v-for="item in feedWorkbookHandoffItems"
+                      :key="item.label"
+                      class="flex min-w-0 gap-2"
+                    >
+                      <UIcon :name="item.icon" class="mt-0.5 size-4 shrink-0 text-muted" />
+                      <div class="min-w-0">
+                        <p class="text-xs font-medium text-highlighted">
+                          {{ item.label }}
+                        </p>
+                        <p class="mt-0.5 text-xs leading-5 text-muted">
+                          {{ item.description }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
