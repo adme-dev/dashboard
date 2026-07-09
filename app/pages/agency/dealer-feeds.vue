@@ -324,7 +324,7 @@ watch([selectedClientId, links], async () => {
         :description="linksError.message"
       />
 
-      <div class="grid grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+      <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(480px,0.85fr)_minmax(0,1.35fr)]">
         <section class="rounded-lg border border-default bg-default">
           <div class="border-b border-default px-5 py-4">
             <h2 class="text-base font-semibold text-highlighted">
@@ -343,6 +343,7 @@ watch([selectedClientId, links], async () => {
                 value-key="value"
                 :loading="clientsPending"
                 placeholder="Select client"
+                class="w-full"
               />
             </UFormField>
 
@@ -350,12 +351,12 @@ watch([selectedClientId, links], async () => {
               v-if="selectedClient"
               class="rounded-lg border border-default bg-elevated/40 px-3 py-2"
             >
-              <div class="flex items-center justify-between gap-3">
+              <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <p class="truncate text-sm font-medium text-highlighted">
                     {{ selectedClient.name }}
                   </p>
-                  <p class="truncate text-xs text-muted">
+                  <p class="break-all text-xs text-muted">
                     {{ selectedClient.id }}
                   </p>
                 </div>
@@ -363,6 +364,7 @@ watch([selectedClientId, links], async () => {
                   :color="selectedLink ? 'success' : 'warning'"
                   variant="subtle"
                   size="xs"
+                  class="shrink-0"
                 >
                   {{ selectedLink ? 'Mapped' : 'Unmapped' }}
                 </UBadge>
@@ -373,6 +375,7 @@ watch([selectedClientId, links], async () => {
               <UInput
                 v-model="mappingForm.externalOrgId"
                 placeholder="00000000-0000-4000-8000-000000000001"
+                class="w-full"
               />
             </UFormField>
 
@@ -381,6 +384,7 @@ watch([selectedClientId, links], async () => {
                 v-model="mappingForm.sellerRefsText"
                 placeholder="dealer-seller-id, dealership-slug"
                 :rows="3"
+                class="w-full"
               />
             </UFormField>
 
@@ -389,6 +393,7 @@ watch([selectedClientId, links], async () => {
                 v-model="mappingForm.defaultFeedIdsText"
                 placeholder="Optional social-dashboard feed IDs"
                 :rows="2"
+                class="w-full"
               />
             </UFormField>
 
@@ -537,6 +542,7 @@ watch([selectedClientId, links], async () => {
                   <UInput
                     v-model="feedForm.name"
                     placeholder="Primary inventory feed"
+                    class="w-full"
                   />
                 </UFormField>
                 <UFormField label="Platform">
@@ -544,6 +550,7 @@ watch([selectedClientId, links], async () => {
                     v-model="feedForm.platform"
                     :items="platformOptions"
                     value-key="value"
+                    class="w-full"
                   />
                 </UFormField>
                 <div class="flex items-end">
