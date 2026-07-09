@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const query = getQuery(event)
+  const search = typeof query.search === 'string' ? query.search.trim() : ''
   const provider = getFeedProvider(link.providerId, { socialDashboardClient })
   const preview = await provider.previewFeed(
     linkToContext(link, user.email),
@@ -46,7 +47,8 @@ export default defineEventHandler(async (event) => {
     },
     {
       limit: parseBoundedInt(query.limit, 20, 100),
-      offset: parseBoundedInt(query.offset, 0, 10000)
+      offset: parseBoundedInt(query.offset, 0, 10000),
+      search
     }
   )
 

@@ -2,8 +2,14 @@ import type { SocialDashboardClient } from '../socialDashboardClient'
 import { normalizeFeedSummary, normalizeFeedDetail, normalizeVehicle } from './socialDashboardNormalize'
 import { SOCIAL_DASHBOARD_PROVIDER_ID } from '../constants'
 import type {
-  FeedProvider, FeedProviderContext, DealerLink, FeedRef, CreateFeedSpec, FeedMetrics,
+  FeedProvider, FeedProviderContext, DealerLink, FeedRef, CreateFeedSpec, FeedMetrics
 } from '../types'
+
+type UnknownRecord = Record<string, unknown>
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
 
 function assertOrgMatch(ctx: FeedProviderContext, link: DealerLink) {
   if (ctx.externalOrgId !== link.externalOrgId) {
@@ -33,15 +39,15 @@ export function buildInventoryPreviewFilters(filters: Record<string, unknown>, s
   if (!allowed.length) return base
 
   const allowedSet = new Set(allowed)
-  const rulesets = Array.isArray((base as any).rulesets) ? (base as any).rulesets : null
+  const rulesets = Array.isArray(base.rulesets) ? base.rulesets.filter(isRecord) : null
   if (rulesets) {
-    const scopedRulesets = rulesets.flatMap((rule: any, idx: number) => {
+    const scopedRulesets = rulesets.flatMap((rule, idx: number) => {
       const currentSeller = String(rule?.sellerId ?? '').trim()
       if (currentSeller) return allowedSet.has(currentSeller) ? [{ ...rule }] : []
-      return allowed.map((sellerId) => ({
+      return allowed.map(sellerId => ({
         ...rule,
         id: `${String(rule?.id ?? `ruleset-${idx}`)}:${sellerId}`,
-        sellerId,
+        sellerId
       }))
     })
 
@@ -50,13 +56,13 @@ export function buildInventoryPreviewFilters(filters: Record<string, unknown>, s
       rulesets: scopedRulesets.length
         ? scopedRulesets
         : [{ id: 'no-matching-seller', sellerId: noMatchingSellerId() }],
-      manualIncludeIds: undefined,
+      manualIncludeIds: undefined
     }
   }
 
   const requested = uniqueStrings([
-    ...strings((base as any).sellerIds),
-    ...strings((base as any).dealerIds),
+    ...strings(base.sellerIds),
+    ...strings(base.dealerIds)
   ])
   const scopedSellerIds = requested.length ? requested.filter(id => allowedSet.has(id)) : allowed
   delete base.dealerIds
@@ -64,7 +70,7 @@ export function buildInventoryPreviewFilters(filters: Record<string, unknown>, s
 
   return {
     ...base,
-    sellerIds: scopedSellerIds.length ? scopedSellerIds : [noMatchingSellerId()],
+    sellerIds: scopedSellerIds.length ? scopedSellerIds : [noMatchingSellerId()]
   }
 }
 
@@ -72,22 +78,24 @@ function orgQuery(ctx: FeedProviderContext): string {
   return `?${new URLSearchParams({ orgId: ctx.externalOrgId }).toString()}`
 }
 
-function normalizeGenerateResult(raw: any): { url: string; itemCount: number } {
-  const meta = raw?.meta && typeof raw.meta === 'object' ? raw.meta : raw
+function normalizeGenerateResult(raw: unknown): { url: string, itemCount: number } {
+  const input = isRecord(raw) ? raw : {}
+  const meta = isRecord(input.meta) ? input.meta : input
   return {
     url: String(meta?.url ?? ''),
-    itemCount: Number(meta?.itemCount ?? meta?.item_count ?? 0),
+    itemCount: Number(meta?.itemCount ?? meta?.item_count ?? 0)
   }
 }
 
-function normalizeMetricsResult(raw: any): FeedMetrics {
-  const vehicleStats = raw?.vehicleStats && typeof raw.vehicleStats === 'object' ? raw.vehicleStats : null
-  const inventory = Number(raw?.inventory ?? vehicleStats?.forSaleNow ?? 0)
+function normalizeMetricsResult(raw: unknown): FeedMetrics {
+  const input = isRecord(raw) ? raw : {}
+  const vehicleStats = isRecord(input.vehicleStats) ? input.vehicleStats : null
+  const inventory = Number(input.inventory ?? vehicleStats?.forSaleNow ?? 0)
   return {
     inventory: Number.isFinite(inventory) ? inventory : 0,
-    active: Number(raw?.active ?? inventory ?? 0) || 0,
-    issues: Number(raw?.issues ?? 0) || 0,
-    fetchedAt: new Date().toISOString(),
+    active: Number(input.active ?? inventory ?? 0) || 0,
+    issues: Number(input.issues ?? 0) || 0,
+    fetchedAt: new Date().toISOString()
   }
 }
 
@@ -102,7 +110,8 @@ function createPayload(link: DealerLink, spec: CreateFeedSpec): Record<string, u
     organization_id: link.externalOrgId,
     filters: spec.filters ?? {},
     mappings: spec.mappings ?? {},
-    source: spec.source,
+    platform_settings: spec.platformSettings ?? {},
+    source: spec.source
   }
 }
 
@@ -113,7 +122,7 @@ function upsertPayload(link: DealerLink, spec: CreateFeedSpec): Record<string, u
     externalKey: spec.externalKey,
     externalClientId: spec.externalClientId ?? link.clientId,
     externalCampaignId: spec.externalCampaignId,
-    externalFeedId: spec.externalFeedId,
+    externalFeedId: spec.externalFeedId
   }
 }
 
@@ -124,27 +133,32 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
 
     async listFeeds(ctx, link) {
       assertOrgMatch(ctx, link)
-      const r = await client.call<{ items?: any[] }>(ctx, 'GET', `/api/feeds${orgQuery(ctx)}`)
+      const r = await client.call<{ items?: unknown[] }>(ctx, 'GET', `/api/feeds${orgQuery(ctx)}`)
       return (r.items ?? []).map(normalizeFeedSummary)
     },
 
     async getFeed(ctx, ref: FeedRef) {
-      const r = await client.call<{ item: any }>(ctx, 'GET', `/api/feeds/${ref.feedId}`)
+      const r = await client.call<{ item: unknown }>(ctx, 'GET', `/api/feeds/${ref.feedId}`)
       return normalizeFeedDetail(r.item)
     },
 
     async previewFeed(ctx, ref: FeedRef, opts) {
-      const q = `?limit=${opts.limit ?? 20}&offset=${opts.offset ?? 0}`
-      const r = await client.call<{ total?: number; items?: any[] }>(ctx, 'GET', `/api/feeds/${ref.feedId}/preview${q}`)
+      const params = new URLSearchParams({
+        limit: String(opts.limit ?? 20),
+        offset: String(opts.offset ?? 0)
+      })
+      if (opts.search?.trim()) params.set('search', opts.search.trim())
+      const q = `?${params.toString()}`
+      const r = await client.call<{ total?: number, items?: unknown[] }>(ctx, 'GET', `/api/feeds/${ref.feedId}/preview${q}`)
       return { total: r.total ?? 0, items: (r.items ?? []).map(normalizeVehicle) }
     },
 
     async searchInventory(ctx, link: DealerLink, filters) {
       assertOrgMatch(ctx, link)
-      const r = await client.call<{ total?: number; items?: any[] }>(ctx, 'POST', `/api/feeds/preview`, {
+      const r = await client.call<{ total?: number, items?: unknown[] }>(ctx, 'POST', `/api/feeds/preview`, {
         filters: buildInventoryPreviewFilters(filters, link.sellerRefs),
         limit: 100,
-        offset: 0,
+        offset: 0
       })
       return { total: r.total ?? 0, items: (r.items ?? []).map(normalizeVehicle) }
     },
@@ -152,7 +166,7 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
     async createFeed(ctx, link: DealerLink, spec: CreateFeedSpec): Promise<FeedRef> {
       assertOrgMatch(ctx, link)
       try {
-        const r = await client.call<{ id?: string; feedId?: string }>(ctx, 'POST', `/api/feeds/upsert-external`, upsertPayload(link, spec))
+        const r = await client.call<{ id?: string, feedId?: string }>(ctx, 'POST', `/api/feeds/upsert-external`, upsertPayload(link, spec))
         return { providerId: SOCIAL_DASHBOARD_PROVIDER_ID, feedId: String(r.feedId || r.id), platform: spec.platform }
       } catch (error) {
         if (!upsertNotAvailable(error)) throw error
@@ -173,6 +187,6 @@ export function createSocialDashboardProvider(client: SocialDashboardClient): Fe
     async getMetrics(ctx, ref: FeedRef) {
       const r = await client.call(ctx, 'GET', `/api/feeds/${ref.feedId}/metrics`)
       return normalizeMetricsResult(r)
-    },
+    }
   }
 }

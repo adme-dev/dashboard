@@ -10,8 +10,8 @@ function parsePlatform(value: unknown): FeedPlatform {
   throw createError({ statusCode: 400, statusMessage: 'platform must be google or facebook' })
 }
 
-function bodyObject(value: unknown): Record<string, any> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {}
+function bodyObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
 export default defineEventHandler(async (event) => {
@@ -41,11 +41,12 @@ export default defineEventHandler(async (event) => {
     platform: parsePlatform(body.platform),
     filters: bodyObject(body.filters),
     mappings: bodyObject(body.mappings),
+    platformSettings: bodyObject(body.platformSettings),
     source: body.source && typeof body.source === 'object' && !Array.isArray(body.source) ? body.source : undefined,
     externalKey: typeof body.externalKey === 'string' ? body.externalKey : undefined,
     externalClientId: typeof body.externalClientId === 'string' ? body.externalClientId : undefined,
     externalCampaignId: typeof body.externalCampaignId === 'string' ? body.externalCampaignId : undefined,
-    externalFeedId: typeof body.externalFeedId === 'string' ? body.externalFeedId : undefined,
+    externalFeedId: typeof body.externalFeedId === 'string' ? body.externalFeedId : undefined
   })
 
   return { ok: true, feed }

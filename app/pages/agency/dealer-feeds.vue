@@ -65,8 +65,9 @@ const feedsError = ref('')
 const previewPendingFeedId = ref('')
 const generatingFeedKey = ref('')
 const feedPreview = ref<FeedPreviewState | null>(null)
+const feedPreviewSearch = ref('')
 const generatedFeedUrl = ref('')
-const generatedFeedMeta = ref<{ feedName: string, format: 'xml' | 'csv', itemCount: number } | null>(null)
+const generatedFeedMeta = ref<{ feedName: string, itemCount: number } | null>(null)
 const savingLink = ref(false)
 const savingFeed = ref(false)
 const deletingLink = ref(false)
@@ -79,7 +80,8 @@ const mappingForm = reactive({
 
 const feedForm = reactive({
   name: '',
-  platform: 'google' as 'google' | 'facebook'
+  platform: 'google' as 'google' | 'facebook',
+  storeCode: ''
 })
 
 const {
@@ -248,7 +250,7 @@ async function previewFeed(feed: FeedSummary) {
   try {
     const result = await $fetch<{ ok: boolean, preview: { total: number, items: VehicleSummary[] } }>(
       `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/preview`,
-      { query: { platform: feed.platform, limit: 20, offset: 0 } }
+      { query: { platform: feed.platform, limit: 20, offset: 0, search: feedPreviewSearch.value.trim() || undefined } }
     )
     feedPreview.value = {
       feed,
@@ -279,20 +281,20 @@ async function copyGeneratedUrl(url: string) {
   }
 }
 
-async function shareFeed(feed: FeedSummary, format: 'xml' | 'csv') {
+async function shareFeed(feed: FeedSummary) {
   if (!selectedClientId.value) return
 
-  generatingFeedKey.value = `${feed.id}:${format}`
+  generatingFeedKey.value = feed.id
   try {
     const result = await $fetch<{ ok: boolean, generated: { url: string, itemCount: number } }>(
       `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/generate`,
       {
         method: 'POST',
-        body: { platform: feed.platform, format }
+        body: { platform: feed.platform }
       }
     )
     generatedFeedUrl.value = result.generated.url
-    generatedFeedMeta.value = { feedName: feed.name || feed.id, format, itemCount: result.generated.itemCount }
+    generatedFeedMeta.value = { feedName: feed.name || feed.id, itemCount: result.generated.itemCount }
     await copyGeneratedUrl(result.generated.url)
   } catch (error: unknown) {
     toast.add({
@@ -376,11 +378,15 @@ async function createFeed() {
       method: 'POST',
       body: {
         name: feedForm.name.trim(),
-        platform: feedForm.platform
+        platform: feedForm.platform,
+        platformSettings: feedForm.platform === 'google' && feedForm.storeCode.trim()
+          ? { store_code: feedForm.storeCode.trim() }
+          : {}
       }
     })
     toast.add({ title: 'Feed create request sent', color: 'success' })
     feedForm.name = ''
+    feedForm.storeCode = ''
     await loadFeeds()
   } catch (error: unknown) {
     toast.add({
@@ -729,7 +735,7 @@ watch([selectedClientOptionId, links], async () => {
             </div>
 
             <template v-else>
-              <div class="grid grid-cols-1 gap-3 border-b border-default p-5 lg:grid-cols-[minmax(0,1fr)_200px_auto]">
+              <div class="grid grid-cols-1 gap-3 border-b border-default p-5 lg:grid-cols-[minmax(0,1fr)_180px_180px_auto]">
                 <UFormField label="Feed name">
                   <UInput
                     v-model="feedForm.name"
@@ -742,6 +748,14 @@ watch([selectedClientOptionId, links], async () => {
                     v-model="feedForm.platform"
                     :items="platformOptions"
                     value-key="value"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Store code">
+                  <UInput
+                    v-model="feedForm.storeCode"
+                    placeholder="Google only"
+                    :disabled="feedForm.platform !== 'google'"
                     class="w-full"
                   />
                 </UFormField>
@@ -832,24 +846,14 @@ watch([selectedClientOptionId, links], async () => {
                         @click="previewFeed(row.original)"
                       />
                     </UTooltip>
-                    <UTooltip text="Copy XML feed URL">
+                    <UTooltip text="Copy live feed URL">
                       <UButton
-                        icon="i-lucide-file-code-2"
+                        icon="i-lucide-link"
                         variant="ghost"
                         color="neutral"
                         size="xs"
-                        :loading="generatingFeedKey === `${row.original.id}:xml`"
-                        @click="shareFeed(row.original, 'xml')"
-                      />
-                    </UTooltip>
-                    <UTooltip text="Copy CSV feed URL">
-                      <UButton
-                        icon="i-lucide-table"
-                        variant="ghost"
-                        color="neutral"
-                        size="xs"
-                        :loading="generatingFeedKey === `${row.original.id}:csv`"
-                        @click="shareFeed(row.original, 'csv')"
+                        :loading="generatingFeedKey === row.original.id"
+                        @click="shareFeed(row.original)"
                       />
                     </UTooltip>
                   </div>
@@ -864,10 +868,10 @@ watch([selectedClientOptionId, links], async () => {
                   <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div class="min-w-0">
                       <p class="text-sm font-medium text-highlighted">
-                        Shareable {{ generatedFeedMeta?.format?.toUpperCase() }} feed URL
+                        Live XML feed URL
                       </p>
                       <p class="mt-1 text-sm text-muted">
-                        {{ generatedFeedMeta?.feedName }} · {{ generatedFeedMeta?.itemCount ?? 0 }} items
+                        {{ generatedFeedMeta?.feedName }} · opens the current catalog XML.
                       </p>
                       <p class="mt-2 break-all font-mono text-xs text-muted">
                         {{ generatedFeedUrl }}
@@ -914,6 +918,25 @@ watch([selectedClientOptionId, links], async () => {
                   </UBadge>
                 </div>
 
+                <div class="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <UInput
+                    v-model="feedPreviewSearch"
+                    icon="i-lucide-search"
+                    placeholder="Search make, model, stock number, VIN"
+                    class="w-full"
+                    @keyup.enter="previewFeed(feedPreview.feed)"
+                  />
+                  <UButton
+                    icon="i-lucide-search"
+                    color="neutral"
+                    variant="outline"
+                    :loading="previewPendingFeedId === feedPreview.feed.id"
+                    @click="previewFeed(feedPreview.feed)"
+                  >
+                    Search
+                  </UButton>
+                </div>
+
                 <div
                   v-if="feedPreview.items.length === 0"
                   class="rounded-lg border border-default bg-elevated/40 px-4 py-6 text-center text-sm text-muted"
@@ -952,9 +975,19 @@ watch([selectedClientOptionId, links], async () => {
                         <p class="mt-1 text-xs text-muted">
                           {{ vehicle.stockNumber || 'No stock number' }}
                         </p>
-                        <p class="mt-2 text-sm font-medium text-highlighted">
-                          {{ vehicle.price == null ? 'Price unavailable' : new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(vehicle.price) }}
-                        </p>
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                          <p class="text-sm font-medium text-highlighted">
+                            {{ vehicle.price == null ? 'Price unavailable' : new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(vehicle.price) }}
+                          </p>
+                          <UBadge
+                            v-if="vehicle.condition"
+                            color="neutral"
+                            variant="subtle"
+                            size="xs"
+                          >
+                            {{ vehicle.condition }}
+                          </UBadge>
+                        </div>
                         <UButton
                           v-if="vehicle.url"
                           icon="i-lucide-external-link"

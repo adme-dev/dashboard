@@ -23,15 +23,24 @@ describe('normalizeVehicle', () => {
   })
   it('falls back to year/price/image scalars and nulls missing fields', () => {
     const v = normalizeVehicle({ id: 2, make: 'Ford', model: 'Ranger', year: 2023, price: 60000, image: 'one.jpg' })
-    expect(v.year).toBe(2023); expect(v.price).toBe(60000); expect(v.image).toBe('one.jpg')
+    expect(v.year).toBe(2023)
+    expect(v.price).toBe(60000)
+    expect(v.image).toBe('one.jpg')
     expect(normalizeVehicle({ id: 3, make: 'X', model: 'Y' }).image).toBeNull()
+  })
+  it('uses alternate inventory image fields and condition types', () => {
+    const v = normalizeVehicle({ id: 'v1', photos: ['https://img/car.jpg'], category: 'Used' })
+    expect(v.image).toBe('https://img/car.jpg')
+    expect(v.condition).toBe('Used')
   })
 })
 
 describe('normalizeFeedDetail', () => {
   it('extends summary with filters/mappings/source', () => {
     const d = normalizeFeedDetail({ id: '1', name: 'F', feed_type: 'google', is_active: true, filters: { a: 1 }, mappings: {}, source: { type: 'meilisearch' } })
-    expect(d.platform).toBe('google'); expect(d.filters).toEqual({ a: 1 }); expect(d.source).toEqual({ type: 'meilisearch' })
+    expect(d.platform).toBe('google')
+    expect(d.filters).toEqual({ a: 1 })
+    expect(d.source).toEqual({ type: 'meilisearch' })
     expect(normalizeFeedDetail({ id: '1', name: 'F', feed_type: 'google' }).source).toBeNull()
   })
 })

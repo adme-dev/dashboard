@@ -1,25 +1,43 @@
 import type { FeedSummary, FeedDetail, VehicleSummary, FeedPlatform } from '../types'
 
-function platformOf(raw: any): FeedPlatform {
-  return raw?.feed_type === 'facebook' ? 'facebook' : 'google'
+type UnknownRecord = Record<string, unknown>
+
+function asRecord(value: unknown): UnknownRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {}
 }
 
-export function normalizeFeedSummary(raw: any): FeedSummary {
+function platformOf(raw: unknown): FeedPlatform {
+  const value = asRecord(raw)
+  return value.feed_type === 'facebook' ? 'facebook' : 'google'
+}
+
+export function normalizeFeedSummary(raw: unknown): FeedSummary {
+  const value = asRecord(raw)
   return {
-    id: String(raw.id ?? ''),
-    name: String(raw.name ?? ''),
-    platform: platformOf(raw),
-    isActive: raw.is_active !== false,
+    id: String(value.id ?? ''),
+    name: String(value.name ?? ''),
+    platform: platformOf(value),
+    isActive: value.is_active !== false
   }
 }
 
-export function normalizeFeedDetail(raw: any): FeedDetail {
+export function normalizeFeedDetail(raw: unknown): FeedDetail {
+  const value = asRecord(raw)
   return {
-    ...normalizeFeedSummary(raw),
-    filters: (raw.filters ?? {}) as Record<string, unknown>,
-    mappings: (raw.mappings ?? {}) as Record<string, unknown>,
-    source: (raw.source ?? null) as Record<string, unknown> | null,
+    ...normalizeFeedSummary(value),
+    filters: asRecord(value.filters),
+    mappings: asRecord(value.mappings),
+    source: value.source == null ? null : asRecord(value.source)
   }
+}
+
+function firstString(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value
+  if (Array.isArray(value)) {
+    const first = value.find(item => typeof item === 'string' && item.trim())
+    return typeof first === 'string' ? first : null
+  }
+  return null
 }
 
 function num(...vals: unknown[]): number | null {
@@ -31,17 +49,25 @@ function num(...vals: unknown[]): number | null {
   return null
 }
 
-export function normalizeVehicle(raw: any): VehicleSummary {
-  const image = Array.isArray(raw.images) ? (raw.images[0] ?? null) : (raw.image ?? null)
+export function normalizeVehicle(raw: unknown): VehicleSummary {
+  const value = asRecord(raw)
+  const image = firstString(value.images)
+    || firstString(value.photos)
+    || firstString(value.photo_urls)
+    || firstString(value.main_photo_url)
+    || firstString(value.image)
+    || firstString(value.image_url)
+    || firstString(value['g:image_link'])
+    || null
   return {
-    id: String(raw.id ?? ''),
-    make: String(raw.make ?? ''),
-    model: String(raw.model ?? ''),
-    year: num(raw.build_year, raw.year),
-    price: num(raw.dap_price, raw.price),
-    condition: raw.listing_type ?? raw.condition ?? null,
-    stockNumber: raw.stock_number ?? null,
-    url: raw.url ?? null,
-    image,
+    id: String(value.id ?? ''),
+    make: String(value.make ?? ''),
+    model: String(value.model ?? ''),
+    year: num(value.build_year, value.year),
+    price: num(value.dap_price, value.price),
+    condition: value.listing_type ?? value.condition ?? value.category ?? value.stock_type ?? null,
+    stockNumber: value.stock_number ?? null,
+    url: value.url ?? null,
+    image
   }
 }

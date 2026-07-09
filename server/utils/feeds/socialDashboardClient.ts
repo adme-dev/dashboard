@@ -26,6 +26,10 @@ export interface SocialDashboardClientConfig {
   fetchImpl?: typeof fetch
 }
 
+export function buildSocialDashboardFeedServeUrl(baseUrl: string, feedId: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/api/feeds/${encodeURIComponent(feedId)}/serve`
+}
+
 export function buildServiceHeaders(ctx: FeedProviderContext, serviceSecret: string, accessToken?: string): Record<string, string> {
   const headers = buildServiceBaseHeaders(ctx.actingUserEmail, serviceSecret, accessToken)
   headers['x-feed-org-id'] = ctx.externalOrgId
