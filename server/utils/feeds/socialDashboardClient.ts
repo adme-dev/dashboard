@@ -40,6 +40,7 @@ export function buildServiceBaseHeaders(actingUserEmail: string, serviceSecret: 
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     'x-feed-service-secret': serviceSecret,
+    'x-feed-acting-user-email': actingUserEmail,
     'x-feed-acting-user': actingUserEmail
   }
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`

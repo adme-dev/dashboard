@@ -12,6 +12,7 @@ describe('buildServiceHeaders', () => {
     expect(buildServiceHeaders(ctx, 'sekret')).toEqual({
       'content-type': 'application/json',
       'x-feed-service-secret': 'sekret',
+      'x-feed-acting-user-email': 'paul@adme.net.au',
       'x-feed-acting-user': 'paul@adme.net.au',
       'x-feed-org-id': 'org-123'
     })

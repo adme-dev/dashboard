@@ -16,6 +16,10 @@ function parseBoundedInt(value: unknown, fallback: number, max: number): number 
   return Math.min(Math.floor(parsed), max)
 }
 
+function providerErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || 'Unknown preview error')
+}
+
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, ['admin', 'owner'])
   const clientId = event.context.params?.clientId
@@ -38,20 +42,38 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const search = typeof query.search === 'string' ? query.search.trim() : ''
   const provider = getFeedProvider(link.providerId, { socialDashboardClient })
-  const preview = await provider.previewFeed(
-    linkToContext(link, user.email),
-    link,
-    {
-      providerId: link.providerId,
+  let preview
+  try {
+    preview = await provider.previewFeed(
+      linkToContext(link, user.email),
+      link,
+      {
+        providerId: link.providerId,
+        feedId,
+        platform: parsePlatform(query.platform)
+      },
+      {
+        limit: parseBoundedInt(query.limit, 20, 100),
+        offset: parseBoundedInt(query.offset, 0, 10000),
+        search
+      }
+    )
+  } catch (error) {
+    const message = providerErrorMessage(error)
+    console.error('[dealer-feeds/preview] Provider preview failed', {
+      clientId,
       feedId,
-      platform: parsePlatform(query.platform)
-    },
-    {
-      limit: parseBoundedInt(query.limit, 20, 100),
-      offset: parseBoundedInt(query.offset, 0, 10000),
-      search
-    }
-  )
+      providerId: link.providerId,
+      externalOrgId: link.externalOrgId,
+      sellerRefs: link.sellerRefs,
+      message
+    })
+    throw createError({
+      statusCode: 502,
+      statusMessage: 'Dealer feed preview failed',
+      data: { message }
+    })
+  }
 
   return { ok: true, preview }
 })
