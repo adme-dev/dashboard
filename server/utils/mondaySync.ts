@@ -188,8 +188,6 @@ async function syncItemToTask(
       monday_board_id: item.board_id,
       updated_at: new Date().toISOString()
     }
-    syncedTaskId = taskId
-
     let taskId: string
     if (existing.rows.length > 0) {
       // Update existing task
@@ -232,6 +230,7 @@ async function syncItemToTask(
       ])
       taskId = inserted.rows[0].id
     }
+    syncedTaskId = taskId
 
     for (const comment of comments) {
       const imported = await trx.query(
@@ -290,11 +289,11 @@ async function syncMondayFiles(client: MondayClient, itemId: string, taskId: str
     // Metadata is checked before download to avoid needless large transfers.
     const declaredType = contentTypeForExtension(asset.file_extension)
     const metadataCheck = validateMondayAsset(asset, declaredType)
-    if (!metadataCheck.ok) throw new Error(metadataCheck.reason)
+    if ('reason' in metadataCheck) throw new Error(metadataCheck.reason)
 
     const downloaded = await client.downloadFile(String(asset.id))
     const check = validateMondayAsset({ ...asset, name: downloaded.filename, file_size: downloaded.buffer.length }, downloaded.contentType)
-    if (!check.ok) throw new Error(check.reason)
+    if ('reason' in check) throw new Error(check.reason)
 
     const storageKey = generateStorageKey('attachments', check.filename, taskId)
     const stored = await uploadFile(downloaded.buffer, storageKey, downloaded.contentType, {
