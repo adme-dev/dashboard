@@ -54,6 +54,19 @@
 - The focused Monday/HR verification suite passed 27 files and 59 tests. The production build completed successfully. Repository-wide typechecking still reports 223 inherited errors, with none referencing the files changed in this reconciliation slice.
 - Post-release canonical health smoke also returned `scanned=0, sent=0`, proving the migration/index/query path without creating synthetic production notifications.
 - Wrangler is upgraded and locked at `4.110.0`.
+- Central HR response privacy middleware is registered in the production worker at commit `6bc2ab45`. Both the immutable Pages deployment and `https://app.xeroflow.io/api/agency/hr` return `401` to an unauthenticated request together with `Cache-Control: private, no-store, max-age=0`, `Pragma: no-cache`, `Expires: 0`, and `X-Robots-Tag: noindex, nofollow, noarchive`.
+- The HR route-authentication inventory enumerates every current `/api/agency/hr` route and requires an explicit `requireHrAdmin(event)` or `requireAuth(event)` guard. This is a regression gate, not a substitute for object-level authorization tests on participant-owned resources.
+
+## Remaining controlled-pilot evidence
+
+The implementation is production-deployed, but broad HR commissioning remains fail-closed. The following evidence must be supplied through the product by authorised humans and must not be generated or approved by an automated process:
+
+1. Complete the owner Business Context onboarding and publish its versioned brief.
+2. Publish an approved role profile and assign its frozen version to an eligible pilot participant.
+3. Record the nine governance attestations with their real policy/notice/approval evidence.
+4. Commission a 3–8-person controlled pilot only after the readiness endpoint reports no blockers.
+5. Exercise participant and reviewer accessibility, visibility comprehension, correction/challenge, reminders, calendar updates, extension, interview, finding approval, and action close-out with real pilot accounts.
+6. Record the owner go/no-go decision; no score, AI draft, or Monday evidence may automatically create an adverse employment action.
 
 ## Explicit limitations
 
