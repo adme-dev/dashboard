@@ -31,6 +31,8 @@ type RoleProfile = {
   published_at: string | null
   assigned_people: string | number
   question_count: number | null
+  questionnaire_questions: QuestionnaireQuestion[] | null
+  questionnaire_quality_report: { publishable?: boolean; issueCount?: number } | null
   kpis: Array<{
     id: string; name: string; description: string | null; unit: string;
     direction: KpiDraft['direction']; targetValue: number | string | null;
@@ -40,6 +42,14 @@ type RoleProfile = {
     weight: number | string; departmentGoalVersionId: string | null;
     goalContributionWeight: number | string | null; goalRationale: string | null;
   }>
+}
+type QuestionnaireQuestion = {
+  id: string
+  module: 'core' | 'role' | 'blockers'
+  type: 'single_choice' | 'multiple_choice' | 'optional_text'
+  prompt: string
+  required: boolean
+  options?: Array<{ value: string; label: string }>
 }
 type ContractExtract = {
   id: string
@@ -97,6 +107,7 @@ const selectedTeamMemberId = ref('')
 const selectedRoleVersionId = ref('')
 const editingRoleId = ref<string | null>(null)
 const expectedVersion = ref<number | null>(null)
+const expandedQuestionnaireRoleIds = ref<Set<string>>(new Set())
 
 const form = reactive({
   title: '',
@@ -146,6 +157,21 @@ const roleEvidenceScopeItems = [
 
 function splitLines(value: string): string[] {
   return value.split('\n').map(item => item.trim()).filter(Boolean)
+}
+
+function toggleQuestionnairePreview(roleId: string) {
+  const next = new Set(expandedQuestionnaireRoleIds.value)
+  next.has(roleId) ? next.delete(roleId) : next.add(roleId)
+  expandedQuestionnaireRoleIds.value = next
+}
+
+function questionnaireQualityLabel(role: RoleProfile): string {
+  if (!role.questionnaire_quality_report) return 'Quality report unavailable'
+  return role.questionnaire_quality_report.publishable === false ? 'Quality review required' : 'Neutrality policy passed'
+}
+
+function questionnaireQualityColor(role: RoleProfile): 'success' | 'warning' {
+  return role.questionnaire_quality_report?.publishable === true ? 'success' : 'warning'
 }
 
 async function refresh() {
@@ -410,7 +436,32 @@ async function createRole() {
                 <div class="bg-elevated/20 p-4"><p class="text-xs font-semibold uppercase tracking-wide text-muted">Expected outcomes</p><p class="mt-2 text-sm text-highlighted">{{ role.expected_outcomes.length }} agreed results</p></div>
                 <div class="bg-elevated/20 p-4"><p class="text-xs font-semibold uppercase tracking-wide text-muted">Benchmark</p><p class="mt-2 text-sm text-highlighted">{{ role.benchmark_refs?.[0]?.name || 'Framework pending' }}</p></div>
               </div>
-              <div class="flex flex-wrap justify-end gap-2 border-t border-default p-4"><UButton v-if="role.status === 'active' && role.version_status === 'published'" color="neutral" variant="outline" icon="i-lucide-user-check" label="Assign role" @click="startRoleAssignment(role)" /><UButton color="neutral" variant="outline" icon="i-lucide-git-branch-plus" label="Revise role" @click="reviseRole(role)" /></div>
+              <div v-if="expandedQuestionnaireRoleIds.has(role.id)" class="border-t border-default bg-elevated/20 p-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p class="text-sm font-semibold text-highlighted">Read-only preview</p>
+                    <p class="mt-1 text-sm text-muted">Nothing is published, assigned or sent from this preview.</p>
+                  </div>
+                  <UBadge
+                    :color="questionnaireQualityColor(role)"
+                    variant="subtle"
+                    :label="questionnaireQualityLabel(role)"
+                  />
+                </div>
+                <ol v-if="role.questionnaire_questions?.length" class="mt-4 max-h-96 space-y-3 overflow-y-auto pr-1">
+                  <li v-for="(question, questionIndex) in role.questionnaire_questions" :key="question.id" class="rounded-lg border border-default bg-default p-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-mono text-xs text-muted">{{ questionIndex + 1 }}</span>
+                      <UBadge color="neutral" variant="outline" :label="question.module" />
+                      <UBadge color="neutral" variant="subtle" :label="question.required ? 'Required' : 'Optional'" />
+                    </div>
+                    <p class="mt-2 text-sm leading-6 text-highlighted">{{ question.prompt }}</p>
+                    <p v-if="question.options?.length" class="mt-2 text-xs leading-5 text-muted">Options: {{ question.options.map(option => option.label).join(' · ') }}</p>
+                  </li>
+                </ol>
+                <p v-else class="mt-4 text-sm text-muted">No generated questionnaire is attached to this role version.</p>
+              </div>
+              <div class="flex flex-wrap justify-end gap-2 border-t border-default p-4"><UButton color="neutral" variant="ghost" :icon="expandedQuestionnaireRoleIds.has(role.id) ? 'i-lucide-chevron-up' : 'i-lucide-list-checks'" :label="expandedQuestionnaireRoleIds.has(role.id) ? 'Hide questionnaire' : 'Preview questionnaire'" :aria-expanded="expandedQuestionnaireRoleIds.has(role.id)" @click="toggleQuestionnairePreview(role.id)" /><UButton v-if="role.status === 'active' && role.version_status === 'published'" color="neutral" variant="outline" icon="i-lucide-user-check" label="Assign role" @click="startRoleAssignment(role)" /><UButton color="neutral" variant="outline" icon="i-lucide-git-branch-plus" label="Revise role" @click="reviseRole(role)" /></div>
             </article>
           </div>
           <div v-else class="rounded-xl border border-dashed border-default px-6 py-14 text-center">

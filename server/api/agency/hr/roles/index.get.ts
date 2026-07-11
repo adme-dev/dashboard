@@ -25,10 +25,9 @@ export default defineEventHandler(async (event) => {
             rpv.published_at,
             (SELECT COUNT(*) FROM hr_role_assignments ra
               WHERE ra.role_profile_version_id = rpv.id AND ra.effective_to IS NULL) AS assigned_people,
-            (SELECT jsonb_array_length(qv.questions)
-               FROM hr_questionnaire_versions qv
-              WHERE qv.template_key = 'role-' || rp.id::text
-              ORDER BY qv.version DESC LIMIT 1) AS question_count,
+            jsonb_array_length(questionnaire.questions) AS question_count,
+            questionnaire.questions AS questionnaire_questions,
+            questionnaire.quality_report AS questionnaire_quality_report,
             (SELECT COALESCE(jsonb_agg(jsonb_build_object(
                 'id', kpi.id,
                 'name', kpi.name,
@@ -57,6 +56,12 @@ export default defineEventHandler(async (event) => {
        WHERE candidate.role_profile_id = rp.id
        ORDER BY candidate.version DESC LIMIT 1
      ) rpv ON true
+     LEFT JOIN LATERAL (
+       SELECT questionnaire.questions, questionnaire.quality_report
+       FROM hr_questionnaire_versions questionnaire
+       WHERE questionnaire.template_key = 'role-' || rp.id::text
+       ORDER BY questionnaire.version DESC LIMIT 1
+     ) questionnaire ON true
      WHERE rp.status <> 'archived'
      ORDER BY rp.department NULLS LAST, rp.title`,
   )
