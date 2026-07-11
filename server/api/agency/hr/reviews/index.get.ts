@@ -23,12 +23,15 @@ export default defineEventHandler(async (event) => {
     `SELECT participant.id, participant.cycle_id, participant.status,
             member.name AS member_name, member.email AS member_email,
             role.title AS role_title,
-            assignment.id AS assignment_id,
+            assignment.id AS assignment_id, assignment.status AS assignment_status,
+            assignment.due_at, assignment.extension_due_at, assignment.calendar_sequence,
+            cycle.closes_at,
             response.status AS response_status,
             result.role_score, result.evidence_coverage, result.confidence,
             result.published_at AS score_published_at
      FROM hr_review_participants participant
      JOIN team_members member ON member.id = participant.team_member_id
+     JOIN hr_review_cycles cycle ON cycle.id = participant.cycle_id
      LEFT JOIN hr_role_profile_versions role_version ON role_version.id = participant.role_profile_version_id
      LEFT JOIN hr_role_profiles role ON role.id = role_version.role_profile_id
      LEFT JOIN hr_questionnaire_assignments assignment ON assignment.participant_id = participant.id

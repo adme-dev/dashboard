@@ -14,7 +14,9 @@ describe('HR review reminder automation', () => {
   it('uses a database uniqueness boundary to prevent duplicate delivery', () => {
     expect(migration).toContain('idx_hr_notification_delivery_unique')
     expect(migration).toContain('assignment_id, recipient_id, channel, kind')
-    expect(route).toContain('ON CONFLICT (assignment_id, recipient_id, channel, kind) DO UPDATE')
+    expect(route).toContain('delivery_key')
+    expect(route).toContain('sendHrReviewLifecycleEmail')
+    expect(route).toContain('channel, kind, delivery_key')
     expect(route).toContain("hr_notification_deliveries.status = 'failed'")
     expect(route).toContain('RETURNING id')
   })

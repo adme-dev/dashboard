@@ -57,6 +57,11 @@ type Participant = {
   member_email: string
   role_title: string | null
   assignment_id: string
+  assignment_status: string
+  due_at: string
+  extension_due_at: string | null
+  calendar_sequence: number
+  closes_at: string
   response_status: string | null
   role_score: number | string | null
   evidence_coverage: number | string | null
@@ -75,6 +80,24 @@ const team = ref<TeamMember[]>([])
 const roles = ref<Role[]>([])
 const selectedRoles = ref<Record<string, string>>({})
 const commissioningPreview = ref<CommissioningPreview | null>(null)
+const showScheduleManager = ref(false)
+const selectedParticipant = ref<Participant | null>(null)
+const scheduleSaving = ref(false)
+const scheduleForm = reactive({
+  action: 'extend' as 'extend' | 'reschedule' | 'cancel' | 'reopen',
+  dueDate: '',
+  reason: '',
+})
+const allScheduleActions = [
+  { label: 'Extend deadline', value: 'extend' },
+  { label: 'Reschedule deadline', value: 'reschedule' },
+  { label: 'Cancel assignment', value: 'cancel' },
+  { label: 'Reopen submitted response', value: 'reopen' },
+]
+const scheduleActions = computed(() => {
+  const isSubmitted = ['submitted', 'locked'].includes(selectedParticipant.value?.response_status || '')
+  return allScheduleActions.filter(action => isSubmitted ? action.value === 'reopen' : action.value !== 'reopen')
+})
 
 function dateOnly(offsetDays: number): string {
   const date = new Date()
@@ -98,6 +121,7 @@ function toCalendarDate(value: string): DateValue | null {
 const opensDateModel = computed({ get: () => toCalendarDate(form.opensDate), set: value => { form.opensDate = value?.toString() || '' } })
 const dueDateModel = computed({ get: () => toCalendarDate(form.dueDate), set: value => { form.dueDate = value?.toString() || '' } })
 const closesDateModel = computed({ get: () => toCalendarDate(form.closesDate), set: value => { form.closesDate = value?.toString() || '' } })
+const scheduleDueDateModel = computed({ get: () => toCalendarDate(scheduleForm.dueDate), set: value => { scheduleForm.dueDate = value?.toString() || '' } })
 const dateFormatter = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
 function displayDate(value: string): string {
   const date = toCalendarDate(value) as CalendarDate | null
@@ -234,6 +258,42 @@ async function createCycle() {
     saving.value = false
   }
 }
+
+function manageSchedule(participant: Participant) {
+  selectedParticipant.value = participant
+  scheduleForm.action = ['submitted', 'locked'].includes(participant.response_status || '') ? 'reopen' : 'extend'
+  scheduleForm.dueDate = (participant.extension_due_at || participant.due_at).slice(0, 10)
+  scheduleForm.reason = ''
+  showScheduleManager.value = true
+}
+
+async function saveScheduleChange() {
+  const participant = selectedParticipant.value
+  if (!participant?.assignment_id) return
+  scheduleSaving.value = true
+  try {
+    await apiFetch(`/api/agency/hr/assignments/${participant.assignment_id}/schedule`, {
+      method: 'PATCH',
+      body: {
+        action: scheduleForm.action,
+        dueAt: scheduleForm.action === 'cancel' ? undefined : isoAt(scheduleForm.dueDate, 17),
+        reason: scheduleForm.reason,
+        expectedCalendarSequence: participant.calendar_sequence,
+      },
+    })
+    toast.add({
+      title: scheduleForm.action === 'cancel' ? 'Assignment cancelled' : 'Review deadline updated',
+      description: 'The participant notification and calendar update have been prepared.',
+      color: 'success',
+    })
+    showScheduleManager.value = false
+    await refresh()
+  } catch (error: any) {
+    toast.add({ title: 'Schedule change not saved', description: error?.data?.statusMessage || 'Refresh and try again.', color: 'error' })
+  } finally {
+    scheduleSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -269,7 +329,7 @@ async function createCycle() {
                 <div v-for="participant in participantsByCycle[cycle.id]" :key="participant.id" class="flex flex-col gap-3 py-3 first:pt-4 last:pb-0 sm:flex-row sm:items-center">
                   <div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><p class="truncate text-sm font-medium text-highlighted">{{ participant.member_name }}</p><UBadge :color="participant.response_status === 'submitted' ? 'success' : 'neutral'" variant="subtle" :label="participant.response_status || 'not started'" /></div><p class="mt-1 truncate text-xs text-muted">{{ participant.role_title || 'Role not resolved' }}</p></div>
                   <div v-if="participant.role_score" class="text-left sm:text-right"><p class="font-mono text-sm font-semibold text-highlighted">{{ Number(participant.role_score).toFixed(2) }} / 5</p><p class="text-[11px] uppercase tracking-wide text-muted">{{ participant.evidence_coverage }}% evidence</p></div>
-                  <div class="flex gap-2"><UButton v-if="participant.assignment_id" color="neutral" variant="ghost" size="sm" label="Response" :to="`/agency/hr/assignments/${participant.assignment_id}`" /><UButton color="neutral" variant="outline" size="sm" :label="participant.role_score ? 'Review score' : 'Scorecard'" :to="`/agency/hr/reviews/participants/${participant.id}`" /></div>
+                  <div class="flex flex-wrap gap-2"><UButton v-if="participant.assignment_id" color="neutral" variant="ghost" size="sm" label="Response" :to="`/agency/hr/assignments/${participant.assignment_id}`" /><UButton v-if="participant.assignment_id && participant.assignment_status !== 'closed'" color="neutral" variant="ghost" size="sm" icon="i-lucide-calendar-clock" label="Manage deadline" @click="manageSchedule(participant)" /><UButton color="neutral" variant="outline" size="sm" :label="participant.role_score ? 'Review score' : 'Scorecard'" :to="`/agency/hr/reviews/participants/${participant.id}`" /></div>
                 </div>
               </div>
             </article>
@@ -331,5 +391,37 @@ async function createCycle() {
         </aside>
       </div>
     </main>
+
+    <UModal v-model:open="showScheduleManager" title="Manage review deadline" description="Record a transparent reason and notify the participant of the change.">
+      <template #content>
+        <div class="flex max-h-[calc(100vh-96px)] flex-col overflow-hidden">
+          <div class="border-b border-default bg-elevated/30 px-6 py-5">
+            <p class="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-primary">Controlled schedule change</p>
+            <h2 class="mt-1 text-xl font-semibold text-highlighted">{{ selectedParticipant?.member_name }}</h2>
+            <p class="mt-1 text-sm text-muted">{{ selectedParticipant?.role_title }} · current due date {{ selectedParticipant ? formatTimestamp(selectedParticipant.extension_due_at || selectedParticipant.due_at) : '' }}</p>
+          </div>
+          <div class="space-y-5 overflow-y-auto p-6">
+            <UAlert color="info" variant="soft" icon="i-lucide-mail-check" title="The participant will be notified" description="A neutral in-app notice, email and calendar update are prepared without including questionnaire answers or evidence." />
+            <UFormField label="Change" required>
+              <USelect v-model="scheduleForm.action" :items="scheduleActions" value-key="value" class="w-full" />
+            </UFormField>
+            <UFormField v-if="scheduleForm.action !== 'cancel'" label="New required end date" required help="The date must be in the future and no later than the cycle closing date.">
+              <UPopover>
+                <UButton color="neutral" variant="outline" icon="i-lucide-calendar" :label="displayDate(scheduleForm.dueDate)" class="w-full justify-start" />
+                <template #content><UCalendar v-model="scheduleDueDateModel" class="p-2" /></template>
+              </UPopover>
+            </UFormField>
+            <UFormField label="Reason for this change" required help="This reason is included in the participant notice and retained in the HR audit trail.">
+              <UTextarea v-model="scheduleForm.reason" :rows="4" :maxlength="2000" placeholder="Explain the operational reason in neutral, factual language." class="w-full" />
+            </UFormField>
+            <UAlert v-if="scheduleForm.action === 'cancel'" color="warning" variant="soft" icon="i-lucide-calendar-x" title="This closes the assignment" description="The calendar cancellation uses the existing event ID so it replaces the participant’s original invitation." />
+          </div>
+          <div class="flex flex-col-reverse gap-2 border-t border-default p-4 sm:flex-row sm:justify-end">
+            <UButton color="neutral" variant="ghost" label="Keep current schedule" @click="showScheduleManager = false" />
+            <UButton icon="i-lucide-send" :label="scheduleForm.action === 'cancel' ? 'Cancel and notify' : 'Save and notify'" :loading="scheduleSaving" :disabled="scheduleForm.reason.trim().length < 10 || (scheduleForm.action !== 'cancel' && !scheduleForm.dueDate)" @click="saveScheduleChange" />
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

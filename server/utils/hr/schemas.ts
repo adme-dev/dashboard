@@ -187,6 +187,17 @@ export const hrReviewCycleSchema = z.object({
 
 export type HrReviewCycleInput = z.infer<typeof hrReviewCycleSchema>
 
+export const hrAssignmentScheduleChangeSchema = z.object({
+  action: z.enum(['extend', 'reschedule', 'cancel', 'reopen']),
+  dueAt: z.string().datetime().optional(),
+  reason: z.string().trim().min(10).max(2000),
+  expectedCalendarSequence: z.number().int().min(0),
+}).superRefine((input, context) => {
+  if (input.action !== 'cancel' && !input.dueAt) {
+    context.addIssue({ code: 'custom', path: ['dueAt'], message: 'A replacement deadline is required for this action.' })
+  }
+})
+
 export const hrContractRoleExtractSchema = z.object({
   roleTitle: z.string().trim().min(2).max(200),
   department: z.string().trim().max(200).optional(),

@@ -30,6 +30,27 @@ export interface HrCalendarInviteInput {
   sequence: number
 }
 
+export type HrAssignmentScheduleAction = 'extend' | 'reschedule' | 'cancel' | 'reopen'
+export type HrAssignmentSchedulePlan =
+  | { isValid: true, effectiveDueAt: string }
+  | { isValid: false, code: 'INVALID_DATE' | 'EXTENSION_NOT_LATER' | 'DUE_AFTER_CLOSE' }
+
+export function planHrAssignmentScheduleChange(input: {
+  action: HrAssignmentScheduleAction
+  currentDueAt: string
+  closesAt: string
+  dueAt?: string
+}): HrAssignmentSchedulePlan {
+  if (input.action === 'cancel') return { isValid: true, effectiveDueAt: input.currentDueAt }
+  const dueAt = Date.parse(input.dueAt || '')
+  const currentDueAt = Date.parse(input.currentDueAt)
+  const closesAt = Date.parse(input.closesAt)
+  if (![dueAt, currentDueAt, closesAt].every(Number.isFinite)) return { isValid: false, code: 'INVALID_DATE' }
+  if (input.action === 'extend' && dueAt <= currentDueAt) return { isValid: false, code: 'EXTENSION_NOT_LATER' }
+  if (dueAt > closesAt) return { isValid: false, code: 'DUE_AFTER_CLOSE' }
+  return { isValid: true, effectiveDueAt: new Date(dueAt).toISOString() }
+}
+
 export function validateHrSchedule(input: HrScheduleInput): HrScheduleValidation {
   const opensAt = Date.parse(input.opensAt)
   const dueAt = Date.parse(input.dueAt)

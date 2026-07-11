@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildHrCalendarInvite,
   deriveHrAssignmentStatus,
+  planHrAssignmentScheduleChange,
   validateHrSchedule,
 } from '~~/server/utils/hr/schedule'
 
@@ -55,5 +56,21 @@ describe('HR scheduling', () => {
     expect(invite).toContain('UID:hr-assignment-123@example.test')
     expect(invite).toContain('SEQUENCE:0')
     expect(invite).not.toContain('questionnaire response')
+  })
+})
+
+describe('HR assignment schedule changes', () => {
+  it('requires a later bounded deadline for extensions', () => {
+    expect(planHrAssignmentScheduleChange({ action: 'extend', currentDueAt: '2026-07-20T07:00:00.000Z', closesAt: '2026-07-31T07:00:00.000Z', dueAt: '2026-07-25T07:00:00.000Z' })).toMatchObject({ isValid: true })
+    expect(planHrAssignmentScheduleChange({ action: 'extend', currentDueAt: '2026-07-20T07:00:00.000Z', closesAt: '2026-07-31T07:00:00.000Z', dueAt: '2026-07-19T07:00:00.000Z' })).toEqual({ isValid: false, code: 'EXTENSION_NOT_LATER' })
+    expect(planHrAssignmentScheduleChange({ action: 'extend', currentDueAt: '2026-07-20T07:00:00.000Z', closesAt: '2026-07-31T07:00:00.000Z', dueAt: '2026-08-01T07:00:00.000Z' })).toEqual({ isValid: false, code: 'DUE_AFTER_CLOSE' })
+  })
+
+  it('supports cancellation without a replacement deadline', () => {
+    expect(planHrAssignmentScheduleChange({ action: 'cancel', currentDueAt: '2026-07-20T07:00:00.000Z', closesAt: '2026-07-31T07:00:00.000Z' })).toEqual({ isValid: true, effectiveDueAt: '2026-07-20T07:00:00.000Z' })
+  })
+
+  it('rejects a reopened response deadline that is not later than its current deadline', () => {
+    expect(planHrAssignmentScheduleChange({ action: 'extend', currentDueAt: '2026-07-20T07:00:00.000Z', closesAt: '2026-07-31T07:00:00.000Z', dueAt: '2026-07-20T07:00:00.000Z' })).toEqual({ isValid: false, code: 'EXTENSION_NOT_LATER' })
   })
 })

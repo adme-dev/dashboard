@@ -1307,6 +1307,41 @@ export async function sendHrReviewAssignmentEmail(data: {
   return true
 }
 
+export async function sendHrReviewLifecycleEmail(data: {
+  to: string
+  name: string
+  cycleName: string
+  action: 'reminder' | 'overdue' | 'extension' | 'reschedule' | 'cancel' | 'reopen'
+  message: string
+  assignmentUrl: string
+  calendarInvite?: string
+}, event?: H3Event): Promise<boolean> {
+  const client = getResendClient(event)
+  if (!client) return false
+  const labels = {
+    reminder: 'Business review due soon', overdue: 'Business review overdue',
+    extension: 'Business review extension approved', reschedule: 'Business review deadline updated',
+    cancel: 'Business review assignment cancelled', reopen: 'Business review response reopened',
+  }
+  const { html, text } = renderEmailTemplate({
+    title: labels[data.action],
+    greeting: `Hi ${escapeHtml(data.name)},`,
+    bodyHtml: `<p>${escapeHtml(data.message)}</p><p>This notice contains no questionnaire answers or private evidence.</p>`,
+    ctaText: data.action === 'cancel' ? undefined : 'Open My Review',
+    ctaUrl: data.action === 'cancel' ? undefined : data.assignmentUrl,
+    recipientEmail: data.to,
+  })
+  const result = await client.emails.send({
+    from: getFromHeader(event), to: data.to, subject: `${labels[data.action]}: ${data.cycleName}`, html, text,
+    attachments: data.calendarInvite ? [{
+      filename: 'business-review-deadline.ics', content: data.calendarInvite,
+      contentType: `text/calendar; method=${data.action === 'cancel' ? 'CANCEL' : 'REQUEST'}; charset=UTF-8`,
+    }] : undefined,
+  })
+  if (result.error) throw new Error(`HR review lifecycle email rejected: ${result.error.message}`)
+  return true
+}
+
 export async function sendBoardMemberAddedEmail(data: {
   to: string
   name: string
