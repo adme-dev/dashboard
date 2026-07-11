@@ -41,4 +41,19 @@ describe('MondayClient GraphQL schema compatibility', () => {
       expect(call[1]?.body?.query).toMatch(/\n\s+url\s*\n/)
     }
   })
+
+  it('uses the current board object on subitems and normalizes board_id', async () => {
+    const { MondayClient } = await import('~~/server/utils/mondayClient')
+    const client = new MondayClient('test-token')
+    ofetchMock.mockResolvedValueOnce({
+      data: { items: [{ subitems: [{ id: 'sub-1', name: 'Subitem', board: { id: 'board-2' } }] }] }
+    })
+
+    const subitems = await client.getSubitems('item-1')
+    const query = ofetchMock.mock.calls[0]?.[1]?.body?.query
+
+    expect(query).toMatch(/board\s*{\s*id\s*}/)
+    expect(query).not.toMatch(/\n\s+board_id\s*\n/)
+    expect(subitems[0]?.board_id).toBe('board-2')
+  })
 })

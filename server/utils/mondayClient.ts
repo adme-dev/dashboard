@@ -397,7 +397,9 @@ export class MondayClient {
             created_at
             updated_at
             creator_id
-            board_id
+            board {
+              id
+            }
             column_values {
               id
               type
@@ -409,8 +411,11 @@ export class MondayClient {
       }
     `
 
-    const data = await this.request<{ items: [{ subitems?: MondayItem[] }] }>(query)
-    return data.items[0]?.subitems || []
+    const data = await this.request<{ items: [{ subitems?: Array<MondayItem & { board?: { id: string } }> }] }>(query)
+    return (data.items[0]?.subitems || []).map(subitem => ({
+      ...subitem,
+      board_id: subitem.board?.id || ''
+    }))
   }
 
   /**
