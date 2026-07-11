@@ -1,5 +1,6 @@
 import { queryRows } from '~~/server/utils/db'
 import { requireHrAdmin } from '~~/server/utils/hr/authorization'
+import { suggestHrRosterClassification } from '~~/server/utils/hr/rosterClassification'
 
 export default defineEventHandler(async (event) => {
   await requireHrAdmin(event)
@@ -16,18 +17,32 @@ export default defineEventHandler(async (event) => {
         GROUP BY department.id
         ORDER BY department.sort_order, department.name`,
     ),
-    queryRows(
+    queryRows<any>(
       `SELECT member.id, member.name, member.email,
+              COALESCE(member.role, member.user_role::text) AS current_role,
               member.department_id,
-              department.name AS department_name
+              department.name AS department_name,
+              classification.classification,
+              classification.person_type,
+              classification.review_eligible,
+              classification.reason AS classification_reason,
+              classification.confirmed_at
          FROM team_members member
          LEFT JOIN departments department
            ON department.id = member.department_id
           AND department.department_kind = 'organizational'
+        LEFT JOIN hr_roster_classifications classification
+          ON classification.team_member_id = member.id
         WHERE member.is_active = TRUE
         ORDER BY member.name`,
     ),
   ])
 
-  return { departments, members }
+  return {
+    departments,
+    members: members.map(member => ({
+      ...member,
+      suggestion: suggestHrRosterClassification({ name: member.name, email: member.email, role: member.current_role }),
+    })),
+  }
 })

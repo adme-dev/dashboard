@@ -17,12 +17,16 @@ export default defineEventHandler(async (event) => {
       (SELECT COUNT(*)::int FROM hr_role_assignments assignment
         JOIN hr_role_profile_versions version ON version.id = assignment.role_profile_version_id
         JOIN team_members member ON member.id = assignment.team_member_id
-        WHERE assignment.effective_to IS NULL AND version.status = 'published' AND member.is_active = true) AS eligible_participants,
+        JOIN hr_roster_classifications classification ON classification.team_member_id = member.id
+        WHERE assignment.effective_to IS NULL AND version.status = 'published' AND member.is_active = true
+          AND classification.review_eligible = TRUE) AS eligible_participants,
       (SELECT COUNT(*)::int FROM hr_role_assignments assignment
         JOIN hr_role_profile_versions version ON version.id = assignment.role_profile_version_id
         JOIN team_members member ON member.id = assignment.team_member_id
+        JOIN hr_roster_classifications classification ON classification.team_member_id = member.id
         JOIN departments department ON department.id = member.department_id
         WHERE assignment.effective_to IS NULL AND version.status = 'published' AND member.is_active = true
+          AND classification.review_eligible = TRUE
           AND department.is_active = true AND department.department_kind = 'organizational') AS organizationally_mapped_participants,
       (SELECT COUNT(*)::int FROM hr_review_cycles WHERE status IN ('scheduled', 'open')) AS active_cycles,
       EXISTS(SELECT 1 FROM hr_monday_evidence_scopes WHERE status = 'approved') AS approved_monday_scope`),

@@ -112,7 +112,9 @@ export default defineEventHandler(async (event) => {
             assignment.id AS current_assignment_id,
             assignment.role_profile_version_id AS current_role_version_id,
             profile.title AS governed_role_title,
-            assignment.acknowledgement_status
+            assignment.acknowledgement_status,
+            classification.classification,
+            classification.review_eligible
        FROM team_members member
        LEFT JOIN departments department ON department.id = member.department_id
        LEFT JOIN hr_role_assignments assignment
@@ -120,6 +122,7 @@ export default defineEventHandler(async (event) => {
        LEFT JOIN hr_role_profile_versions role_version
          ON role_version.id = assignment.role_profile_version_id
        LEFT JOIN hr_role_profiles profile ON profile.id = role_version.role_profile_id
+       LEFT JOIN hr_roster_classifications classification ON classification.team_member_id = member.id
       WHERE member.is_active = TRUE
       ORDER BY member.name`,
   )

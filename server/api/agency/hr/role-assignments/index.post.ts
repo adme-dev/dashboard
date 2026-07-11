@@ -16,15 +16,17 @@ export default defineEventHandler(async (event) => {
       `SELECT member.id AS team_member_id, member.name AS member_name,
               version.id AS role_profile_version_id, profile.title AS role_title
          FROM team_members member
+         JOIN hr_roster_classifications classification ON classification.team_member_id = member.id
          JOIN hr_role_profile_versions version ON version.id = $2
          JOIN hr_role_profiles profile ON profile.id = version.role_profile_id
         WHERE member.id = $1 AND member.is_active = TRUE
+          AND classification.review_eligible = TRUE
           AND version.status = 'published' AND profile.status = 'active'
         FOR UPDATE OF member`,
       [parsed.data.teamMemberId, parsed.data.roleProfileVersionId],
     )
     if (!eligible.rows[0]) {
-      throw createError({ statusCode: 409, statusMessage: 'The team member and published role must both be active' })
+      throw createError({ statusCode: 409, statusMessage: 'The team member must be confirmed as review eligible and the published role must be active' })
     }
 
     const current = await db.query(

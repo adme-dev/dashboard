@@ -204,6 +204,20 @@ export const hrOrganizationalDepartmentAssignmentSchema = z.object({
   departmentId: z.string().uuid(),
 })
 
+export const hrRosterClassificationSchema = z.object({
+  classification: z.enum(['person', 'shared_account', 'service_account', 'test_account', 'external_contact']),
+  personType: z.enum(['employee', 'contractor', 'other']).nullable().optional(),
+  reviewEligible: z.boolean(),
+  reason: z.string().trim().min(10).max(1000),
+}).superRefine((input, context) => {
+  if (input.reviewEligible && input.classification !== 'person') {
+    context.addIssue({ code: 'custom', path: ['reviewEligible'], message: 'Only a confirmed person can be eligible for review.' })
+  }
+  if (input.classification === 'person' && !input.personType) {
+    context.addIssue({ code: 'custom', path: ['personType'], message: 'Employee, contractor, or other person type is required.' })
+  }
+})
+
 export const hrAssignmentScheduleChangeSchema = z.object({
   action: z.enum(['extend', 'reschedule', 'cancel', 'reopen']),
   dueAt: z.string().datetime().optional(),

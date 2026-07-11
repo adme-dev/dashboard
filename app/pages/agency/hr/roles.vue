@@ -68,7 +68,9 @@ type TeamMember = {
   id: string; name: string; email: string; current_role: string | null; department: string | null;
   current_assignment_id: string | null; current_role_version_id: string | null;
   governed_role_title: string | null; acknowledgement_status: string | null;
+  classification: Classification | null; review_eligible: boolean | null;
 }
+type Classification = 'person' | 'shared_account' | 'service_account' | 'test_account' | 'external_contact'
 type KpiDraft = {
   name: string
   description: string
@@ -143,7 +145,7 @@ const departmentGoalItems = computed(() => departmentGoals.value.map(item => ({
   value: item.version_id,
 })))
 const kpiWeightTotal = computed(() => form.kpis.reduce((total, kpi) => total + Number(kpi.weight || 0), 0))
-const teamMemberItems = computed(() => teamMembers.value.map(member => ({ label: `${member.name} — ${member.email}`, value: member.id })))
+const teamMemberItems = computed(() => teamMembers.value.filter(member => member.review_eligible === true).map(member => ({ label: `${member.name} — ${member.email}`, value: member.id })))
 const publishedRoleItems = computed(() => roles.value.filter(role => role.status === 'active' && role.version_status === 'published').map(role => ({ label: `${role.title} · v${role.version}`, value: role.version_id })))
 const assignedMemberCount = computed(() => teamMembers.value.filter(member => member.current_assignment_id).length)
 const rosterCoverage = computed(() => teamMembers.value.map(member => {
@@ -447,7 +449,7 @@ async function createRole() {
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <h3 class="text-sm font-medium text-highlighted">{{ item.member.name }}</h3>
-                <UBadge :color="item.member.current_assignment_id ? 'success' : 'warning'" variant="subtle" :label="item.member.current_assignment_id ? 'Assigned' : 'Unassigned'" />
+                <UBadge :color="item.member.current_assignment_id ? 'success' : item.member.review_eligible ? 'warning' : 'neutral'" variant="subtle" :label="item.member.current_assignment_id ? 'Assigned' : item.member.review_eligible ? 'Unassigned' : 'Not eligible yet'" />
               </div>
               <p class="mt-1 truncate text-xs text-muted">{{ item.member.email }} · {{ item.member.department || 'Department not mapped' }}</p>
             </div>
@@ -455,7 +457,8 @@ async function createRole() {
               <p class="text-sm text-highlighted">{{ item.member.governed_role_title || item.suggestion?.title || item.member.current_role || 'Role not confirmed' }}</p>
               <p class="mt-1 text-xs leading-5 text-muted">{{ item.member.current_assignment_id ? `Frozen role assigned · ${item.member.acknowledgement_status || 'acknowledgement pending'}` : item.suggestionReason }}</p>
             </div>
-            <UButton v-if="!item.member.current_assignment_id && item.suggestion" color="neutral" variant="outline" size="sm" :label="item.suggestion.version_status === 'published' ? 'Review assignment' : 'Complete draft'" @click="reviewRosterSuggestion(item.member, item.suggestion)" />
+            <UButton v-if="!item.member.review_eligible" color="neutral" variant="outline" size="sm" label="Classify record" to="/agency/hr/departments" />
+            <UButton v-else-if="!item.member.current_assignment_id && item.suggestion" color="neutral" variant="outline" size="sm" :label="item.suggestion.version_status === 'published' ? 'Review assignment' : 'Complete draft'" @click="reviewRosterSuggestion(item.member, item.suggestion)" />
             <UButton v-else-if="!item.member.current_assignment_id" color="neutral" variant="ghost" size="sm" label="Build role" @click="startNewRole" />
           </article>
         </div>
