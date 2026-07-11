@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
             rpv.dependencies,
             rpv.out_of_scope,
             rpv.benchmark_refs,
+            rpv.source_refs,
             rpv.published_at,
             (SELECT COUNT(*) FROM hr_role_assignments ra
               WHERE ra.role_profile_version_id = rpv.id AND ra.effective_to IS NULL) AS assigned_people,

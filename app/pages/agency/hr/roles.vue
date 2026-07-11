@@ -27,6 +27,7 @@ type RoleProfile = {
   dependencies: string[]
   out_of_scope: string[]
   benchmark_refs: Array<{ name?: string; publisher?: string; framework_key?: string }>
+  source_refs: Array<Partial<RoleSourceDraft> & { type?: string }>
   published_at: string | null
   assigned_people: string | number
   question_count: number | null
@@ -72,6 +73,14 @@ type KpiDraft = {
   goalContributionWeight: number
   goalRationale: string
 }
+type RoleSourceDraft = {
+  sourceType: 'monday_user_profile' | 'monday_item' | 'monday_doc' | 'owner_confirmed'
+  sourceId: string
+  label: string
+  evidenceScope: 'title' | 'workflow' | 'responsibility' | 'outcome' | 'decision_authority' | 'dependency'
+  limitation: string
+  observedAt?: string
+}
 
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
@@ -100,8 +109,9 @@ const form = reactive({
   outOfScope: '',
   benchmarkKey: 'ami-mcf' as Benchmark['framework_key'],
   contractExtractId: '',
+  sourceReferences: [] as RoleSourceDraft[],
   kpis: [] as KpiDraft[],
-  publish: true,
+  publish: false,
 })
 
 const benchmarkItems = computed(() => benchmarks.value.map(item => ({
@@ -119,6 +129,20 @@ const departmentGoalItems = computed(() => departmentGoals.value.map(item => ({
 const kpiWeightTotal = computed(() => form.kpis.reduce((total, kpi) => total + Number(kpi.weight || 0), 0))
 const teamMemberItems = computed(() => teamMembers.value.filter(member => member.is_active !== false).map(member => ({ label: `${member.name} — ${member.email}`, value: member.id })))
 const publishedRoleItems = computed(() => roles.value.filter(role => role.status === 'active' && role.version_status === 'published').map(role => ({ label: `${role.title} · v${role.version}`, value: role.version_id })))
+const roleSourceTypeItems = [
+  { label: 'Monday user profile', value: 'monday_user_profile' },
+  { label: 'Monday item', value: 'monday_item' },
+  { label: 'Monday WorkDoc', value: 'monday_doc' },
+  { label: 'Owner confirmed', value: 'owner_confirmed' },
+]
+const roleEvidenceScopeItems = [
+  { label: 'Role title', value: 'title' },
+  { label: 'Workflow involvement', value: 'workflow' },
+  { label: 'Responsibility', value: 'responsibility' },
+  { label: 'Expected outcome', value: 'outcome' },
+  { label: 'Decision authority', value: 'decision_authority' },
+  { label: 'Dependency', value: 'dependency' },
+]
 
 function splitLines(value: string): string[] {
   return value.split('\n').map(item => item.trim()).filter(Boolean)
@@ -148,7 +172,7 @@ onMounted(() => void refresh())
 function resetForm() {
   Object.assign(form, {
     title: '', department: '', purpose: '', responsibilities: '', expectedOutcomes: '',
-    decisionAuthority: '', dependencies: '', outOfScope: '', benchmarkKey: 'ami-mcf', contractExtractId: '', kpis: [], publish: true,
+    decisionAuthority: '', dependencies: '', outOfScope: '', benchmarkKey: 'ami-mcf', contractExtractId: '', sourceReferences: [], kpis: [], publish: false,
   })
 }
 
@@ -207,6 +231,14 @@ function reviseRole(role: RoleProfile) {
     outOfScope: role.out_of_scope.join('\n'),
     benchmarkKey: role.benchmark_refs?.[0]?.framework_key || 'ami-mcf',
     contractExtractId: '',
+    sourceReferences: (role.source_refs || []).filter(source => source.sourceType).map(source => ({
+      sourceType: source.sourceType as RoleSourceDraft['sourceType'],
+      sourceId: String(source.sourceId || ''),
+      label: String(source.label || ''),
+      evidenceScope: (source.evidenceScope || 'workflow') as RoleSourceDraft['evidenceScope'],
+      limitation: String(source.limitation || ''),
+      ...(source.observedAt ? { observedAt: source.observedAt } : {}),
+    })),
     kpis: role.kpis.map(kpi => ({
       name: kpi.name,
       description: kpi.description || '',
@@ -242,6 +274,15 @@ function addKpi() {
 
 function removeKpi(index: number) { form.kpis.splice(index, 1) }
 
+function addSourceReference() {
+  form.sourceReferences.push({
+    sourceType: 'monday_item', sourceId: '', label: '', evidenceScope: 'workflow',
+    limitation: 'Shows approved workflow context; it does not prove performance or contractual ownership.',
+  })
+}
+
+function removeSourceReference(index: number) { form.sourceReferences.splice(index, 1) }
+
 function applyContractExtract(extractId: string) {
   form.contractExtractId = extractId
   const extract = contractExtracts.value.find(item => item.id === extractId)
@@ -264,6 +305,10 @@ async function createRole() {
     toast.add({ title: 'Add every KPI source reference', description: 'Each measure needs a report, board or metric identifier that the employee can challenge.', color: 'warning' })
     return
   }
+  if (form.sourceReferences.some(source => !source.sourceId.trim() || !source.label.trim() || !source.limitation.trim())) {
+    toast.add({ title: 'Complete every source reference', description: 'Each source needs an identifier, label and a clear statement of what it cannot prove.', color: 'warning' })
+    return
+  }
   saving.value = true
   try {
     const endpoint = editingRoleId.value
@@ -283,6 +328,7 @@ async function createRole() {
         outOfScope: splitLines(form.outOfScope),
         benchmarkKey: form.benchmarkKey,
         contractExtractId: form.contractExtractId || undefined,
+        sourceReferences: form.sourceReferences,
         kpis: form.kpis.map(kpi => ({
           ...kpi,
           description: kpi.description || undefined,
@@ -406,6 +452,22 @@ async function createRole() {
               <UFormField label="Role purpose" required help="Describe why the role exists, not the person currently in it."><UTextarea v-model="form.purpose" :rows="4" class="w-full" /></UFormField>
               <UFormField label="Agreed responsibilities" required help="One observable responsibility per line."><UTextarea v-model="form.responsibilities" :rows="6" placeholder="Own the monthly client planning cycle&#10;Maintain approved campaign budgets" class="w-full" /></UFormField>
               <UFormField label="Expected outcomes" required help="One measurable or verifiable outcome per line."><UTextarea v-model="form.expectedOutcomes" :rows="5" class="w-full" /></UFormField>
+              <div class="rounded-lg border border-default">
+                <div class="flex items-center justify-between border-b border-default bg-elevated/30 p-4">
+                  <div><p class="text-sm font-medium text-highlighted">Role source register</p><p class="mt-1 text-xs text-muted">Metadata and limitations only; never raw messages or performance conclusions.</p></div>
+                  <UButton color="neutral" variant="outline" size="sm" icon="i-lucide-plus" label="Add source" @click="addSourceReference" />
+                </div>
+                <div v-if="form.sourceReferences.length" class="divide-y divide-default">
+                  <div v-for="(source, index) in form.sourceReferences" :key="index" class="space-y-4 p-4">
+                    <div class="flex items-center justify-between"><p class="font-mono text-xs uppercase tracking-wide text-muted">Source {{ index + 1 }}</p><UButton color="error" variant="ghost" size="xs" icon="i-lucide-trash-2" aria-label="Remove role source" @click="removeSourceReference(index)" /></div>
+                    <div class="grid gap-3 sm:grid-cols-2"><UFormField label="Source type" required><USelectMenu v-model="source.sourceType" :items="roleSourceTypeItems" value-key="value" class="w-full" /></UFormField><UFormField label="Evidence scope" required><USelectMenu v-model="source.evidenceScope" :items="roleEvidenceScopeItems" value-key="value" class="w-full" /></UFormField></div>
+                    <UFormField label="Source identifier" required help="Use the Monday user, item or WorkDoc ID—not a URL or copied content."><UInput v-model="source.sourceId" placeholder="e.g. 11140150759" class="w-full" /></UFormField>
+                    <UFormField label="Source label" required><UInput v-model="source.label" placeholder="e.g. Weekly Social Media & Traffic Summary" class="w-full" /></UFormField>
+                    <UFormField label="Evidence limitation" required help="State what a reviewer must not infer from this source."><UTextarea v-model="source.limitation" :rows="3" class="w-full" /></UFormField>
+                  </div>
+                </div>
+                <div v-else class="p-4 text-sm leading-6 text-muted">Add approved source metadata when a title or workflow was discovered outside the contract vault. Monday workflow evidence does not prove performance or contractual ownership.</div>
+              </div>
               <div class="rounded-lg border border-default">
                 <div class="flex items-center justify-between border-b border-default bg-elevated/30 p-4"><div><p class="text-sm font-medium text-highlighted">Role KPI register</p><p class="mt-1 text-xs text-muted">Operational evidence, not questionnaire opinion.</p></div><div class="flex items-center gap-2"><UBadge :color="form.kpis.length === 0 || kpiWeightTotal === 100 ? 'success' : 'warning'" variant="subtle" :label="`${kpiWeightTotal}%`" /><UButton color="neutral" variant="outline" size="sm" icon="i-lucide-plus" label="Add KPI" @click="addKpi" /></div></div>
                 <div v-if="form.kpis.length" class="divide-y divide-default">

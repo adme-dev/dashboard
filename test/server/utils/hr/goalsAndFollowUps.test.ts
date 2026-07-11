@@ -17,6 +17,54 @@ describe('HR goals, KPIs, and follow-up schemas', () => {
     })).toThrow('KPI weights must total 100')
   })
 
+  it('accepts bounded Monday role evidence as metadata without raw content', () => {
+    const parsed = hrRoleProfileSchema.parse({
+      title: 'Social & Traffic Operations Manager',
+      purpose: 'Coordinate agreed social media and traffic operations across the client portfolio.',
+      responsibilities: ['Prepare the agreed social media and traffic operations summary'],
+      expectedOutcomes: ['Stakeholders receive the agreed summary through the approved workflow'],
+      benchmarkKey: 'ami-mcf',
+      sourceReferences: [{
+        sourceType: 'monday_item',
+        sourceId: '11140150759',
+        label: 'Weekly Social Media & Traffic Summary & Ad Share',
+        evidenceScope: 'workflow',
+        limitation: 'Shows assigned workflow involvement; it does not establish performance or contractual ownership.',
+      }],
+    })
+
+    expect(parsed.sourceReferences).toEqual([expect.objectContaining({
+      sourceType: 'monday_item',
+      sourceId: '11140150759',
+      evidenceScope: 'workflow',
+    })])
+  })
+
+  it('rejects unsupported role evidence types and oversized source metadata', () => {
+    const base = {
+      title: 'Social & Traffic Operations Manager',
+      purpose: 'Coordinate agreed social media and traffic operations across the client portfolio.',
+      responsibilities: ['Prepare the agreed social media and traffic operations summary'],
+      expectedOutcomes: ['Stakeholders receive the agreed summary through the approved workflow'],
+      benchmarkKey: 'ami-mcf',
+    }
+
+    expect(() => hrRoleProfileSchema.parse({
+      ...base,
+      sourceReferences: [{
+        sourceType: 'email_message', sourceId: 'private-message', label: 'Private message',
+        evidenceScope: 'workflow', limitation: 'Not approved.',
+      }],
+    })).toThrow()
+    expect(() => hrRoleProfileSchema.parse({
+      ...base,
+      sourceReferences: [{
+        sourceType: 'monday_item', sourceId: '1', label: 'x'.repeat(301),
+        evidenceScope: 'workflow', limitation: 'Metadata only.',
+      }],
+    })).toThrow()
+  })
+
   it('requires department goal periods and target semantics', () => {
     expect(() => hrDepartmentGoalSchema.parse({
       departmentId: '11111111-1111-4111-8111-111111111111',

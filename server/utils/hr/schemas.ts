@@ -102,6 +102,14 @@ export const hrRoleProfileSchema = z.object({
   outOfScope: z.array(z.string().trim().min(3).max(500)).max(20).default([]),
   benchmarkKey: z.enum(['ami-mcf', 'sfia-9', 'pmi-pmcd']),
   contractExtractId: z.string().uuid().optional(),
+  sourceReferences: z.array(z.object({
+    sourceType: z.enum(['monday_user_profile', 'monday_item', 'monday_doc', 'owner_confirmed']),
+    sourceId: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9:_-]+$/, 'Source identifiers cannot be URLs or raw content.'),
+    label: z.string().trim().min(3).max(300),
+    evidenceScope: z.enum(['title', 'workflow', 'responsibility', 'outcome', 'decision_authority', 'dependency']),
+    limitation: z.string().trim().min(10).max(500),
+    observedAt: z.string().datetime().optional(),
+  })).max(20).default([]),
   kpis: z.array(hrRoleKpiSchema).max(12).default([]),
   publish: z.boolean().default(false),
 }).superRefine((role, context) => {

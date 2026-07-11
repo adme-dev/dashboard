@@ -48,6 +48,9 @@ export default defineEventHandler(async (event) => {
         teamMemberId: extract.rows[0].team_member_id,
       }
     }
+    const roleSourceReferences = contractSource
+      ? [contractSource, ...input.sourceReferences]
+      : [...input.sourceReferences]
 
     const profile = await db.query(
       `INSERT INTO hr_role_profiles (title, department, status, created_by)
@@ -74,7 +77,7 @@ export default defineEventHandler(async (event) => {
         JSON.stringify(input.dependencies),
         JSON.stringify(input.outOfScope),
         JSON.stringify([benchmarkRef]),
-        JSON.stringify(contractSource ? [contractSource] : []),
+        JSON.stringify(roleSourceReferences),
         status,
         input.publish ? user.id : null,
       ],
@@ -147,7 +150,12 @@ export default defineEventHandler(async (event) => {
       action: input.publish ? 'role_profile.published' : 'role_profile.created',
       targetType: 'role_profile',
       targetId: result.profile.id,
-      metadata: { benchmarkKey: input.benchmarkKey, questionCount: result.questionCount, kpiCount: result.kpiCount },
+      metadata: {
+        benchmarkKey: input.benchmarkKey,
+        questionCount: result.questionCount,
+        kpiCount: result.kpiCount,
+        sourceReferenceCount: roleSourceReferences.length,
+      },
     }, db)
     return result
   })

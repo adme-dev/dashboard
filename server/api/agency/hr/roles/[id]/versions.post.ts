@@ -65,6 +65,9 @@ export default defineEventHandler(async (event) => {
         teamMemberId: extract.team_member_id,
       }
     }
+    const roleSourceReferences = contractSource
+      ? [contractSource, ...input.sourceReferences]
+      : [...input.sourceReferences]
 
     if (input.publish) {
       await db.query(
@@ -99,7 +102,7 @@ export default defineEventHandler(async (event) => {
       [profileId, input.purpose, JSON.stringify(input.responsibilities),
         JSON.stringify(input.expectedOutcomes), JSON.stringify(input.decisionAuthority),
         JSON.stringify(input.dependencies), JSON.stringify(input.outOfScope),
-        JSON.stringify([benchmark]), JSON.stringify(contractSource ? [contractSource] : []),
+        JSON.stringify([benchmark]), JSON.stringify(roleSourceReferences),
         status, input.publish ? user.id : null],
     )
     const version = versionResult.rows[0]
@@ -161,7 +164,13 @@ export default defineEventHandler(async (event) => {
       action: 'role_profile.revised',
       targetType: 'role_profile',
       targetId: profileId,
-      metadata: { fromVersion: input.expectedVersion, toVersion: version.version, published: input.publish, kpiCount: input.kpis.length },
+      metadata: {
+        fromVersion: input.expectedVersion,
+        toVersion: version.version,
+        published: input.publish,
+        kpiCount: input.kpis.length,
+        sourceReferenceCount: roleSourceReferences.length,
+      },
     }, db)
     return { profile: { id: profileId, title: input.title }, version, questionCount: questions.length, kpiCount: input.kpis.length }
   })
