@@ -22,6 +22,10 @@ export interface MigrationConfig {
   boardMappings?: BoardMappingConfig[]
   /** Only process source items updated at or after this ISO timestamp. */
   updatedSince?: string
+  /** Only process source items updated at or before this ISO timestamp. */
+  updatedUntil?: string
+  /** Retain only explicitly approved Monday column ids or semantic field aliases. */
+  allowedFields?: string[]
 }
 
 export interface BoardMappingConfig {
@@ -47,6 +51,36 @@ export interface MigrationProgress {
 }
 
 type MondayBoardSource = Pick<MondayClient, 'getBoard' | 'getBoards'>
+
+const governedFieldTypes: Record<string, string[]> = {
+  assignee: ['people'],
+  due_date: ['date', 'timeline'],
+  start_date: ['date', 'timeline'],
+}
+
+export function filterMondayItemForMigration(item: MondayItem, allowedFields?: string[]): MondayItem {
+  if (!allowedFields) return item
+  const allowed = new Set(allowedFields.map(field => field.trim().toLowerCase()).filter(Boolean))
+  const allowedTypes = new Set([...allowed].flatMap(field => governedFieldTypes[field] || [field]))
+  return {
+    ...item,
+    column_values: (item.column_values || []).filter(column => (
+      allowed.has(String(column.id || '').toLowerCase())
+      || allowedTypes.has(String(column.type || '').toLowerCase())
+    )),
+    subitems: item.subitems?.map(subitem => filterMondayItemForMigration(subitem, allowedFields)),
+  }
+}
+
+export function isMondayItemInsideWindow(item: MondayItem, updatedSince?: string, updatedUntil?: string): boolean {
+  if (!updatedSince && !updatedUntil) return true
+  const updatedAt = Date.parse(item.updated_at || item.created_at || '')
+  if (Number.isNaN(updatedAt)) return false
+  const lower = updatedSince ? Date.parse(updatedSince) : Number.NEGATIVE_INFINITY
+  const upper = updatedUntil ? Date.parse(updatedUntil) : Number.POSITIVE_INFINITY
+  if (Number.isNaN(lower) || Number.isNaN(upper)) return false
+  return updatedAt >= lower && updatedAt <= upper
+}
 
 /** Resolve only explicitly mapped boards when mappings are present. */
 export async function resolveMigrationBoards(
@@ -364,15 +398,9 @@ export class MondayMigrationService {
         cursor = result.cursor
       } while (cursor)
 
-      if (this.config.updatedSince) {
-        const cutoff = Date.parse(this.config.updatedSince)
-        if (!Number.isNaN(cutoff)) {
-          allItems = allItems.filter(item => {
-            const updated = Date.parse(item.updated_at || item.created_at || '')
-            return Number.isNaN(updated) || updated >= cutoff
-          })
-        }
-      }
+      allItems = allItems
+        .filter(item => isMondayItemInsideWindow(item, this.config.updatedSince, this.config.updatedUntil))
+        .map(item => filterMondayItemForMigration(item, this.config.allowedFields))
 
       console.log(`[Migration ${this.sessionId}] Board ${board.name}: ${allItems.length} items`)
 

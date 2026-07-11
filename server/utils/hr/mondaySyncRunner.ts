@@ -46,7 +46,9 @@ export async function startGovernedMondaySync(
     importUpdates: false,
     importFiles: false,
     importSubitems: true,
+    allowedFields: scope.allowed_fields,
     updatedSince: completeCheckpoint || `${scope.period_start}T00:00:00.000Z`,
+    updatedUntil: `${scope.period_end}T23:59:59.999Z`,
     boardMappings: scope.destination_mappings.map(mapping => ({
       mondayBoardId: mapping.boardId,
       departmentId: mapping.departmentId,

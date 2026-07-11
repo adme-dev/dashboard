@@ -24,6 +24,9 @@ export default defineEventHandler(async (event) => {
     importUpdates: false,
     importFiles: false,
     importSubitems: body?.importSubitems ?? true,
+    allowedFields: scope.allowed_fields,
+    updatedSince: `${scope.period_start}T00:00:00.000Z`,
+    updatedUntil: `${scope.period_end}T23:59:59.999Z`,
     boardMappings: scope.destination_mappings.map(mapping => ({ mondayBoardId: mapping.boardId, departmentId: mapping.departmentId, projectId: mapping.projectId })),
   }
   const client = await createMondayClient(connection.accessToken)

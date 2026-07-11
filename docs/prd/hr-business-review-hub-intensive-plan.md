@@ -1654,7 +1654,7 @@ Conventions:
 
 **Acceptance:**
 
-- [ ] Import only allowlisted boards/fields and bounded dates.
+- [x] Import only allowlisted boards/fields and bounded dates.
 - [ ] Preserve provenance, assignment changes, status history where available, and limitations.
 - [ ] Store evidence references/minimal extracts, not an unrestricted mirror.
 - [ ] Produce owner-reviewable process-profile updates and questionnaire recommendations rather than automatic employee conclusions.
