@@ -66,7 +66,7 @@ export default defineEventHandler(async (event) => {
   if (!canAccessHrParticipant(user, scope, 'read')) throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
 
   const isParticipant = user.id === assignment.team_member_id
-  const canSeeAnswers = isParticipant || canManageHr(user) || assignment.response_status === 'submitted'
+  const canSeeAnswers = isParticipant || ['submitted', 'locked'].includes(assignment.response_status)
   await recordHrAuditEvent({
     actorId: user.id,
     action: 'questionnaire_assignment.viewed',
@@ -99,7 +99,9 @@ export default defineEventHandler(async (event) => {
         kpis: assignment.role_kpis || [],
       },
       questions: assignment.questions,
-      canRespond: isParticipant && assignment.response_status !== 'submitted' && Date.now() <= Date.parse(assignment.closes_at),
+      canRespond: isParticipant && assignment.status !== 'closed'
+        && !['submitted', 'locked'].includes(assignment.response_status)
+        && Date.now() <= Date.parse(assignment.closes_at),
     },
     response: canSeeAnswers
       ? { id: assignment.response_id, status: assignment.response_status || 'draft', answers: assignment.answers || {}, submittedAt: assignment.submitted_at }

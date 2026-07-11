@@ -75,6 +75,7 @@ const mondayEvidenceNotice = ref('')
 const disputeObservationId = ref<string | null>(null)
 const disputeNote = ref('')
 const roleDisputeNote = ref('')
+const showSubmitConfirmation = ref(false)
 
 const assignmentId = computed(() => String(route.params.id || ''))
 const answeredCount = computed(() => data.value?.assignment.questions.filter(question => {
@@ -124,7 +125,10 @@ async function save(status: 'draft' | 'submitted') {
       description: status === 'submitted' ? 'Your reviewer can now consider your answers and follow up for context.' : 'You can return before the cycle closes.',
       color: 'success',
     })
-    if (status === 'submitted') await load()
+    if (status === 'submitted') {
+      showSubmitConfirmation.value = false
+      await load()
+    }
   } catch (error: any) {
     const responseIssues = error?.data?.data?.issues || error?.data?.issues || []
     for (const issue of responseIssues) issues.value[issue.questionId] = issue.message
@@ -261,9 +265,23 @@ async function acknowledgeRole(status: 'acknowledged' | 'disputed') {
               </div></div>
             </div>
           </div>
-          <footer v-if="data.assignment.canRespond" class="flex flex-col-reverse gap-3 border-t border-default bg-elevated/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><p class="text-xs text-muted">{{ requiredCount }} required questions · drafts remain private</p><div class="flex gap-2"><UButton color="neutral" variant="outline" icon="i-lucide-save" label="Save draft" :loading="saving" @click="save('draft')" /><UButton icon="i-lucide-send" label="Submit response" :loading="saving" @click="save('submitted')" /></div></footer>
+          <footer v-if="data.assignment.canRespond" class="flex flex-col-reverse gap-3 border-t border-default bg-elevated/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><p class="text-xs text-muted">{{ requiredCount }} required questions · drafts remain private</p><div class="flex gap-2"><UButton color="neutral" variant="outline" icon="i-lucide-save" label="Save draft" :loading="saving" @click="save('draft')" /><UButton icon="i-lucide-send" label="Submit response" :loading="saving" @click="showSubmitConfirmation = true" /></div></footer>
         </section>
       </main>
+
+      <UModal v-model:open="showSubmitConfirmation" title="Submit and lock response" description="Review what changes when you submit.">
+        <template #content>
+          <div class="overflow-hidden">
+            <div class="border-b border-default bg-elevated/30 px-6 py-5"><p class="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-primary">Final participant action</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Submit and lock response</h2></div>
+            <div class="space-y-4 p-6">
+              <UAlert color="info" variant="soft" icon="i-lucide-shield-check" title="Your draft remains private" description="Until you submit, only you can see the answers. HR administrators and reviewers cannot read the draft." />
+              <p class="text-sm leading-6 text-muted">After submission, your assigned reviewer and authorised HR owners can read the answers for this review. You cannot edit them unless an HR owner records a reason and formally reopens the response.</p>
+              <p class="text-sm font-medium text-highlighted">You have answered {{ answeredCount }} of {{ data.assignment.questions.length }} questions.</p>
+            </div>
+            <div class="flex flex-col-reverse gap-2 border-t border-default p-4 sm:flex-row sm:justify-end"><UButton color="neutral" variant="ghost" label="Continue editing" @click="showSubmitConfirmation = false" /><UButton icon="i-lucide-lock-keyhole" label="Submit and lock response" :loading="saving" @click="save('submitted')" /></div>
+          </div>
+        </template>
+      </UModal>
     </template>
   </div>
 </template>
