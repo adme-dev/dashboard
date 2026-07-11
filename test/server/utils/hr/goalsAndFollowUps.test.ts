@@ -30,6 +30,11 @@ describe('HR goals, KPIs, and follow-up schemas', () => {
     const common = {
       title: 'Analytics training', description: 'Build capability to interpret the approved monthly analytics report.',
       ownerId: '11111111-1111-4111-8111-111111111111', dueAt: '2026-08-31T07:00:00.000Z',
+      employeeResponsibility: 'Attend the agreed session and practise against the approved report.',
+      businessResponsibility: 'Protect focused learning time and keep workload within the agreed capacity.',
+      supportCommitment: 'Provide access to training, examples, and a reviewer for questions.',
+      successMeasure: 'Explain and apply the report measures accurately in the follow-up review.',
+      reviewAt: '2026-09-07T07:00:00.000Z',
     }
     expect(() => hrFollowUpSchema.parse({ ...common, actionType: 'learning' })).toThrow()
     expect(hrFollowUpSchema.parse({ ...common, actionType: 'process_change' }).actionType).toBe('process_change')
