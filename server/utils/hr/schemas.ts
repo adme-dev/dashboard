@@ -313,3 +313,64 @@ export const hrFollowUpSchema = z.object({
     context.addIssue({ code: 'custom', path: ['learning'], message: 'Learning details only apply to learning actions.' })
   }
 })
+
+const hrKnowledgeSourceRefSchema = z.object({
+  sourceType: z.enum([
+    'business_context', 'role_profile', 'process_profile', 'responsibility_map',
+    'policy', 'standard', 'evidence_definition', 'questionnaire_template',
+    'published_finding', 'completed_action', 'measured_outcome', 'source_governance', 'external_reference',
+  ]),
+  sourceId: z.string().trim().min(1).max(200),
+  label: z.string().trim().min(2).max(300),
+  sourceUrl: z.string().url().max(1000).optional(),
+})
+
+const hrKnowledgeFields = {
+  entryType: z.enum([
+    'business_context', 'role_profile', 'process_profile', 'responsibility_map',
+    'policy_standard', 'evidence_definition', 'question_bank', 'blocker_taxonomy',
+    'validated_theme', 'published_finding', 'completed_action', 'measured_outcome',
+    'solution_playbook', 'source_governance', 'privacy_notice', 'retention_policy', 'limitation',
+  ]),
+  title: z.string().trim().min(3).max(240),
+  content: z.string().trim().min(10).max(30000),
+  status: z.enum(['draft', 'disputed', 'approved']),
+  sourceRefs: z.array(hrKnowledgeSourceRefSchema).max(50),
+  provenanceNote: z.string().trim().min(10).max(3000),
+  confidentiality: z.enum(['restricted_hr', 'participant_visible', 'department_aggregate']).default('restricted_hr'),
+  permittedUses: z.array(z.enum(['questionnaire_design', 'role_clarity', 'evidence_interpretation', 'review_context', 'solution_recommendation', 'aggregate_reporting'])).min(1).max(6),
+  limitations: z.array(z.string().trim().min(3).max(1000)).max(20).default([]),
+  effectiveFrom: z.string().date(),
+  reviewDueAt: z.string().date(),
+  retentionReviewAt: z.string().date().optional(),
+  disputeNote: z.string().trim().min(10).max(3000).optional(),
+  ownerId: z.string().uuid().optional(),
+}
+
+function validateHrKnowledgeGovernance(input: {
+  status: string
+  sourceRefs: unknown[]
+  effectiveFrom: string
+  reviewDueAt: string
+  retentionReviewAt?: string
+  disputeNote?: string
+}, context: z.RefinementCtx) {
+  if (input.status === 'approved' && input.sourceRefs.length === 0) {
+    context.addIssue({ code: 'custom', path: ['sourceRefs'], message: 'Approved knowledge requires at least one source.' })
+  }
+  if (input.status === 'disputed' && !input.disputeNote) {
+    context.addIssue({ code: 'custom', path: ['disputeNote'], message: 'Disputed knowledge requires a dispute note.' })
+  }
+  if (Date.parse(input.reviewDueAt) < Date.parse(input.effectiveFrom)) {
+    context.addIssue({ code: 'custom', path: ['reviewDueAt'], message: 'Review date must be on or after the effective date.' })
+  }
+  if (input.retentionReviewAt && Date.parse(input.retentionReviewAt) < Date.parse(input.effectiveFrom)) {
+    context.addIssue({ code: 'custom', path: ['retentionReviewAt'], message: 'Retention review must be on or after the effective date.' })
+  }
+}
+
+export const hrKnowledgeEntrySchema = z.object(hrKnowledgeFields).superRefine(validateHrKnowledgeGovernance)
+export const hrKnowledgeRevisionSchema = z.object({
+  ...hrKnowledgeFields,
+  expectedVersion: z.number().int().positive(),
+}).superRefine(validateHrKnowledgeGovernance)
