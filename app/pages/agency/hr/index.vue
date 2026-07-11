@@ -104,6 +104,7 @@ async function acknowledgeFollowUp(followUpId: string) {
             </p>
           </div>
           <div v-if="isHrAdmin" class="flex flex-wrap gap-2">
+            <UButton color="neutral" variant="outline" label="Responsibility map" icon="i-lucide-waypoints" to="/agency/hr/responsibilities" />
             <UButton color="neutral" variant="outline" label="Department goals" icon="i-lucide-goal" to="/agency/hr/goals" />
             <UButton color="neutral" variant="outline" label="Contract vault" icon="i-lucide-file-lock-2" to="/agency/hr/contracts" />
             <UButton color="neutral" variant="outline" label="Review cycles" icon="i-lucide-calendar-range" to="/agency/hr/reviews" />
