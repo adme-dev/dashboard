@@ -43,8 +43,8 @@ export async function startGovernedMondaySync(
   const config: MigrationConfig = {
     skipArchivedBoards: true,
     skipCompletedItems: false,
-    importUpdates: false,
-    importFiles: false,
+    importUpdates: scope.allowed_fields.includes('updates'),
+    importFiles: scope.allowed_fields.includes('files'),
     importSubitems: true,
     allowedFields: scope.allowed_fields,
     updatedSince: completeCheckpoint || `${scope.period_start}T00:00:00.000Z`,

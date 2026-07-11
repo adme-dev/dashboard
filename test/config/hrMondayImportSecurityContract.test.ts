@@ -13,8 +13,8 @@ describe('HR Monday import security contract', () => {
 
   it('reuses the migration service only for approved boards and excludes sensitive payloads by default', () => {
     expect(source).toContain('boardMappings: scope.destination_mappings.map')
-    expect(source).toContain('importUpdates: false')
-    expect(source).toContain('importFiles: false')
+    expect(source).toContain("importUpdates: scope.allowed_fields.includes('updates')")
+    expect(source).toContain("importFiles: scope.allowed_fields.includes('files')")
     expect(source).toContain('allowedFields: scope.allowed_fields')
     expect(source).toContain("updatedSince: `${scope.period_start}T00:00:00.000Z`")
     expect(source).toContain("updatedUntil: `${scope.period_end}T23:59:59.999Z`")

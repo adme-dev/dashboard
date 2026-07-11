@@ -10,11 +10,11 @@ describe('HR Monday sync security contract', () => {
     expect(source).toContain('getActiveMondayEvidenceScope()')
     expect(source).toContain("startGovernedMondaySync(event, scope, user.id, 'manual')")
   })
-  it('initializes per-board state and excludes comments/files', () => {
+  it('initializes per-board state and imports only explicitly allowlisted comments/files', () => {
     expect(runner).toContain('hr_monday_sync_states')
     expect(runner).toContain('UNNEST($2::text[])')
-    expect(runner).toContain('importUpdates: false')
-    expect(runner).toContain('importFiles: false')
+    expect(runner).toContain("importUpdates: scope.allowed_fields.includes('updates')")
+    expect(runner).toContain("importFiles: scope.allowed_fields.includes('files')")
     expect(runner).toContain('scope.destination_mappings.map')
     expect(runner).toContain('MIN(last_completed_at)')
     expect(runner).toContain('runAfterResponse(event, work')

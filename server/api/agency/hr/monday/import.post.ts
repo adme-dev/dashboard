@@ -21,8 +21,8 @@ export default defineEventHandler(async (event) => {
   const config: MigrationConfig = {
     skipArchivedBoards: true,
     skipCompletedItems: false,
-    importUpdates: false,
-    importFiles: false,
+    importUpdates: scope.allowed_fields.includes('updates'),
+    importFiles: scope.allowed_fields.includes('files'),
     importSubitems: body?.importSubitems ?? true,
     allowedFields: scope.allowed_fields,
     updatedSince: `${scope.period_start}T00:00:00.000Z`,
@@ -33,6 +33,6 @@ export default defineEventHandler(async (event) => {
   const sessionId = await createMigrationSession(user.id, connection.accountId || 'monday', connection.accountName || 'Monday', config)
   const service = new MondayMigrationService(client, sessionId, config)
   runAfterResponse(event, service.migrate(), `HR Monday import ${sessionId}`)
-  await recordHrAuditEvent({ actorId: user.id, action: 'monday_evidence.import.started', targetType: 'monday_migration_session', targetId: sessionId, metadata: { scopeId: scope.id, boardCount: scope.board_ids.length, importUpdates: false, importFiles: false } })
+  await recordHrAuditEvent({ actorId: user.id, action: 'monday_evidence.import.started', targetType: 'monday_migration_session', targetId: sessionId, metadata: { scopeId: scope.id, boardCount: scope.board_ids.length, importUpdates: config.importUpdates, importFiles: config.importFiles } })
   return { ok: true, sessionId, scopeId: scope.id, status: 'running', boardCount: scope.board_ids.length }
 })
