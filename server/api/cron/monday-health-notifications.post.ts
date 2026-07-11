@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
        JOIN canonical_mappings mim ON mim.task_id = t.id
       WHERE t.assignee_id IS NOT NULL
         AND NOT mim.archived
+        AND NOT t.status_is_final
         AND (t.is_blocked OR t.due_date < CURRENT_DATE OR t.updated_at < NOW() - INTERVAL '3 days')
         AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = t.assignee_id AND n.metadata->>'localTaskId' = t.id::text AND n.type IN ('monday_inactive', 'monday_blocked') AND n.created_at > NOW() - INTERVAL '1 day')
       ORDER BY t.updated_at ASC LIMIT 100`,

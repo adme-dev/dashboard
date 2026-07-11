@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 const route = readFileSync('server/api/agency/monday/webhooks/register.post.ts', 'utf8')
 const client = readFileSync('server/utils/mondayClient.ts', 'utf8')
+const dashboard = readFileSync('app/pages/agency/monday.vue', 'utf8')
 
 describe('Monday webhook registration contract', () => {
   it('requires HR authorization, approved scope, and an OAuth app token', () => {
@@ -23,5 +24,9 @@ describe('Monday webhook registration contract', () => {
     expect(client).toContain("'API-Version': '2025-04'")
     expect(client).toContain('app_webhooks_only: true')
     expect(client).toContain('create_webhook')
+  })
+  it('surfaces partial registration failures instead of claiming registration is complete', () => {
+    expect(dashboard).toContain('failedCount')
+    expect(dashboard).toContain('webhook events could not be registered')
   })
 })

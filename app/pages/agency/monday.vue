@@ -401,9 +401,14 @@ async function fetchWebhookStatus() {
 async function registerWebhooks() {
   registeringWebhooks.value = true
   try {
-    const result = await apiFetch<{ boards: Array<{ created: number }> }>('/api/agency/monday/webhooks/register', { method: 'POST' })
+    const result = await apiFetch<{ boards: Array<{ created: number; failed: Array<{ event: string }> }> }>('/api/agency/monday/webhooks/register', { method: 'POST' })
     const created = result.boards.reduce((total, board) => total + board.created, 0)
-    connectionMessage.value = created ? `${created} signed Monday webhooks registered` : 'Approved-board webhooks are already registered'
+    const failedCount = result.boards.reduce((total, board) => total + board.failed.length, 0)
+    connectionMessage.value = failedCount
+      ? `${failedCount} webhook events could not be registered; supported events remain active`
+      : created
+        ? `${created} signed Monday webhooks registered`
+        : 'Approved-board webhooks are already registered'
     await fetchWebhookStatus()
   } catch (error: any) {
     connectionMessage.value = error?.data?.statusMessage || 'Webhook registration failed'

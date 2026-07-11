@@ -7,6 +7,8 @@ describe('Monday health notification contract', () => {
     expect(source).toContain('DISTINCT ON (mim.task_id)')
     expect(source).toContain("n.metadata->>'localTaskId'")
     expect(source).toContain("INTERVAL '1 day'")
+    expect(source).toContain('NOT t.status_is_final')
+    expect(source).toContain('NOT mim.archived')
   })
   it('emits explicit blocked/inactive notification types', () => {
     expect(source).toContain("monday_blocked")
