@@ -3,7 +3,7 @@
  * Handles syncing data from Monday.com to local database
  */
 
-import { MondayClient } from './mondayClient'
+import { MondayClient, type MondayUpdate } from './mondayClient'
 import { query, transaction } from './db'
 
 export interface SyncOptions {
@@ -17,6 +17,56 @@ export interface MondaySyncResult {
   itemsSynced: number
   itemsFailed: number
   errors: string[]
+}
+
+export interface NormalizedMondayComment {
+  sourceId: string
+  parentSourceId: string | null
+  creatorId: string | null
+  content: string
+  createdAt: string | null
+  sourceData: Record<string, unknown>
+}
+
+const MAX_COMMENT_LENGTH = 50_000
+
+function validTimestamp(value: unknown): string | null {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return null
+  return new Date(value).toISOString()
+}
+
+/** Convert third-party update data into bounded, display-safe activity records. */
+export function normalizeMondayComments(updates: MondayUpdate[]): NormalizedMondayComment[] {
+  const comments: NormalizedMondayComment[] = []
+
+  for (const update of updates) {
+    const content = String(update.text_body || '').trim().slice(0, MAX_COMMENT_LENGTH)
+    if (update.id && content) {
+      comments.push({
+        sourceId: String(update.id),
+        parentSourceId: null,
+        creatorId: update.creator_id ? String(update.creator_id) : null,
+        content,
+        createdAt: validTimestamp(update.created_at),
+        sourceData: update as unknown as Record<string, unknown>
+      })
+    }
+
+    for (const reply of update.replies || []) {
+      const replyContent = String(reply.text_body || '').trim().slice(0, MAX_COMMENT_LENGTH)
+      if (!reply.id || !replyContent) continue
+      comments.push({
+        sourceId: String(reply.id),
+        parentSourceId: String(update.id),
+        creatorId: reply.creator_id ? String(reply.creator_id) : null,
+        content: replyContent,
+        createdAt: validTimestamp(reply.created_at),
+        sourceData: reply as unknown as Record<string, unknown>
+      })
+    }
+  }
+
+  return comments
 }
 
 /**
@@ -81,6 +131,10 @@ async function syncItemToTask(
   columnMapping: ColumnMapping,
   options: SyncOptions
 ): Promise<void> {
+  const comments = options.syncComments
+    ? normalizeMondayComments(await client.getUpdates([String(item.id)]))
+    : []
+
   await transaction(async (trx) => {
     // Check if task already exists
     const existing = await trx.query(
@@ -112,9 +166,10 @@ async function syncItemToTask(
       updated_at: new Date().toISOString()
     }
 
+    let taskId: string
     if (existing.rows.length > 0) {
       // Update existing task
-      const taskId = existing.rows[0].id
+      taskId = existing.rows[0].id
       await trx.query(`
         UPDATE tasks SET
           title = $1,
@@ -135,11 +190,12 @@ async function syncItemToTask(
       ])
     } else {
       // Create new task
-      await trx.query(`
+      const inserted = await trx.query(`
         INSERT INTO tasks (
           title, department_id, status_id, priority, due_date,
           assignee_id, monday_item_id, monday_board_id, created_at, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+        RETURNING id
       `, [
         taskData.title,
         taskData.department_id,
@@ -150,6 +206,37 @@ async function syncItemToTask(
         taskData.monday_item_id,
         taskData.monday_board_id
       ])
+      taskId = inserted.rows[0].id
+    }
+
+    for (const comment of comments) {
+      const imported = await trx.query(
+        `INSERT INTO monday_sync_comment_mappings
+           (monday_comment_id, monday_item_id, task_id, parent_monday_comment_id,
+            monday_creator_id, body_text, source_data, source_created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+         ON CONFLICT (monday_comment_id) DO NOTHING
+         RETURNING id`,
+        [comment.sourceId, String(item.id), taskId, comment.parentSourceId,
+          comment.creatorId, comment.content, JSON.stringify(comment.sourceData), comment.createdAt]
+      )
+      if (!imported.rows.length) continue
+
+      const activity = await trx.query(
+        `INSERT INTO task_activities
+           (task_id, activity_type, content, new_value, is_internal, created_at)
+         VALUES ($1, 'comment', $2, $3::jsonb, false, COALESCE($4::timestamptz, NOW()))
+         RETURNING id`,
+        [taskId, comment.content, JSON.stringify({
+          source: 'monday',
+          mondayCommentId: comment.sourceId,
+          parentMondayCommentId: comment.parentSourceId
+        }), comment.createdAt]
+      )
+      await trx.query(
+        'UPDATE monday_sync_comment_mappings SET activity_id = $1 WHERE id = $2',
+        [activity.rows[0].id, imported.rows[0].id]
+      )
     }
 
     // Sync subitems if enabled
@@ -157,7 +244,7 @@ async function syncItemToTask(
       const subitems = await client.getSubitems(item.id)
       for (const subitem of subitems) {
         // Create subtasks
-        await syncSubitemToSubtask(trx, subitem, existing.rows[0]?.id, departmentId)
+        await syncSubitemToSubtask(trx, subitem, taskId, departmentId)
       }
     }
   })
