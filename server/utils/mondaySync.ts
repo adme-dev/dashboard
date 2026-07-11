@@ -3,8 +3,9 @@
  * Handles syncing data from Monday.com to local database
  */
 
-import { MondayClient, type MondayUpdate } from './mondayClient'
+import { MondayClient, type MondayAsset, type MondayUpdate } from './mondayClient'
 import { query, transaction } from './db'
+import { deleteFile, generateStorageKey, getMaxFileSize, uploadFile, validateFileType } from './storage'
 
 export interface SyncOptions {
   syncComments?: boolean
@@ -29,6 +30,27 @@ export interface NormalizedMondayComment {
 }
 
 const MAX_COMMENT_LENGTH = 50_000
+
+export function validateMondayAsset(
+  asset: MondayAsset,
+  contentType: string
+): { ok: true, filename: string } | { ok: false, reason: string } {
+  if (!asset?.id || !asset.name || !Number.isFinite(asset.file_size) || asset.file_size < 0) {
+    return { ok: false, reason: 'Malformed Monday asset metadata' }
+  }
+  if (asset.file_size > getMaxFileSize('attachments')) {
+    return { ok: false, reason: 'Monday asset exceeds the 50 MB attachment limit' }
+  }
+  if (!validateFileType(contentType, 'attachments')) {
+    return { ok: false, reason: `Unsupported Monday attachment type: ${contentType}` }
+  }
+  const basename = asset.name.replace(/\\/g, '/').split('/').pop() || ''
+  const filename = basename.replace(/[^a-zA-Z0-9._ -]/g, '-').slice(0, 255)
+  if (!filename || filename === '.' || filename === '..') {
+    return { ok: false, reason: 'Invalid Monday attachment filename' }
+  }
+  return { ok: true, filename }
+}
 
 function validTimestamp(value: unknown): string | null {
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return null
@@ -135,6 +157,7 @@ async function syncItemToTask(
     ? normalizeMondayComments(await client.getUpdates([String(item.id)]))
     : []
 
+  let syncedTaskId = ''
   await transaction(async (trx) => {
     // Check if task already exists
     const existing = await trx.query(
@@ -165,6 +188,7 @@ async function syncItemToTask(
       monday_board_id: item.board_id,
       updated_at: new Date().toISOString()
     }
+    syncedTaskId = taskId
 
     let taskId: string
     if (existing.rows.length > 0) {
@@ -248,6 +272,82 @@ async function syncItemToTask(
       }
     }
   })
+
+  if (options.syncFiles && syncedTaskId) {
+    await syncMondayFiles(client, String(item.id), syncedTaskId)
+  }
+}
+
+async function syncMondayFiles(client: MondayClient, itemId: string, taskId: string): Promise<void> {
+  const assets = await client.getAssets([itemId])
+  for (const asset of assets) {
+    const existing = await query(
+      'SELECT id FROM monday_sync_file_mappings WHERE monday_asset_id = $1 LIMIT 1',
+      [String(asset.id)]
+    )
+    if (existing.length) continue
+
+    // Metadata is checked before download to avoid needless large transfers.
+    const declaredType = contentTypeForExtension(asset.file_extension)
+    const metadataCheck = validateMondayAsset(asset, declaredType)
+    if (!metadataCheck.ok) throw new Error(metadataCheck.reason)
+
+    const downloaded = await client.downloadFile(String(asset.id))
+    const check = validateMondayAsset({ ...asset, name: downloaded.filename, file_size: downloaded.buffer.length }, downloaded.contentType)
+    if (!check.ok) throw new Error(check.reason)
+
+    const storageKey = generateStorageKey('attachments', check.filename, taskId)
+    const stored = await uploadFile(downloaded.buffer, storageKey, downloaded.contentType, {
+      source: 'monday',
+      mondayAssetId: String(asset.id),
+      mondayItemId: itemId
+    })
+
+    try {
+      const attached = await transaction(async (trx) => {
+        const mapping = await trx.query(
+          `INSERT INTO monday_sync_file_mappings
+             (monday_asset_id, monday_item_id, task_id, source_file_name,
+              source_file_size, source_url, storage_key)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (monday_asset_id) DO NOTHING
+           RETURNING id`,
+          [String(asset.id), itemId, taskId, check.filename, stored.size, asset.url || null, stored.key]
+        )
+        if (!mapping.rows.length) return false
+
+        const attachment = await trx.query(
+          `INSERT INTO task_attachments
+             (task_id, file_name, file_url, storage_key, file_type, file_size, created_at)
+           VALUES ($1, $2, $3, $3, $4, $5, COALESCE($6::timestamptz, NOW()))
+           RETURNING id`,
+          [taskId, check.filename, stored.key, downloaded.contentType, stored.size,
+            validTimestamp(asset.uploaded_at)]
+        )
+        await trx.query(
+          'UPDATE monday_sync_file_mappings SET attachment_id = $1 WHERE id = $2',
+          [attachment.rows[0].id, mapping.rows[0].id]
+        )
+        return true
+      })
+      if (!attached) await deleteFile(storageKey).catch(() => undefined)
+    } catch (error) {
+      await deleteFile(storageKey).catch(() => undefined)
+      throw error
+    }
+  }
+}
+
+function contentTypeForExtension(extension: string | undefined): string {
+  const types: Record<string, string> = {
+    pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+    gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', txt: 'text/plain',
+    csv: 'text/csv', json: 'application/json', zip: 'application/zip',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  }
+  return types[String(extension || '').toLowerCase()] || 'application/octet-stream'
 }
 
 /**
