@@ -4,7 +4,7 @@ definePageMeta({ title: 'HR Launch Governance', middleware: ['auth'] })
 type GateKey = 'privacy_impact_assessment' | 'staff_notice_and_consultation' | 'source_scope_review' | 'accessibility_review' | 'scoring_calibration' | 'ai_safety_review' | 'human_decision_only' | 'no_hidden_monitoring' | 'pilot_approval'
 type Attestation = { id: string; gate_key: GateKey; status: 'approved' | 'rejected' | 'pending'; evidence_reference: string; limitations: string | null; approved_at: string | null; expires_at: string | null; created_at: string }
 type ReadinessResponse = { readiness: { ready: boolean; missing: GateKey[]; expired: GateKey[] }; attestations: Attestation[] }
-type PilotResponse = { readiness: { ready: boolean; blockers: string[]; warnings: string[] }; facts: { completedOnboarding: number; publishedRoles: number; eligibleParticipants: number; emailConfigured: boolean; activeCycles: number; approvedMondayScope: boolean } }
+type PilotResponse = { readiness: { ready: boolean; blockers: string[]; warnings: string[] }; facts: { completedOnboarding: number; publishedRoles: number; eligibleParticipants: number; organizationallyMappedParticipants: number; emailConfigured: boolean; activeCycles: number; approvedMondayScope: boolean } }
 
 const gateDefinitions: Array<{ key: GateKey; label: string; detail: string }> = [
   { key: 'privacy_impact_assessment', label: 'Privacy impact assessment', detail: 'Purpose, necessity, proportionality, retention and correction pathways are documented.' },
@@ -41,6 +41,7 @@ const pilotChecks = computed(() => [
   { label: 'Owner onboarding', ready: (pilot.value?.facts.completedOnboarding || 0) > 0, detail: `${pilot.value?.facts.completedOnboarding || 0} completed owner profile.`, to: '/agency/hr/onboarding' },
   { label: 'Published role', ready: (pilot.value?.facts.publishedRoles || 0) > 0, detail: `${pilot.value?.facts.publishedRoles || 0} published role version.`, to: '/agency/hr/roles' },
   { label: 'Eligible participant', ready: (pilot.value?.facts.eligibleParticipants || 0) > 0, detail: `${pilot.value?.facts.eligibleParticipants || 0} active person linked to a published role.`, to: '/agency/hr/roles' },
+  { label: 'Organisational department', ready: (pilot.value?.facts.organizationallyMappedParticipants || 0) > 0, detail: `${pilot.value?.facts.organizationallyMappedParticipants || 0} role-linked participant mapped to a governed department.`, to: '/agency/hr/departments' },
   { label: 'Email delivery', ready: pilot.value?.facts.emailConfigured === true, detail: pilot.value?.facts.emailConfigured ? 'Assignment email provider is configured.' : 'Assignment email provider is not configured.', to: '/agency/hr/reviews' },
   { label: 'Clean pilot lane', ready: (pilot.value?.facts.activeCycles || 0) === 0, detail: `${pilot.value?.facts.activeCycles || 0} active review cycle.`, to: '/agency/hr/reviews' },
 ])

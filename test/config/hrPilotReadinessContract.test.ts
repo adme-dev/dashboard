@@ -15,5 +15,7 @@ describe('HR pilot readiness API contract', () => {
       expect(route).toContain(evidence)
     }
     expect(route).toContain('evaluateHrPilotReadiness')
+    expect(route).toContain("department.department_kind = 'organizational'")
+    expect(route).toContain('organizationallyMappedParticipants')
   })
 })

@@ -18,6 +18,12 @@ export default defineEventHandler(async (event) => {
         JOIN hr_role_profile_versions version ON version.id = assignment.role_profile_version_id
         JOIN team_members member ON member.id = assignment.team_member_id
         WHERE assignment.effective_to IS NULL AND version.status = 'published' AND member.is_active = true) AS eligible_participants,
+      (SELECT COUNT(*)::int FROM hr_role_assignments assignment
+        JOIN hr_role_profile_versions version ON version.id = assignment.role_profile_version_id
+        JOIN team_members member ON member.id = assignment.team_member_id
+        JOIN departments department ON department.id = member.department_id
+        WHERE assignment.effective_to IS NULL AND version.status = 'published' AND member.is_active = true
+          AND department.is_active = true AND department.department_kind = 'organizational') AS organizationally_mapped_participants,
       (SELECT COUNT(*)::int FROM hr_review_cycles WHERE status IN ('scheduled', 'open')) AS active_cycles,
       EXISTS(SELECT 1 FROM hr_monday_evidence_scopes WHERE status = 'approved') AS approved_monday_scope`),
   ])
@@ -31,6 +37,7 @@ export default defineEventHandler(async (event) => {
     completedOnboarding: Number(counts?.completed_onboarding || 0),
     publishedRoles: Number(counts?.published_roles || 0),
     eligibleParticipants: Number(counts?.eligible_participants || 0),
+    organizationallyMappedParticipants: Number(counts?.organizationally_mapped_participants || 0),
     emailConfigured: Boolean(process.env.RESEND_API_KEY),
     activeCycles: Number(counts?.active_cycles || 0),
     approvedMondayScope: Boolean(counts?.approved_monday_scope),

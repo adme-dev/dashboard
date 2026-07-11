@@ -16,9 +16,10 @@ describe('HR launch governance UI contract', () => {
   })
 
   it('shows pilot blockers with direct remediation routes', () => {
-    for (const text of ['Pilot preflight', 'Owner onboarding', 'Published role', 'Eligible participant', 'Email delivery']) expect(page).toContain(text)
+    for (const text of ['Pilot preflight', 'Owner onboarding', 'Published role', 'Eligible participant', 'Organisational department', 'Email delivery']) expect(page).toContain(text)
     expect(page).toContain("to: '/agency/hr/onboarding'")
     expect(page).toContain("to: '/agency/hr/roles'")
+    expect(page).toContain("to: '/agency/hr/departments'")
     expect(page).toContain("to: '/agency/hr/reviews'")
   })
 
