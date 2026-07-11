@@ -12,6 +12,18 @@ export const HR_LAUNCH_GATE_KEYS = [
 
 export type HrLaunchGateKey = typeof HR_LAUNCH_GATE_KEYS[number]
 
+export const hrLaunchAttestationSchema = z.object({
+  gateKey: z.enum(HR_LAUNCH_GATE_KEYS),
+  status: z.enum(['approved', 'rejected', 'pending']),
+  evidenceReference: z.string().trim().min(10).max(2000),
+  limitations: z.string().trim().max(3000).optional(),
+  expiresAt: z.string().datetime().optional(),
+}).superRefine((input, context) => {
+  if (input.expiresAt && Date.parse(input.expiresAt) <= Date.now()) {
+    context.addIssue({ code: 'custom', path: ['expiresAt'], message: 'Expiry must be in the future.' })
+  }
+})
+
 export interface HrLaunchGateApproval {
   status: 'approved' | 'rejected' | 'pending'
   approvedAt: string | null
@@ -47,3 +59,4 @@ export function evaluateHrLaunchReadiness(
 
   return { ready: missing.length === 0 && expired.length === 0, missing, expired }
 }
+import { z } from 'zod'

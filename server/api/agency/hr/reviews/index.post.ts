@@ -8,6 +8,7 @@ import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
 import { buildHrCalendarInvite, validateHrSchedule } from '~~/server/utils/hr/schedule'
 import { hrReviewCycleSchema } from '~~/server/utils/hr/schemas'
 import { evaluateHrQuestionQuality } from '~~/server/utils/hr/questionPolicy'
+import { evaluateHrLaunchReadiness, type HrLaunchGateApprovals } from '~~/server/utils/hr/launchReadiness'
 
 type CreatedAssignment = {
   id: string
@@ -26,6 +27,20 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid review cycle', data: { issues: parsed.error.issues } })
 
   const input = parsed.data
+  const gateRows = await queryOne<{ approvals: HrLaunchGateApprovals }>(
+    `SELECT COALESCE(jsonb_object_agg(gate_key, jsonb_build_object(
+       'status', status, 'approvedAt', approved_at, 'expiresAt', expires_at
+     )), '{}'::jsonb) AS approvals
+     FROM (
+       SELECT DISTINCT ON (gate_key) gate_key, status, approved_at, expires_at
+       FROM hr_launch_gate_attestations
+       ORDER BY gate_key, created_at DESC
+     ) latest`,
+  )
+  const launchReadiness = evaluateHrLaunchReadiness(gateRows?.approvals || {})
+  if (!launchReadiness.ready) {
+    throw createError({ statusCode: 409, statusMessage: 'HR launch governance gates are incomplete or expired' })
+  }
   if (!input.ownerConfirmed) throw createError({ statusCode: 400, statusMessage: 'Owner confirmation is required before questionnaires can be sent' })
   for (const participant of input.participants) {
     const qualityIssues = participant.questions.flatMap(question => evaluateHrQuestionQuality({
