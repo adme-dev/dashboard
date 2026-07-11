@@ -63,6 +63,7 @@ export default eventHandler(async (event) => {
     itemsFailed: 0,
     errors: [] as string[]
   }
+  const operatorErrors: string[] = []
 
   // Create sync log entry
   const syncLog = await query<{ id: string }>(`
@@ -101,6 +102,10 @@ export default eventHandler(async (event) => {
         results.boardsSynced++
         results.itemsSynced += boardResult.itemsSynced
         results.itemsFailed += boardResult.itemsFailed
+        operatorErrors.push(...boardResult.errors)
+        if (boardResult.itemsFailed > 0) {
+          results.errors.push(`Board ${boardId}: ${boardResult.itemsFailed} item(s) failed`)
+        }
       } catch (error: any) {
         console.error(`[monday-sync] Board ${boardId} failed`, error)
         results.errors.push(`Board ${boardId}: Sync failed`)
@@ -116,7 +121,7 @@ export default eventHandler(async (event) => {
       WHERE id = $3
     `, [
       results.errors.length > 0 ? 'partial' : 'success',
-      JSON.stringify(results),
+      JSON.stringify({ ...results, operatorErrors: operatorErrors }),
       syncLogId
     ])
 

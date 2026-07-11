@@ -19,4 +19,10 @@ describe('Monday operational sync security contract', () => {
   it('does not expose third-party or database error detail to callers', () => {
     expect(source).not.toContain('statusMessage: `Sync failed: ${error.message}`')
   })
+
+  it('persists item-level provider failures for operators without leaking them to callers', () => {
+    expect(source).toContain('operatorErrors.push(...boardResult.errors)')
+    expect(source).toContain('operatorErrors: operatorErrors')
+    expect(source).toContain("results.errors.push(`Board ${boardId}: ${boardResult.itemsFailed} item(s) failed`)")
+  })
 })
