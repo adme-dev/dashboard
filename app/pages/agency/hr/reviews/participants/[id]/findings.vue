@@ -275,7 +275,7 @@ async function saveResponse() {
               variant="outline"
               icon="i-lucide-arrow-left"
               label="Scorecard"
-              :to="{ path: `/agency/hr/reviews/participants/${route.params.id}`, query: { findingId: finding.id } }"
+              :to="`/agency/hr/reviews/participants/${route.params.id}`"
             /><UButton
               v-if="canReview"
               icon="i-lucide-file-plus-2"

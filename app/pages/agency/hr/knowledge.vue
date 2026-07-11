@@ -68,7 +68,10 @@ function reviseEntry(entry: KnowledgeEntry) {
   showEditor.value = true
 }
 function addSource() {
-  if (!form.sourceId.trim() || !form.sourceLabel.trim()) return toast.add({ title: 'Complete the source', description: 'Source identifier and label are required.', color: 'warning' })
+  if (!form.sourceId.trim() || !form.sourceLabel.trim()) {
+    toast.add({ title: 'Complete the source', description: 'Source identifier and label are required.', color: 'warning' })
+    return
+  }
   form.sourceRefs.push({ sourceType: form.sourceType, sourceId: form.sourceId.trim(), label: form.sourceLabel.trim(), ...(form.sourceUrl.trim() ? { sourceUrl: form.sourceUrl.trim() } : {}) })
   form.sourceId = ''; form.sourceLabel = ''; form.sourceUrl = ''
 }

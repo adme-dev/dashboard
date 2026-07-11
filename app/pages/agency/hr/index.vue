@@ -44,6 +44,7 @@ type HrOverview = {
     owner_name: string
     cycle_name: string
     participant_user_id: string
+    closure_acknowledged_at: string | null
   }>
 }
 

@@ -91,7 +91,7 @@ export default defineEventHandler(async (event) => {
       closesAt: assignment.closes_at,
       dueAt: input.dueAt
     })
-    if (!plan.isValid) throw createError({ statusCode: 400, statusMessage: `Invalid schedule change: ${plan.code}` })
+    if ('code' in plan) throw createError({ statusCode: 400, statusMessage: `Invalid schedule change: ${plan.code}` })
 
     const nextSequence = assignment.calendar_sequence + 1
     const calendarUid = assignment.calendar_uid || `hr-review-${assignment.cycle_id}-${assignment.team_member_id}@xeroflow.agency`
