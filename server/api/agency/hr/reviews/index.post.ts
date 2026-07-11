@@ -69,33 +69,20 @@ export default defineEventHandler(async (event) => {
         `SELECT rpv.id AS version_id, rp.id AS profile_id, rp.title
          FROM hr_role_profile_versions rpv
          JOIN hr_role_profiles rp ON rp.id = rpv.role_profile_id
+         JOIN hr_role_assignments assignment
+           ON assignment.role_profile_version_id = rpv.id
+          AND assignment.team_member_id = $2
+          AND assignment.effective_to IS NULL
          WHERE rpv.id = $1 AND rpv.status = 'published' AND rp.status = 'active'`,
-        [participantInput.roleProfileVersionId],
+        [participantInput.roleProfileVersionId, participantInput.teamMemberId],
       )
-      if (!roleResult.rows[0]) throw new Error('Every participant must have a published role and questionnaire')
+      if (!roleResult.rows[0]) throw new Error('Every participant must have the selected published role assigned before questionnaire commissioning')
 
       const memberResult = await db.query(
         `SELECT id, name, email FROM team_members WHERE id = $1 AND is_active = true`,
         [participantInput.teamMemberId],
       )
       if (!memberResult.rows[0]) throw new Error('Every review participant must be an active team member')
-
-      await db.query(
-        `UPDATE hr_role_assignments
-         SET effective_to = CURRENT_DATE - 1
-         WHERE team_member_id = $1 AND effective_to IS NULL
-           AND role_profile_version_id <> $2`,
-        [participantInput.teamMemberId, participantInput.roleProfileVersionId],
-      )
-      await db.query(
-        `INSERT INTO hr_role_assignments (team_member_id, role_profile_version_id)
-         SELECT $1, $2
-         WHERE NOT EXISTS (
-           SELECT 1 FROM hr_role_assignments
-           WHERE team_member_id = $1 AND role_profile_version_id = $2 AND effective_to IS NULL
-         )`,
-        [participantInput.teamMemberId, participantInput.roleProfileVersionId],
-      )
 
       const participantResult = await db.query(
         `INSERT INTO hr_review_participants

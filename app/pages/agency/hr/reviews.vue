@@ -22,6 +22,7 @@ type Cycle = {
 
 type TeamMember = { id: string; name: string; email: string; role?: string; department?: string }
 type Role = { id: string; version_id: string; title: string; department: string | null; status: string; version_status: string; version: number }
+type RoleAssignment = { team_member_id: string; role_profile_version_id: string; acknowledgement_status: 'pending' | 'acknowledged' | 'disputed' }
 type CommissionedQuestion = {
   id: string
   module: 'core' | 'role' | 'blockers'
@@ -87,6 +88,7 @@ const cycles = ref<Cycle[]>([])
 const participants = ref<Participant[]>([])
 const team = ref<TeamMember[]>([])
 const roles = ref<Role[]>([])
+const roleAssignments = ref<RoleAssignment[]>([])
 const selectedRoles = ref<Record<string, string>>({})
 const commissioningPreview = ref<CommissioningPreview | null>(null)
 const showScheduleManager = ref(false)
@@ -145,6 +147,7 @@ const roleItems = computed(() => roles.value.filter(role => role.status === 'act
   value: role.version_id,
 })))
 const selectedCount = computed(() => Object.values(selectedRoles.value).filter(Boolean).length)
+const roleAssignmentByMember = computed(() => new Map(roleAssignments.value.map(assignment => [assignment.team_member_id, assignment])))
 const participantsByCycle = computed(() => participants.value.reduce<Record<string, Participant[]>>((grouped, participant) => {
   grouped[participant.cycle_id] ||= []
   grouped[participant.cycle_id].push(participant)
@@ -157,12 +160,13 @@ async function refresh() {
     const [cycleData, teamData, roleData] = await Promise.all([
       apiFetch<{ cycles: Cycle[]; participants: Participant[] }>('/api/agency/hr/reviews'),
       apiFetch<{ members: TeamMember[] }>('/api/agency/team-members'),
-      apiFetch<{ roles: Role[] }>('/api/agency/hr/roles'),
+      apiFetch<{ roles: Role[]; roleAssignments: RoleAssignment[] }>('/api/agency/hr/roles'),
     ])
     cycles.value = cycleData.cycles
     participants.value = cycleData.participants
     team.value = teamData.members
     roles.value = roleData.roles
+    roleAssignments.value = roleData.roleAssignments
   } catch (error: any) {
     toast.add({ title: 'Review cycles unavailable', description: error?.data?.statusMessage, color: 'error' })
   } finally {
@@ -173,7 +177,7 @@ onMounted(() => void refresh())
 
 function toggleMember(memberId: string, checked: boolean) {
   commissioningPreview.value = null
-  if (checked) selectedRoles.value[memberId] = roleItems.value[0]?.value || ''
+  if (checked) selectedRoles.value[memberId] = roleAssignmentByMember.value.get(memberId)?.role_profile_version_id || ''
   else delete selectedRoles.value[memberId]
 }
 
@@ -361,8 +365,8 @@ async function saveScheduleChange() {
                 <div class="mb-3 flex items-center justify-between"><p class="text-sm font-medium text-highlighted">Participants and role baseline</p><UBadge color="neutral" variant="subtle" :label="`${selectedCount} selected`" /></div>
                 <div class="divide-y divide-default overflow-hidden rounded-lg border border-default">
                   <div v-for="member in team" :key="member.id" class="p-3">
-                    <div class="flex gap-3"><UCheckbox :model-value="member.id in selectedRoles" class="mt-1" @update:model-value="value => toggleMember(member.id, Boolean(value))" /><div class="min-w-0 flex-1"><p class="truncate text-sm font-medium text-highlighted">{{ member.name }}</p><p class="truncate text-xs text-muted">{{ member.department || member.role || member.email }}</p></div></div>
-                    <USelectMenu v-if="member.id in selectedRoles" v-model="selectedRoles[member.id]" :items="roleItems" value-key="value" placeholder="Select published role" class="mt-3 w-full" />
+                    <div class="flex gap-3"><UCheckbox :model-value="member.id in selectedRoles" :disabled="!roleAssignmentByMember.has(member.id)" :aria-label="roleAssignmentByMember.has(member.id) ? `Select ${member.name}` : `${member.name} requires a published role assignment`" class="mt-1" @update:model-value="value => toggleMember(member.id, Boolean(value))" /><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><p class="truncate text-sm font-medium text-highlighted">{{ member.name }}</p><UBadge v-if="roleAssignmentByMember.get(member.id)" color="neutral" variant="subtle" :label="roleAssignmentByMember.get(member.id)?.acknowledgement_status || 'pending'" /><UBadge v-else color="warning" variant="subtle" label="role required" /></div><p class="truncate text-xs text-muted">{{ member.department || member.role || member.email }}</p></div></div>
+                    <USelectMenu v-if="member.id in selectedRoles" v-model="selectedRoles[member.id]" :items="roleItems.filter(item => item.value === roleAssignmentByMember.get(member.id)?.role_profile_version_id)" value-key="value" disabled class="mt-3 w-full" />
                   </div>
                 </div>
               </div>

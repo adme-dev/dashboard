@@ -53,6 +53,7 @@ type ContractExtract = {
   role_exclusions: string[]
 }
 type DepartmentGoal = { version_id: string; name: string; department_name: string; metric_name: string; unit: string; period_end: string }
+type TeamMember = { id: string; name: string; email: string; is_active?: boolean }
 type KpiDraft = {
   name: string
   description: string
@@ -80,7 +81,11 @@ const roles = ref<RoleProfile[]>([])
 const benchmarks = ref<Benchmark[]>([])
 const contractExtracts = ref<ContractExtract[]>([])
 const departmentGoals = ref<DepartmentGoal[]>([])
+const teamMembers = ref<TeamMember[]>([])
 const showBuilder = ref(false)
+const showAssignment = ref(false)
+const selectedTeamMemberId = ref('')
+const selectedRoleVersionId = ref('')
 const editingRoleId = ref<string | null>(null)
 const expectedVersion = ref<number | null>(null)
 
@@ -112,6 +117,8 @@ const departmentGoalItems = computed(() => departmentGoals.value.map(item => ({
   value: item.version_id,
 })))
 const kpiWeightTotal = computed(() => form.kpis.reduce((total, kpi) => total + Number(kpi.weight || 0), 0))
+const teamMemberItems = computed(() => teamMembers.value.filter(member => member.is_active !== false).map(member => ({ label: `${member.name} — ${member.email}`, value: member.id })))
+const publishedRoleItems = computed(() => roles.value.filter(role => role.status === 'active' && role.version_status === 'published').map(role => ({ label: `${role.title} · v${role.version}`, value: role.version_id })))
 
 function splitLines(value: string): string[] {
   return value.split('\n').map(item => item.trim()).filter(Boolean)
@@ -120,11 +127,15 @@ function splitLines(value: string): string[] {
 async function refresh() {
   loading.value = true
   try {
-    const data = await apiFetch<{ roles: RoleProfile[]; benchmarks: Benchmark[]; contractExtracts: ContractExtract[]; departmentGoals: DepartmentGoal[] }>('/api/agency/hr/roles')
+    const [data, teamData] = await Promise.all([
+      apiFetch<{ roles: RoleProfile[]; benchmarks: Benchmark[]; contractExtracts: ContractExtract[]; departmentGoals: DepartmentGoal[] }>('/api/agency/hr/roles'),
+      apiFetch<{ members: TeamMember[] }>('/api/agency/team-members'),
+    ])
     roles.value = data.roles
     benchmarks.value = data.benchmarks
     contractExtracts.value = data.contractExtracts
     departmentGoals.value = data.departmentGoals
+    teamMembers.value = teamData.members
   } catch (error: any) {
     toast.add({ title: 'Role library unavailable', description: error?.data?.statusMessage, color: 'error' })
   } finally {
@@ -142,13 +153,47 @@ function resetForm() {
 }
 
 function startNewRole() {
+  showAssignment.value = false
   editingRoleId.value = null
   expectedVersion.value = null
   resetForm()
   showBuilder.value = true
 }
 
+function startRoleAssignment(role?: RoleProfile) {
+  showBuilder.value = false
+  selectedTeamMemberId.value = ''
+  selectedRoleVersionId.value = role?.version_status === 'published' ? role.version_id : ''
+  showAssignment.value = true
+}
+
+async function assignRole() {
+  if (!selectedTeamMemberId.value || !selectedRoleVersionId.value) {
+    toast.add({ title: 'Choose a team member and published role', color: 'warning' })
+    return
+  }
+  saving.value = true
+  try {
+    const result = await apiFetch<{ assignment: { created: boolean; member_name: string; role_title: string } }>('/api/agency/hr/role-assignments', {
+      method: 'POST',
+      body: { teamMemberId: selectedTeamMemberId.value, roleProfileVersionId: selectedRoleVersionId.value },
+    })
+    toast.add({
+      title: result.assignment.created ? 'Published role assigned' : 'Role assignment already current',
+      description: `${result.assignment.member_name} · ${result.assignment.role_title}. The employee will acknowledge the frozen role version in their review workspace.`,
+      color: 'success',
+    })
+    showAssignment.value = false
+    await refresh()
+  } catch (error: any) {
+    toast.add({ title: 'Could not assign role', description: error?.data?.statusMessage || 'Review the member and role, then try again.', color: 'error' })
+  } finally {
+    saving.value = false
+  }
+}
+
 function reviseRole(role: RoleProfile) {
+  showAssignment.value = false
   editingRoleId.value = role.id
   expectedVersion.value = Number(role.version)
   Object.assign(form, {
@@ -279,6 +324,7 @@ async function createRole() {
           </div>
           <div class="flex gap-2">
             <UButton color="neutral" variant="outline" icon="i-lucide-arrow-left" label="Review hub" to="/agency/hr" />
+            <UButton color="neutral" variant="outline" icon="i-lucide-user-check" label="Assign published role" @click="startRoleAssignment()" />
             <UButton icon="i-lucide-plus" label="Build role profile" @click="startNewRole" />
           </div>
         </div>
@@ -286,7 +332,7 @@ async function createRole() {
     </header>
 
     <main class="mx-auto max-w-7xl px-5 py-8 sm:px-8">
-      <div class="grid gap-7" :class="showBuilder ? 'xl:grid-cols-[minmax(0,1fr)_440px]' : ''">
+      <div class="grid gap-7" :class="showBuilder || showAssignment ? 'xl:grid-cols-[minmax(0,1fr)_440px]' : ''">
         <section>
           <div class="mb-4 flex items-center justify-between">
             <div><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Controlled definitions</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Published and draft roles</h2></div>
@@ -317,7 +363,7 @@ async function createRole() {
                 <div class="bg-elevated/20 p-4"><p class="text-xs font-semibold uppercase tracking-wide text-muted">Expected outcomes</p><p class="mt-2 text-sm text-highlighted">{{ role.expected_outcomes.length }} agreed results</p></div>
                 <div class="bg-elevated/20 p-4"><p class="text-xs font-semibold uppercase tracking-wide text-muted">Benchmark</p><p class="mt-2 text-sm text-highlighted">{{ role.benchmark_refs?.[0]?.name || 'Framework pending' }}</p></div>
               </div>
-              <div class="flex justify-end border-t border-default p-4"><UButton color="neutral" variant="outline" icon="i-lucide-git-branch-plus" label="Revise role" @click="reviseRole(role)" /></div>
+              <div class="flex flex-wrap justify-end gap-2 border-t border-default p-4"><UButton v-if="role.status === 'active' && role.version_status === 'published'" color="neutral" variant="outline" icon="i-lucide-user-check" label="Assign role" @click="startRoleAssignment(role)" /><UButton color="neutral" variant="outline" icon="i-lucide-git-branch-plus" label="Revise role" @click="reviseRole(role)" /></div>
             </article>
           </div>
           <div v-else class="rounded-xl border border-dashed border-default px-6 py-14 text-center">
@@ -326,6 +372,22 @@ async function createRole() {
             <p class="mx-auto mt-1 max-w-md text-sm text-muted">Start with a contractual role, then describe its purpose, responsibilities and expected outcomes in observable terms.</p>
           </div>
         </section>
+
+        <aside v-if="showAssignment" class="xl:sticky xl:top-6 xl:self-start">
+          <div class="max-h-[calc(100vh-3rem)] overflow-y-auto rounded-xl border border-default bg-default">
+            <div class="border-b border-default p-5">
+              <p class="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-primary">Pre-review baseline</p>
+              <h2 class="mt-2 text-xl font-semibold text-highlighted">Assign published role</h2>
+              <p class="mt-2 text-sm leading-6 text-muted">Create the employee’s governed role baseline before commissioning a questionnaire. Replacing a current role closes its history; it does not rewrite it.</p>
+            </div>
+            <div class="space-y-5 p-5">
+              <UFormField label="Team member" required><USelectMenu v-model="selectedTeamMemberId" :items="teamMemberItems" value-key="value" placeholder="Choose an active team member" class="w-full" /></UFormField>
+              <UFormField label="Published role version" required><USelectMenu v-model="selectedRoleVersionId" :items="publishedRoleItems" value-key="value" placeholder="Choose a frozen role version" class="w-full" /></UFormField>
+              <div class="rounded-lg border border-default bg-elevated/30 p-4 text-sm leading-6 text-muted">Assignment does not score the employee or start a review. It establishes the role version they can acknowledge or dispute before evidence and questionnaire responses are considered.</div>
+            </div>
+            <div class="flex justify-end gap-2 border-t border-default p-4"><UButton color="neutral" variant="ghost" label="Cancel" @click="showAssignment = false" /><UButton icon="i-lucide-user-check" label="Assign role" :loading="saving" @click="assignRole" /></div>
+          </div>
+        </aside>
 
         <aside v-if="showBuilder" class="xl:sticky xl:top-6 xl:self-start">
           <div class="overflow-hidden rounded-xl border border-default bg-default">

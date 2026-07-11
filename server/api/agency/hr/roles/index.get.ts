@@ -90,5 +90,14 @@ export default defineEventHandler(async (event) => {
      ORDER BY department.name, goal.name`,
   )
 
-  return { roles, benchmarks, contractExtracts, departmentGoals }
+  const roleAssignments = await queryRows(
+    `SELECT assignment.id, assignment.team_member_id, assignment.role_profile_version_id,
+            assignment.acknowledgement_status, assignment.effective_from
+       FROM hr_role_assignments assignment
+       JOIN team_members member ON member.id = assignment.team_member_id AND member.is_active = TRUE
+      WHERE assignment.effective_to IS NULL
+      ORDER BY assignment.created_at DESC`,
+  )
+
+  return { roles, benchmarks, contractExtracts, departmentGoals, roleAssignments }
 })

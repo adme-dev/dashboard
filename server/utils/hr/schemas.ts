@@ -187,6 +187,11 @@ export const hrReviewCycleSchema = z.object({
 
 export type HrReviewCycleInput = z.infer<typeof hrReviewCycleSchema>
 
+export const hrRoleAssignmentSchema = z.object({
+  teamMemberId: z.string().uuid(),
+  roleProfileVersionId: z.string().uuid(),
+})
+
 export const hrAssignmentScheduleChangeSchema = z.object({
   action: z.enum(['extend', 'reschedule', 'cancel', 'reopen']),
   dueAt: z.string().datetime().optional(),

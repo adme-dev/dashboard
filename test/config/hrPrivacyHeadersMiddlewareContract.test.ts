@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 
-const middleware = readFileSync('server/middleware/hr-privacy.ts', 'utf8')
+const middleware = readFileSync('server/middleware/03-hr-privacy.ts', 'utf8')
 
 describe('HR privacy response headers middleware', () => {
   it('covers every agency HR API route and only that route boundary', () => {

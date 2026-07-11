@@ -20,7 +20,7 @@ type KnowledgeContext = {
   entryType: string
   title: string
   content: string
-  sourceRefs: unknown[] | string
+  sourceRefs: Record<string, unknown>[] | string
   limitations: string[] | string
 }
 
@@ -72,7 +72,13 @@ export default defineEventHandler(async (event) => {
             questionnaire.questions, questionnaire.source_refs AS "sourceRefs"
        FROM hr_role_profile_versions role_version
        JOIN hr_role_profiles role ON role.id = role_version.role_profile_id
-       JOIN team_members member ON member.id = ANY($2::uuid[]) AND member.is_active = true
+       JOIN hr_role_assignments assignment
+         ON assignment.role_profile_version_id = role_version.id
+        AND assignment.effective_to IS NULL
+       JOIN team_members member
+         ON member.id = assignment.team_member_id
+        AND member.id = ANY($2::uuid[])
+        AND member.is_active = true
        JOIN LATERAL (
          SELECT questions, source_refs FROM hr_questionnaire_versions candidate
           WHERE candidate.template_key = 'role-' || role.id::text AND candidate.status = 'published'
