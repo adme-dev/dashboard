@@ -18,11 +18,31 @@ interface ExportToken {
   revoked_at: string | null
 }
 
-const { data, refresh } = await useFetch<{ tokens: ExportToken[] }>('/api/agency/analytics/export-tokens')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
+const data = ref<{ tokens: ExportToken[] }>({ tokens: [] })
+
+async function refresh() {
+  data.value = await apiFetch<{ tokens: ExportToken[] }>('/api/agency/analytics/export-tokens')
+}
+
 const tokens = computed(() => data.value?.tokens ?? [])
+const tokenRow = (row: unknown): ExportToken => ((row as { original?: ExportToken }).original ?? row) as ExportToken
 
 // Client options for the scope picker — non-blocking (only used inside the mint modal).
-const { data: clientData } = useFetch<Array<{ id: string, name: string }>>('/api/agency/clients', { lazy: true })
+const clientData = ref<Array<{ id: string, name: string }>>([])
+
+async function refreshClients() {
+  try {
+    clientData.value = await apiFetch<Array<{ id: string, name: string }>>('/api/agency/clients')
+  } catch {
+    clientData.value = []
+  }
+}
+
 const scopeItems = computed(() => [
   { label: 'Agency-wide (all clients)', value: AGENCY_SCOPE_SENTINEL },
   ...((clientData.value ?? []).map(c => ({ label: c.name, value: c.id })))
@@ -48,7 +68,7 @@ async function mint() {
   if (err) { toast.add({ title: err, color: 'error' }); return }
   minting.value = true
   try {
-    const res = await $fetch<{ token: string }>('/api/agency/analytics/export-tokens', {
+    const res = await apiFetch<{ token: string }>('/api/agency/analytics/export-tokens', {
       method: 'POST',
       body: { label: newLabel.value.trim(), clientId: resolveScopeClientId(newScope.value) }
     })
@@ -80,7 +100,7 @@ async function confirmRevoke() {
   if (!revokeTarget.value) return
   revoking.value = true
   try {
-    await $fetch(`/api/agency/analytics/export-tokens/${revokeTarget.value.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/analytics/export-tokens/${revokeTarget.value.id}`, { method: 'DELETE' })
     toast.add({ title: 'Token revoked', color: 'success' })
     await refresh()
   } catch {
@@ -103,6 +123,8 @@ function scopeOf(t: ExportToken): string { return tokenScopeLabel(t) }
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+await Promise.all([refresh(), refreshClients()])
 </script>
 
 <template>
@@ -120,22 +142,22 @@ function fmtDate(iso: string): string {
 
     <UTable :data="tokens" :columns="columns">
       <template #scope-cell="{ row }">
-        <UBadge :color="row.original.client_id ? 'primary' : 'neutral'" variant="subtle" size="sm">
-          {{ scopeOf(row.original) }}
+        <UBadge :color="tokenRow(row).client_id ? 'primary' : 'neutral'" variant="subtle" size="sm">
+          {{ scopeOf(tokenRow(row)) }}
         </UBadge>
       </template>
-      <template #created_at-cell="{ row }">{{ fmtDate(row.original.created_at) }}</template>
+      <template #created_at-cell="{ row }">{{ fmtDate(tokenRow(row).created_at) }}</template>
       <template #label-cell="{ row }">
-        <span :class="row.original.revoked_at ? 'line-through text-muted' : ''">{{ row.original.label }}</span>
+        <span :class="tokenRow(row).revoked_at ? 'line-through text-muted' : ''">{{ tokenRow(row).label }}</span>
       </template>
       <template #actions-cell="{ row }">
         <UButton
-          v-if="!row.original.revoked_at"
+          v-if="!tokenRow(row).revoked_at"
           label="Revoke"
           color="error"
           variant="ghost"
           size="xs"
-          @click="askRevoke(row.original)"
+          @click="askRevoke(tokenRow(row))"
         />
         <UBadge v-else color="neutral" variant="subtle" size="sm">Revoked</UBadge>
       </template>

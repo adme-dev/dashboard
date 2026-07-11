@@ -10,6 +10,7 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const quoteId = route.params.id as string
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Fetch quote
 const { data: quoteData, pending, error, refresh } = await useFetch(`/api/agency/quotes/${quoteId}`)
@@ -72,7 +73,7 @@ const getStatusColor = (status: string): 'neutral' | 'warning' | 'primary' | 'in
 const sendQuote = async () => {
   sending.value = true
   try {
-    await $fetch(`/api/agency/quotes/${quoteId}/send`, {
+    await apiFetch(`/api/agency/quotes/${quoteId}/send`, {
       method: 'POST'
     })
     toast.add({ title: 'Quote sent successfully', color: 'success' })
@@ -87,7 +88,7 @@ const sendQuote = async () => {
 const acceptQuote = async () => {
   accepting.value = true
   try {
-    await $fetch(`/api/agency/quotes/${quoteId}/accept`, {
+    await apiFetch(`/api/agency/quotes/${quoteId}/accept`, {
       method: 'POST'
     })
     toast.add({ title: 'Quote accepted! Job pricing created.', color: 'success' })
@@ -102,7 +103,7 @@ const acceptQuote = async () => {
 const confirmReject = async () => {
   rejecting.value = true
   try {
-    await $fetch(`/api/agency/quotes/${quoteId}/reject`, {
+    await apiFetch(`/api/agency/quotes/${quoteId}/reject`, {
       method: 'POST',
       body: { reason: rejectReason.value }
     })
@@ -120,7 +121,7 @@ const confirmReject = async () => {
 const confirmDelete = async () => {
   deleting.value = true
   try {
-    await ($fetch as any)(`/api/agency/quotes/${quoteId}`, {
+    await apiFetch(`/api/agency/quotes/${quoteId}`, {
       method: 'DELETE'
     })
     toast.add({ title: 'Quote deleted', color: 'success' })
@@ -136,7 +137,7 @@ const confirmDelete = async () => {
 const deleteLineItem = async (itemId: string) => {
   deletingItemId.value = itemId
   try {
-    await ($fetch as any)(`/api/agency/quotes/${quoteId}/line-items/${itemId}`, {
+    await apiFetch(`/api/agency/quotes/${quoteId}/line-items/${itemId}`, {
       method: 'DELETE'
     })
     toast.add({ title: 'Line item deleted', color: 'success' })
@@ -152,7 +153,7 @@ const deleteLineItem = async (itemId: string) => {
 const pushToXero = async () => {
   pushingToXero.value = true
   try {
-    await $fetch(`/api/agency/quotes/${quoteId}/push-to-xero`, { method: 'POST' })
+    await apiFetch(`/api/agency/quotes/${quoteId}/push-to-xero`, { method: 'POST' })
     toast.add({ title: 'Quote pushed to Xero as DRAFT', color: 'success' })
     refresh()
   } catch (err: any) {
@@ -165,7 +166,7 @@ const pushToXero = async () => {
 const syncXeroStatus = async () => {
   syncingXero.value = true
   try {
-    const result = await $fetch<any>(`/api/agency/quotes/${quoteId}/xero-status`)
+    const result = await apiFetch<any>(`/api/agency/quotes/${quoteId}/xero-status`)
     toast.add({ title: `Xero status: ${result.xeroStatus}`, color: 'success' })
     refresh()
   } catch (err: any) {
@@ -178,7 +179,7 @@ const syncXeroStatus = async () => {
 const convertToInvoice = async () => {
   convertingToInvoice.value = true
   try {
-    const result = await $fetch<any>(`/api/agency/quotes/${quoteId}/xero-to-invoice`, { method: 'POST' })
+    const result = await apiFetch<any>(`/api/agency/quotes/${quoteId}/xero-to-invoice`, { method: 'POST' })
     toast.add({ title: 'Invoice created in Xero', description: `Invoice: ${result.xeroInvoiceNumber}`, color: 'success' })
     refresh()
   } catch (err: any) {

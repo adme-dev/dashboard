@@ -8,8 +8,9 @@ definePageMeta({
 
 const route = useRoute()
 const handle = computed(() => String(route.params.handle || ''))
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
-const { data, pending, error } = await useFetch<{
+const data = ref<{
   lobby: {
     id: string
     office_id: string
@@ -21,8 +22,26 @@ const { data, pending, error } = await useFetch<{
     office_name: string
     config: OfficeLobbyConfig
   }
-}>(() => `/api/public/office-lobby/handle/${handle.value}`, {
-  watch: [handle]
+} | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refreshLobby() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch(`/api/public/office-lobby/handle/${handle.value}`)
+  } catch (err) {
+    data.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+await refreshLobby()
+watch(handle, () => {
+  void refreshLobby()
 })
 
 const destinationUrl = computed(() => {

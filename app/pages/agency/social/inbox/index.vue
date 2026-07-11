@@ -29,7 +29,19 @@ function fetchErrorDescription(error: unknown) {
   return e.data?.statusMessage || e.message
 }
 
-const { data: clientsData } = await useFetch<AgencyClientsResponse>('/api/agency/clients', { query: { limit: 200 } })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+const clientsData = ref<AgencyClientsResponse>([])
+
+async function refreshClients() {
+  clientsData.value = await apiFetch<AgencyClientsResponse>('/api/agency/clients', {
+    query: { limit: 200 },
+  }).catch(() => [])
+}
+
+await refreshClients()
 const clients = computed<AgencyClientOption[]>(() => {
   const d = clientsData.value
   return Array.isArray(d) ? d : (d?.clients ?? [])
@@ -41,10 +53,15 @@ const { user, fetchUser } = useAuth()
 if (!user.value) await fetchUser()
 
 const { conversations, loading, hasMore, load, loadMore, open, reply, markRead, refresh } = useSocialInbox(clientId)
-const { data: accountHealth, refresh: refreshAccountHealth } = await useFetch<SocialInboxAccountHealth[]>(
-  '/api/agency/social/inbox/accounts/health',
-  { query: { clientId }, watch: [clientId], default: () => [] }
-)
+const accountHealth = ref<SocialInboxAccountHealth[]>([])
+
+async function refreshAccountHealth() {
+  accountHealth.value = await apiFetch<SocialInboxAccountHealth[]>('/api/agency/social/inbox/accounts/health', {
+    query: { clientId: clientId.value },
+  }).catch(() => [])
+}
+
+await refreshAccountHealth()
 
 const selectedId = ref<string | null>(null)
 const thread = ref<{ conversation: SocialConversation | null, messages: SocialMessage[] }>({ conversation: null, messages: [] })
@@ -82,6 +99,7 @@ watch(clientId, () => {
   resetAiState()
   typingByConversation.value = {}
   reload()
+  void refreshAccountHealth()
 })
 onMounted(async () => {
   await reload()
@@ -135,7 +153,7 @@ async function onRequestClientApproval(content: string) {
   if (!selectedId.value) return
   approvalRequesting.value = true
   try {
-    await $fetch(`/api/agency/social/inbox/conversations/${selectedId.value}/client-approval`, {
+    await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}/client-approval`, {
       method: 'POST',
       body: { content }
     })
@@ -152,7 +170,7 @@ async function onRequestClientApproval(content: string) {
 
 async function patchSelectedConversation(body: Record<string, unknown>) {
   if (!selectedId.value) return
-  await $fetch(`/api/agency/social/inbox/conversations/${selectedId.value}`, { method: 'PATCH', body })
+  await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}`, { method: 'PATCH', body })
   thread.value = await open(selectedId.value)
   await loadTimeline(selectedId.value)
   await reload()
@@ -165,7 +183,7 @@ async function loadTimeline(id = selectedId.value) {
   }
   timelineLoading.value = true
   try {
-    const data = await $fetch<{ timeline: SocialInboxCaseTimelineItem[] }>(
+    const data = await apiFetch<{ timeline: SocialInboxCaseTimelineItem[] }>(
       `/api/agency/social/inbox/conversations/${id}/timeline`,
       { query: { limit: 40 } }
     )
@@ -196,7 +214,7 @@ async function onTriage(patch: { priority?: SocialInboxPriority | null, tags?: s
 async function onNativeLinks(patch: { linked_task_id?: string | null, linked_client_request_id?: string | null }) {
   if (!selectedId.value) return
   try {
-    await $fetch(`/api/agency/social/inbox/conversations/${selectedId.value}/native-links`, { method: 'PATCH', body: patch })
+    await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}/native-links`, { method: 'PATCH', body: patch })
     thread.value = await open(selectedId.value)
     await loadTimeline(selectedId.value)
     await reload()
@@ -211,7 +229,7 @@ async function onAiTriage() {
   aiTriageLoading.value = true
   aiActionProposals.value = {}
   try {
-    const data = await $fetch<{ triage: SocialInboxAiTriageResult }>(
+    const data = await apiFetch<{ triage: SocialInboxAiTriageResult }>(
       `/api/agency/social/inbox/conversations/${selectedId.value}/ai-triage`,
       { method: 'POST' }
     )
@@ -236,7 +254,7 @@ async function onAiProposeAction(payload: { actionKey: string, input: SocialInbo
   if (!selectedId.value) return
   aiActionBusy.value = `${payload.actionKey}:propose`
   try {
-    const data = await $fetch<{ proposal: SocialInboxAiActionProposal }>(
+    const data = await apiFetch<{ proposal: SocialInboxAiActionProposal }>(
       `/api/agency/social/inbox/conversations/${selectedId.value}/ai-actions/propose`,
       { method: 'POST', body: payload.input }
     )
@@ -253,7 +271,7 @@ async function onAiConfirmAction(payload: { actionKey: string, proposal: SocialI
   if (!selectedId.value) return
   aiActionBusy.value = `${payload.actionKey}:confirm`
   try {
-    await $fetch(`/api/agency/social/inbox/conversations/${selectedId.value}/ai-actions/confirm`, {
+    await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}/ai-actions/confirm`, {
       method: 'POST',
       body: { proposalId: payload.proposal.proposalId }
     })

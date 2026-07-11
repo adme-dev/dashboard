@@ -20,6 +20,11 @@ definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const toast = useToast()
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
 // ── Invoice header ──
 const invoiceDate = ref(new Date().toISOString().slice(0, 10))
 const dueDate = ref('')
@@ -132,7 +137,7 @@ async function pushToXero() {
 
   pushing.value = true
   try {
-    const result = await $fetch('/api/xero/invoice-builder/create', {
+    const result = await apiFetch<{ invoiceNumber?: string; invoiceID?: string }>('/api/xero/invoice-builder/create', {
       method: 'POST',
       body: {
         type: 'ACCREC',

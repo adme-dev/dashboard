@@ -11,15 +11,22 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // ── Data fetching ──────────────────────
-const { data: brandKits, refresh } = useFetch<BannerBrandKit[]>('/api/agency/banner-studio/brand-kits', {
-  default: () => [],
-})
+const brandKits = ref<BannerBrandKit[]>([])
+const clientsData = ref<Array<{ id: string; name: string }>>([])
 
-const { data: clientsData } = useFetch<Array<{ id: string; name: string }>>('/api/agency/clients', {
-  default: () => [],
-})
+async function refresh() {
+  brandKits.value = await apiFetch<BannerBrandKit[]>('/api/agency/banner-studio/brand-kits')
+}
+
+async function refreshClients() {
+  clientsData.value = await apiFetch<Array<{ id: string; name: string }>>('/api/agency/clients')
+}
+
+refresh()
+refreshClients()
 
 // ── Modal state ────────────────────────
 const showEditModal = ref(false)
@@ -83,7 +90,7 @@ async function uploadLogo(files: FileList | File[]) {
     const formData = new FormData()
     formData.append('file', file)
     try {
-      const result = await $fetch<{ url: string; r2Key: string }>('/api/agency/banner-studio/assets/upload', {
+      const result = await apiFetch<{ url: string; r2Key: string }>('/api/agency/banner-studio/assets/upload', {
         method: 'POST',
         body: formData,
       })
@@ -162,13 +169,13 @@ async function save() {
     }
 
     if (editingKit.value) {
-      await $fetch(`/api/agency/banner-studio/brand-kits/${editingKit.value.id}`, {
+      await apiFetch(`/api/agency/banner-studio/brand-kits/${editingKit.value.id}`, {
         method: 'PATCH',
         body: payload,
       })
       toast.add({ title: 'Updated', description: `"${formName.value}" updated`, color: 'success' })
     } else {
-      await $fetch('/api/agency/banner-studio/brand-kits', {
+      await apiFetch('/api/agency/banner-studio/brand-kits', {
         method: 'POST',
         body: payload,
       })
@@ -192,7 +199,7 @@ function confirmDelete(kit: BannerBrandKit) {
 async function doDelete() {
   if (!deletingKit.value) return
   try {
-    await $fetch(`/api/agency/banner-studio/brand-kits/${deletingKit.value.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/banner-studio/brand-kits/${deletingKit.value.id}`, { method: 'DELETE' })
     toast.add({ title: 'Deleted', description: `"${deletingKit.value.name}" removed`, color: 'success' })
     showDeleteConfirm.value = false
     deletingKit.value = null

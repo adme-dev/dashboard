@@ -4,7 +4,7 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
-import { hashPassword, createSession, generateToken, hashToken, logActivity } from '~~/server/utils/auth'
+import { hashPassword, createJwt, generateToken, hashToken, logActivity } from '~~/server/utils/auth'
 import { sendWelcomeEmail, sendVerificationEmail } from '~~/server/utils/email'
 
 interface RegisterBody {
@@ -141,8 +141,12 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Create session
-    const { token, expiresAt } = await createSession(user.id, event)
+    const token = await createJwt({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    })
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
     // Set auth cookie
     setCookie(event, 'auth_token', token, {

@@ -7,7 +7,12 @@ const route = useRoute()
 const router = useRouter()
 const socialApi = useSocialPublishing()
 
-const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+const clientsData = ref<any>([])
+clientsData.value = await apiFetch('/api/agency/clients', { query: { limit: 200 } }).catch(() => [])
 const clients = computed<any[]>(() => { const d = clientsData.value as any; return Array.isArray(d) ? d : (d?.clients ?? []) })
 const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
 const routeClientId = computed(() => typeof route.query.client === 'string' ? route.query.client : null)
@@ -22,8 +27,22 @@ watch(clientId, (next) => {
   router.replace({ query: { ...route.query, client: next || undefined } })
 })
 
-const { data: replies, refresh: refreshReplies } = await useFetch<SocialSavedReply[]>('/api/agency/social/inbox/saved-replies', { query: { clientId }, watch: [clientId], default: () => [] })
-const { data: policies, refresh: refreshPolicies } = await useFetch<SocialSlaPolicy[]>('/api/agency/social/inbox/sla-policies', { query: { clientId }, watch: [clientId], default: () => [] })
+const replies = ref<SocialSavedReply[]>([])
+const policies = ref<SocialSlaPolicy[]>([])
+
+async function refreshReplies() {
+  replies.value = await apiFetch<SocialSavedReply[]>('/api/agency/social/inbox/saved-replies', {
+    query: { clientId: clientId.value },
+  }).catch(() => [])
+}
+
+async function refreshPolicies() {
+  policies.value = await apiFetch<SocialSlaPolicy[]>('/api/agency/social/inbox/sla-policies', {
+    query: { clientId: clientId.value },
+  }).catch(() => [])
+}
+
+await Promise.all([refreshReplies(), refreshPolicies()])
 
 const googleBusinessAccounts = ref<SocialAccount[]>([])
 const googleBusinessLoading = ref(false)
@@ -94,6 +113,8 @@ async function refreshGoogleBusinessAccounts() {
 
 watch(clientId, () => {
   if (import.meta.client) refreshGoogleBusinessAccounts()
+  void refreshReplies()
+  void refreshPolicies()
 })
 
 function connectGoogleBusiness() {
@@ -105,7 +126,7 @@ async function syncGoogleBusinessReviews() {
   if (!clientId.value) return
   googleBusinessSyncing.value = true
   try {
-    const result = await $fetch<{ synced?: number; skipped?: number; timedOut?: boolean }>('/api/agency/social/inbox/accounts/sync', {
+    const result = await apiFetch<{ synced?: number; skipped?: number; timedOut?: boolean }>('/api/agency/social/inbox/accounts/sync', {
       method: 'POST',
       body: { clientId: clientId.value }
     })
@@ -174,7 +195,7 @@ function toggleLocation(id: string, on: boolean) {
 async function confirmSelection() {
   selecting.value = true
   try {
-    const res = await $fetch<{ connected: string[]; conflicts: string[] }>('/api/agency/social/publishing/accounts/complete', {
+    const res = await apiFetch<{ connected: string[]; conflicts: string[] }>('/api/agency/social/publishing/accounts/complete', {
       method: 'POST',
       body: { token: selectToken.value, pageIds: selectChosen.value }
     })
@@ -205,7 +226,7 @@ onMounted(async () => {
     selectToken.value = String(route.query.social_select)
     selectChosen.value = []
     try {
-      selectLocations.value = await $fetch('/api/agency/social/publishing/accounts/pending', {
+      selectLocations.value = await apiFetch('/api/agency/social/publishing/accounts/pending', {
         query: { token: selectToken.value }
       })
       selectChosen.value = selectLocations.value.filter(location => location.status === 'connected').map(location => location.id)
@@ -226,7 +247,7 @@ async function addReply() {
   if (!newReply.name.trim() || !newReply.content.trim()) return
   savingReply.value = true
   try {
-    await $fetch('/api/agency/social/inbox/saved-replies', { method: 'POST', body: { ...newReply, client_id: clientId.value } })
+    await apiFetch('/api/agency/social/inbox/saved-replies', { method: 'POST', body: { ...newReply, client_id: clientId.value } })
     newReply.name = ''; newReply.content = ''; newReply.category = ''
     await refreshReplies(); toast.add({ title: 'Saved reply added', color: 'success' })
   } catch (e: any) {
@@ -238,7 +259,7 @@ async function addReply() {
 async function delReply(id: string) {
   deletingReply.value = id
   try {
-    await $fetch(`/api/agency/social/inbox/saved-replies/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/social/inbox/saved-replies/${id}`, { method: 'DELETE' })
     await refreshReplies()
   } catch (e: any) {
     toast.add({ title: 'Delete failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
@@ -254,7 +275,7 @@ async function savePolicy() {
   if (!clientId.value || !newPolicy.target_minutes || newPolicy.target_minutes < 1) return
   savingPolicy.value = true
   try {
-    await $fetch('/api/agency/social/inbox/sla-policies', { method: 'POST', body: { client_id: clientId.value, channel_type: newPolicy.channel_type === ALL_CHANNELS ? null : newPolicy.channel_type, target_minutes: newPolicy.target_minutes } })
+    await apiFetch('/api/agency/social/inbox/sla-policies', { method: 'POST', body: { client_id: clientId.value, channel_type: newPolicy.channel_type === ALL_CHANNELS ? null : newPolicy.channel_type, target_minutes: newPolicy.target_minutes } })
     await refreshPolicies(); toast.add({ title: 'SLA policy saved', color: 'success' })
   } catch (e: any) {
     toast.add({ title: 'SLA policy failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
@@ -265,7 +286,7 @@ async function savePolicy() {
 async function delPolicy(id: string) {
   deletingPolicy.value = id
   try {
-    await $fetch(`/api/agency/social/inbox/sla-policies/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/social/inbox/sla-policies/${id}`, { method: 'DELETE' })
     await refreshPolicies()
   } catch (e: any) {
     toast.add({ title: 'Delete failed', description: e?.data?.statusMessage || e?.message, color: 'error' })

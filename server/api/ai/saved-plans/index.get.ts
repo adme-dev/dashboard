@@ -4,7 +4,7 @@ import { queryRows } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
 
 export default eventHandler(async (event) => {
-  const user = requireAuth(event)
+  const user = await requireAuth(event)
   const tenantId = await getSelectedTenant(event)
   const { status } = getQuery(event)
 

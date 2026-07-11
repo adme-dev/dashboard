@@ -2,6 +2,11 @@
 import type { AiTrainingKnowledge, TrainingKnowledgeType } from '~/types'
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  query?: Record<string, unknown>
+}) => Promise<T>
 
 // Filters
 const selectedType = ref<string>('all')
@@ -16,15 +21,30 @@ const pageSize = 20
 const queryType = computed(() => selectedType.value === 'all' ? '' : selectedType.value)
 const queryApproved = computed(() => approvedFilter.value === 'all' ? '' : approvedFilter.value)
 
-const { data, pending, refresh } = useFetch('/api/agency/ai/training/knowledge', {
-  query: {
-    type: queryType,
-    category: selectedCategory,
-    approved: queryApproved,
-    page,
+const data = ref<{ items?: AiTrainingKnowledge[]; total?: number } | null>(null)
+const pending = ref(false)
+const knowledgeQuery = computed(() => ({
+    type: queryType.value,
+    category: selectedCategory.value,
+    approved: queryApproved.value,
+    page: page.value,
     limit: pageSize,
-  },
-})
+}))
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items?: AiTrainingKnowledge[]; total?: number }>('/api/agency/ai/training/knowledge', { query: knowledgeQuery.value })
+  } catch {
+    data.value = { items: [], total: 0 }
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(knowledgeQuery, () => {
+  refresh()
+}, { immediate: true })
 
 const entries = computed(() => ((data.value as any)?.items || []) as AiTrainingKnowledge[])
 const total = computed(() => (data.value as any)?.total || 0)
@@ -145,13 +165,13 @@ const saveEntry = async () => {
       tags: form.value.tags ? form.value.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
     }
     if (editingEntry.value) {
-      await $fetch(`/api/agency/ai/training/knowledge/${editingEntry.value.id}`, {
+      await apiFetch(`/api/agency/ai/training/knowledge/${editingEntry.value.id}`, {
         method: 'PUT',
         body,
       })
       toast.add({ title: 'Knowledge entry updated', color: 'success' })
     } else {
-      await $fetch('/api/agency/ai/training/knowledge', {
+      await apiFetch('/api/agency/ai/training/knowledge', {
         method: 'POST',
         body,
       })
@@ -173,7 +193,7 @@ const saveEntry = async () => {
 // Approve
 const approveEntry = async (entry: AiTrainingKnowledge) => {
   try {
-    await $fetch(`/api/agency/ai/training/knowledge/${entry.id}/approve`, { method: 'PATCH' })
+    await apiFetch(`/api/agency/ai/training/knowledge/${entry.id}/approve`, { method: 'PATCH' })
     toast.add({ title: 'Entry approved', color: 'success' })
     refresh()
   } catch (error: any) {
@@ -195,7 +215,7 @@ const deleteEntry = async () => {
   if (!deletingEntry.value) return
   deleting.value = true
   try {
-    await $fetch(`/api/agency/ai/training/knowledge/${deletingEntry.value.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/ai/training/knowledge/${deletingEntry.value.id}`, { method: 'DELETE' })
     toast.add({ title: 'Entry deleted', color: 'success' })
     showDeleteModal.value = false
     refresh()
@@ -229,7 +249,7 @@ const submitUpload = async () => {
     formData.append('file', uploadFile.value)
     formData.append('knowledgeType', uploadType.value)
     formData.append('format', uploadFormat.value)
-    await $fetch('/api/agency/ai/training/knowledge/upload', {
+    await apiFetch('/api/agency/ai/training/knowledge/upload', {
       method: 'POST',
       body: formData,
     })

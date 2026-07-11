@@ -5,6 +5,10 @@ import { SOCIAL_PLATFORM_FILTER_OPTIONS } from '~~/app/utils/socialReportSchedul
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
 const { clientId } = useSocialPublishingClient()
 const {
   overview,
@@ -41,7 +45,7 @@ async function loadWorkflow() {
   }
   workflowLoading.value = true
   try {
-    workflow.value = await $fetch<WorkflowOverview>('/api/agency/social/publishing/analytics/overview', {
+    workflow.value = await apiFetch<WorkflowOverview>('/api/agency/social/publishing/analytics/overview', {
       query: { clientId: clientId.value },
     })
   } finally {

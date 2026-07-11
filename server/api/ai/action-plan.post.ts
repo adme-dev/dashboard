@@ -4,6 +4,7 @@ import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
 import { cachedFetch } from '~~/server/utils/kv'
 import { getSelectedTenant } from '~~/server/utils/session'
+import { $fetch as ofetch } from 'ofetch'
 
 interface ActionPlanRequest {
   type: 'anomaly' | 'recommendation' | 'insight'
@@ -53,6 +54,11 @@ interface ActionPlanResponse {
 }
 
 export default eventHandler(async (event) => {
+  const eventFetch = event.$fetch as <T = unknown>(request: string, options?: {
+    headers?: HeadersInit | Headers
+    query?: Record<string, unknown>
+  }) => Promise<T>
+
   const body = await readBody<ActionPlanRequest>(event)
 
   if (!body?.title || !body?.description) {
@@ -116,7 +122,7 @@ export default eventHandler(async (event) => {
     // Fetch Xero data in parallel
     const xeroResults = await Promise.allSettled(
       endpointsToFetch.map(ep =>
-        $fetch<any>(ep.endpoint, { headers: event.headers, query: ep.query }).then(data => ({ label: ep.label, data }))
+        eventFetch<any>(ep.endpoint, { headers: event.headers, query: ep.query }).then(data => ({ label: ep.label, data }))
       )
     )
 
@@ -577,7 +583,7 @@ async function fetchPerplexityInsight(item: ActionPlanRequest, category: string)
   const searchQuery = searchTopics[category] || `Australian advertising agency ${item.title} financial best practices`
 
   try {
-    const response = await $fetch<any>(`${baseUrl}/chat/completions`, {
+    const response = await ofetch<any>(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,

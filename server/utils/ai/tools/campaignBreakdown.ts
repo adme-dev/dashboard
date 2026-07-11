@@ -3,6 +3,7 @@ import { z } from 'zod'
 // on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -45,7 +46,7 @@ const defaultDeps: CampaignBreakdownDeps = {
     const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     const query: Record<string, unknown> = { startDate, endDate, sortBy: 'spend', limit: 200 }
     if (platform) query.platform = PLATFORM_QUERY[platform]
-    const r: any = await $fetch('/api/agency/analytics/campaigns', {
+    const r: any = await aiInternalFetch('/api/agency/analytics/campaigns', {
       query,
       headers: ctx.event.headers as any,
     })

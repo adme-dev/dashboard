@@ -19,11 +19,12 @@ let visListenerInstalled = false
 
 export function useOpenAnomalyCount() {
   const count = useState<number>('open-anomaly-count', () => 0)
+  const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
   async function refresh() {
     if (!import.meta.client) return
     try {
-      const r = await $fetch<{ count: number }>('/api/ai/anomalies/count/critical-open')
+      const r = await apiFetch<{ count: number }>('/api/ai/anomalies/count/critical-open')
       count.value = r.count
     } catch {
       // Silent — sidebar badge is best-effort.

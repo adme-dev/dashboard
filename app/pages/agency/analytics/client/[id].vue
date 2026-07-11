@@ -12,16 +12,50 @@ if (!validId.value) {
 }
 
 const { filters } = useAnalytics()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
 
 interface AnalyticsOverview {
-  totals: Record<string, number | null>
-  previousPeriod: Record<string, number | null>
-  byPlatform: Array<Record<string, unknown>>
+  totals: AnalyticsTotals
+  previousPeriod: AnalyticsTotals
+  byPlatform: AnalyticsPlatformRow[]
   byClient?: Array<{ clientName?: string | null }>
 }
 
 interface TrendResponse {
-  dataPoints: Array<Record<string, unknown>>
+  dataPoints: AnalyticsTrendPoint[]
+}
+
+interface AnalyticsTotals {
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  revenue: number
+  cpc: number | null
+  cpm: number | null
+  ctr: number | null
+  roas: number | null
+  budget?: number
+  rollingCount?: number
+  leads?: number
+  costPerLead?: number | null
+}
+
+interface AnalyticsPlatformRow extends AnalyticsTotals {
+  platform: string
+  displayName: string
+  color: string
+  campaignCount: number
+  pctOfTotal: number
+}
+
+interface AnalyticsTrendPoint {
+  date: string
+  value: number
+  byPlatform: Record<string, number>
 }
 
 // Override apiQuery with this client's ID
@@ -36,11 +70,23 @@ const apiQuery = computed(() => {
 })
 
 // Overview
-const { data: overviewData, status: overviewStatus } = useFetch<AnalyticsOverview>('/api/agency/analytics/overview', {
-  query: apiQuery,
-  watch: [apiQuery],
-  immediate: validId.value
-})
+const overviewData = ref<AnalyticsOverview | null>(null)
+const overviewStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshOverview() {
+  if (!validId.value) return
+  overviewStatus.value = 'pending'
+  try {
+    overviewData.value = await apiFetch<AnalyticsOverview>('/api/agency/analytics/overview', { query: apiQuery.value })
+    overviewStatus.value = 'success'
+  } catch {
+    overviewStatus.value = 'error'
+  }
+}
+
+watch(apiQuery, () => {
+  void refreshOverview()
+}, { immediate: true })
 
 const overview = computed(() => overviewData.value)
 const totals = computed(() => overview.value?.totals || null)
@@ -55,11 +101,23 @@ const trendQuery = computed(() => ({
   groupBy: 'day'
 }))
 
-const { data: trendData, status: trendStatus } = useFetch<TrendResponse>('/api/agency/analytics/trends', {
-  query: trendQuery,
-  watch: [trendQuery],
-  immediate: validId.value
-})
+const trendData = ref<TrendResponse | null>(null)
+const trendStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshTrends() {
+  if (!validId.value) return
+  trendStatus.value = 'pending'
+  try {
+    trendData.value = await apiFetch<TrendResponse>('/api/agency/analytics/trends', { query: trendQuery.value })
+    trendStatus.value = 'success'
+  } catch {
+    trendStatus.value = 'error'
+  }
+}
+
+watch(trendQuery, () => {
+  void refreshTrends()
+}, { immediate: true })
 const trendPoints = computed(() => trendData.value?.dataPoints || [])
 
 // Client name from overview data

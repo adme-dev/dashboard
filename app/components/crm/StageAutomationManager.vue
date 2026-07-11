@@ -6,6 +6,10 @@ import type { CrmStage } from '~/types/crm'
 const props = defineProps<{ clientId: string }>()
 const clientId = toRef(props, 'clientId')
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 const { stages } = useCrmStages(clientId)
 const stageItems = computed(() => stages.value.map(s => ({ label: s.name, value: s.id })))
@@ -18,9 +22,16 @@ interface AutomationRow {
   task_template: { title: string, task_type: string, priority: string, due_offset_days: number }
 }
 const query = computed(() => ({ client_id: clientId.value }))
-const { data, refresh } = useFetch<{ items: AutomationRow[] }>('/api/crm/stage-automations', {
-  query, watch: [query], default: () => ({ items: [] }),
-})
+const data = ref<{ items: AutomationRow[] }>({ items: [] })
+
+async function refresh() {
+  data.value = await apiFetch<{ items: AutomationRow[] }>('/api/crm/stage-automations', { query: query.value })
+}
+
+watch(query, () => {
+  refresh()
+}, { immediate: true })
+
 const rules = computed(() => data.value?.items ?? [])
 
 const typeItems = [
@@ -47,7 +58,7 @@ async function save() {
   }
   saving.value = true
   try {
-    await $fetch('/api/crm/stage-automations', {
+    await apiFetch('/api/crm/stage-automations', {
       method: 'POST',
       body: {
         client_id: clientId.value,
@@ -69,13 +80,13 @@ async function save() {
 }
 async function toggle(r: AutomationRow) {
   try {
-    await $fetch(`/api/crm/stage-automations/${r.id}`, { method: 'PATCH', body: { client_id: clientId.value, is_active: !r.is_active } })
+    await apiFetch(`/api/crm/stage-automations/${r.id}`, { method: 'PATCH', body: { client_id: clientId.value, is_active: !r.is_active } })
     await refresh()
   } catch { toast.add({ title: 'Could not update', color: 'error' }) }
 }
 async function remove(r: AutomationRow) {
   try {
-    await $fetch(`/api/crm/stage-automations/${r.id}`, { method: 'DELETE', query: { client_id: clientId.value } })
+    await apiFetch(`/api/crm/stage-automations/${r.id}`, { method: 'DELETE', query: { client_id: clientId.value } })
     await refresh()
     toast.add({ title: 'Automation removed', color: 'success' })
   } catch { toast.add({ title: 'Could not remove', color: 'error' }) }

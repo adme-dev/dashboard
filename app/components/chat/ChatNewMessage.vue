@@ -8,13 +8,21 @@ const emit = defineEmits<{
 
 const toast = useToast()
 const { user } = useAuth()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const search = ref('')
 const selectedIds = ref<string[]>([])
 const creating = ref(false)
 const groupName = ref('')
 
-const { data: teamMembersData } = useFetch('/api/agency/team-members')
+const teamMembersData = ref<any | null>(null)
+
+async function refreshTeamMembers() {
+  teamMembersData.value = await apiFetch<any>('/api/agency/team-members')
+}
+
+refreshTeamMembers()
+
 const teamMembers = computed(() =>
   (((teamMembersData.value as any)?.members as any[]) || []).filter((m: any) => m.id !== user.value?.id)
 )
@@ -59,14 +67,14 @@ async function handleCreate() {
 
     if (selectedIds.value.length === 1) {
       // Standard DM
-      channel = await $fetch<ChatChannel>('/api/chat/dm', {
+      channel = await apiFetch<ChatChannel>('/api/chat/dm', {
         method: 'POST',
         body: { userId: selectedIds.value[0] }
       })
     } else {
       // Group DM
       const name = groupName.value.trim() || autoGroupName.value
-      channel = await $fetch<ChatChannel>('/api/chat/channels', {
+      channel = await apiFetch<ChatChannel>('/api/chat/channels', {
         method: 'POST',
         body: {
           name,

@@ -13,13 +13,32 @@ const props = defineProps<{
 
 const toast = useToast()
 
-const { data, pending } = useFetch<{ form_name: string | null; has_metadata: boolean; fields: FieldEntry[] }>(
-  '/api/leads/forms/sample',
-  {
-    query: { source: props.source, form_id: props.formId },
-    default: () => ({ form_name: null, has_metadata: false, fields: [] }),
-  },
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const query = computed(() => ({ source: props.source, form_id: props.formId }))
+const data = ref<{ form_name: string | null; has_metadata: boolean; fields: FieldEntry[] }>({
+  form_name: null,
+  has_metadata: false,
+  fields: [],
+})
+const pending = ref(false)
+
+async function refreshFields() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ form_name: string | null; has_metadata: boolean; fields: FieldEntry[] }>(
+      '/api/leads/forms/sample',
+      { query: query.value },
+    )
+  } finally {
+    pending.value = false
+  }
+}
+
+await refreshFields()
+watch(query, () => { refreshFields() })
 
 const grouped = computed(() => {
   const out: Record<'form' | 'lead' | 'attribution', FieldEntry[]> = {

@@ -1,6 +1,7 @@
 export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void }) {
   const { onConnected } = opts
   const state = reactive({ status: 'idle' as 'idle' | 'loading' | 'completed' | 'error', error: '' })
+  const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
   let popup: Window | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -24,7 +25,7 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
       state.status = 'loading'
       state.error = ''
 
-      const { url } = await $fetch<{ url: string }>('/api/agency/social/meta/connect')
+      const { url } = await apiFetch<{ url: string }>('/api/agency/social/meta/connect')
       popup = openPopup(url)
 
       if (!popup) {
@@ -41,7 +42,7 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
           stopPolling()
           // Popup closed — check if accounts were connected
           try {
-            const accounts = await $fetch<any[]>('/api/agency/social/meta/accounts')
+            const accounts = await apiFetch<any[]>('/api/agency/social/meta/accounts')
             if (accounts && accounts.length > 0) {
               state.status = 'completed'
               await onConnected?.()

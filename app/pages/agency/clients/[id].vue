@@ -12,9 +12,30 @@ const toast = useToast()
 // guard) — non-managers get a read-only view instead of a 403 on save.
 const { isManager } = useAuth()
 const clientId = route.params.id as string
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 // Fetch client data
-const { data: clientData, pending, refresh, error } = await useFetch(`/api/agency/clients/${clientId}`)
+const clientData = ref<any>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    clientData.value = await apiFetch(`/api/agency/clients/${clientId}`)
+  } catch (err) {
+    clientData.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
 // Distinguish a genuine 404 from a transient/permission failure for the error state.
 const isNotFound = computed(() => ((error.value as any)?.statusCode ?? (error.value as any)?.status) === 404)
 
@@ -126,7 +147,7 @@ const saving = ref(false)
 const saveClient = async () => {
   saving.value = true
   try {
-    await $fetch(`/api/agency/clients/${clientId}`, {
+    await apiFetch(`/api/agency/clients/${clientId}`, {
       method: 'PUT',
       body: editForm.value
     })
@@ -142,7 +163,7 @@ const saveClient = async () => {
 
 const unlinkXero = async () => {
   try {
-    await $fetch(`/api/agency/clients/${clientId}`, {
+    await apiFetch(`/api/agency/clients/${clientId}`, {
       method: 'PUT',
       body: { xeroContactId: null }
     })
@@ -189,9 +210,15 @@ const invoiceColumns = [
 ]
 
 // KPI Targets
-const { data: kpiData, refresh: refreshKpi } = useFetch<{ targets: Array<{ resultType: string, targetCostPerResult: number, targetCtr: number | null, maxFrequency: number | null }>, availableResultTypes: string[] }>(
-  () => `/api/agency/clients/${clientId}/kpi-targets`, { default: () => ({ targets: [], availableResultTypes: [] }) }
-)
+const kpiData = ref<{ targets: Array<{ resultType: string, targetCostPerResult: number, targetCtr: number | null, maxFrequency: number | null }>, availableResultTypes: string[] }>({ targets: [], availableResultTypes: [] })
+
+async function refreshKpi() {
+  kpiData.value = await apiFetch<{ targets: Array<{ resultType: string, targetCostPerResult: number, targetCtr: number | null, maxFrequency: number | null }>, availableResultTypes: string[] }>(
+    `/api/agency/clients/${clientId}/kpi-targets`
+  ).catch(() => ({ targets: [], availableResultTypes: [] }))
+}
+
+await refreshKpi()
 const kpiTargets = ref<Array<{ resultType: string, targetCostPerResult: number | null, targetCtr: number | null, maxFrequency: number | null }>>([])
 watch(kpiData, (v) => { kpiTargets.value = (v?.targets || []).map(t => ({ ...t })) }, { immediate: true })
 // Result-type options = the values this client's campaigns actually carry, plus any already-saved targets.
@@ -209,7 +236,7 @@ async function saveKpiTargets() {
   const clean = kpiTargets.value.filter(t => t.resultType && Number(t.targetCostPerResult) > 0)
   kpiSaving.value = true
   try {
-    await $fetch(`/api/agency/clients/${clientId}/kpi-targets`, { method: 'PUT', body: { targets: clean } })
+    await apiFetch(`/api/agency/clients/${clientId}/kpi-targets`, { method: 'PUT', body: { targets: clean } })
     toast.add({ title: 'KPI targets saved', color: 'success' })
     await refreshKpi()
   } catch {

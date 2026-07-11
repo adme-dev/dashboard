@@ -17,9 +17,28 @@ interface AiReport {
   metadata?: Record<string, unknown>
 }
 
-const { data, status } = await useFetch<{ reports: AiReport[] } | AiReport[]>('/api/agency/ai/agent/reports', {
-  query: { limit: 5 },
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
+const data = ref<{ reports: AiReport[] } | AiReport[] | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshAiInsights() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<{ reports: AiReport[] } | AiReport[]>('/api/agency/ai/agent/reports', {
+      query: { limit: 5 },
+    })
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load AI insights', error)
+    status.value = 'error'
+  }
+}
+
+await refreshAiInsights()
 
 const reports = computed<AiReport[]>(() => {
   if (!data.value) return []

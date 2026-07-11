@@ -94,6 +94,10 @@ function removeInactiveRemoteStreams(streams: MediaStream[]) {
 }
 
 export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  ) => Promise<T>
   const state = ref<OfficeRealtimeState>('idle')
   const error = ref<string | null>(null)
   const remoteStreams = ref<MediaStream[]>([])
@@ -123,7 +127,7 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
     if (!session || !officeId || mids.length === 0) return
 
     publishedTrackMids = []
-    await $fetch(
+    await apiFetch(
       `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}/tracks/close`,
       {
         method: 'PUT',
@@ -157,7 +161,7 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
     if (!session || !officeId) return
 
     try {
-      const response = await $fetch<RealtimeSessionStateResponse>(
+      const response = await apiFetch<RealtimeSessionStateResponse>(
         `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}`,
         {
           query: {
@@ -240,7 +244,7 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
       const localDescription = nextPc.localDescription
       if (!localDescription) throw new Error('Could not create Realtime offer.')
 
-      const response = await $fetch<RealtimeTracksResponse>(
+      const response = await apiFetch<RealtimeTracksResponse>(
         `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}/tracks`,
         {
           method: 'POST',
@@ -280,7 +284,7 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
           const answerDescription = nextPc.localDescription
           if (!answerDescription) throw new Error('Could not create Realtime answer.')
 
-          await $fetch(
+          await apiFetch(
             `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}/renegotiate`,
             {
               method: 'PUT',

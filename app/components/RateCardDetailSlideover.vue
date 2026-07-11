@@ -12,6 +12,21 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown, query?: Record<string, unknown> }) => Promise<T>
+
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+interface RateCardAuditEntry {
+  id: string
+  itemId: string
+  itemName: string
+  action: string
+  fieldName: string | null
+  oldValue: string | null
+  newValue: string | null
+  changedAt: string
+  changedByName: string | null
+}
 
 const localOpen = computed({
   get: () => props.open,
@@ -106,7 +121,7 @@ async function save() {
   if (!props.item) return
   saving.value = true
   try {
-    await $fetch(`/api/agency/rate-cards/${props.item.id}`, {
+    await apiFetch(`/api/agency/rate-cards/${props.item.id}`, {
       method: 'PATCH',
       body: form.value,
     })
@@ -126,7 +141,7 @@ async function generateDescription() {
   if (!props.item) return
   generating.value = true
   try {
-    const result = await $fetch<{ description: string }>('/api/agency/rate-cards/generate-description', {
+    const result = await apiFetch<{ description: string }>('/api/agency/rate-cards/generate-description', {
       method: 'POST',
       body: {
         serviceName: form.value.serviceName,
@@ -156,14 +171,18 @@ function formatPriceDisplay() {
 }
 
 // Audit history
-const { data: auditData } = useFetch('/api/agency/rate-cards/audit', {
-  query: computed(() => ({
-    itemId: props.item?.id,
-    limit: 10,
-  })),
-  watch: [() => props.item?.id],
-  immediate: false,
-})
+const auditData = ref<{ entries: RateCardAuditEntry[] } | null>(null)
+
+watch(() => props.item?.id, async (itemId) => {
+  if (!itemId) {
+    auditData.value = null
+    return
+  }
+  auditData.value = await apiFetch<{ entries: RateCardAuditEntry[] }>('/api/agency/rate-cards/audit', {
+    method: 'GET',
+    query: { itemId, limit: 10 }
+  })
+}, { immediate: true })
 
 const auditEntries = computed(() => auditData.value?.entries || [])
 
@@ -177,7 +196,7 @@ function formatAuditAction(entry: any) {
   }
 }
 
-function auditActionColor(action: string): string {
+function auditActionColor(action: string): UiColor {
   switch (action) {
     case 'create': return 'success'
     case 'import': return 'info'

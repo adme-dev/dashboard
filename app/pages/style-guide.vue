@@ -993,7 +993,7 @@
       <section>
         <h2 class="text-3xl font-normal text-black mb-8">3D Cube Colors</h2>
         <div class="flex flex-wrap gap-8 items-end">
-          <div v-for="cube in cubes" :key="cube.color" class="text-center">
+          <div v-for="cube in cubes" :key="cube.hex" class="text-center">
             <div class="w-16 h-16 mb-3 rounded-lg transform rotate-45 shadow-lg" :style="`background: ${cube.hex}; box-shadow: 4px 4px 0 rgba(0,0,0,0.2);`"></div>
             <div class="text-xs font-mono uppercase tracking-wider text-black/40">{{ cube.name }}</div>
             <div class="text-sm text-black">{{ cube.hex }}</div>

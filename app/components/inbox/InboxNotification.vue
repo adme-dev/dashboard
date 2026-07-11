@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { parseInboxEntity } from '~~/app/utils/inboxEntity'
+import { safeMondayUrl } from '~~/app/utils/safe-url'
 import InboxItemPreview from '~/components/inbox/InboxItemPreview.vue'
 
 interface NotificationActor {
@@ -37,15 +38,21 @@ const { getNotificationIcon, getNotificationColor, formatRelativeTime } = useNot
 // Resolve the underlying item this notification points at (task / brief) so we can
 // render it inline. null → no dedicated preview; fall back to the metadata card.
 const previewEntity = computed(() => parseInboxEntity(props.notification.link))
+const mondaySourceUrl = computed(() => {
+  const value = props.notification.metadata?.mondayUrl
+  return typeof value === 'string' ? safeMondayUrl(value) : undefined
+})
 
-const badgeColorMap: Record<string, string> = {
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+const badgeColorMap: Record<string, UiColor> = {
   task_assigned: 'info',
-  task_mentioned: 'purple',
+  task_mentioned: 'primary',
   task_comment: 'neutral',
   task_status_changed: 'success',
   task_due_soon: 'warning',
   task_overdue: 'error',
-  approval_requested: 'indigo',
+  approval_requested: 'primary',
   approval_completed: 'success',
   system: 'neutral',
   team_update: 'neutral'
@@ -202,6 +209,17 @@ function getTypeLabel(type: string) {
         icon="i-lucide-external-link"
         color="primary"
         @click="emit('navigate', notification)"
+      />
+      <UButton
+        v-if="mondaySourceUrl"
+        label="Open in Monday"
+        icon="i-lucide-external-link"
+        color="neutral"
+        variant="outline"
+        :to="mondaySourceUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        external
       />
       <UButton
         v-if="!notification.isRead"

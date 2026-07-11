@@ -4,13 +4,17 @@ const props = defineProps<{
 }>()
 
 const { filters, updateFilters, setDatePreset, ALL_PLATFORM_KEYS, getPlatformLabel } = useAnalytics()
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 interface ClientOption {
   id: string
   name: string
 }
 
-const { data: clientsData } = useLazyFetch<ClientOption[]>('/api/agency/clients')
+const clientsData = ref<ClientOption[]>([])
+apiFetch<ClientOption[]>('/api/agency/clients')
+  .then(result => { clientsData.value = result })
+  .catch(() => { clientsData.value = [] })
 const clientOptions = computed(() => {
   const clients = clientsData.value || []
   return [

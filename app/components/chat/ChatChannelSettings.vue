@@ -13,6 +13,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Form state
 const name = ref(props.channel.name)
@@ -45,7 +46,7 @@ const muteOptions = [
 // Fetch current preferences
 async function fetchNotifPrefs() {
   try {
-    const pref = await $fetch<{ notify_level: string; muted_until: string | null }>(
+    const pref = await apiFetch<{ notify_level: string; muted_until: string | null }>(
       `/api/chat/channels/${props.channel.id}/notifications`
     )
     notifyLevel.value = (pref.notify_level as 'all' | 'mentions' | 'nothing') || 'all'
@@ -59,7 +60,7 @@ async function handleNotifyChange(level: string) {
   notifyLevel.value = level as 'all' | 'mentions' | 'nothing'
   savingNotifs.value = true
   try {
-    await $fetch(`/api/chat/channels/${props.channel.id}/mute`, {
+    await apiFetch(`/api/chat/channels/${props.channel.id}/mute`, {
       method: 'PATCH',
       body: { notifyLevel: level, muteDuration: isMuted.value ? undefined : 0 }
     })
@@ -75,7 +76,7 @@ async function handleMute(minutes: number) {
   savingNotifs.value = true
   isMuted.value = true
   try {
-    await $fetch(`/api/chat/channels/${props.channel.id}/mute`, {
+    await apiFetch(`/api/chat/channels/${props.channel.id}/mute`, {
       method: 'PATCH',
       body: { muteDuration: minutes }
     })
@@ -91,7 +92,7 @@ async function handleUnmute() {
   savingNotifs.value = true
   isMuted.value = false
   try {
-    await $fetch(`/api/chat/channels/${props.channel.id}/mute`, {
+    await apiFetch(`/api/chat/channels/${props.channel.id}/mute`, {
       method: 'PATCH',
       body: { muteDuration: 0 }
     })
@@ -113,11 +114,11 @@ async function handleSave() {
   if (!name.value.trim()) return
   saving.value = true
   try {
-    const updated = await $fetch(`/api/chat/channels/${props.channel.id}`, {
+    const updated = await apiFetch<ChatChannel>(`/api/chat/channels/${props.channel.id}`, {
       method: 'PATCH',
       body: { name: name.value.trim(), description: description.value.trim() || null }
     })
-    emit('updated', updated as ChatChannel)
+    emit('updated', updated)
     toast.add({ title: 'Channel updated', color: 'success' })
   } catch {
     toast.add({ title: 'Failed to update channel', color: 'error' })
@@ -129,7 +130,7 @@ async function handleSave() {
 async function handleLeave() {
   leaving.value = true
   try {
-    await $fetch(`/api/chat/channels/${props.channel.id}/leave`, { method: 'POST' })
+    await apiFetch(`/api/chat/channels/${props.channel.id}/leave`, { method: 'POST' })
     emit('left')
     toast.add({ title: 'Left channel', color: 'success' })
   } catch (err: any) {
@@ -147,7 +148,7 @@ async function handleLeave() {
 async function handleArchive() {
   archiving.value = true
   try {
-    await $fetch(`/api/chat/channels/${props.channel.id}`, {
+    await apiFetch(`/api/chat/channels/${props.channel.id}`, {
       method: 'PATCH',
       body: { archive: !props.channel.archived_at }
     })

@@ -13,10 +13,11 @@ const emit = defineEmits<{
 
 const pins = ref<any[]>([])
 const loading = ref(true)
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string }) => Promise<T>
 
 onMounted(async () => {
   try {
-    pins.value = await $fetch(`/api/chat/channels/${props.channelId}/pins`) as any[]
+    pins.value = await apiFetch<any[]>(`/api/chat/channels/${props.channelId}/pins`)
   } catch {
     // Silent
   } finally {
@@ -26,7 +27,7 @@ onMounted(async () => {
 
 async function handleUnpin(messageId: number) {
   try {
-    await $fetch(`/api/chat/channels/${props.channelId}/messages/${messageId}/pin`, {
+    await apiFetch(`/api/chat/channels/${props.channelId}/messages/${messageId}/pin`, {
       method: 'PATCH'
     })
     pins.value = pins.value.filter(p => p.id !== messageId)

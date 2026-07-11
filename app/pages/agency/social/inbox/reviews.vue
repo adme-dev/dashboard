@@ -16,7 +16,15 @@ function fetchErrorDescription(error: unknown) {
   return e.data?.statusMessage || e.message
 }
 
-const { data: clientsData } = await useFetch<AgencyClientsResponse>('/api/agency/clients', { query: { limit: 200 } })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const clientsData = ref<AgencyClientsResponse>([])
+
+clientsData.value = await apiFetch<AgencyClientsResponse>('/api/agency/clients', {
+  query: { limit: 200 },
+}).catch(() => [])
 const clients = computed<AgencyClientOption[]>(() => {
   const d = clientsData.value
   return Array.isArray(d) ? d : (d?.clients ?? [])

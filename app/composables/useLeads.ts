@@ -35,11 +35,25 @@ export function useLeads() {
     return p
   })
 
-  const { data, pending, refresh, error } = useFetch<LeadsListResponse>('/api/leads/list', {
-    query: params,
-    watch: [params],
-    default: () => ({ items: [], total: 0, page: 1, page_size: 50 })
-  })
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { query?: Record<string, unknown> }
+  ) => Promise<T>
+  const data = ref<LeadsListResponse>({ items: [], total: 0, page: 1, page_size: 50 })
+  const pending = ref(false)
+  const error = ref<unknown>(null)
+
+  async function refresh() {
+    pending.value = true
+    error.value = null
+    try {
+      data.value = await apiFetch<LeadsListResponse>('/api/leads/list', { query: params.value })
+    } catch (err) {
+      error.value = err
+    } finally {
+      pending.value = false
+    }
+  }
 
   function reset() {
     filters.value = { ...DEFAULT_FILTERS }
@@ -50,6 +64,8 @@ export function useLeads() {
   watch(filters, () => {
     page.value = 1
   }, { deep: true })
+
+  watch(params, () => { refresh() }, { immediate: true })
 
   return { filters, page, pageSize, data, pending, error, refresh, reset }
 }

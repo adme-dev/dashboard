@@ -33,7 +33,16 @@ const toast = useToast()
 const TYPING_PING_MS = 8000
 let typingTimer: ReturnType<typeof setTimeout> | null = null
 
-const { data: savedReplies } = await useFetch<SavedReply[]>('/api/agency/social/inbox/saved-replies', { default: () => [] })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const savedReplies = ref<SavedReply[]>([])
+try {
+  savedReplies.value = await apiFetch<SavedReply[]>('/api/agency/social/inbox/saved-replies')
+} catch {
+  savedReplies.value = []
+}
 const replyItems = computed(() => [(savedReplies.value || []).map(r => ({ label: r.name, onSelect: () => insertReply(r) }))])
 
 function replyTextarea(): HTMLTextAreaElement | null {
@@ -44,7 +53,7 @@ function replyTextarea(): HTMLTextAreaElement | null {
 
 function insertReply(r: SavedReply) {
   draft.value = draft.value ? `${draft.value}\n${r.content}` : r.content
-  $fetch(`/api/agency/social/inbox/saved-replies/${r.id}`, { method: 'PATCH', body: { incrementUsage: true } }).catch(() => {})
+  apiFetch(`/api/agency/social/inbox/saved-replies/${r.id}`, { method: 'PATCH', body: { incrementUsage: true } }).catch(() => {})
 }
 
 function insertEmoji(emoji: string) {
@@ -71,7 +80,7 @@ function clearTypingTimer() {
 
 async function sendTypingState(conversationId: string, active: boolean) {
   try {
-    await $fetch(`/api/agency/social/inbox/conversations/${conversationId}/typing`, {
+    await apiFetch(`/api/agency/social/inbox/conversations/${conversationId}/typing`, {
       method: 'POST',
       body: { active }
     })
@@ -142,7 +151,7 @@ async function aiDraft() {
   if (!props.conversationId) return
   aiDrafting.value = true
   try {
-    const res = await $fetch<{ reply: string, confidence: number, risk: boolean }>(
+    const res = await apiFetch<{ reply: string, confidence: number, risk: boolean }>(
       `/api/agency/social/inbox/conversations/${props.conversationId}/ai-draft`, { method: 'POST', body: {} })
     if (!res.reply) {
       toast.add({ title: 'No draft', description: 'This one needs a human — the model flagged it.', color: 'warning' })

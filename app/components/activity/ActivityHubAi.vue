@@ -4,6 +4,7 @@ const router = useRouter()
 const toast = useToast()
 const { user } = useAuth()
 const { close, toggleSize, scopedBoardId, scopedBoardLabel, clearScope } = useActivityHub()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -61,7 +62,7 @@ async function handleQuickAction(label: string) {
   try {
     await ensureConversation()
 
-    const result = await $fetch<any>('/api/agency/ai/chat/quick-action', {
+    const result = await apiFetch<any>('/api/agency/ai/chat/quick-action', {
       method: 'POST',
       body: { action: label, context },
     })

@@ -232,6 +232,10 @@ interface TeamMember {
 
 definePageMeta({})
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 const searchQuery = ref('')
 const selectedTeam = ref<Team | null>(null)
 const showCreateModal = ref(false)
@@ -240,7 +244,13 @@ const showRemoveMemberConfirm = ref(false)
 const teamToDelete = ref<Team | null>(null)
 const memberToRemove = ref<TeamMember | null>(null)
 
-const { data: teams, refresh } = await useFetch<{ teams: Team[] }>('/api/teams')
+const teams = ref<{ teams: Team[] }>({ teams: [] })
+
+async function refresh() {
+  teams.value = await apiFetch<{ teams: Team[] }>('/api/teams').catch(() => ({ teams: [] }))
+}
+
+await refresh()
 
 const filteredTeams = computed(() => {
   if (!searchQuery.value) return teams.value?.teams || []
@@ -252,15 +262,18 @@ const filteredTeams = computed(() => {
 
 const teamMembers = ref<TeamMember[]>([])
 
-// Fetch members when team is selected
-watch(selectedTeam, async (team) => {
-  if (!team) {
+async function loadTeamMembers(teamId: string | undefined) {
+  if (!teamId) {
     teamMembers.value = []
     return
   }
-  
-  const { data } = await useFetch(`/api/teams/${team.id}/members`)
-  teamMembers.value = data.value?.members || []
+  const data = await apiFetch<{ members: TeamMember[] }>(`/api/teams/${teamId}/members`).catch(() => ({ members: [] }))
+  teamMembers.value = data.members || []
+}
+
+// Fetch members when team is selected
+watch(selectedTeam, async (team) => {
+  await loadTeamMembers(team?.id)
 })
 
 const teamColors = [
@@ -283,7 +296,7 @@ const newTeam = ref({
 
 const createTeam = async () => {
   try {
-    await $fetch('/api/teams', {
+    await apiFetch('/api/teams', {
       method: 'POST',
       body: newTeam.value
     })
@@ -310,7 +323,7 @@ const onConfirmDeleteTeam = async () => {
   showDeleteTeamConfirm.value = false
 
   try {
-    await $fetch(`/api/teams/${team.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/teams/${team.id}`, { method: 'DELETE' })
     selectedTeam.value = null
     refresh()
   } catch (err) {
@@ -335,12 +348,10 @@ const onConfirmRemoveMember = async () => {
   showRemoveMemberConfirm.value = false
 
   try {
-    await $fetch(`/api/teams/${selectedTeam.value?.id}/members/${member.id}`, {
+    await apiFetch(`/api/teams/${selectedTeam.value?.id}/members/${member.id}`, {
       method: 'DELETE'
     })
-    // Refresh members
-    const { data } = await useFetch(`/api/teams/${selectedTeam.value?.id}/members`)
-    teamMembers.value = data.value?.members || []
+    await loadTeamMembers(selectedTeam.value?.id)
   } catch (err) {
     console.error('Failed to remove member:', err)
   } finally {

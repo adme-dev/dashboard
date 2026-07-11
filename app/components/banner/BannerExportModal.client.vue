@@ -14,6 +14,10 @@ const { state, activeLayers } = useBannerStudio()
 const { estimateSize } = useBannerFileSize()
 const { getExportCustomFonts } = useBannerFonts()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+}) => Promise<T>
 
 const selected = ref<Set<string>>(new Set(state.setKeys))
 const isExporting = ref(false)
@@ -189,7 +193,7 @@ async function exportImages() {
     exportProgress.value = 20
 
     // Send to server for rendering
-    const results = await $fetch<ImageExportResult[]>('/api/agency/banner-studio/export-image', {
+    const results = await apiFetch<ImageExportResult[]>('/api/agency/banner-studio/export-image', {
       method: 'POST',
       body: {
         projectId: state.project.id,
@@ -272,7 +276,7 @@ async function exportGifs() {
 
     exportProgress.value = 10
 
-    const results = await $fetch<ImageExportResult[]>('/api/agency/banner-studio/export-gif', {
+    const results = await apiFetch<ImageExportResult[]>('/api/agency/banner-studio/export-gif', {
       method: 'POST',
       body: {
         projectId: state.project.id,
@@ -349,7 +353,7 @@ async function exportVideos() {
     exportProgress.value = 5
 
     // Enqueue render jobs
-    const { jobIds } = await $fetch<{ jobIds: string[] }>('/api/agency/banner-studio/export-video', {
+    const { jobIds } = await apiFetch<{ jobIds: string[] }>('/api/agency/banner-studio/export-video', {
       method: 'POST',
       body: {
         projectId: state.project.id,
@@ -380,7 +384,7 @@ async function exportVideos() {
           return
         }
         try {
-          const { jobs } = await $fetch<{ jobs: ExportJob[] }>(
+          const { jobs } = await apiFetch<{ jobs: ExportJob[] }>(
             `/api/agency/banner-studio/export-video/jobs?ids=${jobIds.join(',')}`,
           )
           const summary = summarizeExportJobs(jobs)

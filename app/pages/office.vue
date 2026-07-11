@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import type {
   OfficeMemberRow,
   ActorHandle,
+  OfficeMemberRole,
   OfficePresenceEventKind,
   OfficePresenceEventTarget,
   OfficeRow,
@@ -13,9 +14,29 @@ import type {
 
 definePageMeta({ layout: 'agency' })
 
-const { data: listData, pending: officesPending, refresh: refreshOffices } = await useFetch<{
-  offices: (OfficeRow & { my_role: string })[]
-}>('/api/office')
+type OfficeListResponse = {
+  offices: (OfficeRow & { my_role: OfficeMemberRole })[]
+}
+
+type OfficeDetailResponse = {
+  office: OfficeRow
+  zones: OfficeZoneRow[]
+  members: (OfficeMemberRow & { name: string | null, avatar_url: string | null })[]
+  myRole: OfficeMemberRole
+}
+
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const listData = ref<OfficeListResponse | null>(null)
+const officesPending = ref(false)
+
+async function refreshOffices() {
+  officesPending.value = true
+  try {
+    listData.value = await apiFetch<OfficeListResponse>('/api/office')
+  } finally {
+    officesPending.value = false
+  }
+}
 
 const selectedId = ref<string | null>(listData.value?.offices[0]?.id ?? null)
 
@@ -27,17 +48,22 @@ watch(
   { immediate: true }
 )
 
-onMounted(async () => {
-  if (!selectedId.value) await refreshOffices()
+onMounted(() => {
+  void refreshOffices()
 })
 
-const { data: detail, refresh: refreshOfficeDetail } = await useFetch<{
-  office: OfficeRow
-  zones: OfficeZoneRow[]
-  members: (OfficeMemberRow & { name: string | null, avatar_url: string | null })[]
-  myRole: string
-}>(() => (selectedId.value ? `/api/office/${selectedId.value}` : null), {
-  watch: [selectedId]
+const detail = ref<OfficeDetailResponse | null>(null)
+
+async function refreshOfficeDetail() {
+  if (!selectedId.value) {
+    detail.value = null
+    return
+  }
+  detail.value = await apiFetch<OfficeDetailResponse>(`/api/office/${selectedId.value}`)
+}
+
+watch(selectedId, () => {
+  void refreshOfficeDetail()
 })
 
 const connection = useOfficeConnection({ officeId: selectedId })
@@ -122,15 +148,17 @@ type OfficeModule = {
   props: Record<string, unknown>
 }
 
+const resolveOfficeComponent = (name: string) => resolveComponent(name) as Component
+
 const officePanelComponents = {
-  lobbies: resolveComponent('OfficeLobbyAdminPanel'),
-  controls: resolveComponent('OfficeSettingsPanel'),
-  badges: resolveComponent('OfficeGuestBadgesPanel'),
-  audit: resolveComponent('OfficeAuditPanel'),
-  artifacts: resolveComponent('OfficeMeetingArtifactsPanel'),
-  recordings: resolveComponent('OfficeRecordingsPanel'),
-  assistant: resolveComponent('OfficeAssistantPanel'),
-  liveView: resolveComponent('OfficeLiveViewPanel')
+  lobbies: resolveOfficeComponent('OfficeLobbyAdminPanel'),
+  controls: resolveOfficeComponent('OfficeSettingsPanel'),
+  badges: resolveOfficeComponent('OfficeGuestBadgesPanel'),
+  audit: resolveOfficeComponent('OfficeAuditPanel'),
+  artifacts: resolveOfficeComponent('OfficeMeetingArtifactsPanel'),
+  recordings: resolveOfficeComponent('OfficeRecordingsPanel'),
+  assistant: resolveOfficeComponent('OfficeAssistantPanel'),
+  liveView: resolveOfficeComponent('OfficeLiveViewPanel')
 } satisfies Record<string, Component>
 
 const activePanelId = ref<string | null>(null)

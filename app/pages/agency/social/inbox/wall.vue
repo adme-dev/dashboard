@@ -10,10 +10,25 @@ interface AgencyClientOption {
 
 type AgencyClientsResponse = AgencyClientOption[] | { clients?: AgencyClientOption[] }
 
-const { data: clientsData, pending: clientsPending } = useFetch<AgencyClientsResponse>('/api/agency/clients', {
-  query: { limit: 200 },
-  server: false
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const clientsData = ref<AgencyClientsResponse>([])
+const clientsPending = ref(false)
+
+async function refreshClients() {
+  clientsPending.value = true
+  try {
+    clientsData.value = await apiFetch<AgencyClientsResponse>('/api/agency/clients', {
+      query: { limit: 200 },
+    })
+  } catch {
+    clientsData.value = []
+  } finally {
+    clientsPending.value = false
+  }
+}
 const clients = computed<AgencyClientOption[]>(() => {
   const d = clientsData.value
   return Array.isArray(d) ? d : (d?.clients ?? [])
@@ -49,16 +64,24 @@ const query = computed(() => ({
   limit: 80
 }))
 
-const { data: wallPosts, pending, error, refresh } = useFetch<SocialEngagementWallPost[]>(
-  '/api/agency/social/inbox/wall',
-  {
-    query,
-    watch: false,
-    immediate: false,
-    server: false,
-    default: () => []
+const wallPosts = ref<SocialEngagementWallPost[]>([])
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    wallPosts.value = await apiFetch<SocialEngagementWallPost[]>('/api/agency/social/inbox/wall', {
+      query: query.value,
+    })
+  } catch (err) {
+    wallPosts.value = []
+    error.value = err
+  } finally {
+    pending.value = false
   }
-)
+}
 
 const selectedClientName = computed(() => clients.value.find(c => c.id === clientId.value)?.name ?? null)
 const isLoading = computed(() => clientsPending.value || pending.value)
@@ -89,6 +112,10 @@ watch(clients, (nextClients) => {
 watch(query, () => {
   if (clientId.value) refreshWall()
 }, { immediate: true })
+
+onMounted(() => {
+  void refreshClients()
+})
 
 async function refreshWall() {
   if (!clientId.value) return

@@ -32,15 +32,38 @@ interface ProjectOption {
 
 type BadgeColor = 'error' | 'success' | 'warning' | 'neutral'
 
-const { data: departmentsData } = await useFetch<Department[]>('/api/agency/departments', {
-  query: { active: 'true' },
-  default: () => []
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const departmentsData = ref<Department[]>([])
 
 const projectQuery = computed(() => ({ clientId: props.conversation.client_id }))
-const { data: projectsData } = await useFetch<ProjectOption[]>('/api/agency/projects', {
-  query: projectQuery,
-  default: () => []
+const projectsData = ref<ProjectOption[]>([])
+
+async function refreshDepartments() {
+  try {
+    departmentsData.value = await apiFetch<Department[]>('/api/agency/departments', {
+      query: { active: 'true' }
+    })
+  } catch {
+    departmentsData.value = []
+  }
+}
+
+async function refreshProjects() {
+  try {
+    projectsData.value = await apiFetch<ProjectOption[]>('/api/agency/projects', {
+      query: projectQuery.value
+    })
+  } catch {
+    projectsData.value = []
+  }
+}
+
+await Promise.all([refreshDepartments(), refreshProjects()])
+watch(() => props.conversation.client_id, () => {
+  void refreshProjects()
 })
 
 const departmentOptions = computed(() => (departmentsData.value ?? [])

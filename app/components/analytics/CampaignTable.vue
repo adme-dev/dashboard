@@ -127,10 +127,24 @@ const apiQuery = computed(() => {
   return q
 })
 
-const { data, status } = useFetch<CampaignsResponse>(() => `${props.apiBase}/campaigns`, {
-  query: apiQuery,
-  watch: [apiQuery]
-})
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
+const data = ref<CampaignsResponse | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshCampaigns() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<CampaignsResponse>(`${props.apiBase}/campaigns`, { query: apiQuery.value })
+    status.value = 'success'
+  } catch {
+    data.value = null
+    status.value = 'error'
+  }
+}
+
+watch(apiQuery, () => {
+  refreshCampaigns()
+}, { immediate: true })
 
 const campaigns = computed(() => data.value?.campaigns || [])
 const total = computed(() => data.value?.total || 0)

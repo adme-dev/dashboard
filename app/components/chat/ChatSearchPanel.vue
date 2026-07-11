@@ -11,6 +11,7 @@ const results = ref<any[]>([])
 const loading = ref(false)
 const searched = ref(false)
 const debounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { params?: Record<string, unknown> }) => Promise<T>
 
 function handleInput() {
   if (debounceTimer.value) clearTimeout(debounceTimer.value)
@@ -31,9 +32,9 @@ async function performSearch() {
   loading.value = true
   searched.value = true
   try {
-    results.value = await $fetch('/api/chat/search', {
+    results.value = await apiFetch<any[]>('/api/chat/search', {
       params: { q, limit: 25 }
-    }) as any[]
+    })
   } catch {
     results.value = []
   } finally {

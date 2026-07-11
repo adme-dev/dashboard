@@ -20,7 +20,7 @@
           <UButton
             variant="outline"
             icon="i-lucide-refresh-cw"
-            @click="refresh"
+            @click="() => refresh()"
             :loading="loading"
           >
             Refresh
@@ -42,12 +42,14 @@
       <USelectMenu
         v-model="selectedBoard"
         :items="boardOptions"
+        value-key="value"
         placeholder="All Boards"
         class="w-48"
       />
       <USelectMenu
         v-model="selectedDepartment"
         :items="departmentOptions"
+        value-key="value"
         placeholder="All Departments"
         class="w-48"
       />
@@ -76,9 +78,9 @@
           <div class="flex items-center gap-3">
             <UIcon name="i-lucide-layout-grid" class="w-4 h-4 text-purple-500" />
             <div>
-              <p class="font-medium">{{ row.title }}</p>
+              <p class="font-medium">{{ itemRow(row).title }}</p>
               <a 
-                :href="`https://adme2.monday.com/boards/${row.monday_board_id}/pulses/${row.monday_item_id}`"
+                :href="`https://adme2.monday.com/boards/${itemRow(row).monday_board_id}/pulses/${itemRow(row).monday_item_id}`"
                 target="_blank"
                 class="text-xs text-gray-400 hover:text-primary"
               >
@@ -90,27 +92,27 @@
 
         <!-- Department Column -->
         <template #department-cell="{ row }">
-          <UBadge variant="subtle" :color="getDeptColor(row.department_id)">
-            {{ row.department_name }}
+          <UBadge variant="subtle" :color="getDeptColor(itemRow(row).department_id)">
+            {{ itemRow(row).department_name }}
           </UBadge>
         </template>
 
         <!-- Status Column -->
         <template #status-cell="{ row }">
           <UBadge 
-            v-if="row.status_name"
-            :style="{ backgroundColor: row.status_color + '20', color: row.status_color }"
+            v-if="itemRow(row).status_name"
+            :style="{ backgroundColor: itemRow(row).status_color + '20', color: itemRow(row).status_color }"
             variant="subtle"
           >
-            {{ row.status_name }}
+            {{ itemRow(row).status_name }}
           </UBadge>
           <span v-else class="text-gray-400">-</span>
         </template>
 
         <!-- Due Date Column -->
         <template #due_date-cell="{ row }">
-          <span v-if="row.due_date" :class="isOverdue(row.due_date) ? 'text-red-500' : ''">
-            {{ formatDate(row.due_date) }}
+          <span v-if="itemRow(row).due_date" :class="isOverdue(itemRow(row).due_date) ? 'text-red-500' : ''">
+            {{ formatDate(itemRow(row).due_date) }}
           </span>
           <span v-else class="text-gray-400">-</span>
         </template>
@@ -122,14 +124,14 @@
               variant="ghost"
               size="xs"
               icon="i-lucide-external-link"
-              :to="`https://adme2.monday.com/boards/${row.monday_board_id}/pulses/${row.monday_item_id}`"
+              :to="`https://adme2.monday.com/boards/${itemRow(row).monday_board_id}/pulses/${itemRow(row).monday_item_id}`"
               target="_blank"
             />
             <UButton
               variant="ghost"
               size="xs"
               icon="i-lucide-eye"
-              :to="`/agency/tasks/${row.id}`"
+              :to="`/agency/tasks/${itemRow(row).id}`"
             />
           </div>
         </template>
@@ -213,6 +215,7 @@
 definePageMeta({ middleware: ['role-admin'] })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 // State
 const loading = ref(true)
@@ -231,15 +234,30 @@ const pagination = ref({
 })
 
 // Fetch data
-const { data, refresh, pending } = await useFetch('/api/agency/monday/items', {
-  query: computed(() => ({
-    offset: pagination.value.offset,
-    limit: pagination.value.limit,
-    search: searchQuery.value || undefined,
-    boardId: selectedBoard.value || undefined,
-    departmentId: selectedDepartment.value || undefined
-  }))
-})
+const itemsQuery = computed(() => ({
+  offset: pagination.value.offset,
+  limit: pagination.value.limit,
+  search: searchQuery.value || undefined,
+  boardId: selectedBoard.value || undefined,
+  departmentId: selectedDepartment.value || undefined
+}))
+const data = ref<any | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>('/api/agency/monday/items', { query: itemsQuery.value })
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(itemsQuery, () => {
+  refresh()
+}, { immediate: true })
 
 watch(data, (newData) => {
   if (newData) {
@@ -284,13 +302,19 @@ const columns = [
 ]
 
 // Helpers
-function getDeptColor(deptId: string) {
-  const colors: Record<string, string> = {
-    'cc00daa9-9548-44d3-846e-6924f91d9043': 'pink', // Marketing
-    '1c5b6643-eb10-4ab3-9194-7e6325f36de4': 'blue', // Creative
-    '732cf3d5-09f3-452f-a20f-15f9db35a4c7': 'green', // Sales
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+function itemRow(row: any) {
+  return row.original ?? row
+}
+
+function getDeptColor(deptId: string): UiColor {
+  const colors: Record<string, UiColor> = {
+    'cc00daa9-9548-44d3-846e-6924f91d9043': 'secondary', // Marketing
+    '1c5b6643-eb10-4ab3-9194-7e6325f36de4': 'info', // Creative
+    '732cf3d5-09f3-452f-a20f-15f9db35a4c7': 'success', // Sales
   }
-  return colors[deptId] || 'gray'
+  return colors[deptId] || 'neutral'
 }
 
 function formatDate(date: string) {

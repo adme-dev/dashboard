@@ -4,6 +4,29 @@ definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 const route = useRoute()
 const toast = useToast()
 const contactId = computed(() => String(route.params.contactId))
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
+
+function createFetchState<T>(request: () => string) {
+  const data = ref<T | null>(null)
+  const pending = ref(false)
+  const error = ref<any>(null)
+  async function execute() {
+    pending.value = true
+    error.value = null
+    try {
+      data.value = await apiFetch<T>(request())
+    } catch (err) {
+      data.value = null
+      error.value = err
+    } finally {
+      pending.value = false
+    }
+  }
+  return { data, pending, error, execute }
+}
 
 // ── Types ──
 interface Bucket { month: string; cents: number }
@@ -66,10 +89,9 @@ interface DetailResponse {
 }
 
 // ── Detail (Overview tab) ──
-const { data, pending, error, refresh } = await useFetch<DetailResponse>(
-  () => `/api/customers/${contactId.value}`,
-  { lazy: true, server: false, watch: [contactId] },
-)
+const detailFetch = createFetchState<DetailResponse>(() => `/api/customers/${contactId.value}`)
+const { data, pending, error } = detailFetch
+const refresh = detailFetch.execute
 
 const customer = computed(() => data.value?.customer)
 
@@ -98,45 +120,36 @@ interface InvoicesResponse {
     totalOutstanding: number; totalOverdue: number
   }
 }
-const invoicesFetch = useFetch<InvoicesResponse>(
-  () => `/api/customers/${contactId.value}/invoices`,
-  { lazy: true, server: false, immediate: false, watch: [contactId] },
-)
+const invoicesFetch = createFetchState<InvoicesResponse>(() => `/api/customers/${contactId.value}/invoices`)
 watch(() => activeTab.value === 'invoices', (on) => { if (on) invoicesFetch.execute() })
 
 // Pipeline tab
-const pipelineFetch = useFetch<{
+const pipelineFetch = createFetchState<{
   quotes: Array<{ id: string; quoteNumber: string | null; reference: string | null; status: string; date: string | null; expiryDate: string | null; total: number; currency: string }>
   repeating: Array<{ id: string; reference: string | null; status: string; total: number; monthlyEquivalent: number; currency: string; unit: string; period: number; nextScheduledDate: string | null; endDate: string | null }>
   summary: { openQuoteCount: number; openQuoteValue: number; mrr: number; annualisedRecurring: number }
-}>(() => `/api/customers/${contactId.value}/pipeline`, {
-  lazy: true, server: false, immediate: false, watch: [contactId],
-})
+}>(() => `/api/customers/${contactId.value}/pipeline`)
 watch(() => activeTab.value === 'pipeline', (on) => { if (on) pipelineFetch.execute() })
 
 // Work tab
-const workFetch = useFetch<{
+const workFetch = createFetchState<{
   linked: boolean
   client: { id: string; name: string; billingType: string } | null
   projects: Array<{ id: string; name: string; status: string; budgetAmount: number; totalHours: number; totalCost: number; margin: number }>
   recentTimeEntries: Array<{ id: string; date: string; hours: number; amount: number; description: string | null; billable: boolean; projectName: string; userName: string }>
   monthlyHours: Array<{ month: string; hours: number; amountCents: number }>
   summary: { activeProjects: number; completedProjects: number; totalProjects: number; hoursThisMonth: number; billableThisMonth: number }
-}>(() => `/api/customers/${contactId.value}/work`, {
-  lazy: true, server: false, immediate: false, watch: [contactId],
-})
+}>(() => `/api/customers/${contactId.value}/work`)
 watch(() => activeTab.value === 'work', (on) => { if (on) workFetch.execute() })
 
 // Ad spend tab
-const spendFetch = useFetch<{
+const spendFetch = createFetchState<{
   linked: boolean
   client: { id: string; name: string; defaultCommissionRate: number | null } | null
   months: string[]
   platforms: Array<{ platform: string; total: number; commission: number; budget: number; thisMonth: number; buckets: Array<{ month: string; spend: number }> }>
   summary: { thisMonthSpend: number; last6mSpend: number; last6mCommission: number; platformCount: number }
-}>(() => `/api/customers/${contactId.value}/ad-spend`, {
-  lazy: true, server: false, immediate: false, watch: [contactId],
-})
+}>(() => `/api/customers/${contactId.value}/ad-spend`)
 watch(() => activeTab.value === 'spend', (on) => { if (on) spendFetch.execute() })
 
 // Finance tab — credit settings, tags, collections log
@@ -160,22 +173,10 @@ interface CollectionsEntry {
   createdBy: { id: string; name: string | null } | null
 }
 
-const financeFetch = useFetch<FinanceState>(
-  () => `/api/customers/${contactId.value}/finance`,
-  { lazy: true, server: false, immediate: false, watch: [contactId] },
-)
-const tagDictFetch = useFetch<{ tags: DictTag[] }>(
-  '/api/customer-tags',
-  { lazy: true, server: false, immediate: false },
-)
-const customerTagsFetch = useFetch<{ tags: AssignedTag[] }>(
-  () => `/api/customers/${contactId.value}/tags`,
-  { lazy: true, server: false, immediate: false, watch: [contactId] },
-)
-const collectionsFetch = useFetch<{ log: CollectionsEntry[] }>(
-  () => `/api/customers/${contactId.value}/collections`,
-  { lazy: true, server: false, immediate: false, watch: [contactId] },
-)
+const financeFetch = createFetchState<FinanceState>(() => `/api/customers/${contactId.value}/finance`)
+const tagDictFetch = createFetchState<{ tags: DictTag[] }>(() => '/api/customer-tags')
+const customerTagsFetch = createFetchState<{ tags: AssignedTag[] }>(() => `/api/customers/${contactId.value}/tags`)
+const collectionsFetch = createFetchState<{ log: CollectionsEntry[] }>(() => `/api/customers/${contactId.value}/collections`)
 watch(() => activeTab.value === 'finance', (on) => {
   if (!on) return
   financeFetch.execute()
@@ -205,7 +206,7 @@ const savingFinance = ref(false)
 async function saveFinance() {
   savingFinance.value = true
   try {
-    await $fetch(`/api/customers/${contactId.value}/finance`, {
+    await apiFetch(`/api/customers/${contactId.value}/finance`, {
       method: 'PUT',
       body: {
         creditLimit: financeForm.creditLimit,
@@ -236,7 +237,7 @@ async function createTag() {
   if (!label) return
   creatingTag.value = true
   try {
-    await $fetch('/api/customer-tags', { method: 'POST', body: { label } })
+    await apiFetch('/api/customer-tags', { method: 'POST', body: { label } })
     newTagLabel.value = ''
     await tagDictFetch.execute()
   } catch (err: any) {
@@ -254,9 +255,9 @@ async function toggleTag(tag: DictTag) {
   const isAssigned = customerTagsFetch.data.value?.tags.some(t => t.id === tag.id)
   try {
     if (isAssigned) {
-      await $fetch(`/api/customers/${contactId.value}/tags?tagId=${tag.id}`, { method: 'DELETE' })
+      await apiFetch(`/api/customers/${contactId.value}/tags?tagId=${tag.id}`, { method: 'DELETE' })
     } else {
-      await $fetch(`/api/customers/${contactId.value}/tags`, {
+      await apiFetch(`/api/customers/${contactId.value}/tags`, {
         method: 'POST',
         body: { tagIds: [tag.id] },
       })
@@ -274,7 +275,7 @@ const loggingAction = ref(false)
 async function addCollectionsEntry() {
   loggingAction.value = true
   try {
-    await $fetch(`/api/customers/${contactId.value}/collections`, {
+    await apiFetch(`/api/customers/${contactId.value}/collections`, {
       method: 'POST',
       body: { action: newLogAction.value, notes: newLogNotes.value || null },
     })
@@ -348,16 +349,37 @@ interface InsightsResponse {
 // Insights load eagerly — the header strip surfaces a churn-risk badge
 // that should be visible on Overview without needing the user to click
 // into the Insights tab first.
-const insightsFetch = useFetch<InsightsResponse>(
-  () => `/api/customers/${contactId.value}/insights`,
-  { lazy: true, server: false, watch: [contactId] },
-)
+const insightsFetch = createFetchState<InsightsResponse>(() => `/api/customers/${contactId.value}/insights`)
+
+function refreshActiveTab() {
+  if (activeTab.value === 'invoices') void invoicesFetch.execute()
+  if (activeTab.value === 'pipeline') void pipelineFetch.execute()
+  if (activeTab.value === 'work') void workFetch.execute()
+  if (activeTab.value === 'spend') void spendFetch.execute()
+  if (activeTab.value === 'finance') {
+    void financeFetch.execute()
+    void tagDictFetch.execute()
+    void customerTagsFetch.execute()
+    void collectionsFetch.execute()
+  }
+}
+
+onMounted(() => {
+  void refresh()
+  void insightsFetch.execute()
+})
+
+watch(contactId, () => {
+  void refresh()
+  void insightsFetch.execute()
+  refreshActiveTab()
+})
 
 const refreshingSummary = ref(false)
 async function refreshAiSummary() {
   refreshingSummary.value = true
   try {
-    await $fetch(`/api/customers/${contactId.value}/insights?refresh=true`)
+    await apiFetch(`/api/customers/${contactId.value}/insights?refresh=true`)
     await insightsFetch.execute()
     toast.add({ title: 'Summary refreshed', color: 'success' })
   } catch (err: any) {
@@ -374,7 +396,7 @@ const syncing = ref(false)
 async function syncAndRefresh() {
   syncing.value = true
   try {
-    await $fetch('/api/xero/contacts/sync', { method: 'POST' })
+    await apiFetch('/api/xero/contacts/sync', { method: 'POST' })
     await refresh()
     toast.add({ title: 'Synced from Xero', color: 'success' })
   } catch (err: any) {
@@ -490,7 +512,7 @@ const sendingReminderId = ref<string | null>(null)
 async function sendReminder(invoiceId: string) {
   sendingReminderId.value = invoiceId
   try {
-    await $fetch(`/api/xero/invoices/${invoiceId}/send-reminder`, { method: 'POST' })
+    await apiFetch(`/api/xero/invoices/${invoiceId}/send-reminder`, { method: 'POST' })
     toast.add({ title: 'Reminder sent', color: 'success' })
   } catch (err: any) {
     toast.add({

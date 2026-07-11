@@ -3,7 +3,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 
 export default eventHandler(async (event) => {
-  const user = requireAuth(event)
+  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')
   const body = await readBody(event)
 

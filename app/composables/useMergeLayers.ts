@@ -3,6 +3,10 @@ const _isMerging = ref(false)
 export function useMergeLayers() {
   const { activeLayers, addLayer, removeLayer, activeFormat } = useBannerStudio()
   const toast = useToast()
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown }
+  ) => Promise<T>
 
   async function mergeLayers(layerIds: number[]): Promise<void> {
     if (layerIds.length < 2) {
@@ -84,7 +88,7 @@ export function useMergeLayers() {
       const formData = new FormData()
       formData.append('file', blob, `merged-${Date.now()}.png`)
 
-      const uploadResult = await $fetch<{ url: string; r2Key: string }>('/api/agency/banner-studio/assets/upload', {
+      const uploadResult = await apiFetch<{ url: string; r2Key: string }>('/api/agency/banner-studio/assets/upload', {
         method: 'POST',
         body: formData,
       })

@@ -112,11 +112,30 @@ const isCurrentMonth = computed(() =>
   selectedMonth.value === nowCal.month && selectedYear.value === nowCal.year
 )
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
 // ── Data fetch ──
-const { data, pending, error, refresh } = await useFetch<ConsolidatedResponse>(
-  '/api/xero/reports/pnl-consolidated',
-  { query: computed(() => ({ fromDate: fromDate.value, toDate: toDate.value })) }
-)
+const data = ref<ConsolidatedResponse | null>(null)
+const pending = ref(true)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+
+  try {
+    data.value = await apiFetch<ConsolidatedResponse>('/api/xero/reports/pnl-consolidated', {
+      query: { fromDate: fromDate.value, toDate: toDate.value }
+    })
+  } catch (fetchError) {
+    error.value = fetchError
+  } finally {
+    pending.value = false
+  }
+}
 
 // ── Formatters ──
 function fmt(value?: number | null) {
@@ -267,6 +286,12 @@ const breadcrumbs = computed(() => ([
   { label: 'Financial Reports', to: '/reports' },
   { label: 'Consolidated P&L', to: '/reports/consolidated' }
 ]))
+
+watch([fromDate, toDate], () => {
+  refresh()
+})
+
+await refresh()
 </script>
 
 <template>

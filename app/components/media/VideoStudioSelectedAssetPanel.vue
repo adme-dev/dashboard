@@ -223,7 +223,7 @@ function activityTimeLabel(value: string | null) {
               v-if="props.asset.captionVttUrl"
               class="ml-auto"
               icon="i-lucide-download"
-              size="2xs"
+              size="xs"
               variant="ghost"
               color="neutral"
               label="Download VTT"

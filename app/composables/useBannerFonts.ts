@@ -203,6 +203,7 @@ export const FONT_CATEGORIES = [
 export type FontCategory = typeof FONT_CATEGORIES[number]['value']
 
 export function useBannerFonts() {
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
   loadRecentFromStorage()
 
   /** Custom fonts as GoogleFont entries for unified search */
@@ -326,7 +327,7 @@ export function useBannerFonts() {
     if (customFontsFetch) return customFontsFetch
     customFontsFetch = (async () => {
       try {
-        const data = await $fetch<CustomFont[]>('/api/agency/banner-studio/fonts')
+        const data = await apiFetch<CustomFont[]>('/api/agency/banner-studio/fonts')
         customFonts.value = data || []
         // Inject @font-face for all custom fonts
         for (const cf of customFonts.value) {
@@ -347,7 +348,7 @@ export function useBannerFonts() {
     if (familyName) formData.append('family', familyName)
 
     try {
-      const result = await $fetch<CustomFont>('/api/agency/banner-studio/fonts/upload', {
+      const result = await apiFetch<CustomFont>('/api/agency/banner-studio/fonts/upload', {
         method: 'POST',
         body: formData,
       })
@@ -363,10 +364,10 @@ export function useBannerFonts() {
 
   /** Delete a custom font */
   async function deleteCustomFont(id: number): Promise<void> {
-    await $fetch(`/api/agency/banner-studio/fonts/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/banner-studio/fonts/${id}`, { method: 'DELETE' })
     const idx = customFonts.value.findIndex(f => f.id === id)
     if (idx > -1) {
-      const family = customFonts.value[idx].tags?.family || customFonts.value[idx].name
+      const family = customFonts.value[idx].name
       customFonts.value.splice(idx, 1)
       loadedFonts.delete(family)
     }

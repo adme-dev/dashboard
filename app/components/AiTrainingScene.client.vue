@@ -409,7 +409,10 @@ function animate(timestamp: number) {
         'position', new THREE.Float32BufferAttribute(connectedPoints, 3)
       )
       constellationSystem.geometry.attributes.position.needsUpdate = true
-      constellationSystem.material.opacity = Math.max(0, scrollProgress - 0.6) * 0.15
+      const material = constellationSystem.material
+      if (!Array.isArray(material)) {
+        material.opacity = Math.max(0, scrollProgress - 0.6) * 0.15
+      }
     }
 
     particleSystem.geometry.attributes.position.needsUpdate = true

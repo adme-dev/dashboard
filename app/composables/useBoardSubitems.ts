@@ -16,6 +16,11 @@ const subitemCounts = ref<Map<string, SubitemCount>>(new Map())
 const loadingParents = ref<Set<string>>(new Set())
 
 export function useBoardSubitems() {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown, params?: Record<string, unknown> }
+  ) => Promise<T>
+
   /** Populate counts from board API response on load */
   function initCounts(groups: BoardGroup[]) {
     const counts = new Map<string, SubitemCount>()
@@ -56,7 +61,7 @@ export function useBoardSubitems() {
     loadingParents.value = loading
 
     try {
-      const data = await $fetch<{ subitems: Record<string, BoardItem[]> }>(
+      const data = await apiFetch<{ subitems: Record<string, BoardItem[]> }>(
         `/api/agency/boards/${boardId}/subitems`,
         { params: { taskIds: parentIds.join(',') } },
       )
@@ -78,7 +83,7 @@ export function useBoardSubitems() {
   /** Add a new subitem via API and update local cache optimistically */
   async function addSubitem(parentTaskId: string, title: string, boardId: string) {
     try {
-      const data = await $fetch<{ subtask: any }>(
+      const data = await apiFetch<{ subtask: any }>(
         `/api/agency/tasks/${parentTaskId}/subtasks`,
         { method: 'POST', body: { title } },
       )

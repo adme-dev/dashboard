@@ -35,6 +35,10 @@ type OfficeMediaUnavailable = {
 }
 
 export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string }
+  ) => Promise<T>
   const participants = ref<Map<ActorHandle, OfficeParticipant>>(new Map())
   const zoneOccupancy = ref<Record<string, ActorHandle[]>>({})
   const transientEvents = ref<OfficePresenceEvent[]>([])
@@ -283,7 +287,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
   let intentionallyClosed = false
 
   async function fetchHandshake(officeId: string): Promise<{ token: string, workerUrl: string }> {
-    return await $fetch<{ token: string, workerUrl: string, exp: number }>(
+    return await apiFetch<{ token: string, workerUrl: string, exp: number }>(
       opts.tokenEndpoint?.value ?? `/api/office/${officeId}/token`,
       { method: 'POST' }
     )

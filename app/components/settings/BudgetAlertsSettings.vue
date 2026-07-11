@@ -11,10 +11,32 @@ interface BudgetSlackConfig {
   task_assignee_id: string | null
 }
 
-const { data: cfg, refresh } = await useFetch<BudgetSlackConfig>('/api/agency/settings/budget-slack')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const cfg = ref<BudgetSlackConfig | null>(null)
 // team-members endpoint returns { members: [...] } — NOT a bare array
-const { data: membersData } = await useFetch<{ members: Array<{ id: string; name: string }> }>('/api/agency/team-members')
+const membersData = ref<{ members: Array<{ id: string, name: string }> }>({ members: [] })
 const members = computed(() => membersData.value?.members ?? [])
+
+async function refresh() {
+  try {
+    cfg.value = await apiFetch<BudgetSlackConfig>('/api/agency/settings/budget-slack')
+  } catch {
+    cfg.value = null
+  }
+}
+
+async function refreshMembers() {
+  try {
+    membersData.value = await apiFetch<{ members: Array<{ id: string, name: string }> }>('/api/agency/team-members')
+  } catch {
+    membersData.value = { members: [] }
+  }
+}
+
+await Promise.all([refresh(), refreshMembers()])
 
 const saving = ref(false)
 const testing = ref(false)
@@ -38,7 +60,7 @@ const setupSteps = [
 async function save() {
   saving.value = true
   try {
-    await $fetch('/api/agency/settings/budget-slack', { method: 'PUT', body: cfg.value })
+    await apiFetch('/api/agency/settings/budget-slack', { method: 'PUT', body: cfg.value })
     toast.add({ title: 'Saved', description: 'Budget alert settings updated.', color: 'success' })
     await refresh()
   } catch (e: any) {
@@ -51,7 +73,7 @@ async function save() {
 async function sendTest() {
   testing.value = true
   try {
-    await $fetch('/api/agency/settings/budget-slack/test', { method: 'POST' })
+    await apiFetch('/api/agency/settings/budget-slack/test', { method: 'POST' })
     toast.add({ title: 'Test sent', description: 'Check your Slack channel.', color: 'success' })
   } catch (e: any) {
     toast.add({ title: 'Test failed', description: e?.data?.statusMessage ?? 'Could not post', color: 'error' })

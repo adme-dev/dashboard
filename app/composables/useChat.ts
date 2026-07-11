@@ -14,13 +14,18 @@ const hasMoreMessages = ref(true)
 
 export function useChat() {
   const toast = useToast()
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+    method?: string
+    body?: unknown
+    params?: Record<string, unknown>
+  }) => Promise<T>
 
   // ── Channels ──
 
   async function fetchChannels() {
     loadingChannels.value = true
     try {
-      const data = await $fetch<ChatChannel[]>('/api/chat/channels')
+      const data = await apiFetch<ChatChannel[]>('/api/chat/channels')
       channels.value = data
     } catch {
       toast.add({ title: 'Error', description: 'Failed to load channels', color: 'error' })
@@ -38,7 +43,7 @@ export function useChat() {
     departmentId?: string
     taskId?: string
   }) {
-    const channel = await $fetch<ChatChannel>('/api/chat/channels', {
+    const channel = await apiFetch<ChatChannel>('/api/chat/channels', {
       method: 'POST',
       body: opts
     })
@@ -47,7 +52,7 @@ export function useChat() {
   }
 
   async function fetchChannelDetails(channelId: string) {
-    const data = await $fetch<ChatChannel & { members: ChatChannelMember[] }>(
+    const data = await apiFetch<ChatChannel & { members: ChatChannelMember[] }>(
       `/api/chat/channels/${channelId}`
     )
     return data
@@ -56,7 +61,7 @@ export function useChat() {
   // ── Direct Messages ──
 
   async function openDM(userId: string) {
-    const channel = await $fetch<ChatChannel>('/api/chat/dm', {
+    const channel = await apiFetch<ChatChannel>('/api/chat/dm', {
       method: 'POST',
       body: { userId }
     })
@@ -80,7 +85,7 @@ export function useChat() {
       const params: Record<string, string> = { limit: '50' }
       if (before) params.before = String(before)
 
-      const data = await $fetch<ChatMessage[]>(
+      const data = await apiFetch<ChatMessage[]>(
         `/api/chat/channels/${channelId}/messages`,
         { params }
       )
@@ -107,7 +112,7 @@ export function useChat() {
   }
 
   async function fetchThreadMessages(channelId: string, threadParentId: number) {
-    const data = await $fetch<ChatMessage[]>(
+    const data = await apiFetch<ChatMessage[]>(
       `/api/chat/channels/${channelId}/messages`,
       { params: { threadParentId: String(threadParentId), limit: '100' } }
     )
@@ -118,7 +123,7 @@ export function useChat() {
 
   async function markChannelAsRead(channelId: string, messageId: number) {
     try {
-      await $fetch(`/api/chat/channels/${channelId}/read`, {
+      await apiFetch(`/api/chat/channels/${channelId}/read`, {
         method: 'PATCH',
         body: { messageId }
       })
@@ -133,14 +138,14 @@ export function useChat() {
   // ── Membership ──
 
   async function addMember(channelId: string, userId: string, role = 'member') {
-    await $fetch(`/api/chat/channels/${channelId}/members`, {
+    await apiFetch(`/api/chat/channels/${channelId}/members`, {
       method: 'POST',
       body: { userId, role }
     })
   }
 
   async function removeMember(channelId: string, userId: string) {
-    await $fetch(`/api/chat/channels/${channelId}/members`, {
+    await apiFetch(`/api/chat/channels/${channelId}/members`, {
       method: 'DELETE',
       body: { userId }
     })
@@ -250,7 +255,7 @@ export function useChat() {
   /** Silent channel refresh for background unread polling (no toast on error) */
   async function refreshUnreadCounts() {
     try {
-      const data = await $fetch<ChatChannel[]>('/api/chat/channels')
+      const data = await apiFetch<ChatChannel[]>('/api/chat/channels')
       // Preserve activeChannel reference — only update unread counts and last_message
       for (const fresh of data) {
         const existing = channels.value.find(c => c.id === fresh.id)

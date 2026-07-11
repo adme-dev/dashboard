@@ -653,6 +653,10 @@ definePageMeta({
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 interface Phase {
   id: string
@@ -739,10 +743,26 @@ interface TemplateData {
 }
 
 // Fetch template data
-const { data: template, pending } = await useFetch<TemplateData>(`/api/agency/templates/${route.params.id}`)
+const template = ref<TemplateData | null>(null)
+const pending = ref(false)
+
+async function refreshTemplate() {
+  pending.value = true
+  try {
+    template.value = await apiFetch<TemplateData>(`/api/agency/templates/${route.params.id}`)
+  } catch {
+    template.value = null
+  } finally {
+    pending.value = false
+  }
+}
 
 // Fetch clients
-const { data: clientsData } = await useFetch<Array<{ id: string; name: string }>>('/api/agency/clients')
+const clientsData = ref<Array<{ id: string; name: string }>>([])
+await Promise.all([
+  refreshTemplate(),
+  apiFetch<Array<{ id: string; name: string }>>('/api/agency/clients').then((data) => { clientsData.value = data }).catch(() => { clientsData.value = [] }),
+])
 
 // Computed
 const clientOptions = computed(() => {
@@ -841,7 +861,7 @@ const saveTemplate = async () => {
       .map(t => t.trim())
       .filter(t => t.length > 0)
 
-    await $fetch(`/api/agency/templates/${route.params.id}`, {
+    await apiFetch(`/api/agency/templates/${route.params.id}`, {
       method: 'PUT',
       body: {
         name: editForm.value.name,
@@ -867,7 +887,7 @@ const saveTemplate = async () => {
 
     showEditModal.value = false
     // Refresh template data
-    await refreshNuxtData()
+    await refreshTemplate()
   } catch (error: any) {
     toast.add({
       title: 'Error',
@@ -882,7 +902,7 @@ const saveTemplate = async () => {
 const deleteTemplate = async () => {
   deleting.value = true
   try {
-    await $fetch(`/api/agency/templates/${route.params.id}`, {
+    await apiFetch(`/api/agency/templates/${route.params.id}`, {
       method: 'DELETE'
     })
 
@@ -909,7 +929,7 @@ const useTemplate = async () => {
 
   creating.value = true
   try {
-    const result = await $fetch<{ project: { id: string; name: string }; tasksCreated: number }>(`/api/agency/templates/${route.params.id}/use`, {
+    const result = await apiFetch<{ project: { id: string; name: string }; tasksCreated: number }>(`/api/agency/templates/${route.params.id}/use`, {
       method: 'POST',
       body: {
         projectName: useForm.value.projectName,

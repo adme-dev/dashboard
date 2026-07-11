@@ -7,12 +7,22 @@ const emit = defineEmits<{
   'update:modelValue': [value: string | null]
 }>()
 
+const contactFetch = $fetch as <T>(request: string) => Promise<T>
+
 // Fetch Xero contacts
-const { data: xeroData, pending } = useLazyFetch('/api/xero/contacts', {
-  default: () => ({ contacts: [], count: 0 })
+const xeroData = ref<{ contacts: any[]; count: number }>({ contacts: [], count: 0 })
+const pending = ref(false)
+
+onMounted(async () => {
+  pending.value = true
+  try {
+    xeroData.value = await contactFetch<{ contacts: any[]; count: number }>('/api/xero/contacts')
+  } finally {
+    pending.value = false
+  }
 })
 
-const contacts = computed(() => (xeroData.value as any)?.contacts || [])
+const contacts = computed(() => xeroData.value.contacts || [])
 
 // Build items for USelectMenu — let searchable handle filtering
 const contactItems = computed(() => {

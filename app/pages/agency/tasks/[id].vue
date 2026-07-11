@@ -248,7 +248,25 @@ interface Task {
 }
 
 // Fetch task data
-const { data: task, pending, error, refresh } = await useFetch<Task>(() => `/api/agency/tasks/${taskId.value}`)
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const task = ref<Task | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    task.value = await apiFetch<Task>(`/api/agency/tasks/${taskId.value}`)
+  } catch (err) {
+    task.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
 
 // Breadcrumb
 const breadcrumbItems = computed(() => [

@@ -9,6 +9,10 @@ definePageMeta({
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
 
 interface PortalClient {
   id: string
@@ -256,8 +260,20 @@ const portalClientQuery = computed(() => ({
   limit: 100
 }))
 
-const { data: portalClientsData, pending: portalClientsPending, refresh: refreshPortalClients } = await useFetch('/api/agency/client-portal/clients', {
-  query: portalClientQuery
+const portalClientsData = ref<{ clients?: PortalClient[] } | null>(null)
+const portalClientsPending = ref(false)
+
+async function refreshPortalClients() {
+  portalClientsPending.value = true
+  try {
+    portalClientsData.value = await apiFetch('/api/agency/client-portal/clients', { query: portalClientQuery.value })
+  } finally {
+    portalClientsPending.value = false
+  }
+}
+
+watch(portalClientQuery, () => {
+  void refreshPortalClients()
 })
 
 const portalClients = computed(() => ((portalClientsData.value as { clients?: PortalClient[] } | null)?.clients || []))
@@ -596,8 +612,20 @@ const portalUserQuery = computed(() => ({
   limit: 100
 }))
 
-const { data: usersData, pending: usersPending, refresh: refreshUsers } = await useFetch('/api/agency/client-portal/users', {
-  query: portalUserQuery
+const usersData = ref<{ users?: PortalUser[] } | null>(null)
+const usersPending = ref(false)
+
+async function refreshUsers() {
+  usersPending.value = true
+  try {
+    usersData.value = await apiFetch('/api/agency/client-portal/users', { query: portalUserQuery.value })
+  } finally {
+    usersPending.value = false
+  }
+}
+
+watch(portalUserQuery, () => {
+  void refreshUsers()
 })
 
 const users = computed(() => ((usersData.value as unknown as { users?: PortalUser[] } | null)?.users || []))
@@ -632,7 +660,17 @@ const clearPortalUserFilters = () => {
 }
 
 // Fetch approvals
-const { data: approvalsData, pending: approvalsPending } = await useFetch('/api/agency/client-portal/approvals')
+const approvalsData = ref<{ approvals?: PortalApproval[] } | null>(null)
+const approvalsPending = ref(false)
+
+async function refreshApprovals() {
+  approvalsPending.value = true
+  try {
+    approvalsData.value = await apiFetch('/api/agency/client-portal/approvals')
+  } finally {
+    approvalsPending.value = false
+  }
+}
 
 const approvals = computed(() => ((approvalsData.value as unknown as { approvals?: PortalApproval[] } | null)?.approvals || []))
 const portalApprovalSummary = computed(() => {
@@ -658,8 +696,20 @@ const activityQuery = computed(() => ({
   limit: 100
 }))
 
-const { data: activityData, pending: activityPending, refresh: refreshActivity } = await useFetch('/api/agency/client-portal/activity', {
-  query: activityQuery
+const activityData = ref<{ activity?: PortalActivity[] } | null>(null)
+const activityPending = ref(false)
+
+async function refreshActivity() {
+  activityPending.value = true
+  try {
+    activityData.value = await apiFetch('/api/agency/client-portal/activity', { query: activityQuery.value })
+  } finally {
+    activityPending.value = false
+  }
+}
+
+watch(activityQuery, () => {
+  void refreshActivity()
 })
 
 const portalActivity = computed(() => ((activityData.value as { activity?: PortalActivity[] } | null)?.activity || []))
@@ -708,8 +758,20 @@ const requestQuery = computed(() => ({
   limit: 100
 }))
 
-const { data: requestsData, pending: requestsPending, refresh: refreshRequests } = await useFetch('/api/agency/client-portal/requests', {
-  query: requestQuery
+const requestsData = ref<{ requests?: PortalRequest[] } | null>(null)
+const requestsPending = ref(false)
+
+async function refreshRequests() {
+  requestsPending.value = true
+  try {
+    requestsData.value = await apiFetch('/api/agency/client-portal/requests', { query: requestQuery.value })
+  } finally {
+    requestsPending.value = false
+  }
+}
+
+watch(requestQuery, () => {
+  void refreshRequests()
 })
 
 const portalRequests = computed(() => ((requestsData.value as { requests?: PortalRequest[] } | null)?.requests || []))
@@ -755,9 +817,11 @@ const clearRequestFilters = () => {
 }
 
 // Fetch clients for invite modal
-const { data: clientsData } = await useFetch('/api/agency/clients', {
-  query: { limit: 100 }
-})
+const clientsData = ref<AgencyClient[] | { clients?: AgencyClient[] } | null>(null)
+
+async function refreshClients() {
+  clientsData.value = await apiFetch('/api/agency/clients', { query: { limit: 100 } })
+}
 const clients = computed(() => {
   const raw = clientsData.value
   if (Array.isArray(raw)) return raw as unknown as AgencyClient[]
@@ -769,9 +833,11 @@ const portalUserClientOptions = computed(() => [
   ...clientOptions.value
 ])
 
-const { data: teamMembersData } = await useFetch('/api/agency/team-members', {
-  query: { active: 'true' }
-})
+const teamMembersData = ref<{ members?: TeamMember[] } | null>(null)
+
+async function refreshTeamMembers() {
+  teamMembersData.value = await apiFetch('/api/agency/team-members', { query: { active: 'true' } })
+}
 const teamMembers = computed<TeamMember[]>(() => ((teamMembersData.value as { members?: TeamMember[] } | null)?.members || []))
 const assigneeOptions = computed(() => [
   { label: 'Unassigned', value: '' },
@@ -799,7 +865,7 @@ const openClientPortal = async (clientId?: string | null, path = '/portal') => {
 
   openingPortal.value = true
   try {
-    await $fetch('/api/agency/client-portal/access', {
+    await apiFetch('/api/agency/client-portal/access', {
       method: 'POST',
       body: { clientId: targetClientId }
     })
@@ -908,10 +974,36 @@ const selectedDashboardQuery = computed(() => selectedAccessClientId.value
   ? { clientId: selectedAccessClientId.value }
   : undefined)
 
-const { data: selectedDashboardData, pending: selectedDashboardPending } = await useFetch('/api/agency/client-portal/dashboard', {
-  query: selectedDashboardQuery,
-  immediate: computed(() => Boolean(selectedAccessClientId.value)),
-  watch: [selectedAccessClientId]
+const selectedDashboardData = ref<AgencyPortalDashboard | null>(null)
+const selectedDashboardPending = ref(false)
+
+async function refreshSelectedDashboard() {
+  if (!selectedDashboardQuery.value) {
+    selectedDashboardData.value = null
+    return
+  }
+  selectedDashboardPending.value = true
+  try {
+    selectedDashboardData.value = await apiFetch('/api/agency/client-portal/dashboard', { query: selectedDashboardQuery.value })
+  } finally {
+    selectedDashboardPending.value = false
+  }
+}
+
+watch(selectedAccessClientId, (clientId) => {
+  if (clientId) refreshSelectedDashboard()
+}, { immediate: true })
+
+onMounted(() => {
+  void Promise.all([
+    refreshPortalClients(),
+    refreshUsers(),
+    refreshApprovals(),
+    refreshActivity(),
+    refreshRequests(),
+    refreshClients(),
+    refreshTeamMembers(),
+  ])
 })
 
 const selectedDashboard = computed(() => selectedDashboardData.value as AgencyPortalDashboard | null)
@@ -1208,7 +1300,7 @@ const savePortalUserAccess = async () => {
 
   savingAccess.value = true
   try {
-    await $fetch(`/api/agency/client-portal/users/${editingPortalUser.value.id}`, {
+    await apiFetch(`/api/agency/client-portal/users/${editingPortalUser.value.id}`, {
       method: 'PUT',
       body: accessForm.value
     })
@@ -1460,7 +1552,7 @@ const sendInvite = async () => {
 
   inviting.value = true
   try {
-    const result = await $fetch<InviteResponse>('/api/agency/client-portal/invite', {
+    const result = await apiFetch<InviteResponse>('/api/agency/client-portal/invite', {
       method: 'POST',
       body: inviteForm.value
     })
@@ -1472,8 +1564,8 @@ const sendInvite = async () => {
     })
     showInviteModal.value = false
     resetInviteForm()
-    refreshUsers()
-    refreshPortalClients()
+    await refreshUsers()
+    await refreshPortalClients()
   } catch (err: unknown) {
     toast.add({ title: 'Failed to send invite', description: errorMessage(err), color: 'error' })
   } finally {
@@ -1485,7 +1577,7 @@ const updatingRequestId = ref<string | null>(null)
 const updatePortalRequest = async (request: PortalRequest, updates: Record<string, unknown>) => {
   updatingRequestId.value = request.id
   try {
-    await $fetch(`/api/agency/client-portal/requests/${request.id}`, {
+    await apiFetch(`/api/agency/client-portal/requests/${request.id}`, {
       method: 'PATCH',
       body: updates
     })
@@ -1525,7 +1617,7 @@ const openRequestDetail = async (request: Pick<PortalRequest, 'id'>) => {
   replyForm.value = { content: '', isInternal: false }
 
   try {
-    const result = await $fetch<PortalRequestDetailResponse>(`/api/agency/client-portal/requests/${request.id}`)
+    const result = await apiFetch<PortalRequestDetailResponse>(`/api/agency/client-portal/requests/${request.id}`)
     selectedRequest.value = result.request
     selectedRequestMessages.value = result.messages
   } catch (err: unknown) {
@@ -1600,7 +1692,7 @@ const sendRequestReply = async () => {
 
   sendingReply.value = true
   try {
-    await $fetch(`/api/agency/client-portal/requests/${selectedRequest.value.id}/messages`, {
+    await apiFetch(`/api/agency/client-portal/requests/${selectedRequest.value.id}/messages`, {
       method: 'POST',
       body: {
         content: replyForm.value.content,

@@ -40,6 +40,10 @@ const editBudget = ref('')
 const editCommissionRate = ref('')
 const editRolling = ref(false)
 const saving = ref(false)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 const isGroupedTarget = computed(() => (props.target?.spendIds?.length ?? 0) > 1)
 const budgetFieldHelp = computed(() => {
   if (isGroupedTarget.value) {
@@ -71,7 +75,7 @@ watch(open, async (isOpen) => {
   if (t.historySpendId) {
     historyLoading.value = true
     try {
-      history.value = await $fetch<HistoryEntry[]>(`/api/agency/social/spend/${t.historySpendId}/history`)
+      history.value = await apiFetch<HistoryEntry[]>(`/api/agency/social/spend/${t.historySpendId}/history`)
     } catch {
       history.value = []
     } finally {
@@ -172,7 +176,7 @@ async function save() {
       rolling: editRolling.value,
     }
     if (commRate != null) body.commissionRate = commRate
-    await $fetch('/api/agency/social/spend/bulk-budget', { method: 'PATCH', body })
+    await apiFetch('/api/agency/social/spend/bulk-budget', { method: 'PATCH', body })
     toast.add({
       title: 'Budget updated',
       description: `${t.title} budget set to ${fmt(budget)}${t.spendIds.length > 1 ? ' total' : ''}`,

@@ -14,15 +14,39 @@ interface Overview {
 
 interface Draft { id: string, title: string, preview: string, category: string | null, author: string, createdAt: string }
 
-const { data, pending, error, refresh } = await useFetch<Overview>('/api/agency/ai/command-center/overview')
-const { data: draftsData, refresh: refreshDrafts } = await useFetch<{ drafts: Draft[], count: number }>('/api/agency/ai/command-center/kb-drafts')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string }
+) => Promise<T>
+const data = ref<Overview | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+const draftsData = ref<{ drafts: Draft[], count: number } | null>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<Overview>('/api/agency/ai/command-center/overview')
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+async function refreshDrafts() {
+  draftsData.value = await apiFetch<{ drafts: Draft[], count: number }>('/api/agency/ai/command-center/kb-drafts')
+}
+
+await Promise.all([refresh(), refreshDrafts()])
 
 const toast = useToast()
 const reviewing = ref<string | null>(null)
 async function reviewDraft(id: string, action: 'publish' | 'reject') {
   reviewing.value = id
   try {
-    await $fetch(`/api/agency/ai/knowledge/${id}/${action}`, { method: 'PATCH' })
+    await apiFetch(`/api/agency/ai/knowledge/${id}/${action}`, { method: 'PATCH' })
     toast.add({ title: action === 'publish' ? 'Published to the knowledge base' : 'Draft rejected', color: action === 'publish' ? 'success' : 'neutral' })
     await refreshDrafts()
   } catch (e: any) {

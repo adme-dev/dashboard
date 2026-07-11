@@ -270,17 +270,18 @@ async function searchFinancial(keywords: string[], question?: string, event?: H3
   const items: ContextItem[] = []
 
   // ─── Live Xero data (primary source for financial queries) ───
-  // Use Nitro's auto-imported $fetch with event.headers — this uses localFetch for
-  // internal routes (no HTTP roundtrip), matching the working pattern in chat.post.ts.
+  // Use Nitro's request-local fetch for internal routes so cookies and tenant
+  // context stay attached without a public HTTP roundtrip.
   if (event) {
     const fetchOpts = { headers: event.headers }
+    const eventFetch = event.$fetch as <T = unknown>(request: string, options?: { headers?: HeadersInit | Headers }) => Promise<T>
 
     // Fetch 4 Xero endpoints in parallel — each is independent
     const [bankRes, invoiceRes, expenseRes, pnlRes] = await Promise.allSettled([
-      $fetch<any>('/api/xero/bank-monitoring', fetchOpts),
-      $fetch<any>('/api/xero/invoices', fetchOpts),
-      $fetch<any>('/api/xero/expenses', fetchOpts),
-      $fetch<any>('/api/xero/reports/pnl', fetchOpts),
+      eventFetch<any>('/api/xero/bank-monitoring', fetchOpts),
+      eventFetch<any>('/api/xero/invoices', fetchOpts),
+      eventFetch<any>('/api/xero/expenses', fetchOpts),
+      eventFetch<any>('/api/xero/reports/pnl', fetchOpts),
     ])
 
     // Cash position — response shape: { portfolio: { totalBalance, riskLevel, ... }, accounts: [...], alerts: [...] }

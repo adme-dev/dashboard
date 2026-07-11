@@ -17,6 +17,10 @@ const _lastSeed = ref<number | null>(null)
 export function useAiLayerEdit() {
   const { activeLayers, updateLayer } = useBannerStudio()
   const toast = useToast()
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown }
+  ) => Promise<T>
 
   function openEdit(layer: { id: number }) {
     _editingLayerId.value = layer.id
@@ -47,7 +51,7 @@ export function useAiLayerEdit() {
     _editPreviewUrl.value = null
 
     try {
-      const result = await $fetch<EditLayerResult>('/api/agency/banner-studio/ai/edit-layer', {
+      const result = await apiFetch<EditLayerResult>('/api/agency/banner-studio/ai/edit-layer', {
         method: 'POST',
         body: {
           imageUrl: layer.src,

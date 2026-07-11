@@ -20,7 +20,8 @@ interface TrackingSiteRow {
 
 // Client filter — drives the ?clientId= query reactively.
 const selectedClient = ref<string>('all')
-const { data: clientsData } = await useFetch<any>('/api/agency/clients')
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
+const clientsData = ref<any>(await apiFetch<any>('/api/agency/clients').catch(() => []))
 const clientFilterItems = computed(() => {
   const list = Array.isArray(clientsData.value) ? clientsData.value : (clientsData.value?.clients ?? [])
   return [
@@ -29,10 +30,27 @@ const clientFilterItems = computed(() => {
   ]
 })
 
-const { data, pending, refresh } = await useFetch<{ sites: TrackingSiteRow[] }>('/api/agency/tracking', {
-  query: computed(() => (selectedClient.value === 'all' ? {} : { clientId: selectedClient.value }))
-})
+const data = ref<{ sites: TrackingSiteRow[] } | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ sites: TrackingSiteRow[] }>('/api/agency/tracking', {
+      query: selectedClient.value === 'all' ? {} : { clientId: selectedClient.value },
+    })
+  } catch {
+    data.value = { sites: [] }
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(selectedClient, () => {
+  refresh()
+}, { immediate: true })
 const sites = computed(() => data.value?.sites ?? [])
+const siteRow = (row: unknown): TrackingSiteRow => ((row as { original?: TrackingSiteRow }).original ?? row) as TrackingSiteRow
 
 const showCreate = ref(false)
 const showInstall = ref(false)
@@ -141,28 +159,28 @@ const columns = [
       class="border border-default rounded-xl"
     >
       <template #client_name-cell="{ row }">
-        <ULink :to="`/agency/tracking/${row.original.client_id}`" class="font-medium hover:text-primary">
-          {{ row.original.client_name || '—' }}
+        <ULink :to="`/agency/tracking/${siteRow(row).client_id}`" class="font-medium hover:text-primary">
+          {{ siteRow(row).client_name || '—' }}
         </ULink>
       </template>
 
       <template #name-cell="{ row }">
         <div class="flex flex-col">
-          <span>{{ row.original.name }}</span>
-          <span class="text-xs text-muted">Tracking: {{ consentLabel(row.original.consent_mode) }}</span>
+          <span>{{ siteRow(row).name }}</span>
+          <span class="text-xs text-muted">Tracking: {{ consentLabel(siteRow(row).consent_mode) }}</span>
         </div>
       </template>
 
       <template #spa-cell="{ row }">
-        <UTooltip :text="row.original.spa ? 'Single-page app — route changes also count as page views (Gatsby, Next.js, etc.)' : 'Standard site — each page load is a page view'">
-          <UBadge :color="row.original.spa ? 'info' : 'neutral'" variant="soft" size="sm">
-            {{ row.original.spa ? 'Single-page app' : 'Standard site' }}
+        <UTooltip :text="siteRow(row).spa ? 'Single-page app — route changes also count as page views (Gatsby, Next.js, etc.)' : 'Standard site — each page load is a page view'">
+          <UBadge :color="siteRow(row).spa ? 'info' : 'neutral'" variant="soft" size="sm">
+            {{ siteRow(row).spa ? 'Single-page app' : 'Standard site' }}
           </UBadge>
         </UTooltip>
       </template>
 
       <template #events_24h-cell="{ row }">
-        <span class="tabular-nums">{{ Number(row.original.events_24h) || 0 }}</span>
+        <span class="tabular-nums">{{ Number(siteRow(row).events_24h) || 0 }}</span>
       </template>
 
       <template #write_key-header>
@@ -178,9 +196,9 @@ const columns = [
         <button
           type="button"
           class="font-mono text-xs text-muted hover:text-default inline-flex items-center gap-1"
-          @click="copyKey(row.original.write_key)"
+          @click="copyKey(siteRow(row).write_key)"
         >
-          {{ truncateKey(row.original.write_key) }}
+          {{ truncateKey(siteRow(row).write_key) }}
           <UIcon name="i-lucide-copy" class="size-3" />
         </button>
       </template>
@@ -193,7 +211,7 @@ const columns = [
             variant="soft"
             icon="i-lucide-code"
             label="Install"
-            @click="openInstall(row.original.id)"
+            @click="openInstall(siteRow(row).id)"
           />
         </div>
       </template>

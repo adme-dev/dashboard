@@ -99,6 +99,8 @@ export default eventHandler(async (event) => {
     title: recommendation.title,
     action: recommendation.action,
     impact: recommendation.impact,
+    priority: recommendation.priority ?? body.priority,
+    status: recommendation.status ?? 'open',
   }).catch((err) => {
     console.warn('[advisor] embed failed for manual rec:', err?.message ?? err)
   })

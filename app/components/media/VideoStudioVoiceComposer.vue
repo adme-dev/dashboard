@@ -16,6 +16,10 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 const title = ref('Video voiceover')
 const script = ref('')
 const generating = ref(false)
@@ -50,7 +54,7 @@ async function generateVoiceover() {
   generating.value = true
   violations.value = []
   try {
-    const res = await $fetch<{ asset: AudioAsset; violations: string[] }>('/api/agency/audio/voiceover', {
+    const res = await apiFetch<{ asset: AudioAsset; violations: string[] }>('/api/agency/audio/voiceover', {
       method: 'POST',
       body: {
         text,

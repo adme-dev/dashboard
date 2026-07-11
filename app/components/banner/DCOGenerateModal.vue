@@ -11,6 +11,10 @@ const { state, activeLayers } = useBannerStudio()
 const { feedsState } = useBannerFeeds()
 const { getExportCustomFonts } = useBannerFonts()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; params?: Record<string, unknown> },
+) => Promise<T>
 
 // Form state
 const selectedFeedId = ref<string | null>(null)
@@ -133,7 +137,7 @@ async function generate() {
   try {
     // Fetch all feed rows from API
     progressLabel.value = 'Loading feed data...'
-    const { rows } = await $fetch<{ rows: Record<string, string>[]; total: number }>(
+    const { rows } = await apiFetch<{ rows: Record<string, string>[]; total: number }>(
       `/api/agency/banner-studio/feeds/${selectedFeed.value.id}/rows`,
       { params: { offset: 0, limit: 10000 } },
     )
@@ -179,7 +183,7 @@ async function generate() {
             })
 
             // Upload to server
-            await $fetch('/api/agency/banner-studio/variants/upload', {
+            await apiFetch('/api/agency/banner-studio/variants/upload', {
               method: 'POST',
               body: {
                 projectId: state.project!.id,
@@ -246,7 +250,7 @@ watch(selectedFeedId, () => {
 </script>
 
 <template>
-  <UModal :open="props.open" @update:open="emit('update:open', $event)" :ui="{ width: 'max-w-2xl' }">
+  <UModal :open="props.open" @update:open="emit('update:open', $event)" :ui="{ content: 'max-w-2xl' }">
     <template #content>
       <div class="p-5">
         <div class="flex items-center justify-between mb-5">

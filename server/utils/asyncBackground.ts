@@ -25,9 +25,20 @@ export function runAfterResponse(
     console.error(`[${label}]`, err)
   })
 
-  const ctx = (event.context as any).cloudflare?.ctx
-  if (ctx && typeof ctx.waitUntil === 'function') {
-    ctx.waitUntil(wrapped)
+  if (typeof event.waitUntil === 'function') {
+    event.waitUntil(wrapped)
+    return
+  }
+
+  const context = event.context as any
+  if (typeof context.waitUntil === 'function') {
+    context.waitUntil(wrapped)
+    return
+  }
+
+  const cloudflareContext = context.cloudflare?.context ?? context.cloudflare?.ctx
+  if (cloudflareContext && typeof cloudflareContext.waitUntil === 'function') {
+    cloudflareContext.waitUntil(wrapped)
   }
   // Local Node: the promise just runs in the background — fine, Node won't
   // cancel it. The .catch() above swallows any rejection.

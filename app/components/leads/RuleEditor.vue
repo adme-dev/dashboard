@@ -10,10 +10,27 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const toast = useToast()
-const { data, refresh, pending } = useFetch<{
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
+const data = ref<{
   rule: { enabled: boolean, last_test_fired_at: string | null } | null
   destinations: LeadRuleDestination[]
-}>(`/api/leads/rules/${props.ruleId}`, { default: () => ({ rule: null, destinations: [] }) })
+}>({ rule: null, destinations: [] })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{
+      rule: { enabled: boolean, last_test_fired_at: string | null } | null
+      destinations: LeadRuleDestination[]
+    }>(`/api/leads/rules/${props.ruleId}`)
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
+watch(() => props.ruleId, () => { refresh() })
 
 const editingDest = ref<LeadRuleDestination | null>(null)
 const showDestModal = ref(false)
@@ -45,7 +62,7 @@ const togglingEnabled = ref(false)
 async function setEnabled(value: boolean) {
   togglingEnabled.value = true
   try {
-    await $fetch(`/api/leads/rules/${props.ruleId}`, { method: 'PATCH', body: { enabled: value } })
+    await apiFetch(`/api/leads/rules/${props.ruleId}`, { method: 'PATCH', body: { enabled: value } })
     await refresh()
     emit('changed')
     toast.add({ title: value ? 'Routing resumed' : 'Routing paused', color: 'success' })
@@ -103,7 +120,7 @@ async function confirmDelete() {
   if (!pendingDelete.value) return
   const destId = pendingDelete.value.id
   try {
-    await $fetch(`/api/leads/rules/${props.ruleId}/destinations/${destId}`, { method: 'DELETE' })
+    await apiFetch(`/api/leads/rules/${props.ruleId}/destinations/${destId}`, { method: 'DELETE' })
     toast.add({ title: 'Destination removed', color: 'success' })
     showDeleteConfirm.value = false
     pendingDelete.value = null
@@ -140,7 +157,7 @@ const addMenuItems = computed(() => [
 </script>
 
 <template>
-  <USlideover v-model:open="open" :ui="{ container: 'w-full max-w-3xl' }">
+  <USlideover v-model:open="open" :ui="{ content: 'w-full max-w-3xl' }">
     <template #content>
       <div class="flex flex-col h-full">
         <!-- Header -->

@@ -9,6 +9,10 @@ const props = defineProps<{
 
 const base = inject<string>('crmApiBase', '/api/crm')
 const isAgency = base === '/api/crm'
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 interface ScoreRow {
   target_id: string
@@ -20,9 +24,16 @@ interface ScoreRow {
   recency_score: number
 }
 const query = computed(() => ({ client_id: props.clientId, target_type: props.targetType }))
-const { data, refresh } = useFetch<{ byTarget: Record<string, ScoreRow> }>('/api/crm/scoring', {
-  query, watch: [query], immediate: isAgency, default: () => ({ byTarget: {} }),
-})
+const data = ref<{ byTarget: Record<string, ScoreRow> }>({ byTarget: {} })
+
+async function refresh() {
+  if (!isAgency) return
+  data.value = await apiFetch<{ byTarget: Record<string, ScoreRow> }>('/api/crm/scoring', { query: query.value })
+}
+
+watch(query, () => {
+  refresh()
+}, { immediate: true })
 const score = computed(() => data.value?.byTarget?.[props.targetId] ?? null)
 
 const gradeColor: Record<string, string> = { Hot: 'success', Warm: 'warning', Cold: 'neutral' }
@@ -38,7 +49,7 @@ const recomputing = ref(false)
 async function recompute() {
   recomputing.value = true
   try {
-    await $fetch('/api/crm/scoring/compute', {
+    await apiFetch('/api/crm/scoring/compute', {
       method: 'POST',
       body: { client_id: props.clientId, target_type: props.targetType, target_id: props.targetId },
     })

@@ -48,10 +48,30 @@ const query = computed(() => ({
   printingKeep: (printingKeepPct.value / 100).toString(),
 }))
 
-const { data, pending, error, refresh } = await useFetch<ReconResponse>(
-  '/api/xero/get-out/revenue-reconciliation',
-  { query, lazy: true, server: false },
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
+const data = ref<ReconResponse | null>(null)
+const pending = ref(true)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+
+  try {
+    data.value = await apiFetch<ReconResponse>('/api/xero/get-out/revenue-reconciliation', {
+      query: query.value
+    })
+  } catch (fetchError) {
+    error.value = fetchError
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
 
 // ── AGI (accurate model: Revenue − Direct Costs from cached lines) ──
 interface AgiResponse {
@@ -63,9 +83,17 @@ interface AgiResponse {
   trailing12: { avgAgi: number; avgMarginPct: number | null; totalRevenue: number; totalDirectCost: number; totalAgi: number; months: number }
   note: string
 }
-const { data: agi } = await useFetch<AgiResponse>('/api/xero/get-out/agi', {
-  query: { months: 13 }, lazy: true, server: false,
-})
+const agi = ref<AgiResponse | null>(null)
+
+async function refreshAgi() {
+  try {
+    agi.value = await apiFetch<AgiResponse>('/api/xero/get-out/agi', {
+      query: { months: 13 }
+    })
+  } catch {
+    agi.value = null
+  }
+}
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(v)
@@ -79,6 +107,14 @@ const buckets = computed(() => {
   const bb = data.value?.byBucket
   if (!bb) return []
   return (['owned', 'media', 'printing', 'excluded'] as const).map(k => ({ bucket: k, ...bb[k] }))
+})
+
+watch(query, () => {
+  refresh()
+})
+
+onMounted(() => {
+  void Promise.allSettled([refresh(), refreshAgi()])
 })
 </script>
 

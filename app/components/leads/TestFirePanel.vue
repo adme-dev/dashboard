@@ -7,6 +7,10 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ fired: [] }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 const overrides = ref<{ key: string, value: string }[]>([])
 const running = ref(false)
 interface TestFireResultItem {
@@ -50,7 +54,7 @@ async function run() {
     for (const o of overrides.value) {
       if (o.key) field_data[o.key] = o.value
     }
-    result.value = await $fetch<TestFireResult>(`/api/leads/rules/${props.ruleId}/test-fire`, {
+    result.value = await apiFetch<TestFireResult>(`/api/leads/rules/${props.ruleId}/test-fire`, {
       method: 'POST',
       body: { field_data }
     })
@@ -65,7 +69,7 @@ async function run() {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ container: 'max-w-2xl' }">
+  <UModal v-model:open="open" :ui="{ content: 'max-w-2xl' }">
     <template #content>
       <div class="p-6 space-y-4">
         <h3 class="text-base font-semibold">

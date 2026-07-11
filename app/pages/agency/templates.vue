@@ -62,13 +62,35 @@ const getErrorMessage = (error: unknown) => {
 // Filters
 const categoryFilter = ref('all')
 const searchQuery = ref('')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
 
 // Fetch templates
-const { data: templatesData, pending, refresh } = await useFetch<TemplatesResponse>('/api/agency/templates', {
-  query: {
-    category: categoryFilter,
-    search: searchQuery
+const templatesData = ref<TemplatesResponse | null>(null)
+const pending = ref(false)
+const templatesQuery = computed(() => ({
+  category: categoryFilter.value,
+  search: searchQuery.value
+}))
+
+async function refresh() {
+  pending.value = true
+  try {
+    templatesData.value = await apiFetch<TemplatesResponse>('/api/agency/templates', { query: templatesQuery.value })
+  } finally {
+    pending.value = false
   }
+}
+
+onMounted(() => {
+  void refresh()
+  void refreshClients()
+})
+
+watch(templatesQuery, () => {
+  void refresh()
 })
 
 const templates = computed(() => templatesData.value?.templates || [])
@@ -78,10 +100,15 @@ const hiddenDuplicateCount = computed(() => Number(templatesData.value?.hiddenDu
 const hasActiveFilters = computed(() => Boolean(searchQuery.value.trim()) || categoryFilter.value !== 'all')
 
 // Fetch clients for "use template" modal
-const { data: clientsData } = await useFetch<ClientsResponse>('/api/agency/clients', {
-  query: { limit: 100 }
-})
+const clientsData = ref<ClientsResponse | null>(null)
+
+async function refreshClients() {
+  clientsData.value = await apiFetch<ClientsResponse>('/api/agency/clients', { query: { limit: 100 } })
+}
+
 const clients = computed(() => clientsData.value?.clients || [])
+
+const templateRow = (row: unknown): TemplateRow => ((row as { original?: TemplateRow }).original ?? row) as TemplateRow
 
 // Format helpers
 const formatCurrency = (value: number) => {
@@ -128,7 +155,7 @@ const createProjectFromTemplate = async () => {
 
   creatingProject.value = true
   try {
-    const result = await $fetch<UseTemplateResponse>(`/api/agency/templates/${selectedTemplate.value.id}/use`, {
+    const result = await apiFetch<UseTemplateResponse>(`/api/agency/templates/${selectedTemplate.value.id}/use`, {
       method: 'POST',
       body: newProject.value
     })
@@ -139,7 +166,7 @@ const createProjectFromTemplate = async () => {
       color: 'success'
     })
     showUseModal.value = false
-    refresh()
+    await refresh()
     navigateTo(`/agency/projects/${result.project.id}`)
   } catch (error: unknown) {
     toast.add({ title: 'Failed to create project', description: getErrorMessage(error), color: 'error' })
@@ -177,7 +204,7 @@ const createTemplate = async () => {
       ? newTemplate.value.tags.split(',').map(t => t.trim()).filter(Boolean)
       : null
 
-    await $fetch('/api/agency/templates', {
+    await apiFetch('/api/agency/templates', {
       method: 'POST',
       body: {
         name: newTemplate.value.name,
@@ -197,7 +224,7 @@ const createTemplate = async () => {
     toast.add({ title: 'Template created', color: 'success' })
     showNewModal.value = false
     resetNewTemplate()
-    refresh()
+    await refresh()
   } catch (error: unknown) {
     toast.add({ title: 'Failed to create template', description: getErrorMessage(error), color: 'error' })
   } finally {
@@ -476,27 +503,27 @@ const tableColumns = [
             </template>
 
             <template #estimatedDurationDays-cell="{ row }">
-              {{ row.original.estimatedDurationDays ? `${row.original.estimatedDurationDays}d` : '—' }}
+              {{ templateRow(row).estimatedDurationDays ? `${templateRow(row).estimatedDurationDays}d` : '—' }}
             </template>
 
             <template #estimatedHours-cell="{ row }">
-              {{ row.original.estimatedHours ? `${row.original.estimatedHours}h` : '—' }}
+              {{ templateRow(row).estimatedHours ? `${templateRow(row).estimatedHours}h` : '—' }}
             </template>
 
             <template #taskCount-cell="{ row }">
-              {{ row.original.taskCount }}
+              {{ templateRow(row).taskCount }}
             </template>
 
             <template #defaultBudgetType-cell="{ row }">
-              {{ budgetTypeLabel(row.original.defaultBudgetType) }}
+              {{ budgetTypeLabel(templateRow(row).defaultBudgetType) }}
             </template>
 
             <template #defaultBudgetAmount-cell="{ row }">
-              {{ row.original.defaultBudgetAmount ? formatCurrency(row.original.defaultBudgetAmount) : '—' }}
+              {{ templateRow(row).defaultBudgetAmount ? formatCurrency(templateRow(row).defaultBudgetAmount) : '—' }}
             </template>
 
             <template #timesUsed-cell="{ row }">
-              {{ row.original.timesUsed }}x
+              {{ templateRow(row).timesUsed }}x
             </template>
 
             <template #actions-cell="{ row }">
@@ -506,12 +533,12 @@ const tableColumns = [
                   variant="soft"
                   label="Use"
                   icon="i-lucide-play"
-                  @click="openUseModal(row.original)"
+                  @click="openUseModal(templateRow(row))"
                 />
                 <UDropdownMenu
                   :items="[[
-                    { label: 'Use Template', icon: 'i-lucide-play', onClick: () => openUseModal(row.original) },
-                    { label: 'View Details', icon: 'i-lucide-eye', onClick: () => navigateTo(`/agency/templates/${row.original.id}`) }
+                    { label: 'Use Template', icon: 'i-lucide-play', onClick: () => openUseModal(templateRow(row)) },
+                    { label: 'View Details', icon: 'i-lucide-eye', onClick: () => navigateTo(`/agency/templates/${templateRow(row).id}`) }
                   ]]"
                 >
                   <UButton

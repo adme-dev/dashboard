@@ -4,12 +4,39 @@ const props = defineProps<{ siteId: string }>()
 interface Snippet { name: string | null, spa: boolean, writeKey: string, raw: string, gtm: string }
 interface Status { installed: boolean, total: number, last24h: number, lastEventAt: string | null }
 
-const { data, pending } = await useFetch<Snippet>(
-  () => `/api/agency/tracking/${props.siteId}/snippet`
-)
-const { data: status, refresh: refreshStatus, status: statusState } = await useFetch<Status>(
-  () => `/api/agency/tracking/${props.siteId}/status`
-)
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<Snippet | null>(null)
+const status = ref<Status | null>(null)
+const pending = ref(false)
+const statusState = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshSnippet() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<Snippet>(`/api/agency/tracking/${props.siteId}/snippet`)
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+async function refreshStatus() {
+  statusState.value = 'pending'
+  try {
+    status.value = await apiFetch<Status>(`/api/agency/tracking/${props.siteId}/status`)
+    statusState.value = 'success'
+  } catch {
+    status.value = null
+    statusState.value = 'error'
+  }
+}
+
+await Promise.all([refreshSnippet(), refreshStatus()])
+watch(() => props.siteId, () => {
+  void refreshSnippet()
+  void refreshStatus()
+})
 
 const toast = useToast()
 const copied = ref<string | null>(null)

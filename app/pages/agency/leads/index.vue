@@ -9,7 +9,7 @@ const showSetupGuide = ref(false)
 const tabs = [
   { value: 'inbox', label: 'Inbox', icon: 'i-lucide-inbox' },
   { value: 'rules', label: 'Form rules', icon: 'i-lucide-list-checks' }
-]
+] satisfies Array<{ value: 'inbox' | 'rules'; label: string; icon: string }>
 </script>
 
 <template>

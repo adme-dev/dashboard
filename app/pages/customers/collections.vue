@@ -1,5 +1,9 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 interface AgingBuckets {
   current: number
@@ -59,10 +63,27 @@ const queryParams = computed(() => {
   return p.toString() ? `?${p.toString()}` : ''
 })
 
-const { data, pending, refresh } = await useFetch<QueueResponse>(
-  () => `/api/customers/collections${queryParams.value}`,
-  { lazy: true, server: false, watch: [queryParams] },
-)
+const data = ref<QueueResponse | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<QueueResponse>(`/api/customers/collections${queryParams.value}`)
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+onMounted(() => {
+  void refresh()
+})
+
+watch(queryParams, () => {
+  void refresh()
+})
 
 const filtered = computed(() => {
   const list = data.value?.customers ?? []
@@ -84,7 +105,7 @@ async function sendBulkReminder(c: QueueCustomer) {
     let action: 'reminder_gentle' | 'reminder_firm' | 'reminder_final' = 'reminder_gentle'
     if (c.oldestOverdueDays > 60) action = 'reminder_final'
     else if (c.oldestOverdueDays > 30) action = 'reminder_firm'
-    await $fetch(`/api/customers/${c.id}/collections`, {
+    await apiFetch(`/api/customers/${c.id}/collections`, {
       method: 'POST',
       body: { action },
     })
@@ -108,7 +129,7 @@ async function sendBulkReminder(c: QueueCustomer) {
 async function logCall(c: QueueCustomer) {
   busyContactId.value = c.id
   try {
-    await $fetch(`/api/customers/${c.id}/collections`, {
+    await apiFetch(`/api/customers/${c.id}/collections`, {
       method: 'POST',
       body: { action: 'phone_call' },
     })

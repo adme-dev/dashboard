@@ -16,6 +16,8 @@ const tools = [
   { id: 'comment', icon: 'i-lucide-message-circle', label: 'Comment', shortcut: 'M', group: 'mode' },
 ] as const
 
+type ToolbarTool = (typeof tools)[number]
+
 const LAYER_DEFAULTS: Record<string, Record<string, any>> = {
   text: { type: 'text', name: 'Text', text: 'Text', fontSize: 24, fontWeight: 700, fontFamily: 'Barlow Condensed', color: '#fff', textAlign: 'left', w: 200, h: 40, animIn: 'fadeIn' },
   rect: { type: 'rect', name: 'Rectangle', fillColor: 'rgba(255,255,255,0.1)', w: 120, h: 80, animIn: 'fadeIn' },
@@ -50,13 +52,25 @@ function isActive(toolId: string): boolean {
   }
   return false
 }
+
+function isSeparator(tool: ToolbarTool): boolean {
+  return 'separator' in tool && tool.separator === true
+}
+
+function toolTooltip(tool: ToolbarTool): string {
+  return 'label' in tool ? `${tool.label} (${tool.shortcut})` : ''
+}
+
+function toolIcon(tool: ToolbarTool): string {
+  return 'icon' in tool ? tool.icon : ''
+}
 </script>
 
 <template>
   <div class="w-10 shrink-0 bg-[#2a2a2e] border-r border-[#3a3a3f] flex flex-col items-center pt-2 gap-0.5">
     <template v-for="tool in tools" :key="tool.id">
-      <div v-if="'separator' in tool && tool.separator" class="h-px w-6 bg-[#3a3a3f] my-1" />
-      <UTooltip v-else :text="`${tool.label} (${tool.shortcut})`" :delay-duration="300" side="right">
+      <div v-if="isSeparator(tool)" class="h-px w-6 bg-[#3a3a3f] my-1" />
+      <UTooltip v-else :text="toolTooltip(tool)" :delay-duration="300" side="right">
         <button
           class="w-8 h-8 flex items-center justify-center rounded transition-all"
           :class="isActive(tool.id)
@@ -64,7 +78,7 @@ function isActive(toolId: string): boolean {
             : 'text-[#888] hover:text-white hover:bg-[#3a3a3f]'"
           @click="handleToolClick(tool.id)"
         >
-          <UIcon :name="tool.icon" class="w-4 h-4" />
+          <UIcon :name="toolIcon(tool)" class="w-4 h-4" />
         </button>
       </UTooltip>
     </template>

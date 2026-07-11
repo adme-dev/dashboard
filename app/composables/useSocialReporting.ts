@@ -12,6 +12,11 @@ export interface ReportOverview {
 }
 
 export function useSocialReporting(clientId: Ref<string | null>) {
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+    method?: string
+    body?: unknown
+    query?: Record<string, unknown>
+  }) => Promise<T>
   const overview = ref<ReportOverview | null>(null)
   const posts = ref<any[]>([])
   const ops = ref<any | null>(null)
@@ -32,9 +37,9 @@ export function useSocialReporting(clientId: Ref<string | null>) {
     loading.value = true
     try {
       const [ov, ps, op] = await Promise.all([
-        $fetch<ReportOverview>('/api/agency/social/reporting/overview', { query: query() }),
-        $fetch<any[]>('/api/agency/social/reporting/posts', { query: { ...query(), sort: 'engagements', limit: 50 } }),
-        $fetch<any>('/api/agency/social/inbox/analytics/overview', { query: { clientId: clientId.value, days: days.value } }).catch(() => null),
+        apiFetch<ReportOverview>('/api/agency/social/reporting/overview', { query: query() }),
+        apiFetch<any[]>('/api/agency/social/reporting/posts', { query: { ...query(), sort: 'engagements', limit: 50 } }),
+        apiFetch<any>('/api/agency/social/inbox/analytics/overview', { query: { clientId: clientId.value, days: days.value } }).catch(() => null),
       ])
       overview.value = ov; posts.value = ps; ops.value = op
       aiSummary.value = null // re-generated on demand
@@ -46,7 +51,7 @@ export function useSocialReporting(clientId: Ref<string | null>) {
   async function generateSummary(clientName: string) {
     if (!overview.value) return
     const periodLabel = `the last ${days.value} days`
-    const r = await $fetch<{ summary: string | null }>('/api/agency/social/reporting/ai-summary', {
+    const r = await apiFetch<{ summary: string | null }>('/api/agency/social/reporting/ai-summary', {
       method: 'POST', body: { clientName, periodLabel, kpis: overview.value.kpis },
     })
     aiSummary.value = r.summary

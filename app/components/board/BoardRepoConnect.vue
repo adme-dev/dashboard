@@ -146,6 +146,7 @@ interface RepoInfo {
 
 const toast = useToast()
 const { open: openHub, setScope } = useActivityHub()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 const loading = ref(true)
 const repo = ref<RepoInfo | null>(null)
 const modalOpen = ref(false)
@@ -182,7 +183,7 @@ const canSubmit = computed(() => {
 async function loadStatus() {
   loading.value = true
   try {
-    const res = await $fetch<{ connected: boolean; repo: RepoInfo | null }>(
+    const res = await apiFetch<{ connected: boolean; repo: RepoInfo | null }>(
       `/api/agency/boards/${props.boardId}/repo`,
     )
     repo.value = res.repo
@@ -235,7 +236,7 @@ async function submit() {
     // When updating, accessToken is optional — the API preserves the
     // stored token if we omit it. Just send whatever the user provided.
 
-    await $fetch(`/api/agency/boards/${props.boardId}/repo`, {
+    await apiFetch(`/api/agency/boards/${props.boardId}/repo`, {
       method: 'POST',
       body,
     })

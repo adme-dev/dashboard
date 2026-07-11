@@ -14,6 +14,7 @@ const saving = ref(false)
 const feeds = ref<any[]>([])
 const confirmRemove = ref<any | null>(null)
 const removing = ref(false)
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const availableEvents = [
   { value: 'task_created', label: 'New item created', icon: 'i-lucide-plus-circle' },
@@ -26,7 +27,7 @@ const availableEvents = [
 async function fetchFeeds() {
   loading.value = true
   try {
-    feeds.value = await $fetch<any[]>(`/api/chat/board-feeds/${props.boardId}`)
+    feeds.value = await apiFetch<any[]>(`/api/chat/board-feeds/${props.boardId}`)
   } catch {
     feeds.value = []
   } finally {
@@ -37,7 +38,7 @@ async function fetchFeeds() {
 async function createFeed() {
   saving.value = true
   try {
-    const feed = await $fetch<any>(`/api/chat/board-feeds/${props.boardId}`, {
+    const feed = await apiFetch<any>(`/api/chat/board-feeds/${props.boardId}`, {
       method: 'POST',
       body: {
         createChannel: true,
@@ -61,7 +62,7 @@ async function createFeed() {
 
 async function toggleFeedActive(feed: any) {
   try {
-    await $fetch(`/api/chat/board-feeds/${props.boardId}/${feed.id}`, {
+    await apiFetch(`/api/chat/board-feeds/${props.boardId}/${feed.id}`, {
       method: 'PATCH',
       body: { isActive: !feed.is_active }
     })
@@ -82,7 +83,7 @@ async function toggleEventType(feed: any, eventType: string) {
   }
 
   try {
-    await $fetch(`/api/chat/board-feeds/${props.boardId}/${feed.id}`, {
+    await apiFetch(`/api/chat/board-feeds/${props.boardId}/${feed.id}`, {
       method: 'PATCH',
       body: { eventTypes: types }
     })
@@ -99,7 +100,7 @@ function openChannel(channelId: string) {
 async function removeFeed(feed: any) {
   removing.value = true
   try {
-    await $fetch(`/api/chat/board-feeds/${props.boardId}/${feed.id}`, {
+    await apiFetch(`/api/chat/board-feeds/${props.boardId}/${feed.id}`, {
       method: 'DELETE'
     })
     feeds.value = feeds.value.filter(f => f.id !== feed.id)

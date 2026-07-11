@@ -7,11 +7,33 @@ const route = useRoute()
 const platform = computed(() => route.params.platform as string)
 
 interface AnalyticsOverview {
-  totals: Record<string, number | null>
+  totals: AnalyticsTotals
 }
 
 interface TrendResponse {
-  dataPoints: Array<Record<string, unknown>>
+  dataPoints: AnalyticsTrendPoint[]
+}
+
+interface AnalyticsTotals {
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  revenue: number
+  cpc: number | null
+  cpm: number | null
+  ctr: number | null
+  roas: number | null
+  budget?: number
+  rollingCount?: number
+  leads?: number
+  costPerLead?: number | null
+}
+
+interface AnalyticsTrendPoint {
+  date: string
+  value: number
+  byPlatform: Record<string, number>
 }
 
 const now = new Date()
@@ -36,11 +58,34 @@ const exportUrl = computed(() => {
   return `/api/portal/analytics/export?${params.toString()}`
 })
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
 // Overview
-const { data: overviewData, status: overviewStatus } = useFetch<AnalyticsOverview>('/api/portal/analytics/overview', {
-  query: apiQuery,
-  watch: [apiQuery]
-})
+type FetchStatus = 'idle' | 'pending' | 'success' | 'error'
+
+const overviewData = ref<AnalyticsOverview | null>(null)
+const overviewStatus = ref<FetchStatus>('idle')
+const overviewError = ref<unknown>(null)
+
+async function refreshOverview() {
+  overviewStatus.value = 'pending'
+  overviewError.value = null
+
+  try {
+    overviewData.value = await apiFetch<AnalyticsOverview>('/api/portal/analytics/overview', {
+      query: apiQuery.value
+    })
+    overviewStatus.value = 'success'
+  } catch (error) {
+    overviewError.value = error
+    overviewStatus.value = 'error'
+    throw error
+  }
+}
+
 const overview = computed(() => overviewData.value)
 const totals = computed(() => overview.value?.totals || null)
 
@@ -51,11 +96,35 @@ const trendQuery = computed(() => ({
   metric: trendMetric.value,
   groupBy: 'day'
 }))
-const { data: trendData, status: trendStatus } = useFetch<TrendResponse>('/api/portal/analytics/trends', {
-  query: trendQuery,
-  watch: [trendQuery]
-})
+const trendData = ref<TrendResponse | null>(null)
+const trendStatus = ref<FetchStatus>('idle')
+const trendError = ref<unknown>(null)
+
+async function refreshTrend() {
+  trendStatus.value = 'pending'
+  trendError.value = null
+
+  try {
+    trendData.value = await apiFetch<TrendResponse>('/api/portal/analytics/trends', {
+      query: trendQuery.value
+    })
+    trendStatus.value = 'success'
+  } catch (error) {
+    trendError.value = error
+    trendStatus.value = 'error'
+    throw error
+  }
+}
+
 const trendPoints = computed(() => trendData.value?.dataPoints || [])
+
+watch(apiQuery, () => {
+  refreshOverview()
+})
+
+watch(trendQuery, () => {
+  refreshTrend()
+})
 
 const metricOptions = [
   { label: 'Spend', value: 'spend' },
@@ -68,6 +137,8 @@ const metricOptions = [
 ]
 
 const loading = computed(() => overviewStatus.value === 'pending')
+
+await Promise.all([refreshOverview(), refreshTrend()])
 </script>
 
 <template>

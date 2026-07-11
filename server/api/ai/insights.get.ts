@@ -66,16 +66,21 @@ export default eventHandler(async (event) => {
   const cacheKey = tenantId ? `ai:insights:${tenantId}` : 'ai:insights:default'
 
   return cachedFetch(event, cacheKey, 3600, async () => {
+    const eventFetch = event.$fetch as <T = unknown>(request: string, options?: {
+      headers?: HeadersInit | Headers
+      query?: Record<string, unknown>
+    }) => Promise<T>
+
     // Fetch all 8 data sources in parallel
     const [pnl, expenses, invoices, bankMonitoring, cashForecast, aging, budgetVariance, cashFlowInsights] = await Promise.all([
-      $fetch<any>('/api/xero/reports/pnl', { headers: event.headers }).catch(() => null),
-      $fetch<any>('/api/xero/expenses', { headers: event.headers }).catch(() => null),
-      $fetch<any>('/api/xero/invoices', { headers: event.headers }).catch(() => null),
-      $fetch<any>('/api/xero/bank-monitoring', { headers: event.headers }).catch(() => null),
-      $fetch<any>('/api/xero/reports/cash-flow-forecast', { headers: event.headers }).catch(() => null),
-      $fetch<any>('/api/xero/reports/aging', { headers: event.headers, query: { type: 'receivables' } }).catch(() => null),
-      $fetch<any>('/api/xero/reports/budget-variance', { headers: event.headers }).catch(() => null),
-      $fetch<any>('/api/cashflow', { headers: event.headers }).catch(() => null),
+      eventFetch<any>('/api/xero/reports/pnl', { headers: event.headers }).catch(() => null),
+      eventFetch<any>('/api/xero/expenses', { headers: event.headers }).catch(() => null),
+      eventFetch<any>('/api/xero/invoices', { headers: event.headers }).catch(() => null),
+      eventFetch<any>('/api/xero/bank-monitoring', { headers: event.headers }).catch(() => null),
+      eventFetch<any>('/api/xero/reports/cash-flow-forecast', { headers: event.headers }).catch(() => null),
+      eventFetch<any>('/api/xero/reports/aging', { headers: event.headers, query: { type: 'receivables' } }).catch(() => null),
+      eventFetch<any>('/api/xero/reports/budget-variance', { headers: event.headers }).catch(() => null),
+      eventFetch<any>('/api/cashflow', { headers: event.headers }).catch(() => null),
     ])
 
     const sections: Section[] = []

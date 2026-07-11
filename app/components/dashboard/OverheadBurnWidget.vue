@@ -3,8 +3,28 @@ const now = new Date()
 const month = now.getMonth() + 1
 const year = now.getFullYear()
 
-const { data, status, refresh } = useLazyFetch('/api/xero/overheads', { server: false,
-  query: { month, year },
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refresh() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/xero/overheads', {
+      query: { month, year },
+    })
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load overheads', error)
+    status.value = 'error'
+  }
+}
+
+onMounted(() => {
+  refresh()
 })
 
 const overheads = computed(() => data.value as any)

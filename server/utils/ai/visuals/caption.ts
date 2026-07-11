@@ -60,7 +60,7 @@ export function parseCaption(raw: string): { caption: string, tags: string[] } {
       const tags = Array.isArray(obj?.tags)
         ? obj.tags.filter((t: unknown): t is string => typeof t === 'string').map((t: string) => t.trim().toLowerCase()).filter(Boolean).slice(0, 8)
         : []
-      if (caption) return { caption, tags: [...new Set(tags)] }
+      if (caption) return { caption, tags: Array.from(new Set<string>(tags)) }
     }
   } catch {
     /* fall through to plain-text salvage */

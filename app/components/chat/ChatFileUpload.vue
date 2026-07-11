@@ -9,6 +9,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 const uploading = ref(false)
 const uploadProgress = ref(0)
 const dragOver = ref(false)
@@ -48,14 +49,14 @@ async function uploadFile(file: File) {
 
   try {
     // 1. Get presigned URL from our API
-    const presigned = await $fetch(`/api/chat/channels/${props.channelId}/upload`, {
+    const presigned = await apiFetch<{ uploadUrl: string; key: string; downloadUrl: string; fileName: string; contentType: string; fileSize: number }>(`/api/chat/channels/${props.channelId}/upload`, {
       method: 'POST',
       body: {
         fileName: file.name,
         contentType: file.type || 'application/octet-stream',
         fileSize: file.size
       }
-    }) as { uploadUrl: string; key: string; downloadUrl: string; fileName: string; contentType: string; fileSize: number }
+    })
 
     // 2. Upload directly to R2 via presigned URL
     await fetch(presigned.uploadUrl, {

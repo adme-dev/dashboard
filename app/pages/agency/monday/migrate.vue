@@ -80,6 +80,7 @@
                 <USelectMenu
                   v-model="workspaceMappings[workspace.id]"
                   :items="departmentOptions"
+                  value-key="value"
                   placeholder="Map to department"
                   class="w-64"
                 />
@@ -194,6 +195,7 @@
 definePageMeta({ middleware: ['role-admin'] })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // State
 const loadingWorkspaces = ref(true)
@@ -215,20 +217,20 @@ const results = ref<any[]>([])
 onMounted(async () => {
   try {
     // Get departments for mapping
-    const depts = await $fetch('/api/agency/departments')
+    const depts = await apiFetch<any[]>('/api/agency/departments')
     departmentOptions.value = [
       { label: 'Auto-map', value: '' },
       ...(depts || []).map((d: any) => ({ label: d.name, value: d.id }))
     ]
 
     // Get account info
-    const conn = await $fetch('/api/agency/monday/connection')
+    const conn = await apiFetch<any>('/api/agency/monday/connection')
     if (conn.connected) {
       account.value = conn.account
     }
 
     // Get workspaces
-    const wsData = await $fetch('/api/agency/monday/workspaces')
+    const wsData = await apiFetch<any>('/api/agency/monday/workspaces')
     workspaces.value = wsData.workspaces || []
     totalItems.value = wsData.totalItems || 0
     
@@ -264,7 +266,7 @@ async function startMigration() {
   statusMessage.value = 'Starting migration...'
 
   try {
-    const response = await $fetch('/api/agency/monday/run-migration', {
+    const response = await apiFetch<any>('/api/agency/monday/run-migration', {
       method: 'POST',
       body: {
         workspaceIds: selectedWorkspaces.value,

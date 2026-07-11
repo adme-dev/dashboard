@@ -6,13 +6,58 @@ sevenDaysAgo.setDate(now.getDate() - 7)
 const startDate = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysAgo.getDate()).padStart(2, '0')}`
 const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
-const { data: campaignData, status: campaignStatus } = await useFetch('/api/agency/analytics/campaigns', {
-  query: { startDate, endDate, limit: '100', sortBy: 'spend', sortDir: 'desc' },
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
+const campaignData = ref<any | null>(null)
+const metaData = ref<any | null>(null)
+const googleData = ref<any | null>(null)
+const campaignStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const metaStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const googleStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshCampaignAlerts() {
+  campaignStatus.value = 'pending'
+  metaStatus.value = 'pending'
+  googleStatus.value = 'pending'
+
+  const [campaignResult, metaResult, googleResult] = await Promise.allSettled([
+    apiFetch('/api/agency/analytics/campaigns', {
+      query: { startDate, endDate, limit: '100', sortBy: 'spend', sortDir: 'desc' },
+    }),
+    apiFetch('/api/agency/social/campaign-daily-spend', { query: { platform: 'meta' } }),
+    apiFetch('/api/agency/social/campaign-daily-spend', { query: { platform: 'google' } }),
+  ])
+
+  if (campaignResult.status === 'fulfilled') {
+    campaignData.value = campaignResult.value
+    campaignStatus.value = 'success'
+  } else {
+    console.error('Failed to load campaign analytics alerts', campaignResult.reason)
+    campaignStatus.value = 'error'
+  }
+
+  if (metaResult.status === 'fulfilled') {
+    metaData.value = metaResult.value
+    metaStatus.value = 'success'
+  } else {
+    console.error('Failed to load Meta campaign alerts', metaResult.reason)
+    metaStatus.value = 'error'
+  }
+
+  if (googleResult.status === 'fulfilled') {
+    googleData.value = googleResult.value
+    googleStatus.value = 'success'
+  } else {
+    console.error('Failed to load Google campaign alerts', googleResult.reason)
+    googleStatus.value = 'error'
+  }
+}
 
 // Fallback to old per-platform fetch
-const { data: metaData, status: metaStatus } = await useFetch('/api/agency/social/campaign-daily-spend', { query: { platform: 'meta' } })
-const { data: googleData, status: googleStatus } = await useFetch('/api/agency/social/campaign-daily-spend', { query: { platform: 'google' } })
+await refreshCampaignAlerts()
 
 const status = computed(() => {
   if (campaignStatus.value === 'pending') return 'pending'
@@ -63,7 +108,9 @@ const alerts = computed(() => {
   return result.slice(0, 8)
 })
 
-const severityColors: Record<string, string> = {
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+const severityColors: Record<string, UiColor> = {
   error: 'error',
   warning: 'warning',
 }

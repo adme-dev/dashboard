@@ -453,25 +453,73 @@ const copilotPromptPresets = [
   },
 ]
 
-const { data, pending, error, refresh } = await useFetch<ModelMapResponse>('/api/admin/ai/model-ops/model-map')
-const {
-  data: invocationData,
-  pending: invocationsPending,
-  error: invocationsError,
-  refresh: refreshInvocations
-} = await useFetch<InvocationResponse>('/api/admin/ai/model-ops/invocations')
-const {
-  data: graphifyData,
-  pending: graphifyPending,
-  error: graphifyError,
-  refresh: refreshGraphify
-} = await useFetch<GraphifyResponse>('/api/admin/ai/model-ops/graphify')
-const {
-  data: agentRunsData,
-  pending: agentRunsPending,
-  error: agentRunsError,
-  refresh: refreshAgentRuns
-} = await useFetch<AgentRunsResponse>('/api/admin/ai/model-ops/agent-runs')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+
+const data = ref<ModelMapResponse | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+const invocationData = ref<InvocationResponse | null>(null)
+const invocationsPending = ref(false)
+const invocationsError = ref<any>(null)
+const graphifyData = ref<GraphifyResponse | null>(null)
+const graphifyPending = ref(false)
+const graphifyError = ref<any>(null)
+const agentRunsData = ref<AgentRunsResponse | null>(null)
+const agentRunsPending = ref(false)
+const agentRunsError = ref<any>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<ModelMapResponse>('/api/admin/ai/model-ops/model-map')
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+async function refreshInvocations() {
+  invocationsPending.value = true
+  invocationsError.value = null
+  try {
+    invocationData.value = await apiFetch<InvocationResponse>('/api/admin/ai/model-ops/invocations')
+  } catch (err) {
+    invocationsError.value = err
+  } finally {
+    invocationsPending.value = false
+  }
+}
+
+async function refreshGraphify() {
+  graphifyPending.value = true
+  graphifyError.value = null
+  try {
+    graphifyData.value = await apiFetch<GraphifyResponse>('/api/admin/ai/model-ops/graphify')
+  } catch (err) {
+    graphifyError.value = err
+  } finally {
+    graphifyPending.value = false
+  }
+}
+
+async function refreshAgentRuns() {
+  agentRunsPending.value = true
+  agentRunsError.value = null
+  try {
+    agentRunsData.value = await apiFetch<AgentRunsResponse>('/api/admin/ai/model-ops/agent-runs')
+  } catch (err) {
+    agentRunsError.value = err
+  } finally {
+    agentRunsPending.value = false
+  }
+}
+
+await Promise.all([refresh(), refreshInvocations(), refreshGraphify(), refreshAgentRuns()])
 
 const orchestratorCheckPending = ref(false)
 const orchestratorCheckError = ref<string | null>(null)
@@ -603,24 +651,26 @@ const copilotFeatureOptions = computed(() => [
     .map(row => ({ label: `${row.label} (${row.featureKey})`, value: row.featureKey }))
 ])
 
-const modelMapRuntimeFilterOptions = computed(() => [
+type SelectOption = { label: string; value: string }
+
+const modelMapRuntimeFilterOptions = computed<SelectOption[]>(() => [
   { label: 'All runtime states', value: MODEL_MAP_ALL_FILTERS },
-  ...Array.from(new Set((data.value?.rows ?? []).map(row => row.runtimeRoutingStatus)))
+  ...Array.from(new Set<string>((data.value?.rows ?? []).map(row => row.runtimeRoutingStatus)))
     .sort()
     .map(status => ({ label: status.replace(/_/g, ' '), value: status }))
 ])
 
-const modelMapProviderFilterOptions = computed(() => [
+const modelMapProviderFilterOptions = computed<SelectOption[]>(() => [
   { label: 'All providers', value: MODEL_MAP_ALL_FILTERS },
-  ...Array.from(new Set((data.value?.rows ?? []).map(row => row.provider)))
+  ...Array.from(new Set<string>((data.value?.rows ?? []).map(row => row.provider)))
     .filter(Boolean)
     .sort()
     .map(provider => ({ label: provider, value: provider }))
 ])
 
-const modelMapRiskFilterOptions = computed(() => [
+const modelMapRiskFilterOptions = computed<SelectOption[]>(() => [
   { label: 'All risk tiers', value: MODEL_MAP_ALL_FILTERS },
-  ...Array.from(new Set((data.value?.rows ?? []).map(row => row.riskTier)))
+  ...Array.from(new Set<string>((data.value?.rows ?? []).map(row => row.riskTier)))
     .sort()
     .map(risk => ({ label: risk, value: risk }))
 ])
@@ -782,7 +832,7 @@ async function loadModelPicker(row = modelPickerRow.value) {
   modelPickerPending.value = true
   modelPickerError.value = null
   try {
-    modelPickerData.value = await $fetch<CloudflareCatalogResponse>('/api/admin/ai/model-ops/cloudflare-models', {
+    modelPickerData.value = await apiFetch<CloudflareCatalogResponse>('/api/admin/ai/model-ops/cloudflare-models', {
       query: {
         featureKey: row.featureKey,
         search: modelPickerSearch.value || undefined,
@@ -844,7 +894,7 @@ async function askCopilot() {
   copilotPending.value = true
   copilotError.value = null
   try {
-    copilotResult.value = await $fetch<ModelOpsCopilotResponse>('/api/admin/ai/model-ops/copilot', {
+    copilotResult.value = await apiFetch<ModelOpsCopilotResponse>('/api/admin/ai/model-ops/copilot', {
       method: 'POST',
       body: {
         prompt,
@@ -921,7 +971,7 @@ async function runOrchestratorCheck() {
   orchestratorCheckPending.value = true
   orchestratorCheckError.value = null
   try {
-    orchestratorCheckResult.value = await $fetch<OrchestratorCheckResponse>('/api/admin/ai/model-ops/orchestrator-check', {
+    orchestratorCheckResult.value = await apiFetch<OrchestratorCheckResponse>('/api/admin/ai/model-ops/orchestrator-check', {
       method: 'POST',
     })
     await refreshAgentRuns()
@@ -941,7 +991,7 @@ async function runPlatformAgentsCheck() {
   platformAgentsCheckPending.value = true
   platformAgentsCheckError.value = null
   try {
-    platformAgentsCheckResult.value = await $fetch<PlatformAgentsCheckResponse>('/api/admin/ai/model-ops/platform-agents-check', {
+    platformAgentsCheckResult.value = await apiFetch<PlatformAgentsCheckResponse>('/api/admin/ai/model-ops/platform-agents-check', {
       method: 'POST',
     })
     await refreshAgentRuns()
@@ -959,7 +1009,7 @@ async function saveAssignment(row: ModelMapRow) {
   assignmentError.value = null
   assignmentSuccess.value = null
   try {
-    const result = await $fetch<Pick<ModelMapResponse, 'rows' | 'summary' | 'assignments'>>(
+    const result = await apiFetch<Pick<ModelMapResponse, 'rows' | 'summary' | 'assignments'>>(
       `/api/admin/ai/model-ops/assignments/${encodeURIComponent(row.featureKey)}`,
       {
         method: 'PATCH',
@@ -986,7 +1036,7 @@ async function resetAssignment(row: ModelMapRow) {
   assignmentError.value = null
   assignmentSuccess.value = null
   try {
-    const result = await $fetch<Pick<ModelMapResponse, 'rows' | 'summary' | 'assignments'>>(
+    const result = await apiFetch<Pick<ModelMapResponse, 'rows' | 'summary' | 'assignments'>>(
       `/api/admin/ai/model-ops/assignments/${encodeURIComponent(row.featureKey)}`,
       { method: 'DELETE' }
     )

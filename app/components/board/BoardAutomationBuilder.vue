@@ -9,6 +9,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 interface Automation {
   id: string
@@ -53,8 +54,8 @@ const recipientOptions = [
 async function fetchAutomations() {
   loading.value = true
   try {
-    const data = await $fetch(`/api/agency/boards/${props.boardId}/automations`)
-    automations.value = (data as any).automations
+    const data = await apiFetch<{ automations: Automation[] }>(`/api/agency/boards/${props.boardId}/automations`)
+    automations.value = data.automations
   } catch {
     automations.value = []
   } finally {
@@ -67,7 +68,7 @@ async function createAutomation() {
 
   saving.value = true
   try {
-    const data = await $fetch(`/api/agency/boards/${props.boardId}/automations`, {
+    const data = await apiFetch<Automation>(`/api/agency/boards/${props.boardId}/automations`, {
       method: 'POST',
       body: {
         name: newName.value.trim(),
@@ -77,7 +78,7 @@ async function createAutomation() {
         actionConfig: newActionConfig.value,
       },
     })
-    automations.value.unshift(data as Automation)
+    automations.value.unshift(data)
     resetForm()
     toast.add({ title: 'Automation created', color: 'success', icon: 'i-lucide-check' })
   } catch {
@@ -89,7 +90,7 @@ async function createAutomation() {
 
 async function toggleActive(automation: Automation) {
   try {
-    await $fetch(`/api/agency/boards/${props.boardId}/automations/${automation.id}`, {
+    await apiFetch(`/api/agency/boards/${props.boardId}/automations/${automation.id}`, {
       method: 'PATCH',
       body: { isActive: !automation.isActive },
     })
@@ -101,7 +102,7 @@ async function toggleActive(automation: Automation) {
 
 async function deleteAutomation(automation: Automation) {
   try {
-    await $fetch(`/api/agency/boards/${props.boardId}/automations/${automation.id}`, {
+    await apiFetch(`/api/agency/boards/${props.boardId}/automations/${automation.id}`, {
       method: 'DELETE',
     })
     automations.value = automations.value.filter(a => a.id !== automation.id)

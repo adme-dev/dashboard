@@ -4,6 +4,7 @@ import { z } from 'zod'
 // and throws on a relative URL — see confirm-action.post.ts (#129).
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 
 const params = z.object({})
 type Args = z.infer<typeof params>
@@ -21,11 +22,11 @@ export type FinanceSnapshotDeps = {
 // internal-$fetch precedent). Forward the caller's auth headers so Xero connection/tenant resolve.
 const defaultDeps: FinanceSnapshotDeps = {
   cashPosition: async (ctx) => {
-    const r: any = await $fetch('/api/xero/get-out/cash-position', { headers: ctx.event.headers as any })
+    const r: any = await aiInternalFetch('/api/xero/get-out/cash-position', { headers: ctx.event.headers as any })
     return { balance: Number(r?.cashOnHand ?? 0), runwayDays: r?.daysOfCash ?? null, risk: String(r?.band ?? 'unknown') }
   },
   outstanding: async (ctx) => {
-    const r: any = await $fetch('/api/xero/invoices', { headers: ctx.event.headers as any })
+    const r: any = await aiInternalFetch('/api/xero/invoices', { headers: ctx.event.headers as any })
     const overdue: Overdue[] = (r?.overdue ?? []).map((inv: any) => ({
       number: inv?.number ?? inv?.invoiceNumber ?? '—',
       client: inv?.contact ?? 'Unknown',

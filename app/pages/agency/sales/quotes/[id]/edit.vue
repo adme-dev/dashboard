@@ -370,6 +370,10 @@ definePageMeta({ middleware: ['sales'] })
 
 const route = useRoute()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 interface LineItem {
   id?: string
@@ -420,16 +424,35 @@ interface Quote {
 }
 
 // Fetch quote data
-const { data: quote, pending } = await useFetch<Quote>(`/api/agency/quotes/${route.params.id}`)
+const quote = ref<Quote | null>(null)
+const pending = ref(false)
+
+async function refreshQuote() {
+  pending.value = true
+  try {
+    quote.value = await apiFetch<Quote>(`/api/agency/quotes/${route.params.id}`)
+  } catch {
+    quote.value = null
+  } finally {
+    pending.value = false
+  }
+}
 
 // Fetch team members
-const { data: teamData } = await useFetch<{ members: Array<{ id: string; name: string }> }>('/api/agency/team-members')
+const teamData = ref<{ members: Array<{ id: string; name: string }> }>({ members: [] })
 
 // Fetch clients
-const { data: clientsData } = await useFetch<Array<{ id: string; name: string; email?: string; phone?: string }>>('/api/agency/clients')
+const clientsData = ref<Array<{ id: string; name: string; email?: string; phone?: string }>>([])
 
 // Fetch projects
-const { data: projectsData } = await useFetch<{ projects: Array<{ id: string; name: string }> }>('/api/agency/projects')
+const projectsData = ref<{ projects: Array<{ id: string; name: string }> }>({ projects: [] })
+
+await Promise.all([
+  refreshQuote(),
+  apiFetch<{ members: Array<{ id: string; name: string }> }>('/api/agency/team-members').then((data) => { teamData.value = data }).catch(() => { teamData.value = { members: [] } }),
+  apiFetch<Array<{ id: string; name: string; email?: string; phone?: string }>>('/api/agency/clients').then((data) => { clientsData.value = data }).catch(() => { clientsData.value = [] }),
+  apiFetch<{ projects: Array<{ id: string; name: string }> }>('/api/agency/projects').then((data) => { projectsData.value = data }).catch(() => { projectsData.value = { projects: [] } }),
+])
 
 const saving = ref(false)
 
@@ -612,7 +635,7 @@ const saveQuote = async () => {
 
   try {
     // Update quote details
-    await $fetch(`/api/agency/quotes/${route.params.id}`, {
+    await apiFetch(`/api/agency/quotes/${route.params.id}`, {
       method: 'PUT',
       body: {
         title: form.value.title,
@@ -636,12 +659,12 @@ const saveQuote = async () => {
     for (const item of lineItems.value) {
       if (item._isDeleted && item.id) {
         // Delete existing item
-        await $fetch(`/api/agency/quotes/${route.params.id}/line-items/${item.id}`, {
+        await apiFetch(`/api/agency/quotes/${route.params.id}/line-items/${item.id}`, {
           method: 'DELETE'
         }).catch(() => {}) // Ignore if already deleted
       } else if (item._isNew && !item._isDeleted) {
         // Create new item
-        await $fetch(`/api/agency/quotes/${route.params.id}/line-items`, {
+        await apiFetch(`/api/agency/quotes/${route.params.id}/line-items`, {
           method: 'POST',
           body: {
             itemType: item.itemType,
@@ -663,7 +686,7 @@ const saveQuote = async () => {
         })
       } else if (item.id && !item._isDeleted) {
         // Update existing item
-        await $fetch(`/api/agency/quotes/${route.params.id}/line-items/${item.id}`, {
+        await apiFetch(`/api/agency/quotes/${route.params.id}/line-items/${item.id}`, {
           method: 'PUT',
           body: {
             itemType: item.itemType,

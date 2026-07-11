@@ -3,29 +3,46 @@ definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const route = useRoute()
 const router = useRouter()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
-const { data, pending, error, refresh } = await useFetch('/api/xero/invoices')
+const data = ref<any>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch('/api/xero/invoices')
+  } catch (err) {
+    data.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
 
 // Forward-looking pipeline (quotes not yet invoiced). Loaded in parallel
 // — failure here must NOT block the AR view, so errors are swallowed.
-const { data: quotesSummary } = await useFetch<{ total: number; count: number; byStatus: { draft: { count: number; total: number }; sent: { count: number; total: number }; accepted: { count: number; total: number } } }>(
-  '/api/xero/quotes-summary',
-  { default: () => null as any }
-)
+const quotesSummary = ref<{ total: number; count: number; byStatus: { draft: { count: number; total: number }; sent: { count: number; total: number }; accepted: { count: number; total: number } } } | null>(null)
 
 // Recurring revenue (active retainers / subscriptions). Same parallel-
 // fetch contract — must not block AR.
-const { data: recurringSummary } = await useFetch<{ summary: { mrr: number; arr: number; activeCount: number; clientCount: number; netRecurring: number; recurringMonthlyCosts: number } }>(
-  '/api/xero/repeating-invoices',
-  { default: () => null as any }
-)
+const recurringSummary = ref<{ summary: { mrr: number; arr: number; activeCount: number; clientCount: number; netRecurring: number; recurringMonthlyCosts: number } } | null>(null)
 
 // Outstanding sales credit notes — money owed back to customers /
 // available to apply. Lets us compute a "Net AR" view alongside gross.
-const { data: creditNotesSummary } = await useFetch<{ total: number; count: number; byContact: Array<{ name: string; total: number; count: number }>; notes: Array<{ id: string; number: string; contact: string; date: string | null; remainingCredit: number; currency: string }> }>(
-  '/api/xero/credit-notes-summary',
-  { default: () => null as any }
-)
+const creditNotesSummary = ref<{ total: number; count: number; byContact: Array<{ name: string; total: number; count: number }>; notes: Array<{ id: string; number: string; contact: string; date: string | null; remainingCredit: number; currency: string }> } | null>(null)
+
+await Promise.all([
+  refresh(),
+  apiFetch<{ total: number; count: number; byStatus: { draft: { count: number; total: number }; sent: { count: number; total: number }; accepted: { count: number; total: number } } }>('/api/xero/quotes-summary').then((value) => { quotesSummary.value = value }).catch(() => { quotesSummary.value = null }),
+  apiFetch<{ summary: { mrr: number; arr: number; activeCount: number; clientCount: number; netRecurring: number; recurringMonthlyCosts: number } }>('/api/xero/repeating-invoices').then((value) => { recurringSummary.value = value }).catch(() => { recurringSummary.value = null }),
+  apiFetch<{ total: number; count: number; byContact: Array<{ name: string; total: number; count: number }>; notes: Array<{ id: string; number: string; contact: string; date: string | null; remainingCredit: number; currency: string }> }>('/api/xero/credit-notes-summary').then((value) => { creditNotesSummary.value = value }).catch(() => { creditNotesSummary.value = null }),
+])
 
 // AI-generated owner briefing. Loads after the page renders so it never
 // blocks the (much more important) numeric data. Server caches 1 hour
@@ -45,7 +62,7 @@ async function loadAiBriefing(force = false) {
   aiBriefingPending.value = true
   aiBriefingError.value = null
   try {
-    const res = await $fetch<AiBriefing>(
+    const res = await apiFetch<AiBriefing>(
       `/api/xero/invoices/ai-briefing${force ? '?refresh=1' : ''}`
     )
     aiBriefing.value = res
@@ -244,7 +261,7 @@ async function openInvoice(id: string) {
   detailPending.value = true
   showInvoiceDetail.value = true
   try {
-    invoiceDetail.value = await $fetch(`/api/xero/invoices/${id}`)
+    invoiceDetail.value = await apiFetch(`/api/xero/invoices/${id}`)
   } catch (e) {
     console.error('Failed to fetch invoice detail', e)
   } finally {
@@ -265,7 +282,7 @@ async function copyPayLink(invoiceId?: string) {
   try {
     let url = payLinkCache.get(invoiceId)
     if (!url) {
-      const res = await $fetch<{ url: string }>(`/api/xero/invoices/${invoiceId}/online-url`)
+      const res = await apiFetch<{ url: string }>(`/api/xero/invoices/${invoiceId}/online-url`)
       url = res.url
       payLinkCache.set(invoiceId, url)
     }
@@ -291,7 +308,7 @@ async function sendBulkReminders(invoiceIds: string[]) {
   if (typeof window !== 'undefined' && !window.confirm(`Send a reminder email to ${invoiceIds.length} customer${invoiceIds.length === 1 ? '' : 's'}? Recently-reminded invoices will be skipped.`)) return
   bulkReminderPending.value = true
   try {
-    const res = await $fetch<{ ok: true; tally: { sent: number; skipped: number; failed: number }; results: Array<{ invoiceId: string; status: string; reason?: string }> }>(
+    const res = await apiFetch<{ ok: true; tally: { sent: number; skipped: number; failed: number }; results: Array<{ invoiceId: string; status: string; reason?: string }> }>(
       '/api/xero/invoices/bulk-reminder',
       { method: 'POST', body: { invoiceIds } }
     )
@@ -351,7 +368,7 @@ async function sendReminder(invoiceId?: string, force = false) {
   if (!invoiceId) return
   reminderPending.value = invoiceId
   try {
-    const res = await $fetch<{ ok: true; sentTo: string; daysOverdue: number }>(
+    const res = await apiFetch<{ ok: true; sentTo: string; daysOverdue: number }>(
       `/api/xero/invoices/${invoiceId}/send-reminder`,
       { method: 'POST', body: { force } }
     )

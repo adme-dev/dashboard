@@ -92,6 +92,13 @@ export async function sendWebPushToUser(
   let sent = 0
   let failed = 0
   let purged = 0
+  const jsonPayload: Record<string, string> = {
+    title: payload.title,
+    body: payload.body,
+  }
+  if (payload.url) jsonPayload.url = payload.url
+  if (payload.tag) jsonPayload.tag = payload.tag
+  if (payload.icon) jsonPayload.icon = payload.icon
 
   await Promise.all(
     subs.map(async (sub) => {
@@ -103,7 +110,7 @@ export async function sendWebPushToUser(
             keys: { p256dh: sub.p256dh_key, auth: sub.auth_key },
           },
           message: {
-            payload,
+            payload: jsonPayload,
             adminContact: env.subject,
             options: { ttl: 3600, urgency: 'normal' },
           },

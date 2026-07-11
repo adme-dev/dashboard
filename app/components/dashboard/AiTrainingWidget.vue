@@ -17,7 +17,22 @@ interface TrainingStats {
   }
 }
 
-const { data, status } = await useFetch<TrainingStats>('/api/agency/ai/training/stats')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<TrainingStats | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshTrainingStats() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<TrainingStats>('/api/agency/ai/training/stats')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load AI training stats', error)
+    status.value = 'error'
+  }
+}
+
+await refreshTrainingStats()
 
 const stats = computed(() => data.value)
 

@@ -10,6 +10,7 @@ import {
 
 const props = defineProps<{ startDate: string, endDate: string, clientId?: string | null }>()
 const { fmtCurrency, fmtPercent } = useAnalytics()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 interface MetricBlock {
   lowerIsBetter: boolean
@@ -34,10 +35,23 @@ const query = computed(() => {
   return q
 })
 
-const { data, status } = await useFetch<BenchmarksResponse>('/api/agency/analytics/internal-benchmarks', {
-  query,
-  watch: [query]
-})
+const data = ref<BenchmarksResponse | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function fetchBenchmarks() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<BenchmarksResponse>('/api/agency/analytics/internal-benchmarks', { query: query.value })
+    status.value = 'success'
+  } catch {
+    data.value = null
+    status.value = 'error'
+  }
+}
+
+watch(query, () => {
+  fetchBenchmarks()
+}, { immediate: true })
 
 const loading = computed(() => status.value === 'pending')
 const hasError = computed(() => status.value === 'error')

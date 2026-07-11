@@ -16,6 +16,7 @@ const preview = ref<LinkPreviewData | null>(null)
 const loading = ref(true)
 const failed = ref(false)
 const safeSourceUrl = computed(() => safePreviewUrl(props.url))
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { params?: Record<string, unknown> }) => Promise<T>
 
 const hostname = computed(() => {
   const url = safeSourceUrl.value
@@ -34,7 +35,7 @@ async function fetchPreview() {
     return
   }
   try {
-    const data = await $fetch<LinkPreviewData>('/api/chat/link-preview', {
+    const data = await apiFetch<LinkPreviewData>('/api/chat/link-preview', {
       params: { url: safeSourceUrl.value }
     })
     const safeUrl = safePreviewUrl(data?.url) ?? safeSourceUrl.value

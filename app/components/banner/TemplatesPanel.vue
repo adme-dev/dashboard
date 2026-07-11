@@ -5,6 +5,7 @@ import { TEMPLATES, FORMATS, migrateLayer } from '~/utils/banner-constants'
 const { loadTemplate, state } = useBannerStudio()
 const toast = useToast()
 const router = useRouter()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string }) => Promise<T>
 
 const previewStyles: Record<string, { bg: string; textColor: string; accent?: string }> = {
   automotive: { bg: '#0a0a10', textColor: '#fff', accent: '#e8c84a' },
@@ -20,15 +21,19 @@ function applyTemplate(id: string) {
 }
 
 // DB templates
-const { data: dbTemplates } = useFetch<BannerTemplateDB[]>('/api/agency/banner-studio/templates', {
-  default: () => [],
-})
+const dbTemplates = ref<BannerTemplateDB[]>([])
+
+async function refreshDbTemplates() {
+  dbTemplates.value = await apiFetch<BannerTemplateDB[]>('/api/agency/banner-studio/templates')
+}
+
+refreshDbTemplates()
 
 async function applyDbTemplate(tpl: BannerTemplateDB) {
   if (!tpl.canvasData || !state.project) return
 
   // Increment usage count in background
-  $fetch(`/api/agency/banner-studio/templates/${tpl.id}/use`, { method: 'POST' }).catch(() => {})
+  apiFetch(`/api/agency/banner-studio/templates/${tpl.id}/use`, { method: 'POST' }).catch(() => {})
 
   // Apply template canvas data to current artboards
   const canvasData = typeof tpl.canvasData === 'string' ? JSON.parse(tpl.canvasData) : tpl.canvasData

@@ -4,15 +4,38 @@ definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 const route = useRoute()
 const briefId = route.params.id as string
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
-const { data, pending } = useFetch(`/api/portal/briefs/${briefId}`)
-const { data: commentsData, refresh: refreshComments } = useFetch(`/api/portal/briefs/${briefId}/comments`)
+const data = ref<any | null>(null)
+const pending = ref(false)
+const commentsData = ref<any | null>(null)
+
+async function refreshBrief() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>(`/api/portal/briefs/${briefId}`)
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+async function refreshComments() {
+  commentsData.value = await apiFetch<any>(`/api/portal/briefs/${briefId}/comments`).catch(() => null)
+}
+
+refreshBrief()
+refreshComments()
 
 const newComment = ref('')
 const sendingComment = ref(false)
 
 interface BriefFieldValue {
+  fieldId: string
+  fieldLabel: string
   fieldType: string
+  value: unknown
   section?: string | null
   stepTitle?: string | null
   [key: string]: unknown
@@ -29,7 +52,7 @@ async function submitComment() {
   if (!newComment.value.trim()) return
   sendingComment.value = true
   try {
-    await $fetch(`/api/portal/briefs/${briefId}/comments`, {
+    await apiFetch(`/api/portal/briefs/${briefId}/comments`, {
       method: 'POST',
       body: { content: newComment.value }
     })

@@ -141,7 +141,20 @@ interface Workspace {
 }
 
 // Fetch workspaces
-const { data, pending } = await useFetch<{ workspaces: Workspace[] }>('/api/agency/workspaces')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<{ workspaces: Workspace[] } | null>(null)
+const pending = ref(false)
+
+async function refreshWorkspaces() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ workspaces: Workspace[] }>('/api/agency/workspaces')
+  } finally {
+    pending.value = false
+  }
+}
+
+await refreshWorkspaces()
 const workspaces = computed(() => data.value?.workspaces || [])
 
 // Calculate totals
@@ -165,6 +178,7 @@ const showNewWorkspace = ref(false)
 
 function onWorkspaceCreated(workspace: any) {
   // Refresh workspaces list
-  refreshNuxtData('workspaces')
+  void workspace
+  void refreshWorkspaces()
 }
 </script>

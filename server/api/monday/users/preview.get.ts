@@ -32,13 +32,13 @@ export default eventHandler(async (event) => {
       avatar_url?: string
     }>('SELECT id, name, email, monday_user_id, avatar_url FROM team_members WHERE is_active = true')
 
-    const existingByEmail = new Map(existingMembers.map(m => [m.email.toLowerCase(), m]))
+    const existingByEmailMap = new Map(existingMembers.map(m => [m.email.toLowerCase(), m]))
     const existingByMondayId = new Map(existingMembers.filter(m => m.monday_user_id).map(m => [m.monday_user_id!, m]))
 
     // Compare and categorize
     const preview = mondayUsers.map(mondayUser => {
       const existingByMonday = mondayUser.id ? existingByMondayId.get(mondayUser.id) : null
-      const existingByEmail = mondayUser.email ? existingByEmail.get(mondayUser.email.toLowerCase()) : null
+      const existingByEmail = mondayUser.email ? existingByEmailMap.get(mondayUser.email.toLowerCase()) : null
       const existing = existingByMonday || existingByEmail
 
       if (existing) {
@@ -54,7 +54,7 @@ export default eventHandler(async (event) => {
           existingId: existing.id,
           changes: willUpdate ? {
             name: existing.name !== mondayUser.name ? { from: existing.name, to: mondayUser.name } : null,
-            avatar: existing.avatar_url !== mondayUser.photo_thumb ? { from: existing.avatar_url, to: mondayUser.photo_url } : null
+            avatar: existing.avatar_url !== mondayUser.photo_thumb ? { from: existing.avatar_url, to: mondayUser.photo_thumb } : null
           } : null
         }
       } else {
@@ -62,7 +62,7 @@ export default eventHandler(async (event) => {
           mondayId: mondayUser.id,
           name: mondayUser.name,
           email: mondayUser.email,
-          photoUrl: mondayUser.photo_url,
+          photoUrl: mondayUser.photo_thumb,
           status: 'will_create'
         }
       }

@@ -8,6 +8,10 @@ const props = defineProps<{
 }>()
 const base = inject<string>('crmApiBase', '/api/crm')
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 interface RelView {
   id: string
@@ -18,15 +22,36 @@ interface RelView {
   is_decision_maker: boolean
 }
 const query = computed(() => ({ client_id: props.clientId, target_type: props.targetType, target_id: props.targetId }))
-const { data, refresh } = useFetch<{ items: RelView[] }>(`${base}/relationships`, {
-  query, watch: [query], default: () => ({ items: [] }),
-})
+const data = ref<{ items: RelView[] }>({ items: [] })
+
+async function refresh() {
+  data.value = await apiFetch<{ items: RelView[] }>(`${base}/relationships`, { query: query.value })
+}
+
+watch(query, () => {
+  refresh()
+}, { immediate: true })
+
 const rels = computed(() => data.value?.items ?? [])
 
 // Candidate "other" records (people + companies), excluding self.
 const listQuery = computed(() => ({ client_id: props.clientId, page_size: '200' }))
-const { data: peopleData } = useFetch<{ items: CrmPerson[] }>(`${base}/people`, { query: listQuery, watch: [listQuery] })
-const { data: companiesData } = useFetch<{ items: CrmCompany[] }>(`${base}/companies`, { query: listQuery, watch: [listQuery] })
+const peopleData = ref<{ items: CrmPerson[] }>({ items: [] })
+const companiesData = ref<{ items: CrmCompany[] }>({ items: [] })
+
+async function refreshCandidateRecords() {
+  const [people, companies] = await Promise.all([
+    apiFetch<{ items: CrmPerson[] }>(`${base}/people`, { query: listQuery.value }),
+    apiFetch<{ items: CrmCompany[] }>(`${base}/companies`, { query: listQuery.value }),
+  ])
+  peopleData.value = people
+  companiesData.value = companies
+}
+
+watch(listQuery, () => {
+  refreshCandidateRecords()
+}, { immediate: true })
+
 const otherItems = computed(() => {
   const ppl = (peopleData.value?.items ?? [])
     .filter(p => !(props.targetType === 'person' && p.id === props.targetId))
@@ -73,7 +98,7 @@ async function save() {
   const [to_type, to_id] = form.other.split(':')
   saving.value = true
   try {
-    await $fetch(`${base}/relationships`, {
+    await apiFetch(`${base}/relationships`, {
       method: 'POST',
       body: {
         client_id: props.clientId,
@@ -93,7 +118,7 @@ async function save() {
 }
 async function remove(r: RelView) {
   try {
-    await $fetch(`${base}/relationships/${r.id}`, { method: 'DELETE', query: { client_id: props.clientId } })
+    await apiFetch(`${base}/relationships/${r.id}`, { method: 'DELETE', query: { client_id: props.clientId } })
     await refresh()
   } catch { toast.add({ title: 'Could not remove', color: 'error' }) }
 }

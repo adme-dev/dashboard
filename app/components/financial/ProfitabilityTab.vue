@@ -19,9 +19,27 @@ const yearOptions = Array.from({ length: 3 }, (_, i) => {
 })
 
 // Fetch profitability data
-const { data: profitData, pending } = useFetch('/api/agency/projects/profitability', {
-  query: { month: selectedMonth, year: selectedYear }
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const profitQuery = computed(() => ({ month: selectedMonth.value, year: selectedYear.value }))
+const profitData = ref<any | null>(null)
+const pending = ref(false)
+
+async function refreshProfitability() {
+  pending.value = true
+  try {
+    profitData.value = await apiFetch('/api/agency/projects/profitability', {
+      query: profitQuery.value,
+    })
+  } finally {
+    pending.value = false
+  }
+}
+
+await refreshProfitability()
+watch(profitQuery, () => { refreshProfitability() })
 
 const summary = computed(() => profitData.value?.summary || {
   clientCount: 0, totalBudget: 0, totalSpend: 0, totalCommission: 0,

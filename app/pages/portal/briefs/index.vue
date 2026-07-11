@@ -14,10 +14,27 @@ const statusFilter = computed(() => {
   if (activeTab.value === 'all') return undefined
   return activeTab.value
 })
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
-const { data, pending } = useFetch('/api/portal/briefs', {
-  query: { status: statusFilter }
-})
+const data = ref<any | null>(null)
+const pending = ref(false)
+
+async function refreshBriefs() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>('/api/portal/briefs', {
+      query: statusFilter.value ? { status: statusFilter.value } : {},
+    })
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(statusFilter, () => {
+  refreshBriefs()
+}, { immediate: true })
 
 watch(activeTab, (tab) => {
   const query: Record<string, string> = {}

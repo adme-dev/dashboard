@@ -18,7 +18,7 @@ import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaIt
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { buildMessengerSend } from './facebook'
 import { mapIgMediaInsights, mapIgAccountInsights } from '~~/server/utils/socialReporting/normalize'
-import { fetchWithTimeout } from './http'
+import { fetchWithTimeout, providerFetch } from './http'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 const INBOX_FETCH_TIMEOUT_MS = 12_000
@@ -150,7 +150,7 @@ async function waitForContainerReady(
   const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
-    const res = await $fetch<{ status_code: string, status?: string }>(
+    const res = await providerFetch<{ status_code: string, status?: string }>(
       `${GRAPH_API_BASE}/${containerId}`,
       {
         method: 'GET',
@@ -214,7 +214,7 @@ async function createItemContainer(
     body.alt_text = item.alt
   }
 
-  const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
+  const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
     body
   })
@@ -230,7 +230,7 @@ async function publishContainer(
   accessToken: string,
   containerId: string
 ): Promise<{ id: string }> {
-  return await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media_publish`, {
+  return await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media_publish`, {
     method: 'POST',
     body: {
       creation_id: containerId,
@@ -245,7 +245,7 @@ async function publishContainer(
  */
 async function getPostUrl(postId: string, accessToken: string): Promise<string> {
   try {
-    const res = await $fetch<{ permalink?: string }>(`${GRAPH_API_BASE}/${postId}`, {
+    const res = await providerFetch<{ permalink?: string }>(`${GRAPH_API_BASE}/${postId}`, {
       method: 'GET',
       params: {
         fields: 'permalink',
@@ -304,7 +304,7 @@ export const instagramProvider: SocialPostProvider = {
     const { accessToken, postId, content } = params
 
     try {
-      const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${postId}/comments`, {
+      const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${postId}/comments`, {
         method: 'POST',
         body: {
           message: content,
@@ -348,7 +348,7 @@ async function postSingleImage(
     body.collaborators = JSON.stringify(options.collaborators)
   }
 
-  const container = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
+  const container = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
     body
   })
@@ -383,7 +383,7 @@ async function postReel(
     body.collaborators = JSON.stringify(options.collaborators)
   }
 
-  const container = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
+  const container = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
     body
   })
@@ -443,7 +443,7 @@ async function postCarousel(
     body.collaborators = JSON.stringify(options.collaborators)
   }
 
-  const carouselContainer = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
+  const carouselContainer = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
     body
   })
@@ -476,7 +476,7 @@ async function postStory(
     body.video_url = media.url
   }
 
-  const container = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
+  const container = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/media`, {
     method: 'POST',
     body
   })

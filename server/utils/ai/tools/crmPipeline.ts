@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 import { defaultResolveClient, type ResolveClient } from './clientResolve'
 
 const params = z.object({ clientName: z.string().min(1) })
@@ -15,8 +16,8 @@ export type CrmPipelineDeps = {
 
 const defaultDeps: CrmPipelineDeps = {
   resolveClient: defaultResolveClient,
-  pipeline: (clientId, ctx) => $fetch('/api/crm/pipeline', { query: { client_id: clientId }, headers: ctx.event.headers as any }),
-  stages: (clientId, ctx) => $fetch('/api/crm/stages', { query: { client_id: clientId }, headers: ctx.event.headers as any }),
+  pipeline: (clientId, ctx) => aiInternalFetch('/api/crm/pipeline', { query: { client_id: clientId }, headers: ctx.event.headers as any }),
+  stages: (clientId, ctx) => aiInternalFetch('/api/crm/stages', { query: { client_id: clientId }, headers: ctx.event.headers as any }),
 }
 
 export async function getCrmPipeline(args: Args, ctx: ToolContext, deps: CrmPipelineDeps = defaultDeps): Promise<ToolResult> {

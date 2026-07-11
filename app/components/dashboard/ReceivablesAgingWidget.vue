@@ -1,5 +1,22 @@
 <script setup lang="ts">
-const { data, status } = useLazyFetch('/api/xero/reports/aging', { server: false })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshReceivablesAging() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/xero/reports/aging')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load receivables aging', error)
+    status.value = 'error'
+  }
+}
+
+onMounted(() => {
+  refreshReceivablesAging()
+})
 
 const agingData = computed(() => data.value as any)
 const totalOutstanding = computed(() => agingData.value?.totalOutstanding || 0)

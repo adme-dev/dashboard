@@ -20,6 +20,8 @@ export interface MigrationConfig {
   defaultProjectId?: string
   defaultAssigneeId?: string
   boardMappings?: BoardMappingConfig[]
+  /** Only process source items updated at or after this ISO timestamp. */
+  updatedSince?: string
 }
 
 export interface BoardMappingConfig {
@@ -42,6 +44,27 @@ export interface MigrationProgress {
   currentBoard?: string
   currentBoardProgress?: number
   errors: string[]
+}
+
+type MondayBoardSource = Pick<MondayClient, 'getBoard' | 'getBoards'>
+
+/** Resolve only explicitly mapped boards when mappings are present. */
+export async function resolveMigrationBoards(
+  client: MondayBoardSource,
+  config: MigrationConfig,
+): Promise<MondayBoard[]> {
+  const boardIds = [...new Set((config.boardMappings ?? []).map(mapping => mapping.mondayBoardId).filter(Boolean))]
+  if (boardIds.length > 0) {
+    const boards = await Promise.all(boardIds.map(boardId => client.getBoard(boardId)))
+    return boards.filter((board): board is MondayBoard => Boolean(
+      board && (!config.skipArchivedBoards || board.state === 'active'),
+    ))
+  }
+
+  return client.getBoards({
+    state: config.skipArchivedBoards ? 'active' : 'all',
+    limit: 500,
+  })
 }
 
 // ============================================
@@ -241,11 +264,7 @@ export class MondayMigrationService {
     try {
       console.log(`[Migration ${this.sessionId}] Starting migration...`)
 
-      // Get all boards from Monday
-      const boards = await this.client.getBoards({
-        state: this.config.skipArchivedBoards ? 'active' : 'all',
-        limit: 500,
-      })
+      const boards = await resolveMigrationBoards(this.client, this.config)
 
       console.log(`[Migration ${this.sessionId}] Found ${boards.length} boards`)
 
@@ -256,10 +275,9 @@ export class MondayMigrationService {
       )
 
       // Process each board
-      for (let i = 0; i < boards.length; i++) {
-        const board = boards[i]
+      for (const [index, board] of boards.entries()) {
         try {
-          console.log(`[Migration ${this.sessionId}] Processing board ${i + 1}/${boards.length}: ${board.name} (${board.id})`)
+          console.log(`[Migration ${this.sessionId}] Processing board ${index + 1}/${boards.length}: ${board.name} (${board.id})`)
           await this.migrateBoard(board)
         } catch (error: any) {
           console.error(`[Migration ${this.sessionId}] Board ${board.name} (${board.id}) failed:`, error.message)
@@ -345,6 +363,16 @@ export class MondayMigrationService {
         allItems = allItems.concat(result.items)
         cursor = result.cursor
       } while (cursor)
+
+      if (this.config.updatedSince) {
+        const cutoff = Date.parse(this.config.updatedSince)
+        if (!Number.isNaN(cutoff)) {
+          allItems = allItems.filter(item => {
+            const updated = Date.parse(item.updated_at || item.created_at || '')
+            return Number.isNaN(updated) || updated >= cutoff
+          })
+        }
+      }
 
       console.log(`[Migration ${this.sessionId}] Board ${board.name}: ${allItems.length} items`)
 
@@ -508,8 +536,33 @@ export class MondayMigrationService {
     // Resolve project_id (convert empty string to null)
     const resolvedProjectId = projectId || this.config.defaultProjectId || null
 
-    // Create the task
-    const task = await queryOne(
+    // Reuse an existing task when this Monday item was imported by an earlier
+    // migration session. Mapping uniqueness is session-scoped, so without this
+    // lookup every rerun would create duplicate local tasks.
+    const existing = await queryOne<{ task_id: string }>(
+      `SELECT mim.task_id
+         FROM monday_item_mappings mim
+        WHERE mim.monday_item_id = $1
+          AND mim.task_id IS NOT NULL
+        ORDER BY mim.updated_at DESC
+        LIMIT 1`,
+      [item.id],
+    )
+
+    const task = existing?.task_id
+      ? await queryOne(
+        `UPDATE tasks
+            SET project_id = $1, department_id = $2, status_id = $3, title = $4,
+                description = $5, priority = $6, assignee_id = $7, due_date = $8,
+                start_date = $9, estimated_hours = $10, updated_at = $12
+          WHERE id = $11
+        RETURNING *`,
+        [resolvedProjectId || null, departmentId, statusId,
+          (item.name || 'Untitled').substring(0, 255), this.extractDescription(item), priority,
+          assigneeId || null, dates.dueDate || null, dates.startDate || null,
+          this.extractEstimatedHours(item), existing.task_id, item.updated_at || new Date().toISOString()],
+      )
+      : await queryOne(
       `INSERT INTO tasks
        (project_id, department_id, status_id, title, description, priority, assignee_id, due_date, start_date, estimated_hours, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -527,16 +580,23 @@ export class MondayMigrationService {
         this.extractEstimatedHours(item),
         item.created_at || new Date().toISOString(),
         item.updated_at || new Date().toISOString(),
-      ]
-    )
+      ],
+      )
 
     // Create item mapping record (ON CONFLICT handles duplicate subitems)
     const itemMapping = await queryOne(
       `INSERT INTO monday_item_mappings
-       (migration_session_id, board_mapping_id, monday_item_id, monday_item_name, task_id, source_data, column_values, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed')
+       (migration_session_id, board_mapping_id, monday_item_id, monday_item_name, task_id,
+        source_data, column_values, status, monday_board_id, archived, source_state,
+        reconciliation_status, source_updated_at, last_seen_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed', $8, $9, $10, 'current', $11, NOW())
        ON CONFLICT (migration_session_id, monday_item_id)
-       DO UPDATE SET task_id = $5, status = 'completed', error_message = NULL, updated_at = NOW()
+       DO UPDATE SET task_id = $5, monday_item_name = $4, source_data = $6,
+                     column_values = $7, monday_board_id = $8, archived = $9,
+                     source_state = $10, reconciliation_status = 'current',
+                     source_updated_at = $11, last_seen_at = NOW(),
+                     last_webhook_event_id = NULL, status = 'completed',
+                     error_message = NULL, updated_at = NOW()
        RETURNING *`,
       [
         this.sessionId,
@@ -546,6 +606,10 @@ export class MondayMigrationService {
         task.id,
         JSON.stringify(item),
         JSON.stringify(this.extractColumnValues(item)),
+        item.board_id,
+        item.state === 'archived' || item.state === 'deleted',
+        item.state === 'archived' || item.state === 'deleted' ? item.state : 'active',
+        item.updated_at || item.created_at || new Date().toISOString(),
       ]
     )
 
@@ -775,6 +839,8 @@ export class MondayMigrationService {
 
       for (const update of updates) {
         try {
+          const existingUpdate = await queryOne('SELECT id FROM monday_update_mappings WHERE monday_update_id = $1 LIMIT 1', [update.id])
+          if (existingUpdate) continue
           // Find or create a system user for the update creator
           const userId = await this.findOrCreateSystemUser(update.creator_id, update.creator_name)
 
@@ -821,6 +887,8 @@ export class MondayMigrationService {
 
       for (const asset of assets) {
         try {
+          const existingFile = await queryOne('SELECT id FROM monday_file_mappings WHERE monday_asset_id = $1 LIMIT 1', [asset.id])
+          if (existingFile) continue
           // Download file
           const { buffer, filename, contentType } = await this.client.downloadFile(asset.id)
 

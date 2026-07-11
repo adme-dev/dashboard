@@ -47,6 +47,10 @@ interface ConfirmResponse {
 }
 
 export function useStorageUpload() {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown }
+  ) => Promise<T>
   const isUploading = ref(false)
   const uploadProgress = ref(0)
   const error = ref<string | null>(null)
@@ -61,7 +65,7 @@ export function useStorageUpload() {
 
     try {
       // Step 1: Get presigned URL
-      const presignedResponse = await $fetch<PresignedResponse>('/api/storage/presigned-upload', {
+      const presignedResponse = await apiFetch<PresignedResponse>('/api/storage/presigned-upload', {
         method: 'POST',
         body: {
           fileName: file.name,
@@ -80,7 +84,7 @@ export function useStorageUpload() {
       await uploadToPresignedUrl(presignedResponse.uploadUrl, file, options.onProgress)
 
       // Step 3: Confirm upload
-      const confirmResponse = await $fetch<ConfirmResponse>('/api/storage/confirm-upload', {
+      const confirmResponse = await apiFetch<ConfirmResponse>('/api/storage/confirm-upload', {
         method: 'POST',
         body: {
           key: presignedResponse.key,
@@ -240,7 +244,7 @@ export function useStorageUpload() {
    */
   async function deleteFile(key: string): Promise<{ success: boolean; error?: string }> {
     try {
-      await $fetch(`/api/storage/${encodeURIComponent(key)}`, {
+      await apiFetch(`/api/storage/${encodeURIComponent(key)}`, {
         method: 'DELETE'
       })
       return { success: true }

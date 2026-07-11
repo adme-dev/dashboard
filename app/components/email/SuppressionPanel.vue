@@ -37,15 +37,38 @@ const query = computed(() => ({
   page_size: pageSize
 }))
 
-const { data, refresh, pending } = await useFetch<{
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: {
+    method?: string
+    body?: unknown
+    query?: Record<string, unknown>
+  }
+) => Promise<T>
+const data = ref<{
   items: SuppressionRow[]
   total: number
   page: number
   page_size: number
-}>('/api/email/suppressions', {
-  query,
-  default: () => ({ items: [], total: 0, page: 1, page_size: pageSize })
-})
+}>({ items: [], total: 0, page: 1, page_size: pageSize })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{
+      items: SuppressionRow[]
+      total: number
+      page: number
+      page_size: number
+    }>('/api/email/suppressions', { query: query.value })
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
+watch(query, () => { refresh() })
 
 const form = reactive({ email: '', note: '' })
 const saving = ref(false)
@@ -90,7 +113,7 @@ async function addSuppression() {
   }
   saving.value = true
   try {
-    const result = await $fetch<{ action: SuppressionWriteAction, email: string }>('/api/email/suppressions', {
+    const result = await apiFetch<{ action: SuppressionWriteAction, email: string }>('/api/email/suppressions', {
       method: 'POST',
       body: {
         email: form.email,
@@ -136,7 +159,7 @@ async function removeSuppression(row: SuppressionRow) {
 
   removing.value = row.email
   try {
-    await $fetch(`/api/email/suppressions/${encodeURIComponent(row.email)}`, {
+    await apiFetch(`/api/email/suppressions/${encodeURIComponent(row.email)}`, {
       method: 'DELETE',
       body: {
         confirm: confirmed,

@@ -76,7 +76,7 @@ export type TrackEvent = z.infer<typeof TrackEventSchema>
 export type TrackPayload = z.infer<typeof TrackPayloadSchema>
 
 export type TrackParseResult
-  = | { ok: true, payload: TrackPayload }
+  = | { ok: true, payload: TrackPayload, errors?: undefined }
     | { ok: false, errors: { path: string, message: string }[] }
 
 export function parseTrackPayload(input: unknown): TrackParseResult {

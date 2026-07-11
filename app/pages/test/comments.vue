@@ -7,7 +7,7 @@
         <template #header>
           <div class="flex items-center justify-between">
             <h2 class="font-semibold">Task: SEO Framework Updates</h2>
-            <UBadge color="blue">Testing</UBadge>
+            <UBadge color="primary">Testing</UBadge>
           </div>
         </template>
 

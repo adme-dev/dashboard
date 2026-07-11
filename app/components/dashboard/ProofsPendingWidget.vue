@@ -1,7 +1,22 @@
 <script setup lang="ts">
 import { formatDistanceToNow, parseISO } from 'date-fns'
 
-const { data, status } = await useFetch('/api/agency/proofs')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshProofsPending() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/proofs')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load pending proofs', error)
+    status.value = 'error'
+  }
+}
+
+await refreshProofsPending()
 
 const CAP = 5
 const allPending = computed(() => {
@@ -24,7 +39,9 @@ const badges = computed(() => {
   return out
 })
 
-const statusColors: Record<string, string> = {
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+const statusColors: Record<string, UiColor> = {
   internal_review: 'warning',
   client_review: 'info',
   changes_requested: 'error',

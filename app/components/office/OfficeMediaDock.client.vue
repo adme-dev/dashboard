@@ -48,6 +48,10 @@ const realtime = useOfficeRealtime({
   occupantCount: toRef(props, 'occupantCount'),
   getStreams: () => [localStream.value, screenStream.value].filter((stream): stream is MediaStream => Boolean(stream))
 })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const hasMediaDevices = computed(() =>
   typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
@@ -371,7 +375,7 @@ async function sendLiveNotesChunk(blob: Blob, final = false) {
   formData.append('sequence', String(liveNotesSequence.value))
   formData.append('final', final ? 'true' : 'false')
 
-  const result = await $fetch<{ meetingId: string, artifact?: { metadata?: Record<string, unknown> }, transcript: string, skipped?: boolean }>(
+  const result = await apiFetch<{ meetingId: string, artifact?: { metadata?: Record<string, unknown> }, transcript: string, skipped?: boolean }>(
     `/api/office/${props.officeId}/zones/${props.zoneId}/live-transcription`,
     {
       method: 'POST',
@@ -515,7 +519,7 @@ async function endLiveNotesMeeting() {
 
   endingLiveMeeting.value = true
   try {
-    const result = await $fetch<{
+    const result = await apiFetch<{
       generatedSummaryArtifactId?: string
       generatedActionItemsArtifactId?: string
     }>(`/api/office/${props.officeId}/meetings/${meetingId}`, {

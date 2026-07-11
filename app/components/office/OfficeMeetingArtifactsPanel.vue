@@ -208,68 +208,95 @@ type FollowUpJob = {
   error?: string
 }
 
-const { data, refresh, pending, error } = useFetch<{ meetings: MeetingWithZone[] }>(
-  () => `/api/office/${props.officeId}/meetings`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ meetings: [] })
-  }
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<{ meetings: MeetingWithZone[] }>({ meetings: [] })
+const settingsData = ref<{ settings: OfficeSettingsRow | null }>({ settings: null })
+const lobbiesData = ref<{ lobbies: LobbyWithDestination[] }>({ lobbies: [] })
+const officeData = ref<{ members: OfficeMemberOption[] }>({ members: [] })
+const departmentsData = ref<DepartmentOption[]>([])
+const pendingLobbyData = ref<{ requests: MeetingLobbyRequest[] }>({ requests: [] })
+const acceptedLobbyData = ref<{ requests: MeetingLobbyRequest[] }>({ requests: [] })
+const pending = ref(false)
+const error = ref<unknown>(null)
 
-const { data: settingsData } = useFetch<{ settings: OfficeSettingsRow | null }>(
-  () => `/api/office/${props.officeId}/settings`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ settings: null })
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<{ meetings: MeetingWithZone[] }>(`/api/office/${props.officeId}/meetings`)
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
   }
-)
+}
 
-const { data: lobbiesData } = useFetch<{ lobbies: LobbyWithDestination[] }>(
-  () => `/api/office/${props.officeId}/lobbies`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ lobbies: [] })
+async function refreshSettings() {
+  try {
+    settingsData.value = await apiFetch<{ settings: OfficeSettingsRow | null }>(`/api/office/${props.officeId}/settings`)
+  } catch {
+    // Preserve the existing settings during transient refresh failures.
   }
-)
+}
 
-const { data: officeData } = useFetch<{ members: OfficeMemberOption[] }>(
-  () => `/api/office/${props.officeId}`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ members: [] })
+async function refreshLobbies() {
+  try {
+    lobbiesData.value = await apiFetch<{ lobbies: LobbyWithDestination[] }>(`/api/office/${props.officeId}/lobbies`)
+  } catch {
+    // Preserve the existing lobby list during transient refresh failures.
   }
-)
+}
 
-const { data: departmentsData } = useFetch<DepartmentOption[]>(
-  '/api/agency/departments',
-  {
-    default: () => []
+async function refreshOffice() {
+  try {
+    officeData.value = await apiFetch<{ members: OfficeMemberOption[] }>(`/api/office/${props.officeId}`)
+  } catch {
+    // Preserve the existing member list during transient refresh failures.
   }
-)
+}
 
-const {
-  data: pendingLobbyData,
-  refresh: refreshPendingLobbyRequests
-} = useFetch<{ requests: MeetingLobbyRequest[] }>(
-  () => `/api/office/${props.officeId}/lobby-requests`,
-  {
-    query: { status: 'pending' },
-    watch: [() => props.officeId],
-    default: () => ({ requests: [] })
+async function refreshDepartments() {
+  try {
+    departmentsData.value = await apiFetch<DepartmentOption[]>('/api/agency/departments')
+  } catch {
+    // Departments are optional for this panel's render path.
   }
-)
+}
 
-const {
-  data: acceptedLobbyData,
-  refresh: refreshAcceptedLobbyRequests
-} = useFetch<{ requests: MeetingLobbyRequest[] }>(
-  () => `/api/office/${props.officeId}/lobby-requests`,
-  {
-    query: { status: 'accepted' },
-    watch: [() => props.officeId],
-    default: () => ({ requests: [] })
+async function refreshPendingLobbyRequests() {
+  try {
+    pendingLobbyData.value = await apiFetch<{ requests: MeetingLobbyRequest[] }>(
+      `/api/office/${props.officeId}/lobby-requests`,
+      { query: { status: 'pending' } }
+    )
+  } catch {
+    // Keep the current queue visible if polling fails.
   }
-)
+}
+
+async function refreshAcceptedLobbyRequests() {
+  try {
+    acceptedLobbyData.value = await apiFetch<{ requests: MeetingLobbyRequest[] }>(
+      `/api/office/${props.officeId}/lobby-requests`,
+      { query: { status: 'accepted' } }
+    )
+  } catch {
+    // Keep the current accepted list visible if polling fails.
+  }
+}
+
+await Promise.all([
+  refresh(),
+  refreshSettings(),
+  refreshLobbies(),
+  refreshOffice(),
+  refreshDepartments(),
+  refreshPendingLobbyRequests(),
+  refreshAcceptedLobbyRequests()
+])
 
 const meetings = computed(() => data.value?.meetings ?? [])
 const activeLobbies = computed(() => (lobbiesData.value?.lobbies ?? []).filter(lobby => lobby.is_active))
@@ -515,18 +542,27 @@ const draftMeetingReadinessItems = computed<MeetingReadinessItem[]>(() => {
   ]
 })
 
-const {
-  data: artifactData,
-  pending: artifactsPending,
-  refresh: refreshArtifacts,
-  error: artifactsError
-} = useFetch<{ artifacts: OfficeMeetingArtifactRow[] }>(
-  () => selectedMeeting.value ? `/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/artifacts` : null,
-  {
-    watch: [selectedMeetingId, () => props.officeId],
-    default: () => ({ artifacts: [] })
+const artifactData = ref<{ artifacts: OfficeMeetingArtifactRow[] }>({ artifacts: [] })
+const artifactsPending = ref(false)
+const artifactsError = ref<unknown>(null)
+
+async function refreshArtifacts() {
+  if (!selectedMeeting.value) {
+    artifactData.value = { artifacts: [] }
+    return
   }
-)
+  artifactsPending.value = true
+  artifactsError.value = null
+  try {
+    artifactData.value = await apiFetch<{ artifacts: OfficeMeetingArtifactRow[] }>(
+      `/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/artifacts`
+    )
+  } catch (err) {
+    artifactsError.value = err
+  } finally {
+    artifactsPending.value = false
+  }
+}
 
 const selectedArtifacts = computed(() => artifactData.value?.artifacts ?? [])
 const meetingQuestionAvailable = computed(() =>
@@ -536,18 +572,27 @@ const meetingQuestionAvailable = computed(() =>
   )
 )
 
-const {
-  data: actionItemsData,
-  pending: actionItemsPending,
-  refresh: refreshActionItems,
-  error: actionItemsError
-} = useFetch<{ actionItems: OfficeMeetingActionItemRow[] }>(
-  () => selectedMeeting.value ? `/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/action-items` : null,
-  {
-    watch: [selectedMeetingId, () => props.officeId],
-    default: () => ({ actionItems: [] })
+const actionItemsData = ref<{ actionItems: OfficeMeetingActionItemRow[] }>({ actionItems: [] })
+const actionItemsPending = ref(false)
+const actionItemsError = ref<unknown>(null)
+
+async function refreshActionItems() {
+  if (!selectedMeeting.value) {
+    actionItemsData.value = { actionItems: [] }
+    return
   }
-)
+  actionItemsPending.value = true
+  actionItemsError.value = null
+  try {
+    actionItemsData.value = await apiFetch<{ actionItems: OfficeMeetingActionItemRow[] }>(
+      `/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/action-items`
+    )
+  } catch (err) {
+    actionItemsError.value = err
+  } finally {
+    actionItemsPending.value = false
+  }
+}
 
 const selectedActionItems = computed(() => actionItemsData.value?.actionItems ?? [])
 const openActionItemCount = computed(() => selectedActionItems.value.filter(item => item.status === 'open' || item.status === 'in_progress').length)
@@ -887,7 +932,7 @@ async function sendMeetingInvites(meeting: MeetingWithZone) {
 
   sendingInvitesForMeetingId.value = meeting.id
   try {
-    const response = await $fetch<{ invited: number, invitedAt: string }>(`/api/office/${props.officeId}/meetings/${meeting.id}/invite`, {
+    const response = await apiFetch<{ invited: number, invitedAt: string }>(`/api/office/${props.officeId}/meetings/${meeting.id}/invite`, {
       method: 'POST',
       body: {
         invite_url: meetingInviteUrl(meeting),
@@ -949,7 +994,7 @@ async function saveMeetingDetails() {
   if (!selectedMeeting.value || !canSaveMeetingDetails.value) return
   savingMeetingDetails.value = true
   try {
-    await $fetch(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}`, {
+    await apiFetch(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}`, {
       method: 'PATCH',
       body: {
         title: editMeetingTitle.value,
@@ -1110,7 +1155,7 @@ async function handleLobbyRequest(request: MeetingLobbyRequest, status: 'accepte
 
   handlingLobbyRequestId.value = request.id
   try {
-    const response = await $fetch<LobbyRequestPatchResponse>(`/api/office/${props.officeId}/lobby-requests/${request.id}`, {
+    const response = await apiFetch<LobbyRequestPatchResponse>(`/api/office/${props.officeId}/lobby-requests/${request.id}`, {
       method: 'PATCH',
       body: { status }
     })
@@ -1827,7 +1872,7 @@ async function openMeetingThread(meeting: MeetingWithZone) {
   if (openingMeetingThreadId.value) return
   openingMeetingThreadId.value = meeting.id
   try {
-    const channel = await $fetch<{ id: string }>(`/api/office/${props.officeId}/meetings/${meeting.id}/thread`, {
+    const channel = await apiFetch<{ id: string }>(`/api/office/${props.officeId}/meetings/${meeting.id}/thread`, {
       method: 'POST'
     })
     await navigateTo({
@@ -1884,7 +1929,7 @@ async function createNoteArtifact() {
   savingNoteArtifact.value = true
   try {
     const title = noteArtifactTitle.value.trim() || defaultNoteArtifactTitle()
-    await $fetch(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/artifacts`, {
+    await apiFetch(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/artifacts`, {
       method: 'POST',
       body: {
         artifact_type: noteArtifactType.value,
@@ -1920,7 +1965,7 @@ async function saveArtifact(artifact: OfficeMeetingArtifactRow) {
   if (!selectedMeeting.value) return
   savingArtifactId.value = artifact.id
   try {
-    await $fetch(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/artifacts/${artifact.id}`, {
+    await apiFetch(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/artifacts/${artifact.id}`, {
       method: 'PATCH',
       body: {
         title: editingArtifactTitle.value,
@@ -1959,7 +2004,7 @@ async function updateMeetingStatus(status: 'live' | 'ended' | 'cancelled', targe
   }
   updatingMeetingStatus.value = status
   try {
-    const result = await $fetch<{
+    const result = await apiFetch<{
       guestAccessExpired?: number
       guestBadgesExpired?: number
       generatedSummaryArtifactId?: string
@@ -1999,7 +2044,7 @@ async function createFollowUpJob(artifact: OfficeMeetingArtifactRow) {
   creatingFollowUpForArtifactId.value = artifact.id
 
   try {
-    const response = await $fetch<{ job: { id: string } }>(`/api/office/${props.officeId}/assistant/jobs`, {
+    const response = await apiFetch<{ job: { id: string } }>(`/api/office/${props.officeId}/assistant/jobs`, {
       method: 'POST',
       body: {
         job_type: 'send_follow_up',
@@ -2069,7 +2114,7 @@ async function askMeetingQuestion() {
   meetingAnswerPending.value = true
   meetingAnswerError.value = ''
   try {
-    const response = await $fetch<{
+    const response = await apiFetch<{
       answer: string
       sources: MeetingQuestionSource[]
     }>(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/ask`, {
@@ -2099,7 +2144,7 @@ async function searchMeetingMemory() {
   meetingMemoryPending.value = true
   meetingMemoryError.value = ''
   try {
-    const response = await $fetch<{
+    const response = await apiFetch<{
       answer: string
       sources: MeetingMemorySource[]
     }>(`/api/office/${props.officeId}/meetings/search`, {
@@ -2151,7 +2196,7 @@ async function updateActionItem(item: OfficeMeetingActionItemRow, body: Partial<
   if (!selectedMeeting.value) return
   updatingActionItemId.value = item.id
   try {
-    await $fetch(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/action-items/${item.id}`, {
+    await apiFetch(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/action-items/${item.id}`, {
       method: 'PATCH',
       body: {
         ...body,
@@ -2199,7 +2244,7 @@ async function createTaskFromActionItem(item: OfficeMeetingActionItemRow) {
   if (!selectedMeeting.value) return
   creatingTaskForActionItemId.value = item.id
   try {
-    const response = await $fetch<{ task?: { id: string }, created: boolean }>(
+    const response = await apiFetch<{ task?: { id: string }, created: boolean }>(
       `/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/action-items/${item.id}/task`,
       {
         method: 'POST',
@@ -2249,7 +2294,7 @@ async function createTasksFromOpenActionItems() {
     for (const item of items) {
       creatingTaskForActionItemId.value = item.id
       try {
-        const response = await $fetch<{ task?: { id: string }, created: boolean }>(
+        const response = await apiFetch<{ task?: { id: string }, created: boolean }>(
           `/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/action-items/${item.id}/task`,
           {
             method: 'POST',
@@ -2287,7 +2332,7 @@ async function createAssistantJobFromActionItem(item: OfficeMeetingActionItemRow
   if (!selectedMeeting.value) return
   creatingAssistantForActionItemId.value = item.id
   try {
-    const response = await $fetch<{ job: { id: string } }>(`/api/office/${props.officeId}/assistant/jobs`, {
+    const response = await apiFetch<{ job: { id: string } }>(`/api/office/${props.officeId}/assistant/jobs`, {
       method: 'POST',
       body: {
         job_type: 'send_follow_up',
@@ -2400,7 +2445,7 @@ async function createSession(startNow = false, sendInvitesAfterCreate = false) {
     context: context.value
   }
   try {
-    const result = await $fetch<{ session: OfficeMeetingSessionRow }>(`/api/office/${props.officeId}/meetings`, {
+    const result = await apiFetch<{ session: OfficeMeetingSessionRow }>(`/api/office/${props.officeId}/meetings`, {
       method: 'POST',
       body: {
         zone_id: zoneId.value,
@@ -2437,7 +2482,7 @@ async function createSession(startNow = false, sendInvitesAfterCreate = false) {
     await Promise.all([refreshArtifacts(), refreshActionItems()])
     if (sendInvitesAfterCreate) {
       try {
-        const response = await $fetch<{ invited: number, invitedAt: string }>(`/api/office/${props.officeId}/meetings/${result.session.id}/invite`, {
+        const response = await apiFetch<{ invited: number, invitedAt: string }>(`/api/office/${props.officeId}/meetings/${result.session.id}/invite`, {
           method: 'POST',
           body: {
             invite_url: draftMeetingInviteUrl(result.session.id, draft),
@@ -2560,12 +2605,13 @@ watch(meetings, (rows) => {
   if (!selectedMeetingId.value && rows[0]) selectedMeetingId.value = rows[0].id
 }, { immediate: true })
 
-watch(selectedMeetingId, () => {
+watch(selectedMeetingId, async () => {
   meetingQuestion.value = ''
   meetingAnswer.value = ''
   meetingAnswerSources.value = []
   meetingAnswerError.value = ''
-})
+  await Promise.all([refreshArtifacts(), refreshActionItems()])
+}, { immediate: true })
 
 watch(() => props.refreshKey, async () => {
   await refresh()
@@ -2577,11 +2623,20 @@ watch(() => props.refreshKey, async () => {
   await Promise.all([refreshArtifacts(), refreshActionItems()])
 })
 
-watch(() => props.officeId, () => {
+watch(() => props.officeId, async () => {
   meetingMemoryQuestion.value = ''
   meetingMemoryAnswer.value = ''
   meetingMemorySources.value = []
   meetingMemoryError.value = ''
+  selectedMeetingId.value = null
+  await Promise.all([
+    refresh(),
+    refreshSettings(),
+    refreshLobbies(),
+    refreshOffice(),
+    refreshLobbyState()
+  ])
+  await Promise.all([refreshArtifacts(), refreshActionItems()])
 })
 
 watch(() => props.targetMeetingId, async (meetingId) => {
@@ -3067,7 +3122,7 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="rounded-md bg-white/[0.06] px-2 py-1 text-xs font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-              @click="refresh"
+              @click="() => refresh()"
             >
               Retry
             </button>
@@ -3926,7 +3981,7 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="rounded-md bg-white/[0.06] px-2 py-1 font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-                  @click="refreshActionItems"
+                  @click="() => refreshActionItems()"
                 >
                   Retry
                 </button>
@@ -4213,7 +4268,7 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="rounded-md bg-white/[0.06] px-2 py-1 font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-                @click="refreshArtifacts"
+                @click="() => refreshArtifacts()"
               >
                 Retry
               </button>

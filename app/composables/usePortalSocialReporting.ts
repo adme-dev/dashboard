@@ -4,6 +4,10 @@
 import type { ReportOverview } from '~/composables/useSocialReporting'
 
 export function usePortalSocialReporting() {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  ) => Promise<T>
   const overview = ref<ReportOverview | null>(null)
   const aiSummary = ref<string | null>(null)
   const loading = ref(false)
@@ -19,7 +23,7 @@ export function usePortalSocialReporting() {
   async function load() {
     loading.value = true
     try {
-      overview.value = await $fetch<ReportOverview>('/api/client-portal/social/reporting/overview', { query: query() })
+      overview.value = await apiFetch<ReportOverview>('/api/client-portal/social/reporting/overview', { query: query() })
       aiSummary.value = null
     } finally {
       loading.value = false
@@ -28,7 +32,7 @@ export function usePortalSocialReporting() {
 
   async function generateSummary() {
     if (!overview.value) return
-    const r = await $fetch<{ summary: string | null }>('/api/client-portal/social/reporting/ai-summary', {
+    const r = await apiFetch<{ summary: string | null }>('/api/client-portal/social/reporting/ai-summary', {
       method: 'POST', body: { periodLabel: `the last ${days.value} days`, kpis: overview.value.kpis },
     })
     aiSummary.value = r.summary

@@ -4,6 +4,7 @@ definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 const { user } = useAuth()
 const toast = useToast()
 const isAdmin = computed(() => user.value?.role === 'owner' || user.value?.role === 'admin')
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const {
   conversations, activeConversation, messages,
@@ -222,7 +223,7 @@ async function runAdvisor(prompt: string) {
     // Create a dedicated advisor conversation if we don't have one (guard against concurrent calls)
     if (!advisorConvId.value) {
       if (!_advisorConvCreating) {
-        _advisorConvCreating = $fetch<any>('/api/agency/ai/chat/conversations', {
+        _advisorConvCreating = apiFetch<any>('/api/agency/ai/chat/conversations', {
           method: 'POST',
           body: { title: 'Financial Advisor' },
         }).then(c => c.id)
@@ -232,7 +233,7 @@ async function runAdvisor(prompt: string) {
     }
 
     // Send directly via API — bypasses useAiChat shared state
-    const result = await $fetch<any>(
+    const result = await apiFetch<any>(
       `/api/agency/ai/chat/conversations/${advisorConvId.value}/messages`,
       { method: 'POST', body: { content: prompt } }
     )
@@ -266,7 +267,7 @@ const reembedType = ref<string | null>(null)
 async function reembedAll() {
   reembedding.value = true
   try {
-    const result = await $fetch<any>('/api/ai/finance/embed', { method: 'POST' })
+    const result = await apiFetch<any>('/api/ai/finance/embed', { method: 'POST' })
     toast.add({ title: 'Done', description: `${result.processed} embedded, ${result.skipped} skipped, ${result.errors} errors`, color: 'success' })
     refreshEmbedStatus()
   } catch (err: any) {
@@ -277,7 +278,7 @@ async function reembedAll() {
 async function reembedSingle(type: string) {
   reembedType.value = type
   try {
-    const result = await $fetch<any>('/api/ai/finance/embed', { method: 'POST', body: { types: [type] } })
+    const result = await apiFetch<any>('/api/ai/finance/embed', { method: 'POST', body: { types: [type] } })
     toast.add({ title: `${type} embedded`, description: result.details?.[0] || 'Done', color: 'success' })
     refreshEmbedStatus()
   } catch (err: any) {
@@ -337,9 +338,9 @@ function fmtAUD(n: number) { return '$' + Math.round(n).toLocaleString('en-AU') 
                 <div class="flex items-center justify-between gap-1">
                   <div class="text-sm font-medium truncate flex-1">{{ conv.title || 'New chat' }}</div>
                   <div class="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <UButton icon="i-lucide-share-2" size="2xs" variant="ghost" color="neutral" @click.stop="handleShare(conv.id)" />
-                    <UButton icon="i-lucide-pin-off" size="2xs" variant="ghost" color="neutral" @click.stop="handlePin(conv.id)" />
-                    <UButton icon="i-lucide-trash-2" size="2xs" variant="ghost" color="neutral" @click.stop="archiveConversation(conv.id)" />
+	                    <UButton icon="i-lucide-share-2" size="xs" variant="ghost" color="neutral" @click.stop="handleShare(conv.id)" />
+	                    <UButton icon="i-lucide-pin-off" size="xs" variant="ghost" color="neutral" @click.stop="handlePin(conv.id)" />
+	                    <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="neutral" @click.stop="archiveConversation(conv.id)" />
                   </div>
                 </div>
                 <div class="text-xs text-[var(--ui-text-muted)] mt-0.5">{{ conv.messageCount }} messages</div>
@@ -360,9 +361,9 @@ function fmtAUD(n: number) { return '$' + Math.round(n).toLocaleString('en-AU') 
               <div class="flex items-center justify-between gap-1">
                 <div class="text-sm font-medium truncate flex-1">{{ conv.title || 'New chat' }}</div>
                 <div class="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <UButton icon="i-lucide-share-2" size="2xs" variant="ghost" color="neutral" @click.stop="handleShare(conv.id)" />
-                  <UButton icon="i-lucide-pin" size="2xs" variant="ghost" color="neutral" @click.stop="handlePin(conv.id)" />
-                  <UButton icon="i-lucide-trash-2" size="2xs" variant="ghost" color="neutral" @click.stop="archiveConversation(conv.id)" />
+	                  <UButton icon="i-lucide-share-2" size="xs" variant="ghost" color="neutral" @click.stop="handleShare(conv.id)" />
+	                  <UButton icon="i-lucide-pin" size="xs" variant="ghost" color="neutral" @click.stop="handlePin(conv.id)" />
+	                  <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="neutral" @click.stop="archiveConversation(conv.id)" />
                 </div>
               </div>
               <div class="text-xs text-[var(--ui-text-muted)] mt-0.5">{{ conv.messageCount }} messages</div>

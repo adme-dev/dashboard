@@ -27,6 +27,10 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 const open = ref(props.defaultOpen ?? false)
 const saving = ref(false)
 const evaluating = ref(false)
@@ -48,31 +52,42 @@ const targetSecondUserId = ref<string | null>(null)
 const targetZoneId = ref<string | null>(null)
 const label = ref('')
 
-const {
-  data: watchesData,
-  refresh: refreshWatches,
-  pending: watchesPending,
-  error: watchesError
-} = useFetch<{ watches: OfficeAssistantWatchRow[] }>(
-  () => `/api/office/${props.officeId}/assistant/watches`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ watches: [] })
-  }
-)
+const watchesData = ref<{ watches: OfficeAssistantWatchRow[] }>({ watches: [] })
+const jobsData = ref<{ jobs: OfficeAssistantJobRow[] }>({ jobs: [] })
+const watchesPending = ref(false)
+const jobsPending = ref(false)
+const watchesError = ref<unknown>(null)
+const jobsError = ref<unknown>(null)
 
-const {
-  data: jobsData,
-  refresh: refreshJobs,
-  pending: jobsPending,
-  error: jobsError
-} = useFetch<{ jobs: OfficeAssistantJobRow[] }>(
-  () => `/api/office/${props.officeId}/assistant/jobs`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ jobs: [] })
+async function refreshWatches() {
+  watchesPending.value = true
+  watchesError.value = null
+  try {
+    watchesData.value = await apiFetch<{ watches: OfficeAssistantWatchRow[] }>(`/api/office/${props.officeId}/assistant/watches`)
+  } catch (error) {
+    watchesError.value = error
+  } finally {
+    watchesPending.value = false
   }
-)
+}
+
+async function refreshJobs() {
+  jobsPending.value = true
+  jobsError.value = null
+  try {
+    jobsData.value = await apiFetch<{ jobs: OfficeAssistantJobRow[] }>(`/api/office/${props.officeId}/assistant/jobs`)
+  } catch (error) {
+    jobsError.value = error
+  } finally {
+    jobsPending.value = false
+  }
+}
+
+await Promise.all([refreshWatches(), refreshJobs()])
+watch(() => props.officeId, () => {
+  refreshWatches()
+  refreshJobs()
+})
 
 const watches = computed(() => watchesData.value?.watches ?? [])
 const jobs = computed(() => jobsData.value?.jobs ?? [])
@@ -150,7 +165,7 @@ function conditions() {
 async function createWatch() {
   saving.value = true
   try {
-    await $fetch(`/api/office/${props.officeId}/assistant/watches`, {
+    await apiFetch(`/api/office/${props.officeId}/assistant/watches`, {
       method: 'POST',
       body: {
         watch_type: watchType.value,
@@ -175,7 +190,7 @@ async function createWatch() {
 async function evaluateWatches() {
   evaluating.value = true
   try {
-    const result = await $fetch<{ evaluated: number, triggered: OfficeAssistantJobRow[] }>(
+    const result = await apiFetch<{ evaluated: number, triggered: OfficeAssistantJobRow[] }>(
       `/api/office/${props.officeId}/assistant/evaluate`,
       { method: 'POST' }
     )
@@ -200,7 +215,7 @@ async function evaluateWatches() {
 async function updateJob(job: OfficeAssistantJobRow, action: 'approve' | 'cancel' | 'send' | 'update_draft') {
   actioningJobId.value = `${action}:${job.id}`
   try {
-    const response = await $fetch<{ job: OfficeAssistantJobRow }>(`/api/office/${props.officeId}/assistant/jobs/${job.id}`, {
+    const response = await apiFetch<{ job: OfficeAssistantJobRow }>(`/api/office/${props.officeId}/assistant/jobs/${job.id}`, {
       method: 'PATCH',
       body: action === 'update_draft'
         ? {
@@ -627,7 +642,7 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="rounded-md bg-white/[0.06] px-2 py-1 text-xs font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-              @click="refreshWatches"
+              @click="() => refreshWatches()"
             >
               Retry
             </button>
@@ -688,7 +703,7 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="rounded-md bg-white/[0.06] px-2 py-1 text-xs font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-                @click="refreshJobs"
+                @click="() => refreshJobs()"
               >
                 Retry
               </button>

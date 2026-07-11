@@ -15,6 +15,10 @@ definePageMeta({
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
 
 // Search input ref for keyboard shortcut
 const searchInputRef = ref<HTMLInputElement | null>(null)
@@ -28,7 +32,10 @@ const currentSortConfig = ref<SortRule[]>([])
 const groupBy = ref<string | undefined>(undefined)
 
 // Fetch workspaces for sidebar
-const { data: workspacesData } = useLazyFetch('/api/agency/workspaces')
+const workspacesData = ref<any>({ workspaces: [] })
+async function refreshWorkspaces() {
+  workspacesData.value = await apiFetch('/api/agency/workspaces').catch(() => ({ workspaces: [] }))
+}
 const workspaces = computed(() => (workspacesData.value as any)?.workspaces || [])
 
 const selectedWorkspace = computed(() =>
@@ -48,32 +55,42 @@ const sidebarTitle = computed(() => {
 })
 
 // Fetch team members for assignee dropdown
-const { data: teamMembersData } = useLazyFetch('/api/agency/team-members', {
-  query: { active: 'true' }
-})
+const teamMembersData = ref<any>({ members: [] })
+async function refreshTeamMembers() {
+  teamMembersData.value = await apiFetch('/api/agency/team-members', {
+    query: { active: 'true' },
+  }).catch(() => ({ members: [] }))
+}
 const teamMembers = computed(() => (teamMembersData.value as any)?.members || [])
 
 // Fetch projects for project dropdown
-const { data: projectsData } = useLazyFetch('/api/agency/projects', {
-  query: { status: 'active' }
-})
+const projectsData = ref<any[]>([])
+async function refreshProjects() {
+  projectsData.value = await apiFetch<any[]>('/api/agency/projects', {
+    query: { status: 'active' },
+  }).catch(() => [])
+}
 const projects = computed(() => (projectsData.value as any[]) || [])
 
 // Fetch statuses based on selected workspace/department
-const { data: statusesData } = useLazyFetch('/api/agency/statuses', {
-  query: computed(() => ({
-    departmentId: currentDepartmentId.value,
-    workspaceId: !currentDepartmentId.value ? currentWorkspaceId.value : undefined
-  }))
-})
+const statusesData = ref<any[]>([])
+async function refreshStatuses() {
+  statusesData.value = await apiFetch<any[]>('/api/agency/statuses', {
+    query: {
+      departmentId: currentDepartmentId.value,
+      workspaceId: !currentDepartmentId.value ? currentWorkspaceId.value : undefined,
+    },
+  }).catch(() => [])
+}
 const statuses = computed(() => (statusesData.value as any[]) || [])
 
 // Fetch tags (labels) based on selected department
-const { data: tagsData, refresh: refreshTags } = useLazyFetch('/api/agency/tags', {
-  query: computed(() => ({
-    limit: 100
-  }))
-})
+const tagsData = ref<any[]>([])
+async function refreshTags() {
+  tagsData.value = await apiFetch<any[]>('/api/agency/tags', {
+    query: { limit: 100 },
+  }).catch(() => [])
+}
 const labels = computed(() => (tagsData.value as any[]) || [])
 
 // Refresh labels list
@@ -95,8 +112,27 @@ const taskPanelTabs = [
   { id: 'ai', label: 'AI', icon: 'i-lucide-sparkles' },
 ]
 
-const { data: taskData, execute: fetchTask } = useFetch<Task>(() => `/api/agency/tasks/${selectedTaskId.value!}`, { immediate: false, watch: false })
+const taskData = ref<Task | null>(null)
+async function fetchTask() {
+  if (!selectedTaskId.value) {
+    taskData.value = null
+    return
+  }
+  taskData.value = await apiFetch<Task>(`/api/agency/tasks/${selectedTaskId.value}`).catch(() => null)
+}
 const selectedTask = computed(() => taskData.value || null)
+
+await Promise.all([
+  refreshWorkspaces(),
+  refreshTeamMembers(),
+  refreshProjects(),
+  refreshStatuses(),
+  refreshTags(),
+])
+
+watch([currentWorkspaceId, currentDepartmentId], () => {
+  void refreshStatuses()
+})
 
 // Keyboard nav highlighted task (separate from detail panel selectedTask)
 const navTask = ref<Task | null>(null)
@@ -206,7 +242,7 @@ async function saveCurrentView() {
   }
 
   try {
-    await $fetch('/api/agency/views/saved', {
+    await apiFetch('/api/agency/views/saved', {
       method: 'POST',
       body: {
         departmentId: currentDepartmentId.value,

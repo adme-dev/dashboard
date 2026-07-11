@@ -3,7 +3,19 @@ import type { SocialAutomationRule } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
-const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+const clientsData = ref<any>([])
+
+async function refreshClients() {
+  clientsData.value = await apiFetch('/api/agency/clients', {
+    query: { limit: 200 },
+  }).catch(() => [])
+}
+
+await refreshClients()
 const clients = computed<any[]>(() => {
   const d = clientsData.value as any
   return Array.isArray(d) ? d : (d?.clients ?? [])
@@ -11,10 +23,27 @@ const clients = computed<any[]>(() => {
 const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
 const clientId = ref<string | null>(clients.value[0]?.id ?? null)
 
-const { data: rules, refresh, pending } = await useFetch<SocialAutomationRule[]>(
-  '/api/agency/social/inbox/automation-rules',
-  { query: { clientId }, default: () => [], watch: [clientId] },
-)
+const rules = ref<SocialAutomationRule[]>([])
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    rules.value = await apiFetch<SocialAutomationRule[]>('/api/agency/social/inbox/automation-rules', {
+      query: { clientId: clientId.value },
+    })
+  } catch {
+    rules.value = []
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
+
+watch(clientId, () => {
+  void refresh()
+})
 
 const toast = useToast()
 const editorOpen = ref(false)
@@ -70,8 +99,8 @@ async function save() {
     channel_type: e.channel_type === '__all__' ? null : e.channel_type,
   }
   try {
-    if (e.id) await $fetch(`/api/agency/social/inbox/automation-rules/${e.id}`, { method: 'PATCH', body: payload })
-    else await $fetch('/api/agency/social/inbox/automation-rules', { method: 'POST', body: payload })
+    if (e.id) await apiFetch(`/api/agency/social/inbox/automation-rules/${e.id}`, { method: 'PATCH', body: payload })
+    else await apiFetch('/api/agency/social/inbox/automation-rules', { method: 'POST', body: payload })
     editorOpen.value = false
     await refresh()
     toast.add({ title: 'Saved', color: 'success' })
@@ -80,11 +109,11 @@ async function save() {
   }
 }
 async function toggleEnabled(r: SocialAutomationRule) {
-  await $fetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'PATCH', body: { client_id: r.client_id, enabled: !r.enabled } })
+  await apiFetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'PATCH', body: { client_id: r.client_id, enabled: !r.enabled } })
   await refresh()
 }
 async function remove(r: SocialAutomationRule) {
-  await $fetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'DELETE', query: { clientId: r.client_id } })
+  await apiFetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'DELETE', query: { clientId: r.client_id } })
   await refresh()
 }
 const modeColor = (m: string) => (({ off: 'neutral', suggest: 'info', approval: 'warning', autopilot: 'success' } as Record<string, string>)[m] || 'neutral')

@@ -5,7 +5,17 @@ definePageMeta({ layout: 'agency' })
 useHead({ title: 'CRM — XeroFlow Agency' })
 
 // Clients to pick from (reuse the existing agency clients endpoint — returns a bare array).
-const { data: clientsData } = await useFetch<{ id: string, name: string }[]>('/api/agency/clients')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+const clientsData = ref<{ id: string, name: string }[]>([])
+
+async function refreshClients() {
+  clientsData.value = await apiFetch<{ id: string, name: string }[]>('/api/agency/clients').catch(() => [])
+}
+
+await refreshClients()
 const clientOptions = computed(() => (clientsData.value ?? []).map(c => ({ label: c.name, value: c.id })))
 
 const clientId = useState<string | null>('crm-active-client', () => null)
@@ -23,10 +33,17 @@ const tabItems = [
 // Custom config objects for the active client + the verticals that drive the designer.
 const toast = useToast()
 const { objects, refresh: refreshObjects } = useCrmObjectDefs(clientId)
-const { data: verticalsData, refresh: refreshVerticals } = await useFetch<{ all: CrmVertical[], enabled: string[] }>('/api/crm/verticals', {
-  query: computed(() => ({ client_id: clientId.value ?? '' })),
-  watch: [clientId],
-  default: () => ({ all: [], enabled: ['generic'] }),
+const verticalsData = ref<{ all: CrmVertical[], enabled: string[] }>({ all: [], enabled: ['generic'] })
+
+async function refreshVerticals() {
+  verticalsData.value = await apiFetch<{ all: CrmVertical[], enabled: string[] }>('/api/crm/verticals', {
+    query: { client_id: clientId.value ?? '' },
+  }).catch(() => ({ all: [], enabled: ['generic'] }))
+}
+
+await refreshVerticals()
+watch(clientId, () => {
+  void refreshVerticals()
 })
 const enabledSet = computed(() => new Set(verticalsData.value?.enabled ?? []))
 const configVerticals = computed(() => [...enabledSet.value].filter(v => v !== 'generic'))
@@ -41,7 +58,7 @@ async function toggleVertical(key: string, enabled: boolean) {
   if (!clientId.value) return
   pendingVertical.value = key
   try {
-    await $fetch('/api/crm/verticals/assign', { method: 'POST', body: { client_id: clientId.value, vertical_key: key, enabled } })
+    await apiFetch('/api/crm/verticals/assign', { method: 'POST', body: { client_id: clientId.value, vertical_key: key, enabled } })
     await Promise.all([refreshVerticals(), refreshObjects()])
     toast.add({ title: `${key} ${enabled ? 'enabled' : 'disabled'}`, color: 'success' })
   } catch (e: any) {

@@ -1,5 +1,20 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/agency/clients')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any[] | { clients?: any[] } | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshMyClients() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/clients')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load clients widget', error)
+    status.value = 'error'
+  }
+}
+
+await refreshMyClients()
 
 const CAP = 5
 // /api/agency/clients returns a bare array (not { clients }); tolerate both shapes.

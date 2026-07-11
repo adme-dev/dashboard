@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 
 const params = z.object({
   status: z.enum(['overallocated', 'underutilized', 'all']).default('all'),
@@ -12,7 +13,7 @@ export type CapacityDeps = {
 }
 
 const defaultDeps: CapacityDeps = {
-  fetch: (ctx) => $fetch('/api/agency/capacity', { headers: ctx.event.headers as any }),
+  fetch: (ctx) => aiInternalFetch('/api/agency/capacity', { headers: ctx.event.headers as any }),
 }
 
 /**

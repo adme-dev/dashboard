@@ -5,6 +5,10 @@ const props = defineProps<{ clientId: string }>()
 const clientId = toRef(props, 'clientId')
 const { data, pending, refresh, search, lifecycle, tag, filters, create, update, remove, importCsv } = useCrmPeople(clientId)
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 // F9 — advanced filters, row selection + bulk, and export.
 const selected = ref<Set<string>>(new Set())
@@ -49,9 +53,18 @@ const fieldsOpen = ref(false)
 const base = inject<string>('crmApiBase', '/api/crm')
 const isAgency = base === '/api/crm'
 const scoreQuery = computed(() => ({ client_id: clientId.value, target_type: 'person' }))
-const { data: scoreData, refresh: refreshScores } = useFetch<{ byTarget: Record<string, { total_score: number, grade: string }> }>('/api/crm/scoring', {
-  query: scoreQuery, watch: [scoreQuery], immediate: isAgency, default: () => ({ byTarget: {} }),
-})
+const scoreData = ref<{ byTarget: Record<string, { total_score: number, grade: string }> }>({ byTarget: {} })
+
+async function refreshScores() {
+  if (!isAgency) return
+  scoreData.value = await apiFetch<{ byTarget: Record<string, { total_score: number, grade: string }> }>('/api/crm/scoring', {
+    query: scoreQuery.value,
+  })
+}
+
+watch(scoreQuery, () => {
+  refreshScores()
+}, { immediate: true })
 const scoreOf = (id: string) => scoreData.value?.byTarget?.[id] ?? null
 const gradeColor: Record<string, string> = { Hot: 'success', Warm: 'warning', Cold: 'neutral' }
 
@@ -85,7 +98,7 @@ const rescoring = ref(false)
 async function rescoreAll() {
   rescoring.value = true
   try {
-    await $fetch('/api/crm/scoring/compute', { method: 'POST', body: { client_id: clientId.value, target_type: 'person', all: true } })
+    await apiFetch('/api/crm/scoring/compute', { method: 'POST', body: { client_id: clientId.value, target_type: 'person', all: true } })
     await refreshScores()
     toast.add({ title: 'Scores recomputed', color: 'success' })
   } catch (e: any) {

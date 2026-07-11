@@ -13,6 +13,7 @@ const props = defineProps<{
   replyingTo?: ChatMessage | null
   channelId?: string
 }>()
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 const emit = defineEmits<{
   'send': [content: string, mentions?: string[], attachments?: Array<{ url: string; name: string; type: string; size: number }>, replyToId?: number]
@@ -122,7 +123,14 @@ const mentionStartPos = ref(-1)
 const selectedMentionIndex = ref(0)
 
 // Fetch team members for mention autocomplete
-const { data: teamMembersData } = useFetch('/api/agency/team-members')
+const teamMembersData = ref<any | null>(null)
+
+async function refreshTeamMembers() {
+  teamMembersData.value = await apiFetch<any>('/api/agency/team-members')
+}
+
+refreshTeamMembers()
+
 const teamMembers = computed(() => ((teamMembersData.value as any)?.members as any[]) || [])
 
 const filteredMentions = computed(() => {

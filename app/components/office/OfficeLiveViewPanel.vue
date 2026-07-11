@@ -11,13 +11,25 @@ const open = ref(props.defaultOpen ?? false)
 const refreshing = ref(false)
 const presenceFilter = ref<'online' | 'all' | 'guests'>('online')
 
-const { data, pending, refresh, error } = useFetch<OfficePresenceSummary>(
-  () => `/api/office/${props.officeId}/presence`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ locations: [], onlineCount: 0, zoneOccupancy: {} })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<OfficePresenceSummary>({ locations: [], onlineCount: 0, zoneOccupancy: {} })
+const pending = ref(false)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<OfficePresenceSummary>(`/api/office/${props.officeId}/presence`)
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
   }
-)
+}
+
+await refresh()
+watch(() => props.officeId, () => { refresh() })
 
 const locations = computed(() => data.value?.locations ?? [])
 const onlineLocations = computed(() => locations.value.filter(location => location.is_online))

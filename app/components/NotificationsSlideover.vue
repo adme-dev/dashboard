@@ -15,6 +15,7 @@ const {
 } = useNotifications()
 
 const router = useRouter()
+const apiFetch = $fetch as <T>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
 type ReasonBadge = { label: string; color: 'error' | 'info' | 'neutral'; variant: 'solid' | 'subtle' }
 
@@ -36,7 +37,7 @@ async function loadWhy(notificationId: string) {
   if (whyCache.value[notificationId] || whyLoading.value[notificationId]) return
   whyLoading.value[notificationId] = true
   try {
-    const data = await $fetch<{ reason: string }>(`/api/notifications/${notificationId}/why`)
+    const data = await apiFetch<{ reason: string }>(`/api/notifications/${notificationId}/why`)
     whyCache.value[notificationId] = data.reason
   } catch {
     whyCache.value[notificationId] = 'Could not load explanation.'
@@ -77,10 +78,10 @@ async function loadDigest() {
     // narrative=true asks the server to ask Groq for a per-board sentence.
     // It can be slow (3-5s) so we don't block the count layout — load counts
     // first, then call again with narrative=true and merge.
-    digest.value = await $fetch<DigestResponse>(`/api/notifications/digest?range=${digestRange.value}`)
+    digest.value = await apiFetch<DigestResponse>(`/api/notifications/digest?range=${digestRange.value}`)
     digestLoading.value = false
     try {
-      const enriched = await $fetch<DigestResponse>(`/api/notifications/digest?range=${digestRange.value}&narrative=true`)
+      const enriched = await apiFetch<DigestResponse>(`/api/notifications/digest?range=${digestRange.value}&narrative=true`)
       // Only patch in narratives if the digest tab is still active and range hasn't changed
       if (digest.value && digest.value.range === enriched.range) {
         for (const b of enriched.boards) {
@@ -123,7 +124,7 @@ watch(isNotificationsSlideoverOpen, async (isOpen) => {
       const key = 'notif-importance-refined'
       if (!sessionStorage.getItem(key)) {
         sessionStorage.setItem(key, String(Date.now()))
-        $fetch('/api/notifications/refine-scores', { method: 'POST' })
+        apiFetch('/api/notifications/refine-scores', { method: 'POST' })
           .then(async () => {
             // Re-fetch with current sort to pick up updated scores
             await fetchNotifications({ sort: inboxSort.value })

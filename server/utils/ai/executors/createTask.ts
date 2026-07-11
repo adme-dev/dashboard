@@ -10,8 +10,16 @@ import type { ActionExecutor, ExecutorResult } from './types'
  */
 export type TaskPoster = (body: ReturnType<typeof proposalToTaskBody>, ctx: ToolContext) => Promise<{ id: string }>
 
+const internalFetch = (<T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => Promise<T>
+
 const defaultPoster: TaskPoster = (body, ctx) =>
-  $fetch<{ id: string }>('/api/agency/tasks', { method: 'POST', body, headers: ctx.event.headers as any })
+  internalFetch<{ id: string }>('/api/agency/tasks', { method: 'POST', body, headers: ctx.event.headers as any })
 
 export function makeCreateTaskExecutor(post: TaskPoster = defaultPoster): ActionExecutor {
   return {

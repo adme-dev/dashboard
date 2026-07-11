@@ -12,6 +12,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 const query = ref('')
 const selectedIndex = ref(0)
 const forwarding = ref(false)
@@ -49,7 +50,7 @@ function channelIcon(ch: ChatChannel): string {
 async function forwardTo(ch: ChatChannel) {
   forwarding.value = true
   try {
-    await $fetch(`/api/chat/channels/${ch.id}/messages/forward`, {
+    await apiFetch(`/api/chat/channels/${ch.id}/messages/forward`, {
       method: 'POST',
       body: {
         originalChannelId: props.message.channel_id,

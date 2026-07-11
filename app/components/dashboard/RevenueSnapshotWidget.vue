@@ -1,5 +1,22 @@
 <script setup lang="ts">
-const { data, status } = useLazyFetch('/api/xero/reports/pnl', { server: false })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshRevenueSnapshot() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/xero/reports/pnl')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load revenue snapshot', error)
+    status.value = 'error'
+  }
+}
+
+onMounted(() => {
+  refreshRevenueSnapshot()
+})
 
 const pnl = computed(() => data.value as any)
 

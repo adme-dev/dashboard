@@ -14,6 +14,7 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const { user } = useAuth()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const {
   activeConversation,
@@ -106,7 +107,7 @@ async function handleQuickAction(action: { label: string; prompt: string }) {
   try {
     await ensureConversation()
 
-    const result = await $fetch<any>('/api/agency/ai/chat/quick-action', {
+    const result = await apiFetch<any>('/api/agency/ai/chat/quick-action', {
       method: 'POST',
       body: { action: action.prompt, context },
     })

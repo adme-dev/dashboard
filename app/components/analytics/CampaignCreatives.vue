@@ -17,15 +17,36 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   loaded: [creatives: any[]]
 }>()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  query?: Record<string, unknown>
+}) => Promise<T>
 
 const CREATIVE_PLATFORMS = ['meta', 'google_ads']
 const isSupported = computed(() => CREATIVE_PLATFORMS.includes(props.platform))
 const useCached = computed(() => props.initialData != null)
 
-const { data, status } = useFetch(() => `${props.apiBase}/creatives`, {
-  query: computed(() => ({ campaignId: props.mediaSpendId })),
-  immediate: isSupported.value && !useCached.value,
-})
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function fetchCreatives() {
+  if (!isSupported.value || useCached.value) return
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<any>(`${props.apiBase}/creatives`, {
+      query: { campaignId: props.mediaSpendId },
+    })
+    status.value = 'success'
+  } catch {
+    data.value = null
+    status.value = 'error'
+  }
+}
+
+watch([() => props.mediaSpendId, () => props.apiBase, isSupported, useCached], () => {
+  fetchCreatives()
+}, { immediate: true })
 
 const creatives = ref<any[]>([])
 const hasCreatives = ref(false)
@@ -48,7 +69,7 @@ watch(data, async (val) => {
   if (creatives.value.length === 0 && isSupported.value && !syncing.value && !syncFailed.value) {
     syncing.value = true
     try {
-      const syncResult = await $fetch<any>(`${props.apiBase}/creatives/sync`, {
+      const syncResult = await apiFetch<any>(`${props.apiBase}/creatives/sync`, {
         method: 'POST',
         body: { campaignId: props.mediaSpendId },
       })
@@ -116,7 +137,7 @@ const showPreview = computed({
     </div>
 
     <!-- Creative preview modal -->
-    <UModal v-model:open="showPreview" :ui="{ width: 'sm:max-w-lg' }">
+    <UModal v-model:open="showPreview" :ui="{ content: 'sm:max-w-lg' }">
       <template #content>
         <div v-if="previewCreative" class="p-5">
           <div class="flex items-start justify-between mb-4">

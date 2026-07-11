@@ -16,9 +16,21 @@ function toISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const { data, status } = useFetch<AnalyticsOverview>('/api/portal/analytics/overview', {
-  query: { startDate: toISO(thirtyDaysAgo), endDate: toISO(now) }
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<AnalyticsOverview | null>(null)
+const status = ref<'pending' | 'success' | 'error'>('pending')
+
+try {
+  data.value = await apiFetch<AnalyticsOverview>('/api/portal/analytics/overview', {
+    query: { startDate: toISO(thirtyDaysAgo), endDate: toISO(now) }
+  })
+  status.value = 'success'
+} catch {
+  status.value = 'error'
+}
 
 const totals = computed(() => data.value?.totals || null)
 const prev = computed(() => data.value?.previousPeriod || null)

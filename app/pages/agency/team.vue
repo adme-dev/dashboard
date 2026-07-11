@@ -46,14 +46,36 @@ const route = useRoute()
 const departmentFilter = ref<string | null>(null)
 const roleFilter = ref<string | null>(null)
 const activeFilter = ref('true')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
 
 // Fetch team members
-const { data, pending, refresh } = await useFetch<TeamMembersResponse>('/api/agency/team-members', {
-  query: {
-    active: activeFilter,
-    department: departmentFilter,
-    role: roleFilter
+const data = ref<TeamMembersResponse | null>(null)
+const pending = ref(false)
+
+const teamQuery = computed(() => ({
+  active: activeFilter.value,
+  department: departmentFilter.value || undefined,
+  role: roleFilter.value || undefined
+}))
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<TeamMembersResponse>('/api/agency/team-members', { query: teamQuery.value })
+  } finally {
+    pending.value = false
   }
+}
+
+onMounted(() => {
+  void refresh()
+})
+
+watch(teamQuery, () => {
+  void refresh()
 })
 
 const toSafeNumber = (value: unknown) => {
@@ -116,7 +138,10 @@ const columns: TableColumn<TeamMember>[] = [
   { id: 'actions', accessorKey: 'id', header: '' }
 ]
 
-const tableMember = (row: TeamTableRow) => normalizeMember('original' in row ? row.original : row)
+const tableMember = (row: TeamTableRow) => {
+  const original = (row as { original?: Partial<TeamMember> }).original
+  return normalizeMember(original ?? (row as Partial<TeamMember>))
+}
 
 // Member detail modal
 const showMemberModal = ref(false)
@@ -224,20 +249,20 @@ const saveMember = async () => {
   saving.value = true
   try {
     if (editingMember.value) {
-      await $fetch(`/api/agency/team-members/${editingMember.value.id}`, {
+      await apiFetch(`/api/agency/team-members/${editingMember.value.id}`, {
         method: 'PUT',
         body: memberForm.value
       })
       toast.add({ title: 'Team member updated', color: 'success' })
     } else {
-      await $fetch('/api/agency/team-members', {
+      await apiFetch('/api/agency/team-members', {
         method: 'POST',
         body: memberForm.value
       })
       toast.add({ title: 'Team member created', color: 'success' })
     }
     showCreateModal.value = false
-    refresh()
+    await refresh()
   } catch (error: unknown) {
     toast.add({
       title: editingMember.value ? 'Failed to update team member' : 'Failed to create team member',
@@ -264,7 +289,7 @@ const deleteMember = async () => {
 
   deleting.value = true
   try {
-    const result = await $fetch<{ deactivated?: boolean }>(`/api/agency/team-members/${deletingMember.value.id}`, {
+    const result = await apiFetch<{ deactivated?: boolean }>(`/api/agency/team-members/${deletingMember.value.id}`, {
       method: 'DELETE'
     })
     if (result.deactivated) {
@@ -273,7 +298,7 @@ const deleteMember = async () => {
       toast.add({ title: 'Team member deleted', color: 'success' })
     }
     showDeleteModal.value = false
-    refresh()
+    await refresh()
   } catch (error: unknown) {
     toast.add({
       title: 'Failed to delete team member',

@@ -15,6 +15,10 @@ interface VoiceResponse {
 const MAX_RECORDING_DURATION = 60_000 // 60 seconds
 
 export function useVoiceChat() {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown }
+  ) => Promise<T>
   const isAvailable = ref(true) // assume available until first failure
   const isRecording = ref(false)
   const isProcessing = ref(false)
@@ -171,7 +175,7 @@ export function useVoiceChat() {
         formData.append('mentionedEntities', JSON.stringify(entities))
       }
 
-      const result = await $fetch<VoiceResponse>(
+      const result = await apiFetch<VoiceResponse>(
         `/api/agency/ai/chat/conversations/${conversationId}/voice`,
         {
           method: 'POST',
@@ -223,7 +227,7 @@ export function useVoiceChat() {
       return
     }
 
-    const blob = new Blob([byteArray], { type: mimeType })
+    const blob = new Blob([byteArray.buffer.slice(0) as ArrayBuffer], { type: mimeType })
     currentAudioUrl = URL.createObjectURL(blob)
 
     return new Promise<void>((resolve) => {

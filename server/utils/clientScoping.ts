@@ -1,7 +1,7 @@
 import { createError, type H3Event } from 'h3'
 import { queryRows } from './db'
 import { kvGet, kvPut, kvDelete } from './kv'
-import { PERMISSIONS } from './permissions'
+import { roleHasPermission } from './permissions'
 import type { User } from './auth'
 
 const CACHE_TTL = 300 // 5 minutes
@@ -32,11 +32,11 @@ export async function getAssignedClientIds(event: H3Event, userId: string): Prom
  * - Everyone else → 403
  */
 export async function resolveInvoiceAccess(event: H3Event, user: User): Promise<'all' | string[]> {
-  const isFinance = PERMISSIONS.FINANCE.includes(user.role)
+  const isFinance = roleHasPermission(user.role, 'FINANCE')
     || user.permissionGroups?.includes('FINANCE')
   if (isFinance) return 'all'
 
-  const hasInvoiceAccess = PERMISSIONS.INVOICE_OWN_CLIENTS.includes(user.role)
+  const hasInvoiceAccess = roleHasPermission(user.role, 'INVOICE_OWN_CLIENTS')
     || user.permissionGroups?.includes('INVOICE_OWN_CLIENTS')
   if (!hasInvoiceAccess) {
     throw createError({ statusCode: 403, statusMessage: 'No invoice access' })

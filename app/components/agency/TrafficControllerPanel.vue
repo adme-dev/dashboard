@@ -29,6 +29,7 @@ const prompt = ref('Review spend, publishing, and finance signals and recommend 
 const pending = ref(false)
 const error = ref<string | null>(null)
 const result = ref<TrafficControllerResponse | null>(null)
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 function priorityColor(priority: string) {
   if (priority === 'high') return 'warning'
@@ -42,7 +43,7 @@ async function runTrafficController() {
   pending.value = true
   error.value = null
   try {
-    result.value = await $fetch<TrafficControllerResponse>('/api/agency/agents/traffic-controller/ask', {
+    result.value = await apiFetch<TrafficControllerResponse>('/api/agency/agents/traffic-controller/ask', {
       method: 'POST',
       body: {
         prompt: cleanPrompt,

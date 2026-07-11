@@ -9,13 +9,17 @@ const feedsState = reactive({
   feedOverrides: new Map<number, Record<string, any>>(),
   isPreviewMode: false,
 })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; params?: Record<string, unknown> },
+) => Promise<T>
 
 export function useBannerFeeds() {
   const toast = useToast()
 
   async function loadFeeds(projectId: string) {
     try {
-      const data = await $fetch<BannerFeed[]>('/api/agency/banner-studio/feeds', {
+      const data = await apiFetch<BannerFeed[]>('/api/agency/banner-studio/feeds', {
         params: { projectId },
       })
       feedsState.feeds = data
@@ -30,7 +34,7 @@ export function useBannerFeeds() {
     formData.append('projectId', projectId)
     formData.append('name', name)
 
-    const feed = await $fetch<BannerFeed>('/api/agency/banner-studio/feeds', {
+    const feed = await apiFetch<BannerFeed>('/api/agency/banner-studio/feeds', {
       method: 'POST',
       body: formData,
     })
@@ -39,7 +43,7 @@ export function useBannerFeeds() {
   }
 
   async function deleteFeed(feedId: string) {
-    await $fetch(`/api/agency/banner-studio/feeds/${feedId}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/banner-studio/feeds/${feedId}`, { method: 'DELETE' })
     feedsState.feeds = feedsState.feeds.filter(f => f.id !== feedId)
     if (feedsState.activeFeedId === feedId) {
       feedsState.activeFeedId = null
@@ -54,7 +58,7 @@ export function useBannerFeeds() {
     feedsState.previewRowIndex = 0
 
     try {
-      const { rows } = await $fetch<{ rows: Record<string, string>[]; total: number }>(
+      const { rows } = await apiFetch<{ rows: Record<string, string>[]; total: number }>(
         `/api/agency/banner-studio/feeds/${feedId}/rows`,
         { params: { offset: 0, limit: 200 } },
       )

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
+import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from '@nuxt/ui'
 import { socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
 
@@ -7,6 +7,7 @@ const route = useRoute()
 const open = ref(false)
 const selectedWorkspace = ref<string | null>(null)
 const isClientAnalyticsRoute = computed(() => route.path.startsWith('/agency/analytics/client/'))
+const layoutFetch = $fetch as <T>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 // The Activity Hub floating bubble is hidden on the full-screen Chat surface —
 // it duplicates chat and overlaps the bottom-anchored message composer.
@@ -23,6 +24,7 @@ const {
   canAccessReports,
   canAccessCreative,
   canAccessAdmin,
+  canAccessHr,
   canAccessAiTraining,
   canAccessAutomation
 } = useAuth()
@@ -49,9 +51,6 @@ const isSpendOnlyReviewer = computed(() =>
 )
 
 // Fetch workspaces
-const { data: workspacesData } = useLazyFetch('/api/agency/workspaces')
-const workspaces = computed(() => workspacesData.value?.workspaces || [])
-
 interface AgencyWorkspaceBoard {
   name: string
   slug: string
@@ -69,8 +68,23 @@ interface AgencyWorkspace {
   boards?: AgencyWorkspaceBoard[] | null
 }
 
+interface AgencyWorkspacesResponse {
+  workspaces?: AgencyWorkspace[]
+}
+
+const workspaces = ref<AgencyWorkspace[]>([])
+
+onMounted(async () => {
+  try {
+    const data = await layoutFetch<AgencyWorkspacesResponse>('/api/agency/workspaces')
+    workspaces.value = data.workspaces || []
+  } catch {
+    workspaces.value = []
+  }
+})
+
 // Build navigation from workspaces
-const workspaceNav = computed(() => {
+const workspaceNav = computed<NavigationMenuItem[]>(() => {
   // Spend-only reviewer never sees the client workspace list.
   if (isSpendOnlyReviewer.value) return [] as NavigationMenuItem[]
   return (workspaces.value as AgencyWorkspace[]).map(ws => ({
@@ -114,11 +128,16 @@ onBeforeUnmount(() => {
 // Xero connection status — drives XeroFlow section visibility.
 // getCachedData: () => undefined forces a fresh fetch per mount so that after a
 // user connects Xero elsewhere the nav reflects the new state without a hard refresh.
-const { data: xeroStatus } = useLazyFetch('/api/xero/status', {
-  key: 'xero-status-nav',
-  getCachedData: () => undefined
+const xeroConnected = ref(false)
+
+onMounted(async () => {
+  try {
+    const status = await layoutFetch<{ connected?: boolean }>('/api/xero/status')
+    xeroConnected.value = Boolean(status.connected)
+  } catch {
+    xeroConnected.value = false
+  }
 })
-const xeroConnected = computed(() => xeroStatus.value?.connected ?? false)
 
 // Main navigation — organized by feature groups, gated by RBAC
 const mainNav = computed<NavigationMenuItem[]>(() => {
@@ -170,6 +189,15 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     { label: 'Time Reports', icon: 'i-lucide-bar-chart-3', to: '/agency/time/reports', onSelect: close },
     { label: 'Capacity', icon: 'i-lucide-gauge', to: '/agency/capacity', onSelect: close }
   )
+  if (canAccessHr.value) {
+    items.push(
+      { label: 'Department Goals', icon: 'i-lucide-goal', to: '/agency/hr/goals', onSelect: close },
+      { label: 'HR Contract Vault', icon: 'i-lucide-file-lock-2', to: '/agency/hr/contracts', onSelect: close },
+      { label: 'Monday Evidence Scope', icon: 'i-lucide-database-zap', to: '/agency/hr/monday', onSelect: close }
+      ,{ label: 'Monday Evidence Preview', icon: 'i-lucide-eye', to: '/agency/hr/monday/evidence', onSelect: close }
+      ,{ label: 'Monday Governed Import', icon: 'i-lucide-cloud-download', to: '/agency/hr/monday/import', onSelect: close }
+    )
+  }
 
   // Budget Tracker — canAccessMediaBuying
   if (canAccessMediaBuying.value) {
@@ -272,7 +300,13 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   items.push(
     { type: 'label', label: 'Team' },
     { label: 'Team Members', icon: 'i-lucide-users', to: '/agency/team', onSelect: close },
-    { label: 'Teams', icon: 'i-lucide-users-round', to: '/agency/teams', onSelect: close }
+    { label: 'Teams', icon: 'i-lucide-users-round', to: '/agency/teams', onSelect: close },
+    {
+      label: canAccessHr.value ? 'HR Business Review' : 'My Reviews',
+      icon: 'i-lucide-clipboard-check',
+      to: '/agency/hr',
+      onSelect: close
+    }
   )
 
   // Tools — AI Chat + Reports visible to all; Settings/Training/Knowledge admin-only; Automation gated
@@ -379,13 +413,24 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
 })
 
 // Search groups for UDashboardSearch
-const groups = computed(() => [{
+function toCommandPaletteItem(item: NavigationMenuItem): CommandPaletteItem | null {
+  if (!item.to || !item.label) return null
+  return {
+    id: String(item.to),
+    label: String(item.label),
+    icon: typeof item.icon === 'string' ? item.icon : undefined,
+    to: item.to,
+    target: item.target
+  } as CommandPaletteItem
+}
+
+const groups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [{
   id: 'links',
   label: 'Go to',
   items: [
     ...mainNav.value.filter(i => i.type !== 'label'),
     ...footerNav.value
-  ]
+  ].map(toCommandPaletteItem).filter((item): item is CommandPaletteItem => Boolean(item))
 }, {
   id: 'code',
   label: 'Code',

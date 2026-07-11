@@ -17,6 +17,8 @@ export type NotificationType =
   | 'task_status_changed'
   | 'task_due_soon'
   | 'task_overdue'
+  | 'monday_inactive'
+  | 'monday_blocked'
   | 'approval_requested'
   | 'approval_completed'
   | 'approval_response'
@@ -37,6 +39,12 @@ export type NotificationType =
   | 'social_assigned'
   | 'social_sla_breach'
   | 'brief_actioned'
+  | 'hr_review_assigned'
+  | 'hr_review_reminder'
+  | 'hr_review_overdue'
+  | 'hr_interview_scheduled'
+  | 'hr_follow_up_assigned'
+  | 'hr_follow_up_due'
 
 export type NotificationReason =
   | 'mentioned'

@@ -68,10 +68,28 @@ interface DetailResponse {
 
 const id = computed(() => String(route.params.id))
 
-const { data, pending, error, refresh } = await useFetch<DetailResponse>(
-  () => `/api/advisor/recommendations/${id.value}`,
-  { lazy: true }
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
+const data = ref<DetailResponse | null>(null)
+const pending = ref(true)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+
+  try {
+    data.value = await apiFetch<DetailResponse>(`/api/advisor/recommendations/${id.value}`)
+  } catch (fetchError) {
+    error.value = fetchError
+    throw fetchError
+  } finally {
+    pending.value = false
+  }
+}
 
 const rec = computed(() => data.value?.recommendation)
 const events = computed(() => data.value?.events ?? [])
@@ -83,7 +101,7 @@ const posting = ref(false)
 
 async function patchRec(body: Record<string, any>, successMsg: string) {
   try {
-    await $fetch(`/api/advisor/recommendations/${id.value}`, { method: 'PATCH', body })
+    await apiFetch(`/api/advisor/recommendations/${id.value}`, { method: 'PATCH', body })
     toast.add({ title: successMsg, color: 'success' })
     await refresh()
   } catch (err: any) {
@@ -108,7 +126,7 @@ async function postComment() {
   if (!newComment.value.trim()) return
   posting.value = true
   try {
-    await $fetch(`/api/advisor/recommendations/${id.value}/comments`, {
+    await apiFetch(`/api/advisor/recommendations/${id.value}/comments`, {
       method: 'POST',
       body: { body: newComment.value.trim() },
     })
@@ -183,6 +201,12 @@ function renderSnapshotValue(key: string, value: any): string {
   }
   return String(value)
 }
+
+watch(id, () => {
+  refresh()
+})
+
+await refresh()
 </script>
 
 <template>

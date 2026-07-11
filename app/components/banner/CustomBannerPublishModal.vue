@@ -16,6 +16,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 const loadingTags = ref(false)
 const tags = ref<{ type: string; label: string; code: string }[]>([])
 
@@ -24,7 +25,7 @@ watch(() => props.open, async (isOpen) => {
 
   loadingTags.value = true
   try {
-    const data = await $fetch<{ tags: typeof tags.value }>(
+    const data = await apiFetch<{ tags: typeof tags.value }>(
       `/api/agency/banner-studio/custom-instances/${props.instance.id}/tags`,
     )
     tags.value = data.tags

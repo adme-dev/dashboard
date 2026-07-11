@@ -75,11 +75,13 @@ export async function verifyOfficeJwt(
   const [header, payload, sig] = parts as [string, string, string]
   const data = `${header}.${payload}`
   const key = await importKey(secret)
+  const signatureBytes = new Uint8Array(base64UrlDecode(sig))
+  const dataBytes = new Uint8Array(new TextEncoder().encode(data))
   const valid = await crypto.subtle.verify(
     'HMAC',
     key,
-    base64UrlDecode(sig),
-    new TextEncoder().encode(data)
+    signatureBytes,
+    dataBytes
   )
   if (!valid) return null
   let claims: OfficeJwtClaims

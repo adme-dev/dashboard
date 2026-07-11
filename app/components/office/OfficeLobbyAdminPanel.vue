@@ -64,34 +64,52 @@ const form = reactive({
 const lobbyDrafts = reactive<Record<string, LobbyDraft>>({})
 const expandedEmbedLobbyIds = reactive<Record<string, boolean>>({})
 
-const { data, refresh, pending, error } = useFetch<{ lobbies: LobbyWithDestination[] }>(
-  () => `/api/office/${props.officeId}/lobbies`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ lobbies: [] })
-  }
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const data = ref<{ lobbies: LobbyWithDestination[] }>({ lobbies: [] })
+const analyticsData = ref<{ analytics: LobbyAnalytics[] }>({ analytics: [] })
+const settingsData = ref<{ settings: OfficeSettingsRow | null }>({ settings: null })
+const pending = ref(false)
+const analyticsPending = ref(false)
+const error = ref<unknown>(null)
+const analyticsError = ref<unknown>(null)
 
-const {
-  data: analyticsData,
-  refresh: refreshAnalytics,
-  pending: analyticsPending,
-  error: analyticsError
-} = useFetch<{ analytics: LobbyAnalytics[] }>(
-  () => `/api/office/${props.officeId}/lobbies/analytics`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ analytics: [] })
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<{ lobbies: LobbyWithDestination[] }>(`/api/office/${props.officeId}/lobbies`)
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
   }
-)
+}
 
-const { data: settingsData } = useFetch<{ settings: OfficeSettingsRow | null }>(
-  () => `/api/office/${props.officeId}/settings`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ settings: null })
+async function refreshAnalytics() {
+  analyticsPending.value = true
+  analyticsError.value = null
+  try {
+    analyticsData.value = await apiFetch<{ analytics: LobbyAnalytics[] }>(`/api/office/${props.officeId}/lobbies/analytics`)
+  } catch (err) {
+    analyticsError.value = err
+  } finally {
+    analyticsPending.value = false
   }
-)
+}
+
+async function refreshSettings() {
+  settingsData.value = await apiFetch<{ settings: OfficeSettingsRow | null }>(`/api/office/${props.officeId}/settings`)
+}
+
+await Promise.all([refresh(), refreshAnalytics(), refreshSettings()])
+watch(() => props.officeId, () => {
+  refresh()
+  refreshAnalytics()
+  refreshSettings()
+})
 
 const lobbies = computed(() => data.value?.lobbies ?? [])
 const analyticsByLobbyId = computed(() =>
@@ -558,7 +576,7 @@ async function createLobby() {
         ? normalizeIntakeFields(form.intake_fields)
         : [{ id: 'context', label: 'What would you like to discuss?', type: 'textarea' }]
     }
-    await $fetch(`/api/office/${props.officeId}/lobbies`, {
+    await apiFetch(`/api/office/${props.officeId}/lobbies`, {
       method: 'POST',
       body: {
         handle: normalizedHandle.value,
@@ -585,7 +603,7 @@ async function createLobby() {
 async function deactivateLobby(lobby: LobbyWithDestination) {
   saving.value = true
   try {
-    await $fetch(`/api/office/${props.officeId}/lobbies/${lobby.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/office/${props.officeId}/lobbies/${lobby.id}`, { method: 'DELETE' })
     toast.add({ title: 'Lobby deactivated', icon: 'i-lucide-archive', color: 'success', duration: 1600 })
     await refresh()
     await refreshAnalytics()
@@ -622,7 +640,7 @@ async function saveLobbySettings(lobby: LobbyWithDestination) {
       shelf_items: normalizeShelfItems(draft.shelf_items),
       intake_fields: normalizeIntakeFields(draft.intake_fields)
     }
-    await $fetch(`/api/office/${props.officeId}/lobbies/${lobby.id}`, {
+    await apiFetch(`/api/office/${props.officeId}/lobbies/${lobby.id}`, {
       method: 'PATCH',
       body: {
         destination_zone_id: draft.destination_zone_id,
@@ -698,7 +716,7 @@ watch(lobbies, syncLobbyDrafts, { immediate: true })
             <button
               type="button"
               class="rounded-md bg-white/[0.06] px-2 py-1 font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-              @click="refreshAnalytics"
+              @click="() => refreshAnalytics()"
             >
               Retry
             </button>
@@ -777,7 +795,7 @@ watch(lobbies, syncLobbyDrafts, { immediate: true })
             <button
               type="button"
               class="rounded-md bg-white/[0.06] px-2 py-1 text-xs font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-              @click="refresh"
+              @click="() => refresh()"
             >
               Retry
             </button>

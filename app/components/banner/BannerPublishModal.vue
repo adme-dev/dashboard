@@ -11,6 +11,7 @@ const { state, activeLayers } = useBannerStudio()
 const { feedsState } = useBannerFeeds()
 const { getExportCustomFonts } = useBannerFonts()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Feed attachment
 const selectedFeedId = ref<string | null>(null)
@@ -47,14 +48,22 @@ const selected = ref<Set<string>>(new Set(state.setKeys))
 
 // Published banners for this project
 const hasProjectId = computed(() => !!state.project?.id)
-const { data: publishedBanners, refresh: refreshPublished } = useFetch<BannerPublished[]>(
-  () => `/api/agency/banner-studio/published/by-project/${state.project?.id}`,
-  {
-    immediate: hasProjectId.value,
-    default: () => [],
-    watch: [() => state.project?.id],
+const publishedBanners = ref<BannerPublished[]>([])
+
+async function refreshPublished() {
+  if (!hasProjectId.value || !state.project?.id) {
+    publishedBanners.value = []
+    return
   }
-)
+
+  publishedBanners.value = await apiFetch<BannerPublished[]>(
+    `/api/agency/banner-studio/published/by-project/${state.project.id}`
+  )
+}
+
+watch(() => state.project?.id, () => {
+  refreshPublished()
+}, { immediate: true })
 
 // Map of formatKey → published record
 const publishedMap = computed(() => {
@@ -142,7 +151,7 @@ async function publish() {
         ...feedOpts,
       })
 
-      await $fetch('/api/agency/banner-studio/publish', {
+      await apiFetch('/api/agency/banner-studio/publish', {
         method: 'POST',
         body: {
           projectId: state.project.id,
@@ -183,7 +192,7 @@ async function schedulePublish() {
     const scheduledAt = new Date(`${scheduleDate.value}T${scheduleTime.value}`).toISOString()
     const formatKeys = Array.from(selected.value)
 
-    await $fetch('/api/agency/banner-studio/schedule', {
+    await apiFetch('/api/agency/banner-studio/schedule', {
       method: 'POST',
       body: {
         projectId: state.project.id,
@@ -207,7 +216,7 @@ async function schedulePublish() {
 
 async function viewTags(pub: BannerPublished) {
   try {
-    const result = await $fetch<{ tags: Array<{ type: string; code: string; label: string }> }>(
+    const result = await apiFetch<{ tags: Array<{ type: string; code: string; label: string }> }>(
       `/api/agency/banner-studio/published/${pub.id}/tags`
     )
     adTags.value = result.tags
@@ -227,7 +236,7 @@ async function copyTag(code: string, type: string) {
 
 async function unpublish(pub: BannerPublished) {
   try {
-    await $fetch(`/api/agency/banner-studio/published/${pub.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/banner-studio/published/${pub.id}`, { method: 'DELETE' })
     toast.add({ title: 'Unpublished', description: `${pub.formatKey} removed`, color: 'success' })
     await refreshPublished()
   } catch {
@@ -245,7 +254,7 @@ function getPublishedMenuItems(pub: BannerPublished) {
 </script>
 
 <template>
-  <UModal :open="props.open" @update:open="emit('update:open', $event)" :ui="{ width: 'max-w-2xl' }">
+  <UModal :open="props.open" @update:open="emit('update:open', $event)" :ui="{ content: 'max-w-2xl' }">
     <template #content>
       <div class="p-5">
         <div class="flex items-center justify-between mb-5">
@@ -441,7 +450,7 @@ function getPublishedMenuItems(pub: BannerPublished) {
   </UModal>
 
   <!-- Ad Tags Sub-Modal -->
-  <UModal :open="showTags" @update:open="showTags = $event" :ui="{ width: 'max-w-xl' }">
+  <UModal :open="showTags" @update:open="showTags = $event" :ui="{ content: 'max-w-xl' }">
     <template #content>
       <div class="p-5">
         <div class="flex items-center justify-between mb-4">

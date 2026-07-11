@@ -19,7 +19,15 @@ onMounted(() => {
   fetchConnections()
 })
 
-const platforms = [
+const platforms: Array<{
+  key: string
+  displayName: string
+  icon: string
+  bgColor: string
+  iconColor: string
+  description: string
+  comingSoon?: boolean
+}> = [
   { key: 'meta', displayName: 'Meta Ads', icon: 'i-lucide-facebook', bgColor: 'bg-blue-100 dark:bg-blue-900/30', iconColor: 'text-blue-600', description: 'Facebook & Instagram advertising' },
   { key: 'google', displayName: 'Google Ads', icon: 'i-lucide-chrome', bgColor: 'bg-red-100 dark:bg-red-900/30', iconColor: 'text-red-500', description: 'Google search & display ads' },
   { key: 'tiktok', displayName: 'TikTok Ads', icon: 'i-lucide-music', bgColor: 'bg-gray-100 dark:bg-gray-900/30', iconColor: 'text-gray-700', description: 'Short-form video advertising' },

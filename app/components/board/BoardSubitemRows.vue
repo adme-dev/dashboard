@@ -141,6 +141,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string }) => Promise<T>
 const { getSubitems, isLoading: isLoadingFn } = useBoardSubitems()
 const itemColWidth = inject<Ref<number>>('itemColWidth', ref(320))
 
@@ -154,7 +155,7 @@ const linkedLoaded = ref(false)
 async function fetchLinkedTasks() {
   if (linkedLoaded.value) return
   try {
-    const data = await $fetch<{ linkedItems: LinkedItemEntry[] }>(
+    const data = await apiFetch<{ linkedItems: LinkedItemEntry[] }>(
       `/api/agency/tasks/${props.parentTaskId}/linked-items`,
     )
     linkedTasks.value = data.linkedItems || []
@@ -217,7 +218,7 @@ function linkedMenuItems(linked: LinkedItemEntry) {
 
 async function duplicateSubitem(taskId: string) {
   try {
-    await $fetch(`/api/agency/tasks/${taskId}/duplicate`, { method: 'POST' })
+    await apiFetch(`/api/agency/tasks/${taskId}/duplicate`, { method: 'POST' })
     const helper = useBoardSubitems()
     helper.toggleExpand(props.parentTaskId, props.boardId)
     await nextTick()
@@ -230,7 +231,7 @@ async function duplicateSubitem(taskId: string) {
 
 async function unlinkTask(linkId: string) {
   try {
-    await $fetch(`/api/agency/tasks/${props.parentTaskId}/linked-items/${linkId}`, {
+    await apiFetch(`/api/agency/tasks/${props.parentTaskId}/linked-items/${linkId}`, {
       method: 'DELETE',
     })
     linkedTasks.value = linkedTasks.value.filter(l => l.id !== linkId)

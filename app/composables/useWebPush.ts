@@ -20,6 +20,10 @@ interface UseWebPushReturn {
 }
 
 export function useWebPush(): UseWebPushReturn {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown }
+  ) => Promise<T>
   const permission = ref<NotificationPermission | 'unsupported'>('default')
   const isSubscribed = ref(false)
   const isBusy = ref(false)
@@ -72,7 +76,7 @@ export function useWebPush(): UseWebPushReturn {
       await navigator.serviceWorker.ready
 
       // 3. Fetch the VAPID public key from the server.
-      const { publicKey } = await $fetch<{ publicKey: string }>(
+      const { publicKey } = await apiFetch<{ publicKey: string }>(
         '/api/notifications/push/vapid-key'
       )
 
@@ -81,13 +85,13 @@ export function useWebPush(): UseWebPushReturn {
       if (!sub) {
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey),
+          applicationServerKey: urlBase64ToArrayBuffer(publicKey),
         })
       }
 
       // 5. Send the subscription up to the server.
       const json = sub.toJSON()
-      await $fetch('/api/notifications/push/subscribe', {
+      await apiFetch('/api/notifications/push/subscribe', {
         method: 'POST',
         body: {
           endpoint: json.endpoint,
@@ -120,7 +124,7 @@ export function useWebPush(): UseWebPushReturn {
           console.warn('[useWebPush] browser unsubscribe failed:', err)
         }
         try {
-          await $fetch('/api/notifications/push/unsubscribe', {
+          await apiFetch('/api/notifications/push/unsubscribe', {
             method: 'DELETE',
             body: { endpoint },
           })
@@ -149,11 +153,11 @@ export function useWebPush(): UseWebPushReturn {
  * Convert the server's base64url public key into the Uint8Array
  * PushManager.subscribe wants as `applicationServerKey`.
  */
-function urlBase64ToUint8Array(base64Url: string): Uint8Array {
+function urlBase64ToArrayBuffer(base64Url: string): ArrayBuffer {
   const padding = '='.repeat((4 - (base64Url.length % 4)) % 4)
   const base64 = (base64Url + padding).replace(/-/g, '+').replace(/_/g, '/')
   const raw = atob(base64)
   const out = new Uint8Array(raw.length)
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
-  return out
+  return out.buffer.slice(0) as ArrayBuffer
 }

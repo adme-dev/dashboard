@@ -7,11 +7,29 @@ const props = defineProps<{ clientId: string, record: CrmOpportunity | null, sta
 const emit = defineEmits<{ submit: [Record<string, unknown>], cancel: [] }>()
 const clientId = toRef(props, 'clientId')
 const base = inject<string>('crmApiBase', '/api/crm')
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 const peopleQuery = computed(() => ({ client_id: clientId.value, page_size: '200' }))
 const companiesQuery = computed(() => ({ client_id: clientId.value, page_size: '200' }))
-const { data: peopleData } = useFetch<{ items: CrmPerson[] }>(`${base}/people`, { query: peopleQuery, watch: [peopleQuery] })
-const { data: companiesData } = useFetch<{ items: CrmCompany[] }>(`${base}/companies`, { query: companiesQuery, watch: [companiesQuery] })
+const peopleData = ref<{ items: CrmPerson[] }>({ items: [] })
+const companiesData = ref<{ items: CrmCompany[] }>({ items: [] })
+
+async function refreshPeople() {
+  peopleData.value = await apiFetch<{ items: CrmPerson[] }>(`${base}/people`, { query: peopleQuery.value })
+}
+
+async function refreshCompanies() {
+  companiesData.value = await apiFetch<{ items: CrmCompany[] }>(`${base}/companies`, { query: companiesQuery.value })
+}
+
+watch(peopleQuery, () => {
+  refreshPeople()
+}, { immediate: true })
+
+watch(companiesQuery, () => {
+  refreshCompanies()
+}, { immediate: true })
+
 const personItems = computed(() => (peopleData.value?.items ?? []).map(p => ({ label: [p.first_name, p.last_name].filter(Boolean).join(' '), value: p.id })))
 const companyItems = computed(() => (companiesData.value?.items ?? []).map(c => ({ label: c.name, value: c.id })))
 const stageItems = computed(() => props.stages.map(s => ({ label: s.name, value: s.id })))

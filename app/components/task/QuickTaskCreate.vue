@@ -17,6 +17,7 @@ const emit = defineEmits<{
 
 const { user } = useAuth()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Form state
 const selectedBoard = ref<string>('_none')
@@ -49,7 +50,7 @@ watch(open, (isOpen) => {
 
 async function fetchBoards() {
   try {
-    const data = await $fetch<any>('/api/agency/boards')
+    const data = await apiFetch<any>('/api/agency/boards')
     boards.value = data?.boards || data || []
     boardsLoaded.value = true
   } catch { /* silent */ }
@@ -57,7 +58,7 @@ async function fetchBoards() {
 
 async function fetchMembers() {
   try {
-    const data = await $fetch<any>('/api/agency/team-members')
+    const data = await apiFetch<any>('/api/agency/team-members')
     members.value = data?.members || data || []
     membersLoaded.value = true
   } catch { /* silent */ }
@@ -89,7 +90,7 @@ async function handleCreate() {
   creating.value = true
 
   try {
-    const task = await $fetch('/api/agency/tasks', {
+    const task = await apiFetch('/api/agency/tasks', {
       method: 'POST',
       body: {
         departmentId: selectedBoard.value,

@@ -137,7 +137,8 @@ export default eventHandler(async (event) => {
   // This reuses the cachedFetch-driven full-pipe of pagination,
   // aggregation, and reminder annotation — much cheaper than re-doing
   // it here.
-  const invoiceData = await $fetch<any>('/api/xero/invoices', {
+  const eventFetch = event.$fetch as <T = unknown>(request: string, options?: { headers?: HeadersInit }) => Promise<T>
+  const invoiceData = await eventFetch<any>('/api/xero/invoices', {
     headers: {
       cookie: event.node.req.headers.cookie || '',
     },

@@ -4,6 +4,10 @@ import { startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, en
 
 const props = defineProps<{ clientId: string }>()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 interface Row { user_id: string, user_name: string | null, target_type: 'revenue' | 'count', target_value: number, actual: number, attainment_pct: number }
 interface Target { id: string, user_id: string, user_name: string | null, target_type: 'revenue' | 'count', target_value: number }
@@ -27,12 +31,21 @@ const range = computed(() => {
 })
 
 const query = computed(() => ({ client_id: props.clientId, period_start: range.value.start, period_end: range.value.end }))
-const { data: lb, refresh: refreshLb } = useFetch<{ rows: Row[] }>('/api/crm/targets/leaderboard', {
-  query, watch: [query], default: () => ({ rows: [] }),
-})
-const { data: targetsData, refresh: refreshTargets } = useFetch<{ items: Target[] }>('/api/crm/targets', {
-  query, watch: [query], default: () => ({ items: [] }),
-})
+const lb = ref<{ rows: Row[] }>({ rows: [] })
+const targetsData = ref<{ items: Target[] }>({ items: [] })
+
+async function refreshLb() {
+  lb.value = await apiFetch<{ rows: Row[] }>('/api/crm/targets/leaderboard', { query: query.value })
+}
+
+async function refreshTargets() {
+  targetsData.value = await apiFetch<{ items: Target[] }>('/api/crm/targets', { query: query.value })
+}
+
+watch(query, () => {
+  refreshLb()
+  refreshTargets()
+}, { immediate: true })
 
 function barColor(pct: number) {
   if (pct >= 100) return 'bg-success'
@@ -46,9 +59,17 @@ function fmtVal(r: { target_type: string, target_value?: number, actual?: number
 
 // ── Set target modal ─────────────────────────────────────────────────────────
 const setOpen = ref(false)
-const { data: usersData } = useFetch<{ suggestions: { id: string, name: string }[] }>('/api/users/search', {
-  query: { q: '' }, default: () => ({ suggestions: [] }),
-})
+const usersData = ref<{ suggestions: { id: string, name: string }[] }>({ suggestions: [] })
+
+async function refreshUsers() {
+  usersData.value = await apiFetch<{ suggestions: { id: string, name: string }[] }>(
+    '/api/users/search',
+    { query: { q: '' } },
+  )
+}
+
+refreshUsers()
+
 const userOptions = computed(() => (usersData.value?.suggestions ?? []).map(u => ({ label: u.name, value: u.id })))
 const form = reactive({ user_id: '', target_type: 'revenue' as 'revenue' | 'count', target_value: 0 })
 const saving = ref(false)
@@ -56,7 +77,7 @@ async function saveTarget() {
   if (!form.user_id || form.target_value <= 0) return
   saving.value = true
   try {
-    await $fetch('/api/crm/targets', {
+    await apiFetch('/api/crm/targets', {
       method: 'POST',
       body: { client_id: props.clientId, user_id: form.user_id, period_start: range.value.start, period_end: range.value.end, target_type: form.target_type, target_value: form.target_value },
     })
@@ -69,7 +90,10 @@ async function saveTarget() {
   } finally { saving.value = false }
 }
 async function removeTarget(t: Target) {
-  try { await $fetch(`/api/crm/targets/${t.id}`, { method: 'DELETE', query: { client_id: props.clientId } }); await Promise.all([refreshLb(), refreshTargets()]) }
+  try {
+    await apiFetch(`/api/crm/targets/${t.id}`, { method: 'DELETE', query: { client_id: props.clientId } })
+    await Promise.all([refreshLb(), refreshTargets()])
+  }
   catch (e: any) { toast.add({ title: 'Could not delete', description: e?.data?.statusMessage || e?.message, color: 'error' }) }
 }
 </script>

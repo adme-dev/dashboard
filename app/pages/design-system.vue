@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="max-w-6xl mx-auto px-6 py-12">
       <div class="flex items-center gap-4 mb-4">
-        <BrandCube color="red" :size="48" rotation="-20" />
+        <BrandCube color="red" :size="48" :rotation="-20" />
         <div>
           <h1 class="text-4xl md:text-5xl font-bold text-white tracking-tight">
             Textured Neubrutalism

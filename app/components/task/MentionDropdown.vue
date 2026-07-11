@@ -19,7 +19,7 @@
       <!-- Group by category -->
       <template v-for="(group, category) in groupedSuggestions" :key="category">
         <div class="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-neutral-400 uppercase tracking-wide bg-gray-50/50 dark:bg-neutral-700/50">
-          {{ formatCategory(category) }}
+          {{ formatCategory(String(category)) }}
         </div>
         
         <div
@@ -28,7 +28,7 @@
           class="mention-item px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer flex items-center gap-3 transition-colors"
           :class="{ 'bg-blue-50 dark:bg-blue-900/30': isSelected(item) }"
           @click="selectItem(item)"
-          @mouseenter="selectedIndex = getGlobalIndex(category as string, index)"
+          @mouseenter="selectedIndex = getGlobalIndex(String(category), index)"
         >
           <!-- Team Icon -->
           <div 
@@ -97,6 +97,7 @@ interface MentionSuggestion {
   icon: string
   subtitle?: string
   avatar_url?: string | null
+  color?: string
   is_team: boolean
 }
 

@@ -32,11 +32,24 @@ interface TemplateGroup {
 }
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
-const { data, refresh, pending } = await useFetch<{ items: TemplateRow[] }>(
-  '/api/email/templates',
-  { default: () => ({ items: [] }) }
-)
+const data = ref<{ items: TemplateRow[] }>({ items: [] })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items: TemplateRow[] }>('/api/email/templates')
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
 
 const busyId = ref<string | null>(null)
 const savedRows = computed(() => data.value?.items ?? [])
@@ -144,7 +157,7 @@ async function doRename() {
   if (!row || !renameValue.value.trim()) return
   busyId.value = row.id
   try {
-    await $fetch(`/api/email/templates/${row.id}`, {
+    await apiFetch(`/api/email/templates/${row.id}`, {
       method: 'PATCH',
       body: { name: renameValue.value.trim() }
     })
@@ -162,8 +175,8 @@ async function doRename() {
 async function duplicate(row: TemplateRow) {
   busyId.value = row.id
   try {
-    const { template } = await $fetch<{ template: FullTemplate }>(`/api/email/templates/${row.id}`)
-    await $fetch('/api/email/templates', {
+    const { template } = await apiFetch<{ template: FullTemplate }>(`/api/email/templates/${row.id}`)
+    await apiFetch('/api/email/templates', {
       method: 'POST',
       body: {
         name: `${template.name} (copy)`,
@@ -197,7 +210,7 @@ async function doDelete() {
   if (!row) return
   busyId.value = row.id
   try {
-    await $fetch(`/api/email/templates/${row.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/email/templates/${row.id}`, { method: 'DELETE' })
     toast.add({ title: 'Template deleted', color: 'success' })
     showDelete.value = false
     refresh()

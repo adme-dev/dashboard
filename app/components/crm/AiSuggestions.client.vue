@@ -7,12 +7,26 @@ const props = defineProps<{ clientId: string, opportunityId: string }>()
 
 const base = inject<string>('crmApiBase', '/api/crm')
 const isAgency = base === '/api/crm'
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 interface Suggestion { key: string, title: string, reason: string, priority: 'high' | 'medium' | 'low' }
 const query = computed(() => ({ client_id: props.clientId, opportunity_id: props.opportunityId }))
-const { data } = useFetch<{ enabled: boolean, suggestions: Suggestion[] }>('/api/crm/ai/next-best-action', {
-  query, watch: [query], immediate: isAgency, default: () => ({ enabled: false, suggestions: [] }),
-})
+const data = ref<{ enabled: boolean, suggestions: Suggestion[] }>({ enabled: false, suggestions: [] })
+
+async function refreshSuggestions() {
+  if (!isAgency) return
+  data.value = await apiFetch<{ enabled: boolean, suggestions: Suggestion[] }>(
+    '/api/crm/ai/next-best-action',
+    { query: query.value },
+  )
+}
+
+watch(query, () => {
+  refreshSuggestions()
+}, { immediate: true })
 const enabled = computed(() => !!data.value?.enabled)
 const suggestions = computed(() => data.value?.suggestions ?? [])
 const priorityColor: Record<string, string> = { high: 'error', medium: 'warning', low: 'neutral' }
@@ -25,7 +39,7 @@ const draft = ref({ subject: '', body: '' })
 async function generateDraft() {
   drafting.value = true
   try {
-    const res = await $fetch<{ draft: { subject: string, body: string } }>('/api/crm/ai/draft-followup', {
+    const res = await apiFetch<{ draft: { subject: string, body: string } }>('/api/crm/ai/draft-followup', {
       method: 'POST',
       body: { client_id: props.clientId, opportunity_id: props.opportunityId },
     })

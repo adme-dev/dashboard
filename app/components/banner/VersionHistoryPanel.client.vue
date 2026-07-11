@@ -7,11 +7,30 @@ const props = defineProps<{ projectId: string }>()
 
 const toast = useToast()
 const { restoreCanvasData } = useBannerStudio()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; params?: Record<string, unknown> },
+) => Promise<T>
 
-const { data: versions, refresh, status } = useFetch<any[]>(
-  () => `/api/agency/banner-studio/versions?projectId=${props.projectId}`,
-  { default: () => [] },
-)
+const versions = ref<any[]>([])
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refresh() {
+  status.value = 'pending'
+  try {
+    versions.value = await apiFetch<any[]>('/api/agency/banner-studio/versions', {
+      params: { projectId: props.projectId },
+    })
+    status.value = 'success'
+  } catch {
+    versions.value = []
+    status.value = 'error'
+  }
+}
+
+watch(() => props.projectId, () => {
+  refresh()
+}, { immediate: true })
 
 const isRestoring = ref(false)
 const confirmVersionId = ref<string | null>(null)
@@ -23,7 +42,7 @@ const showConfirm = computed({
 async function restoreVersion(versionId: string) {
   isRestoring.value = true
   try {
-    const result = await $fetch<any>('/api/agency/banner-studio/versions/restore', {
+    const result = await apiFetch<any>('/api/agency/banner-studio/versions/restore', {
       method: 'POST',
       body: { versionId },
     })
@@ -71,7 +90,7 @@ function formatTime(d: string) {
         variant="ghost"
         size="xs"
         :loading="status === 'pending'"
-        @click="refresh"
+        @click="() => refresh()"
       />
     </div>
 

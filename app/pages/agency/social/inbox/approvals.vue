@@ -15,7 +15,19 @@ function fetchErrorDescription(error: unknown) {
   return e.data?.statusMessage || e.message
 }
 
-const { data: clientsData } = await useFetch<AgencyClientsResponse>('/api/agency/clients', { query: { limit: 200 } })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+const clientsData = ref<AgencyClientsResponse>([])
+
+async function refreshClients() {
+  clientsData.value = await apiFetch<AgencyClientsResponse>('/api/agency/clients', {
+    query: { limit: 200 },
+  }).catch(() => [])
+}
+
+await refreshClients()
 const clients = computed<AgencyClientOption[]>(() => {
   const d = clientsData.value
   return Array.isArray(d) ? d : (d?.clients ?? [])
@@ -23,10 +35,27 @@ const clients = computed<AgencyClientOption[]>(() => {
 const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
 const clientId = ref<string | null>(clients.value[0]?.id ?? null)
 
-const { data: items, refresh, pending } = await useFetch<SocialResponseQueueItem[]>(
-  '/api/agency/social/inbox/response-queue',
-  { query: { clientId, status: 'actionable' }, default: () => [], watch: [clientId] }
-)
+const items = ref<SocialResponseQueueItem[]>([])
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    items.value = await apiFetch<SocialResponseQueueItem[]>('/api/agency/social/inbox/response-queue', {
+      query: { clientId: clientId.value, status: 'actionable' },
+    })
+  } catch {
+    items.value = []
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
+
+watch(clientId, () => {
+  void refresh()
+})
 
 const toast = useToast()
 const edits = reactive<Record<string, string>>({})
@@ -54,7 +83,7 @@ function sendLabel(it: SocialResponseQueueItem) {
 async function approve(it: SocialResponseQueueItem) {
   busy.value = it.id
   try {
-    await $fetch(`/api/agency/social/inbox/response-queue/${it.id}/approve`, { method: 'POST', body: { clientId: clientId.value, content: bodyFor(it) } })
+    await apiFetch(`/api/agency/social/inbox/response-queue/${it.id}/approve`, { method: 'POST', body: { clientId: clientId.value, content: bodyFor(it) } })
     Reflect.deleteProperty(edits, it.id)
     toast.add({ title: 'Sent', color: 'success' })
     await refresh()
@@ -67,7 +96,7 @@ async function approve(it: SocialResponseQueueItem) {
 async function reject(it: SocialResponseQueueItem) {
   busy.value = it.id
   try {
-    await $fetch(`/api/agency/social/inbox/response-queue/${it.id}/reject`, { method: 'POST', body: { clientId: clientId.value } })
+    await apiFetch(`/api/agency/social/inbox/response-queue/${it.id}/reject`, { method: 'POST', body: { clientId: clientId.value } })
     Reflect.deleteProperty(edits, it.id)
     await refresh()
   } catch (e: unknown) {

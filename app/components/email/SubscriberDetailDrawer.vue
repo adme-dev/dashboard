@@ -39,6 +39,7 @@ const open = defineModel<boolean>('open', { default: false })
 const toast = useToast()
 const pending = ref(false)
 const history = ref<SubscriberHistory | null>(null)
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 function formatDate(value: unknown): string {
   if (!value || typeof value !== 'string') return ''
@@ -70,7 +71,7 @@ async function load() {
   if (!open.value || !props.subscriberId) return
   pending.value = true
   try {
-    history.value = await $fetch<SubscriberHistory>(`/api/email/subscribers/${props.subscriberId}/history`)
+    history.value = await apiFetch<SubscriberHistory>(`/api/email/subscribers/${props.subscriberId}/history`)
   } catch (e) {
     history.value = null
     toast.add({

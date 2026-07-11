@@ -37,12 +37,30 @@ const KIND_OPTIONS = [
 const selectedKind = ref<string>(props.defaultKind ?? 'all')
 const searchQuery = ref('')
 
-const { data, refresh, pending } = useFetch('/api/agency/audio/assets', {
-  query: computed(() => ({
-    kind: selectedKind.value !== 'all' ? selectedKind.value : undefined
-  })),
-  watch: [selectedKind],
-  lazy: true
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<any | null>(null)
+const pending = ref(false)
+const query = computed(() => ({
+  kind: selectedKind.value !== 'all' ? selectedKind.value : undefined
+}))
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch('/api/agency/audio/assets', { query: query.value })
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(() => props.open, (isOpen) => {
+  if (isOpen) refresh()
+}, { immediate: true })
+watch(selectedKind, () => {
+  if (props.open) refresh()
 })
 
 const assets = computed((): AudioAsset[] => (data.value as any)?.assets ?? [])

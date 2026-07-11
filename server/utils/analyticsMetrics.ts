@@ -192,8 +192,8 @@ export function dailySpendWindow(startIdx: number, endIdx: number): string {
 /**
  * Parse numeric DB values that may come as strings.
  */
-export function toNum(val: string | number | null | undefined): number {
+export function toNum(val: unknown): number {
   if (val == null) return 0
-  const n = typeof val === 'string' ? parseFloat(val) : val
+  const n = typeof val === 'number' ? val : parseFloat(String(val))
   return isNaN(n) ? 0 : n
 }

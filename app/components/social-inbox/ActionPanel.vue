@@ -63,7 +63,16 @@ watch(status, (s) => {
   }
 })
 
-const { data: teamData } = await useFetch<{ members: TeamMember[] }>('/api/agency/team-members', { default: () => ({ members: [] }) })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const teamData = ref<{ members: TeamMember[] }>({ members: [] })
+try {
+  teamData.value = await apiFetch<{ members: TeamMember[] }>('/api/agency/team-members')
+} catch {
+  teamData.value = { members: [] }
+}
 const UNASSIGNED = '__unassigned__'
 const memberOptions = computed(() => [
   { label: 'Unassigned', value: UNASSIGNED },
@@ -139,7 +148,7 @@ const toast = useToast()
 async function addNote() {
   if (!noteText.value.trim() || !props.conversation?.id) return
   try {
-    await $fetch(`/api/agency/social/inbox/conversations/${props.conversation.id}/note`, { method: 'POST', body: { content: noteText.value.trim() } })
+    await apiFetch(`/api/agency/social/inbox/conversations/${props.conversation.id}/note`, { method: 'POST', body: { content: noteText.value.trim() } })
     noteText.value = ''
     emit('changed')
     toast.add({ title: 'Note added', color: 'success' })

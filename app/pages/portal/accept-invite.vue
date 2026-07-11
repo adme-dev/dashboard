@@ -4,6 +4,10 @@ definePageMeta({ layout: false })
 const route = useRoute()
 const { login } = usePortalAuth()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 const token = computed(() => route.query.token as string)
 const password = ref('')
@@ -47,7 +51,7 @@ async function handleAccept() {
 
   loading.value = true
   try {
-    const data = await $fetch<{ success: boolean, user: { email: string }, sessionToken: string }>('/api/agency/client-portal/accept-invite', {
+    const data = await apiFetch<{ success: boolean, user: { email: string }, sessionToken: string }>('/api/agency/client-portal/accept-invite', {
       method: 'POST',
       body: { token: token.value, password: password.value }
     })

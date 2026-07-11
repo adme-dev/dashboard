@@ -3,6 +3,7 @@ definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const route = useRoute()
 const router = useRouter()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 function tabFromQuery(query: typeof route.query) {
   const view = Array.isArray(query.view) ? query.view[0] : query.view
@@ -26,9 +27,21 @@ const queryFilter = computed(() => {
   return {}
 })
 
-const { data, pending } = useFetch('/api/portal/projects', {
-  query: queryFilter
-})
+const data = ref<any | null>(null)
+const pending = ref(false)
+
+async function refreshProjects() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>('/api/portal/projects', { query: queryFilter.value })
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(queryFilter, () => {
+  refreshProjects()
+}, { immediate: true })
 
 const tabs = [
   { label: 'All', value: 'all' },

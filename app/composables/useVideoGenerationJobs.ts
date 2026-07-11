@@ -22,10 +22,14 @@ export interface VideoGenerationJobView {
 export function useVideoGenerationJobs(projectId: string) {
   const jobs = ref<VideoGenerationJobView[]>([])
   let timer: ReturnType<typeof setTimeout> | null = null
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { query?: Record<string, unknown> }
+  ) => Promise<T>
 
   async function refresh() {
     try {
-      const res = await $fetch<{ jobs: VideoGenerationJobView[] }>(`/api/agency/video/generation/jobs`, { query: { projectId } })
+      const res = await apiFetch<{ jobs: VideoGenerationJobView[] }>(`/api/agency/video/generation/jobs`, { query: { projectId } })
       jobs.value = res?.jobs ?? []
     } catch { /* surfaced via UI emptiness */ }
   }

@@ -4,10 +4,22 @@ const props = defineProps<{
   compact?: boolean
 }>()
 
-const { data: score, pending } = useFetch(`/api/agency/briefs/${props.briefId}/score`, {
-  key: `brief-score-${props.briefId}`,
-  lazy: true
-})
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const score = ref<any | null>(null)
+const pending = ref(false)
+
+async function refreshScore() {
+  pending.value = true
+  try {
+    score.value = await apiFetch<any>(`/api/agency/briefs/${props.briefId}/score`)
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(() => props.briefId, () => {
+  refreshScore()
+}, { immediate: true })
 
 const scoreColor = computed(() => {
   const s = score.value?.overall || 0

@@ -49,11 +49,23 @@ function onFileClick() {
 // getCachedData returns undefined so every mount refetches — otherwise Nuxt serves
 // a stale response from the data cache and the page shows "not connected" on soft
 // navigations even after the user has linked Xero.
-const { data: xeroStatus, refresh: refreshStatus } = useLazyFetch('/api/xero/status', {
-  server: false,
-  key: 'xero-status',
-  getCachedData: () => undefined,
-})
+interface XeroStatus {
+  connected: boolean
+  selectedTenantId?: string | null
+  selectedTenantName?: string | null
+}
+
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
+
+const xeroStatus = ref<XeroStatus | null>(null)
+
+async function refreshStatus() {
+  xeroStatus.value = await apiFetch<XeroStatus>('/api/xero/status')
+}
+
 const { state: connectState, connect: connectXero } = useXeroConnect({ onStatusRefresh: refreshStatus })
 
 const connectLabel = computed(() => {
@@ -67,7 +79,12 @@ const connectLabel = computed(() => {
 })
 
 // Meta Ads connection (lazy to avoid blocking Suspense)
-const { data: metaAccounts, refresh: refreshMetaAccounts } = useLazyFetch<any[]>('/api/agency/social/meta/accounts', { server: false, default: () => [] })
+const metaAccounts = ref<any[]>([])
+
+async function refreshMetaAccounts() {
+  metaAccounts.value = await apiFetch<any[]>('/api/agency/social/meta/accounts')
+}
+
 const { state: metaConnectState, connect: connectMeta } = useMetaConnect({ onConnected: refreshMetaAccounts })
 const metaSyncing = ref(false)
 const showDisconnectMetaConfirm = ref(false)
@@ -85,7 +102,7 @@ async function syncMetaSpend() {
     // Endpoint is now fire-and-forget — returns immediately, sync runs via
     // Cloudflare waitUntil. Refresh accounts list after a short delay so the
     // user sees the updated lastSyncedAt.
-    await $fetch<{ status: 'started'; startedAt: string }>('/api/agency/social/meta/sync-spend', { method: 'POST' })
+    await apiFetch<{ status: 'started'; startedAt: string }>('/api/agency/social/meta/sync-spend', { method: 'POST' })
     toast.add({
       title: 'Sync started',
       description: 'Meta spend sync running in background — refreshing accounts shortly.',
@@ -112,7 +129,7 @@ async function onConfirmDisconnectMeta() {
   showDisconnectMetaConfirm.value = false
 
   try {
-    await $fetch('/api/agency/social/meta/disconnect', { method: 'DELETE', query: { connectionId: account.id } })
+    await apiFetch('/api/agency/social/meta/disconnect', { method: 'DELETE', query: { connectionId: account.id } })
     toast.add({ title: 'Disconnected', description: `${account.accountName} removed.`, icon: 'i-lucide-check', color: 'success' })
     await refreshMetaAccounts()
   } catch (err: any) {
@@ -139,6 +156,7 @@ async function loadTenants() {
 }
 
 onMounted(async () => {
+  await Promise.allSettled([refreshStatus(), refreshMetaAccounts()])
   if (xeroStatus.value?.connected) {
     await loadTenants()
   }
@@ -159,7 +177,7 @@ watch(() => xeroStatus.value?.selectedTenantId, (v) => {
 
 async function selectTenant(tenantId: string | any) {
   const id = typeof tenantId === 'string' ? tenantId : tenantId?.value || tenantId
-  await $fetch('/api/xero/select-tenant', { method: 'POST', body: { tenantId: id } })
+  await apiFetch('/api/xero/select-tenant', { method: 'POST', body: { tenantId: id } })
   await refreshStatus()
   toast.add({ title: 'Organization selected', icon: 'i-lucide-check', color: 'success' })
 }

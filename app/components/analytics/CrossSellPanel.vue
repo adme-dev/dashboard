@@ -9,16 +9,32 @@ const query = computed(() => {
   return q
 })
 
-const { data, status } = useFetch('/api/agency/analytics/cross-sell', {
-  query,
-  watch: [query],
-})
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshCrossSell() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<any>('/api/agency/analytics/cross-sell', { query: query.value })
+    status.value = 'success'
+  } catch {
+    data.value = null
+    status.value = 'error'
+  }
+}
+
+watch(query, () => {
+  refreshCrossSell()
+}, { immediate: true })
 
 const recommendations = computed(() => (data.value as any)?.recommendations || [])
 
 const { fmtCurrency, fmtPercent, getPlatformIcon, getPlatformColor } = useAnalytics()
 
-const confidenceColors: Record<string, string> = {
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+const confidenceColors: Record<string, UiColor> = {
   high: 'success',
   medium: 'warning',
   low: 'neutral',

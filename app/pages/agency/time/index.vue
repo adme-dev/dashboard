@@ -7,6 +7,11 @@ definePageMeta({
 })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  query?: Record<string, unknown>
+}) => Promise<T>
 
 // Current week state
 const currentWeekStart = ref(startOfWeek(new Date(), { weekStartsOn: 1 }))
@@ -65,7 +70,7 @@ async function fetchTasksForProject(projectId: string | null, target: 'modal' | 
     return
   }
   try {
-    const data = await $fetch<any>('/api/agency/tasks', {
+    const data = await apiFetch<any>('/api/agency/tasks', {
       query: { projectId, limit: 50 }
     })
     const tasks = (data?.tasks || data || []) as any[]
@@ -84,7 +89,7 @@ const loadingTimesheet = ref(false)
 async function fetchTimesheetStatus() {
   loadingTimesheet.value = true
   try {
-    const data = await $fetch<any>('/api/agency/time/timesheets', {
+    const data = await apiFetch<any>('/api/agency/time/timesheets', {
       query: { periodStart: weekStartStr.value, periodEnd: weekEndStr.value, limit: 1 }
     })
     timesheetStatus.value = data?.timesheets?.[0] || null
@@ -115,7 +120,7 @@ const submittingTimesheet = ref(false)
 async function submitTimesheet() {
   submittingTimesheet.value = true
   try {
-    await $fetch('/api/agency/time/timesheets', {
+    await apiFetch('/api/agency/time/timesheets', {
       method: 'POST',
       body: {
         periodStart: weekStartStr.value,
@@ -206,7 +211,7 @@ const createEntry = async () => {
 
   creatingEntry.value = true
   try {
-    await $fetch('/api/agency/time/entries', {
+    await apiFetch('/api/agency/time/entries', {
       method: 'POST',
       body: {
         date: selectedDate.value,
@@ -232,7 +237,7 @@ const deletingEntryId = ref<string | null>(null)
 const deleteEntry = async (id: string) => {
   deletingEntryId.value = id
   try {
-    await ($fetch as any)(`/api/agency/time/entries/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/time/entries/${id}`, { method: 'DELETE' })
     toast.add({ title: 'Entry deleted', color: 'success' })
     refresh()
   } catch (err: any) {
@@ -258,7 +263,7 @@ watch(timerProjectId, (pid) => {
 const startTimer = async () => {
   startingTimer.value = true
   try {
-    await $fetch('/api/agency/time/timer/start', {
+    await apiFetch('/api/agency/time/timer/start', {
       method: 'POST',
       body: {
         projectId: timerProjectId.value,
@@ -283,7 +288,7 @@ const startTimer = async () => {
 const stopTimer = async () => {
   stoppingTimer.value = true
   try {
-    await $fetch('/api/agency/time/timer/stop', { method: 'POST' })
+    await apiFetch('/api/agency/time/timer/stop', { method: 'POST' })
     toast.add({ title: 'Timer stopped and entry created', color: 'success' })
     refreshTimer()
     refresh()

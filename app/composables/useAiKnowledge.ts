@@ -1,6 +1,11 @@
 import type { AiKnowledgeArticle, KnowledgeCategory } from '~/types'
 
 export function useAiKnowledge() {
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+    method?: string
+    body?: unknown
+    params?: Record<string, unknown>
+  }) => Promise<T>
   const articles = ref<(AiKnowledgeArticle & { authorName?: string })[]>([])
   const total = ref(0)
   const loading = ref(false)
@@ -23,7 +28,7 @@ export function useAiKnowledge() {
         params.search = searchQuery.value.trim()
       }
 
-      const data = await $fetch<any>('/api/agency/ai/knowledge', { params })
+      const data = await apiFetch<any>('/api/agency/ai/knowledge', { params })
       articles.value = data.articles
       total.value = data.total
     } catch (err) {
@@ -40,7 +45,7 @@ export function useAiKnowledge() {
 
     loading.value = true
     try {
-      const data = await $fetch<any>('/api/agency/ai/knowledge/search', {
+      const data = await apiFetch<any>('/api/agency/ai/knowledge/search', {
         params: { q: query.trim(), limit: String(limit) },
       })
       articles.value = data.results
@@ -53,7 +58,7 @@ export function useAiKnowledge() {
   }
 
   async function createArticle(payload: { title: string; content: string; category?: string; tags?: string[] }) {
-    const data = await $fetch<any>('/api/agency/ai/knowledge', {
+    const data = await apiFetch<any>('/api/agency/ai/knowledge', {
       method: 'POST',
       body: payload,
     })
@@ -63,7 +68,7 @@ export function useAiKnowledge() {
   }
 
   async function updateArticle(id: string, payload: { title: string; content: string; category?: string; tags?: string[]; isPublished?: boolean }) {
-    const data = await $fetch<any>(`/api/agency/ai/knowledge/${id}`, {
+    const data = await apiFetch<any>(`/api/agency/ai/knowledge/${id}`, {
       method: 'PUT',
       body: payload,
     })
@@ -75,13 +80,13 @@ export function useAiKnowledge() {
   }
 
   async function deleteArticle(id: string) {
-    await $fetch(`/api/agency/ai/knowledge/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/ai/knowledge/${id}`, { method: 'DELETE' })
     articles.value = articles.value.filter(a => a.id !== id)
     total.value--
   }
 
   async function getArticle(id: string) {
-    return $fetch<AiKnowledgeArticle & { authorName?: string }>(`/api/agency/ai/knowledge/${id}`)
+    return apiFetch<AiKnowledgeArticle & { authorName?: string }>(`/api/agency/ai/knowledge/${id}`)
   }
 
   function setCategory(cat: KnowledgeCategory | 'all') {

@@ -3,6 +3,7 @@ import { VisXYContainer, VisStackedBar, VisAxis, VisTooltip } from '@unovis/vue'
 
 const props = defineProps<{ clientId: string }>()
 const clientId = toRef(props, 'clientId')
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 // Lightweight period filter -> `from` ISO date.
 const period = ref<'all' | '30' | '90'>('all')
@@ -29,16 +30,34 @@ interface Summary {
   timeInStage: { stage_id: string, avgDays: number }[]
 }
 const summaryQuery = computed(() => ({ client_id: clientId.value, ...(fromIso.value ? { from: fromIso.value } : {}) }))
-const { data: summary, pending } = useFetch<Summary>('/api/crm/analytics/summary', {
-  query: summaryQuery, watch: [summaryQuery],
-  default: () => ({ counts: { total: 0 }, funnel: [], winRate: { won: 0, lost: 0, open: 0, winRate: 0 }, weightedForecast: 0, openPipelineValue: 0, avgCycleDays: null, timeInStage: [] }),
-})
+const defaultSummary = (): Summary => ({ counts: { total: 0 }, funnel: [], winRate: { won: 0, lost: 0, open: 0, winRate: 0 }, weightedForecast: 0, openPipelineValue: 0, avgCycleDays: null, timeInStage: [] })
+const summary = ref<Summary>(defaultSummary())
+const pending = ref(false)
+
+async function refreshSummary() {
+  pending.value = true
+  try {
+    summary.value = await apiFetch<Summary>('/api/crm/analytics/summary', { query: summaryQuery.value })
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(summaryQuery, () => {
+  refreshSummary()
+}, { immediate: true })
 
 interface PerfRow { owner_id: string | null, count: number, won: number, winRate: number, weightedForecast: number, wonValue: number }
-const { data: perf } = useFetch<{ items: PerfRow[] }>('/api/crm/analytics/performance', {
-  query: computed(() => ({ client_id: clientId.value })), watch: [clientId],
-  default: () => ({ items: [] }),
-})
+const perf = ref<{ items: PerfRow[] }>({ items: [] })
+const clientQuery = computed(() => ({ client_id: clientId.value }))
+
+async function refreshPerf() {
+  perf.value = await apiFetch<{ items: PerfRow[] }>('/api/crm/analytics/performance', { query: clientQuery.value })
+}
+
+watch(clientQuery, () => {
+  refreshPerf()
+}, { immediate: true })
 
 // CRM adoption — instruments the Phase 1–3 success metrics (P4.0b), agency-only.
 interface Adoption {
@@ -48,10 +67,16 @@ interface Adoption {
   duplicateRatePct: number
   raw: { activeOpps: number, activeOppsWithOpenTask: number, people: number, peopleWithScore: number, views: number, viewUsers: number, contacts: number, merges: number }
 }
-const { data: adoption } = useFetch<Adoption>('/api/crm/analytics/adoption', {
-  query: computed(() => ({ client_id: clientId.value })), watch: [clientId],
-  default: () => ({ oppTaskCoveragePct: 0, peopleScoredPct: 0, savedViewsPerUser: 0, duplicateRatePct: 0, raw: { activeOpps: 0, activeOppsWithOpenTask: 0, people: 0, peopleWithScore: 0, views: 0, viewUsers: 0, contacts: 0, merges: 0 } }),
-})
+const defaultAdoption = (): Adoption => ({ oppTaskCoveragePct: 0, peopleScoredPct: 0, savedViewsPerUser: 0, duplicateRatePct: 0, raw: { activeOpps: 0, activeOppsWithOpenTask: 0, people: 0, peopleWithScore: 0, views: 0, viewUsers: 0, contacts: 0, merges: 0 } })
+const adoption = ref<Adoption>(defaultAdoption())
+
+async function refreshAdoption() {
+  adoption.value = await apiFetch<Adoption>('/api/crm/analytics/adoption', { query: clientQuery.value })
+}
+
+watch(clientQuery, () => {
+  refreshAdoption()
+}, { immediate: true })
 const adoptionCards = computed(() => {
   const a = adoption.value
   return [
@@ -70,10 +95,15 @@ interface AtRiskRow {
   grade: 'Hot' | 'Warm' | 'Cold'
   name: string | null
 }
-const { data: atRisk } = useFetch<{ items: AtRiskRow[] }>('/api/crm/health/at-risk', {
-  query: computed(() => ({ client_id: clientId.value })), watch: [clientId],
-  default: () => ({ items: [] }),
-})
+const atRisk = ref<{ items: AtRiskRow[] }>({ items: [] })
+
+async function refreshAtRisk() {
+  atRisk.value = await apiFetch<{ items: AtRiskRow[] }>('/api/crm/health/at-risk', { query: clientQuery.value })
+}
+
+watch(clientQuery, () => {
+  refreshAtRisk()
+}, { immediate: true })
 const healthGradeLabel: Record<string, string> = { Warm: 'At risk', Cold: 'Critical' }
 const healthGradeColor: Record<string, string> = { Warm: 'warning', Cold: 'error' }
 

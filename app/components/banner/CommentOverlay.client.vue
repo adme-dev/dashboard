@@ -13,14 +13,25 @@ const props = defineProps<{
 
 const { state } = useBannerStudio()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 const commentMode = inject<Ref<boolean>>('commentMode', ref(false))
 
 // Comments data
-const { data: commentsData, refresh: refreshComments } = useFetch<any[]>(
-  () => `/api/agency/banner-studio/comments?projectId=${props.projectId}&formatKey=${props.formatKey}`,
-  { default: () => [] },
-)
+const commentsData = ref<any[]>([])
+
+async function refreshComments() {
+  commentsData.value = await apiFetch<any[]>('/api/agency/banner-studio/comments', {
+    query: { projectId: props.projectId, formatKey: props.formatKey },
+  })
+}
+
+watch(() => [props.projectId, props.formatKey], () => {
+  refreshComments()
+}, { immediate: true })
 
 // Only top-level comments (pins)
 const pins = computed(() =>
@@ -66,7 +77,7 @@ async function submitComment() {
   isSubmitting.value = true
 
   try {
-    await $fetch('/api/agency/banner-studio/comments', {
+    await apiFetch('/api/agency/banner-studio/comments', {
       method: 'POST',
       body: {
         projectId: props.projectId,
@@ -92,7 +103,7 @@ async function submitReply() {
   isSubmitting.value = true
 
   try {
-    await $fetch('/api/agency/banner-studio/comments', {
+    await apiFetch('/api/agency/banner-studio/comments', {
       method: 'POST',
       body: {
         projectId: props.projectId,
@@ -114,7 +125,7 @@ async function submitReply() {
 
 async function toggleResolve(comment: any) {
   try {
-    await $fetch(`/api/agency/banner-studio/comments/${comment.id}`, {
+    await apiFetch(`/api/agency/banner-studio/comments/${comment.id}`, {
       method: 'PATCH',
       body: { resolved: !comment.resolved },
     })
@@ -126,7 +137,7 @@ async function toggleResolve(comment: any) {
 
 async function deleteComment(comment: any) {
   try {
-    await $fetch(`/api/agency/banner-studio/comments/${comment.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/banner-studio/comments/${comment.id}`, { method: 'DELETE' })
     if (activePin.value?.id === comment.id) {
       activePin.value = null
       showPopover.value = false

@@ -4,6 +4,11 @@ const toast = useToast()
 const loading = ref(true)
 const saving = ref(false)
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
 // Browser push subscription
 const push = useWebPush()
 
@@ -83,7 +88,7 @@ const autoAckAssignments = ref(false)
 
 async function onAutoAckChange(value: boolean) {
   try {
-    await $fetch('/api/notifications/preferences', {
+    await apiFetch('/api/notifications/preferences', {
       method: 'PUT',
       body: { autoAckAssignments: value },
     })
@@ -162,7 +167,7 @@ function saveQuietHours() {
   if (quietSaveTimer) clearTimeout(quietSaveTimer)
   quietSaveTimer = setTimeout(async () => {
     try {
-      await $fetch('/api/notifications/preferences', {
+      await apiFetch('/api/notifications/preferences', {
         method: 'PUT',
         body: { quietHours: quietHours.value },
       })
@@ -179,7 +184,7 @@ function saveQuietHours() {
 // Fetch preferences on mount
 onMounted(async () => {
   try {
-    const { preferences, autoSubscribeOnParticipation: aso, quietHours: qh, autoAckAssignments: aak } = await $fetch<{
+    const { preferences, autoSubscribeOnParticipation: aso, quietHours: qh, autoAckAssignments: aak } = await apiFetch<{
       preferences: Record<string, boolean>
       autoSubscribeOnParticipation?: boolean
       quietHours?: QuietHours | null
@@ -203,7 +208,7 @@ onMounted(async () => {
 
 async function onAutoSubscribeChange(value: boolean) {
   try {
-    await $fetch('/api/notifications/preferences', {
+    await apiFetch('/api/notifications/preferences', {
       method: 'PUT',
       body: { autoSubscribeOnParticipation: value }
     })
@@ -311,7 +316,7 @@ const sections = [{
 async function onChange(field: string, value: boolean) {
   saving.value = true
   try {
-    await $fetch('/api/notifications/preferences', {
+    await apiFetch('/api/notifications/preferences', {
       method: 'PUT',
       body: {
         preferences: { [field]: value }

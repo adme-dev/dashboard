@@ -1,5 +1,22 @@
 <script setup lang="ts">
-const { data, status } = useLazyFetch('/api/xero/reports/cash-flow-forecast', { server: false })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshCashPosition() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/xero/reports/cash-flow-forecast')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load cash position', error)
+    status.value = 'error'
+  }
+}
+
+onMounted(() => {
+  refreshCashPosition()
+})
 
 const cashData = computed(() => data.value as any)
 const currentCash = computed(() => cashData.value?.currentCash || 0)

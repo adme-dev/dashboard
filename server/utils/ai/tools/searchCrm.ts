@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 import { defaultResolveClient, type ResolveClient } from './clientResolve'
 
 const params = z.object({
@@ -19,7 +20,7 @@ export type CrmSearchDeps = {
 const defaultDeps: CrmSearchDeps = {
   resolveClient: defaultResolveClient,
   search: (clientId, q, limit, ctx) =>
-    $fetch('/api/crm/search', { query: { client_id: clientId, q, limit }, headers: ctx.event.headers as any }),
+    aiInternalFetch('/api/crm/search', { query: { client_id: clientId, q, limit }, headers: ctx.event.headers as any }),
 }
 
 export async function searchCrm(args: Args, ctx: ToolContext, deps: CrmSearchDeps = defaultDeps): Promise<ToolResult> {

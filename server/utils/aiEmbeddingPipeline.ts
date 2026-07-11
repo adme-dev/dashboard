@@ -1,7 +1,6 @@
 import type { H3Event } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { generateEmbedding, upsertVector } from '~~/server/utils/aiVectorize'
-import { createHash } from 'uncrypto'
 
 /**
  * Generate a SHA-256 hash of content for change detection.

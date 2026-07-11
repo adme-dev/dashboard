@@ -28,7 +28,7 @@
           </NuxtLink>
           <button
             class="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-white text-[17.5px] font-medium rounded-full hover:bg-white/20 transition-colors"
-            @click="document.getElementById('xero-integration')?.scrollIntoView({ behavior: 'smooth' })"
+            @click="scrollToXeroIntegration"
           >
             See how it works
           </button>
@@ -264,6 +264,10 @@ definePageMeta({
   layout: false,
   public: true
 })
+
+function scrollToXeroIntegration() {
+  document.getElementById('xero-integration')?.scrollIntoView({ behavior: 'smooth' })
+}
 
 const xeroFeatures = [
   {

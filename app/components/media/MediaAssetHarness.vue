@@ -80,6 +80,14 @@ interface AssetDerivative {
 }
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: {
+    method?: string
+    body?: unknown
+    query?: Record<string, unknown>
+  }
+) => Promise<T>
 const loading = ref(false)
 const buckets = ref<Bucket[]>([])
 const items = ref<BucketItem[]>([])
@@ -258,7 +266,7 @@ async function uploadMask(): Promise<string | null> {
     const form = new FormData()
     form.append('projectId', props.projectId)
     form.append('file', blob, 'brush-mask.png')
-    const res = await $fetch<{ maskKey: string; url: string; size: number }>(`/api/agency/video/assets/${item.assetId}/masks`, {
+    const res = await apiFetch<{ maskKey: string; url: string; size: number }>(`/api/agency/video/assets/${item.assetId}/masks`, {
       method: 'POST',
       body: form,
     })
@@ -279,9 +287,9 @@ async function loadHarness() {
   const previousSelectedItemId = selectedItemId.value
   try {
     const [bucketRes, modelRes, jobsRes] = await Promise.all([
-      $fetch<{ buckets: Bucket[]; items: BucketItem[] }>(`/api/agency/video/projects/${props.projectId}/buckets`),
-      $fetch<{ actions: HarnessAction[]; models: HarnessModel[] }>('/api/agency/video/asset-intelligence/models'),
-      $fetch<{ jobs: IntelligenceJob[] }>(`/api/agency/video/projects/${props.projectId}/intelligence-jobs`, { query: { limit: 30 } }),
+      apiFetch<{ buckets: Bucket[]; items: BucketItem[] }>(`/api/agency/video/projects/${props.projectId}/buckets`),
+      apiFetch<{ actions: HarnessAction[]; models: HarnessModel[] }>('/api/agency/video/asset-intelligence/models'),
+      apiFetch<{ jobs: IntelligenceJob[] }>(`/api/agency/video/projects/${props.projectId}/intelligence-jobs`, { query: { limit: 30 } }),
     ])
     buckets.value = bucketRes.buckets
     items.value = bucketRes.items
@@ -302,7 +310,7 @@ async function loadHarness() {
 async function loadJobs() {
   if (!props.projectId) return
   try {
-    const res = await $fetch<{ jobs: IntelligenceJob[] }>(`/api/agency/video/projects/${props.projectId}/intelligence-jobs`, { query: { limit: 30 } })
+    const res = await apiFetch<{ jobs: IntelligenceJob[] }>(`/api/agency/video/projects/${props.projectId}/intelligence-jobs`, { query: { limit: 30 } })
     intelligenceJobs.value = res.jobs
   } catch {
     intelligenceJobs.value = []
@@ -318,7 +326,7 @@ async function loadSelectedDerivatives() {
   }
   loadingDerivatives.value = true
   try {
-    const res = await $fetch<{ derivatives: AssetDerivative[] }>(`/api/agency/video/assets/${encodeURIComponent(assetId)}/derivatives`)
+    const res = await apiFetch<{ derivatives: AssetDerivative[] }>(`/api/agency/video/assets/${encodeURIComponent(assetId)}/derivatives`)
     if (selectedItem.value?.assetId === assetId) selectedDerivatives.value = res.derivatives
   } catch {
     if (selectedItem.value?.assetId === assetId) selectedDerivatives.value = []
@@ -354,7 +362,7 @@ async function saveDirective(item: BucketItem) {
       prompt: toolPrompt.value,
       brushMaskKey: brushMaskKey.value || null,
     }
-    const res = await $fetch<{ item: BucketItem }>(`/api/agency/video/bucket-items/${item.id}/directive`, {
+    const res = await apiFetch<{ item: BucketItem }>(`/api/agency/video/bucket-items/${item.id}/directive`, {
       method: 'POST',
       body: { role: item.role ?? 'editor-selected', directive },
     })
@@ -376,7 +384,7 @@ async function runExtraction() {
   try {
     const uploadedMaskKey = maskToolEnabled.value && hasMaskStroke.value ? await uploadMask() : (brushMaskKey.value || null)
     if (maskToolEnabled.value && hasMaskStroke.value && !uploadedMaskKey) return
-    const res = await $fetch<{ job: { id: string; status: string; errorMessage?: string | null } }>(`/api/agency/video/assets/${item.assetId}/extract`, {
+    const res = await apiFetch<{ job: { id: string; status: string; errorMessage?: string | null } }>(`/api/agency/video/assets/${item.assetId}/extract`, {
       method: 'POST',
       body: {
         projectId: props.projectId,
@@ -403,7 +411,7 @@ async function runExtraction() {
 async function assemblePlan() {
   assembling.value = true
   try {
-    const res = await $fetch<{ plan: any }>(`/api/agency/video/projects/${props.projectId}/assemble`, {
+    const res = await apiFetch<{ plan: any }>(`/api/agency/video/projects/${props.projectId}/assemble`, {
       method: 'POST',
       body: { brief: brief.value, targetFormat: targetFormat.value },
     })
@@ -423,7 +431,7 @@ function addDerivativeToTimeline(derivative: AssetDerivative) {
 async function addDerivativeToBucket(derivative: AssetDerivative) {
   addingDerivativeId.value = derivative.id
   try {
-    await $fetch(`/api/agency/video/derivatives/${encodeURIComponent(derivative.id)}/add-to-bucket`, {
+    await apiFetch(`/api/agency/video/derivatives/${encodeURIComponent(derivative.id)}/add-to-bucket`, {
       method: 'POST',
       body: {
         bucketKind: 'generated',

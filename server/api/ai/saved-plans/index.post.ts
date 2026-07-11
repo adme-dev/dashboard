@@ -6,7 +6,7 @@ import { getSelectedTenant } from '~~/server/utils/session'
 const MAX_SAVED = 50
 
 export default eventHandler(async (event) => {
-  const user = requireAuth(event)
+  const user = await requireAuth(event)
   const tenantId = await getSelectedTenant(event)
   const body = await readBody(event)
 

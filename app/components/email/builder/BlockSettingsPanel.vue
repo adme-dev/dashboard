@@ -20,7 +20,7 @@ interface BlockData {
     borderRadius?: number
     fontSize?: number
     fontFamily?: string
-    fontWeight?: 'bold' | 'normal'
+    fontWeight?: string | null
     [key: string]: unknown
   }
   props?: Record<string, unknown>
@@ -1093,7 +1093,7 @@ function updateColumnWidth(index: number, value: string | number) {
         </UFormField>
         <UFormField label="Text transform">
           <USelect
-            :model-value="(block.data?.style?.textTransform as string) || 'none'"
+            :model-value="(block.data?.style?.textTransform as (typeof TEXT_TRANSFORMS)[number] | undefined) || 'none'"
             :items="TEXT_TRANSFORM_OPTIONS"
             value-key="value"
             class="w-full"
@@ -1126,7 +1126,7 @@ function updateColumnWidth(index: number, value: string | number) {
           </UFormField>
           <UFormField label="Border style">
             <USelect
-              :model-value="(block.data?.style?.borderStyle as string) || 'solid'"
+              :model-value="(block.data?.style?.borderStyle as (typeof BORDER_STYLES)[number] | undefined) || 'solid'"
               :items="BORDER_STYLE_OPTIONS"
               value-key="value"
               class="w-full"
@@ -1161,7 +1161,7 @@ function updateColumnWidth(index: number, value: string | number) {
         </UFormField>
         <UFormField label="Shadow">
           <USelect
-            :model-value="(block.data?.style?.boxShadow as string) || 'none'"
+            :model-value="(block.data?.style?.boxShadow as (typeof SHADOW_OPTIONS)[number] | undefined) || 'none'"
             :items="SHADOW_SELECT_OPTIONS"
             value-key="value"
             class="w-full"

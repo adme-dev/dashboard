@@ -348,7 +348,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
         taskId: a.taskId,
         taskTitle: a.title,
         assignerId: userId,
-        dueDate: a.dueDate,
+        dueDate: new Date(a.dueDate),
       }).catch(err => console.error('[Brief] task-assigned notify failed:', err))
     }
     // P2: optional additive writes AFTER the core conversion has committed — a failure here

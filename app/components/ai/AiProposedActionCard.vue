@@ -20,6 +20,7 @@ const props = defineProps<{ conversationId: string, proposal: ProposedAction }>(
 const emit = defineEmits<{ confirmed: [resultRef: string], cancelled: [] }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 const status = ref<'idle' | 'submitting' | 'done' | 'cancelled'>('idle')
 const errorMsg = ref('')
 
@@ -114,7 +115,7 @@ async function confirm() {
   status.value = 'submitting'
   errorMsg.value = ''
   try {
-    const res = await $fetch<{ ok: boolean, taskId?: string, resultRef?: string, error?: string, requiresRichConfirm?: boolean }>(
+    const res = await apiFetch<{ ok: boolean, taskId?: string, resultRef?: string, error?: string, requiresRichConfirm?: boolean }>(
       `/api/agency/ai/chat/conversations/${props.conversationId}/confirm-action`,
       // rich_confirm writes (budget change) must send the explicit acknowledgement the server gate requires.
       { method: 'POST', body: { proposalId: props.proposal.proposalId, ...(isRichConfirm.value ? { richConfirmAck: true } : {}) } },

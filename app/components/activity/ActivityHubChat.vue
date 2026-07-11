@@ -7,6 +7,11 @@ const router = useRouter()
 const toast = useToast()
 const { close: closeHub } = useActivityHub()
 const { user } = useAuth()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  params?: Record<string, unknown>
+}) => Promise<T>
 
 const {
   channels,
@@ -68,7 +73,7 @@ async function pollOnce(channelId: string) {
   // Find highest message ID we have locally
   const lastId = messages.value.reduce((max, m) => (m.id > max ? m.id : max), 0)
   try {
-    const fresh = await $fetch<ChatMessage[]>(
+    const fresh = await apiFetch<ChatMessage[]>(
       `/api/chat/channels/${channelId}/messages`,
       { params: { after: String(lastId), limit: '50' } },
     )
@@ -180,7 +185,7 @@ async function handleSend(
   // and as a safety net during transient WS drops.
   sending.value = true
   try {
-    const sent = await $fetch<ChatMessage>(`/api/chat/channels/${channelId}/messages`, {
+    const sent = await apiFetch<ChatMessage>(`/api/chat/channels/${channelId}/messages`, {
       method: 'POST',
       body: {
         content: body,

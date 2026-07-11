@@ -3,9 +3,17 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ (e: 'created'): void }>()
 
 const toast = useToast()
-const { data: clients } = useFetch<{ id: string, name: string }[]>('/api/agency/clients', {
-  default: () => []
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const clients = ref<{ id: string, name: string }[]>([])
+
+async function refreshClients() {
+  clients.value = await apiFetch<{ id: string, name: string }[]>('/api/agency/clients')
+}
+
+await refreshClients()
 
 const clientId = ref<string | null>(null)
 const formName = ref<string>('')
@@ -74,7 +82,7 @@ async function submit() {
   }
   saving.value = true
   try {
-    await $fetch('/api/leads', {
+    await apiFetch('/api/leads', {
       method: 'POST',
       body: {
         client_id: clientId.value,

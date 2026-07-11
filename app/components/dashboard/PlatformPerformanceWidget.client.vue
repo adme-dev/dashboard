@@ -6,13 +6,56 @@ sevenDaysAgo.setDate(now.getDate() - 7)
 const startDate = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysAgo.getDate()).padStart(2, '0')}`
 const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
-const { data: analyticsData, status: analyticsStatus } = await useFetch('/api/agency/analytics/daily-spend', {
-  query: { startDate, endDate },
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
+const analyticsData = ref<any | null>(null)
+const metaData = ref<any | null>(null)
+const googleData = ref<any | null>(null)
+const analyticsStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const metaStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const googleStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshPlatformPerformance() {
+  analyticsStatus.value = 'pending'
+  metaStatus.value = 'pending'
+  googleStatus.value = 'pending'
+
+  const [analyticsResult, metaResult, googleResult] = await Promise.allSettled([
+    apiFetch('/api/agency/analytics/daily-spend', { query: { startDate, endDate } }),
+    apiFetch('/api/agency/social/daily-spend', { query: { platform: 'meta' } }),
+    apiFetch('/api/agency/social/daily-spend', { query: { platform: 'google' } }),
+  ])
+
+  if (analyticsResult.status === 'fulfilled') {
+    analyticsData.value = analyticsResult.value
+    analyticsStatus.value = 'success'
+  } else {
+    console.error('Failed to load analytics daily spend', analyticsResult.reason)
+    analyticsStatus.value = 'error'
+  }
+
+  if (metaResult.status === 'fulfilled') {
+    metaData.value = metaResult.value
+    metaStatus.value = 'success'
+  } else {
+    console.error('Failed to load Meta daily spend', metaResult.reason)
+    metaStatus.value = 'error'
+  }
+
+  if (googleResult.status === 'fulfilled') {
+    googleData.value = googleResult.value
+    googleStatus.value = 'success'
+  } else {
+    console.error('Failed to load Google daily spend', googleResult.reason)
+    googleStatus.value = 'error'
+  }
+}
 
 // Fallback to the old per-platform fetch if the new endpoint isn't available
-const { data: metaData, status: metaStatus } = await useFetch('/api/agency/social/daily-spend', { query: { platform: 'meta' } })
-const { data: googleData, status: googleStatus } = await useFetch('/api/agency/social/daily-spend', { query: { platform: 'google' } })
+await refreshPlatformPerformance()
 
 const status = computed(() => {
   if (analyticsStatus.value === 'pending') return 'pending'

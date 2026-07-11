@@ -3,16 +3,26 @@ import type { BannerBrandKit } from '~/types/banner-studio'
 
 const { state, applyBrandKit } = useBannerStudio()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> },
+) => Promise<T>
 
 const showManagerModal = ref(false)
 
 // Fetch brand kits, optionally filtered by project's client
 const clientId = computed(() => state.project?.clientId || undefined)
-const { data: brandKits, refresh } = useFetch<BannerBrandKit[]>('/api/agency/banner-studio/brand-kits', {
-  query: { clientId },
-  default: () => [],
-  watch: [clientId],
-})
+const brandKits = ref<BannerBrandKit[]>([])
+
+async function refresh() {
+  brandKits.value = await apiFetch<BannerBrandKit[]>('/api/agency/banner-studio/brand-kits', {
+    query: { clientId: clientId.value },
+  })
+}
+
+watch(clientId, () => {
+  refresh()
+}, { immediate: true })
 
 function handleApply(kit: BannerBrandKit) {
   applyBrandKit(kit)
@@ -116,7 +126,7 @@ function handleApply(kit: BannerBrandKit) {
     </div>
 
     <!-- Full manager modal -->
-    <UModal v-model:open="showManagerModal" :ui="{ width: 'max-w-2xl' }">
+    <UModal v-model:open="showManagerModal" :ui="{ content: 'max-w-2xl' }">
       <template #content>
         <div class="p-4 max-h-[80vh] overflow-y-auto">
           <div class="flex items-center justify-between mb-4">

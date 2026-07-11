@@ -24,6 +24,11 @@ import { getMusicQueue, musicIdempotencyKey, type MusicJobPayload } from '~~/ser
 interface VoiceoverArgs { text: string, lang: string, voice?: string, title?: string, clientId?: string, channels: string[] }
 interface MusicArgs { prompt: string, isInstrumental: boolean, lyrics?: string, format: 'mp3' | 'wav', title?: string, clientId?: string, channels: string[] }
 interface StatusArgs { jobId: string }
+type JsonKvBinding = { get(key: string, type: 'json'): Promise<unknown> }
+
+function isJsonKvBinding(value: unknown): value is JsonKvBinding {
+  return !!value && typeof value === 'object' && typeof (value as { get?: unknown }).get === 'function'
+}
 
 export function buildGenerationRunner(): GenerationRunner {
   return {
@@ -57,7 +62,8 @@ export function buildGenerationRunner(): GenerationRunner {
     // so the host gets an actionable message instead of a generic handler_error.
     start_music_generation: async (raw, ctx: ToolContext) => {
       const a = raw as MusicArgs
-      const kv = (ctx.event.context as { cloudflare?: { env?: { CACHE?: unknown } } }).cloudflare?.env?.CACHE ?? null
+      const rawKv = (ctx.event.context as { cloudflare?: { env?: { CACHE?: unknown } } }).cloudflare?.env?.CACHE
+      const kv = isJsonKvBinding(rawKv) ? rawKv : null
       const blocklist = await loadBlocklist(kv)
       const briefGuard = guardAudioPrompt(a.prompt, blocklist)
       const lyricsGuard = a.lyrics ? guardAudioPrompt(a.lyrics, blocklist) : { safe: true, violations: [] as string[] }

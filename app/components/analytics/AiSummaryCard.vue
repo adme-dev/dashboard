@@ -18,6 +18,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   loaded: [summary: string | null]
 }>()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const summary = ref<string | null>(props.initialSummary ?? null)
 const loading = ref(false)
@@ -36,7 +37,7 @@ async function fetchSummary() {
   error.value = false
 
   try {
-    const res = await $fetch<{ summary: string | null }>(`${props.apiBase}/ai-summary`, {
+    const res = await apiFetch<{ summary: string | null }>(`${props.apiBase}/ai-summary`, {
       method: 'POST',
       body: {
         campaignId: props.mediaSpendId,

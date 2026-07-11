@@ -20,13 +20,13 @@ export type EngagrFrameRuntime = {
 }
 
 export function parseRenderFps(input: number | string | RenderFps): RenderFps {
-  if (typeof input === 'object' && input) {
-    return normalizeRenderFps(input)
-  }
   if (typeof input === 'number') {
     if (!Number.isFinite(input) || input <= 0) throw new Error('FPS must be a positive finite number')
     if (!Number.isInteger(input)) throw new Error('Decimal FPS is ambiguous; use an exact rational such as 30000/1001')
     return { num: input, den: 1 }
+  }
+  if (typeof input !== 'string') {
+    return normalizeRenderFps(input)
   }
   const trimmed = input.trim()
   if (/^\d+$/.test(trimmed)) return normalizeRenderFps({ num: Number(trimmed), den: 1 })

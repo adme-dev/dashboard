@@ -183,6 +183,10 @@ const unwatching = ref<string | null>(null)
 const scopeFilter = ref<'all' | 'board' | 'item' | 'column'>('all')
 const searchQuery = ref('')
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 // Keyword subscriptions
 interface Keyword { id: string; keyword: string; createdAt: string }
@@ -192,7 +196,7 @@ const addingKeyword = ref(false)
 
 async function loadKeywords() {
   try {
-    const data = await $fetch<{ keywords: Keyword[] }>('/api/notifications/keywords')
+    const data = await apiFetch<{ keywords: Keyword[] }>('/api/notifications/keywords')
     keywords.value = data.keywords
   } catch {
     keywords.value = []
@@ -204,7 +208,7 @@ async function addKeyword() {
   if (!k) return
   addingKeyword.value = true
   try {
-    const data = await $fetch<{ id: string; keyword: string; createdAt: string; alreadyExisted?: boolean }>(
+    const data = await apiFetch<{ id: string; keyword: string; createdAt: string; alreadyExisted?: boolean }>(
       '/api/notifications/keywords',
       { method: 'POST', body: { keyword: k } }
     )
@@ -225,7 +229,7 @@ async function addKeyword() {
 
 async function removeKeyword(id: string) {
   try {
-    await $fetch(`/api/notifications/keywords/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/notifications/keywords/${id}`, { method: 'DELETE' })
     keywords.value = keywords.value.filter(k => k.id !== id)
   } catch (err: any) {
     toast.add({
@@ -317,7 +321,7 @@ async function load() {
   loading.value = true
   offset.value = 0
   try {
-    const data = await $fetch<{ subscriptions: Subscription[]; total: number; hasMore: boolean }>(
+    const data = await apiFetch<{ subscriptions: Subscription[]; total: number; hasMore: boolean }>(
       `/api/notifications/subscriptions?limit=${PAGE_SIZE}&offset=0`
     )
     subscriptions.value = data.subscriptions
@@ -339,7 +343,7 @@ async function loadMore() {
   loadingMore.value = true
   try {
     const newOffset = subscriptions.value.length
-    const data = await $fetch<{ subscriptions: Subscription[]; total: number; hasMore: boolean }>(
+    const data = await apiFetch<{ subscriptions: Subscription[]; total: number; hasMore: boolean }>(
       `/api/notifications/subscriptions?limit=${PAGE_SIZE}&offset=${newOffset}`
     )
     subscriptions.value = [...subscriptions.value, ...data.subscriptions]
@@ -360,7 +364,7 @@ async function loadMore() {
 async function unwatch(id: string) {
   unwatching.value = id
   try {
-    await $fetch(`/api/notifications/subscriptions/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/notifications/subscriptions/${id}`, { method: 'DELETE' })
     subscriptions.value = subscriptions.value.filter(s => s.id !== id)
     toast.add({ title: 'Unwatched', color: 'success' })
   } catch (err: any) {

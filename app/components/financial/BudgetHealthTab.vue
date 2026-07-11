@@ -21,9 +21,27 @@ const yearOptions = Array.from({ length: 3 }, (_, i) => {
 })
 
 // Fetch budget health data
-const { data: healthData, pending, refresh } = useFetch('/api/agency/budget-alerts/health', {
-  query: { month: selectedMonth, year: selectedYear }
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const healthQuery = computed(() => ({ month: selectedMonth.value, year: selectedYear.value }))
+const healthData = ref<any | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    healthData.value = await apiFetch('/api/agency/budget-alerts/health', {
+      query: healthQuery.value,
+    })
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
+watch(healthQuery, () => { refresh() })
 
 const summary = computed(() => (healthData.value as any)?.summary || {
   totalBudget: 0, totalSpent: 0, totalRemaining: 0, overallUtilization: 0,

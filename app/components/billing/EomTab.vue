@@ -3,6 +3,7 @@ import type { EomRun } from '~/types'
 
 const toast = useToast()
 const { generateRun, fetchRuns, deleteRun, exportCSV } = useEom()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { params?: Record<string, unknown> }) => Promise<T>
 
 const now = new Date()
 const selectedMonth = ref(now.getMonth())
@@ -17,10 +18,17 @@ if (now.getDate() <= 15) {
 
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
-const { data: runs, refresh } = useFetch<EomRun[]>('/api/agency/eom/runs', {
-  params: { year: selectedYear },
-  watch: [selectedYear],
-})
+const runs = ref<EomRun[]>([])
+
+async function refresh() {
+  runs.value = await apiFetch<EomRun[]>('/api/agency/eom/runs', {
+    params: { year: selectedYear.value },
+  })
+}
+
+watch(selectedYear, () => {
+  refresh()
+}, { immediate: true })
 
 const currentRun = computed(() => {
   if (!runs.value) return null

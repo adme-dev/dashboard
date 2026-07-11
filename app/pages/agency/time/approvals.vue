@@ -7,6 +7,7 @@ definePageMeta({
 })
 
 const toast = useToast()
+const apiFetch = $fetch as <T>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Filter state
 const activeFilter = ref('submitted')
@@ -90,7 +91,7 @@ async function toggleExpand(id: string) {
   expandedId.value = id
   loadingDetail.value = true
   try {
-    const data = await $fetch<any>(`/api/agency/time/timesheets/${id}`)
+    const data = await apiFetch<any>(`/api/agency/time/timesheets/${id}`)
     expandedEntries.value = data.entries || []
   } catch {
     expandedEntries.value = []
@@ -109,7 +110,7 @@ const rejecting = ref(false)
 async function approveTimesheet(id: string) {
   approvingId.value = id
   try {
-    await $fetch(`/api/agency/time/timesheets/${id}`, {
+    await apiFetch(`/api/agency/time/timesheets/${id}`, {
       method: 'PATCH',
       body: { action: 'approve' }
     })
@@ -132,7 +133,7 @@ async function submitReject() {
   if (!rejectTargetId.value || !rejectionReason.value.trim()) return
   rejecting.value = true
   try {
-    await $fetch(`/api/agency/time/timesheets/${rejectTargetId.value}`, {
+    await apiFetch(`/api/agency/time/timesheets/${rejectTargetId.value}`, {
       method: 'PATCH',
       body: { action: 'reject', rejectionReason: rejectionReason.value }
     })
@@ -154,7 +155,7 @@ async function bulkApprove() {
   let successCount = 0
   for (const id of ids) {
     try {
-      await $fetch(`/api/agency/time/timesheets/${id}`, {
+      await apiFetch(`/api/agency/time/timesheets/${id}`, {
         method: 'PATCH',
         body: { action: 'approve' }
       })

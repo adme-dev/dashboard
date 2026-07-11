@@ -9,6 +9,14 @@ export function useCrmTasks(
   filters: Ref<CrmTaskFilters> = ref({}),
 ) {
   const base = inject<string>('crmApiBase', '/api/crm')
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: {
+      method?: string
+      body?: unknown
+      query?: Record<string, unknown>
+    }
+  ) => Promise<T>
 
   const query = computed(() => {
     const f = filters.value
@@ -19,28 +27,38 @@ export function useCrmTasks(
     return q
   })
   const enabled = computed(() => !!clientId.value)
+  const data = ref<{ items: CrmTask[], total: number }>({ items: [], total: 0 })
+  const pending = ref(false)
 
-  const { data, pending, refresh } = useFetch<{ items: CrmTask[], total: number }>(`${base}/tasks`, {
-    query,
-    watch: [query],
-    immediate: false,
-    default: () => ({ items: [], total: 0 }),
-  })
-  watch(enabled, (v) => { if (v) refresh() }, { immediate: true })
+  async function refresh() {
+    if (!enabled.value) {
+      data.value = { items: [], total: 0 }
+      return
+    }
+
+    pending.value = true
+    try {
+      data.value = await apiFetch<{ items: CrmTask[], total: number }>(`${base}/tasks`, { query: query.value })
+    } finally {
+      pending.value = false
+    }
+  }
+
+  watch(query, () => { refresh() }, { immediate: true })
 
   async function create(body: Partial<CrmTask>) {
-    await $fetch(`${base}/tasks`, { method: 'POST', body: { ...body, client_id: clientId.value } })
+    await apiFetch(`${base}/tasks`, { method: 'POST', body: { ...body, client_id: clientId.value } })
     await refresh()
   }
   async function update(id: string, patch: Partial<CrmTask>) {
-    await $fetch(`${base}/tasks/${id}`, { method: 'PATCH', body: { ...patch, client_id: clientId.value } })
+    await apiFetch(`${base}/tasks/${id}`, { method: 'PATCH', body: { ...patch, client_id: clientId.value } })
     await refresh()
   }
   async function complete(id: string, outcome?: string | null) {
     await update(id, { status: 'completed', outcome: (outcome ?? null) as CrmTask['outcome'] })
   }
   async function remove(id: string) {
-    await $fetch(`${base}/tasks/${id}`, { method: 'DELETE', query: { client_id: clientId.value } })
+    await apiFetch(`${base}/tasks/${id}`, { method: 'DELETE', query: { client_id: clientId.value } })
     await refresh()
   }
 

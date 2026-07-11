@@ -59,34 +59,45 @@ const lastFocusedRecordingId = ref<string | null>(null)
 let captureTimer: ReturnType<typeof setInterval> | null = null
 let captureStartedAt = 0
 
-const {
-  data: recordingsData,
-  refresh: refreshRecordings,
-  pending,
-  error
-} = useFetch<{ recordings: RecordingWithMeeting[] }>(
-  () => `/api/office/${props.officeId}/recordings`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ recordings: [] })
-  }
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const recordingsData = ref<{ recordings: RecordingWithMeeting[] }>({ recordings: [] })
+const meetingsData = ref<{ meetings: MeetingOption[] }>({ meetings: [] })
+const settingsData = ref<{ settings: OfficeSettingsRow | null }>({ settings: null })
+const pending = ref(false)
+const error = ref<unknown>(null)
 
-const { data: meetingsData } = useFetch<{ meetings: MeetingOption[] }>(
-  () => `/api/office/${props.officeId}/meetings`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ meetings: [] })
+async function refreshRecordings() {
+  pending.value = true
+  error.value = null
+  try {
+    recordingsData.value = await apiFetch<{ recordings: RecordingWithMeeting[] }>(`/api/office/${props.officeId}/recordings`)
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
   }
-)
+}
 
-const { data: settingsData } = useFetch<{ settings: OfficeSettingsRow | null }>(
-  () => `/api/office/${props.officeId}/settings`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ settings: null })
+async function refreshMeetings() {
+  try {
+    meetingsData.value = await apiFetch<{ meetings: MeetingOption[] }>(`/api/office/${props.officeId}/meetings`)
+  } catch {
+    // Preserve the current meeting options during transient refresh failures.
   }
-)
+}
+
+async function refreshSettings() {
+  try {
+    settingsData.value = await apiFetch<{ settings: OfficeSettingsRow | null }>(`/api/office/${props.officeId}/settings`)
+  } catch {
+    // Preserve the current recording settings during transient refresh failures.
+  }
+}
+
+await Promise.all([refreshRecordings(), refreshMeetings(), refreshSettings()])
 
 const recordings = computed(() => recordingsData.value?.recordings ?? [])
 const meetings = computed(() => meetingsData.value?.meetings ?? [])
@@ -450,7 +461,7 @@ async function uploadCapturedRecording(recording: RecordingWithMeeting | OfficeR
     const body = new FormData()
     body.append('file', capturedBlob.value, `${title.value.trim() || recording.title || 'office-recording'}.webm`)
     if (captureSeconds.value > 0) body.append('durationSeconds', String(captureSeconds.value))
-    const result = await $fetch<{ recording: OfficeRecordingRow }>(`/api/office/${props.officeId}/recordings/${recording.id}/upload`, {
+    const result = await apiFetch<{ recording: OfficeRecordingRow }>(`/api/office/${props.officeId}/recordings/${recording.id}/upload`, {
       method: 'POST',
       body
     })
@@ -654,7 +665,7 @@ function openShareLink(recording: RecordingWithMeeting) {
 async function openRecordingThread(recording: RecordingWithMeeting) {
   openingRecordingThreadId.value = recording.id
   try {
-    const channel = await $fetch<{ id: string }>(`/api/office/${props.officeId}/recordings/${recording.id}/thread`, {
+    const channel = await apiFetch<{ id: string }>(`/api/office/${props.officeId}/recordings/${recording.id}/thread`, {
       method: 'POST'
     })
     await navigateTo(`/agency/chat?channel=${encodeURIComponent(channel.id)}`)
@@ -693,7 +704,7 @@ async function createRecording() {
   saving.value = true
   const linkedMeetingId = meetingSessionId.value
   try {
-    const result = await $fetch<{ recording: OfficeRecordingRow }>(`/api/office/${props.officeId}/recordings`, {
+    const result = await apiFetch<{ recording: OfficeRecordingRow }>(`/api/office/${props.officeId}/recordings`, {
       method: 'POST',
       body: {
         meeting_session_id: meetingSessionId.value,
@@ -726,7 +737,7 @@ async function createRecording() {
 async function updateRecording(recording: RecordingWithMeeting, body: Record<string, unknown>, successTitle: string) {
   updatingRecordingId.value = recording.id
   try {
-    await $fetch(`/api/office/${props.officeId}/recordings/${recording.id}`, {
+    await apiFetch(`/api/office/${props.officeId}/recordings/${recording.id}`, {
       method: 'PATCH',
       body
     })
@@ -748,7 +759,7 @@ async function updateRecording(recording: RecordingWithMeeting, body: Record<str
 async function transcribeRecording(recording: RecordingWithMeeting | OfficeRecordingRow) {
   transcribingRecordingId.value = recording.id
   try {
-    const result = await $fetch<{ transcript: string, summary: string, actionItems?: string }>(
+    const result = await apiFetch<{ transcript: string, summary: string, actionItems?: string }>(
       `/api/office/${props.officeId}/recordings/${recording.id}/transcribe`,
       { method: 'POST' }
     )
@@ -783,6 +794,12 @@ async function transcribeRecording(recording: RecordingWithMeeting | OfficeRecor
 watch(open, (isOpen) => {
   if (isOpen && !title.value) resetForm()
   if (isOpen) applyTargetMeeting()
+})
+
+watch(() => props.officeId, async () => {
+  await Promise.all([refreshRecordings(), refreshMeetings(), refreshSettings()])
+  resetForm()
+  applyTargetMeeting()
 })
 
 watch([targetMeeting, () => props.targetMeetingId], () => {
@@ -911,7 +928,7 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="rounded-md bg-white/[0.06] px-2 py-1 text-xs font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-              @click="refreshRecordings"
+              @click="() => refreshRecordings()"
             >
               Retry
             </button>

@@ -20,6 +20,10 @@ definePageMeta({
 
 const route = useRoute()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string }
+) => Promise<T>
 
 const officeId = computed(() => String(route.params.officeId || ''))
 const requestId = computed(() => String(route.params.requestId || ''))
@@ -28,7 +32,24 @@ const tokenEndpoint = computed(() =>
 )
 const lobbyPath = computed(() => `/lobby/${officeId.value}`)
 
-const { data: handshake, pending, error } = await useFetch<OfficeLobbyGuestRoomHandshake>(tokenEndpoint, { method: 'POST' })
+const handshake = ref<OfficeLobbyGuestRoomHandshake | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refreshHandshake() {
+  pending.value = true
+  error.value = null
+  try {
+    handshake.value = await apiFetch<OfficeLobbyGuestRoomHandshake>(tokenEndpoint.value, { method: 'POST' })
+  } catch (err) {
+    handshake.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+await refreshHandshake()
 
 const initialZoneId = computed(() => handshake.value?.zone?.id ?? null)
 const connectionOfficeId = computed(() => handshake.value ? officeId.value : null)
@@ -344,7 +365,7 @@ async function leaveRoom() {
   stopTracks(screenStream.value)
   connection.disconnect()
   try {
-    await $fetch(`/api/public/office-lobby/${officeId.value}/request/${requestId.value}/cancel`, {
+    await apiFetch(`/api/public/office-lobby/${officeId.value}/request/${requestId.value}/cancel`, {
       method: 'POST'
     })
   } catch {
@@ -358,7 +379,7 @@ async function pollRequestStatus() {
 
   statusPolling.value = true
   try {
-    const response = await $fetch<LobbyRequestStatusResponse>(
+    const response = await apiFetch<LobbyRequestStatusResponse>(
       `/api/public/office-lobby/${officeId.value}/request/${requestId.value}`
     )
     if (response.request.status !== 'accepted') {

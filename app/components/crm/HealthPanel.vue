@@ -11,6 +11,10 @@ const props = defineProps<{
 
 const base = inject<string>('crmApiBase', '/api/crm')
 const isAgency = base === '/api/crm'
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 interface HealthRow {
   target_id: string
@@ -22,9 +26,16 @@ interface HealthRow {
   recency_score: number
 }
 const query = computed(() => ({ client_id: props.clientId, target_type: props.targetType }))
-const { data, refresh } = useFetch<{ byTarget: Record<string, HealthRow> }>('/api/crm/health', {
-  query, watch: [query], immediate: isAgency, default: () => ({ byTarget: {} }),
-})
+const data = ref<{ byTarget: Record<string, HealthRow> }>({ byTarget: {} })
+
+async function refresh() {
+  if (!isAgency) return
+  data.value = await apiFetch<{ byTarget: Record<string, HealthRow> }>('/api/crm/health', { query: query.value })
+}
+
+watch(query, () => {
+  refresh()
+}, { immediate: true })
 const score = computed(() => data.value?.byTarget?.[props.targetId] ?? null)
 
 // Health grades relabel the shared column: Hot = Healthy, Warm = At risk, Cold = Critical.
@@ -42,7 +53,7 @@ const recomputing = ref(false)
 async function recompute() {
   recomputing.value = true
   try {
-    await $fetch('/api/crm/health/compute', {
+    await apiFetch('/api/crm/health/compute', {
       method: 'POST',
       body: { client_id: props.clientId, target_type: props.targetType, target_id: props.targetId },
     })

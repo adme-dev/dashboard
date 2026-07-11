@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { CalendarDate, today, getLocalTimeZone } from '@internationalized/date'
+import type { Ref } from 'vue'
 
 definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
@@ -169,46 +170,66 @@ const isCurrentMonth = computed(() =>
   selectedMonth.value === nowCal.month && selectedYear.value === nowCal.year
 )
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
+
+function createReportState<T>(
+  request: string,
+  query?: () => Record<string, unknown>
+) {
+  const data = ref<T | null>(null) as Ref<T | null>
+  const pending = ref(true)
+  const error = ref<unknown>(null)
+
+  async function refresh() {
+    pending.value = true
+    error.value = null
+
+    try {
+      data.value = await apiFetch<T>(request, query ? { query: query() } : undefined)
+    } catch (fetchError) {
+      error.value = fetchError
+      data.value = null
+    } finally {
+      pending.value = false
+    }
+  }
+
+  return { data, pending, error, refresh }
+}
+
 // ── Data fetches ──
-// All client-only + lazy. We never block SSR on Xero — the page renders
-// skeleton cards and each widget resolves independently. getCachedData: () =>
-// undefined stops Nuxt from replaying a stale snapshot across navigations.
-const fetchOpts = { server: false, getCachedData: () => undefined } as const
+// Client-loaded widgets stay independent so one Xero endpoint timing out does
+// not block the full reports dashboard.
+const pnlState = createReportState<PnlReport>('/api/xero/reports/pnl-detailed', () => ({ toDate: toDate.value }))
+const pnl = pnlState.data
+const pnlPending = pnlState.pending
 
-const { data: pnl, pending: pnlPending, refresh: refreshPnl } = useLazyFetch<PnlReport>(
-  '/api/xero/reports/pnl-detailed',
-  { ...fetchOpts, query: computed(() => ({ toDate: toDate.value })) }
-)
+const balanceSheetState = createReportState<BalanceSheet>('/api/xero/reports/balance-sheet', () => ({ toDate: toDate.value }))
+const balanceSheet = balanceSheetState.data
+const bsPending = balanceSheetState.pending
 
-const { data: balanceSheet, pending: bsPending, refresh: refreshBs } = useLazyFetch<BalanceSheet>(
-  '/api/xero/reports/balance-sheet',
-  { ...fetchOpts, query: computed(() => ({ toDate: toDate.value })) }
-)
+const agingState = createReportState<AgingReport>('/api/xero/reports/aging')
+const aging = agingState.data
+const agingPending = agingState.pending
 
-const { data: aging, pending: agingPending, refresh: refreshAging } = useLazyFetch<AgingReport>(
-  '/api/xero/reports/aging',
-  fetchOpts
-)
+const agingPayablesState = createReportState<AgingReport>('/api/xero/reports/aging', () => ({ type: 'payables' }))
+const agingPayables = agingPayablesState.data
+const agingPayPending = agingPayablesState.pending
 
-const { data: agingPayables, pending: agingPayPending } = useLazyFetch<AgingReport>(
-  '/api/xero/reports/aging',
-  { ...fetchOpts, query: { type: 'payables' } }
-)
+const budgetState = createReportState<BudgetReport>('/api/xero/reports/budget-variance', () => ({ month: selectedMonth.value, year: selectedYear.value }))
+const budget = budgetState.data
+const budgetPending = budgetState.pending
 
-const { data: budget, pending: budgetPending, refresh: refreshBudget } = useLazyFetch<BudgetReport>(
-  '/api/xero/reports/budget-variance',
-  { ...fetchOpts, query: computed(() => ({ month: selectedMonth.value, year: selectedYear.value })) }
-)
+const pipelineState = createReportState<PipelineReport>('/api/xero/invoice-pipeline')
+const pipeline = pipelineState.data
+const pipelinePending = pipelineState.pending
 
-const { data: pipeline, pending: pipelinePending, refresh: refreshPipeline } = useLazyFetch<PipelineReport>(
-  '/api/xero/invoice-pipeline',
-  fetchOpts
-)
-
-const { data: bankSummary, pending: bankPending } = useLazyFetch<{ totalBalance: number }>(
-  '/api/xero/reports/bank-summary',
-  fetchOpts
-)
+const bankSummaryState = createReportState<{ totalBalance: number }>('/api/xero/reports/bank-summary')
+const bankSummary = bankSummaryState.data
+const bankPending = bankSummaryState.pending
 
 // Xero Executive Summary — DSO / DPO / current ratio / etc., computed
 // server-side by Xero rather than rederived from P&L + Balance Sheet.
@@ -216,20 +237,18 @@ type ExecutiveSummary = {
   asOf: string
   metrics: Record<string, { latest: number | null; periods: number[]; label: string }>
 }
-const { data: execSummary, pending: execPending } = useLazyFetch<ExecutiveSummary>(
-  '/api/xero/reports/executive-summary',
-  { ...fetchOpts, query: computed(() => ({ date: toDate.value })) }
-)
+const execSummaryState = createReportState<ExecutiveSummary>('/api/xero/reports/executive-summary', () => ({ date: toDate.value }))
+const execSummary = execSummaryState.data
+const execPending = execSummaryState.pending
 
 // Recurring revenue (retainers / subscriptions) — MRR + top clients.
 type RepeatingInvoices = {
   summary: { mrr: number; arr: number; activeCount: number; totalCount: number; clientCount: number }
   topClients: Array<{ contact: string; contactId: string; monthly: number; schedules: number }>
 }
-const { data: recurring, pending: recurringPending } = useLazyFetch<RepeatingInvoices>(
-  '/api/xero/repeating-invoices',
-  fetchOpts
-)
+const recurringState = createReportState<RepeatingInvoices>('/api/xero/repeating-invoices')
+const recurring = recurringState.data
+const recurringPending = recurringState.pending
 
 // Client / project P&L via tracking categories.
 type ClientPnl = {
@@ -237,14 +256,16 @@ type ClientPnl = {
   options: Array<{ name: string; revenue: number; directCosts: number; grossProfit: number; operatingExpenses: number; netProfit: number; netMargin: number }>
   totals: { revenue?: number; directCosts?: number; operatingExpenses?: number; netProfit?: number }
 }
-const { data: clientPnl, pending: clientPnlPending, refresh: refreshClientPnl } = useLazyFetch<ClientPnl>(
+const clientPnlState = createReportState<ClientPnl>(
   '/api/xero/reports/client-pnl',
-  { ...fetchOpts, query: computed(() => {
+  () => {
     const d = new Date(selectedYear.value, selectedMonth.value - 1, 1)
     const end = new Date(selectedYear.value, selectedMonth.value, 0)
     return { fromDate: d.toISOString().slice(0, 10), toDate: end.toISOString().slice(0, 10) }
-  }) }
+  }
 )
+const clientPnl = clientPnlState.data
+const clientPnlPending = clientPnlState.pending
 
 // Xero-managed Budgets (BudgetSummary) — replaces our computed budget inference.
 type XeroBudgets = {
@@ -253,40 +274,53 @@ type XeroBudgets = {
   periodLabels: string[]
   rows: Array<{ label: string; values: number[] }>
 }
-const { data: xeroBudgets, pending: xeroBudgetsPending } = useLazyFetch<XeroBudgets>(
-  '/api/xero/budgets',
-  { ...fetchOpts, query: { periods: 6 } }
-)
+const xeroBudgetsState = createReportState<XeroBudgets>('/api/xero/budgets', () => ({ periods: 6 }))
+const xeroBudgets = xeroBudgetsState.data
+const xeroBudgetsPending = xeroBudgetsState.pending
 
 // Credit notes issued YTD / this month — impacts true revenue figure.
 type CreditNotes = {
   summary: { issuedYtdTotal: number; issuedYtdCount: number; issuedMonthTotal: number; issuedMonthCount: number; receivedYtdTotal: number; receivedYtdCount: number }
   topContacts: Array<{ name: string; total: number; count: number }>
 }
-const { data: creditNotes, pending: creditNotesPending } = useLazyFetch<CreditNotes>(
-  '/api/xero/credit-notes',
-  fetchOpts
-)
+const creditNotesState = createReportState<CreditNotes>('/api/xero/credit-notes')
+const creditNotes = creditNotesState.data
+const creditNotesPending = creditNotesState.pending
 
 // Unearned revenue — deposits / overpayments sitting on the balance sheet.
 type Prepayments = {
   summary: { totalUnearned: number; prepayRemaining: number; overpayRemaining: number; prepayCount: number; overpayCount: number; contactCount: number }
   topContacts: Array<{ name: string; prepay: number; overpay: number; total: number; count: number }>
 }
-const { data: unearned, pending: unearnedPending } = useLazyFetch<Prepayments>(
-  '/api/xero/prepayments-overpayments',
-  fetchOpts
-)
+const unearnedState = createReportState<Prepayments>('/api/xero/prepayments-overpayments')
+const unearned = unearnedState.data
+const unearnedPending = unearnedState.pending
 
 // Client revenue concentration — YTD % of revenue per client + HHI risk.
 type ClientConcentration = {
   summary: { clientCount: number; grandTotal: number; top1Share: number; top3Share: number; top10Share: number; hhi: number; risk: 'low' | 'medium' | 'high' }
   clients: Array<{ id: string; name: string; total: number; paid: number; outstanding: number; invoiceCount: number; sharePct: number }>
 }
-const { data: concentration, pending: concentrationPending } = useLazyFetch<ClientConcentration>(
-  '/api/xero/client-concentration',
-  fetchOpts
-)
+const concentrationState = createReportState<ClientConcentration>('/api/xero/client-concentration')
+const concentration = concentrationState.data
+const concentrationPending = concentrationState.pending
+
+const reportStates = [
+  pnlState,
+  balanceSheetState,
+  agingState,
+  agingPayablesState,
+  budgetState,
+  pipelineState,
+  bankSummaryState,
+  execSummaryState,
+  recurringState,
+  clientPnlState,
+  xeroBudgetsState,
+  creditNotesState,
+  unearnedState,
+  concentrationState,
+]
 
 const loading = computed(() => pnlPending.value && bsPending.value)
 
@@ -311,7 +345,7 @@ async function refreshAll() {
     ['/api/xero/client-concentration', {}],
   ] as const
   await Promise.allSettled(
-    bustUrls.map(([url, q]) => $fetch(url, { query: { ...q, bust: 1 } }).catch(() => null))
+    bustUrls.map(([url, q]) => apiFetch(url, { query: { ...q, bust: 1 } }).catch(() => null))
   )
   // Reload the page so every useLazyFetch call rehydrates from the now-
   // fresh KV. Easier than wiring `refresh()` for all 14 fetches, and
@@ -344,10 +378,16 @@ const advisorData = ref<AdvisorResponse | null>(null)
 const advisorError = ref<string | null>(null)
 const advisorClientId = ref<string>('agency')
 // Client list is cheap + shared with the rest of /reports. Fetch client-side.
-const { data: advisorClientsData } = await useFetch<Array<{ id: string; name: string }>>(
-  '/api/agency/clients',
-  { server: false, default: () => [] }
-)
+const advisorClientsData = ref<Array<{ id: string; name: string }>>([])
+
+async function refreshAdvisorClients() {
+  try {
+    advisorClientsData.value = await apiFetch<Array<{ id: string; name: string }>>('/api/agency/clients')
+  } catch {
+    advisorClientsData.value = []
+  }
+}
+
 const advisorClientOptions = computed(() => ([
   { label: 'Agency (own books)', value: 'agency' },
   ...(advisorClientsData.value ?? []).map((c: { id: string; name: string }) => ({ label: c.name, value: c.id })),
@@ -362,7 +402,7 @@ async function openAdvisor(force = false) {
     const query: Record<string, any> = { toDate: toDate.value }
     if (force) query.bust = 1
     if (advisorClientId.value && advisorClientId.value !== 'agency') query.clientId = advisorClientId.value
-    advisorData.value = await $fetch<AdvisorResponse>('/api/ai/financial-advisor', { query })
+    advisorData.value = await apiFetch<AdvisorResponse>('/api/ai/financial-advisor', { query })
   } catch (err: any) {
     advisorError.value = err?.data?.statusMessage ?? err?.message ?? 'Advisor unavailable'
   } finally {
@@ -376,6 +416,24 @@ watch(advisorClientId, () => {
     advisorData.value = null
     openAdvisor(true)
   }
+})
+
+watch(toDate, () => {
+  pnlState.refresh()
+  balanceSheetState.refresh()
+  execSummaryState.refresh()
+})
+
+watch([selectedMonth, selectedYear], () => {
+  budgetState.refresh()
+  clientPnlState.refresh()
+})
+
+onMounted(() => {
+  void Promise.allSettled([
+    ...reportStates.map(state => state.refresh()),
+    refreshAdvisorClients()
+  ])
 })
 
 function gradeColor(grade: 'A' | 'B' | 'C' | 'D' | 'F'): string {
@@ -667,14 +725,14 @@ const breadcrumbs = computed(() => ([
             variant="soft"
             icon="i-lucide-sparkles"
             :loading="advisorLoading"
-            @click="openAdvisor"
+            @click="() => openAdvisor()"
           />
           <UButton
             label="Refresh"
             color="neutral"
             icon="i-lucide-refresh-cw"
             :loading="loading"
-            @click="refreshAll"
+            @click="() => refreshAll()"
           />
         </template>
       </UDashboardNavbar>

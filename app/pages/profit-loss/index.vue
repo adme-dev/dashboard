@@ -79,6 +79,16 @@ type ProfitAndLossReport = {
   insights: string[]
 }
 
+type ClientProfitabilityReport = {
+  summary: { clientCount: number; totalCommission: number }
+  clients: Array<{ name: string; commission: number; commissionRate: number }>
+}
+
+type AgencyKpiReport = {
+  revenuePerEmployee: number
+  teamUtilization: Array<{ name: string; rate: number; target: number }>
+}
+
 import ProfitTrendChart from '~/components/reports/ProfitTrendChart.client.vue'
 
 // ── URL query string sync ──
@@ -182,25 +192,67 @@ const isCurrentMonth = computed(() =>
   selectedMonth.value === nowCal.month && selectedYear.value === nowCal.year
 )
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
 // ── P&L data fetch ──
-const { data, pending, error, refresh } = await useFetch<ProfitAndLossReport>(
-  '/api/xero/reports/pnl-detailed',
-  { query: computed(() => ({ toDate: toDate.value, basis: basis.value })) }
-)
+const data = ref<ProfitAndLossReport | null>(null)
+const pending = ref(true)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+
+  try {
+    data.value = await apiFetch<ProfitAndLossReport>('/api/xero/reports/pnl-detailed', {
+      query: { toDate: toDate.value, basis: basis.value }
+    })
+  } catch (fetchError) {
+    error.value = fetchError
+    throw fetchError
+  } finally {
+    pending.value = false
+  }
+}
 
 // ── Client profitability fetch ──
-const { data: profitability, pending: profitPending } = await useFetch<{
-  summary: { clientCount: number; totalCommission: number }
-  clients: Array<{ name: string; commission: number; commissionRate: number }>
-}>('/api/agency/projects/profitability', {
-  query: computed(() => ({ month: selectedMonth.value, year: selectedYear.value }))
-})
+const profitability = ref<ClientProfitabilityReport | null>(null)
+const profitPending = ref(true)
+const profitError = ref<unknown>(null)
+
+async function refreshProfitability() {
+  profitPending.value = true
+  profitError.value = null
+
+  try {
+    profitability.value = await apiFetch<ClientProfitabilityReport>('/api/agency/projects/profitability', {
+      query: { month: selectedMonth.value, year: selectedYear.value }
+    })
+  } catch (fetchError) {
+    profitError.value = fetchError
+    throw fetchError
+  } finally {
+    profitPending.value = false
+  }
+}
 
 // ── KPIs fetch ──
-const { data: kpis } = await useFetch<{
-  revenuePerEmployee: number
-  teamUtilization: Array<{ name: string; rate: number; target: number }>
-}>('/api/agency/kpis')
+const kpis = ref<AgencyKpiReport | null>(null)
+const kpisError = ref<unknown>(null)
+
+async function refreshKpis() {
+  kpisError.value = null
+
+  try {
+    kpis.value = await apiFetch<AgencyKpiReport>('/api/agency/kpis')
+  } catch (fetchError) {
+    kpisError.value = fetchError
+    throw fetchError
+  }
+}
 
 const report = computed(() => data.value ?? null)
 
@@ -498,8 +550,18 @@ const breadcrumbs = computed(() => ([
 ]))
 
 const refreshAll = async () => {
-  await refresh()
+  await Promise.all([refresh(), refreshProfitability(), refreshKpis()])
 }
+
+watch([toDate, basis], () => {
+  refresh()
+})
+
+watch([selectedMonth, selectedYear], () => {
+  refreshProfitability()
+})
+
+await refreshAll()
 </script>
 
 <template>

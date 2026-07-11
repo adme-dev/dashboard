@@ -9,9 +9,19 @@ const emit = defineEmits<{ 'update:modelValue': [string | null] }>()
 const base = inject<string>('crmApiBase', '/api/crm')
 const isAgency = base === '/api/crm'
 const { user } = useAuth()
-const { data } = useFetch<{ suggestions: { id: string, name: string }[] }>('/api/users/search', {
-  query: { q: '', limit: '20' }, default: () => ({ suggestions: [] }), immediate: isAgency,
-})
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
+const data = ref<{ suggestions: { id: string, name: string }[] }>({ suggestions: [] })
+
+async function refreshUsers() {
+  if (!isAgency) return
+  data.value = await apiFetch<{ suggestions: { id: string, name: string }[] }>(
+    '/api/users/search',
+    { query: { q: '', limit: '20' } },
+  )
+}
+
+refreshUsers()
+
 const NONE = '__none__'
 const options = computed(() => [
   { label: 'Unassigned', value: NONE },

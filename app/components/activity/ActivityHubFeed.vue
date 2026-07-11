@@ -5,6 +5,7 @@ const { close } = useActivityHub()
 const { formatRelativeTime } = useNotifications()
 const { channels, totalUnreadCount } = useChat()
 const router = useRouter()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { params?: Record<string, unknown> }) => Promise<T>
 
 const feedMessages = ref<FeedMessage[]>([])
 const loading = ref(false)
@@ -16,7 +17,7 @@ async function fetchFeed(before?: number) {
   try {
     const params: Record<string, string | number> = { limit: 30 }
     if (before) params.before = before
-    const data = await $fetch<FeedMessage[]>('/api/chat/feed', { params })
+    const data = await apiFetch<FeedMessage[]>('/api/chat/feed', { params })
     if (data.length < 30) hasMore.value = false
     for (const msg of data) {
       if (!seenIds.value.has(msg.id)) {

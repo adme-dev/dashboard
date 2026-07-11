@@ -1,5 +1,4 @@
 import { query } from '../../utils/db'
-import { requireRole } from '../../middleware/auth'
 
 export default defineEventHandler(async (event) => {
   try {

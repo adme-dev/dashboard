@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="isOpen" :ui="{ width: 'sm:max-w-lg' }">
+  <UModal v-model:open="isOpen" :ui="{ content: 'sm:max-w-lg' }">
     <template #content>
       <div class="p-6">
         <!-- Header -->
@@ -94,7 +94,7 @@
 
   <!-- Template Selector Modal -->
   <WorkspaceTemplateSelector 
-    v-model:open="showTemplateSelector"
+    v-model="showTemplateSelector"
     @select="onTemplateSelect"
   />
 </template>
@@ -116,6 +116,10 @@ const isOpen = computed({
 
 const loading = ref(false)
 const showTemplateSelector = ref(false)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const form = ref({
   name: '',
@@ -151,7 +155,7 @@ const createWorkspace = async () => {
   
   loading.value = true
   try {
-    const workspace = await $fetch('/api/agency/workspaces', {
+    const result = await apiFetch<{ success: boolean; workspace: { slug: string } & Record<string, unknown> }>('/api/agency/workspaces', {
       method: 'POST',
       body: {
         name: form.value.name,
@@ -160,6 +164,7 @@ const createWorkspace = async () => {
         templateId: form.value.templateId
       }
     })
+    const workspace = result.workspace
     
     emit('created', workspace)
     isOpen.value = false

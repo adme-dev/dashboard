@@ -2,13 +2,29 @@
 import type { AiTrainingDataset, TrainingDatasetType, TrainingDatasetStatus, TrainingPipelineStats } from '~/types'
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Data fetching
-const { data, pending, refresh } = useFetch('/api/agency/ai/training/datasets')
+const data = ref<{ items?: AiTrainingDataset[] } | null>(null)
+const pending = ref(false)
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items?: AiTrainingDataset[] }>('/api/agency/ai/training/datasets')
+  } catch {
+    data.value = { items: [] }
+  } finally {
+    pending.value = false
+  }
+}
+refresh()
 const datasets = computed(() => ((data.value as any)?.items || []) as AiTrainingDataset[])
 
 // Pipeline stats for stale data indicator
-const { data: statsData } = useFetch('/api/agency/ai/training/stats')
+const statsData = ref<TrainingPipelineStats | null>(null)
+apiFetch<TrainingPipelineStats>('/api/agency/ai/training/stats')
+  .then(result => { statsData.value = result })
+  .catch(() => { statsData.value = null })
 const stats = computed(() => statsData.value as TrainingPipelineStats | undefined)
 
 const hasStaleData = computed(() => {
@@ -32,7 +48,7 @@ const extracting = ref<string | null>(null)
 const extractDataset = async (type: TrainingDatasetType) => {
   extracting.value = type
   try {
-    await $fetch('/api/agency/ai/training/extract', {
+    await apiFetch('/api/agency/ai/training/extract', {
       method: 'POST',
       body: { type },
     })

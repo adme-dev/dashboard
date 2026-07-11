@@ -20,6 +20,14 @@ interface SocialInboxSyncResult {
   channels?: SocialInboxSyncChannelResult[]
 }
 
+const internalFetch = (<T = unknown>(
+  request: string,
+  options: { method: string; headers?: Record<string, string>; body?: unknown }
+) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
+  request: string,
+  options: { method: string; headers?: Record<string, string>; body?: unknown }
+) => Promise<T>
+
 /**
  * POST /api/agency/social/inbox/accounts/sync
  * Manual "Refresh" — triggers the poll dispatcher immediately rather than waiting for the
@@ -29,7 +37,7 @@ interface SocialInboxSyncResult {
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const body: { clientId?: string | null } = await readBody<{ clientId?: string | null }>(event).catch(() => ({}))
-  const result = await $fetch<SocialInboxSyncResult>('/api/cron/sync-social-inbox', {
+  const result = await internalFetch<SocialInboxSyncResult>('/api/cron/sync-social-inbox', {
     method: 'POST',
     headers: { 'x-cron-secret': process.env.CRON_SECRET || '' },
     body: {

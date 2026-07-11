@@ -9,10 +9,27 @@ const initialStatus = routeQueryString(route.query.status)
 
 const activeTab = ref(typeof initialStatus === 'string' && approvalTabs.includes(initialStatus) ? initialStatus : 'all')
 const statusFilter = computed(() => activeTab.value === 'all' ? undefined : activeTab.value)
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
-const { data, pending } = useFetch('/api/portal/approvals', {
-  query: { status: statusFilter }
-})
+const data = ref<any | null>(null)
+const pending = ref(false)
+
+async function refreshApprovals() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>('/api/portal/approvals', {
+      query: statusFilter.value ? { status: statusFilter.value } : {},
+    })
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(statusFilter, () => {
+  refreshApprovals()
+}, { immediate: true })
 
 watch(activeTab, (tab) => {
   const query: Record<string, string> = {}

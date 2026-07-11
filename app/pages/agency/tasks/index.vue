@@ -398,6 +398,10 @@
 definePageMeta({})
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
 
 interface Task {
   id: string
@@ -503,10 +507,31 @@ const apiQuery = computed(() => {
 })
 
 // Fetch data
-const { data, pending, refresh } = await useFetch<{
+const data = ref<{
   tasks: Task[]
   pagination: { total: number; limit: number; offset: number; hasMore: boolean }
-}>('/api/agency/tasks', { query: apiQuery })
+} | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{
+      tasks: Task[]
+      pagination: { total: number; limit: number; offset: number; hasMore: boolean }
+    }>('/api/agency/tasks', { query: apiQuery.value })
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
+
+watch(apiQuery, () => {
+  void refresh()
+})
 
 const tasks = computed(() => data.value?.tasks || [])
 const pagination = computed(() => data.value?.pagination)
@@ -526,10 +551,17 @@ const blockedCount = computed(() => {
 })
 
 // Fetch related data for filters
-const { data: projectsData } = await useFetch<{ projects: Array<{ id: string; name: string }> }>('/api/agency/projects')
-const { data: departmentsData } = await useFetch<Array<{ id: string; name: string }>>('/api/agency/departments')
-const { data: membersData } = await useFetch<{ members: Array<{ id: string; name: string }> }>('/api/agency/team-members')
-const { data: statusesData } = await useFetch<Array<{ id: string; name: string }>>('/api/agency/statuses')
+const projectsData = ref<{ projects: Array<{ id: string; name: string }> }>({ projects: [] })
+const departmentsData = ref<Array<{ id: string; name: string }>>([])
+const membersData = ref<{ members: Array<{ id: string; name: string }> }>({ members: [] })
+const statusesData = ref<Array<{ id: string; name: string }>>([])
+
+await Promise.all([
+  apiFetch<{ projects: Array<{ id: string; name: string }> }>('/api/agency/projects').then((value) => { projectsData.value = value }).catch(() => { projectsData.value = { projects: [] } }),
+  apiFetch<Array<{ id: string; name: string }>>('/api/agency/departments').then((value) => { departmentsData.value = value }).catch(() => { departmentsData.value = [] }),
+  apiFetch<{ members: Array<{ id: string; name: string }> }>('/api/agency/team-members').then((value) => { membersData.value = value }).catch(() => { membersData.value = { members: [] } }),
+  apiFetch<Array<{ id: string; name: string }>>('/api/agency/statuses').then((value) => { statusesData.value = value }).catch(() => { statusesData.value = [] }),
+])
 
 const projectOptions = computed(() => [
   { label: 'All projects', value: null },
@@ -635,7 +667,7 @@ const saveTask = async () => {
   saving.value = true
   try {
     if (editingTask.value) {
-      await $fetch(`/api/agency/tasks/${editingTask.value.id}`, {
+      await apiFetch(`/api/agency/tasks/${editingTask.value.id}`, {
         method: 'PUT',
         body: {
           title: taskForm.value.title,
@@ -650,7 +682,7 @@ const saveTask = async () => {
       })
       toast.add({ title: 'Task updated', color: 'success' })
     } else {
-      await $fetch('/api/agency/tasks', {
+      await apiFetch('/api/agency/tasks', {
         method: 'POST',
         body: {
           title: taskForm.value.title,

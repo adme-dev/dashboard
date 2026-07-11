@@ -279,8 +279,8 @@ export async function listCloudflareModelCatalog(options: {
     const bindingValue = env[key]
     return typeof bindingValue === 'string' && bindingValue.trim() ? bindingValue.trim() : process.env[key]?.trim()
   }
-  const accountIdSource = envValue('CLOUDFLARE_ACCOUNT_ID') ? 'CLOUDFLARE_ACCOUNT_ID' : envValue('R2_ACCOUNT_ID') ? 'R2_ACCOUNT_ID' : null
-  const tokenSource = envValue('CLOUDFLARE_API_TOKEN')
+  const accountIdSource: CloudflareModelCatalogResult['credentialSource']['accountId'] = envValue('CLOUDFLARE_ACCOUNT_ID') ? 'CLOUDFLARE_ACCOUNT_ID' : envValue('R2_ACCOUNT_ID') ? 'R2_ACCOUNT_ID' : null
+  const tokenSource: CloudflareModelCatalogResult['credentialSource']['token'] = envValue('CLOUDFLARE_API_TOKEN')
     ? 'CLOUDFLARE_API_TOKEN'
     : envValue('CF_API_TOKEN')
       ? 'CF_API_TOKEN'

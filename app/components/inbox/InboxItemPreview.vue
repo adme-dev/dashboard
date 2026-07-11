@@ -4,7 +4,6 @@ import { parseInboxEntity } from '~~/app/utils/inboxEntity'
 
 interface NotificationLike {
   link: string | null
-  [key: string]: unknown
 }
 
 const props = defineProps<{ notification: NotificationLike }>()
@@ -16,6 +15,10 @@ const pending = ref(false)
 const failed = ref(false)
 const acting = ref(false)
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 async function load() {
   item.value = null
@@ -24,7 +27,7 @@ async function load() {
   if (!e) return
   pending.value = true
   try {
-    const res: any = await $fetch(e.apiPath)
+    const res: any = await apiFetch(e.apiPath)
     // The anomaly endpoint nests the record under `.anomaly`; tasks/briefs return it directly.
     item.value = e.kind === 'anomaly' ? (res?.anomaly ?? null) : res
     if (!item.value) failed.value = true
@@ -39,7 +42,9 @@ watch(() => entity.value?.apiPath, load, { immediate: true })
 
 // ---- anomaly actions (PATCH /api/ai/anomalies/:id) ----
 // Available actions per status mirror the server state-machine.
-const anomalyActions = computed<Array<{ action: string, label: string, icon: string, color: string }>>(() => {
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+const anomalyActions = computed<Array<{ action: string, label: string, icon: string, color: UiColor }>>(() => {
   const s = item.value?.status
   if (entity.value?.kind !== 'anomaly' || !s) return []
   const all = [
@@ -47,7 +52,7 @@ const anomalyActions = computed<Array<{ action: string, label: string, icon: str
     { action: 'snooze', label: 'Snooze 24h', icon: 'i-lucide-clock', color: 'neutral', when: ['open', 'acknowledged'] },
     { action: 'resolve', label: 'Resolve', icon: 'i-lucide-check', color: 'primary', when: ['open', 'acknowledged', 'snoozed'] },
     { action: 'reopen', label: 'Reopen', icon: 'i-lucide-rotate-ccw', color: 'neutral', when: ['resolved'] }
-  ]
+  ] satisfies Array<{ action: string, label: string, icon: string, color: UiColor, when: string[] }>
   return all.filter(a => a.when.includes(s)).map(({ when, ...a }) => a)
 })
 
@@ -58,7 +63,7 @@ async function doAction(action: string) {
   try {
     const body: Record<string, unknown> = { action }
     if (action === 'snooze') body.snoozedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-    await $fetch(e.apiPath, { method: 'PATCH', body })
+    await apiFetch(e.apiPath, { method: 'PATCH', body })
     // Reflect the new status locally (state-machine end states).
     item.value = { ...item.value, status: action === 'resolve' ? 'resolved' : action === 'acknowledge' ? 'acknowledged' : action === 'snooze' ? 'snoozed' : action === 'reopen' ? 'open' : item.value.status }
     toast.add({ title: `Anomaly ${action === 'resolve' ? 'resolved' : action === 'acknowledge' ? 'acknowledged' : action === 'snooze' ? 'snoozed' : 'reopened'}`, color: 'success' })
@@ -88,13 +93,13 @@ function fmtDate(d: string | null | undefined): string | null {
   return t.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-const briefStatusColor: Record<string, string> = {
+const briefStatusColor: Record<string, UiColor> = {
   draft: 'neutral', submitted: 'info', under_review: 'warning', needs_info: 'warning',
   approved: 'success', in_progress: 'info', completed: 'success', rejected: 'error', cancelled: 'neutral'
 }
-const priorityColor: Record<string, string> = { low: 'neutral', medium: 'info', high: 'warning', urgent: 'error' }
-const severityColor: Record<string, string> = { critical: 'error', high: 'warning', medium: 'info', low: 'neutral' }
-const anomalyStatusColor: Record<string, string> = { open: 'warning', acknowledged: 'info', snoozed: 'neutral', resolved: 'success', dismissed: 'neutral' }
+const priorityColor: Record<string, UiColor> = { low: 'neutral', medium: 'info', high: 'warning', urgent: 'error' }
+const severityColor: Record<string, UiColor> = { critical: 'error', high: 'warning', medium: 'info', low: 'neutral' }
+const anomalyStatusColor: Record<string, UiColor> = { open: 'warning', acknowledged: 'info', snoozed: 'neutral', resolved: 'success', dismissed: 'neutral' }
 
 const briefFields = computed(() =>
   ((item.value?.fieldValues as any[]) || []).filter(f => f?.value !== null && f?.value !== undefined && f?.value !== '')

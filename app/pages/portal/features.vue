@@ -3,7 +3,22 @@ definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { user } = usePortalAuth()
 
-const { data: dashboard, pending } = useFetch('/api/portal/dashboard')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const dashboard = ref<any | null>(null)
+const pending = ref(false)
+
+async function refreshDashboard() {
+  pending.value = true
+  try {
+    dashboard.value = await apiFetch<any>('/api/portal/dashboard')
+  } catch {
+    dashboard.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+refreshDashboard()
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(amount)

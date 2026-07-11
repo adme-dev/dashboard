@@ -37,6 +37,10 @@ export function useTaskComments(taskId: string) {
   const hasMore = ref(true)
   const offset = ref(0)
   const limit = 20
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+  ) => Promise<T>
 
   // Fetch comments
   const fetchComments = async (reset = false) => {
@@ -49,7 +53,7 @@ export function useTaskComments(taskId: string) {
     }
 
     try {
-      const response = await $fetch(`/api/tasks/${taskId}/comments`, {
+      const response = await apiFetch<{ comments: Comment[], pagination: { hasMore: boolean } }>(`/api/tasks/${taskId}/comments`, {
         query: {
           limit,
           offset: offset.value,
@@ -75,7 +79,7 @@ export function useTaskComments(taskId: string) {
   // Create comment
   const createComment = async (data: CreateCommentData): Promise<Comment | null> => {
     try {
-      const response = await $fetch(`/api/tasks/${taskId}/comments`, {
+      const response = await apiFetch<Comment>(`/api/tasks/${taskId}/comments`, {
         method: 'POST',
         body: data
       })
@@ -103,7 +107,7 @@ export function useTaskComments(taskId: string) {
   // Edit comment
   const editComment = async (commentId: string, content: string): Promise<boolean> => {
     try {
-      const response = await $fetch(`/api/comments/${commentId}`, {
+      const response = await apiFetch<Comment>(`/api/comments/${commentId}`, {
         method: 'PUT',
         body: { content }
       })
@@ -125,7 +129,7 @@ export function useTaskComments(taskId: string) {
   // Delete comment (soft delete)
   const deleteComment = async (commentId: string): Promise<boolean> => {
     try {
-      await $fetch(`/api/comments/${commentId}`, {
+      await apiFetch(`/api/comments/${commentId}`, {
         method: 'DELETE'
       })
 
@@ -155,7 +159,7 @@ export function useTaskComments(taskId: string) {
   // Toggle like
   const toggleLike = async (commentId: string): Promise<{ liked: boolean; likesCount: number }> => {
     try {
-      const response = await $fetch(`/api/comments/${commentId}/like`, {
+      const response = await apiFetch<{ liked: boolean, likesCount: number }>(`/api/comments/${commentId}/like`, {
         method: 'POST'
       })
 
@@ -228,6 +232,10 @@ export function useUserMentions() {
   }>>([])
   const loading = ref(false)
   const searchQuery = ref('')
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { query?: Record<string, unknown> }
+  ) => Promise<T>
 
   const searchUsers = async (query: string) => {
     if (query.length < 2) {
@@ -239,10 +247,10 @@ export function useUserMentions() {
     searchQuery.value = query
 
     try {
-      const response = await $fetch('/api/users/search', {
+      const response = await apiFetch<{ users?: typeof users.value, suggestions?: typeof users.value }>('/api/users/search', {
         query: { q: query }
       })
-      users.value = response.users
+      users.value = response.users ?? response.suggestions ?? []
     } catch (error) {
       console.error('Failed to search users:', error)
       users.value = []

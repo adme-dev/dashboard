@@ -588,11 +588,40 @@ const alertsQuery = computed(() => ({
   severity: selectedSeverity.value
 }))
 
-const { data: alerts, pending: alertsPending, refresh: refreshAlerts } = await useFetch<AlertsResponse>('/api/agency/budget-alerts', {
-  query: alertsQuery
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+const alerts = ref<AlertsResponse | null>(null)
+const alertsPending = ref(false)
+const health = ref<HealthResponse | null>(null)
+const healthPending = ref(false)
+
+async function refreshAlerts() {
+  alertsPending.value = true
+  try {
+    alerts.value = await apiFetch<AlertsResponse>('/api/agency/budget-alerts', { query: alertsQuery.value })
+  } finally {
+    alertsPending.value = false
+  }
+}
+
+async function refreshHealth() {
+  healthPending.value = true
+  try {
+    health.value = await apiFetch<HealthResponse>('/api/agency/budget-alerts/health')
+  } finally {
+    healthPending.value = false
+  }
+}
+
+onMounted(() => {
+  void refreshAll()
 })
 
-const { data: health, pending: healthPending, refresh: refreshHealth } = await useFetch<HealthResponse>('/api/agency/budget-alerts/health')
+watch(alertsQuery, () => {
+  void refreshAlerts()
+})
 
 const refreshing = ref(false)
 
@@ -623,14 +652,14 @@ const openResolveModal = (alert: BudgetAlert) => {
 
 const acknowledgeAlert = async (alertId: string) => {
   try {
-    await $fetch(`/api/agency/budget-alerts/${alertId}/acknowledge`, {
+    await apiFetch(`/api/agency/budget-alerts/${alertId}/acknowledge`, {
       method: 'POST'
     })
     toast.add({
       title: 'Alert acknowledged',
       color: 'success'
     })
-    refreshAlerts()
+    await refreshAlerts()
   } catch (error: any) {
     toast.add({
       title: 'Error',
@@ -645,7 +674,7 @@ const resolveAlert = async () => {
 
   resolving.value = true
   try {
-    await $fetch(`/api/agency/budget-alerts/${selectedAlert.value.id}/resolve`, {
+    await apiFetch(`/api/agency/budget-alerts/${selectedAlert.value.id}/resolve`, {
       method: 'POST',
       body: {
         resolutionNotes: resolutionNotes.value
@@ -657,8 +686,8 @@ const resolveAlert = async () => {
     })
     resolveModalOpen.value = false
     detailsModalOpen.value = false
-    refreshAlerts()
-    refreshHealth()
+    await refreshAlerts()
+    await refreshHealth()
   } catch (error: any) {
     toast.add({
       title: 'Error',

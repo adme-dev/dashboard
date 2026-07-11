@@ -17,11 +17,10 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Select at least one workspace' })
   }
 
-  const client = createMondayClient(process.env.MONDAY_API_TOKEN)
+  const client = await createMondayClient(process.env.MONDAY_API_TOKEN)
   
   // Get departments
-  const deptsResult = await query('SELECT id, name FROM departments WHERE is_active = true')
-  const departments = deptsResult.rows
+  const departments = await query<{ id: string, name: string }>('SELECT id, name FROM departments WHERE is_active = true')
 
   // Get all boards
   const allBoards = await client.getBoards({ limit: 500, state: 'active' })
@@ -34,7 +33,7 @@ export default eventHandler(async (event) => {
   )
 
   // Create migration session
-  const sessionResult = await query(`
+  const sessionResult = await query<{ id: string }>(`
     INSERT INTO monday_migration_sessions (
       status, started_by, monday_account_id, monday_account_name,
       boards_total, items_total, items_migrated, items_failed, config, started_at
@@ -48,7 +47,7 @@ export default eventHandler(async (event) => {
     JSON.stringify({ workspaceIds, workspaceMappings })
   ])
   
-  const sessionId = sessionResult.rows[0].id
+  const sessionId = sessionResult[0]?.id
 
   const results = {
     sessionId,
@@ -79,7 +78,7 @@ export default eventHandler(async (event) => {
     }
 
     try {
-      const mappingResult = await query(`
+      const mappingResult = await query<{ id: string }>(`
         INSERT INTO monday_board_mappings (
           migration_session_id, monday_board_id, monday_board_name,
           monday_board_type, department_id, status, items_total, started_at, created_at
@@ -87,7 +86,7 @@ export default eventHandler(async (event) => {
         RETURNING id
       `, [sessionId, board.id, board.name, board.type, departmentId, 'running', board.items_count || 0])
       
-      const mappingId = mappingResult.rows[0].id
+      const mappingId = mappingResult[0]?.id
       
       // Import items
       let cursor: string | undefined

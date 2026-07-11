@@ -3,6 +3,10 @@ definePageMeta({ layout: 'admin', middleware: ['role-admin'] })
 
 const toast = useToast()
 const { isOwner } = useAuth()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 interface Role {
   id: string
@@ -18,7 +22,22 @@ interface Role {
   memberCount: number
 }
 
-const { data: rolesData, refresh, pending } = useFetch<{ roles: Role[] }>('/api/admin/roles')
+const rolesData = ref<{ roles: Role[] } | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    rolesData.value = await apiFetch<{ roles: Role[] }>('/api/admin/roles')
+  } finally {
+    pending.value = false
+  }
+}
+
+onMounted(() => {
+  void refresh()
+})
+
 const roles = computed(() => rolesData.value?.roles || [])
 const systemRoles = computed(() => roles.value.filter(r => r.isSystem))
 const customRoles = computed(() => roles.value.filter(r => !r.isSystem))
@@ -75,7 +94,7 @@ async function toggleGroup(group: string) {
     : [...current, group]
 
   try {
-    await $fetch(`/api/admin/roles/${selectedRole.value.id}`, {
+    await apiFetch(`/api/admin/roles/${selectedRole.value.id}`, {
       method: 'PUT',
       body: { permissionGroups: newGroups }
     })
@@ -91,7 +110,7 @@ async function saveRole() {
   if (!selectedRole.value) return
   saving.value = true
   try {
-    await $fetch(`/api/admin/roles/${selectedRole.value.id}`, {
+    await apiFetch(`/api/admin/roles/${selectedRole.value.id}`, {
       method: 'PUT',
       body: {
         name: selectedRole.value.isSystem ? undefined : editName.value,
@@ -118,7 +137,7 @@ async function deleteRole() {
   if (!selectedRole.value) return
   deleting.value = true
   try {
-    await $fetch(`/api/admin/roles/${selectedRole.value.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/admin/roles/${selectedRole.value.id}`, { method: 'DELETE' })
     toast.add({ title: 'Role deleted', color: 'success' })
     selectedRoleId.value = null
     await refresh()
@@ -158,7 +177,7 @@ async function createRole() {
   }
   creating.value = true
   try {
-    const result = await $fetch<{ id: string }>('/api/admin/roles', {
+    const result = await apiFetch<{ id: string }>('/api/admin/roles', {
       method: 'POST',
       body: createForm.value
     })
@@ -206,10 +225,20 @@ const iconOptions = [
 ]
 
 // Members for selected role
-const { data: membersData } = useFetch(() =>
-  selectedRoleId.value ? `/api/admin/roles/${selectedRoleId.value}/members` : null,
-  { watch: [selectedRoleId] }
-)
+const membersData = ref<any | null>(null)
+
+async function refreshMembers() {
+  if (!selectedRoleId.value) {
+    membersData.value = null
+    return
+  }
+  membersData.value = await apiFetch(`/api/admin/roles/${selectedRoleId.value}/members`)
+}
+
+watch(selectedRoleId, () => {
+  void refreshMembers()
+}, { immediate: true })
+
 const roleMembers = computed(() => (membersData.value as any)?.members || [])
 </script>
 

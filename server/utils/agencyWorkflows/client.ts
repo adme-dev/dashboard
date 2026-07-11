@@ -31,6 +31,7 @@ import {
   type CrmFollowupReviewWorkflowScope,
   type CrmFollowupReviewWorkflowTrigger
 } from '~~/server/utils/agencyWorkflows/crmFollowupReview'
+import type { H3Event } from 'h3'
 
 const AGENCY_WORKFLOWS_BINDING = 'AGENCY_WORKFLOWS'
 const WORKFLOW_START_URL = 'https://agency-workflows.internal/workflows/start'
@@ -53,7 +54,7 @@ interface AgencyWorkflowServiceBinding {
   fetch: (request: Request) => Promise<Response>
 }
 
-export interface AgencyWorkflowEvent {
+interface AgencyWorkflowEventLike {
   context?: {
     cloudflare?: {
       env?: Record<string, unknown>
@@ -61,6 +62,7 @@ export interface AgencyWorkflowEvent {
   }
 }
 
+export type AgencyWorkflowEvent = H3Event | AgencyWorkflowEventLike
 export type StartSocialPublishingWorkflowEvent = AgencyWorkflowEvent
 
 export interface StartSocialPublishingWorkflowInput {
@@ -115,6 +117,8 @@ export interface StartAgencyWorkflowSuccess<TWorkflow extends AgencyWorkflowKind
   workflow: TWorkflow
   instanceId?: string
   status?: unknown
+  reason?: undefined
+  error?: undefined
 }
 
 export interface StartAgencyWorkflowDisabled {
@@ -716,7 +720,8 @@ export async function getAgencyWorkflowStatus(
 }
 
 function getCloudflareEnv(event: AgencyWorkflowEvent): Record<string, unknown> {
-  return event.context?.cloudflare?.env ?? {}
+  const cloudflare = (event.context as { cloudflare?: { env?: Record<string, unknown> } } | undefined)?.cloudflare
+  return cloudflare?.env ?? {}
 }
 
 function envText(env: Record<string, unknown>, key: string): string {

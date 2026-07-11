@@ -1,10 +1,28 @@
 <script setup lang="ts">
 import { format, parseISO } from 'date-fns'
 
-const { data, status } = await useFetch('/api/agency/tasks', {
-  // Fetch a wider window than we show so the unassigned count/badge is honest.
-  query: { excludeCompleted: 'true', limit: 50 },
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshUnassignedWork() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/tasks', {
+      // Fetch a wider window than we show so the unassigned count/badge is honest.
+      query: { excludeCompleted: 'true', limit: 50 },
+    })
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load unassigned work', error)
+    status.value = 'error'
+  }
+}
+
+await refreshUnassignedWork()
 
 const CAP = 5
 const allUnassigned = computed(() => {

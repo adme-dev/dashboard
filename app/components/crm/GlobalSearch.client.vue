@@ -11,6 +11,7 @@ const emit = defineEmits<{ select: [CrmSearchResult] }>()
 
 const base = inject<string>('crmApiBase', '/api/crm')
 const isAgency = base === '/api/crm'
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 const open = ref(false)
 const term = ref('')
@@ -34,7 +35,7 @@ watch(debounced, async (q) => {
   try {
     const query: Record<string, string> = { q: trimmed }
     if (isAgency) query.client_id = props.clientId
-    const res = await $fetch<{ results: CrmSearchResult[] }>(`${base}/search`, { query })
+    const res = await apiFetch<{ results: CrmSearchResult[] }>(`${base}/search`, { query })
     results.value = res.results
   } catch {
     results.value = []

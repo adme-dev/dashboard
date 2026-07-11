@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 import { defaultResolveClient, type ResolveClient } from './clientResolve'
 import { periodDays, type Period } from './period'
 
@@ -21,9 +22,9 @@ export type SocialInboxDeps = {
 
 const defaultDeps: SocialInboxDeps = {
   resolveClient: defaultResolveClient,
-  overview: (clientId, days, ctx) => $fetch('/api/agency/social/inbox/analytics/overview', { query: { clientId, days }, headers: ctx.event.headers as any }),
+  overview: (clientId, days, ctx) => aiInternalFetch('/api/agency/social/inbox/analytics/overview', { query: { clientId, days }, headers: ctx.event.headers as any }),
   // conversations endpoint returns a BARE ARRAY; it has no `breached` param — we sort/flag in the handler.
-  openConversations: (clientId, limit, ctx) => $fetch('/api/agency/social/inbox/conversations', { query: { clientId, status: 'open', limit }, headers: ctx.event.headers as any }),
+  openConversations: (clientId, limit, ctx) => aiInternalFetch('/api/agency/social/inbox/conversations', { query: { clientId, status: 'open', limit }, headers: ctx.event.headers as any }),
 }
 
 /** Breached first, then soonest SLA due. Pure. */

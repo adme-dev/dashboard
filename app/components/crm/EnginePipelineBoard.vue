@@ -7,10 +7,20 @@ const clientId = toRef(props, 'clientId')
 const objectKey = toRef(props, 'objectKey')
 const base = inject<string>('crmApiBase', '/api/crm')
 const isPortal = base.includes('client-portal')
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 const { data, move, refresh } = useCrmRecords(clientId, objectKey)
 
 const stageQuery = computed(() => isPortal ? {} : { client_id: clientId.value })
-const { data: stagesData } = useFetch<{ items?: CrmStage[] } | CrmStage[]>(`${base}/stages`, { query: stageQuery, default: () => ({ items: [] }) })
+const stagesData = ref<{ items?: CrmStage[] } | CrmStage[]>({ items: [] })
+
+async function refreshStages() {
+  stagesData.value = await apiFetch<{ items?: CrmStage[] } | CrmStage[]>(`${base}/stages`, { query: stageQuery.value })
+}
+
+watch(stageQuery, () => {
+  refreshStages()
+}, { immediate: true })
+
 const stages = computed<CrmStage[]>(() => {
   const all = Array.isArray(stagesData.value) ? stagesData.value : (stagesData.value?.items ?? [])
   return all.filter(s => s.code.startsWith(`${objectKey.value}:`)).sort((a, b) => a.sort_order - b.sort_order)

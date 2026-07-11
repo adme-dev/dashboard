@@ -53,7 +53,7 @@ const CATEGORY_FILTERS = [
   { label: 'Music', value: 'music', icon: 'i-lucide-music' },
   { label: 'Overlays', value: 'overlay', icon: 'i-lucide-shapes' },
   { label: 'Captions', value: 'caption', icon: 'i-lucide-subtitles' },
-]
+] satisfies Array<{ label: string, value: CategoryFilter, icon: string }>
 
 const SOURCE_FILTERS = [
   { label: 'All sources', value: 'all', icon: 'i-lucide-database' },
@@ -63,7 +63,7 @@ const SOURCE_FILTERS = [
   { label: 'Audio Studio', value: 'audio', icon: 'i-lucide-waveform' },
   { label: 'Banner Studio', value: 'banner', icon: 'i-lucide-panels-top-left' },
   { label: 'Derivatives', value: 'derivative', icon: 'i-lucide-layers' },
-]
+] satisfies Array<{ label: string, value: SourceFilter, icon: string }>
 
 const STATUS_FILTERS = [
   { label: 'All status', value: 'all', icon: 'i-lucide-list-filter' },
@@ -72,7 +72,7 @@ const STATUS_FILTERS = [
   { label: 'Failed', value: 'failed', icon: 'i-lucide-circle-x' },
   { label: 'Blocked', value: 'blocked', icon: 'i-lucide-octagon-alert' },
   { label: 'Unknown', value: 'unknown', icon: 'i-lucide-circle-help' },
-]
+] satisfies Array<{ label: string, value: StatusFilter, icon: string }>
 
 const SORT_OPTIONS = [
   { label: 'Newest first', value: 'newest' },

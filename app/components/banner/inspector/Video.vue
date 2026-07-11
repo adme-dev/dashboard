@@ -45,6 +45,7 @@ function setAsBackground() {
         size="xs"
         :model-value="selectedLayer.fit ?? 'cover'"
         :items="fitOptions"
+        value-key="value"
         @update:model-value="v => set('fit', v)"
       />
     </div>

@@ -7,11 +7,19 @@ const props = defineProps<{
 
 const toast = useToast()
 const { isManager } = useAuth()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Fetch assigned team
-const { data: teamData, refresh: refreshTeam } = await useFetch(
-  () => `/api/agency/clients/${props.clientId}/team`
-)
+const teamData = ref<any[]>([])
+
+async function refreshTeam() {
+  teamData.value = await apiFetch<any[]>(`/api/agency/clients/${props.clientId}/team`)
+}
+
+watch(() => props.clientId, () => {
+  refreshTeam()
+}, { immediate: true })
+
 const team = computed(() => ((teamData.value as any) || []) as any[])
 
 // Add member form
@@ -21,7 +29,14 @@ const selectedRole = ref('support')
 const assigning = ref(false)
 
 // Fetch all team members for the dropdown
-const { data: allMembersData } = await useFetch('/api/agency/team-members')
+const allMembersData = ref<any | null>(null)
+
+async function refreshAllMembers() {
+  allMembersData.value = await apiFetch<any>('/api/agency/team-members')
+}
+
+refreshAllMembers()
+
 const allMembers = computed(() => ((allMembersData.value as any)?.members || []) as any[])
 
 // Filter out already-assigned members
@@ -62,7 +77,7 @@ const assignMember = async () => {
   }
   assigning.value = true
   try {
-    await $fetch(`/api/agency/clients/${props.clientId}/team`, {
+    await apiFetch(`/api/agency/clients/${props.clientId}/team`, {
       method: 'POST',
       body: { teamMemberId: selectedMemberId.value, role: selectedRole.value }
     })
@@ -70,7 +85,7 @@ const assignMember = async () => {
     showAddForm.value = false
     selectedMemberId.value = null
     selectedRole.value = 'support'
-    refreshTeam()
+    await refreshTeam()
   } catch (err: any) {
     toast.add({ title: 'Failed to assign member', description: err.data?.message || err.message, color: 'error' })
   } finally {
@@ -80,11 +95,11 @@ const assignMember = async () => {
 
 const removeMember = async (memberId: string, memberName: string) => {
   try {
-    await $fetch(`/api/agency/clients/${props.clientId}/team/${memberId}`, {
+    await apiFetch(`/api/agency/clients/${props.clientId}/team/${memberId}`, {
       method: 'DELETE'
     })
     toast.add({ title: `${memberName} removed from team`, color: 'success' })
-    refreshTeam()
+    await refreshTeam()
   } catch (err: any) {
     toast.add({ title: 'Failed to remove member', description: err.data?.message || err.message, color: 'error' })
   }

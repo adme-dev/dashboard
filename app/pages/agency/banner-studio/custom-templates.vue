@@ -29,10 +29,30 @@ const fetchParams = computed(() => {
   return params
 })
 
-const { data: templates, refresh, status } = useFetch<CustomTemplate[]>(
-  '/api/agency/banner-studio/custom-templates',
-  { query: fetchParams, default: () => [] },
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+const templates = ref<CustomTemplate[]>([])
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refresh() {
+  status.value = 'pending'
+  try {
+    templates.value = await apiFetch<CustomTemplate[]>('/api/agency/banner-studio/custom-templates', { query: fetchParams.value })
+    status.value = 'success'
+  } catch {
+    status.value = 'error'
+  }
+}
+
+onMounted(() => {
+  void refresh()
+})
+
+watch(fetchParams, () => {
+  void refresh()
+})
 
 function openPreview(tpl: CustomTemplate) {
   previewTemplate.value = tpl
@@ -41,7 +61,7 @@ function openPreview(tpl: CustomTemplate) {
 
 async function useTemplate(tpl: CustomTemplate) {
   try {
-    const instance = await $fetch<{ id: string }>('/api/agency/banner-studio/custom-instances', {
+    const instance = await apiFetch<{ id: string }>('/api/agency/banner-studio/custom-instances', {
       method: 'POST',
       body: { templateId: tpl.id },
     })
@@ -53,7 +73,7 @@ async function useTemplate(tpl: CustomTemplate) {
 
 async function deleteTemplate(tpl: CustomTemplate) {
   try {
-    await $fetch(`/api/agency/banner-studio/custom-templates/${tpl.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/banner-studio/custom-templates/${tpl.id}`, { method: 'DELETE' })
     toast.add({ title: 'Deleted', description: `${tpl.name} removed`, color: 'success' })
     await refresh()
   } catch (err: any) {
@@ -63,7 +83,7 @@ async function deleteTemplate(tpl: CustomTemplate) {
 
 function onUploaded() {
   showUploadModal.value = false
-  refresh()
+  void refresh()
 }
 
 function clearFilters() {

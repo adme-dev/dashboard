@@ -9,9 +9,27 @@ definePageMeta({
 const route = useRoute()
 const toast = useToast()
 const projectId = route.params.id as string
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 // Fetch project data
-const { data, pending, refresh } = await useFetch(`/api/agency/projects/${projectId}`)
+const data = ref<any>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch(`/api/agency/projects/${projectId}`)
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
 
 const project = computed(() => (data.value as any)?.project)
 const timeEntries = computed(() => ((data.value as any)?.timeEntries || []) as any[])
@@ -103,7 +121,7 @@ const saving = ref(false)
 const saveProject = async () => {
   saving.value = true
   try {
-    await ($fetch as any)(`/api/agency/projects/${projectId}`, {
+    await apiFetch(`/api/agency/projects/${projectId}`, {
       method: 'PUT',
       body: editForm.value
     })
@@ -145,7 +163,7 @@ async function loadProjectTasks() {
   if (tasksLoaded.value) return
   loadingTasks.value = true
   try {
-    const data = await $fetch<{ tasks: any[]; byBoard: Record<string, any> }>(`/api/agency/projects/${projectId}/tasks`)
+    const data = await apiFetch<{ tasks: any[]; byBoard: Record<string, any> }>(`/api/agency/projects/${projectId}/tasks`)
     projectTasksByBoard.value = data.byBoard
     tasksLoaded.value = true
   } catch (err) {

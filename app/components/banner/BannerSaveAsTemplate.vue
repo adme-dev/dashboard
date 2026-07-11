@@ -6,6 +6,7 @@ const emit = defineEmits<{
 
 const { state } = useBannerStudio()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const name = ref('')
 const category = ref('custom')
@@ -53,7 +54,7 @@ async function save() {
       .map(t => t.trim())
       .filter(Boolean)
 
-    await $fetch('/api/agency/banner-studio/templates/from-project', {
+    await apiFetch('/api/agency/banner-studio/templates/from-project', {
       method: 'POST',
       body: {
         projectId: state.project.id,

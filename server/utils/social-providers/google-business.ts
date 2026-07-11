@@ -15,6 +15,7 @@
 
 import type { SocialPostProvider, PostParams, PostResult, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
+import { providerFetch } from './http'
 
 const GBP_API_BASE = 'https://mybusiness.googleapis.com/v4'
 
@@ -310,7 +311,7 @@ export const googleBusinessProvider: SocialPostProvider = {
       }
 
       // Create the local post
-      const res = await $fetch<{ name: string, searchUrl?: string }>(endpoint, {
+      const res = await providerFetch<{ name: string, searchUrl?: string }>(endpoint, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,

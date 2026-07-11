@@ -3,6 +3,25 @@ definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const { data, pending, error, lastUpdated, isLive, refresh } = useGetOutRealtime()
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
+function createGetOutState<T>(request: string, query?: () => Record<string, unknown>) {
+  const data = shallowRef<T | null>(null)
+
+  async function refresh() {
+    try {
+      data.value = await apiFetch<T>(request, query ? { query: query() } : undefined)
+    } catch {
+      data.value = null
+    }
+  }
+
+  return { data, refresh }
+}
+
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(val)
 
@@ -34,18 +53,16 @@ interface PacingResponse {
   invoicingNotYetStarted: boolean
   points: Array<{ day: number; currentCumulative: number | null; priorCumulative: number | null; targetLine: number }>
 }
-const { data: pacing } = await useFetch<PacingResponse>('/api/xero/get-out/pacing', {
-  lazy: true, server: false,
-})
+const pacingState = createGetOutState<PacingResponse>('/api/xero/get-out/pacing')
+const pacing = pacingState.data
 
 // ── Last 12 months target vs invoiced ──
 interface HistoryResponse {
   months: Array<{ monthStart: string; monthLabel: string; invoiced: number; target: number; hit: boolean; pctOfTarget: number; invoiceCount: number }>
   summary: { monthsTracked: number; hitCount: number; missCount: number; hitRate: number; avgPctOfTarget: number; currentTarget: number }
 }
-const { data: history } = await useFetch<HistoryResponse>('/api/xero/get-out/history', {
-  lazy: true, server: false,
-})
+const historyState = createGetOutState<HistoryResponse>('/api/xero/get-out/history')
+const history = historyState.data
 
 // ── Forecast band (Phase 2) — committed + AR + recurring + probable quotes ──
 interface ForecastResponse {
@@ -63,9 +80,8 @@ interface ForecastResponse {
   recurringSchedulesRemaining: number
   computedAt: string
 }
-const { data: forecast } = await useFetch<ForecastResponse>('/api/xero/get-out/forecast', {
-  lazy: true, server: false,
-})
+const forecastState = createGetOutState<ForecastResponse>('/api/xero/get-out/forecast')
+const forecast = forecastState.data
 
 // ── Top contributors this month ──
 interface TopClient {
@@ -88,9 +104,8 @@ interface ClientsResponse {
   totalThisMonth: number
   contributorCount: number
 }
-const { data: topClients } = await useFetch<ClientsResponse>('/api/xero/get-out/clients?limit=10', {
-  lazy: true, server: false,
-})
+const topClientsState = createGetOutState<ClientsResponse>('/api/xero/get-out/clients?limit=10')
+const topClients = topClientsState.data
 
 function riskBadgeColor(band: 'low' | 'moderate' | 'high' | 'critical'): string {
   if (band === 'critical' || band === 'high') return 'error'
@@ -105,88 +120,119 @@ function quoteStatusColor(status: 'draft' | 'sent' | 'accepted'): string {
 }
 
 // ── Phase 3a: cash + AR aging + AP due ──
-const { data: cash } = await useFetch<{
+const cashState = createGetOutState<{
   cashOnHand: number; daysOfCash: number | null; monthsRunway: number | null
   band: 'critical'|'tight'|'healthy'|'strong'|'unknown'; avgMonthlyOutflow: number
   overdrawn: boolean
-}>('/api/xero/get-out/cash-position', { lazy: true, server: false })
+}>('/api/xero/get-out/cash-position')
+const cash = cashState.data
 
-const { data: aging } = await useFetch<{
+const agingState = createGetOutState<{
   totalOutstanding: number; totalInvoices: number; averageDaysPastDue: number
   agingSummary: Array<{ bucket: string; amount: number; count: number; percentage: number }>
-}>('/api/xero/reports/aging', { lazy: true, server: false })
+}>('/api/xero/reports/aging')
+const aging = agingState.data
 
-const { data: apDue } = await useFetch<{
+const apDueState = createGetOutState<{
   totalDueThisMonth: number; totalDueThisWeek: number; totalOverdue: number
   billCount: number; urgentCount: number
-}>('/api/xero/get-out/ap-due', { lazy: true, server: false })
+}>('/api/xero/get-out/ap-due')
+const apDue = apDueState.data
 
 // ── Phase 3b: margin + recurring mix ──
-const { data: margin } = await useFetch<{
+const marginState = createGetOutState<{
   revenue: number; passthrough: number; agi: number; deliveryCosts: number
   deliveryMargin: number | null
   deliveryMarginBand: 'strong'|'healthy'|'concerning'|'red'|'unknown'
-}>('/api/xero/get-out/margin', { lazy: true, server: false })
+}>('/api/xero/get-out/margin')
+const margin = marginState.data
 
-const { data: recurringMix } = await useFetch<{
+const recurringMixState = createGetOutState<{
   totalRevenue: number; recurringRevenue: number; recurringPct: number
   recurringClientCount: number; band: 'low'|'mixed'|'healthy'|'high'
-}>('/api/xero/get-out/recurring-mix', { lazy: true, server: false })
+}>('/api/xero/get-out/recurring-mix')
+const recurringMix = recurringMixState.data
 
 // ── Phase 4: smart actions, recurring calendar, AR collection forecast, tax provision ──
-const { data: opsActions } = await useFetch<{
+const opsActionsState = createGetOutState<{
   generatedAt: string
   period: { monthStart: string; monthEnd: string; dayOfMonth: number; daysInMonth: number; workingDaysRemaining: number }
   target: number; invoiced: number; shortfall: number
   actions: Array<{ id: string; severity: 'critical'|'high'|'medium'|'low'; title: string; detail: string; value: string; linkTo?: string }>
-}>('/api/xero/get-out/operational-actions', { lazy: true, server: false })
+}>('/api/xero/get-out/operational-actions')
+const opsActions = opsActionsState.data
 
-const { data: recurringCal } = await useFetch<{
+const recurringCalState = createGetOutState<{
   period: { year: number; month: number; daysInMonth: number; dayOfMonth: number }
   totals: { missing: number; pending: number; fired: number }
   counts: { missing: number; pending: number; fired: number }
   entries: Array<{ contactId: string; name: string | null; amount: number; expectedDay: number | null; status: 'fired'|'pending'|'missing'; source: 'xero_repeating'|'inferred' }>
-}>('/api/xero/get-out/recurring-calendar', { lazy: true, server: false })
+}>('/api/xero/get-out/recurring-calendar')
+const recurringCal = recurringCalState.data
 
-const { data: arForecast } = await useFetch<{
+const arForecastState = createGetOutState<{
   totals: { thisMonth: number; nextMonth: number; later: number; total: number }
   counts: { thisMonth: number; nextMonth: number; total: number }
   thisMonthInvoices: Array<{ invoiceId: string; invoiceNumber: string | null; contactName: string | null; amount: number; dueDate: string | null; expectedDate: string; dsoDays: number }>
-}>('/api/xero/get-out/ar-collection-forecast', { lazy: true, server: false })
+}>('/api/xero/get-out/ar-collection-forecast')
+const arForecast = arForecastState.data
 
-const { data: taxProvision } = await useFetch<{
+const taxProvisionState = createGetOutState<{
   currentQuarter: { label: string; fromDate: string; toDate: string; monthsElapsed: number }
   bas: { dueDate: string; daysUntil: number }
   gst: { collected: number; paid: number; netOwed: number; arInclGst: number; apInclGst: number }
   payg: { estimated: number; basedOnWagesQuarter: number; ratePct: number }
   superGuarantee: { estimated: number; ratePct: number }
   totalSetAside: number
-}>('/api/xero/get-out/tax-provision', { lazy: true, server: false })
+}>('/api/xero/get-out/tax-provision')
+const taxProvision = taxProvisionState.data
 
-const { data: quoteVel } = await useFetch<{
+const quoteVelState = createGetOutState<{
   velocity: { avgSentToCloseDays: number | null; sampleSize: number; acceptanceRate: number | null; acceptedCount: number; declinedCount: number }
   openSent: { totalCount: number; totalValue: number; likelyByEom: { count: number; value: number } }
   wonUnmarked: { count: number; value: number }
   ageBuckets: { fresh: { count: number; value: number }; warming: { count: number; value: number }; stale: { count: number; value: number }; dead: { count: number; value: number } }
-}>('/api/xero/get-out/quote-velocity', { lazy: true, server: false })
+}>('/api/xero/get-out/quote-velocity')
+const quoteVel = quoteVelState.data
 
 // ── True position (AGI) — accurate model from Xero actuals (revenue − direct costs) ──
-const { data: agiData } = await useFetch<{
+const agiDataState = createGetOutState<{
   currentMon: string
   overheadsActualTrailing3: number
   overheadsOnlyTarget: number
   targetBreakdown: { wages: number; overheadsActual: number; extras: number }
   headline: { agiTrailing3Avg: number; agiTrailing12Avg: number; marginPctTrailing12: number | null; currentMonthAgi: number | null; truePosition: number }
   trailing12: { totalAgi: number; avgMarginPct: number | null; months: number }
-}>('/api/xero/get-out/agi', { query: { months: 13 }, lazy: true, server: false })
+}>('/api/xero/get-out/agi', () => ({ months: 13 }))
+const agiData = agiDataState.data
 
 // ── Category breakdown (last complete month, real Xero account names, from cache) ──
-const { data: categoryData } = await useFetch<{
+const categoryDataState = createGetOutState<{
   month: { year: number; month: number; label: string }
   categoryCount: number
   total: number
   categories: Array<{ code: string; name: string; lines: number; total: number }>
-}>('/api/xero/get-out/category-breakdown', { lazy: true, server: false })
+}>('/api/xero/get-out/category-breakdown')
+const categoryData = categoryDataState.data
+
+const getOutStates = [
+  pacingState,
+  historyState,
+  forecastState,
+  topClientsState,
+  cashState,
+  agingState,
+  apDueState,
+  marginState,
+  recurringMixState,
+  opsActionsState,
+  recurringCalState,
+  arForecastState,
+  taxProvisionState,
+  quoteVelState,
+  agiDataState,
+  categoryDataState,
+]
 
 function severityIconOps(s: string) {
   if (s === 'critical') return 'i-lucide-alert-octagon'
@@ -222,8 +268,12 @@ function mixBandColor(b: string): string {
 const showConfigModal = ref(false)
 async function onConfigSaved() {
   // Bust both the page payload and the pacing/history charts since target changes everywhere
-  await Promise.all([refresh?.(), refreshNuxtData()])
+  await Promise.allSettled([refresh?.(), refreshNuxtData(), ...getOutStates.map(state => state.refresh())])
 }
+
+onMounted(() => {
+  void Promise.allSettled(getOutStates.map(state => state.refresh()))
+})
 
 // 12-month performance chart scale. Old version capped bars at 100%, which
 // made months above target visually identical. Now we scale to whichever is

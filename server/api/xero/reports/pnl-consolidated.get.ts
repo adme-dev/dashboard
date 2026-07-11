@@ -82,13 +82,16 @@ async function fetchPnLForTenant(client: Awaited<ReturnType<typeof createXeroCli
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
   const client = await createXeroClient({ tokenSet: token, event })
+  if (!token.access_token) {
+    throw createError({ statusCode: 401, statusMessage: 'Xero access token missing' })
+  }
 
   const query = getQuery(event)
   const fromDate = String(query.fromDate || '')
   const toDate = String(query.toDate || '')
   const { from, to } = (!fromDate || !toDate) ? getDefaultRange() : { from: fromDate, to: toDate }
 
-  const tenants = await fetchTenants(token)
+  const tenants = await fetchTenants({ access_token: token.access_token })
   const tenantIds = tenants.filter(t => t.tenantId && t.tenantName).map(t => t.tenantId)
   const cacheKey = `xero-report:consolidated:${tenantIds.sort().join(',')}:${from}:${to}`
 

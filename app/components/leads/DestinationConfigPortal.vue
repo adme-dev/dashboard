@@ -1,5 +1,19 @@
 <script setup lang="ts">
 const config = defineModel<Record<string, unknown>>('config', { default: () => ({}) })
+
+const label = computed({
+  get: () => typeof config.value.label === 'string' ? config.value.label : '',
+  set: (value: string) => {
+    config.value = { ...config.value, label: value }
+  }
+})
+
+const includeCampaignContext = computed({
+  get: () => config.value.include_campaign_context === true,
+  set: (value: boolean) => {
+    config.value = { ...config.value, include_campaign_context: value }
+  }
+})
 </script>
 
 <template>
@@ -17,13 +31,13 @@ const config = defineModel<Record<string, unknown>>('config', { default: () => (
       hint="Optional. Helps staff describe why this form is shared."
     >
       <UInput
-        v-model="config.label"
+        v-model="label"
         placeholder="Website enquiries, Google lead form, Meta campaign"
       />
     </UFormField>
 
     <UCheckbox
-      v-model="config.include_campaign_context"
+      v-model="includeCampaignContext"
       label="Show campaign and ad context where available"
       description="Clients will see campaign and ad names already stored on each lead."
     />

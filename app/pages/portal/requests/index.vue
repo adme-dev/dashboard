@@ -5,6 +5,10 @@ const { hasPermission } = usePortalAuth()
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : value
 const requestTypeTabs = ['all', 'job_request', 'support_ticket']
@@ -21,9 +25,23 @@ const typeFilter = computed(() => {
 })
 const viewFilter = computed(() => activeStatus.value === 'all' ? undefined : activeStatus.value)
 
-const { data, pending, refresh } = useFetch('/api/portal/requests', {
-  query: { type: typeFilter, view: viewFilter }
-})
+const data = ref<any | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>('/api/portal/requests', {
+      query: { type: typeFilter.value, view: viewFilter.value }
+    })
+  } finally {
+    pending.value = false
+  }
+}
+
+watch([typeFilter, viewFilter], () => {
+  refresh()
+}, { immediate: true })
 
 watch([activeTab, activeStatus], () => {
   const query: Record<string, string> = {}
@@ -198,7 +216,13 @@ const supportRequestPresets: Record<string, { category: string, title: string, d
 }
 
 // Fetch projects for the selector
-const { data: projectsData } = useFetch('/api/portal/projects')
+const projectsData = ref<any | null>(null)
+
+async function refreshProjectsData() {
+  projectsData.value = await apiFetch<any>('/api/portal/projects')
+}
+
+refreshProjectsData()
 
 function resetForm() {
   selectedPreset.value = null
@@ -267,7 +291,7 @@ async function submitRequest() {
   }
   creating.value = true
   try {
-    await $fetch('/api/portal/requests', {
+    await apiFetch('/api/portal/requests', {
       method: 'POST',
       body: {
         requestType: form.requestType,

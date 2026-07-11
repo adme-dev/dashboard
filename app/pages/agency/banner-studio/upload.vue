@@ -4,6 +4,10 @@ import { matchImageToFormat, type FormatMatch } from '~/utils/banner-format-matc
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 const projectName = ref('')
 const uploading = ref(false)
@@ -100,7 +104,7 @@ async function submit() {
       formData.append('files', f.file)
     }
 
-    const result = await $fetch<{ id: string; name: string; formatCount: number }>(
+    const result = await apiFetch<{ id: string; name: string; formatCount: number }>(
       '/api/agency/banner-studio/projects/upload-banners',
       { method: 'POST', body: formData }
     )

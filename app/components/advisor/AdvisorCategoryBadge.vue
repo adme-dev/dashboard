@@ -6,7 +6,9 @@ const props = defineProps<{
   size?: 'xs' | 'sm' | 'md'
 }>()
 
-const COLOR_MAP: Record<Category, string> = {
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+const COLOR_MAP: Record<Category, UiColor> = {
   cashflow: 'primary',
   collections: 'warning',
   pricing: 'info',
@@ -20,7 +22,7 @@ const COLOR_MAP: Record<Category, string> = {
 
 const color = computed(() => {
   if (!props.category) return 'neutral'
-  return (COLOR_MAP as Record<string, string>)[props.category] ?? 'neutral'
+  return (COLOR_MAP as Record<string, UiColor>)[props.category] ?? 'neutral'
 })
 
 const label = computed(() => {

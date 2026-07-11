@@ -9,6 +9,10 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const { user } = useAuth()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
 
 const {
   conversations, activeConversation, messages, selectedPersona, loading, sending,
@@ -343,10 +347,17 @@ const entityTypeLabels: Record<string, string> = {
 }
 
 // Fetch user's own tasks (overdue + upcoming)
-const { data: myTasksData } = useFetch<{ tasks: any[] }>('/api/agency/tasks', {
-  params: { assigneeId: user.value?.id, limit: 20, excludeCompleted: 'true' },
-  default: () => ({ tasks: [] }),
-})
+const myTasksData = ref<{ tasks: any[] }>({ tasks: [] })
+
+async function refreshMyTasks() {
+  myTasksData.value = await apiFetch<{ tasks: any[] }>('/api/agency/tasks', {
+    query: { assigneeId: user.value?.id, limit: 20, excludeCompleted: 'true' }
+  }).catch(() => ({ tasks: [] }))
+}
+
+watch(() => user.value?.id, () => {
+  void refreshMyTasks()
+}, { immediate: true })
 
 const overdueTasks = computed(() =>
   (myTasksData.value?.tasks || []).filter((t: any) => t.dueDate && new Date(t.dueDate) < new Date())
@@ -356,8 +367,10 @@ const upcomingTasks = computed(() =>
   (myTasksData.value?.tasks || []).filter((t: any) => t.dueDate && new Date(t.dueDate) >= new Date()).slice(0, 5)
 )
 
-function getStatusColor(status: string): string {
-  const map: Record<string, string> = {
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+function getStatusColor(status: string): UiColor {
+  const map: Record<string, UiColor> = {
     done: 'success', completed: 'success',
     'in_progress': 'warning', active: 'warning',
     overdue: 'error', blocked: 'error',
@@ -407,8 +420,8 @@ async function searchEntities(q: string) {
     return
   }
   try {
-    const data = await $fetch<{ results: MentionEntity[] }>('/api/agency/ai/chat/entity-search', {
-      params: { q, limit: 8 },
+    const data = await apiFetch<{ results: MentionEntity[] }>('/api/agency/ai/chat/entity-search', {
+      query: { q, limit: 8 },
     })
     mentionResults.value = data.results
     mentionSelectedIndex.value = 0

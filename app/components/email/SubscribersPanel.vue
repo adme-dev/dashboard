@@ -17,9 +17,11 @@ const deliverabilityFilter = ref<'all' | 'mailable' | 'soft_bounced' | 'suppress
 const search = ref('')
 const page = ref(1)
 
-const { data: listsData } = await useFetch<{ items: { id: string, name: string }[] }>('/api/email/lists', {
-  default: () => ({ items: [] })
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const listsData = ref<{ items: { id: string, name: string }[] }>({ items: [] })
 const lists = computed(() => listsData.value?.items ?? [])
 
 const listFilterOptions = computed(() => [
@@ -41,10 +43,26 @@ const query = computed(() => ({
   page: page.value,
   page_size: 50
 }))
-const { data, refresh, pending } = await useFetch<{ items: SubRow[], total: number }>(
-  '/api/email/subscribers',
-  { query, default: () => ({ items: [], total: 0 }) }
-)
+const data = ref<{ items: SubRow[], total: number }>({ items: [], total: 0 })
+const pending = ref(false)
+
+async function refreshLists() {
+  listsData.value = await apiFetch<{ items: { id: string, name: string }[] }>('/api/email/lists')
+}
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items: SubRow[], total: number }>('/api/email/subscribers', {
+      query: query.value,
+    })
+  } finally {
+    pending.value = false
+  }
+}
+
+await Promise.all([refreshLists(), refresh()])
+watch(query, () => { refresh() })
 
 const showAdd = ref(false)
 const showImport = ref(false)

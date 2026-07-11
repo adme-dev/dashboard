@@ -21,6 +21,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Form state
 const form = reactive({
@@ -107,13 +108,13 @@ const handleSubmit = async () => {
 
   try {
     if (isEditing.value) {
-      await $fetch(`/api/agency/clients/${props.client!.id}`, {
+      await apiFetch(`/api/agency/clients/${props.client!.id}`, {
         method: 'PUT',
         body: form
       })
       toast.add({ title: 'Client updated', color: 'success' })
     } else {
-      await $fetch('/api/agency/clients', {
+      await apiFetch('/api/agency/clients', {
         method: 'POST',
         body: form
       })

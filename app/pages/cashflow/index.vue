@@ -22,12 +22,73 @@ interface CashFlowForecast {
 }
 
 // Fetch comprehensive cash flow data
-const { data: cashflowData, pending: cashflowPending, error: cashflowError, refresh: refreshCashflow } = await useFetch<CashFlowForecast>('/api/xero/reports/cash-flow-forecast?days=90', { lazy: true, server: false })
-const { data: scenarioData, pending: scenarioPending, error: scenarioError, refresh: refreshScenarios } = await useFetch('/api/xero/reports/cash-flow-scenarios?days=90', { lazy: true, server: false })
-const { data: waterfallData, pending: waterfallPending, error: waterfallError, refresh: refreshWaterfall } = await useFetch('/api/xero/reports/cash-flow-waterfall?period=30', { lazy: true, server: false })
-const { data: invoiceData, pending: invoicePending, error: invoiceError, refresh: refreshInvoices } = await useFetch('/api/xero/invoices', { lazy: true, server: false })
-const { data: bankData, pending: bankPending, error: bankError, refresh: refreshBank } = await useFetch('/api/xero/reports/bank-summary', { lazy: true, server: false })
-const { data: financialInsights, pending: insightsPending, error: insightsError, refresh: refreshInsights } = await useFetch('/api/xero/reports/cash-flow-insights', { lazy: true, server: false })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+
+const cashflowData = ref<CashFlowForecast | null>(null)
+const cashflowPending = ref(false)
+const cashflowError = ref<any>(null)
+async function refreshCashflow() {
+  cashflowPending.value = true
+  cashflowError.value = null
+  try { cashflowData.value = await apiFetch<CashFlowForecast>('/api/xero/reports/cash-flow-forecast?days=90') }
+  catch (err) { cashflowData.value = null; cashflowError.value = err }
+  finally { cashflowPending.value = false }
+}
+
+const scenarioData = ref<any>(null)
+const scenarioPending = ref(false)
+const scenarioError = ref<any>(null)
+async function refreshScenarios() {
+  scenarioPending.value = true
+  scenarioError.value = null
+  try { scenarioData.value = await apiFetch('/api/xero/reports/cash-flow-scenarios?days=90') }
+  catch (err) { scenarioData.value = null; scenarioError.value = err }
+  finally { scenarioPending.value = false }
+}
+
+const waterfallData = ref<any>(null)
+const waterfallPending = ref(false)
+const waterfallError = ref<any>(null)
+async function refreshWaterfall() {
+  waterfallPending.value = true
+  waterfallError.value = null
+  try { waterfallData.value = await apiFetch('/api/xero/reports/cash-flow-waterfall?period=30') }
+  catch (err) { waterfallData.value = null; waterfallError.value = err }
+  finally { waterfallPending.value = false }
+}
+
+const invoiceData = ref<any>(null)
+const invoicePending = ref(false)
+const invoiceError = ref<any>(null)
+async function refreshInvoices() {
+  invoicePending.value = true
+  invoiceError.value = null
+  try { invoiceData.value = await apiFetch('/api/xero/invoices') }
+  catch (err) { invoiceData.value = null; invoiceError.value = err }
+  finally { invoicePending.value = false }
+}
+
+const bankData = ref<any>(null)
+const bankPending = ref(false)
+const bankError = ref<any>(null)
+async function refreshBank() {
+  bankPending.value = true
+  bankError.value = null
+  try { bankData.value = await apiFetch('/api/xero/reports/bank-summary') }
+  catch (err) { bankData.value = null; bankError.value = err }
+  finally { bankPending.value = false }
+}
+
+const financialInsights = ref<any>(null)
+const insightsPending = ref(false)
+const insightsError = ref<any>(null)
+async function refreshInsights() {
+  insightsPending.value = true
+  insightsError.value = null
+  try { financialInsights.value = await apiFetch('/api/xero/reports/cash-flow-insights') }
+  catch (err) { financialInsights.value = null; insightsError.value = err }
+  finally { insightsPending.value = false }
+}
 
 const loading = computed(() => cashflowPending.value || scenarioPending.value || waterfallPending.value || invoicePending.value || bankPending.value || insightsPending.value)
 const error = computed(() => cashflowError.value || scenarioError.value || waterfallError.value || invoiceError.value || bankError.value || insightsError.value)
@@ -65,6 +126,10 @@ function formatRatio(value?: number | null) {
 async function refreshAll() {
   await Promise.all([refreshCashflow(), refreshScenarios(), refreshWaterfall(), refreshInvoices(), refreshBank(), refreshInsights()])
 }
+
+onMounted(() => {
+  void refreshAll()
+})
 
 // Key metrics calculations
 const metrics = computed(() => {

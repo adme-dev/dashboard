@@ -135,8 +135,10 @@ Prefer cron, queues, or direct route execution when:
   kind.
 - Diagnostic readiness/status smoke may use `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET`
   as a dedicated machine credential, but only on the Workflows readiness and
-  status endpoints. The same value must be stored as a Cloudflare Pages secret
-  and a GitHub Actions secret for CI deploy smoke.
+  status endpoints. GitHub Actions stores the raw value for CI deploy smoke.
+  Pages stores `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256` as the deployed
+  verifier hash, with the raw Pages secret accepted only as an operator
+  fallback.
 - Production cutovers require Graphify freshness, focused tests, Worker
   typecheck/dry-run, authenticated smoke, and production origin smoke.
 

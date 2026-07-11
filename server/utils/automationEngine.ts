@@ -155,7 +155,10 @@ async function executeSendEmail(
   task: any,
   config: Record<string, any>
 ): Promise<void> {
-  const { sendBoardChangeEmail, getAppUrl } = await import('~~/server/utils/email')
+  const [{ sendBoardChangeEmail }, { getAppUrl }] = await Promise.all([
+    import('~~/server/utils/email'),
+    import('~~/server/utils/appUrl'),
+  ])
 
   // Determine recipient
   let recipientEmail = ''

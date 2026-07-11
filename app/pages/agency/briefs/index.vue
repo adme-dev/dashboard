@@ -8,6 +8,7 @@ definePageMeta({
 
 const toast = useToast()
 const { user } = useAuth()
+const apiFetch = $fetch as <T>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Filters
 const statusFilter = ref<BriefStatus | 'all'>('all')
@@ -189,7 +190,7 @@ async function applyBulkStatus() {
   if (bulkStatusValue.value === 'none' || selectedBriefs.value.size === 0) return
   isBulkUpdating.value = true
   try {
-    await $fetch('/api/agency/briefs/bulk/status', {
+    await apiFetch('/api/agency/briefs/bulk/status', {
       method: 'PATCH',
       body: {
         briefIds: Array.from(selectedBriefs.value),
@@ -211,7 +212,7 @@ async function applyBulkAssign() {
   if (bulkAssignValue.value === 'none' || selectedBriefs.value.size === 0) return
   isBulkUpdating.value = true
   try {
-    await $fetch('/api/agency/briefs/bulk/assign', {
+    await apiFetch('/api/agency/briefs/bulk/assign', {
       method: 'PATCH',
       body: {
         briefIds: Array.from(selectedBriefs.value),
@@ -311,6 +312,7 @@ const getActions = (brief: any) => [
           <USelectMenu
             v-model="statusFilter"
             :items="statusOptions"
+            value-key="value"
             placeholder="Status"
             class="w-40"
           />
@@ -318,6 +320,7 @@ const getActions = (brief: any) => [
           <USelectMenu
             v-model="categoryFilter"
             :items="categoryOptions"
+            value-key="value"
             placeholder="Category"
             class="w-48"
           />
@@ -433,6 +436,7 @@ const getActions = (brief: any) => [
         <USelectMenu
           v-model="bulkStatusValue"
           :items="bulkStatusOptions"
+          value-key="value"
           placeholder="Change Status..."
           :disabled="isBulkUpdating"
           class="w-44"
@@ -441,6 +445,7 @@ const getActions = (brief: any) => [
         <USelectMenu
           v-model="bulkAssignValue"
           :items="bulkAssignOptions"
+          value-key="value"
           placeholder="Assign To..."
           :disabled="isBulkUpdating"
           class="w-44"

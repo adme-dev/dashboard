@@ -16,6 +16,7 @@ export type JobType =
   | 'embed.task'
   | 'embed.brief'
   | 'embed.client'
+  | 'embed.rate_card'
   | 'training.extract'
   | 'dissect.analyze'
   | 'embed.financial.expenses'

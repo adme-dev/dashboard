@@ -69,6 +69,10 @@ const toast = useToast()
 const { user } = useAuth()
 const { openDM } = useChat()
 const route = useRoute()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const floorRef = ref<HTMLElement | null>(null)
 const query = ref('')
@@ -92,7 +96,7 @@ const knockResponseNotice = ref<{
   targetLabel: string
   zoneId: string | null
 } | null>(null)
-let pendingKnockTimer: ReturnType<typeof setTimeout> | null = null
+let pendingKnockTimer: number | null = null
 const {
   panelEl: personPanelEl,
   handleEl: personPanelHandleEl,
@@ -277,26 +281,25 @@ const searchTargets = computed<SpotlightTarget[]>(() => {
     }))
 
   const personTargets = props.members
-    .filter(member => member.user_id && member.name)
-    .map((member) => {
+    .flatMap((member): SpotlightTarget[] => {
+      if (!member.user_id || !member.name) return []
       const participant = participantByUserId.value.get(member.user_id!)
       const zone = participant?.currentZoneId
         ? props.zones.find(z => z.id === participant.currentZoneId) ?? deskZoneForUserId(member.user_id)
         : deskZoneForUserId(member.user_id)
-      if (!zone) return null
-      return {
+      if (!zone) return []
+      return [{
         id: `person:${member.id}`,
         type: 'person' as const,
-        label: member.name!,
+        label: member.name,
         meta: participant?.currentZoneId
           ? `In ${zone.name}`
           : participant ? 'Around the office' : 'Private office',
         zone,
         member,
         participant
-      }
+      }]
     })
-    .filter((target): target is SpotlightTarget => Boolean(target))
 
   return [...personTargets, ...roomTargets].sort((a, b) => a.label.localeCompare(b.label))
 })
@@ -371,7 +374,7 @@ const incomingKnocks = computed(() =>
     && !dismissedIncomingKnockIds.value.has(event.id)
     && (
       event.target.zoneId === props.currentZoneId
-      || event.target.handle === currentUserHandle.value
+      || (event.target.type === 'actor' && event.target.handle === currentUserHandle.value)
     )
   )
 )
@@ -617,7 +620,7 @@ function clampPosition(zone: OfficeZoneRow, patch: Partial<OfficeZoneRow['positi
 async function updateZone(zone: OfficeZoneRow, body: Record<string, unknown>, label = 'Zone updated') {
   savingZone.value = true
   try {
-    await $fetch(`/api/office/${props.office.id}/zones/${zone.id}`, {
+    await apiFetch(`/api/office/${props.office.id}/zones/${zone.id}`, {
       method: 'PATCH',
       body
     })
@@ -674,7 +677,7 @@ async function createZone() {
   creatingZone.value = true
   try {
     const draft = nextAvailableRoomDraft()
-    await $fetch(`/api/office/${props.office.id}/zones`, {
+    await apiFetch(`/api/office/${props.office.id}/zones`, {
       method: 'POST',
       body: {
         slug: draft.slug,
@@ -705,7 +708,7 @@ async function deleteSelectedZone() {
   if (!zone) return
   savingZone.value = true
   try {
-    await $fetch(`/api/office/${props.office.id}/zones/${zone.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/office/${props.office.id}/zones/${zone.id}`, { method: 'DELETE' })
     toast.add({ title: 'Zone deleted', icon: 'i-lucide-trash-2', color: 'success', duration: 1400 })
     selectedTargetId.value = null
     adminSelectedZoneId.value = null
@@ -938,7 +941,7 @@ async function openRoomThread(target: SpotlightTarget) {
 
   openingThreadForId.value = target.id
   try {
-    const channel = await $fetch<{ id: string }>(
+    const channel = await apiFetch<{ id: string }>(
       `/api/office/${props.office.id}/zones/${target.zone.id}/thread`,
       { method: 'POST' }
     )

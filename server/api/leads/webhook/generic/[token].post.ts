@@ -54,7 +54,7 @@ export default defineEventHandler(async (event) => {
 
   const rl = allowRequest(`generic:${token}`, 200, 60_000)
   if (!rl.allowed) {
-    setResponseHeader(event, 'Retry-After', String(Math.ceil((rl.retry_after_ms ?? 60_000) / 1000)))
+    setResponseHeader(event, 'Retry-After', Math.ceil((rl.retry_after_ms ?? 60_000) / 1000))
     throw createError({ statusCode: 429, statusMessage: 'rate_limited' })
   }
 

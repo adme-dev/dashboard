@@ -46,7 +46,7 @@ function handleSubmit() {
     v-model:open="showEditSlideover"
     title="Edit Layer with AI"
     side="right"
-    :ui="{ width: 'max-w-md' }"
+    :ui="{ content: 'max-w-md' }"
     @update:open="(val: boolean) => { if (!val) cancelEdit() }"
   >
     <template #content>

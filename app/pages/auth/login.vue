@@ -259,6 +259,10 @@ const devLoading = ref(false)
 const errorMsg = ref('')
 const isDev = import.meta.dev
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; credentials?: RequestCredentials }
+) => Promise<T>
 
 // Show message for magic link errors or expired sessions
 onMounted(() => {
@@ -281,7 +285,7 @@ async function requestMagicLink() {
   errorMsg.value = ''
 
   try {
-    const response = await $fetch('/api/auth/magic-link/request', {
+    const response = await apiFetch<{ success: boolean; devLink?: string }>('/api/auth/magic-link/request', {
       method: 'POST',
       body: { email: email.value }
     })
@@ -316,7 +320,7 @@ async function signInWithPassword() {
   errorMsg.value = ''
 
   try {
-    const response = await $fetch<{ success?: boolean }>('/api/auth/login', {
+    const response = await apiFetch<{ success?: boolean }>('/api/auth/login', {
       method: 'POST',
       body: { email: email.value, password: password.value },
       credentials: 'include'
@@ -339,7 +343,7 @@ async function signInWithPassword() {
 async function devLogin() {
   devLoading.value = true
   try {
-    await $fetch('/api/auth/dev-login', { credentials: 'include' })
+    await apiFetch('/api/auth/dev-login', { credentials: 'include' })
     navigateTo('/agency')
   } catch (error: any) {
     console.error('Dev login failed:', error)

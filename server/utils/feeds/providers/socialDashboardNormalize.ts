@@ -66,9 +66,9 @@ export function normalizeVehicle(raw: unknown): VehicleSummary {
     model: String(value.model ?? ''),
     year: num(value.build_year, value.year),
     price: num(value.dap_price, value.price),
-    condition: value.listing_type ?? value.condition ?? value.category ?? value.stock_type ?? null,
-    stockNumber: value.stock_number ?? null,
-    url: value.url ?? null,
+    condition: firstString([value.listing_type, value.condition, value.category, value.stock_type]),
+    stockNumber: firstString(value.stock_number),
+    url: firstString(value.url),
     image
   }
 }

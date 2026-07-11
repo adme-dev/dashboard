@@ -2,6 +2,7 @@ import type { AiAgentRun, AiAgentReport, AiAgentPreferences } from '~/types'
 
 export function useAiAgent() {
   const toast = useToast()
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
   const runs = ref<AiAgentRun[]>([])
   const reports = ref<AiAgentReport[]>([])
@@ -88,7 +89,7 @@ export function useAiAgent() {
 
   async function markReportRead(id: string) {
     try {
-      await $fetch(`/api/agency/ai/agent/reports/${id}`, {
+      await apiFetch(`/api/agency/ai/agent/reports/${id}`, {
         method: 'PATCH',
         body: { isRead: true }
       })

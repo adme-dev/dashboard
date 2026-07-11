@@ -10,12 +10,13 @@ export const useAuth = () => {
   const user = useState<User | null>('auth-user', () => null)
   const isLoading = useState('auth-loading', () => false)
   const router = useRouter()
+  const apiFetch = $fetch as <T>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
   
   const isAuthenticated = computed(() => !!user.value)
   
   const userRole = computed(() => user.value?.role)
   
-  const hasRole = (roles: string[]) => {
+  const hasRole = (roles: readonly string[]) => {
     if (!user.value) return false
     // Legacy: direct role name match
     if (roles.includes(user.value.role)) return true
@@ -42,6 +43,7 @@ export const useAuth = () => {
   const canAccessCreative = computed(() => hasRole(PERMISSIONS.CREATIVE))
   const canAccessMediaBuying = computed(() => hasRole(PERMISSIONS.MEDIA_BUYING))
   const canAccessAdmin = computed(() => hasRole(PERMISSIONS.ADMIN))
+  const canAccessHr = computed(() => hasRole(PERMISSIONS.HR_ADMIN))
   const canAccessAiTraining = computed(() => hasRole(PERMISSIONS.ADMIN))
   const canAccessTimeApprovals = computed(() => hasRole(PERMISSIONS.TIME_APPROVALS))
   const canAccessAutomation = computed(() => hasRole(PERMISSIONS.AUTOMATION))
@@ -53,7 +55,7 @@ export const useAuth = () => {
   const fetchUser = async () => {
     try {
       isLoading.value = true
-      const data: any = await $fetch('/api/auth/me').catch((err: any) => {
+      const data = await apiFetch<any>('/api/auth/me').catch((err: any) => {
         // 503 = transient error (DB down) — don't clear user state
         if (err?.statusCode === 503 || err?.status === 503) {
           console.warn('[useAuth] Service temporarily unavailable, keeping session')
@@ -83,10 +85,41 @@ export const useAuth = () => {
   // Logout
   const logout = async () => {
     try {
-      await $fetch('/api/auth/logout', { method: 'POST' })
+      await apiFetch('/api/auth/logout', { method: 'POST' })
     } finally {
       user.value = null
       navigateTo('/')
+    }
+  }
+
+  const register = async (input: { name: string; email: string; password: string; inviteToken?: string }) => {
+    isLoading.value = true
+    try {
+      const data = await apiFetch<{ user?: User }>('/api/auth/register', { method: 'POST', body: input })
+      if (data.user) user.value = data.user
+      return { success: true as const }
+    } catch (err: any) {
+      return { success: false as const, error: err?.data?.statusMessage || err?.message || 'Registration failed' }
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  const forgotPassword = async (email: string) => {
+    try {
+      await apiFetch('/api/auth/forgot-password', { method: 'POST', body: { email } })
+      return { success: true as const }
+    } catch (err: any) {
+      return { success: false as const, error: err?.data?.statusMessage || err?.message || 'Failed to send reset email' }
+    }
+  }
+
+  const resetPassword = async (token: string, password: string) => {
+    try {
+      await apiFetch('/api/auth/reset-password', { method: 'POST', body: { token, password } })
+      return { success: true as const }
+    } catch (err: any) {
+      return { success: false as const, error: err?.data?.statusMessage || err?.message || 'Failed to reset password' }
     }
   }
   
@@ -103,7 +136,7 @@ export const useAuth = () => {
   }
   
   // Redirect if not authorized
-  const requireRole = async (roles: string[]) => {
+  const requireRole = async (roles: readonly string[]) => {
     await requireAuth()
     if (!hasRole(roles)) {
       navigateTo('/')
@@ -116,6 +149,7 @@ export const useAuth = () => {
     user: readonly(user),
     isAuthenticated: readonly(isAuthenticated),
     isLoading: readonly(isLoading),
+    loading: readonly(isLoading),
     userRole,
     isOwner,
     isAdmin,
@@ -130,6 +164,7 @@ export const useAuth = () => {
     canAccessCreative,
     canAccessMediaBuying,
     canAccessAdmin,
+    canAccessHr,
     canAccessAiTraining,
     canAccessTimeApprovals,
     canAccessAutomation,
@@ -138,6 +173,9 @@ export const useAuth = () => {
     hasPermission,
     hasRole,
     fetchUser,
+    register,
+    forgotPassword,
+    resetPassword,
     logout,
     requireAuth,
     requireRole

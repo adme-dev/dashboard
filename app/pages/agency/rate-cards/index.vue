@@ -2,34 +2,86 @@
 definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+interface RateCardAuditEntry {
+  id: string
+  itemId: string
+  itemName: string | null
+  action: string
+  fieldName: string | null
+  oldValue: string | null
+  newValue: string | null
+  changedAt: string
+  changedByName: string | null
+}
 
 // Search & filter
 const search = ref('')
 const showInactive = ref(false)
 
 // Data fetching
-const { data, refresh, status } = useFetch('/api/agency/rate-cards', {
-  query: computed(() => ({
-    search: search.value || undefined,
-    active: showInactive.value ? undefined : 'true',
-  })),
-})
+const data = ref<any>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refresh() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/rate-cards', {
+      query: {
+        search: search.value || undefined,
+        active: showInactive.value ? undefined : 'true',
+      },
+    })
+    status.value = 'success'
+  } catch {
+    data.value = null
+    status.value = 'error'
+  }
+}
 
 const categories = computed(() => data.value?.categories || [])
 const totalItems = computed(() => data.value?.totalItems || 0)
 
 // Categories list for dropdowns
-const { data: categoriesData, refresh: refreshCategories } = useFetch('/api/agency/rate-cards/categories')
+const categoriesData = ref<any>(null)
+
+async function refreshCategories() {
+  categoriesData.value = await apiFetch('/api/agency/rate-cards/categories').catch(() => ({ categories: [] }))
+}
 const categoryOptions = computed(() =>
   (categoriesData.value?.categories || []).map((c: any) => ({ label: c.name, value: c.id }))
 )
 
 // Audit log
 const auditPage = ref(1)
-const { data: auditData, refresh: refreshAudit } = useFetch('/api/agency/rate-cards/audit', {
-  query: computed(() => ({ page: auditPage.value, limit: 20 })),
-})
+const auditData = ref<{ entries: RateCardAuditEntry[]; total: number }>({ entries: [], total: 0 })
+
+async function refreshAudit() {
+  auditData.value = await apiFetch<{ entries: RateCardAuditEntry[]; total: number }>('/api/agency/rate-cards/audit', {
+    query: { page: auditPage.value, limit: 20 },
+  }).catch(() => ({ entries: [], total: 0 }))
+}
 const auditEntries = computed(() => auditData.value?.entries || [])
+
+onMounted(() => {
+  void refresh()
+  void refreshCategories()
+  void refreshAudit()
+})
+
+watch([search, showInactive], () => {
+  void refresh()
+})
+
+watch(auditPage, () => {
+  void refreshAudit()
+})
 
 // Active tab
 const activeTab = ref('items')
@@ -49,6 +101,8 @@ const accordionItems = computed(() =>
 )
 const defaultOpenValues = computed(() => categories.value.map((c: any) => c.id))
 
+const accordionContent = (item: any): { name: string; items: any[] } => item.content as { name: string; items: any[] }
+
 // Table columns
 const columns = [
   { accessorKey: 'serviceName', header: 'Service' },
@@ -60,16 +114,18 @@ const columns = [
 ]
 
 // Format helpers
-function formatPrice(price: number, unit: string) {
+function formatPrice(price: unknown, unit: unknown) {
   if (unit === 'POA') return 'POA'
-  const formatted = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(price)
+  const amount = Number(price) || 0
+  const formatted = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(amount)
   const suffix: Record<string, string> = { 'per-month': '/mo', 'per-hour': '/hr', 'per-unit': '/ea' }
-  return formatted + (suffix[unit] || '')
+  return formatted + (suffix[String(unit)] || '')
 }
 
-function formatSetupFee(fee: number) {
-  if (!fee) return '-'
-  return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(fee)
+function formatSetupFee(fee: unknown) {
+  const amount = Number(fee) || 0
+  if (!amount) return '-'
+  return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(amount)
 }
 
 // Detail slideover
@@ -138,13 +194,13 @@ async function saveItem() {
   saving.value = true
   try {
     if (editItem.value) {
-      await $fetch(`/api/agency/rate-cards/${editItem.value.id}`, {
+      await apiFetch(`/api/agency/rate-cards/${editItem.value.id}`, {
         method: 'PATCH',
         body: editForm.value,
       })
       toast.add({ title: 'Updated', description: `"${editForm.value.serviceName}" saved`, color: 'success' })
     } else {
-      await $fetch('/api/agency/rate-cards', {
+      await apiFetch('/api/agency/rate-cards', {
         method: 'POST',
         body: editForm.value,
       })
@@ -162,7 +218,7 @@ async function saveItem() {
 
 async function archiveItem(item: any) {
   try {
-    await $fetch(`/api/agency/rate-cards/${item.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/rate-cards/${item.id}`, { method: 'DELETE' })
     toast.add({ title: 'Archived', description: `"${item.serviceName}" archived`, color: 'success' })
     refresh()
     refreshAudit()
@@ -181,7 +237,7 @@ async function previewImport() {
   if (!csvText.value.trim()) return
   importing.value = true
   try {
-    const result = await $fetch('/api/agency/rate-cards/import', {
+    const result = await apiFetch<any>('/api/agency/rate-cards/import', {
       method: 'POST',
       body: { csvText: csvText.value, dryRun: true },
     })
@@ -196,7 +252,7 @@ async function previewImport() {
 async function confirmImport() {
   importing.value = true
   try {
-    const result = await $fetch<any>('/api/agency/rate-cards/import', {
+    const result = await apiFetch<any>('/api/agency/rate-cards/import', {
       method: 'POST',
       body: { csvText: csvText.value, dryRun: false },
     })
@@ -236,7 +292,7 @@ function formatAuditAction(entry: any) {
   }
 }
 
-function auditActionColor(action: string) {
+function auditActionColor(action: string): UiColor {
   switch (action) {
     case 'create': return 'success'
     case 'import': return 'info'
@@ -321,11 +377,11 @@ function auditActionColor(action: string) {
         <template #body="{ item }">
           <div class="px-2 pb-2">
             <UTable
-              :data="item.content.items"
+              :data="accordionContent(item).items"
               :columns="columns"
               class="border-0"
               :ui="{ base: 'table-fixed', tr: 'cursor-pointer hover:bg-elevated/50' }"
-              @select="(row: any) => openDetail(row.original ?? row, item.content.name)"
+              @select="(row: any) => openDetail(row.original ?? row, accordionContent(item).name)"
             >
               <template #serviceName-cell="{ row }">
                 <div class="flex flex-col">
@@ -497,7 +553,7 @@ function auditActionColor(action: string) {
     </UModal>
 
     <!-- Import CSV Modal -->
-    <UModal v-model:open="showImportModal" :ui="{ width: 'sm:max-w-2xl' }">
+    <UModal v-model:open="showImportModal" :ui="{ content: 'sm:max-w-2xl' }">
       <template #content>
         <div class="p-6 space-y-4">
           <h3 class="text-lg font-semibold">Import Rate Card CSV</h3>

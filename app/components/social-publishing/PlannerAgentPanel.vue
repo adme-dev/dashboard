@@ -73,6 +73,10 @@ const result = ref<PlannerAgentResponse | null>(null)
 const draftCards = ref<PlannerDraft[]>([])
 const campaigns = ref<PlannerCampaignOption[]>([])
 const selectedCampaignId = ref('none')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
 
 const promptPresets = [
   'Review this client publishing planner and tell me what needs attention.',
@@ -90,7 +94,7 @@ watch(() => props.clientId, async (clientId) => {
   selectedCampaignId.value = 'none'
   if (!clientId) return
   try {
-    campaigns.value = await $fetch<PlannerCampaignOption[]>('/api/agency/social/publishing/campaigns', {
+    campaigns.value = await apiFetch<PlannerCampaignOption[]>('/api/agency/social/publishing/campaigns', {
       query: { clientId },
     })
   } catch {
@@ -121,7 +125,7 @@ async function runPlannerAgent(draftPlan = false) {
     context.platforms = ['facebook', 'instagram']
   }
   try {
-    result.value = await $fetch<PlannerAgentResponse>('/api/agency/agents/publishing-planner/ask', {
+    result.value = await apiFetch<PlannerAgentResponse>('/api/agency/agents/publishing-planner/ask', {
       method: 'POST',
       body: {
         prompt: cleanPrompt,
@@ -170,7 +174,7 @@ async function acceptDrafts() {
   let created = 0
   try {
     for (const draft of draftCards.value) {
-      await $fetch('/api/agency/social/publishing/posts', {
+      await apiFetch('/api/agency/social/publishing/posts', {
         method: 'POST',
         body: {
           clientId: props.clientId,

@@ -17,6 +17,10 @@ const isLoading = ref(false)
 const suggestions = ref<string[]>([])
 const history = ref<string[]>([])
 const error = ref<string | null>(null)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 async function fetchSuggestions() {
   if (isLoading.value) return
@@ -27,7 +31,7 @@ async function fetchSuggestions() {
   try {
     // Fetch AI suggestions and history in parallel
     const [suggestResult, historyResult] = await Promise.all([
-      $fetch('/api/agency/briefs/ai/suggest', {
+      apiFetch<{ suggestions: string[] }>('/api/agency/briefs/ai/suggest', {
         method: 'POST',
         body: {
           templateId: props.templateId,
@@ -36,7 +40,7 @@ async function fetchSuggestions() {
           existingValues: props.existingValues
         }
       }).catch(() => ({ suggestions: [] })),
-      $fetch('/api/agency/briefs/ai/history', {
+      apiFetch<{ values: string[] }>('/api/agency/briefs/ai/history', {
         query: {
           templateId: props.templateId,
           fieldKey: props.fieldKey,

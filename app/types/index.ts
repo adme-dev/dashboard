@@ -1,3 +1,5 @@
+import type { AvatarProps } from '@nuxt/ui'
+
 // ============================================
 // User Types
 // ============================================
@@ -7,10 +9,16 @@ export interface User {
   name: string
   role: string
   is_active?: boolean
+  avatar?: AvatarProps
   avatar_url?: string
+  avatarUrl?: string | null
   custom_role_id?: string | null
   permissionGroups?: string[]
   isCustomReadOnly?: boolean
+  timezone?: string
+  locale?: string
+  emailVerifiedAt?: string | null
+  email_verified_at?: string | null
 }
 
 // ============================================
@@ -364,6 +372,333 @@ export interface Document {
 }
 
 // ============================================
+// Project Brief Submission System Types
+// ============================================
+export interface BriefCategory {
+  id: string
+  name: string
+  slug: string
+  description?: string
+  icon: string
+  color: string
+  sortOrder: number
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  templateCount?: number
+  briefCount?: number
+}
+
+export type BriefFieldType =
+  | 'text'
+  | 'textarea'
+  | 'richtext'
+  | 'number'
+  | 'currency'
+  | 'date'
+  | 'daterange'
+  | 'datetime'
+  | 'time'
+  | 'dropdown'
+  | 'multiselect'
+  | 'checkbox'
+  | 'checkboxgroup'
+  | 'radio'
+  | 'file'
+  | 'files'
+  | 'image'
+  | 'images'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'rating'
+  | 'slider'
+  | 'color'
+  | 'user'
+  | 'users'
+  | 'client'
+  | 'project'
+  | 'department'
+  | 'heading'
+  | 'paragraph'
+  | 'divider'
+
+export interface BriefTemplateField {
+  id: string
+  templateId: string
+  fieldKey: string
+  fieldLabel: string
+  fieldType: BriefFieldType
+  placeholder?: string
+  helpText?: string
+  defaultValue?: any
+  isRequired: boolean
+  validationRules?: {
+    min?: number
+    max?: number
+    minLength?: number
+    maxLength?: number
+    pattern?: string
+    patternMessage?: string
+    accept?: string
+    maxFileSize?: number
+  }
+  options?: BriefFieldOption[]
+  conditionalLogic?: BriefFieldCondition
+  stepNumber: number
+  stepTitle?: string
+  section?: string
+  width: 'full' | 'half' | 'third'
+  sortOrder: number
+  showInPreview: boolean
+  showInList: boolean
+  createdAt: string
+}
+
+export interface BriefFieldOption {
+  value: string
+  label: string
+  color?: string
+}
+
+export interface BriefFieldCondition {
+  fieldKey: string
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty'
+  value?: any
+  action: 'show' | 'hide' | 'require' | 'unrequire'
+}
+
+export interface BriefTemplate {
+  id: string
+  categoryId: string
+  departmentId?: string
+  name: string
+  slug: string
+  description?: string
+  icon?: string
+  requiresApproval: boolean
+  autoAssignTo?: string
+  autoAssignDepartment?: string
+  defaultPriority: TaskPriority
+  isMultiStep: boolean
+  showProgress: boolean
+  allowDrafts: boolean
+  allowAttachments: boolean
+  maxAttachments: number
+  isPublic: boolean
+  requireClientLink: boolean
+  isActive: boolean
+  sortOrder: number
+  createdBy?: string
+  createdAt: string
+  updatedAt: string
+  category?: BriefCategory
+  department?: {
+    id: string
+    name: string
+    color: string
+  }
+  fields?: BriefTemplateField[]
+  fieldCount?: number
+  briefCount?: number
+}
+
+export type BriefStatus =
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'needs_info'
+  | 'approved'
+  | 'rejected'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+
+export interface Brief {
+  id: string
+  templateId: string
+  referenceNumber: string
+  title: string
+  submittedBy?: string
+  submittedByName?: string
+  submittedByEmail?: string
+  clientId?: string
+  projectId?: string
+  departmentId?: string
+  status: BriefStatus
+  priority: TaskPriority
+  assignedTo?: string
+  assignedAt?: string
+  reviewedBy?: string
+  reviewedAt?: string
+  reviewNotes?: string
+  convertedToTaskId?: string
+  convertedToProjectId?: string
+  convertedAt?: string
+  requestedDeadline?: string
+  estimatedCompletion?: string
+  budgetMin?: number
+  budgetMax?: number
+  budgetCurrency: string
+  source: 'internal' | 'client_portal' | 'email' | 'api'
+  createdAt: string
+  updatedAt: string
+  submittedAt?: string
+  completedAt?: string
+  template?: BriefTemplate
+  category?: BriefCategory
+  submitter?: {
+    id: string
+    name: string
+    email: string
+  }
+  assignee?: {
+    id: string
+    name: string
+    email: string
+  }
+  reviewer?: {
+    id: string
+    name: string
+    email: string
+  }
+  client?: {
+    id: string
+    name: string
+  }
+  project?: {
+    id: string
+    name: string
+  }
+  department?: {
+    id: string
+    name: string
+    color: string
+  }
+  fieldValues?: BriefFieldValue[]
+  attachments?: BriefAttachment[]
+  commentCount?: number
+  attachmentCount?: number
+  quote?: {
+    id: string
+    quoteNumber: string
+    status: string
+    currency?: string | null
+    total: number
+    xeroStatus?: string | null
+  } | null
+  linkedTasks?: Array<{
+    id: string
+    title: string
+    statusName?: string | null
+    statusCategory?: StatusCategory | string | null
+    statusColor?: string | null
+    boardName?: string | null
+    assigneeId?: string | null
+    assigneeName?: string | null
+    actualHours?: number | null
+    estimatedHours?: number | null
+    dueDate?: string | null
+    completedAt?: string | null
+  }>
+}
+
+export interface BriefFieldValue {
+  id: string
+  briefId: string
+  fieldId: string
+  fieldKey: string
+  fieldLabel: string
+  fieldType: BriefFieldType
+  value: any
+  stepNumber?: number
+  section?: string
+  width?: 'full' | 'half' | 'third'
+  sortOrder?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BriefAttachment {
+  id: string
+  briefId: string
+  fieldId?: string
+  fileName: string
+  fileUrl: string
+  fileType?: string
+  fileSize?: number
+  thumbnailUrl?: string
+  uploadedBy?: string
+  uploadedByName?: string
+  createdAt: string
+}
+
+export interface BriefComment {
+  id: string
+  briefId: string
+  parentId?: string
+  userId?: string
+  content: string
+  isInternal: boolean
+  isResolution: boolean
+  createdAt: string
+  updatedAt: string
+  user?: {
+    id: string
+    name: string
+    email: string
+    avatarUrl?: string
+  }
+  replies?: BriefComment[]
+}
+
+export type BriefActivityType =
+  | 'created'
+  | 'submitted'
+  | 'updated'
+  | 'status_changed'
+  | 'assigned'
+  | 'unassigned'
+  | 'commented'
+  | 'attachment_added'
+  | 'reviewed'
+  | 'approved'
+  | 'rejected'
+  | 'needs_info'
+  | 'converted_to_task'
+  | 'converted_to_project'
+  | 'priority_changed'
+  | 'deadline_changed'
+  | 'completed'
+  | 'cancelled'
+
+export interface BriefActivity {
+  id: string
+  briefId: string
+  userId?: string
+  activityType: BriefActivityType
+  oldValue?: any
+  newValue?: any
+  content?: string
+  createdAt: string
+  user?: {
+    id: string
+    name: string
+    email: string
+  }
+}
+
+export interface BriefFormStep {
+  number: number
+  title: string
+  fields: BriefTemplateField[]
+}
+
+export interface BriefFormValues {
+  [fieldKey: string]: any
+}
+
+// ============================================
 // Stats Types
 // ============================================
 export interface DashboardStats {
@@ -381,6 +716,72 @@ export interface TeamMemberWorkload {
   pendingTasks: number
   estimatedHoursRemaining: number
   overdueTasks: number
+}
+
+// ============================================
+// Legacy Dashboard Template Types
+// ============================================
+export type UserStatus = 'subscribed' | 'unsubscribed' | 'bounced'
+export type SaleStatus = 'paid' | 'failed' | 'refunded'
+
+export interface Mail {
+  id: number
+  unread?: boolean
+  from: User
+  subject: string
+  body: string
+  date: string
+}
+
+export interface Stat {
+  title: string
+  icon: string
+  value: number | string
+  variation: number
+  formatter?: (value: number) => string
+}
+
+export interface Sale {
+  id: string
+  date: string
+  status: SaleStatus
+  email: string
+  amount: number
+}
+
+export type Period = 'daily' | 'weekly' | 'monthly'
+
+export interface Range {
+  start: Date
+  end: Date
+}
+
+// ============================================
+// Agency Platform Types
+// ============================================
+export type BillingType = 'retainer' | 'project' | 'hybrid' | 'commission'
+export type ProjectStatus = 'draft' | 'active' | 'on_hold' | 'completed' | 'cancelled'
+export type BudgetType = 'fixed' | 'time_materials' | 'retainer_allocation' | 'media_commission'
+
+export interface AgencyClient {
+  id: string
+  name: string
+  xeroContactId?: string
+  billingType: BillingType
+  retainerAmount?: number
+  paymentTerms: number
+  hourlyRate?: number
+  mediaCommissionRate?: number
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  notes?: string
+  totalRevenue?: number
+  totalCost?: number
+  grossProfit?: number
+  grossMargin?: number
+  projectCount?: number
+  activeProjects?: number
 }
 
 // ============================================
@@ -1104,6 +1505,7 @@ export interface Lead {
   score: number | null
   score_reasons: any | null
   status: LeadStatus
+  is_test?: boolean
   spam_reasons: any | null
   assigned_to: string | null
   contacted_at: string | null

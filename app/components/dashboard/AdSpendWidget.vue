@@ -1,7 +1,21 @@
 <script setup lang="ts">
 import { rollupSpendByClient } from '~/utils/spendRollup'
 
-const { data, status } = await useFetch('/api/agency/social/spend/summary')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshSpend() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<any>('/api/agency/social/spend/summary')
+    status.value = 'success'
+  } catch {
+    status.value = 'error'
+  }
+}
+
+refreshSpend()
 
 const CAP = 5
 const clientRows = computed(() => rollupSpendByClient((data.value as any)?.items || []))

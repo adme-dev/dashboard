@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
-import type { EdmFlyhubDocument } from '~~/app/types/edm'
+import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
 import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
 import { resolveRootDropIndex, type EdmRootDropPlacement } from '~~/app/utils/edmDragReorder'
 import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
@@ -43,6 +43,10 @@ import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 const store = useEdmBuilder()
 const route = useRoute()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const layout = computed(() => store.getLayoutSettings())
 
@@ -190,7 +194,12 @@ function updateLayout(patch: Record<string, unknown>) {
 
 // The selected block (null when nothing or the root layout is selected → show
 // email-layout settings instead of the per-block inspector).
-const selectedBlock = computed(() => {
+const selectedBlock = computed<{
+  id: string
+  type: string
+  data: EdmFlyhubBlock['data']
+  baseData: EdmFlyhubBlock['data']
+} | null>(() => {
   const id = store.selectedBlockId.value
   if (!id || id === 'root') return null
   const b = store.document.value[id]
@@ -348,7 +357,7 @@ async function renderPreview() {
   previewLoading.value = true
   previewError.value = ''
   try {
-    const res = await $fetch<{ html: string }>('/api/email/templates/render', {
+    const res = await apiFetch<{ html: string }>('/api/email/templates/render', {
       method: 'POST',
       body: {
         body_source: store.document.value,
@@ -394,7 +403,7 @@ function isEmailAddress(value: string): boolean {
 
 async function saveCampaignContent() {
   if (!campaignId.value) return
-  await $fetch(`/api/email/campaigns/${campaignId.value}`, {
+  await apiFetch(`/api/email/campaigns/${campaignId.value}` as string, {
     method: 'PATCH',
     body: buildCampaignEditorPatch({
       subject: subject.value,
@@ -430,7 +439,7 @@ async function sendTestEmail() {
       previewText: previewText.value,
       bodySource: store.document.value
     })
-    const res = await $fetch<typeof testSendResult.value>(request.url, {
+    const res = await apiFetch<typeof testSendResult.value>(request.url, {
       method: 'POST',
       body: request.body
     })
@@ -480,7 +489,7 @@ async function scheduleCampaignFromBuilder() {
       campaignId: campaignId.value,
       scheduledAt: scheduledDate.toISOString()
     })
-    const res = await $fetch<{
+    const res = await apiFetch<{
       campaign?: {
         preflight_result?: EmailBuilderSchedulePreflight | null
         recipient_snapshot?: EmailBuilderScheduleRecipientSnapshot | null
@@ -551,9 +560,9 @@ async function save() {
       folder_name: templateFolderName.value.trim() || null
     }
     if (templateId.value) {
-      await $fetch(`/api/email/templates/${templateId.value}`, { method: 'PATCH', body })
+      await apiFetch(`/api/email/templates/${templateId.value}`, { method: 'PATCH', body })
     } else {
-      const res = await $fetch<{ template: { id: string } }>('/api/email/templates', {
+      const res = await apiFetch<{ template: { id: string } }>('/api/email/templates', {
         method: 'POST',
         body
       })
@@ -705,7 +714,7 @@ onMounted(async () => {
   if (typeof campaign === 'string' && campaign) {
     campaignId.value = campaign
     try {
-      const res = await $fetch<{
+      const res = await apiFetch<{
         campaign: {
           id: string
           name: string
@@ -751,7 +760,7 @@ onMounted(async () => {
   const id = route.query.id
   if (typeof id !== 'string' || !id) return
   try {
-    const res = await $fetch<{
+    const res = await apiFetch<{
       template: {
         id: string
         name: string

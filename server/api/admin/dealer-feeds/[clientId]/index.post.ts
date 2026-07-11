@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
     filters: normalizeDealerFeedFilters(body.filters),
     mappings: bodyObject(body.mappings),
     platformSettings: bodyObject(body.platformSettings),
-    source: body.source && typeof body.source === 'object' && !Array.isArray(body.source) ? body.source : undefined,
+    source: body.source && typeof body.source === 'object' && !Array.isArray(body.source) ? body.source as Record<string, unknown> : undefined,
     externalKey: typeof body.externalKey === 'string' ? body.externalKey : undefined,
     externalClientId: typeof body.externalClientId === 'string' ? body.externalClientId : undefined,
     externalCampaignId: typeof body.externalCampaignId === 'string' ? body.externalCampaignId : undefined,

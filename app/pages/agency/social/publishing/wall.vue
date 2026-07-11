@@ -7,15 +7,35 @@ const { clientId } = useSocialPublishingClient()
 const search = ref('')
 const statusFilter = ref('all')
 const platformFilter = ref<'all' | SocialPublishPlatform>('all')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
 
-const { data: posts, pending, error, refresh } = await useFetch<SocialWallPost[]>(
-  '/api/agency/social/publishing/wall',
-  {
-    query: { clientId, limit: 180 },
-    watch: [clientId],
-    default: () => []
+const posts = ref<SocialWallPost[]>([])
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    posts.value = await apiFetch<SocialWallPost[]>('/api/agency/social/publishing/wall', {
+      query: { clientId: clientId.value, limit: 180 },
+    })
+  } catch (err) {
+    posts.value = []
+    error.value = err
+  } finally {
+    pending.value = false
   }
-)
+}
+
+await refresh()
+
+watch(clientId, () => {
+  void refresh()
+})
 
 const errorDescription = computed(() => {
   const e = error.value as { data?: { statusMessage?: string }, message?: string } | null
@@ -133,7 +153,7 @@ function resolvePreview(post: SocialWallPost) {
         color="neutral"
         variant="ghost"
         :loading="pending"
-        @click="refresh"
+        @click="() => refresh()"
       >
         Refresh
       </UButton>

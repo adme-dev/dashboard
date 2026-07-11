@@ -3,17 +3,37 @@ definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const projectFilter = ref('')
 const typeFilter = ref('')
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
-const { data, pending } = useFetch('/api/portal/deliverables', {
-  query: {
-    projectId: projectFilter,
-    type: typeFilter,
-    limit: 50
+const data = ref<any | null>(null)
+const pending = ref(false)
+
+async function refreshDeliverables() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>('/api/portal/deliverables', {
+      query: {
+        projectId: projectFilter.value || undefined,
+        type: typeFilter.value || undefined,
+        limit: 50,
+      },
+    })
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
   }
-})
+}
+
+watch([projectFilter, typeFilter], () => {
+  refreshDeliverables()
+}, { immediate: true })
 
 // Get projects for filter
-const { data: projectsData } = useFetch('/api/portal/projects', { query: { limit: 100 } })
+const projectsData = ref<any | null>(null)
+apiFetch<any>('/api/portal/projects', { query: { limit: 100 } })
+  .then(result => { projectsData.value = result })
+  .catch(() => { projectsData.value = null })
 const projectOptions = computed(() => [
   { label: 'All Projects', value: '' },
   ...(((projectsData.value as { projects?: Array<{ id: string, name: string }> } | null)?.projects || [])

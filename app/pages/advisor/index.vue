@@ -65,6 +65,10 @@ type GraphNode = {
 type GraphData = { nodes: GraphNode[]; edges: Array<{ from: string; to: string; type: string; label?: string }> }
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
 
 // Client scope is URL-persisted so the page is bookmarkable and the
 // filter survives drawer navigations / refresh. Everything else stays
@@ -102,25 +106,40 @@ const query = computed(() => {
   return q
 })
 
-const { data, pending, refresh } = await useFetch<{ recommendations: Recommendation[] }>(
-  '/api/advisor/recommendations',
-  { query, server: false, default: () => ({ recommendations: [] }) }
-)
+const data = ref<{ recommendations: Recommendation[] }>({ recommendations: [] })
+const pending = ref(false)
+const clientsData = ref<Array<{ id: string; name: string }>>([])
+const teamData = ref<{ members: Array<{ id: string; name: string; avatar_url?: string | null }> }>({ members: [] })
+const historyData = ref<{ reports: Array<{ period_key: string; period_label: string }> }>({ reports: [] })
 
-const { data: clientsData } = await useFetch<Array<{ id: string; name: string }>>(
-  '/api/agency/clients',
-  { server: false, default: () => [] }
-)
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ recommendations: Recommendation[] }>('/api/advisor/recommendations', { query: query.value })
+  } finally {
+    pending.value = false
+  }
+}
 
-const { data: teamData } = await useFetch<{ members: Array<{ id: string; name: string; avatar_url?: string | null }> }>(
-  '/api/agency/team-members',
-  { server: false, default: () => ({ members: [] }) }
-)
+async function refreshLookups() {
+  const [clients, team, history] = await Promise.all([
+    apiFetch<Array<{ id: string; name: string }>>('/api/agency/clients'),
+    apiFetch<{ members: Array<{ id: string; name: string; avatar_url?: string | null }> }>('/api/agency/team-members'),
+    apiFetch<{ reports: Array<{ period_key: string; period_label: string }> }>('/api/ai/financial-advisor/history'),
+  ])
+  clientsData.value = clients
+  teamData.value = team
+  historyData.value = history
+}
 
-const { data: historyData } = await useFetch<{ reports: Array<{ period_key: string; period_label: string }> }>(
-  '/api/ai/financial-advisor/history',
-  { server: false, default: () => ({ reports: [] }) }
-)
+onMounted(() => {
+  void refresh()
+  void refreshLookups()
+})
+
+watch(query, () => {
+  void refresh()
+})
 
 const recommendations = computed(() => data.value?.recommendations ?? [])
 
@@ -194,7 +213,7 @@ const view = useLocalStorage<'table' | 'kanban'>('advisor.view', 'table')
 
 async function moveStatus(id: string, status: 'open' | 'in_progress' | 'done' | 'dismissed') {
   try {
-    await $fetch(`/api/advisor/recommendations/${id}`, {
+    await apiFetch(`/api/advisor/recommendations/${id}`, {
       method: 'PATCH',
       body: { status },
     })
@@ -213,7 +232,7 @@ async function applyBulk(patch: Record<string, any>) {
   bulkLoading.value = true
   const ids = Array.from(selection.value)
   try {
-    const res = await $fetch<{ updated: number; requested: number }>(
+    const res = await apiFetch<{ updated: number; requested: number }>(
       '/api/advisor/recommendations/bulk',
       { method: 'POST', body: { ids, patch } }
     )
@@ -294,10 +313,12 @@ const drawerComments = ref<Comment[]>([])
 
 // Current user + role check, used to gate comment edit/delete affordances
 // in the drawer. Server enforces the actual permission.
-const { data: currentUser } = await useFetch<{ id: string; role?: string } | null>(
-  '/api/auth/me',
-  { server: false, default: () => null }
-)
+const currentUser = ref<{ id: string; role?: string } | null>(null)
+
+onMounted(async () => {
+  currentUser.value = await apiFetch<{ id: string; role?: string } | null>('/api/auth/me').catch(() => null)
+})
+
 const currentUserId = computed(() => currentUser.value?.id ?? null)
 const canPrivilegedEdit = computed(() => {
   const role = currentUser.value?.role
@@ -312,7 +333,7 @@ async function openDrawer(rec: Recommendation) {
   drawerGraph.value = null
   drawerComments.value = []
   try {
-    const res = await $fetch<{ recommendation: Recommendation; events: RecommendationEvent[]; outcomes: RecommendationOutcome[]; comments: Comment[] }>(
+    const res = await apiFetch<{ recommendation: Recommendation; events: RecommendationEvent[]; outcomes: RecommendationOutcome[]; comments: Comment[] }>(
       `/api/advisor/recommendations/${rec.id}`
     )
     drawerRec.value = res.recommendation
@@ -321,12 +342,12 @@ async function openDrawer(rec: Recommendation) {
     drawerComments.value = res.comments ?? []
     // Fetch related past advice + graph in the background — don't block
     // the drawer opening if Vectorize is slow or unavailable.
-    $fetch<{ matches: SimilarMatch[] }>(`/api/advisor/recommendations/similar`, {
+    apiFetch<{ matches: SimilarMatch[] }>(`/api/advisor/recommendations/similar`, {
       query: { id: rec.id, topK: 5 },
     })
       .then((r) => { drawerSimilar.value = r.matches ?? [] })
       .catch(() => { /* silent — similarity is a nice-to-have */ })
-    $fetch<GraphData>(`/api/advisor/recommendations/${rec.id}/graph`)
+    apiFetch<GraphData>(`/api/advisor/recommendations/${rec.id}/graph`)
       .then((g) => { drawerGraph.value = g })
       .catch(() => { /* silent — graph is decorative */ })
   } catch (err: any) {
@@ -344,7 +365,7 @@ async function onGraphNodeSelect(node: GraphNode) {
     } else {
       // The similar rec isn't in the current filtered list — fetch detail directly.
       try {
-        const res = await $fetch<{ recommendation: Recommendation }>(
+        const res = await apiFetch<{ recommendation: Recommendation }>(
           `/api/advisor/recommendations/${node.meta.recommendation_id}`
         )
         openDrawer(res.recommendation)
@@ -390,7 +411,7 @@ async function onCommentsChanged() {
   if (!drawerRec.value) return
   // Refetch the detail to pick up new comments + the audit event row.
   try {
-    const detail = await $fetch<{
+    const detail = await apiFetch<{
       events: RecommendationEvent[]
       outcomes: RecommendationOutcome[]
       comments: Comment[]
@@ -409,13 +430,13 @@ async function patchRec(patch: Partial<Recommendation>) {
   if (!drawerRec.value) return
   const id = drawerRec.value.id
   try {
-    const res = await $fetch<{ recommendation: Recommendation }>(
+    const res = await apiFetch<{ recommendation: Recommendation }>(
       `/api/advisor/recommendations/${id}`,
       { method: 'PATCH', body: patch }
     )
     drawerRec.value = { ...drawerRec.value, ...res.recommendation }
     // Reload events so the new audit row shows up.
-    const detail = await $fetch<{ events: RecommendationEvent[]; outcomes: RecommendationOutcome[] }>(
+    const detail = await apiFetch<{ events: RecommendationEvent[]; outcomes: RecommendationOutcome[] }>(
       `/api/advisor/recommendations/${id}`
     )
     drawerEvents.value = detail.events

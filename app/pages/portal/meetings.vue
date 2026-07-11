@@ -58,9 +58,30 @@ const initialView = routeQueryString(route.query.view)
 const activeTab = ref(typeof initialView === 'string' && meetingTabs.includes(initialView) ? initialView : 'upcoming')
 const meetingQuery = computed(() => activeTab.value === 'all' ? {} : { view: activeTab.value })
 
-const { data, pending } = useFetch<PortalMeetingsDashboard>('/api/portal/meetings', {
-  query: meetingQuery
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
+const data = ref<PortalMeetingsDashboard | null>(null)
+const pending = ref(true)
+const meetingsError = ref<unknown>(null)
+
+async function refreshMeetings() {
+  pending.value = true
+  meetingsError.value = null
+
+  try {
+    data.value = await apiFetch<PortalMeetingsDashboard>('/api/portal/meetings', {
+      query: meetingQuery.value
+    })
+  } catch (error) {
+    meetingsError.value = error
+    throw error
+  } finally {
+    pending.value = false
+  }
+}
 
 watch(activeTab, (tab) => {
   const query: Record<string, string> = {}
@@ -71,6 +92,8 @@ watch(activeTab, (tab) => {
   if (current !== next) {
     router.replace({ query })
   }
+
+  refreshMeetings()
 })
 
 watch(
@@ -90,7 +113,34 @@ const tabs = [
 const selectedMeeting = ref<PortalMeeting | null>(null)
 const showArtifacts = ref(false)
 const artifactsUrl = computed(() => selectedMeeting.value ? `/api/portal/meetings/${selectedMeeting.value.id}/artifacts` : null)
-const { data: artifactData, pending: artifactsPending } = useFetch<{ artifacts: PortalMeetingArtifact[] }>(artifactsUrl)
+const artifactData = ref<{ artifacts: PortalMeetingArtifact[] } | null>(null)
+const artifactsPending = ref(false)
+const artifactsError = ref<unknown>(null)
+
+async function refreshArtifacts() {
+  const url = artifactsUrl.value
+  artifactData.value = null
+  artifactsError.value = null
+
+  if (!url) return
+
+  artifactsPending.value = true
+
+  try {
+    artifactData.value = await apiFetch<{ artifacts: PortalMeetingArtifact[] }>(url)
+  } catch (error) {
+    artifactsError.value = error
+    throw error
+  } finally {
+    artifactsPending.value = false
+  }
+}
+
+watch(artifactsUrl, () => {
+  refreshArtifacts()
+})
+
+await refreshMeetings()
 
 function formatMeetingDate(date: string | null | undefined) {
   if (!date) return '-'

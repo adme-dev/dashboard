@@ -4,6 +4,7 @@
  */
 export const PERMISSIONS = {
   ADMIN: ['owner', 'admin'],
+  HR_ADMIN: ['owner'],
   MANAGEMENT: ['owner', 'admin', 'lead', 'project_manager'],
   FINANCE: ['owner', 'admin', 'lead', 'project_manager', 'finance', 'accounts'],
   SALES: ['owner', 'admin', 'lead', 'project_manager', 'sales'],
@@ -32,7 +33,7 @@ export function roleHasPermission(role: string, group: PermissionGroup): boolean
 
 // Permission groups for dynamic role resolution
 export const PERMISSION_GROUPS = [
-  'ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
+  'ADMIN', 'HR_ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
   'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'
 ] as const
 
@@ -40,7 +41,7 @@ export type PermissionGroup = typeof PERMISSION_GROUPS[number]
 
 // Static fallback: maps system role slugs to their default permission groups
 export const SYSTEM_ROLE_PERMISSIONS: Record<string, PermissionGroup[]> = {
-  owner: ['ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'],
+  owner: ['ADMIN', 'HR_ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'],
   admin: ['ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'],
   lead: ['MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'],
   project_manager: ['MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'],

@@ -13,10 +13,41 @@ const periodOptions = [
 
 const selectedPeriod = ref('30d')
 
+interface BriefAnalyticsResponse {
+  summary: { total: number; submitted: number; approved: number; rejected: number; completed: number }
+  cycleTime: { avgSubmitToReview?: number; avgReviewToApproval?: number; avgApprovalToCompletion?: number }
+  byStatus: Array<{ status: string; count: number }>
+  byCategory: Array<{ categoryId?: string | null; categoryName: string; count: number }>
+  timeline: Array<{ date: string; count: number }>
+  byTemplate: Array<{ templateName: string; count: number }>
+  topSubmitters: Array<{ userName: string; count: number }>
+  byPriority: Array<{ priority: string; count: number }>
+}
+
 // Fetch analytics data
-const { data: analytics, pending, refresh } = await useFetch('/api/agency/briefs/analytics', {
-  query: { period: selectedPeriod },
-  watch: [selectedPeriod]
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const analytics = ref<BriefAnalyticsResponse | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    analytics.value = await apiFetch<BriefAnalyticsResponse>('/api/agency/briefs/analytics', {
+      query: { period: selectedPeriod.value },
+    })
+  } catch {
+    analytics.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
+watch(selectedPeriod, () => {
+  void refresh()
 })
 
 // Computed stats
@@ -81,6 +112,7 @@ const submitterColumns = [
           <USelectMenu
             v-model="selectedPeriod"
             :items="periodOptions"
+            value-key="value"
             placeholder="Period"
             class="w-40"
           />

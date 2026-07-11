@@ -9,7 +9,20 @@ interface MyToolsResponse {
   tools: McpTool[]
 }
 
-const { data, pending } = await useFetch<MyToolsResponse>('/api/agency/ai/mcp/my-tools')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<MyToolsResponse | null>(null)
+const pending = ref(false)
+
+async function refreshTools() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<MyToolsResponse>('/api/agency/ai/mcp/my-tools')
+  } finally {
+    pending.value = false
+  }
+}
+
+await refreshTools()
 
 const enabled = computed(() => data.value?.enabled ?? false)
 const role = computed(() => data.value?.role ?? '')

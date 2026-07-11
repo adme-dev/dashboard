@@ -14,7 +14,7 @@ export interface SplitParticipant {
 }
 
 export type SplitResult =
-  | { ok: true; splits: Array<{ id: string; newDailyMajor: number }> }
+  | { ok: true; splits: Array<{ id: string; newDailyMajor: number }>; reason?: undefined }
   | { ok: false; reason: 'adset_share_below_min' | 'no_participants' | 'zero_current_total' }
 
 const round2 = (n: number) => Math.round(n * 100) / 100

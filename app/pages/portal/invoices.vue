@@ -27,9 +27,24 @@ const invoiceQuery = computed(() => {
   return {}
 })
 
-const { data, pending } = useFetch('/api/portal/invoices', {
-  query: invoiceQuery
-})
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
+const data = ref<any | null>(null)
+const pending = ref(false)
+
+async function refreshInvoices() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>('/api/portal/invoices', { query: invoiceQuery.value })
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(invoiceQuery, () => {
+  refreshInvoices()
+}, { immediate: true })
 
 watch(activeTab, (tab) => {
   const query: Record<string, string> = {}
@@ -79,10 +94,27 @@ const agingBuckets = computed(() => {
 const selectedInvoiceId = ref<string | null>(null)
 const showDetail = ref(false)
 
-const { data: detailData, pending: detailPending } = useFetch(
-  computed(() => selectedInvoiceId.value ? `/api/portal/invoices/${selectedInvoiceId.value}` : null),
-  { watch: [selectedInvoiceId] }
-)
+const detailData = ref<any | null>(null)
+const detailPending = ref(false)
+
+async function refreshDetail() {
+  if (!selectedInvoiceId.value) {
+    detailData.value = null
+    return
+  }
+  detailPending.value = true
+  try {
+    detailData.value = await apiFetch<any>(`/api/portal/invoices/${selectedInvoiceId.value}`)
+  } catch {
+    detailData.value = null
+  } finally {
+    detailPending.value = false
+  }
+}
+
+watch(selectedInvoiceId, () => {
+  refreshDetail()
+})
 
 function openDetail(invoiceId: string) {
   selectedInvoiceId.value = invoiceId

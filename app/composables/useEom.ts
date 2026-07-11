@@ -97,7 +97,7 @@ export function useEom() {
 
   async function exportCSV(runId: string) {
     const response = await $fetch(`/api/agency/eom/runs/${runId}/export-csv`, { responseType: 'blob' })
-    const url = URL.createObjectURL(response as Blob)
+    const url = URL.createObjectURL(response as unknown as Blob)
     const a = document.createElement('a')
     a.href = url
     a.download = `eom-invoices-${runId}.csv`

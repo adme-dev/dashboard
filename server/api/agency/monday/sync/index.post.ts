@@ -35,7 +35,7 @@ export default eventHandler(async (event) => {
     })
   }
 
-  const client = createMondayClient(config.access_token)
+  const client = await createMondayClient(config.access_token)
   const results = {
     boardsSynced: 0,
     itemsSynced: 0,
@@ -44,7 +44,7 @@ export default eventHandler(async (event) => {
   }
 
   // Create sync log entry
-  const syncLog = await query(`
+  const syncLog = await query<{ id: string }>(`
     INSERT INTO sync_logs (
       integration_type,
       operation,
@@ -55,7 +55,7 @@ export default eventHandler(async (event) => {
     RETURNING id
   `, ['monday', 'full_sync', 'pending', user.id])
 
-  const syncLogId = syncLog.rows[0].id
+  const syncLogId = syncLog[0]?.id
 
   try {
     for (const boardId of boardIds) {

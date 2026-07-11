@@ -31,6 +31,11 @@ const {
   updateCampaignBudget, fetchCampaignDailySpend,
 } = useSocialConnections()
 
+const apiFetch = $fetch as <T>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+
 // Client assignment — for linking ad accounts to agency clients
 const { data: clientsList } = useLazyFetch('/api/agency/clients')
 const clientOptions = computed(() => {
@@ -43,7 +48,7 @@ const clientOptions = computed(() => {
 
 async function assignClient(connectionId: string, clientId: string) {
   try {
-    await $fetch(`/api/agency/social/connections/${connectionId}`, {
+    await apiFetch(`/api/agency/social/connections/${connectionId}`, {
       method: 'PATCH',
       body: { clientId: clientId === 'none' ? null : clientId },
     })
@@ -78,7 +83,7 @@ const bankCharges = ref<any>(null)
 const bankLoading = ref(false)
 
 // Campaign daily spend chart data
-const campaignDailyData = ref<{ campaigns: any[]; totals: any[] }>({ campaigns: [], totals: [] })
+const campaignDailyData = ref<{ campaigns: any[]; totals: any[]; estimated?: any }>({ campaigns: [], totals: [] })
 const chartLoading = ref(false)
 
 // Chart tabs — Spend (stacked daily), Pacing (cumulative vs budget/projection),
@@ -211,7 +216,7 @@ const sortedAccounts = computed(() => {
 async function loadBankCharges(opts: { refresh?: boolean } = {}) {
   bankLoading.value = true
   try {
-    bankCharges.value = await $fetch('/api/agency/social/spend/bank-charges', {
+    bankCharges.value = await apiFetch('/api/agency/social/spend/bank-charges', {
       query: {
         month: selectedMonth.value,
         year: selectedYear.value,
@@ -301,7 +306,7 @@ function pollSyncStatus(jobId: string) {
   const startedAt = Date.now()
   const tick = async () => {
     try {
-      const s = await $fetch<SyncStatusResponse>('/api/agency/social/spend/sync-status', { query: { jobId } })
+      const s = await apiFetch<SyncStatusResponse>('/api/agency/social/spend/sync-status', { query: { jobId } })
       if (s.status !== 'running') {
         await finishSync(s)
         return

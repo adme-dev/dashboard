@@ -17,6 +17,10 @@ const _lastGenerateSeed = ref<number | null>(null)
 export function useAiImageGenerate() {
   const { addLayer, nextId } = useBannerStudio()
   const toast = useToast()
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown }
+  ) => Promise<T>
 
   function openGenerate() {
     _generatePrompt.value = ''
@@ -40,7 +44,7 @@ export function useAiImageGenerate() {
     _generatePreviewUrl.value = null
 
     try {
-      const result = await $fetch<GenerateImageResult>('/api/agency/banner-studio/ai/generate-image', {
+      const result = await apiFetch<GenerateImageResult>('/api/agency/banner-studio/ai/generate-image', {
         method: 'POST',
         body: {
           prompt: _generatePrompt.value.trim(),

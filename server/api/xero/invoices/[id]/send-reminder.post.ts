@@ -29,7 +29,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invoice ID is required' })
   }
 
-  const body = await readBody<{ force?: boolean }>(event).catch(() => ({}))
+  const body = await readBody<{ force?: boolean }>(event).catch((): { force?: boolean } => ({}))
   const force = !!body?.force
 
   // Dedup guard: don't re-send within 3 days unless force=true.

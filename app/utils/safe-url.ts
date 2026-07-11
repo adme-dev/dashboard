@@ -24,6 +24,17 @@ export function safePublicUrl(value?: string | null) {
   return safeUrl(value, { protocols: ['http:', 'https:'] })
 }
 
+export function safeMondayUrl(value?: string | null) {
+  const url = safePublicUrl(value)
+  if (!url) return undefined
+
+  const parsed = new URL(url)
+  const hostname = parsed.hostname.toLowerCase()
+  return parsed.protocol === 'https:' && (hostname === 'monday.com' || hostname.endsWith('.monday.com'))
+    ? url
+    : undefined
+}
+
 export function safeMediaUrl(value?: string | null) {
   return safeUrl(value, {
     allowRelative: true,

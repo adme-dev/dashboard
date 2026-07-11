@@ -56,8 +56,37 @@
           >
             Test Connection
           </UButton>
+          <UButton
+            v-if="connectionStatus !== 'connected'"
+            color="primary"
+            icon="i-lucide-key-round"
+            to="/api/agency/monday/oauth/start"
+            external
+          >
+            Connect with Monday
+          </UButton>
         </div>
       </div>
+    </UCard>
+
+    <UCard class="mb-6">
+      <template #header><div class="flex flex-wrap items-center justify-between gap-3"><h3 class="font-semibold text-gray-900 dark:text-white">Webhook queue</h3><div class="flex gap-2"><UButton size="sm" color="primary" variant="soft" icon="i-lucide-webhook" :loading="registeringWebhooks" @click="registerWebhooks">Register approved boards</UButton><UButton size="sm" color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="loadingWebhookStatus" @click="fetchWebhookStatus">Refresh queue</UButton></div></div></template>
+      <p v-if="!webhookStatus" class="text-sm text-gray-600 dark:text-gray-400">Refresh to inspect webhook delivery and processing health.</p>
+      <div v-else class="grid gap-3 sm:grid-cols-3"><div v-for="entry in webhookStatus.counts" :key="entry.status" class="rounded-lg bg-gray-50 p-3 dark:bg-gray-800"><p class="text-2xl font-bold">{{ entry.count }}</p><p class="text-xs capitalize text-gray-600 dark:text-gray-400">{{ entry.status }}</p></div><p v-if="webhookStatus.recentFailures.length" class="sm:col-span-3 text-sm text-red-600">{{ webhookStatus.recentFailures.length }} recent webhook failures require review.</p></div>
+    </UCard>
+
+    <UCard class="mb-6">
+      <template #header><div class="flex items-center justify-between gap-3"><h3 class="font-semibold text-gray-900 dark:text-white">Monday work health</h3><UButton size="sm" color="neutral" variant="outline" icon="i-lucide-activity" :loading="loadingHealth" @click="fetchHealth">Refresh health</UButton></div></template>
+      <p v-if="!health" class="text-sm text-gray-600 dark:text-gray-400">Refresh to check overdue, blocked, and inactive Monday-linked work.</p>
+      <div v-else-if="health.alerts.length === 0" class="text-sm text-green-600">No overdue, blocked, or inactive mapped tasks found.</div>
+      <div v-else class="divide-y divide-gray-200 dark:divide-gray-700"><div v-for="alert in health.alerts.slice(0, 10)" :key="alert.mondayItemId" class="flex items-center justify-between gap-3 py-3"><div class="min-w-0"><p class="truncate font-medium">{{ alert.title }}</p><p class="text-xs text-gray-500">{{ alert.reasons.join(' · ') }} · last activity {{ formatDate(alert.lastActivityAt) }}</p></div><UBadge color="warning" variant="subtle">{{ alert.reasons.length }} alert{{ alert.reasons.length === 1 ? '' : 's' }}</UBadge></div><p v-if="health.alerts.length > 10" class="pt-3 text-xs text-gray-500">Showing 10 of {{ health.alerts.length }} alerts.</p></div>
+    </UCard>
+
+    <UCard class="mb-6">
+      <template #header><div class="flex items-center justify-between gap-3"><h3 class="font-semibold text-gray-900 dark:text-white">Monday structure discovery</h3><UButton size="sm" color="neutral" variant="outline" icon="i-lucide-scan-search" :loading="discovering" @click="discoverMonday">Discover structure</UButton></div></template>
+      <p class="text-sm text-gray-600 dark:text-gray-400">Read-only inventory of boards, groups, columns, and sample value types. Nothing is imported.</p>
+      <div v-if="discovery" class="mt-4 grid gap-3 sm:grid-cols-3"><div class="rounded-lg bg-gray-50 p-3 dark:bg-gray-800"><p class="text-2xl font-bold">{{ discovery.boardCount }}</p><p class="text-xs text-gray-600 dark:text-gray-400">Boards discovered</p></div><div class="rounded-lg bg-gray-50 p-3 dark:bg-gray-800"><p class="text-2xl font-bold">{{ discovery.boards.reduce((sum, board) => sum + board.groups.length, 0) }}</p><p class="text-xs text-gray-600 dark:text-gray-400">Groups</p></div><div class="rounded-lg bg-gray-50 p-3 dark:bg-gray-800"><p class="text-2xl font-bold">{{ discovery.boards.reduce((sum, board) => sum + board.columns.length, 0) }}</p><p class="text-xs text-gray-600 dark:text-gray-400">Columns</p></div></div>
+      <div v-if="discovery" class="mt-4 divide-y divide-gray-200 dark:divide-gray-700"><div v-for="board in discovery.boards" :key="board.id" class="flex items-center justify-between gap-3 py-3"><div><p class="font-medium">{{ board.name }}</p><p class="text-xs text-gray-500">{{ board.groups.length }} groups · {{ board.columns.length }} columns · {{ board.sample.items }} sampled items</p></div><UBadge color="neutral" variant="subtle">{{ board.state }}</UBadge></div></div>
     </UCard>
 
     <!-- Migration Settings -->
@@ -271,8 +300,19 @@ const showPreview = ref(false)
 const loading = ref(false)
 const migrations = ref<MigrationSession[]>([])
 const activeMigration = ref<MigrationSession | null>(null)
+const discovering = ref(false)
+const discovery = ref<{ boardCount: number; boards: Array<{ id: string; name: string; state: string; groups: unknown[]; columns: unknown[]; sample: { items: number } }> } | null>(null)
+const loadingHealth = ref(false)
+const health = ref<{ alerts: Array<{ mondayItemId: string; title: string; reasons: string[]; lastActivityAt: string }> } | null>(null)
+const loadingWebhookStatus = ref(false)
+const registeringWebhooks = ref(false)
+const webhookStatus = ref<{ counts: Array<{ status: string; count: number }>; recentFailures: Array<{ eventId: string }> } | null>(null)
 const departments = ref<Array<{ id: string; name: string }>>([])
 const projects = ref<Array<{ id: string; name: string }>>([])
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 const migrationConfig = ref({
   defaultDepartmentId: '',
@@ -321,7 +361,7 @@ const columns = [
 async function testConnection() {
   testingConnection.value = true
   try {
-    const response = await $fetch('/api/agency/monday/test-connection')
+    const response = await apiFetch<{ account: { name: string } }>('/api/agency/monday/test-connection')
     connectionStatus.value = 'connected'
     connectionMessage.value = `Connected to ${response.account.name}`
     showSettings.value = true
@@ -331,6 +371,43 @@ async function testConnection() {
   } finally {
     testingConnection.value = false
   }
+}
+
+async function discoverMonday() {
+  discovering.value = true
+  try {
+    discovery.value = await apiFetch<typeof discovery.value>('/api/agency/hr/monday/discovery')
+  } catch (error: any) {
+    connectionMessage.value = error?.data?.statusMessage || 'Discovery failed'
+  } finally {
+    discovering.value = false
+  }
+}
+
+async function fetchHealth() {
+  loadingHealth.value = true
+  try { health.value = await apiFetch<typeof health.value>('/api/agency/monday/health') }
+  catch (error) { console.error('Failed to fetch Monday health', error) }
+  finally { loadingHealth.value = false }
+}
+
+async function fetchWebhookStatus() {
+  loadingWebhookStatus.value = true
+  try { webhookStatus.value = await apiFetch<typeof webhookStatus.value>('/api/agency/monday/webhook-status') }
+  catch (error) { console.error('Failed to fetch Monday webhook status', error) }
+  finally { loadingWebhookStatus.value = false }
+}
+
+async function registerWebhooks() {
+  registeringWebhooks.value = true
+  try {
+    const result = await apiFetch<{ boards: Array<{ created: number }> }>('/api/agency/monday/webhooks/register', { method: 'POST' })
+    const created = result.boards.reduce((total, board) => total + board.created, 0)
+    connectionMessage.value = created ? `${created} signed Monday webhooks registered` : 'Approved-board webhooks are already registered'
+    await fetchWebhookStatus()
+  } catch (error: any) {
+    connectionMessage.value = error?.data?.statusMessage || 'Webhook registration failed'
+  } finally { registeringWebhooks.value = false }
 }
 
 async function startDirectMigration() {
@@ -343,7 +420,7 @@ async function startDirectMigration() {
   startingMigration.value = true
 
   try {
-    const response = await $fetch('/api/agency/monday/migrations', {
+    const response = await apiFetch<{ success?: boolean }>('/api/agency/monday/migrations', {
       method: 'POST',
       body: { config },
     })
@@ -371,7 +448,7 @@ async function handlePreviewStart(boardMappings: Record<string, { departmentId?:
       projectId: mapping.projectId,
     }))
 
-    const response = await $fetch('/api/agency/monday/migrations', {
+    const response = await apiFetch<{ success?: boolean }>('/api/agency/monday/migrations', {
       method: 'POST',
       body: {
         config: {
@@ -396,7 +473,7 @@ async function handlePreviewStart(boardMappings: Record<string, { departmentId?:
 async function fetchMigrations() {
   loading.value = true
   try {
-    const response = await $fetch<{ sessions: MigrationSession[] }>('/api/agency/monday/migrations')
+    const response = await apiFetch<{ sessions: MigrationSession[] }>('/api/agency/monday/migrations')
     migrations.value = response.sessions
     
     // Find active migration
@@ -414,7 +491,7 @@ async function fetchMigrations() {
 
 async function fetchDepartments() {
   try {
-    const response = await $fetch<Array<{ id: string; name: string }>>('/api/agency/departments')
+    const response = await apiFetch<Array<{ id: string; name: string }>>('/api/agency/departments')
     departments.value = response
   } catch (error) {
     console.error('Failed to fetch departments:', error)
@@ -423,7 +500,7 @@ async function fetchDepartments() {
 
 async function fetchProjects() {
   try {
-    const response = await $fetch<Array<{ id: string; name: string }>>('/api/agency/projects')
+    const response = await apiFetch<Array<{ id: string; name: string }>>('/api/agency/projects')
     projects.value = response
   } catch (error) {
     console.error('Failed to fetch projects:', error)

@@ -30,9 +30,23 @@ const isOpen = computed({
   set: value => emit('update:open', value)
 })
 
-const { data, refresh, pending } = await useFetch<{ assets: EdmImageAsset[] }>('/api/agency/email/assets', {
-  default: () => ({ assets: [] })
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const data = ref<{ assets: EdmImageAsset[] }>({ assets: [] })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ assets: EdmImageAsset[] }>('/api/agency/email/assets')
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
 
 const imageAssets = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -71,7 +85,7 @@ async function uploadFile(file: File) {
   try {
     const formData = new FormData()
     formData.append('file', file)
-    const { asset } = await $fetch<{ asset: EdmImageAsset }>('/api/agency/email/assets/upload', {
+    const { asset } = await apiFetch<{ asset: EdmImageAsset }>('/api/agency/email/assets/upload', {
       method: 'POST',
       body: formData
     })

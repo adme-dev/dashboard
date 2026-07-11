@@ -45,6 +45,10 @@ const { panelEl, handleEl, isDragging, panelStyle } = useOfficeFloatingPanel({
   storageKey: 'office-room-panel-position',
   width: 380
 })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const capacityLabel = computed(() => `${props.occupants.length}/${props.zone.capacity}`)
 const isFull = computed(() => props.occupants.length >= props.zone.capacity)
@@ -205,7 +209,7 @@ function remoteNotesFromError(err: unknown) {
 async function saveRoomNotes() {
   savingNotes.value = true
   try {
-    const result = await $fetch<{ zone: OfficeZoneRow }>(
+    const result = await apiFetch<{ zone: OfficeZoneRow }>(
       `/api/office/${props.officeId}/zones/${props.zone.id}/notes`,
       {
         method: 'PUT',

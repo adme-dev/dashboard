@@ -1,5 +1,20 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/agency/briefs/categories')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any[] | { categories?: any[] } | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshJobTypes() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/briefs/categories')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load job types', error)
+    status.value = 'error'
+  }
+}
+
+await refreshJobTypes()
 
 const categories = computed(() => {
   const raw = (data.value as any)?.categories || data.value || []

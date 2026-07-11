@@ -164,6 +164,11 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  params?: Record<string, unknown>
+}) => Promise<T>
 
 interface LinkedTask {
   id: string
@@ -226,7 +231,7 @@ const priorityOptions = [
 // --- Fetch linked items ---
 async function fetchLinks() {
   try {
-    const data = await $fetch<{ linkedItems: LinkedItem[] }>(`/api/agency/tasks/${props.taskId}/linked-items`)
+    const data = await apiFetch<{ linkedItems: LinkedItem[] }>(`/api/agency/tasks/${props.taskId}/linked-items`)
     links.value = data.linkedItems || []
   } catch (e: any) {
     toast.add({ title: 'Error', description: 'Failed to load linked items', color: 'error' })
@@ -243,7 +248,7 @@ async function searchTasks(q: string) {
   }
   searching.value = true
   try {
-    const data = await $fetch<{ tasks: SearchResult[] }>(`/api/agency/tasks/search`, {
+    const data = await apiFetch<{ tasks: SearchResult[] }>(`/api/agency/tasks/search`, {
       params: { q, excludeTaskId: props.taskId },
     })
     const linkedIds = new Set(links.value.map(l => l.task.id))
@@ -257,7 +262,7 @@ async function searchTasks(q: string) {
 
 async function linkItem(linkedTaskId: string) {
   try {
-    await $fetch(`/api/agency/tasks/${props.taskId}/linked-items`, {
+    await apiFetch(`/api/agency/tasks/${props.taskId}/linked-items`, {
       method: 'POST',
       body: { linkedTaskId },
     })
@@ -278,7 +283,7 @@ async function linkItem(linkedTaskId: string) {
 
 async function unlinkItem(linkId: string) {
   try {
-    await $fetch(`/api/agency/tasks/${props.taskId}/linked-items/${linkId}`, {
+    await apiFetch(`/api/agency/tasks/${props.taskId}/linked-items/${linkId}`, {
       method: 'DELETE',
     })
     await fetchLinks()
@@ -299,9 +304,9 @@ async function switchToCreate() {
 async function loadCreateData() {
   try {
     const [boardsData, membersData, taskData] = await Promise.all([
-      $fetch<any>('/api/agency/boards'),
-      $fetch<any>('/api/agency/team-members'),
-      $fetch<any>(`/api/agency/tasks/${props.taskId}`),
+      apiFetch<any>('/api/agency/boards'),
+      apiFetch<any>('/api/agency/team-members'),
+      apiFetch<any>(`/api/agency/tasks/${props.taskId}`),
     ])
     const boardsList = Array.isArray(boardsData) ? boardsData : (boardsData?.boards ?? [])
     boards.value = boardsList.map((b: any) => ({ id: b.id, name: b.name }))
@@ -322,7 +327,7 @@ async function createAndLink() {
   creating.value = true
   try {
     // Create the task on the selected board, inheriting the source task's project
-    const created = await $fetch<{ id: string }>('/api/agency/tasks', {
+    const created = await apiFetch<{ id: string }>('/api/agency/tasks', {
       method: 'POST',
       body: {
         departmentId: newTask.departmentId,
@@ -334,7 +339,7 @@ async function createAndLink() {
     })
 
     // Link the new task to the source task
-    await $fetch(`/api/agency/tasks/${props.taskId}/linked-items`, {
+    await apiFetch(`/api/agency/tasks/${props.taskId}/linked-items`, {
       method: 'POST',
       body: { linkedTaskId: created.id },
     })

@@ -14,13 +14,31 @@ interface RuleListItem {
   last_lead_at: string | null
 }
 
-const { data, refresh, pending } = useFetch<{ items: RuleListItem[] }>('/api/leads/rules/list', {
-  default: () => ({ items: [] })
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const data = ref<{ items: RuleListItem[] }>({ items: [] })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items: RuleListItem[] }>('/api/leads/rules/list')
+  } finally {
+    pending.value = false
+  }
+}
+
 // Clients for the picker modal — plain array from /api/agency/clients
-const { data: clients } = useFetch<{ id: string, name: string }[]>('/api/agency/clients', {
-  default: () => []
-})
+const clients = ref<{ id: string, name: string }[]>([])
+
+async function refreshClients() {
+  clients.value = await apiFetch<{ id: string, name: string }[]>('/api/agency/clients')
+}
+
+await Promise.all([refresh(), refreshClients()])
+
 const clientOptions = computed(() =>
   ((clients.value ?? []) as { id: string, name: string }[]).map(c => ({ value: c.id, label: c.name }))
 )
@@ -136,7 +154,7 @@ async function discoverForms(source: 'google' | 'meta') {
   discoverError.value = null
   discoveredForms.value = []
   try {
-    const r = await $fetch<{
+    const r = await apiFetch<{
       forms: DiscoveredForm[]
       connection_count: number
       needs_meta_app_review?: boolean
@@ -210,7 +228,7 @@ async function createNewRule() {
   }
   newRuleSaving.value = true
   try {
-    const r = await $fetch<{ id: string }>('/api/leads/rules', {
+    const r = await apiFetch<{ id: string }>('/api/leads/rules', {
       method: 'POST',
       body: {
         client_id: newRule.value.client_id,
@@ -293,7 +311,7 @@ async function confirmPicker() {
 
 async function createRuleAndOpen(item: RuleListItem, clientId: string) {
   try {
-    const r = await $fetch<{ id: string }>('/api/leads/rules', {
+    const r = await apiFetch<{ id: string }>('/api/leads/rules', {
       method: 'POST',
       body: { client_id: clientId, source: item.source, form_id: item.form_id, form_name: item.form_name }
     })
@@ -317,7 +335,7 @@ watch(showClientPicker, (v) => {
 
 async function toggleEnabled(item: RuleListItem) {
   if (!item.rule_id) return
-  await $fetch(`/api/leads/rules/${item.rule_id}`, { method: 'PATCH', body: { enabled: !item.enabled } })
+  await apiFetch(`/api/leads/rules/${item.rule_id}`, { method: 'PATCH', body: { enabled: !item.enabled } })
   await refresh()
 }
 </script>

@@ -30,11 +30,28 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
-const { data: modelData, pending: modelsPending, refresh: refreshModels } = useFetch<{ models: VideoModelOption[] }>('/api/agency/video/generation/models', {
-  lazy: true,
-  immediate: false,
-  query: computed(() => ({ projectId: props.projectId })),
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: {
+    method?: string
+    body?: unknown
+    query?: Record<string, unknown>
+  }
+) => Promise<T>
+const modelData = ref<{ models: VideoModelOption[] }>({ models: [] })
+const modelsPending = ref(false)
+
+async function refreshModels() {
+  modelsPending.value = true
+  try {
+    modelData.value = await apiFetch<{ models: VideoModelOption[] }>('/api/agency/video/generation/models', {
+      query: { projectId: props.projectId },
+    })
+  } finally {
+    modelsPending.value = false
+  }
+}
+
 const allModels = computed((): VideoModelOption[] => modelData.value?.models ?? [])
 const hasModels = computed(() => allModels.value.length > 0)
 
@@ -196,7 +213,7 @@ async function applyInitialSourceAsset() {
   sourceAssetId.value = null
   sourceFileName.value = `Preparing ${source.title}`
   try {
-    const res = await $fetch<{ id: string }>('/api/agency/video/generation/source-assets/from-asset', {
+    const res = await apiFetch<{ id: string }>('/api/agency/video/generation/source-assets/from-asset', {
       method: 'POST',
       body: { assetId: source.assetId, subjectType: subjectType.value },
     })
@@ -222,7 +239,7 @@ async function onExistingStillSelected(clipId: string | null) {
   uploading.value = true
   try {
     await props.prepareTimelineStillSource?.()
-    const res = await $fetch<{ id: string }>('/api/agency/video/generation/source-assets/from-timeline-still', {
+    const res = await apiFetch<{ id: string }>('/api/agency/video/generation/source-assets/from-timeline-still', {
       method: 'POST',
       body: { projectId: props.projectId, clipId, subjectType: subjectType.value },
     })
@@ -248,7 +265,7 @@ async function onFileSelected(event: Event) {
     formData.append('projectId', props.projectId)
     formData.append('subjectType', subjectType.value)
 
-    const res = await $fetch<{ id: string }>('/api/agency/video/generation/source-assets', {
+    const res = await apiFetch<{ id: string }>('/api/agency/video/generation/source-assets', {
       method: 'POST',
       body: formData,
     })
@@ -271,7 +288,7 @@ async function submit() {
   if (!validation.value.valid || !model.value) return
   submitting.value = true
   try {
-    const res = await $fetch<{ job: { id: string } }>(`/api/agency/video/generation/jobs`, {
+    const res = await apiFetch<{ job: { id: string } }>(`/api/agency/video/generation/jobs`, {
       method: 'POST',
       body: {
         projectId: props.projectId,

@@ -18,10 +18,23 @@ const props = defineProps<{
 }>()
 
 const base = inject<string>('crmApiBase', '/api/crm')
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 const query = computed(() => ({ client_id: props.clientId, entity_type: props.entityType, entity_id: props.entityId }))
-const { data, pending } = useFetch<{ items: AuditEntry[] }>(`${base}/audit`, {
-  query, watch: [query], default: () => ({ items: [] }),
-})
+const data = ref<{ items: AuditEntry[] }>({ items: [] })
+const pending = ref(false)
+
+async function refreshAudit() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items: AuditEntry[] }>(`${base}/audit`, { query: query.value })
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(query, () => {
+  refreshAudit()
+}, { immediate: true })
 const items = computed(() => data.value?.items ?? [])
 
 function fieldLabel(f: string) {

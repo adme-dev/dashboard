@@ -39,6 +39,10 @@ definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
 const editor = useMediaProjectEditor(projectId.value)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; query?: Record<string, unknown> }
+) => Promise<T>
 type VideoClipFit = 'fit' | 'fill' | 'crop'
 type VideoStudioMode = 'assets' | 'edit' | 'produce' | 'review'
 type VideoStudioInspectorTab = 'details' | 'produce' | 'review'
@@ -102,7 +106,7 @@ const isAv = computed(() => editor.mediaType.value === 'av')
 const overlayPickerOpen = ref(false)
 const mediaPickerOpen = ref(false)
 
-function onOverlayPick(p: { gsapProjectId: string; gsapFormatKey: string }) {
+function onOverlayPick(p: { gsapProjectId: string; gsapFormatKey: string; durationSec?: number; startSec?: number }) {
   editor.addOverlayClipAction(p.gsapProjectId, p.gsapFormatKey, p.durationSec ?? 5, p.startSec ?? editor.currentTime.value)
 }
 function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'uploaded_footage' | 'still_kenburns' }) {
@@ -179,24 +183,28 @@ interface StudioBannerProject {
   status?: string | null
 }
 
-const {
-  data: studioAudioData,
-  pending: studioAudioPending,
-  refresh: refreshStudioAudioAssets,
-} = useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
-  query: { limit: 100 },
-  lazy: true,
-  immediate: false,
-})
-const {
-  data: studioBannerData,
-  pending: studioBannerPending,
-  refresh: refreshStudioBannerProjects,
-} = useFetch<StudioBannerProject[]>('/api/agency/banner-studio/projects', {
-  query: { limit: 100 },
-  lazy: true,
-  immediate: false,
-})
+const studioAudioData = ref<{ assets: AudioAsset[] } | null>(null)
+const studioAudioPending = ref(false)
+const studioBannerData = ref<StudioBannerProject[] | null>(null)
+const studioBannerPending = ref(false)
+
+async function refreshStudioAudioAssets() {
+  studioAudioPending.value = true
+  try {
+    studioAudioData.value = await apiFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', { query: { limit: 100 } })
+  } finally {
+    studioAudioPending.value = false
+  }
+}
+
+async function refreshStudioBannerProjects() {
+  studioBannerPending.value = true
+  try {
+    studioBannerData.value = await apiFetch<StudioBannerProject[]>('/api/agency/banner-studio/projects', { query: { limit: 100 } })
+  } finally {
+    studioBannerPending.value = false
+  }
+}
 
 const studioAudioAssets = computed(() => studioAudioData.value?.assets ?? [])
 const studioBannerProjects = computed(() => studioBannerData.value ?? [])
@@ -428,7 +436,7 @@ async function onGenerateCaptions(asset: VideoStudioAsset) {
   if (!asset.libraryAssetId || captionGeneratingAssetId.value) return
   captionGeneratingAssetId.value = asset.id
   try {
-    await $fetch(`/api/agency/video/assets/${encodeURIComponent(asset.libraryAssetId)}/captions`, { method: 'POST' })
+    await apiFetch(`/api/agency/video/assets/${encodeURIComponent(asset.libraryAssetId)}/captions`, { method: 'POST' })
     await refreshVideoAssets()
     toast.add({ title: 'Captions generated', description: 'A VTT caption track is attached to the selected asset.', color: 'success' })
   } catch (e: unknown) {
@@ -1111,7 +1119,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   />
                   <div class="grid grid-cols-2 gap-2">
                     <UButton icon="i-lucide-music" size="xs" variant="ghost" color="neutral" label="Audio" @click="pickerOpen = true" />
-                    <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="onRenderVideo" />
+                    <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="() => onRenderVideo()" />
                   </div>
                 </template>
 

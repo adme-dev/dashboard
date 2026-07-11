@@ -28,20 +28,34 @@ interface UpdateGroupPayload {
 
 export function useBoardGroups(boardId: Ref<string> | string) {
   const toast = useToast()
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
   const id = typeof boardId === 'string' ? boardId : boardId
 
   const resolvedId = computed(() => typeof id === 'string' ? id : id.value)
 
-  const { data, pending, refresh } = useFetch(
-    () => `/api/agency/boards/${resolvedId.value}/groups`,
-    { default: () => ({ groups: [] }) }
-  )
+  const data = ref<{ groups: BoardGroup[] }>({ groups: [] })
+  const pending = ref(false)
+
+  async function refresh() {
+    pending.value = true
+    try {
+      data.value = await apiFetch<{ groups: BoardGroup[] }>(`/api/agency/boards/${resolvedId.value}/groups`)
+    } catch {
+      data.value = { groups: [] }
+    } finally {
+      pending.value = false
+    }
+  }
+
+  watch(resolvedId, () => {
+    void refresh()
+  }, { immediate: true })
 
   const groups = computed<BoardGroup[]>(() => (data.value as any)?.groups || [])
 
   async function createGroup(payload: CreateGroupPayload): Promise<BoardGroup | null> {
     try {
-      const result = await $fetch<{ group: BoardGroup }>(
+      const result = await apiFetch<{ group: BoardGroup }>(
         `/api/agency/boards/${resolvedId.value}/groups`,
         { method: 'POST', body: payload }
       )
@@ -60,7 +74,7 @@ export function useBoardGroups(boardId: Ref<string> | string) {
 
   async function updateGroup(groupId: string, payload: UpdateGroupPayload): Promise<boolean> {
     try {
-      await $fetch(
+      await apiFetch(
         `/api/agency/boards/${resolvedId.value}/groups/${groupId}`,
         { method: 'PATCH', body: payload }
       )
@@ -78,7 +92,7 @@ export function useBoardGroups(boardId: Ref<string> | string) {
 
   async function deleteGroup(groupId: string): Promise<boolean> {
     try {
-      await $fetch(
+      await apiFetch(
         `/api/agency/boards/${resolvedId.value}/groups/${groupId}`,
         { method: 'DELETE' }
       )
@@ -97,7 +111,7 @@ export function useBoardGroups(boardId: Ref<string> | string) {
 
   async function reorderGroups(groupIds: string[]): Promise<boolean> {
     try {
-      await $fetch(
+      await apiFetch(
         `/api/agency/boards/${resolvedId.value}/groups/reorder`,
         { method: 'PATCH', body: { groupIds } }
       )

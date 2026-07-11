@@ -103,7 +103,7 @@ function platformLabel(p: string): string {
 </script>
 
 <template>
-  <USlideover v-model:open="open" :ui="{ width: 'max-w-lg' }" side="right">
+  <USlideover v-model:open="open" :ui="{ content: 'max-w-lg' }" side="right">
     <template #content>
       <div class="flex flex-col h-full">
         <!-- Header -->

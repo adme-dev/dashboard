@@ -213,7 +213,7 @@ function classifyLevel(boardSub: any): string {
 // Check subscription status on mount
 onMounted(async () => {
   try {
-    const { subscriptions } = await $fetch<{ subscriptions: any[] }>(`/api/agency/boards/${props.boardId}/subscriptions`)
+    const { subscriptions } = await apiFetch<{ subscriptions: any[] }>(`/api/agency/boards/${props.boardId}/subscriptions`)
     const boardSub = subscriptions.find((s: any) => !s.itemId && !s.columnId)
     if (boardSub) {
       isSubscribed.value = true
@@ -314,7 +314,7 @@ async function applySnooze(until: Date | null) {
     snoozeUntil: until ? until.toISOString() : null,
   }
   try {
-    const updated = await $fetch<any>(`/api/agency/boards/${props.boardId}/subscribe`, { method: 'POST', body })
+    const updated = await apiFetch<any>(`/api/agency/boards/${props.boardId}/subscribe`, { method: 'POST', body })
     snoozeUntil.value = updated?.snoozeUntil || null
     currentBoardSub.value = { ...sub, ...updated }
     if (!isSubscribed.value) {
@@ -336,18 +336,19 @@ function onSettingsSaved(payload: { subscribed: boolean; level: string | null })
 }
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 async function handleSubscribe(level: string) {
   try {
     if (level === subscriptionLevel.value) {
       // Unsubscribe
-      await $fetch(`/api/agency/boards/${props.boardId}/unsubscribe`, { method: 'DELETE' })
+      await apiFetch(`/api/agency/boards/${props.boardId}/unsubscribe`, { method: 'DELETE' })
       isSubscribed.value = false
       subscriptionLevel.value = null
     } else {
       const events = level === 'mentions' ? ['task_mentioned'] : []
       const isMuted = level === 'muted'
-      await $fetch(`/api/agency/boards/${props.boardId}/subscribe`, {
+      await apiFetch(`/api/agency/boards/${props.boardId}/subscribe`, {
         method: 'POST',
         body: { events, notifyInapp: true, notifyEmail: false, isMuted },
       })

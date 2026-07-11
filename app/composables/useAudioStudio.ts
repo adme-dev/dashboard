@@ -3,6 +3,11 @@ import type { AudioAsset } from '~/types'
 export function useAudioStudio() {
   const generating = ref(false)
   const toast = useToast()
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+    method?: string
+    body?: unknown
+    query?: Record<string, unknown>
+  }) => Promise<T>
 
   async function generateVoiceover(payload: {
     text: string
@@ -13,7 +18,7 @@ export function useAudioStudio() {
   }): Promise<AudioAsset | null> {
     generating.value = true
     try {
-      const res = await $fetch<{ asset: AudioAsset, violations: string[] }>(
+      const res = await apiFetch<{ asset: AudioAsset, violations: string[] }>(
         '/api/agency/audio/voiceover', { method: 'POST', body: payload }
       )
       if (res.violations?.length) {
@@ -30,10 +35,7 @@ export function useAudioStudio() {
   }
 
   function listVoiceovers() {
-    return useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
-      query: { kind: 'voiceover' },
-      default: () => ({ assets: [] })
-    })
+    return listAssets('voiceover')
   }
 
   /** Kick off async music generation. Returns the queued asset (poll for status)
@@ -49,7 +51,7 @@ export function useAudioStudio() {
   }): Promise<AudioAsset | null> {
     generating.value = true
     try {
-      const res = await $fetch<{ asset: AudioAsset }>(
+      const res = await apiFetch<{ asset: AudioAsset }>(
         '/api/agency/audio/music/generate', { method: 'POST', body: payload }
       )
       return res.asset
@@ -69,16 +71,24 @@ export function useAudioStudio() {
 
   /** Poll a music job once. */
   function fetchMusicStatus(assetId: string) {
-    return $fetch<{ status: AudioAsset['status'], streamUrl: string | null, error: string | null, asset: AudioAsset }>(
+    return apiFetch<{ status: AudioAsset['status'], streamUrl: string | null, error: string | null, asset: AudioAsset }>(
       `/api/agency/audio/music/status/${assetId}`
     )
   }
 
   function listMusic() {
-    return useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
-      query: { kind: 'music' },
-      default: () => ({ assets: [] })
-    })
+    return listAssets('music')
+  }
+
+  function listAssets(kind: 'voiceover' | 'music') {
+    const data = ref<{ assets: AudioAsset[] }>({ assets: [] })
+    async function refresh() {
+      data.value = await apiFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
+        query: { kind },
+      }).catch(() => ({ assets: [] }))
+    }
+    refresh()
+    return { data, refresh }
   }
 
   return { generating, generateVoiceover, listVoiceovers, generateMusic, fetchMusicStatus, listMusic }

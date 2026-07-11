@@ -2,6 +2,7 @@
 const props = defineProps<{ startDate: string, endDate: string, clientId?: string | null }>()
 const { fmtCurrency, fmtCompact } = useAnalytics()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 interface GroundingChannel {
   channel: string
@@ -49,7 +50,7 @@ async function ask() {
   loading.value = true
   showNumbers.value = false
   try {
-    answer.value = await $fetch<AskResponse>('/api/agency/analytics/ask', {
+    answer.value = await apiFetch<AskResponse>('/api/agency/analytics/ask', {
       method: 'POST',
       body: {
         question: q,

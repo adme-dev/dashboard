@@ -47,6 +47,7 @@ const assignedTo = ref<string>(NONE)
 const submitting = ref(false)
 const errorMsg = ref<string | null>(null)
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // ── Derived options ─────────────────────────────────────────────────
 const CATEGORY_OPTIONS = [
@@ -129,7 +130,7 @@ async function submit() {
     if (dueDate.value) body.due_date = dueDate.value
     if (assignedTo.value !== NONE) body.assigned_to = assignedTo.value
 
-    const res = await $fetch<{ recommendation: CreatedRec }>(
+    const res = await apiFetch<{ recommendation: CreatedRec }>(
       '/api/advisor/recommendations',
       { method: 'POST', body }
     )

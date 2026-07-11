@@ -7,7 +7,7 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { createNotification } from '~~/server/utils/notifications'
+import { createNotification, type NotificationType } from '~~/server/utils/notifications'
 import { getSubscribers } from '~~/server/utils/subscriptions'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { sendBoardMemberAddedEmail } from '~~/server/utils/email'
@@ -260,8 +260,8 @@ function buildNotificationContent(
 /**
  * Map board event type to notification type.
  */
-function mapEventToNotificationType(eventType: string): string {
-  const map: Record<string, string> = {
+function mapEventToNotificationType(eventType: string): NotificationType {
+  const map: Record<string, NotificationType> = {
     task_updated: 'task_status_changed',
     task_created: 'system',
     task_deleted: 'system',

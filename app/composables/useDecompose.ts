@@ -11,6 +11,10 @@ const _lastZipUrl = ref<string | null>(null)
 export function useDecompose() {
   const { addLayer } = useBannerStudio()
   const toast = useToast()
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown }
+  ) => Promise<T>
 
   async function decomposeFromUrl(
     imageUrl: string,
@@ -29,7 +33,7 @@ export function useDecompose() {
     else _decomposingLayerId.value = typeof sourceId === 'number' ? sourceId : Number(sourceId)
 
     try {
-      const result = await $fetch<DecomposeResult>('/api/agency/banner-studio/ai/decompose', {
+      const result = await apiFetch<DecomposeResult>('/api/agency/banner-studio/ai/decompose', {
         method: 'POST',
         body: { imageUrl, numLayers, prompt: prompt || undefined },
       })

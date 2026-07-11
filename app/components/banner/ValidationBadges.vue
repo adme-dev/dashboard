@@ -7,16 +7,28 @@ const props = defineProps<{
   projectId: string
   formatKey?: string // optional — filter to single format
 }>()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
-const { data: validation, status, refresh } = useFetch<any>(
-  () => `/api/agency/banner-studio/validate`,
-  {
+const validation = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refresh() {
+  status.value = 'pending'
+  try {
+    validation.value = await apiFetch<any>('/api/agency/banner-studio/validate', {
     method: 'POST',
     body: { projectId: props.projectId },
-    default: () => null,
-    immediate: true,
-  },
-)
+    })
+    status.value = 'success'
+  } catch {
+    validation.value = null
+    status.value = 'error'
+  }
+}
+
+watch(() => props.projectId, () => {
+  refresh()
+}, { immediate: true })
 
 const results = computed(() => {
   if (!validation.value?.results) return []

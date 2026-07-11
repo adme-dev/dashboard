@@ -13,6 +13,10 @@ const emit = defineEmits<{
 const isOpen = defineModel<boolean>('open', { default: false })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 const activeTab = ref<'browse' | 'save'>('browse')
 const searchQuery = ref('')
 const selectedCategory = ref('all')
@@ -28,15 +32,25 @@ const saveForm = ref({
 })
 
 // Fetch templates
-const { data: templatesData, refresh: refreshTemplates } = await useFetch<{
+const templatesData = ref<{
   templates: BoardTemplate[]
   categories: string[]
-}>('/api/agency/boards/templates', {
-  query: computed(() => ({
+} | null>(null)
+const templatesQuery = computed(() => ({
     search: searchQuery.value || undefined,
     category: selectedCategory.value !== 'all' ? selectedCategory.value : undefined,
-  })),
-})
+}))
+
+async function refreshTemplates() {
+  templatesData.value = await apiFetch<{
+    templates: BoardTemplate[]
+    categories: string[]
+  }>('/api/agency/boards/templates', { query: templatesQuery.value })
+}
+
+watch(templatesQuery, () => {
+  refreshTemplates()
+}, { immediate: true })
 
 const templates = computed(() => templatesData.value?.templates || [])
 const categories = computed(() => ['all', ...(templatesData.value?.categories || [])])
@@ -83,7 +97,7 @@ async function saveAsTemplate() {
   isSaving.value = true
 
   try {
-    const result = await $fetch<{ id: string; name: string }>('/api/agency/boards/templates', {
+    const result = await apiFetch<{ id: string; name: string }>('/api/agency/boards/templates', {
       method: 'POST',
       body: {
         name: saveForm.value.name.trim(),

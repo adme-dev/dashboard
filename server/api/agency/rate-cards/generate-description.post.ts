@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
+import { $fetch as ofetch } from 'ofetch'
 
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -69,7 +70,7 @@ async function fetchPerplexityResearch(serviceName: string, categoryName: string
     : 'https://api.perplexity.ai'
 
   try {
-    const response = await $fetch<any>(`${baseUrl}/chat/completions`, {
+    const response = await ofetch<any>(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,

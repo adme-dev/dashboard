@@ -8,15 +8,23 @@ interface ClientOption { id: string, name: string }
 interface FormOption { form_id: string, form_name: string | null, source: string }
 interface UserOption { id: string, name: string }
 
-const { data: clients } = useFetch<ClientOption[]>('/api/agency/clients', {
-  default: () => []
-})
-const { data: forms } = useFetch<{ items: FormOption[] }>('/api/leads/forms/list', {
-  default: () => ({ items: [] })
-})
-const { data: teamData } = useFetch<{ members: UserOption[] }>('/api/agency/team-members', {
-  default: () => ({ members: [] })
-})
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const clients = ref<ClientOption[]>([])
+const forms = ref<{ items: FormOption[] }>({ items: [] })
+const teamData = ref<{ members: UserOption[] }>({ members: [] })
+
+async function refreshLookups() {
+  const [clientRows, formRows, teamRows] = await Promise.all([
+    apiFetch<ClientOption[]>('/api/agency/clients'),
+    apiFetch<{ items: FormOption[] }>('/api/leads/forms/list'),
+    apiFetch<{ members: UserOption[] }>('/api/agency/team-members'),
+  ])
+  clients.value = clientRows
+  forms.value = formRows
+  teamData.value = teamRows
+}
+
+await refreshLookups()
 
 const SOURCE_OPTIONS = [
   { value: 'all', label: 'All sources' },

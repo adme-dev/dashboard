@@ -8,6 +8,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 const saving = ref(false)
 
 const form = reactive({
@@ -76,7 +77,7 @@ async function save() {
 
   saving.value = true
   try {
-    await $fetch('/api/agency/banner-studio/custom-templates', {
+    await apiFetch('/api/agency/banner-studio/custom-templates', {
       method: 'POST',
       body: {
         name: form.name.trim(),

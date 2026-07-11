@@ -4,12 +4,30 @@ definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 const route = useRoute()
 const { hasPermission } = usePortalAuth()
 const projectId = route.params.id as string
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown; query?: Record<string, unknown> }) => Promise<T>
 
-const { data, pending } = useFetch(`/api/portal/projects/${projectId}`)
+const data = ref<any | null>(null)
+const pending = ref(false)
 
-const { data: commentsData, refresh: refreshComments } = useFetch('/api/portal/comments', {
-  query: { projectId }
-})
+const commentsData = ref<any | null>(null)
+
+async function refreshProject() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>(`/api/portal/projects/${projectId}`)
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+async function refreshComments() {
+  commentsData.value = await apiFetch<any>('/api/portal/comments', { query: { projectId } }).catch(() => null)
+}
+
+refreshProject()
+refreshComments()
 
 const activeTab = ref('overview')
 const newComment = ref('')
@@ -126,7 +144,7 @@ async function submitComment() {
   if (!newComment.value.trim()) return
   submittingComment.value = true
   try {
-    await $fetch('/api/portal/comments', {
+    await apiFetch('/api/portal/comments', {
       method: 'POST',
       body: { content: newComment.value, projectId }
     })

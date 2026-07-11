@@ -3,10 +3,29 @@ import { formatDistanceToNow, parseISO } from 'date-fns'
 
 const activeFilter = ref<'all' | 'proofs' | 'attachments'>('all')
 
-const { data, status } = await useFetch('/api/agency/dashboard/recent-creatives', {
-  query: computed(() => ({ source: activeFilter.value, limit: 20 })),
-  watch: [activeFilter],
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const query = computed(() => ({ source: activeFilter.value, limit: 20 }))
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshRecentCreatives() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/dashboard/recent-creatives', {
+      query: query.value,
+    })
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load recent creatives', error)
+    status.value = 'error'
+  }
+}
+
+await refreshRecentCreatives()
+watch(activeFilter, () => { refreshRecentCreatives() })
 
 // Cap to 3 rows of the 3-col grid so the card height stays bounded.
 const creatives = computed(() => ((data.value as any)?.creatives || []).slice(0, 9))

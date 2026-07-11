@@ -97,11 +97,12 @@ function formatRange(range?: { from?: string | null; to?: string | null } | null
 
 // ── mutation handling ─────────────
 const mutating = ref(false)
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 async function patch(body: Record<string, any>) {
   mutating.value = true
   try {
-    await $fetch(`/api/ai/anomalies/${props.anomaly.id}`, {
+    await apiFetch(`/api/ai/anomalies/${props.anomaly.id}`, {
       method: 'PATCH',
       body,
     })

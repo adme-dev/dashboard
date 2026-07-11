@@ -9,25 +9,29 @@ import type {
  */
 export function useSocialPlanner() {
   const base = '/api/agency/social/publishing'
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+  ) => Promise<T>
 
   const listCampaigns = (clientId: string) =>
-    $fetch<SocialCampaignWithCounts[]>(`${base}/campaigns`, { query: { clientId } })
+    apiFetch<SocialCampaignWithCounts[]>(`${base}/campaigns`, { query: { clientId } })
   const createCampaign = (body: Record<string, any>) =>
-    $fetch<SocialCampaign>(`${base}/campaigns`, { method: 'POST', body })
+    apiFetch<SocialCampaign>(`${base}/campaigns`, { method: 'POST', body })
   const updateCampaign = (id: string, body: Record<string, any>) =>
-    $fetch<SocialCampaign>(`${base}/campaigns/${id}`, { method: 'PATCH', body })
+    apiFetch<SocialCampaign>(`${base}/campaigns/${id}`, { method: 'PATCH', body })
   const deleteCampaign = (id: string) =>
-    $fetch<{ ok: true }>(`${base}/campaigns/${id}`, { method: 'DELETE' })
+    apiFetch<{ ok: true }>(`${base}/campaigns/${id}`, { method: 'DELETE' })
 
   const getBoard = (clientId: string, campaignId?: string) =>
-    $fetch<SocialBoardPost[]>(`${base}/board`, { query: { clientId, ...(campaignId ? { campaignId } : {}) } })
+    apiFetch<SocialBoardPost[]>(`${base}/board`, { query: { clientId, ...(campaignId ? { campaignId } : {}) } })
   const updatePost = (id: string, body: Record<string, any>) =>
-    $fetch<SocialPost>(`${base}/posts/${id}`, { method: 'PATCH', body })
+    apiFetch<SocialPost>(`${base}/posts/${id}`, { method: 'PATCH', body })
 
   const generatePlan = (body: Record<string, any>) =>
-    $fetch<{ posts: SocialGeneratedDraft[] }>(`${base}/ai/generate-plan`, { method: 'POST', body })
+    apiFetch<{ posts: SocialGeneratedDraft[] }>(`${base}/ai/generate-plan`, { method: 'POST', body })
   const acceptDraft = (body: Record<string, any>) =>
-    $fetch<SocialPost>(`${base}/posts`, { method: 'POST', body })
+    apiFetch<SocialPost>(`${base}/posts`, { method: 'POST', body })
 
   return { listCampaigns, createCampaign, updateCampaign, deleteCampaign, getBoard, updatePost, generatePlan, acceptDraft }
 }

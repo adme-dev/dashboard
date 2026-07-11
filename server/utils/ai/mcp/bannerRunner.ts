@@ -80,7 +80,7 @@ export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerRea
 export function buildBannerProposeDeps(): BannerProposeDeps {
   return {
     resolveProject: (project: string) => resolveBannerProject(project, defaultLoaders()),
-    persist: (ctx, action, payload) => proposeAction(ctx, null, action, payload),
+    persist: async (ctx, action, payload) => ({ proposalId: await proposeAction(ctx, null, action, payload) }),
   }
 }
 
@@ -90,7 +90,7 @@ export interface BannerConfirmDeps {
   enqueue: (input: BannerRenderInput, deps: any) => Promise<{ jobIds: string[] }>
 }
 
-export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload, ctx: ToolContext, deps: BannerConfirmDeps): Promise<{ ok: true, data: { jobIds: string[] } } | { ok: false, error: string }> {
+export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload, ctx: ToolContext, deps: BannerConfirmDeps): Promise<{ ok: true, data: { jobIds: string[] } } | { ok: false, error: string, code: 'handler_error' }> {
   try {
     const { layers, width, height } = await deps.loadLayers(payload.projectId, payload.format)
     const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? process.env.R2_PUBLIC_URL ?? ''
@@ -116,7 +116,7 @@ export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload,
     )
     return { ok: true, data: { jobIds } }
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'banner render dispatch failed' }
+    return { ok: false, error: e instanceof Error ? e.message : 'banner render dispatch failed', code: 'handler_error' }
   }
 }
 

@@ -6,6 +6,7 @@ import { pctDelta, conversionRate, shareOfTotal, bestWorstCostPerLead } from '~/
 
 const props = defineProps<{ clientId: string, startDate: string, endDate: string }>()
 const { fmtCurrency, fmtCompact, fmtPercent } = useAnalytics()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 interface FunnelRow {
   channel: string
@@ -26,14 +27,32 @@ interface FunnelResponse {
   previous: { totals: FunnelRow }
 }
 
-const { data, pending, error } = await useFetch<FunnelResponse>('/api/agency/analytics/funnel', {
-  query: {
-    clientId: () => props.clientId,
-    startDate: () => props.startDate,
-    endDate: () => props.endDate
-  },
-  watch: [() => props.clientId, () => props.startDate, () => props.endDate]
-})
+const data = ref<FunnelResponse | null>(null)
+const pending = ref(false)
+const error = ref<unknown>(null)
+
+async function refreshFunnel() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<FunnelResponse>('/api/agency/analytics/funnel', {
+      query: {
+        clientId: props.clientId,
+        startDate: props.startDate,
+        endDate: props.endDate,
+      },
+    })
+  } catch (err) {
+    data.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+watch([() => props.clientId, () => props.startDate, () => props.endDate], () => {
+  refreshFunnel()
+}, { immediate: true })
 
 function rateLabel(rate: number | null, suffix: string): string | null {
   return rate == null ? null : `${rate.toFixed(1)}% ${suffix}`
@@ -92,6 +111,10 @@ const bestWorst = computed(() => bestWorstCostPerLead(data.value?.channels || []
 const channels = computed(() => data.value?.channels ?? [])
 const totalSessions = computed(() => data.value?.totals.sessions ?? 0)
 const totalLeads = computed(() => data.value?.totals.leads ?? 0)
+
+function tableRow(row: unknown): FunnelRow {
+  return ((row as { original?: FunnelRow }).original ?? row) as FunnelRow
+}
 
 const columns = [
   { accessorKey: 'channel', header: 'Channel' },
@@ -208,45 +231,45 @@ function deltaIcon(delta: number | null): string {
 
       <!-- Channel table -->
       <UTable :data="channels" :columns="columns">
-        <template #spend-cell="{ row }">
-          {{ fmtCurrency(row.original.spend) }}
-        </template>
-        <template #sessions-cell="{ row }">
-          <div class="relative">
-            <div class="absolute inset-y-0 left-0 rounded bg-primary/10" :style="{ width: `${Math.round(shareOfTotal(row.original.sessions, totalSessions) * 100)}%` }" />
-            <span class="relative tabular-nums">{{ fmtCompact(row.original.sessions) }}</span>
-          </div>
-        </template>
-        <template #engagedSessions-cell="{ row }">
-          {{ fmtCompact(row.original.engagedSessions) }}
-        </template>
-        <template #keyEvents-cell="{ row }">
-          {{ fmtCompact(row.original.keyEvents) }}
-        </template>
-        <template #leads-cell="{ row }">
-          <div class="relative">
-            <div class="absolute inset-y-0 left-0 rounded bg-success/10" :style="{ width: `${Math.round(shareOfTotal(row.original.leads, totalLeads) * 100)}%` }" />
-            <span class="relative tabular-nums">{{ fmtCompact(row.original.leads) }}</span>
-          </div>
-        </template>
-        <template #costPerSession-cell="{ row }">
-          {{ fmtRatioCurrency(row.original.costPerSession) }}
-        </template>
-        <template #costPerKeyEvent-cell="{ row }">
-          {{ fmtRatioCurrency(row.original.costPerKeyEvent) }}
-        </template>
+      <template #spend-cell="{ row }">
+        {{ fmtCurrency(tableRow(row).spend) }}
+      </template>
+      <template #sessions-cell="{ row }">
+        <div class="relative">
+          <div class="absolute inset-y-0 left-0 rounded bg-primary/10" :style="{ width: `${Math.round(shareOfTotal(tableRow(row).sessions, totalSessions) * 100)}%` }" />
+          <span class="relative tabular-nums">{{ fmtCompact(tableRow(row).sessions) }}</span>
+        </div>
+      </template>
+      <template #engagedSessions-cell="{ row }">
+        {{ fmtCompact(tableRow(row).engagedSessions) }}
+      </template>
+      <template #keyEvents-cell="{ row }">
+        {{ fmtCompact(tableRow(row).keyEvents) }}
+      </template>
+      <template #leads-cell="{ row }">
+        <div class="relative">
+          <div class="absolute inset-y-0 left-0 rounded bg-success/10" :style="{ width: `${Math.round(shareOfTotal(tableRow(row).leads, totalLeads) * 100)}%` }" />
+          <span class="relative tabular-nums">{{ fmtCompact(tableRow(row).leads) }}</span>
+        </div>
+      </template>
+      <template #costPerSession-cell="{ row }">
+        {{ fmtRatioCurrency(tableRow(row).costPerSession) }}
+      </template>
+      <template #costPerKeyEvent-cell="{ row }">
+        {{ fmtRatioCurrency(tableRow(row).costPerKeyEvent) }}
+      </template>
         <template #costPerLead-cell="{ row }">
           <span
-            class="tabular-nums px-1.5 py-0.5 rounded"
-            :class="{
-              'bg-success/15 text-success font-medium': row.original.channel === bestWorst.best,
-              'bg-warning/15 text-warning font-medium': row.original.channel === bestWorst.worst
+          class="tabular-nums px-1.5 py-0.5 rounded"
+          :class="{
+              'bg-success/15 text-success font-medium': tableRow(row).channel === bestWorst.best,
+              'bg-warning/15 text-warning font-medium': tableRow(row).channel === bestWorst.worst
             }"
-          >{{ fmtRatioCurrency(row.original.costPerLead) }}</span>
-        </template>
-        <template #sessionToLeadRate-cell="{ row }">
-          {{ fmtRatePct(row.original.sessionToLeadRate) }}
-        </template>
+          >{{ fmtRatioCurrency(tableRow(row).costPerLead) }}</span>
+      </template>
+      <template #sessionToLeadRate-cell="{ row }">
+        {{ fmtRatePct(tableRow(row).sessionToLeadRate) }}
+      </template>
       </UTable>
     </div>
   </UCard>

@@ -2,13 +2,29 @@
 import type { AiLoraAdapter, AiTrainingDataset, LoraAdapterType, LoraMetricsComparison } from '~/types'
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Data fetching
-const { data, pending, refresh } = useFetch('/api/agency/ai/training/adapters')
+const data = ref<AiLoraAdapter[]>([])
+const pending = ref(false)
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<AiLoraAdapter[]>('/api/agency/ai/training/adapters')
+  } catch {
+    data.value = []
+  } finally {
+    pending.value = false
+  }
+}
+refresh()
 const adapters = computed(() => (Array.isArray(data.value) ? data.value : []) as AiLoraAdapter[])
 
 // Ready datasets for the form selector
-const { data: datasetsData } = useFetch('/api/agency/ai/training/datasets')
+const datasetsData = ref<{ items?: AiTrainingDataset[] } | null>(null)
+apiFetch<{ items?: AiTrainingDataset[] }>('/api/agency/ai/training/datasets')
+  .then(result => { datasetsData.value = result })
+  .catch(() => { datasetsData.value = { items: [] } })
 const readyDatasets = computed(() => {
   const datasets = ((datasetsData.value as any)?.items || []) as AiTrainingDataset[]
   return datasets
@@ -81,7 +97,7 @@ const registerAdapter = async () => {
       ...form.value,
       datasetId: form.value.datasetId === 'none' ? '' : form.value.datasetId,
     }
-    await $fetch('/api/agency/ai/training/adapters', {
+    await apiFetch('/api/agency/ai/training/adapters', {
       method: 'POST',
       body,
     })
@@ -110,7 +126,7 @@ const startTrafficEdit = (adapter: AiLoraAdapter) => {
 
 const saveTraffic = async (adapter: AiLoraAdapter) => {
   try {
-    await $fetch(`/api/agency/ai/training/adapters/${adapter.id}`, {
+    await apiFetch(`/api/agency/ai/training/adapters/${adapter.id}`, {
       method: 'PUT',
       body: { trafficPct: trafficValue.value },
     })
@@ -125,7 +141,7 @@ const saveTraffic = async (adapter: AiLoraAdapter) => {
 // Status actions
 const updateStatus = async (adapter: AiLoraAdapter, status: string) => {
   try {
-    await $fetch(`/api/agency/ai/training/adapters/${adapter.id}`, {
+    await apiFetch(`/api/agency/ai/training/adapters/${adapter.id}`, {
       method: 'PUT',
       body: { status },
     })
@@ -153,7 +169,7 @@ const onFileSelected = async (e: Event) => {
   try {
     const formData = new FormData()
     formData.append('file', file)
-    await $fetch(`/api/agency/ai/training/adapters/${uploadingAdapter.value}/upload`, {
+    await apiFetch(`/api/agency/ai/training/adapters/${uploadingAdapter.value}/upload`, {
       method: 'POST',
       body: formData,
     })
@@ -174,10 +190,14 @@ const onFileSelected = async (e: Event) => {
 // Metrics modal
 const showMetricsModal = ref(false)
 const selectedAdapter = ref<AiLoraAdapter | null>(null)
-const { data: metricsData, refresh: refreshMetrics } = useFetch(
-  () => selectedAdapter.value ? `/api/agency/ai/training/adapters/${selectedAdapter.value.id}/metrics` : null as any,
-  { immediate: false }
-)
+const metricsData = ref<LoraMetricsComparison | null>(null)
+async function refreshMetrics() {
+  if (!selectedAdapter.value) {
+    metricsData.value = null
+    return
+  }
+  metricsData.value = await apiFetch<LoraMetricsComparison>(`/api/agency/ai/training/adapters/${selectedAdapter.value.id}/metrics`)
+}
 
 const viewMetrics = (adapter: AiLoraAdapter) => {
   selectedAdapter.value = adapter

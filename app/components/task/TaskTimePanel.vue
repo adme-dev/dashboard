@@ -242,6 +242,11 @@ const props = defineProps<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  query?: Record<string, unknown>
+}) => Promise<T>
 
 const loading = ref(true)
 const timeEntries = ref<any[]>([])
@@ -349,7 +354,7 @@ function formatBudget(amount: number): string {
 async function fetchTimeEntries() {
   loading.value = true
   try {
-    const data = await $fetch<any>('/api/agency/time/entries', {
+    const data = await apiFetch<any>('/api/agency/time/entries', {
       query: { taskId: props.taskId, limit: 100 }
     })
     timeEntries.value = data.entries || []
@@ -359,7 +364,7 @@ async function fetchTimeEntries() {
 
   // Fetch task details for estimated hours and budget
   try {
-    const task = await $fetch<any>(`/api/agency/tasks/${props.taskId}`)
+    const task = await apiFetch<any>(`/api/agency/tasks/${props.taskId}`)
     estimatedHours.value = Number(task.estimatedHours || task.estimated_hours || 0)
     estimatedCost.value = Number(task.estimatedCost || 0)
     billingRate.value = Number(task.billingRate || task.effectiveRate || 0)
@@ -379,7 +384,7 @@ async function fetchTimeEntries() {
 
 async function detachBudgetSource() {
   try {
-    await $fetch(`/api/agency/tasks/${props.taskId}`, {
+    await apiFetch(`/api/agency/tasks/${props.taskId}`, {
       method: 'PUT',
       body: { budgetSource: 'manual', quoteLineItemId: null, briefId: null }
     })
@@ -394,7 +399,7 @@ async function submitLogTime() {
   if (!logForm.value.hours || logForm.value.hours <= 0) return
   submittingLog.value = true
   try {
-    await $fetch('/api/agency/time/entries', {
+    await apiFetch('/api/agency/time/entries', {
       method: 'POST',
       body: {
         taskId: props.taskId,
@@ -423,7 +428,7 @@ async function submitLogTime() {
 async function startTaskTimer() {
   startingTimer.value = true
   try {
-    await $fetch('/api/agency/time/timer/start', {
+    await apiFetch('/api/agency/time/timer/start', {
       method: 'POST',
       body: {
         taskId: props.taskId,

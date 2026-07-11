@@ -14,8 +14,16 @@ import type { ActionExecutor, ExecutorResult } from './types'
  */
 export type BudgetPlanPoster = (mediaSpendId: string, body: ReturnType<typeof proposalToBudgetPlanBody>, ctx: ToolContext) => Promise<{ action?: { id?: string }, planned?: boolean, existing?: boolean }>
 
+const internalFetch = (<T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => Promise<T>
+
 const defaultPoster: BudgetPlanPoster = (mediaSpendId, body, ctx) =>
-  $fetch(`/api/agency/social/spend/${mediaSpendId}/actions/plan`, { method: 'POST', body, headers: ctx.event.headers as any })
+  internalFetch(`/api/agency/social/spend/${mediaSpendId}/actions/plan`, { method: 'POST', body, headers: ctx.event.headers as any })
 
 export function makeBudgetChangeExecutor(post: BudgetPlanPoster = defaultPoster): ActionExecutor {
   return {

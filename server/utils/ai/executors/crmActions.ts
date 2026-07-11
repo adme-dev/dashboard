@@ -8,7 +8,14 @@ import type { ActionExecutor, ExecutorResult } from './types'
  */
 
 type Poster = (url: string, body: any, ctx: ToolContext) => Promise<any>
-const defaultPost: Poster = (url, body, ctx) => $fetch(url, { method: 'POST', body, headers: ctx.event.headers as any })
+const internalFetch = (<T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => Promise<T>
+const defaultPost: Poster = (url, body, ctx) => internalFetch(url, { method: 'POST', body, headers: ctx.event.headers as any })
 
 export function makeOpportunityExecutor(post: Poster = defaultPost): ActionExecutor {
   return {

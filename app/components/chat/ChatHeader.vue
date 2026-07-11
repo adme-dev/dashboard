@@ -3,7 +3,7 @@ import type { ChatChannel } from '~/types'
 
 const props = defineProps<{
   channel: ChatChannel | null
-  activeUsers?: Array<{ userId: string; userName: string; userAvatar?: string }>
+  activeUsers?: ReadonlyArray<{ userId: string; userName: string; userAvatar?: string }>
   isConnected?: boolean
 }>()
 

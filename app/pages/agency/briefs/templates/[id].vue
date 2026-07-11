@@ -719,7 +719,7 @@ const fieldTypeCategories = [
     </UModal>
 
     <!-- Preview Slideover -->
-    <USlideover v-model:open="showPreview" side="right" :ui="{ width: 'max-w-2xl' }">
+    <USlideover v-model:open="showPreview" side="right" :ui="{ content: 'max-w-2xl' }">
       <template #content>
         <BriefsTemplatePreview :template="previewTemplate as any" />
       </template>

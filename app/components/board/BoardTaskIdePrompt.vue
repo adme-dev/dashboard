@@ -68,6 +68,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 const open = computed({
   get: () => props.modelValue,
@@ -87,7 +88,7 @@ async function load(taskId: string) {
   prompt.value = ''
   copied.value = false
   try {
-    const res = await $fetch<{ taskId: string; title: string; boardName: string; boardLink: string; prompt: string }>(
+    const res = await apiFetch<{ taskId: string; title: string; boardName: string; boardLink: string; prompt: string }>(
       `/api/agency/boards/${props.boardId}/tasks/${taskId}/ide-prompt`,
     )
     title.value = `IDE prompt — ${res.title}`

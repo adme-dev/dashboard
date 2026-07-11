@@ -2,7 +2,13 @@
 definePageMeta({ title: 'Site Analytics', layout: 'agency', middleware: ['role-media'] })
 const route = useRoute()
 const clientId = computed(() => route.params.clientId as string)
-const { data: client } = await useFetch<any>(() => `/api/agency/clients/${clientId.value}`)
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const client = ref<any | null>(null)
+
+watch(clientId, async (id) => {
+  client.value = await apiFetch<any>(`/api/agency/clients/${id}`).catch(() => null)
+}, { immediate: true })
+
 const clientName = computed(() => client.value?.client?.name || client.value?.name || 'Client')
 </script>
 

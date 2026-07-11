@@ -12,12 +12,16 @@ const deliveries = ref<LeadDelivery[]>([])
 const loading = ref(false)
 const notesState = ref<'idle' | 'saving' | 'saved'>('idle')
 let savedTimer: ReturnType<typeof setTimeout> | null = null
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 async function load() {
   if (!props.leadId) return
   loading.value = true
   try {
-    const r = await $fetch<{ lead: Lead, deliveries: LeadDelivery[] }>(`/api/leads/${props.leadId}`)
+    const r = await apiFetch<{ lead: Lead, deliveries: LeadDelivery[] }>(`/api/leads/${props.leadId}`)
     lead.value = r.lead
     deliveries.value = r.deliveries
   } finally { loading.value = false }
@@ -41,7 +45,7 @@ const STATUS_OPTIONS: { value: LeadStatus, label: string, icon: string, color: s
 
 async function changeStatus(s: LeadStatus) {
   if (!lead.value) return
-  await $fetch(`/api/leads/${lead.value.id}`, { method: 'PATCH', body: { status: s } })
+  await apiFetch(`/api/leads/${lead.value.id}`, { method: 'PATCH', body: { status: s } })
   await load()
   emit('changed')
   toast.add({ title: 'Status updated', color: 'success' })
@@ -59,7 +63,7 @@ async function saveNotes(text: string) {
   if (!lead.value) return
   notesState.value = 'saving'
   try {
-    await $fetch(`/api/leads/${lead.value.id}`, { method: 'PATCH', body: { notes: text } })
+    await apiFetch(`/api/leads/${lead.value.id}`, { method: 'PATCH', body: { notes: text } })
     notesState.value = 'saved'
     if (savedTimer) clearTimeout(savedTimer)
     savedTimer = setTimeout(() => {
@@ -73,7 +77,7 @@ async function saveNotes(text: string) {
 
 async function retryAll() {
   if (!lead.value) return
-  const r = await $fetch<{ retried: number }>(`/api/leads/${lead.value.id}/retry`, { method: 'POST' })
+  const r = await apiFetch<{ retried: number }>(`/api/leads/${lead.value.id}/retry`, { method: 'POST' })
   toast.add({ title: `Retrying ${r.retried} delivery(s)`, color: 'success' })
   await load()
 }

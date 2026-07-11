@@ -150,10 +150,10 @@
     </div>
 
     <!-- Button -->
-    <div v-else-if="type === 'Button'" :style="buttonWrapperStyle">
+    <div v-else-if="type === 'Button'" :style="buttonWrapperStyle as any">
       <a
         :href="(blockProps.url as string) || '#'"
-        :style="buttonLinkStyle"
+        :style="buttonLinkStyle as any"
         :class="{ 'edm-editable': editable }"
         :contenteditable="editable ? 'plaintext-only' : undefined"
         :target="editable ? undefined : '_blank'"
@@ -166,7 +166,7 @@
     </div>
 
     <!-- Image -->
-    <div v-else-if="type === 'Image'" :style="imageWrapperStyle">
+    <div v-else-if="type === 'Image'" :style="imageWrapperStyle as any">
       <a
         v-if="blockProps.linkHref"
         :href="blockProps.linkHref as string"
@@ -184,7 +184,7 @@
     </div>
 
     <!-- Avatar -->
-    <div v-else-if="type === 'Avatar'" :style="avatarWrapperStyle">
+    <div v-else-if="type === 'Avatar'" :style="avatarWrapperStyle as any">
       <img :src="(blockProps.imageUrl as string) || ''" :alt="(blockProps.alt as string) || 'Avatar'" :style="avatarStyle">
     </div>
 
@@ -377,7 +377,7 @@
     </div>
 
     <!-- Header -->
-    <div v-else-if="type === 'header'" :style="headerStyle" class="edm-preview-section">
+    <div v-else-if="type === 'header'" :style="headerStyle as any" class="edm-preview-section">
       <img
         v-if="headerLogoUrl"
         :src="headerLogoUrl"
@@ -390,7 +390,7 @@
     </div>
 
     <!-- Menu -->
-    <div v-else-if="type === 'menu'" :style="menuStyle" class="edm-preview-section">
+    <div v-else-if="type === 'menu'" :style="menuStyle as any" class="edm-preview-section">
       <span
         v-for="(item, index) in menuItems"
         :key="`${item.label}-${index}`"
@@ -404,7 +404,7 @@
     </div>
 
     <!-- Hero section -->
-    <div v-else-if="type === 'hero-section'" :style="heroStyle" class="edm-preview-section">
+    <div v-else-if="type === 'hero-section'" :style="heroStyle as any" class="edm-preview-section">
       <div :style="heroHeadingStyle">
         {{ heroHeading }}
       </div>
@@ -417,11 +417,11 @@
     </div>
 
     <!-- Feature grid -->
-    <div v-else-if="type === 'feature-grid'" :style="featureGridStyle" class="edm-preview-section">
+    <div v-else-if="type === 'feature-grid'" :style="featureGridStyle as any" class="edm-preview-section">
       <div
         v-for="(feature, index) in featureItems"
         :key="`${feature.heading}-${index}`"
-        :style="featureCardStyle"
+        :style="featureCardStyle as any"
       >
         <div :style="featureIconStyle">
           {{ feature.icon || '•' }}
@@ -450,7 +450,7 @@
     </div>
 
     <!-- CTA banner -->
-    <div v-else-if="type === 'cta-banner'" :style="ctaBannerStyle" class="edm-preview-section">
+    <div v-else-if="type === 'cta-banner'" :style="ctaBannerStyle as any" class="edm-preview-section">
       <div :style="ctaHeadingStyle">
         {{ ctaHeading }}
       </div>
@@ -463,7 +463,7 @@
     </div>
 
     <!-- Footer -->
-    <div v-else-if="type === 'footer'" :style="footerStyle" class="edm-preview-section">
+    <div v-else-if="type === 'footer'" :style="footerStyle as any" class="edm-preview-section">
       <div v-if="footerAdditionalText" :style="footerAdditionalTextStyle">
         {{ footerAdditionalText }}
       </div>
@@ -473,7 +473,7 @@
     </div>
 
     <!-- Next steps -->
-    <div v-else-if="type === 'next-steps'" :style="nextStepsStyle" class="edm-preview-section">
+    <div v-else-if="type === 'next-steps'" :style="nextStepsStyle as any" class="edm-preview-section">
       <div :style="nextStepsHeadingStyle">
         Next Steps
       </div>
@@ -497,14 +497,14 @@
     </div>
 
     <!-- Container (representative empty box for thumbnail; canvas uses ContainerBlockRenderer) -->
-    <div v-else-if="type === 'Container'" :style="containerStyle" class="edm-preview-section" />
+    <div v-else-if="type === 'Container'" :style="containerStyle as any" class="edm-preview-section" />
 
     <!-- Columns container (representative columns for thumbnail; canvas uses ColumnsContainerRenderer) -->
-    <div v-else-if="type === 'ColumnsContainer'" :style="columnsContainerStyle" class="edm-preview-section">
+    <div v-else-if="type === 'ColumnsContainer'" :style="columnsContainerStyle as any" class="edm-preview-section">
       <div
         v-for="col in columnsContainerCount"
         :key="col"
-        :style="columnsContainerCellStyle"
+        :style="columnsContainerCellStyle as any"
       />
     </div>
 

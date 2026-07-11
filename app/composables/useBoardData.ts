@@ -6,6 +6,11 @@
 
 import type { CustomColumn, TaskColumnValue } from '~/types'
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
+
 export interface BoardColumn {
   id: string
   name: string
@@ -297,14 +302,39 @@ export function useBoardData(boardId: Ref<string>) {
   const { getValue, setValues, updateCellValue } = useBoardCellEdit()
 
   // --- Core Data ---
-  const { data: board, pending, error, refresh } = useFetch<Board>(
-    () => `/api/agency/boards/${boardId.value}`,
-  )
+  const board = ref<Board | null>(null)
+  const pending = ref(false)
+  const error = ref<unknown>(null)
+  const columnsData = ref<{ columns: BoardColumn[] }>({ columns: [] })
 
-  const { data: columnsData, refresh: refreshColumns } = useFetch<{ columns: BoardColumn[] }>(
-    () => `/api/agency/boards/${boardId.value}/columns?includeHidden=true`,
-    { default: () => ({ columns: [] }) }
-  )
+  async function refresh() {
+    pending.value = true
+    error.value = null
+    try {
+      board.value = await apiFetch<Board>(`/api/agency/boards/${boardId.value}`)
+    } catch (err) {
+      error.value = err
+      board.value = null
+    } finally {
+      pending.value = false
+    }
+  }
+
+  async function refreshColumns() {
+    try {
+      columnsData.value = await apiFetch<{ columns: BoardColumn[] }>(
+        `/api/agency/boards/${boardId.value}/columns`,
+        { query: { includeHidden: true } },
+      )
+    } catch {
+      columnsData.value = { columns: [] }
+    }
+  }
+
+  watch(boardId, () => {
+    refresh()
+    refreshColumns()
+  }, { immediate: true })
 
   // --- Platform Data (statuses & labels for this department) ---
   const resolvedBoardId = computed(() => board.value?.id || '')
@@ -314,7 +344,7 @@ export function useBoardData(boardId: Ref<string>) {
   watch(resolvedBoardId, async (id) => {
     if (!id) return
     try {
-      const data = await $fetch<any[]>('/api/agency/statuses', { query: { departmentId: id } })
+      const data = await apiFetch<any[]>('/api/agency/statuses', { query: { departmentId: id } })
       statuses.value = data || []
     } catch (err) {
       console.error('Failed to fetch statuses:', err)
@@ -514,7 +544,7 @@ export function useBoardData(boardId: Ref<string>) {
 
   // --- Column Visibility ---
   async function toggleColumnVisibility(columnId: string, visible: boolean) {
-    await $fetch(`/api/agency/boards/${boardId.value}/columns/${columnId}`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/columns/${columnId}`, {
       method: 'PATCH',
       body: { isVisible: visible },
     })
@@ -523,7 +553,7 @@ export function useBoardData(boardId: Ref<string>) {
 
   // --- Column Resize ---
   async function resizeColumn(columnId: string, width: number) {
-    await $fetch(`/api/agency/boards/${boardId.value}/columns/${columnId}`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/columns/${columnId}`, {
       method: 'PATCH',
       body: { width },
     })
@@ -657,7 +687,7 @@ export function useBoardData(boardId: Ref<string>) {
       const statusId = payload.jsonValue.optionId
       const matchingStatus = statuses.value.find((s: any) => s.id === statusId)
       if (matchingStatus) {
-        $fetch(`/api/agency/tasks/${taskId}/status`, {
+        apiFetch(`/api/agency/tasks/${taskId}/status`, {
           method: 'PATCH',
           body: { statusId },
         }).catch((err: any) => console.error('Failed to sync task status:', err))
@@ -667,7 +697,7 @@ export function useBoardData(boardId: Ref<string>) {
     // Sync people changes with the task assignee
     if (colType === 'people' && payload.jsonValue?.userIds) {
       const userIds = payload.jsonValue.userIds as string[]
-      $fetch(`/api/agency/tasks/${taskId}`, {
+      apiFetch(`/api/agency/tasks/${taskId}`, {
         method: 'PUT',
         body: { assigneeId: userIds[0] || null },
       }).catch((err: any) => console.error('Failed to sync task assignee:', err))
@@ -675,7 +705,7 @@ export function useBoardData(boardId: Ref<string>) {
 
     // Sync label changes with the task labels
     if (colType === 'label' && payload.jsonValue?.labelIds) {
-      $fetch(`/api/agency/tasks/${taskId}`, {
+      apiFetch(`/api/agency/tasks/${taskId}`, {
         method: 'PUT',
         body: { labels: payload.jsonValue.labelIds },
       }).catch((err: any) => console.error('Failed to sync task labels:', err))
@@ -688,7 +718,7 @@ export function useBoardData(boardId: Ref<string>) {
       if (col.slug === 'budget') taskBody.estimatedCost = payload.numberValue
       if (col.slug === 'billing_rate') taskBody.billingRate = payload.numberValue
       if (col.slug === 'is_billable') taskBody.isBillable = payload.numberValue === 1
-      await $fetch(`/api/agency/tasks/${taskId}`, { method: 'PUT', body: taskBody })
+      await apiFetch(`/api/agency/tasks/${taskId}`, { method: 'PUT', body: taskBody })
       return
     }
 

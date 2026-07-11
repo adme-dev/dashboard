@@ -75,6 +75,7 @@ function setStrokePreset(v: string) {
           size="xs"
           :model-value="selectedLayer.fontFamily ?? 'Barlow Condensed'"
           :items="FONT_FAMILIES.map(f => ({ label: f, value: f }))"
+          value-key="value"
           @update:model-value="v => set('fontFamily', v)"
         />
       </div>
@@ -84,6 +85,7 @@ function setStrokePreset(v: string) {
           size="xs"
           :model-value="String(selectedLayer.fontWeight ?? 700)"
           :items="FONT_WEIGHTS.map(w => ({ label: w.label, value: String(w.value) }))"
+          value-key="value"
           @update:model-value="v => setNum('fontWeight', v)"
         />
       </div>
@@ -133,6 +135,7 @@ function setStrokePreset(v: string) {
           size="xs"
           :model-value="selectedLayer.textTransform ?? 'uppercase'"
           :items="textTransformOptions"
+          value-key="value"
           @update:model-value="v => set('textTransform', v)"
         />
       </div>
@@ -172,6 +175,7 @@ function setStrokePreset(v: string) {
         size="xs"
         :model-value="shadowPresetValue"
         :items="TEXT_SHADOW_PRESETS.map(p => ({ label: p.label, value: p.value }))"
+        value-key="value"
         @update:model-value="setShadowPreset"
       />
       <UInput
@@ -191,6 +195,7 @@ function setStrokePreset(v: string) {
         size="xs"
         :model-value="strokePresetValue"
         :items="TEXT_STROKE_PRESETS.map(p => ({ label: p.label, value: p.value }))"
+        value-key="value"
         @update:model-value="setStrokePreset"
       />
       <UInput

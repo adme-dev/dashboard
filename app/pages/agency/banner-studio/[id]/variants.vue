@@ -7,6 +7,10 @@ definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 const route = useRoute()
 const toast = useToast()
 const projectId = route.params.id as string
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; params?: Record<string, unknown> }
+) => Promise<T>
 
 // Filters
 const filterFeedId = ref<string>('all')
@@ -16,15 +20,10 @@ const page = ref(1)
 const pageSize = 50
 
 // Fetch project name
-const { data: project } = useFetch<{ id: string; name: string }>(
-  `/api/agency/banner-studio/projects/${projectId}`,
-)
+const project = ref<{ id: string; name: string } | null>(null)
 
 // Fetch feeds for this project (for filter dropdown)
-const { data: feeds } = useFetch<BannerFeed[]>(
-  '/api/agency/banner-studio/feeds',
-  { params: { projectId } },
-)
+const feeds = ref<BannerFeed[]>([])
 
 // Fetch variants
 const offset = computed(() => (page.value - 1) * pageSize)
@@ -36,10 +35,27 @@ const fetchParams = computed(() => ({
   limit: pageSize,
 }))
 
-const { data: variantData, refresh: refreshVariants } = useFetch<{ variants: BannerVariant[]; total: number }>(
-  '/api/agency/banner-studio/variants',
-  { params: fetchParams, default: () => ({ variants: [], total: 0 }) },
-)
+const variantData = ref<{ variants: BannerVariant[]; total: number }>({ variants: [], total: 0 })
+
+async function refreshProject() {
+  project.value = await apiFetch<{ id: string; name: string }>(
+    `/api/agency/banner-studio/projects/${projectId}`,
+  ).catch(() => null)
+}
+
+async function refreshFeeds() {
+  feeds.value = await apiFetch<BannerFeed[]>(
+    '/api/agency/banner-studio/feeds',
+    { params: { projectId } },
+  ).catch(() => [])
+}
+
+async function refreshVariants() {
+  variantData.value = await apiFetch<{ variants: BannerVariant[]; total: number }>(
+    '/api/agency/banner-studio/variants',
+    { params: fetchParams.value },
+  ).catch(() => ({ variants: [], total: 0 }))
+}
 
 const variants = computed(() => variantData.value.variants)
 const total = computed(() => variantData.value.total)
@@ -89,7 +105,7 @@ const copiedTag = ref<string | null>(null)
 
 async function viewTags(variant: BannerVariant) {
   try {
-    const result = await $fetch<{ tags: Array<{ type: string; code: string; label: string }> }>(
+    const result = await apiFetch<{ tags: Array<{ type: string; code: string; label: string }> }>(
       `/api/agency/banner-studio/variants/${variant.id}/tags`,
     )
     adTags.value = result.tags
@@ -115,7 +131,7 @@ async function copyUrl(url: string) {
 // Delete single
 async function deleteVariant(variant: BannerVariant) {
   try {
-    await $fetch(`/api/agency/banner-studio/variants/${variant.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/banner-studio/variants/${variant.id}`, { method: 'DELETE' })
     toast.add({ title: 'Deleted', color: 'success' })
     await refreshVariants()
   } catch {
@@ -132,7 +148,7 @@ async function bulkDelete() {
     if (filterFeedId.value !== 'all') params.feedId = filterFeedId.value
     if (filterFormatKey.value !== 'all') params.formatKey = filterFormatKey.value
 
-    const result = await $fetch<{ deleted: number }>('/api/agency/banner-studio/variants/bulk-delete', {
+    const result = await apiFetch<{ deleted: number }>('/api/agency/banner-studio/variants/bulk-delete', {
       method: 'POST',
       body: params,
     })
@@ -172,6 +188,16 @@ function getVariantMenuItems(variant: BannerVariant) {
 
 // Reset page when filters change
 watch([filterFeedId, filterFormatKey], () => { page.value = 1 })
+
+onMounted(() => {
+  void refreshProject()
+  void refreshFeeds()
+  void refreshVariants()
+})
+
+watch(fetchParams, () => {
+  void refreshVariants()
+})
 </script>
 
 <template>
@@ -387,7 +413,7 @@ watch([filterFeedId, filterFormatKey], () => { page.value = 1 })
     </div>
 
     <!-- Ad Tags Modal -->
-    <UModal :open="showTags" @update:open="showTags = $event" :ui="{ width: 'max-w-xl' }">
+    <UModal :open="showTags" @update:open="showTags = $event" :ui="{ content: 'max-w-xl' }">
       <template #content>
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">

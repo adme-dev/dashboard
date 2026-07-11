@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // SP2c projects list + create. Lists media_projects, lets users open the editor,
 // duplicate, delete, and create new projects.
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { navigateTo } from '#app'
 import type { MediaProject } from '~~/app/types'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
@@ -18,6 +18,9 @@ function defaultTimelineState(): TimelineState {
     schema_version: 1,
     media_type: 'audio',
     sample_rate: 48000,
+    fps: 30,
+    width: 0,
+    height: 0,
     duration_sec: 0,
     tracks: [
       { id: crypto.randomUUID(), name: 'Voiceover', kind: 'voiceover', gain_db: 0, muted: false, locked: false, hidden: false, clips: [] },
@@ -29,7 +32,26 @@ function defaultTimelineState(): TimelineState {
 
 // ─── Projects list ────────────────────────────────────────────────────────────
 
-const { data, refresh, pending } = useFetch<{ projects: MediaProject[] }>('/api/agency/audio/projects', { lazy: true })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
+const data = ref<{ projects: MediaProject[] } | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ projects: MediaProject[] }>('/api/agency/audio/projects')
+  } finally {
+    pending.value = false
+  }
+}
+
+onMounted(() => {
+  void refresh()
+})
+
 const allProjects = computed((): MediaProject[] => data.value?.projects ?? [])
 const mediaTypeFilter = computed<'all' | 'audio' | 'av'>(() => {
   if (route.query.mediaType === 'av') return 'av'
@@ -92,11 +114,11 @@ async function duplicateProject(project: MediaProject) {
   try {
     // Fetch the source project's current timeline so the copy is a REAL copy
     // (not an empty project). Fall back to default lanes if it has no timeline.
-    const src = await $fetch<{ project: MediaProject, timeline: { state: TimelineState } | null }>(
+    const src = await apiFetch<{ project: MediaProject, timeline: { state: TimelineState } | null }>(
       `/api/agency/audio/projects/${project.id}`
     )
     const initialState = src.timeline?.state ?? defaultTimelineState()
-    const res = await $fetch<{ project: MediaProject }>('/api/agency/audio/projects', {
+    const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', {
       method: 'POST',
       body: { title: `${project.title ?? 'Untitled'} (copy)`, initialState }
     })
@@ -126,7 +148,7 @@ async function confirmDelete() {
   deleting.value = true
   const id = projectToDelete.value.id
   try {
-    await $fetch(`/api/agency/audio/projects/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/audio/projects/${id}`, { method: 'DELETE' })
     toast.add({ title: 'Project deleted', color: 'success' })
     deleteConfirmOpen.value = false
     projectToDelete.value = null
@@ -161,7 +183,7 @@ async function createProject() {
     const body: Record<string, unknown> = { title: newTitle.value.trim() || null, mediaType: newKind.value }
     // Audio seeds two empty lanes; AV is auto-seeded server-side via emptyAvTimeline().
     if (newKind.value === 'audio') body.initialState = defaultTimelineState()
-    const res = await $fetch<{ project: MediaProject }>('/api/agency/audio/projects', { method: 'POST', body })
+    const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', { method: 'POST', body })
     toast.add({ title: 'Project created', color: 'success' })
     createOpen.value = false
     newTitle.value = ''

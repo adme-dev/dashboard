@@ -15,6 +15,7 @@
 
 import type { SocialPostProvider, PostParams, PostResult, CommentParams, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
+import { providerFetch, providerFetchRaw } from './http'
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com'
 const YOUTUBE_UPLOAD_BASE = `${YOUTUBE_API_BASE}/upload/youtube/v3`
@@ -164,8 +165,7 @@ async function initiateResumableUpload(
   // but we need the raw `Location` header. Use the `onResponse` hook.
   let uploadUri = ''
 
-  await $fetch
-    .raw(`${YOUTUBE_UPLOAD_BASE}/videos?uploadType=resumable&part=snippet,status`, {
+  await providerFetchRaw(`${YOUTUBE_UPLOAD_BASE}/videos?uploadType=resumable&part=snippet,status`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -192,7 +192,7 @@ async function initiateResumableUpload(
  * Step 2 — Fetch the video binary from an R2 public URL as an ArrayBuffer.
  */
 async function fetchVideoBuffer(videoUrl: string): Promise<ArrayBuffer> {
-  const response = await $fetch.raw(videoUrl, {
+  const response = await providerFetchRaw<ArrayBuffer>(videoUrl, {
     responseType: 'arrayBuffer',
   })
 
@@ -212,7 +212,7 @@ async function uploadVideoToUri(
   videoBuffer: ArrayBuffer,
   videoContentType: string
 ): Promise<{ id: string }> {
-  const res = await $fetch<{ id: string }>(uploadUri, {
+  const res = await providerFetch<{ id: string }>(uploadUri, {
     method: 'PUT',
     headers: {
       'Content-Type': videoContentType,
@@ -233,7 +233,7 @@ async function addToPlaylist(
   videoId: string
 ): Promise<void> {
   try {
-    await $fetch(`${YOUTUBE_API_V3}/playlistItems?part=snippet`, {
+    await providerFetch(`${YOUTUBE_API_V3}/playlistItems?part=snippet`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -366,7 +366,7 @@ export const youtubeProvider: SocialPostProvider = {
     const { accessToken, postId, content } = params
 
     try {
-      const res = await $fetch<{
+      const res = await providerFetch<{
         id: string
         snippet?: { topLevelComment?: { id?: string } }
       }>(`${YOUTUBE_API_V3}/commentThreads?part=snippet`, {

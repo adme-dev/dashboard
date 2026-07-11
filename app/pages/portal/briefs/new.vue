@@ -17,6 +17,11 @@ const briefPriority = ref('medium')
 const briefDeadline = ref('')
 const submitting = ref(false)
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
 interface BriefTemplateCategory extends BriefCategory {
   templates: BriefTemplate[]
 }
@@ -33,7 +38,23 @@ function errorMessage(error: unknown) {
 }
 
 // Fetch templates grouped by category
-const { data: templatesData, pending } = useFetch<BriefTemplatesResponse>('/api/portal/briefs/templates')
+const templatesData = ref<BriefTemplatesResponse | null>(null)
+const pending = ref(true)
+const templatesError = ref<unknown>(null)
+
+async function refreshTemplates() {
+  pending.value = true
+  templatesError.value = null
+
+  try {
+    templatesData.value = await apiFetch<BriefTemplatesResponse>('/api/portal/briefs/templates')
+  } catch (error) {
+    templatesError.value = error
+    throw error
+  } finally {
+    pending.value = false
+  }
+}
 
 const categories = computed(() => templatesData.value?.categories || [])
 
@@ -81,7 +102,7 @@ async function handleSubmit(fieldValues: BriefFormValues) {
 
   submitting.value = true
   try {
-    const result = await $fetch<{ id: string, referenceNumber: string }>('/api/portal/briefs', {
+    const result = await apiFetch<{ id: string, referenceNumber: string }>('/api/portal/briefs', {
       method: 'POST',
       body: {
         templateId: selectedTemplate.value.id,
@@ -107,6 +128,8 @@ async function handleSubmit(fieldValues: BriefFormValues) {
     submitting.value = false
   }
 }
+
+await refreshTemplates()
 </script>
 
 <template>

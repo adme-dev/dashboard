@@ -60,16 +60,26 @@ interface EndpointItem {
 }
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string }
+) => Promise<T>
 
-const {
-  data: endpointsData,
-  pending: endpointsPending,
-  error: endpointsError,
-  refresh: refreshEndpoints
-} = useFetch<{ items: EndpointItem[] }>('/api/leads/endpoints/list', {
-  default: () => ({ items: [] }),
-  immediate: false
-})
+const endpointsData = ref<{ items: EndpointItem[] }>({ items: [] })
+const endpointsPending = ref(false)
+const endpointsError = ref<unknown>(null)
+
+async function refreshEndpoints() {
+  endpointsPending.value = true
+  endpointsError.value = null
+  try {
+    endpointsData.value = await apiFetch<{ items: EndpointItem[] }>('/api/leads/endpoints/list')
+  } catch (error) {
+    endpointsError.value = error
+  } finally {
+    endpointsPending.value = false
+  }
+}
 
 const endpointItems = computed(() => endpointsData.value?.items ?? [])
 const credsForbidden = computed(() => {
@@ -110,7 +120,7 @@ async function confirmRotate() {
   if (!ep) return
   rotating.value = true
   try {
-    await $fetch(`/api/leads/endpoints/${ep.id}/rotate`, { method: 'POST' })
+    await apiFetch(`/api/leads/endpoints/${ep.id}/rotate`, { method: 'POST' })
     rotatedClientId.value = ep.client_id
     revealed.value = true
     await refreshEndpoints()

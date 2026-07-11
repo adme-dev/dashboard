@@ -32,7 +32,14 @@ export interface CodeContext {
   variables?: { name: string; label: string; type: string }[]
 }
 
+interface CodeAssistResponse {
+  reply: string
+  codeBlocks?: CodeAssistMessage['codeBlocks']
+  model?: string
+}
+
 const MAX_CONVERSATIONS = 50
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 export function useCodeAssistant(instanceId: string) {
   const storageKey = `code-assist-${instanceId}`
@@ -131,7 +138,7 @@ export function useCodeAssistant(instanceId: string) {
         .slice(-7, -1)
         .map(m => ({ role: m.role, content: m.content }))
 
-      const result = await $fetch('/api/agency/banner-studio/ai/code-assist', {
+      const result = await apiFetch<CodeAssistResponse>('/api/agency/banner-studio/ai/code-assist', {
         method: 'POST',
         body: {
           html: context.html,

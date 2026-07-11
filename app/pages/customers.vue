@@ -17,6 +17,10 @@ const toast = useToast()
 const table = useTemplateRef('table')
 const showXeroContacts = ref(false)
 const isSyncing = ref(false)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 const columnFilters = ref([{
   id: 'name',
@@ -25,15 +29,38 @@ const columnFilters = ref([{
 const columnVisibility = ref()
 const rowSelection = ref({})
 
+const data = ref<Customer[] | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
 // Fetch customers from local database
-const { data, status, refresh } = await useFetch<Customer[]>('/api/customers', {
-  lazy: true
-})
+async function refresh() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<Customer[]>('/api/customers')
+    status.value = 'success'
+  } catch (err) {
+    status.value = 'error'
+    throw err
+  }
+}
+
+const xeroContacts = ref<any | null>(null)
+const xeroStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
 // Fetch Xero contacts directly (when toggled)
-const { data: xeroContacts, status: xeroStatus, execute: fetchXeroContacts } = await useFetch('/api/xero/contacts', {
-  immediate: false,
-  lazy: true
+async function fetchXeroContacts() {
+  xeroStatus.value = 'pending'
+  try {
+    xeroContacts.value = await apiFetch('/api/xero/contacts')
+    xeroStatus.value = 'success'
+  } catch (err) {
+    xeroStatus.value = 'error'
+    throw err
+  }
+}
+
+onMounted(() => {
+  void refresh()
 })
 
 // Toggle between local DB and Xero API
@@ -48,7 +75,7 @@ async function toggleXeroView() {
 async function syncFromXero() {
   isSyncing.value = true
   try {
-    const result = await $fetch('/api/xero/contacts/sync', {
+    const result = await apiFetch<{ message?: string }>('/api/xero/contacts/sync', {
       method: 'POST'
     })
     toast.add({

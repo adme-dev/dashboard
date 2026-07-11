@@ -94,6 +94,11 @@ const isOpen = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ linked: [] }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  query?: Record<string, unknown>
+}) => Promise<T>
 
 const searchQuery = ref('')
 const quotes = ref<any[]>([])
@@ -118,7 +123,7 @@ async function searchQuotes() {
   }
   searching.value = true
   try {
-    const data = await $fetch<any>('/api/agency/quotes', {
+    const data = await apiFetch<any>('/api/agency/quotes', {
       query: { search: q, limit: 10 }
     })
     quotes.value = (data.quotes || data || []).map((quote: any) => ({
@@ -141,7 +146,7 @@ async function selectQuote(q: any) {
   selectedQuote.value = q
   loadingLineItems.value = true
   try {
-    const data = await $fetch<any>(`/api/agency/quotes/${q.id}`)
+    const data = await apiFetch<any>(`/api/agency/quotes/${q.id}`)
     lineItems.value = data.quote?.lineItems || []
   } catch {
     lineItems.value = []
@@ -153,7 +158,7 @@ async function selectQuote(q: any) {
 async function linkLineItem(item: any) {
   linking.value = true
   try {
-    await $fetch(`/api/agency/tasks/${props.taskId}`, {
+    await apiFetch(`/api/agency/tasks/${props.taskId}`, {
       method: 'PUT',
       body: { quoteLineItemId: item.id, budgetSource: 'quote' }
     })

@@ -40,7 +40,11 @@ function normalise(s: string): string {
 
 async function fetchInternal<T>(event: H3Event, path: string, query?: Record<string, any>): Promise<T | null> {
   try {
-    return await $fetch<T>(path, {
+    const eventFetch = (event as any).$fetch as <R = unknown>(request: string, options?: {
+      headers?: HeadersInit
+      query?: Record<string, unknown>
+    }) => Promise<R>
+    return await eventFetch<T>(path, {
       headers: { cookie: (event.node.req.headers.cookie as string) ?? '' },
       query,
     })

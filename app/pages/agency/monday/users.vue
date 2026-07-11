@@ -291,6 +291,10 @@ interface SyncData {
 definePageMeta({ middleware: ['role-admin'] })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string }
+) => Promise<T>
 
 const preview = ref<PreviewData | null>(null)
 const previewLoading = ref(false)
@@ -336,7 +340,7 @@ const formatStatus = (status: string) => {
 const loadPreview = async () => {
   previewLoading.value = true
   try {
-    const data = await $fetch<PreviewData>('/api/monday/users/preview')
+    const data = await apiFetch<PreviewData>('/api/monday/users/preview')
     preview.value = data
   } catch (err) {
     console.error('Failed to load preview:', err)
@@ -353,7 +357,7 @@ const onConfirmSync = async () => {
   showSyncConfirm.value = false
   syncLoading.value = true
   try {
-    const result = await $fetch<SyncData>('/api/monday/users/sync', {
+    const result = await apiFetch<SyncData>('/api/monday/users/sync', {
       method: 'POST'
     })
     syncResult.value = result

@@ -38,6 +38,10 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 const selectedRecipeId = ref(VIDEO_PRODUCER_RECIPES[0]?.id ?? null)
 const brief = ref('Create a punchy vertical social edit using the strongest project assets.')
 const targetFormat = ref<VideoProducerTargetFormat>('reels_9x16')
@@ -142,7 +146,7 @@ function applyRecipe(recipeId: string | null | undefined = selectedRecipeId.valu
 async function assemblePlan() {
   assembling.value = true
   try {
-    const res = await $fetch<{ plan: AiAssemblyPlan }>(`/api/agency/video/projects/${props.projectId}/assemble`, {
+    const res = await apiFetch<{ plan: AiAssemblyPlan }>(`/api/agency/video/projects/${props.projectId}/assemble`, {
       method: 'POST',
       body: {
         brief: brief.value,

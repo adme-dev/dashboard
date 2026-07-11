@@ -19,6 +19,7 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ saved: [] }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
 const OPS = [
   { value: 'eq', label: 'equals' },
@@ -81,14 +82,14 @@ async function save() {
   saving.value = true
   try {
     const filter_rules = buildFilterRules()
-    await $fetch(`/api/email/campaigns/${props.campaignId}`, {
+    await apiFetch(`/api/email/campaigns/${props.campaignId}`, {
       method: 'PATCH',
       body: { filter_rules }
     })
     // Re-materialise so to_send reflects the new segment (best-effort).
     let toSend: number | null = null
     try {
-      const r = await $fetch<{ to_send: number }>(
+      const r = await apiFetch<{ to_send: number }>(
         `/api/email/campaigns/${props.campaignId}/materialize`,
         { method: 'POST' }
       )

@@ -10,6 +10,10 @@ interface RecordsResponse extends CrmListResponse<CrmRecord> {
 
 export function useCrmRecords(clientId: Ref<string | null>, objectKey: Ref<string | null>) {
   const base = inject<string>('crmApiBase', '/api/crm')
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+  ) => Promise<T>
   const isPortal = base.includes('client-portal')
   const search = ref('')
   const page = ref(1)
@@ -19,29 +23,43 @@ export function useCrmRecords(clientId: Ref<string | null>, objectKey: Ref<strin
     if (search.value.trim()) p.q = search.value.trim()
     return p
   })
-  const { data, pending, refresh } = useFetch<RecordsResponse>(`${base}/records`, {
-    query, watch: [query], immediate: false,
-    default: () => ({ items: [], total: 0, page: 1, page_size: 50, object: null as any, fields: [] }),
-  })
-  watch([clientId, objectKey], ([c, o]) => { if ((isPortal || c) && o) refresh() }, { immediate: true })
+  const defaultResponse = (): RecordsResponse => ({ items: [], total: 0, page: 1, page_size: 50, object: null as any, fields: [] })
+  const data = ref<RecordsResponse>(defaultResponse())
+  const pending = ref(false)
+
+  async function refresh() {
+    if ((!isPortal && !clientId.value) || !objectKey.value) {
+      data.value = defaultResponse()
+      return
+    }
+
+    pending.value = true
+    try {
+      data.value = await apiFetch<RecordsResponse>(`${base}/records`, { query: query.value })
+    } finally {
+      pending.value = false
+    }
+  }
+
+  watch(query, () => { refresh() }, { immediate: true })
 
   function withClient(body: Record<string, unknown>) {
     return isPortal ? body : { ...body, client_id: clientId.value }
   }
   async function create(recordData: Record<string, unknown>, stage_id?: string | null) {
-    await $fetch(`${base}/records`, { method: 'POST', body: withClient({ objectKey: objectKey.value, data: recordData, stage_id }) })
+    await apiFetch(`${base}/records`, { method: 'POST', body: withClient({ objectKey: objectKey.value, data: recordData, stage_id }) })
     await refresh()
   }
   async function update(id: string, recordData: Record<string, unknown>, stage_id?: string | null) {
-    await $fetch(`${base}/records/${id}`, { method: 'PATCH', body: withClient({ data: recordData, ...(stage_id !== undefined ? { stage_id } : {}) }) })
+    await apiFetch(`${base}/records/${id}`, { method: 'PATCH', body: withClient({ data: recordData, ...(stage_id !== undefined ? { stage_id } : {}) }) })
     await refresh()
   }
   async function remove(id: string) {
-    await $fetch(`${base}/records/${id}`, { method: 'DELETE', query: isPortal ? {} : { client_id: clientId.value } })
+    await apiFetch(`${base}/records/${id}`, { method: 'DELETE', query: isPortal ? {} : { client_id: clientId.value } })
     await refresh()
   }
   async function move(id: string, stage_id: string) {
-    await $fetch(`${base}/records/${id}/move`, { method: 'PATCH', body: withClient({ stage_id }) })
+    await apiFetch(`${base}/records/${id}/move`, { method: 'PATCH', body: withClient({ stage_id }) })
     await refresh()
   }
   return { data, pending, refresh, search, page, create, update, remove, move }

@@ -6,6 +6,11 @@ const { addLayer, nextId, activeLayers } = useBannerStudio()
 const { decomposingAssetId, decomposeFromUrl } = useDecompose()
 const { openGenerate } = useAiImageGenerate()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  query?: Record<string, unknown>
+}) => Promise<T>
 
 const searchQuery = ref('')
 const isDragging = ref(false)
@@ -16,7 +21,9 @@ const aiSuggestions = ref<{ keyword: string, description: string, style: string 
 const aiLoading = ref(false)
 const showAiSuggestions = ref(false)
 
-const STYLE_COLORS: Record<string, string> = {
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+const STYLE_COLORS: Record<string, UiColor> = {
   photo: 'primary',
   illustration: 'success',
   abstract: 'warning',
@@ -35,7 +42,7 @@ async function fetchImageSuggestions() {
   aiLoading.value = true
   showAiSuggestions.value = true
   try {
-    const result = await $fetch<{ suggestions: typeof aiSuggestions.value }>('/api/agency/banner-studio/ai/image-suggest', {
+    const result = await apiFetch<{ suggestions: typeof aiSuggestions.value }>('/api/agency/banner-studio/ai/image-suggest', {
       method: 'POST',
       body: { texts }
     })
@@ -51,12 +58,12 @@ function applySuggestionToSearch(keyword: string) {
   searchQuery.value = keyword
 }
 
-const { data: assetsData, refresh: refreshAssets } = useFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets', {
-  default: () => ({ assets: [] }),
-  onResponseError() {
-    // API may not exist yet
-  }
-})
+const assetsData = ref<{ assets: BannerAsset[] }>({ assets: [] })
+async function refreshAssets() {
+  assetsData.value = await apiFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets')
+    .catch(() => ({ assets: [] }))
+}
+refreshAssets()
 
 const assets = computed(() => {
   const list = assetsData.value?.assets || []
@@ -90,18 +97,16 @@ function handleAssetClick(asset: BannerAsset) {
 }
 
 // Audio Studio — owned, generated audio (voiceover + music) reusable as a layer.
-const { data: voiceoverData } = useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
-  query: { kind: 'voiceover' },
-  default: () => ({ assets: [] }),
-  onResponseError() {
-    // Audio Studio API may be unavailable — degrade silently.
-  }
-})
-const { data: musicData } = useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
-  query: { kind: 'music' },
-  default: () => ({ assets: [] }),
-  onResponseError() {}
-})
+const voiceoverData = ref<{ assets: AudioAsset[] }>({ assets: [] })
+const musicData = ref<{ assets: AudioAsset[] }>({ assets: [] })
+
+apiFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', { query: { kind: 'voiceover' } })
+  .then(result => { voiceoverData.value = result })
+  .catch(() => { voiceoverData.value = { assets: [] } })
+
+apiFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', { query: { kind: 'music' } })
+  .then(result => { musicData.value = result })
+  .catch(() => { musicData.value = { assets: [] } })
 
 // Only playable assets (a master uploaded) belong in the picker — in-progress
 // music has no streamUrl yet.
@@ -141,7 +146,7 @@ async function uploadFiles(files: FileList | File[]) {
     const formData = new FormData()
     formData.append('file', file)
     try {
-      await $fetch('/api/agency/banner-studio/assets/upload', {
+      await apiFetch('/api/agency/banner-studio/assets/upload', {
         method: 'POST',
         body: formData
       })
@@ -165,7 +170,7 @@ function onDrop(e: DragEvent) {
 
 async function deleteAsset(asset: BannerAsset) {
   try {
-    await $fetch(`/api/agency/banner-studio/assets/${asset.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/banner-studio/assets/${asset.id}`, { method: 'DELETE' })
     toast.add({ title: 'Deleted', description: `${asset.name} removed`, color: 'success' })
     await refreshAssets()
   } catch {

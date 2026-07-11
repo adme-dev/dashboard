@@ -12,6 +12,7 @@ export interface SpendControllerPacingItem {
   mtdSpend: number
   expectedToDate: number
   projectedMonthEnd: number
+  pacingRatio?: number
   currentDailyBudget: number
   recommendedDailyBudget: number
   syncedAt: string | null
@@ -69,6 +70,7 @@ const ISSUE_LABELS: Record<PacingReviewIssueType, string> = {
   paused_with_budget: 'paused with budget',
   stale_sync: 'using stale spend data',
   zero_conversion: 'spending with zero conversions',
+  negative_social_feedback: 'negative social feedback',
 }
 
 function money(value: number) {

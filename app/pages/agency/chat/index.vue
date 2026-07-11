@@ -6,6 +6,10 @@ definePageMeta({ layout: 'agency' })
 
 const toast = useToast()
 const { user } = useAuth()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; params?: Record<string, unknown> }
+) => Promise<T>
 
 const {
   channels, activeChannel, messages, loadingChannels, loadingMessages, hasMoreMessages,
@@ -57,7 +61,7 @@ async function fetchPresenceStatuses() {
   if (userIds.size === 0) return
 
   try {
-    const data = await $fetch<Array<{ userId: string; status: ChatPresenceStatus }>>('/api/chat/status', {
+    const data = await apiFetch<Array<{ userId: string; status: ChatPresenceStatus }>>('/api/chat/status', {
       params: { userIds: [...userIds].join(',') }
     })
     const map = new Map<string, ChatPresenceStatus>()
@@ -192,9 +196,9 @@ function handleSendMessage(content: string, _mentions?: string[], attachments?: 
 async function handlePinMessage(messageId: number) {
   if (!activeChannel.value) return
   try {
-    const result = await $fetch(`/api/chat/channels/${activeChannel.value.id}/messages/${messageId}/pin`, {
+    const result = await apiFetch<{ pinned: boolean }>(`/api/chat/channels/${activeChannel.value.id}/messages/${messageId}/pin`, {
       method: 'PATCH'
-    }) as { pinned: boolean }
+    })
     toast.add({
       title: result.pinned ? 'Message pinned' : 'Message unpinned',
       color: 'success'
@@ -208,10 +212,10 @@ async function handlePinMessage(messageId: number) {
 async function handleSaveMessage(messageId: number) {
   if (!activeChannel.value) return
   try {
-    const result = await $fetch('/api/chat/saved', {
+    const result = await apiFetch<{ saved: boolean }>('/api/chat/saved', {
       method: 'POST',
       body: { messageId, channelId: activeChannel.value.id }
-    }) as { saved: boolean }
+    })
     toast.add({
       title: result.saved ? 'Message saved' : 'Message unsaved',
       color: 'success'
@@ -400,7 +404,7 @@ async function handleOpenMembers() {
 // ── Set own presence on mount ──
 async function setOwnPresence(status: 'online' | 'offline') {
   try {
-    await $fetch('/api/chat/status', {
+    await apiFetch('/api/chat/status', {
       method: 'PATCH',
       body: { status }
     })

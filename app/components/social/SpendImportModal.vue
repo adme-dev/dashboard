@@ -9,6 +9,10 @@ const emit = defineEmits<{
 
 const toast = useToast()
 const { importCsvSpend, importManualSpend } = useSocialConnections()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const isOpen = computed({
   get: () => props.open,
@@ -120,7 +124,7 @@ function clearFile() {
 
 async function downloadTemplate() {
   try {
-    const csv = await $fetch<string>('/api/agency/social/import/template')
+    const csv = await apiFetch<string>('/api/agency/social/import/template')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

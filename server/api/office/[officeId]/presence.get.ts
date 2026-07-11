@@ -12,7 +12,7 @@ import type {
   OfficePresenceSummaryLocation
 } from '~~/app/types/office'
 
-type PresenceLocationRow = OfficePresenceSummaryLocation & {
+type PresenceLocationRow = Omit<OfficePresenceSummaryLocation, 'is_online'> & {
   is_online: boolean | string
 }
 

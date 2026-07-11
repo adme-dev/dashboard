@@ -28,6 +28,10 @@ const submitting = ref(false)
 const options = ref<TargetOption[]>([])
 const selected = ref<string>('')
 const priority = ref<'low' | 'medium' | 'high' | 'urgent'>('medium')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const priorityItems = [
   { label: 'Low', value: 'low' },
@@ -50,7 +54,7 @@ async function load() {
   selected.value = ''
   priority.value = 'medium'
   try {
-    const res = await $fetch<{ proposals: Array<{
+    const res = await apiFetch<{ proposals: Array<{
       client_id: string, target_type: TargetOption['target_type'], target_id: string,
       label: string, matched_email: string,
       alternatives: Array<{ client_id: string, target_type: TargetOption['target_type'], target_id: string, label: string }>
@@ -96,7 +100,7 @@ async function submit() {
   if (!props.meetingId || !props.actionItem || !chosen.value) return
   submitting.value = true
   try {
-    await $fetch(
+    await apiFetch(
       `/api/office/${props.officeId}/meetings/${props.meetingId}/action-items/${props.actionItem.id}/crm-task`,
       {
         method: 'POST',

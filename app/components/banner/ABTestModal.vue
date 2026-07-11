@@ -5,18 +5,31 @@ const props = defineProps<{ projectId: string }>()
 const open = defineModel<boolean>('open', { default: false })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  query?: Record<string, unknown>
+}) => Promise<T>
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
 
 // Fetch existing A/B tests
-const { data: tests, refresh } = useFetch<any[]>(
-  () => `/api/agency/banner-studio/ab-tests?projectId=${props.projectId}`,
-  { default: () => [] },
-)
+const tests = ref<any[]>([])
+async function refresh() {
+  tests.value = await apiFetch<any[]>('/api/agency/banner-studio/ab-tests', {
+    query: { projectId: props.projectId },
+  }).catch(() => [])
+}
 
 // Fetch published banners (for variant selection)
-const { data: published } = useFetch<any[]>(
-  () => `/api/agency/banner-studio/published/by-project/${props.projectId}`,
-  { default: () => [] },
-)
+const published = ref<any[]>([])
+async function refreshPublished() {
+  published.value = await apiFetch<any[]>(`/api/agency/banner-studio/published/by-project/${props.projectId}`).catch(() => [])
+}
+
+watch(() => props.projectId, () => {
+  refresh()
+  refreshPublished()
+}, { immediate: true })
 
 // Create test form
 const showCreate = ref(false)
@@ -45,7 +58,7 @@ async function createTest() {
       weight,
     }))
 
-    await $fetch('/api/agency/banner-studio/ab-tests', {
+    await apiFetch('/api/agency/banner-studio/ab-tests', {
       method: 'POST',
       body: {
         projectId: props.projectId,
@@ -70,14 +83,23 @@ async function createTest() {
 
 // View test detail
 const activeTestId = ref<string | null>(null)
-const { data: activeTest, refresh: refreshTest } = useFetch<any>(
-  () => activeTestId.value ? `/api/agency/banner-studio/ab-tests/${activeTestId.value}` : null,
-  { default: () => null, watch: [activeTestId] },
-)
+const activeTest = ref<any | null>(null)
+
+async function refreshTest() {
+  if (!activeTestId.value) {
+    activeTest.value = null
+    return
+  }
+  activeTest.value = await apiFetch<any>(`/api/agency/banner-studio/ab-tests/${activeTestId.value}`)
+}
+
+watch(activeTestId, () => {
+  refreshTest()
+})
 
 async function updateTestStatus(testId: string, status: string) {
   try {
-    await $fetch(`/api/agency/banner-studio/ab-tests/${testId}`, {
+    await apiFetch(`/api/agency/banner-studio/ab-tests/${testId}`, {
       method: 'PATCH',
       body: { status },
     })
@@ -89,7 +111,7 @@ async function updateTestStatus(testId: string, status: string) {
   }
 }
 
-function statusColor(s: string): string {
+function statusColor(s: string): UiColor {
   if (s === 'running') return 'success'
   if (s === 'paused') return 'warning'
   if (s === 'completed') return 'primary'
@@ -98,7 +120,7 @@ function statusColor(s: string): string {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ width: 'max-w-2xl' }">
+  <UModal v-model:open="open" :ui="{ content: 'max-w-2xl' }">
     <template #content>
       <div class="p-5">
         <div class="flex items-center justify-between mb-4">

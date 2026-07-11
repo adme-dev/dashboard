@@ -48,7 +48,7 @@ const aspectOptions = [
     v-model:open="showGenerateSlideover"
     title="Generate Image with AI"
     side="right"
-    :ui="{ width: 'max-w-md' }"
+    :ui="{ content: 'max-w-md' }"
     @update:open="(val: boolean) => { if (!val) cancelGenerate() }"
   >
     <template #content>

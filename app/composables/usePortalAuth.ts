@@ -40,9 +40,13 @@ export function usePortalAuth() {
   const user = useState<ClientUser | null>('portal-user', () => null)
   const stats = useState<PortalStats | null>('portal-stats', () => null)
   const isAuthenticated = computed(() => !!user.value)
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown }
+  ) => Promise<T>
 
   async function login(email: string, password: string) {
-    const data = await $fetch<PortalLoginResponse>('/api/portal/auth/login', {
+    const data = await apiFetch<PortalLoginResponse>('/api/portal/auth/login', {
       method: 'POST',
       body: { email, password }
     })
@@ -53,7 +57,7 @@ export function usePortalAuth() {
 
   async function logout() {
     try {
-      await $fetch('/api/portal/auth/logout', { method: 'POST' })
+      await apiFetch('/api/portal/auth/logout', { method: 'POST' })
     } catch {
       // Clear local portal state even if the server session has already expired.
     }
@@ -64,7 +68,7 @@ export function usePortalAuth() {
 
   async function fetchUser() {
     try {
-      const data = await $fetch<PortalAuthMeResponse>('/api/portal/auth/me')
+      const data = await apiFetch<PortalAuthMeResponse>('/api/portal/auth/me')
       user.value = {
         id: data.user.id,
         email: data.user.email,

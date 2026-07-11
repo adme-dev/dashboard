@@ -4,6 +4,10 @@ definePageMeta({ layout: 'agency' })
 const messages = ref<{ role: 'user' | 'assistant', content: string }[]>([])
 const input = ref('')
 const sending = ref(false)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 async function send() {
   const prompt = input.value.trim()
@@ -12,7 +16,7 @@ async function send() {
   input.value = ''
   sending.value = true
   try {
-    const res = await $fetch<{ reply: string }>('/api/ai/chat', {
+    const res = await apiFetch<{ reply: string }>('/api/ai/chat', {
       method: 'POST',
       body: { prompt }
     })

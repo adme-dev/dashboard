@@ -70,6 +70,13 @@ type StoredLobbyRequest = {
   meetingDurationMinutes: number | null
 }
 
+type WaitingRoomShelfItem = {
+  label: string
+  value: string
+  icon: string
+  url?: string | null
+}
+
 definePageMeta({
   layout: false,
   auth: false
@@ -77,6 +84,10 @@ definePageMeta({
 
 const route = useRoute()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 const officeId = computed(() => String(route.params.officeId || ''))
 const requestedRoom = computed(() => typeof route.query.room === 'string' ? route.query.room : '')
@@ -100,7 +111,7 @@ const storageKey = computed(() => {
   return `office-lobby-request:${scope}`
 })
 
-const { data, pending, error } = await useFetch<{
+const data = ref<{
   office: { id: string, name: string }
   zones: LobbyZone[]
   lobby: {
@@ -124,12 +135,34 @@ const { data, pending, error } = await useFetch<{
     duration_minutes: number | null
     intake_prompt: string | null
   } | null
-}>(() => {
+} | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+
+const lobbyUrl = computed(() => {
   const params = new URLSearchParams()
   if (requestedLobby.value) params.set('lobby', requestedLobby.value)
   if (requestedMeetingId.value) params.set('meeting', requestedMeetingId.value)
   const query = params.toString() ? `?${params.toString()}` : ''
   return `/api/public/office-lobby/${officeId.value}${query}`
+})
+
+async function refreshLobby() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch(lobbyUrl.value)
+  } catch (err) {
+    data.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+await refreshLobby()
+watch(lobbyUrl, () => {
+  void refreshLobby()
 })
 
 const name = ref('')
@@ -451,7 +484,7 @@ const prejoinReadinessItems = computed(() => [
 const lobbyBrand = computed(() => data.value?.lobby?.config?.brand ?? {})
 const brandAccentColor = computed(() => sanitizeBrandColor(lobbyBrand.value.background))
 const brandTexture = computed(() => normalizeBrandTexture(lobbyBrand.value.texture))
-const configuredShelfItems = computed(() =>
+const configuredShelfItems = computed<WaitingRoomShelfItem[]>(() =>
   (data.value?.lobby?.config?.shelf_items ?? [])
     .map(item => ({
       label: item.label?.trim() ?? '',
@@ -493,8 +526,8 @@ const lobbyTextureStyle = computed(() => {
     backgroundSize: '28px 28px'
   }
 })
-const waitingRoomShelfItems = computed(() => {
-  const items = [
+const waitingRoomShelfItems = computed<WaitingRoomShelfItem[]>(() => {
+  const items: WaitingRoomShelfItem[] = [
     {
       label: roomResolvedByMeetingInvite.value ? 'Meeting route' : 'Destination',
       value: roomResolvedByMeetingInvite.value
@@ -740,7 +773,7 @@ async function requestEntry() {
 
   submitting.value = true
   try {
-    const response = await $fetch<{
+    const response = await apiFetch<{
       requestId: string
       existing?: boolean
       pendingExpiresAt: string
@@ -807,7 +840,7 @@ async function pollStatus() {
 
   statusPolling.value = true
   try {
-    const response = await $fetch<LobbyRequestStatusResponse>(
+    const response = await apiFetch<LobbyRequestStatusResponse>(
       `/api/public/office-lobby/${officeId.value}/request/${requestId.value}`
     )
     const nextStatus = response.request.status
@@ -909,7 +942,7 @@ async function cancelRequest() {
   cancelling.value = true
   stopHandoffTimer()
   try {
-    await $fetch(
+    await apiFetch(
       `/api/public/office-lobby/${officeId.value}/request/${requestId.value}/cancel`,
       { method: 'POST' }
     )

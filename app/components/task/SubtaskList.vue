@@ -107,6 +107,10 @@ const adding = ref(false)
 const showAddForm = ref(false)
 const newTitle = ref('')
 const addInput = ref<HTMLInputElement | null>(null)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const completedCount = computed(() =>
   subtasks.value.filter(s => s.statusCategory === 'done' || !!s.completedAt).length
@@ -120,7 +124,7 @@ const progressPercent = computed(() => {
 async function fetchSubtasks() {
   loading.value = true
   try {
-    const data = await $fetch<{ subtasks: Subtask[] }>(
+    const data = await apiFetch<{ subtasks: Subtask[] }>(
       `/api/agency/tasks/${props.taskId}/subtasks`
     )
     subtasks.value = data.subtasks
@@ -137,7 +141,7 @@ async function addSubtask() {
 
   adding.value = true
   try {
-    const data = await $fetch<{ subtask: Subtask }>(
+    const data = await apiFetch<{ subtask: Subtask }>(
       `/api/agency/tasks/${props.taskId}/subtasks`,
       { method: 'POST', body: { title } }
     )
@@ -163,7 +167,7 @@ async function toggleComplete(subtaskId: string) {
   const isDone = subtask.statusCategory === 'done' || !!subtask.completedAt
   try {
     // Toggle status via task update endpoint
-    await $fetch(`/api/agency/tasks/${subtaskId}`, {
+    await apiFetch(`/api/agency/tasks/${subtaskId}`, {
       method: 'PUT',
       body: { completed: !isDone },
     })
@@ -179,7 +183,7 @@ async function toggleComplete(subtaskId: string) {
 
 async function deleteSubtask(subtaskId: string) {
   try {
-    await $fetch(`/api/agency/tasks/${subtaskId}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/tasks/${subtaskId}`, { method: 'DELETE' })
     subtasks.value = subtasks.value.filter(s => s.id !== subtaskId)
     toast.add({ title: 'Subtask deleted', color: 'success' })
   } catch (err: any) {

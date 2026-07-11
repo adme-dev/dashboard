@@ -16,9 +16,14 @@ const value = ref<string>(
     model.value?.value != null ? String(model.value!.value) : '',
 )
 
-const { data: forms } = useFetch<{ items: any[] }>('/api/leads/forms/list', {
-  default: () => ({ items: [] }),
-})
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const forms = ref<{ items: any[] }>({ items: [] })
+
+async function refreshForms() {
+  forms.value = await apiFetch<{ items: any[] }>('/api/leads/forms/list')
+}
+
+await refreshForms()
 
 const fieldOptions = computed(() => {
   const meta = forms.value?.items.find((f: any) => f.source === props.source && f.form_id === props.formId)

@@ -71,7 +71,7 @@
               icon="i-lucide-alert-circle"
               title="Failed to load teams"
               :description="teamsError.message || 'An error occurred'"
-              :actions="[{ label: 'Retry', color: 'primary', onClick: () => refreshTeams() }]"
+              :actions="[{ label: 'Retry', color: 'primary', onClick: () => { refreshTeams() } }]"
             />
           </div>
 
@@ -80,7 +80,7 @@
               icon="i-lucide-users-round"
               title="No teams yet"
               description="Create your first team to get started"
-              :actions="[{ label: 'New team', icon: 'i-lucide-plus', color: 'primary', onClick: () => showCreateModal = true }]"
+              :actions="[{ label: 'New team', icon: 'i-lucide-plus', color: 'primary', onClick: () => { showCreateModal = true } }]"
             />
           </div>
 
@@ -88,30 +88,30 @@
             v-else
             :data="teams"
             :columns="teamsColumns"
-            @select="(_e, row) => selectTeam(row.original)"
+            @select="(_e, row) => selectTeam(teamRow(row))"
           >
             <template #name-cell="{ row }">
               <div class="flex items-center gap-3">
                 <div
                   class="size-8 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                  :style="{ backgroundColor: row.original.color }"
+                  :style="{ backgroundColor: teamRow(row).color }"
                 >
-                  {{ row.original.name[0] }}
+                  {{ teamRow(row).name[0] }}
                 </div>
-                <span class="font-medium">{{ row.original.name }}</span>
-                <UBadge v-if="row.original.isSystem" size="xs" variant="subtle" color="primary">System</UBadge>
+                <span class="font-medium">{{ teamRow(row).name }}</span>
+                <UBadge v-if="teamRow(row).isSystem" size="xs" variant="subtle" color="primary">System</UBadge>
               </div>
             </template>
 
             <template #memberCount-cell="{ row }">
               <div class="flex items-center gap-1">
                 <UIcon name="i-lucide-users" class="size-4 text-muted" />
-                <span>{{ row.original.memberCount || 0 }}</span>
+                <span>{{ teamRow(row).memberCount || 0 }}</span>
               </div>
             </template>
 
             <template #actions-cell="{ row }">
-              <UDropdownMenu :items="teamActions(row.original)">
+              <UDropdownMenu :items="teamActions(teamRow(row))">
                 <UButton
                   variant="ghost"
                   color="neutral"
@@ -231,7 +231,7 @@
                 icon="i-lucide-users"
                 :title="memberSearch ? 'No members match your search' : 'No members yet'"
                 :description="memberSearch ? undefined : 'Add users to this team'"
-                :actions="memberSearch ? undefined : [{ label: 'Add users', icon: 'i-lucide-user-plus', color: 'primary', onClick: () => showAddMembersModal = true }]"
+                :actions="memberSearch ? undefined : [{ label: 'Add users', icon: 'i-lucide-user-plus', color: 'primary', onClick: () => { showAddMembersModal = true } }]"
               />
             </div>
           </div>
@@ -260,7 +260,7 @@
             <UInput v-model="newTeam.name" placeholder="Enter team name" />
           </UFormField>
           <UFormField label="Description">
-            <UTextarea v-model="newTeam.description" placeholder="Enter description" rows="3" />
+            <UTextarea v-model="newTeam.description" placeholder="Enter description" :rows="3" />
           </UFormField>
           <UFormField label="Color">
             <div class="flex gap-2 flex-wrap">
@@ -383,11 +383,52 @@ interface User {
   avatarUrl?: string
 }
 
-const { data: teamsData, pending, refresh: refreshTeams, error: teamsError } = useFetch('/api/admin/teams')
-const teams = computed(() => teamsData.value?.teams || [])
+interface TeamsResponse {
+  teams: Team[]
+}
 
-const { data: usersData } = useFetch('/api/admin/users')
-const allUsers = computed(() => usersData.value?.users || [])
+interface UsersResponse {
+  users: User[]
+}
+
+interface TeamMembersResponse {
+  members: TeamMember[]
+}
+
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
+const teamsData = ref<TeamsResponse | null>(null)
+const pending = ref(false)
+const teamsError = ref<any>(null)
+
+async function refreshTeams() {
+  pending.value = true
+  teamsError.value = null
+  try {
+    teamsData.value = await apiFetch<TeamsResponse>('/api/admin/teams')
+  } catch (err) {
+    teamsError.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+const teams = computed<Team[]>(() => teamsData.value?.teams || [])
+
+const usersData = ref<UsersResponse | null>(null)
+
+async function refreshUsers() {
+  usersData.value = await apiFetch<UsersResponse>('/api/admin/users')
+}
+
+onMounted(() => {
+  void refreshTeams()
+  void refreshUsers()
+})
+
+const allUsers = computed<User[]>(() => usersData.value?.users || [])
 
 const sidebarSearch = ref('')
 const memberSearch = ref('')
@@ -414,7 +455,7 @@ const teamColors = ['#3B82F6', '#EC4899', '#F97316', '#10B981', '#8B5CF6', '#F59
 
 const tabItems = computed(() => [
   { label: 'Users', value: 'users', badge: members.value.length },
-  { label: 'Content', value: 'content', badge: 0 },
+  { label: 'Content', value: 'content', badge: '0' },
 ])
 
 const teamsColumns = [
@@ -430,6 +471,8 @@ const membersColumns = [
   { accessorKey: 'role', header: 'Role' },
   { id: 'actions', header: '' },
 ]
+
+const teamRow = (row: { original?: Team } | Team): Team => ('original' in row && row.original ? row.original : row) as Team
 
 const filteredSidebarTeams = computed(() => {
   if (!sidebarSearch.value) return teams.value
@@ -488,7 +531,7 @@ const selectTeam = async (team: Team) => {
 const loadMembers = async (teamId: string) => {
   membersLoading.value = true
   try {
-    const data = await $fetch(`/api/admin/teams/${teamId}/members`)
+    const data = await apiFetch<TeamMembersResponse>(`/api/admin/teams/${teamId}/members`)
     members.value = data.members || []
   } catch (err) {
     console.error('Failed to load members:', err)
@@ -534,7 +577,7 @@ const createTeam = async () => {
 
   createLoading.value = true
   try {
-    await $fetch('/api/admin/teams', {
+    await apiFetch('/api/admin/teams', {
       method: 'POST',
       body: {
         name: newTeam.value.name,
@@ -565,7 +608,7 @@ const addMembers = async () => {
   if (!selectedTeam.value || selectedUsersToAdd.value.length === 0) return
 
   try {
-    await $fetch('/api/admin/team-members', {
+    await apiFetch('/api/admin/team-members', {
       method: 'POST',
       body: {
         teamId: selectedTeam.value.id,
@@ -600,7 +643,7 @@ const onConfirmRemoveMember = async () => {
   showRemoveMemberConfirm.value = false
 
   try {
-    await $fetch('/api/admin/team-members', {
+    await apiFetch('/api/admin/team-members', {
       method: 'DELETE',
       body: {
         teamId: selectedTeam.value.id,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { safeMediaUrl, safePublicUrl, safeUrl } from '~~/app/utils/safe-url'
+import { safeMediaUrl, safeMondayUrl, safePublicUrl, safeUrl } from '~~/app/utils/safe-url'
 
 describe('safe-url utilities', () => {
   it('rejects empty nullish URL strings', () => {
@@ -24,5 +24,13 @@ describe('safe-url utilities', () => {
     expect(safeMediaUrl('blob:https://example.com/id')).toBe('blob:https://example.com/id')
     expect(safeMediaUrl('data:image/png;base64,abc')).toBe('data:image/png;base64,abc')
     expect(safeMediaUrl('file:///tmp/local.png')).toBeUndefined()
+  })
+
+  it('allows only Monday hosts for Monday source actions', () => {
+    expect(safeMondayUrl('https://monday.com/boards/1/pulses/2')).toBe('https://monday.com/boards/1/pulses/2')
+    expect(safeMondayUrl('https://adme2.monday.com/boards/1/pulses/2')).toBe('https://adme2.monday.com/boards/1/pulses/2')
+    expect(safeMondayUrl('https://monday.com.evil.example/boards/1')).toBeUndefined()
+    expect(safeMondayUrl('https://monday.com@evil.example/boards/1')).toBeUndefined()
+    expect(safeMondayUrl('javascript:alert(1)')).toBeUndefined()
   })
 })

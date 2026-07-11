@@ -18,6 +18,11 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   loaded: [payload: { breakdowns: any; extraMetrics: any }]
 }>()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  query?: Record<string, unknown>
+}) => Promise<T>
 
 // Only platforms with on-demand sync support (see onDemandSync.ts BREAKDOWN_PLATFORMS)
 const SUPPORTED_PLATFORMS = ['meta', 'google_ads']
@@ -29,10 +34,26 @@ const EMPTY_BREAKDOWNS: Record<string, any[]> = { age: [], gender: [], device: [
 const useCached = computed(() => props.initialData != null)
 
 // Step 1: Try fetching from DB (skipped when cached)
-const { data, status } = useFetch(() => `${props.apiBase}/breakdowns`, {
-  query: computed(() => ({ campaignId: props.mediaSpendId })),
-  immediate: isSupported.value && !useCached.value,
-})
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function fetchBreakdowns() {
+  if (!isSupported.value || useCached.value) return
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<any>(`${props.apiBase}/breakdowns`, {
+      query: { campaignId: props.mediaSpendId },
+    })
+    status.value = 'success'
+  } catch {
+    data.value = null
+    status.value = 'error'
+  }
+}
+
+watch([() => props.mediaSpendId, () => props.apiBase, isSupported, useCached], () => {
+  fetchBreakdowns()
+}, { immediate: true })
 
 const breakdowns = ref<Record<string, any[]>>({ ...EMPTY_BREAKDOWNS })
 const extraMetrics = ref<Record<string, any> | null>(null)
@@ -88,7 +109,7 @@ watch(data, async (val) => {
     // Auto-trigger on-demand sync
     syncing.value = true
     try {
-      const syncResult = await $fetch<any>(`${props.apiBase}/breakdowns/sync`, {
+      const syncResult = await apiFetch<any>(`${props.apiBase}/breakdowns/sync`, {
         method: 'POST',
         body: { campaignId: props.mediaSpendId },
       })

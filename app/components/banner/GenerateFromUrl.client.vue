@@ -6,6 +6,7 @@ const open = defineModel<boolean>('open', { default: false })
 
 const toast = useToast()
 const { state, nextId } = useBannerStudio()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const url = ref('')
 const isLoading = ref(false)
@@ -41,7 +42,7 @@ async function handleScrape() {
   scraped.value = null
 
   try {
-    const result = await $fetch('/api/agency/banner-studio/generate-from-url', {
+    const result = await apiFetch<any>('/api/agency/banner-studio/generate-from-url', {
       method: 'POST',
       body: { url: url.value, formats: selectedFormats.value },
     })

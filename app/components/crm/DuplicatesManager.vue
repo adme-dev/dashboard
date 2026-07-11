@@ -7,6 +7,10 @@ interface Pair { score: number, a: Side, b: Side }
 const props = defineProps<{ clientId: string }>()
 const clientId = toRef(props, 'clientId')
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 const entityType = ref<'person' | 'company'>('person')
 const typeItems = [
@@ -14,9 +18,21 @@ const typeItems = [
   { label: 'Companies', value: 'company' },
 ]
 const query = computed(() => ({ client_id: clientId.value, entity_type: entityType.value }))
-const { data, pending, refresh } = useFetch<{ items: Pair[] }>('/api/crm/dedupe/suggestions', {
-  query, watch: [query], default: () => ({ items: [] }),
-})
+const data = ref<{ items: Pair[] }>({ items: [] })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items: Pair[] }>('/api/crm/dedupe/suggestions', { query: query.value })
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(query, () => {
+  refresh()
+}, { immediate: true })
 const pairs = computed(() => data.value?.items ?? [])
 
 const mergeOpen = ref(false)
@@ -40,7 +56,7 @@ async function doMerge() {
   const loserId = winnerId.value === activePair.value.a.id ? activePair.value.b.id : activePair.value.a.id
   merging.value = true
   try {
-    await $fetch('/api/crm/dedupe/merge', {
+    await apiFetch('/api/crm/dedupe/merge', {
       method: 'POST',
       body: { client_id: clientId.value, entity_type: entityType.value, winner_id: winnerId.value, loser_id: loserId },
     })

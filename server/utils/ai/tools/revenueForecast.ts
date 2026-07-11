@@ -3,6 +3,7 @@ import { z } from 'zod'
 // on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 
 const params = z.object({
   horizon: z.enum(['month', 'quarter']).default('month'),
@@ -17,8 +18,8 @@ export type ForecastDeps = {
 // Internal route fetch via ofetch with the caller's headers forwarded so Xero connection + tenant
 // resolve in the endpoint. Mirrors the prod-verified pattern in finance.ts.
 const defaultDeps: ForecastDeps = {
-  fetchForecast: ctx => $fetch('/api/xero/get-out/forecast', { headers: ctx.event.headers as any }),
-  fetchCoverage: ctx => $fetch('/api/xero/get-out/pipeline-coverage', { headers: ctx.event.headers as any }),
+  fetchForecast: ctx => aiInternalFetch('/api/xero/get-out/forecast', { headers: ctx.event.headers as any }),
+  fetchCoverage: ctx => aiInternalFetch('/api/xero/get-out/pipeline-coverage', { headers: ctx.event.headers as any }),
 }
 
 const num = (v: unknown): number => {

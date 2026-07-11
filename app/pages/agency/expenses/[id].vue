@@ -7,73 +7,27 @@ definePageMeta({
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 // Fetch expense data
-const { data, pending, refresh } = await useFetch<{
-  expense: {
-    id: string
-    userId: string
-    userName: string
-    userEmail: string
-    categoryId: string
-    categoryName: string
-    categoryCode: string
-    projectId: string | null
-    projectName: string | null
-    clientId: string | null
-    clientName: string | null
-    taskId: string | null
-    taskTitle: string | null
-    amount: number
-    currency: string
-    exchangeRate: number
-    taxAmount: number
-    totalAmount: number
-    merchant: string
-    description: string
-    expenseDate: string
-    billable: boolean
-    invoiced: boolean
-    invoiceId: string | null
-    status: string
-    submittedAt: string | null
-    approvedAt: string | null
-    approvedBy: string | null
-    approvedByName: string | null
-    rejectionReason: string | null
-    paymentMethod: string
-    reimbursable: boolean
-    reimbursed: boolean
-    reimbursedAt: string | null
-    reimbursementReference: string | null
-    hasReceipt: boolean
-    receiptUrl: string | null
-    notes: string | null
-    tags: string[] | null
-    externalId: string | null
-    createdAt: string
-    updatedAt: string
+const data = ref<any>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch(`/api/agency/expenses/${route.params.id}`)
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
   }
-  receipts: Array<{
-    id: string
-    fileName: string
-    fileType: string
-    fileSize: number
-    fileUrl: string
-    thumbnailUrl: string | null
-    ocrProcessed: boolean
-    ocrVendor: string | null
-    ocrAmount: number | null
-    ocrDate: string | null
-    uploadedAt: string
-  }>
-  report: {
-    id: string
-    reportNumber: string
-    title: string
-    status: string
-  } | null
-}>(`/api/agency/expenses/${route.params.id}`)
+}
+
+await refresh()
 
 const expense = computed(() => data.value?.expense)
 const receipts = computed(() => data.value?.receipts || [])
@@ -189,7 +143,7 @@ const openEditModal = () => {
 const saveExpense = async () => {
   saving.value = true
   try {
-    await $fetch(`/api/agency/expenses/${route.params.id}`, {
+    await apiFetch(`/api/agency/expenses/${route.params.id}`, {
       method: 'PUT',
       body: editForm.value
     })
@@ -212,7 +166,7 @@ const rejectionReason = ref('')
 const approveExpense = async () => {
   approving.value = true
   try {
-    await $fetch(`/api/agency/expenses/${route.params.id}`, {
+    await apiFetch(`/api/agency/expenses/${route.params.id}`, {
       method: 'PUT',
       body: { status: 'approved' }
     })
@@ -228,7 +182,7 @@ const approveExpense = async () => {
 const rejectExpense = async () => {
   rejecting.value = true
   try {
-    await $fetch(`/api/agency/expenses/${route.params.id}`, {
+    await apiFetch(`/api/agency/expenses/${route.params.id}`, {
       method: 'PUT',
       body: {
         status: 'rejected',
@@ -247,12 +201,14 @@ const rejectExpense = async () => {
 }
 
 // Fetch categories for edit form
-const { data: categoriesData } = await useFetch<{ categories: Array<{ id: string; name: string }> }>('/api/agency/expenses/categories')
+const categoriesData = ref<{ categories: Array<{ id: string; name: string }> }>({ categories: [] })
+categoriesData.value = await apiFetch<{ categories: Array<{ id: string; name: string }> }>('/api/agency/expenses/categories').catch(() => ({ categories: [] }))
 const categories = computed(() => categoriesData.value?.categories || [])
 const categoryOptions = computed(() => categories.value.map(c => ({ label: c.name, value: c.id })))
 
 // Fetch projects for edit form
-const { data: projectsData } = await useFetch<{ projects: Array<{ id: string; name: string }> }>('/api/agency/projects')
+const projectsData = ref<{ projects: Array<{ id: string; name: string }> }>({ projects: [] })
+projectsData.value = await apiFetch<{ projects: Array<{ id: string; name: string }> }>('/api/agency/projects').catch(() => ({ projects: [] }))
 const projects = computed(() => projectsData.value?.projects || [])
 const projectOptions = computed(() => [
   { label: 'No Project', value: null },

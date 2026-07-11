@@ -4,6 +4,7 @@
 const props = defineProps<{ clientId: string, record: Record<string, any> }>()
 const base = inject<string>('crmApiBase', '/api/crm')
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const state = reactive({
   do_not_contact: !!props.record.do_not_contact,
@@ -24,7 +25,7 @@ const saving = ref(false)
 async function patch(body: Record<string, unknown>) {
   saving.value = true
   try {
-    await $fetch(`${base}/people/${props.record.id}`, { method: 'PATCH', body: { ...body, client_id: props.clientId } })
+    await apiFetch(`${base}/people/${props.record.id}`, { method: 'PATCH', body: { ...body, client_id: props.clientId } })
   } catch (e: any) {
     toast.add({ title: 'Could not save preference', description: e?.data?.statusMessage || e?.message, color: 'error' })
   } finally {

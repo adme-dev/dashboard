@@ -26,6 +26,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const draft = ref('')
 const submitting = ref(false)
@@ -47,7 +48,7 @@ async function submit() {
   if (!body || submitting.value) return
   submitting.value = true
   try {
-    await $fetch(
+    await apiFetch(
       `/api/advisor/recommendations/${props.recommendationId}/comments`,
       { method: 'POST', body: { body } }
     )
@@ -78,7 +79,7 @@ async function saveEdit(c: Comment) {
   const body = editDraft.value.trim()
   if (!body) return
   try {
-    await $fetch(
+    await apiFetch(
       `/api/advisor/recommendations/${props.recommendationId}/comments/${c.id}`,
       { method: 'PATCH', body: { body } }
     )
@@ -102,7 +103,7 @@ function askDelete(c: Comment) {
 
 async function confirmDelete(c: Comment) {
   try {
-    await $fetch(
+    await apiFetch(
       `/api/advisor/recommendations/${props.recommendationId}/comments/${c.id}`,
       { method: 'DELETE' }
     )

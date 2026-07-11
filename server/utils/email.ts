@@ -1260,6 +1260,53 @@ export async function sendOfficeMeetingInviteEmail(data: {
   }
 }
 
+export async function sendHrReviewAssignmentEmail(data: {
+  to: string
+  name: string
+  cycleName: string
+  roleTitle: string
+  dueLabel: string
+  assignmentUrl: string
+  calendarInvite: string
+}, event?: H3Event): Promise<boolean> {
+  const client = getResendClient(event)
+  if (!client) {
+    console.log('[Email] HR review assignment email (no client) for', data.to)
+    return false
+  }
+
+  const { html, text } = renderEmailTemplate({
+    title: 'Your business review is ready',
+    greeting: `Hi ${escapeHtml(data.name)},`,
+    bodyHtml: `
+      <p>You have been invited to complete <strong>${escapeHtml(data.cycleName)}</strong>.</p>
+      <p><strong>Role profile:</strong> ${escapeHtml(data.roleTitle)}<br>
+      <strong>Required by:</strong> ${escapeHtml(data.dueLabel)}</p>
+      <p>Your questionnaire is private to the restricted review workflow. A calendar file is attached as a deadline reminder; it contains no answers or private review content.</p>
+    `,
+    ctaText: 'Open My Review',
+    ctaUrl: data.assignmentUrl,
+    recipientEmail: data.to,
+  })
+
+  const result = await client.emails.send({
+    from: getFromHeader(event),
+    to: data.to,
+    subject: `Action required: ${data.cycleName}`,
+    html,
+    text,
+    attachments: [{
+      filename: 'business-review-deadline.ics',
+      content: data.calendarInvite,
+      contentType: 'text/calendar; method=REQUEST; charset=UTF-8',
+    }],
+  })
+  if (result.error) {
+    throw new Error(`HR review assignment email rejected: ${result.error.message}`)
+  }
+  return true
+}
+
 export async function sendBoardMemberAddedEmail(data: {
   to: string
   name: string

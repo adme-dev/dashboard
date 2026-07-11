@@ -47,7 +47,7 @@ export default eventHandler(async (event) => {
         email: member.email,
         avatarUrl: member.avatar_url,
         title: member.title,
-        role: member.user_role,
+        role: member.role,
         isAdmin: member.is_team_admin,
         joinedAt: member.joined_at,
       }))

@@ -24,7 +24,7 @@ export type ToolContext = {
 }
 
 /** Tool results are recoverable: handlers return a typed result, never throw to the loop. */
-export type ToolResult = { ok: true, data: unknown } | { ok: false, error: string }
+export type ToolResult = { ok: true, data: unknown, error?: undefined } | { ok: false, error: string }
 
 /**
  * Risk tier of a write action, governing how much human gating it needs (spec: Phase-0 WS-B/C +

@@ -1,5 +1,20 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/agency/projects/profitability')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshProjectProfitability() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/projects/profitability')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load project profitability', error)
+    status.value = 'error'
+  }
+}
+
+await refreshProjectProfitability()
 
 // Endpoint returns commission-based profitability grouped by client: { clients, summary }.
 const CAP = 5

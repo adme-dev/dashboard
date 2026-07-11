@@ -114,9 +114,20 @@ const approvingActionId = ref<string | null>(null)
 const cancellingActionId = ref<string | null>(null)
 const applyingActionId = ref<string | null>(null)
 const loadedSpendId = ref<string | null>(null)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
+type GoogleRecommendationsResponse = {
+  optimizationScore: number | null
+  recommendations: any[]
+  campaignId: string | null
+  error?: string | null
+}
 
 // Google optimization recommendations (Google rows only; fetched on open).
-const googleRecs = ref<{ optimizationScore: number | null; recommendations: any[]; campaignId: string | null; error?: string | null }>({ optimizationScore: null, recommendations: [], campaignId: null, error: null })
+const googleRecs = ref<GoogleRecommendationsResponse>({ optimizationScore: null, recommendations: [], campaignId: null, error: null })
 const applyingRec = ref<string | null>(null)
 
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
@@ -233,8 +244,8 @@ async function loadHistory(spendId: string, force = false) {
     chosenSource.value = 'ai'
     refreshFromPlatform.value = false
     const [budgetHistory, actionHistory] = await Promise.all([
-      $fetch<BudgetAuditEntry[]>(`/api/agency/social/spend/${spendId}/history`),
-      $fetch<CampaignActionEntry[]>(`/api/agency/social/spend/${spendId}/actions`),
+      apiFetch<BudgetAuditEntry[]>(`/api/agency/social/spend/${spendId}/history`),
+      apiFetch<CampaignActionEntry[]>(`/api/agency/social/spend/${spendId}/actions`),
     ])
     history.value = budgetHistory
     platformActions.value = actionHistory
@@ -256,7 +267,7 @@ async function planCurrentRecommendation() {
   if (!props.item || planning.value || matchingPlannedAction.value) return
   planning.value = true
   try {
-    await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/plan`, {
+    await apiFetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/plan`, {
       method: 'POST',
       body: {
         currentDailyBudget: props.item.currentDailyBudget,
@@ -291,7 +302,7 @@ async function loadGoogleRecs(spendId: string) {
     return
   }
   try {
-    googleRecs.value = await $fetch(`/api/agency/social/spend/${spendId}/google-recommendations`)
+    googleRecs.value = await apiFetch<GoogleRecommendationsResponse>(`/api/agency/social/spend/${spendId}/google-recommendations`)
   } catch {
     googleRecs.value = { optimizationScore: null, recommendations: [], campaignId: null, error: 'Could not load Google recommendations' }
   }
@@ -302,7 +313,7 @@ async function applyGoogleRec(rec: any) {
   if (!spendId || rec?.recommendedDailyMajor == null || applyingRec.value) return
   applyingRec.value = rec.resourceName
   try {
-    const planned = await $fetch(`/api/agency/social/spend/${spendId}/actions/plan`, {
+    const planned = await apiFetch(`/api/agency/social/spend/${spendId}/actions/plan`, {
       method: 'POST',
       body: {
         currentDailyBudget: rec.currentDailyMajor ?? props.item?.currentDailyBudget ?? 0,
@@ -319,9 +330,9 @@ async function applyGoogleRec(rec: any) {
     // the approval) returns an already-approved action. approve only matches
     // 'planned', so re-approving would 404 — only approve when not yet approved.
     if (action.actionStatus !== 'approved') {
-      await $fetch(`/api/agency/social/spend/${spendId}/actions/${action.id}/approve`, { method: 'POST' })
+      await apiFetch(`/api/agency/social/spend/${spendId}/actions/${action.id}/approve`, { method: 'POST' })
     }
-    const res = await $fetch<{ status: string; appliedDailyBudget?: number; clamped?: boolean; clampReasons?: string[]; reason?: string; adSetCount?: number; message?: string }>(
+    const res = await apiFetch<{ status: string; appliedDailyBudget?: number; clamped?: boolean; clampReasons?: string[]; reason?: string; adSetCount?: number; message?: string }>(
       `/api/agency/social/spend/${spendId}/actions/${action.id}/execute`, { method: 'POST', body: {} })
     if (res.status === 'applied') {
       toast.add({ title: `Applied ${formatCurrency(res.appliedDailyBudget || 0)}/day`, description: res.clamped ? `Clamped: ${(res.clampReasons || []).join(', ')}` : 'Live budget updated', color: 'success' })
@@ -344,7 +355,7 @@ async function cancelPlannedAction(action: CampaignActionEntry) {
   if (!props.item || !isCancellableAction(action) || cancellingActionId.value) return
   cancellingActionId.value = action.id
   try {
-    await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${action.id}/cancel`, {
+    await apiFetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${action.id}/cancel`, {
       method: 'POST',
     })
     toast.add({
@@ -376,7 +387,7 @@ async function approvePlannedAction(action: CampaignActionEntry) {
   if (!props.item || action.actionStatus !== 'planned' || approvingActionId.value) return
   approvingActionId.value = action.id
   try {
-    await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${action.id}/approve`, {
+    await apiFetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${action.id}/approve`, {
       method: 'POST',
     })
     toast.add({
@@ -400,7 +411,7 @@ async function applyApprovedAction(action: CampaignActionEntry) {
   if (!props.item || action.actionStatus !== 'approved' || applyingActionId.value) return
   applyingActionId.value = action.id
   try {
-    const res = await $fetch<{
+    const res = await apiFetch<{
       status: 'applied' | 'blocked' | 'skipped' | 'failed'
       appliedDailyBudget?: number
       clamped?: boolean
@@ -461,7 +472,7 @@ async function analyzeWithAi() {
   if (!props.item || analyzing.value) return
   analyzing.value = true
   try {
-    const res = await $fetch<AnalysisResponse>(`/api/agency/social/spend/${props.item.mediaSpendId}/ai-analysis`, {
+    const res = await apiFetch<AnalysisResponse>(`/api/agency/social/spend/${props.item.mediaSpendId}/ai-analysis`, {
       method: 'POST',
       body: { issueType: props.item.issueType, refresh: refreshFromPlatform.value },
     })
@@ -482,7 +493,7 @@ async function approveAdjustment() {
   approvingAdjustment.value = true
   try {
     const chosen = chosenDailyBudget.value
-    const plan = await $fetch<{ action: { id: string, actionStatus: string } }>(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/plan`, {
+    const plan = await apiFetch<{ action: { id: string, actionStatus: string } }>(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/plan`, {
       method: 'POST',
       body: {
         currentDailyBudget: props.item.currentDailyBudget,
@@ -501,7 +512,7 @@ async function approveAdjustment() {
       },
     })
     if (plan?.action?.id && plan.action.actionStatus === 'planned') {
-      await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${plan.action.id}/approve`, { method: 'POST' })
+      await apiFetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${plan.action.id}/approve`, { method: 'POST' })
     }
     toast.add({ title: 'Adjustment approved', description: 'Ready for an admin to apply to the platform.', color: 'success' })
     aiAnalysis.value = null

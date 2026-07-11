@@ -27,19 +27,41 @@ const showDependencies = ref(true)
 // Container ref for dependency line calculations
 const timelineContainer = ref<HTMLElement | null>(null)
 
-// Fetch tasks
-const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks/timeline', {
-  query: computed(() => ({
-    departmentId: props.departmentId,
-    workspaceId: !props.departmentId ? props.workspaceId : undefined,
-    projectId: props.projectId,
-    startDate: startDate.value.toISOString().split('T')[0],
-    endDate: endDate.value.toISOString().split('T')[0],
-    includeCompleted: props.filters?.showCompleted ? 'true' : 'false'
-  }))
-})
+const timelineQuery = computed(() => ({
+  departmentId: props.departmentId,
+  workspaceId: !props.departmentId ? props.workspaceId : undefined,
+  projectId: props.projectId,
+  startDate: startDate.value.toISOString().split('T')[0],
+  endDate: endDate.value.toISOString().split('T')[0],
+  includeCompleted: props.filters?.showCompleted ? 'true' : 'false'
+}))
 
-const tasks = computed(() => (tasksData.value?.tasks as Task[]) || [])
+// Fetch tasks
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const tasksData = ref<{ tasks: Task[] }>({ tasks: [] })
+const tasksPending = ref(false)
+
+async function refreshTasks() {
+  tasksPending.value = true
+  try {
+    tasksData.value = await apiFetch<{ tasks: Task[] }>('/api/agency/tasks/timeline', {
+      query: timelineQuery.value
+    })
+  } catch {
+    tasksData.value = { tasks: [] }
+  } finally {
+    tasksPending.value = false
+  }
+}
+
+watch(timelineQuery, () => {
+  void refreshTasks()
+}, { immediate: true })
+
+const tasks = computed(() => tasksData.value?.tasks || [])
 
 // Group tasks by project for better visualization
 const groupBy = ref<'none' | 'project' | 'assignee'>('none')

@@ -33,12 +33,16 @@ export function useEdmCustomModules() {
   const modules = useState<EdmCustomModule[]>('edm-custom-modules', () => [])
   const loading = useState<boolean>('edm-custom-modules-loading', () => false)
   const loaded = useState<boolean>('edm-custom-modules-loaded', () => false)
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown }
+  ) => Promise<T>
 
   async function load(force = false) {
     if (loaded.value && !force) return
     loading.value = true
     try {
-      const res = await $fetch<{ items: EdmCustomModule[] }>(BASE)
+      const res = await apiFetch<{ items: EdmCustomModule[] }>(BASE)
       modules.value = res.items
       loaded.value = true
     } finally {
@@ -47,19 +51,19 @@ export function useEdmCustomModules() {
   }
 
   async function save(input: SaveModuleInput): Promise<EdmCustomModule> {
-    const res = await $fetch<{ module: EdmCustomModule }>(BASE, { method: 'POST', body: input })
+    const res = await apiFetch<{ module: EdmCustomModule }>(BASE, { method: 'POST', body: input })
     modules.value = [res.module, ...modules.value]
     return res.module
   }
 
   async function rename(id: string, patch: { name?: string; description?: string | null; category?: string; preview_tone?: EdmPreviewTone }) {
-    const res = await $fetch<{ module: EdmCustomModule }>(`${BASE}/${id}`, { method: 'PATCH', body: patch })
+    const res = await apiFetch<{ module: EdmCustomModule }>(`${BASE}/${id}`, { method: 'PATCH', body: patch })
     modules.value = modules.value.map(m => (m.id === id ? res.module : m))
     return res.module
   }
 
   async function remove(id: string) {
-    await $fetch(`${BASE}/${id}`, { method: 'DELETE' })
+    await apiFetch(`${BASE}/${id}`, { method: 'DELETE' })
     modules.value = modules.value.filter(m => m.id !== id)
   }
 

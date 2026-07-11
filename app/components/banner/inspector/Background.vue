@@ -4,6 +4,7 @@ import { ANIM_IN, EASES, EASE_GROUPS, easeSvgPath } from '~/utils/banner-constan
 
 const { state, activeLayers, updateLayer, addBgLayer, removeLayer } = useBannerStudio()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const bgPresets = ['#0a0a10', '#08080e', '#0c0810', '#1a1a1a', '#f5f0e8']
 const accentPresets = ['#e8c84a', '#4a8fe8', '#e84a4a', '#3ddd7a', '#c04ae8']
@@ -72,10 +73,18 @@ function selectBgEase(id: string) {
 }
 
 // Fetch existing assets for the picker
-const { data: assetsData } = useFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets', {
-  default: () => ({ assets: [] }),
-  lazy: true,
-  onResponseError() { /* API may not exist yet */ },
+const assetsData = ref<{ assets: BannerAsset[] }>({ assets: [] })
+
+async function refreshAssets() {
+  try {
+    assetsData.value = await apiFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets')
+  } catch {
+    assetsData.value = { assets: [] }
+  }
+}
+
+onMounted(() => {
+  refreshAssets()
 })
 
 const imageAssets = computed(() => {
@@ -120,7 +129,7 @@ async function uploadBgImage(files: FileList | File[]) {
   try {
     const formData = new FormData()
     formData.append('file', files[0])
-    const result = await $fetch<BannerAsset>('/api/agency/banner-studio/assets/upload', {
+    const result = await apiFetch<BannerAsset>('/api/agency/banner-studio/assets/upload', {
       method: 'POST',
       body: formData,
     })
@@ -145,7 +154,7 @@ async function uploadBgVideo(files: FileList | File[]) {
   try {
     const formData = new FormData()
     formData.append('file', files[0])
-    const result = await $fetch<BannerAsset>('/api/agency/banner-studio/assets/upload', {
+    const result = await apiFetch<BannerAsset>('/api/agency/banner-studio/assets/upload', {
       method: 'POST',
       body: formData,
     })
@@ -350,6 +359,7 @@ function removeBgImage() {
               size="xs"
               :model-value="activeBg.fit ?? 'cover'"
               :items="fitOptions"
+              value-key="value"
               @update:model-value="v => setBgProp('fit', v)"
             />
           </div>
@@ -534,6 +544,7 @@ function removeBgImage() {
             size="xs"
             :model-value="activeBg.animIn ?? 'none'"
             :items="bgAnimOptions"
+            value-key="value"
             @update:model-value="(v: string) => setBgProp('animIn', v as AnimInType)"
           />
         </div>

@@ -35,6 +35,10 @@ const prompt = ref('Review financial watch signals and tell me what needs attent
 const pending = ref(false)
 const error = ref<string | null>(null)
 const result = ref<FinancialWatchResponse | null>(null)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 function toneColor(severity: string) {
   return severity === 'warning' || severity === 'critical' ? 'warning' : 'info'
@@ -46,7 +50,7 @@ async function runFinancialWatch() {
   pending.value = true
   error.value = null
   try {
-    result.value = await $fetch<FinancialWatchResponse>('/api/agency/agents/financial-watch/ask', {
+    result.value = await apiFetch<FinancialWatchResponse>('/api/agency/agents/financial-watch/ask', {
       method: 'POST',
       body: {
         prompt: cleanPrompt,

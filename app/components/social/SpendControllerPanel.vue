@@ -41,6 +41,10 @@ const ignoredProposalRefs = ref<Set<string>>(new Set())
 const ignoredProposalPending = ref<Record<string, boolean>>({})
 const error = ref<string | null>(null)
 const result = ref<SpendControllerResponse | null>(null)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const period = computed(() => `${props.year}-${String(props.month).padStart(2, '0')}`)
 const promptPresets = [
@@ -68,7 +72,7 @@ async function runSpendController(options: { draftActions?: boolean } = {}) {
   else pending.value = true
   error.value = null
   try {
-    result.value = await $fetch<SpendControllerResponse>('/api/agency/agents/spend-controller/ask', {
+    result.value = await apiFetch<SpendControllerResponse>('/api/agency/agents/spend-controller/ask', {
       method: 'POST',
       body: {
         prompt: cleanPrompt,
@@ -107,7 +111,7 @@ async function markProposalIgnored(actionRef: string | null | undefined) {
   if (!actionRef || ignoredProposalPending.value[actionRef]) return
   ignoredProposalPending.value = { ...ignoredProposalPending.value, [actionRef]: true }
   try {
-    await $fetch(`/api/agency/agents/spend-controller/proposals/${actionRef}/decision`, {
+    await apiFetch(`/api/agency/agents/spend-controller/proposals/${actionRef}/decision`, {
       method: 'POST',
       body: {
         decision: 'ignored',

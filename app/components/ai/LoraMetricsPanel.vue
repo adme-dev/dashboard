@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import type { TrainingPipelineStats, LoraMetricsComparison, AiLoraAdapter } from '~/types'
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 // Pipeline stats
-const { data: statsData, pending: statsPending } = useFetch('/api/agency/ai/training/stats')
+const statsData = ref<TrainingPipelineStats | null>(null)
+const statsPending = ref(false)
 const stats = computed(() => statsData.value as TrainingPipelineStats | undefined)
 
 // Adapters for selector
-const { data: adaptersData } = useFetch('/api/agency/ai/training/adapters')
+const adaptersData = ref<AiLoraAdapter[]>([])
 const adapters = computed(() => {
   const list = (Array.isArray(adaptersData.value) ? adaptersData.value : []) as AiLoraAdapter[]
   return list.map(a => ({ label: a.displayName || a.name, value: a.id }))
@@ -14,11 +16,43 @@ const adapters = computed(() => {
 
 // Selected adapter metrics
 const selectedAdapterId = ref('')
-const { data: metricsData, pending: metricsPending, refresh: refreshMetrics } = useFetch(
-  () => selectedAdapterId.value ? `/api/agency/ai/training/adapters/${selectedAdapterId.value}/metrics` : null as any,
-  { immediate: false, watch: [selectedAdapterId] }
-)
+const metricsData = ref<LoraMetricsComparison | null>(null)
+const metricsPending = ref(false)
 const metrics = computed(() => metricsData.value as LoraMetricsComparison | undefined)
+
+async function refreshStats() {
+  statsPending.value = true
+  try {
+    const [statsResult, adaptersResult] = await Promise.all([
+      apiFetch<TrainingPipelineStats>('/api/agency/ai/training/stats'),
+      apiFetch<AiLoraAdapter[]>('/api/agency/ai/training/adapters'),
+    ])
+    statsData.value = statsResult
+    adaptersData.value = adaptersResult
+  } catch {
+    statsData.value = null
+    adaptersData.value = []
+  } finally {
+    statsPending.value = false
+  }
+}
+
+async function refreshMetrics() {
+  if (!selectedAdapterId.value) {
+    metricsData.value = null
+    return
+  }
+  metricsPending.value = true
+  try {
+    metricsData.value = await apiFetch<LoraMetricsComparison>(`/api/agency/ai/training/adapters/${selectedAdapterId.value}/metrics`)
+  } catch {
+    metricsData.value = null
+  } finally {
+    metricsPending.value = false
+  }
+}
+
+refreshStats()
 
 watch(selectedAdapterId, (val) => {
   if (val) refreshMetrics()

@@ -1,9 +1,27 @@
 <script setup lang="ts">
 import { format, parseISO } from 'date-fns'
 
-const { data, status } = await useFetch('/api/agency/reports/completion-trends', {
-  query: { interval: 'day', limit: 14 }
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshCompletionTrends() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/reports/completion-trends', {
+      query: { interval: 'day', limit: 14 }
+    })
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load completion trends', error)
+    status.value = 'error'
+  }
+}
+
+await refreshCompletionTrends()
 
 const trends = computed(() => (data.value as any)?.trends || [])
 const summary = computed(() => (data.value as any)?.summary || {})

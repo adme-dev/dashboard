@@ -25,6 +25,7 @@ const exportResult = ref<ExportResult | null>(null)
 const platform = computed<AdPlatformSpec | undefined>(() => AD_PLATFORMS[selectedPlatform.value])
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 function selectPlatform(id: string) {
   selectedPlatform.value = id
@@ -42,7 +43,7 @@ async function doExport() {
   exportResult.value = null
 
   try {
-    const result = await $fetch<ExportResult>(
+    const result = await apiFetch<ExportResult>(
       `/api/agency/banner-studio/custom-instances/${props.instanceId}/export`,
       { method: 'POST', body: { platform: selectedPlatform.value } },
     )

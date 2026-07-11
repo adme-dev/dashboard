@@ -58,6 +58,7 @@ const eventsSummary = ref<EventsSummary | null>(null)
 const events = ref<CampaignEventRow[]>([])
 const attributionSummary = ref<AttributionSummary | null>(null)
 const sessions = ref<AttributionSession[]>([])
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 function formatDate(value?: string | null): string {
   if (!value) return ''
@@ -79,8 +80,8 @@ async function load() {
   pending.value = true
   try {
     const [eventResult, attributionResult] = await Promise.all([
-      $fetch<{ summary: EventsSummary, events: CampaignEventRow[] }>(`/api/email/campaigns/${props.campaignId}/events`),
-      $fetch<{ summary: AttributionSummary, sessions: AttributionSession[] }>(`/api/email/campaigns/${props.campaignId}/attribution`)
+      apiFetch<{ summary: EventsSummary, events: CampaignEventRow[] }>(`/api/email/campaigns/${props.campaignId}/events`),
+      apiFetch<{ summary: AttributionSummary, sessions: AttributionSession[] }>(`/api/email/campaigns/${props.campaignId}/attribution`)
     ])
     eventsSummary.value = eventResult.summary
     events.value = eventResult.events

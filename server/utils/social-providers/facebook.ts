@@ -11,7 +11,7 @@
 import type { SocialPostProvider, PostParams, PostResult, CommentParams, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
 import { mapFbPostInsights, mapFbAccountInsights } from '~~/server/utils/socialReporting/normalize'
-import { fetchWithTimeout } from './http'
+import { fetchWithTimeout, providerFetch } from './http'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v25.0'
 const INBOX_FETCH_TIMEOUT_MS = 12_000
@@ -136,7 +136,7 @@ async function uploadUnpublishedPhoto(
   accessToken: string,
   imageUrl: string
 ): Promise<string> {
-  const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${pageId}/photos`, {
+  const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${pageId}/photos`, {
     method: 'POST',
     body: {
       url: imageUrl,
@@ -253,7 +253,7 @@ export const facebookProvider: SocialPostProvider = {
     try {
       // ── Link post ────────────────────────────────────
       if (options?.link && !media?.length) {
-        const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
+        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
           method: 'POST',
           body: {
             message: content,
@@ -270,7 +270,7 @@ export const facebookProvider: SocialPostProvider = {
 
       // ── No media: text-only post ─────────────────────
       if (!media?.length) {
-        const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
+        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
           method: 'POST',
           body: {
             message: content,
@@ -288,7 +288,7 @@ export const facebookProvider: SocialPostProvider = {
       const videos = media.filter(m => m.type === 'video')
       if (videos.length > 0) {
         const video = videos[0]!
-        const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/videos`, {
+        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/videos`, {
           method: 'POST',
           body: {
             file_url: video.url,
@@ -309,7 +309,7 @@ export const facebookProvider: SocialPostProvider = {
         // Upload as unpublished, then attach to a feed post for consistent URL format
         const photoId = await uploadUnpublishedPhoto(accountId, accessToken, images[0]!.url)
 
-        const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
+        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
           method: 'POST',
           body: {
             message: content,
@@ -334,7 +334,7 @@ export const facebookProvider: SocialPostProvider = {
 
         const attachedMedia = photoIds.map(id => ({ media_fbid: id }))
 
-        const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
+        const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
           method: 'POST',
           body: {
             message: content,
@@ -361,7 +361,7 @@ export const facebookProvider: SocialPostProvider = {
     const { accessToken, postId, content } = params
 
     try {
-      const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${postId}/comments`, {
+      const res = await providerFetch<{ id: string }>(`${GRAPH_API_BASE}/${postId}/comments`, {
         method: 'POST',
         body: {
           message: content,

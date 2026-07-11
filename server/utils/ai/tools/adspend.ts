@@ -3,6 +3,7 @@ import { z } from 'zod'
 // on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 import { expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
 
 const params = z.object({
@@ -47,7 +48,7 @@ function classify(pacePct: number): PacingStatus {
 // pace against the expected-to-date budget burn.
 const defaultDeps: AdspendDeps = {
   pacing: async (ctx) => {
-    const r: any = await $fetch('/api/agency/social/spend/summary', { headers: ctx.event.headers as any })
+    const r: any = await aiInternalFetch('/api/agency/social/spend/summary', { headers: ctx.event.headers as any })
     const now = new Date()
     const items: any[] = Array.isArray(r?.items) ? r.items : []
     return items.map((it): PacingCampaign => {

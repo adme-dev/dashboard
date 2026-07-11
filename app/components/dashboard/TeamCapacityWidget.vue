@@ -1,5 +1,20 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/agency/team-members')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshTeamCapacity() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/team-members')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load team capacity', error)
+    status.value = 'error'
+  }
+}
+
+await refreshTeamCapacity()
 
 const members = computed(() => {
   const raw = (data.value as any)?.members || []

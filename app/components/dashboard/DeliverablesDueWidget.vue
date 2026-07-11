@@ -1,9 +1,27 @@
 <script setup lang="ts">
 import { format, parseISO, isToday, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns'
 
-const { data, status } = await useFetch('/api/agency/tasks', {
-  query: { excludeCompleted: 'true', limit: 50 },
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshDeliverablesDue() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/tasks', {
+      query: { excludeCompleted: 'true', limit: 50 },
+    })
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load deliverables due', error)
+    status.value = 'error'
+  }
+}
+
+await refreshDeliverablesDue()
 
 const allTasks = computed(() => (data.value as any)?.tasks || [])
 

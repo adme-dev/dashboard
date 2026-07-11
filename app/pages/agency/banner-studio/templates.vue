@@ -29,19 +29,42 @@ const fetchParams = computed(() => ({
   search: searchQuery.value || undefined,
 }))
 
-const { data: templates, refresh, status } = useFetch<BannerTemplateDB[]>('/api/agency/banner-studio/templates', {
-  query: fetchParams,
-  default: () => [],
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+const templates = ref<BannerTemplateDB[]>([])
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refresh() {
+  status.value = 'pending'
+  try {
+    templates.value = await apiFetch<BannerTemplateDB[]>('/api/agency/banner-studio/templates', { query: fetchParams.value })
+    status.value = 'success'
+  } catch {
+    status.value = 'error'
+  }
+}
 
 // Also fetch custom HTML templates
 const customFetchParams = computed(() => ({
   search: searchQuery.value || undefined,
 }))
 
-const { data: customTemplates, refresh: refreshCustom } = useFetch<any[]>('/api/agency/banner-studio/custom-templates', {
-  query: customFetchParams,
-  default: () => [],
+const customTemplates = ref<any[]>([])
+
+async function refreshCustom() {
+  customTemplates.value = await apiFetch<any[]>('/api/agency/banner-studio/custom-templates', { query: customFetchParams.value }).catch(() => [])
+}
+
+onMounted(() => {
+  void refresh()
+  void refreshCustom()
+})
+
+watch([fetchParams, customFetchParams], () => {
+  void refresh()
+  void refreshCustom()
 })
 
 // Merge both lists based on active category
@@ -61,9 +84,9 @@ async function useTemplate(tpl: any) {
     // Create a new instance from the custom HTML template
     try {
       // Increment usage count
-      $fetch(`/api/agency/banner-studio/custom-templates/${tpl.id}/use`, { method: 'POST' }).catch(() => {})
+      apiFetch(`/api/agency/banner-studio/custom-templates/${tpl.id}/use`, { method: 'POST' }).catch(() => {})
       // Create instance
-      const inst = await $fetch<{ id: string }>('/api/agency/banner-studio/custom-instances', {
+      const inst = await apiFetch<{ id: string }>('/api/agency/banner-studio/custom-instances', {
         method: 'POST',
         body: { templateId: tpl.id },
       })
@@ -73,7 +96,7 @@ async function useTemplate(tpl: any) {
     }
     return
   }
-  $fetch(`/api/agency/banner-studio/templates/${tpl.id}/use`, { method: 'POST' }).catch(() => {})
+  apiFetch(`/api/agency/banner-studio/templates/${tpl.id}/use`, { method: 'POST' }).catch(() => {})
   router.push({ path: '/agency/banner-studio/new', query: { template: tpl.id } })
 }
 
@@ -89,7 +112,7 @@ async function doDelete() {
     ? `/api/agency/banner-studio/custom-templates/${tpl.id}`
     : `/api/agency/banner-studio/templates/${tpl.id}`
   try {
-    await $fetch(endpoint, { method: 'DELETE' })
+    await apiFetch(endpoint, { method: 'DELETE' })
     toast.add({ title: 'Deleted', description: `"${tpl.name}" has been removed`, color: 'success' })
     showDeleteModal.value = false
     deleteTarget.value = null

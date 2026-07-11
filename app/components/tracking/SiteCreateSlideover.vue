@@ -3,9 +3,10 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ (e: 'created'): void }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Client picker — never empty-string values (use the client id).
-const { data: clientsData } = await useFetch<any>('/api/agency/clients')
+const clientsData = ref<any>(await apiFetch<any>('/api/agency/clients').catch(() => []))
 const clientItems = computed(() => {
   const list = Array.isArray(clientsData.value) ? clientsData.value : (clientsData.value?.clients ?? [])
   return list
@@ -51,7 +52,7 @@ async function submit() {
       .split(/[\n,]/)
       .map(s => s.trim())
       .filter(Boolean)
-    await $fetch('/api/agency/tracking', {
+    await apiFetch('/api/agency/tracking', {
       method: 'POST',
       body: {
         clientId: form.clientId,

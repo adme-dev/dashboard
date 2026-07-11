@@ -25,10 +25,19 @@ const PLATFORM_LABELS: Record<string, string> = {
 }
 
 // Cap fetch timeout — health-summary is KV-cached so it's fast in normal cases.
-const { data } = await useFetch<Record<string, PlatformSummary>>(
-  '/api/agency/social/connections/health-summary',
-  { default: () => ({}), timeout: 8_000, lazy: true },
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { timeout?: number }
+) => Promise<T>
+const data = ref<Record<string, PlatformSummary>>({})
+try {
+  data.value = await apiFetch<Record<string, PlatformSummary>>(
+    '/api/agency/social/connections/health-summary',
+    { timeout: 8_000 }
+  )
+} catch {
+  data.value = {}
+}
 
 // Worst-status counts for the badge label (e.g. "113 expired")
 function worstCount(summary: PlatformSummary): number {

@@ -12,6 +12,10 @@ import type { SocialAccount, SocialPublishPlatform } from '~/types'
 import { syncComposerAccountIds, useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
 
 const { state, setOverride, resolved } = useSocialComposer()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const props = defineProps<{
   clientId: string | null
@@ -105,7 +109,7 @@ async function openBanner() {
   if (bannerCreatives.value.length) return
   bannerLoading.value = true
   try {
-    bannerCreatives.value = await $fetch<BannerCreative[]>('/api/agency/banner-studio/published/with-projects')
+    bannerCreatives.value = await apiFetch<BannerCreative[]>('/api/agency/banner-studio/published/with-projects')
   } catch {
     bannerCreatives.value = []
   } finally {
@@ -155,7 +159,7 @@ async function generateCaption() {
   if (!topic) { toast.add({ title: 'Add a brief or some copy first', color: 'warning' }); return }
   aiLoading.value = true
   try {
-    const { caption } = await $fetch<{ caption: string }>('/api/agency/social/publishing/ai/generate-caption', {
+    const { caption } = await apiFetch<{ caption: string }>('/api/agency/social/publishing/ai/generate-caption', {
       method: 'POST',
       body: { topic, platform: state.value.platforms[0] ?? 'facebook', tone: aiTone.value },
     })
@@ -178,7 +182,7 @@ async function generateImage() {
   if (!prompt) { toast.add({ title: 'Describe the image first', color: 'warning' }); return }
   aiImgLoading.value = true
   try {
-    const { url } = await $fetch<{ url: string }>('/api/agency/banner-studio/ai/generate-image', {
+    const { url } = await apiFetch<{ url: string }>('/api/agency/banner-studio/ai/generate-image', {
       method: 'POST',
       body: { prompt },
     })
@@ -209,7 +213,7 @@ const scheduleTime = ref(initialParts.time)
 
 // Combine the chosen calendar date + time into an instant in the post's timezone.
 function recomputeScheduledAt() {
-  state.value.scheduledAt = partsToIso(scheduleDate.value, scheduleTime.value, scheduleTz())
+  state.value.scheduledAt = partsToIso(scheduleDate.value as DateValue | null, scheduleTime.value, scheduleTz())
 }
 watch([scheduleDate, scheduleTime], recomputeScheduledAt)
 

@@ -7,6 +7,10 @@ const emit = defineEmits<{ (e: 'saved'): void }>()
 const open = defineModel<boolean>('open', { default: false })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 const saving = ref(false)
 const form = reactive({ email: '', name: '', list_ids: [] as string[] })
 
@@ -27,7 +31,7 @@ async function save() {
   }
   saving.value = true
   try {
-    await $fetch('/api/email/subscribers', { method: 'POST', body: { ...form } })
+    await apiFetch('/api/email/subscribers', { method: 'POST', body: { ...form } })
     toast.add({ title: 'Subscriber added', color: 'success' })
     open.value = false
     emit('saved')

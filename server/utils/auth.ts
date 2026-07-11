@@ -9,7 +9,9 @@ export interface User {
   email: string
   name: string
   role: string
+  user_role?: string
   is_active: boolean
+  email_verified_at?: string | Date | null
   avatar_url?: string
   custom_role_id?: string | null
   permissionGroups?: string[]
@@ -66,7 +68,7 @@ export async function getClientUserByEmail(email: string): Promise<ClientUser | 
 
 // Custom error class for transient failures (DB down, network issues)
 export class TransientAuthError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(message: string, public override readonly cause?: unknown) {
     super(message)
     this.name = 'TransientAuthError'
   }
@@ -163,7 +165,7 @@ export async function verifyJwt(token: string): Promise<any | null> {
 }
 
 // Role-based access control — checks legacy role name + dynamic permission groups
-export function hasRole(user: User, allowedRoles: string[]): boolean {
+export function hasRole(user: User, allowedRoles: readonly string[]): boolean {
   // Legacy: direct role name match
   if (allowedRoles.includes(user.role)) return true
   // Dynamic: check if allowedRoles correspond to any permission group the user has.
@@ -237,7 +239,7 @@ export async function requireRole(event: any, roles: readonly string[]): Promise
     return user
   }
 
-  if (!hasRole(user, roles as string[])) {
+  if (!hasRole(user, roles)) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden - Insufficient permissions' })
   }
 
@@ -322,15 +324,36 @@ export async function getAuthUser(event: any): Promise<User> {
   return requireAuth(event)
 }
 
-// Log activity (stub for compatibility)
-export async function logActivity(event: any, action: string, entityType?: string, entityId?: string, details?: any): Promise<void> {
-  const user = await requireAuth(event).catch(() => null)
+type ActivityLogInput = {
+  event?: any
+  userId?: string
+  action: string
+  resourceType?: string
+  resourceId?: string
+  entityType?: string
+  entityId?: string
+  oldValues?: any
+  newValues?: any
+  metadata?: any
+  details?: any
+}
+
+export async function logActivity(input: ActivityLogInput): Promise<void>
+export async function logActivity(event: any, action: string, entityType?: string, entityId?: string, details?: any): Promise<void>
+export async function logActivity(inputOrEvent: any, action?: string, entityType?: string, entityId?: string, details?: any): Promise<void> {
+  const input: ActivityLogInput = typeof action === 'string'
+    ? { event: inputOrEvent, action, entityType, entityId, details }
+    : inputOrEvent
+  const user = input.event ? await requireAuth(input.event).catch(() => null) : null
   console.log('[Activity Log]', {
-    userId: user?.id,
-    action,
-    entityType,
-    entityId,
-    details,
+    userId: input.userId ?? user?.id,
+    action: input.action,
+    entityType: input.entityType ?? input.resourceType,
+    entityId: input.entityId ?? input.resourceId,
+    details: input.details ?? input.metadata ?? {
+      oldValues: input.oldValues,
+      newValues: input.newValues
+    },
     timestamp: new Date().toISOString()
   })
 }
@@ -366,7 +389,7 @@ export async function invalidateAllSessions(userId: string): Promise<void> {
 // `owner` is the top-level superuser (treated as such everywhere else in auth,
 // e.g. board access) — without it the agency owner is locked out of creating /
 // editing quotes in the Pricing module and CRM quote generation. Grant-only.
-export async function requirePricingAccess(event: any): Promise<User> {
+export async function requirePricingAccess(event: any, _resource?: string, _action?: string): Promise<User> {
   return requireRole(event, ['owner', 'admin', 'project_manager'])
 }
 

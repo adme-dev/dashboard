@@ -273,6 +273,10 @@ interface Attachment {
 
 const props = defineProps<Props>()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const showInfo = ref(true)
 const showFiles = ref(false)
@@ -308,7 +312,7 @@ const wikiGenerating = ref(false)
 
 async function fetchWiki() {
   try {
-    wiki.value = await $fetch<WikiResponse>(`/api/agency/tasks/${props.taskId}/wiki`)
+    wiki.value = await apiFetch<WikiResponse>(`/api/agency/tasks/${props.taskId}/wiki`)
   } catch (err) {
     console.error('Failed to fetch wiki:', err)
     wiki.value = { enabled: false }
@@ -319,7 +323,7 @@ async function regenerateWiki() {
   if (wikiGenerating.value) return
   wikiGenerating.value = true
   try {
-    const result = await $fetch<WikiResponse>(`/api/agency/tasks/${props.taskId}/wiki/regenerate`, {
+    const result = await apiFetch<WikiResponse>(`/api/agency/tasks/${props.taskId}/wiki/regenerate`, {
       method: 'POST',
     })
     wiki.value = result
@@ -376,7 +380,7 @@ async function toggleFiles() {
 async function fetchAttachments() {
   loadingFiles.value = true
   try {
-    const data = await $fetch<Attachment[]>(`/api/agency/tasks/${props.taskId}/attachments`)
+    const data = await apiFetch<Attachment[]>(`/api/agency/tasks/${props.taskId}/attachments`)
     attachments.value = data
   } catch (err) {
     console.error('Failed to fetch attachments:', err)
@@ -399,7 +403,7 @@ async function handleFileUpload(e: Event) {
     formData.append('file', file)
 
     try {
-      const result = await $fetch<Attachment>(`/api/agency/tasks/${props.taskId}/attachments`, {
+      const result = await apiFetch<Attachment>(`/api/agency/tasks/${props.taskId}/attachments`, {
         method: 'POST',
         body: formData,
       })
@@ -416,7 +420,7 @@ async function handleFileUpload(e: Event) {
 
 async function deleteAttachment(attachmentId: string) {
   try {
-    await $fetch(`/api/agency/tasks/${props.taskId}/attachments/${attachmentId}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/tasks/${props.taskId}/attachments/${attachmentId}`, { method: 'DELETE' })
     attachments.value = attachments.value.filter(a => a.id !== attachmentId)
     toast.add({ title: 'File removed', color: 'success' })
   } catch (err: any) {

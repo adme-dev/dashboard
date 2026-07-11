@@ -8,11 +8,41 @@ const monthProgress = dayOfMonth / daysInMonth
 const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 const today = now.toISOString().slice(0, 10)
 
-const { data, status } = await useFetch('/api/agency/social/spend/summary')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<any | null>(null)
+const daily = ref<any[] | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshSpendPacing() {
+  status.value = 'pending'
+  const [summaryResult, dailyResult] = await Promise.allSettled([
+    apiFetch('/api/agency/social/spend/summary'),
+    apiFetch<any[]>('/api/agency/analytics/daily-spend', {
+      query: { from: monthStart, to: today },
+    }),
+  ])
+
+  if (summaryResult.status === 'fulfilled') {
+    data.value = summaryResult.value
+    status.value = 'success'
+  } else {
+    console.error('Failed to load spend pacing summary', summaryResult.reason)
+    status.value = 'error'
+  }
+
+  if (dailyResult.status === 'fulfilled') {
+    daily.value = dailyResult.value
+  } else {
+    console.error('Failed to load spend pacing trend', dailyResult.reason)
+    daily.value = []
+  }
+}
+
 // MTD daily spend for the trend line (degrades to no chart if unavailable).
-const { data: daily } = await useFetch('/api/agency/analytics/daily-spend', {
-  query: { from: monthStart, to: today },
-})
+await refreshSpendPacing()
 
 const CAP = 5
 const rows = computed(() =>

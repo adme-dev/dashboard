@@ -57,6 +57,7 @@ export function useGetOutRealtime() {
   const lastUpdated = ref<Date | null>(null)
   const isLive = ref(false)
   const eventSource = ref<EventSource | null>(null)
+  const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
   // Polling config
   const POLL_INTERVAL = 30000 // 30 seconds
@@ -67,7 +68,7 @@ export function useGetOutRealtime() {
     pending.value = true
     error.value = null
     try {
-      const result = await $fetch<GetOutData>('/api/xero/get-out')
+      const result = await apiFetch<GetOutData>('/api/xero/get-out')
       data.value = result
       lastUpdated.value = new Date()
     } catch (e: any) {

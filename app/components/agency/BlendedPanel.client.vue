@@ -5,6 +5,7 @@ import { presetColumnKeys, ALL_PRESET_SENTINEL, type BlendMetric } from '~~/app/
 // clientId is optional — omit for an agency-wide blend.
 const props = defineProps<{ startDate: string, endDate: string, clientId?: string | null }>()
 const { fmtCurrency, fmtCompact } = useAnalytics()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 interface BlendedRow {
   channel: string
@@ -36,10 +37,23 @@ const query = computed(() => {
   return q
 })
 
-const { data, pending } = await useFetch<BlendedResponse>('/api/agency/analytics/blended', {
-  query,
-  watch: [query]
-})
+const data = ref<BlendedResponse | null>(null)
+const pending = ref(false)
+
+async function refreshBlended() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<BlendedResponse>('/api/agency/analytics/blended', { query: query.value })
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(query, () => {
+  refreshBlended()
+}, { immediate: true })
 
 const hasData = computed(() => !pending.value && !!data.value && data.value.channels.length > 0)
 
@@ -64,7 +78,10 @@ const ALL_COLUMNS = [
 ]
 
 // Non-blocking: presets only back the view dropdown; don't suspend the table on them.
-const { data: presetData } = useFetch<{ presets: BlendPreset[] }>('/api/agency/analytics/presets', { lazy: true })
+const presetData = ref<{ presets: BlendPreset[] } | null>(null)
+apiFetch<{ presets: BlendPreset[] }>('/api/agency/analytics/presets')
+  .then(result => { presetData.value = result })
+  .catch(() => { presetData.value = { presets: [] } })
 
 const selectedPreset = ref<string>(ALL_PRESET_SENTINEL)
 const presetItems = computed(() => [
@@ -93,6 +110,10 @@ const visibleKeys = computed(() =>
   presetColumnKeys(activePreset.value ? activePreset.value.metrics : ALL_PRESET_SENTINEL)
 )
 const columns = computed(() => ALL_COLUMNS.filter(c => visibleKeys.value.includes(c.accessorKey)))
+
+function tableRow(row: unknown): BlendedRow {
+  return ((row as { original?: BlendedRow }).original ?? row) as BlendedRow
+}
 
 function fmtMoney(v: number | null): string {
   return v === null ? '—' : fmtCurrency(v)
@@ -205,28 +226,28 @@ function deltaClass(metric: ComparedMetric): string {
 
     <UTable :data="data!.channels" :columns="columns">
       <template #spend-cell="{ row }">
-        {{ fmtCurrency(row.original.spend) }}
+        {{ fmtCurrency(tableRow(row).spend) }}
       </template>
       <template #leads-cell="{ row }">
-        {{ fmtCompact(row.original.leads) }}
+        {{ fmtCompact(tableRow(row).leads) }}
       </template>
       <template #cpl-cell="{ row }">
-        {{ fmtMoney(row.original.cpl) }}
+        {{ fmtMoney(tableRow(row).cpl) }}
       </template>
       <template #conversions-cell="{ row }">
-        {{ fmtCompact(row.original.conversions) }}
+        {{ fmtCompact(tableRow(row).conversions) }}
       </template>
       <template #cpa-cell="{ row }">
-        {{ fmtMoney(row.original.cpa) }}
+        {{ fmtMoney(tableRow(row).cpa) }}
       </template>
       <template #revenue-cell="{ row }">
-        {{ fmtCurrency(row.original.revenue) }}
+        {{ fmtCurrency(tableRow(row).revenue) }}
       </template>
       <template #roas-cell="{ row }">
-        {{ fmtRoas(row.original.roas) }}
+        {{ fmtRoas(tableRow(row).roas) }}
       </template>
       <template #sessions-cell="{ row }">
-        {{ fmtCompact(row.original.sessions) }}
+        {{ fmtCompact(tableRow(row).sessions) }}
       </template>
     </UTable>
   </UCard>

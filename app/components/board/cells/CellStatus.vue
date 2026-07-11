@@ -33,13 +33,13 @@
           <div class="grid grid-cols-3 gap-2">
             <button
               v-for="opt in filteredOptions"
-              :key="opt.value || opt.id"
+              :key="opt.value"
               class="px-2 py-2 rounded text-xs font-medium text-center hover:opacity-80 transition-opacity relative"
               :class="{ 'ring-2 ring-offset-1 ring-blue-500': isSelected(opt) }"
               :style="{ backgroundColor: opt.color, color: getContrastColor(opt.color) }"
               @click="selectStatus(opt)"
             >
-              {{ opt.label || opt.name }}
+              {{ opt.label }}
             </button>
           </div>
         </div>
@@ -124,7 +124,7 @@ const currentOption = computed(() =>
   options.value.find((o: any) => o.value === selectedValue.value || o.id === selectedValue.value)
 )
 
-const currentLabel = computed(() => currentOption.value?.label || currentOption.value?.name || selectedValue.value || '-')
+const currentLabel = computed(() => currentOption.value?.label || selectedValue.value || '-')
 const currentStyle = computed(() => {
   const color = currentOption.value?.color || '#E5E7EB'
   return {
@@ -164,7 +164,7 @@ function closePicker() {
 }
 
 function selectStatus(opt: any) {
-  emit('update', { jsonValue: { optionId: opt.value || opt.id }, textValue: opt.label || opt.name })
+  emit('update', { jsonValue: { optionId: opt.value || opt.id }, textValue: opt.label })
   closePicker()
 }
 

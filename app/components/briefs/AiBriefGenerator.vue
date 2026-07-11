@@ -11,6 +11,10 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 // State
 const isOpen = ref(true)
@@ -29,12 +33,16 @@ const warnings = ref<string[]>([])
 const hasGenerated = ref(false)
 
 // Fetch clients for selector (only when no clientId prop)
-const { data: clientsData } = props.clientId
-  ? { data: ref(null) }
-  : await useFetch('/api/agency/clients', {
-      query: { limit: 100 },
-      lazy: true
-    })
+const clientsData = ref<any | null>(null)
+
+async function refreshClients() {
+  if (props.clientId) return
+  clientsData.value = await apiFetch<any>('/api/agency/clients', {
+    query: { limit: 100 },
+  })
+}
+
+refreshClients()
 
 const clientOptions = computed(() => {
   if (!clientsData.value) return []
@@ -61,14 +69,14 @@ async function generate() {
   warnings.value = []
 
   try {
-    const result = await $fetch('/api/agency/briefs/ai/generate', {
+    const result = await apiFetch<any>('/api/agency/briefs/ai/generate', {
       method: 'POST',
       body: {
         templateId: props.templateId,
         clientId: effectiveClientId.value,
         prompt: prompt.value.trim()
       }
-    }) as any
+    })
 
     // Normalize: API may return { fields: [...] } or { generatedValues: {...}, ... }
     if (result.fields) {

@@ -45,6 +45,10 @@ const CONFIRM_TIMEOUT_MS = 15_000
  * the side effects (recording, playback, fetches, timers). Browser-only — verified by manual UAT.
  */
 export function useVoiceSession(opts: UseVoiceSessionOptions) {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown }
+  ) => Promise<T>
   const voice = useVoiceChat()
   const state = ref<VoiceSessionState>({ ...initialVoiceSession })
 
@@ -59,6 +63,10 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
 
   function dispatch(e: VoiceEvent) {
     state.value = voiceSessionReducer(state.value, e)
+  }
+
+  function phase(): VoiceSessionState['phase'] {
+    return state.value.phase
   }
 
   async function start() {
@@ -108,7 +116,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
     dispatch({ type: 'SPEECH_CAPTURED' })
     try {
       const result = await voice.sendVoiceMessage(convId, blob)
-      if (state.value.phase !== 'processing') return // stop() fired mid-request
+      if (phase() !== 'processing') return // stop() fired mid-request
       const proposal = result.proposedAction ?? null
       pendingProposal = proposal
       opts.onTurn(result.transcribedText, result.message, proposal)
@@ -131,10 +139,10 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
       // Append a spoken hint so the user knows the exact phrase to use.
       await speakText('Say confirm to proceed, or cancel.')
     }
-    if (state.value.phase !== 'speaking') return // a barge-in already moved us to listening
+    if (phase() !== 'speaking') return // a barge-in already moved us to listening
     dispatch({ type: 'PLAYBACK_DONE' })
-    if (state.value.phase === 'awaitingConfirm') void runConfirm()
-    else if (state.value.phase === 'listening') void runListen()
+    if (phase() === 'awaitingConfirm') void runConfirm()
+    else if (phase() === 'listening') void runListen()
   }
 
   // --- Spoken confirmation sub-flow ----------------------------------------
@@ -171,12 +179,12 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
     } else if (intent === 'affirmative') {
       // proposalId vanished unexpectedly — don't hang in 'confirming'
       dispatch({ type: 'CONFIRM_DONE' })
-      if (state.value.phase === 'listening') void runListen()
+      if (phase() === 'listening') void runListen()
     } else if (intent === 'negative') {
       opts.onProposalResolved()
       pendingProposal = null
       await speakText('Cancelled.')
-      if (state.value.phase === 'listening') void runListen()
+      if (phase() === 'listening') void runListen()
     } else if (intent === 'stop') {
       teardown()
     } else if (state.value.phase === 'awaitingConfirm') {
@@ -192,7 +200,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
   async function executeProposal(convId: string, proposalId: string) {
     const toolName = pendingProposal?.toolName
     try {
-      const res = await $fetch<{ ok: boolean, taskId?: string, resultRef?: string, error?: string }>(
+      const res = await apiFetch<{ ok: boolean, taskId?: string, resultRef?: string, error?: string }>(
         `/api/agency/ai/chat/conversations/${convId}/confirm-action`,
         // rich_confirm writes (budget change) must send the ack the server gate requires.
         { method: 'POST', body: { proposalId, ...(toolName && RICH_CONFIRM_TOOLS.has(toolName) ? { richConfirmAck: true } : {}) } }
@@ -232,7 +240,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
     try {
       const fd = new FormData()
       fd.append('audio', blob)
-      const r = await $fetch<{ text: string } | null>('/api/agency/ai/chat/transcribe', { method: 'POST', body: fd })
+      const r = await apiFetch<{ text: string } | null>('/api/agency/ai/chat/transcribe', { method: 'POST', body: fd })
       return r?.text || ''
     } catch {
       return ''
@@ -241,7 +249,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
 
   async function speakText(text: string) {
     try {
-      const res = await $fetch<{ audioBase64: string, audioFormat: string } | null>(
+      const res = await apiFetch<{ audioBase64: string, audioFormat: string } | null>(
         '/api/agency/ai/chat/speak',
         { method: 'POST', body: { text } }
       )

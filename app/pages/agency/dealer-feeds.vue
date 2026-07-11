@@ -197,33 +197,52 @@ const feedForm = reactive({
   stockRefsText: ''
 })
 
-const {
-  data: clientOptionsData,
-  pending: clientsPending,
-  refresh: refreshClientOptions
-} = useFetch<{ items: DealerFeedClientOption[] }>('/api/admin/dealer-feed-client-options', {
-  server: false,
-  default: () => ({ items: [] })
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
+const clientOptionsData = ref<{ items: DealerFeedClientOption[] }>({ items: [] })
+const clientsPending = ref(false)
+const linksData = ref<{ ok: boolean, links: DealerFeedLink[] }>({ ok: false, links: [] })
+const linksPending = ref(false)
+const linksError = ref<any>(null)
+const feedWorkbookTemplatesData = ref<FeedWorkbookTemplatesResponse>({ templates: [] })
+const feedWorkbookPending = ref(false)
 
-const {
-  data: linksData,
-  pending: linksPending,
-  error: linksError,
-  refresh: refreshLinks
-} = useFetch<{ ok: boolean, links: DealerFeedLink[] }>('/api/admin/dealer-feed-links', {
-  server: false,
-  default: () => ({ ok: false, links: [] })
-})
+async function refreshClientOptions() {
+  clientsPending.value = true
+  try {
+    clientOptionsData.value = await apiFetch<{ items: DealerFeedClientOption[] }>('/api/admin/dealer-feed-client-options')
+  } finally {
+    clientsPending.value = false
+  }
+}
 
-const {
-  data: feedWorkbookTemplatesData,
-  pending: feedWorkbookPending,
-  refresh: refreshFeedWorkbookTemplate
-} = useFetch<FeedWorkbookTemplatesResponse>('/api/agency/templates', {
-  query: { search: FEED_WORKBOOK_TEMPLATE_NAME, limit: 10 },
-  server: false,
-  default: () => ({ templates: [] })
+async function refreshLinks() {
+  linksPending.value = true
+  linksError.value = null
+  try {
+    linksData.value = await apiFetch<{ ok: boolean, links: DealerFeedLink[] }>('/api/admin/dealer-feed-links')
+  } catch (error) {
+    linksError.value = error
+  } finally {
+    linksPending.value = false
+  }
+}
+
+async function refreshFeedWorkbookTemplate() {
+  feedWorkbookPending.value = true
+  try {
+    feedWorkbookTemplatesData.value = await apiFetch<FeedWorkbookTemplatesResponse>('/api/agency/templates', {
+      query: { search: FEED_WORKBOOK_TEMPLATE_NAME, limit: 10 }
+    })
+  } finally {
+    feedWorkbookPending.value = false
+  }
+}
+
+onMounted(() => {
+  void Promise.all([refreshClientOptions(), refreshLinks(), refreshFeedWorkbookTemplate()])
 })
 
 const clientRows = computed(() => clientOptionsData.value?.items || [])
@@ -808,7 +827,7 @@ function populateMappingForm() {
 
 async function createOrFindAgencyClient(option: DealerFeedClientOption): Promise<AgencyClient> {
   try {
-    return await $fetch<AgencyClient>('/api/agency/clients', {
+    return await apiFetch<AgencyClient>('/api/agency/clients', {
       method: 'POST',
       body: {
         name: option.name,
@@ -836,7 +855,7 @@ async function ensureAgencyClientForSelection(): Promise<string> {
   const client = await createOrFindAgencyClient(option)
 
   await Promise.all(option.socialConnectionIds.map(connectionId =>
-    $fetch('/api/agency/social/spend/map-account', {
+    apiFetch('/api/agency/social/spend/map-account', {
       method: 'POST',
       body: { connectionId, clientId: client.id }
     })
@@ -858,7 +877,7 @@ function isOpenFeedWorkbookProject(project: ProjectSummary, projectName: string)
 }
 
 async function findExistingFeedWorkbookProject(clientId: string, projectName: string) {
-  const projects = await $fetch<ProjectSummary[]>('/api/agency/projects', {
+  const projects = await apiFetch<ProjectSummary[]>('/api/agency/projects', {
     query: { clientId }
   })
   return projects.find(project => isOpenFeedWorkbookProject(project, projectName)) || null
@@ -998,7 +1017,7 @@ async function startFeedWorkbook() {
       return
     }
 
-    const result = await $fetch<UseTemplateResponse>(`/api/agency/templates/${template.id}/use`, {
+    const result = await apiFetch<UseTemplateResponse>(`/api/agency/templates/${template.id}/use`, {
       method: 'POST',
       body: {
         clientId,
@@ -1039,7 +1058,7 @@ async function loadFeeds() {
 
   feedsPending.value = true
   try {
-    const result = await $fetch<{ ok: boolean, feeds: FeedSummary[] }>(`/api/admin/dealer-feeds/${selectedClientId.value}`)
+    const result = await apiFetch<{ ok: boolean, feeds: FeedSummary[] }>(`/api/admin/dealer-feeds/${selectedClientId.value}`)
     feedRows.value = result.feeds || []
   } catch (error: unknown) {
     feedsError.value = errorMessage(error, 'Failed to load dealer feeds')
@@ -1062,7 +1081,7 @@ async function loadDraftPreview() {
   draftPreviewError.value = ''
 
   try {
-    const result = await $fetch<{ ok: boolean, preview: DraftPreviewState }>(
+    const result = await apiFetch<{ ok: boolean, preview: DraftPreviewState }>(
       `/api/admin/dealer-feeds/${selectedClientId.value}/preview`,
       {
         method: 'POST',
@@ -1092,7 +1111,7 @@ async function previewFeed(feed: FeedSummary) {
   generatedFeedUrl.value = ''
   generatedFeedMeta.value = null
   try {
-    const result = await $fetch<{ ok: boolean, preview: { total: number, items: VehicleSummary[], validation?: FeedPreviewValidation, readiness?: FeedReadinessSummary } }>(
+    const result = await apiFetch<{ ok: boolean, preview: { total: number, items: VehicleSummary[], validation?: FeedPreviewValidation, readiness?: FeedReadinessSummary } }>(
       `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/preview`,
       { query: { platform: feed.platform, limit: 20, offset: 0, search: feedPreviewSearch.value.trim() || undefined } }
     )
@@ -1206,7 +1225,7 @@ async function shareFeed(feed: FeedSummary) {
 
   generatingFeedKey.value = feed.id
   try {
-    const result = await $fetch<{ ok: boolean, feedUrl: string, url?: string }>(
+    const result = await apiFetch<{ ok: boolean, feedUrl: string, url?: string }>(
       `/api/admin/dealer-feeds/${selectedClientId.value}/${feed.id}/url`
     )
     const url = result.feedUrl || result.url || ''
@@ -1233,7 +1252,7 @@ async function saveMapping() {
   savingLink.value = true
   try {
     const clientId = await ensureAgencyClientForSelection()
-    await $fetch('/api/admin/dealer-feed-links', {
+    await apiFetch('/api/admin/dealer-feed-links', {
       method: 'POST',
       body: {
         clientId,
@@ -1263,7 +1282,7 @@ async function deactivateMapping() {
 
   deletingLink.value = true
   try {
-    await $fetch(`/api/admin/dealer-feed-links/${selectedClientId.value}`, { method: 'DELETE' })
+    await apiFetch(`/api/admin/dealer-feed-links/${selectedClientId.value}`, { method: 'DELETE' })
     toast.add({ title: 'Dealer feed mapping deactivated', color: 'success' })
     await refreshLinks()
     populateMappingForm()
@@ -1295,7 +1314,7 @@ async function createFeed() {
 
   savingFeed.value = true
   try {
-    await $fetch(`/api/admin/dealer-feeds/${selectedClientId.value}`, {
+    await apiFetch(`/api/admin/dealer-feeds/${selectedClientId.value}`, {
       method: 'POST',
       body: {
         name: feedForm.name.trim(),

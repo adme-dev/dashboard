@@ -135,7 +135,7 @@ function onRemoveTween(index: number) {
           <div class="flex items-center gap-2">
             <UCheckbox
               :model-value="state.soloMotionPath"
-              @update:model-value="v => state.soloMotionPath = v"
+              @update:model-value="v => state.soloMotionPath = v === true"
             />
             <label class="text-[11px] text-(--ui-text-muted)">Solo Preview</label>
             <span class="text-[9px] text-(--ui-text-dimmed)">(path only, no entrance/exit)</span>

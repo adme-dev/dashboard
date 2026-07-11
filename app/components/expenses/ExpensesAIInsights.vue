@@ -60,6 +60,7 @@ const isLoading = ref(false)
 const hasLoaded = ref(false)
 const aiData = ref<{ success: boolean; data: AIData } | null>(null)
 const error = ref<any>(null)
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 // Manual load function
 async function loadAIInsights() {
@@ -75,7 +76,7 @@ async function loadAIInsights() {
   error.value = null
   
   try {
-    const response = await $fetch('/api/ai/expense-insights') as { success: boolean; data: AIData }
+    const response = await apiFetch<{ success: boolean; data: AIData }>('/api/ai/expense-insights')
     aiData.value = response
     hasLoaded.value = true
   } catch (err) {

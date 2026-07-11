@@ -1,7 +1,22 @@
 <script setup lang="ts">
 import { format, parseISO } from 'date-fns'
 
-const { data, status } = await useFetch('/api/agency/briefs')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshBriefs() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/briefs')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load briefs pipeline', error)
+    status.value = 'error'
+  }
+}
+
+await refreshBriefs()
 
 const briefs = computed(() => (data.value as any)?.briefs || [])
 // True per-status totals for the whole pipeline (not just the fetched page).

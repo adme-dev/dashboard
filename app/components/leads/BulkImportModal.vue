@@ -3,9 +3,18 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ (e: 'imported'): void }>()
 
 const toast = useToast()
-const { data: clients } = useFetch<{ id: string, name: string }[]>('/api/agency/clients', {
-  default: () => []
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const clients = ref<{ id: string, name: string }[]>([])
+
+async function refreshClients() {
+  clients.value = await apiFetch<{ id: string, name: string }[]>('/api/agency/clients')
+}
+
+await refreshClients()
+
 const clientOptions = computed(() =>
   ((clients.value ?? []) as { id: string, name: string }[]).map(c => ({ value: c.id, label: c.name }))
 )
@@ -131,7 +140,7 @@ async function submit() {
   }
   uploading.value = true
   try {
-    const r = await $fetch<ImportResult>('/api/leads/import-csv', {
+    const r = await apiFetch<ImportResult>('/api/leads/import-csv', {
       method: 'POST',
       body: {
         client_id: clientId.value,

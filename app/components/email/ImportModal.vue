@@ -7,6 +7,10 @@ const emit = defineEmits<{ (e: 'imported'): void }>()
 const open = defineModel<boolean>('open', { default: false })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 const importing = ref(false)
 const listId = ref<string | undefined>(undefined)
 const csv = ref('')
@@ -56,7 +60,7 @@ async function run() {
   }
   importing.value = true
   try {
-    result.value = await $fetch('/api/email/subscribers/import', {
+    result.value = await apiFetch('/api/email/subscribers/import', {
       method: 'POST',
       body: { list_id: listId.value, csv: csv.value }
     })

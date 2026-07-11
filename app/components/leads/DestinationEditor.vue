@@ -16,6 +16,10 @@ const draft = ref<LeadRuleDestination>(structuredClone({
 }))
 const saving = ref(false)
 const errors = ref<Record<string, string>>({})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const DELAY_OPTIONS = [
   { value: 0, label: 'Immediate' },
@@ -119,11 +123,11 @@ async function save() {
       sort_order: draft.value.sort_order,
     }
     if (props.destination.id) {
-      await $fetch(`/api/leads/rules/${props.ruleId}/destinations/${props.destination.id}`, {
+      await apiFetch(`/api/leads/rules/${props.ruleId}/destinations/${props.destination.id}`, {
         method: 'PUT', body,
       })
     } else {
-      await $fetch(`/api/leads/rules/${props.ruleId}/destinations`, { method: 'POST', body })
+      await apiFetch(`/api/leads/rules/${props.ruleId}/destinations`, { method: 'POST', body })
     }
     toast.add({ title: 'Saved', color: 'success' })
     emit('saved')

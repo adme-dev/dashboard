@@ -6,6 +6,7 @@ definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 const route = useRoute()
 const toast = useToast()
 const projectId = computed(() => route.params.id as string)
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 const {
   state,
@@ -215,13 +216,24 @@ const saveStatus = computed(() => {
 })
 
 // Review status
-const { data: reviewData, refresh: refreshReview } = useFetch<any>(
-  () => projectId.value !== 'new' ? `/api/agency/banner-studio/reviews/${projectId.value}` : null,
-  { default: () => null },
-)
+const reviewData = ref<any | null>(null)
+
+async function refreshReview() {
+  if (projectId.value === 'new') {
+    reviewData.value = null
+    return
+  }
+  reviewData.value = await apiFetch<any>(`/api/agency/banner-studio/reviews/${projectId.value}`).catch(() => null)
+}
+
+watch(projectId, () => {
+  refreshReview()
+}, { immediate: true })
 
 const reviewStatus = computed(() => reviewData.value?.reviewStatus || 'draft')
-const REVIEW_STATUS_COLORS: Record<string, string> = {
+type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
+
+const REVIEW_STATUS_COLORS: Record<string, UiColor> = {
   draft: 'neutral',
   in_review: 'warning',
   changes_requested: 'error',
@@ -544,7 +556,7 @@ const { activeSize } = useBannerFileSize()
     <BannerAdPublishModal v-if="showAdPublish" v-model:open="showAdPublish" :project-id="projectId" />
 
     <!-- Ad Preview Slideover -->
-    <USlideover v-model:open="showPreview" side="right" :ui="{ width: 'max-w-5xl' }">
+    <USlideover v-model:open="showPreview" side="right" :ui="{ content: 'max-w-5xl' }">
       <template #content>
         <div class="p-5 h-full overflow-y-auto bg-[#111114]">
           <div class="flex items-center justify-between mb-5">
@@ -644,7 +656,7 @@ const { activeSize } = useBannerFileSize()
     </UModal>
 
     <!-- Analytics Modal -->
-    <UModal v-model:open="showAnalytics" :ui="{ width: 'max-w-3xl' }">
+    <UModal v-model:open="showAnalytics" :ui="{ content: 'max-w-3xl' }">
       <template #content>
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">

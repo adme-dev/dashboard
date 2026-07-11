@@ -297,6 +297,7 @@
 definePageMeta({ layout: 'admin', middleware: ['role-admin'] })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const connectionStatus = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
 const apiToken = ref('')
@@ -396,7 +397,7 @@ const formatTime = (date: string) => {
 // Check existing connection on mount
 onMounted(async () => {
   try {
-    const response = await $fetch('/api/agency/monday/connection')
+    const response = await apiFetch<any>('/api/agency/monday/connection')
     if (response.connected) {
       connectionStatus.value = 'connected'
       accountInfo.value = response.account
@@ -421,7 +422,7 @@ onMounted(async () => {
 
 async function autoMapBoards() {
   try {
-    const response = await $fetch('/api/agency/monday/board-department-mappings')
+    const response = await apiFetch<{ mappings: Array<{ mondayBoardId: string; departmentId: string }> }>('/api/agency/monday/board-department-mappings')
     if (!response.mappings?.length) return
 
     let autoMapped = 0
@@ -459,7 +460,7 @@ async function testAndConnect() {
 
   testingConnection.value = true
   try {
-    const response = await $fetch('/api/agency/monday/connection', {
+    const response = await apiFetch<any>('/api/agency/monday/connection', {
       method: 'POST',
       body: { token: apiToken.value },
     })
@@ -482,7 +483,7 @@ async function testAndConnect() {
 
 async function disconnect() {
   try {
-    await $fetch('/api/agency/monday/connection', { method: 'DELETE' })
+    await apiFetch('/api/agency/monday/connection', { method: 'DELETE' })
     connectionStatus.value = 'disconnected'
     accountInfo.value = null
     mondayBoards.value = []
@@ -496,7 +497,7 @@ async function disconnect() {
 async function fetchMondayBoards() {
   fetchingBoards.value = true
   try {
-    const response = await $fetch('/api/agency/monday/boards')
+    const response = await apiFetch<any>('/api/agency/monday/boards')
     mondayBoards.value = response.boards || []
   } catch (error: any) {
     toast.add({
@@ -531,7 +532,7 @@ async function runFullSync() {
 
   syncing.value = true
   try {
-    const response = await $fetch('/api/agency/monday/sync', {
+    const response = await apiFetch<any>('/api/agency/monday/sync', {
       method: 'POST',
       body: {
         boardIds: connectedBoards.value,
@@ -560,7 +561,13 @@ async function runImportAll() {
   importing.value = true
   importResult.value = null
   try {
-    const response = await $fetch('/api/agency/monday/import-all', {
+    const response = await apiFetch<{
+      success: boolean
+      departmentsCreated: number
+      boardsMigrated: number
+      itemsMigrated: number
+      itemsFailed: number
+    }>('/api/agency/monday/import-all', {
       method: 'POST',
       body: {
         skipArchived: true,
@@ -602,7 +609,7 @@ async function runImportAll() {
 async function saveSyncSettings() {
   savingSettings.value = true
   try {
-    await $fetch('/api/agency/monday/settings', {
+    await apiFetch('/api/agency/monday/settings', {
       method: 'PUT',
       body: {
         ...syncSettings.value,
@@ -620,7 +627,7 @@ async function saveSyncSettings() {
 
 async function fetchSyncLogs() {
   try {
-    const response = await $fetch('/api/agency/monday/sync-logs')
+    const response = await apiFetch<any>('/api/agency/monday/sync-logs')
     syncLogs.value = response.logs || []
   } catch {
     // Ignore

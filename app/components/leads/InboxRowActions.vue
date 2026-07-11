@@ -5,6 +5,10 @@ const props = defineProps<{ lead: Lead }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 const showDeleteModal = ref(false)
 const items = computed(() => [
   [
@@ -14,7 +18,7 @@ const items = computed(() => [
       disabled: props.lead.status !== 'new',
       onSelect: async () => {
         try {
-          await $fetch(`/api/leads/${props.lead.id}`, { method: 'PATCH', body: { status: 'contacted' } })
+          await apiFetch(`/api/leads/${props.lead.id}`, { method: 'PATCH', body: { status: 'contacted' } })
           toast.add({ title: 'Marked contacted', color: 'success' })
           emit('changed')
         } catch (e: any) { toast.add({ title: 'Failed', description: e?.data?.statusMessage ?? '', color: 'error' }) }
@@ -24,7 +28,7 @@ const items = computed(() => [
       label: 'Mark spam',
       icon: 'i-lucide-trash-2',
       onSelect: async () => {
-        await $fetch(`/api/leads/${props.lead.id}`, { method: 'PATCH', body: { status: 'spam_suspected' } })
+        await apiFetch(`/api/leads/${props.lead.id}`, { method: 'PATCH', body: { status: 'spam_suspected' } })
         toast.add({ title: 'Marked spam', color: 'warning' })
         emit('changed')
       },
@@ -41,7 +45,7 @@ const items = computed(() => [
 ])
 
 async function confirmDelete() {
-  await $fetch(`/api/leads/${props.lead.id}`, { method: 'DELETE' })
+  await apiFetch(`/api/leads/${props.lead.id}`, { method: 'DELETE' })
   toast.add({ title: 'Lead removed', color: 'success' })
   showDeleteModal.value = false
   emit('changed')

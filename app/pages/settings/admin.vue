@@ -497,18 +497,48 @@ interface ExpenseCategory {
   expenseCount: number
 }
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
+
+function createListState<T>(request: string, query?: Record<string, unknown>) {
+  const data = shallowRef<T[]>([])
+  const pending = ref(true)
+  const error = ref<unknown>(null)
+
+  async function refresh() {
+    pending.value = true
+    error.value = null
+
+    try {
+      data.value = await apiFetch<T[]>(request, query ? { query } : undefined)
+    } catch (fetchError) {
+      error.value = fetchError
+      data.value = []
+    } finally {
+      pending.value = false
+    }
+  }
+
+  return { data, pending, error, refresh }
+}
+
 // Data fetching
-const { data: departments, pending: departmentsPending, refresh: refreshDepartments } = await useFetch<Department[]>('/api/agency/departments', {
-  query: { active: 'false' }
-})
+const { data: departments, pending: departmentsPending, refresh: refreshDepartments } = createListState<Department>('/api/agency/departments', { active: 'false' })
 
-const { data: statuses, pending: statusesPending, refresh: refreshStatuses } = await useFetch<Status[]>('/api/agency/statuses')
+const { data: statuses, pending: statusesPending, refresh: refreshStatuses } = createListState<Status>('/api/agency/statuses')
 
-const { data: tags, pending: tagsPending, refresh: refreshTags } = await useFetch<Tag[]>('/api/agency/tags')
+const { data: tags, pending: tagsPending, refresh: refreshTags } = createListState<Tag>('/api/agency/tags')
 
-const { data: expenseCategories, pending: expenseCategoriesPending, refresh: refreshExpenseCategories } = await useFetch<ExpenseCategory[]>('/api/agency/expense-categories', {
-  query: { active: 'false', hierarchy: 'true' }
-})
+const { data: expenseCategories, pending: expenseCategoriesPending, refresh: refreshExpenseCategories } = createListState<ExpenseCategory>('/api/agency/expense-categories', { active: 'false', hierarchy: 'true' })
+
+await Promise.all([
+  refreshDepartments(),
+  refreshStatuses(),
+  refreshTags(),
+  refreshExpenseCategories()
+])
 
 // Department options for status form — use sentinel for "no selection"
 const NONE_SENTINEL = '__none__'
@@ -559,13 +589,13 @@ const saveDepartment = async () => {
   savingDepartment.value = true
   try {
     if (editingDepartment.value) {
-      await $fetch(`/api/agency/departments/${editingDepartment.value.id}`, {
+      await apiFetch(`/api/agency/departments/${editingDepartment.value.id}`, {
         method: 'PUT',
         body: departmentForm.value
       })
       toast.add({ title: 'Department updated', color: 'success' })
     } else {
-      await $fetch('/api/agency/departments', {
+      await apiFetch('/api/agency/departments', {
         method: 'POST',
         body: departmentForm.value
       })
@@ -591,7 +621,7 @@ const getDepartmentActions = (dept: Department) => [[
     icon: dept.isActive ? 'i-lucide-eye-off' : 'i-lucide-eye',
     onSelect: async () => {
       try {
-        await $fetch(`/api/agency/departments/${dept.id}`, {
+        await apiFetch(`/api/agency/departments/${dept.id}`, {
           method: 'PUT',
           body: { isActive: !dept.isActive }
         })
@@ -653,13 +683,13 @@ const saveStatus = async () => {
     }
 
     if (editingStatus.value) {
-      await $fetch(`/api/agency/statuses/${editingStatus.value.id}`, {
+      await apiFetch(`/api/agency/statuses/${editingStatus.value.id}`, {
         method: 'PUT',
         body
       })
       toast.add({ title: 'Status updated', color: 'success' })
     } else {
-      await $fetch('/api/agency/statuses', {
+      await apiFetch('/api/agency/statuses', {
         method: 'POST',
         body
       })
@@ -722,13 +752,13 @@ const saveTag = async () => {
   savingTag.value = true
   try {
     if (editingTag.value) {
-      await $fetch(`/api/agency/tags/${editingTag.value.id}`, {
+      await apiFetch(`/api/agency/tags/${editingTag.value.id}`, {
         method: 'PUT',
         body: tagForm.value
       })
       toast.add({ title: 'Tag updated', color: 'success' })
     } else {
-      await $fetch('/api/agency/tags', {
+      await apiFetch('/api/agency/tags', {
         method: 'POST',
         body: tagForm.value
       })
@@ -756,7 +786,7 @@ const getTagActions = (tag: Tag) => [[
       `Delete tag "${tag.name}"?`,
       'This action cannot be undone.',
       async () => {
-        await $fetch(`/api/agency/tags/${tag.id}`, { method: 'DELETE' })
+        await apiFetch(`/api/agency/tags/${tag.id}`, { method: 'DELETE' })
         toast.add({ title: 'Tag deleted', color: 'success' })
         await refreshTags()
       }
@@ -844,13 +874,13 @@ const saveExpenseCategory = async () => {
     }
 
     if (editingExpenseCategory.value) {
-      await $fetch(`/api/agency/expense-categories/${editingExpenseCategory.value.id}`, {
+      await apiFetch(`/api/agency/expense-categories/${editingExpenseCategory.value.id}`, {
         method: 'PUT',
         body
       })
       toast.add({ title: 'Category updated', color: 'success' })
     } else {
-      await $fetch('/api/agency/expense-categories', {
+      await apiFetch('/api/agency/expense-categories', {
         method: 'POST',
         body
       })
@@ -876,7 +906,7 @@ const getExpenseCategoryActions = (cat: ExpenseCategory) => [[
     icon: cat.isActive ? 'i-lucide-eye-off' : 'i-lucide-eye',
     onSelect: async () => {
       try {
-        await $fetch(`/api/agency/expense-categories/${cat.id}`, {
+        await apiFetch(`/api/agency/expense-categories/${cat.id}`, {
           method: 'PUT',
           body: { isActive: !cat.isActive }
         })
@@ -896,7 +926,7 @@ const getExpenseCategoryActions = (cat: ExpenseCategory) => [[
         ? 'This category has expenses and will be deactivated instead of deleted.'
         : 'This action cannot be undone.',
       async () => {
-        const result = await $fetch<{ deactivated?: boolean }>(`/api/agency/expense-categories/${cat.id}`, { method: 'DELETE' })
+        const result = await apiFetch<{ deactivated?: boolean }>(`/api/agency/expense-categories/${cat.id}`, { method: 'DELETE' })
         if (result.deactivated) {
           toast.add({ title: 'Category deactivated', description: 'Category has expenses and was deactivated instead of deleted', color: 'info' })
         } else {

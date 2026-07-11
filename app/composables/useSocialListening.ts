@@ -26,6 +26,11 @@ export interface ListeningQueryInput {
 const QBASE = '/api/agency/social/listening/queries'
 
 export function useSocialListening(clientId: Ref<string | null>) {
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+    method?: string
+    body?: unknown
+    query?: Record<string, unknown>
+  }) => Promise<T>
   const queries = ref<ListeningQuery[]>([])
   const mentions = ref<any[]>([])
   const loading = ref(false)
@@ -36,7 +41,7 @@ export function useSocialListening(clientId: Ref<string | null>) {
 
   async function loadQueries() {
     if (!clientId.value) { queries.value = []; return }
-    queries.value = await $fetch<ListeningQuery[]>(QBASE, { query: { clientId: clientId.value } })
+    queries.value = await apiFetch<ListeningQuery[]>(QBASE, { query: { clientId: clientId.value } })
   }
 
   async function loadMentions() {
@@ -44,12 +49,12 @@ export function useSocialListening(clientId: Ref<string | null>) {
     const query: Record<string, any> = { clientId: clientId.value, limit: 100 }
     if (filterSource.value !== 'all') query.source = filterSource.value
     if (filterSentiment.value !== 'all') query.sentiment = filterSentiment.value
-    mentions.value = await $fetch<any[]>('/api/agency/social/listening/mentions', { query })
+    mentions.value = await apiFetch<any[]>('/api/agency/social/listening/mentions', { query })
   }
 
   async function loadOverview() {
     if (!clientId.value) { overview.value = null; return }
-    overview.value = await $fetch<any>('/api/agency/social/listening/overview', { query: { clientId: clientId.value, days: days.value } })
+    overview.value = await apiFetch<any>('/api/agency/social/listening/overview', { query: { clientId: clientId.value, days: days.value } })
   }
 
   async function load() {
@@ -60,20 +65,20 @@ export function useSocialListening(clientId: Ref<string | null>) {
 
   async function createQuery(input: ListeningQueryInput) {
     if (!clientId.value) return
-    await $fetch(QBASE, { method: 'POST', body: { clientId: clientId.value, ...input } })
+    await apiFetch(QBASE, { method: 'POST', body: { clientId: clientId.value, ...input } })
     await loadQueries()
   }
   async function updateQuery(id: string, input: Partial<ListeningQueryInput>) {
-    await $fetch(`${QBASE}/${id}`, { method: 'PATCH', body: input })
+    await apiFetch(`${QBASE}/${id}`, { method: 'PATCH', body: input })
     await loadQueries()
   }
   async function removeQuery(id: string) {
-    await $fetch(`${QBASE}/${id}`, { method: 'DELETE' })
+    await apiFetch(`${QBASE}/${id}`, { method: 'DELETE' })
     await loadQueries()
   }
   async function syncOwned() {
     if (!clientId.value) return
-    await $fetch('/api/agency/social/listening/sync-owned', { method: 'POST', body: { clientId: clientId.value } })
+    await apiFetch('/api/agency/social/listening/sync-owned', { method: 'POST', body: { clientId: clientId.value } })
     await loadMentions()
   }
 

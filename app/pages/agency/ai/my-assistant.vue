@@ -9,9 +9,29 @@ interface MemoryView { id: string, content: string, memType: string, scope: stri
 
 const toast = useToast()
 
-const { data: config } = await useFetch<MyConfig>('/api/agency/ai/my-assistant')
-const { data: toolsData } = await useFetch<{ tools: ToolInfo[] }>('/api/agency/ai/my-assistant/tools')
-const { data: memData, refresh: refreshMemories } = await useFetch<{ observed: MemoryView[], shared: MemoryView[] }>('/api/agency/ai/my-assistant/memories')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
+const config = ref<MyConfig | null>(null)
+const toolsData = ref<{ tools: ToolInfo[] } | null>(null)
+const memData = ref<{ observed: MemoryView[], shared: MemoryView[] } | null>(null)
+
+async function refreshMemories() {
+  memData.value = await apiFetch<{ observed: MemoryView[], shared: MemoryView[] }>('/api/agency/ai/my-assistant/memories')
+}
+
+async function refreshSettings() {
+  const [nextConfig, nextTools] = await Promise.all([
+    apiFetch<MyConfig>('/api/agency/ai/my-assistant'),
+    apiFetch<{ tools: ToolInfo[] }>('/api/agency/ai/my-assistant/tools'),
+    refreshMemories(),
+  ])
+  config.value = nextConfig
+  toolsData.value = nextTools
+}
+
+await refreshSettings()
 
 const observedMemories = computed(() => memData.value?.observed ?? [])
 const sharedMemories = computed(() => memData.value?.shared ?? [])
@@ -28,7 +48,7 @@ async function deleteMemory() {
   if (!memoryToDelete.value) return
   deletingMemory.value = true
   try {
-    await $fetch(`/api/agency/ai/my-assistant/memories/${memoryToDelete.value.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/ai/my-assistant/memories/${memoryToDelete.value.id}`, { method: 'DELETE' })
     toast.add({ title: 'Forgotten', description: 'The assistant has forgotten that.', color: 'success' })
     showDeleteMemory.value = false
     memoryToDelete.value = null
@@ -64,7 +84,7 @@ const saving = ref(false)
 async function save() {
   saving.value = true
   try {
-    const saved = await $fetch<MyConfig>('/api/agency/ai/my-assistant', {
+    const saved = await apiFetch<MyConfig>('/api/agency/ai/my-assistant', {
       method: 'PUT',
       body: { personaKey: personaKey.value, disabledTools: [...disabled.value], memoryEnabled: memoryEnabled.value }
     })

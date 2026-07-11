@@ -3,6 +3,10 @@ import type { CrmPerson, CrmListResponse, CrmFilterClause } from '~/types/crm'
 
 export function useCrmPeople(clientId: Ref<string | null>) {
   const base = inject<string>('crmApiBase', '/api/crm')
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+  ) => Promise<T>
   const search = useState<string>('crm-people-search', () => '')
   const companyId = useState<string | null>('crm-people-company', () => null)
   const lifecycle = useState<string | null>('crm-people-lifecycle', () => null)
@@ -19,30 +23,42 @@ export function useCrmPeople(clientId: Ref<string | null>) {
     if (filters.value.length) p.filters = JSON.stringify(filters.value)
     return p
   })
-  const { data, pending, refresh } = useFetch<CrmListResponse<CrmPerson>>(`${base}/people`, {
-    query,
-    watch: [query],
-    immediate: false,
-    default: () => ({ items: [], total: 0, page: 1, page_size: 50 }),
-  })
-  watch(clientId, (v) => { if (v) refresh() }, { immediate: true })
+  const defaultResponse = (): CrmListResponse<CrmPerson> => ({ items: [], total: 0, page: 1, page_size: 50 })
+  const data = ref<CrmListResponse<CrmPerson>>(defaultResponse())
+  const pending = ref(false)
+
+  async function refresh() {
+    if (!clientId.value) {
+      data.value = defaultResponse()
+      return
+    }
+
+    pending.value = true
+    try {
+      data.value = await apiFetch<CrmListResponse<CrmPerson>>(`${base}/people`, { query: query.value })
+    } finally {
+      pending.value = false
+    }
+  }
+
+  watch(query, () => { refresh() }, { immediate: true })
 
   async function create(body: Partial<CrmPerson>) {
-    const res = await $fetch<{ item: CrmPerson }>(`${base}/people`, { method: 'POST', body: { ...body, client_id: clientId.value } })
+    const res = await apiFetch<{ item: CrmPerson }>(`${base}/people`, { method: 'POST', body: { ...body, client_id: clientId.value } })
     await refresh()
     return res.item
   }
   async function update(id: string, body: Partial<CrmPerson>) {
-    const res = await $fetch<{ item: CrmPerson }>(`${base}/people/${id}`, { method: 'PATCH', body: { ...body, client_id: clientId.value } })
+    const res = await apiFetch<{ item: CrmPerson }>(`${base}/people/${id}`, { method: 'PATCH', body: { ...body, client_id: clientId.value } })
     await refresh()
     return res.item
   }
   async function remove(id: string) {
-    await $fetch(`${base}/people/${id}`, { method: 'DELETE', query: { client_id: clientId.value } })
+    await apiFetch(`${base}/people/${id}`, { method: 'DELETE', query: { client_id: clientId.value } })
     await refresh()
   }
   async function importCsv(csv: string) {
-    const res = await $fetch<{ imported: number, skipped: number, errors: { row: number, message: string }[] }>(
+    const res = await apiFetch<{ imported: number, skipped: number, errors: { row: number, message: string }[] }>(
       `${base}/people/import`, { method: 'POST', body: { client_id: clientId.value, csv } },
     )
     await refresh()

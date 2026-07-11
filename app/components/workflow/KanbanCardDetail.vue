@@ -13,21 +13,68 @@ const emit = defineEmits<{
   deleted: []
 }>()
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
+
 // Fetch full task details
-const { data: task, pending: loading, refresh } = await useFetch<Task>(() => `/api/agency/tasks/${props.taskId}`, {
-  immediate: props.open
-})
+const task = ref<Task | null>(null)
+const loading = ref(false)
+const activitiesData = ref<{ activities?: TaskActivity[] } | null>(null)
+const timeEntriesData = ref<{ entries?: unknown[], summary?: Record<string, any> } | null>(null)
+const statusesData = ref<TaskStatus[]>([])
+const labelsData = ref<TaskLabel[]>([])
 
-// Fetch task activities
-const { data: activitiesData } = await useFetch(() => `/api/agency/tasks/${props.taskId}/activities`, {
-  immediate: props.open
-})
+async function refreshActivities() {
+  try {
+    activitiesData.value = await apiFetch<{ activities?: TaskActivity[] }>(`/api/agency/tasks/${props.taskId}/activities`)
+  } catch {
+    activitiesData.value = null
+  }
+}
 
-// Fetch time entries for this task
-const { data: timeEntriesData, refresh: refreshTimeEntries } = await useFetch(
-  () => `/api/agency/tasks/${props.taskId}/time-entries`,
-  { immediate: props.open }
-)
+async function refreshTimeEntries() {
+  try {
+    timeEntriesData.value = await apiFetch<{ entries?: unknown[], summary?: Record<string, any> }>(`/api/agency/tasks/${props.taskId}/time-entries`)
+  } catch {
+    timeEntriesData.value = null
+  }
+}
+
+async function refreshStatuses() {
+  try {
+    statusesData.value = await apiFetch<TaskStatus[]>('/api/agency/statuses', {
+      query: { departmentId: task.value?.departmentId }
+    })
+  } catch {
+    statusesData.value = []
+  }
+}
+
+async function refreshLabels() {
+  try {
+    labelsData.value = await apiFetch<TaskLabel[]>('/api/agency/labels', {
+      query: { departmentId: task.value?.departmentId }
+    })
+  } catch {
+    labelsData.value = []
+  }
+}
+
+async function refresh() {
+  loading.value = true
+  try {
+    task.value = await apiFetch<Task>(`/api/agency/tasks/${props.taskId}`)
+    await Promise.all([refreshActivities(), refreshTimeEntries(), refreshStatuses(), refreshLabels()])
+  } catch {
+    task.value = null
+  } finally {
+    loading.value = false
+  }
+}
+
+if (props.open) await refresh()
 
 const timeEntries = computed(() => (timeEntriesData.value as any)?.entries || [])
 const timeSummary = computed(() => (timeEntriesData.value as any)?.summary || {})
@@ -37,23 +84,9 @@ const activities = computed(() => {
   return response?.activities || []
 })
 
-// Fetch available statuses
-const { data: statusesData } = await useFetch('/api/agency/statuses', {
-  query: computed(() => ({
-    departmentId: task.value?.departmentId
-  }))
-})
+const statuses = computed(() => statusesData.value || [])
 
-const statuses = computed(() => (statusesData.value as TaskStatus[]) || [])
-
-// Fetch available labels
-const { data: labelsData } = await useFetch('/api/agency/labels', {
-  query: computed(() => ({
-    departmentId: task.value?.departmentId
-  }))
-})
-
-const labels = computed(() => (labelsData.value as TaskLabel[]) || [])
+const labels = computed(() => labelsData.value || [])
 
 // Edit mode states
 const isEditingTitle = ref(false)
@@ -84,7 +117,7 @@ const updateField = async (field: string, value: any) => {
   if (!task.value) return
 
   try {
-    await $fetch(`/api/agency/tasks/${props.taskId}`, {
+    await apiFetch(`/api/agency/tasks/${props.taskId}`, {
       method: 'PUT',
       body: { [field]: value }
     })
@@ -111,7 +144,7 @@ const saveDescription = async () => {
 
 const updateStatus = async (statusId: unknown) => {
   if (typeof statusId !== 'string') return
-  await $fetch(`/api/agency/tasks/${props.taskId}/status`, {
+  await apiFetch(`/api/agency/tasks/${props.taskId}/status`, {
     method: 'PATCH',
     body: { statusId }
   })
@@ -120,7 +153,7 @@ const updateStatus = async (statusId: unknown) => {
 }
 
 const updateAssignee = async (assigneeId: string | null) => {
-  await $fetch(`/api/agency/tasks/${props.taskId}/assignee`, {
+  await apiFetch(`/api/agency/tasks/${props.taskId}/assignee`, {
     method: 'PATCH',
     body: { assigneeId }
   })
@@ -143,7 +176,7 @@ const addTimeEntry = async () => {
 
   submittingTimeEntry.value = true
   try {
-    await $fetch('/api/agency/time/entries', {
+    await apiFetch('/api/agency/time/entries', {
       method: 'POST',
       body: {
         taskId: props.taskId,
@@ -181,7 +214,7 @@ const submitComment = async () => {
 
   submittingComment.value = true
   try {
-    await $fetch(`/api/agency/tasks/${props.taskId}/comments`, {
+    await apiFetch(`/api/agency/tasks/${props.taskId}/comments`, {
       method: 'POST',
       body: { content: newComment.value.trim() }
     })
@@ -201,7 +234,7 @@ const deleting = ref(false)
 const deleteTask = async () => {
   deleting.value = true
   try {
-    await $fetch(`/api/agency/tasks/${props.taskId}`, {
+    await apiFetch(`/api/agency/tasks/${props.taskId}`, {
       method: 'DELETE'
     })
     emit('deleted')
@@ -214,8 +247,8 @@ const deleteTask = async () => {
   }
 }
 
-// Watch for open changes
-watch(() => props.open, (isOpen) => {
+// Watch for open/task changes
+watch([() => props.open, () => props.taskId], ([isOpen]) => {
   if (isOpen) {
     refresh()
   }

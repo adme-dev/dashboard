@@ -14,6 +14,10 @@ const connections = ref<Ga4Connection[]>([])
 const maps = ref<Ga4Map[]>([])
 const clientOptions = ref<ClientOption[]>([])
 const selectedClient = reactive<Record<string, string>>({}) // propertyId -> clientId
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const hasConnections = computed(() => connections.value.length > 0)
 const hasErroredConnection = computed(() => connections.value.some(conn => Boolean(conn.lastError)))
@@ -37,7 +41,7 @@ function relativeTime(iso: string | null): string {
 async function loadProperties() {
   loading.value = true
   try {
-    const res = await $fetch<{ connections: Ga4Connection[]; maps: Ga4Map[] }>('/api/agency/social/ga4/properties')
+    const res = await apiFetch<{ connections: Ga4Connection[]; maps: Ga4Map[] }>('/api/agency/social/ga4/properties')
     connections.value = res.connections
     maps.value = res.maps
     for (const m of res.maps) selectedClient[m.property_id] = m.client_id
@@ -50,12 +54,12 @@ async function loadProperties() {
 
 async function loadClients() {
   // agency_clients list — reuse the existing clients endpoint (returns a bare array of { id, name, ... })
-  const res = await $fetch<Array<{ id: string; name: string }>>('/api/agency/clients').catch(() => [])
+  const res = await apiFetch<Array<{ id: string; name: string }>>('/api/agency/clients').catch(() => [])
   clientOptions.value = res.map((c) => ({ label: c.name, value: c.id }))
 }
 
 function connect() {
-  $fetch<{ url: string }>('/api/agency/social/ga4/connect').then(({ url }) => {
+  apiFetch<{ url: string }>('/api/agency/social/ga4/connect').then(({ url }) => {
     const popup = window.open(url, 'ga4_oauth', 'width=520,height=640')
     const timer = setInterval(() => {
       if (popup?.closed) { clearInterval(timer); loadProperties() }
@@ -67,7 +71,7 @@ async function mapProperty(conn: Ga4Connection, prop: Ga4Property) {
   const clientId = selectedClient[prop.propertyId]
   if (!clientId) return
   try {
-    await $fetch('/api/agency/social/ga4/map', {
+    await apiFetch('/api/agency/social/ga4/map', {
       method: 'POST',
       body: { connectionId: conn.connectionId, propertyId: prop.propertyId, propertyDisplayName: prop.propertyDisplayName, clientId }
     })
@@ -79,7 +83,7 @@ async function mapProperty(conn: Ga4Connection, prop: Ga4Property) {
 }
 
 async function syncNow() {
-  await $fetch('/api/agency/social/ga4/sync', { method: 'POST', body: { lookbackDays: 90 } })
+  await apiFetch('/api/agency/social/ga4/sync', { method: 'POST', body: { lookbackDays: 90 } })
   toast.add({ title: 'GA4 sync started', description: 'Pulling the last 90 days in the background.', color: 'success' })
 }
 

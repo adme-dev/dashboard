@@ -17,8 +17,29 @@ interface Schedule {
 const toast = useToast()
 const AGENCY = '__agency__'
 
-const { data: clientsData } = await useLazyFetch<ClientOption[]>('/api/agency/clients')
-const { data: schedulesData, refresh, pending } = await useFetch<{ schedules: Schedule[] }>('/api/agency/analytics/report-schedules')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
+const clientsData = ref<ClientOption[]>([])
+const schedulesData = ref<{ schedules: Schedule[] } | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    schedulesData.value = await apiFetch<{ schedules: Schedule[] }>('/api/agency/analytics/report-schedules')
+  } finally {
+    pending.value = false
+  }
+}
+
+async function refreshClients() {
+  clientsData.value = await apiFetch<ClientOption[]>('/api/agency/clients')
+}
+
+await Promise.all([refreshClients(), refresh()])
+
 const schedules = computed(() => schedulesData.value?.schedules ?? [])
 
 const clientItems = computed(() => [
@@ -50,7 +71,7 @@ async function createSchedule() {
     const branding: Record<string, string> = {}
     if (form.agencyName.trim()) branding.agencyName = form.agencyName.trim()
     if (form.accentColor.trim()) branding.accentColor = form.accentColor.trim()
-    await $fetch('/api/agency/analytics/report-schedules', {
+    await apiFetch('/api/agency/analytics/report-schedules', {
       method: 'POST',
       body: {
         clientId: form.clientValue === AGENCY ? null : form.clientValue,
@@ -73,7 +94,7 @@ async function createSchedule() {
 
 async function toggleEnabled(s: Schedule) {
   try {
-    await $fetch(`/api/agency/analytics/report-schedules/${s.id}`, { method: 'PATCH', body: { enabled: !s.enabled } })
+    await apiFetch(`/api/agency/analytics/report-schedules/${s.id}`, { method: 'PATCH', body: { enabled: !s.enabled } })
     await refresh()
   } catch {
     toast.add({ title: 'Failed to update', color: 'error' })
@@ -84,7 +105,7 @@ const sendingId = ref<string | null>(null)
 async function sendNow(s: Schedule) {
   sendingId.value = s.id
   try {
-    const res = await $fetch<{ status: string }>(`/api/agency/analytics/report-schedules/${s.id}/send`, { method: 'POST' })
+    const res = await apiFetch<{ status: string }>(`/api/agency/analytics/report-schedules/${s.id}/send`, { method: 'POST' })
     toast.add({ title: `Report ${res.status}`, color: res.status === 'success' ? 'success' : 'warning' })
     await refresh()
   } catch {
@@ -96,7 +117,7 @@ async function sendNow(s: Schedule) {
 
 async function remove(s: Schedule) {
   try {
-    await $fetch(`/api/agency/analytics/report-schedules/${s.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/analytics/report-schedules/${s.id}`, { method: 'DELETE' })
     toast.add({ title: 'Schedule deleted', color: 'success' })
     await refresh()
   } catch {

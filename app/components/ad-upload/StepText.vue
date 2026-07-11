@@ -31,12 +31,12 @@ watch(() => connectionId.value, () => {
   if (connectionId.value) fetchPages()
 })
 
-function addField(arr: Ref<string[]>, max: number) {
-  if (arr.value.length < max) arr.value.push('')
+function addField(arr: string[], max: number) {
+  if (arr.length < max) arr.push('')
 }
 
-function removeField(arr: Ref<string[]>, idx: number) {
-  if (arr.value.length > 1) arr.value.splice(idx, 1)
+function removeField(arr: string[], idx: number) {
+  if (arr.length > 1) arr.splice(idx, 1)
 }
 
 function handleSavePreset() {

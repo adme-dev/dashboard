@@ -19,8 +19,20 @@ const showImportModal = ref(false)
 // uses, so de-duped by Nuxt's useFetch cache.
 interface ClientOption { id: string, name: string }
 interface UserOption { id: string, name: string }
-const { data: clients } = useFetch<ClientOption[]>('/api/agency/clients', { default: () => [] })
-const { data: teamData } = useFetch<{ members: UserOption[] }>('/api/agency/team-members', { default: () => ({ members: [] }) })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const clients = ref<ClientOption[]>([])
+const teamData = ref<{ members: UserOption[] }>({ members: [] })
+
+async function refreshLookups() {
+  const [clientRows, teamRows] = await Promise.all([
+    apiFetch<ClientOption[]>('/api/agency/clients'),
+    apiFetch<{ members: UserOption[] }>('/api/agency/team-members'),
+  ])
+  clients.value = clientRows
+  teamData.value = teamRows
+}
+
+await refreshLookups()
 
 const clientNameById = computed(() => {
   const m = new Map<string, string>()

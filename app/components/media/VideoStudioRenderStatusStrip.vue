@@ -68,8 +68,14 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
   return [renderVariantFormats(job).map(format => ({
     label: `${label} ${format}`,
     icon,
-    onSelect: () => emit(event, job, format),
+    onSelect: () => emitVariant(event, job, format),
   }))]
+}
+
+function emitVariant(event: 'publish' | 'send-to-portal' | 'save-asset', job: MediaRenderJob, format: string) {
+  if (event === 'publish') emit('publish', job, format)
+  else if (event === 'send-to-portal') emit('send-to-portal', job, format)
+  else emit('save-asset', job, format)
 }
 
 const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(latestFailed.value.error) : null)

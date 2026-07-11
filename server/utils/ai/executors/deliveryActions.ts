@@ -9,8 +9,15 @@ import type { ActionExecutor, ExecutorResult } from './types'
  */
 
 export type Patcher = (url: string, body: any, ctx: ToolContext) => Promise<any>
-const defaultPatch: Patcher = (url, body, ctx) => $fetch(url, { method: 'PATCH', body, headers: ctx.event.headers as any })
-const defaultPost: Patcher = (url, body, ctx) => $fetch(url, { method: 'POST', body, headers: ctx.event.headers as any })
+const internalFetch = (<T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => Promise<T>
+const defaultPatch: Patcher = (url, body, ctx) => internalFetch(url, { method: 'PATCH', body, headers: ctx.event.headers as any })
+const defaultPost: Patcher = (url, body, ctx) => internalFetch(url, { method: 'POST', body, headers: ctx.event.headers as any })
 
 export function makeAssignTaskExecutor(patch: Patcher = defaultPatch): ActionExecutor {
   return {

@@ -1,9 +1,28 @@
 <script setup lang="ts">
 import { differenceInDays, parseISO } from 'date-fns'
 
-const { data, status } = await useFetch('/api/agency/tasks', {
-  query: { excludeCompleted: 'true', limit: 30 },
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshBlockedTasks() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/tasks', {
+      query: { excludeCompleted: 'true', limit: 30 },
+    })
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load blocked tasks', error)
+    status.value = 'error'
+  }
+}
+
+await refreshBlockedTasks()
 
 const CAP = 5
 const allBlocked = computed(() => {

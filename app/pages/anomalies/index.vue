@@ -1,5 +1,9 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; query?: Record<string, unknown> }
+) => Promise<T>
 
 type AnomalySeverity = 'critical' | 'warning' | 'info'
 type AnomalyType = 'profitability' | 'revenue' | 'expenses' | 'cashflow' | 'receivables' | 'budget' | 'adspend' | 'clients' | 'transactions' | 'ga4'
@@ -121,7 +125,7 @@ const severityFilterOptions = [
   { value: 'critical', label: severityMeta.critical.label },
   { value: 'warning', label: severityMeta.warning.label },
   { value: 'info', label: severityMeta.info.label }
-] as const
+] satisfies Array<{ value: string; label: string }>
 
 const typeFilterOptions = [
   { value: 'all', label: 'All Categories' },
@@ -135,7 +139,7 @@ const typeFilterOptions = [
   { value: 'clients', label: typeMeta.clients.label },
   { value: 'transactions', label: typeMeta.transactions.label },
   { value: 'ga4', label: typeMeta.ga4.label }
-] as const
+] satisfies Array<{ value: string; label: string }>
 
 type SeverityFilterValue = typeof severityFilterOptions[number]['value']
 type TypeFilterValue = typeof typeFilterOptions[number]['value']
@@ -205,13 +209,33 @@ const filterParams = computed(() => {
   return q
 })
 
-const { data, pending, error, refresh } = await useFetch<{
+const data = ref<{
   summary: AnomalySummary
   anomalies: Anomaly[]
-}>('/api/ai/anomalies', {
-  query: filterParams,
-  watch: [tab, statusPill, activeSeverity, activeType],
-  lazy: true
+} | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<{
+      summary: AnomalySummary
+      anomalies: Anomaly[]
+    }>('/api/ai/anomalies', { query: filterParams.value })
+  } catch (err) {
+    data.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
+
+watch([tab, statusPill, activeSeverity, activeType], () => {
+  void refresh()
 })
 
 const anomalies = computed(() => data.value?.anomalies ?? [])
@@ -230,7 +254,7 @@ async function onMutated() {
 async function runScan() {
   scanning.value = true
   try {
-    const result = await $fetch<{ tenantId: string, status: 'completed' | 'in_flight' | 'error', error?: string }>(
+    const result = await apiFetch<{ tenantId: string, status: 'completed' | 'in_flight' | 'error', error?: string }>(
       '/api/ai/anomalies/scan',
       { method: 'POST' }
     )
@@ -239,7 +263,7 @@ async function runScan() {
       // Poll up to 60s.
       for (let i = 0; i < 12; i++) {
         await new Promise(r => setTimeout(r, 5000))
-        const probe = await $fetch<{ status: string }>(
+        const probe = await apiFetch<{ status: string }>(
           '/api/ai/anomalies/scan',
           { method: 'POST' }
         )

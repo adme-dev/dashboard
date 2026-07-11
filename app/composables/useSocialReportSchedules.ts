@@ -33,12 +33,16 @@ const BASE = '/api/agency/social/reporting/schedules'
 export function useSocialReportSchedules(clientId: Ref<string | null>) {
   const schedules = ref<ReportSchedule[]>([])
   const loading = ref(false)
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+  ) => Promise<T>
 
   async function load() {
     if (!clientId.value) { schedules.value = []; return }
     loading.value = true
     try {
-      schedules.value = await $fetch<ReportSchedule[]>(BASE, { query: { clientId: clientId.value } })
+      schedules.value = await apiFetch<ReportSchedule[]>(BASE, { query: { clientId: clientId.value } })
     } finally {
       loading.value = false
     }
@@ -46,17 +50,17 @@ export function useSocialReportSchedules(clientId: Ref<string | null>) {
 
   async function create(input: ReportScheduleInput) {
     if (!clientId.value) return
-    await $fetch(BASE, { method: 'POST', body: { clientId: clientId.value, ...input } })
+    await apiFetch(BASE, { method: 'POST', body: { clientId: clientId.value, ...input } })
     await load()
   }
 
   async function update(id: string, input: Partial<ReportScheduleInput>) {
-    await $fetch(`${BASE}/${id}`, { method: 'PATCH', body: input })
+    await apiFetch(`${BASE}/${id}`, { method: 'PATCH', body: input })
     await load()
   }
 
   async function remove(id: string) {
-    await $fetch(`${BASE}/${id}`, { method: 'DELETE' })
+    await apiFetch(`${BASE}/${id}`, { method: 'DELETE' })
     await load()
   }
 
@@ -65,7 +69,7 @@ export function useSocialReportSchedules(clientId: Ref<string | null>) {
     const row = schedules.value.find(s => s.id === id)
     if (row) row.enabled = enabled
     try {
-      await $fetch(`${BASE}/${id}`, { method: 'PATCH', body: { enabled } })
+      await apiFetch(`${BASE}/${id}`, { method: 'PATCH', body: { enabled } })
     } catch (err) {
       if (row) row.enabled = !enabled // revert on failure
       throw err

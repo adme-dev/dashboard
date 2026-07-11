@@ -24,6 +24,10 @@ interface PortalApproval {
 }
 
 export function usePortalSocialInbox() {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  ) => Promise<T>
   const conversations = ref<SocialConversation[]>([])
   const loading = ref(false)
   const approvals = ref<PortalApproval[]>([])
@@ -31,31 +35,31 @@ export function usePortalSocialInbox() {
   async function load(filters: Record<string, string> = {}) {
     loading.value = true
     try {
-      conversations.value = await $fetch<SocialConversation[]>('/api/client-portal/social/conversations', { query: filters })
+      conversations.value = await apiFetch<SocialConversation[]>('/api/client-portal/social/conversations', { query: filters })
     } finally {
       loading.value = false
     }
   }
 
   async function open(id: string) {
-    return await $fetch<{ conversation: SocialConversation, messages: SocialMessage[] }>(
+    return await apiFetch<{ conversation: SocialConversation, messages: SocialMessage[] }>(
       `/api/client-portal/social/conversations/${id}`
     )
   }
 
   async function loadApprovals() {
-    approvals.value = await $fetch<PortalApproval[]>('/api/client-portal/social/response-queue')
+    approvals.value = await apiFetch<PortalApproval[]>('/api/client-portal/social/response-queue')
   }
 
   async function approve(id: string, content?: string) {
-    return await $fetch<{ ok: boolean, status?: string }>(
+    return await apiFetch<{ ok: boolean, status?: string }>(
       `/api/client-portal/social/response-queue/${id}/approve`,
       { method: 'POST', body: { content } }
     )
   }
 
   async function reject(id: string) {
-    return await $fetch<{ ok: boolean }>(
+    return await apiFetch<{ ok: boolean }>(
       `/api/client-portal/social/response-queue/${id}/reject`, { method: 'POST' }
     )
   }

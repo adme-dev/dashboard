@@ -10,9 +10,23 @@ interface ListRow {
 }
 
 const toast = useToast()
-const { data, refresh, pending } = await useFetch<{ items: ListRow[] }>('/api/email/lists', {
-  default: () => ({ items: [] })
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string }
+) => Promise<T>
+const data = ref<{ items: ListRow[] }>({ items: [] })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items: ListRow[] }>('/api/email/lists')
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
 
 const showModal = ref(false)
 const editing = ref<ListRow | null>(null)
@@ -28,7 +42,7 @@ function openEdit(row: ListRow) {
 
 async function archive(row: ListRow) {
   try {
-    await $fetch(`/api/email/lists/${row.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/email/lists/${row.id}`, { method: 'DELETE' })
     toast.add({ title: 'List archived', color: 'success' })
     refresh()
   } catch {

@@ -86,8 +86,8 @@ export default eventHandler(async (event) => {
     return out
   }
 
-  if (bankSummary?.reports?.[0]?.rows || bankSummary?.Reports?.[0]?.Rows) {
-    const reportRows = bankSummary.reports?.[0]?.rows || bankSummary.Reports?.[0]?.Rows || []
+  if (bankSummary?.reports?.[0]?.rows) {
+    const reportRows = bankSummary.reports[0].rows || []
     const allRows = flattenRows(reportRows)
     for (const row of allRows) {
       const cells = row?.Cells || row?.cells || []

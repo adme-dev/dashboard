@@ -45,8 +45,26 @@ interface InsightsResponse {
   recommendations: Recommendation[]
 }
 
-const { data, pending, error, refresh } = await useFetch<InsightsResponse>('/api/ai/insights', {
-  lazy: true
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<InsightsResponse | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<InsightsResponse>('/api/ai/insights')
+  } catch (err) {
+    data.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+onMounted(() => {
+  void refresh()
 })
 
 const breadcrumbs = computed(() => ([

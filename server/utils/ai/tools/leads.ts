@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 import { defaultResolveClient, type ResolveClient } from './clientResolve'
 import { periodSinceISO, type Period } from './period'
 
@@ -26,7 +27,7 @@ export type LeadsDeps = {
 const defaultDeps: LeadsDeps = {
   resolveClient: defaultResolveClient,
   list: ({ clientId, status, source, fromISO, limit }, ctx) =>
-    $fetch('/api/leads/list', { query: { client_id: clientId, status, source, from: fromISO, page_size: limit }, headers: ctx.event.headers as any }),
+    aiInternalFetch('/api/leads/list', { query: { client_id: clientId, status, source, from: fromISO, page_size: limit }, headers: ctx.event.headers as any }),
   summary: (clientId, fromISO) =>
     queryRows<LeadCount>(
       `SELECT status, source, COUNT(*)::int AS count FROM leads

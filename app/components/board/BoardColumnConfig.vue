@@ -75,7 +75,7 @@
               >
                 <button
                   class="w-5 h-5 rounded-full flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-offset-1"
-                  :style="{ backgroundColor: opt.color, ringColor: opt.color }"
+                  :style="{ backgroundColor: opt.color, '--tw-ring-color': opt.color }"
                   @click="editingOptionColor = editingOptionColor === opt.id ? null : opt.id"
                 />
                 <input
@@ -103,7 +103,7 @@
                       :key="c"
                       class="w-5 h-5 rounded-full hover:scale-110 transition-transform"
                       :class="c === opt.color ? 'ring-2 ring-offset-1' : ''"
-                      :style="{ backgroundColor: c, ringColor: c }"
+                      :style="{ backgroundColor: c, '--tw-ring-color': c }"
                       @click="updateOptionColor(opt, c)"
                     />
                   </div>

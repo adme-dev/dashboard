@@ -12,6 +12,7 @@
 
 import type { SocialPostProvider, PostParams, PostResult, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
+import { providerFetch } from './http'
 
 const TIKTOK_API_BASE = 'https://open.tiktokapis.com/v2'
 
@@ -42,7 +43,7 @@ async function postVideo(params: PostParams, videoUrl: string): Promise<PostResu
   } = params.options || {}
 
   try {
-    const response = await $fetch<TikTokApiResponse>(
+    const response = await providerFetch<TikTokApiResponse>(
       `${TIKTOK_API_BASE}/post/publish/video/init/`,
       {
         method: 'POST',
@@ -116,7 +117,7 @@ async function postPhotos(params: PostParams, imageUrls: string[]): Promise<Post
   } = params.options || {}
 
   try {
-    const response = await $fetch<TikTokApiResponse>(
+    const response = await providerFetch<TikTokApiResponse>(
       `${TIKTOK_API_BASE}/post/publish/content/init/`,
       {
         method: 'POST',

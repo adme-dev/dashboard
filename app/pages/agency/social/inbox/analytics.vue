@@ -10,7 +10,19 @@ interface AgencyClientOption {
 
 type AgencyClientsResponse = AgencyClientOption[] | { clients?: AgencyClientOption[] }
 
-const { data: clientsData } = await useFetch<AgencyClientsResponse>('/api/agency/clients', { query: { limit: 200 } })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const clientsData = ref<AgencyClientsResponse>([])
+
+async function refreshClients() {
+  clientsData.value = await apiFetch<AgencyClientsResponse>('/api/agency/clients', {
+    query: { limit: 200 },
+  }).catch(() => [])
+}
+
+await refreshClients()
 const clients = computed<AgencyClientOption[]>(() => {
   const data = clientsData.value
   return Array.isArray(data) ? data : (data?.clients ?? [])
@@ -24,8 +36,30 @@ const periodOptions = [
   { label: '90 days', value: 90 }
 ]
 
-const { data: a, pending, error } = await useFetch<SocialInboxAnalytics | null>('/api/agency/social/inbox/analytics/overview',
-  { query: { clientId, days }, watch: [clientId, days], default: () => null })
+const a = ref<SocialInboxAnalytics | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
+
+async function refreshAnalytics() {
+  pending.value = true
+  error.value = null
+  try {
+    a.value = await apiFetch<SocialInboxAnalytics | null>('/api/agency/social/inbox/analytics/overview', {
+      query: { clientId: clientId.value, days: days.value },
+    })
+  } catch (err) {
+    a.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+await refreshAnalytics()
+
+watch([clientId, days], () => {
+  void refreshAnalytics()
+})
 
 const cards = computed(() => a.value
   ? [

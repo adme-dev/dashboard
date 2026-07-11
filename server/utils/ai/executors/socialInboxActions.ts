@@ -26,8 +26,16 @@ export type SocialCaseTaskPoster = (
   ctx: ToolContext
 ) => Promise<{ id: string }>
 
+const internalFetch = (<T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
+  request: string,
+  options: { method: string; body?: unknown; headers?: unknown }
+) => Promise<T>
+
 const defaultPostTask: SocialCaseTaskPoster = (body, ctx) =>
-  $fetch<{ id: string }>('/api/agency/tasks', {
+  internalFetch<{ id: string }>('/api/agency/tasks', {
     method: 'POST',
     body,
     headers: getRequestHeaders(ctx.event)

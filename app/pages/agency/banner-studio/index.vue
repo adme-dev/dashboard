@@ -11,11 +11,26 @@ const statusFilter = ref<'all' | 'draft' | 'published'>('all')
 const showDeleteModal = ref(false)
 const deleteTarget = ref<BannerProject | null>(null)
 
-const { data: projectsData, refresh, status: fetchStatus } = useFetch<BannerProject[]>('/api/agency/banner-studio/projects', {
-  default: () => [],
-  onResponseError() {
-    // API may not exist yet
-  },
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
+const projectsData = ref<BannerProject[]>([])
+const fetchStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refresh() {
+  fetchStatus.value = 'pending'
+  try {
+    projectsData.value = await apiFetch<BannerProject[]>('/api/agency/banner-studio/projects')
+    fetchStatus.value = 'success'
+  } catch {
+    projectsData.value = []
+    fetchStatus.value = 'error'
+  }
+}
+
+onMounted(() => {
+  void refresh()
 })
 
 const allProjects = computed(() => projectsData.value || [])
@@ -57,7 +72,7 @@ function editProject(p: BannerProject) {
 
 async function duplicateProject(p: BannerProject) {
   try {
-    await $fetch<{ project: BannerProject }>('/api/agency/banner-studio/projects', {
+    await apiFetch<{ project: BannerProject }>('/api/agency/banner-studio/projects', {
       method: 'POST',
       body: {
         name: `${p.name} (copy)`,
@@ -81,7 +96,7 @@ function confirmDelete(p: BannerProject) {
 async function doDelete() {
   if (!deleteTarget.value) return
   try {
-    await $fetch(`/api/agency/banner-studio/projects/${deleteTarget.value.id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/banner-studio/projects/${deleteTarget.value.id}`, { method: 'DELETE' })
     toast.add({ title: 'Deleted', description: `${deleteTarget.value.name} removed`, color: 'success' })
     showDeleteModal.value = false
     deleteTarget.value = null

@@ -18,6 +18,7 @@ const props = defineProps<{
   /** r2_key → presigned URL (from the editor's sources map) */
   sources: Record<string, string>
 }>()
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 const W = computed(() => props.timeline.width ?? 1080)
 const H = computed(() => props.timeline.height ?? 1920)
@@ -208,7 +209,7 @@ const overlayRefs = ref<Record<string, HTMLIFrameElement | null>>({})
 async function buildOverlayHtmlFor(clip: any) {
   if (overlayHtml.value[clip.id]) return
   try {
-    const proj = await $fetch<{ canvasData: Record<string, { layers?: unknown[] }> }>(`/api/agency/banner-studio/projects/${clip.gsap_project_id}`)
+    const proj = await apiFetch<{ canvasData: Record<string, { layers?: unknown[] }> }>(`/api/agency/banner-studio/projects/${clip.gsap_project_id}`)
     const fmtKey = clip.gsap_format_key || Object.keys(proj.canvasData ?? {})[0]
     if (!fmtKey) return
     const layers = extractBannerLayers(proj.canvasData, fmtKey) as any

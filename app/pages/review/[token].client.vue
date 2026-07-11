@@ -10,12 +10,23 @@ definePageMeta({ layout: 'default', auth: false })
 const route = useRoute()
 const toast = useToast()
 const token = computed(() => route.params.token as string)
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Fetch project data via public API
-const { data, error, refresh } = await useFetch<any>(
-  () => `/api/public/banner-review/${token.value}`,
-  { default: () => null },
-)
+const data = ref<any | null>(null)
+const error = ref<{ data?: { statusMessage?: string } } | null>(null)
+
+async function refresh() {
+  error.value = null
+  try {
+    data.value = await apiFetch<any>(`/api/public/banner-review/${token.value}`)
+  } catch (err) {
+    data.value = null
+    error.value = err as { data?: { statusMessage?: string } }
+  }
+}
+
+await refresh()
 
 const project = computed(() => data.value?.project)
 const comments = computed<any[]>(() => data.value?.comments || [])
@@ -78,7 +89,7 @@ async function submitComment() {
   isSubmitting.value = true
 
   try {
-    await $fetch(`/api/public/banner-review/${token.value}/comments`, {
+    await apiFetch(`/api/public/banner-review/${token.value}/comments`, {
       method: 'POST',
       body: {
         formatKey: activeFormat.value,

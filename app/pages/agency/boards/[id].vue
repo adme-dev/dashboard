@@ -313,6 +313,7 @@
           <USelectMenu
             v-model="newItemGroupId"
             :items="[{ label: 'No group', value: '__none__' }, ...availableGroups.map(g => ({ label: g.name, value: g.id }))]"
+            value-key="value"
             placeholder="Select group"
             class="w-full"
           />
@@ -376,7 +377,7 @@
               :key="c"
               class="w-8 h-8 rounded-full hover:scale-110 transition-transform"
               :class="newGroupColor === c ? 'ring-2 ring-offset-2' : ''"
-              :style="{ backgroundColor: c, ringColor: c }"
+              :style="{ backgroundColor: c, '--tw-ring-color': c }"
               @click="newGroupColor = c"
             />
           </div>
@@ -657,6 +658,11 @@ import TaskTimePanel from '~/components/task/TaskTimePanel.vue'
 
 definePageMeta({ title: 'Board' })
 
+const apiFetch = $fetch as <T>(
+  request: string,
+  options?: { method?: string; body?: unknown; params?: Record<string, unknown> }
+) => Promise<T>
+
 // --- Types ---
 
 interface TaskDetail {
@@ -666,6 +672,26 @@ interface TaskDetail {
   groupColor?: string
   dueDate?: string
   status?: string
+}
+
+type ConfigurableBoardColumn = BoardColumn & {
+  columnType: string
+  settings: any
+  isVisible: boolean
+  width: number
+  sortOrder: number
+}
+
+function toConfigurableColumn(col: BoardColumn): ConfigurableBoardColumn {
+  return {
+    ...col,
+    slug: col.slug || col.id,
+    columnType: col.columnType || col.type || 'text',
+    settings: col.settings || {},
+    isVisible: col.isVisible ?? true,
+    width: col.width || 150,
+    sortOrder: col.sortOrder || 0
+  }
 }
 
 // --- State ---
@@ -711,7 +737,7 @@ const selectedTaskId = ref<string | null>(null)
 const activeTab = ref('updates')
 const newColumn = ref({ name: '', type: '' })
 const showColumnConfig = ref(false)
-const editingColumn = ref<BoardColumn | null>(null)
+const editingColumn = ref<ConfigurableBoardColumn | null>(null)
 const newGroupName = ref('')
 const newGroupColor = ref('#579BFC')
 const showExport = ref(false)
@@ -765,7 +791,7 @@ watch(boardId, () => {
 // to a board they don't subscribe to. One-shot per board mount.
 async function recordVisitAndMaybeSuggest(bId: string) {
   try {
-    const result = await $fetch<{ suggestWatch: boolean; recentVisits?: number }>(
+    const result = await apiFetch<{ suggestWatch: boolean; recentVisits?: number }>(
       `/api/agency/boards/${bId}/visit`,
       { method: 'POST' }
     )
@@ -780,7 +806,7 @@ async function recordVisitAndMaybeSuggest(bId: string) {
           label: 'Watch',
           onClick: async () => {
             try {
-              await $fetch(`/api/agency/boards/${bId}/subscribe`, {
+              await apiFetch(`/api/agency/boards/${bId}/subscribe`, {
                 method: 'POST',
                 body: { events: [], notifyInapp: true, notifyEmail: false, isMuted: false },
               })
@@ -812,13 +838,30 @@ const refreshColumns = async () => {
   // Keep editingColumn in sync with refreshed data
   if (editingColumn.value) {
     const updated = containerRef.value?.columns?.find((c: any) => c.id === editingColumn.value!.id)
-    if (updated) editingColumn.value = updated
+    if (updated) editingColumn.value = toConfigurableColumn(updated)
   }
 }
 
 // --- Task Detail ---
 
-const { data: taskData, status: taskFetchStatus, execute: fetchTask } = useFetch<TaskDetail>(() => `/api/agency/tasks/${selectedTaskId.value}`, { immediate: false, watch: false })
+const taskData = ref<TaskDetail | null>(null)
+const taskFetchStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function fetchTask() {
+  if (!selectedTaskId.value) {
+    taskData.value = null
+    taskFetchStatus.value = 'idle'
+    return
+  }
+  taskFetchStatus.value = 'pending'
+  try {
+    taskData.value = await apiFetch<TaskDetail>(`/api/agency/tasks/${selectedTaskId.value}`)
+    taskFetchStatus.value = 'success'
+  } catch {
+    taskData.value = null
+    taskFetchStatus.value = 'error'
+  }
+}
 const taskLoading = computed(() => taskFetchStatus.value === 'pending')
 const selectedTask = computed(() => taskData.value || null)
 
@@ -855,7 +898,7 @@ async function checkItemSubscription(taskId: string) {
   itemSubscribed.value = false
   itemSubscriptionLevel.value = null
   try {
-    const { subscriptions } = await $fetch<{ subscriptions: any[] }>(`/api/agency/boards/${boardId.value}/subscriptions`)
+    const { subscriptions } = await apiFetch<{ subscriptions: any[] }>(`/api/agency/boards/${boardId.value}/subscriptions`)
     const sub = subscriptions.find((s: any) => s.itemId === taskId && !s.columnId)
     if (sub) {
       itemSubscribed.value = true
@@ -871,7 +914,7 @@ async function handleItemSubscribe(level: string) {
   try {
     if (level === itemSubscriptionLevel.value) {
       // Toggle off
-      await $fetch(`/api/agency/boards/${boardId.value}/unsubscribe`, {
+      await apiFetch(`/api/agency/boards/${boardId.value}/unsubscribe`, {
         method: 'DELETE',
         params: { itemId: selectedTaskId.value },
       })
@@ -881,7 +924,7 @@ async function handleItemSubscribe(level: string) {
     }
     const events = level === 'mentions' ? ['task_mentioned'] : []
     const isMuted = level === 'muted'
-    await $fetch(`/api/agency/boards/${boardId.value}/subscribe`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/subscribe`, {
       method: 'POST',
       body: {
         itemId: selectedTaskId.value,
@@ -924,7 +967,7 @@ async function handleAddItem(payload: { groupId: string; title: string; date?: s
     const boardData = containerRef.value?.board
     const resolvedBoardId = (boardData as any)?.id || boardId.value
     const isDynamicGroup = payload.groupId?.startsWith('grouped_') || false
-    const task = await $fetch<{ id: string }>(`/api/agency/tasks`, {
+    const task = await apiFetch<{ id: string }>(`/api/agency/tasks`, {
       method: 'POST',
       body: {
         title: payload.title,
@@ -956,7 +999,7 @@ async function handleAddItem(payload: { groupId: string; title: string; date?: s
 
 async function addColumn() {
   if (!newColumn.value.name || !newColumn.value.type) return
-  await $fetch(`/api/agency/boards/${boardId.value}/columns`, {
+  await apiFetch(`/api/agency/boards/${boardId.value}/columns`, {
     method: 'POST',
     body: newColumn.value,
   })
@@ -1050,7 +1093,7 @@ function startAddSubitem(taskId: string) {
 
 async function duplicateTask(taskId: string) {
   try {
-    await $fetch(`/api/agency/tasks/${taskId}/duplicate`, { method: 'POST' })
+    await apiFetch(`/api/agency/tasks/${taskId}/duplicate`, { method: 'POST' })
     await refresh()
     toast.add({ title: 'Task duplicated', color: 'success' })
   } catch (err: any) {
@@ -1060,7 +1103,7 @@ async function duplicateTask(taskId: string) {
 
 async function moveTaskToGroup(taskId: string, groupId: string) {
   try {
-    await $fetch(`/api/agency/tasks/${taskId}`, {
+    await apiFetch(`/api/agency/tasks/${taskId}`, {
       method: 'PUT',
       body: { groupId },
     })
@@ -1074,7 +1117,7 @@ async function moveTaskToGroup(taskId: string, groupId: string) {
 async function executeDeleteTask() {
   if (!taskToDelete.value) return
   try {
-    await $fetch(`/api/agency/tasks/${taskToDelete.value}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/tasks/${taskToDelete.value}`, { method: 'DELETE' })
     taskToDelete.value = null
     // Reset subitems cache so counts and lists refresh
     subitemHelper.reset()
@@ -1179,13 +1222,13 @@ function onColumnResizeStart(event: MouseEvent, col: BoardColumn) {
 }
 
 function openColumnConfig(col: BoardColumn) {
-  editingColumn.value = col
+  editingColumn.value = toConfigurableColumn(col)
   showColumnConfig.value = true
 }
 
 async function hideColumn(columnId: string) {
   try {
-    await $fetch(`/api/agency/boards/${boardId.value}/columns/${columnId}`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/columns/${columnId}`, {
       method: 'PATCH',
       body: { isVisible: false },
     })
@@ -1197,7 +1240,7 @@ async function hideColumn(columnId: string) {
 
 async function handleColumnSave(columnId: string, payload: any) {
   try {
-    await $fetch(`/api/agency/boards/${boardId.value}/columns/${columnId}`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/columns/${columnId}`, {
       method: 'PATCH',
       body: payload,
     })
@@ -1216,7 +1259,7 @@ async function handleColumnDelete(columnId: string | undefined) {
 
 async function handleAddOption(columnId: string, payload: { label: string; color: string }) {
   try {
-    await $fetch(`/api/agency/columns/${columnId}/options`, {
+    await apiFetch(`/api/agency/columns/${columnId}/options`, {
       method: 'POST',
       body: payload,
     })
@@ -1228,7 +1271,7 @@ async function handleAddOption(columnId: string, payload: { label: string; color
 
 async function handleUpdateOption(columnId: string, optionId: string, payload: any) {
   try {
-    await $fetch(`/api/agency/columns/${columnId}/options/${optionId}`, {
+    await apiFetch(`/api/agency/columns/${columnId}/options/${optionId}`, {
       method: 'PATCH',
       body: payload,
     })
@@ -1241,7 +1284,7 @@ async function handleUpdateOption(columnId: string, optionId: string, payload: a
 async function confirmDeleteColumn() {
   if (!showDeleteConfirm.value) return
   try {
-    await $fetch(`/api/agency/boards/${boardId.value}/columns/${showDeleteConfirm.value}`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/columns/${showDeleteConfirm.value}`, {
       method: 'DELETE',
     })
     showDeleteConfirm.value = null
@@ -1313,7 +1356,7 @@ async function onGroupDrop(groups: any[]) {
   newIds.splice(toIndex, 0, dragGroupId)
 
   try {
-    await $fetch(`/api/agency/boards/${boardId.value}/groups/reorder`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/groups/reorder`, {
       method: 'PATCH',
       body: { groupIds: newIds },
     })
@@ -1342,7 +1385,7 @@ async function toggleGroup(group: BoardGroup) {
   containerRef.value?.toggleGroupExpanded(group.id, willExpand)
   // Persist collapse state to server for real board_groups (UUID IDs)
   if (group.id !== '__ungrouped__' && isUUID(group.id)) {
-    $fetch(`/api/agency/boards/${boardId.value}/groups/${group.id}`, {
+    apiFetch(`/api/agency/boards/${boardId.value}/groups/${group.id}`, {
       method: 'PATCH',
       body: { isCollapsed: !willExpand },
     }).catch(() => {})
@@ -1358,7 +1401,7 @@ async function loadGroupItems(group: BoardGroup, offset = 0, limit = 50) {
   if (loadingGroups.value.has(key)) return
   loadingGroups.value = new Set([...loadingGroups.value, key])
   try {
-    const result = await $fetch<{ items: any[]; totalCount: number; hasMore: boolean }>(
+    const result = await apiFetch<{ items: any[]; totalCount: number; hasMore: boolean }>(
       `/api/agency/boards/${boardId.value}/groups/${group.id}/items`,
       { params: { offset, limit } }
     )
@@ -1382,7 +1425,7 @@ async function loadGroupItems(group: BoardGroup, offset = 0, limit = 50) {
 async function renameGroup(groupId: string, name: string) {
   if (groupId === '__ungrouped__' || groupId.startsWith('grouped_') || !isUUID(groupId)) return
   try {
-    await $fetch(`/api/agency/boards/${boardId.value}/groups/${groupId}`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/groups/${groupId}`, {
       method: 'PATCH',
       body: { name },
     })
@@ -1395,7 +1438,7 @@ async function renameGroup(groupId: string, name: string) {
 async function updateGroupColor(groupId: string, color: string) {
   if (groupId === '__ungrouped__' || groupId.startsWith('grouped_') || !isUUID(groupId)) return
   try {
-    await $fetch(`/api/agency/boards/${boardId.value}/groups/${groupId}`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/groups/${groupId}`, {
       method: 'PATCH',
       body: { color },
     })
@@ -1413,7 +1456,7 @@ function deleteGroup(groupId: string) {
 async function confirmDeleteGroup() {
   if (!deleteGroupId.value) return
   try {
-    await $fetch(`/api/agency/boards/${boardId.value}/groups/${deleteGroupId.value}`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/groups/${deleteGroupId.value}`, {
       method: 'DELETE',
     })
     deleteGroupId.value = null
@@ -1428,7 +1471,7 @@ async function handleAddGroup() {
   const name = newGroupName.value.trim()
   if (!name) return
   try {
-    await $fetch(`/api/agency/boards/${boardId.value}/groups`, {
+    await apiFetch(`/api/agency/boards/${boardId.value}/groups`, {
       method: 'POST',
       body: { name, color: newGroupColor.value },
     })
@@ -1452,7 +1495,7 @@ async function addGroupNear(_groupId: string, _position: 'above' | 'below') {
 
 async function handleApplyTemplate(templateId: string) {
   try {
-    const result = await $fetch<{ success: boolean; templateName: string; created: { columns: number; groups: number; views: number } }>(`/api/agency/boards/templates/${templateId}/apply`, {
+    const result = await apiFetch<{ success: boolean; templateName: string; created: { columns: number; groups: number; views: number } }>(`/api/agency/boards/templates/${templateId}/apply`, {
       method: 'POST',
       body: { departmentId: containerRef.value?.board?.id || boardId.value },
     })

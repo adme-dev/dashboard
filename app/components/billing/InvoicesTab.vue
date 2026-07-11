@@ -2,6 +2,10 @@
 import { format } from 'date-fns'
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 // RBAC — scoped vs full finance access
 const { canAccessFinance, canAccessInvoices, user } = useAuth()
@@ -14,14 +18,28 @@ const clientFilter = ref<string | null>(null)
 const searchQuery = ref('')
 
 // Fetch invoices
-const { data: invoicesData, pending, refresh } = useFetch('/api/agency/invoices', {
-  query: {
-    status: statusFilter,
-    clientId: clientFilter,
-    search: searchQuery,
-    limit: 50
+const invoicesData = ref<any | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    invoicesData.value = await apiFetch<any>('/api/agency/invoices', {
+      query: {
+        status: statusFilter.value,
+        clientId: clientFilter.value,
+        search: searchQuery.value,
+        limit: 50
+      }
+    })
+  } finally {
+    pending.value = false
   }
-})
+}
+
+watch([statusFilter, clientFilter, searchQuery], () => {
+  refresh()
+}, { immediate: true })
 
 // Fetch clients for filter — scoped users only see their assigned clients
 const clientsUrl = computed(() => {
@@ -30,9 +48,17 @@ const clientsUrl = computed(() => {
   }
   return '/api/agency/clients'
 })
-const { data: clientsData } = useFetch(clientsUrl, {
-  query: { limit: 100 }
-})
+const clientsData = ref<any | null>(null)
+
+async function refreshClients() {
+  clientsData.value = await apiFetch<any>(clientsUrl.value, {
+    query: { limit: 100 }
+  })
+}
+
+watch(clientsUrl, () => {
+  refreshClients()
+}, { immediate: true })
 
 const invoices = computed(() => (invoicesData.value?.invoices || []) as any[])
 const summary = computed(() => (invoicesData.value?.summary || {
@@ -127,7 +153,7 @@ const newInvoice = ref({
 const selectedClientProjects = ref<any[]>([])
 watch(() => newInvoice.value.clientId, async (clientId) => {
   if (clientId) {
-    const data = await $fetch('/api/agency/projects', {
+    const data = await apiFetch<any>('/api/agency/projects', {
       query: { clientId, status: 'active', limit: 100 }
     }) as any
     selectedClientProjects.value = data || []
@@ -145,7 +171,7 @@ const generateInvoice = async () => {
 
   creatingInvoice.value = true
   try {
-    const result = await $fetch('/api/agency/invoices/generate', {
+    const result = await apiFetch<any>('/api/agency/invoices/generate', {
       method: 'POST',
       body: {
         clientId: newInvoice.value.clientId,
@@ -176,7 +202,7 @@ const generateInvoice = async () => {
 // Actions
 const sendInvoice = async (invoice: any) => {
   try {
-    await ($fetch as any)(`/api/agency/invoices/${invoice.id}/send`, { method: 'POST' })
+    await apiFetch(`/api/agency/invoices/${invoice.id}/send`, { method: 'POST' })
     toast.add({ title: 'Invoice sent', color: 'success' })
     refresh()
   } catch (err: any) {

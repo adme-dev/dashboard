@@ -68,8 +68,8 @@ export default eventHandler(async (event) => {
         }
 
         // Check if user already exists by Monday ID or email
-        const existingMember = await queryOne<{ id: string; name: string; email: string; avatar_url?: string }>(
-          'SELECT id, name, email, avatar_url FROM team_members WHERE monday_user_id = $1 OR email = $2',
+        const existingMember = await queryOne<{ id: string; name: string; email: string; avatar_url?: string; monday_user_id?: string | null }>(
+          'SELECT id, name, email, avatar_url, monday_user_id FROM team_members WHERE monday_user_id = $1 OR email = $2',
           [mondayUser.id, mondayUser.email.toLowerCase()]
         )
 

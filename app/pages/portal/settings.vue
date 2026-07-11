@@ -5,6 +5,11 @@ const { user, fetchUser } = usePortalAuth()
 const toast = useToast()
 const saving = ref(false)
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
 interface PortalAccessUser {
   id: string
   email: string
@@ -27,7 +32,23 @@ interface PortalAccessUser {
   isCurrentUser: boolean
 }
 
-const { data: accessData, pending: accessPending } = useFetch<{ users: PortalAccessUser[] }>('/api/portal/users')
+const accessData = ref<{ users: PortalAccessUser[] } | null>(null)
+const accessPending = ref(true)
+const accessError = ref<unknown>(null)
+
+async function refreshAccessUsers() {
+  accessPending.value = true
+  accessError.value = null
+
+  try {
+    accessData.value = await apiFetch<{ users: PortalAccessUser[] }>('/api/portal/users')
+  } catch (error) {
+    accessError.value = error
+    throw error
+  } finally {
+    accessPending.value = false
+  }
+}
 
 const form = reactive({
   name: user.value?.name || '',
@@ -169,7 +190,7 @@ function accessModules(accessUser: PortalAccessUser) {
 async function saveProfile() {
   saving.value = true
   try {
-    await $fetch('/api/portal/profile', {
+    await apiFetch('/api/portal/profile', {
       method: 'PUT',
       body: {
         name: form.name,
@@ -189,6 +210,8 @@ async function saveProfile() {
     saving.value = false
   }
 }
+
+await refreshAccessUsers()
 </script>
 
 <template>

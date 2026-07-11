@@ -44,6 +44,7 @@
 
 <script setup lang="ts">
 const props = defineProps<{ boardId: string }>()
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 interface TopUser { id: string; name: string; avatarUrl: string | null }
 interface FullSub { userId: string; userName: string; userEmail: string; userAvatar: string | null }
@@ -65,7 +66,7 @@ const distinctFull = computed(() => {
 
 async function loadSummary() {
   try {
-    const data = await $fetch<{ count: number; top: TopUser[] }>(
+    const data = await apiFetch<{ count: number; top: TopUser[] }>(
       `/api/agency/boards/${props.boardId}/subscribers?summary=true`
     )
     count.value = data.count
@@ -79,7 +80,7 @@ watch(showAll, async (open) => {
   if (open && full.value.length === 0) {
     loadingFull.value = true
     try {
-      const data = await $fetch<{ subscribers: FullSub[] }>(
+      const data = await apiFetch<{ subscribers: FullSub[] }>(
         `/api/agency/boards/${props.boardId}/subscribers`
       )
       full.value = data.subscribers

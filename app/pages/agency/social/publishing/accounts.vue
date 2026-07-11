@@ -21,6 +21,10 @@ const api = useSocialPublishing()
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
 
 const { clientId } = useSocialPublishingClient()
 
@@ -153,7 +157,7 @@ function togglePage(id: string, on: boolean) {
 async function confirmSelection() {
   selecting.value = true
   try {
-    const res = await $fetch<{ connected: string[], conflicts: string[] }>('/api/agency/social/publishing/accounts/complete', {
+    const res = await apiFetch<{ connected: string[], conflicts: string[] }>('/api/agency/social/publishing/accounts/complete', {
       method: 'POST', body: { token: selectToken.value, pageIds: selectChosen.value }
     })
     selectOpen.value = false
@@ -168,7 +172,7 @@ async function confirmSelection() {
 }
 
 function clearConnectQuery() {
-  router.replace({ query: stripSocialPublishingConnectQuery(route.query as Record<string, unknown>) })
+  router.replace({ query: stripSocialPublishingConnectQuery(route.query as Record<string, unknown>) as any })
 }
 
 onMounted(async () => {
@@ -183,7 +187,7 @@ onMounted(async () => {
     selectToken.value = String(route.query.social_select)
     selectChosen.value = []
     try {
-      selectPages.value = await $fetch('/api/agency/social/publishing/accounts/pending', { query: { token: selectToken.value } })
+      selectPages.value = await apiFetch<SelectPage[]>('/api/agency/social/publishing/accounts/pending', { query: { token: selectToken.value } })
       // Pre-check pages already connected to this client; conflict pages stay unchecked + disabled.
       selectChosen.value = selectPages.value.filter(p => p.status === 'connected').map(p => p.id)
     } catch {

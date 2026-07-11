@@ -4,6 +4,7 @@ import { portalSocialNavItems } from '~/utils/portalSocialNavigation'
 
 const { user, stats, logout } = usePortalAuth()
 const open = ref(false)
+const layoutFetch = $fetch as <T>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 const close = () => {
   open.value = false
@@ -11,10 +12,17 @@ const close = () => {
 const isAgencyAccess = computed(() => user.value?.title === 'Agency portal access' || user.value?.email?.endsWith('@portal-access.local'))
 
 // Notification count (fetched separately)
-const { data: notifData } = useLazyFetch('/api/portal/notifications', {
-  query: { unreadOnly: 'true', limit: 1 }
+const unreadCount = ref(0)
+onMounted(async () => {
+  try {
+    const data = await layoutFetch<{ unreadCount?: number }>('/api/portal/notifications', {
+      query: { unreadOnly: 'true', limit: 1 }
+    })
+    unreadCount.value = data.unreadCount || 0
+  } catch {
+    unreadCount.value = 0
+  }
 })
-const unreadCount = computed(() => notifData.value?.unreadCount || 0)
 const navBadge = (value?: number) => value && value > 0 ? value.toString() : undefined
 
 const mainNav = computed<NavigationMenuItem[]>(() => [

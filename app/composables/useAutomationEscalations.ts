@@ -26,16 +26,31 @@ interface EscalationListResponse {
 
 /**
  * Loads the pending automation escalations and records human decisions.
- * Read via useFetch (SSR-friendly); decisions via $fetch + toast, then refetch.
+ * Read via a local fetch wrapper; decisions use the same wrapper, then refetch.
  */
 export async function useAutomationEscalations() {
   const toast = useToast()
   const deciding = ref<string | null>(null)
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
-  const { data, pending, error, refresh } = await useFetch<EscalationListResponse>(
-    '/api/agency/automation/escalations',
-    { default: () => ({ groups: [], count: 0 }) },
-  )
+  const data = ref<EscalationListResponse>({ groups: [], count: 0 })
+  const pending = ref(false)
+  const error = ref<unknown>(null)
+
+  async function refresh() {
+    pending.value = true
+    error.value = null
+    try {
+      data.value = await apiFetch<EscalationListResponse>('/api/agency/automation/escalations')
+    } catch (err) {
+      error.value = err
+      data.value = { groups: [], count: 0 }
+    } finally {
+      pending.value = false
+    }
+  }
+
+  await refresh()
 
   const groups = computed<AutomationEscalationGroup[]>(() => data.value?.groups ?? [])
   const count = computed<number>(() => data.value?.count ?? 0)
@@ -43,7 +58,7 @@ export async function useAutomationEscalations() {
   async function decide(id: string, decision: 'approved' | 'rejected', note?: string): Promise<boolean> {
     deciding.value = id
     try {
-      await $fetch(`/api/agency/automation/escalations/${id}/decide`, {
+      await apiFetch(`/api/agency/automation/escalations/${id}/decide`, {
         method: 'POST',
         body: { decision, note },
       })

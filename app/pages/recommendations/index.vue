@@ -46,11 +46,30 @@ const apiQuery = computed(() => {
   return params
 })
 
-const { data, pending, error, refresh } = await useFetch<ListResponse>('/api/advisor/recommendations', {
-  query: apiQuery,
-  watch: [apiQuery],
-  lazy: true,
-})
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
+
+const data = ref<ListResponse | null>(null)
+const pending = ref(true)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+
+  try {
+    data.value = await apiFetch<ListResponse>('/api/advisor/recommendations', {
+      query: apiQuery.value
+    })
+  } catch (fetchError) {
+    error.value = fetchError
+    throw fetchError
+  } finally {
+    pending.value = false
+  }
+}
 
 const recs = computed(() => data.value?.recommendations ?? [])
 
@@ -67,7 +86,7 @@ interface GenerateResult { created: number; skipped: number; total: number; scan
 async function runGenerator(path: string): Promise<GenerateResult & { label: string; ok: boolean }> {
   const label = path.split('/').pop() || path
   try {
-    const result = await $fetch<GenerateResult>(path, { method: 'POST' })
+    const result = await apiFetch<GenerateResult>(path, { method: 'POST' })
     return { ...result, label, ok: true }
   } catch (err: any) {
     console.warn(`[generator] ${label} failed:`, err)
@@ -109,7 +128,7 @@ async function generateAll() {
 
 async function patchRec(id: string, body: Record<string, any>, successMsg: string) {
   try {
-    await $fetch(`/api/advisor/recommendations/${id}`, { method: 'PATCH', body })
+    await apiFetch(`/api/advisor/recommendations/${id}`, { method: 'PATCH', body })
     toast.add({ title: successMsg, color: 'success' })
     await refresh()
   } catch (err: any) {
@@ -185,6 +204,12 @@ const categoryItems = [
   { label: 'All categories', value: 'all' },
   ...Object.entries(categoryLabels).map(([value, label]) => ({ label, value })),
 ]
+
+watch(apiQuery, () => {
+  refresh()
+})
+
+await refresh()
 </script>
 
 <template>

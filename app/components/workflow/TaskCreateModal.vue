@@ -14,12 +14,16 @@ const emit = defineEmits<{
 }>()
 
 const loading = ref(false)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const handleSubmit = async (taskData: Partial<Task>) => {
   loading.value = true
 
   try {
-    const response = await $fetch<Task>('/api/agency/tasks', {
+    const response = await apiFetch<Task>('/api/agency/tasks', {
       method: 'POST',
       body: taskData
     })

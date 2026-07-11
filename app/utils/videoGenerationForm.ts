@@ -3,7 +3,7 @@ import { estimateVideoGenerationCostCents } from '~~/server/utils/video-generati
 
 export type VideoGenerationAdvancedAction = 'extend-video' | 'end-frame' | 'video-to-video'
 
-export function modelsForMode(models: VideoGenerationModel[], mode: VideoGenerationMode): VideoGenerationModel[] {
+export function modelsForMode<T extends VideoGenerationModel>(models: T[], mode: VideoGenerationMode): T[] {
   return models.filter((m) => m.modes.includes(mode))
 }
 

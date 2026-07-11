@@ -221,6 +221,10 @@ interface SelectOption {
 // Route
 const route = useRoute()
 const migrationId = route.params.id as string
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 // State
 const loading = ref(false)
@@ -252,7 +256,7 @@ const hasUnsavedChanges = computed(() => {
 async function fetchMigration() {
   loading.value = true
   try {
-    const response = await $fetch<MigrationDetail>(`/api/agency/monday/migrations/${migrationId}`)
+    const response = await apiFetch<MigrationDetail>(`/api/agency/monday/migrations/${migrationId}`)
     migration.value = response
     
     // Initialize board mappings
@@ -272,7 +276,7 @@ async function fetchMigration() {
 
 async function fetchDepartments() {
   try {
-    const response = await $fetch<{ departments: Array<{ id: string; name: string }> }>('/api/agency/departments')
+    const response = await apiFetch<{ departments: Array<{ id: string; name: string }> }>('/api/agency/departments')
     departments.value = response.departments.map(d => ({
       label: d.name,
       value: d.id,
@@ -284,7 +288,7 @@ async function fetchDepartments() {
 
 async function fetchProjects() {
   try {
-    const response = await $fetch<{ projects: Array<{ id: string; name: string }> }>('/api/agency/projects')
+    const response = await apiFetch<{ projects: Array<{ id: string; name: string }> }>('/api/agency/projects')
     projects.value = response.projects.map(p => ({
       label: p.name,
       value: p.id,
@@ -310,7 +314,7 @@ async function saveMappings() {
       projectId: mapping.projectId,
     }))
 
-    await $fetch(`/api/agency/monday/migrations/${migrationId}/boards`, {
+    await apiFetch(`/api/agency/monday/migrations/${migrationId}/boards`, {
       method: 'PUT',
       body: { boards: updates },
     })

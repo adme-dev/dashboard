@@ -17,6 +17,7 @@ interface CreateClientBody {
   contactEmail?: string
   contactPhone?: string
   address?: string
+  reportingTimezone?: string
 }
 
 export default defineEventHandler(async (event) => {

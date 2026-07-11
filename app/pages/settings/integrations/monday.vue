@@ -144,6 +144,7 @@
               v-if="isBoardConnected(board.id)"
               v-model="boardMappings[board.id].departmentId"
               :items="departmentOptions"
+              value-key="value"
               placeholder="Map to department"
               class="w-48"
             />
@@ -212,6 +213,7 @@
                   { label: 'Daily', value: 'daily' },
                   { label: 'Manual only', value: 'manual' }
                 ]"
+                value-key="value"
                 class="w-full"
               />
             </UFormField>
@@ -223,6 +225,7 @@
                   { label: 'Monday → Dashboard (one-way)', value: 'oneway' },
                   { label: 'Bidirectional sync', value: 'bidirectional' }
                 ]"
+                value-key="value"
                 class="w-full"
               />
             </UFormField>
@@ -265,10 +268,11 @@
 
 <script setup lang="ts">
 definePageMeta({
-  layout: 'settings'
+  layout: 'agency'
 })
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // State
 const connectionStatus = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
@@ -316,7 +320,7 @@ const departmentOptions = computed(() => [
 // Check existing connection on mount
 onMounted(async () => {
   try {
-    const response = await $fetch('/api/agency/monday/connection')
+    const response = await apiFetch<any>('/api/agency/monday/connection')
     if (response.connected) {
       connectionStatus.value = 'connected'
       accountInfo.value = response.account
@@ -337,7 +341,7 @@ async function testAndConnect() {
 
   testingConnection.value = true
   try {
-    const response = await $fetch('/api/agency/monday/connection', {
+    const response = await apiFetch<any>('/api/agency/monday/connection', {
       method: 'POST',
       body: { token: apiToken.value }
     })
@@ -361,7 +365,7 @@ async function testAndConnect() {
 // Disconnect
 async function disconnect() {
   try {
-    await $fetch('/api/agency/monday/connection', { method: 'DELETE' })
+    await apiFetch('/api/agency/monday/connection', { method: 'DELETE' })
     connectionStatus.value = 'disconnected'
     accountInfo.value = null
     mondayBoards.value = []
@@ -376,7 +380,7 @@ async function disconnect() {
 async function fetchMondayBoards() {
   fetchingBoards.value = true
   try {
-    const response = await $fetch('/api/agency/monday/boards')
+    const response = await apiFetch<any>('/api/agency/monday/boards')
     mondayBoards.value = response.boards || []
   } catch (error: any) {
     toast.add({
@@ -417,7 +421,7 @@ async function runFullSync() {
 
   syncing.value = true
   try {
-    const response = await $fetch('/api/agency/monday/sync', {
+    const response = await apiFetch<any>('/api/agency/monday/sync', {
       method: 'POST',
       body: {
         boardIds: connectedBoards.value,
@@ -445,7 +449,7 @@ async function runFullSync() {
 // Sync settings
 async function saveSyncSettings() {
   try {
-    await $fetch('/api/agency/monday/settings', {
+    await apiFetch('/api/agency/monday/settings', {
       method: 'PUT',
       body: syncSettings.value
     })
@@ -459,7 +463,7 @@ async function saveSyncSettings() {
 // Fetch sync logs
 async function fetchSyncLogs() {
   try {
-    const response = await $fetch('/api/agency/monday/sync-logs')
+    const response = await apiFetch<any>('/api/agency/monday/sync-logs')
     syncLogs.value = response.logs || []
   } catch {
     // Ignore

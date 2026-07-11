@@ -12,6 +12,7 @@
 
 import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
+import { providerFetch } from './http'
 
 const LINKEDIN_API_BASE = 'https://api.linkedin.com'
 const LINKEDIN_VERSION = '202402'
@@ -51,7 +52,7 @@ async function uploadImage(
 ): Promise<{ imageUrn: string } | { error: string }> {
   try {
     // Step 1: Initialize upload
-    const initResponse = await $fetch<{
+    const initResponse = await providerFetch<{
       value: {
         uploadUrl: string
         image: string
@@ -76,12 +77,12 @@ async function uploadImage(
     }
 
     // Step 2: Download binary from R2
-    const imageBuffer = await $fetch<ArrayBuffer>(imageUrl, {
+    const imageBuffer = await providerFetch<ArrayBuffer>(imageUrl, {
       responseType: 'arrayBuffer',
     })
 
     // Step 3: PUT binary to LinkedIn upload URL
-    await $fetch(uploadUrl, {
+    await providerFetch(uploadUrl, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -116,7 +117,7 @@ async function uploadVideo(
 ): Promise<{ videoUrn: string } | { error: string }> {
   try {
     // Step 1: Initialize upload
-    const initResponse = await $fetch<{
+    const initResponse = await providerFetch<{
       value: {
         uploadInstructions: Array<{ uploadUrl: string }>
         video: string
@@ -145,13 +146,13 @@ async function uploadVideo(
     }
 
     // Step 2: Download binary from R2
-    const videoBuffer = await $fetch<ArrayBuffer>(videoUrl, {
+    const videoBuffer = await providerFetch<ArrayBuffer>(videoUrl, {
       responseType: 'arrayBuffer',
     })
 
     // Step 3: Upload to LinkedIn (single chunk for most files)
     const firstUploadUrl = uploadInstructions[0]!.uploadUrl
-    await $fetch(firstUploadUrl, {
+    await providerFetch(firstUploadUrl, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -161,7 +162,7 @@ async function uploadVideo(
     })
 
     // Step 4: Finalize upload
-    await $fetch(`${LINKEDIN_API_BASE}/rest/videos?action=finalizeUpload`, {
+    await providerFetch(`${LINKEDIN_API_BASE}/rest/videos?action=finalizeUpload`, {
       method: 'POST',
       headers: linkedinHeaders(accessToken),
       body: {
@@ -191,7 +192,7 @@ async function createTextPost(
   visibility: string
 ): Promise<PostResult> {
   try {
-    const response = await $fetch<{ id?: string }>(`${LINKEDIN_API_BASE}/rest/posts`, {
+    const response = await providerFetch<{ id?: string }>(`${LINKEDIN_API_BASE}/rest/posts`, {
       method: 'POST',
       headers: linkedinHeaders(params.accessToken),
       body: {
@@ -231,7 +232,7 @@ async function createImagePost(
   altText?: string
 ): Promise<PostResult> {
   try {
-    const response = await $fetch<{ id?: string }>(`${LINKEDIN_API_BASE}/rest/posts`, {
+    const response = await providerFetch<{ id?: string }>(`${LINKEDIN_API_BASE}/rest/posts`, {
       method: 'POST',
       headers: linkedinHeaders(params.accessToken),
       body: {
@@ -280,7 +281,7 @@ async function createMultiImagePost(
       altText: img.alt || '',
     }))
 
-    const response = await $fetch<{ id?: string }>(`${LINKEDIN_API_BASE}/rest/posts`, {
+    const response = await providerFetch<{ id?: string }>(`${LINKEDIN_API_BASE}/rest/posts`, {
       method: 'POST',
       headers: linkedinHeaders(params.accessToken),
       body: {
@@ -323,7 +324,7 @@ async function createVideoPost(
   videoUrn: string
 ): Promise<PostResult> {
   try {
-    const response = await $fetch<{ id?: string }>(`${LINKEDIN_API_BASE}/rest/posts`, {
+    const response = await providerFetch<{ id?: string }>(`${LINKEDIN_API_BASE}/rest/posts`, {
       method: 'POST',
       headers: linkedinHeaders(params.accessToken),
       body: {
@@ -485,7 +486,7 @@ export const linkedinProvider: SocialPostProvider = {
     try {
       const postUrn = encodeURIComponent(params.postId)
 
-      const response = await $fetch<{ id?: string }>(
+      const response = await providerFetch<{ id?: string }>(
         `${LINKEDIN_API_BASE}/rest/socialActions/${postUrn}/comments`,
         {
           method: 'POST',

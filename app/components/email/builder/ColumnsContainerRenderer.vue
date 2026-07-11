@@ -89,6 +89,7 @@ import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import { reidFragment } from '~~/app/utils/edmModuleFragment'
 import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
 import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
+import type { EdmFlyhubBlock } from '~~/app/types/edm'
 
 interface ColumnData { childrenIds: string[] }
 
@@ -181,7 +182,7 @@ function getBlockType(blockId: string): string {
   return store.document.value[blockId]?.type || 'Html'
 }
 
-function getBlockData(blockId: string): Record<string, unknown> {
+function getBlockData(blockId: string): EdmFlyhubBlock['data'] {
   const block = store.document.value[blockId]
   return block ? getBlockForDevice(block, props.device || 'desktop').data : {}
 }

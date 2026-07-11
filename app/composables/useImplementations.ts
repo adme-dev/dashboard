@@ -7,6 +7,7 @@ interface ImplementationFilters {
 }
 
 export const useImplementations = () => {
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
   const implementations = ref<Implementation[]>([])
   const currentImplementation = ref<Implementation | null>(null)
   const tasks = ref<ImplementationTask[]>([])
@@ -24,7 +25,7 @@ export const useImplementations = () => {
       if (filters?.assigned_to) queryParams.append('assigned_to', filters.assigned_to)
       if (filters?.search) queryParams.append('search', filters.search)
       
-      const { data } = await $fetch(`/api/implementations?${queryParams}`)
+      const { data } = await apiFetch<{ data: Implementation[] }>(`/api/implementations?${queryParams}`)
       implementations.value = data
       return data
     } catch (err: any) {
@@ -41,7 +42,7 @@ export const useImplementations = () => {
     error.value = null
     
     try {
-      const { data } = await $fetch(`/api/implementations/${id}`)
+      const { data } = await apiFetch<{ data: Implementation & { tasks?: ImplementationTask[] } }>(`/api/implementations/${id}`)
       currentImplementation.value = data
       tasks.value = data.tasks || []
       return data
@@ -55,7 +56,7 @@ export const useImplementations = () => {
 
   // Update task status
   const updateTaskStatus = async (taskId: string, status: ImplementationTask['status']) => {
-    const { data } = await $fetch(`/api/tasks/${taskId}/status`, {
+    const { data } = await apiFetch<{ data: Partial<ImplementationTask> }>(`/api/tasks/${taskId}/status`, {
       method: 'PATCH',
       body: { status }
     })
@@ -71,7 +72,7 @@ export const useImplementations = () => {
 
   // Add comment to task
   const addComment = async (taskId: string, content: string, isInternal: boolean = false) => {
-    const { data } = await $fetch(`/api/tasks/${taskId}/comments`, {
+    const { data } = await apiFetch<{ data: Comment }>(`/api/tasks/${taskId}/comments`, {
       method: 'POST',
       body: { content, isInternal }
     })
@@ -84,7 +85,7 @@ export const useImplementations = () => {
     formData.append('file', file)
     formData.append('documentType', documentType)
     
-    const { data } = await $fetch(`/api/implementations/${implementationId}/documents`, {
+    const { data } = await apiFetch<{ data: Document }>(`/api/implementations/${implementationId}/documents`, {
       method: 'POST',
       body: formData
     })

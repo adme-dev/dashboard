@@ -18,7 +18,7 @@ const overflowCount = computed(() => Math.max(0, remoteUsers.value.length - 5))
           class="relative w-6 h-6 rounded-full ring-2 shrink-0 flex items-center justify-center text-[9px] font-bold text-white"
           :style="{
             backgroundColor: user.color,
-            ringColor: user.color,
+            '--tw-ring-color': user.color,
           }"
         >
           <img

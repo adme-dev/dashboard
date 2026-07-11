@@ -8,13 +8,23 @@ const emit = defineEmits<{ changed: [] }>()
 const base = inject<string>('crmApiBase', '/api/crm')
 const isAgency = base === '/api/crm'
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 interface Row { id: string, description: string, quantity: number, unit_price: number, line_total: number, position: number }
 
 const query = computed(() => ({ client_id: props.clientId, opportunity_id: props.opportunity.id }))
-const { data, refresh } = useFetch<{ items: Row[] }>(`${base}/line-items`, {
-  query, watch: [query], default: () => ({ items: [] }),
-})
+const data = ref<{ items: Row[] }>({ items: [] })
+
+async function refresh() {
+  data.value = await apiFetch<{ items: Row[] }>(`${base}/line-items`, { query: query.value })
+}
+
+watch(query, () => {
+  refresh()
+}, { immediate: true })
 
 // pg returns NUMERIC as strings — coerce for display + math.
 const rows = computed(() => (data.value?.items ?? []).map(r => ({
@@ -27,7 +37,7 @@ const busy = ref(false)
 async function addRow() {
   busy.value = true
   try {
-    await $fetch(`${base}/line-items`, {
+    await apiFetch(`${base}/line-items`, {
       method: 'POST',
       body: { client_id: props.clientId, opportunity_id: props.opportunity.id, description: 'New item', quantity: 1, unit_price: 0, position: rows.value.length },
     })
@@ -36,41 +46,58 @@ async function addRow() {
 }
 async function saveRow(r: Row, patch: Record<string, unknown>) {
   try {
-    await $fetch(`${base}/line-items/${r.id}`, { method: 'PATCH', body: { client_id: props.clientId, ...patch } })
+    await apiFetch(`${base}/line-items/${r.id}`, { method: 'PATCH', body: { client_id: props.clientId, ...patch } })
     await refresh(); emit('changed')
   } catch (e: any) { toast.add({ title: 'Could not save line', description: e?.data?.statusMessage || e?.message, color: 'error' }) }
 }
 async function removeRow(r: Row) {
-  await $fetch(`${base}/line-items/${r.id}`, { method: 'DELETE', query: { client_id: props.clientId } })
+  await apiFetch(`${base}/line-items/${r.id}`, { method: 'DELETE', query: { client_id: props.clientId } })
   await refresh(); emit('changed')
 }
 
 // ── Quote link (agency only) ──────────────────────────────────────────────────
 const quoteId = computed(() => props.opportunity.quote_id as string | null)
-const { data: quoteData, refresh: refreshQuote } = useFetch<{ quote: any }>(`${base}/quotes`, {
-  query: computed(() => ({ client_id: props.clientId, quote_id: quoteId.value || '' })),
-  watch: [quoteId], immediate: isAgency && !!quoteId.value, default: () => ({ quote: null }),
-})
+const quoteData = ref<{ quote: any }>({ quote: null })
+
+async function refreshQuote() {
+  if (!isAgency || !quoteId.value) {
+    quoteData.value = { quote: null }
+    return
+  }
+
+  quoteData.value = await apiFetch<{ quote: any }>(`${base}/quotes`, {
+    query: { client_id: props.clientId, quote_id: quoteId.value || '' },
+  })
+}
+
+watch(quoteId, () => {
+  refreshQuote()
+}, { immediate: true })
+
 const linkOpen = ref(false)
-const { data: quoteList, refresh: refreshList } = useFetch<{ items: any[] }>(`${base}/quotes`, {
-  query: computed(() => ({ client_id: props.clientId })),
-  immediate: false, default: () => ({ items: [] }),
-})
+const quoteList = ref<{ items: any[] }>({ items: [] })
+
+async function refreshList() {
+  quoteList.value = await apiFetch<{ items: any[] }>(`${base}/quotes`, {
+    query: { client_id: props.clientId },
+  })
+}
+
 const quotePickItems = computed(() => (quoteList.value?.items ?? []).map(q => ({ label: `${q.quote_number} · ${q.title || 'Untitled'}`, value: q.id })))
 async function openLink() { await refreshList() }
 async function linkQuote(id: string) {
-  await $fetch(`${base}/opportunities/${props.opportunity.id}`, { method: 'PATCH', body: { client_id: props.clientId, quote_id: id } })
+  await apiFetch(`${base}/opportunities/${props.opportunity.id}`, { method: 'PATCH', body: { client_id: props.clientId, quote_id: id } })
   emit('changed'); linkOpen.value = false; await refreshQuote()
 }
 async function unlinkQuote() {
-  await $fetch(`${base}/opportunities/${props.opportunity.id}`, { method: 'PATCH', body: { client_id: props.clientId, quote_id: null } })
+  await apiFetch(`${base}/opportunities/${props.opportunity.id}`, { method: 'PATCH', body: { client_id: props.clientId, quote_id: null } })
   emit('changed')
 }
 const generating = ref(false)
 async function generateQuote() {
   generating.value = true
   try {
-    await $fetch(`${base}/opportunities/${props.opportunity.id}/create-quote`, {
+    await apiFetch(`${base}/opportunities/${props.opportunity.id}/create-quote`, {
       method: 'POST', body: { client_id: props.clientId },
     })
     toast.add({ title: 'Quote created', description: 'A draft quote was generated from these line items.', color: 'success' })

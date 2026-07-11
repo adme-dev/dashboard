@@ -5,6 +5,10 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  params?: Record<string, unknown>
+}) => Promise<T>
 const search = ref('')
 const loading = ref(false)
 const joining = ref<string | null>(null)
@@ -13,7 +17,7 @@ const channels = ref<any[]>([])
 async function fetchBrowsable() {
   loading.value = true
   try {
-    channels.value = await $fetch<any[]>('/api/chat/channels/browse', {
+    channels.value = await apiFetch<any[]>('/api/chat/channels/browse', {
       params: { search: search.value || undefined, limit: 50 }
     })
   } catch {
@@ -26,7 +30,7 @@ async function fetchBrowsable() {
 async function handleJoin(channel: any) {
   joining.value = channel.id
   try {
-    const joined = await $fetch(`/api/chat/channels/${channel.id}/join`, {
+    const joined = await apiFetch(`/api/chat/channels/${channel.id}/join`, {
       method: 'POST'
     })
     toast.add({ title: `Joined #${channel.name}`, color: 'success' })

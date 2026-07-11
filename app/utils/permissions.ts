@@ -4,6 +4,7 @@
  */
 export const PERMISSIONS = {
   ADMIN: ['owner', 'admin'],
+  HR_ADMIN: ['owner'],
   MANAGEMENT: ['owner', 'admin', 'lead', 'project_manager'],
   FINANCE: ['owner', 'admin', 'lead', 'project_manager', 'finance', 'accounts'],
   SALES: ['owner', 'admin', 'lead', 'project_manager', 'sales'],
@@ -21,7 +22,7 @@ export function isReadOnlyRole(role: string): boolean {
 
 // Permission groups for dynamic role resolution
 export const PERMISSION_GROUPS = [
-  'ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
+  'ADMIN', 'HR_ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
   'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'
 ] as const
 

@@ -57,6 +57,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const apiFetch = $fetch as <T>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
 const plan = ref<ActionPlanResponse | null>(null)
 const loading = ref(false)
@@ -79,7 +80,7 @@ async function fetchPlan() {
   savedId.value = null
 
   try {
-    plan.value = await $fetch<ActionPlanResponse>('/api/ai/action-plan', {
+    plan.value = await apiFetch<ActionPlanResponse>('/api/ai/action-plan', {
       method: 'POST',
       body: props.item,
     })
@@ -95,7 +96,7 @@ async function savePlan() {
 
   saving.value = true
   try {
-    const result = await $fetch<{ id: string }>('/api/ai/saved-plans', {
+    const result = await apiFetch<{ id: string }>('/api/ai/saved-plans', {
       method: 'POST',
       body: {
         sourceType: props.item.type,
@@ -119,7 +120,7 @@ async function unsavePlan() {
   if (!savedId.value) return
 
   try {
-    await $fetch(`/api/ai/saved-plans/${savedId.value}`, { method: 'DELETE' })
+    await apiFetch(`/api/ai/saved-plans/${savedId.value}`, { method: 'DELETE' })
     savedId.value = null
     toast.add({ title: 'Plan removed', description: 'Action plan unpinned.', color: 'info' })
   } catch {
@@ -150,7 +151,7 @@ async function fetchNarrative() {
   narrativeError.value = null
   narrativeLoading.value = true
   try {
-    const r = await $fetch<{ narrative: string; cached: boolean; generatedAt: string }>(
+    const r = await apiFetch<{ narrative: string; cached: boolean; generatedAt: string }>(
       `/api/ai/anomalies/${props.item.id}/narrative`,
     )
     narrative.value = r.narrative

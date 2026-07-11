@@ -14,7 +14,7 @@ import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
-import { generateClaudeStructured, CLAUDE_MODELS } from '~~/server/utils/claudeClient'
+import { generateClaudeStructured, CLAUDE_MODELS, type ClaudeModel } from '~~/server/utils/claudeClient'
 import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 import { z } from 'zod'
 import { query } from '~~/server/utils/db'
@@ -68,6 +68,7 @@ type Advisor = {
     action: string
     target_metric?: string | null
     target_direction?: 'up' | 'down' | null
+    category?: string | null
   }>
   alerts: Array<{ level: 'info' | 'warning' | 'critical'; message: string }>
   industryContext?: string
@@ -146,7 +147,11 @@ Rules:
 
 async function fetchInternal(event: any, path: string, query?: Record<string, any>): Promise<any> {
   try {
-    return await $fetch(path, { headers: { cookie: (event.node.req.headers.cookie as string) ?? '' }, query })
+    const eventFetch = event.$fetch as <T = unknown>(request: string, options?: {
+      headers?: HeadersInit
+      query?: Record<string, unknown>
+    }) => Promise<T>
+    return await eventFetch(path, { headers: { cookie: (event.node.req.headers.cookie as string) ?? '' }, query })
   } catch {
     return null
   }
@@ -335,7 +340,7 @@ export default eventHandler(async (event) => {
       try {
         const result = await generateClaudeStructured(promptBody, {
           schema: AdvisorLLMSchema,
-          model: assignment.modelId,
+          model: assignment.modelId as ClaudeModel,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
           featureKey: 'financial_advisor',

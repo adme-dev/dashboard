@@ -173,6 +173,10 @@ definePageMeta({
 })
 
 const route = useRoute()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 const email = ref('')
 const loading = ref(false)
@@ -201,7 +205,7 @@ async function requestMagicLink() {
   loading.value = true
 
   try {
-    const response = await $fetch('/api/auth/magic-link/request', {
+    const response = await apiFetch<{ success: boolean; devLink?: string }>('/api/auth/magic-link/request', {
       method: 'POST',
       body: {
         email: email.value,

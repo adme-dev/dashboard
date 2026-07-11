@@ -36,28 +36,44 @@ let clockTimer: ReturnType<typeof setInterval> | null = null
 
 const PENDING_EXPIRY_MINUTES = 30
 
-const { data, pending, refresh } = await useFetch<{ requests: LobbyRequest[] }>(
-  () => `/api/office/${props.officeId}/lobby-requests`,
-  {
-    query: { status: 'pending' },
-    watch: [() => props.officeId],
-    default: () => ({ requests: [] })
-  }
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<{ requests: LobbyRequest[] }>({ requests: [] })
+const historyData = ref<{ requests: LobbyRequest[] }>({ requests: [] })
+const pending = ref(false)
+const historyPending = ref(false)
 
-const {
-  data: historyData,
-  pending: historyPending,
-  refresh: refreshHistory
-} = await useFetch<{ requests: LobbyRequest[] }>(
-  () => `/api/office/${props.officeId}/lobby-requests`,
-  {
-    query: { status: historyStatus },
-    watch: [() => props.officeId, historyStatus],
-    immediate: false,
-    default: () => ({ requests: [] })
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ requests: LobbyRequest[] }>(
+      `/api/office/${props.officeId}/lobby-requests`,
+      { query: { status: 'pending' } }
+    )
+  } catch {
+    // Keep the previous queue visible during transient polling failures.
+  } finally {
+    pending.value = false
   }
-)
+}
+
+async function refreshHistory() {
+  historyPending.value = true
+  try {
+    historyData.value = await apiFetch<{ requests: LobbyRequest[] }>(
+      `/api/office/${props.officeId}/lobby-requests`,
+      { query: { status: historyStatus.value } }
+    )
+  } catch {
+    // History is secondary UI; preserve the current list if a refresh fails.
+  } finally {
+    historyPending.value = false
+  }
+}
+
+await refresh()
 
 const requests = computed(() => data.value?.requests ?? [])
 const historyRequests = computed(() => historyData.value?.requests ?? [])
@@ -230,7 +246,7 @@ async function updateRequest(request: LobbyRequest, status: 'accepted' | 'declin
 
   busyRequestId.value = request.id
   try {
-    const response = await $fetch<LobbyRequestPatchResponse>(`/api/office/${props.officeId}/lobby-requests/${request.id}`, {
+    const response = await apiFetch<LobbyRequestPatchResponse>(`/api/office/${props.officeId}/lobby-requests/${request.id}`, {
       method: 'PATCH',
       body: { status }
     })
@@ -324,6 +340,15 @@ watch(
     lastSeenRequestIds.value = new Set()
     hasLoadedOnce.value = false
     lastUpdatedAtMs.value = null
+    void refresh()
+    if (showHistory.value) void refreshHistory()
+  }
+)
+
+watch(
+  historyStatus,
+  () => {
+    if (showHistory.value) void refreshHistory()
   }
 )
 

@@ -7,6 +7,10 @@ import type { SocialConversation, SocialInboxSyncResult, SocialMessage } from '~
 const PAGE_LIMIT = 100
 
 export function useSocialInbox(clientId: Ref<string | null>) {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  ) => Promise<T>
   const conversations = ref<SocialConversation[]>([])
   const loading = ref(false)
   const hasMore = ref(false)
@@ -19,7 +23,7 @@ export function useSocialInbox(clientId: Ref<string | null>) {
     }
     loading.value = true
     try {
-      const rows = await $fetch<SocialConversation[]>('/api/agency/social/inbox/conversations', {
+      const rows = await apiFetch<SocialConversation[]>('/api/agency/social/inbox/conversations', {
         query: {
           clientId: clientId.value,
           ...filters,
@@ -44,28 +48,28 @@ export function useSocialInbox(clientId: Ref<string | null>) {
   }
 
   async function open(id: string) {
-    return await $fetch<{ conversation: SocialConversation, messages: SocialMessage[] }>(
+    return await apiFetch<{ conversation: SocialConversation, messages: SocialMessage[] }>(
       `/api/agency/social/inbox/conversations/${id}`
     )
   }
 
   async function reply(id: string, content: string) {
-    return await $fetch<{ ok: boolean, platformMessageId: string }>(
+    return await apiFetch<{ ok: boolean, platformMessageId: string }>(
       `/api/agency/social/inbox/conversations/${id}/reply`,
       { method: 'POST', body: { content } }
     )
   }
 
   async function setStatus(id: string, status: 'open' | 'snoozed' | 'closed') {
-    return await $fetch(`/api/agency/social/inbox/conversations/${id}`, { method: 'PATCH', body: { status } })
+    return await apiFetch(`/api/agency/social/inbox/conversations/${id}`, { method: 'PATCH', body: { status } })
   }
 
   async function markRead(id: string) {
-    return await $fetch(`/api/agency/social/inbox/conversations/${id}`, { method: 'PATCH', body: { markRead: true } })
+    return await apiFetch(`/api/agency/social/inbox/conversations/${id}`, { method: 'PATCH', body: { markRead: true } })
   }
 
   async function refresh() {
-    return await $fetch<SocialInboxSyncResult>('/api/agency/social/inbox/accounts/sync', {
+    return await apiFetch<SocialInboxSyncResult>('/api/agency/social/inbox/accounts/sync', {
       method: 'POST',
       body: { clientId: clientId.value }
     })

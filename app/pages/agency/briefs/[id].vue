@@ -5,17 +5,40 @@ import type { Brief, BriefComment, BriefActivity, BriefStatus } from '~/types'
 const route = useRoute()
 const toast = useToast()
 const { user, isAdmin } = useAuth()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const briefId = computed(() => route.params.id as string)
 
 // Fetch brief details
-const { data: brief, pending, refresh } = await useFetch<Brief>(`/api/agency/briefs/${briefId.value}`)
+const brief = ref<Brief | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    brief.value = await apiFetch<Brief>(`/api/agency/briefs/${briefId.value}`)
+  } catch {
+    brief.value = null
+  } finally {
+    pending.value = false
+  }
+}
 
 // Fetch comments
-const { data: comments, refresh: refreshComments } = await useFetch<BriefComment[]>(`/api/agency/briefs/${briefId.value}/comments`)
+const comments = ref<BriefComment[]>([])
+
+async function refreshComments() {
+  comments.value = await apiFetch<BriefComment[]>(`/api/agency/briefs/${briefId.value}/comments`).catch(() => [])
+}
 
 // Fetch activities
-const { data: activities, refresh: refreshActivities } = await useFetch<BriefActivity[]>(`/api/agency/briefs/${briefId.value}/activities`)
+const activities = ref<BriefActivity[]>([])
+
+async function refreshActivities() {
+  activities.value = await apiFetch<BriefActivity[]>(`/api/agency/briefs/${briefId.value}/activities`).catch(() => [])
+}
+
+await Promise.all([refresh(), refreshComments(), refreshActivities()])
 
 // Page meta
 definePageMeta({
@@ -220,7 +243,7 @@ async function submitComment() {
   isSubmittingComment.value = true
 
   try {
-    await $fetch(`/api/agency/briefs/${briefId.value}/comments`, {
+    await apiFetch(`/api/agency/briefs/${briefId.value}/comments`, {
       method: 'POST',
       body: {
         content: newComment.value,
@@ -254,7 +277,7 @@ async function updateStatus(status: BriefStatus) {
   isUpdatingStatus.value = true
 
   try {
-    const result = await $fetch<any>(`/api/agency/briefs/${briefId.value}/status`, {
+    const result = await apiFetch<any>(`/api/agency/briefs/${briefId.value}/status`, {
       method: 'PATCH',
       body: { status }
     })
@@ -317,7 +340,7 @@ async function handleConvert() {
   isConverting.value = true
 
   try {
-    const result = await $fetch<any>(`/api/agency/briefs/${briefId.value}/convert`, {
+    const result = await apiFetch<any>(`/api/agency/briefs/${briefId.value}/convert`, {
       method: 'POST',
       body: {
         projectName: convertProjectName.value.trim(),
@@ -353,7 +376,7 @@ const isGeneratingQuote = ref(false)
 async function generateQuote() {
   isGeneratingQuote.value = true
   try {
-    const result = await $fetch<any>(`/api/agency/briefs/${briefId.value}/generate-quote`, {
+    const result = await apiFetch<any>(`/api/agency/briefs/${briefId.value}/generate-quote`, {
       method: 'POST'
     })
 
@@ -398,7 +421,7 @@ const isDuplicating = ref(false)
 async function duplicateBrief() {
   isDuplicating.value = true
   try {
-    const result = await $fetch<any>(`/api/agency/briefs/${briefId.value}/duplicate`, {
+    const result = await apiFetch<any>(`/api/agency/briefs/${briefId.value}/duplicate`, {
       method: 'POST'
     })
 

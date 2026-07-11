@@ -6,6 +6,10 @@ import { formatDistanceToNow } from 'date-fns'
 const props = defineProps<{ clientId: string, targetType: 'person' | 'company', targetId: string }>()
 const base = inject<string>('crmApiBase', '/api/crm')
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 interface Entry {
   source: 'activity' | 'communication'
@@ -24,9 +28,21 @@ const query = computed(() => {
   if (channel.value !== 'all') q.channel = channel.value
   return q
 })
-const { data, pending, refresh } = useFetch<{ items: Entry[] }>(`${base}/communications`, {
-  query, watch: [query], default: () => ({ items: [] }),
-})
+const data = ref<{ items: Entry[] }>({ items: [] })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items: Entry[] }>(`${base}/communications`, { query: query.value })
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(query, () => {
+  refresh()
+}, { immediate: true })
 
 const CHANNEL_META: Record<string, { icon: string, label: string }> = {
   email: { icon: 'i-lucide-mail', label: 'Email' },
@@ -58,7 +74,7 @@ async function log() {
   if (!form.subject.trim() && !form.body.trim()) return
   logging.value = true
   try {
-    await $fetch(`${base}/communications`, {
+    await apiFetch(`${base}/communications`, {
       method: 'POST',
       body: {
         client_id: props.clientId,
@@ -81,7 +97,10 @@ async function log() {
 
 async function remove(e: Entry) {
   if (e.source !== 'communication') return
-  try { await $fetch(`${base}/communications/${e.id}`, { method: 'DELETE', query: { client_id: props.clientId } }); await refresh() }
+  try {
+    await apiFetch(`${base}/communications/${e.id}`, { method: 'DELETE', query: { client_id: props.clientId } })
+    await refresh()
+  }
   catch (err: any) { toast.add({ title: 'Could not delete', description: err?.data?.statusMessage || err?.message, color: 'error' }) }
 }
 </script>

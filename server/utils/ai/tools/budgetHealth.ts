@@ -3,6 +3,7 @@ import { z } from 'zod'
 // on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -38,7 +39,7 @@ export type BudgetHealthDeps = {
 // resolves, mirroring adspend.ts.
 const defaultDeps: BudgetHealthDeps = {
   health: async (ctx) => {
-    const r: any = await $fetch('/api/agency/budget-alerts/health', { headers: ctx.event.headers as any })
+    const r: any = await aiInternalFetch('/api/agency/budget-alerts/health', { headers: ctx.event.headers as any })
     const clients: any[] = Array.isArray(r?.clients) ? r.clients : []
     return {
       period: String(r?.period ?? ''),

@@ -16,14 +16,34 @@ interface Account {
   spendRows: number
 }
 
-const { data: accountsData, pending, refresh } = await useFetch<{ items: Account[] }>(
-  '/api/agency/social/spend/account-mappings',
-  { default: () => ({ items: [] }) }
-)
-const { data: clientsData } = await useFetch<Array<{ id: string; name: string }>>(
-  '/api/agency/clients',
-  { default: () => [] }
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const accountsData = ref<{ items: Account[] }>({ items: [] })
+const clientsData = ref<Array<{ id: string, name: string }>>([])
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    accountsData.value = await apiFetch<{ items: Account[] }>('/api/agency/social/spend/account-mappings')
+  } catch {
+    accountsData.value = { items: [] }
+  } finally {
+    pending.value = false
+  }
+}
+
+async function refreshClients() {
+  try {
+    clientsData.value = await apiFetch<Array<{ id: string, name: string }>>('/api/agency/clients')
+  } catch {
+    clientsData.value = []
+  }
+}
+
+await Promise.all([refresh(), refreshClients()])
 
 const clientItems = computed(() =>
   (clientsData.value ?? []).map(c => ({ label: c.name, value: c.id }))
@@ -69,7 +89,7 @@ function platformIcon(p: string) {
 async function save(account: Account, clientId: string | null) {
   savingId.value = account.id
   try {
-    const res = await $fetch<{ backfilled?: number; cleared?: number }>(
+    const res = await apiFetch<{ backfilled?: number; cleared?: number }>(
       '/api/agency/social/spend/map-account',
       { method: 'POST', body: { connectionId: account.id, clientId } }
     )
@@ -91,7 +111,7 @@ async function save(account: Account, clientId: string | null) {
 async function autoMapHighConfidence() {
   autoMapping.value = true
   try {
-    const res = await $fetch<{ mapped: number; backfilled: number }>(
+    const res = await apiFetch<{ mapped: number; backfilled: number }>(
       '/api/agency/social/spend/auto-map',
       { method: 'POST' }
     )

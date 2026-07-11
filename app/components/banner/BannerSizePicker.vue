@@ -7,6 +7,7 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const { state, addSizeToSet, addSizeWithLayers } = useBannerStudio()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const selected = ref<Set<string>>(new Set())
 const useSmartResize = ref(true)
@@ -70,7 +71,7 @@ async function applySmartResize() {
     if (!tgtFmt) continue
 
     try {
-      const result = await $fetch<{ layers: Partial<Layer>[] }>('/api/agency/banner-studio/ai/auto-resize', {
+      const result = await apiFetch<{ layers: Partial<Layer>[] }>('/api/agency/banner-studio/ai/auto-resize', {
         method: 'POST',
         body: {
           layers: srcLayers,

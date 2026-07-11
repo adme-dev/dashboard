@@ -5,6 +5,10 @@ interface ListMembership { list_id: string, list_name: string, status: string }
 
 const route = useRoute()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+) => Promise<T>
 
 const c = computed(() => String(route.query.c || ''))
 const s = computed(() => String(route.query.s || ''))
@@ -12,10 +16,16 @@ const t = computed(() => String(route.query.t || ''))
 
 useHead({ title: 'Unsubscribe · XeroFlow', meta: [{ name: 'robots', content: 'noindex' }] })
 
-const { data, error } = await useFetch<{ email: string, name: string | null, lists: ListMembership[] }>(
-  '/api/public/email/lookup',
-  { query: { c, s, t } }
-)
+const data = ref<{ email: string, name: string | null, lists: ListMembership[] } | null>(null)
+const error = ref<any>(null)
+
+try {
+  data.value = await apiFetch<{ email: string, name: string | null, lists: ListMembership[] }>('/api/public/email/lookup', {
+    query: { c: c.value, s: s.value, t: t.value },
+  })
+} catch (err) {
+  error.value = err
+}
 
 const lists = ref<ListMembership[]>([])
 // Seed once from the server snapshot. We do NOT re-sync on later data changes
@@ -38,7 +48,7 @@ const pendingListIds = ref<Set<string>>(new Set())
 async function unsubscribeAll() {
   submitting.value = true
   try {
-    await $fetch('/api/public/email/unsubscribe', {
+    await apiFetch('/api/public/email/unsubscribe', {
       method: 'POST',
       body: { c: c.value, s: s.value, t: t.value }
     })
@@ -56,7 +66,7 @@ async function setPreference(list: ListMembership, subscribe: boolean) {
   const previous = list.status
   list.status = subscribe ? 'confirmed' : 'unsubscribed' // optimistic
   try {
-    await $fetch('/api/public/email/preferences', {
+    await apiFetch('/api/public/email/preferences', {
       method: 'POST',
       body: { c: c.value, s: s.value, t: t.value, listId: list.list_id, subscribe }
     })

@@ -2,9 +2,10 @@
 // MediaOverlayPicker.vue — USlideover to pick a Banner Studio project + a format key for an
 // overlay clip. Emits pick({ gsapProjectId, gsapFormatKey, projectName }). Format keys come
 // from the project's canvasData object keys.
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
-defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean }>()
+const open = computed(() => props.open)
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
   (e: 'pick', payload: { gsapProjectId: string; gsapFormatKey: string; projectName: string }): void
@@ -12,7 +13,26 @@ const emit = defineEmits<{
 
 interface BannerProject { id: string; name: string; clientName?: string; canvasData: Record<string, unknown>; thumbnailUrl: string | null }
 
-const { data, pending, refresh } = useFetch('/api/agency/banner-studio/projects', { query: { limit: 100 }, lazy: true })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<any[] | { projects?: BannerProject[] } | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch('/api/agency/banner-studio/projects', { query: { limit: 100 } })
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(open, (isOpen) => {
+  if (isOpen) refresh()
+}, { immediate: true })
+
 const projects = computed((): BannerProject[] => (data.value as any)?.projects ?? (data.value as any) ?? [])
 
 const search = ref('')

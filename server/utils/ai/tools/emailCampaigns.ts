@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 import { defaultResolveClient, type ResolveClient } from './clientResolve'
 
 const params = z.object({
@@ -23,8 +24,8 @@ export type EmailCampaignsDeps = {
 const defaultDeps: EmailCampaignsDeps = {
   resolveClient: defaultResolveClient,
   // list endpoint returns campaigns in the caller's scope; we filter by client_id in the handler.
-  campaigns: (ctx) => $fetch('/api/email/campaigns', { headers: ctx.event.headers as any }),
-  events: (campaignId, ctx) => $fetch(`/api/email/campaigns/${campaignId}/events`, { headers: ctx.event.headers as any }),
+  campaigns: (ctx) => aiInternalFetch('/api/email/campaigns', { headers: ctx.event.headers as any }),
+  events: (campaignId, ctx) => aiInternalFetch(`/api/email/campaigns/${campaignId}/events`, { headers: ctx.event.headers as any }),
 }
 
 /** Ratio guarded against a zero denominator. Pure. */

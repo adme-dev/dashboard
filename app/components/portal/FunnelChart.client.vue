@@ -18,9 +18,33 @@ type ComparedMetric = 'spend' | 'sessions' | 'totalUsers' | 'keyEvents' | 'leads
 interface FunnelComparison { totals: FunnelRow; deltaPct: Record<ComparedMetric, number | null> }
 interface FunnelResponse { channels: FunnelRow[]; totals: FunnelRow; comparison?: FunnelComparison; hasGa4: boolean }
 
-const { data, pending } = await useFetch<FunnelResponse>(() => endpoint.value, {
-  query: { startDate: () => props.startDate, endDate: () => props.endDate, clientId: () => props.clientId ?? undefined },
-  watch: [() => props.startDate, () => props.endDate, () => props.clientId, endpoint]
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<FunnelResponse | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<FunnelResponse>(endpoint.value, {
+      query: {
+        startDate: props.startDate,
+        endDate: props.endDate,
+        clientId: props.clientId ?? undefined
+      }
+    })
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+await refresh()
+watch([() => props.startDate, () => props.endDate, () => props.clientId, endpoint], () => {
+  void refresh()
 })
 
 const columns = [
@@ -33,6 +57,10 @@ const columns = [
   { accessorKey: 'leads', header: 'Leads' },
   { accessorKey: 'costPerLead', header: 'Cost / lead' }
 ]
+
+function tableRow(row: unknown): FunnelRow {
+  return ((row as { original?: FunnelRow }).original ?? row) as FunnelRow
+}
 
 function fmtRatio(v: number | null): string {
   return v === null ? '—' : fmtCurrency(v)
@@ -101,13 +129,13 @@ function deltaClass(metric: ComparedMetric): string {
     </div>
 
     <UTable :data="data!.channels" :columns="columns">
-      <template #spend-cell="{ row }">{{ fmtCurrency(row.original.spend) }}</template>
-      <template #sessions-cell="{ row }">{{ fmtCompact(row.original.sessions) }}</template>
-      <template #totalUsers-cell="{ row }">{{ fmtCompact(row.original.totalUsers) }}</template>
-      <template #engagementRate-cell="{ row }">{{ fmtPct(row.original.engagementRate) }}</template>
-      <template #keyEvents-cell="{ row }">{{ fmtCompact(row.original.keyEvents) }}</template>
-      <template #leads-cell="{ row }">{{ fmtCompact(row.original.leads) }}</template>
-      <template #costPerLead-cell="{ row }">{{ fmtRatio(row.original.costPerLead) }}</template>
+      <template #spend-cell="{ row }">{{ fmtCurrency(tableRow(row).spend) }}</template>
+      <template #sessions-cell="{ row }">{{ fmtCompact(tableRow(row).sessions) }}</template>
+      <template #totalUsers-cell="{ row }">{{ fmtCompact(tableRow(row).totalUsers) }}</template>
+      <template #engagementRate-cell="{ row }">{{ fmtPct(tableRow(row).engagementRate) }}</template>
+      <template #keyEvents-cell="{ row }">{{ fmtCompact(tableRow(row).keyEvents) }}</template>
+      <template #leads-cell="{ row }">{{ fmtCompact(tableRow(row).leads) }}</template>
+      <template #costPerLead-cell="{ row }">{{ fmtRatio(tableRow(row).costPerLead) }}</template>
     </UTable>
   </UCard>
 </template>

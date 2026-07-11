@@ -35,12 +35,16 @@ export function useAiChat() {
   const hasMoreConversations = ref(false)
   const hasMoreMessages = ref(false)
   const totalConversations = ref(0)
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown, params?: Record<string, unknown> }
+  ) => Promise<T>
 
   async function fetchConversations(reset = true) {
     loading.value = true
     try {
       const offset = reset ? 0 : conversations.value.length
-      const data = await $fetch<ConversationListResponse>('/api/agency/ai/chat/conversations', {
+      const data = await apiFetch<ConversationListResponse>('/api/agency/ai/chat/conversations', {
         params: { offset },
       })
       if (reset) {
@@ -63,7 +67,7 @@ export function useAiChat() {
   }
 
   async function createConversation(title?: string): Promise<AiConversation> {
-    const conv = await $fetch<AiConversation>('/api/agency/ai/chat/conversations', {
+    const conv = await apiFetch<AiConversation>('/api/agency/ai/chat/conversations', {
       method: 'POST',
       body: { title: title || null },
     })
@@ -78,7 +82,7 @@ export function useAiChat() {
   async function loadConversation(id: string) {
     loading.value = true
     try {
-      const data = await $fetch<ConversationDetail>(`/api/agency/ai/chat/conversations/${id}`)
+      const data = await apiFetch<ConversationDetail>(`/api/agency/ai/chat/conversations/${id}`)
       activeConversation.value = data.conversation
       messages.value = data.messages
       hasMoreMessages.value = data.hasMore
@@ -108,7 +112,7 @@ export function useAiChat() {
 
     loading.value = true
     try {
-      const data = await $fetch<ConversationDetail>(
+      const data = await apiFetch<ConversationDetail>(
         `/api/agency/ai/chat/conversations/${activeConversation.value.id}`,
         { params: { before: oldest.createdAt, limit: 50 } }
       )
@@ -122,7 +126,7 @@ export function useAiChat() {
   }
 
   async function renameConversation(id: string, title: string) {
-    const result = await $fetch<{ id: string; title: string; updatedAt: string }>(
+    const result = await apiFetch<{ id: string; title: string; updatedAt: string }>(
       `/api/agency/ai/chat/conversations/${id}`,
       { method: 'PATCH', body: { title } }
     )
@@ -143,7 +147,7 @@ export function useAiChat() {
     if (!conv) return
 
     const newPinned = !conv.isPinned
-    const result = await $fetch<{ id: string; isPinned: boolean; pinnedAt: string | null; updatedAt: string }>(
+    const result = await apiFetch<{ id: string; isPinned: boolean; pinnedAt: string | null; updatedAt: string }>(
       `/api/agency/ai/chat/conversations/${id}`,
       { method: 'PATCH', body: { isPinned: newPinned } }
     )
@@ -205,7 +209,7 @@ export function useAiChat() {
       if (selectedPersona.value) body.persona = selectedPersona.value
       if (room?.officeId) body.room = room
 
-      const result = await $fetch<ChatMessageResponse>(
+      const result = await apiFetch<ChatMessageResponse>(
         `/api/agency/ai/chat/conversations/${activeConversation.value.id}/messages`,
         {
           method: 'POST',
@@ -247,7 +251,7 @@ export function useAiChat() {
   }
 
   async function archiveConversation(id: string) {
-    await $fetch(`/api/agency/ai/chat/conversations/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/ai/chat/conversations/${id}`, { method: 'DELETE' })
     conversations.value = conversations.value.filter(c => c.id !== id)
     totalConversations.value--
     if (activeConversation.value?.id === id) {
@@ -257,7 +261,7 @@ export function useAiChat() {
   }
 
   async function cleanupOldConversations(olderThanDays = 90) {
-    const result = await $fetch<{ archivedCount: number; olderThanDays: number }>(
+    const result = await apiFetch<{ archivedCount: number; olderThanDays: number }>(
       '/api/agency/ai/chat/conversations/cleanup',
       { method: 'POST', body: { olderThanDays } }
     )
@@ -270,7 +274,7 @@ export function useAiChat() {
 
   async function submitFeedback(messageId: string, rating: -1 | 1, correction?: string, category?: string) {
     try {
-      await $fetch(`/api/agency/ai/chat/messages/${messageId}/feedback`, {
+      await apiFetch(`/api/agency/ai/chat/messages/${messageId}/feedback`, {
         method: 'POST',
         body: { rating, correction, category }
       })

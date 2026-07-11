@@ -7,11 +7,12 @@ const emailData = ref<{ email: string; token: string; enabled: boolean } | null>
 const loading = ref(false)
 const copied = ref(false)
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string }) => Promise<T>
 
 async function fetchEmail() {
   loading.value = true
   try {
-    emailData.value = await $fetch(`/api/agency/boards/${props.boardId}/email`)
+    emailData.value = await apiFetch<{ email: string; token: string; enabled: boolean }>(`/api/agency/boards/${props.boardId}/email`)
   } catch {
     emailData.value = null
   } finally {
@@ -21,7 +22,7 @@ async function fetchEmail() {
 
 async function regenerate() {
   try {
-    emailData.value = await $fetch(`/api/agency/boards/${props.boardId}/email/regenerate`, { method: 'POST' })
+    emailData.value = await apiFetch<{ email: string; token: string; enabled: boolean }>(`/api/agency/boards/${props.boardId}/email/regenerate`, { method: 'POST' })
     toast.add({ title: 'Email address regenerated', color: 'success', icon: 'i-lucide-check' })
   } catch {
     toast.add({ title: 'Failed to regenerate', color: 'error' })
@@ -30,7 +31,7 @@ async function regenerate() {
 
 async function disable() {
   try {
-    await $fetch(`/api/agency/boards/${props.boardId}/email`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/boards/${props.boardId}/email`, { method: 'DELETE' })
     emailData.value = null
     toast.add({ title: 'Email-to-board disabled', color: 'success', icon: 'i-lucide-check' })
   } catch {

@@ -7,6 +7,11 @@ const props = defineProps<{
 
 const { user } = useAuth()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+  method?: string
+  body?: unknown
+  params?: Record<string, unknown>
+}) => Promise<T>
 
 const channelId = ref<string | null>(null)
 const channelName = ref('')
@@ -24,7 +29,7 @@ const scrollRef = ref<HTMLElement | null>(null)
 async function fetchTaskChannel() {
   loading.value = true
   try {
-    const data = await $fetch<any>(`/api/chat/channels/by-task/${props.taskId}`)
+    const data = await apiFetch<any>(`/api/chat/channels/by-task/${props.taskId}`)
     if (data) {
       channelId.value = data.id
       channelName.value = data.name
@@ -46,7 +51,7 @@ async function fetchTaskChannel() {
 async function createTaskChannel() {
   creating.value = true
   try {
-    const data = await $fetch<any>(`/api/chat/channels/by-task/${props.taskId}`, {
+    const data = await apiFetch<any>(`/api/chat/channels/by-task/${props.taskId}`, {
       method: 'POST'
     })
     channelId.value = data.id
@@ -65,7 +70,7 @@ async function createTaskChannel() {
 async function fetchMessages() {
   if (!channelId.value) return
   try {
-    const data = await $fetch<ChatMessage[]>(
+    const data = await apiFetch<ChatMessage[]>(
       `/api/chat/channels/${channelId.value}/messages`,
       { params: { limit: '50' } }
     )
@@ -85,7 +90,7 @@ async function handleSend() {
   sending.value = true
   try {
     // Post message via REST (not WS — simpler for embedded mini-chat)
-    const msg = await $fetch<ChatMessage>(
+    const msg = await apiFetch<ChatMessage>(
       `/api/chat/channels/${channelId.value}/messages`,
       {
         method: 'POST',

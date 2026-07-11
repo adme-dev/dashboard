@@ -1,20 +1,32 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
-const { data: yoy }         = await useFetch<any>('/api/xero/get-out/yoy',                { lazy: true, server: false })
-const { data: ytd }         = await useFetch<any>('/api/xero/get-out/ytd',                { lazy: true, server: false })
-const { data: cashflow }    = await useFetch<any>('/api/xero/get-out/cashflow-13w',       { lazy: true, server: false })
-const { data: coverage }    = await useFetch<any>('/api/xero/get-out/pipeline-coverage',  { lazy: true, server: false })
-const { data: utilization } = await useFetch<any>('/api/xero/get-out/utilization',        { lazy: true, server: false })
-const { data: wip }         = await useFetch<any>('/api/xero/get-out/unbilled-wip',       { lazy: true, server: false })
-const { data: aging }       = await useFetch<any>('/api/xero/get-out/ar-aging',           { lazy: true, server: false })
-const { data: topClients }  = await useFetch<any>('/api/xero/get-out/top-clients',        { lazy: true, server: false })
-const { data: profit }      = await useFetch<any>('/api/xero/get-out/profitability',      { lazy: true, server: false })
-const { data: runway }      = await useFetch<any>('/api/xero/get-out/cash-runway',        { lazy: true, server: false })
-const { data: mix }         = await useFetch<any>('/api/xero/get-out/recurring-mix',      { lazy: true, server: false })
-const { data: actions }     = await useFetch<any>('/api/xero/get-out/actions',            { lazy: true, server: false })
-const { data: mrrMovement } = await useFetch<any>('/api/xero/get-out/mrr-movement',       { lazy: true, server: false })
-const { data: efficiency }  = await useFetch<any>('/api/xero/get-out/efficiency',         { lazy: true, server: false })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+
+function useClientData(path: string) {
+  const data = ref<any | null>(null)
+
+  onMounted(async () => {
+    data.value = await apiFetch<any>(path)
+  })
+
+  return data
+}
+
+const yoy         = useClientData('/api/xero/get-out/yoy')
+const ytd         = useClientData('/api/xero/get-out/ytd')
+const cashflow    = useClientData('/api/xero/get-out/cashflow-13w')
+const coverage    = useClientData('/api/xero/get-out/pipeline-coverage')
+const utilization = useClientData('/api/xero/get-out/utilization')
+const wip         = useClientData('/api/xero/get-out/unbilled-wip')
+const aging       = useClientData('/api/xero/get-out/ar-aging')
+const topClients  = useClientData('/api/xero/get-out/top-clients')
+const profit      = useClientData('/api/xero/get-out/profitability')
+const runway      = useClientData('/api/xero/get-out/cash-runway')
+const mix         = useClientData('/api/xero/get-out/recurring-mix')
+const actions     = useClientData('/api/xero/get-out/actions')
+const mrrMovement = useClientData('/api/xero/get-out/mrr-movement')
+const efficiency  = useClientData('/api/xero/get-out/efficiency')
 
 function fmt(v?: number | null, currency = 'AUD'): string {
   if (typeof v !== 'number' || Number.isNaN(v)) return '—'

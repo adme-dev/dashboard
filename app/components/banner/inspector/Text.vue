@@ -8,6 +8,7 @@ const {
   customFonts, isCustomFont, fetchCustomFonts, uploadCustomFont, deleteCustomFont,
 } = useBannerFonts()
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // AI copy generation
 const showAiSuggest = ref(false)
@@ -22,7 +23,7 @@ async function fetchAiCopy() {
 
   try {
     const fmt = state.activeKey ? FORMATS[state.activeKey] : null
-    const result = await $fetch<{ suggestions: typeof aiSuggestions.value }>('/api/agency/banner-studio/ai/copy-suggest', {
+    const result = await apiFetch<{ suggestions: typeof aiSuggestions.value }>('/api/agency/banner-studio/ai/copy-suggest', {
       method: 'POST',
       body: {
         text: selectedLayer.value.text,
@@ -376,6 +377,7 @@ function toggleGradient() {
           size="xs"
           :model-value="String(selectedLayer.fontWeight ?? 400)"
           :items="FONT_WEIGHTS.map(w => ({ label: w.label, value: String(w.value) }))"
+          value-key="value"
           @update:model-value="v => setNum('fontWeight', v)"
         />
       </div>
@@ -426,6 +428,7 @@ function toggleGradient() {
           size="xs"
           :model-value="selectedLayer.textTransform ?? 'none'"
           :items="textTransformOptions"
+          value-key="value"
           @update:model-value="v => set('textTransform', v)"
         />
       </div>
@@ -490,6 +493,7 @@ function toggleGradient() {
         size="xs"
         :model-value="shadowPresetValue"
         :items="TEXT_SHADOW_PRESETS.map(p => ({ label: p.label, value: p.value }))"
+        value-key="value"
         @update:model-value="setShadowPreset"
       />
       <UInput
@@ -509,6 +513,7 @@ function toggleGradient() {
         size="xs"
         :model-value="strokePresetValue"
         :items="TEXT_STROKE_PRESETS.map(p => ({ label: p.label, value: p.value }))"
+        value-key="value"
         @update:model-value="setStrokePreset"
       />
       <UInput

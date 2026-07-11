@@ -48,14 +48,30 @@ const recordingFetchHeaders = computed(() =>
   recordingPassword.value ? { 'x-recording-password': recordingPassword.value } : {}
 )
 
-const { data, pending, error, refresh } = await useFetch<{ recording: PublicRecording }>(
-  recordingUrl,
-  {
-    headers: recordingFetchHeaders,
-    watch: [recordingUrl, recordingPassword],
-    default: () => ({ recording: null as unknown as PublicRecording })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, headers?: Record<string, string> }
+) => Promise<T>
+
+const data = ref<{ recording: PublicRecording | null }>({ recording: null })
+const pending = ref(true)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+
+  try {
+    data.value = await apiFetch<{ recording: PublicRecording }>(recordingUrl.value, {
+      headers: recordingFetchHeaders.value
+    })
+  } catch (fetchError) {
+    data.value = { recording: null }
+    error.value = fetchError
+  } finally {
+    pending.value = false
   }
-)
+}
 
 const recording = computed(() => data.value?.recording ?? null)
 const errorStatus = computed(() => {
@@ -184,7 +200,7 @@ async function sendViewProgress(percent = progressPercent.value, countView = fal
       })
       if (!response.ok) return false
     } else {
-      await $fetch(`/api/public/office-recordings/${token.value}/view`, {
+      await apiFetch(`/api/public/office-recordings/${token.value}/view`, {
         method: 'POST',
         body
       })
@@ -317,6 +333,7 @@ watch(token, () => {
   recordingViewSaved.value = false
   lastVideoProgressSentAt.value = 0
   loadStoredProgress()
+  refresh()
   if (viewerIdentityReady.value) void recordView()
 })
 
@@ -339,6 +356,8 @@ onBeforeUnmount(() => {
 useHead(() => ({
   title: recording.value ? `${recording.value.title} · Recording` : 'Recording'
 }))
+
+await refresh()
 </script>
 
 <template>

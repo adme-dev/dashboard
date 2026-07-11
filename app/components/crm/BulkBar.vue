@@ -9,6 +9,7 @@ const emit = defineEmits<{ done: [] }>()
 
 const base = inject<string>('crmApiBase', '/api/crm')
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 const busy = ref(false)
 
 const tagOpen = ref(false)
@@ -23,7 +24,7 @@ const canTag = computed(() => props.entity !== 'opportunities')
 async function run(action: string, payload: Record<string, unknown>) {
   busy.value = true
   try {
-    const res = await $fetch<{ updated: number }>(`${base}/bulk`, {
+    const res = await apiFetch<{ updated: number }>(`${base}/bulk`, {
       method: 'POST',
       body: { client_id: props.clientId, entity: props.entity, action, ids: props.selectedIds, payload },
     })

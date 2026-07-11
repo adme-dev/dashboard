@@ -10,13 +10,27 @@ const toast = useToast()
 const open = ref(props.defaultOpen ?? false)
 const saving = ref(false)
 
-const { data, refresh, pending, error } = useFetch<{ settings: OfficeSettingsRow | null }>(
-  () => `/api/office/${props.officeId}/settings`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ settings: null })
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const data = ref<{ settings: OfficeSettingsRow | null }>({ settings: null })
+const pending = ref(false)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<{ settings: OfficeSettingsRow | null }>(`/api/office/${props.officeId}/settings`)
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
   }
-)
+}
+
+await refresh()
 
 const form = reactive({
   guest_access_enabled: true,
@@ -77,7 +91,7 @@ async function saveSettings() {
   }
   saving.value = true
   try {
-    await $fetch(`/api/office/${props.officeId}/settings`, {
+    await apiFetch(`/api/office/${props.officeId}/settings`, {
       method: 'PATCH',
       body: form
     })
@@ -94,6 +108,9 @@ async function saveSettings() {
 }
 
 watch(() => data.value?.settings, syncForm, { immediate: true })
+watch(() => props.officeId, () => {
+  void refresh()
+})
 </script>
 
 <template>
@@ -139,7 +156,7 @@ watch(() => data.value?.settings, syncForm, { immediate: true })
           <button
             type="button"
             class="rounded-md bg-white/[0.06] px-2 py-1 text-xs font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-            @click="refresh"
+            @click="() => refresh()"
           >
             Retry
           </button>

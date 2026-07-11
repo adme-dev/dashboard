@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
         )
       )
 
-      const contacts = response?.body?.contacts || []
+      const contacts = (response as { body?: { contacts?: any[] } } | null | undefined)?.body?.contacts || []
       
       if (contacts.length === 0) {
         hasMore = false

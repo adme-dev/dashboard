@@ -6,6 +6,7 @@ const open = defineModel<boolean>('open', { default: false })
 
 const toast = useToast()
 const { state, nextId } = useBannerStudio()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
 
@@ -164,7 +165,7 @@ async function handleAnalyze() {
       formData.append('brand', brandName.value.trim())
     }
 
-    const result = await $fetch<{ jobId: string; status: string }>(
+    const result = await apiFetch<{ jobId: string; status: string }>(
       '/api/agency/banner-studio/dissect/upload',
       { method: 'POST', body: formData }
     )
@@ -185,7 +186,7 @@ async function handleAnalyze() {
 function startPolling() {
   pollTimer.value = setInterval(async () => {
     try {
-      const result = await $fetch<any>(`/api/agency/banner-studio/dissect/${jobId.value}`)
+      const result = await apiFetch<any>(`/api/agency/banner-studio/dissect/${jobId.value}`)
 
       if (result.status === 'segmenting') {
         statusText.value = 'Segmenting layers...'
@@ -234,12 +235,12 @@ async function handleImportToEditor() {
       }
     }
 
-    const result = await $fetch<{ projectId: string; layers: Layer[] }>(
+    const result = await apiFetch<{ projectId: string; layers: Layer[] }>(
       `/api/agency/banner-studio/dissect/${jobId.value}/import`,
       {
         method: 'POST',
         body: {
-          projectId: state.projectId,
+          projectId: state.project?.id,
           formatKey: selectedFormat.value,
           layerTypeOverrides: layerTypeOverrides.value,
         },
@@ -283,7 +284,7 @@ async function handleCreateProject() {
   isImporting.value = true
 
   try {
-    const result = await $fetch<{ projectId: string }>(
+    const result = await apiFetch<{ projectId: string }>(
       `/api/agency/banner-studio/dissect/${jobId.value}/import`,
       {
         method: 'POST',

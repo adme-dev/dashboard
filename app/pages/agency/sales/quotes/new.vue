@@ -5,6 +5,10 @@ definePageMeta({
 })
 
 const router = useRouter()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 // Form state
 const form = reactive({
@@ -22,7 +26,8 @@ const form = reactive({
 })
 
 // Fetch clients for dropdown
-const { data: clientsData } = await useFetch('/api/agency/clients')
+const clientsData = ref<any[]>([])
+clientsData.value = await apiFetch<any[]>('/api/agency/clients').catch(() => [])
 const clients = computed(() => {
   return (clientsData.value || []).map((c: any) => ({
     label: c.name,
@@ -31,7 +36,8 @@ const clients = computed(() => {
 })
 
 // Fetch price templates
-const { data: templatesData } = await useFetch('/api/agency/pricing/templates')
+const templatesData = ref<any>({ templates: [], categories: [] })
+templatesData.value = await apiFetch('/api/agency/pricing/templates').catch(() => ({ templates: [], categories: [] }))
 const templates = computed(() => (templatesData.value?.templates || []) as any[])
 const templateCategories = computed(() => (templatesData.value?.categories || []) as string[])
 
@@ -142,7 +148,7 @@ const handleSubmit = async () => {
 
   try {
     // Create quote
-    const { quote } = await $fetch<{ quote: any }>('/api/agency/quotes', {
+    const { quote } = await apiFetch<{ quote: any }>('/api/agency/quotes', {
       method: 'POST',
       body: {
         title: form.title,
@@ -161,7 +167,7 @@ const handleSubmit = async () => {
 
     // Add line items
     for (const item of lineItems.value) {
-      await $fetch(`/api/agency/quotes/${quote.id}/line-items`, {
+      await apiFetch(`/api/agency/quotes/${quote.id}/line-items`, {
         method: 'POST',
         body: {
           itemType: item.itemType,

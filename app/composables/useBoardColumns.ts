@@ -42,18 +42,32 @@ interface UpdateColumnPayload {
 
 export function useBoardColumns(boardId: Ref<string> | string) {
   const toast = useToast()
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
   const resolvedId = computed(() => typeof boardId === 'string' ? boardId : boardId.value)
 
-  const { data, pending, refresh } = useFetch(
-    () => `/api/agency/boards/${resolvedId.value}/columns`,
-    { default: () => ({ columns: [] }) }
-  )
+  const data = ref<{ columns: BoardColumn[] }>({ columns: [] })
+  const pending = ref(false)
+
+  async function refresh() {
+    pending.value = true
+    try {
+      data.value = await apiFetch<{ columns: BoardColumn[] }>(`/api/agency/boards/${resolvedId.value}/columns`)
+    } catch {
+      data.value = { columns: [] }
+    } finally {
+      pending.value = false
+    }
+  }
+
+  watch(resolvedId, () => {
+    void refresh()
+  }, { immediate: true })
 
   const columns = computed<BoardColumn[]>(() => (data.value as any)?.columns || [])
 
   async function updateColumn(columnId: string, payload: UpdateColumnPayload): Promise<boolean> {
     try {
-      await $fetch(
+      await apiFetch(
         `/api/agency/boards/${resolvedId.value}/columns/${columnId}`,
         { method: 'PATCH', body: payload }
       )
@@ -71,7 +85,7 @@ export function useBoardColumns(boardId: Ref<string> | string) {
 
   async function deleteColumn(columnId: string): Promise<boolean> {
     try {
-      await $fetch(
+      await apiFetch(
         `/api/agency/boards/${resolvedId.value}/columns/${columnId}`,
         { method: 'DELETE' }
       )
@@ -90,7 +104,7 @@ export function useBoardColumns(boardId: Ref<string> | string) {
 
   async function reorderColumns(columnIds: string[]): Promise<boolean> {
     try {
-      await $fetch(
+      await apiFetch(
         `/api/agency/boards/${resolvedId.value}/columns/reorder`,
         { method: 'PATCH', body: { columnIds } }
       )
@@ -118,7 +132,7 @@ export function useBoardColumns(boardId: Ref<string> | string) {
 
   async function addOption(columnId: string, payload: { label: string; color?: string; isDefault?: boolean }): Promise<ColumnOption | null> {
     try {
-      const result = await $fetch<{ option: ColumnOption }>(
+      const result = await apiFetch<{ option: ColumnOption }>(
         `/api/agency/columns/${columnId}/options`,
         { method: 'POST', body: payload }
       )
@@ -136,7 +150,7 @@ export function useBoardColumns(boardId: Ref<string> | string) {
 
   async function updateOption(columnId: string, optionId: string, payload: { label?: string; color?: string; sortOrder?: number; isDefault?: boolean }): Promise<boolean> {
     try {
-      await $fetch(
+      await apiFetch(
         `/api/agency/columns/${columnId}/options/${optionId}`,
         { method: 'PATCH', body: payload }
       )

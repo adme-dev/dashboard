@@ -1,6 +1,5 @@
 import type { CustomTemplateVariable } from '~/types/banner-studio'
 import { buildCustomBannerPreviewHTML } from '~/utils/custom-banner-builder'
-// @ts-expect-error Vite ?raw import for inlining GSAP in sandboxed iframe preview
 import gsapMinSource from 'gsap/dist/gsap.min.js?raw'
 
 interface InstanceData {
@@ -36,6 +35,10 @@ export function useCustomBannerEditor(instanceId: string) {
   const loading = ref(true)
   const saving = ref(false)
   const publishing = ref(false)
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown }
+  ) => Promise<T>
 
   // Instance + template data
   const instance = ref<InstanceData | null>(null)
@@ -112,7 +115,7 @@ export function useCustomBannerEditor(instanceId: string) {
   async function load() {
     loading.value = true
     try {
-      const data = await $fetch<InstanceData>(
+      const data = await apiFetch<InstanceData>(
         `/api/agency/banner-studio/custom-instances/${instanceId}`,
       )
       instance.value = data
@@ -148,7 +151,7 @@ export function useCustomBannerEditor(instanceId: string) {
   async function save() {
     saving.value = true
     try {
-      await $fetch(`/api/agency/banner-studio/custom-instances/${instanceId}`, {
+      await apiFetch(`/api/agency/banner-studio/custom-instances/${instanceId}`, {
         method: 'PATCH',
         body: {
           name: instanceName.value,
@@ -184,7 +187,7 @@ export function useCustomBannerEditor(instanceId: string) {
   async function publish() {
     publishing.value = true
     try {
-      const result = await $fetch<{ publishedUrl: string; isPublished: boolean }>(
+      const result = await apiFetch<{ publishedUrl: string; isPublished: boolean }>(
         `/api/agency/banner-studio/custom-instances/${instanceId}/publish`,
         {
           method: 'POST',
@@ -214,7 +217,7 @@ export function useCustomBannerEditor(instanceId: string) {
   async function saveAsTemplate(opts?: { name?: string; category?: string; description?: string }) {
     savingAsTemplate.value = true
     try {
-      const result = await $fetch<{ id: string; name: string; category: string }>(
+      const result = await apiFetch<{ id: string; name: string; category: string }>(
         `/api/agency/banner-studio/custom-instances/${instanceId}/save-as-template`,
         {
           method: 'POST',

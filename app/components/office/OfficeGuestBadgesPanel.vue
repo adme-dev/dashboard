@@ -16,14 +16,25 @@ const open = ref(props.defaultOpen ?? false)
 const updatingBadgeId = ref<string | null>(null)
 const openingBadgeThreadId = ref<string | null>(null)
 const statusFilter = ref<'all' | 'active' | 'expired' | 'revoked'>('all')
-const { data, pending, refresh, error } = useFetch<{ badges: GuestBadgeWithZone[] }>(
-  () => `/api/office/${props.officeId}/guest-badges`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ badges: [] }),
-    immediate: false
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+const data = ref<{ badges: GuestBadgeWithZone[] }>({ badges: [] })
+const pending = ref(false)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<{ badges: GuestBadgeWithZone[] }>(`/api/office/${props.officeId}/guest-badges`)
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
   }
-)
+}
 
 const badges = computed(() => data.value?.badges ?? [])
 const activeCount = computed(() => badges.value.filter(badge => badge.status === 'active').length)
@@ -86,7 +97,7 @@ function canReactivateBadge(badge: GuestBadgeWithZone) {
 async function updateBadge(badge: GuestBadgeWithZone, action: 'revoke' | 'reactivate') {
   updatingBadgeId.value = badge.id
   try {
-    await $fetch(`/api/office/${props.officeId}/guest-badges/${badge.id}`, {
+    await apiFetch(`/api/office/${props.officeId}/guest-badges/${badge.id}`, {
       method: 'PATCH',
       body: { action }
     })
@@ -114,7 +125,7 @@ async function updateBadge(badge: GuestBadgeWithZone, action: 'revoke' | 'reacti
 async function openBadgeThread(badge: GuestBadgeWithZone) {
   openingBadgeThreadId.value = badge.id
   try {
-    const channel = await $fetch<{ id: string }>(`/api/office/${props.officeId}/guest-badges/${badge.id}/thread`, {
+    const channel = await apiFetch<{ id: string }>(`/api/office/${props.officeId}/guest-badges/${badge.id}/thread`, {
       method: 'POST'
     })
     await navigateTo(`/agency/chat?channel=${encodeURIComponent(channel.id)}`)
@@ -135,6 +146,10 @@ async function openBadgeThread(badge: GuestBadgeWithZone) {
 watch(open, (isOpen) => {
   if (isOpen) void refresh()
 }, { immediate: true })
+
+watch(() => props.officeId, () => {
+  if (open.value) void refresh()
+})
 </script>
 
 <template>
@@ -181,7 +196,7 @@ watch(open, (isOpen) => {
           <button
             type="button"
             class="rounded-md bg-white/[0.06] px-2 py-1 text-xs font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-            @click="refresh"
+            @click="() => refresh()"
           >
             Retry
           </button>

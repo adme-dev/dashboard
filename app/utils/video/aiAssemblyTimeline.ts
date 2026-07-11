@@ -9,6 +9,7 @@ export interface AiAssemblyPlanStep {
 
 export interface AiAssemblyPlan {
   targetFormat?: string | null
+  rationale?: string | null
   steps?: AiAssemblyPlanStep[] | null
 }
 

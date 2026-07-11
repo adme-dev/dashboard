@@ -4,19 +4,38 @@
 const props = defineProps<{ clientId: string }>()
 const clientId = toRef(props, 'clientId')
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 // ── staff pool (team_members via the mention search) ──────────────────────────
-const { data: usersData } = useFetch<{ suggestions: { id: string, name: string }[] }>('/api/users/search', {
-  query: { q: '', limit: '20' }, default: () => ({ suggestions: [] }),
-})
+const usersData = ref<{ suggestions: { id: string, name: string }[] }>({ suggestions: [] })
+
+async function refreshUsers() {
+  usersData.value = await apiFetch<{ suggestions: { id: string, name: string }[] }>(
+    '/api/users/search',
+    { query: { q: '', limit: '20' } },
+  )
+}
+
+refreshUsers()
+
 const userOptions = computed(() => (usersData.value?.suggestions ?? []).map(u => ({ label: u.name, value: u.id })))
 const nameOf = (id: string) => userOptions.value.find(o => o.value === id)?.label ?? id
 
 // ── record visibility ─────────────────────────────────────────────────────────
 const visQuery = computed(() => ({ client_id: clientId.value }))
-const { data: settings, refresh: refreshSettings } = useFetch<{ record_visibility: string }>('/api/crm/settings', {
-  query: visQuery, watch: [visQuery], default: () => ({ record_visibility: 'team' }),
-})
+const settings = ref<{ record_visibility: string }>({ record_visibility: 'team' })
+
+async function refreshSettings() {
+  settings.value = await apiFetch<{ record_visibility: string }>('/api/crm/settings', { query: visQuery.value })
+}
+
+watch(visQuery, () => {
+  refreshSettings()
+}, { immediate: true })
+
 const visibility = ref('team')
 watch(settings, s => { visibility.value = s?.record_visibility ?? 'team' }, { immediate: true })
 const VIS_OPTIONS = [
@@ -27,7 +46,7 @@ const savingVis = ref(false)
 async function saveVisibility() {
   savingVis.value = true
   try {
-    await $fetch('/api/crm/settings', { method: 'PUT', body: { client_id: clientId.value, record_visibility: visibility.value } })
+    await apiFetch('/api/crm/settings', { method: 'PUT', body: { client_id: clientId.value, record_visibility: visibility.value } })
     await refreshSettings()
     toast.add({ title: 'Visibility updated', color: 'success' })
   } catch (e: any) {
@@ -37,9 +56,15 @@ async function saveVisibility() {
 
 // ── assignment rules (one per object type) ────────────────────────────────────
 const rulesQuery = computed(() => ({ client_id: clientId.value }))
-const { data: rulesData, refresh: refreshRules } = useFetch<{ items: any[] }>('/api/crm/assignment-rules', {
-  query: rulesQuery, watch: [rulesQuery], default: () => ({ items: [] }),
-})
+const rulesData = ref<{ items: any[] }>({ items: [] })
+
+async function refreshRules() {
+  rulesData.value = await apiFetch<{ items: any[] }>('/api/crm/assignment-rules', { query: rulesQuery.value })
+}
+
+watch(rulesQuery, () => {
+  refreshRules()
+}, { immediate: true })
 const STRATEGIES = [
   { label: 'Round robin', value: 'round_robin' },
   { label: 'Load balanced', value: 'load_balanced' },
@@ -68,7 +93,7 @@ const savingRule = ref<string | null>(null)
 async function saveRule(objectType: string) {
   savingRule.value = objectType
   try {
-    await $fetch('/api/crm/assignment-rules', {
+    await apiFetch('/api/crm/assignment-rules', {
       method: 'POST',
       body: { client_id: clientId.value, object_type: objectType, ...drafts[objectType] },
     })

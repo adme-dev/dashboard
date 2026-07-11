@@ -5,8 +5,23 @@ const route = useRoute()
 const { hasPermission } = usePortalAuth()
 const toast = useToast()
 const approvalId = route.params.id as string
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
-const { data, pending, refresh } = useFetch(`/api/portal/approvals/${approvalId}`)
+const data = ref<any | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>(`/api/portal/approvals/${approvalId}`)
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+refresh()
 
 const responseNotes = ref('')
 const responding = ref(false)
@@ -34,7 +49,7 @@ async function respond(action: string) {
 
   responding.value = true
   try {
-    await $fetch(`/api/portal/approvals/${approvalId}/respond`, {
+    await apiFetch(`/api/portal/approvals/${approvalId}/respond`, {
       method: 'POST',
       body: { action, notes: responseNotes.value || undefined }
     })

@@ -4,10 +4,25 @@
 const props = defineProps<{ modelValue: string | null, target: 'person' | 'company', clientId: string }>()
 const emit = defineEmits<{ 'update:modelValue': [string | null] }>()
 const base = inject<string>('crmApiBase', '/api/crm')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
 const isPortal = base.includes('client-portal')
 const url = computed(() => props.target === 'person' ? `${base}/people` : `${base}/companies`)
 const query = computed(() => isPortal ? { page_size: '200' } : { client_id: props.clientId, page_size: '200' })
-const { data } = useFetch<{ items: any[] }>(url, { query, default: () => ({ items: [] }) })
+const data = ref<{ items: any[] }>({ items: [] })
+
+async function refreshOptions() {
+  if (!isPortal && !props.clientId) {
+    data.value = { items: [] }
+    return
+  }
+
+  data.value = await apiFetch<{ items: any[] }>(url.value, { query: query.value })
+}
+
+watch([url, query], () => { refreshOptions() }, { immediate: true })
 const options = computed(() => (data.value?.items ?? []).map((r: any) => ({
   label: props.target === 'person' ? [r.first_name, r.last_name].filter(Boolean).join(' ') || r.email || 'Unnamed' : r.name,
   value: r.id,

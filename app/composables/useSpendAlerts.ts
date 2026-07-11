@@ -10,12 +10,24 @@ export interface SpendAlert {
 /**
  * Active ad-spend pacing/delivery alerts, indexed by media_spend id so the
  * spend table and per-platform campaign pages can surface them inline.
- * useFetch dedupes by URL, so multiple callers share one request.
  */
 export function useSpendAlerts() {
-  const { data, pending, refresh } = useFetch<{ items: SpendAlert[] }>('/api/agency/social/spend/alerts', {
-    default: () => ({ items: [] })
-  })
+  const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+  const data = ref<{ items: SpendAlert[] }>({ items: [] })
+  const pending = ref(false)
+
+  async function refresh() {
+    pending.value = true
+    try {
+      data.value = await apiFetch<{ items: SpendAlert[] }>('/api/agency/social/spend/alerts')
+    } catch {
+      data.value = { items: [] }
+    } finally {
+      pending.value = false
+    }
+  }
+
+  void refresh()
 
   const byMediaSpendId = computed(() => {
     const map = new Map<string, SpendAlert[]>()

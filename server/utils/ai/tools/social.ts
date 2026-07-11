@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { queryOne } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
+import { aiInternalFetch } from '../internalFetch'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -62,7 +63,7 @@ const defaultDeps: SocialDeps = {
       [`%${escapeLike(clientName)}%`],
     )
     if (!row?.id) throw new Error('no matching client')
-    return await $fetch<SocialOverview>('/api/agency/social/reporting/overview', {
+    return await aiInternalFetch<SocialOverview>('/api/agency/social/reporting/overview', {
       query: { clientId: row.id, from, to },
       headers: ctx.event.headers as any,
     })

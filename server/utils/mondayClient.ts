@@ -30,6 +30,7 @@ export interface MondayColumn {
   title: string
   type: string
   settings?: string
+  settings_str?: string
 }
 
 export interface MondayGroup {
@@ -42,6 +43,9 @@ export interface MondayGroup {
 export interface MondayItem {
   id: string
   name: string
+  // Canonical source link; supported by Monday API versions 2024-04 and later.
+  // Source: https://developer.monday.com/api-reference/changelog/new-url-field-on-boards-and-items
+  url?: string
   board_id: string
   group_id?: string
   group_title?: string
@@ -58,8 +62,10 @@ export interface MondayItem {
 export interface MondayColumnValue {
   id: string
   type: string
+  title?: string
   value?: string
   text?: string
+  settings_str?: string
 }
 
 export interface MondayUpdate {
@@ -97,12 +103,14 @@ export interface MondayUser {
   email: string
   url: string
   photo_thumb?: string
+  photo_url?: string
 }
 
 export interface MondayWorkspace {
   id: string
   name: string
   description?: string
+  kind?: string
 }
 
 export interface MondayAccount {
@@ -110,6 +118,12 @@ export interface MondayAccount {
   name: string
   slug: string
 }
+
+export type MondayWebhookEvent =
+  | 'change_column_value' | 'change_subitem_column_value' | 'change_name'
+  | 'create_item' | 'item_archived' | 'item_deleted' | 'item_restored'
+  | 'create_subitem' | 'change_subitem_name' | 'subitem_archived' | 'subitem_deleted'
+  | 'create_update' | 'edit_update' | 'delete_update' | 'create_subitem_update'
 
 // ============================================
 // Client
@@ -134,7 +148,7 @@ export class MondayClient {
           headers: {
             'Authorization': this.apiToken,
             'Content-Type': 'application/json',
-            'API-Version': '2024-01',
+            'API-Version': '2025-04',
           },
           body: { query, variables },
         })
@@ -178,6 +192,24 @@ export class MondayClient {
 
     const data = await this.request<{ me: { account: MondayAccount } }>(query)
     return data.me.account
+  }
+
+  async getWebhooks(boardId: string): Promise<Array<{ id: string; board_id: string; event: MondayWebhookEvent; config?: string }>> {
+    const data = await this.request<{ webhooks: Array<{ id: string; board_id: string; event: MondayWebhookEvent; config?: string }> }>(`
+      query AppWebhooks($boardId: ID!) {
+        webhooks(board_id: $boardId, app_webhooks_only: true) { id board_id event config }
+      }
+    `, { boardId })
+    return data.webhooks || []
+  }
+
+  async createWebhook(boardId: string, url: string, webhookEvent: MondayWebhookEvent) {
+    const data = await this.request<{ create_webhook: { id: string; board_id: string } }>(`
+      mutation CreateWebhook($boardId: ID!, $url: String!, $event: WebhookEventType!) {
+        create_webhook(board_id: $boardId, url: $url, event: $event) { id board_id }
+      }
+    `, { boardId, url, event: webhookEvent })
+    return data.create_webhook
   }
 
   /**
@@ -239,7 +271,7 @@ export class MondayClient {
             id
             title
             type
-            settings
+            settings_str
           }
           groups {
             id
@@ -277,6 +309,7 @@ export class MondayClient {
             items {
               id
               name
+              url
               state
               created_at
               updated_at
@@ -306,6 +339,7 @@ export class MondayClient {
               items {
                 id
                 name
+                url
                 state
                 created_at
                 updated_at
@@ -358,6 +392,7 @@ export class MondayClient {
           subitems {
             id
             name
+            url
             state
             created_at
             updated_at

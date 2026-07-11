@@ -15,14 +15,22 @@ const props = defineProps<{
 
 const open = ref(props.defaultOpen ?? false)
 const toneFilter = ref<'all' | 'success' | 'warning' | 'danger' | 'neutral'>('all')
-const { data, pending, refresh, error } = useFetch<{ events: AuditEventWithActor[] }>(
-  () => `/api/office/${props.officeId}/audit`,
-  {
-    watch: [() => props.officeId],
-    default: () => ({ events: [] }),
-    immediate: false
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<{ events: AuditEventWithActor[] }>({ events: [] })
+const pending = ref(false)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<{ events: AuditEventWithActor[] }>(`/api/office/${props.officeId}/audit`)
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
   }
-)
+}
 
 const events = computed(() => data.value?.events ?? [])
 const sensitiveEventCount = computed(() => events.value.filter(event => actionTone(event.action) !== 'neutral').length)
@@ -42,6 +50,10 @@ const auditFilters = computed(() => [
 watch(open, (isOpen) => {
   if (isOpen) void refresh()
 }, { immediate: true })
+
+watch(() => props.officeId, () => {
+  if (open.value) void refresh()
+})
 
 watch(
   () => props.refreshKey,
@@ -260,7 +272,7 @@ function metadataChipValue(key: string, formatted: string) {
           <button
             type="button"
             class="rounded-md bg-white/[0.06] px-2 py-1 text-xs font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
-            @click="refresh"
+            @click="() => refresh()"
           >
             Retry
           </button>

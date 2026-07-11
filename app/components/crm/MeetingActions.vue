@@ -10,6 +10,10 @@ const props = defineProps<{
 
 const base = inject<string>('crmApiBase', '/api/crm')
 const isAgency = base === '/api/crm'
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 interface MeetingAction {
   id: string
@@ -23,9 +27,16 @@ interface MeetingAction {
 const endpoint = computed(() =>
   `/api/crm/${props.targetType === 'person' ? 'people' : 'companies'}/${props.targetId}/meeting-actions`)
 const query = computed(() => ({ client_id: props.clientId }))
-const { data, refresh } = useFetch<{ actionItems: MeetingAction[] }>(endpoint, {
-  query, watch: [query, endpoint], immediate: isAgency, default: () => ({ actionItems: [] }),
-})
+const data = ref<{ actionItems: MeetingAction[] }>({ actionItems: [] })
+
+async function refresh() {
+  if (!isAgency) return
+  data.value = await apiFetch<{ actionItems: MeetingAction[] }>(endpoint.value, { query: query.value })
+}
+
+watch([query, endpoint], () => {
+  refresh()
+}, { immediate: true })
 const actionItems = computed(() => data.value?.actionItems ?? [])
 
 const toast = useToast()
@@ -34,7 +45,7 @@ const converting = ref<string | null>(null)
 async function convert(item: MeetingAction) {
   converting.value = item.id
   try {
-    await $fetch(`/api/crm/meeting-actions/${item.id}/convert`, {
+    await apiFetch(`/api/crm/meeting-actions/${item.id}/convert`, {
       method: 'POST',
       body: { client_id: props.clientId, target_type: props.targetType, target_id: props.targetId },
     })

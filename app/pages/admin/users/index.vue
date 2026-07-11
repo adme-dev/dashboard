@@ -63,7 +63,7 @@
           icon="i-lucide-alert-circle"
           title="Failed to load users"
           :description="usersError.message || 'An error occurred'"
-          :actions="[{ label: 'Retry', color: 'primary', onClick: () => refresh() }]"
+          :actions="[{ label: 'Retry', color: 'primary', onClick: () => { refresh() } }]"
         />
       </div>
 
@@ -73,7 +73,7 @@
           icon="i-lucide-users"
           title="No users found"
           description="Get started by inviting your team members"
-          :actions="[{ label: 'Invite users', icon: 'i-lucide-user-plus', color: 'primary', onClick: () => showInviteModal = true }]"
+          :actions="[{ label: 'Invite users', icon: 'i-lucide-user-plus', color: 'primary', onClick: () => { showInviteModal = true } }]"
         />
       </div>
 
@@ -86,39 +86,39 @@
       >
         <template #name-cell="{ row }">
           <UUser
-            :name="row.original.name"
-            :avatar="{ src: row.original.avatarUrl, alt: row.original.name }"
+            :name="userRow(row).name"
+            :avatar="{ src: userRow(row).avatarUrl, alt: userRow(row).name }"
             size="sm"
           />
         </template>
 
         <template #role-cell="{ row }">
           <USelect
-            :model-value="row.original.role"
+            :model-value="userRow(row).role"
             :items="roleOptions"
             value-key="value"
             size="xs"
             class="w-48 min-w-48"
-            @update:model-value="updateUserRole(row.original, $event)"
+            @update:model-value="updateUserRole(userRow(row), $event)"
           />
         </template>
 
         <template #status-cell="{ row }">
           <UBadge
-            :color="row.original.status === 'active' ? 'success' : 'neutral'"
+            :color="userRow(row).status === 'active' ? 'success' : 'neutral'"
             variant="subtle"
             size="xs"
           >
-            {{ row.original.status }}
+            {{ userRow(row).status }}
           </UBadge>
         </template>
 
         <template #teams-cell="{ row }">
           <div class="flex items-center gap-1.5">
-            <template v-if="row.original.teams.length">
+            <template v-if="userRow(row).teams.length">
               <UAvatarGroup size="xs" :max="3">
                 <UTooltip
-                  v-for="team in row.original.teams.slice(0, 3)"
+                  v-for="team in userRow(row).teams.slice(0, 3)"
                   :key="team.id"
                   :text="team.name"
                 >
@@ -128,26 +128,26 @@
                   />
                 </UTooltip>
               </UAvatarGroup>
-              <span v-if="row.original.teams.length > 3" class="text-xs text-muted">
-                +{{ row.original.teams.length - 3 }}
+              <span v-if="userRow(row).teams.length > 3" class="text-xs text-muted">
+                +{{ userRow(row).teams.length - 3 }}
               </span>
             </template>
             <UButton
               variant="ghost"
               color="neutral"
-              :icon="row.original.teams.length ? 'i-lucide-pencil' : 'i-lucide-plus'"
+              :icon="userRow(row).teams.length ? 'i-lucide-pencil' : 'i-lucide-plus'"
               size="xs"
-              @click="openTeamsModal(row.original)"
+              @click="openTeamsModal(userRow(row))"
             />
           </div>
         </template>
 
         <template #joinedAt-cell="{ row }">
-          {{ formatDate(row.original.joinedAt) }}
+          {{ formatDate(userRow(row).joinedAt) }}
         </template>
 
         <template #actions-cell="{ row }">
-          <UDropdownMenu :items="userActions(row.original)">
+          <UDropdownMenu :items="userActions(userRow(row))">
             <UButton
               variant="ghost"
               color="neutral"
@@ -256,7 +256,7 @@
     </UModal>
 
     <!-- Roles Help Slideover -->
-    <USlideover v-model:open="showRolesHelp" title="Roles & Permissions" :ui="{ width: 'max-w-lg' }">
+    <USlideover v-model:open="showRolesHelp" title="Roles & Permissions" :ui="{ content: 'max-w-lg' }">
       <template #body>
         <div class="space-y-6">
           <p class="text-sm text-muted">
@@ -393,7 +393,19 @@ interface Team {
   memberCount: number
 }
 
+interface UsersResponse {
+  users: User[]
+}
+
+interface TeamsResponse {
+  teams: Team[]
+}
+
 const { isAuthenticated, fetchUser } = useAuth()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown }
+) => Promise<T>
 
 const isAuthChecked = ref(false)
 
@@ -402,10 +414,21 @@ onMounted(async () => {
   isAuthChecked.value = true
 })
 
-const { data: usersData, pending, refresh, error: usersError } = useFetch('/api/admin/users', {
-  immediate: false,
-  server: false
-})
+const usersData = ref<UsersResponse | null>(null)
+const pending = ref(false)
+const usersError = ref<any>(null)
+
+async function refresh() {
+  pending.value = true
+  usersError.value = null
+  try {
+    usersData.value = await apiFetch<UsersResponse>('/api/admin/users')
+  } catch (err) {
+    usersError.value = err
+  } finally {
+    pending.value = false
+  }
+}
 
 watch(isAuthChecked, (checked) => {
   if (checked && isAuthenticated.value) {
@@ -413,10 +436,20 @@ watch(isAuthChecked, (checked) => {
   }
 }, { immediate: true })
 
-const users = computed(() => usersData.value?.users || [])
+const users = computed<User[]>(() => usersData.value?.users || [])
 
-const { data: teamsData } = useFetch('/api/admin/teams')
-const teams = computed(() => teamsData.value?.teams || [])
+const teamsData = ref<TeamsResponse | null>(null)
+
+async function refreshTeams() {
+  teamsData.value = await apiFetch<TeamsResponse>('/api/admin/teams')
+}
+
+onMounted(() => {
+  void refreshTeams()
+  void refreshRoles()
+})
+
+const teams = computed<Team[]>(() => teamsData.value?.teams || [])
 
 const searchQuery = ref('')
 const showInviteModal = ref(false)
@@ -435,7 +468,11 @@ const selectedUser = ref<User | null>(null)
 const selectedUserTeams = ref<string[]>([])
 const editForm = ref({ name: '', email: '', role: 'member' })
 
-const { data: rolesApiData } = useFetch<{ roles: Array<{ name: string; slug: string; isSystem: boolean; color: string; icon: string; description: string; permissionGroups: string[] }> }>('/api/admin/roles')
+const rolesApiData = ref<{ roles: Array<{ name: string; slug: string; isSystem: boolean; color: string; icon: string; description: string; permissionGroups: string[] }> } | null>(null)
+
+async function refreshRoles() {
+  rolesApiData.value = await apiFetch('/api/admin/roles')
+}
 
 const ROLE_LABEL_OVERRIDES: Record<string, string> = {
   accounts: 'Accounts / Bookkeeper',
@@ -479,6 +516,8 @@ const availableTeams = computed(() => {
     color: team.color,
   }))
 })
+
+const userRow = (row: { original?: User } | User): User => ('original' in row && row.original ? row.original : row) as User
 
 const filteredUsers = computed(() => {
   if (!searchQuery.value) return users.value
@@ -547,7 +586,7 @@ const updateUserRole = async (user: User, role: string) => {
   if (user.role === role) return
 
   try {
-    await $fetch(`/api/auth/users/${user.id}/role`, {
+    await apiFetch(`/api/auth/users/${user.id}/role`, {
       method: 'PATCH',
       body: { userRole: role }
     })
@@ -571,13 +610,13 @@ const saveUser = async () => {
   editLoading.value = true
   try {
     // Update user details
-    await $fetch(`/api/admin/users/${selectedUser.value.id}`, {
+    await apiFetch(`/api/admin/users/${selectedUser.value.id}`, {
       method: 'PATCH',
       body: { name: editForm.value.name, email: editForm.value.email }
     })
     // Update role separately via the correct endpoint
     if (editForm.value.role !== selectedUser.value.role) {
-      await $fetch(`/api/auth/users/${selectedUser.value.id}/role`, {
+      await apiFetch(`/api/auth/users/${selectedUser.value.id}/role`, {
         method: 'PATCH',
         body: { userRole: editForm.value.role }
       })
@@ -617,14 +656,14 @@ const saveTeams = async () => {
     const teamsToRemove = currentTeamIds.filter(id => !selectedUserTeams.value.includes(id))
 
     for (const teamId of teamsToAdd) {
-      await $fetch('/api/admin/team-members', {
+      await apiFetch('/api/admin/team-members', {
         method: 'POST',
         body: { teamId, userIds: [selectedUser.value.id], role: 'member' }
       })
     }
 
     for (const teamId of teamsToRemove) {
-      await $fetch('/api/admin/team-members', {
+      await apiFetch('/api/admin/team-members', {
         method: 'DELETE',
         body: { teamId, userId: selectedUser.value.id }
       })
@@ -642,7 +681,7 @@ const saveTeams = async () => {
 const toggleUserStatus = async (user: User) => {
   try {
     const newStatus = user.status === 'active' ? false : true
-    await $fetch(`/api/auth/users/${user.id}/status`, {
+    await apiFetch(`/api/auth/users/${user.id}/status`, {
       method: 'PATCH',
       body: { isActive: newStatus }
     })
@@ -664,7 +703,7 @@ const removeUser = async () => {
   if (!userToRemove.value) return
 
   try {
-    await $fetch(`/api/auth/users/${userToRemove.value.id}/status`, {
+    await apiFetch(`/api/auth/users/${userToRemove.value.id}/status`, {
       method: 'PATCH',
       body: { isActive: false }
     })

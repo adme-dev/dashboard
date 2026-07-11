@@ -37,6 +37,7 @@ const emit = defineEmits<{ saved: [{ subscribed: boolean; level: string | null }
 
 const open = defineModel<boolean>('open', { default: false })
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const GROUPS = {
   items:     { key: 'items',     label: 'Items (created / updated / deleted)', events: ['task_created', 'task_updated', 'task_deleted'] },
@@ -93,7 +94,7 @@ function groupsToEvents(): string[] {
 async function hydrate() {
   suppressPresetFlip = true
   try {
-    const { subscriptions } = await $fetch<{ subscriptions: any[] }>(
+    const { subscriptions } = await apiFetch<{ subscriptions: any[] }>(
       `/api/agency/boards/${props.boardId}/subscriptions`
     )
     // Match the right subscription scope: item-level if itemId set, else board-level.
@@ -162,7 +163,7 @@ async function save() {
 
     if (props.itemId) body.itemId = props.itemId
 
-    await $fetch(`/api/agency/boards/${props.boardId}/subscribe`, { method: 'POST', body })
+    await apiFetch(`/api/agency/boards/${props.boardId}/subscribe`, { method: 'POST', body })
     emit('saved', { subscribed: true, level })
     open.value = false
   } catch (err: any) {

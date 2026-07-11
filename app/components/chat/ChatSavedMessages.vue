@@ -23,13 +23,14 @@ interface SavedMessage {
   channelType: string
   channelSlug: string
 }
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 const saved = ref<SavedMessage[]>([])
 const loading = ref(true)
 
 onMounted(async () => {
   try {
-    saved.value = await $fetch('/api/chat/saved') as SavedMessage[]
+    saved.value = await apiFetch<SavedMessage[]>('/api/chat/saved')
   } catch {
     // Silent
   } finally {
@@ -41,7 +42,7 @@ async function handleUnsave(messageId: number) {
   const item = saved.value.find(s => s.messageId === messageId)
   if (!item) return
   try {
-    await $fetch('/api/chat/saved', {
+    await apiFetch('/api/chat/saved', {
       method: 'POST',
       body: { messageId, channelId: item.channelId }
     })

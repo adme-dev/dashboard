@@ -9,6 +9,7 @@ export default defineNuxtPlugin((nuxtApp) => {
   if (!import.meta.client) return
 
   const router = useRouter()
+  const apiFetch = $fetch as <T>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
   // Flags to prevent redirect loops and duplicate verification
   let isRedirecting = false
@@ -21,7 +22,7 @@ export default defineNuxtPlugin((nuxtApp) => {
     try {
       // Double-check: is the session actually dead?
       // /api/auth/me is a public route — it reads the httpOnly cookie server-side.
-      const me: any = await $fetch('/api/auth/me').catch((err: any) => {
+      const me = await apiFetch<any>('/api/auth/me').catch((err: any) => {
         // 503 = transient error (DB down, cold start) — don't treat as dead session
         if (err?.statusCode === 503 || err?.status === 503) {
           return { _transient: true }

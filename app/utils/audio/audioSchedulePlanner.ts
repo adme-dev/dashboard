@@ -5,7 +5,7 @@
 // Mirrors the render-side timelineFiltergraph.ts on the contract; this is the
 // browser-side compilation (gain ramps instead of sidechaincompress, since Web
 // Audio has no sidechain — OSS prior-art §1).
-import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
+import type { AudioClip, Clip, TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 export interface TrackBus {
   trackId: string
@@ -38,6 +38,10 @@ export interface TimelinePlan {
   ramps: DuckRamp[]
 }
 
+function isAudioClip(clip: Clip): clip is AudioClip {
+  return (clip as { type?: string }).type == null || clip.type === 'audio'
+}
+
 /** Decibels → linear amplitude. -Infinity → 0. Shared by the engine + preview gain math. */
 export function dbToGain(db: number): number {
   return db === -Infinity ? 0 : Math.pow(10, db / 20)
@@ -56,7 +60,7 @@ export function planTimeline(state: TimelineState): TimelinePlan {
       // V1.3: the audio engine schedules ONLY audio clips. Video/overlay clips have no
       // decodable audio buffer (overlays have no r2_key at all). Missing `type` ===
       // legacy audio clip (addClip omits it), so only EXPLICIT video/overlay are skipped.
-      if ((clip as { type?: string }).type === 'video' || (clip as { type?: string }).type === 'overlay') continue
+      if (!isAudioClip(clip)) continue
       clips.push({
         clipId: clip.id,
         trackId: track.id,
@@ -81,6 +85,7 @@ export function planTimeline(state: TimelineState): TimelinePlan {
     if (!activeIds.has(rule.source_track_id) || !activeIds.has(rule.target_track_id)) continue
     const sourceTrack = active.find((t) => t.id === rule.source_track_id)!
     for (const clip of sourceTrack.clips) {
+      if (!isAudioClip(clip)) continue
       const start = clip.timeline_start_sec
       ramps.push({ targetTrackId: rule.target_track_id, atSec: start, toGainDb: rule.amount_db, rampSec: rule.attack_ms / 1000 })
       // Restore only when the source clip's end is known; null-out clips get their

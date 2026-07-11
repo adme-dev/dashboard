@@ -4,7 +4,7 @@ import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import {
   fetchClientEconomics, fetchRetainerCaps, fetchClientProjectLabor, resolveByName,
-  type ClientEconomicsRow, type RetainerRow, type ProjectLaborRow, type Period,
+  type ClientEconomicsRow, type RetainerRow, type ProjectLaborRow, type EconomicsPeriod,
 } from './economics'
 
 const params = z.object({
@@ -15,8 +15,8 @@ type Args = z.infer<typeof params>
 
 export type OverServicingDeps = {
   fetchRetainers: () => Promise<RetainerRow[]>
-  fetchEconomics: (event: H3Event, period: Period) => Promise<ClientEconomicsRow[]>
-  fetchProjectLabor: (clientId: string, period: Period) => Promise<ProjectLaborRow[]>
+  fetchEconomics: (event: H3Event, period: EconomicsPeriod) => Promise<ClientEconomicsRow[]>
+  fetchProjectLabor: (clientId: string, period: EconomicsPeriod) => Promise<ProjectLaborRow[]>
 }
 const defaultDeps: OverServicingDeps = {
   fetchRetainers: fetchRetainerCaps,

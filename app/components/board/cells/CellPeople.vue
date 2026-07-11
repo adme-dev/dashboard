@@ -130,6 +130,7 @@ const emit = defineEmits<{ update: [payload: any] }>()
 const showPicker = ref(false)
 const searchQuery = ref('')
 const pickerPosition = ref({ x: 0, y: 0 })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 // Fetch team members from API — fixed key + `dedupe: 'defer'` so every
 // CellPeople instance on the board shares one in-flight request. Without
@@ -137,7 +138,7 @@ const pickerPosition = ref({ x: 0, y: 0 })
 // fire its own fetch (the abort signal isn't propagated to `$fetch` here).
 const { data: teamData } = useAsyncData(
   'agency-team-members',
-  () => $fetch('/api/agency/team-members'),
+  () => apiFetch<{ members: TeamMember[] }>('/api/agency/team-members'),
   { dedupe: 'defer' },
 )
 const allPeople = computed<TeamMember[]>(() => (teamData.value as any)?.members || [])

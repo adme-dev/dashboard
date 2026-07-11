@@ -10,9 +10,14 @@ const route = useRoute()
 const toast = useToast()
 const api = useSocialPublishing()
 const { state, reset, loadFromPost, resolved, toBody } = useSocialComposer()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown> }
+) => Promise<T>
 
 // /api/agency/clients returns a BARE array — unwrap defensively (a {clients} access silently empties it).
-const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
+const clientsData = ref<any>([])
+clientsData.value = await apiFetch('/api/agency/clients', { query: { limit: 200 } }).catch(() => [])
 const clients = computed<any[]>(() => {
   const d = clientsData.value as any
   return Array.isArray(d) ? d : (d?.clients ?? [])
@@ -68,7 +73,7 @@ onMounted(async () => {
   const creativeId = route.query.creative as string | undefined
   if (creativeId) {
     try {
-      const creatives = await $fetch<{ id: string; url: string }[]>('/api/agency/banner-studio/published/with-projects')
+      const creatives = await apiFetch<{ id: string; url: string }[]>('/api/agency/banner-studio/published/with-projects')
       const match = creatives.find(c => c.id === creativeId)
       if (match) {
         if (!state.value.mediaUrls.includes(match.url)) state.value.mediaUrls.push(match.url)

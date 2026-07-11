@@ -4,6 +4,10 @@ definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { query?: Record<string, unknown>; signal?: AbortSignal }
+) => Promise<T>
 const {
   fetchSpendSummary,
   fetchSpendControlDiagnostics,
@@ -150,7 +154,7 @@ async function doLoadBankCharges(refresh = false) {
   bankChargesAbort = ctrl
   bankLoading.value = true
   try {
-    bankCharges.value = await $fetch('/api/agency/social/spend/bank-charges', {
+    bankCharges.value = await apiFetch('/api/agency/social/spend/bank-charges', {
       // refresh bypasses the KV cache after a sync.
       query: { month: selectedMonth.value, year: selectedYear.value, ...(refresh ? { refresh: 1 } : {}) },
       signal: ctrl.signal,
@@ -253,7 +257,7 @@ function pollSyncStatus(jobIds: string[]) {
   const tick = async () => {
     const statuses = (await Promise.all(
       jobIds.map(id =>
-        $fetch<SyncStatusResponse>('/api/agency/social/spend/sync-status', { query: { jobId: id } }).catch(() => null)
+        apiFetch<SyncStatusResponse>('/api/agency/social/spend/sync-status', { query: { jobId: id } }).catch(() => null)
       )
     )).filter(Boolean) as SyncStatusResponse[]
 

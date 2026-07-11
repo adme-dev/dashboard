@@ -38,7 +38,7 @@ export interface PortalConfirmAudit {
 }
 
 export type PortalConfirmResult =
-  | { ok: true, resultRef: string, summary: string }
+  | { ok: true, resultRef: string, summary: string, error?: undefined }
   | { ok: false, error: string }
 
 /**

@@ -58,7 +58,7 @@ export interface AclInput {
 }
 
 export type AclResult
-  = | { allowed: true }
+  = | { allowed: true, reason?: undefined }
     | { allowed: false, reason: string }
 
 export function evaluateAcl(input: AclInput): AclResult {

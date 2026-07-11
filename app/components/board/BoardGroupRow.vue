@@ -25,7 +25,7 @@
     <!-- Color Swatch -->
     <button
       class="w-3 h-3 rounded-sm flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-offset-1"
-      :style="{ backgroundColor: color, ringColor: color }"
+      :style="{ backgroundColor: color, '--tw-ring-color': color }"
       @click="showColorPicker = !showColorPicker"
     />
 
@@ -67,7 +67,7 @@
           :key="c"
           class="w-6 h-6 rounded-full hover:scale-110 transition-transform"
           :class="c === color ? 'ring-2 ring-offset-1' : ''"
-          :style="{ backgroundColor: c, ringColor: c }"
+          :style="{ backgroundColor: c, '--tw-ring-color': c }"
           @click="$emit('updateColor', c); showColorPicker = false"
         />
       </div>

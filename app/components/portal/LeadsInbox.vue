@@ -73,16 +73,44 @@ const exportParams = computed(() => {
   return p
 })
 
-const { data, refresh, pending } = useFetch<LeadsResponse>(
-  '/api/client-portal/leads/list',
-  { query: params, watch: [params], default: () => ({ items: [], total: 0, stats: [], sourceStats: [], responseSummary: null }) }
-)
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
+const data = ref<LeadsResponse>({ items: [], total: 0, stats: [], sourceStats: [], responseSummary: null })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<LeadsResponse>('/api/client-portal/leads/list', { query: params.value })
+  } catch {
+    // Keep the current list visible during transient refresh failures.
+  } finally {
+    pending.value = false
+  }
+}
 
 const selectedUrl = computed(() => selectedLeadId.value ? `/api/client-portal/leads/${selectedLeadId.value}` : null)
-const { data: selectedData, pending: selectedPending, refresh: refreshSelected } = useFetch<{ lead: PortalLead }>(
-  selectedUrl,
-  { immediate: false }
-)
+const selectedData = ref<{ lead: PortalLead } | null>(null)
+const selectedPending = ref(false)
+
+async function refreshSelected() {
+  if (!selectedUrl.value) {
+    selectedData.value = null
+    return
+  }
+  selectedPending.value = true
+  try {
+    selectedData.value = await apiFetch<{ lead: PortalLead }>(selectedUrl.value)
+  } catch {
+    selectedData.value = null
+  } finally {
+    selectedPending.value = false
+  }
+}
+
+await refresh()
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All' },
@@ -122,7 +150,7 @@ function summarize(l: PortalLead): string {
 }
 
 async function markContacted(l: PortalLead) {
-  await $fetch(`/api/client-portal/leads/${l.id}/contacted`, { method: 'POST' })
+  await apiFetch(`/api/client-portal/leads/${l.id}/contacted`, { method: 'POST' })
   toast.add({ title: 'Marked contacted', color: 'success' })
   await refresh()
   if (selectedLeadId.value === l.id) await refreshSelected()
@@ -222,8 +250,12 @@ const visibleRange = computed(() => {
 watch([status, source, search, campaign, campaignId, from, to], () => {
   page.value = 1
 })
+watch(params, () => {
+  void refresh()
+})
 watch(selectedLeadId, async (id) => {
   if (id) await refreshSelected()
+  else selectedData.value = null
 }, { immediate: true })
 watch([status, source, search, campaign, campaignId, from, to, page, selectedLeadId], syncRouteQuery)
 watch(

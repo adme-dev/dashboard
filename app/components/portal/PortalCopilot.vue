@@ -20,6 +20,10 @@ const messages = ref<ChatMsg[]>([])
 const pending = ref<ProposedAction | null>(null)
 const confirming = ref(false)
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const suggestions = [
   'What needs my approval?',
@@ -36,7 +40,7 @@ async function send(text?: string) {
   pending.value = null
   sending.value = true
   try {
-    const res = await $fetch<ChatResponse>('/api/portal/ai/chat', {
+    const res = await apiFetch<ChatResponse>('/api/portal/ai/chat', {
       method: 'POST',
       body: { content, conversationId: conversationId.value },
     })
@@ -54,7 +58,7 @@ async function confirmAction() {
   if (!pending.value || confirming.value) return
   confirming.value = true
   try {
-    const res = await $fetch<{ ok: boolean, summary?: string, error?: string }>('/api/portal/ai/confirm-action', {
+    const res = await apiFetch<{ ok: boolean, summary?: string, error?: string }>('/api/portal/ai/confirm-action', {
       method: 'POST',
       body: { proposalId: pending.value.proposalId },
     })

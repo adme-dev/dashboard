@@ -1,7 +1,7 @@
 // app/utils/audio/timelineEdit.ts — PURE timeline edit operations. Each returns a NEW
 // TimelineState (no mutation of the input), recomputes duration_sec, and stays SP0-valid.
 // New clip ids are passed in by the caller (deterministic → testable). No DOM, no Vue.
-import type { TimelineState, Track, Clip } from '~~/server/utils/audio/timelineSchema'
+import type { TimelineState, Track, Clip, AudioClip } from '~~/server/utils/audio/timelineSchema'
 import { computeDuration } from '~~/server/utils/audio/timelineSchema'
 
 export type EditableState = TimelineState
@@ -28,6 +28,10 @@ function findClip(state: TimelineState, clipId: string): { track: Track; clip: C
     if (clip) return { track, clip }
   }
   return null
+}
+
+function isAudioClip(clip: Clip): clip is AudioClip {
+  return (clip as { type?: string }).type == null || clip.type === 'audio'
 }
 
 export function deleteClip(state: TimelineState, { clipId }: { clipId: string }): TimelineState {
@@ -59,6 +63,7 @@ export function sliceClipAt(
     const i = track.clips.findIndex(c => c.id === clipId)
     if (i < 0) continue
     const clip = track.clips[i]
+    if (!isAudioClip(clip)) return state
     // Play-to-end clips (source_out_sec === null) end at the decoded source length.
     const trueOut = clip.source_out_sec ?? sourceDurationSec
     const endTl = clip.timeline_start_sec + (trueOut - clip.source_in_sec)
@@ -80,7 +85,7 @@ export function trimClip(
 ): TimelineState {
   const next = cloneState(state)
   const found = next.tracks.flatMap(t => t.clips).find(c => c.id === clipId)
-  if (!found) return state
+  if (!found || !isAudioClip(found)) return state
   const srcOut = found.source_out_sec ?? sourceDurationSec
   if (edge === 'end') {
     // timeline delta from the clip start maps 1:1 to source seconds
@@ -107,6 +112,7 @@ export function addClip(
   const track = next.tracks.find(t => t.id === trackId)
   if (!track) return state
   track.clips.push({
+    type: 'audio',
     id, asset_id: asset.id, r2_key: asset.r2_key_master,
     timeline_start_sec: Math.max(0, startSec), source_in_sec: 0, source_out_sec: null,
     gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear'

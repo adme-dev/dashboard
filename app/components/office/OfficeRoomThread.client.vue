@@ -38,6 +38,10 @@ const typingText = ref('')
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 let wsComposable: ReturnType<typeof useChatWebSocket> | null = null
 let removeWsMessageHandler: (() => void) | null = null
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+) => Promise<T>
 
 const canSend = computed(() => draft.value.trim().length > 0 && !sending.value)
 const liveStatusLabel = computed(() => {
@@ -107,7 +111,7 @@ function upsertMessage(message: OfficeRoomThreadMessage) {
 async function loadMessages(channelId: string, mode: 'replace' | 'append' = 'replace') {
   const lastNumericId = [...messages.value].reverse().find(message => typeof message.id === 'number')?.id
   const after = mode === 'append' ? lastNumericId : null
-  const data = await $fetch<OfficeRoomThreadMessage[]>(`/api/chat/channels/${channelId}/messages`, {
+  const data = await apiFetch<OfficeRoomThreadMessage[]>(`/api/chat/channels/${channelId}/messages`, {
     query: {
       limit: 12,
       ...(after ? { after } : {})
@@ -145,7 +149,7 @@ async function ensureThread() {
   errorMessage.value = null
 
   try {
-    const nextChannel = await $fetch<OfficeRoomThreadChannel>(
+    const nextChannel = await apiFetch<OfficeRoomThreadChannel>(
       `/api/office/${props.officeId}/zones/${props.zoneId}/thread`,
       { method: 'POST' }
     )
@@ -233,7 +237,7 @@ async function sendMessage() {
       return
     }
 
-    const message = await $fetch<OfficeRoomThreadMessage>(`/api/chat/channels/${activeChannel.id}/messages`, {
+    const message = await apiFetch<OfficeRoomThreadMessage>(`/api/chat/channels/${activeChannel.id}/messages`, {
       method: 'POST',
       body: {
         content,

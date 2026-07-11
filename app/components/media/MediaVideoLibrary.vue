@@ -25,7 +25,23 @@ interface VideoAsset {
   createdAt: string; updatedAt: string
 }
 
-const { data, pending, error, refresh } = useFetch('/api/agency/video/assets', { lazy: true, immediate: false })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const pending = ref(false)
+const error = ref<unknown>(null)
+
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch('/api/agency/video/assets')
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
 const assets = computed((): VideoAsset[] => (data.value as any)?.assets ?? [])
 
 // Fetch on open (immediate:false above defers the initial run until the slideover shows).

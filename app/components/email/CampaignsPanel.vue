@@ -25,7 +25,7 @@ interface CampaignRow {
 interface ListRow { id: string, name: string }
 interface CampaignPreflightCheck {
   code: string
-  label: string
+  label?: string
   status: 'pass' | 'warning' | 'blocked'
   message: string
 }
@@ -47,15 +47,32 @@ interface RecipientSnapshot {
 }
 
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
-const { data, refresh, pending } = await useFetch<{ campaigns: CampaignRow[] }>(
-  '/api/email/campaigns',
-  { default: () => ({ campaigns: [] }) }
-)
+const data = ref<{ campaigns: CampaignRow[] }>({ campaigns: [] })
+const pending = ref(false)
+const listsData = ref<{ items: ListRow[] }>({ items: [] })
+const cfg = ref<{ sending_enabled: boolean }>({ sending_enabled: false })
 
-const { data: listsData } = await useFetch<{ items: ListRow[] }>('/api/email/lists', {
-  default: () => ({ items: [] })
-})
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ campaigns: CampaignRow[] }>('/api/email/campaigns')
+  } finally {
+    pending.value = false
+  }
+}
+
+async function refreshLists() {
+  listsData.value = await apiFetch<{ items: ListRow[] }>('/api/email/lists')
+}
+
+async function refreshConfig() {
+  cfg.value = await apiFetch<{ sending_enabled: boolean }>('/api/email/campaigns/config')
+}
+
+await Promise.all([refresh(), refreshLists(), refreshConfig()])
+
 const listItems = computed(() =>
   (listsData.value?.items ?? []).map(l => ({ label: l.name, value: l.id }))
 )
@@ -89,17 +106,17 @@ async function create() {
   }
   creating.value = true
   try {
-    const { campaign } = await $fetch<{ campaign: { id: string } }>('/api/email/campaigns', {
+    const { campaign } = await apiFetch<{ campaign: { id: string } }>('/api/email/campaigns', {
       method: 'POST',
       body: { name: form.value.name.trim(), subject: form.value.subject || null }
     })
     let recipients = 0
     if (form.value.listIds.length) {
-      await $fetch(`/api/email/campaigns/${campaign.id}/lists`, {
+      await apiFetch(`/api/email/campaigns/${campaign.id}/lists`, {
         method: 'PUT',
         body: { list_ids: form.value.listIds }
       })
-      const res = await $fetch<{ to_send: number }>(
+      const res = await apiFetch<{ to_send: number }>(
         `/api/email/campaigns/${campaign.id}/materialize`,
         { method: 'POST' }
       )
@@ -120,10 +137,6 @@ async function create() {
 }
 
 // ── Send controls (gated) ──────────────────────────────────────────────────
-const { data: cfg } = await useFetch<{ sending_enabled: boolean }>(
-  '/api/email/campaigns/config',
-  { default: () => ({ sending_enabled: false }) }
-)
 const sendingEnabled = computed(() => !!cfg.value?.sending_enabled)
 
 const busyId = ref<string | null>(null)
@@ -219,7 +232,7 @@ async function scheduleCampaign() {
   scheduleErrorPreflight.value = null
   scheduleErrorSnapshot.value = null
   try {
-    await $fetch(`/api/email/campaigns/${row.id}`, {
+    await apiFetch(`/api/email/campaigns/${row.id}`, {
       method: 'PATCH',
       body: { scheduled_at: new Date(scheduleAt.value).toISOString() }
     })
@@ -249,7 +262,7 @@ async function doSend() {
   }
   busyId.value = row.id
   try {
-    const res = await $fetch<{ sent: number, remaining: number, status: string }>(
+    const res = await apiFetch<{ sent: number, remaining: number, status: string }>(
       `/api/email/campaigns/${row.id}/send`, { method: 'POST' }
     )
     toast.add({
@@ -273,7 +286,7 @@ async function doSend() {
 async function pause(row: CampaignRow) {
   busyId.value = row.id
   try {
-    await $fetch(`/api/email/campaigns/${row.id}/pause`, { method: 'POST' })
+    await apiFetch(`/api/email/campaigns/${row.id}/pause`, { method: 'POST' })
     toast.add({ title: 'Paused', color: 'success' })
     refresh()
   } catch (e) {
@@ -290,7 +303,7 @@ async function pause(row: CampaignRow) {
 async function cancel(row: CampaignRow) {
   busyId.value = row.id
   try {
-    await $fetch(`/api/email/campaigns/${row.id}/cancel`, { method: 'POST' })
+    await apiFetch(`/api/email/campaigns/${row.id}/cancel`, { method: 'POST' })
     toast.add({ title: 'Cancelled', color: 'success' })
     refresh()
   } catch (e) {
@@ -307,7 +320,7 @@ async function cancel(row: CampaignRow) {
 async function testSend(row: CampaignRow) {
   busyId.value = row.id
   try {
-    const res = await $fetch<{ sent_to: string }>(
+    const res = await apiFetch<{ sent_to: string }>(
       `/api/email/campaigns/${row.id}/test-send`, { method: 'POST' }
     )
     toast.add({ title: 'Test sent', description: `Sent to ${res.sent_to}.`, color: 'success' })

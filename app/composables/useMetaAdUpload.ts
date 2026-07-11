@@ -90,6 +90,11 @@ let _cachedConnectionId = ''
 let _cachedCampaignId = ''
 
 export function useMetaAdUpload() {
+  const apiFetch = $fetch as <T = unknown>(request: string, options?: {
+    method?: string
+    body?: unknown
+    query?: Record<string, unknown>
+  }) => Promise<T>
   // ── Computed ──
   const metaConnections = computed(() =>
     connections.value.filter((c: any) => c.platform === 'meta'),
@@ -167,7 +172,7 @@ export function useMetaAdUpload() {
   // ── Fetchers ──
   async function fetchConnections() {
     try {
-      const data = await $fetch<any[]>('/api/agency/social/connections')
+      const data = await apiFetch<any[]>('/api/agency/social/connections')
       connections.value = data || []
     } catch {
       connections.value = []
@@ -178,7 +183,7 @@ export function useMetaAdUpload() {
     if (!connectionId.value) return
     if (_cachedConnectionId === connectionId.value && campaigns.value.length) return
     try {
-      const data = await $fetch<{ campaigns: any[] }>(
+      const data = await apiFetch<{ campaigns: any[] }>(
         `/api/agency/banner-studio/ad-publish/meta/campaigns`,
         { query: { connectionId: connectionId.value } },
       )
@@ -193,7 +198,7 @@ export function useMetaAdUpload() {
     if (!connectionId.value || !campaignId.value) return
     if (_cachedCampaignId === campaignId.value && adSets.value.length) return
     try {
-      const data = await $fetch<{ adSets: any[] }>(
+      const data = await apiFetch<{ adSets: any[] }>(
         `/api/agency/banner-studio/ad-publish/meta/adsets`,
         { query: { connectionId: connectionId.value, campaignId: campaignId.value } },
       )
@@ -207,7 +212,7 @@ export function useMetaAdUpload() {
   async function fetchPages() {
     if (!connectionId.value || pages.value.length) return
     try {
-      const data = await $fetch<{ pages: any[] }>(
+      const data = await apiFetch<{ pages: any[] }>(
         `/api/agency/banner-studio/ad-publish/meta/pages`,
         { query: { connectionId: connectionId.value } },
       )
@@ -219,7 +224,7 @@ export function useMetaAdUpload() {
 
   async function fetchPublished(projectId: string) {
     try {
-      const data = await $fetch<any[]>(
+      const data = await apiFetch<any[]>(
         `/api/agency/banner-studio/published/by-project/${projectId}`,
       )
       published.value = data || []
@@ -230,7 +235,7 @@ export function useMetaAdUpload() {
 
   async function fetchAllPublished(limit = 200) {
     try {
-      const data = await $fetch<any[]>(
+      const data = await apiFetch<any[]>(
         `/api/agency/banner-studio/published/with-projects`,
         { query: { limit } },
       )
@@ -242,7 +247,7 @@ export function useMetaAdUpload() {
 
   async function fetchAdPublishes(projectId: string) {
     try {
-      const data = await $fetch<any[]>(
+      const data = await apiFetch<any[]>(
         `/api/agency/banner-studio/ad-publish?projectId=${projectId}`,
       )
       adPublishes.value = data || []
@@ -256,7 +261,7 @@ export function useMetaAdUpload() {
     if (isSyncingStatuses.value) return { ok: false, updated: 0 }
     isSyncingStatuses.value = true
     try {
-      const res = await $fetch<{ ok: boolean; updated: number }>(
+      const res = await apiFetch<{ ok: boolean; updated: number }>(
         '/api/agency/banner-studio/ad-publish/meta/sync-status',
         { method: 'POST', body: { projectId } },
       )
@@ -302,7 +307,7 @@ export function useMetaAdUpload() {
       progress.stepLabel = STEP_LABELS.image
 
       try {
-        await $fetch('/api/agency/banner-studio/ad-publish/meta', {
+        await apiFetch('/api/agency/banner-studio/ad-publish/meta', {
           method: 'POST',
           body: {
             publishedId: progress.publishedId,
@@ -372,7 +377,7 @@ export function useMetaAdUpload() {
       progress.stepLabel = STEP_LABELS.image
 
       try {
-        await $fetch('/api/agency/banner-studio/ad-publish/meta', {
+        await apiFetch('/api/agency/banner-studio/ad-publish/meta', {
           method: 'POST',
           body: {
             publishedId: progress.publishedId,

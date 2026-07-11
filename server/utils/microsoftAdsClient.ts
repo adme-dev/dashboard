@@ -432,7 +432,7 @@ export async function downloadAndParseReport(
 ): Promise<MicrosoftCampaignReport[]> {
   const csvText = await ofetch<string>(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
-    responseType: 'text',
+    responseType: 'text' as any,
   })
 
   return parseCsvReport(csvText)
@@ -549,7 +549,7 @@ export async function getBreakdownReport(
     const downloadUrl = await pollReportStatus(requestId, accessToken, developerToken, 30000)
     const csvText = await ofetch<string>(downloadUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
-      responseType: 'text',
+      responseType: 'text' as any,
     })
 
     return parseBreakdownCsv(csvText, reportType)
@@ -665,7 +665,7 @@ async function microsoftFetch(
           SOAPAction: soapAction,
         },
         body: soapBody,
-        responseType: 'text',
+        responseType: 'text' as any,
       })
       return res
     } catch (err: any) {

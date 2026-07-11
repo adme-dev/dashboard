@@ -1,5 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 // ── Types ──
 type Contact = {
@@ -58,12 +59,41 @@ type AgingReport = {
 }
 
 // ── Data ──
-const { data, pending, error, refresh } = await useFetch<ContactsResponse>('/api/xero/contacts')
+const data = ref<ContactsResponse | null>(null)
+const pending = ref(false)
+const error = ref<any>(null)
 
-const { data: aging, pending: agingPending } = await useFetch<AgingReport>(
-  '/api/xero/reports/aging',
-  { lazy: true, server: false }
-)
+async function refresh() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<ContactsResponse>('/api/xero/contacts')
+  } catch (err) {
+    data.value = null
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
+
+const aging = ref<AgingReport | null>(null)
+const agingPending = ref(false)
+
+async function refreshAging() {
+  agingPending.value = true
+  try {
+    aging.value = await apiFetch<AgingReport>('/api/xero/reports/aging')
+  } catch {
+    aging.value = null
+  } finally {
+    agingPending.value = false
+  }
+}
+
+await refresh()
+onMounted(() => {
+  void refreshAging()
+})
 
 // ── Filters ──
 const search = ref('')
@@ -182,6 +212,17 @@ const columns = [
   { accessorKey: 'health', header: 'Status', id: 'ct-health' }
 ]
 
+type ContactTableRow = {
+  _raw: Contact
+  name: string
+  email: string
+  type: string
+  outstanding: string
+  overdue: string
+  terms: string
+  health: { label: string; color: string }
+}
+
 const tableRows = computed(() =>
   paginatedContacts.value.map(c => ({
     _raw: c,
@@ -194,6 +235,8 @@ const tableRows = computed(() =>
     health: contactHealth(c)
   }))
 )
+
+const contactRow = (row: unknown): ContactTableRow => ((row as { original?: ContactTableRow }).original ?? row) as ContactTableRow
 
 const breadcrumbs = computed(() => ([
   { label: 'XeroFlow', to: '/xeroflow' },
@@ -428,48 +471,48 @@ const breadcrumbs = computed(() => ([
 
           <UTable :columns="columns" :data="tableRows" class="w-full">
             <template #name-cell="{ row }">
-              <button class="text-left hover:text-primary transition-colors" @click="openContact(row.original._raw)">
+              <button class="text-left hover:text-primary transition-colors" @click="openContact(contactRow(row)._raw)">
                 <div class="flex items-center gap-2">
-                  <UAvatar :label="row.original.name.charAt(0)" size="xs" />
-                  <span class="font-medium text-sm">{{ row.original.name }}</span>
+                  <UAvatar :label="contactRow(row).name.charAt(0)" size="xs" />
+                  <span class="font-medium text-sm">{{ contactRow(row).name }}</span>
                 </div>
               </button>
             </template>
 
             <template #email-cell="{ row }">
-              <span class="text-xs text-muted">{{ row.original.email }}</span>
+              <span class="text-xs text-muted">{{ contactRow(row).email }}</span>
             </template>
 
             <template #type-cell="{ row }">
               <UBadge
-                :color="row.original.type === 'Customer' ? 'primary' : row.original.type === 'Supplier' ? 'neutral' : 'info'"
+                :color="contactRow(row).type === 'Customer' ? 'primary' : contactRow(row).type === 'Supplier' ? 'neutral' : 'info'"
                 variant="subtle"
                 size="xs"
               >
-                {{ row.original.type }}
+                {{ contactRow(row).type }}
               </UBadge>
             </template>
 
             <template #outstanding-cell="{ row }">
-              <span class="text-sm font-medium text-right block">{{ row.original.outstanding }}</span>
+              <span class="text-sm font-medium text-right block">{{ contactRow(row).outstanding }}</span>
             </template>
 
             <template #overdue-cell="{ row }">
               <span
                 class="text-sm font-medium text-right block"
-                :class="row.original.overdue !== '-' && row.original.overdue !== '$0' ? 'text-red-500' : ''"
+                :class="contactRow(row).overdue !== '-' && contactRow(row).overdue !== '$0' ? 'text-red-500' : ''"
               >
-                {{ row.original.overdue }}
+                {{ contactRow(row).overdue }}
               </span>
             </template>
 
             <template #health-cell="{ row }">
               <UBadge
-                :color="row.original.health.color as any"
+                :color="contactRow(row).health.color as any"
                 variant="subtle"
                 size="xs"
               >
-                {{ row.original.health.label }}
+                {{ contactRow(row).health.label }}
               </UBadge>
             </template>
           </UTable>

@@ -19,6 +19,10 @@ export function useBoardCellEdit() {
   const toast = useToast()
   const saving = ref<Set<string>>(new Set())
   const cellValues = ref<Map<string, TaskColumnValue>>(new Map())
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string, body?: unknown }
+  ) => Promise<T>
 
   function cellKey(taskId: string, columnId: string): string {
     return `${taskId}:${columnId}`
@@ -63,7 +67,7 @@ export function useBoardCellEdit() {
     saving.value.add(key)
 
     try {
-      const result = await $fetch<TaskColumnValue>(
+      const result = await apiFetch<TaskColumnValue>(
         `/api/agency/tasks/${taskId}/column-values/${columnId}`,
         {
           method: 'PATCH',

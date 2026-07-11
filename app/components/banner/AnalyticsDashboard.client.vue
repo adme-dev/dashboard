@@ -3,6 +3,7 @@ import { VisXYContainer, VisLine, VisArea, VisAxis, VisCrosshair, VisTooltip } f
 import { FORMATS } from '~/utils/banner-constants'
 
 const props = defineProps<{ projectId: string }>()
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 const chartRef = useTemplateRef<HTMLElement | null>('chartRef')
 const { width } = useElementSize(chartRef)
@@ -22,16 +23,41 @@ const from = computed(() => {
 const to = computed(() => new Date().toISOString().slice(0, 10))
 
 // Fetch time-series data
-const { data: analytics, status } = useFetch<any>(
-  () => `/api/agency/banner-studio/analytics?projectId=${props.projectId}&from=${from.value}&to=${to.value}`,
-  { default: () => ({ series: [], totals: { impressions: 0, clicks: 0, ctr: '0.00' } }) },
-)
+const analytics = ref<any>({ series: [], totals: { impressions: 0, clicks: 0, ctr: '0.00' } })
+const formats = ref<any[]>([])
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
-// Fetch per-format breakdown
-const { data: formats } = useFetch<any[]>(
-  () => `/api/agency/banner-studio/analytics/formats?projectId=${props.projectId}`,
-  { default: () => [] },
-)
+async function fetchAnalytics() {
+  status.value = 'pending'
+  try {
+    analytics.value = await apiFetch<any>('/api/agency/banner-studio/analytics', {
+      query: { projectId: props.projectId, from: from.value, to: to.value },
+    })
+    status.value = 'success'
+  } catch {
+    analytics.value = { series: [], totals: { impressions: 0, clicks: 0, ctr: '0.00' } }
+    status.value = 'error'
+  }
+}
+
+async function fetchFormats() {
+  try {
+    formats.value = await apiFetch<any[]>('/api/agency/banner-studio/analytics/formats', {
+      query: { projectId: props.projectId },
+    })
+  } catch {
+    formats.value = []
+  }
+}
+
+watch([from, to], () => {
+  fetchAnalytics()
+}, { immediate: true })
+
+watch(() => props.projectId, () => {
+  fetchAnalytics()
+  fetchFormats()
+}, { immediate: true })
 
 // Chart data
 type ChartDatum = { index: number; date: string; impressions: number; clicks: number }

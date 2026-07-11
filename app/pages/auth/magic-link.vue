@@ -108,6 +108,10 @@ definePageMeta({
 })
 
 const route = useRoute()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { params?: Record<string, unknown> }
+) => Promise<T>
 const status = ref<'verifying' | 'success' | 'error' | 'no-token'>('no-token')
 const errorMessage = ref('')
 
@@ -140,7 +144,7 @@ onMounted(async () => {
     // Verify the token via the API. The server response sets httpOnly cookies
     // via Set-Cookie headers. We also set client-readable cookies manually as
     // a fallback to guarantee the auth middleware detects the session.
-    const result = await $fetch<{ success: boolean; token: string; user: any }>('/api/auth/magic-link/verify', {
+    const result = await apiFetch<{ success: boolean; token: string; user: any }>('/api/auth/magic-link/verify', {
       params: { token }
     })
 

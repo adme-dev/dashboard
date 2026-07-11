@@ -23,6 +23,10 @@ const draft = ref('')
 const conversationId = ref<string | null>(null)
 const messages = ref<ChatMsg[]>([])
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const suggestions = [
   'Who’s around right now?',
@@ -32,7 +36,7 @@ const suggestions = [
 
 async function ensureConversation(): Promise<string> {
   if (conversationId.value) return conversationId.value
-  const conv = await $fetch<{ id: string }>('/api/agency/ai/chat/conversations', { method: 'POST', body: { title: 'Office assistant' } })
+  const conv = await apiFetch<{ id: string }>('/api/agency/ai/chat/conversations', { method: 'POST', body: { title: 'Office assistant' } })
   conversationId.value = conv.id
   return conv.id
 }
@@ -45,7 +49,7 @@ async function send(text?: string) {
   sending.value = true
   try {
     const id = await ensureConversation()
-    const res = await $fetch<SendResponse>(`/api/agency/ai/chat/conversations/${id}/messages`, {
+    const res = await apiFetch<SendResponse>(`/api/agency/ai/chat/conversations/${id}/messages`, {
       method: 'POST',
       body: {
         content,

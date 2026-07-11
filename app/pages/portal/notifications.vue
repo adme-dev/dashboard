@@ -7,9 +7,24 @@ const routeView = Array.isArray(route.query.view) ? route.query.view[0] : route.
 
 const activeView = ref(routeView === 'unread' ? 'unread' : 'all')
 const unreadOnly = computed(() => activeView.value === 'unread' ? 'true' : undefined)
-const { data, pending, refresh } = useFetch('/api/portal/notifications', {
-  query: { unreadOnly }
-})
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
+const data = ref<any | null>(null)
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<any>('/api/portal/notifications', { query: { unreadOnly: unreadOnly.value } })
+  } catch {
+    data.value = null
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(unreadOnly, () => {
+  refresh()
+}, { immediate: true })
 const toast = useToast()
 
 watch(activeView, (view) => {

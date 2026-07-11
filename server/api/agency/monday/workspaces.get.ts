@@ -19,7 +19,7 @@ export default eventHandler(async (event) => {
         totalItems: 0
       }
     }
-    const client = createMondayClient(process.env.MONDAY_API_TOKEN)
+    const client = await createMondayClient(process.env.MONDAY_API_TOKEN)
     
     // Get workspaces
     const workspaces = await client.getWorkspaces()

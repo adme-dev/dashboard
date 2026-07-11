@@ -113,7 +113,7 @@ function onDrop(status: Status, ev: DragEvent) {
         </div>
         <UButton
           icon="i-lucide-plus"
-          size="3xs"
+          size="xs"
           color="neutral"
           variant="ghost"
           @click="emit('add', col.key)"

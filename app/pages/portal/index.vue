@@ -47,7 +47,30 @@ interface PortalDashboard {
   recentActivity: Array<{ id: string, action: string, entityType?: string | null, entityId?: string | null, details?: Record<string, unknown> | string | null, createdAt: string, userName: string | null }>
 }
 
-const { data: dashboard, pending } = useFetch<PortalDashboard>('/api/portal/dashboard')
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
+const dashboard = ref<PortalDashboard | null>(null)
+const pending = ref(true)
+const dashboardError = ref<unknown>(null)
+
+async function refreshDashboard() {
+  pending.value = true
+  dashboardError.value = null
+
+  try {
+    dashboard.value = await apiFetch<PortalDashboard>('/api/portal/dashboard')
+  } catch (error) {
+    dashboardError.value = error
+    throw error
+  } finally {
+    pending.value = false
+  }
+}
+
+await refreshDashboard()
 
 type PriorityColor = 'primary' | 'warning' | 'error' | 'success' | 'info' | 'neutral'
 

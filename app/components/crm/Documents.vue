@@ -4,6 +4,10 @@
 const props = defineProps<{ clientId: string, targetType: 'person' | 'company' | 'opportunity', targetId: string }>()
 const base = inject<string>('crmApiBase', '/api/crm')
 const toast = useToast()
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+) => Promise<T>
 
 interface Doc {
   id: string
@@ -17,9 +21,21 @@ interface Doc {
 }
 
 const query = computed(() => ({ client_id: props.clientId, target_type: props.targetType, target_id: props.targetId }))
-const { data, pending, refresh } = useFetch<{ items: Doc[] }>(`${base}/documents`, {
-  query, watch: [query], default: () => ({ items: [] }),
-})
+const data = ref<{ items: Doc[] }>({ items: [] })
+const pending = ref(false)
+
+async function refresh() {
+  pending.value = true
+  try {
+    data.value = await apiFetch<{ items: Doc[] }>(`${base}/documents`, { query: query.value })
+  } finally {
+    pending.value = false
+  }
+}
+
+watch(query, () => {
+  refresh()
+}, { immediate: true })
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
@@ -36,7 +52,7 @@ async function onFile(e: Event) {
     fd.append('client_id', props.clientId)
     fd.append('target_type', props.targetType)
     fd.append('target_id', props.targetId)
-    await $fetch(`${base}/documents`, { method: 'POST', body: fd })
+    await apiFetch(`${base}/documents`, { method: 'POST', body: fd })
     await refresh()
     toast.add({ title: 'Uploaded', color: 'success' })
   } catch (err: any) {
@@ -48,7 +64,10 @@ async function onFile(e: Event) {
 }
 
 async function remove(d: Doc) {
-  try { await $fetch(`${base}/documents/${d.id}`, { method: 'DELETE', query: { client_id: props.clientId } }); await refresh() }
+  try {
+    await apiFetch(`${base}/documents/${d.id}`, { method: 'DELETE', query: { client_id: props.clientId } })
+    await refresh()
+  }
   catch (e: any) { toast.add({ title: 'Could not delete', description: e?.data?.statusMessage || e?.message, color: 'error' }) }
 }
 

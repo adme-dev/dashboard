@@ -7,9 +7,23 @@ sevenDaysAgo.setDate(now.getDate() - 7)
 const startDate = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysAgo.getDate()).padStart(2, '0')}`
 const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
-const { data, status } = await useFetch('/api/agency/analytics/overview', {
-  query: { startDate, endDate },
-})
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshOverview() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch<any>('/api/agency/analytics/overview', {
+      query: { startDate, endDate },
+    })
+    status.value = 'success'
+  } catch {
+    status.value = 'error'
+  }
+}
+
+refreshOverview()
 
 const overview = computed(() => data.value as any)
 const totals = computed(() => overview.value?.totals || null)

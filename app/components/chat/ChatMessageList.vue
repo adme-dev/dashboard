@@ -21,6 +21,7 @@ const emit = defineEmits<{
   'reply': [message: ChatMessage]
   'forward': [message: ChatMessage]
 }>()
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 // Emoji picker / dropdown open state. Used both to control the popover open
 // state AND to keep the hover toolbar pinned visible while a menu is open
@@ -186,7 +187,7 @@ watch(lastOwnMessageId, async (msgId) => {
   if (!channelId) return
 
   try {
-    const data = await $fetch<Array<{ userId: string; userName: string; userAvatar?: string }>>(
+    const data = await apiFetch<Array<{ userId: string; userName: string; userAvatar?: string }>>(
       `/api/chat/channels/${channelId}/messages/${msgId}/readers`
     )
     readReceipts.value = data.filter(r => r.userId !== props.currentUserId)

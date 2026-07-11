@@ -398,9 +398,22 @@ const tabs = [
 // Route
 const route = useRoute()
 const workspaceSlug = computed(() => route.params.slug as string)
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
 // Fetch workspaces
-const { data: workspacesData, pending } = await useFetch<{ workspaces: Workspace[] }>('/api/agency/workspaces')
+const workspacesData = ref<{ workspaces: Workspace[] }>({ workspaces: [] })
+const pending = ref(false)
+
+async function refreshWorkspaces() {
+  pending.value = true
+  try {
+    workspacesData.value = await apiFetch<{ workspaces: Workspace[] }>('/api/agency/workspaces')
+  } catch {
+    workspacesData.value = { workspaces: [] }
+  } finally {
+    pending.value = false
+  }
+}
 
 // Get current workspace
 const workspace = computed<Workspace | undefined>(() => {
@@ -408,7 +421,21 @@ const workspace = computed<Workspace | undefined>(() => {
 })
 
 // Fetch team members
-const { data: membersData, pending: membersPending } = await useFetch<{ members: TeamMember[] }>('/api/agency/team-members')
+const membersData = ref<{ members: TeamMember[] }>({ members: [] })
+const membersPending = ref(false)
+
+async function refreshMembers() {
+  membersPending.value = true
+  try {
+    membersData.value = await apiFetch<{ members: TeamMember[] }>('/api/agency/team-members')
+  } catch {
+    membersData.value = { members: [] }
+  } finally {
+    membersPending.value = false
+  }
+}
+
+await Promise.all([refreshWorkspaces(), refreshMembers()])
 const members = computed(() => membersData.value?.members || [])
 
 // Workspace dropdown
@@ -472,7 +499,7 @@ watch(activeTab, async (tab) => {
     for (const board of workspace.value.boards) {
       if (boardMemberCounts.value[board.id] !== undefined) continue
       try {
-        const data = await $fetch<any[]>(`/api/agency/departments/${board.id}/members`)
+        const data = await apiFetch<any[]>(`/api/agency/departments/${board.id}/members`)
         boardMemberCounts.value[board.id] = data?.length || 0
       } catch {
         boardMemberCounts.value[board.id] = 0

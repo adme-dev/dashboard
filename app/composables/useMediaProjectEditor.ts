@@ -136,6 +136,10 @@ function readVideoDuration(file: File): Promise<number> {
 }
 
 export function useMediaProjectEditor(projectId: string) {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { method?: string; body?: unknown }
+  ) => Promise<T>
   const timeline = ref<TimelineState | null>(null)
   const clips = ref<ScheduledClip[]>([])
   const tracks = ref<TrackBus[]>([])
@@ -174,7 +178,7 @@ export function useMediaProjectEditor(projectId: string) {
     if (!timeline.value) return false
     saveStatus.value = 'saving'
     try {
-      await $fetch(`/api/agency/audio/projects/${projectId}/timeline`, {
+      await apiFetch(`/api/agency/audio/projects/${projectId}/timeline`, {
         method: 'PUT',
         body: { state: timeline.value }
       })
@@ -340,7 +344,7 @@ export function useMediaProjectEditor(projectId: string) {
     const fd = new FormData()
     fd.append('file', file)
     fd.append('kind', kind)
-    const res = await $fetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, { method: 'POST', body: fd })
+    const res = await apiFetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, { method: 'POST', body: fd })
     mergeSource(res.r2_key, res.url, { durationSec })
     return { r2Key: res.r2_key, url: res.url, durationSec }
   }
@@ -392,7 +396,7 @@ export function useMediaProjectEditor(projectId: string) {
 
   async function refreshRenderJobs() {
     try {
-      const res = await $fetch<{ jobs: MediaRenderJob[] }>(`/api/agency/audio/projects/${projectId}/render-jobs`)
+      const res = await apiFetch<{ jobs: MediaRenderJob[] }>(`/api/agency/audio/projects/${projectId}/render-jobs`)
       renderJobs.value = res?.jobs ?? []
     } catch { /* surfaced via UI emptiness */ }
   }
@@ -411,7 +415,7 @@ export function useMediaProjectEditor(projectId: string) {
     rendering.value = true
     try {
       if (!await doSave()) return { ok: false }
-      await $fetch(`/api/agency/audio/projects/${projectId}/render-video`, { method: 'POST', body: formats?.length ? { formats } : {} })
+      await apiFetch(`/api/agency/audio/projects/${projectId}/render-video`, { method: 'POST', body: formats?.length ? { formats } : {} })
       await refreshRenderJobs()
       scheduleJobPoll()
       return { ok: true }
@@ -425,33 +429,33 @@ export function useMediaProjectEditor(projectId: string) {
 
   /** Draft a social post from a rendered variant. Returns { postId, clientId } or throws (page toasts). */
   async function publishToSocial(jobId: string, format: string): Promise<{ postId: string; clientId: string }> {
-    return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/publish-social`, {
+    return await apiFetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/publish-social`, {
       method: 'POST', body: { format }
     })
   }
 
   /** Draft a social post from a saved/generated video asset. */
   async function publishVideoAssetToSocial(assetId: string): Promise<{ postId: string; clientId: string }> {
-    return await $fetch(`/api/agency/video/assets/${assetId}/publish-social`, { method: 'POST' })
+    return await apiFetch(`/api/agency/video/assets/${assetId}/publish-social`, { method: 'POST' })
   }
 
   /** Send a rendered variant to the client portal for review. Returns the created review or throws. */
   async function sendToPortal(jobId: string, format: string): Promise<{ review: unknown }> {
-    return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/send-to-portal`, {
+    return await apiFetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/send-to-portal`, {
       method: 'POST', body: { format }
     })
   }
 
   /** Save a rendered variant to the reusable video library. */
   async function saveAsset(jobId: string, format: string, title?: string | null): Promise<{ asset: VideoAsset }> {
-    return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/save-asset`, {
+    return await apiFetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/save-asset`, {
       method: 'POST', body: { format, title: title ?? null }
     })
   }
 
   /** List saved video assets (for the library). */
   async function listVideoAssets(): Promise<{ assets: VideoAsset[] }> {
-    return await $fetch('/api/agency/video/assets')
+    return await apiFetch('/api/agency/video/assets')
   }
 
   function deleteClipAction(clipId: string) {
@@ -490,7 +494,7 @@ export function useMediaProjectEditor(projectId: string) {
     // versions.post reads body: { label?: string | null }
     // It snapshots the server's current draft timeline; save first so it's up to date.
     await saveNow()
-    return $fetch(`/api/agency/audio/projects/${projectId}/versions`, {
+    return apiFetch(`/api/agency/audio/projects/${projectId}/versions`, {
       method: 'POST',
       body: { label }
     })
@@ -499,7 +503,7 @@ export function useMediaProjectEditor(projectId: string) {
   /** List all saved versions for this project. The endpoint returns mapped
    * MediaTimeline rows (camelCase createdAt, plus version), newest-first. */
   async function listVersions() {
-    return $fetch<{ versions: Array<{ id: string; version: number; label: string | null; createdAt: string; state: TimelineState }> }>(
+    return apiFetch<{ versions: Array<{ id: string; version: number; label: string | null; createdAt: string; state: TimelineState }> }>(
       `/api/agency/audio/projects/${projectId}/versions`
     )
   }
@@ -519,8 +523,8 @@ export function useMediaProjectEditor(projectId: string) {
       // The SP0 project GET returns the MediaTimeline WRAPPER; the TimelineState lives
       // in `.state` (validated on write — cast rather than re-import the Zod value client-side).
       const [proj, src] = await Promise.all([
-        $fetch<{ project: unknown; timeline: { state: unknown } | null }>(`/api/agency/audio/projects/${projectId}`),
-        $fetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
+        apiFetch<{ project: unknown; timeline: { state: unknown } | null }>(`/api/agency/audio/projects/${projectId}`),
+        apiFetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
       ])
       const state = proj.timeline?.state as TimelineState | undefined
       if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }

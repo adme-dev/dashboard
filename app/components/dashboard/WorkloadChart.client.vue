@@ -1,5 +1,20 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/agency/dashboard/workload')
+const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+const data = ref<any | null>(null)
+const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+
+async function refreshWorkload() {
+  status.value = 'pending'
+  try {
+    data.value = await apiFetch('/api/agency/dashboard/workload')
+    status.value = 'success'
+  } catch (error) {
+    console.error('Failed to load workload chart', error)
+    status.value = 'error'
+  }
+}
+
+await refreshWorkload()
 
 const departments = computed(() => (data.value as any)?.departments || [])
 
