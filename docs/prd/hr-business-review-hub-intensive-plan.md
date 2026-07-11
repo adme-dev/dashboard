@@ -1642,7 +1642,7 @@ Conventions:
 **Acceptance:**
 
 - [x] Owner selects approved workspaces/boards, fields, date range, purpose, exclusions, and retention.
-- [ ] Existing Monday connection permissions are displayed before activation.
+- [x] Existing Monday connection permissions are displayed before activation.
 - [x] Scope expansion requires a new approval and audit event.
 
 **Verify:** scope-diff and fail-closed tests.
