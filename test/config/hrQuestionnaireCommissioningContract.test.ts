@@ -1,0 +1,26 @@
+import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+
+const preview = readFileSync('server/api/agency/hr/reviews/preview.post.ts', 'utf8')
+const send = readFileSync('server/api/agency/hr/reviews/index.post.ts', 'utf8')
+
+describe('HR questionnaire commissioning contract', () => {
+  it('previews recipient-specific questions without sending', () => {
+    expect(preview).toContain('requireHrAdmin(event)')
+    expect(preview).toContain("'Cache-Control', 'private, no-store'")
+    expect(preview).toContain('hrReviewCycleDraftSchema.safeParse')
+    expect(preview).toContain('recommendationReason')
+    expect(preview).toContain('sourceRefs')
+    expect(preview).toContain('normalizeSourceRefs')
+    expect(preview).not.toContain('createNotification')
+    expect(preview).not.toContain('sendHrReviewAssignmentEmail')
+  })
+
+  it('publishes an immutable per-recipient questionnaire only after explicit approval', () => {
+    expect(send).toContain('ownerConfirmed')
+    expect(send).toContain('participantInput.questions')
+    expect(send).toContain("`cycle-${cycle.id}-${participantInput.teamMemberId}`")
+    expect(send).toContain("'published'")
+    expect(send).toContain('questionnaire.commissioned')
+  })
+})

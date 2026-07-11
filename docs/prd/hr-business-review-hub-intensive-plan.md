@@ -1421,8 +1421,8 @@ Conventions:
 **Acceptance:**
 
 - [ ] Engine selects only published questions using role responsibilities, process steps, cycle purpose, and approved business questions.
-- [ ] Every recommendation displays a plain-language reason and its role/process source.
-- [ ] Sensitive or prohibited topics are blocked and no questionnaire can be sent without owner approval.
+- [x] Every recommendation displays a plain-language reason and its role/process source.
+- [x] Sensitive or prohibited topics are blocked and no questionnaire can be sent without owner approval.
 
 **Verify:** recommendation-policy unit tests, prohibited-question fixtures, stable-output tests, and owner preview test.
 **Dependencies:** 1.4, 2.1, 2.3, 2.4, 3.2.
@@ -1433,9 +1433,9 @@ Conventions:
 
 **Acceptance:**
 
-- [ ] Owner can accept, edit, replace, or remove each recommendation before approval.
-- [ ] Final preview shows recipient, purpose, visibility, sections, expected completion time, required end date, and timezone.
-- [ ] Sending requires explicit confirmation and invitations contain no response or evidence content.
+- [x] Owner can accept, edit, replace, or remove each recommendation before approval.
+- [x] Final preview shows recipient, purpose, visibility, sections, expected completion time, required end date, and timezone.
+- [x] Sending requires explicit confirmation and invitations contain no response or evidence content.
 
 **Verify:** approval-state tests, unauthorised-send tests, duplicate-send idempotency test, and invitation-content test.
 **Dependencies:** 3.3.

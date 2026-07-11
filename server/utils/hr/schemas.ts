@@ -119,24 +119,71 @@ export const hrRoleProfileRevisionSchema = hrRoleProfileSchema.safeExtend({
   expectedVersion: z.number().int().positive(),
 })
 
-export const hrReviewCycleSchema = z.object({
+const hrQuestionOptionSchema = z.object({
+  value: z.string().trim().min(1).max(100),
+  label: z.string().trim().min(1).max(300),
+})
+
+export const hrCommissionedQuestionSchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  module: z.enum(['core', 'role', 'blockers']),
+  type: z.enum(['single_choice', 'multiple_choice', 'optional_text']),
+  prompt: z.string().trim().min(10).max(1000),
+  required: z.boolean(),
+  responsibility: z.string().trim().max(500).optional(),
+  options: z.array(hrQuestionOptionSchema).min(2).max(20).optional(),
+  recommendationReason: z.string().trim().min(10).max(1000),
+  sourceRefs: z.array(z.string().trim().min(1).max(500)).min(1).max(20),
+}).superRefine((question, context) => {
+  if (question.type !== 'optional_text' && !question.options) {
+    context.addIssue({ code: 'custom', path: ['options'], message: 'Choice questions require balanced answer options.' })
+  }
+  if (question.type === 'optional_text' && question.required) {
+    context.addIssue({ code: 'custom', path: ['required'], message: 'Free-text questions must remain optional.' })
+  }
+  if (question.options && new Set(question.options.map(option => option.value)).size !== question.options.length) {
+    context.addIssue({ code: 'custom', path: ['options'], message: 'Question option values must be unique.' })
+  }
+})
+
+const hrReviewParticipantDraftSchema = z.object({
+  teamMemberId: z.string().uuid(),
+  roleProfileVersionId: z.string().uuid(),
+  reviewerId: z.string().uuid().optional(),
+})
+
+const reviewCycleFields = {
   name: z.string().trim().min(3).max(200),
   purpose: z.enum(['business_review', 'probation', 'annual_review', 'role_clarity', 'pulse']).default('business_review'),
   timezone: z.string().trim().min(1).max(100).default('Australia/Melbourne'),
   opensAt: z.string().datetime(),
   dueAt: z.string().datetime(),
   closesAt: z.string().datetime(),
-  participants: z.array(z.object({
-    teamMemberId: z.string().uuid(),
-    roleProfileVersionId: z.string().uuid(),
-    reviewerId: z.string().uuid().optional(),
-  })).min(1).max(500),
-}).superRefine((input, context) => {
+}
+
+function enforceUniqueReviewParticipants(input: { participants: Array<{ teamMemberId: string }> }, context: z.RefinementCtx) {
   const participantIds = input.participants.map(participant => participant.teamMemberId)
   if (new Set(participantIds).size !== participantIds.length) {
     context.addIssue({ code: 'custom', path: ['participants'], message: 'Each team member may only appear once per cycle.' })
   }
-})
+}
+
+export const hrReviewCycleDraftSchema = z.object({
+  ...reviewCycleFields,
+  participants: z.array(hrReviewParticipantDraftSchema).min(1).max(500),
+}).superRefine(enforceUniqueReviewParticipants)
+
+export const hrReviewCycleSchema = z.object({
+  ...reviewCycleFields,
+  ownerConfirmed: z.literal(true),
+  participants: z.array(hrReviewParticipantDraftSchema.extend({
+    questions: z.array(hrCommissionedQuestionSchema).min(1).max(100),
+  }).superRefine((participant, context) => {
+    if (new Set(participant.questions.map(question => question.id)).size !== participant.questions.length) {
+      context.addIssue({ code: 'custom', path: ['questions'], message: 'Question IDs must be unique within each recipient questionnaire.' })
+    }
+  })).min(1).max(500),
+}).superRefine(enforceUniqueReviewParticipants)
 
 export type HrReviewCycleInput = z.infer<typeof hrReviewCycleSchema>
 

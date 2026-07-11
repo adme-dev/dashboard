@@ -22,6 +22,33 @@ type Cycle = {
 
 type TeamMember = { id: string; name: string; email: string; role?: string; department?: string }
 type Role = { id: string; version_id: string; title: string; department: string | null; status: string; version_status: string; version: number }
+type CommissionedQuestion = {
+  id: string
+  module: 'core' | 'role' | 'blockers'
+  type: 'single_choice' | 'multiple_choice' | 'optional_text'
+  prompt: string
+  required: boolean
+  responsibility?: string
+  options?: Array<{ value: string; label: string }>
+  recommendationReason: string
+  sourceRefs: string[]
+}
+type CommissioningRecipient = {
+  teamMemberId: string
+  roleProfileVersionId: string
+  reviewerId?: string
+  memberName: string
+  memberEmail: string
+  roleTitle: string
+  questions: CommissionedQuestion[]
+}
+type CommissioningPreview = {
+  previewOnly: true
+  cycle: { name: string; purpose: string; timezone: string; opensAt: string; dueAt: string; closesAt: string }
+  recipients: CommissioningRecipient[]
+  delivery: { channels: string[]; sendsOnApproval: boolean }
+  visibility: string
+}
 type Participant = {
   id: string
   cycle_id: string
@@ -47,6 +74,7 @@ const participants = ref<Participant[]>([])
 const team = ref<TeamMember[]>([])
 const roles = ref<Role[]>([])
 const selectedRoles = ref<Record<string, string>>({})
+const commissioningPreview = ref<CommissioningPreview | null>(null)
 
 function dateOnly(offsetDays: number): string {
   const date = new Date()
@@ -60,6 +88,9 @@ const form = reactive({
   dueDate: dateOnly(14),
   closesDate: dateOnly(21),
 })
+watch([() => form.name, () => form.opensDate, () => form.dueDate, () => form.closesDate, selectedRoles], () => {
+  commissioningPreview.value = null
+}, { deep: true })
 
 function toCalendarDate(value: string): DateValue | null {
   try { return parseDate(value) } catch { return null }
@@ -108,6 +139,7 @@ async function refresh() {
 onMounted(() => void refresh())
 
 function toggleMember(memberId: string, checked: boolean) {
+  commissioningPreview.value = null
   if (checked) selectedRoles.value[memberId] = roleItems.value[0]?.value || ''
   else delete selectedRoles.value[memberId]
 }
@@ -116,12 +148,57 @@ function isoAt(value: string, hour: number): string {
   return new Date(`${value}T${String(hour).padStart(2, '0')}:00:00`).toISOString()
 }
 
-async function createCycle() {
-  const participants = Object.entries(selectedRoles.value)
-    .filter(([, roleProfileVersionId]) => Boolean(roleProfileVersionId))
-    .map(([teamMemberId, roleProfileVersionId]) => ({ teamMemberId, roleProfileVersionId }))
-  if (!form.name.trim() || participants.length === 0) {
+function draftPayload() {
+  return {
+    name: form.name,
+    purpose: 'business_review' as const,
+    timezone: 'Australia/Melbourne',
+    opensAt: isoAt(form.opensDate, 9),
+    dueAt: isoAt(form.dueDate, 17),
+    closesAt: isoAt(form.closesDate, 17),
+    participants: Object.entries(selectedRoles.value)
+      .filter(([, roleProfileVersionId]) => Boolean(roleProfileVersionId))
+      .map(([teamMemberId, roleProfileVersionId]) => ({ teamMemberId, roleProfileVersionId })),
+  }
+}
+
+async function previewQuestionnaires() {
+  const payload = draftPayload()
+  if (!payload.name.trim() || payload.participants.length === 0) {
     toast.add({ title: 'Cycle name and participants are required', color: 'warning' })
+    return
+  }
+  saving.value = true
+  try {
+    commissioningPreview.value = await apiFetch<CommissioningPreview>('/api/agency/hr/reviews/preview', { method: 'POST', body: payload })
+  } catch (error: any) {
+    toast.add({ title: 'Questionnaires could not be prepared', description: error?.data?.statusMessage || 'Check the dates and published roles.', color: 'error' })
+  } finally {
+    saving.value = false
+  }
+}
+
+function removeQuestion(recipientIndex: number, questionIndex: number) {
+  commissioningPreview.value?.recipients[recipientIndex]?.questions.splice(questionIndex, 1)
+}
+
+function addQuestion(recipientIndex: number) {
+  const recipient = commissioningPreview.value?.recipients[recipientIndex]
+  if (!recipient) return
+  recipient.questions.push({
+    id: `owner-context-${crypto.randomUUID()}`,
+    module: 'core',
+    type: 'optional_text',
+    prompt: 'What additional work context would help the reviewer understand your current responsibilities?',
+    required: false,
+    recommendationReason: 'Added by the owner during commissioning for neutral contextual clarification.',
+    sourceRefs: [`role-version:${recipient.roleProfileVersionId}`],
+  })
+}
+
+async function createCycle() {
+  if (!commissioningPreview.value || commissioningPreview.value.recipients.some(recipient => recipient.questions.length === 0)) {
+    toast.add({ title: 'Review every questionnaire first', description: 'Each recipient needs at least one approved question.', color: 'warning' })
     return
   }
   saving.value = true
@@ -129,13 +206,14 @@ async function createCycle() {
     const response = await apiFetch<{ assignmentCount: number; deliveryFailures: number }>('/api/agency/hr/reviews', {
       method: 'POST',
       body: {
-        name: form.name,
-        purpose: 'business_review',
-        timezone: 'Australia/Melbourne',
-        opensAt: isoAt(form.opensDate, 9),
-        dueAt: isoAt(form.dueDate, 17),
-        closesAt: isoAt(form.closesDate, 17),
-        participants,
+        ...commissioningPreview.value.cycle,
+        ownerConfirmed: true,
+        participants: commissioningPreview.value.recipients.map(recipient => ({
+          teamMemberId: recipient.teamMemberId,
+          roleProfileVersionId: recipient.roleProfileVersionId,
+          reviewerId: recipient.reviewerId,
+          questions: recipient.questions,
+        })),
       },
     })
     toast.add({
@@ -147,6 +225,7 @@ async function createCycle() {
     })
     form.name = ''
     selectedRoles.value = {}
+    commissioningPreview.value = null
     showBuilder.value = false
     await refresh()
   } catch (error: any) {
@@ -201,7 +280,7 @@ async function createCycle() {
         <aside v-if="showBuilder" class="xl:sticky xl:top-6 xl:self-start">
           <div class="overflow-hidden rounded-xl border border-default bg-default">
             <div class="border-b border-default bg-elevated/30 px-5 py-4"><p class="font-mono text-xs uppercase tracking-[0.16em] text-primary">New controlled cycle</p><h2 class="mt-1 text-lg font-semibold text-highlighted">Assignment register</h2></div>
-            <div class="max-h-[calc(100vh-190px)] space-y-5 overflow-y-auto p-5">
+            <div v-if="!commissioningPreview" class="max-h-[calc(100vh-190px)] space-y-5 overflow-y-auto p-5">
               <UFormField label="Cycle name" required><UInput v-model="form.name" placeholder="e.g. FY27 whole-business review" class="w-full" /></UFormField>
               <div class="grid gap-4 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
                 <UFormField label="Opens" required><UPopover><UButton color="neutral" variant="outline" icon="i-lucide-calendar" :label="displayDate(form.opensDate)" class="w-full justify-start" /><template #content><UCalendar v-model="opensDateModel" class="p-2" /></template></UPopover></UFormField>
@@ -219,9 +298,35 @@ async function createCycle() {
                 </div>
               </div>
 
-              <UAlert color="info" variant="soft" icon="i-lucide-send" title="Opening the cycle sends the assignments" description="Each participant receives an in-app notice, an email and a calendar deadline. The invite contains no answers or private content." />
+              <UAlert color="info" variant="soft" icon="i-lucide-shield-check" title="Preview before anything is sent" description="The next step shows every recipient, question, reason, source, date and visibility rule. No notification is sent during preview." />
             </div>
-            <div class="flex justify-end gap-2 border-t border-default p-4"><UButton color="neutral" variant="ghost" label="Cancel" @click="showBuilder = false" /><UButton icon="i-lucide-send" :label="`Open for ${selectedCount} people`" :disabled="selectedCount === 0" :loading="saving" @click="createCycle" /></div>
+            <div v-else class="max-h-[calc(100vh-190px)] space-y-5 overflow-y-auto p-5">
+              <section class="rounded-lg border border-default bg-elevated/30 p-4">
+                <div class="flex items-start justify-between gap-3"><div><p class="font-mono text-xs uppercase tracking-[0.14em] text-primary">Final send preview</p><h3 class="mt-1 font-semibold text-highlighted">{{ commissioningPreview.cycle.name }}</h3></div><UBadge color="warning" variant="subtle" label="Not sent" /></div>
+                <dl class="mt-4 grid gap-3 text-xs sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                  <div><dt class="text-muted">Required end date</dt><dd class="mt-1 font-medium text-highlighted">{{ formatTimestamp(commissioningPreview.cycle.dueAt) }}</dd></div>
+                  <div><dt class="text-muted">Cycle closes</dt><dd class="mt-1 font-medium text-highlighted">{{ formatTimestamp(commissioningPreview.cycle.closesAt) }}</dd></div>
+                  <div><dt class="text-muted">Timezone</dt><dd class="mt-1 font-medium text-highlighted">{{ commissioningPreview.cycle.timezone }}</dd></div>
+                  <div><dt class="text-muted">Visibility</dt><dd class="mt-1 font-medium text-highlighted">{{ commissioningPreview.visibility }}</dd></div>
+                </dl>
+              </section>
+
+              <section v-for="(recipient, recipientIndex) in commissioningPreview.recipients" :key="recipient.teamMemberId" class="overflow-hidden rounded-lg border border-default">
+                <div class="border-b border-default bg-elevated/30 p-4"><div class="flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-semibold text-highlighted">{{ recipient.memberName }}</h3><p class="mt-1 text-xs text-muted">{{ recipient.roleTitle }} · {{ recipient.memberEmail }}</p></div><div class="flex items-center gap-2"><UBadge color="neutral" variant="subtle" :label="`~${Math.max(3, Math.ceil(recipient.questions.length * 1.5))} min`" /><UButton color="neutral" variant="outline" size="xs" icon="i-lucide-plus" label="Add question" @click="addQuestion(recipientIndex)" /></div></div></div>
+                <div class="divide-y divide-default">
+                  <article v-for="(question, questionIndex) in recipient.questions" :key="question.id" class="space-y-3 p-4">
+                    <div class="flex items-start gap-3"><UBadge color="neutral" variant="subtle" :label="question.module" /><UButton class="ml-auto" color="error" variant="ghost" size="xs" icon="i-lucide-trash-2" label="Remove question" @click="removeQuestion(recipientIndex, questionIndex)" /></div>
+                    <UFormField :label="`Question ${questionIndex + 1}`" required><UTextarea v-model="question.prompt" :rows="3" class="w-full" /></UFormField>
+                    <div v-if="question.options?.length" class="flex flex-wrap gap-1.5"><UBadge v-for="option in question.options" :key="option.value" color="neutral" variant="outline" :label="option.label" /></div>
+                    <div class="rounded-md bg-elevated/40 p-3"><p class="text-xs leading-5 text-muted">{{ question.recommendationReason }}</p><p class="mt-2 break-all font-mono text-[11px] text-dimmed">{{ question.sourceRefs.join(' · ') }}</p></div>
+                  </article>
+                </div>
+              </section>
+
+              <UAlert color="warning" variant="soft" icon="i-lucide-send" title="Approval sends immediately" description="Approve and send creates frozen questionnaire versions, in-app notifications, neutral emails and calendar invitations for every listed recipient." />
+            </div>
+            <div v-if="!commissioningPreview" class="flex justify-end gap-2 border-t border-default p-4"><UButton color="neutral" variant="ghost" label="Cancel" @click="showBuilder = false" /><UButton icon="i-lucide-list-checks" label="Review questionnaires" :disabled="selectedCount === 0" :loading="saving" @click="previewQuestionnaires" /></div>
+            <div v-else class="flex flex-col-reverse gap-2 border-t border-default p-4 sm:flex-row sm:justify-end"><UButton color="neutral" variant="ghost" icon="i-lucide-arrow-left" label="Back to setup" @click="commissioningPreview = null" /><UButton icon="i-lucide-send" :label="`Approve and send to ${commissioningPreview.recipients.length}`" :loading="saving" @click="createCycle" /></div>
           </div>
         </aside>
       </div>

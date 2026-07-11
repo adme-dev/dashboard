@@ -7,6 +7,7 @@ import { requireHrAdmin } from '~~/server/utils/hr/authorization'
 import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
 import { buildHrCalendarInvite, validateHrSchedule } from '~~/server/utils/hr/schedule'
 import { hrReviewCycleSchema } from '~~/server/utils/hr/schemas'
+import { evaluateHrQuestionQuality } from '~~/server/utils/hr/questionPolicy'
 
 type CreatedAssignment = {
   id: string
@@ -25,6 +26,14 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid review cycle', data: { issues: parsed.error.issues } })
 
   const input = parsed.data
+  if (!input.ownerConfirmed) throw createError({ statusCode: 400, statusMessage: 'Owner confirmation is required before questionnaires can be sent' })
+  for (const participant of input.participants) {
+    const qualityIssues = participant.questions.flatMap(question => evaluateHrQuestionQuality({
+      prompt: question.prompt,
+      options: question.options?.map(option => option.label),
+    }).issues)
+    if (qualityIssues.length) throw createError({ statusCode: 400, statusMessage: 'A commissioned questionnaire did not pass the neutral-question policy', data: { issues: qualityIssues } })
+  }
   const schedule = validateHrSchedule(input)
   if (schedule.isValid === false) throw createError({ statusCode: 400, statusMessage: `Invalid review schedule: ${schedule.code}` })
 
@@ -42,16 +51,9 @@ export default defineEventHandler(async (event) => {
 
     for (const participantInput of input.participants) {
       const roleResult = await db.query(
-        `SELECT rpv.id AS version_id, rp.id AS profile_id, rp.title,
-                qv.id AS questionnaire_version_id
+        `SELECT rpv.id AS version_id, rp.id AS profile_id, rp.title
          FROM hr_role_profile_versions rpv
          JOIN hr_role_profiles rp ON rp.id = rpv.role_profile_id
-         JOIN LATERAL (
-           SELECT id FROM hr_questionnaire_versions candidate
-           WHERE candidate.template_key = 'role-' || rp.id::text
-             AND candidate.status = 'published'
-           ORDER BY candidate.version DESC LIMIT 1
-         ) qv ON true
          WHERE rpv.id = $1 AND rpv.status = 'published' AND rp.status = 'active'`,
         [participantInput.roleProfileVersionId],
       )
@@ -89,6 +91,23 @@ export default defineEventHandler(async (event) => {
       )
       const participantId = participantResult.rows[0].id
       const calendarUid = `hr-review-${cycle.id}-${participantInput.teamMemberId}@xeroflow.agency`
+      const questionnaireResult = await db.query(
+        `INSERT INTO hr_questionnaire_versions
+          (template_key, name, version, purpose, visibility, questions, quality_report, source_refs,
+           status, published_by, published_at)
+         VALUES ($1, $2, 1, $3, 'participant_reviewer_and_hr', $4::jsonb, $5::jsonb, $6::jsonb,
+                 'published', $7, NOW())
+         RETURNING id`,
+        [
+          `cycle-${cycle.id}-${participantInput.teamMemberId}`,
+          `${input.name} — ${memberResult.rows[0].name}`,
+          input.purpose,
+          JSON.stringify(participantInput.questions),
+          JSON.stringify({ publishable: true, issueCount: 0, ownerConfirmed: true }),
+          JSON.stringify([...new Set(participantInput.questions.flatMap(question => question.sourceRefs))]),
+          user.id,
+        ],
+      )
       const assignmentResult = await db.query(
         `INSERT INTO hr_questionnaire_assignments
           (participant_id, questionnaire_version_id, opens_at, due_at, status, calendar_uid)
@@ -96,7 +115,7 @@ export default defineEventHandler(async (event) => {
          RETURNING id`,
         [
           participantId,
-          roleResult.rows[0].questionnaire_version_id,
+          questionnaireResult.rows[0].id,
           input.opensAt,
           input.dueAt,
           cycleStatus === 'open' ? 'open' : 'scheduled',
@@ -113,6 +132,15 @@ export default defineEventHandler(async (event) => {
         roleTitle: roleResult.rows[0].title,
         calendarUid,
       })
+
+      await recordHrAuditEvent({
+        actorId: user.id,
+        action: 'questionnaire.commissioned',
+        targetType: 'questionnaire_assignment',
+        targetId: assignmentResult.rows[0].id,
+        cycleId: cycle.id,
+        metadata: { questionCount: participantInput.questions.length, roleProfileVersionId: participantInput.roleProfileVersionId },
+      }, db)
     }
 
     await recordHrAuditEvent({
