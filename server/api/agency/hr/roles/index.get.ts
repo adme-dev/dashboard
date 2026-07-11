@@ -105,5 +105,24 @@ export default defineEventHandler(async (event) => {
       ORDER BY assignment.created_at DESC`,
   )
 
-  return { roles, benchmarks, contractExtracts, departmentGoals, roleAssignments }
+  const activeMembers = await queryRows(
+    `SELECT member.id, member.name, member.email,
+            COALESCE(member.role, member.user_role::text) AS current_role,
+            department.name AS department,
+            assignment.id AS current_assignment_id,
+            assignment.role_profile_version_id AS current_role_version_id,
+            profile.title AS governed_role_title,
+            assignment.acknowledgement_status
+       FROM team_members member
+       LEFT JOIN departments department ON department.id = member.department_id
+       LEFT JOIN hr_role_assignments assignment
+         ON assignment.team_member_id = member.id AND assignment.effective_to IS NULL
+       LEFT JOIN hr_role_profile_versions role_version
+         ON role_version.id = assignment.role_profile_version_id
+       LEFT JOIN hr_role_profiles profile ON profile.id = role_version.role_profile_id
+      WHERE member.is_active = TRUE
+      ORDER BY member.name`,
+  )
+
+  return { roles, benchmarks, contractExtracts, departmentGoals, roleAssignments, activeMembers }
 })

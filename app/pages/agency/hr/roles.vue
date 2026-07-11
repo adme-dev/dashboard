@@ -64,7 +64,11 @@ type ContractExtract = {
   role_exclusions: string[]
 }
 type DepartmentGoal = { version_id: string; name: string; department_name: string; metric_name: string; unit: string; period_end: string }
-type TeamMember = { id: string; name: string; email: string; is_active?: boolean }
+type TeamMember = {
+  id: string; name: string; email: string; current_role: string | null; department: string | null;
+  current_assignment_id: string | null; current_role_version_id: string | null;
+  governed_role_title: string | null; acknowledgement_status: string | null;
+}
 type KpiDraft = {
   name: string
   description: string
@@ -108,6 +112,7 @@ const selectedRoleVersionId = ref('')
 const editingRoleId = ref<string | null>(null)
 const expectedVersion = ref<number | null>(null)
 const expandedQuestionnaireRoleIds = ref<Set<string>>(new Set())
+const showRoster = ref(true)
 
 const form = reactive({
   title: '',
@@ -138,8 +143,24 @@ const departmentGoalItems = computed(() => departmentGoals.value.map(item => ({
   value: item.version_id,
 })))
 const kpiWeightTotal = computed(() => form.kpis.reduce((total, kpi) => total + Number(kpi.weight || 0), 0))
-const teamMemberItems = computed(() => teamMembers.value.filter(member => member.is_active !== false).map(member => ({ label: `${member.name} — ${member.email}`, value: member.id })))
+const teamMemberItems = computed(() => teamMembers.value.map(member => ({ label: `${member.name} — ${member.email}`, value: member.id })))
 const publishedRoleItems = computed(() => roles.value.filter(role => role.status === 'active' && role.version_status === 'published').map(role => ({ label: `${role.title} · v${role.version}`, value: role.version_id })))
+const assignedMemberCount = computed(() => teamMembers.value.filter(member => member.current_assignment_id).length)
+const rosterCoverage = computed(() => teamMembers.value.map(member => {
+  const normalizedCurrentRole = member.current_role?.trim().toLowerCase()
+  const suggestion = roles.value.find(role => {
+    if (normalizedCurrentRole && normalizedCurrentRole !== 'member' && role.title.trim().toLowerCase() === normalizedCurrentRole) return true
+    return role.source_refs.some(source => String(source.label || '').toLowerCase().includes(member.name.toLowerCase()))
+  })
+  const suggestionReason = suggestion
+    ? suggestion.title.toLowerCase() === normalizedCurrentRole
+      ? `Exact title match: ${member.current_role}`
+      : `Approved source metadata names ${member.name}; owner validation is still required.`
+    : member.current_role && member.current_role !== 'member'
+      ? `No governed profile currently matches “${member.current_role}”.`
+      : 'A contractual or owner-confirmed role title is still required.'
+  return { member, suggestion, suggestionReason }
+}))
 const roleSourceTypeItems = [
   { label: 'Monday user profile', value: 'monday_user_profile' },
   { label: 'Monday item', value: 'monday_item' },
@@ -177,15 +198,12 @@ function questionnaireQualityColor(role: RoleProfile): 'success' | 'warning' {
 async function refresh() {
   loading.value = true
   try {
-    const [data, teamData] = await Promise.all([
-      apiFetch<{ roles: RoleProfile[]; benchmarks: Benchmark[]; contractExtracts: ContractExtract[]; departmentGoals: DepartmentGoal[] }>('/api/agency/hr/roles'),
-      apiFetch<{ members: TeamMember[] }>('/api/agency/team-members'),
-    ])
+    const data = await apiFetch<{ roles: RoleProfile[]; benchmarks: Benchmark[]; contractExtracts: ContractExtract[]; departmentGoals: DepartmentGoal[]; activeMembers: TeamMember[] }>('/api/agency/hr/roles')
     roles.value = data.roles
     benchmarks.value = data.benchmarks
     contractExtracts.value = data.contractExtracts
     departmentGoals.value = data.departmentGoals
-    teamMembers.value = teamData.members
+    teamMembers.value = data.activeMembers
   } catch (error: any) {
     toast.add({ title: 'Role library unavailable', description: error?.data?.statusMessage, color: 'error' })
   } finally {
@@ -215,6 +233,16 @@ function startRoleAssignment(role?: RoleProfile) {
   selectedTeamMemberId.value = ''
   selectedRoleVersionId.value = role?.version_status === 'published' ? role.version_id : ''
   showAssignment.value = true
+}
+
+function reviewRosterSuggestion(member: TeamMember, role: RoleProfile) {
+  if (role.version_status !== 'published') {
+    reviseRole(role)
+    toast.add({ title: 'Complete and publish this draft first', description: `Review the evidence and responsibilities before assigning it to ${member.name}.`, color: 'warning' })
+    return
+  }
+  startRoleAssignment(role)
+  selectedTeamMemberId.value = member.id
 }
 
 async function assignRole() {
@@ -405,6 +433,33 @@ async function createRole() {
     </header>
 
     <main class="mx-auto max-w-7xl px-5 py-8 sm:px-8">
+      <section class="mb-7 overflow-hidden rounded-xl border border-default bg-default" aria-labelledby="role-coverage-heading">
+        <div class="flex flex-col gap-3 border-b border-default px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">{{ assignedMemberCount }} of {{ teamMembers.length }} assigned</p>
+            <h2 id="role-coverage-heading" class="mt-1 text-lg font-semibold text-highlighted">Role assignment coverage</h2>
+            <p class="mt-1 text-sm text-muted">Suggestions use exact roster titles or named approved source metadata. Nothing is assigned automatically.</p>
+          </div>
+          <UButton color="neutral" variant="outline" :icon="showRoster ? 'i-lucide-chevron-up' : 'i-lucide-users'" :label="showRoster ? 'Hide roster' : 'Review roster'" :aria-expanded="showRoster" @click="showRoster = !showRoster" />
+        </div>
+        <div v-if="showRoster" class="max-h-96 divide-y divide-default overflow-y-auto overscroll-contain">
+          <article v-for="item in rosterCoverage" :key="item.member.id" class="grid gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)_auto] md:items-center">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="text-sm font-medium text-highlighted">{{ item.member.name }}</h3>
+                <UBadge :color="item.member.current_assignment_id ? 'success' : 'warning'" variant="subtle" :label="item.member.current_assignment_id ? 'Assigned' : 'Unassigned'" />
+              </div>
+              <p class="mt-1 truncate text-xs text-muted">{{ item.member.email }} · {{ item.member.department || 'Department not mapped' }}</p>
+            </div>
+            <div>
+              <p class="text-sm text-highlighted">{{ item.member.governed_role_title || item.suggestion?.title || item.member.current_role || 'Role not confirmed' }}</p>
+              <p class="mt-1 text-xs leading-5 text-muted">{{ item.member.current_assignment_id ? `Frozen role assigned · ${item.member.acknowledgement_status || 'acknowledgement pending'}` : item.suggestionReason }}</p>
+            </div>
+            <UButton v-if="!item.member.current_assignment_id && item.suggestion" color="neutral" variant="outline" size="sm" :label="item.suggestion.version_status === 'published' ? 'Review assignment' : 'Complete draft'" @click="reviewRosterSuggestion(item.member, item.suggestion)" />
+            <UButton v-else-if="!item.member.current_assignment_id" color="neutral" variant="ghost" size="sm" label="Build role" @click="startNewRole" />
+          </article>
+        </div>
+      </section>
       <div class="grid gap-7" :class="showBuilder || showAssignment ? 'xl:grid-cols-[minmax(0,1fr)_440px]' : ''">
         <section>
           <div class="mb-4 flex items-center justify-between">
