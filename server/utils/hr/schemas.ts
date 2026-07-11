@@ -192,6 +192,10 @@ export const hrRoleAssignmentSchema = z.object({
   roleProfileVersionId: z.string().uuid(),
 })
 
+export const hrOrganizationalDepartmentAssignmentSchema = z.object({
+  departmentId: z.string().uuid(),
+})
+
 export const hrAssignmentScheduleChangeSchema = z.object({
   action: z.enum(['extend', 'reschedule', 'cancel', 'reopen']),
   dueAt: z.string().datetime().optional(),

@@ -324,6 +324,7 @@ async function createRole() {
           </div>
           <div class="flex gap-2">
             <UButton color="neutral" variant="outline" icon="i-lucide-arrow-left" label="Review hub" to="/agency/hr" />
+            <UButton color="neutral" variant="outline" icon="i-lucide-building-2" label="Map departments" to="/agency/hr/departments" />
             <UButton color="neutral" variant="outline" icon="i-lucide-user-check" label="Assign published role" @click="startRoleAssignment()" />
             <UButton icon="i-lucide-plus" label="Build role profile" @click="startNewRole" />
           </div>
