@@ -9,9 +9,17 @@ describe('HR launch governance UI contract', () => {
   it('shows every gate, readiness, evidence, history, and expiry', () => {
     expect(page).toContain('/api/agency/hr/governance/launch-readiness')
     expect(page).toContain('/api/agency/hr/governance/launch-attestations')
+    expect(page).toContain('/api/agency/hr/governance/pilot-readiness')
     for (const text of ['Launch clearance', 'Evidence reference', 'Limitations', 'Approval history', 'Expiry']) {
       expect(page).toContain(text)
     }
+  })
+
+  it('shows pilot blockers with direct remediation routes', () => {
+    for (const text of ['Pilot preflight', 'Owner onboarding', 'Published role', 'Eligible participant', 'Email delivery']) expect(page).toContain(text)
+    expect(page).toContain("to: '/agency/hr/onboarding'")
+    expect(page).toContain("to: '/agency/hr/roles'")
+    expect(page).toContain("to: '/agency/hr/reviews'")
   })
 
   it('keeps long gate and history sections scrollable', () => {

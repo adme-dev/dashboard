@@ -4,6 +4,7 @@ definePageMeta({ title: 'HR Launch Governance', middleware: ['auth'] })
 type GateKey = 'privacy_impact_assessment' | 'staff_notice_and_consultation' | 'source_scope_review' | 'accessibility_review' | 'scoring_calibration' | 'ai_safety_review' | 'human_decision_only' | 'no_hidden_monitoring' | 'pilot_approval'
 type Attestation = { id: string; gate_key: GateKey; status: 'approved' | 'rejected' | 'pending'; evidence_reference: string; limitations: string | null; approved_at: string | null; expires_at: string | null; created_at: string }
 type ReadinessResponse = { readiness: { ready: boolean; missing: GateKey[]; expired: GateKey[] }; attestations: Attestation[] }
+type PilotResponse = { readiness: { ready: boolean; blockers: string[]; warnings: string[] }; facts: { completedOnboarding: number; publishedRoles: number; eligibleParticipants: number; emailConfigured: boolean; activeCycles: number; approvedMondayScope: boolean } }
 
 const gateDefinitions: Array<{ key: GateKey; label: string; detail: string }> = [
   { key: 'privacy_impact_assessment', label: 'Privacy impact assessment', detail: 'Purpose, necessity, proportionality, retention and correction pathways are documented.' },
@@ -27,6 +28,7 @@ const toast = useToast()
 const loading = ref(true)
 const saving = ref(false)
 const data = ref<ReadinessResponse | null>(null)
+const pilot = ref<PilotResponse | null>(null)
 const selectedKey = ref<GateKey>('privacy_impact_assessment')
 const form = reactive({ status: 'pending', evidenceReference: '', limitations: '', expiry: '365' })
 const apiFetch = $fetch as <T>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
@@ -34,6 +36,14 @@ const apiFetch = $fetch as <T>(request: string, options?: { method?: string; bod
 const selectedDefinition = computed(() => gateDefinitions.find(gate => gate.key === selectedKey.value)!)
 const latestByGate = computed(() => Object.fromEntries((data.value?.attestations || []).map(item => [item.gate_key, item])))
 const selectedHistory = computed(() => (data.value?.attestations || []).filter(item => item.gate_key === selectedKey.value))
+const pilotChecks = computed(() => [
+  { label: 'Governance clearance', ready: data.value?.readiness.ready === true, detail: data.value?.readiness.ready ? 'All nine gates are current.' : `${data.value?.readiness.missing.length || 0} gate approvals remain.`, to: '/agency/hr/governance' },
+  { label: 'Owner onboarding', ready: (pilot.value?.facts.completedOnboarding || 0) > 0, detail: `${pilot.value?.facts.completedOnboarding || 0} completed owner profile.`, to: '/agency/hr/onboarding' },
+  { label: 'Published role', ready: (pilot.value?.facts.publishedRoles || 0) > 0, detail: `${pilot.value?.facts.publishedRoles || 0} published role version.`, to: '/agency/hr/roles' },
+  { label: 'Eligible participant', ready: (pilot.value?.facts.eligibleParticipants || 0) > 0, detail: `${pilot.value?.facts.eligibleParticipants || 0} active person linked to a published role.`, to: '/agency/hr/roles' },
+  { label: 'Email delivery', ready: pilot.value?.facts.emailConfigured === true, detail: pilot.value?.facts.emailConfigured ? 'Assignment email provider is configured.' : 'Assignment email provider is not configured.', to: '/agency/hr/reviews' },
+  { label: 'Clean pilot lane', ready: (pilot.value?.facts.activeCycles || 0) === 0, detail: `${pilot.value?.facts.activeCycles || 0} active review cycle.`, to: '/agency/hr/reviews' },
+])
 
 function gateState(key: GateKey) {
   if (data.value?.readiness.expired.includes(key)) return { label: 'Expired', color: 'warning' as const, icon: 'i-lucide-clock-alert' }
@@ -53,7 +63,14 @@ function selectGate(key: GateKey) {
 }
 async function refresh() {
   loading.value = true
-  try { data.value = await apiFetch<ReadinessResponse>('/api/agency/hr/governance/launch-readiness') }
+  try {
+    const [governance, pilotReadiness] = await Promise.all([
+      apiFetch<ReadinessResponse>('/api/agency/hr/governance/launch-readiness'),
+      apiFetch<PilotResponse>('/api/agency/hr/governance/pilot-readiness'),
+    ])
+    data.value = governance
+    pilot.value = pilotReadiness
+  }
   catch (error: any) { toast.add({ title: 'Governance register unavailable', description: error?.data?.statusMessage, color: 'error' }) }
   finally { loading.value = false }
 }
@@ -90,7 +107,22 @@ onMounted(() => void refresh())
 
     <main class="mx-auto max-w-7xl px-5 py-8 sm:px-8">
       <div v-if="loading" class="flex min-h-64 items-center justify-center" aria-label="Loading governance register"><UIcon name="i-lucide-loader-circle" class="size-7 animate-spin text-primary" /></div>
-      <div v-else-if="data" class="grid min-h-0 gap-6 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.35fr)]">
+      <template v-else-if="data && pilot">
+        <section aria-labelledby="pilot-preflight" class="mb-6 overflow-hidden rounded-xl border border-default bg-default">
+          <div class="flex flex-col gap-3 border-b border-default px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Read-only launch check</p><h2 id="pilot-preflight" class="mt-1 text-lg font-semibold text-highlighted">Pilot preflight</h2></div>
+            <UBadge :color="pilot.readiness.ready ? 'success' : 'warning'" variant="subtle" :label="pilot.readiness.ready ? 'Ready for owner approval' : `${pilot.readiness.blockers.length} blockers`" />
+          </div>
+          <div class="max-h-72 overflow-y-auto overscroll-contain divide-y divide-default">
+            <div v-for="check in pilotChecks" :key="check.label" class="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div class="flex min-w-0 gap-3"><UIcon :name="check.ready ? 'i-lucide-check-circle-2' : 'i-lucide-circle-alert'" :class="check.ready ? 'text-success' : 'text-warning'" class="mt-0.5 size-5 shrink-0" /><div><h3 class="text-sm font-medium text-highlighted">{{ check.label }}</h3><p class="mt-1 text-sm text-muted">{{ check.detail }}</p></div></div>
+              <UButton v-if="!check.ready" color="neutral" variant="outline" size="sm" label="Resolve" :to="check.to" :aria-label="`Resolve ${check.label}`" />
+            </div>
+          </div>
+          <div class="border-t border-default bg-elevated/30 px-5 py-3 text-xs leading-5 text-muted">This preflight creates no employee, questionnaire, notification or calendar record. Monday evidence is optional and remains separately scoped.</div>
+        </section>
+
+        <div class="grid min-h-0 gap-6 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.35fr)]">
         <section aria-labelledby="clearance-list" class="overflow-hidden rounded-xl border border-default bg-default">
           <div class="border-b border-default px-5 py-4"><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">{{ gateDefinitions.length }} required controls</p><h2 id="clearance-list" class="mt-1 text-lg font-semibold text-highlighted">Launch clearance</h2></div>
           <div class="max-h-[68vh] overflow-y-auto overscroll-contain p-2">
@@ -119,7 +151,8 @@ onMounted(() => void refresh())
             </article>
           </div>
         </section>
-      </div>
+        </div>
+      </template>
     </main>
   </div>
 </template>
