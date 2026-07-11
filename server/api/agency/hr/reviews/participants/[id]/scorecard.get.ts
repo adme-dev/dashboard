@@ -57,6 +57,10 @@ export default defineEventHandler(async (event) => {
     && user.id !== row.reviewer_id
     && !canManageHr(user)
   const resultIsVisible = Boolean(row.result_id && (!isParticipantView || row.published_at))
+  const canScore = canAccessHrParticipant(user, {
+    participantUserId: row.team_member_id,
+    reviewerIds: row.reviewer_id ? [row.reviewer_id] : [],
+  }, 'score')
   const calculation = row.calculation && isParticipantView
     ? { calculation: row.calculation.calculation, ratings: row.calculation.ratings }
     : row.calculation
@@ -81,6 +85,7 @@ export default defineEventHandler(async (event) => {
       status: row.status,
       responseStatus: row.response_status,
       responseSubmittedAt: row.submitted_at,
+      canScore,
     },
     scorecard: {
       id: row.scorecard_version_id,

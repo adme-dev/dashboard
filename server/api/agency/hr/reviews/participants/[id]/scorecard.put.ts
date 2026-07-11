@@ -2,6 +2,7 @@ import { createError, getRouterParam, readBody, setHeader } from 'h3'
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne, transaction } from '~~/server/utils/db'
+import { createNotification } from '~~/server/utils/notifications'
 import { canAccessHrParticipant } from '~~/server/utils/hr/access'
 import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
 import { calculateHrRoleScore } from '~~/server/utils/hr/scoring'
@@ -29,8 +30,17 @@ export default defineEventHandler(async (event) => {
   const row = await queryOne<any>(
     `SELECT participant.id, participant.team_member_id, participant.reviewer_id,
             participant.cycle_id, scorecard.id AS scorecard_version_id,
-            scorecard.criteria, scorecard.evidence_threshold
+            scorecard.criteria, scorecard.evidence_threshold,
+            response.status AS response_status,
+            role_assignment.acknowledgement_status AS role_acknowledgement_status
      FROM hr_review_participants participant
+     LEFT JOIN hr_questionnaire_assignments assignment ON assignment.participant_id = participant.id
+     LEFT JOIN hr_responses response ON response.assignment_id = assignment.id
+       AND response.respondent_id = participant.team_member_id
+     LEFT JOIN hr_role_assignments role_assignment
+       ON role_assignment.team_member_id = participant.team_member_id
+      AND role_assignment.role_profile_version_id = participant.role_profile_version_id
+      AND role_assignment.effective_to IS NULL
      JOIN LATERAL (
        SELECT * FROM hr_role_scorecard_versions candidate
        WHERE candidate.role_profile_version_id = participant.role_profile_version_id
@@ -44,6 +54,12 @@ export default defineEventHandler(async (event) => {
     participantUserId: row.team_member_id,
     reviewerIds: row.reviewer_id ? [row.reviewer_id] : [],
   }, 'score')) throw createError({ statusCode: 403, statusMessage: 'Only the assigned reviewer may score this review' })
+  if (parsed.data.publish && !['submitted', 'locked'].includes(row.response_status)) {
+    throw createError({ statusCode: 409, statusMessage: 'A submitted response is required before publication' })
+  }
+  if (parsed.data.publish && row.role_acknowledgement_status === 'disputed') {
+    throw createError({ statusCode: 409, statusMessage: 'Resolve the role baseline dispute before publication' })
+  }
 
   const storedCriteria = row.criteria as Array<{ id: string; weight: number }>
   const provided = new Map(parsed.data.criteria.map(criterion => [criterion.id, criterion]))
@@ -147,8 +163,27 @@ export default defineEventHandler(async (event) => {
       cycleId: row.cycle_id,
       metadata: { evidenceCoverage: calculation.evidenceCoverage, confidence: calculation.confidence, abstained: !calculation.isPublishable },
     }, db)
+    if (parsed.data.publish) {
+      await db.query(
+        `UPDATE hr_review_participants SET status = 'reviewed', updated_at = NOW() WHERE id = $1`,
+        [row.id]
+      )
+    }
     return result
   })
+
+  if (parsed.data.publish) {
+    await createNotification({
+      userId: row.team_member_id,
+      actorId: user.id,
+      type: 'hr_scorecard_published',
+      title: 'Business review outcome published',
+      message: 'Your evidence-based review outcome and agreed follow-ups are available.',
+      link: '/agency/hr',
+      reason: 'direct',
+      metadata: { participantId, scorecardResultId: saved.id }
+    }).catch(() => {})
+  }
 
   return {
     ok: true,

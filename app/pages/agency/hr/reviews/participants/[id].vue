@@ -4,7 +4,7 @@ definePageMeta({ title: 'HR Evidence Scorecard', middleware: ['auth'] })
 
 type Criterion = { id: string; label: string; description: string; weight: number; frameworkKey: string; evidenceRequired: string[] }
 type ScorecardData = {
-  participant: { id: string; memberName: string; memberEmail: string; cycleName: string; roleTitle: string; responseStatus: string | null }
+  participant: { id: string; memberName: string; memberEmail: string; cycleName: string; roleTitle: string; responseStatus: string | null; canScore: boolean }
   scorecard: { id: string; version: number; criteria: Criterion[]; evidenceThreshold: number }
   result: null | {
     roleScore: number | null
@@ -24,6 +24,11 @@ type KpiEvidence = {
   period_start?: string | null; period_end?: string | null; actual_value?: string | number | null;
   actual_text?: string | null; observation_source_ref?: string | null;
   evidence_status?: 'unverified' | 'verified' | 'disputed' | 'missing' | null; context_note?: string | null;
+}
+type ReviewInterview = {
+  id: string; status: 'scheduled' | 'completed' | 'cancelled'; startsAt: string; endsAt: string;
+  timezone: string; location: string | null; agenda: string; participantSummary: string | null;
+  privateNotes: string | null; calendarSequence: number;
 }
 
 const route = useRoute()
@@ -60,6 +65,17 @@ const followUpForm = reactive({
   capability: '', observableNeed: '', desiredOutcome: '', learningIntervention: '', providerOrResource: '',
 })
 const followUpDueModel = computed({ get: () => parseDate(followUpForm.dueDate) as DateValue, set: value => { followUpForm.dueDate = value?.toString() || '' } })
+const interviews = ref<ReviewInterview[]>([])
+const showInterview = ref(false)
+const interviewMode = ref<'schedule' | 'completed' | 'cancelled'>('schedule')
+const selectedInterview = ref<ReviewInterview | null>(null)
+const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+const interviewForm = reactive({
+  date: tomorrow, time: '10:00', durationMinutes: 45, location: '',
+  agenda: 'Clarify the participant’s work context, operational blockers, dependencies and support required.',
+  participantSummary: '', privateNotes: '',
+})
+const interviewDateModel = computed({ get: () => parseDate(interviewForm.date) as DateValue, set: value => { interviewForm.date = value?.toString() || '' } })
 
 const ratingItems = [1, 2, 3, 4, 5].map(value => ({ value, label: String(value) }))
 const enablementItems = [
@@ -73,15 +89,17 @@ const enablementItems = [
 async function load() {
   loading.value = true
   try {
-    const [scorecardData, followUpData, kpiData] = await Promise.all([
+    const [scorecardData, followUpData, kpiData, interviewData] = await Promise.all([
       apiFetch<ScorecardData>(`/api/agency/hr/reviews/participants/${route.params.id}/scorecard`),
       apiFetch<{ followUps: any[]; owners: Array<{ id: string; name: string }> }>(`/api/agency/hr/reviews/participants/${route.params.id}/follow-ups`),
       apiFetch<{ observations: KpiEvidence[] }>(`/api/agency/hr/reviews/participants/${route.params.id}/kpis`),
+      apiFetch<{ interviews: ReviewInterview[] }>(`/api/agency/hr/reviews/participants/${route.params.id}/interviews`),
     ])
     data.value = scorecardData
     followUps.value = followUpData.followUps
     followUpOwners.value = followUpData.owners
     kpiEvidence.value = kpiData.observations
+    interviews.value = interviewData.interviews
     const existing = new Map((data.value.result?.calculation?.ratings || []).map(item => [item.id, item]))
     ratings.value = Object.fromEntries(data.value.scorecard.criteria.map(criterion => {
       const prior = existing.get(criterion.id)
@@ -210,6 +228,72 @@ async function createFollowUp() {
   } catch (error: any) { toast.add({ title: 'Follow-up could not be created', description: error?.data?.statusMessage, color: 'error' }) }
   finally { saving.value = false }
 }
+
+function openInterviewScheduler() {
+  interviewMode.value = 'schedule'
+  selectedInterview.value = interviews.value.find(item => item.status === 'scheduled') || null
+  if (selectedInterview.value) {
+    const start = new Date(selectedInterview.value.startsAt)
+    interviewForm.date = start.toISOString().slice(0, 10)
+    interviewForm.time = start.toTimeString().slice(0, 5)
+    interviewForm.durationMinutes = Math.max(15, Math.round((Date.parse(selectedInterview.value.endsAt) - start.getTime()) / 60000))
+    interviewForm.location = selectedInterview.value.location || ''
+    interviewForm.agenda = selectedInterview.value.agenda
+  }
+  showInterview.value = true
+}
+
+function openInterviewClose(interview: ReviewInterview, status: 'completed' | 'cancelled') {
+  selectedInterview.value = interview
+  interviewMode.value = status
+  interviewForm.participantSummary = interview.participantSummary || ''
+  interviewForm.privateNotes = interview.privateNotes || ''
+  showInterview.value = true
+}
+
+async function saveInterview() {
+  saving.value = true
+  try {
+    if (interviewMode.value === 'schedule') {
+      const startsAt = new Date(`${interviewForm.date}T${interviewForm.time}:00`)
+      const endsAt = new Date(startsAt.getTime() + Number(interviewForm.durationMinutes) * 60000)
+      await apiFetch(`/api/agency/hr/reviews/participants/${route.params.id}/interviews`, {
+        method: 'POST',
+        body: {
+          startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), timezone: 'Australia/Melbourne',
+          location: interviewForm.location || undefined, agenda: interviewForm.agenda,
+        },
+      })
+      toast.add({ title: selectedInterview.value ? 'Interview rescheduled' : 'Interview scheduled', description: 'The participant notification and calendar update have been prepared.', color: 'success' })
+    } else if (selectedInterview.value) {
+      await apiFetch(`/api/agency/hr/interviews/${selectedInterview.value.id}`, {
+        method: 'PATCH',
+        body: {
+          status: interviewMode.value,
+          participantSummary: interviewMode.value === 'completed' ? interviewForm.participantSummary : undefined,
+          privateNotes: interviewMode.value === 'completed' ? interviewForm.privateNotes || undefined : undefined,
+          expectedCalendarSequence: selectedInterview.value.calendarSequence,
+        },
+      })
+      toast.add({ title: interviewMode.value === 'completed' ? 'Interview completed' : 'Interview cancelled', color: 'success' })
+    }
+    showInterview.value = false
+    await load()
+  } catch (error: any) {
+    toast.add({ title: 'Interview update not saved', description: error?.data?.statusMessage, color: 'error' })
+  } finally { saving.value = false }
+}
+
+async function updateFollowUpStatus(id: string, status: 'in_progress' | 'completed' | 'cancelled') {
+  saving.value = true
+  try {
+    await apiFetch(`/api/agency/hr/follow-ups/${id}`, { method: 'PATCH', body: { status } })
+    toast.add({ title: status === 'completed' ? 'Follow-up completed' : status === 'cancelled' ? 'Follow-up cancelled' : 'Follow-up started', color: 'success' })
+    await load()
+  } catch (error: any) {
+    toast.add({ title: 'Follow-up status not changed', description: error?.data?.statusMessage, color: 'error' })
+  } finally { saving.value = false }
+}
 </script>
 
 <template>
@@ -222,29 +306,65 @@ async function createFollowUp() {
 
         <UAlert color="info" variant="soft" icon="i-lucide-scale" title="Two scores, two different questions" description="Role performance reflects evidenced delivery against the published framework. Operational enablement reflects whether workload, tools, priorities, dependencies and decision access make that delivery possible. They are never averaged together." />
 
+        <section class="overflow-hidden rounded-xl border border-default bg-default">
+          <div class="flex flex-col gap-3 border-b border-default px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Clarification, not interrogation</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Follow-up interviews</h2><p class="mt-1 text-sm text-muted">Use the interview to test assumptions, understand blockers and record the participant’s context before publication.</p></div><UButton v-if="data.participant.canScore" icon="i-lucide-calendar-plus" :label="interviews.some(item => item.status === 'scheduled') ? 'Reschedule interview' : 'Schedule interview'" @click="openInterviewScheduler" /></div>
+          <div v-if="interviews.length" class="divide-y divide-default">
+            <article v-for="interview in interviews" :key="interview.id" class="flex flex-col gap-4 p-5 lg:flex-row lg:items-start">
+              <div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><UIcon name="i-lucide-messages-square" class="size-5" /></div>
+              <div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><p class="font-medium text-highlighted">{{ new Intl.DateTimeFormat('en-AU', { dateStyle: 'full', timeStyle: 'short', timeZone: interview.timezone }).format(new Date(interview.startsAt)) }}</p><UBadge :color="interview.status === 'completed' ? 'success' : interview.status === 'cancelled' ? 'neutral' : 'warning'" variant="subtle" :label="interview.status" /></div><p class="mt-2 text-sm leading-6 text-muted">{{ interview.agenda }}</p><p v-if="interview.location" class="mt-1 text-xs text-muted">Location: {{ interview.location }}</p><div v-if="interview.participantSummary" class="mt-3 rounded-lg bg-elevated/30 p-3"><p class="text-xs font-semibold uppercase tracking-wide text-muted">Participant-visible summary</p><p class="mt-1 text-sm text-highlighted">{{ interview.participantSummary }}</p></div></div>
+              <div v-if="data.participant.canScore && interview.status === 'scheduled'" class="flex shrink-0 gap-2"><UButton color="neutral" variant="outline" size="sm" label="Complete" @click="openInterviewClose(interview, 'completed')" /><UButton color="error" variant="ghost" size="sm" label="Cancel" @click="openInterviewClose(interview, 'cancelled')" /></div>
+            </article>
+          </div>
+          <div v-else class="p-8 text-center text-sm text-muted">No interview has been scheduled. A score can be drafted, but publication should follow adequate clarification where context is incomplete.</div>
+        </section>
+
         <section v-if="kpiEvidence.length" class="overflow-hidden rounded-xl border border-default bg-default">
           <div class="flex items-center justify-between border-b border-default px-5 py-4"><div><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Challengeable operational evidence</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Role KPI observations</h2><p class="mt-1 text-sm text-muted">Only a latest verified observation for every published role KPI can substantiate the KPI criterion.</p></div><UBadge color="neutral" variant="subtle" :label="`${kpiEvidence.filter(item => item.evidence_status === 'verified').length}/${kpiEvidence.length} verified`" /></div>
           <div class="divide-y divide-default"><div v-for="kpi in kpiEvidence" :key="kpi.kpi_definition_id" class="flex flex-col gap-4 p-5 sm:flex-row sm:items-center"><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><p class="font-medium text-highlighted">{{ kpi.name }}</p><UBadge :color="kpi.evidence_status === 'verified' ? 'success' : kpi.evidence_status === 'disputed' ? 'error' : 'warning'" variant="outline" :label="kpi.evidence_status || 'not recorded'" /></div><p class="mt-1 text-sm text-muted">Approved source: {{ kpi.source_ref }}</p><p v-if="kpi.observation_id" class="mt-2 text-sm text-highlighted">Result: {{ kpi.actual_text || kpi.actual_value }} {{ kpi.actual_text ? '' : kpi.unit }} · {{ kpi.period_start }} to {{ kpi.period_end }}</p><p v-if="kpi.context_note" class="mt-1 text-xs text-muted">Context: {{ kpi.context_note }}</p></div><UButton color="neutral" variant="outline" icon="i-lucide-file-check-2" :label="kpi.observation_id ? 'Review evidence' : 'Record evidence'" @click="openKpiRecorder(kpi)" /></div></div>
         </section>
 
-        <section v-if="showKpiRecorder && selectedKpi" class="rounded-xl border border-primary/30 bg-default">
+        <section v-if="data.participant.canScore && showKpiRecorder && selectedKpi" class="rounded-xl border border-primary/30 bg-default">
           <div class="border-b border-default px-5 py-4"><p class="font-mono text-xs uppercase tracking-[0.16em] text-primary">{{ selectedKpi.name }}</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Record sourced KPI evidence</h2></div>
           <div class="grid gap-5 p-5 md:grid-cols-2"><UFormField label="Period starts" required><UPopover><UButton color="neutral" variant="outline" icon="i-lucide-calendar" :label="kpiForm.periodStart" class="w-full justify-start" /><template #content><UCalendar v-model="kpiStartModel" class="p-2" /></template></UPopover></UFormField><UFormField label="Period ends" required><UPopover><UButton color="neutral" variant="outline" icon="i-lucide-calendar-check" :label="kpiForm.periodEnd" class="w-full justify-start" /><template #content><UCalendar v-model="kpiEndModel" class="p-2" /></template></UPopover></UFormField><UFormField label="Result format" required><USelectMenu v-model="kpiForm.resultKind" :items="[{ label: 'Numeric result', value: 'number' }, { label: 'Milestone result', value: 'text' }]" value-key="value" class="w-full" /></UFormField><UFormField v-if="kpiForm.resultKind === 'number'" :label="`Actual (${selectedKpi.unit})`" required><UInput v-model="kpiForm.actualValue" type="number" class="w-full" /></UFormField><UFormField v-else label="Milestone result" required><UInput v-model="kpiForm.actualText" class="w-full" /></UFormField><UFormField label="Evidence source reference" required class="md:col-span-2"><UInput v-model="kpiForm.sourceRef" placeholder="Report, Monday item, dashboard metric or approved record" class="w-full" /></UFormField><UFormField label="Verification state" required><USelectMenu v-model="kpiForm.evidenceStatus" :items="[{ label: 'Verified', value: 'verified' }, { label: 'Unverified', value: 'unverified' }]" value-key="value" class="w-full" /></UFormField><UFormField label="Verification context"><UTextarea v-model="kpiForm.contextNote" :rows="3" class="w-full" /></UFormField></div>
           <div class="flex justify-end gap-2 border-t border-default p-4"><UButton color="neutral" variant="ghost" label="Cancel" @click="showKpiRecorder = false" /><UButton icon="i-lucide-shield-check" label="Save KPI evidence" :loading="saving" @click="saveKpiEvidence" /></div>
         </section>
 
         <section class="overflow-hidden rounded-xl border border-default bg-default"><div class="border-b border-default px-5 py-4"><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Framework version locked</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Evidence by criterion</h2></div><div class="divide-y divide-default">
-          <div v-for="criterion in data.scorecard.criteria" :key="criterion.id" class="p-5 sm:p-6"><div class="flex flex-col gap-5 lg:flex-row"><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><h3 class="font-medium text-highlighted">{{ criterion.label }}</h3><UBadge color="neutral" variant="outline" :label="`${criterion.weight}%`" /><UBadge color="neutral" variant="subtle" :label="criterion.frameworkKey" /></div><p class="mt-2 text-sm leading-6 text-muted">{{ criterion.description }}</p><details class="mt-3 text-sm"><summary class="cursor-pointer text-primary">View role evidence requirements</summary><ul class="mt-2 space-y-1 pl-4 text-muted"><li v-for="item in criterion.evidenceRequired" :key="item">• {{ item }}</li></ul></details></div><div class="w-full space-y-4 lg:w-80"><UFormField label="Rating (1–5)"><URadioGroup v-model="ratings[criterion.id].rating" :items="ratingItems" orientation="horizontal" /></UFormField><UCheckbox v-model="ratings[criterion.id].hasSufficientEvidence" label="Suitable evidence is available" /><UFormField label="Evidence references" help="One verifiable reference per line."><UTextarea v-model="ratings[criterion.id].evidenceText" :rows="3" placeholder="Questionnaire response&#10;Monday item URL&#10;Approved work sample" class="w-full" /></UFormField></div></div></div>
+          <div v-for="criterion in data.scorecard.criteria" :key="criterion.id" class="p-5 sm:p-6"><div class="flex flex-col gap-5 lg:flex-row"><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><h3 class="font-medium text-highlighted">{{ criterion.label }}</h3><UBadge color="neutral" variant="outline" :label="`${criterion.weight}%`" /><UBadge color="neutral" variant="subtle" :label="criterion.frameworkKey" /></div><p class="mt-2 text-sm leading-6 text-muted">{{ criterion.description }}</p><details class="mt-3 text-sm"><summary class="cursor-pointer text-primary">View role evidence requirements</summary><ul class="mt-2 space-y-1 pl-4 text-muted"><li v-for="item in criterion.evidenceRequired" :key="item">• {{ item }}</li></ul></details></div><div class="w-full space-y-4 lg:w-80"><UFormField label="Rating (1–5)"><URadioGroup v-model="ratings[criterion.id].rating" :items="ratingItems" orientation="horizontal" :disabled="!data.participant.canScore" /></UFormField><UCheckbox v-model="ratings[criterion.id].hasSufficientEvidence" label="Suitable evidence is available" :disabled="!data.participant.canScore" /><UFormField label="Evidence references" help="One verifiable reference per line."><UTextarea v-model="ratings[criterion.id].evidenceText" :rows="3" placeholder="Questionnaire response&#10;Monday item URL&#10;Approved work sample" class="w-full" :disabled="!data.participant.canScore" /></UFormField></div></div></div>
         </div></section>
 
-        <section class="grid gap-6 lg:grid-cols-2"><div class="rounded-xl border border-default bg-default p-5"><UFormField label="Operational enablement" help="Rate the working environment, not the individual."><USelectMenu v-model="operationalEnablement" :items="enablementItems" value-key="value" class="mt-2 w-full" /></UFormField></div><div class="rounded-xl border border-default bg-default p-5"><UFormField label="Reviewer context" help="Optional. Record limitations, contrary evidence or follow-up needed."><UTextarea v-model="reviewerNotes" :rows="5" class="mt-2 w-full" /></UFormField></div></section>
+        <section class="grid gap-6 lg:grid-cols-2"><div class="rounded-xl border border-default bg-default p-5"><UFormField label="Operational enablement" help="Rate the working environment, not the individual."><USelectMenu v-model="operationalEnablement" :items="enablementItems" value-key="value" class="mt-2 w-full" :disabled="!data.participant.canScore" /></UFormField></div><div class="rounded-xl border border-default bg-default p-5"><UFormField label="Reviewer context" help="Optional. Record limitations, contrary evidence or follow-up needed."><UTextarea v-model="reviewerNotes" :rows="5" class="mt-2 w-full" :disabled="!data.participant.canScore" /></UFormField></div></section>
 
-        <div class="flex flex-col gap-3 rounded-xl border border-default bg-elevated/30 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p class="font-medium text-highlighted">Publication remains a human action</p><p class="mt-1 text-sm text-muted">Saving calculates coverage. Publishing is blocked automatically if the evidence threshold is not met.</p></div><div class="flex gap-2"><UButton color="neutral" variant="outline" icon="i-lucide-save" label="Save draft" :loading="saving" @click="save(false)" /><UButton icon="i-lucide-shield-check" label="Publish evidence score" :loading="saving" @click="save(true)" /></div></div>
+        <div v-if="data.participant.canScore" class="flex flex-col gap-3 rounded-xl border border-default bg-elevated/30 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p class="font-medium text-highlighted">Publication remains a human action</p><p class="mt-1 text-sm text-muted">Saving calculates coverage. Publishing is blocked automatically if the evidence threshold is not met.</p></div><div class="flex gap-2"><UButton color="neutral" variant="outline" icon="i-lucide-save" label="Save draft" :loading="saving" @click="save(false)" /><UButton icon="i-lucide-shield-check" label="Publish evidence score" :loading="saving" @click="save(true)" /></div></div>
 
-        <section class="rounded-xl border border-default bg-default"><div class="flex items-center justify-between border-b border-default px-5 py-4"><div><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Action, ownership, due date</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Review follow-ups</h2></div><UButton icon="i-lucide-plus" label="Add follow-up" @click="showFollowUp = !showFollowUp" /></div><div v-if="followUps.length" class="divide-y divide-default"><div v-for="item in followUps" :key="item.id" class="flex flex-col gap-3 p-5 sm:flex-row sm:items-center"><div class="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><UIcon :name="item.action_type === 'learning' ? 'i-lucide-graduation-cap' : 'i-lucide-list-checks'" class="size-4" /></div><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><p class="font-medium text-highlighted">{{ item.title }}</p><UBadge color="neutral" variant="subtle" :label="item.action_type.replaceAll('_', ' ')" /><UBadge :color="item.status === 'completed' ? 'success' : 'warning'" variant="outline" :label="item.status" /></div><p class="mt-1 text-sm text-muted">{{ item.description }}</p><p class="mt-2 text-xs text-muted">Owner: {{ item.owner_name }} · due {{ new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(new Date(item.due_at)) }}</p></div></div></div><div v-else class="p-8 text-center text-sm text-muted">No follow-up actions recorded yet.</div></section>
+        <template v-if="data.participant.canScore">
+        <section class="rounded-xl border border-default bg-default"><div class="flex items-center justify-between border-b border-default px-5 py-4"><div><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Action, ownership, due date</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Review follow-ups</h2></div><UButton icon="i-lucide-plus" label="Add follow-up" @click="showFollowUp = !showFollowUp" /></div><div v-if="followUps.length" class="divide-y divide-default"><div v-for="item in followUps" :key="item.id" class="flex flex-col gap-3 p-5 sm:flex-row sm:items-center"><div class="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><UIcon :name="item.action_type === 'learning' ? 'i-lucide-graduation-cap' : 'i-lucide-list-checks'" class="size-4" /></div><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><p class="font-medium text-highlighted">{{ item.title }}</p><UBadge color="neutral" variant="subtle" :label="item.action_type.replaceAll('_', ' ')" /><UBadge :color="item.status === 'completed' ? 'success' : 'warning'" variant="outline" :label="item.status" /></div><p class="mt-1 text-sm text-muted">{{ item.description }}</p><p class="mt-2 text-xs text-muted">Owner: {{ item.owner_name }} · due {{ new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(new Date(item.due_at)) }}</p></div><div v-if="!['completed', 'cancelled'].includes(item.status)" class="flex shrink-0 flex-wrap gap-2"><UButton v-if="item.status !== 'in_progress'" color="neutral" variant="outline" size="sm" label="Start" @click="updateFollowUpStatus(item.id, 'in_progress')" /><UButton color="success" variant="soft" size="sm" label="Complete" @click="updateFollowUpStatus(item.id, 'completed')" /><UButton color="error" variant="ghost" size="sm" label="Cancel" @click="updateFollowUpStatus(item.id, 'cancelled')" /></div></div></div><div v-else class="p-8 text-center text-sm text-muted">No follow-up actions recorded yet.</div></section>
 
         <section v-if="showFollowUp" class="rounded-xl border border-primary/30 bg-default"><div class="border-b border-default px-5 py-4"><p class="font-mono text-xs uppercase tracking-[0.16em] text-primary">New accountable action</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Plan the next step</h2></div><div class="grid gap-5 p-5 lg:grid-cols-2"><UFormField label="Action type" required><USelectMenu v-model="followUpForm.actionType" :items="actionItems" value-key="value" class="w-full" /></UFormField><UFormField label="Action owner" required><USelectMenu v-model="followUpForm.ownerId" :items="followUpOwners.map(owner => ({ label: owner.name, value: owner.id }))" value-key="value" class="w-full" /></UFormField><UFormField label="Title" required class="lg:col-span-2"><UInput v-model="followUpForm.title" class="w-full" /></UFormField><UFormField label="Action description" required class="lg:col-span-2"><UTextarea v-model="followUpForm.description" :rows="4" class="w-full" /></UFormField><UFormField label="Evidence-based rationale" class="lg:col-span-2"><UTextarea v-model="followUpForm.rationale" :rows="3" class="w-full" /></UFormField><UFormField label="Required by" required><UPopover><UButton color="neutral" variant="outline" icon="i-lucide-calendar-check" :label="followUpForm.dueDate" class="w-full justify-start" /><template #content><UCalendar v-model="followUpDueModel" class="p-2" /></template></UPopover></UFormField><template v-if="followUpForm.actionType === 'learning'"><UFormField label="Capability" required><UInput v-model="followUpForm.capability" class="w-full" /></UFormField><UFormField label="Observable learning need" required class="lg:col-span-2"><UTextarea v-model="followUpForm.observableNeed" :rows="3" placeholder="State the role-related evidence; do not infer personality or aptitude." class="w-full" /></UFormField><UFormField label="Desired outcome" required><UTextarea v-model="followUpForm.desiredOutcome" :rows="3" class="w-full" /></UFormField><UFormField label="Learning intervention" required><UTextarea v-model="followUpForm.learningIntervention" :rows="3" placeholder="Course, coaching, shadowing, practice or documentation" class="w-full" /></UFormField><UFormField label="Provider or resource" class="lg:col-span-2"><UInput v-model="followUpForm.providerOrResource" class="w-full" /></UFormField></template></div><div class="flex justify-end gap-2 border-t border-default p-4"><UButton color="neutral" variant="ghost" label="Cancel" @click="showFollowUp = false" /><UButton icon="i-lucide-send" label="Assign follow-up" :loading="saving" @click="createFollowUp" /></div></section>
+        </template>
       </main>
+
+      <UModal v-model:open="showInterview" title="Review interview" description="Schedule clarification or record the completed discussion.">
+        <template #content>
+          <div class="flex max-h-[calc(100vh-96px)] flex-col overflow-hidden">
+            <div class="border-b border-default bg-elevated/30 px-6 py-5"><p class="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-primary">Human clarification checkpoint</p><h2 class="mt-1 text-xl font-semibold text-highlighted">{{ interviewMode === 'schedule' ? (selectedInterview ? 'Reschedule interview' : 'Schedule interview') : interviewMode === 'completed' ? 'Complete interview record' : 'Cancel interview' }}</h2></div>
+            <div class="space-y-5 overflow-y-auto p-6">
+              <template v-if="interviewMode === 'schedule'">
+                <div class="grid grid-cols-2 gap-4"><UFormField label="Interview date" required><UPopover><UButton color="neutral" variant="outline" icon="i-lucide-calendar" :label="interviewForm.date" class="w-full justify-start" /><template #content><UCalendar v-model="interviewDateModel" class="p-2" /></template></UPopover></UFormField><UFormField label="Start time" required><UInput v-model="interviewForm.time" type="time" class="w-full" /></UFormField></div>
+                <div class="grid grid-cols-2 gap-4"><UFormField label="Duration (minutes)" required><UInput v-model.number="interviewForm.durationMinutes" type="number" :min="15" :max="240" class="w-full" /></UFormField><UFormField label="Location or meeting link"><UInput v-model="interviewForm.location" class="w-full" /></UFormField></div>
+                <UFormField label="Neutral agenda" required help="Focus on work context, responsibilities, evidence, blockers, dependencies and support."><UTextarea v-model="interviewForm.agenda" :rows="5" class="w-full" /></UFormField>
+                <UAlert color="info" variant="soft" icon="i-lucide-calendar-check" title="Participant notification" description="Saving sends an in-app notice, neutral email and calendar invitation without questionnaire answers or private evidence." />
+              </template>
+              <template v-else-if="interviewMode === 'completed'">
+                <UFormField label="Participant-visible summary" required help="Record factual points, agreed corrections, blockers and next steps. The participant can read this."><UTextarea v-model="interviewForm.participantSummary" :rows="5" class="w-full" /></UFormField>
+                <UFormField label="Private reviewer notes" help="Restricted to the assigned reviewer and authorised HR owners. Do not record protected attributes or unsupported personality judgments."><UTextarea v-model="interviewForm.privateNotes" :rows="5" class="w-full" /></UFormField>
+              </template>
+              <UAlert v-else color="warning" variant="soft" icon="i-lucide-calendar-x" title="Cancel this interview?" description="The participant receives a calendar cancellation using the original event identity." />
+            </div>
+            <div class="flex flex-col-reverse gap-2 border-t border-default p-4 sm:flex-row sm:justify-end"><UButton color="neutral" variant="ghost" label="Go back" @click="showInterview = false" /><UButton :color="interviewMode === 'cancelled' ? 'error' : 'primary'" :icon="interviewMode === 'cancelled' ? 'i-lucide-calendar-x' : 'i-lucide-save'" :label="interviewMode === 'schedule' ? 'Save and notify' : interviewMode === 'completed' ? 'Complete interview' : 'Cancel and notify'" :loading="saving" :disabled="interviewMode === 'completed' && interviewForm.participantSummary.trim().length < 10" @click="saveInterview" /></div>
+          </div>
+        </template>
+      </UModal>
     </template>
   </div>
 </template>

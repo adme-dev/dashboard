@@ -60,6 +60,10 @@ type MondayEvidence = {
   taskStatus: string | null
   isBlocked: boolean
 }
+type ReviewInterview = {
+  id: string; status: string; startsAt: string; endsAt: string; timezone: string;
+  location: string | null; agenda: string; participantSummary: string | null;
+}
 
 const route = useRoute()
 const toast = useToast()
@@ -76,6 +80,7 @@ const disputeObservationId = ref<string | null>(null)
 const disputeNote = ref('')
 const roleDisputeNote = ref('')
 const showSubmitConfirmation = ref(false)
+const interviews = ref<ReviewInterview[]>([])
 
 const assignmentId = computed(() => String(route.params.id || ''))
 const answeredCount = computed(() => data.value?.assignment.questions.filter(question => {
@@ -91,6 +96,8 @@ async function load() {
     answers.value = { ...(data.value.response?.answers || {}) }
     const evidence = await apiFetch<{ observations: KpiEvidence[] }>(`/api/agency/hr/reviews/participants/${data.value.assignment.participantId}/kpis`)
     kpiEvidence.value = evidence.observations
+    const interviewData = await apiFetch<{ interviews: ReviewInterview[] }>(`/api/agency/hr/reviews/participants/${data.value.assignment.participantId}/interviews`)
+    interviews.value = interviewData.interviews
     const monday = await apiFetch<{ active: boolean; evidence: MondayEvidence[]; notice?: string }>('/api/agency/hr/monday/evidence/my')
       .catch((): { active: boolean; evidence: MondayEvidence[]; notice?: string } => ({ active: false, evidence: [] }))
     mondayEvidence.value = monday.evidence
@@ -222,6 +229,11 @@ async function acknowledgeRole(status: 'acknowledged' | 'disputed') {
               </div>
             </div>
           </div>
+        </section>
+
+        <section v-if="interviews.length" class="overflow-hidden rounded-xl border border-default bg-default">
+          <div class="border-b border-default bg-elevated/30 px-5 py-4"><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Clarification record</p><h2 class="mt-1 text-xl font-semibold text-highlighted">Review interviews</h2><p class="mt-1 text-sm text-muted">The agenda and factual summary are visible to you. Private reviewer working notes are never included.</p></div>
+          <div class="divide-y divide-default"><article v-for="interview in interviews" :key="interview.id" class="p-5"><div class="flex flex-wrap items-center gap-2"><p class="font-medium text-highlighted">{{ new Intl.DateTimeFormat('en-AU', { dateStyle: 'full', timeStyle: 'short', timeZone: interview.timezone }).format(new Date(interview.startsAt)) }}</p><UBadge color="neutral" variant="subtle" :label="interview.status" /></div><p class="mt-2 text-sm leading-6 text-muted">{{ interview.agenda }}</p><p v-if="interview.location" class="mt-1 text-xs text-muted">Location: {{ interview.location }}</p><div v-if="interview.participantSummary" class="mt-3 rounded-lg bg-elevated/30 p-3"><p class="text-xs font-semibold uppercase tracking-wide text-muted">Agreed factual summary</p><p class="mt-1 text-sm leading-6 text-highlighted">{{ interview.participantSummary }}</p></div></article></div>
         </section>
 
         <section v-if="mondayEvidence.length" class="overflow-hidden rounded-xl border border-default bg-default">
