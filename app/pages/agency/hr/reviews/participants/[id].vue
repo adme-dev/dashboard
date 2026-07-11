@@ -78,6 +78,12 @@ type ReviewInterview = {
   privateNotes: string | null;
   calendarSequence: number;
 };
+type StructuredEvidence = {
+  period: { opensAt: string; closesAt: string };
+  workload: { entryCount: number; projectCount: number; totalHours: number; billableHours: number; approvedHours: number };
+  tasks: Array<{ source_id: string; source_label: string; task_id: string; title: string; due_date: string | null; is_blocked: boolean; blocked_reason: string | null; status_is_final: boolean; status_name: string | null; observed_at: string }>;
+  limitations: { workload: string; tasks: string; mustNotBeUsedAsPerformanceRating: boolean; taskCountsAreNotProductivityScores: boolean };
+};
 
 const route = useRoute();
 const toast = useToast();
@@ -173,6 +179,7 @@ const followUpReviewModel = computed({
 });
 const closureNotes = ref<Record<string, string>>({});
 const interviews = ref<ReviewInterview[]>([]);
+const structuredEvidence = ref<StructuredEvidence | null>(null);
 const showInterview = ref(false);
 const interviewMode = ref<"schedule" | "completed" | "cancelled">("schedule");
 const selectedInterview = ref<ReviewInterview | null>(null);
@@ -209,7 +216,7 @@ const enablementItems = [
 async function load() {
   loading.value = true;
   try {
-    const [scorecardData, followUpData, kpiData, interviewData] =
+    const [scorecardData, followUpData, kpiData, interviewData, structuredData] =
       await Promise.all([
         apiFetch<ScorecardData>(
           `/api/agency/hr/reviews/participants/${route.params.id}/scorecard`,
@@ -224,12 +231,16 @@ async function load() {
         apiFetch<{ interviews: ReviewInterview[] }>(
           `/api/agency/hr/reviews/participants/${route.params.id}/interviews`,
         ),
+        apiFetch<StructuredEvidence>(
+          `/api/agency/hr/reviews/participants/${route.params.id}/structured-evidence`,
+        ),
       ]);
     data.value = scorecardData;
     followUps.value = followUpData.followUps;
     followUpOwners.value = followUpData.owners;
     kpiEvidence.value = kpiData.observations;
     interviews.value = interviewData.interviews;
+    structuredEvidence.value = structuredData;
     const existing = new Map(
       (data.value.result?.calculation?.ratings || []).map((item) => [
         item.id,
@@ -708,6 +719,21 @@ async function updateFollowUpStatus(
           title="Two scores, two different questions"
           description="Role performance reflects evidenced delivery against the published framework. Operational enablement reflects whether workload, tools, priorities, dependencies and decision access make that delivery possible. They are never averaged together."
         />
+
+        <section v-if="structuredEvidence" class="overflow-hidden rounded-xl border border-default bg-default" aria-labelledby="structured-evidence-heading">
+          <div class="border-b border-default px-5 py-4"><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Bounded to the review period</p><h2 id="structured-evidence-heading" class="mt-1 text-xl font-semibold text-highlighted">Structured operating evidence</h2><p class="mt-2 text-sm leading-6 text-muted">This context helps test workload and dependency assumptions. It does not create a performance rating, productivity score or automatic finding.</p></div>
+          <div class="grid gap-px bg-default sm:grid-cols-5">
+            <div class="bg-elevated/30 p-4"><p class="font-mono text-xl font-semibold text-highlighted">{{ structuredEvidence.workload.totalHours }}</p><p class="mt-1 text-xs uppercase tracking-wide text-muted">recorded hours</p></div>
+            <div class="bg-elevated/30 p-4"><p class="font-mono text-xl font-semibold text-highlighted">{{ structuredEvidence.workload.billableHours }}</p><p class="mt-1 text-xs uppercase tracking-wide text-muted">billable hours</p></div>
+            <div class="bg-elevated/30 p-4"><p class="font-mono text-xl font-semibold text-highlighted">{{ structuredEvidence.workload.approvedHours }}</p><p class="mt-1 text-xs uppercase tracking-wide text-muted">approved hours</p></div>
+            <div class="bg-elevated/30 p-4"><p class="font-mono text-xl font-semibold text-highlighted">{{ structuredEvidence.workload.projectCount }}</p><p class="mt-1 text-xs uppercase tracking-wide text-muted">projects recorded</p></div>
+            <div class="bg-elevated/30 p-4"><p class="font-mono text-xl font-semibold text-highlighted">{{ structuredEvidence.tasks.length }}</p><p class="mt-1 text-xs uppercase tracking-wide text-muted">role-linked tasks</p></div>
+          </div>
+          <div v-if="structuredEvidence.tasks.length" class="max-h-72 divide-y divide-default overflow-y-auto overscroll-contain border-t border-default">
+            <article v-for="task in structuredEvidence.tasks" :key="task.source_id" class="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div><div class="flex flex-wrap items-center gap-2"><p class="text-sm font-medium text-highlighted">{{ task.title }}</p><UBadge :color="task.is_blocked ? 'warning' : task.status_is_final ? 'success' : 'neutral'" variant="subtle" :label="task.is_blocked ? 'Blocked' : task.status_name || 'Status unavailable'" /></div><p class="mt-1 text-xs text-muted">Monday item {{ task.source_id }} · observed {{ new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(new Date(task.observed_at)) }}</p><p v-if="task.blocked_reason" class="mt-2 text-sm text-warning">{{ task.blocked_reason }}</p></div><p class="text-xs text-muted">{{ task.due_date ? `Due ${new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(new Date(task.due_date))}` : 'No due date recorded' }}</p></article>
+          </div>
+          <div class="border-t border-default bg-elevated/20 px-5 py-4 text-xs leading-5 text-muted"><p>{{ structuredEvidence.limitations.workload }}</p><p class="mt-1">{{ structuredEvidence.limitations.tasks }}</p></div>
+        </section>
 
         <section
           class="overflow-hidden rounded-xl border border-default bg-default"
