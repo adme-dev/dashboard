@@ -16,6 +16,6 @@ describe('Monday migration idempotency contract', () => {
   it('supports incremental source cutoffs', () => {
     expect(source).toContain('updatedSince?: string')
     expect(source).toContain('this.config.updatedSince')
-    expect(source).toContain('allItems = allItems.filter')
+    expect(source).toContain('isMondayItemInsideWindow(item, this.config.updatedSince, this.config.updatedUntil)')
   })
 })
