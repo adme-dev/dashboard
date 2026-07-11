@@ -7,15 +7,22 @@ export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store')
   await requireHrAdmin(event)
 
-  const rows = await query<any>(
+  const latestRows = await query<any>(
     `SELECT DISTINCT ON (gate_key)
        id, gate_key, status, evidence_reference, limitations,
        approved_by, approved_at, expires_at, created_at
      FROM hr_launch_gate_attestations
      ORDER BY gate_key, created_at DESC`,
   )
+  const rows = await query<any>(
+    `SELECT id, gate_key, status, evidence_reference, limitations,
+            approved_by, approved_at, expires_at, created_at
+     FROM hr_launch_gate_attestations
+     ORDER BY created_at DESC
+     LIMIT 500`,
+  )
   const approvals: HrLaunchGateApprovals = {}
-  for (const row of rows) {
+  for (const row of latestRows) {
     approvals[row.gate_key as HrLaunchGateKey] = {
       status: row.status,
       approvedAt: row.approved_at,

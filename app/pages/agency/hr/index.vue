@@ -111,6 +111,7 @@ async function acknowledgeClosure(followUpId: string) {
             </p>
           </div>
           <div v-if="isHrAdmin" class="flex flex-wrap gap-2">
+            <UButton color="neutral" variant="outline" label="Launch governance" icon="i-lucide-shield-check" to="/agency/hr/governance" />
             <UButton color="neutral" variant="outline" label="Knowledge base" icon="i-lucide-book-lock" to="/agency/hr/knowledge" />
             <UButton color="neutral" variant="outline" label="Responsibility map" icon="i-lucide-waypoints" to="/agency/hr/responsibilities" />
             <UButton color="neutral" variant="outline" label="Department goals" icon="i-lucide-goal" to="/agency/hr/goals" />

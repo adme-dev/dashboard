@@ -20,6 +20,12 @@ describe('HR launch governance contract', () => {
     expect(postRoute).toContain("action: 'launch_gate.attested'")
   })
 
+  it('returns current readiness and the bounded append-only approval ledger', () => {
+    expect(getRoute).toContain('SELECT DISTINCT ON (gate_key)')
+    expect(getRoute).toContain('ORDER BY created_at DESC')
+    expect(getRoute).toContain('LIMIT 500')
+  })
+
   it('fails questionnaire commissioning closed until every gate is current', () => {
     expect(commissionRoute).toContain('evaluateHrLaunchReadiness')
     expect(commissionRoute).toContain('hr_launch_gate_attestations')
