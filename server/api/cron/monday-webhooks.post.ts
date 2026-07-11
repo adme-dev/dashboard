@@ -1,6 +1,7 @@
 import { createError, getHeader, setHeader } from 'h3'
-import { queryRows, execute } from '~~/server/utils/db'
+import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { classifyMondayWebhookEvent } from '~~/server/utils/mondayWebhookReconcile'
+import { normalizeMondayEvidenceEvent } from '~~/server/utils/hr/mondayEvidenceEvent'
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store')
@@ -11,10 +12,12 @@ export default defineEventHandler(async (event) => {
     eventId: string
     eventType: string | null
     itemId: string | null
+    boardId: string | null
+    payload: unknown
     receivedAt: string
   }>(
     `SELECT id, monday_event_id AS "eventId", event_type AS "eventType",
-            item_id AS "itemId", received_at AS "receivedAt"
+            item_id AS "itemId", board_id AS "boardId", payload, received_at AS "receivedAt"
        FROM monday_webhook_events
       WHERE status = 'queued'
       ORDER BY received_at LIMIT 100`,
@@ -24,6 +27,26 @@ export default defineEventHandler(async (event) => {
   for (const webhook of events) {
     try {
       const classification = classifyMondayWebhookEvent(webhook.eventType)
+      const scope = webhook.boardId ? await queryOne<{ id: string; allowedFields: string[] }>(
+        `SELECT id, allowed_fields AS "allowedFields"
+          FROM hr_monday_evidence_scopes scope
+          WHERE scope.status = 'approved' AND $1 = ANY(scope.board_ids)
+            AND $2::timestamptz::date BETWEEN scope.period_start AND scope.period_end
+          ORDER BY approved_at DESC NULLS LAST, created_at DESC LIMIT 1`,
+        [webhook.boardId, webhook.receivedAt],
+      ) : null
+      const evidenceEvent = scope
+        ? normalizeMondayEvidenceEvent(webhook.eventType, webhook.payload, scope.allowedFields)
+        : null
+      if (scope && evidenceEvent && webhook.boardId) {
+        await execute(
+          `INSERT INTO hr_monday_evidence_events
+             (scope_id, webhook_event_id, monday_board_id, monday_item_id, change_kind, field_id, occurred_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz)
+           ON CONFLICT (webhook_event_id) DO NOTHING`,
+          [scope.id, webhook.id, webhook.boardId, webhook.itemId, evidenceEvent.changeKind, evidenceEvent.fieldId, webhook.receivedAt],
+        )
+      }
       if (webhook.itemId && classification.action === 'reconcile') {
         await execute(
           `UPDATE monday_item_mappings
