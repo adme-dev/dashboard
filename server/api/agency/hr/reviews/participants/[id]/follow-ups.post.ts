@@ -31,14 +31,20 @@ export default defineEventHandler(async (event) => {
     if (input.visibility === 'hr_only' && input.ownerId === participant.team_member_id) {
       throw createError({ statusCode: 400, statusMessage: 'An HR-only follow-up cannot be assigned to the participant' })
     }
+    if (input.findingId) {
+      const finding = await db.query('SELECT id FROM hr_review_findings WHERE id = $1 AND participant_id = $2', [input.findingId, participant.id])
+      if (!finding.rows[0]) throw createError({ statusCode: 400, statusMessage: 'Action-plan finding must belong to this participant' })
+    }
     const followUpResult = await db.query(
       `INSERT INTO hr_follow_up_plans
-        (participant_id, action_type, title, description, rationale, evidence_refs,
-         owner_id, due_at, visibility, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
+        (participant_id, finding_id, action_type, title, description, rationale, evidence_refs,
+         owner_id, due_at, employee_responsibility, business_responsibility,
+         support_commitment, success_measure, review_at, visibility, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING id, participant_id, action_type, title, owner_id, due_at, visibility, status`,
-      [participant.id, input.actionType, input.title, input.description, input.rationale || null,
-        JSON.stringify(input.evidenceRefs), input.ownerId, input.dueAt, input.visibility, user.id],
+      [participant.id, input.findingId || null, input.actionType, input.title, input.description, input.rationale || null,
+        JSON.stringify(input.evidenceRefs), input.ownerId, input.dueAt, input.employeeResponsibility,
+        input.businessResponsibility, input.supportCommitment, input.successMeasure, input.reviewAt, input.visibility, user.id],
     )
     const followUp = followUpResult.rows[0]
     if (input.actionType === 'learning' && input.learning) {
@@ -64,7 +70,7 @@ export default defineEventHandler(async (event) => {
       targetType: 'follow_up_plan',
       targetId: followUp.id,
       cycleId: participant.cycle_id,
-      metadata: { actionType: input.actionType, ownerId: input.ownerId, dueAt: input.dueAt },
+      metadata: { actionType: input.actionType, ownerId: input.ownerId, dueAt: input.dueAt, findingId: input.findingId || null },
     }, db)
     return { followUp, participant }
   })

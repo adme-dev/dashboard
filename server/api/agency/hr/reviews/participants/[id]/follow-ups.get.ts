@@ -21,6 +21,10 @@ export default defineEventHandler(async (event) => {
   const followUps = await queryRows(
     `SELECT follow_up.id, follow_up.action_type, follow_up.title, follow_up.description,
             follow_up.rationale, follow_up.evidence_refs, follow_up.owner_id,
+            follow_up.finding_id, follow_up.employee_responsibility,
+            follow_up.business_responsibility, follow_up.support_commitment,
+            follow_up.success_measure, follow_up.review_at, follow_up.closure_note,
+            follow_up.closure_acknowledged_at,
             owner.name AS owner_name, follow_up.due_at, follow_up.visibility,
             follow_up.status, follow_up.acknowledged_at, follow_up.completed_at,
             learning.capability, learning.observable_need, learning.desired_outcome,

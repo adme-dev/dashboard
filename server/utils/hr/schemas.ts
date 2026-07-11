@@ -288,6 +288,7 @@ export const hrDepartmentGoalRevisionSchema = hrDepartmentGoalSchema.safeExtend(
 })
 
 export const hrFollowUpSchema = z.object({
+  findingId: z.string().uuid().optional(),
   actionType: z.enum(['learning', 'coaching', 'process_change', 'workload_adjustment', 'role_clarification', 'goal_adjustment']),
   title: z.string().trim().min(3).max(200),
   description: z.string().trim().min(10).max(5000),
@@ -295,6 +296,11 @@ export const hrFollowUpSchema = z.object({
   evidenceRefs: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
   ownerId: z.string().uuid(),
   dueAt: z.string().datetime(),
+  employeeResponsibility: z.string().trim().min(3).max(3000),
+  businessResponsibility: z.string().trim().min(3).max(3000),
+  supportCommitment: z.string().trim().min(3).max(3000),
+  successMeasure: z.string().trim().min(3).max(2000),
+  reviewAt: z.string().datetime(),
   visibility: z.enum(['participant_and_hr', 'hr_only']).default('participant_and_hr'),
   learning: z.object({
     capability: z.string().trim().min(2).max(300),
@@ -306,6 +312,9 @@ export const hrFollowUpSchema = z.object({
     providerOrResource: z.string().trim().max(500).optional(),
   }).optional(),
 }).superRefine((followUp, context) => {
+  if (Date.parse(followUp.reviewAt) < Date.parse(followUp.dueAt)) {
+    context.addIssue({ code: 'custom', path: ['reviewAt'], message: 'Action review date must be on or after the due date.' })
+  }
   if (followUp.actionType === 'learning' && !followUp.learning) {
     context.addIssue({ code: 'custom', path: ['learning'], message: 'Learning details are required for a learning action.' })
   }
@@ -374,3 +383,37 @@ export const hrKnowledgeRevisionSchema = z.object({
   ...hrKnowledgeFields,
   expectedVersion: z.number().int().positive(),
 }).superRefine(validateHrKnowledgeGovernance)
+
+export const hrFindingSchema = z.object({
+  findingType: z.enum(['role_clarity', 'workload', 'process', 'dependency', 'capability', 'tool_access', 'quality', 'timeliness', 'attendance_reliability', 'management_system', 'positive_contribution', 'no_finding']),
+  accountabilityClass: z.enum(['employee', 'business', 'shared', 'unclear']),
+  title: z.string().trim().min(3).max(240),
+  statement: z.string().trim().min(10).max(10000),
+  evidenceRefs: z.array(z.string().trim().min(1).max(500)).min(1).max(50),
+  contraryEvidenceReview: z.string().trim().min(10).max(5000),
+  confidence: z.enum(['low', 'medium', 'high']),
+  adverseIndividual: z.boolean().default(false),
+}).superRefine((finding, context) => {
+  if (finding.adverseIndividual && !['employee', 'shared'].includes(finding.accountabilityClass)) {
+    context.addIssue({ code: 'custom', path: ['accountabilityClass'], message: 'An adverse individual finding must identify employee or shared accountability.' })
+  }
+})
+
+export const hrFindingResponseSchema = z.object({
+  responseStatus: z.enum(['received', 'declined']),
+  response: z.string().trim().min(3).max(10000).optional(),
+  correctionRequested: z.boolean().default(false),
+  correctionDetail: z.string().trim().min(10).max(5000).optional(),
+}).superRefine((response, context) => {
+  if (response.responseStatus === 'received' && !response.response) {
+    context.addIssue({ code: 'custom', path: ['response'], message: 'A participant statement is required when responding.' })
+  }
+  if (response.correctionRequested && !response.correctionDetail) {
+    context.addIssue({ code: 'custom', path: ['correctionDetail'], message: 'Explain the requested correction.' })
+  }
+})
+
+export const hrFindingTransitionSchema = z.object({
+  action: z.enum(['share_for_response', 'request_approval', 'publish', 'approve_and_publish', 'reject']),
+  noActionRationale: z.string().trim().min(10).max(5000).optional(),
+})

@@ -38,15 +38,17 @@ export default defineEventHandler(async (event) => {
   const myFollowUps = await queryRows(
     `SELECT follow_up.id, follow_up.action_type, follow_up.title, follow_up.description,
             follow_up.due_at, follow_up.status, follow_up.owner_id,
+            follow_up.closure_note, follow_up.closure_acknowledged_at,
             owner.name AS owner_name, cycle.name AS cycle_name,
             participant.team_member_id AS participant_user_id
      FROM hr_follow_up_plans follow_up
      JOIN hr_review_participants participant ON participant.id = follow_up.participant_id
      JOIN hr_review_cycles cycle ON cycle.id = participant.cycle_id
      JOIN team_members owner ON owner.id = follow_up.owner_id
-     WHERE (participant.team_member_id = $1 AND follow_up.visibility = 'participant_and_hr')
-        OR follow_up.owner_id = $1
-       AND follow_up.status NOT IN ('completed', 'cancelled')
+     WHERE ((participant.team_member_id = $1 AND follow_up.visibility = 'participant_and_hr')
+         OR follow_up.owner_id = $1)
+       AND (follow_up.status NOT IN ('completed', 'cancelled')
+         OR (participant.team_member_id = $1 AND follow_up.status = 'completed' AND follow_up.closure_acknowledged_at IS NULL))
      ORDER BY follow_up.due_at`,
     [user.id],
   )

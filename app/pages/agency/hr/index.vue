@@ -28,6 +28,8 @@ type HrOverview = {
     id: string
     name: string
     status: string
+    closure_note: string | null
+    closure_acknowledged_at: string | null
     due_at: string
     participant_count: number | string
   }>
@@ -81,6 +83,11 @@ const statusColor = (status: string): 'success' | 'warning' | 'error' | 'neutral
 
 async function acknowledgeFollowUp(followUpId: string) {
   await apiFetch(`/api/agency/hr/follow-ups/${followUpId}`, { method: 'PATCH', body: { status: 'acknowledged' } })
+  await refresh()
+}
+
+async function acknowledgeClosure(followUpId: string) {
+  await apiFetch(`/api/agency/hr/follow-ups/${followUpId}`, { method: 'PATCH', body: { status: 'closure_acknowledged' } })
   await refresh()
 }
 </script>
@@ -254,7 +261,7 @@ async function acknowledgeFollowUp(followUpId: string) {
               <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><UIcon :name="followUp.action_type === 'learning' ? 'i-lucide-graduation-cap' : 'i-lucide-list-checks'" class="size-4" /></div>
               <div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><h3 class="font-medium text-highlighted">{{ followUp.title }}</h3><UBadge color="neutral" variant="subtle" :label="followUp.action_type.replaceAll('_', ' ')" /></div><p class="mt-1 line-clamp-2 text-sm text-muted">{{ followUp.description }}</p><p class="mt-2 text-xs text-muted">Owner: {{ followUp.owner_name }} · {{ followUp.cycle_name }}</p></div>
               <div class="sm:text-right"><p class="text-xs uppercase tracking-wide text-muted">Required by</p><p class="mt-1 font-mono text-sm text-highlighted">{{ formatDate(followUp.due_at) }}</p></div>
-              <UButton v-if="followUp.status === 'proposed' && followUp.participant_user_id === user?.id" color="neutral" variant="outline" label="Acknowledge" @click="acknowledgeFollowUp(followUp.id)" />
+              <div class="flex flex-col gap-2"><UButton v-if="followUp.status === 'proposed' && followUp.participant_user_id === user?.id" color="neutral" variant="outline" label="Acknowledge" @click="acknowledgeFollowUp(followUp.id)" /><UButton v-if="followUp.status === 'completed' && followUp.participant_user_id === user?.id && !followUp.closure_acknowledged_at" color="neutral" variant="outline" label="Acknowledge closure" @click="acknowledgeClosure(followUp.id)" /></div>
             </div>
           </div>
         </section>

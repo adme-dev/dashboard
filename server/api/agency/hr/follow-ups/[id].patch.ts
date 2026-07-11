@@ -5,7 +5,12 @@ import { queryOne, transaction } from '~~/server/utils/db'
 import { canAccessHrParticipant, canManageHr } from '~~/server/utils/hr/access'
 import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
 
-const Body = z.object({ status: z.enum(['acknowledged', 'in_progress', 'completed', 'cancelled']) })
+const Body = z.object({
+  status: z.enum(['acknowledged', 'in_progress', 'completed', 'cancelled', 'closure_acknowledged']),
+  closureNote: z.string().trim().min(10).max(5000).optional(),
+}).superRefine((input, context) => {
+  if (input.status === 'completed' && !input.closureNote) context.addIssue({ code: 'custom', path: ['closureNote'], message: 'Completion requires an outcome and closure note.' })
+})
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store')
@@ -31,23 +36,26 @@ export default defineEventHandler(async (event) => {
     participantUserId: followUp.team_member_id,
     reviewerIds: followUp.reviewer_id ? [followUp.reviewer_id] : [],
   }, 'score')
-  const allowed = canManageHr(user)
+  const allowed = (canManageHr(user) && parsed.data.status !== 'closure_acknowledged')
     || (isParticipant && followUp.visibility === 'participant_and_hr' && parsed.data.status === 'acknowledged')
+    || (isParticipant && followUp.visibility === 'participant_and_hr' && parsed.data.status === 'closure_acknowledged' && followUp.status === 'completed')
     || (isOwner && ['in_progress', 'completed'].includes(parsed.data.status))
-    || isReviewer
+    || (isReviewer && parsed.data.status !== 'closure_acknowledged')
   if (!allowed) throw createError({ statusCode: 403, statusMessage: 'You cannot make this follow-up transition' })
-  if (['completed', 'cancelled'].includes(followUp.status)) throw createError({ statusCode: 409, statusMessage: 'This follow-up is already closed' })
+  if (['completed', 'cancelled'].includes(followUp.status) && parsed.data.status !== 'closure_acknowledged') throw createError({ statusCode: 409, statusMessage: 'This follow-up is already closed' })
 
   const updated = await transaction(async (db) => {
     const updatedResult = await db.query(
       `UPDATE hr_follow_up_plans
-     SET status = $2,
+     SET status = CASE WHEN $2 = 'closure_acknowledged' THEN status ELSE $2 END,
          acknowledged_at = CASE WHEN $2 = 'acknowledged' THEN COALESCE(acknowledged_at, NOW()) ELSE acknowledged_at END,
          completed_at = CASE WHEN $2 = 'completed' THEN NOW() ELSE completed_at END,
+         closure_note = CASE WHEN $2 = 'completed' THEN $3 ELSE closure_note END,
+         closure_acknowledged_at = CASE WHEN $2 = 'closure_acknowledged' THEN NOW() ELSE closure_acknowledged_at END,
          updated_at = NOW()
      WHERE id = $1
-     RETURNING id, status, acknowledged_at, completed_at, updated_at`,
-      [followUpId, parsed.data.status],
+     RETURNING id, status, acknowledged_at, completed_at, closure_note, closure_acknowledged_at, updated_at`,
+      [followUpId, parsed.data.status, parsed.data.closureNote || null],
     )
     const saved = updatedResult.rows[0]
     await db.query(
