@@ -4,6 +4,7 @@ definePageMeta({ title: 'Monday Evidence Scope', middleware: ['auth'] })
 type Board = { id: string; name: string; workspaceId: string; workspaceName: string; itemsCount?: number }
 type Department = { id: string; name: string }
 type Scope = { id: string; board_ids: string[]; destination_mappings: Array<{ boardId: string; departmentId: string }>; allowed_fields: string[]; purpose: string; period_start: string; period_end: string; retention_days: number; status: string; created_at: string }
+type Readiness = { connection: null | { accountId: string | null; accountName: string | null; authMethod: 'oauth' | 'token'; source: 'database' | 'environment'; requestedPermissions: string[] } }
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 const loading = ref(true)
@@ -11,6 +12,7 @@ const saving = ref(false)
 const scopes = ref<Scope[]>([])
 const boards = ref<Board[]>([])
 const departments = ref<Department[]>([])
+const readiness = ref<Readiness>({ connection: null })
 const selectedBoards = ref<string[]>([])
 const destinationByBoard = reactive<Record<string, string>>({})
 const departmentItems = computed(() => departments.value.map(department => ({ label: department.name, value: department.id })))
@@ -20,14 +22,16 @@ function lines(value: string) { return value.split('\n').map(item => item.trim()
 async function load() {
   loading.value = true
   try {
-    const [scopeData, workspaceData, departmentData] = await Promise.all([
+    const [scopeData, workspaceData, departmentData, readinessData] = await Promise.all([
       apiFetch<{ scopes: Scope[]; connected: boolean }>('/api/agency/hr/monday/scopes'),
       apiFetch<{ workspaces: Array<{ id: string; name: string; boards: Array<{ id: string; name: string; itemsCount?: number }> }> }>('/api/agency/monday/workspaces'),
       apiFetch<{ departments: Department[] }>('/api/agency/departments'),
+      apiFetch<Readiness>('/api/agency/hr/monday/readiness'),
     ])
     scopes.value = scopeData.scopes
     boards.value = workspaceData.workspaces.flatMap(workspace => workspace.boards.map(board => ({ ...board, workspaceId: workspace.id, workspaceName: workspace.name })))
     departments.value = departmentData.departments
+    readiness.value = readinessData
   } catch (error: any) { toast.add({ title: 'Monday scope unavailable', description: error?.data?.statusMessage, color: 'error' }) }
   finally { loading.value = false }
 }
@@ -60,6 +64,27 @@ async function revoke(id: string) { await apiFetch(`/api/agency/hr/monday/scopes
       <aside class="rounded-xl border border-default bg-default">
         <div class="border-b border-default bg-elevated/30 px-5 py-4"><p class="font-mono text-xs uppercase tracking-[0.16em] text-primary">Owner approval</p><h2 class="mt-1 text-lg font-semibold text-highlighted">Define the boundary</h2></div>
         <div class="space-y-5 p-5">
+          <section class="rounded-lg border border-default bg-elevated/30 p-4" aria-labelledby="monday-permissions-title">
+            <div class="flex items-start gap-3">
+              <UIcon name="i-lucide-key-round" class="mt-0.5 size-5 shrink-0 text-primary" />
+              <div class="min-w-0">
+                <h3 id="monday-permissions-title" class="text-sm font-semibold text-highlighted">Connection permissions</h3>
+                <p class="mt-1 text-xs leading-5 text-muted">Review these permissions before approving an HR evidence scope. Approval narrows boards, fields and dates; it does not expand the Monday connection.</p>
+              </div>
+            </div>
+            <div v-if="readiness.connection" class="mt-4 space-y-3">
+              <div class="flex flex-wrap items-center gap-2 text-xs">
+                <UBadge color="neutral" variant="subtle" :label="readiness.connection.authMethod === 'oauth' ? 'OAuth connection' : 'API token connection'" />
+                <span class="text-muted">{{ readiness.connection.accountName || readiness.connection.accountId || 'Connected Monday account' }}</span>
+              </div>
+              <ul class="grid gap-1.5 sm:grid-cols-2" aria-label="Monday requested permissions">
+                <li v-for="permission in readiness.connection.requestedPermissions" :key="permission" class="flex items-center gap-2 font-mono text-xs text-muted">
+                  <UIcon name="i-lucide-check" class="size-3.5 text-success" />{{ permission }}
+                </li>
+              </ul>
+            </div>
+            <UAlert v-else class="mt-4" color="warning" variant="soft" icon="i-lucide-unplug" title="Monday is not connected" description="Connect Monday before approving this scope." />
+          </section>
           <section v-if="selectedBoards.length" class="space-y-3"><div><p class="text-sm font-medium text-highlighted">Internal destinations</p><p class="mt-1 text-xs leading-5 text-muted">Choose where each board will land. The mapping is locked into this scope.</p></div><UFormField v-for="boardId in selectedBoards" :key="boardId" :label="boards.find(board => board.id === boardId)?.name || boardId" required><USelect v-model="destinationByBoard[boardId]" :items="departmentItems" value-key="value" placeholder="Choose department" class="w-full" /></UFormField></section>
           <UFormField label="Allowed fields" required help="One Monday column or approved field per line."><UTextarea v-model="form.allowedFields" :rows="6" class="w-full" /></UFormField>
           <UFormField label="Purpose" required><UTextarea v-model="form.purpose" :rows="4" class="w-full" /></UFormField>

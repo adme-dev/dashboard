@@ -10,4 +10,12 @@ describe('HR Monday readiness contract', () => {
     expect(source).toContain('knowledgeSchema')
     expect(source).toContain('Object.values(gates).every(Boolean)')
   })
+
+  it('discloses the effective connection method and requested permissions without exposing credentials', () => {
+    expect(source).toContain('MONDAY_OAUTH_SCOPES')
+    expect(source).toContain('authMethod: connection?.authMethod')
+    expect(source).toContain('accountName: connection.accountName')
+    expect(source).toContain('requestedPermissions: [...MONDAY_OAUTH_SCOPES]')
+    expect(source).not.toContain('accessToken: connection')
+  })
 })
