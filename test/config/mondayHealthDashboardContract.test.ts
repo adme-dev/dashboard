@@ -7,5 +7,6 @@ describe('Monday work health dashboard contract', () => {
   it('only reports active, non-archived imported work', () => {
     expect(source).toContain('NOT t.status_is_final')
     expect(source).toContain('NOT COALESCE(mim.archived, false)')
+    expect(source).toContain('t.assignee_id IS NOT NULL')
   })
 })

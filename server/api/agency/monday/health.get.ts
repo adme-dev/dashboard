@@ -23,6 +23,7 @@ export default defineEventHandler(async (event) => {
      WHERE mim.status = 'completed'
        AND NOT COALESCE(mim.archived, false)
        AND NOT t.status_is_final
+       AND t.assignee_id IS NOT NULL
        AND (t.due_date < CURRENT_DATE OR t.is_blocked = true OR COALESCE(last_update.last_updated_at, t.updated_at) < NOW() - ($1::int * INTERVAL '1 day'))
       ORDER BY mim.monday_item_id, mim.updated_at DESC`,
     [inactivityDays],
