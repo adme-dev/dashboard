@@ -78,6 +78,10 @@ type Participant = {
   confidence: string | null
   score_published_at: string | null
 }
+type AggregateCycle = {
+  id: string; name: string; cohortSize: number; minimumCohortSize: number; suppressed: boolean;
+  themes: Array<{ questionId: string; prompt: string; options: Array<{ value: string; label: string; count: number }> }>;
+}
 
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
@@ -86,6 +90,7 @@ const saving = ref(false)
 const showBuilder = ref(false)
 const cycles = ref<Cycle[]>([])
 const participants = ref<Participant[]>([])
+const aggregateCycles = ref<AggregateCycle[]>([])
 const team = ref<TeamMember[]>([])
 const roles = ref<Role[]>([])
 const roleAssignments = ref<RoleAssignment[]>([])
@@ -157,16 +162,18 @@ const participantsByCycle = computed(() => participants.value.reduce<Record<stri
 async function refresh() {
   loading.value = true
   try {
-    const [cycleData, teamData, roleData] = await Promise.all([
+    const [cycleData, teamData, roleData, aggregateData] = await Promise.all([
       apiFetch<{ cycles: Cycle[]; participants: Participant[] }>('/api/agency/hr/reviews'),
       apiFetch<{ members: TeamMember[] }>('/api/agency/team-members'),
       apiFetch<{ roles: Role[]; roleAssignments: RoleAssignment[] }>('/api/agency/hr/roles'),
+      apiFetch<{ cycles: AggregateCycle[] }>('/api/agency/hr/reviews/aggregate'),
     ])
     cycles.value = cycleData.cycles
     participants.value = cycleData.participants
     team.value = teamData.members
     roles.value = roleData.roles
     roleAssignments.value = roleData.roleAssignments
+    aggregateCycles.value = aggregateData.cycles
   } catch (error: any) {
     toast.add({ title: 'Review cycles unavailable', description: error?.data?.statusMessage, color: 'error' })
   } finally {
@@ -326,6 +333,18 @@ async function saveScheduleChange() {
 
     <main class="mx-auto max-w-7xl px-5 py-8 sm:px-8">
       <UAlert v-if="!loading && roles.length === 0" class="mb-6" color="warning" variant="soft" icon="i-lucide-badge-alert" title="Publish a role profile first" description="A cycle cannot be opened until at least one role has responsibilities, outcomes, a questionnaire and a benchmark scorecard." :actions="[{ label: 'Open role library', to: '/agency/hr/roles' }]" />
+
+      <section class="mb-7 overflow-hidden rounded-xl border border-default bg-default" aria-labelledby="aggregate-feedback-heading">
+        <div class="border-b border-default px-5 py-4"><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Privacy-preserving themes</p><h2 id="aggregate-feedback-heading" class="mt-1 text-lg font-semibold text-highlighted">Aggregate business feedback</h2><p class="mt-2 text-sm leading-6 text-muted">Counts appear only for a minimum cohort of five submitted responses. Free text, identities and respondent drill-down are excluded.</p></div>
+        <div v-if="aggregateCycles.length" class="max-h-96 divide-y divide-default overflow-y-auto overscroll-contain">
+          <article v-for="aggregate in aggregateCycles" :key="aggregate.id" class="p-5">
+            <div class="flex flex-wrap items-center justify-between gap-3"><div><h3 class="font-medium text-highlighted">{{ aggregate.name }}</h3><p class="mt-1 text-xs text-muted">{{ aggregate.cohortSize }} submitted responses</p></div><UBadge :color="aggregate.suppressed ? 'warning' : 'success'" variant="subtle" :label="aggregate.suppressed ? `Suppressed below ${aggregate.minimumCohortSize}` : 'Aggregate available'" /></div>
+            <UAlert v-if="aggregate.suppressed" class="mt-4" color="neutral" variant="soft" icon="i-lucide-shield" title="Small cohort protected" description="No answer counts are returned until at least five people have submitted." />
+            <div v-else class="mt-4 space-y-4"><section v-for="theme in aggregate.themes" :key="theme.questionId" class="rounded-lg border border-default p-4"><h4 class="text-sm font-medium text-highlighted">{{ theme.prompt }}</h4><div class="mt-3 flex flex-wrap gap-2"><UBadge v-for="option in theme.options" :key="option.value" color="neutral" variant="outline" :label="`${option.label}: ${option.count}`" /></div></section></div>
+          </article>
+        </div>
+        <div v-else class="px-5 py-8 text-center text-sm text-muted">Aggregate themes will appear after an eligible review cycle reaches the five-response privacy threshold.</div>
+      </section>
 
       <div class="grid gap-7" :class="showBuilder ? 'xl:grid-cols-[minmax(0,1fr)_480px]' : ''">
         <section>
