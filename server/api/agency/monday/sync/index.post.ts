@@ -4,21 +4,42 @@
  */
 
 import { createError } from 'h3'
-import { requireAuth } from '~~/server/utils/auth'
+import { z } from 'zod'
+import { requireRole } from '~~/server/utils/auth'
 import { createMondayClient } from '~~/server/utils/mondayClient'
 import { queryOne, query } from '~~/server/utils/db'
 import { syncMondayBoardToDepartment } from '~~/server/utils/mondaySync'
 
-export default eventHandler(async (event) => {
-  const user = await requireAuth(event)
-  const body = await readBody(event)
-  const { boardIds, mappings } = body
+const BoardIdSchema = z.string().trim().regex(/^\d+$/, 'Board IDs must be numeric').max(30)
+const OperationalSyncSchema = z.object({
+  boardIds: z.array(BoardIdSchema).min(1).max(25),
+  mappings: z.record(BoardIdSchema, z.object({
+    departmentId: z.string().uuid()
+  }).strict())
+}).strict()
 
-  if (!boardIds || !Array.isArray(boardIds) || boardIds.length === 0) {
+export default eventHandler(async (event) => {
+  const user = await requireRole(event, ['admin', 'owner'])
+  const parsed = OperationalSyncSchema.safeParse(await readBody(event))
+  if (!parsed.success) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'At least one board ID is required'
+      statusMessage: 'Invalid Monday sync request'
     })
+  }
+  const { boardIds, mappings } = parsed.data
+
+  if (boardIds.some(boardId => !mappings[boardId])) {
+    throw createError({ statusCode: 400, statusMessage: 'Every board requires a department mapping' })
+  }
+
+  const requestedDepartmentIds = [...new Set(boardIds.map(id => mappings[id]!.departmentId))]
+  const validDepartments = await query<{ id: string }>(
+    'SELECT id FROM departments WHERE id = ANY($1::uuid[])',
+    [requestedDepartmentIds]
+  )
+  if (validDepartments.length !== requestedDepartmentIds.length) {
+    throw createError({ statusCode: 400, statusMessage: 'One or more department mappings are invalid' })
   }
 
   // Get the stored token
@@ -59,7 +80,7 @@ export default eventHandler(async (event) => {
 
   try {
     for (const boardId of boardIds) {
-      const mapping = mappings?.[boardId]
+      const mapping = mappings[boardId]
       if (!mapping?.departmentId) {
         results.errors.push(`Board ${boardId}: No department mapping`)
         continue
@@ -81,7 +102,8 @@ export default eventHandler(async (event) => {
         results.itemsSynced += boardResult.itemsSynced
         results.itemsFailed += boardResult.itemsFailed
       } catch (error: any) {
-        results.errors.push(`Board ${boardId}: ${error.message}`)
+        console.error(`[monday-sync] Board ${boardId} failed`, error)
+        results.errors.push(`Board ${boardId}: Sync failed`)
       }
     }
 
@@ -114,7 +136,7 @@ export default eventHandler(async (event) => {
 
     throw createError({
       statusCode: 500,
-      statusMessage: `Sync failed: ${error.message}`
+      statusMessage: 'Monday sync failed'
     })
   }
 })
