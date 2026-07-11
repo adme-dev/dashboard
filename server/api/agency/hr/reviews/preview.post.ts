@@ -15,6 +15,15 @@ type PreviewSource = {
   sourceRefs: unknown[] | string
 }
 
+type KnowledgeContext = {
+  id: string
+  entryType: string
+  title: string
+  content: string
+  sourceRefs: unknown[] | string
+  limitations: string[] | string
+}
+
 function parseJsonArray<T>(value: T[] | string): T[] {
   if (Array.isArray(value)) return value
   try { return JSON.parse(value || '[]') } catch { return [] }
@@ -33,6 +42,22 @@ function normalizeSourceRefs(value: unknown[] | string): string[] {
   })
 }
 
+function relevantKnowledgeForRole(records: KnowledgeContext[], roleProfileVersionId: string) {
+  const universalTypes = new Set(['business_context', 'question_bank', 'policy_standard', 'evidence_definition', 'limitation', 'privacy_notice'])
+  return records.filter((record) => {
+    if (universalTypes.has(record.entryType)) return true
+    return parseJsonArray<Record<string, unknown>>(record.sourceRefs).some(reference => String(reference.sourceId || '') === roleProfileVersionId)
+  }).map(record => ({
+    id: record.id,
+    entryType: record.entryType,
+    title: record.title,
+    content: record.content,
+    sourceRefs: parseJsonArray(record.sourceRefs),
+    limitations: parseJsonArray<string>(record.limitations),
+    use: 'Owner-only questionnaire design context; not employee evidence or an automatic finding.',
+  }))
+}
+
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store')
   await requireHrAdmin(event)
@@ -41,7 +66,7 @@ export default defineEventHandler(async (event) => {
   const schedule = validateHrSchedule(parsed.data)
   if (schedule.isValid === false) throw createError({ statusCode: 400, statusMessage: `Invalid review schedule: ${schedule.code}` })
 
-  const sources = await queryRows<PreviewSource>(
+  const [sources, knowledgeContext] = await Promise.all([queryRows<PreviewSource>(
     `SELECT member.id AS "teamMemberId", member.name AS "memberName", member.email AS "memberEmail",
             role_version.id AS "roleProfileVersionId", role.title AS "roleTitle",
             questionnaire.questions, questionnaire.source_refs AS "sourceRefs"
@@ -55,7 +80,19 @@ export default defineEventHandler(async (event) => {
        ) questionnaire ON true
       WHERE role_version.id = ANY($1::uuid[]) AND role_version.status = 'published' AND role.status = 'active'`,
     [parsed.data.participants.map(item => item.roleProfileVersionId), parsed.data.participants.map(item => item.teamMemberId)],
-  )
+  ), queryRows<KnowledgeContext>(
+    `SELECT knowledge.id, knowledge.entry_type AS "entryType", knowledge.title,
+            version.content, version.source_refs AS "sourceRefs", version.limitations
+       FROM hr_knowledge_entries knowledge
+       JOIN hr_knowledge_entry_versions version ON version.entry_id = knowledge.id
+      WHERE version.status = 'approved'
+        AND version.general_ai_excluded = TRUE
+        AND version.permitted_uses @> '["questionnaire_design"]'::jsonb
+        AND version.effective_from <= CURRENT_DATE
+        AND version.review_due_at >= CURRENT_DATE
+      ORDER BY knowledge.entry_type, knowledge.title
+      LIMIT 100`,
+  )])
   const byPair = new Map(sources.map(source => [`${source.teamMemberId}:${source.roleProfileVersionId}`, source]))
 
   const recipients = parsed.data.participants.map(participant => {
@@ -68,6 +105,7 @@ export default defineEventHandler(async (event) => {
       memberName: source.memberName,
       memberEmail: source.memberEmail,
       roleTitle: source.roleTitle,
+      knowledgeContext: relevantKnowledgeForRole(knowledgeContext, source.roleProfileVersionId),
       questions: parseJsonArray<HrQuestion>(source.questions).map(question => ({
         ...question,
         recommendationReason: question.module === 'role'

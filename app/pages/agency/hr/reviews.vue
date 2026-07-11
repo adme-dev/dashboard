@@ -40,6 +40,15 @@ type CommissioningRecipient = {
   memberName: string
   memberEmail: string
   roleTitle: string
+  knowledgeContext: Array<{
+    id: string
+    entryType: string
+    title: string
+    content: string
+    sourceRefs: Array<{ sourceType: string; sourceId: string; label: string }>
+    limitations: string[]
+    use: string
+  }>
   questions: CommissionedQuestion[]
 }
 type CommissioningPreview = {
@@ -373,6 +382,18 @@ async function saveScheduleChange() {
 
               <section v-for="(recipient, recipientIndex) in commissioningPreview.recipients" :key="recipient.teamMemberId" class="overflow-hidden rounded-lg border border-default">
                 <div class="border-b border-default bg-elevated/30 p-4"><div class="flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-semibold text-highlighted">{{ recipient.memberName }}</h3><p class="mt-1 text-xs text-muted">{{ recipient.roleTitle }} · {{ recipient.memberEmail }}</p></div><div class="flex items-center gap-2"><UBadge color="neutral" variant="subtle" :label="`~${Math.max(3, Math.ceil(recipient.questions.length * 1.5))} min`" /><UButton color="neutral" variant="outline" size="xs" icon="i-lucide-plus" label="Add question" @click="addQuestion(recipientIndex)" /></div></div></div>
+                <div v-if="recipient.knowledgeContext.length" class="border-b border-default bg-primary/5 p-4">
+                  <div class="flex items-center gap-2"><UIcon name="i-lucide-book-lock" class="size-4 text-primary" /><p class="text-xs font-semibold uppercase tracking-wide text-primary">Owner-only design context</p><UBadge color="neutral" variant="subtle" :label="String(recipient.knowledgeContext.length)" /></div>
+                  <div class="mt-3 max-h-52 space-y-2 overflow-y-auto overscroll-contain">
+                    <div v-for="record in recipient.knowledgeContext" :key="record.id" class="rounded-md border border-default bg-default p-3">
+                      <div class="flex flex-wrap items-center gap-2"><p class="text-sm font-medium text-highlighted">{{ record.title }}</p><UBadge color="neutral" variant="outline" :label="record.entryType.replaceAll('_', ' ')" /></div>
+                      <p class="mt-2 line-clamp-3 text-xs leading-5 text-muted">{{ record.content }}</p>
+                      <p v-if="record.limitations.length" class="mt-2 text-xs text-warning">Limits: {{ record.limitations.join(' · ') }}</p>
+                      <p class="mt-2 font-mono text-[11px] text-dimmed">{{ record.sourceRefs.map(source => `${source.sourceType}:${source.sourceId}`).join(' · ') }}</p>
+                    </div>
+                  </div>
+                  <p class="mt-3 text-xs leading-5 text-muted">Used only to help the owner assess questionnaire relevance. It is not employee evidence and does not create an automatic finding.</p>
+                </div>
                 <div class="divide-y divide-default">
                   <article v-for="(question, questionIndex) in recipient.questions" :key="question.id" class="space-y-3 p-4">
                     <div class="flex items-start gap-3"><UBadge color="neutral" variant="subtle" :label="question.module" /><UButton class="ml-auto" color="error" variant="ghost" size="xs" icon="i-lucide-trash-2" label="Remove question" @click="removeQuestion(recipientIndex, questionIndex)" /></div>
