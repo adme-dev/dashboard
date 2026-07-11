@@ -42,4 +42,42 @@ describe('HR role scoring', () => {
       operationalEnablement: 3,
     })).toThrow('Scorecard weights must total 100')
   })
+
+  it('publishes at exactly 70 percent coverage and abstains immediately below it', () => {
+    const atThreshold = calculateHrRoleScore({ criteria: [
+      { id: 'evidenced', weight: 70, rating: 3, hasSufficientEvidence: true },
+      { id: 'missing', weight: 30, rating: null, hasSufficientEvidence: false },
+    ], operationalEnablement: 1 })
+    const belowThreshold = calculateHrRoleScore({ criteria: [
+      { id: 'evidenced', weight: 69.99, rating: 5, hasSufficientEvidence: true },
+      { id: 'missing', weight: 30.01, rating: null, hasSufficientEvidence: false },
+    ], operationalEnablement: 5 })
+
+    expect(atThreshold.isPublishable).toBe(true)
+    expect(belowThreshold).toMatchObject({ isPublishable: false, rolePerformanceScore: null })
+  })
+
+  it('is monotonic for the same approved evidence and role weights', () => {
+    const score = (delivery: number) => calculateHrRoleScore({ criteria: [
+      { id: 'delivery', weight: 50, rating: delivery, hasSufficientEvidence: true },
+      { id: 'quality', weight: 50, rating: 3, hasSufficientEvidence: true },
+    ], operationalEnablement: 3 }).rolePerformanceScore!
+    expect(score(4)).toBeGreaterThan(score(3))
+  })
+
+  it('keeps operational enablement contextual and out of the role score', () => {
+    const input = { criteria: [{ id: 'delivery', weight: 100, rating: 4, hasSufficientEvidence: true }] }
+    const constrained = calculateHrRoleScore({ ...input, operationalEnablement: 1 })
+    const enabled = calculateHrRoleScore({ ...input, operationalEnablement: 5 })
+    expect(constrained.rolePerformanceScore).toBe(enabled.rolePerformanceScore)
+    expect(constrained.operationalEnablement).not.toBe(enabled.operationalEnablement)
+  })
+
+  it('never turns an unevidenced rating into coverage or score contribution', () => {
+    const result = calculateHrRoleScore({ criteria: [
+      { id: 'verified', weight: 70, rating: 3, hasSufficientEvidence: true },
+      { id: 'unsupported-opinion', weight: 30, rating: 5, hasSufficientEvidence: false },
+    ], operationalEnablement: 3 })
+    expect(result).toMatchObject({ evidenceCoverage: 70, rolePerformanceScore: 3 })
+  })
 })
