@@ -1,6 +1,7 @@
 import { createError, getRouterParam, readBody, setHeader } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { transaction } from '~~/server/utils/db'
+import { createNotification } from '~~/server/utils/notifications'
 import { canAccessHrParticipant, canManageHr } from '~~/server/utils/hr/access'
 import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
 import { hrFindingTransitionSchema } from '~~/server/utils/hr/schemas'
@@ -65,7 +66,39 @@ export default defineEventHandler(async (event) => {
       [findingId, nextStatus, input.noActionRationale || null, input.action, user.id],
     )
     await recordHrAuditEvent({ actorId: user.id, action: `finding.${input.action}`, targetType: 'review_finding', targetId: findingId, cycleId: current.cycle_id, metadata: { fromStatus: current.status, toStatus: nextStatus } }, db)
-    return updatedResult.rows[0]
+    return {
+      record: updatedResult.rows[0],
+      participantUserId: current.team_member_id,
+      participantId: current.participant_id,
+      reviewerId: current.reviewer_id,
+      action: input.action,
+    }
   })
-  return { ok: true, finding }
+
+  const notifications = []
+  if (finding.action === 'share_for_response') {
+    notifications.push(createNotification({
+      userId: finding.participantUserId,
+      actorId: user.id,
+      type: 'hr_finding_response_requested',
+      title: 'Review finding ready for your response',
+      message: 'A work-related finding is ready for you to review, respond to, or request a correction.',
+      link: `/agency/hr/reviews/participants/${finding.participantId}/findings`,
+      reason: 'direct',
+      metadata: { findingId },
+    }))
+  } else if (['publish', 'approve_and_publish'].includes(finding.action)) {
+    notifications.push(createNotification({
+      userId: finding.participantUserId,
+      actorId: user.id,
+      type: 'hr_finding_published',
+      title: 'Review finding published',
+      message: 'A reviewed finding and its agreed action or no-action rationale are now available.',
+      link: '/agency/hr',
+      reason: 'direct',
+      metadata: { findingId },
+    }))
+  }
+  await Promise.allSettled(notifications)
+  return { ok: true, finding: finding.record }
 })

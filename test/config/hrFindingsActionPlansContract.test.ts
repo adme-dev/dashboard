@@ -41,4 +41,12 @@ describe('governed HR findings and action plans', () => {
     }
     expect(createAction).toContain('Action-plan finding must belong to this participant')
   })
+
+  it('notifies the participant and reviewer at governed finding handoffs', () => {
+    expect(transition).toContain("type: 'hr_finding_response_requested'")
+    expect(transition).toContain("type: 'hr_finding_published'")
+    expect(respond).toContain("type: 'hr_finding_participant_response'")
+    expect(transition).toContain('Promise.allSettled')
+    expect(respond).toContain('Promise.allSettled')
+  })
 })

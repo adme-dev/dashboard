@@ -1,6 +1,7 @@
 import { createError, getRouterParam, readBody, setHeader } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { transaction } from '~~/server/utils/db'
+import { createNotification } from '~~/server/utils/notifications'
 import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
 import { hrFindingResponseSchema } from '~~/server/utils/hr/schemas'
 
@@ -14,7 +15,7 @@ export default defineEventHandler(async (event) => {
   const input = parsed.data
   const result = await transaction(async (db) => {
     const findingResult = await db.query(
-      `SELECT finding.id, finding.status, participant.team_member_id, participant.cycle_id
+      `SELECT finding.id, finding.status, participant.team_member_id, participant.reviewer_id, participant.cycle_id
          FROM hr_review_findings finding JOIN hr_review_participants participant ON participant.id = finding.participant_id
         WHERE finding.id = $1 FOR UPDATE OF finding`, [findingId],
     )
@@ -30,7 +31,22 @@ export default defineEventHandler(async (event) => {
     )
     await db.query('UPDATE hr_review_findings SET participant_response_status = $2, updated_at = NOW() WHERE id = $1', [findingId, input.responseStatus])
     await recordHrAuditEvent({ actorId: user.id, action: 'finding.participant_responded', targetType: 'review_finding', targetId: findingId, cycleId: finding.cycle_id, metadata: { responseStatus: input.responseStatus, correctionRequested: input.correctionRequested } }, db)
-    return { responseStatus: input.responseStatus, correctionRequested: input.correctionRequested }
+    return { responseStatus: input.responseStatus, correctionRequested: input.correctionRequested, reviewerId: finding.reviewer_id }
   })
-  return { ok: true, response: result }
+  const notifications = result.reviewerId
+    ? [createNotification({
+        userId: result.reviewerId,
+        actorId: user.id,
+        type: 'hr_finding_participant_response',
+        title: result.correctionRequested ? 'Finding correction requested' : 'Participant response received',
+        message: result.correctionRequested
+          ? 'The participant requested a factual correction. Review their response before continuing.'
+          : 'The participant response is ready for review.',
+        link: '/agency/hr/reviews',
+        reason: 'direct',
+        metadata: { findingId, responseStatus: result.responseStatus, correctionRequested: result.correctionRequested },
+      })]
+    : []
+  await Promise.allSettled(notifications)
+  return { ok: true, response: { responseStatus: result.responseStatus, correctionRequested: result.correctionRequested } }
 })
