@@ -101,6 +101,7 @@
     "resend": "^6.17.2",
     "sortablejs": "^1.15.7",
     "standardized-audio-context": "^25.3.77",
+    "svix": "^1.96.1",
     "wavesurfer.js": "^7.12.10",
     "workers-ai-provider": "^3.3.1",
     "xero-node": "^13.4.0",
