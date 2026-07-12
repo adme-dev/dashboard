@@ -192,6 +192,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   if (canAccessHr.value) {
     items.push(
       { label: 'Department Goals', icon: 'i-lucide-goal', to: '/agency/hr/goals', onSelect: close },
+      { label: 'HR Benchmark Registry', icon: 'i-lucide-scale', to: '/agency/hr/benchmarks', onSelect: close },
       { label: 'HR Contract Vault', icon: 'i-lucide-file-lock-2', to: '/agency/hr/contracts', onSelect: close },
       { label: 'HR Launch Governance', icon: 'i-lucide-shield-check', to: '/agency/hr/governance', onSelect: close },
       { label: 'Monday Evidence Scope', icon: 'i-lucide-database-zap', to: '/agency/hr/monday', onSelect: close }
