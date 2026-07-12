@@ -10,13 +10,10 @@ describe('HR Monday evidence adapter security contract', () => {
     expect(source).toContain('getActiveMondayEvidenceScope()')
   })
 
-  it('is bounded to approved boards and period and excludes raw source content', () => {
-    expect(source).toContain('COALESCE(mim.monday_board_id, bm.monday_board_id) = ANY($1::text[])')
-    expect(source).toContain('LEFT JOIN monday_board_mappings bm')
-    expect(source).toContain('mim.created_at::date BETWEEN GREATEST($2::date')
-    expect(source).toContain("CURRENT_DATE - ($4::int * INTERVAL '1 day')")
-    expect(source).toContain("mim.status = 'completed'")
-    expect(source).toContain('SELECT DISTINCT ON')
+  it('reads only the purpose-limited, unexpired HR extract and excludes raw source content', () => {
+    expect(source).toContain('FROM hr_monday_evidence_extracts')
+    expect(source).toContain('scope_id = $1 AND expires_at > NOW()')
+    expect(source).not.toContain('monday_item_mappings')
     expect(source).not.toContain('source_data')
     expect(source).not.toContain('t.description')
     expect(source).toContain('monday_evidence.viewed')

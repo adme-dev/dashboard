@@ -7,14 +7,15 @@ const participantUi = readFileSync('app/pages/agency/hr/assignments/[id].vue', '
 describe('HR Monday participant evidence contract', () => {
   it('requires authentication and limits results to the current assignee', () => {
     expect(source).toContain('requireAuth(event)')
-    expect(source).toContain('t.assignee_id = $4')
+    expect(source).toContain('assignee_id = $2')
     expect(source).toContain('read-only evidence view')
   })
   it('applies approved scope and retention controls', () => {
     expect(source).toContain('getActiveMondayEvidenceScope()')
-    expect(source).toContain('COALESCE(mim.monday_board_id, bm.monday_board_id) = ANY')
-    expect(source).toContain('CURRENT_DATE - ($5::int * INTERVAL')
-    expect(source).toContain('SELECT DISTINCT ON')
+    expect(source).toContain('FROM hr_monday_evidence_extracts')
+    expect(source).toContain('scope_id = $1')
+    expect(source).toContain('expires_at > NOW()')
+    expect(source).not.toContain('monday_item_mappings')
   })
   it('discloses bounded evidence inside the participant review workflow', () => {
     expect(participantUi).toContain("'/api/agency/hr/monday/evidence/my'")

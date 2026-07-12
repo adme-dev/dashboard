@@ -8,6 +8,7 @@ import { createMigrationSession, MondayMigrationService, type MigrationConfig } 
 import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
 import { reconcileMondaySyncSession } from '~~/server/utils/hr/mondaySyncReconcile'
 import type { ActiveMondayEvidenceScope } from '~~/server/utils/hr/mondayScope'
+import { refreshMondayEvidenceExtracts } from '~~/server/utils/hr/mondayEvidenceExtract'
 
 export async function startGovernedMondaySync(
   event: H3Event,
@@ -66,7 +67,11 @@ export async function startGovernedMondaySync(
 
   const client = await createMondayClient(connection.accessToken)
   const work = new MondayMigrationService(client, sessionId, config).migrate()
-    .then(() => reconcileMondaySyncSession(scope.id, scope.board_ids, sessionId))
+    .then(async () => {
+      const reconciliation = await reconcileMondaySyncSession(scope.id, scope.board_ids, sessionId)
+      await refreshMondayEvidenceExtracts(scope)
+      return reconciliation
+    })
     .catch(async (error) => {
       console.error('HR Monday sync failed', { sessionId, trigger, error })
       await execute(
@@ -74,6 +79,7 @@ export async function startGovernedMondaySync(
         [String((error as any)?.message || error).slice(0, 2000), scope.id],
       ).catch(() => undefined)
       await reconcileMondaySyncSession(scope.id, scope.board_ids, sessionId).catch(() => undefined)
+      await refreshMondayEvidenceExtracts(scope).catch(() => undefined)
     })
   runAfterResponse(event, work, `HR Monday ${trigger} sync ${sessionId}`)
 

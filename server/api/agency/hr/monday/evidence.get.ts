@@ -29,26 +29,15 @@ export default defineEventHandler(async (event) => {
     isBlocked: boolean
     sourceCreatedAt: string
   }>(
-    `SELECT DISTINCT ON (COALESCE(mim.monday_board_id, bm.monday_board_id), mim.monday_item_id)
-            COALESCE(mim.monday_board_id, bm.monday_board_id) AS "mondayBoardId",
-            mim.monday_item_id AS "mondayItemId",
-            mim.task_id AS "taskId",
-            mim.monday_item_name AS title,
-            t.assignee_id AS "assigneeId",
-            t.due_date AS "dueDate",
-            ts.name AS "taskStatus",
-            COALESCE(t.is_blocked, false) AS "isBlocked",
-            mim.created_at AS "sourceCreatedAt"
-       FROM monday_item_mappings mim
-       LEFT JOIN monday_board_mappings bm ON bm.id = mim.board_mapping_id
-       LEFT JOIN tasks t ON t.id = mim.task_id
-       LEFT JOIN task_statuses ts ON ts.id = t.status_id
-      WHERE COALESCE(mim.monday_board_id, bm.monday_board_id) = ANY($1::text[])
-        AND mim.status = 'completed'
-        AND mim.created_at::date BETWEEN GREATEST($2::date, CURRENT_DATE - ($4::int * INTERVAL '1 day')) AND $3::date
-      ORDER BY COALESCE(mim.monday_board_id, bm.monday_board_id), mim.monday_item_id, mim.created_at DESC
+    `SELECT monday_board_id AS "mondayBoardId", monday_item_id AS "mondayItemId",
+            task_id AS "taskId", title, assignee_id AS "assigneeId",
+            due_date AS "dueDate", status_name AS "taskStatus",
+            COALESCE(is_blocked, false) AS "isBlocked", source_created_at AS "sourceCreatedAt"
+       FROM hr_monday_evidence_extracts
+      WHERE scope_id = $1 AND expires_at > NOW()
+      ORDER BY observed_at DESC
       LIMIT 1000`,
-    [scope.board_ids, scope.period_start, scope.period_end, scope.retention_days],
+    [scope.id],
   )
 
   // Enforce the approved field allowlist at the response boundary as well as
