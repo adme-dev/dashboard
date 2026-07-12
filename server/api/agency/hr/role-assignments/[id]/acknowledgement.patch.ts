@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { transaction } from '~~/server/utils/db'
 import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
+import { decideRoleAcknowledgement } from '~~/server/utils/hr/roleAcknowledgement'
 
 const Body = z
   .object({
@@ -36,7 +37,7 @@ export default defineEventHandler(async (event) => {
     })
   const acknowledgement = await transaction(async (db) => {
     const result = await db.query(
-      'SELECT id, team_member_id, role_profile_version_id, scorecard_version_id FROM hr_role_assignments WHERE id = $1 AND effective_to IS NULL FOR UPDATE',
+      'SELECT id, team_member_id, role_profile_version_id, scorecard_version_id, acknowledgement_status, acknowledgement_note, acknowledged_at FROM hr_role_assignments WHERE id = $1 AND effective_to IS NULL FOR UPDATE',
       [id],
     )
     const assignment = result.rows[0]
@@ -51,10 +52,22 @@ export default defineEventHandler(async (event) => {
         statusMessage:
           'Only the assigned person can acknowledge this role and scorecard baseline',
       })
+    const decision = decideRoleAcknowledgement(
+      assignment.acknowledgement_status,
+      parsed.data.status,
+    )
+    if (decision === 'unchanged') return assignment
+    if (decision === 'reject')
+      throw createError({
+        statusCode: 409,
+        statusMessage:
+          'This baseline response is locked. Ask HR to issue a corrected role and scorecard version.',
+      })
     const updated = await db.query(
       `UPDATE hr_role_assignments SET acknowledgement_status = $2, acknowledgement_note = $3,
-              acknowledged_at = CASE WHEN $2 = 'acknowledged' THEN NOW() ELSE NULL END
-        WHERE id = $1 RETURNING id, acknowledgement_status, acknowledgement_note, acknowledged_at`,
+              acknowledged_at = CASE WHEN $2 = 'acknowledged' THEN COALESCE(acknowledged_at, NOW()) ELSE acknowledged_at END
+        WHERE id = $1 AND acknowledgement_status = 'pending'
+        RETURNING id, acknowledgement_status, acknowledgement_note, acknowledged_at`,
       [id, parsed.data.status, parsed.data.note || null],
     )
     await recordHrAuditEvent(

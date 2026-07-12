@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { transaction } from '~~/server/utils/db'
 import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
+import { decideRoleAcknowledgement } from '~~/server/utils/hr/roleAcknowledgement'
 
 const Body = z.object({
   status: z.enum(['acknowledged', 'disputed']),
@@ -26,14 +27,17 @@ export default defineEventHandler(async (event) => {
       `SELECT qa.id, participant.id AS participant_id, participant.team_member_id,
               participant.role_profile_version_id, participant.cycle_id,
               role_assignment.acknowledgement_status,
+              role_assignment.acknowledgement_note,
+              role_assignment.acknowledged_at,
               role_assignment.id AS role_assignment_id
        FROM hr_questionnaire_assignments qa
        JOIN hr_review_participants participant ON participant.id = qa.participant_id
-       LEFT JOIN hr_role_assignments role_assignment
+       JOIN hr_role_assignments role_assignment
          ON role_assignment.team_member_id = participant.team_member_id
         AND role_assignment.role_profile_version_id = participant.role_profile_version_id
         AND role_assignment.effective_to IS NULL
-       WHERE qa.id = $1`,
+       WHERE qa.id = $1
+       FOR UPDATE OF role_assignment`,
       [assignmentId],
     )
     const assignment = assignmentResult.rows[0]
@@ -41,12 +45,24 @@ export default defineEventHandler(async (event) => {
     if (assignment.team_member_id !== user.id) throw createError({ statusCode: 403, statusMessage: 'Only the participant can acknowledge this role baseline' })
     if (!assignment.role_assignment_id) throw createError({ statusCode: 409, statusMessage: 'Role assignment is not available for acknowledgement' })
 
+    const decision = decideRoleAcknowledgement(assignment.acknowledgement_status, parsed.data.status)
+    if (decision === 'unchanged') return {
+      id: assignment.role_assignment_id,
+      acknowledgement_status: assignment.acknowledgement_status,
+      acknowledgement_note: assignment.acknowledgement_note,
+      acknowledged_at: assignment.acknowledged_at,
+    }
+    if (decision === 'reject') throw createError({
+      statusCode: 409,
+      statusMessage: 'This baseline response is locked. Ask HR to issue a corrected role and scorecard version.',
+    })
+
     const updatedResult = await db.query(
       `UPDATE hr_role_assignments
        SET acknowledgement_status = $1,
            acknowledgement_note = $2,
-           acknowledged_at = CASE WHEN $1 = 'acknowledged' THEN NOW() ELSE NULL END
-       WHERE id = $3
+           acknowledged_at = CASE WHEN $1 = 'acknowledged' THEN COALESCE(acknowledged_at, NOW()) ELSE acknowledged_at END
+       WHERE id = $3 AND acknowledgement_status = 'pending'
        RETURNING id, acknowledgement_status, acknowledgement_note, acknowledged_at`,
       [parsed.data.status, parsed.data.note || null, assignment.role_assignment_id],
     )
