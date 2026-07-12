@@ -26,11 +26,15 @@ type KnowledgeContext = {
 
 function parseJsonArray<T>(value: T[] | string): T[] {
   if (Array.isArray(value)) return value
-  try { return JSON.parse(value || '[]') } catch { return [] }
+  try {
+    return JSON.parse(value || '[]')
+  } catch {
+    return []
+  }
 }
 
 function normalizeSourceRefs(value: unknown[] | string): string[] {
-  return parseJsonArray<unknown>(value).map(reference => {
+  return parseJsonArray<unknown>(value).map((reference) => {
     if (typeof reference === 'string') return reference
     if (reference && typeof reference === 'object') {
       const record = reference as Record<string, unknown>
@@ -44,30 +48,42 @@ function normalizeSourceRefs(value: unknown[] | string): string[] {
 
 function relevantKnowledgeForRole(records: KnowledgeContext[], roleProfileVersionId: string) {
   const universalTypes = new Set(['business_context', 'question_bank', 'policy_standard', 'evidence_definition', 'limitation', 'privacy_notice'])
-  return records.filter((record) => {
-    if (universalTypes.has(record.entryType)) return true
-    return parseJsonArray<Record<string, unknown>>(record.sourceRefs).some(reference => String(reference.sourceId || '') === roleProfileVersionId)
-  }).map(record => ({
-    id: record.id,
-    entryType: record.entryType,
-    title: record.title,
-    content: record.content,
-    sourceRefs: parseJsonArray(record.sourceRefs),
-    limitations: parseJsonArray<string>(record.limitations),
-    use: 'Owner-only questionnaire design context; not employee evidence or an automatic finding.',
-  }))
+  return records
+    .filter((record) => {
+      if (universalTypes.has(record.entryType)) return true
+      return parseJsonArray<Record<string, unknown>>(record.sourceRefs).some((reference) => String(reference.sourceId || '') === roleProfileVersionId)
+    })
+    .map((record) => ({
+      id: record.id,
+      entryType: record.entryType,
+      title: record.title,
+      content: record.content,
+      sourceRefs: parseJsonArray(record.sourceRefs),
+      limitations: parseJsonArray<string>(record.limitations),
+      use: 'Owner-only questionnaire design context; not employee evidence or an automatic finding.',
+    }))
 }
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store')
   await requireHrAdmin(event)
   const parsed = hrReviewCycleDraftSchema.safeParse(await readBody(event))
-  if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid review-cycle preview', data: { issues: parsed.error.issues } })
+  if (!parsed.success)
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid review-cycle preview',
+      data: { issues: parsed.error.issues },
+    })
   const schedule = validateHrSchedule(parsed.data)
-  if (schedule.isValid === false) throw createError({ statusCode: 400, statusMessage: `Invalid review schedule: ${schedule.code}` })
+  if (schedule.isValid === false)
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Invalid review schedule: ${schedule.code}`,
+    })
 
-  const [sources, knowledgeContext] = await Promise.all([queryRows<PreviewSource>(
-    `SELECT member.id AS "teamMemberId", member.name AS "memberName", member.email AS "memberEmail",
+  const [sources, knowledgeContext] = await Promise.all([
+    queryRows<PreviewSource>(
+      `SELECT member.id AS "teamMemberId", member.name AS "memberName", member.email AS "memberEmail",
             role_version.id AS "roleProfileVersionId", role.title AS "roleTitle",
             questionnaire.questions, questionnaire.source_refs AS "sourceRefs"
        FROM hr_role_profile_versions role_version
@@ -75,6 +91,8 @@ export default defineEventHandler(async (event) => {
        JOIN hr_role_assignments assignment
          ON assignment.role_profile_version_id = role_version.id
         AND assignment.effective_to IS NULL
+        AND assignment.acknowledgement_status = 'acknowledged'
+        AND assignment.scorecard_version_id IS NOT NULL
        JOIN team_members member
          ON member.id = assignment.team_member_id
         AND member.id = ANY($2::uuid[])
@@ -85,9 +103,10 @@ export default defineEventHandler(async (event) => {
           ORDER BY candidate.version DESC LIMIT 1
        ) questionnaire ON true
       WHERE role_version.id = ANY($1::uuid[]) AND role_version.status = 'published' AND role.status = 'active'`,
-    [parsed.data.participants.map(item => item.roleProfileVersionId), parsed.data.participants.map(item => item.teamMemberId)],
-  ), queryRows<KnowledgeContext>(
-    `SELECT knowledge.id, knowledge.entry_type AS "entryType", knowledge.title,
+      [parsed.data.participants.map((item) => item.roleProfileVersionId), parsed.data.participants.map((item) => item.teamMemberId)],
+    ),
+    queryRows<KnowledgeContext>(
+      `SELECT knowledge.id, knowledge.entry_type AS "entryType", knowledge.title,
             version.content, version.source_refs AS "sourceRefs", version.limitations
        FROM hr_knowledge_entries knowledge
        JOIN hr_knowledge_entry_versions version ON version.entry_id = knowledge.id
@@ -98,12 +117,17 @@ export default defineEventHandler(async (event) => {
         AND version.review_due_at >= CURRENT_DATE
       ORDER BY knowledge.entry_type, knowledge.title
       LIMIT 100`,
-  )])
-  const byPair = new Map(sources.map(source => [`${source.teamMemberId}:${source.roleProfileVersionId}`, source]))
+    ),
+  ])
+  const byPair = new Map(sources.map((source) => [`${source.teamMemberId}:${source.roleProfileVersionId}`, source]))
 
-  const recipients = parsed.data.participants.map(participant => {
+  const recipients = parsed.data.participants.map((participant) => {
     const source = byPair.get(`${participant.teamMemberId}:${participant.roleProfileVersionId}`)
-    if (!source) throw createError({ statusCode: 409, statusMessage: 'Every participant requires an active member, published role and published questionnaire' })
+    if (!source)
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Every participant requires an active member, acknowledged published role and scorecard, and published questionnaire',
+      })
     const roleSource = `role-version:${source.roleProfileVersionId}`
     const inheritedRefs = normalizeSourceRefs(source.sourceRefs)
     return {
@@ -112,13 +136,9 @@ export default defineEventHandler(async (event) => {
       memberEmail: source.memberEmail,
       roleTitle: source.roleTitle,
       knowledgeContext: relevantKnowledgeForRole(knowledgeContext, source.roleProfileVersionId),
-      questions: parseJsonArray<HrQuestion>(source.questions).map(question => ({
+      questions: parseJsonArray<HrQuestion>(source.questions).map((question) => ({
         ...question,
-        recommendationReason: question.module === 'role'
-          ? `Checks the acknowledged responsibility: ${question.responsibility || 'role responsibility'}.`
-          : question.module === 'blockers'
-            ? 'Invites balanced operational context about barriers and support.'
-            : 'Provides a consistent business-review baseline across roles.',
+        recommendationReason: question.module === 'role' ? `Checks the acknowledged responsibility: ${question.responsibility || 'role responsibility'}.` : question.module === 'blockers' ? 'Invites balanced operational context about barriers and support.' : 'Provides a consistent business-review baseline across roles.',
         sourceRefs: [...new Set([roleSource, ...inheritedRefs])],
       })),
     }
@@ -126,9 +146,19 @@ export default defineEventHandler(async (event) => {
 
   return {
     previewOnly: true,
-    cycle: { name: parsed.data.name, purpose: parsed.data.purpose, timezone: parsed.data.timezone, opensAt: parsed.data.opensAt, dueAt: parsed.data.dueAt, closesAt: parsed.data.closesAt },
+    cycle: {
+      name: parsed.data.name,
+      purpose: parsed.data.purpose,
+      timezone: parsed.data.timezone,
+      opensAt: parsed.data.opensAt,
+      dueAt: parsed.data.dueAt,
+      closesAt: parsed.data.closesAt,
+    },
     recipients,
-    delivery: { channels: ['in_app', 'email', 'calendar'], sendsOnApproval: true },
+    delivery: {
+      channels: ['in_app', 'email', 'calendar'],
+      sendsOnApproval: true,
+    },
     visibility: 'Participant and authorised HR; reviewers see submitted answers only.',
   }
 })

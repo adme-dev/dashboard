@@ -10,60 +10,9 @@ import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 import { isWithinQuietHours } from '~~/server/utils/quietHours'
 import { computeImportance } from '~~/server/utils/notificationImportance'
 
-export type NotificationType =
-  | 'task_assigned'
-  | 'task_mentioned'
-  | 'task_comment'
-  | 'task_status_changed'
-  | 'task_due_soon'
-  | 'task_overdue'
-  | 'monday_inactive'
-  | 'monday_blocked'
-  | 'approval_requested'
-  | 'approval_completed'
-  | 'approval_response'
-  | 'team_update'
-  | 'system'
-  | 'ai_digest'
-  | 'chat_mention'
-  | 'chat_dm'
-  | 'brief_status_changed'
-  | 'brief_commented'
-  | 'brief_assigned'
-  | 'brief_submitted'
-  | 'brief_converted'
-  | 'brief_completion_proposed'
-  | 'board_member_added'
-  | 'anomaly_critical'
-  | 'lead'
-  | 'social_assigned'
-  | 'social_sla_breach'
-  | 'brief_actioned'
-  | 'hr_review_assigned'
-  | 'hr_review_reminder'
-  | 'hr_review_overdue'
-  | 'hr_review_cancel'
-  | 'hr_review_reopen'
-  | 'hr_review_extension'
-  | 'hr_review_reschedule'
-  | 'hr_review_interview'
-  | 'hr_review_interview_cancelled'
-  | 'hr_review_interview_completed'
-  | 'hr_interview_scheduled'
-  | 'hr_scorecard_published'
-  | 'hr_finding_response_requested'
-  | 'hr_finding_participant_response'
-  | 'hr_finding_published'
-  | 'hr_follow_up_assigned'
-  | 'hr_follow_up_due'
+export type NotificationType = 'task_assigned' | 'task_mentioned' | 'task_comment' | 'task_status_changed' | 'task_due_soon' | 'task_overdue' | 'monday_inactive' | 'monday_blocked' | 'approval_requested' | 'approval_completed' | 'approval_response' | 'team_update' | 'system' | 'ai_digest' | 'chat_mention' | 'chat_dm' | 'brief_status_changed' | 'brief_commented' | 'brief_assigned' | 'brief_submitted' | 'brief_converted' | 'brief_completion_proposed' | 'board_member_added' | 'anomaly_critical' | 'lead' | 'social_assigned' | 'social_sla_breach' | 'brief_actioned' | 'hr_review_assigned' | 'hr_role_assigned' | 'hr_review_reminder' | 'hr_review_overdue' | 'hr_review_cancel' | 'hr_review_reopen' | 'hr_review_extension' | 'hr_review_reschedule' | 'hr_review_interview' | 'hr_review_interview_cancelled' | 'hr_review_interview_completed' | 'hr_interview_scheduled' | 'hr_scorecard_published' | 'hr_finding_response_requested' | 'hr_finding_participant_response' | 'hr_finding_published' | 'hr_follow_up_assigned' | 'hr_follow_up_due'
 
-export type NotificationReason =
-  | 'mentioned'
-  | 'assigned'
-  | 'watching_board'
-  | 'watching_item'
-  | 'direct'
-  | 'lead_arrived'
+export type NotificationReason = 'mentioned' | 'assigned' | 'watching_board' | 'watching_item' | 'direct' | 'lead_arrived'
 
 interface CreateNotificationParams {
   userId: string
@@ -179,10 +128,7 @@ export async function createNotification(params: CreateNotificationParams) {
     // 2. In-app gate.
     const prefKey = TYPE_TO_INAPP_PREF[params.type]
     if (prefKey) {
-      const row = await queryOne(
-        `SELECT notification_preferences FROM team_members WHERE id = $1`,
-        [params.userId]
-      )
+      const row = await queryOne(`SELECT notification_preferences FROM team_members WHERE id = $1`, [params.userId])
       const prefs = row?.notification_preferences || {}
       if (prefs[prefKey] === false) return null
     }
@@ -195,21 +141,14 @@ export async function createNotification(params: CreateNotificationParams) {
 
     let notification
     try {
-      notification = await queryOne(`
+      notification = await queryOne(
+        `
         INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata, reason, importance_score)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id, created_at
-      `, [
-        params.userId,
-        params.type,
-        params.title,
-        params.message,
-        params.link || null,
-        params.actorId || null,
-        params.metadata ? JSON.stringify(params.metadata) : null,
-        params.reason || null,
-        importanceScore
-      ])
+      `,
+        [params.userId, params.type, params.title, params.message, params.link || null, params.actorId || null, params.metadata ? JSON.stringify(params.metadata) : null, params.reason || null, importanceScore],
+      )
     } catch (err: any) {
       // Defensive fallback for partially-deployed schemas (e.g. when a deploy
       // ships before its migration). Retry with the legacy column set when
@@ -217,19 +156,14 @@ export async function createNotification(params: CreateNotificationParams) {
       const msg = String(err?.message || '')
       if (msg.includes('column "reason"') || msg.includes('column "importance_score"') || msg.includes('does not exist')) {
         console.warn('[Notifications] Falling back to legacy INSERT (Phase A reason/score columns missing on this DB):', msg)
-        notification = await queryOne(`
+        notification = await queryOne(
+          `
           INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata)
           VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING id, created_at
-        `, [
-          params.userId,
-          params.type,
-          params.title,
-          params.message,
-          params.link || null,
-          params.actorId || null,
-          params.metadata ? JSON.stringify(params.metadata) : null,
-        ])
+        `,
+          [params.userId, params.type, params.title, params.message, params.link || null, params.actorId || null, params.metadata ? JSON.stringify(params.metadata) : null],
+        )
       } else {
         throw err
       }
@@ -245,16 +179,11 @@ export async function createNotification(params: CreateNotificationParams) {
 /**
  * Create notifications for multiple users
  */
-export async function createBulkNotifications(
-  userIds: string[],
-  params: Omit<CreateNotificationParams, 'userId'>
-) {
-  const results = await Promise.allSettled(
-    userIds.map(userId => createNotification({ ...params, userId }))
-  )
+export async function createBulkNotifications(userIds: string[], params: Omit<CreateNotificationParams, 'userId'>) {
+  const results = await Promise.allSettled(userIds.map((userId) => createNotification({ ...params, userId })))
 
-  const successful = results.filter(r => r.status === 'fulfilled').length
-  const failed = results.filter(r => r.status === 'rejected').length
+  const successful = results.filter((r) => r.status === 'fulfilled').length
+  const failed = results.filter((r) => r.status === 'rejected').length
 
   if (failed > 0) {
     console.warn(`Bulk notification: ${successful} succeeded, ${failed} failed`)
@@ -268,14 +197,20 @@ export async function createBulkNotifications(
  */
 export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
   // Get assigner details
-  const assigner = await queryOne(`
+  const assigner = await queryOne(
+    `
     SELECT name, email FROM team_members WHERE id = $1
-  `, [params.assignerId])
+  `,
+    [params.assignerId],
+  )
 
   // Get assignee details
-  const assignee = await queryOne(`
+  const assignee = await queryOne(
+    `
     SELECT name, email, notification_preferences FROM team_members WHERE id = $1
-  `, [params.assigneeId])
+  `,
+    [params.assigneeId],
+  )
 
   if (!assigner || !assignee) return
 
@@ -293,8 +228,8 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
       metadata: {
         taskId: params.taskId,
         taskTitle: params.taskTitle,
-        projectName: params.projectName
-      }
+        projectName: params.projectName,
+      },
     })
   } catch (err) {
     console.error('[notifyTaskAssigned] createNotification failed (continuing with email):', err)
@@ -316,17 +251,11 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
   // mentions the task title and the assigner's name. Falls back to the
   // static template on Groq failure.
   try {
-    const ackPref = await queryOne(
-      `SELECT auto_ack_assignments FROM team_members WHERE id = $1`,
-      [params.assigneeId]
-    )
+    const ackPref = await queryOne(`SELECT auto_ack_assignments FROM team_members WHERE id = $1`, [params.assigneeId])
     if (ackPref?.auto_ack_assignments === true) {
       let draft = `👋 Got it — thanks ${assigner.name}, I'll take a look.`
       try {
-        const [{ GROQ_MODELS }, { generateModelRoutedGroqInsight }] = await Promise.all([
-          import('~~/server/utils/groqClient'),
-          import('~~/server/utils/ai/resolvedGroq'),
-        ])
+        const [{ GROQ_MODELS }, { generateModelRoutedGroqInsight }] = await Promise.all([import('~~/server/utils/groqClient'), import('~~/server/utils/ai/resolvedGroq')])
         const prompt = `Write a SHORT (max 18 words), professional acknowledgement message that "${assignee.name}" might send when assigned to "${params.taskTitle}" by ${assigner.name}. Be warm but business-like. No emoji except a single 👋 at the start. No preamble, just the message text.`
         const aiDraft = await generateModelRoutedGroqInsight(prompt, {
           defaultModelId: GROQ_MODELS.LLAMA_8B,
@@ -355,7 +284,7 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
         `INSERT INTO task_activities (task_id, user_id, activity_type, content)
          VALUES ($1, $2, 'comment', $3)
          RETURNING id`,
-        [params.taskId, params.assigneeId, draft]
+        [params.taskId, params.assigneeId, draft],
       )
     }
   } catch (err) {
@@ -372,7 +301,7 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
       assignerName: assigner.name,
       projectName: params.projectName,
       dueDate: params.dueDate,
-      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`,
     })
   }
 }
@@ -391,13 +320,9 @@ export interface NotifyTaskAssigneeChangedParams {
   projectName?: string
 }
 
-export type NotifyTaskAssigneeChangedResult =
-  | { notified: true }
-  | { notified: false; reason: 'unchanged' | 'unassigned' | 'self_assignment' }
+export type NotifyTaskAssigneeChangedResult = { notified: true } | { notified: false; reason: 'unchanged' | 'unassigned' | 'self_assignment' }
 
-export async function notifyTaskAssigneeChanged(
-  params: NotifyTaskAssigneeChangedParams
-): Promise<NotifyTaskAssigneeChangedResult> {
+export async function notifyTaskAssigneeChanged(params: NotifyTaskAssigneeChangedParams): Promise<NotifyTaskAssigneeChangedResult> {
   if (params.oldAssigneeId === params.newAssigneeId) {
     return { notified: false, reason: 'unchanged' }
   }
@@ -422,18 +347,14 @@ export async function notifyTaskAssigneeChanged(
 /**
  * Notify task stakeholders when a comment is added
  */
-export async function notifyTaskComment(params: {
-  taskId: string
-  taskTitle: string
-  commenterId: string
-  assigneeId?: string | null
-  reporterId?: string | null
-  commentSnippet: string
-}) {
+export async function notifyTaskComment(params: { taskId: string; taskTitle: string; commenterId: string; assigneeId?: string | null; reporterId?: string | null; commentSnippet: string }) {
   // Get commenter details
-  const commenter = await queryOne(`
+  const commenter = await queryOne(
+    `
     SELECT name FROM team_members WHERE id = $1
-  `, [params.commenterId])
+  `,
+    [params.commenterId],
+  )
 
   if (!commenter) return
 
@@ -458,8 +379,8 @@ export async function notifyTaskComment(params: {
     metadata: {
       taskId: params.taskId,
       taskTitle: params.taskTitle,
-      commentSnippet: params.commentSnippet.substring(0, 100)
-    }
+      commentSnippet: params.commentSnippet.substring(0, 100),
+    },
   })
 }
 
@@ -468,14 +389,20 @@ export async function notifyTaskComment(params: {
  */
 export async function notifyMention(params: NotifyMentionParams) {
   // Get mentioner details
-  const mentioner = await queryOne(`
+  const mentioner = await queryOne(
+    `
     SELECT name, email FROM team_members WHERE id = $1
-  `, [params.mentionerId])
+  `,
+    [params.mentionerId],
+  )
 
   // Get mentioned user details
-  const mentioned = await queryOne(`
+  const mentioned = await queryOne(
+    `
     SELECT name, email, notification_preferences FROM team_members WHERE id = $1
-  `, [params.mentionedUserId])
+  `,
+    [params.mentionedUserId],
+  )
 
   if (!mentioner || !mentioned) return
 
@@ -493,8 +420,8 @@ export async function notifyMention(params: NotifyMentionParams) {
       metadata: {
         taskId: params.taskId,
         taskTitle: params.taskTitle,
-        commentSnippet: params.commentSnippet.substring(0, 100)
-      }
+        commentSnippet: params.commentSnippet.substring(0, 100),
+      },
     })
   } catch (err) {
     console.error('[notifyMention] createNotification failed (continuing with email):', err)
@@ -519,7 +446,7 @@ export async function notifyMention(params: NotifyMentionParams) {
       taskTitle: params.taskTitle,
       mentionerName: mentioner.name,
       commentSnippet: params.commentSnippet,
-      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`,
     })
   }
 }
@@ -529,14 +456,20 @@ export async function notifyMention(params: NotifyMentionParams) {
  */
 export async function notifyApprovalRequest(params: NotifyApprovalRequestParams) {
   // Get requester details
-  const requester = await queryOne(`
+  const requester = await queryOne(
+    `
     SELECT name, email FROM team_members WHERE id = $1
-  `, [params.requesterId])
+  `,
+    [params.requesterId],
+  )
 
   // Get approver details
-  const approver = await queryOne(`
+  const approver = await queryOne(
+    `
     SELECT name, email, notification_preferences FROM team_members WHERE id = $1
-  `, [params.approverId])
+  `,
+    [params.approverId],
+  )
 
   if (!requester || !approver) return
 
@@ -551,8 +484,8 @@ export async function notifyApprovalRequest(params: NotifyApprovalRequestParams)
     metadata: {
       taskId: params.taskId,
       taskTitle: params.taskTitle,
-      stepName: params.stepName
-    }
+      stepName: params.stepName,
+    },
   })
 
   // Send email notification (check preference)
@@ -564,7 +497,7 @@ export async function notifyApprovalRequest(params: NotifyApprovalRequestParams)
       taskTitle: params.taskTitle,
       requesterName: requester.name,
       stepName: params.stepName,
-      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`,
     })
   }
 }
@@ -574,17 +507,18 @@ export async function notifyApprovalRequest(params: NotifyApprovalRequestParams)
  */
 export async function notifyDueReminder(params: NotifyDueReminderParams) {
   // Get assignee details
-  const assignee = await queryOne(`
+  const assignee = await queryOne(
+    `
     SELECT name, email, notification_preferences FROM team_members WHERE id = $1
-  `, [params.assigneeId])
+  `,
+    [params.assigneeId],
+  )
 
   if (!assignee) return
 
   const type = params.isOverdue ? 'task_overdue' : 'task_due_soon'
   const title = params.isOverdue ? 'Task Overdue' : 'Task Due Soon'
-  const message = params.isOverdue
-    ? `"${params.taskTitle}" is overdue`
-    : `"${params.taskTitle}" is due ${formatRelativeDate(params.dueDate)}`
+  const message = params.isOverdue ? `"${params.taskTitle}" is overdue` : `"${params.taskTitle}" is due ${formatRelativeDate(params.dueDate)}`
 
   // Create in-app notification
   await createNotification({
@@ -597,8 +531,8 @@ export async function notifyDueReminder(params: NotifyDueReminderParams) {
       taskId: params.taskId,
       taskTitle: params.taskTitle,
       dueDate: params.dueDate.toISOString(),
-      isOverdue: params.isOverdue
-    }
+      isOverdue: params.isOverdue,
+    },
   })
 
   // Send email notification (check preference)
@@ -610,7 +544,7 @@ export async function notifyDueReminder(params: NotifyDueReminderParams) {
       taskTitle: params.taskTitle,
       dueDate: params.dueDate,
       daysRemaining: Math.ceil((params.dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)),
-      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`,
     })
   }
 }
@@ -618,17 +552,13 @@ export async function notifyDueReminder(params: NotifyDueReminderParams) {
 /**
  * Notify about task status change
  */
-export async function notifyTaskStatusChanged(
-  taskId: string,
-  taskTitle: string,
-  oldStatus: string,
-  newStatus: string,
-  changedById: string,
-  watcherIds: string[]
-) {
-  const changer = await queryOne(`
+export async function notifyTaskStatusChanged(taskId: string, taskTitle: string, oldStatus: string, newStatus: string, changedById: string, watcherIds: string[]) {
+  const changer = await queryOne(
+    `
     SELECT name FROM team_members WHERE id = $1
-  `, [changedById])
+  `,
+    [changedById],
+  )
 
   if (!changer) return
 
@@ -642,34 +572,28 @@ export async function notifyTaskStatusChanged(
       taskId,
       taskTitle,
       oldStatus,
-      newStatus
-    }
+      newStatus,
+    },
   })
 }
 
 /**
  * Notify task owner when approval is completed
  */
-export async function notifyApprovalCompleted(params: {
-  taskId: string
-  taskTitle: string
-  requesterId: string
-  responderId: string
-  stepName: string
-  status: 'approved' | 'rejected'
-}) {
+export async function notifyApprovalCompleted(params: { taskId: string; taskTitle: string; requesterId: string; responderId: string; stepName: string; status: 'approved' | 'rejected' }) {
   // Get responder details
-  const responder = await queryOne(`
+  const responder = await queryOne(
+    `
     SELECT name FROM team_members WHERE id = $1
-  `, [params.responderId])
+  `,
+    [params.responderId],
+  )
 
   if (!responder) return
 
   // Create in-app notification for the requester
   const title = params.status === 'approved' ? 'Approval Granted' : 'Approval Rejected'
-  const message = params.status === 'approved'
-    ? `${responder.name} approved "${params.taskTitle}" at ${params.stepName}`
-    : `${responder.name} rejected "${params.taskTitle}" at ${params.stepName}`
+  const message = params.status === 'approved' ? `${responder.name} approved "${params.taskTitle}" at ${params.stepName}` : `${responder.name} rejected "${params.taskTitle}" at ${params.stepName}`
 
   await createNotification({
     userId: params.requesterId,
@@ -682,24 +606,22 @@ export async function notifyApprovalCompleted(params: {
       taskId: params.taskId,
       taskTitle: params.taskTitle,
       stepName: params.stepName,
-      status: params.status
-    }
+      status: params.status,
+    },
   })
 }
 
 /**
  * Notify next approver when it's their turn
  */
-export async function notifyNextApprover(params: {
-  taskId: string
-  taskTitle: string
-  approverId: string
-  stepName: string
-}) {
+export async function notifyNextApprover(params: { taskId: string; taskTitle: string; approverId: string; stepName: string }) {
   // Get approver details
-  const approver = await queryOne(`
+  const approver = await queryOne(
+    `
     SELECT name, email, notification_preferences FROM team_members WHERE id = $1
-  `, [params.approverId])
+  `,
+    [params.approverId],
+  )
 
   if (!approver) return
 
@@ -713,8 +635,8 @@ export async function notifyNextApprover(params: {
     metadata: {
       taskId: params.taskId,
       taskTitle: params.taskTitle,
-      stepName: params.stepName
-    }
+      stepName: params.stepName,
+    },
   })
 
   // Send email notification (check preference)
@@ -726,7 +648,7 @@ export async function notifyNextApprover(params: {
       taskTitle: params.taskTitle,
       requesterName: 'System',
       stepName: params.stepName,
-      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`,
     })
   }
 }

@@ -98,6 +98,7 @@ export default defineEventHandler(async (event) => {
 
   const roleAssignments = await queryRows(
     `SELECT assignment.id, assignment.team_member_id, assignment.role_profile_version_id,
+            assignment.scorecard_version_id,
             assignment.acknowledgement_status, assignment.effective_from
        FROM hr_role_assignments assignment
        JOIN team_members member ON member.id = assignment.team_member_id AND member.is_active = TRUE
@@ -111,6 +112,7 @@ export default defineEventHandler(async (event) => {
             department.name AS department,
             assignment.id AS current_assignment_id,
             assignment.role_profile_version_id AS current_role_version_id,
+            assignment.scorecard_version_id AS current_scorecard_version_id,
             profile.title AS governed_role_title,
             assignment.acknowledgement_status,
             classification.classification,
@@ -127,5 +129,12 @@ export default defineEventHandler(async (event) => {
       ORDER BY member.name`,
   )
 
-  return { roles, benchmarks, contractExtracts, departmentGoals, roleAssignments, activeMembers }
+  return {
+    roles,
+    benchmarks,
+    contractExtracts,
+    departmentGoals,
+    roleAssignments,
+    activeMembers,
+  }
 })

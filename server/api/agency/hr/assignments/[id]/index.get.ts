@@ -19,6 +19,10 @@ export default defineEventHandler(async (event) => {
             qv.name AS questionnaire_name, qv.questions,
             rp.title AS role_title, rpv.purpose AS role_purpose,
             rpv.responsibilities, rpv.expected_outcomes,
+            scorecard.id AS scorecard_version_id,
+            scorecard.version AS scorecard_version,
+            scorecard.criteria AS scorecard_criteria,
+            scorecard.evidence_threshold AS scorecard_evidence_threshold,
             (SELECT COALESCE(jsonb_agg(jsonb_build_object(
                 'id', kpi.id,
                 'name', kpi.name,
@@ -52,12 +56,18 @@ export default defineEventHandler(async (event) => {
        ON role_assignment.team_member_id = participant.team_member_id
       AND role_assignment.role_profile_version_id = participant.role_profile_version_id
       AND role_assignment.effective_to IS NULL
+     LEFT JOIN hr_role_scorecard_versions scorecard
+       ON scorecard.id = role_assignment.scorecard_version_id
      LEFT JOIN hr_responses response ON response.assignment_id = qa.id
        AND response.respondent_id = participant.team_member_id
      WHERE qa.id = $1`,
     [assignmentId],
   )
-  if (!assignment) throw createError({ statusCode: 404, statusMessage: 'Assignment not found' })
+  if (!assignment)
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Assignment not found',
+    })
 
   const scope = {
     participantUserId: assignment.team_member_id,
@@ -73,7 +83,9 @@ export default defineEventHandler(async (event) => {
     targetType: 'questionnaire_assignment',
     targetId: assignment.id,
     cycleId: assignment.cycle_id,
-    metadata: { relationship: isParticipant ? 'participant' : canManageHr(user) ? 'hr_admin' : 'reviewer' },
+    metadata: {
+      relationship: isParticipant ? 'participant' : canManageHr(user) ? 'hr_admin' : 'reviewer',
+    },
   })
 
   return {
@@ -97,14 +109,23 @@ export default defineEventHandler(async (event) => {
         responsibilities: assignment.responsibilities || [],
         expectedOutcomes: assignment.expected_outcomes || [],
         kpis: assignment.role_kpis || [],
+        scorecard: {
+          id: assignment.scorecard_version_id,
+          version: assignment.scorecard_version,
+          criteria: assignment.scorecard_criteria || [],
+          evidenceThreshold: Number(assignment.scorecard_evidence_threshold || 70),
+        },
       },
       questions: assignment.questions,
-      canRespond: isParticipant && assignment.status !== 'closed'
-        && !['submitted', 'locked'].includes(assignment.response_status)
-        && Date.now() <= Date.parse(assignment.closes_at),
+      canRespond: isParticipant && assignment.status !== 'closed' && !['submitted', 'locked'].includes(assignment.response_status) && Date.now() <= Date.parse(assignment.closes_at),
     },
     response: canSeeAnswers
-      ? { id: assignment.response_id, status: assignment.response_status || 'draft', answers: assignment.answers || {}, submittedAt: assignment.submitted_at }
+      ? {
+          id: assignment.response_id,
+          status: assignment.response_status || 'draft',
+          answers: assignment.answers || {},
+          submittedAt: assignment.submitted_at,
+        }
       : null,
   }
 })

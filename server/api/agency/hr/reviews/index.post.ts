@@ -24,7 +24,12 @@ export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store')
   const user = await requireHrAdmin(event)
   const parsed = hrReviewCycleSchema.safeParse(await readBody(event))
-  if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid review cycle', data: { issues: parsed.error.issues } })
+  if (!parsed.success)
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid review cycle',
+      data: { issues: parsed.error.issues },
+    })
 
   const input = parsed.data
   const gateRows = await queryOne<{ approvals: HrLaunchGateApprovals }>(
@@ -39,18 +44,37 @@ export default defineEventHandler(async (event) => {
   )
   const launchReadiness = evaluateHrLaunchReadiness(gateRows?.approvals || {})
   if (!launchReadiness.ready) {
-    throw createError({ statusCode: 409, statusMessage: 'HR launch governance gates are incomplete or expired' })
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'HR launch governance gates are incomplete or expired',
+    })
   }
-  if (!input.ownerConfirmed) throw createError({ statusCode: 400, statusMessage: 'Owner confirmation is required before questionnaires can be sent' })
+  if (!input.ownerConfirmed)
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Owner confirmation is required before questionnaires can be sent',
+    })
   for (const participant of input.participants) {
-    const qualityIssues = participant.questions.flatMap(question => evaluateHrQuestionQuality({
-      prompt: question.prompt,
-      options: question.options?.map(option => option.label),
-    }).issues)
-    if (qualityIssues.length) throw createError({ statusCode: 400, statusMessage: 'A commissioned questionnaire did not pass the neutral-question policy', data: { issues: qualityIssues } })
+    const qualityIssues = participant.questions.flatMap(
+      (question) =>
+        evaluateHrQuestionQuality({
+          prompt: question.prompt,
+          options: question.options?.map((option) => option.label),
+        }).issues,
+    )
+    if (qualityIssues.length)
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'A commissioned questionnaire did not pass the neutral-question policy',
+        data: { issues: qualityIssues },
+      })
   }
   const schedule = validateHrSchedule(input)
-  if (schedule.isValid === false) throw createError({ statusCode: 400, statusMessage: `Invalid review schedule: ${schedule.code}` })
+  if (schedule.isValid === false)
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Invalid review schedule: ${schedule.code}`,
+    })
 
   const result = await transaction(async (db) => {
     const cycleStatus = Date.parse(input.opensAt) <= Date.now() ? 'open' : 'scheduled'
@@ -66,30 +90,30 @@ export default defineEventHandler(async (event) => {
 
     for (const participantInput of input.participants) {
       const roleResult = await db.query(
-        `SELECT rpv.id AS version_id, rp.id AS profile_id, rp.title
+        `SELECT rpv.id AS version_id, rp.id AS profile_id, rp.title,
+                assignment.scorecard_version_id
          FROM hr_role_profile_versions rpv
          JOIN hr_role_profiles rp ON rp.id = rpv.role_profile_id
          JOIN hr_role_assignments assignment
            ON assignment.role_profile_version_id = rpv.id
           AND assignment.team_member_id = $2
           AND assignment.effective_to IS NULL
-         WHERE rpv.id = $1 AND rpv.status = 'published' AND rp.status = 'active'`,
+         WHERE rpv.id = $1 AND rpv.status = 'published' AND rp.status = 'active'
+           AND assignment.acknowledgement_status = 'acknowledged'
+           AND assignment.scorecard_version_id IS NOT NULL`,
         [participantInput.roleProfileVersionId, participantInput.teamMemberId],
       )
       if (!roleResult.rows[0]) throw new Error('Every participant must have the selected published role assigned before questionnaire commissioning')
 
-      const memberResult = await db.query(
-        `SELECT id, name, email FROM team_members WHERE id = $1 AND is_active = true`,
-        [participantInput.teamMemberId],
-      )
+      const memberResult = await db.query(`SELECT id, name, email FROM team_members WHERE id = $1 AND is_active = true`, [participantInput.teamMemberId])
       if (!memberResult.rows[0]) throw new Error('Every review participant must be an active team member')
 
       const participantResult = await db.query(
         `INSERT INTO hr_review_participants
-          (cycle_id, team_member_id, reviewer_id, role_profile_version_id)
-         VALUES ($1, $2, $3, $4)
+          (cycle_id, team_member_id, reviewer_id, role_profile_version_id, scorecard_version_id)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [cycle.id, participantInput.teamMemberId, participantInput.reviewerId || user.id, participantInput.roleProfileVersionId],
+        [cycle.id, participantInput.teamMemberId, participantInput.reviewerId || user.id, participantInput.roleProfileVersionId, roleResult.rows[0].scorecard_version_id],
       )
       const participantId = participantResult.rows[0].id
       const calendarUid = `hr-review-${cycle.id}-${participantInput.teamMemberId}@xeroflow.agency`
@@ -105,8 +129,12 @@ export default defineEventHandler(async (event) => {
           `${input.name} — ${memberResult.rows[0].name}`,
           input.purpose,
           JSON.stringify(participantInput.questions),
-          JSON.stringify({ publishable: true, issueCount: 0, ownerConfirmed: true }),
-          JSON.stringify([...new Set(participantInput.questions.flatMap(question => question.sourceRefs))]),
+          JSON.stringify({
+            publishable: true,
+            issueCount: 0,
+            ownerConfirmed: true,
+          }),
+          JSON.stringify([...new Set(participantInput.questions.flatMap((question) => question.sourceRefs))]),
           user.id,
         ],
       )
@@ -115,14 +143,7 @@ export default defineEventHandler(async (event) => {
           (participant_id, questionnaire_version_id, opens_at, due_at, status, calendar_uid)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id`,
-        [
-          participantId,
-          questionnaireResult.rows[0].id,
-          input.opensAt,
-          input.dueAt,
-          cycleStatus === 'open' ? 'open' : 'scheduled',
-          calendarUid,
-        ],
+        [participantId, questionnaireResult.rows[0].id, input.opensAt, input.dueAt, cycleStatus === 'open' ? 'open' : 'scheduled', calendarUid],
       )
 
       assignments.push({
@@ -135,108 +156,128 @@ export default defineEventHandler(async (event) => {
         calendarUid,
       })
 
-      await recordHrAuditEvent({
-        actorId: user.id,
-        action: 'questionnaire.commissioned',
-        targetType: 'questionnaire_assignment',
-        targetId: assignmentResult.rows[0].id,
-        cycleId: cycle.id,
-        metadata: { questionCount: participantInput.questions.length, roleProfileVersionId: participantInput.roleProfileVersionId },
-      }, db)
+      await recordHrAuditEvent(
+        {
+          actorId: user.id,
+          action: 'questionnaire.commissioned',
+          targetType: 'questionnaire_assignment',
+          targetId: assignmentResult.rows[0].id,
+          cycleId: cycle.id,
+          metadata: {
+            questionCount: participantInput.questions.length,
+            roleProfileVersionId: participantInput.roleProfileVersionId,
+          },
+        },
+        db,
+      )
     }
 
-    await recordHrAuditEvent({
-      actorId: user.id,
-      action: 'review_cycle.created',
-      targetType: 'review_cycle',
-      targetId: cycle.id,
-      cycleId: cycle.id,
-      metadata: { participantCount: assignments.length, dueAt: input.dueAt },
-    }, db)
+    await recordHrAuditEvent(
+      {
+        actorId: user.id,
+        action: 'review_cycle.created',
+        targetType: 'review_cycle',
+        targetId: cycle.id,
+        cycleId: cycle.id,
+        metadata: { participantCount: assignments.length, dueAt: input.dueAt },
+      },
+      db,
+    )
     return { cycle, assignments }
   })
 
   const appUrl = getAppUrl(event)
   const dueDate = new Date(input.dueAt)
   const dueLabel = new Intl.DateTimeFormat('en-AU', {
-    dateStyle: 'full', timeStyle: 'short', timeZone: input.timezone,
+    dateStyle: 'full',
+    timeStyle: 'short',
+    timeZone: input.timezone,
   }).format(dueDate)
   const inviteStart = new Date(dueDate.getTime() - 15 * 60 * 1000).toISOString()
 
-  const deliveryResults = await Promise.allSettled(result.assignments.map(async (assignment) => {
-    const assignmentUrl = `${appUrl}/agency/hr`
-    const calendarInvite = buildHrCalendarInvite({
-      uid: assignment.calendarUid,
-      method: 'REQUEST',
-      startsAt: inviteStart,
-      endsAt: input.dueAt,
-      timezone: input.timezone,
-      summary: `${input.name} due`,
-      description: 'Complete your private business review. The calendar entry contains no questionnaire answers.',
-      url: assignmentUrl,
-      sequence: 0,
-    })
+  const deliveryResults = await Promise.allSettled(
+    result.assignments.map(async (assignment) => {
+      const assignmentUrl = `${appUrl}/agency/hr`
+      const calendarInvite = buildHrCalendarInvite({
+        uid: assignment.calendarUid,
+        method: 'REQUEST',
+        startsAt: inviteStart,
+        endsAt: input.dueAt,
+        timezone: input.timezone,
+        summary: `${input.name} due`,
+        description: 'Complete your private business review. The calendar entry contains no questionnaire answers.',
+        url: assignmentUrl,
+        sequence: 0,
+      })
 
-    await createNotification({
-      userId: assignment.teamMemberId,
-      actorId: user.id,
-      type: 'hr_review_assigned',
-      title: 'Business review assigned',
-      message: `${input.name} is required by ${dueLabel}.`,
-      link: '/agency/hr',
-      reason: 'direct',
-      metadata: { assignmentId: assignment.id, cycleId: result.cycle.id, dueAt: input.dueAt },
-    })
-    await queryOne(
-      `INSERT INTO hr_notification_deliveries
+      await createNotification({
+        userId: assignment.teamMemberId,
+        actorId: user.id,
+        type: 'hr_review_assigned',
+        title: 'Business review assigned',
+        message: `${input.name} is required by ${dueLabel}.`,
+        link: '/agency/hr',
+        reason: 'direct',
+        metadata: {
+          assignmentId: assignment.id,
+          cycleId: result.cycle.id,
+          dueAt: input.dueAt,
+        },
+      })
+      await queryOne(
+        `INSERT INTO hr_notification_deliveries
         (assignment_id, recipient_id, channel, kind, status, sent_at)
        VALUES ($1, $2, 'in_app', 'assignment', 'sent', NOW()) RETURNING id`,
-      [assignment.id, assignment.teamMemberId],
-    )
-    let emailSent = false
-    try {
-      emailSent = await sendHrReviewAssignmentEmail({
-        to: assignment.memberEmail,
-        name: assignment.memberName,
-        cycleName: input.name,
-        roleTitle: assignment.roleTitle,
-        dueLabel,
-        assignmentUrl,
-        calendarInvite,
-      }, event)
-    } catch (error: any) {
-      const errorCode = String(error?.message || 'email_delivery_failed').slice(0, 200)
-      await queryOne(
-        `INSERT INTO hr_notification_deliveries
+        [assignment.id, assignment.teamMemberId],
+      )
+      let emailSent = false
+      try {
+        emailSent = await sendHrReviewAssignmentEmail(
+          {
+            to: assignment.memberEmail,
+            name: assignment.memberName,
+            cycleName: input.name,
+            roleTitle: assignment.roleTitle,
+            dueLabel,
+            assignmentUrl,
+            calendarInvite,
+          },
+          event,
+        )
+      } catch (error: any) {
+        const errorCode = String(error?.message || 'email_delivery_failed').slice(0, 200)
+        await queryOne(
+          `INSERT INTO hr_notification_deliveries
           (assignment_id, recipient_id, channel, kind, status, error_code)
          VALUES ($1, $2, 'email', 'assignment', 'failed', $3) RETURNING id`,
-        [assignment.id, assignment.teamMemberId, errorCode],
-      )
-      await queryOne(
-        `INSERT INTO hr_notification_deliveries
+          [assignment.id, assignment.teamMemberId, errorCode],
+        )
+        await queryOne(
+          `INSERT INTO hr_notification_deliveries
           (assignment_id, recipient_id, channel, kind, status, error_code)
          VALUES ($1, $2, 'calendar', 'assignment', 'failed', $3) RETURNING id`,
-        [assignment.id, assignment.teamMemberId, errorCode],
-      )
-      throw error
-    }
-    await queryOne(
-      `INSERT INTO hr_notification_deliveries
+          [assignment.id, assignment.teamMemberId, errorCode],
+        )
+        throw error
+      }
+      await queryOne(
+        `INSERT INTO hr_notification_deliveries
         (assignment_id, recipient_id, channel, kind, status, sent_at)
        VALUES ($1, $2, 'email', 'assignment', $3,
                CASE WHEN $3 = 'sent' THEN NOW() ELSE NULL END) RETURNING id`,
-      [assignment.id, assignment.teamMemberId, emailSent ? 'sent' : 'pending'],
-    )
-    await queryOne(
-      `INSERT INTO hr_notification_deliveries
+        [assignment.id, assignment.teamMemberId, emailSent ? 'sent' : 'pending'],
+      )
+      await queryOne(
+        `INSERT INTO hr_notification_deliveries
         (assignment_id, recipient_id, channel, kind, status, sent_at)
        VALUES ($1, $2, 'calendar', 'assignment', $3,
                CASE WHEN $3 = 'sent' THEN NOW() ELSE NULL END) RETURNING id`,
-      [assignment.id, assignment.teamMemberId, emailSent ? 'sent' : 'pending'],
-    )
-  }))
+        [assignment.id, assignment.teamMemberId, emailSent ? 'sent' : 'pending'],
+      )
+    }),
+  )
 
-  const deliveryFailures = deliveryResults.filter(result => result.status === 'rejected').length
+  const deliveryFailures = deliveryResults.filter((result) => result.status === 'rejected').length
 
   await recordHrAuditEvent({
     actorId: user.id,
@@ -244,8 +285,17 @@ export default defineEventHandler(async (event) => {
     targetType: 'review_cycle',
     targetId: result.cycle.id,
     cycleId: result.cycle.id,
-    metadata: { participantCount: result.assignments.length, dueAt: input.dueAt, deliveryFailures },
+    metadata: {
+      participantCount: result.assignments.length,
+      dueAt: input.dueAt,
+      deliveryFailures,
+    },
   })
 
-  return { ok: true, cycle: result.cycle, assignmentCount: result.assignments.length, deliveryFailures }
+  return {
+    ok: true,
+    cycle: result.cycle,
+    assignmentCount: result.assignments.length,
+    deliveryFailures,
+  }
 })

@@ -8,7 +8,11 @@ export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store')
   const user = await requireAuth(event)
   const participantId = getRouterParam(event, 'id')
-  if (!participantId || !/^[0-9a-f-]{36}$/i.test(participantId)) throw createError({ statusCode: 400, statusMessage: 'Invalid participant' })
+  if (!participantId || !/^[0-9a-f-]{36}$/i.test(participantId))
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid participant',
+    })
 
   const row = await queryOne<any>(
     `SELECT participant.id, participant.team_member_id, participant.reviewer_id,
@@ -29,11 +33,8 @@ export default defineEventHandler(async (event) => {
      JOIN hr_review_cycles cycle ON cycle.id = participant.cycle_id
      LEFT JOIN hr_role_profile_versions role_version ON role_version.id = participant.role_profile_version_id
      LEFT JOIN hr_role_profiles role ON role.id = role_version.role_profile_id
-     LEFT JOIN LATERAL (
-       SELECT * FROM hr_role_scorecard_versions candidate
-       WHERE candidate.role_profile_version_id = participant.role_profile_version_id
-       ORDER BY candidate.version DESC LIMIT 1
-     ) scorecard ON true
+     LEFT JOIN hr_role_scorecard_versions scorecard
+       ON scorecard.id = participant.scorecard_version_id
      LEFT JOIN LATERAL (
        SELECT * FROM hr_scorecard_results candidate
        WHERE candidate.participant_id = participant.id
@@ -47,23 +48,43 @@ export default defineEventHandler(async (event) => {
      WHERE participant.id = $1`,
     [participantId, user.id, canManageHr(user)],
   )
-  if (!row) throw createError({ statusCode: 404, statusMessage: 'Review participant not found' })
-  if (!canAccessHrParticipant(user, {
-    participantUserId: row.team_member_id,
-    reviewerIds: row.reviewer_id ? [row.reviewer_id] : [],
-  }, 'read')) throw createError({ statusCode: 403, statusMessage: 'You cannot view this scorecard' })
+  if (!row)
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Review participant not found',
+    })
+  if (
+    !canAccessHrParticipant(
+      user,
+      {
+        participantUserId: row.team_member_id,
+        reviewerIds: row.reviewer_id ? [row.reviewer_id] : [],
+      },
+      'read',
+    )
+  )
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'You cannot view this scorecard',
+    })
 
-  const isParticipantView = user.id === row.team_member_id
-    && user.id !== row.reviewer_id
-    && !canManageHr(user)
+  const isParticipantView = user.id === row.team_member_id && user.id !== row.reviewer_id && !canManageHr(user)
   const resultIsVisible = Boolean(row.result_id && (!isParticipantView || row.published_at))
-  const canScore = canAccessHrParticipant(user, {
-    participantUserId: row.team_member_id,
-    reviewerIds: row.reviewer_id ? [row.reviewer_id] : [],
-  }, 'score')
-  const calculation = row.calculation && isParticipantView
-    ? { calculation: row.calculation.calculation, ratings: row.calculation.ratings }
-    : row.calculation
+  const canScore = canAccessHrParticipant(
+    user,
+    {
+      participantUserId: row.team_member_id,
+      reviewerIds: row.reviewer_id ? [row.reviewer_id] : [],
+    },
+    'score',
+  )
+  const calculation =
+    row.calculation && isParticipantView
+      ? {
+          calculation: row.calculation.calculation,
+          ratings: row.calculation.ratings,
+        }
+      : row.calculation
 
   await recordHrAuditEvent({
     actorId: user.id,
@@ -93,15 +114,17 @@ export default defineEventHandler(async (event) => {
       criteria: row.criteria || [],
       evidenceThreshold: Number(row.evidence_threshold || 70),
     },
-    result: resultIsVisible ? {
-      id: row.result_id,
-      roleScore: row.role_score === null ? null : Number(row.role_score),
-      operationalEnablement: Number(row.operational_enablement),
-      evidenceCoverage: Number(row.evidence_coverage),
-      confidence: row.confidence,
-      publishable: row.publishable,
-      calculation,
-      publishedAt: row.published_at,
-    } : null,
+    result: resultIsVisible
+      ? {
+          id: row.result_id,
+          roleScore: row.role_score === null ? null : Number(row.role_score),
+          operationalEnablement: Number(row.operational_enablement),
+          evidenceCoverage: Number(row.evidence_coverage),
+          confidence: row.confidence,
+          publishable: row.publishable,
+          calculation,
+          publishedAt: row.published_at,
+        }
+      : null,
   }
 })
