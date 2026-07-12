@@ -2,14 +2,35 @@
 definePageMeta({ title: 'Monday Evidence Preview', middleware: ['auth'] })
 
 type Evidence = { mondayBoardId: string; mondayItemId: string; taskId: string | null; title: string; assigneeId: string | null; dueDate: string | null; taskStatus: string | null; isBlocked: boolean; sourceCreatedAt: string | null }
+type Candidate = { candidateId: string; boardId: string; kind: 'process_profile' | 'question_bank'; title: string; content: string; rationale: string; limitations: string[] }
 const toast = useToast()
 const loading = ref(true)
+const savingCandidate = ref<string | null>(null)
 const result = ref<{ active: boolean; reason?: string; evidence: Evidence[]; limitations: string[] } | null>(null)
+const suggestions = ref<{ active: boolean; candidates: Candidate[]; limitations: string[] } | null>(null)
 onMounted(async () => {
-  try { result.value = await $fetch('/api/agency/hr/monday/evidence') as typeof result.value }
+  try {
+    const [evidence, candidates] = await Promise.all([
+      $fetch('/api/agency/hr/monday/evidence'),
+      $fetch('/api/agency/hr/monday/recommendations'),
+    ])
+    result.value = evidence as typeof result.value
+    suggestions.value = candidates as typeof suggestions.value
+  }
   catch (error: any) { toast.add({ title: 'Evidence preview unavailable', description: error?.data?.statusMessage, color: 'error' }) }
   finally { loading.value = false }
 })
+async function saveCandidate(candidate: Candidate) {
+  savingCandidate.value = candidate.candidateId
+  try {
+    const response = await $fetch<{ entry: { id: string; created: boolean } }>('/api/agency/hr/monday/recommendations', { method: 'POST', body: { candidateId: candidate.candidateId } })
+    toast.add({ title: response.entry.created ? 'Saved as draft HR knowledge' : 'Draft already exists', description: 'Review and approve it separately in the private HR knowledge base.', color: 'success' })
+  } catch (error: any) {
+    toast.add({ title: 'Draft could not be saved', description: error?.data?.statusMessage, color: 'error' })
+  } finally {
+    savingCandidate.value = null
+  }
+}
 </script>
 
 <template>
@@ -21,6 +42,7 @@ onMounted(async () => {
       <UAlert v-else-if="!result?.active" color="warning" variant="soft" icon="i-lucide-shield-alert" title="No approved scope" :description="result?.reason ?? 'An owner-approved scope is required.'" />
       <template v-else>
         <section class="rounded-xl border border-default bg-default p-5"><div class="flex flex-wrap items-center justify-between gap-3"><div><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Bounded result</p><h2 class="mt-1 text-xl font-semibold text-highlighted">{{ result.evidence.length }} records</h2></div><UBadge color="success" variant="subtle" label="Read-only" /></div><div class="mt-4 grid gap-3 sm:grid-cols-3"><div v-for="limitation in result.limitations" :key="limitation" class="rounded-lg bg-elevated/40 p-3 text-xs leading-5 text-muted">{{ limitation }}</div></div></section>
+        <section class="rounded-xl border border-default bg-default"><div class="border-b border-default bg-elevated/30 px-5 py-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="font-mono text-xs uppercase tracking-[0.16em] text-muted">Owner review required</p><h2 class="mt-1 font-semibold text-highlighted">Draft process and questionnaire suggestions</h2><p class="mt-1 text-sm text-muted">Generated from bounded task metadata. Nothing is approved, assigned or treated as an employee conclusion automatically.</p></div><UBadge color="warning" variant="subtle" :label="`${suggestions?.candidates.length || 0} drafts`" /></div></div><div v-if="suggestions?.candidates.length" class="grid gap-4 p-5 lg:grid-cols-2"><article v-for="candidate in suggestions.candidates" :key="candidate.candidateId" class="flex flex-col rounded-xl border border-default p-4"><div class="flex items-start justify-between gap-3"><div><UBadge color="neutral" variant="subtle" :label="candidate.kind === 'process_profile' ? 'Process profile' : 'Question bank'" /><h3 class="mt-2 font-medium text-highlighted">{{ candidate.title }}</h3></div></div><p class="mt-3 text-sm leading-6 text-muted">{{ candidate.rationale }}</p><div class="mt-3 rounded-lg bg-elevated/30 p-3 text-xs leading-5 text-muted break-words">{{ candidate.content }}</div><ul class="mt-3 space-y-1 text-xs text-dimmed"><li v-for="limitation in candidate.limitations" :key="limitation">• {{ limitation }}</li></ul><div class="mt-auto flex justify-end pt-4"><UButton size="sm" icon="i-lucide-file-plus-2" label="Save as draft knowledge" :loading="savingCandidate === candidate.candidateId" @click="saveCandidate(candidate)" /></div></article></div><p v-else class="px-5 py-8 text-sm text-muted">No suggestions are available from the current approved scope.</p></section>
         <section class="overflow-hidden rounded-xl border border-default bg-default"><div class="border-b border-default bg-elevated/30 px-5 py-4"><h2 class="font-semibold text-highlighted">Synced task metadata</h2></div><div v-if="result.evidence.length" class="divide-y divide-default"><div v-for="item in result.evidence" :key="item.mondayItemId" class="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_180px_140px]"><div class="min-w-0"><p class="truncate font-medium text-highlighted">{{ item.title }}</p><p class="mt-1 text-xs text-muted">Monday item {{ item.mondayItemId }} · board {{ item.mondayBoardId }}</p></div><p class="text-sm text-muted">{{ item.taskStatus ?? 'Status not allowlisted' }}</p><p class="text-sm" :class="item.isBlocked ? 'text-error' : 'text-muted'">{{ item.isBlocked ? 'Blocked' : item.dueDate ?? 'No due date' }}</p></div></div><p v-else class="px-5 py-8 text-sm text-muted">No records matched the approved scope.</p></section>
       </template>
     </section>

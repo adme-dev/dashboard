@@ -1657,7 +1657,7 @@ Conventions:
 - [x] Import only allowlisted boards/fields and bounded dates.
 - [x] Preserve provenance, assignment changes, status history where available, and limitations.
 - [ ] Store evidence references/minimal extracts, not an unrestricted mirror.
-- [ ] Produce owner-reviewable process-profile updates and questionnaire recommendations rather than automatic employee conclusions.
+- [x] Produce owner-reviewable process-profile updates and questionnaire recommendations rather than automatic employee conclusions.
 
 **Verify:** connector fixture tests, scope-escape tests, and audit checks.
 **Dependencies:** 6.1.
