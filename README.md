@@ -159,11 +159,13 @@ The project is configured for Cloudflare Pages via `wrangler.toml`.
 2. Set build command to `pnpm build` and output directory to `dist`.
 3. Add environment variables in **Settings > Variables and Secrets** for both preview and production.
 4. Cloudflare bindings (KV, Queues, AI, Vectorize, Durable Objects) are configured in `wrangler.toml`.
-5. To deploy from the CLI:
+5. To deploy from the CLI, use the guarded repository command:
 
    ```bash
-   npx wrangler pages deploy dist
+   pnpm deploy:production
    ```
+
+   Do not run a raw `wrangler pages deploy` command from this repository. The guarded command verifies that both the repository configuration and deployment target are exactly `agency-dashboard`; it refuses any other Pages project. See [the Pages cross-deployment incident](docs/incidents/2026-07-13-dealer-network-pages-cross-deployment.md).
 
 ### Cloudflare Bindings Setup
 

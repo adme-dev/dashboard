@@ -197,6 +197,8 @@ pnpm deploy
 
 The deploy scripts run `pnpm build` then `wrangler pages deploy` from the `dist/` directory to the `agency-dashboard` project. Cloudflare Pages uses `--branch` (not `--env`) to target environments.
 
+**Deployment target safety:** Never run `wrangler pages deploy` directly from this repository and never supply a different `--project-name`. Always use the `pnpm deploy:*` commands, which execute `scripts/deploy-pages.mjs` and fail closed unless both `wrangler.toml` and the immutable target equal `agency-dashboard`. Before any manual or CI deployment, `pnpm deploy:check` must pass. This guard exists because three XeroFlow builds were accidentally deployed to the separate dealer-network Pages project on 2026-07-13; DNS and domain bindings were not at fault. See `docs/incidents/2026-07-13-dealer-network-pages-cross-deployment.md`.
+
 The build's heap limit is set **inside** the `build` script (`NODE_OPTIONS='--max-old-space-size=16384' nuxt build`), so prefixing your own `NODE_OPTIONS` on the deploy command is ignored — change the value in `package.json` if you need to adjust it. The Nitro server bundle needs ~8.2 GB, so anything ≤ 8 GB OOMs.
 
 ## Known Issues
