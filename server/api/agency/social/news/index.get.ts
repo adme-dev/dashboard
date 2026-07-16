@@ -1,9 +1,10 @@
 /** GET /api/agency/social/news — selectable MCP/news inbox. */
-import { requirePermission } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryRows } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'MEDIA_BUYING')
+  await requireRole(event, PERMISSIONS.CREATIVE)
   const q = getQuery(event)
   const status = typeof q.status === 'string' && ['unread', 'selected', 'dismissed', 'used'].includes(q.status) ? q.status : null
   const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200)

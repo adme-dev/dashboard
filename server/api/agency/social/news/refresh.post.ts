@@ -1,11 +1,12 @@
 /** POST /api/agency/social/news/refresh — pull the configured MCP source into the inbox. */
-import { requirePermission } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryRows, execute } from '~~/server/utils/db'
 import { normalizeMcpNewsItem } from '~~/server/utils/socialNews'
 import { fetchMcpNewsSource, sourceFromRow } from '~~/server/utils/socialNewsSources'
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'MEDIA_BUYING')
+  await requireRole(event, PERMISSIONS.CREATIVE)
   const rows = await queryRows('SELECT source_key, display_name, endpoint_url, enabled, settings FROM social_news_sources WHERE enabled = TRUE ORDER BY display_name')
   let accepted = 0
   for (const row of rows) {

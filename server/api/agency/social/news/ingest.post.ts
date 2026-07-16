@@ -1,10 +1,11 @@
 /** POST /api/agency/social/news/ingest — upsert normalized MCP items into the inbox. */
-import { requirePermission } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { execute } from '~~/server/utils/db'
 import { normalizeMcpNewsItem } from '~~/server/utils/socialNews'
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'MEDIA_BUYING')
+  await requireRole(event, PERMISSIONS.ADMIN)
   const body = await readBody<{ items?: Record<string, unknown>[] }>(event)
   const inputs = Array.isArray(body?.items) ? body.items : []
   if (inputs.length > 200) throw createError({ statusCode: 400, statusMessage: 'Maximum 200 news items per ingest' })
