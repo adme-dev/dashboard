@@ -21,6 +21,7 @@ describe('social publishing navigation order', () => {
       'accounts',
       'calendar',
       'compose',
+      'feed',
       'approvals',
       'planner',
       'queue',
@@ -45,7 +46,7 @@ describe('social publishing navigation order', () => {
       'Measure'
     ])
     expect(socialPublishingRouteGroups().map(group => group.items.map(item => item.key))).toEqual([
-      ['compose'],
+      ['compose', 'feed'],
       ['calendar', 'planner', 'queue'],
       ['approvals'],
       ['accounts'],
@@ -74,6 +75,7 @@ describe('social publishing navigation order', () => {
       '/agency/social/publishing/accounts',
       '/agency/social/publishing/calendar',
       '/agency/social/publishing/compose',
+      '/agency/social/publishing/feed',
       '/agency/social/publishing/approvals',
       '/agency/social/publishing/planner',
       '/agency/social/publishing/queue',
@@ -92,8 +94,8 @@ describe('social publishing navigation order', () => {
 
   it('reports the active workflow step with one-based position context', () => {
     expect(socialPublishingStepForPath('/agency/social/publishing/planner')).toMatchObject({
-      position: 5,
-      total: 8,
+      position: 6,
+      total: 9,
       item: { key: 'planner' }
     })
     expect(socialPublishingStepForPath('/agency/social/listening')).toBeNull()

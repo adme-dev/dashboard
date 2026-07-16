@@ -5,6 +5,7 @@ export type SocialPublishingRouteKey
   = | 'accounts'
     | 'calendar'
     | 'compose'
+    | 'feed'
     | 'approvals'
     | 'planner'
     | 'queue'
@@ -105,6 +106,14 @@ export const SOCIAL_PUBLISHING_ROUTE_ORDER: SocialPublishingRouteItem[] = [
     to: '/agency/social/publishing/compose',
     objective: 'Create one base post, customize it per network, and choose publish timing.',
     badgeKey: 'drafts'
+  },
+  {
+    key: 'feed',
+    group: 'create',
+    label: 'Auto Feed',
+    icon: 'i-lucide-car',
+    to: '/agency/social/publishing/feed',
+    objective: 'Browse vehicle-feed items from linked dealer clients and send them to Compose.'
   },
   {
     key: 'approvals',

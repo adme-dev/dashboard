@@ -81,6 +81,19 @@ onMounted(async () => {
       }
     } catch { /* non-fatal — composer still opens */ }
   }
+
+  // Deep-link from Auto Feed: ?prefill=<base64 JSON {clientId, caption, imageUrl, link}>
+  const prefillRaw = route.query.prefill as string | undefined
+  if (prefillRaw) {
+    try {
+      const prefill = JSON.parse(decodeURIComponent(escape(atob(prefillRaw))))
+      if (prefill.clientId) clientId.value = prefill.clientId
+      if (prefill.caption && !state.value.content) state.value.content = prefill.caption
+      if (prefill.imageUrl && !state.value.mediaUrls.includes(prefill.imageUrl)) {
+        state.value.mediaUrls.push(prefill.imageUrl)
+      }
+    } catch { /* non-fatal — composer still opens */ }
+  }
 })
 
 function guard(): string | null {
