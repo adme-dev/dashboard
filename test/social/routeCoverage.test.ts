@@ -37,6 +37,7 @@ const agencySocialRouteNavs = new Map([
   ['app/pages/agency/social/publishing/approvals.vue', 'SocialPublishingShell'],
   ['app/pages/agency/social/publishing/calendar.vue', 'SocialPublishingCalendarView'],
   ['app/pages/agency/social/publishing/compose.vue', 'SocialPublishingShell'],
+  ['app/pages/agency/social/publishing/feed.vue', 'SocialPublishingShell'],
   ['app/pages/agency/social/publishing/index.vue', '/agency/social/publishing/calendar'],
   ['app/pages/agency/social/publishing/planner.vue', 'SocialPublishingShell'],
   ['app/pages/agency/social/publishing/queue.vue', 'SocialPublishingShell'],
