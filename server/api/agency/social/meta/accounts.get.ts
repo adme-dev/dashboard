@@ -1,12 +1,14 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requirePermission } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 
 /**
  * GET /api/agency/social/meta/accounts
- * Lists connected Meta ad accounts from social_connections
+ * Lists connected Meta ad accounts from social_connections.
+ * MEDIA_BUYING-gated — connection details (who connected what, token
+ * expiries, client mappings) aren't for every authenticated user.
  */
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  await requirePermission(event, 'MEDIA_BUYING')
 
   const accounts = await queryRows(
     `SELECT
