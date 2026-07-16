@@ -61,8 +61,12 @@ export default defineEventHandler(async (event) => {
     // Use the canonical app URL so magic links always land on the admin host.
     const appUrl = getAppUrl(event).replace(/\/$/, '')
 
-    // Build magic link URL
-    const magicLinkUrl = `${appUrl}/auth/magic-link?token=${token}`
+    // Build magic link URL — the SERVER-SIDE callback, not the client page.
+    // The client page (/auth/magic-link) verifies via XHR in onMounted, so
+    // in mail-app webviews or with a stale JS chunk it rendered nothing but
+    // a blank dark background. The callback sets cookies on a 302 redirect
+    // and works with zero JavaScript.
+    const magicLinkUrl = `${appUrl}/api/auth/magic-link/callback?token=${token}`
 
     // Send email — let errors propagate so user knows something went wrong
     await sendMagicLinkEmail({
