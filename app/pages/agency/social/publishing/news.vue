@@ -7,6 +7,8 @@ interface NewsItem { id: string; source: string; source_url: string | null; titl
 interface ClientProfile { clientId?: string; clientName?: string; sourceBriefId: string | null; industry: string; targetAudience: string; contentPillars: string[]; includeKeywords: string[]; excludeKeywords: string[]; makes: string[]; brandVoice: string; defaultTone: string; aiInstructions: string; preferredPlatforms: string[]; timezone: string; defaultWorkflow: 'draft' | 'schedule' }
 interface GovernanceContext { activePackage: null | { assignmentId: string; packageName: string; packageVersionId: string; version: number; startsOn: string; endsOn: string | null; projectId: string | null; rateCardItemId: string | null; commercialScope: { includedPostVolumes?: Record<string, number> }; usage: { usedPosts: number; publishedPosts: number }; budget: null | { allocationId: string; state: string } }; evidence: { pendingCount: number; approvedCount: number; approved: Array<{ id: string; evidence_type: string; source_system: string; title: string; summary: string | null }> } }
 interface PackageOptions { packages: Array<{ id: string; name: string; versionId: string; version: number }>; projects: Array<{ id: string; name: string; status: string }>; allocations: Array<{ id: string; projectId: string; campaignType: string | null; platform: string | null; amount: number; currency: string; period: string; month: string | null; state: string }>; rateCards: Array<{ id: string; serviceName: string; price: number; priceUnit: string }> }
+interface EvidenceReviewItem { id: string; evidenceType: string; sourceSystem: string; sourceId: string | null; sourceUrl: string | null; title: string; content: string; summary: string | null; occurredAt: string | null; reviewStatus: string; projectId: string | null; projectName: string | null }
+interface MondayEvidencePreviewItem { sourceId: string; evidenceType: 'plan' | 'discussion'; title: string; content: string; author: string | null; sourceUrl: string | null; occurredAt: string | null; projectId: string; projectName: string; importedStatus: string | null }
 const apiFetch = $fetch as <T = unknown>(url: string, options?: Record<string, unknown>) => Promise<T>
 const items = ref<NewsItem[]>([])
 const status = ref('unread')
@@ -45,6 +47,11 @@ const packageForm = ref({ packageVersionId: '', projectId: '', rateCardItemId: '
 const newPackage = ref({ name: '', includedVolumes: 'facebook: 8, instagram: 8, linkedin: 4', approvalSlaHours: 24, overagePolicy: 'warn' })
 const evidenceSaving = ref(false)
 const evidenceForm = ref({ evidenceType: 'decision', title: '', content: '' })
+const pendingEvidence = ref<EvidenceReviewItem[]>([])
+const mondayEvidencePreview = ref<MondayEvidencePreviewItem[]>([])
+const mondayEvidenceSelected = ref<string[]>([])
+const evidenceTransitionLoading = ref(false)
+const evidenceReviewingId = ref('')
 let clientLoadSequence = 0
 
 function toList(value: string) { return value.split(',').map(item => item.trim()).filter(Boolean) }
@@ -55,7 +62,7 @@ function parseIncludedVolumes(value: string) {
 async function openClientProfile() {
   showClientProfile.value = true
   if (isAdmin.value) {
-    try { await reloadGovernance() }
+    try { await Promise.all([reloadGovernance(), loadPendingEvidence()]) }
     catch (e: any) { toast.add({ title: 'Could not load package settings', description: e?.data?.statusMessage, color: 'error' }) }
   }
 }
@@ -128,6 +135,9 @@ async function loadClientProfile(id: string) {
 watch(clientId, async (id) => {
   if (!id) return
   const sequence = ++clientLoadSequence
+  pendingEvidence.value = []
+  mondayEvidencePreview.value = []
+  mondayEvidenceSelected.value = []
   try {
     const [loadedAccounts, , loadedGovernance, loadedPackageOptions] = await Promise.all([
       apiFetch<any[]>(`/api/agency/social/publishing/accounts?clientId=${id}`),
@@ -141,6 +151,7 @@ watch(clientId, async (id) => {
     hydratePackageForm(loadedGovernance)
     if (loadedPackageOptions) packageOptions.value = loadedPackageOptions
     accountIds.value = accounts.value.filter(a => a.is_active).map(a => a.id)
+    if (showClientProfile.value && isAdmin.value) await loadPendingEvidence(id)
     await refresh()
   } catch (e: any) {
     if (sequence !== clientLoadSequence || id !== clientId.value) return
@@ -239,6 +250,66 @@ async function saveCanonicalEvidence() {
   } catch (e: any) { toast.add({ title: 'Could not save client guidance', description: e?.data?.statusMessage, color: 'error' }) }
   finally { evidenceSaving.value = false }
 }
+async function loadPendingEvidence(requestedClientId = clientId.value) {
+  if (!requestedClientId || !isAdmin.value) return
+  const response = await apiFetch<{ data: EvidenceReviewItem[] }>(`/api/agency/social/news/profiles/${requestedClientId}/evidence?reviewStatus=pending&pageSize=100`)
+  if (requestedClientId !== clientId.value) return
+  pendingEvidence.value = response.data
+}
+async function loadMondayEvidencePreview(requestedClientId: string, announce: boolean) {
+  const response = await apiFetch<{ data: MondayEvidencePreviewItem[]; totalItems: number }>(`/api/agency/social/news/profiles/${requestedClientId}/evidence/imports/monday/preview?limit=100`)
+  if (requestedClientId !== clientId.value) return
+  mondayEvidencePreview.value = response.data
+  mondayEvidenceSelected.value = response.data.filter(item => !item.importedStatus).map(item => item.sourceId)
+  if (announce) {
+    toast.add({
+      title: 'Monday evidence preview ready',
+      description: response.totalItems ? `${response.totalItems} mapped plan or discussion item(s) found.` : 'No mapped Monday evidence was found for this client.',
+      color: response.totalItems ? 'success' : 'neutral',
+    })
+  }
+}
+async function previewMondayEvidence() {
+  const requestedClientId = clientId.value
+  if (!requestedClientId) return
+  evidenceTransitionLoading.value = true
+  try {
+    await loadMondayEvidencePreview(requestedClientId, true)
+  } catch (e: any) { toast.add({ title: 'Could not preview Monday evidence', description: e?.data?.statusMessage, color: 'error' }) }
+  finally { evidenceTransitionLoading.value = false }
+}
+async function importMondayEvidence() {
+  const requestedClientId = clientId.value
+  const sourceIds = [...mondayEvidenceSelected.value]
+  if (!requestedClientId || !sourceIds.length) return
+  evidenceTransitionLoading.value = true
+  try {
+    const result = await apiFetch<{ imported: number; skipped: number }>(`/api/agency/social/news/profiles/${requestedClientId}/evidence/imports/monday`, {
+      method: 'POST', body: { sourceIds },
+    } as any)
+    if (requestedClientId !== clientId.value) return
+    await Promise.all([reloadGovernance(), loadPendingEvidence(requestedClientId), loadMondayEvidencePreview(requestedClientId, false)])
+    toast.add({ title: 'Monday evidence imported for review', description: `${result.imported} item(s) are pending. ${result.skipped} approved or unavailable item(s) were preserved.`, color: 'success' })
+  } catch (e: any) { toast.add({ title: 'Could not import Monday evidence', description: e?.data?.statusMessage, color: 'error' }) }
+  finally { evidenceTransitionLoading.value = false }
+}
+async function reviewEvidence(evidenceId: string, reviewStatus: 'approved' | 'rejected') {
+  const requestedClientId = clientId.value
+  if (!requestedClientId || evidenceReviewingId.value) return
+  evidenceReviewingId.value = evidenceId
+  try {
+    const body = reviewStatus === 'approved' ? { reviewStatus: 'approved' } : { reviewStatus: 'rejected' }
+    await apiFetch(`/api/agency/social/news/profiles/${requestedClientId}/evidence/${evidenceId}`, { method: 'PATCH', body } as any)
+    if (requestedClientId !== clientId.value) return
+    await Promise.all([reloadGovernance(), loadPendingEvidence(requestedClientId)])
+    toast.add({
+      title: reviewStatus === 'approved' ? 'Evidence approved for AI' : 'Evidence rejected',
+      description: reviewStatus === 'approved' ? 'This XeroFlow-reviewed item can now inform client recommendations.' : 'This item will not be used as client guidance.',
+      color: reviewStatus === 'approved' ? 'success' : 'neutral',
+    })
+  } catch (e: any) { toast.add({ title: 'Could not review evidence', description: e?.data?.statusMessage, color: 'error' }) }
+  finally { evidenceReviewingId.value = '' }
+}
 async function createDrafts() {
   if (draftSaving.value) return
   draftSaving.value = true
@@ -326,6 +397,56 @@ async function createDrafts() {
           </div>
           <UButton label="Create package version" color="neutral" variant="subtle" :loading="packageSaving" :disabled="!newPackage.name.trim()" @click="createPackageFromProfile" />
         </div>
+        <USeparator />
+        <section class="space-y-3" aria-labelledby="pending-evidence-heading">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div id="pending-evidence-heading" class="font-medium">Pending evidence review</div>
+              <p class="text-sm text-muted">Preview mapped Monday work, import only what matters, then approve it before the client AI can use it.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <UButton label="Preview Monday evidence" icon="i-lucide-scan-search" color="neutral" variant="subtle" :loading="evidenceTransitionLoading" @click="previewMondayEvidence" />
+              <UButton v-if="mondayEvidencePreview.length" :label="`Import ${mondayEvidenceSelected.length} for review`" icon="i-lucide-import" :loading="evidenceTransitionLoading" :disabled="!mondayEvidenceSelected.length" @click="importMondayEvidence" />
+            </div>
+          </div>
+          <div v-if="mondayEvidencePreview.length" class="max-h-72 overflow-y-auto rounded-md border border-default divide-y divide-default" aria-label="Monday evidence preview">
+            <label v-for="item in mondayEvidencePreview" :key="item.sourceId" class="flex gap-3 p-3">
+              <UCheckbox v-model="mondayEvidenceSelected" :value="item.sourceId" :disabled="Boolean(item.importedStatus)" class="mt-0.5" />
+              <span class="min-w-0 flex-1">
+                <span class="flex flex-wrap items-center gap-2 text-xs text-muted">
+                  <UBadge color="neutral" variant="subtle" size="xs">{{ item.evidenceType }}</UBadge>
+                  <span>{{ item.projectName }}</span>
+                  <UBadge v-if="item.importedStatus" :color="item.importedStatus === 'approved' ? 'success' : 'warning'" variant="subtle" size="xs">{{ item.importedStatus }}</UBadge>
+                </span>
+                <span class="mt-1 block text-sm font-medium">{{ item.title }}</span>
+                <span class="mt-1 block text-xs text-muted line-clamp-2">{{ item.content }}</span>
+              </span>
+            </label>
+          </div>
+          <div v-if="pendingEvidence.length" class="max-h-96 overflow-y-auto rounded-md border border-warning/30 divide-y divide-default" aria-live="polite">
+            <article v-for="item in pendingEvidence" :key="item.id" class="p-3">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <UBadge color="warning" variant="subtle" size="xs">{{ item.sourceSystem }}</UBadge>
+                    <UBadge color="neutral" variant="outline" size="xs">{{ item.evidenceType }}</UBadge>
+                    <span v-if="item.projectName">{{ item.projectName }}</span>
+                    <span>{{ fmtDate(item.occurredAt) }}</span>
+                  </div>
+                  <div class="mt-1 text-sm font-medium">{{ item.title }}</div>
+                  <p class="mt-1 text-sm text-muted line-clamp-3">{{ item.content }}</p>
+                </div>
+                <div class="flex shrink-0 gap-2">
+                  <UButton label="Approve for AI" icon="i-lucide-badge-check" size="xs" :loading="evidenceReviewingId === item.id" :disabled="Boolean(evidenceReviewingId)" @click="reviewEvidence(item.id, 'approved')" />
+                  <UButton label="Reject" icon="i-lucide-ban" color="neutral" variant="subtle" size="xs" :disabled="Boolean(evidenceReviewingId)" @click="reviewEvidence(item.id, 'rejected')" />
+                  <UButton v-if="item.sourceUrl" :to="item.sourceUrl" target="_blank" icon="i-lucide-external-link" color="neutral" variant="ghost" size="xs" aria-label="Open Monday source" />
+                </div>
+              </div>
+            </article>
+          </div>
+          <div v-else class="rounded-md border border-dashed border-default px-4 py-5 text-sm text-muted">No imported evidence is waiting for review.</div>
+          <p class="text-xs text-muted">Slack stays disconnected until an approved OAuth connection or export is provided. Monday and Slack never become live AI dependencies.</p>
+        </section>
         <USeparator />
         <div class="space-y-3">
           <div>

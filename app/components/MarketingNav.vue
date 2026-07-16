@@ -618,6 +618,7 @@ const featuresCol3b = [
   { title: 'Bulk Ad Launch', subtitle: 'Publish ads across platforms', icon: 'i-lucide-rocket', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/bulk-ad-launch' },
   { title: 'Ad Export', subtitle: 'Platform-compliant ZIP export', icon: 'i-lucide-download', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/ad-platform-export' },
   { title: 'Social Publishing', subtitle: 'Plan, compose & schedule organic', icon: 'i-lucide-share-2', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/social-composer' },
+  { title: 'Client News Intelligence', subtitle: 'News-to-social with governed AI context', icon: 'i-lucide-newspaper', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/social-news-intelligence' },
   { title: 'Engagement Inbox', subtitle: 'Comments, messages & reviews in one place', icon: 'i-lucide-messages-square', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/social-inbox' },
   { title: 'Reply Automation', subtitle: 'AI-assisted replies with approval guardrails', icon: 'i-lucide-bot', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/social-automation' },
   { title: 'Audio Studio', subtitle: 'Owned AI voiceover & music for every channel', icon: 'i-lucide-mic', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/audio-studio' },

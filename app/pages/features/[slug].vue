@@ -383,6 +383,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'social-news-intelligence': {
+    title: 'Client News Intelligence',
+    slug: 'social-news-intelligence',
+    icon: 'i-lucide-newspaper',
+    category: 'Social Publishing',
+    categoryIcon: 'i-lucide-share-2',
+    categoryIconBg: 'bg-sky-50',
+    categoryIconColor: 'text-sky-600',
+    description: 'Turn a shared industry news feed into client-specific social opportunities, with explainable relevance, optional AI rewriting, connected-account targeting, and human approval throughout.',
+    details: [
+      {
+        title: 'One Feed, Filtered Per Client',
+        content: 'Bring an aggregated MCP news source into a shared inbox, then filter it by each client’s industry, audience, content pillars, included and excluded keywords, brands, and preferred networks. Every relevance score includes the reasons behind it, so account teams can see why a story fits before selecting it.'
+      },
+      {
+        title: 'Rewrite and Route With Control',
+        content: 'Cherry-pick a story, keep the source intact or rewrite it in the client’s approved voice, then target specific connected accounts across Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business. Save it as a draft, choose an exact time, or use the client’s next available posting slot.'
+      },
+      {
+        title: 'Client Knowledge With a Review Gate',
+        content: 'Client briefs, decisions, plans, and performance findings can inform recommendations and rewrites only after they have been approved inside XeroFlow. Mapped Monday plans and discussions can be previewed and imported as pending evidence; they never become AI guidance automatically, and XeroFlow remains the operational source of truth.'
+      },
+      {
+        title: 'Packages Connected to Real Budgets',
+        content: 'Versioned content packages capture platform volumes, approval service levels, and overage policy, while commercial value stays linked to the client’s existing project, rate card, and job budget allocation. Usage follows the immutable package assignment without creating a second finance ledger.'
+      }
+    ]
+  },
   'social-composer': {
     title: 'Multi-Network Composer',
     slug: 'social-composer',
