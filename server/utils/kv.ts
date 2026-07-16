@@ -178,10 +178,24 @@ export async function cachedFetch<T>(
   const busted = q.bust === '1' || q.refresh === '1'
 
   if (busted) {
-    const data = await fetcher()
-    const entry: CacheEntry<T> = { v: data, exp: Date.now() + ttlSeconds * 1000 }
-    kvPut(event, key, entry, Math.max(60, ttlSeconds * 4))
-    return data
+    try {
+      const data = await fetcher()
+      const entry: CacheEntry<T> = { v: data, exp: Date.now() + ttlSeconds * 1000 }
+      kvPut(event, key, entry, Math.max(60, ttlSeconds * 4))
+      return data
+    } catch (err) {
+      // Stale-if-error: a forced refresh that hits Xero's rate limit (429)
+      // or a transient upstream failure should degrade to the last known
+      // value, not crash the page. Several dashboards bust a dozen Xero
+      // endpoints at once — post-deploy cold storms made every card error
+      // simultaneously.
+      const cached = await kvGet<CacheEntry<T> | T>(event, key)
+      if (isCacheEntry(cached)) {
+        console.warn(`[cachedFetch] bust fetch failed for "${key}" — serving stale:`, (err as any)?.message ?? err)
+        return (cached as CacheEntry<T>).v
+      }
+      throw err
+    }
   }
 
   const cached = await kvGet<CacheEntry<T> | T>(event, key)
