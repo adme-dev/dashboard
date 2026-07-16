@@ -4,22 +4,12 @@ import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '../../../utils/kv'
 import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
-
-type XeroRow = {
-  RowType?: string
-  rowType?: string
-  Title?: string
-  title?: string
-  Cells?: XeroCell[]
-  cells?: XeroCell[]
-  Rows?: XeroRow[]
-  rows?: XeroRow[]
-}
-
-type XeroCell = {
-  Value?: string | number
-  value?: string | number
-}
+import {
+  type XeroRow,
+  getPeriodLabels,
+  findRowValues,
+  extractExpenseBreakdown,
+} from '~~/server/utils/xeroPnlParse'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -62,16 +52,21 @@ export default eventHandler(async (event) => {
     ? `&periods=${validPeriods}&timeframe=${validTimeframe}`
     : ''
 
-  const cacheKey = `xero-report:${tenantId}:pnl:${from}:${to}:${validPeriods || 0}:${validTimeframe || ''}`
+  // Reporting basis — accrual (Xero default) or cash. Cash maps to Xero's
+  // paymentsOnly flag, matching the basis picker on Xero's own P&L report.
+  const basis = String(query.basis || '').toLowerCase() === 'cash' ? 'cash' : 'accrual'
+  const basisSuffix = basis === 'cash' ? '&paymentsOnly=true' : ''
+
+  const cacheKey = `xero-report:${tenantId}:pnl:${from}:${to}:${validPeriods || 0}:${validTimeframe || ''}:${basis}`
 
   return cachedFetch(event, cacheKey, 900, async () => {
   const report = await dedupedXeroCall(
-    `pnl:${tenantId}:${from}:${to}:${validPeriods || 0}:${validTimeframe || ''}`,
+    `pnl:${tenantId}:${from}:${to}:${validPeriods || 0}:${validTimeframe || ''}:${basis}`,
     'pnl',
     () => xeroFetch<any>({
       accessToken: token.access_token!,
       tenantId,
-      path: `Reports/ProfitAndLoss?fromDate=${from}&toDate=${to}&standardLayout=false${multiPeriodSuffix}`,
+      path: `Reports/ProfitAndLoss?fromDate=${from}&toDate=${to}&standardLayout=false${multiPeriodSuffix}${basisSuffix}`,
     })
   )
 
@@ -110,6 +105,7 @@ export default eventHandler(async (event) => {
   return {
     fromDate: from,
     toDate: to,
+    basis,
     revenueTotal,
     expensesTotal,
     netProfit,
@@ -119,146 +115,3 @@ export default eventHandler(async (event) => {
   }
   }) // end cachedFetch
 })
-
-function getRowType(row: XeroRow): string {
-  return (row.RowType || row.rowType || '').toString()
-}
-
-function getRows(row: XeroRow | undefined): XeroRow[] {
-  if (!row) return []
-  return row.Rows || row.rows || []
-}
-
-function getCells(row: XeroRow | undefined): XeroCell[] {
-  if (!row) return []
-  return row.Cells || row.cells || []
-}
-
-function getCellValue(cell: XeroCell | undefined): string {
-  const raw = cell?.Value ?? cell?.value
-  return raw === undefined || raw === null ? '' : String(raw)
-}
-
-function getRowTitle(row: XeroRow | undefined): string {
-  if (!row) return ''
-  return row.Title || row.title || getCellValue(getCells(row)[0]) || ''
-}
-
-function parseNumeric(value: string | number | undefined): number {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : 0
-  }
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (!trimmed) return 0
-
-    const isNegative = /^\(.*\)$/.test(trimmed)
-    const normalized = trimmed
-      .replace(/[(),]/g, '')
-      .replace(/[^0-9.-]/g, '')
-
-    const numeric = Number(normalized)
-    if (Number.isNaN(numeric)) return 0
-
-    return isNegative ? -numeric : numeric
-  }
-
-  return 0
-}
-
-function getPeriodLabels(rows: XeroRow[]): string[] {
-  const headerRow = rows.find(row => getRowType(row).toLowerCase() === 'header')
-  if (headerRow) {
-    const [, ...cells] = getCells(headerRow)
-    const labels = cells.map(cell => getCellValue(cell))
-    if (labels.length > 0) {
-      return labels
-    }
-  }
-
-  // Fallback: infer labels from the first data row (skipping description cell)
-  for (const row of rows) {
-    const cells = getCells(row)
-    if (cells.length > 1) {
-      return cells.slice(1).map((_, index) => `Period ${index + 1}`)
-    }
-  }
-
-  return []
-}
-
-function findRowValues(rows: XeroRow[], matcher: RegExp, columnCount: number): number[] {
-  let match: number[] | null = null
-
-  const visit = (row: XeroRow) => {
-    if (match) return
-    const title = getRowTitle(row)
-    if (matcher.test(title)) {
-      const cells = getCells(row)
-      // skip the first column, which is the label
-      const values = cells.slice(1).map(cell => parseNumeric(cell?.Value ?? cell?.value))
-      match = values
-      return
-    }
-
-    for (const child of getRows(row)) {
-      visit(child)
-      if (match) return
-    }
-  }
-
-  rows.forEach(row => visit(row))
-
-  if (!match) {
-    return Array.from({ length: columnCount }, () => 0)
-  }
-
-  const result: number[] = match
-  if (columnCount > 0 && result.length !== columnCount) {
-    // pad or trim to expected column count to keep downstream code simple
-    const values = result.slice(0, columnCount)
-    while (values.length < columnCount) values.push(0)
-    return values
-  }
-
-  return result
-}
-
-function extractExpenseBreakdown(rows: XeroRow[], valueIndex: number) {
-  const categories = new Map<string, number>()
-
-  const visit = (row: XeroRow, inExpensesSection: boolean) => {
-    const title = getRowTitle(row)
-    const rowType = getRowType(row).toLowerCase()
-    const matchesExpenseSection = /expense/i.test(title)
-    const isSummary = rowType === 'summaryrow'
-
-    const nextInExpenses = inExpensesSection || (rowType === 'section' && matchesExpenseSection)
-
-    if (nextInExpenses && rowType === 'row' && !isSummary) {
-      const cells = getCells(row)
-      const cell = cells[valueIndex + 1] // +1 skips the descriptor cell
-      const numeric = Math.abs(parseNumeric(cell?.Value ?? cell?.value))
-      if (numeric > 0 && title) {
-        const label = title.replace(/total\s+/i, '').trim()
-        categories.set(label, (categories.get(label) ?? 0) + numeric)
-      }
-    }
-
-    for (const child of getRows(row)) {
-      visit(child, nextInExpenses)
-    }
-  }
-
-  rows.forEach(row => visit(row, false))
-
-  const entries = Array.from(categories.entries())
-    .filter(([, value]) => value > 0)
-    .sort((a, b) => b[1] - a[1])
-
-  return entries.slice(0, 8).map(([name, value]) => ({
-    name,
-    value
-  }))
-}

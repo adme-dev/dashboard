@@ -15,8 +15,20 @@ const AsyncOverheadBurn = defineAsyncComponent(() => import('~/components/dashbo
 const { data: statusData, refresh: refreshStatus } = useFetch('/api/xero/status')
 const isConnected = computed(() => statusData.value?.connected || false)
 
+// Reporting basis for the money KPIs (accrual ⇄ cash). Persisted per
+// browser; the reactive query re-fetches automatically when it changes.
+const kpiBasis = ref<'accrual' | 'cash'>('accrual')
+onMounted(() => {
+  const saved = localStorage.getItem('kpi-basis')
+  if (saved === 'cash' || saved === 'accrual') kpiBasis.value = saved
+})
+watch(kpiBasis, (value) => {
+  if (import.meta.client) localStorage.setItem('kpi-basis', value)
+})
+
 // Data fetches — gated on Xero connection, default to null to prevent Vue prop warnings
 const { data: kpiData, pending: kpiPending, error: kpiError, refresh: refreshKPI } = useFetch('/api/kpis-advanced', {
+  query: { basis: kpiBasis },
   immediate: false,
   default: () => null
 })
@@ -63,7 +75,7 @@ async function refreshAll() {
   manualRefreshing.value = true
   try {
     const [kpis, cash, pipe, budget] = await Promise.all([
-      $fetch('/api/kpis-advanced?bust=1').catch(() => kpiData.value),
+      $fetch(`/api/kpis-advanced?bust=1&basis=${kpiBasis.value}`).catch(() => kpiData.value),
       $fetch('/api/xero/reports/cash-flow-forecast?days=90&bust=1').catch(() => cashFlowData.value),
       $fetch('/api/xero/invoice-pipeline?days=90&bust=1').catch(() => pipelineData.value),
       $fetch('/api/xero/reports/budget-variance?bust=1').catch(() => budgetData.value),
@@ -278,6 +290,7 @@ const quickActions = [
         <!-- KPI Cards -->
         <ClientOnly>
           <AsyncKPICards
+            v-model:basis="kpiBasis"
             :data="kpiData as any"
             :loading="kpiPending"
             :connected="isConnected"

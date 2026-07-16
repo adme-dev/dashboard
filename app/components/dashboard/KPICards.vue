@@ -1,5 +1,6 @@
 <script setup lang="ts">
 interface KPIData {
+  basis?: 'accrual' | 'cash'
   revenue: {
     current: number
     growth: number
@@ -32,10 +33,18 @@ const props = defineProps<{
   connected: boolean
 }>()
 
+// Reporting basis toggle (accrual ⇄ cash) — the owner of this state is the
+// parent page, which refetches /api/kpis-advanced with the chosen basis.
+const basis = defineModel<'accrual' | 'cash'>('basis', { default: 'accrual' })
+const basisItems = [
+  { label: 'Accrual', value: 'accrual' as const },
+  { label: 'Cash', value: 'cash' as const },
+]
+
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-AU', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'AUD',
     maximumFractionDigits: 0
   }).format(value)
 }
@@ -87,9 +96,26 @@ const getHealthScoreColor = (score: number) => {
 </script>
 
 <template>
+  <div class="space-y-3">
+    <!-- Basis toggle — these figures come from Xero's actual P&L report;
+         the toggle mirrors the Cash/Accrual picker on Xero's own report. -->
+    <div class="flex items-center justify-end gap-2">
+      <span class="text-xs text-muted">From Xero P&amp;L ·</span>
+      <UTabs
+        v-model="basis"
+        :items="basisItems"
+        :content="false"
+        size="xs"
+        color="neutral"
+      />
+    </div>
+
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
-    <!-- Revenue Card -->
-    <UCard class="relative overflow-hidden">
+    <!-- Revenue Card — click through to the full P&L on Reports. -->
+    <UCard
+      class="relative overflow-hidden cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 transition-colors"
+      @click="navigateTo('/reports')"
+    >
       <template v-if="loading">
         <div class="space-y-3">
           <USkeleton class="h-4 w-20" />
@@ -97,7 +123,7 @@ const getHealthScoreColor = (score: number) => {
           <USkeleton class="h-4 w-24" />
         </div>
       </template>
-      
+
       <template v-else>
         <div class="flex items-start justify-between">
           <div class="flex-1">
@@ -129,8 +155,11 @@ const getHealthScoreColor = (score: number) => {
       </template>
     </UCard>
 
-    <!-- Expenses Card -->
-    <UCard class="relative overflow-hidden">
+    <!-- Expenses Card — click through to the full P&L on Reports. -->
+    <UCard
+      class="relative overflow-hidden cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 transition-colors"
+      @click="navigateTo('/reports')"
+    >
       <template v-if="loading">
         <div class="space-y-3">
           <USkeleton class="h-4 w-20" />
@@ -170,8 +199,11 @@ const getHealthScoreColor = (score: number) => {
       </template>
     </UCard>
 
-    <!-- Profit Card -->
-    <UCard class="relative overflow-hidden">
+    <!-- Profit Card — click through to the full P&L on Reports. -->
+    <UCard
+      class="relative overflow-hidden cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 transition-colors"
+      @click="navigateTo('/reports')"
+    >
       <template v-if="loading">
         <div class="space-y-3">
           <USkeleton class="h-4 w-20" />
@@ -258,6 +290,7 @@ const getHealthScoreColor = (score: number) => {
         </div>
       </template>
     </UCard>
+  </div>
   </div>
 </template>
 
