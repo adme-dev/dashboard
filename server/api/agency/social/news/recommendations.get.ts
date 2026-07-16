@@ -16,8 +16,8 @@ export default defineEventHandler(async (event) => {
   const [profile, accounts, performance, news] = await Promise.all([
     queryOne<{ preferred_platforms: string[] | null; target_audience: string | null; timezone: string | null; include_keywords: string[] | null; exclude_keywords: string[] | null }>(
       `SELECT preferred_platforms, target_audience, timezone FROM social_news_client_profiles WHERE client_id = $1`, [clientId]),
-    queryRows<{ id: string; platform: string; account_name: string | null }>(
-      `SELECT id, platform, account_name FROM social_accounts WHERE client_id = $1 AND is_active = TRUE ORDER BY platform, account_name`, [clientId]),
+    queryRows<{ id: string; platform: string; account_name: string | null; last_error: string | null; token_expires_at: string | null }>(
+      `SELECT id, platform, account_name, last_error, token_expires_at FROM social_accounts WHERE client_id = $1 AND is_active = TRUE ORDER BY platform, account_name`, [clientId]),
     queryRows<{ platform: string; impressions: number; engagements: number }>(
       `SELECT m.platform, COALESCE(SUM(m.impressions), 0)::int AS impressions, COALESCE(SUM(m.engagements), 0)::int AS engagements
          FROM social_post_metrics m JOIN social_posts p ON p.id = m.post_id
@@ -42,7 +42,11 @@ export default defineEventHandler(async (event) => {
     audience: profile?.target_audience || null,
     timezone: profile?.timezone || 'Australia/Melbourne',
     platforms,
-    accounts: accounts.filter(account => platforms.includes(account.platform)),
+    accounts: accounts.filter(account => platforms.includes(account.platform)).map(account => ({
+      id: account.id, platform: account.platform, accountName: account.account_name,
+      health: account.last_error ? 'error' : account.token_expires_at && new Date(account.token_expires_at).getTime() <= Date.now() ? 'expired' : 'ready',
+      lastError: account.last_error,
+    })),
     nextSlot: slots[0]?.toISOString() || null,
     article: news ? { title: news.title, relevant: included.length > 0 && excluded.length === 0, matchedKeywords: included, excludedKeywords: excluded } : null,
     basis: performance.length ? 'client profile and published engagement history' : 'client profile and connected accounts',

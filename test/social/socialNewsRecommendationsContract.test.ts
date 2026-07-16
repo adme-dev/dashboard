@@ -9,6 +9,7 @@ describe('news recommendation contract', () => {
     expect(source).toContain('social_post_metrics')
     expect(source).toContain('social_news_items')
     expect(source).toContain('matchedKeywords')
+    expect(source).toContain("health: account.last_error ? 'error'")
     expect(source).toContain('nextOptimalSlots')
     expect(source).toContain('approvalRequired: true')
   })
