@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue'
 
-definePageMeta({ layout: 'admin', middleware: ['role-admin'] })
+definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 type ModelMapRow = {
   featureKey: string
@@ -1093,6 +1093,8 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
 </script>
 
 <template>
+  <UDashboardPanel id="admin-model-ops">
+    <template #body>
   <div class="space-y-6">
     <div class="flex items-start justify-between gap-4">
       <div>
@@ -2447,4 +2449,6 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
       </div>
     </template>
   </div>
+    </template>
+  </UDashboardPanel>
 </template>
