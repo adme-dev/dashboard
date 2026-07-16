@@ -156,9 +156,30 @@ function composePrefill(item: FeedItem): string {
 <template>
   <SocialPublishingShell
     title="Auto Feed"
-    subtitle="Vehicle feed items across your linked dealer clients — send any item straight to Compose."
+    subtitle="Dealer inventory feed items across your linked clients — send any vehicle straight to Compose."
   >
     <div class="space-y-4">
+      <UAlert
+        icon="i-lucide-newspaper"
+        title="Looking for industry news?"
+        description="Auto Feed is dealer inventory only. Use News Inbox to cherry-pick aggregated articles, optionally rewrite them with AI, and target client accounts and platforms."
+        color="info"
+        variant="subtle"
+        orientation="vertical"
+      >
+        <template #actions>
+          <UButton
+            label="Browse News Inbox"
+            to="/agency/social/publishing/news"
+            icon="i-lucide-arrow-right"
+            trailing
+            color="info"
+            variant="soft"
+            size="sm"
+          />
+        </template>
+      </UAlert>
+
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <div class="flex items-center gap-2">
           <USelect v-model="clientFilter" :items="clientOptions" value-key="value" size="sm" class="w-56" icon="i-lucide-building-2" />
