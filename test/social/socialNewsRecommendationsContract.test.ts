@@ -27,4 +27,11 @@ describe('news recommendation contract', () => {
     expect(source).toContain('Overage:')
     expect(source).toContain('Approval SLA:')
   })
+
+  it('exposes the governed Slack import panel to admins', () => {
+    const source = readFileSync('app/pages/agency/social/publishing/news.vue', 'utf8')
+    expect(source).toContain('Import Slack evidence')
+    expect(source).toContain('slackImportText')
+    expect(source).toContain('pending approval')
+  })
 })

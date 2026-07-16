@@ -50,6 +50,8 @@ const evidenceForm = ref({ evidenceType: 'decision', title: '', content: '' })
 const pendingEvidence = ref<EvidenceReviewItem[]>([])
 const mondayEvidencePreview = ref<MondayEvidencePreviewItem[]>([])
 const mondayEvidenceSelected = ref<string[]>([])
+const slackImportText = ref('')
+const slackImporting = ref(false)
 const evidenceTransitionLoading = ref(false)
 const evidenceReviewingId = ref('')
 const recommendation = ref<{ audience: string | null; timezone: string; platforms: string[]; accounts: Array<{ id: string; platform: string; accountName: string | null; health: string; lastError: string | null }>; nextSlot: string | null; basis: string; approvalRequired: boolean; article: { title: string; relevant: boolean; matchedKeywords: string[]; excludedKeywords: string[] } | null } | null>(null)
@@ -304,6 +306,20 @@ async function importMondayEvidence() {
   } catch (e: any) { toast.add({ title: 'Could not import Monday evidence', description: e?.data?.statusMessage, color: 'error' }) }
   finally { evidenceTransitionLoading.value = false }
 }
+async function importSlackEvidence() {
+  if (!clientId.value || !slackImportText.value.trim()) return
+  let items: unknown
+  try { items = JSON.parse(slackImportText.value) } catch { toast.add({ title: 'Invalid Slack export', description: 'Paste a JSON array of message objects.', color: 'error' }); return }
+  if (!Array.isArray(items)) { toast.add({ title: 'Invalid Slack export', description: 'Paste a JSON array of message objects.', color: 'error' }); return }
+  slackImporting.value = true
+  try {
+    const result = await apiFetch<{ imported: number; reviewStatus: string }>(`/api/agency/social/news/profiles/${clientId.value}/evidence/imports/slack`, { method: 'POST', body: { items } } as any)
+    slackImportText.value = ''
+    await Promise.all([reloadGovernance(), loadPendingEvidence(clientId.value)])
+    toast.add({ title: 'Slack export imported for review', description: `${result.imported} item(s) are pending approval.`, color: 'success' })
+  } catch (e: any) { toast.add({ title: 'Could not import Slack export', description: e?.data?.statusMessage || 'Check the export format', color: 'error' }) }
+  finally { slackImporting.value = false }
+}
 async function reviewEvidence(evidenceId: string, reviewStatus: 'approved' | 'rejected') {
   const requestedClientId = clientId.value
   if (!requestedClientId || evidenceReviewingId.value) return
@@ -460,6 +476,12 @@ async function createDrafts() {
           </div>
           <div v-else class="rounded-md border border-dashed border-default px-4 py-5 text-sm text-muted">No imported evidence is waiting for review.</div>
           <p class="text-xs text-muted">Slack stays disconnected until an approved OAuth connection or export is provided. Monday and Slack never become live AI dependencies.</p>
+          <div v-if="isAdmin" class="rounded-md border border-default p-3 space-y-2">
+            <div class="text-sm font-medium">Import Slack export for review</div>
+            <p class="text-xs text-muted">Paste a JSON array of exported messages. Imports remain pending until an admin approves them.</p>
+            <UTextarea v-model="slackImportText" :rows="4" placeholder='[{"title":"Decision","content":"...","sourceId":"slack-123"}]' />
+            <UButton label="Import Slack evidence" icon="i-lucide-upload" color="neutral" variant="subtle" :loading="slackImporting" :disabled="!slackImportText.trim()" @click="importSlackEvidence" />
+          </div>
         </section>
         <USeparator />
         <div class="space-y-3">
