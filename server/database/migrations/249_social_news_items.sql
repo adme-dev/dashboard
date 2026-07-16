@@ -29,6 +29,6 @@ CREATE TABLE IF NOT EXISTS social_news_sources (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-INSERT INTO social_news_sources (source_key, display_name, endpoint_url)
-VALUES ('mcp_news', 'MCP News Feed', 'https://adme-advertising.netlify.app/api/mcp')
+INSERT INTO social_news_sources (source_key, display_name, endpoint_url, settings)
+VALUES ('mcp_news', 'MCP News Feed', 'https://adme-advertising.netlify.app/api/mcp', '{"toolName":"list_stories","params":{"limit":120}}'::jsonb)
 ON CONFLICT (source_key) DO NOTHING;

@@ -12,16 +12,21 @@ export interface McpNewsItem {
 export function normalizeMcpNewsItem(input: Record<string, unknown>): McpNewsItem | null {
   const url = typeof input.url === 'string' ? input.url : typeof input.link === 'string' ? input.link : null
   const id = typeof input.externalId === 'string' ? input.externalId
-    : typeof input.id === 'string' ? input.id : url
+    : typeof input.id === 'string' ? input.id
+      : typeof input.slug === 'string' ? input.slug : url
   const title = typeof input.title === 'string' ? input.title.trim() : ''
   if (!id || !title) return null
   return {
     externalId: id,
     title,
-    summary: typeof input.summary === 'string' ? input.summary : typeof input.description === 'string' ? input.description : null,
+    summary: typeof input.summary === 'string' ? input.summary
+      : typeof input.description === 'string' ? input.description
+        : typeof input.snippet === 'string' ? input.snippet : null,
     url,
-    author: typeof input.author === 'string' ? input.author : null,
-    publishedAt: typeof input.publishedAt === 'string' ? input.publishedAt : typeof input.published_at === 'string' ? input.published_at : null,
+    author: typeof input.author === 'string' ? input.author : typeof input.source === 'string' ? input.source : null,
+    publishedAt: typeof input.publishedAt === 'string' ? input.publishedAt
+      : typeof input.published_at === 'string' ? input.published_at
+        : typeof input.published === 'string' ? input.published : null,
     raw: input,
   }
 }

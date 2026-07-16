@@ -30,8 +30,8 @@ export interface NewsSourceFetchOptions { fetchImpl?: typeof fetch }
 export async function fetchMcpNewsSource(source: SocialNewsSource, options: NewsSourceFetchOptions = {}) {
   if (!source.enabled || !isSafeNewsSourceUrl(source.endpointUrl)) return [] as Record<string, unknown>[]
   const fetchImpl = options.fetchImpl ?? fetch
-  const toolName = typeof source.settings.toolName === 'string' ? source.settings.toolName : 'get_news'
-  const params = source.settings.params && typeof source.settings.params === 'object' ? source.settings.params : {}
+  const toolName = typeof source.settings.toolName === 'string' ? source.settings.toolName : 'list_stories'
+  const params = source.settings.params && typeof source.settings.params === 'object' ? source.settings.params : { limit: 120 }
   let response = await fetchImpl(source.endpointUrl, {
     method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method: 'tools/call', params: { name: toolName, arguments: params } }),

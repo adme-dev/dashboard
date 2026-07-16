@@ -14,6 +14,22 @@ describe('normalizeMcpNewsItem', () => {
     expect(normalizeMcpNewsItem({ id: 'n-2' })).toBeNull()
   })
 
+  it('normalizes the live ADME list_stories shape', () => {
+    expect(normalizeMcpNewsItem({
+      slug: 'ford-ranger-story',
+      title: 'Ford Ranger story',
+      url: 'https://adme-advertising.netlify.app/news/story/ford-ranger-story',
+      snippet: 'A concise story summary.',
+      source: 'Ford Australia',
+      published: '2026-07-16T09:07:17.266Z',
+    })).toMatchObject({
+      externalId: 'ford-ranger-story',
+      summary: 'A concise story summary.',
+      author: 'Ford Australia',
+      publishedAt: '2026-07-16T09:07:17.266Z',
+    })
+  })
+
   it('treats the news feed as a configurable HTTPS plug-in', () => {
     expect(isSafeNewsSourceUrl('https://example.test/mcp')).toBe(true)
     expect(isSafeNewsSourceUrl('http://example.test/mcp')).toBe(false)
@@ -21,9 +37,19 @@ describe('normalizeMcpNewsItem', () => {
   })
 
   it('extracts news items from an MCP tools/call response', async () => {
+    let requestBody: any
     const result = await fetchMcpNewsSource({ sourceKey: 'mcp_news', displayName: 'MCP', endpointUrl: 'https://example.test/mcp', enabled: true, settings: { toolName: 'news' } }, {
-      fetchImpl: (async () => new Response(JSON.stringify({ result: { content: [{ type: 'text', text: JSON.stringify({ items: [{ id: '1', title: 'Story' }] }) }] } })) as Response) as typeof fetch,
+      fetchImpl: (async (_url: unknown, init?: RequestInit) => { requestBody = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ result: { content: [{ type: 'text', text: JSON.stringify({ items: [{ id: '1', title: 'Story' }] }) }] } })) as Response }) as typeof fetch,
     })
     expect(result).toEqual([{ id: '1', title: 'Story' }])
+    expect(requestBody.params.name).toBe('news')
+  })
+
+  it('defaults the ADME plug-in to list_stories with a practical page size', async () => {
+    let requestBody: any
+    await fetchMcpNewsSource({ sourceKey: 'mcp_news', displayName: 'MCP', endpointUrl: 'https://example.test/mcp', enabled: true, settings: {} }, {
+      fetchImpl: (async (_url: unknown, init?: RequestInit) => { requestBody = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ result: { content: [] } })) as Response }) as typeof fetch,
+    })
+    expect(requestBody.params).toEqual({ name: 'list_stories', arguments: { limit: 120 } })
   })
 })
