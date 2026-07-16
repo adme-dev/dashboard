@@ -90,11 +90,23 @@
         :loading="pending"
       >
         <template #name-cell="{ row }">
-          <UUser
-            :name="userRow(row).name"
-            :avatar="{ src: userRow(row).avatarUrl, alt: userRow(row).name }"
-            size="sm"
-          />
+          <div class="flex items-center gap-2">
+            <UUser
+              :name="userRow(row).name"
+              :avatar="{ src: userRow(row).avatarUrl, alt: userRow(row).name }"
+              size="sm"
+              :class="userRow(row).status === 'inactive' ? 'opacity-50 grayscale' : ''"
+            />
+            <UBadge
+              v-if="userRow(row).status === 'inactive'"
+              color="error"
+              variant="subtle"
+              size="xs"
+              icon="i-lucide-user-x"
+            >
+              Deactivated
+            </UBadge>
+          </div>
         </template>
 
         <template #role-cell="{ row }">
@@ -110,7 +122,7 @@
 
         <template #status-cell="{ row }">
           <UBadge
-            :color="userRow(row).status === 'active' ? 'success' : 'neutral'"
+            :color="userRow(row).status === 'active' ? 'success' : userRow(row).status === 'pending' ? 'warning' : 'error'"
             variant="subtle"
             size="xs"
           >
