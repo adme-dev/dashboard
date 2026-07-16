@@ -1,4 +1,9 @@
 <template>
+  <UDashboardPanel id="admin-teams" :ui="{ body: 'p-0 overflow-hidden' }">
+    <template #header>
+      <UDashboardNavbar title="Teams" description="Create teams and manage membership" />
+    </template>
+    <template #body>
   <div class="flex-1 min-w-0 flex overflow-hidden">
     <!-- Teams Sidebar -->
     <div class="w-64 border-r border-default flex flex-col shrink-0">
@@ -351,10 +356,12 @@
       </template>
     </UModal>
   </div>
+    </template>
+  </UDashboardPanel>
 </template>
 
 <script setup lang="ts">
-definePageMeta({ layout: 'admin', middleware: ['role-admin'] })
+definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 interface Team {
   id: string

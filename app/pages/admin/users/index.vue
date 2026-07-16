@@ -1,4 +1,9 @@
 <template>
+  <UDashboardPanel id="admin-users">
+    <template #header>
+      <UDashboardNavbar title="User Management" description="Invite team members, manage roles and teams, deactivate or delete accounts" />
+    </template>
+    <template #body>
   <div>
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-3">
@@ -9,14 +14,14 @@
           class="w-80"
           size="sm"
         />
-        <UButton
-          variant="ghost"
-          color="neutral"
-          icon="i-lucide-filter"
+        <USelect
+          v-model="statusFilter"
+          :items="statusFilterOptions"
+          value-key="value"
           size="sm"
-        >
-          Filter
-        </UButton>
+          class="w-40"
+          icon="i-lucide-filter"
+        />
       </div>
       <div class="flex items-center gap-2">
         <span class="text-sm text-muted">
@@ -344,21 +349,30 @@
         <UCard>
           <template #header>
             <div class="flex items-center justify-between">
-              <h3 class="font-semibold text-lg">Deactivate user</h3>
+              <h3 class="font-semibold text-lg">Remove {{ userToRemove?.name }}</h3>
               <UButton icon="i-lucide-x" color="neutral" variant="ghost" @click="showRemoveModal = false" />
             </div>
           </template>
-          <p class="text-sm text-muted">
-            Are you sure you want to deactivate <strong class="text-highlighted">{{ userToRemove?.name }}</strong>?
-            They will lose access to the platform but their data will be preserved.
-          </p>
+          <div class="space-y-3 text-sm text-muted">
+            <p>
+              <strong class="text-highlighted">Deactivate</strong> keeps their history (tasks, comments, boards)
+              but removes their access — they stay in this list as <UBadge color="neutral" variant="subtle" size="xs">inactive</UBadge>.
+            </p>
+            <p>
+              <strong class="text-highlighted">Delete permanently</strong> erases the account entirely. Only possible
+              for accounts with no linked activity — otherwise you'll be told to deactivate instead.
+            </p>
+          </div>
           <template #footer>
             <div class="flex justify-end gap-2">
               <UButton variant="ghost" color="neutral" @click="showRemoveModal = false">
                 Cancel
               </UButton>
-              <UButton color="error" @click="removeUser">
+              <UButton color="warning" variant="soft" :loading="removeLoading === 'deactivate'" @click="removeUser">
                 Deactivate
+              </UButton>
+              <UButton color="error" :loading="removeLoading === 'delete'" @click="deleteUserPermanently">
+                Delete permanently
               </UButton>
             </div>
           </template>
@@ -366,13 +380,18 @@
       </template>
     </UModal>
   </div>
+    </template>
+  </UDashboardPanel>
 </template>
 
 <script setup lang="ts">
 import { h } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 
-definePageMeta({ layout: 'admin', middleware: ['role-admin'] })
+// layout 'agency' (not the standalone 'admin' shell) so User Management
+// stays inside the main app instead of "jumping out" into a separate
+// admin-only chrome with no way back.
+definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 interface User {
   id: string
@@ -452,6 +471,13 @@ onMounted(() => {
 const teams = computed<Team[]>(() => teamsData.value?.teams || [])
 
 const searchQuery = ref('')
+const statusFilter = ref<'all' | 'active' | 'inactive' | 'pending'>('all')
+const statusFilterOptions = [
+  { label: 'All statuses', value: 'all' },
+  { label: 'Active', value: 'active' },
+  { label: 'Inactive', value: 'inactive' },
+  { label: 'Pending', value: 'pending' },
+]
 const showInviteModal = ref(false)
 const showEditModal = ref(false)
 const showTeamsModal = ref(false)
@@ -520,12 +546,18 @@ const availableTeams = computed(() => {
 const userRow = (row: { original?: User } | User): User => ('original' in row && row.original ? row.original : row) as User
 
 const filteredUsers = computed(() => {
-  if (!searchQuery.value) return users.value
-  const query = searchQuery.value.toLowerCase()
-  return users.value.filter((user: User) =>
-    user.name.toLowerCase().includes(query) ||
-    user.email.toLowerCase().includes(query)
-  )
+  let list = users.value
+  if (statusFilter.value !== 'all') {
+    list = list.filter((user: User) => user.status === statusFilter.value)
+  }
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    list = list.filter((user: User) =>
+      user.name.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query)
+    )
+  }
+  return list
 })
 
 const columns = [
@@ -686,13 +718,23 @@ const toggleUserStatus = async (user: User) => {
       body: { isActive: newStatus }
     })
     user.status = newStatus ? 'active' : 'inactive'
-  } catch (err) {
-    console.error('Failed to toggle status:', err)
+    toast.add({
+      title: newStatus ? `${user.name} activated` : `${user.name} deactivated`,
+      description: newStatus ? undefined : 'They keep their history but can no longer sign in.',
+      color: 'success',
+    })
+  } catch (err: any) {
+    toast.add({
+      title: `Failed to ${user.status === 'active' ? 'deactivate' : 'activate'} ${user.name}`,
+      description: err.data?.statusMessage || 'Please try again',
+      color: 'error',
+    })
   }
 }
 
 const showRemoveModal = ref(false)
 const userToRemove = ref<User | null>(null)
+const removeLoading = ref<'deactivate' | 'delete' | null>(null)
 
 const confirmRemoveUser = (u: User) => {
   userToRemove.value = u
@@ -702,29 +744,86 @@ const confirmRemoveUser = (u: User) => {
 const removeUser = async () => {
   if (!userToRemove.value) return
 
+  removeLoading.value = 'deactivate'
   try {
     await apiFetch(`/api/auth/users/${userToRemove.value.id}/status`, {
       method: 'PATCH',
       body: { isActive: false }
     })
-    toast.add({ title: `${userToRemove.value.name} has been deactivated`, color: 'success' })
+    toast.add({
+      title: `${userToRemove.value.name} has been deactivated`,
+      description: 'They stay in the list as inactive — use the status filter to hide them.',
+      color: 'success',
+    })
     showRemoveModal.value = false
     userToRemove.value = null
     await refresh()
   } catch (err: any) {
-    toast.add({ title: 'Failed to remove user', description: err.data?.statusMessage || 'Please try again', color: 'error' })
+    toast.add({ title: 'Failed to deactivate user', description: err.data?.statusMessage || 'Please try again', color: 'error' })
+  } finally {
+    removeLoading.value = null
+  }
+}
+
+const deleteUserPermanently = async () => {
+  if (!userToRemove.value) return
+
+  removeLoading.value = 'delete'
+  try {
+    await apiFetch(`/api/admin/users/${userToRemove.value.id}`, { method: 'DELETE' })
+    toast.add({ title: `${userToRemove.value.name} permanently deleted`, color: 'success' })
+    showRemoveModal.value = false
+    userToRemove.value = null
+    await refresh()
+  } catch (err: any) {
+    // 409 = has linked activity; the server message explains to deactivate.
+    toast.add({
+      title: 'Could not delete user',
+      description: err.data?.statusMessage || 'Please try again',
+      color: err.statusCode === 409 || err.status === 409 ? 'warning' : 'error',
+    })
+  } finally {
+    removeLoading.value = null
   }
 }
 
 const sendInvites = async () => {
+  const emails = inviteEmails.value.split(',').map(e => e.trim()).filter(Boolean)
+  if (!emails.length) {
+    toast.add({ title: 'Enter at least one email address', color: 'warning' })
+    return
+  }
+
   inviteLoading.value = true
   try {
-    const emails = inviteEmails.value.split(',').map(e => e.trim()).filter(Boolean)
+    const res = await apiFetch<{ results: Array<{ email: string; status: string }> }>('/api/admin/users/invite', {
+      method: 'POST',
+      body: {
+        emails,
+        role: inviteRole.value,
+        title: inviteTitle.value || undefined,
+        teamIds: inviteTeams.value,
+      }
+    })
+    const invited = res.results.filter(r => r.status === 'invited').length
+    const existing = res.results.filter(r => r.status === 'already_member').map(r => r.email)
+    const failed = res.results.filter(r => r.status === 'email_failed').map(r => r.email)
+    const parts: string[] = []
+    if (existing.length) parts.push(`already members: ${existing.join(', ')}`)
+    if (failed.length) parts.push(`failed: ${failed.join(', ')}`)
+    toast.add({
+      title: invited ? `${invited} invite${invited === 1 ? '' : 's'} sent` : 'No invites sent',
+      description: parts.join(' · ') || 'Each new user received a sign-in link by email.',
+      color: failed.length || !invited ? 'warning' : 'success',
+    })
     showInviteModal.value = false
     inviteEmails.value = ''
     inviteTitle.value = ''
     inviteRole.value = 'member'
     inviteTeams.value = []
+    await refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to send invites', description: err.data?.statusMessage || 'Please try again', color: 'error' })
   } finally {
     inviteLoading.value = false
   }

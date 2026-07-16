@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'admin', middleware: ['role-admin'] })
+definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 const toast = useToast()
 const { isOwner } = useAuth()
@@ -243,6 +243,8 @@ const roleMembers = computed(() => (membersData.value as any)?.members || [])
 </script>
 
 <template>
+  <UDashboardPanel id="admin-permissions" :ui="{ body: 'p-0' }">
+    <template #body>
   <div class="h-full flex flex-col">
     <div class="border-b border-default px-6 py-4 flex items-center justify-between">
       <div>
@@ -617,4 +619,6 @@ const roleMembers = computed(() => (membersData.value as any)?.members || [])
       </template>
     </UModal>
   </div>
+    </template>
+  </UDashboardPanel>
 </template>

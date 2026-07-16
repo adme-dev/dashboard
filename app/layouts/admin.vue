@@ -53,33 +53,14 @@
 <script setup lang="ts">
 import { useAuth } from '~/composables/useAuth'
 
-const { user, logout, isAuthenticated, fetchUser } = useAuth()
-const router = useRouter()
+const { user, logout, fetchUser } = useAuth()
 
-// Check auth on mount
-onMounted(async () => {
-  const userData = await fetchUser()
-  
-  if (!userData) {
-    // Not authenticated, redirect to login
-    router.push({
-      path: '/',
-      query: { 
-        redirect: encodeURIComponent(router.currentRoute.value.fullPath)
-      }
-    })
-    return
-  }
-  
-  // Check admin role
-  if (!['admin', 'owner'].includes(userData.role)) {
-    // Not an admin, redirect to appropriate home
-    if (['consultant'].includes(userData.role)) {
-      router.push('/xeroflow')
-    } else {
-      router.push('/agency')
-    }
-  }
+// Load the user for the sidebar footer. Access control lives in the
+// role-admin route middleware (which understands custom roles via
+// permission groups) — the hardcoded ['admin','owner'] check that used
+// to live here ejected legitimate custom-role admins after mount.
+onMounted(() => {
+  if (!user.value) void fetchUser()
 })
 
 const adminNavItems = [
