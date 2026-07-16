@@ -20,19 +20,19 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const existing = await requireSocialPostClientAccess(event, id)
-  const packageSla = await queryOne<{ approval_sla_hours: number | null }>(
-    `SELECT (v.commercial_scope->>'approvalSlaHours')::int AS approval_sla_hours
-       FROM social_posts sp
-       JOIN social_content_package_assignments a ON a.id::text = sp.metadata->>'socialPackageAssignmentId'
-       JOIN social_content_package_versions v ON v.id = a.package_version_id
-      WHERE sp.id = $1`, [id])
-  const dueAt = packageSla?.approval_sla_hours ? new Date(Date.now() + Number(packageSla.approval_sla_hours) * 60 * 60 * 1000) : null
-
   const post = await queryOne<ApprovalRequestPost>(
     `UPDATE social_posts
-        SET approval_requested_at = NOW(), approval_requested_by = $2, due_at = $4, updated_at = NOW()
+        SET approval_requested_at = NOW(), approval_requested_by = $2,
+            due_at = (
+              SELECT CASE WHEN (v.commercial_scope->>'approvalSlaHours') ~ '^[0-9]+$'
+                THEN NOW() + ((v.commercial_scope->>'approvalSlaHours')::int * INTERVAL '1 hour')
+                ELSE NULL END
+                FROM social_content_package_assignments a
+                JOIN social_content_package_versions v ON v.id = a.package_version_id
+               WHERE a.id::text = social_posts.metadata->>'socialPackageAssignmentId'
+            ), updated_at = NOW()
       WHERE id = $1 AND client_id = $3 RETURNING id, content, client_id`,
-    [id, user.id, existing.client_id, dueAt]
+    [id, user.id, existing.client_id]
   )
   if (!post) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
   await recordSocialPublishingAudit({

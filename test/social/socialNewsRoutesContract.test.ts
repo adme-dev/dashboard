@@ -59,6 +59,6 @@ describe('MCP news inbox contract', () => {
   it('applies package approval SLA when approval is requested', () => {
     const source = readFileSync('server/api/agency/social/publishing/posts/[id]/request-approval.post.ts', 'utf8')
     expect(source).toContain('approvalSlaHours')
-    expect(source).toContain('due_at = $4')
+    expect(source).toContain('due_at = (')
   })
 })
