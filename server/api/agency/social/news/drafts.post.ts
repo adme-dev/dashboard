@@ -26,11 +26,32 @@ export default defineEventHandler(async (event) => {
   )
   const profile = normalizeSocialNewsClientProfile({ ...(profileRow || {}), client_id: body.clientId })
   const activePackage = await loadActiveSocialPackageRef(body.clientId)
+  const packageScope = activePackage ? await queryOne<{ commercial_scope_snapshot: { includedPostVolumes?: Record<string, number>; overagePolicy?: string } | null }>(
+    `SELECT commercial_scope_snapshot FROM social_content_package_assignments WHERE id = $1`, [activePackage.assignmentId]) : null
   const requestedAccounts = Array.isArray(body.accountIds) ? body.accountIds : []
   const targetInput = Array.isArray(body.targets) ? body.targets : []
   const explicit = targetInput.length ? await normalizePublishingTargets(body.clientId, targetInput) : null
   const platforms = explicit?.platforms ?? normalizeProductionReadyPublishPlatforms(body.platforms)
   const accountIds = explicit?.accountIds ?? await assertPublishingTargets(body.clientId, platforms, body.accountIds)
+  const packageUsageWarnings: string[] = []
+  if (packageScope?.commercial_scope_snapshot?.includedPostVolumes) {
+    for (const platform of platforms) {
+      const limit = Number(packageScope.commercial_scope_snapshot.includedPostVolumes[platform])
+      if (!Number.isFinite(limit)) continue
+      const usage = await queryOne<{ used: number }>(
+        `SELECT COUNT(*)::int AS used FROM social_posts
+          WHERE client_id = $1 AND status NOT IN ('rejected', 'deleted') AND $2 = ANY(platforms)
+            AND metadata->>'socialPackageAssignmentId' = $3`,
+        [body.clientId, platform, activePackage.assignmentId])
+      const projected = Number(usage?.used || 0) + newsIds.length
+      if (projected <= limit) continue
+      const policy = packageScope.commercial_scope_snapshot.overagePolicy || 'warn'
+      if (policy === 'block' || policy === 'quote-before-work') {
+        throw createError({ statusCode: 409, statusMessage: `Package ${policy === 'block' ? 'volume limit reached' : 'requires a quote before work'} for ${platform}` })
+      }
+      if (policy === 'warn') packageUsageWarnings.push(`${platform}: ${projected}/${limit} posts`)
+    }
+  }
   let scheduledAt: Date | null = null
   if (body.scheduleMode === 'next-slot') {
     scheduledAt = (await nextOptimalSlots(body.clientId, 1, new Date(), platforms))[0] || null
@@ -59,7 +80,7 @@ export default defineEventHandler(async (event) => {
     const post = await queryOne<{ id: string }>(
       `INSERT INTO social_posts (client_id, created_by, content, link_url, platforms, account_ids, platform_overrides, scheduled_at, timezone, status, metadata, publish_targets)
        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb,$12::jsonb) RETURNING id`,
-      [body.clientId, user.id, content, item.source_url, platforms, accountIds.length ? accountIds : null, JSON.stringify(overrides), scheduledAt?.toISOString() ?? null, body.timezone || profile.timezone, 'draft', JSON.stringify({ source: 'mcp_news', newsItemId: item.id, clientContentProfile: true, approvalRequired: true, ...buildSocialPackagePostMetadata(activePackage) }), explicit ? JSON.stringify(explicit.targets) : null])
+       [body.clientId, user.id, content, item.source_url, platforms, accountIds.length ? accountIds : null, JSON.stringify(overrides), scheduledAt?.toISOString() ?? null, body.timezone || profile.timezone, 'draft', JSON.stringify({ source: 'mcp_news', newsItemId: item.id, clientContentProfile: true, approvalRequired: true, ...(packageUsageWarnings.length ? { packageUsageWarnings } : {}), ...buildSocialPackagePostMetadata(activePackage) }), explicit ? JSON.stringify(explicit.targets) : null])
     if (post) {
       await queryOne(
         `INSERT INTO social_news_client_item_states (client_id, news_item_id, status, linked_post_id)

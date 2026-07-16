@@ -48,4 +48,11 @@ describe('MCP news inbox contract', () => {
     expect(draftsRoute).toContain('INSERT INTO social_news_client_item_states')
     expect(draftsRoute).not.toContain("UPDATE social_news_items SET status = 'used'")
   })
+
+  it('enforces active package volume policy before creating news drafts', () => {
+    const source = readFileSync('server/api/agency/social/news/drafts.post.ts', 'utf8')
+    expect(source).toContain('commercial_scope_snapshot')
+    expect(source).toContain('volume limit reached')
+    expect(source).toContain('packageUsageWarnings')
+  })
 })
