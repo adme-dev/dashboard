@@ -1,10 +1,11 @@
 /** PATCH /api/agency/social/news/sources/:sourceKey — update a plug-in endpoint/settings. */
-import { requirePermission } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { execute } from '~~/server/utils/db'
 import { isSafeNewsSourceUrl } from '~~/server/utils/socialNewsSources'
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'MEDIA_BUYING')
+  await requireRole(event, PERMISSIONS.ADMIN)
   const sourceKey = getRouterParam(event, 'sourceKey')
   if (!sourceKey) throw createError({ statusCode: 400, statusMessage: 'sourceKey required' })
   const body = await readBody<{ endpointUrl?: string; enabled?: boolean; settings?: Record<string, unknown> }>(event)

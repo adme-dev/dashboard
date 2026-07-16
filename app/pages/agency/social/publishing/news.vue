@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buildNewsPublishTargets } from '~/utils/socialNewsPublishing'
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 useHead({ title: 'News Inbox' })
 
@@ -10,6 +11,7 @@ const pending = ref(false)
 const error = ref<string | null>(null)
 const selected = ref<string[]>([])
 const toast = useToast()
+const { isAdmin } = useAuth()
 const clients = ref<Array<{ id: string; name: string }>>([])
 const clientId = ref('')
 const accounts = ref<Array<{ id: string; platform: string; account_name: string | null }>>([])
@@ -64,7 +66,8 @@ watch(clientId, async (id) => {
 })
 async function createDrafts() {
   try {
-    const targets = accounts.value.filter(a => accountIds.value.includes(a.id)).map(a => ({ platform: a.platform, accountId: a.id }))
+    const targets = buildNewsPublishTargets(accounts.value, accountIds.value, platforms.value)
+    if (!targets.length) throw new Error('Choose at least one connected account on a selected platform')
     const result = await apiFetch<{ postIds: string[] }>('/api/agency/social/news/drafts', { method: 'POST', body: { newsIds: selected.value, clientId: clientId.value, platforms: platforms.value, accountIds: accountIds.value, targets, rewrite: rewrite.value, tone: tone.value, scheduledAt: scheduledAt.value ? new Date(scheduledAt.value).toISOString() : null } } as any)
     toast.add({ title: 'Drafts created', description: `${result.postIds.length} item(s) sent to Compose / Approvals`, color: 'success' })
     selected.value = []; showDraftOptions.value = false; status.value = 'used'; await refresh()
@@ -77,7 +80,7 @@ async function createDrafts() {
     <div class="flex items-center gap-2 mb-5">
       <USelectMenu v-model="status" :items="[{ label: 'Unread', value: 'unread' }, { label: 'Selected', value: 'selected' }, { label: 'Used', value: 'used' }, { label: 'Dismissed', value: 'dismissed' }]" value-key="value" class="w-36" />
       <UButton icon="i-lucide-refresh-cw" color="neutral" variant="subtle" label="Refresh source" :loading="pending" @click="refreshSource" />
-      <UButton icon="i-lucide-settings-2" color="neutral" variant="subtle" label="Source settings" @click="showSourceSettings = true; loadSourceSettings()" />
+      <UButton v-if="isAdmin" icon="i-lucide-settings-2" color="neutral" variant="subtle" label="Source settings" @click="showSourceSettings = true; loadSourceSettings()" />
       <span class="text-sm text-muted ml-auto">{{ selected.length }} selected</span>
       <UButton icon="i-lucide-send" label="Create drafts" :disabled="!selected.length" @click="showDraftOptions = true" />
     </div>
