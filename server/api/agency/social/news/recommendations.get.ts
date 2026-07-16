@@ -29,9 +29,15 @@ export default defineEventHandler(async (event) => {
   const available = [...new Set(accounts.map(account => account.platform))]
   const preferred = (profile?.preferred_platforms || []).filter(platform => available.includes(platform))
   const metrics = new Map(performance.map(row => [row.platform, row]))
+  const score = (platform: string) => {
+    const row = metrics.get(platform)
+    const impressions = Number(row?.impressions || 0)
+    const engagements = Number(row?.engagements || 0)
+    return impressions > 0 ? engagements / impressions : engagements
+  }
   const ranked = (requested.length ? requested : preferred.length ? preferred : available)
     .filter(platform => available.includes(platform))
-    .sort((a, b) => (Number(metrics.get(b)?.engagements || 0) - Number(metrics.get(a)?.engagements || 0)))
+    .sort((a, b) => score(b) - score(a))
   const platforms = [...new Set(ranked)]
   const slots = await nextOptimalSlots(clientId, 1, new Date(), platforms)
   const articleText = `${news?.title || ''} ${(news?.topics || []).join(' ')}`.toLowerCase()
@@ -49,7 +55,7 @@ export default defineEventHandler(async (event) => {
     })),
     nextSlot: slots[0]?.toISOString() || null,
     article: news ? { title: news.title, relevant: included.length > 0 && excluded.length === 0, matchedKeywords: included, excludedKeywords: excluded } : null,
-    basis: performance.length ? 'client profile and published engagement history' : 'client profile and connected accounts',
+    basis: performance.length ? 'client profile and published engagement rate history' : 'client profile and connected accounts',
     approvalRequired: true,
   }
 })
