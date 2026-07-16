@@ -18,6 +18,11 @@ const platforms = ref<string[]>(['facebook'])
 const rewrite = ref(false)
 const tone = ref('professional')
 const showDraftOptions = ref(false)
+const showSourceSettings = ref(false)
+const sourceKey = ref('mcp_news')
+const sourceUrl = ref('')
+const sourceEnabled = ref(true)
+const sourceSaving = ref(false)
 
 async function refresh() {
   pending.value = true; error.value = null
@@ -35,6 +40,17 @@ function toggle(id: string) { selected.value = selected.value.includes(id) ? sel
 function fmtDate(value: string | null) { return value ? new Date(value).toLocaleString() : 'Date unknown' }
 onMounted(refresh)
 watch(status, refresh)
+async function loadSourceSettings() {
+  const result = await apiFetch<{ sources: Array<{ sourceKey: string; endpointUrl: string; enabled: boolean }> }>('/api/agency/social/news/sources')
+  const source = result.sources.find(s => s.sourceKey === sourceKey.value) || result.sources[0]
+  if (source) { sourceKey.value = source.sourceKey; sourceUrl.value = source.endpointUrl; sourceEnabled.value = source.enabled }
+}
+async function saveSourceSettings() {
+  sourceSaving.value = true
+  try { await apiFetch(`/api/agency/social/news/sources/${sourceKey.value}`, { method: 'PATCH', body: { endpointUrl: sourceUrl.value, enabled: sourceEnabled.value } } as any); toast.add({ title: 'News source saved', color: 'success' }); showSourceSettings.value = false }
+  catch (e: any) { toast.add({ title: 'Could not save source', description: e?.data?.statusMessage || 'Check the HTTPS URL', color: 'error' }) }
+  finally { sourceSaving.value = false }
+}
 onMounted(async () => {
   const response = await apiFetch<any>('/api/agency/clients?limit=200')
   clients.value = Array.isArray(response) ? response : (response?.clients ?? [])
@@ -60,8 +76,15 @@ async function createDrafts() {
     <div class="flex items-center gap-2 mb-5">
       <USelectMenu v-model="status" :items="[{ label: 'Unread', value: 'unread' }, { label: 'Selected', value: 'selected' }, { label: 'Used', value: 'used' }, { label: 'Dismissed', value: 'dismissed' }]" value-key="value" class="w-36" />
       <UButton icon="i-lucide-refresh-cw" color="neutral" variant="subtle" label="Refresh source" :loading="pending" @click="refreshSource" />
+      <UButton icon="i-lucide-settings-2" color="neutral" variant="subtle" label="Source settings" @click="showSourceSettings = true; loadSourceSettings()" />
       <span class="text-sm text-muted ml-auto">{{ selected.length }} selected</span>
       <UButton icon="i-lucide-send" label="Create drafts" :disabled="!selected.length" @click="showDraftOptions = true" />
+    </div>
+    <div v-if="showSourceSettings" class="rounded-lg border border-default bg-default p-4 mb-5 space-y-3">
+      <div class="text-sm font-medium">News source plug-in</div>
+      <UInput v-model="sourceUrl" label="Endpoint URL" class="w-full" />
+      <UCheckbox v-model="sourceEnabled" label="Enabled" />
+      <div class="flex gap-2"><UButton label="Save" :loading="sourceSaving" @click="saveSourceSettings" /><UButton label="Cancel" color="neutral" variant="ghost" @click="showSourceSettings = false" /></div>
     </div>
     <div v-if="showDraftOptions" class="rounded-lg border border-primary/30 bg-default p-4 mb-5 space-y-3">
       <div class="flex flex-wrap gap-3 items-center">
