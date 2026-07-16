@@ -18,13 +18,16 @@ try {
          'social_news_items', 'social_news_sources', 'social_news_client_profiles',
          'social_news_feedback_events', 'social_content_packages',
          'social_content_package_versions', 'social_content_package_assignments',
-         'client_operational_evidence'
+         'client_operational_evidence', 'social_posts'
        )
      ORDER BY table_name`)
   const source = await client.query(`
     SELECT source_key, endpoint_url, enabled
       FROM social_news_sources
      WHERE source_key = 'mcp_news'`)
+  const publishTargets = await client.query(`
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'social_posts' AND column_name = 'publish_targets'`)
   const counts = await client.query(`
     SELECT
       (SELECT COUNT(*)::int FROM social_news_items) AS news_items,
@@ -35,9 +38,10 @@ try {
       (SELECT COUNT(*)::int FROM client_operational_evidence WHERE review_status = 'pending') AS pending_evidence`)
 
   const result = {
-    ok: tables.rows.length === 8 && source.rows.length === 1,
+    ok: tables.rows.length === 9 && source.rows.length === 1 && publishTargets.rows.length === 1,
     tables: tables.rows.map(row => row.table_name),
     source: source.rows[0] || null,
+    publishTargetsColumn: publishTargets.rows.length === 1,
     counts: counts.rows[0],
   }
   console.log(JSON.stringify(result, null, 2))
