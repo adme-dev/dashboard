@@ -3,6 +3,7 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { claimAndPublishSocialPost } from '~~/server/utils/socialPublishing/dispatch'
+import { recordSocialNewsFeedback } from '~~/server/utils/socialNewsFeedback'
 
 interface SocialPostRow {
   id: string
@@ -43,6 +44,17 @@ export default defineEventHandler(async (event) => {
   })
   if (dispatch.skipped) {
     throw createError({ statusCode: 409, statusMessage: 'Post is already being published or changed state' })
+  }
+  const metadata = (post as SocialPostRow & { metadata?: { newsItemId?: string } }).metadata
+  if (metadata?.newsItemId) {
+    await recordSocialNewsFeedback({
+      clientId: post.client_id,
+      newsItemId: metadata.newsItemId,
+      postId: id,
+      actorId: user.id,
+      eventType: dispatch.status === 'published' ? 'published' : 'failed',
+      metadata: { platformResults: dispatch.platformResults },
+    })
   }
 
   return {

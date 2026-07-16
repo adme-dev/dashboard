@@ -69,4 +69,13 @@ describe('MCP news inbox contract', () => {
     expect(source).toContain("reviewStatus: 'pending'")
     expect(source).toContain('client_operational_evidence')
   })
+
+  it('records append-only, client-scoped feedback tied to immutable news stories', () => {
+    const source = readFileSync('server/api/agency/social/news/feedback.post.ts', 'utf8')
+    expect(source).toContain('requireRole(event, PERMISSIONS.CREATIVE)')
+    expect(source).toContain('requireSocialClientAccess(event, clientId)')
+    expect(source).toContain('social_news_items')
+    expect(source).toContain('recordSocialNewsFeedback')
+    expect(readFileSync('server/utils/socialNewsFeedback.ts', 'utf8')).toContain('social_news_feedback_events')
+  })
 })

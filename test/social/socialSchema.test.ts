@@ -64,4 +64,15 @@ describe('social publishing migrations', () => {
     expect(sql).toMatch(/linked_social_post_id = managed_matches\.post_id/)
     expect(sql).toMatch(/platformPostId/)
   })
+
+  it('254 stores append-only source-linked social news feedback', () => {
+    const sql = mig('254_social_news_feedback_events.sql')
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS social_news_feedback_events/)
+    for (const col of ['client_id', 'news_item_id', 'post_id', 'event_type', 'metadata', 'created_at']) {
+      expect(sql).toContain(col)
+    }
+    expect(sql).toMatch(/REFERENCES social_news_items\(id\)/)
+    expect(sql).toMatch(/REFERENCES social_posts\(id\)/)
+    expect(sql).toMatch(/CHECK \(event_type IN/)
+  })
 })

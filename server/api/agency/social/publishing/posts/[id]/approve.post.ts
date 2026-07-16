@@ -5,6 +5,7 @@ import { createNotification } from '~~/server/utils/notifications'
 import { requireSocialPostClientAccess } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
 import { startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/client'
+import { recordSocialNewsFeedback } from '~~/server/utils/socialNewsFeedback'
 
 interface ApprovedPost {
   id: string
@@ -44,6 +45,10 @@ export default defineEventHandler(async (event) => {
     actorId: user.id,
     action: 'post_approved'
   })
+  const newsItemId = (existing as { metadata?: { newsItemId?: string } }).metadata?.newsItemId
+  if (newsItemId) {
+    await recordSocialNewsFeedback({ clientId: existing.client_id, newsItemId, postId: id, actorId: user.id, eventType: 'approved', metadata: { status: post.status } })
+  }
 
   if (post.approval_requested_by) {
     try {
