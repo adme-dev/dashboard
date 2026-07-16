@@ -44,6 +44,9 @@ const ROUTES: Record<string, string[]> = {
     '/api/cron/video-generation-reconcile',
     '/api/cron/monday-webhooks',
   ],
+  // every 15 min — keep the Xero customer cache and rollups fresh. Delta syncs
+  // are idempotent and use the shared cron token resolver.
+  '*/15 * * * *': ['/api/cron/xero-customer-sync'],
   // daily — refresh the Xero invoice line-item cache (AGI / True Position).
   // Syncs current + previous month so month-end backdated entries are caught.
   '20 3 * * *': ['/api/cron/xero-invoice-lines-sync'],
@@ -51,6 +54,9 @@ const ROUTES: Record<string, string[]> = {
   '35 3 * * *': ['/api/cron/office-retention'],
   // daily — purge tracking_events past each site's retention_days
   '45 3 * * *': ['/api/cron/tracking-retention'],
+  // daily — create review-only Auto Feed drafts. The endpoint is a no-op until
+  // DEALER_FEEDS_ENABLED is set and deduplicates every feed item per rule.
+  '10 4 * * *': ['/api/cron/feed-post-rules'],
   // daily 6am UTC — ad-spend sync. Meta fans out per account via queue; other
   // platforms run as background syncs. The endpoint returns immediately so this
   // never hits the function time limit. Replaces the ai-agent-worker path,
