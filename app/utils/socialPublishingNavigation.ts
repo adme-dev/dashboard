@@ -5,6 +5,7 @@ export type SocialPublishingRouteKey
   = | 'accounts'
     | 'calendar'
     | 'compose'
+    | 'news'
     | 'feed'
     | 'approvals'
     | 'planner'
@@ -72,7 +73,7 @@ export const SOCIAL_PUBLISHING_ROUTE_GROUPS: SocialPublishingRouteGroup[] = [
 ]
 
 /**
- * Canonical flat order: accounts → calendar → compose → approvals → planner →
+ * Canonical flat order: accounts → calendar → compose → news → feed → approvals → planner →
  * queue → wall → analytics. This drives the global agency sidebar (via
  * socialSuiteNavigation) and the step indicator, so it is intentionally kept
  * setup-first and stable. The in-page tile nav re-presents these by the five
@@ -106,6 +107,14 @@ export const SOCIAL_PUBLISHING_ROUTE_ORDER: SocialPublishingRouteItem[] = [
     to: '/agency/social/publishing/compose',
     objective: 'Create one base post, customize it per network, and choose publish timing.',
     badgeKey: 'drafts'
+  },
+  {
+    key: 'news',
+    group: 'create',
+    label: 'News Inbox',
+    icon: 'i-lucide-newspaper',
+    to: '/agency/social/publishing/news',
+    objective: 'Cherry-pick MCP news, optionally rewrite it with AI, and target connected client accounts.'
   },
   {
     key: 'feed',

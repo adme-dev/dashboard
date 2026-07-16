@@ -21,6 +21,7 @@ describe('social publishing navigation order', () => {
       'accounts',
       'calendar',
       'compose',
+      'news',
       'feed',
       'approvals',
       'planner',
@@ -46,7 +47,7 @@ describe('social publishing navigation order', () => {
       'Measure'
     ])
     expect(socialPublishingRouteGroups().map(group => group.items.map(item => item.key))).toEqual([
-      ['compose', 'feed'],
+      ['compose', 'news', 'feed'],
       ['calendar', 'planner', 'queue'],
       ['approvals'],
       ['accounts'],
@@ -75,6 +76,7 @@ describe('social publishing navigation order', () => {
       '/agency/social/publishing/accounts',
       '/agency/social/publishing/calendar',
       '/agency/social/publishing/compose',
+      '/agency/social/publishing/news',
       '/agency/social/publishing/feed',
       '/agency/social/publishing/approvals',
       '/agency/social/publishing/planner',
@@ -87,6 +89,7 @@ describe('social publishing navigation order', () => {
   it('matches route paths to the correct publishing workflow item', () => {
     expect(socialPublishingRouteForPath('/agency/social/publishing/calendar')?.key).toBe('calendar')
     expect(socialPublishingRouteForPath('/agency/social/publishing/compose')?.key).toBe('compose')
+    expect(socialPublishingRouteForPath('/agency/social/publishing/news')?.key).toBe('news')
     expect(socialPublishingRouteForPath('/agency/social/publishing/accounts')?.key).toBe('accounts')
     expect(socialPublishingRouteForPath('/agency/social/publishing/wall')?.key).toBe('wall')
     expect(socialPublishingRouteForPath('/agency/social/inbox')).toBeUndefined()
@@ -94,8 +97,8 @@ describe('social publishing navigation order', () => {
 
   it('reports the active workflow step with one-based position context', () => {
     expect(socialPublishingStepForPath('/agency/social/publishing/planner')).toMatchObject({
-      position: 6,
-      total: 9,
+      position: 7,
+      total: 10,
       item: { key: 'planner' }
     })
     expect(socialPublishingStepForPath('/agency/social/listening')).toBeNull()

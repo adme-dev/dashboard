@@ -48,12 +48,13 @@ describe('SocialPublishingNav', () => {
     }
   })
 
-  it('renders all seven publishing tiles with their routes', async () => {
+  it('renders the publishing tiles with their routes', async () => {
     const html = await render()
-    for (const label of ['Compose', 'Calendar', 'Queue', 'Planner', 'Approvals', 'Accounts', 'Analytics']) {
+    for (const label of ['Compose', 'News Inbox', 'Calendar', 'Queue', 'Planner', 'Approvals', 'Accounts', 'Analytics']) {
       expect(html).toContain(label)
     }
     expect(html).toContain('href="/agency/social/publishing/compose"')
+    expect(html).toContain('href="/agency/social/publishing/news"')
     expect(html).toContain('href="/agency/social/publishing/accounts"')
     expect(html).toContain('href="/agency/social/publishing/queue"')
     expect(html).toContain('href="/agency/social/publishing/calendar"')
