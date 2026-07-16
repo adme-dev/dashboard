@@ -18,6 +18,7 @@ import { listDealerLinks } from '~~/server/utils/feeds/dealerLinkStore'
 import { getSocialDashboardClient, isDealerFeedsEnabled } from '~~/server/utils/feeds/config'
 import { getFeedProvider } from '~~/server/utils/feeds/registry'
 import { cloudflareRuntimeEnv, mergedRuntimeEnv } from '~~/server/utils/feeds/serverContext'
+import { loadAutoFeedInventory } from '~~/server/utils/feeds/autoFeedInventory'
 
 const MAX_CLIENTS = 8
 const ITEMS_PER_CLIENT = 12
@@ -46,16 +47,13 @@ export default defineEventHandler(async (event) => {
       try {
         const provider = getFeedProvider(link.providerId, { socialDashboardClient })
         const ctx = linkToContext(link, user.email)
-        const feeds = (await provider.listFeeds(ctx, link)).filter(f => f.isActive)
-        const feed = feeds[0]
-        if (!feed) continue
-        const preview = await provider.previewFeed(ctx, link, { feedId: feed.id } as any, { limit: ITEMS_PER_CLIENT })
+        const { feedName, preview } = await loadAutoFeedInventory(provider, ctx, link, ITEMS_PER_CLIENT)
         for (const v of preview.items) {
           items.push({
             id: `${link.clientId}:${v.id}`,
             clientId: link.clientId,
             clientName,
-            feedName: feed.name,
+            feedName,
             eventType: v.condition && /new/i.test(v.condition) ? 'new' : 'listing',
             title: [v.year, v.make, v.model].filter(Boolean).join(' ') || v.stockNumber || 'Vehicle',
             price: v.price,
