@@ -19,6 +19,7 @@ import { getDealerLink, linkToContext } from '~~/server/utils/feeds/dealerLinks'
 import { getSocialDashboardClient, isDealerFeedsEnabled } from '~~/server/utils/feeds/config'
 import { getFeedProvider } from '~~/server/utils/feeds/registry'
 import { cloudflareRuntimeEnv, mergedRuntimeEnv } from '~~/server/utils/feeds/serverContext'
+import { loadAutoFeedInventory } from '~~/server/utils/feeds/autoFeedInventory'
 
 const ITEMS_PER_CLIENT = 25
 const MAX_DRAFTS_PER_RUN_PER_RULE = 5 // guard against a first run flooding drafts
@@ -68,10 +69,7 @@ export default defineEventHandler(async (event) => {
       if (!link) continue
       const provider = getFeedProvider(link.providerId, { socialDashboardClient })
       const ctx = linkToContext(link, rule.created_by || 'cron@xeroflow.io')
-      const feeds = (await provider.listFeeds(ctx, link)).filter(f => f.isActive)
-      const feed = feeds[0]
-      if (!feed) continue
-      const preview = await provider.previewFeed(ctx, link, { feedId: feed.id } as any, { limit: ITEMS_PER_CLIENT })
+      const { preview } = await loadAutoFeedInventory(provider, ctx, link, ITEMS_PER_CLIENT)
 
       let created = 0
       for (const v of preview.items) {
