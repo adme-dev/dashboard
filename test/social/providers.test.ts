@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// The providers stopped using the global $fetch after the Meta-524 fix —
+// they call providerFetch/fetchWithTimeout from ./http (ofetch), so the
+// network layer must be mocked at that module, not via stubGlobal.
+vi.mock('../../server/utils/social-providers/http', () => ({
+  providerFetch: vi.fn(async () => ({ id: '123_456' })),
+  providerFetchRaw: vi.fn(async () => ({ _data: { id: '123_456' }, status: 200, ok: true })),
+  fetchWithTimeout: vi.fn(async () => new Response(JSON.stringify({ id: '123_456' }), { status: 200 })),
+}))
+
 // registry.getProviderOrThrow uses the global createError (Nitro auto-import)
 ;(globalThis as any).createError = (opts: { statusCode: number; message?: string; statusMessage?: string }) => {
   const e = new Error(opts.message ?? opts.statusMessage ?? 'error') as any
@@ -33,7 +42,7 @@ describe('provider registry', () => {
 
 describe('facebookProvider.post', () => {
   beforeEach(() => {
-    vi.stubGlobal('$fetch', vi.fn(async () => ({ id: '123_456' })))
+    vi.clearAllMocks()
   })
   it('returns platformPostId + url on a text-only post', async () => {
     const r = await facebookProvider.post({
