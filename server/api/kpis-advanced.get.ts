@@ -1,9 +1,10 @@
-import { createError } from 'h3'
+import { createError, getQuery } from 'h3'
 import { xeroFetch } from '../utils/xeroClient'
 import { getActiveTokenForSession } from '../utils/tokenStore'
 import { getSelectedTenant } from '../utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
+import { extractPnlTotals } from '~~/server/utils/xeroPnlParse'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -35,11 +36,14 @@ export default eventHandler(async (event) => {
 
   const today = new Date()
   const monthStart = getMonthStart(today)
-  const yearStart = new Date(today.getFullYear(), 0, 1)
   const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
   const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
-  
-  const cacheKey = `xero:kpis-advanced:${tenantId}`
+
+  // Reporting basis — accrual (Xero default) or cash (paymentsOnly=true),
+  // matching the basis picker on Xero's own P&L.
+  const basis = String(getQuery(event).basis || '').toLowerCase() === 'cash' ? 'cash' : 'accrual'
+
+  const cacheKey = `xero:kpis-advanced:${tenantId}:${basis}`
 
   return cachedFetch(event, cacheKey, 300, async () => {
   const accessToken = token.access_token!
@@ -48,13 +52,20 @@ export default eventHandler(async (event) => {
     return `Invoices?${params.toString()}`
   }
 
+  // Revenue / expenses / profit come from Xero's ACTUAL Profit & Loss
+  // report. The previous implementation summed PAID invoices/bills by
+  // invoice date, which silently missed spend-money bank transactions,
+  // payroll wages and manual journals (expenses showed roughly half) and
+  // was GST-inclusive. The P&L report is ex-GST and complete.
+  const basisSuffix = basis === 'cash' ? '&paymentsOnly=true' : ''
+  const pnlPath = (from: Date, to: Date) =>
+    `Reports/ProfitAndLoss?fromDate=${ensureDateString(from)}&toDate=${ensureDateString(to)}&standardLayout=false${basisSuffix}`
+
   // Parallel data fetching — dedupedXeroCall queue limits to 3 concurrent
   const [
     currentCashResponse,
-    currentMonthInvoicesResponse,
-    lastMonthInvoicesResponse,
-    currentMonthExpensesResponse,
-    lastMonthExpensesResponse,
+    currentPnlResponse,
+    lastMonthPnlResponse,
     outstandingInvoicesResponse,
     overdueInvoicesResponse,
     balanceSheetResponse
@@ -63,20 +74,12 @@ export default eventHandler(async (event) => {
       xeroFetch<any>({ accessToken, tenantId, path: `Reports/BankSummary?fromDate=${ensureDateString(addDays(today, -30))}&toDate=${ensureDateString(today)}` })
     ),
 
-    dedupedXeroCall(`kpi-rev-current:${tenantId}`, 'kpi-rev-current', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`, 'Date DESC') })
+    dedupedXeroCall(`kpi-pnl-current:${tenantId}:${basis}`, 'kpi-pnl-current', () =>
+      xeroFetch<any>({ accessToken, tenantId, path: pnlPath(monthStart, today) })
     ),
 
-    dedupedXeroCall(`kpi-rev-last:${tenantId}`, 'kpi-rev-last', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`, 'Date DESC') })
-    ),
-
-    dedupedXeroCall(`kpi-exp-current:${tenantId}`, 'kpi-exp-current', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`, 'Date DESC') })
-    ),
-
-    dedupedXeroCall(`kpi-exp-last:${tenantId}`, 'kpi-exp-last', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`, 'Date DESC') })
+    dedupedXeroCall(`kpi-pnl-last:${tenantId}:${basis}`, 'kpi-pnl-last', () =>
+      xeroFetch<any>({ accessToken, tenantId, path: pnlPath(lastMonth, lastMonthEnd) })
     ),
 
     dedupedXeroCall(`kpi-outstanding:${tenantId}`, 'kpi-outstanding', () =>
@@ -125,19 +128,26 @@ export default eventHandler(async (event) => {
     }
   }
 
-  // Process revenue data
-  const currentMonthRevenue = extractData(currentMonthInvoicesResponse)?.invoices
-    ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
+  // Revenue / expenses / profit straight off the P&L report — each equals
+  // a literal named report line (Total Income / Total Operating Expenses /
+  // Net Profit) so a bookkeeper can reconcile every card against Xero.
+  //
+  // A failed P&L call must THROW, not degrade to zeros — otherwise a
+  // transient Xero 429/timeout would cache "$0 revenue / -100% growth"
+  // for the full 5-minute TTL and the dashboard would report the business
+  // as dead with no error shown.
+  const currentPnlRaw = extractData(currentPnlResponse)
+  const lastPnlRaw = extractData(lastMonthPnlResponse)
+  if (!currentPnlRaw || !lastPnlRaw) {
+    throw createError({ statusCode: 502, statusMessage: 'Xero P&L report unavailable — try again shortly' })
+  }
+  const currentPnl = extractPnlTotals(currentPnlRaw)
+  const lastPnl = extractPnlTotals(lastPnlRaw)
 
-  const lastMonthRevenue = extractData(lastMonthInvoicesResponse)?.invoices
-    ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
-
-  // Process expense data
-  const currentMonthExpenses = extractData(currentMonthExpensesResponse)?.invoices
-    ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
-
-  const lastMonthExpenses = extractData(lastMonthExpensesResponse)?.invoices
-    ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
+  const currentMonthRevenue = currentPnl.revenue
+  const lastMonthRevenue = lastPnl.revenue
+  const currentMonthExpenses = currentPnl.expenses
+  const lastMonthExpenses = lastPnl.expenses
 
   // Process outstanding invoices
   const outstandingInvoices = extractData(outstandingInvoicesResponse)?.invoices || []
@@ -176,9 +186,10 @@ export default eventHandler(async (event) => {
     }
   }
 
-  // Calculate KPIs and trends
-  const currentProfit = currentMonthRevenue - currentMonthExpenses
-  const lastMonthProfit = lastMonthRevenue - lastMonthExpenses
+  // Calculate KPIs and trends — Net Profit comes from the report's own
+  // line (it accounts for Other Income etc.), not revenue − expenses.
+  const currentProfit = currentPnl.netProfit
+  const lastMonthProfit = lastPnl.netProfit
   const profitMargin = currentMonthRevenue > 0 ? (currentProfit / currentMonthRevenue) * 100 : 0
   
   // Month-over-month growth rates
@@ -203,6 +214,10 @@ export default eventHandler(async (event) => {
 
   return {
     timestamp: new Date().toISOString(),
+    // Where the money figures come from — surfaced in the UI so a
+    // bookkeeper can reconcile against the same report in Xero.
+    source: 'xero_pnl_report',
+    basis,
     period: {
       current: {
         from: ensureDateString(monthStart),
@@ -225,6 +240,8 @@ export default eventHandler(async (event) => {
     expenses: {
       current: Math.round(currentMonthExpenses * 100) / 100,
       lastMonth: Math.round(lastMonthExpenses * 100) / 100,
+      costOfSales: Math.round(currentPnl.costOfSales * 100) / 100,
+      operating: Math.round(currentPnl.operatingExpenses * 100) / 100,
       growth: Math.round(expenseGrowth * 100) / 100,
       trend: expenseGrowth > 5 ? 'up' : expenseGrowth < -5 ? 'down' : 'stable'
     },

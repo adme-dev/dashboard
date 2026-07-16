@@ -59,6 +59,14 @@
             </div>
           </div>
 
+          <!-- Auth error (e.g. Sign in with Xero didn't match a team member) -->
+          <div
+            v-if="authError"
+            class="mb-6 p-4 rounded-xl border border-red-200 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10"
+          >
+            <p class="text-[13px] text-red-700 dark:text-red-400 leading-relaxed">{{ authError }}</p>
+          </div>
+
           <!-- Magic Link Form -->
           <form @submit.prevent="requestMagicLink" class="space-y-4">
             <div>
@@ -186,6 +194,13 @@ const devLink = ref('')
 
 const isValidEmail = computed(() => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)
+})
+
+const authError = computed(() => {
+  if (route.query.error === 'xero-not-recognised') {
+    return "That Xero account isn't linked to a XeroFlow team member. Sign in with a magic link below, or ask an admin to add your email."
+  }
+  return null
 })
 
 async function connectXero() {

@@ -4,14 +4,18 @@ import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '../../utils/kv'
 import { dedupedXeroCall } from '../../utils/xeroRateLimit'
+import { QUOTE_PIPELINE_MAX_AGE_DAYS, quotePipelineDateFrom } from '../../utils/quotePipeline'
 
 /**
  * Active quote pipeline — quotes that are DRAFT, SENT, or ACCEPTED but
- * not yet INVOICED or DECLINED. Sits next to AR on the /invoices page
- * to show forward-looking revenue (work won/quoted but not yet billed).
+ * not yet INVOICED or DECLINED, dated within the last 12 months. Quotes
+ * left in SENT for years are dead deals nobody marked Declined — without
+ * the age floor they inflate the pipeline at full face value forever.
+ * Sits next to AR on the /invoices page to show forward-looking revenue
+ * (work won/quoted but not yet billed).
  *
  *   GET /api/xero/quotes-summary
- *   → { total, count, byStatus: { draft, sent, accepted } }
+ *   → { total, count, byStatus: { draft, sent, accepted }, maxAgeDays }
  *
  * Cached 5 minutes — quotes don't change minute-to-minute.
  */
@@ -25,13 +29,15 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero-report:${tenantId}:quotes-summary`
 
   return cachedFetch(event, cacheKey, 300, async () => {
+    const dateFrom = quotePipelineDateFrom()
     const fetchByStatus = (status: 'DRAFT' | 'SENT' | 'ACCEPTED') => dedupedXeroCall(
-      `quotes-${status.toLowerCase()}:${tenantId}`,
+      `quotes-${status.toLowerCase()}:${tenantId}:${dateFrom}`,
       `quotes-${status.toLowerCase()}`,
       () => xeroFetch<any>({
         accessToken: token.access_token!,
         tenantId,
-        path: `Quotes?Status=${status}`,
+        // Quotes supports DateFrom/DateTo filters (yyyy-mm-dd).
+        path: `Quotes?Status=${status}&DateFrom=${dateFrom}`,
       })
     )
 
@@ -55,6 +61,7 @@ export default eventHandler(async (event) => {
       total: draft.total + sent.total + accepted.total,
       count: draft.count + sent.count + accepted.count,
       byStatus: { draft, sent, accepted },
+      maxAgeDays: QUOTE_PIPELINE_MAX_AGE_DAYS,
     }
   })
 })

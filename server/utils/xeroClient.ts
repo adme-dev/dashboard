@@ -6,6 +6,12 @@ import { getAppUrl } from '~~/server/utils/appUrl'
 import { getCachedBinding } from '~~/server/utils/email'
 
 const DEFAULT_SCOPES = [
+  // OIDC identity scopes — the id_token's email claim lets the OAuth
+  // callback match the Xero user to a team member so "Sign in with Xero"
+  // can mint an app session (and unknown Xero users can't bind the org).
+  'openid',
+  'profile',
+  'email',
   'offline_access',
   'accounting.reports.read',
   'accounting.settings.read',

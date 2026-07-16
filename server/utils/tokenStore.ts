@@ -47,12 +47,8 @@ export async function setOrgToken(event: H3Event, token: XeroTokenSet, opts?: { 
   ])
 }
 
-export async function getOrgToken(event: H3Event): Promise<XeroTokenSet | undefined> {
-  // Check KV first
-  const cached = await kvGet<XeroTokenSet>(event, ORG_TOKEN_KV_KEY)
-  if (cached) return cached
-
-  // Fall back to DB — get the most recently updated connection
+/** Read the newest token row straight from the DB, bypassing KV. */
+async function readOrgTokenFromDb(): Promise<XeroTokenSet | undefined> {
   const row = await queryOne<{
     access_token: string
     refresh_token: string | null
@@ -69,7 +65,7 @@ export async function getOrgToken(event: H3Event): Promise<XeroTokenSet | undefi
 
   if (!row) return undefined
 
-  const token = {
+  return {
     access_token: row.access_token,
     refresh_token: row.refresh_token || undefined,
     id_token: row.id_token || undefined,
@@ -77,6 +73,16 @@ export async function getOrgToken(event: H3Event): Promise<XeroTokenSet | undefi
     scope: row.scope || undefined,
     token_type: row.token_type || 'Bearer'
   } as XeroTokenSet
+}
+
+export async function getOrgToken(event: H3Event): Promise<XeroTokenSet | undefined> {
+  // Check KV first
+  const cached = await kvGet<XeroTokenSet>(event, ORG_TOKEN_KV_KEY)
+  if (cached) return cached
+
+  // Fall back to DB — get the most recently updated connection
+  const token = await readOrgTokenFromDb()
+  if (!token) return undefined
 
   // Backfill KV
   kvPut(event, ORG_TOKEN_KV_KEY, token, TOKEN_TTL)
@@ -159,15 +165,27 @@ export async function getActiveOrgToken(event: H3Event, opts: { minTtlMs?: numbe
       refreshToken: token.refresh_token!,
       event
     })
-    await setOrgToken(event, next)
+    // Write the refreshed token to the TENANT row (not '__default__') so
+    // background jobs reading the tenant row stay on the live refresh-token
+    // chain — Xero refresh tokens are single-use, so a fork here strands
+    // every other reader with a consumed token.
+    const tenant = await getOrgTenant(event)
+    await setOrgToken(event, next, tenant
+      ? { tenantId: tenant.tenantId, tenantName: tenant.tenantName }
+      : undefined)
     return next
   } catch (err: any) {
-    const winner = await getOrgToken(event)
+    // Re-read straight from the DB — NOT via getOrgToken/KV: this request may
+    // have just backfilled KV with the very token whose refresh lost the
+    // race, which would make the winner invisible and trigger a spurious
+    // clearOrgToken() below (wiping a healthy connection).
+    const winner = await readOrgTokenFromDb()
     if (
       winner?.access_token
       && winner.access_token !== token.access_token
       && winner.expires_at > Date.now() + 5_000
     ) {
+      kvPut(event, ORG_TOKEN_KV_KEY, winner, TOKEN_TTL)
       return winner
     }
 

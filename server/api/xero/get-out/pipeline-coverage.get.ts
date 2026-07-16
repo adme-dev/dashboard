@@ -16,6 +16,7 @@ import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { queryOne } from '~~/server/utils/db'
 import { loadGetOutConfig, summariseConfig } from '~~/server/utils/getOutConfig'
+import { quotePipelineDateFrom } from '~~/server/utils/quotePipeline'
 
 const QUOTE_PROBABILITY: Record<string, number> = {
   DRAFT: 0.20,
@@ -43,7 +44,9 @@ export default defineEventHandler(async (event) => {
     const horizonStr = horizon.toISOString().slice(0, 10)
     const todayStr = today.toISOString().slice(0, 10)
 
-    // Quotes — face value + probability-weighted
+    // Quotes — face value + probability-weighted. Age-floored (shared
+    // QUOTE_PIPELINE_MAX_AGE_DAYS): years-old SENT quotes are dead deals
+    // nobody marked Declined, not pipeline.
     let quotesFaceValue = 0
     let quotesWeighted = 0
     let quoteCount = 0
@@ -51,7 +54,7 @@ export default defineEventHandler(async (event) => {
       const body = await xeroFetch<any>({
         accessToken: token.access_token!,
         tenantId,
-        path: 'Quotes?order=Date DESC',
+        path: `Quotes?order=Date DESC&DateFrom=${quotePipelineDateFrom(today)}`,
       })
       for (const q of (body?.quotes ?? [])) {
         const status = String(q.status ?? '').toUpperCase()

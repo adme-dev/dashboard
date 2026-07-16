@@ -200,10 +200,17 @@ function createReportState<T>(
   return { data, pending, error, refresh }
 }
 
+// Reporting basis (accrual ⇄ cash) — shares the 'kpi-basis' localStorage key
+// with the dashboard KPI cards so the choice follows the user across pages.
+const pnlBasis = useLocalStorage<'accrual' | 'cash'>('kpi-basis', 'accrual')
+watch(pnlBasis, () => {
+  pnlState.refresh()
+})
+
 // ── Data fetches ──
 // Client-loaded widgets stay independent so one Xero endpoint timing out does
 // not block the full reports dashboard.
-const pnlState = createReportState<PnlReport>('/api/xero/reports/pnl-detailed', () => ({ toDate: toDate.value }))
+const pnlState = createReportState<PnlReport>('/api/xero/reports/pnl-detailed', () => ({ toDate: toDate.value, basis: pnlBasis.value }))
 const pnl = pnlState.data
 const pnlPending = pnlState.pending
 
@@ -329,7 +336,7 @@ async function refreshAll() {
   // ?bust=1 so the KV entry is rewritten from live Xero, then refresh
   // the reactive data hooks to pick up the fresh values.
   const bustUrls = [
-    ['/api/xero/reports/pnl-detailed', { toDate: toDate.value }],
+    ['/api/xero/reports/pnl-detailed', { toDate: toDate.value, basis: pnlBasis.value }],
     ['/api/xero/reports/balance-sheet', { toDate: toDate.value }],
     ['/api/xero/reports/aging', {}],
     ['/api/xero/reports/aging', { type: 'payables' }],
@@ -792,6 +799,17 @@ const breadcrumbs = computed(() => ([
               @click="nextMonth"
             />
           </div>
+
+          <!-- Reporting basis — mirrors the Cash/Accrual picker on Xero's
+               own P&L; applies to the P&L figures on this page. -->
+          <UTabs
+            v-model="pnlBasis"
+            :items="[{ label: 'Accrual', value: 'accrual' }, { label: 'Cash', value: 'cash' }]"
+            :content="false"
+            size="xs"
+            color="neutral"
+            class="ml-3"
+          />
         </template>
       </UDashboardToolbar>
     </template>

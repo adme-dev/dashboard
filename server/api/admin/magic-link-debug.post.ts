@@ -68,7 +68,8 @@ export default defineEventHandler(async (event) => {
 
     // Step 3: Build URL from the canonical app origin.
     const appUrl = getAppUrl(event).replace(/\/$/, '')
-    const magicLinkUrl = `${appUrl}/auth/magic-link?token=${token}`
+    // Server-side callback — same URL shape the real request endpoint sends.
+    const magicLinkUrl = `${appUrl}/api/auth/magic-link/callback?token=${token}`
     debug.steps.push({ step: 'Build URL', url: magicLinkUrl })
 
     // Step 4: Send email

@@ -14,13 +14,26 @@ const profileSchema = z.object({
 
 type ProfileSchema = z.output<typeof profileSchema>
 
+// Profile card shows the real logged-in user — this page previously
+// shipped the Nuxt-UI template's placeholder ("Benjamin Canac").
+const { user, fetchUser, canAccessFinance, canAccessMediaBuying } = useAuth()
+
 const profile = reactive<Partial<ProfileSchema>>({
-  name: 'Benjamin Canac',
-  email: 'ben@nuxtlabs.com',
-  username: 'benjamincanac',
+  name: '',
+  email: '',
+  username: '',
   avatar: undefined,
   bio: undefined
 })
+
+function seedProfileFromUser() {
+  if (!user.value) return
+  profile.name = user.value.name || ''
+  profile.email = user.value.email || ''
+  profile.username = (user.value.email || '').split('@')[0] || ''
+  profile.avatar = (user.value as any).avatarUrl || (user.value as any).avatar_url || undefined
+}
+watch(user, seedProfileFromUser, { immediate: true })
 const toast = useToast()
 async function onSubmit(event: FormSubmitEvent<ProfileSchema>) {
   toast.add({
@@ -156,7 +169,15 @@ async function loadTenants() {
 }
 
 onMounted(async () => {
-  await Promise.allSettled([refreshStatus(), refreshMetaAccounts()])
+  // Route middleware usually populated the shared user ref already — only
+  // hit /api/auth/me when it didn't, so the connection fetches start sooner.
+  if (!user.value) await fetchUser()
+  // Only fetch what this user's role can see — the endpoints are gated
+  // server-side too; this just avoids guaranteed-403 calls.
+  await Promise.allSettled([
+    canAccessFinance.value ? refreshStatus() : Promise.resolve(),
+    canAccessMediaBuying.value ? refreshMetaAccounts().catch(() => { metaAccounts.value = [] }) : Promise.resolve(),
+  ])
   if (xeroStatus.value?.connected) {
     await loadTenants()
   }
@@ -192,7 +213,7 @@ async function selectTenant(tenantId: string | any) {
   >
     <UPageCard
       title="Profile"
-      description="These informations will be displayed publicly."
+      description="Your account details — visible to your team, never publicly."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
@@ -207,6 +228,7 @@ async function selectTenant(tenantId: string | any) {
     </UPageCard>
 
     <UPageCard
+      v-if="canAccessFinance"
       title="Xero Connection"
       description="Connect your Xero account to enable live financial data."
       variant="subtle"
@@ -272,12 +294,12 @@ async function selectTenant(tenantId: string | any) {
               @click="selectTenant(opt.value)"
             />
           </div>
-          <div class="text-2xs text-dimmed mt-1">Debug: {{ tenantOptions }}</div>
         </div>
       </div>
     </UPageCard>
 
     <UPageCard
+      v-if="canAccessMediaBuying"
       title="Meta Ads"
       description="Connect Meta ad accounts to sync spend data."
       variant="subtle"

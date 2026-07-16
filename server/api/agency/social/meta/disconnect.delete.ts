@@ -1,4 +1,4 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requirePermission } from '~~/server/utils/auth'
 import { execute, queryOne } from '~~/server/utils/db'
 
 /**
@@ -6,7 +6,7 @@ import { execute, queryOne } from '~~/server/utils/db'
  * Removes a Meta connection and its client mappings (CASCADE)
  */
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  await requirePermission(event, 'MEDIA_BUYING')
 
   const query = getQuery(event)
   const connectionId = String(query.connectionId || '')
