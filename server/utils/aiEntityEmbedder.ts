@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { queryOne, execute } from '~~/server/utils/db'
+import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { generateEmbedding, upsertVector } from '~~/server/utils/aiVectorize'
 
 /**
@@ -187,4 +187,64 @@ export async function embedClient(event: H3Event, clientId: string): Promise<voi
     industry: client.industry || '',
   })
   await logEmbedding('client', clientId, vectorId, contentHash)
+}
+
+/**
+ * Index a client's social brief plus connected publishing history as a client-scoped vector.
+ * The shared SOP knowledge tool rejects this vector type; only permission-checked social tools may use it.
+ */
+export async function embedSocialClientKnowledge(event: H3Event, clientId: string): Promise<void> {
+  const profile = await queryOne<any>(`
+    SELECT p.*, c.name AS client_name
+      FROM social_news_client_profiles p
+      JOIN agency_clients c ON c.id = p.client_id
+     WHERE p.client_id = $1
+  `, [clientId])
+  if (!profile) return
+
+  const [accounts, slots, posts] = await Promise.all([
+    queryRows<any>(`SELECT platform, account_name FROM social_accounts WHERE client_id = $1 AND is_active = TRUE ORDER BY platform, account_name`, [clientId]),
+    queryRows<any>(`SELECT name, platforms, day_of_week, time_of_day, timezone FROM social_slot_schedules WHERE client_id = $1 AND enabled = TRUE ORDER BY day_of_week, time_of_day`, [clientId]),
+    queryRows<any>(`
+      SELECT p.id, p.content, p.platforms, p.published_at,
+             COALESCE(SUM(m.engagements), 0) AS engagements,
+             COALESCE(SUM(m.impressions), 0) AS impressions
+        FROM social_posts p
+        LEFT JOIN social_post_metrics m ON m.post_id = p.id
+       WHERE p.client_id = $1 AND p.status = 'published'
+       GROUP BY p.id
+       ORDER BY p.published_at DESC NULLS LAST
+       LIMIT 20`, [clientId]),
+  ])
+
+  const textParts = [
+    `Client social knowledge: ${profile.client_name}`,
+    profile.industry ? `Industry: ${profile.industry}` : '',
+    profile.target_audience ? `Audience: ${profile.target_audience}` : '',
+    profile.content_pillars?.length ? `Content pillars: ${profile.content_pillars.join(', ')}` : '',
+    profile.include_keywords?.length ? `Relevant keywords: ${profile.include_keywords.join(', ')}` : '',
+    profile.exclude_keywords?.length ? `Excluded topics: ${profile.exclude_keywords.join(', ')}` : '',
+    profile.makes?.length ? `Makes or brands: ${profile.makes.join(', ')}` : '',
+    profile.brand_voice ? `Brand voice: ${profile.brand_voice}` : '',
+    profile.ai_instructions ? `AI instructions: ${profile.ai_instructions}` : '',
+    accounts.length ? `Connected social profiles:\n${accounts.map(a => `- ${a.platform}: ${a.account_name || 'account'}`).join('\n')}` : '',
+    slots.length ? `Saved posting slots:\n${slots.map(s => `- ${s.name}: day ${s.day_of_week} ${s.time_of_day} ${s.timezone}; ${s.platforms?.join(', ') || 'all platforms'}`).join('\n')}` : '',
+    posts.length ? `Recent published social feed:\n${posts.map(p => `- ${p.published_at || 'date unknown'} [${p.platforms?.join(', ') || 'platform unknown'}] ${String(p.content || '').slice(0, 240)} (engagements ${p.engagements}, impressions ${p.impressions})`).join('\n')}` : '',
+  ].filter(Boolean).join('\n')
+
+  const contentHash = await hashContent(textParts)
+  if (!(await shouldReembed('social_client_knowledge', clientId, contentHash))) return
+  const embedding = await generateEmbedding(event, textParts)
+  if (embedding.length === 0) return
+
+  const vectorId = `social-client-${clientId}`
+  await upsertVector(event, vectorId, embedding, {
+    type: 'social_client_knowledge',
+    id: clientId,
+    clientId,
+    title: `${profile.client_name} social knowledge`,
+    industry: profile.industry || '',
+  })
+  await logEmbedding('social_client_knowledge', clientId, vectorId, contentHash)
+  await execute(`UPDATE social_news_client_profiles SET knowledge_embedding_id = $2 WHERE client_id = $1`, [clientId, vectorId])
 }

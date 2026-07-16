@@ -34,6 +34,7 @@ import { leadsTool } from './leads'
 import { socialListeningTool } from './socialListening'
 import { socialInboxTool } from './socialInbox'
 import { emailCampaignsTool } from './emailCampaigns'
+import { socialNewsRecommendationsTool } from './socialNewsRecommendations'
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
@@ -88,4 +89,5 @@ export const registry: AiTool<any>[] = [
   socialListeningTool,
   socialInboxTool,
   emailCampaignsTool,
+  socialNewsRecommendationsTool,
 ]

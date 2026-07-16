@@ -50,7 +50,7 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Ad-spend pacing, social performance, briefs and delivery.',
     instructionsPreamble:
       'You are the agency\'s Marketing assistant. Focus on campaign delivery — ad-spend pacing, social performance, creative briefs, and project status. Tie observations to outcomes and call out under-delivery or pacing issues. For questions outside marketing, answer briefly and suggest the relevant assistant.',
-    toolAllowlist: ['get_adspend_pacing', 'get_social_performance', 'get_briefs', 'get_project_status', 'propose_schedule_post',
+    toolAllowlist: ['get_adspend_pacing', 'get_social_performance', 'recommend_social_news', 'get_briefs', 'get_project_status', 'propose_schedule_post',
       'get_my_creative_queue', 'propose_proof_status', ...COMMON],
   },
   sales: {
@@ -68,7 +68,7 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Client delivery — projects, tasks, briefs and social.',
     instructionsPreamble:
       'You are the agency\'s Account Management assistant. Focus on client delivery — project status, tasks, briefs, and social performance for the accounts you manage. Surface what needs attention and what\'s on track. For questions outside account management, answer briefly and suggest the relevant assistant.',
-    toolAllowlist: ['get_client_overview', 'get_project_status', 'get_tasks', 'get_briefs', 'get_social_performance',
+    toolAllowlist: ['get_client_overview', 'get_project_status', 'get_tasks', 'get_briefs', 'get_social_performance', 'recommend_social_news',
       'get_capacity', 'assign_task', 'propose_status_change', 'propose_brief_convert', ...COMMON],
   },
   media_buyer: {

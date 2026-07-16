@@ -31,7 +31,7 @@ const SHARED_MEMORY_WRITES = ['propose_team_memory']
 // Ops Autopilot read tools: C1 pacing watchdog (MEDIA_BUYING) + C5 brief gatekeeper (any authed).
 const OPS_AUTOPILOT_READS = ['check_pacing', 'check_brief_completeness']
 // Read-coverage expansion (sub-project 1): CRM/leads/listening/inbox/EDM reads — auto-projected over MCP.
-const READ_COVERAGE_TOOLS = ['search_crm', 'get_crm_pipeline', 'get_leads', 'get_social_listening', 'get_social_inbox', 'get_email_campaign_performance']
+const READ_COVERAGE_TOOLS = ['search_crm', 'get_crm_pipeline', 'get_leads', 'get_social_listening', 'get_social_inbox', 'get_email_campaign_performance', 'recommend_social_news']
 // remember = personal-memory capture (non-mutating; available to every authed role).
 const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, ...OPS_AUTOPILOT_READS, ...READ_COVERAGE_TOOLS, 'remember']
 
@@ -96,7 +96,7 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
     }
   })
 
-  it('exposes the 6 read-coverage tools over MCP (read-only) with the intended permissions', () => {
+  it('exposes the read-coverage tools over MCP (read-only) with the intended permissions', () => {
     const names = registry.map(t => t.name)
     for (const n of READ_COVERAGE_TOOLS) expect(names).toContain(n)
     // none of them mutate → all projected by projectReadOnlyTools for an owner
@@ -108,6 +108,7 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
     expect(byName['get_leads'].requiredPermission).toBeUndefined()
     expect(byName['get_social_listening'].requiredPermission).toBe('CLIENTS')
     expect(byName['get_social_inbox'].requiredPermission).toBe('CLIENTS')
+    expect(byName['recommend_social_news'].requiredPermission).toBe('CLIENTS')
     expect(byName['get_email_campaign_performance'].requiredPermission).toBe('MANAGEMENT')
     for (const n of READ_COVERAGE_TOOLS) expect(byName[n].mutates).toBeUndefined()
   })

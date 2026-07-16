@@ -14,4 +14,13 @@ describe('MCP news inbox contract', () => {
     expect(readFileSync('server/api/agency/social/news/ingest.post.ts', 'utf8')).toContain('requireRole(event, PERMISSIONS.ADMIN)')
     expect(readFileSync('server/api/agency/social/news/sources/[sourceKey].patch.ts', 'utf8')).toContain('requireRole(event, PERMISSIONS.ADMIN)')
   })
+
+  it('scopes client content profiles and reserves profile mutation for admins', () => {
+    const getRoute = readFileSync('server/api/agency/social/news/profiles/[clientId].get.ts', 'utf8')
+    const putRoute = readFileSync('server/api/agency/social/news/profiles/[clientId].put.ts', 'utf8')
+    expect(getRoute).toContain('requireRole(event, PERMISSIONS.CREATIVE)')
+    expect(getRoute).toContain('requireSocialClientAccess(event, clientId)')
+    expect(putRoute).toContain('requireRole(event, PERMISSIONS.ADMIN)')
+    expect(putRoute).toContain('requireSocialClientAccess(event, clientId)')
+  })
 })

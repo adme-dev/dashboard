@@ -10,6 +10,7 @@ interface SlotRow {
   time_of_day: string // 'HH:MM[:SS]'
   timezone: string
   capacity: number
+  platforms?: string[] | null
 }
 
 /**
@@ -19,11 +20,12 @@ interface SlotRow {
 export async function nextOptimalSlots(
   clientId: string,
   count: number,
-  fromInstant: Date = new Date()
+  fromInstant: Date = new Date(),
+  platforms: string[] = [],
 ): Promise<Date[]> {
   if (count <= 0) return []
   const slots = await queryRows<SlotRow>(
-    `SELECT day_of_week, time_of_day, timezone, capacity
+    `SELECT day_of_week, time_of_day, timezone, capacity, platforms
        FROM social_slot_schedules
       WHERE client_id = $1 AND enabled = TRUE`,
     [clientId]
@@ -40,6 +42,7 @@ export async function nextOptimalSlots(
     const dow = getDayOfWeek(day, 'en-US') // 0=Sun..6=Sat
     for (const slot of slots) {
       if (slot.day_of_week !== dow) continue
+      if (platforms.length && slot.platforms?.length && !slot.platforms.some(platform => platforms.includes(platform))) continue
       const [h, m] = slot.time_of_day.split(':').map(Number)
       const cdt = new CalendarDateTime(day.year, day.month, day.day, h || 0, m || 0)
       const inst = toZoned(cdt, slot.timezone || baseTz).toDate()
