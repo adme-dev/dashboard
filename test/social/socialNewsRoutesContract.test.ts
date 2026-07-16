@@ -23,4 +23,29 @@ describe('MCP news inbox contract', () => {
     expect(putRoute).toContain('requireRole(event, PERMISSIONS.ADMIN)')
     expect(putRoute).toContain('requireSocialClientAccess(event, clientId)')
   })
+
+  it('keeps package and evidence governance client-scoped and admin-controlled', () => {
+    for (const route of [
+      'profiles/[clientId]/context.get.ts',
+      'profiles/[clientId]/package.put.ts',
+      'profiles/[clientId]/package-options.get.ts',
+      'profiles/[clientId]/evidence.post.ts',
+    ]) {
+      const source = readFileSync(`server/api/agency/social/news/${route}`, 'utf8')
+      expect(source).toContain('requireSocialClientAccess(event, clientId)')
+    }
+    expect(readFileSync('server/api/agency/social/news/packages/index.post.ts', 'utf8')).toContain('requireRole(event, PERMISSIONS.ADMIN)')
+    expect(readFileSync('server/api/agency/social/news/packages/[packageId]/versions.post.ts', 'utf8')).toContain('requireRole(event, PERMISSIONS.ADMIN)')
+    expect(readFileSync('server/api/agency/social/news/profiles/[clientId]/package.put.ts', 'utf8')).toContain('requireRole(event, PERMISSIONS.ADMIN)')
+    expect(readFileSync('server/api/agency/social/news/profiles/[clientId]/evidence.post.ts', 'utf8')).toContain('requireRole(event, PERMISSIONS.ADMIN)')
+    expect(readFileSync('server/api/agency/social/news/profiles/[clientId]/evidence/[evidenceId].patch.ts', 'utf8')).toContain('requireRole(event, PERMISSIONS.ADMIN)')
+  })
+
+  it('stores news inbox state per client so one shared story can be reused', () => {
+    const indexRoute = readFileSync('server/api/agency/social/news/index.get.ts', 'utf8')
+    const draftsRoute = readFileSync('server/api/agency/social/news/drafts.post.ts', 'utf8')
+    expect(indexRoute).toContain('social_news_client_item_states')
+    expect(draftsRoute).toContain('INSERT INTO social_news_client_item_states')
+    expect(draftsRoute).not.toContain("UPDATE social_news_items SET status = 'used'")
+  })
 })

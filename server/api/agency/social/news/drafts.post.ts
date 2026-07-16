@@ -9,6 +9,7 @@ import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { buildNewsRewritePrompt } from '~~/server/utils/socialNews'
 import { normalizeSocialNewsClientProfile } from '~~/server/utils/socialNewsProfile'
 import { nextOptimalSlots } from '~~/server/utils/socialSlots'
+import { buildSocialPackagePostMetadata, loadActiveSocialPackageRef } from '~~/server/utils/socialNewsGovernance'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
@@ -24,6 +25,7 @@ export default defineEventHandler(async (event) => {
       WHERE c.id = $1`, [body.clientId],
   )
   const profile = normalizeSocialNewsClientProfile({ ...(profileRow || {}), client_id: body.clientId })
+  const activePackage = await loadActiveSocialPackageRef(body.clientId)
   const requestedAccounts = Array.isArray(body.accountIds) ? body.accountIds : []
   const targetInput = Array.isArray(body.targets) ? body.targets : []
   const explicit = targetInput.length ? await normalizePublishingTargets(body.clientId, targetInput) : null
@@ -41,7 +43,10 @@ export default defineEventHandler(async (event) => {
   const created: string[] = []
   for (const id of newsIds) {
     const item = await queryOne<{ id: string; title: string; summary: string | null; source_url: string | null }>(
-      'SELECT id, title, summary, source_url FROM social_news_items WHERE id = $1 AND status NOT IN (\'dismissed\', \'used\')', [id])
+      `SELECT n.id, n.title, n.summary, n.source_url
+         FROM social_news_items n
+         LEFT JOIN social_news_client_item_states s ON s.news_item_id = n.id AND s.client_id = $2
+        WHERE n.id = $1 AND COALESCE(s.status, 'unread') NOT IN ('dismissed', 'used')`, [id, body.clientId])
     if (!item) continue
     const content = [item.title, item.summary, item.source_url].filter(Boolean).join('\n\n')
     const overrides: Record<string, { content: string }> = {}
@@ -54,9 +59,15 @@ export default defineEventHandler(async (event) => {
     const post = await queryOne<{ id: string }>(
       `INSERT INTO social_posts (client_id, created_by, content, link_url, platforms, account_ids, platform_overrides, scheduled_at, timezone, status, metadata, publish_targets)
        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb,$12::jsonb) RETURNING id`,
-      [body.clientId, user.id, content, item.source_url, platforms, accountIds.length ? accountIds : null, JSON.stringify(overrides), scheduledAt?.toISOString() ?? null, body.timezone || profile.timezone, 'draft', JSON.stringify({ source: 'mcp_news', newsItemId: item.id, clientContentProfile: true, approvalRequired: true }), explicit ? JSON.stringify(explicit.targets) : null])
+      [body.clientId, user.id, content, item.source_url, platforms, accountIds.length ? accountIds : null, JSON.stringify(overrides), scheduledAt?.toISOString() ?? null, body.timezone || profile.timezone, 'draft', JSON.stringify({ source: 'mcp_news', newsItemId: item.id, clientContentProfile: true, approvalRequired: true, ...buildSocialPackagePostMetadata(activePackage) }), explicit ? JSON.stringify(explicit.targets) : null])
     if (post) {
-      await queryOne('UPDATE social_news_items SET status = \'used\', linked_post_id = $1, updated_at = NOW() WHERE id = $2', [post.id, item.id])
+      await queryOne(
+        `INSERT INTO social_news_client_item_states (client_id, news_item_id, status, linked_post_id)
+         VALUES ($1,$2,'used',$3)
+         ON CONFLICT (client_id, news_item_id) DO UPDATE SET
+           status = 'used', linked_post_id = EXCLUDED.linked_post_id, updated_at = NOW()`,
+        [body.clientId, item.id, post.id],
+      )
       created.push(post.id)
     }
   }

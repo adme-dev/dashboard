@@ -202,7 +202,7 @@ export async function embedSocialClientKnowledge(event: H3Event, clientId: strin
   `, [clientId])
   if (!profile) return
 
-  const [accounts, slots, posts] = await Promise.all([
+  const [accounts, slots, posts, evidence, activePackage] = await Promise.all([
     queryRows<any>(`SELECT platform, account_name FROM social_accounts WHERE client_id = $1 AND is_active = TRUE ORDER BY platform, account_name`, [clientId]),
     queryRows<any>(`SELECT name, platforms, day_of_week, time_of_day, timezone FROM social_slot_schedules WHERE client_id = $1 AND enabled = TRUE ORDER BY day_of_week, time_of_day`, [clientId]),
     queryRows<any>(`
@@ -214,7 +214,20 @@ export async function embedSocialClientKnowledge(event: H3Event, clientId: strin
        WHERE p.client_id = $1 AND p.status = 'published'
        GROUP BY p.id
        ORDER BY p.published_at DESC NULLS LAST
+      LIMIT 20`, [clientId]),
+    queryRows<any>(`
+      SELECT evidence_type, title, COALESCE(NULLIF(summary, ''), LEFT(content, 2000)) AS guidance
+        FROM client_operational_evidence
+       WHERE client_id = $1 AND review_status = 'approved'
+       ORDER BY occurred_at DESC NULLS LAST, created_at DESC
        LIMIT 20`, [clientId]),
+    queryOne<any>(`
+      SELECT p.name, v.version, a.commercial_scope_snapshot
+        FROM social_content_package_assignments a
+        JOIN social_content_package_versions v ON v.id = a.package_version_id
+        JOIN social_content_packages p ON p.id = v.package_id
+       WHERE a.client_id = $1 AND a.status = 'active'
+       ORDER BY a.starts_on DESC, a.created_at DESC LIMIT 1`, [clientId]),
   ])
 
   const textParts = [
@@ -227,6 +240,8 @@ export async function embedSocialClientKnowledge(event: H3Event, clientId: strin
     profile.makes?.length ? `Makes or brands: ${profile.makes.join(', ')}` : '',
     profile.brand_voice ? `Brand voice: ${profile.brand_voice}` : '',
     profile.ai_instructions ? `AI instructions: ${profile.ai_instructions}` : '',
+    activePackage ? `Active content package: ${activePackage.name} version ${activePackage.version}; scope ${JSON.stringify(activePackage.commercial_scope_snapshot || {})}` : '',
+    evidence.length ? `Approved XeroFlow client guidance:\n${evidence.map(e => `- [${e.evidence_type}] ${e.title}: ${e.guidance}`).join('\n')}` : '',
     accounts.length ? `Connected social profiles:\n${accounts.map(a => `- ${a.platform}: ${a.account_name || 'account'}`).join('\n')}` : '',
     slots.length ? `Saved posting slots:\n${slots.map(s => `- ${s.name}: day ${s.day_of_week} ${s.time_of_day} ${s.timezone}; ${s.platforms?.join(', ') || 'all platforms'}`).join('\n')}` : '',
     posts.length ? `Recent published social feed:\n${posts.map(p => `- ${p.published_at || 'date unknown'} [${p.platforms?.join(', ') || 'platform unknown'}] ${String(p.content || '').slice(0, 240)} (engagements ${p.engagements}, impressions ${p.impressions})`).join('\n')}` : '',

@@ -6,6 +6,21 @@ import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { normalizeSocialNewsClientProfile } from '~~/server/utils/socialNewsProfile'
 import { scoreNewsForClient } from '~~/server/utils/socialNews'
 
+interface SocialNewsRow {
+  id: string
+  source: string
+  external_id: string
+  source_url: string | null
+  title: string
+  summary: string | null
+  author: string | null
+  published_at: string | null
+  status: string
+  linked_post_id: string | null
+  raw: Record<string, unknown> | null
+  created_at: string
+}
+
 export default defineEventHandler(async (event) => {
   await requireRole(event, PERMISSIONS.CREATIVE)
   const q = getQuery(event)
@@ -18,19 +33,15 @@ export default defineEventHandler(async (event) => {
   const source = typeof q.source === 'string' ? q.source.trim().slice(0, 100) : ''
   const relevantOnly = q.relevantOnly === 'true'
   const params: unknown[] = []
-  const where = status ? [`status = $${params.push(status)}`] : []
-  if (source) where.push(`source = $${params.push(source)}`)
-  if (search) where.push(`(title ILIKE $${params.push(`%${search}%`)} OR summary ILIKE $${params.length})`)
-  params.push(200)
-  const rows = await queryRows<Record<string, any>>(
-    `SELECT id, source, external_id, source_url, title, summary, author, published_at, status, linked_post_id, raw, created_at
-       FROM social_news_items ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-      ORDER BY published_at DESC NULLS LAST, created_at DESC LIMIT $${params.length}`,
-    params,
-  )
+  let join = ''
+  let stateStatus = 'n.status'
+  let linkedPost = 'n.linked_post_id'
   let profile = normalizeSocialNewsClientProfile()
   if (clientId) {
     await requireSocialClientAccess(event, clientId)
+    join = `LEFT JOIN social_news_client_item_states s ON s.news_item_id = n.id AND s.client_id = $${params.push(clientId)}`
+    stateStatus = `COALESCE(s.status, 'unread')`
+    linkedPost = 's.linked_post_id'
     const [row] = await queryRows<Record<string, unknown>>(
       `SELECT p.*, c.name AS client_name, COALESCE(p.industry, c.industry) AS industry,
               COALESCE(p.timezone, c.reporting_timezone, 'Australia/Melbourne') AS timezone
@@ -40,10 +51,21 @@ export default defineEventHandler(async (event) => {
     )
     if (row) profile = normalizeSocialNewsClientProfile({ ...row, client_id: clientId })
   }
+  const where = status ? [`${stateStatus} = $${params.push(status)}`] : []
+  if (source) where.push(`n.source = $${params.push(source)}`)
+  if (search) where.push(`(n.title ILIKE $${params.push(`%${search}%`)} OR n.summary ILIKE $${params.length})`)
+  params.push(200)
+  const rows = await queryRows<SocialNewsRow>(
+    `SELECT n.id, n.source, n.external_id, n.source_url, n.title, n.summary, n.author,
+            n.published_at, ${stateStatus} AS status, ${linkedPost} AS linked_post_id, n.raw, n.created_at
+       FROM social_news_items n ${join} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY n.published_at DESC NULLS LAST, n.created_at DESC LIMIT $${params.length}`,
+    params,
+  )
   return rows
     .map((row) => {
       const relevance = clientId ? scoreNewsForClient(row, profile) : { score: 0, reasons: [], excluded: false }
-      const topics = Array.isArray(row.raw?.topics) ? row.raw.topics.filter((value: unknown) => typeof value === 'string') : []
+      const topics: string[] = Array.isArray(row.raw?.topics) ? row.raw.topics.filter((value): value is string => typeof value === 'string') : []
       return {
         ...row,
         topics,

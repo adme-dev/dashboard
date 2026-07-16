@@ -12,6 +12,10 @@ describe('recommend_social_news', () => {
         accounts: [{ id: 'a1', platform: 'facebook', accountName: 'Arctic Campers' }],
         stories: [{ id: 'n1', title: 'Regional touring demand grows', sourceUrl: 'https://example.test/story', relevanceScore: 7, relevanceReasons: ['Pillar: touring advice'] }],
         nextSlot: new Date('2026-07-20T23:00:00.000Z'),
+        governance: {
+          activePackage: { packageName: 'Touring authority', version: 2, usage: { usedPosts: 3, publishedPosts: 2 }, commercialScope: { includedPostVolumes: { facebook: 8 } }, budget: { amount: 1200, currency: 'AUD', state: 'active' } },
+          evidence: { approvedCount: 1, pendingCount: 2, approved: [{ evidence_type: 'decision', source_system: 'xeroflow', title: 'Prioritise touring education', summary: 'Use practical family touring guidance.' }] },
+        },
       }),
     }
     const result = await getSocialNewsRecommendations({ clientName: 'Arctic Campers', limit: 3 }, ctx, deps)
@@ -20,6 +24,9 @@ describe('recommend_social_news', () => {
       client: { id: 'c1', name: 'Arctic Campers' },
       audience: 'Australian touring families',
       postingWindow: { at: '2026-07-20T23:00:00.000Z', evidence: 'saved_client_slot' },
+      package: { name: 'Touring authority', version: 2, usage: { usedPosts: 3, publishedPosts: 2 } },
+      canonicalEvidence: [{ type: 'decision', title: 'Prioritise touring education' }],
+      pendingEvidenceCount: 2,
       candidates: [{ storyId: 'n1', targets: [{ accountId: 'a1', platform: 'facebook' }] }],
     })
   })
@@ -30,6 +37,7 @@ describe('recommend_social_news', () => {
         client: { id: 'c1', name: 'Client' },
         profile: { targetAudience: '', preferredPlatforms: [], timezone: 'Australia/Melbourne' },
         accounts: [], stories: [], nextSlot: null,
+        governance: { activePackage: null, evidence: { approvedCount: 0, pendingCount: 0, approved: [] } },
       }),
     }
     const result = await getSocialNewsRecommendations({ clientName: 'Client', limit: 3 }, ctx, deps)
