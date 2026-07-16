@@ -20,4 +20,11 @@ describe('news recommendation contract', () => {
     expect(source).toContain('AI planning inputs')
     expect(source).toContain('account.health')
   })
+
+  it('exposes package constraints before news drafting', () => {
+    const source = readFileSync('app/pages/agency/social/publishing/news.vue', 'utf8')
+    expect(source).toContain('Included')
+    expect(source).toContain('Overage:')
+    expect(source).toContain('Approval SLA:')
+  })
 })
