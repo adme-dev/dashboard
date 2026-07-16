@@ -53,6 +53,7 @@ const mondayEvidenceSelected = ref<string[]>([])
 const evidenceTransitionLoading = ref(false)
 const evidenceReviewingId = ref('')
 let clientLoadSequence = 0
+const publishTargetCount = computed(() => buildNewsPublishTargets(accounts.value, accountIds.value, platforms.value).length)
 
 function toList(value: string) { return value.split(',').map(item => item.trim()).filter(Boolean) }
 function toCsv(value: string[] | undefined) { return (value || []).join(', ') }
@@ -483,7 +484,7 @@ async function createDrafts() {
       <div class="flex flex-wrap gap-2">
         <UCheckbox v-for="a in accounts" :key="a.id" v-model="accountIds" :value="a.id" :label="`${a.platform}: ${a.account_name || 'account'}`" />
       </div>
-      <div class="flex gap-2"><UButton label="Create drafts" :loading="draftSaving" :disabled="!clientId || !platforms.length || draftSaving" @click="createDrafts" /><UButton label="Cancel" color="neutral" variant="ghost" @click="closeDraftOptions" /></div>
+      <div class="flex flex-wrap items-center gap-2"><UButton label="Create drafts" :loading="draftSaving" :disabled="!clientId || !platforms.length || !publishTargetCount || draftSaving" @click="createDrafts" /><span v-if="clientId && platforms.length && !publishTargetCount" class="text-xs text-warning">Select at least one connected account for the chosen platform(s).</span><UButton label="Cancel" color="neutral" variant="ghost" @click="closeDraftOptions" /></div>
     </div>
     <div v-if="error" class="rounded-lg border border-error/40 p-4 text-sm text-error">{{ error }}</div>
     <div v-else-if="pending" class="text-sm text-muted">Loading news…</div>
