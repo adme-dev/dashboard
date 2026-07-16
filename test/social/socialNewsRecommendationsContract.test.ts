@@ -7,6 +7,8 @@ describe('news recommendation contract', () => {
     expect(source).toContain('requireSocialClientAccess(event, clientId)')
     expect(source).toContain('social_news_client_profiles')
     expect(source).toContain('social_post_metrics')
+    expect(source).toContain('social_news_items')
+    expect(source).toContain('matchedKeywords')
     expect(source).toContain('nextOptimalSlots')
     expect(source).toContain('approvalRequired: true')
   })

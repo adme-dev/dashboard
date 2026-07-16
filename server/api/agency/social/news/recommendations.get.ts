@@ -4,16 +4,17 @@ import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { nextOptimalSlots } from '~~/server/utils/socialSlots'
 
-/** GET /api/agency/social/news/recommendations?clientId=&platforms=... */
+/** GET /api/agency/social/news/recommendations?clientId=&newsId=&platforms=... */
 export default defineEventHandler(async (event) => {
   await requireRole(event, PERMISSIONS.CREATIVE)
   const query = getQuery(event)
   const clientId = String(query.clientId || '')
+  const newsId = String(query.newsId || '')
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
   await requireSocialClientAccess(event, clientId)
   const requested = String(query.platforms || '').split(',').map(value => value.trim()).filter(Boolean)
-  const [profile, accounts, performance] = await Promise.all([
-    queryOne<{ preferred_platforms: string[] | null; target_audience: string | null; timezone: string | null }>(
+  const [profile, accounts, performance, news] = await Promise.all([
+    queryOne<{ preferred_platforms: string[] | null; target_audience: string | null; timezone: string | null; include_keywords: string[] | null; exclude_keywords: string[] | null }>(
       `SELECT preferred_platforms, target_audience, timezone FROM social_news_client_profiles WHERE client_id = $1`, [clientId]),
     queryRows<{ id: string; platform: string; account_name: string | null }>(
       `SELECT id, platform, account_name FROM social_accounts WHERE client_id = $1 AND is_active = TRUE ORDER BY platform, account_name`, [clientId]),
@@ -22,6 +23,8 @@ export default defineEventHandler(async (event) => {
          FROM social_post_metrics m JOIN social_posts p ON p.id = m.post_id
         WHERE p.client_id = $1 AND p.status IN ('published', 'partially_published')
         GROUP BY m.platform`, [clientId]),
+    newsId ? queryOne<{ title: string; topics: string[] | null }>(
+      `SELECT title, topics FROM social_news_items WHERE id = $1`, [newsId]) : Promise.resolve(null),
   ])
   const available = [...new Set(accounts.map(account => account.platform))]
   const preferred = (profile?.preferred_platforms || []).filter(platform => available.includes(platform))
@@ -31,6 +34,9 @@ export default defineEventHandler(async (event) => {
     .sort((a, b) => (Number(metrics.get(b)?.engagements || 0) - Number(metrics.get(a)?.engagements || 0)))
   const platforms = [...new Set(ranked)]
   const slots = await nextOptimalSlots(clientId, 1, new Date(), platforms)
+  const articleText = `${news?.title || ''} ${(news?.topics || []).join(' ')}`.toLowerCase()
+  const included = (profile?.include_keywords || []).filter(keyword => articleText.includes(keyword.toLowerCase()))
+  const excluded = (profile?.exclude_keywords || []).filter(keyword => articleText.includes(keyword.toLowerCase()))
   return {
     clientId,
     audience: profile?.target_audience || null,
@@ -38,6 +44,7 @@ export default defineEventHandler(async (event) => {
     platforms,
     accounts: accounts.filter(account => platforms.includes(account.platform)),
     nextSlot: slots[0]?.toISOString() || null,
+    article: news ? { title: news.title, relevant: included.length > 0 && excluded.length === 0, matchedKeywords: included, excludedKeywords: excluded } : null,
     basis: performance.length ? 'client profile and published engagement history' : 'client profile and connected accounts',
     approvalRequired: true,
   }

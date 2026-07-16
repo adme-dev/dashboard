@@ -52,7 +52,7 @@ const mondayEvidencePreview = ref<MondayEvidencePreviewItem[]>([])
 const mondayEvidenceSelected = ref<string[]>([])
 const evidenceTransitionLoading = ref(false)
 const evidenceReviewingId = ref('')
-const recommendation = ref<{ audience: string | null; timezone: string; platforms: string[]; nextSlot: string | null; basis: string; approvalRequired: boolean } | null>(null)
+const recommendation = ref<{ audience: string | null; timezone: string; platforms: string[]; nextSlot: string | null; basis: string; approvalRequired: boolean; article: { title: string; relevant: boolean; matchedKeywords: string[]; excludedKeywords: string[] } | null } | null>(null)
 const recommendationLoading = ref(false)
 let clientLoadSequence = 0
 const publishTargetCount = computed(() => buildNewsPublishTargets(accounts.value, accountIds.value, platforms.value).length)
@@ -78,7 +78,7 @@ async function loadRecommendation() {
   if (!clientId.value) return
   recommendationLoading.value = true
   try {
-    recommendation.value = await apiFetch<typeof recommendation.value>(`/api/agency/social/news/recommendations?clientId=${clientId.value}&platforms=${platforms.value.join(',')}`)
+    recommendation.value = await apiFetch<typeof recommendation.value>(`/api/agency/social/news/recommendations?clientId=${clientId.value}&newsId=${selected.value[0] || ''}&platforms=${platforms.value.join(',')}`)
   } catch (e: any) { toast.add({ title: 'Could not load recommendation', description: e?.data?.statusMessage || 'Try again later', color: 'error' }) }
   finally { recommendationLoading.value = false }
 }
@@ -483,7 +483,7 @@ async function createDrafts() {
       <div class="flex gap-2"><UButton label="Save" :loading="sourceSaving" @click="saveSourceSettings" /><UButton label="Cancel" color="neutral" variant="ghost" @click="closeSourceSettings" /></div>
     </div>
     <div v-if="showDraftOptions" class="rounded-lg border border-primary/30 bg-default p-4 mb-5 space-y-3">
-      <div class="flex flex-wrap items-center gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm"><span class="font-medium">AI planning inputs</span><span v-if="recommendation">{{ recommendation.platforms.join(', ') || 'No matching platforms' }}<span v-if="recommendation.audience"> · audience: {{ recommendation.audience }}</span><span v-if="recommendation.nextSlot"> · next slot: {{ new Date(recommendation.nextSlot).toLocaleString() }}</span></span><span v-else class="text-muted">Use the client brief and engagement history to suggest a starting point.</span><UButton label="Suggest" size="xs" color="neutral" variant="subtle" :loading="recommendationLoading" @click="loadRecommendation" /></div>
+      <div class="flex flex-wrap items-center gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm"><span class="font-medium">AI planning inputs</span><span v-if="recommendation">{{ recommendation.platforms.join(', ') || 'No matching platforms' }}<span v-if="recommendation.audience"> · audience: {{ recommendation.audience }}</span><span v-if="recommendation.nextSlot"> · next slot: {{ new Date(recommendation.nextSlot).toLocaleString() }}</span><UBadge v-if="recommendation.article" :color="recommendation.article.relevant ? 'success' : 'warning'" variant="subtle" size="xs">{{ recommendation.article.relevant ? 'Matches client brief' : 'Review relevance' }}</UBadge></span><span v-else class="text-muted">Use the selected article, client brief, and engagement history to suggest a starting point.</span><UButton label="Suggest" size="xs" color="neutral" variant="subtle" :loading="recommendationLoading" @click="loadRecommendation" /></div>
       <div class="flex flex-wrap gap-3 items-center">
         <USelectMenu v-model="clientId" :items="clients.map(c => ({ label: c.name, value: c.id }))" value-key="value" placeholder="Target client" class="w-52" />
         <UCheckbox v-for="p in ['facebook','instagram','linkedin','tiktok','youtube','google-business']" :key="p" v-model="platforms" :value="p" :label="p" />
