@@ -90,8 +90,15 @@ async function refreshAging() {
   }
 }
 
-await refresh()
+// Fetch client-side AFTER mount — never block setup on this. The old
+// top-level `await refresh()` ran during SSR on hard loads (phones
+// especially), holding the whole HTML response while the server paged
+// through every Xero contact (plus 429 retries) until Cloudflare killed
+// the request — the page appeared to hang/crash. The template already
+// has pending skeletons and an error state for the client-side path.
+pending.value = true
 onMounted(() => {
+  void refresh()
   void refreshAging()
 })
 
