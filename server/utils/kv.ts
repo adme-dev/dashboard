@@ -5,6 +5,11 @@ interface KV {
   get(key: string, type: 'text'): Promise<string | null>
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>
   delete(key: string): Promise<void>
+  list(options?: { prefix?: string; cursor?: string }): Promise<{
+    keys: Array<{ name: string }>
+    list_complete: boolean
+    cursor?: string
+  }>
 }
 
 /**
@@ -58,6 +63,32 @@ export async function kvDelete(event: H3Event, key: string): Promise<void> {
     await kv.delete(key)
   } catch {
     // Silently fail
+  }
+}
+
+/**
+ * Delete every KV key under a prefix. Used by the Xero webhook to drop
+ * cached dashboard figures the moment data changes in Xero, instead of
+ * waiting out the SWR TTL. Bounded pagination (KV list returns ≤1000
+ * keys per page) with a safety cap — our per-tenant key space is tiny.
+ */
+export async function kvDeleteByPrefix(event: H3Event, prefix: string): Promise<number> {
+  try {
+    const kv = getKV(event)
+    if (!kv) return 0
+    let deleted = 0
+    let cursor: string | undefined
+    for (let page = 0; page < 10; page++) {
+      const res = await kv.list({ prefix, cursor })
+      await Promise.all(res.keys.map((k) => kv.delete(k.name)))
+      deleted += res.keys.length
+      if (res.list_complete || !res.cursor) break
+      cursor = res.cursor
+    }
+    return deleted
+  } catch {
+    // Silently fail — cache invalidation is best-effort.
+    return 0
   }
 }
 

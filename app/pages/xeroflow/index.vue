@@ -54,9 +54,28 @@ watch(isConnected, (connected) => {
   }
 }, { immediate: true })
 
-// Manual refresh all
+// Manual refresh all — bypasses the server's 5-minute SWR cache (?bust=1)
+// so a user-clicked refresh shows live Xero data, not the cached snapshot.
+// The Xero-backed fetches go through $fetch with the bust flag and land in
+// the same data refs; anomalies aren't a Xero cache so a plain refresh does.
+const manualRefreshing = ref(false)
 async function refreshAll() {
-  await Promise.all([refreshKPI(), refreshCashFlow(), refreshPipeline(), refreshAnomalies(), refreshBudget()])
+  manualRefreshing.value = true
+  try {
+    const [kpis, cash, pipe, budget] = await Promise.all([
+      $fetch('/api/kpis-advanced?bust=1').catch(() => kpiData.value),
+      $fetch('/api/xero/reports/cash-flow-forecast?days=90&bust=1').catch(() => cashFlowData.value),
+      $fetch('/api/xero/invoice-pipeline?days=90&bust=1').catch(() => pipelineData.value),
+      $fetch('/api/xero/reports/budget-variance?bust=1').catch(() => budgetData.value),
+    ])
+    kpiData.value = kpis as any
+    cashFlowData.value = cash as any
+    pipelineData.value = pipe as any
+    budgetData.value = budget as any
+    await refreshAnomalies()
+  } finally {
+    manualRefreshing.value = false
+  }
 }
 
 // Auto-refresh every 5 minutes
@@ -190,7 +209,7 @@ const quickActions = [
               color="neutral"
               variant="ghost"
               size="sm"
-              :loading="kpiPending || cashFlowPending"
+              :loading="manualRefreshing || kpiPending || cashFlowPending"
               @click="refreshAll"
             />
 

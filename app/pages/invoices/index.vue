@@ -12,11 +12,14 @@ const data = ref<any>(null)
 const pending = ref(false)
 const error = ref<any>(null)
 
-async function refresh() {
+// `force` bypasses the server's 5-minute stale-while-revalidate cache —
+// a user-clicked Refresh must show payments matched in Xero seconds ago,
+// not the cached snapshot. Initial page load stays on the cache for speed.
+async function refresh(force = false) {
   pending.value = true
   error.value = null
   try {
-    data.value = await apiFetch('/api/xero/invoices')
+    data.value = await apiFetch(`/api/xero/invoices${force ? '?bust=1' : ''}`)
   } catch (err) {
     data.value = null
     error.value = err
@@ -321,7 +324,7 @@ async function sendBulkReminders(invoiceIds: string[]) {
       description: parts.join(' · ') || 'Nothing to do',
       color: res.tally.failed > 0 ? 'warning' : 'success',
     })
-    await refresh()
+    await refresh(true)
   } catch (err: any) {
     toast.add({
       title: 'Bulk reminder failed',
@@ -626,7 +629,7 @@ const agingSections = [
     <template #header>
       <UDashboardNavbar title="Invoices" description="Track outstanding balances, overdue risk, and recent payments">
         <template #right>
-          <UButton label="Refresh" color="neutral" icon="i-lucide-refresh-cw" @click="() => refresh()" :loading="pending" />
+          <UButton label="Refresh" color="neutral" icon="i-lucide-refresh-cw" @click="() => refresh(true)" :loading="pending" />
         </template>
       </UDashboardNavbar>
 
@@ -955,13 +958,21 @@ const agingSections = [
                 </div>
                 <div class="min-w-0">
                   <p class="text-sm text-[var(--ui-text-muted)] truncate">This Month Invoiced</p>
-                  <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }}</p>
+                  <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthToDateInvoicedNet ?? (summary as any)?.monthToDateInvoicedTotal) }}</p>
                 </div>
               </div>
               <p class="text-xs text-[var(--ui-text-muted)] mb-2">
                 {{ (summary as any)?.monthToDateInvoicedCount }} invoice{{ (summary as any)?.monthToDateInvoicedCount === 1 ? '' : 's' }} · day {{ (summary as any)?.monthDayOfMonth }}/{{ (summary as any)?.monthDaysInMonth }}
               </p>
               <div class="flex flex-wrap items-center gap-1.5">
+                <UBadge
+                  v-if="((summary as any)?.monthToDateCreditsTotal || 0) > 0"
+                  size="sm"
+                  variant="subtle"
+                  color="warning"
+                >
+                  Less {{ formatCurrency((summary as any)?.monthToDateCreditsTotal) }} credits
+                </UBadge>
                 <UBadge
                   v-if="(summary as any)?.monthVsLastMonthPct != null"
                   size="sm"
@@ -971,7 +982,7 @@ const agingSections = [
                   {{ (summary as any).monthVsLastMonthPct >= 0 ? '+' : '' }}{{ (summary as any).monthVsLastMonthPct }}% vs last
                 </UBadge>
                 <UBadge
-                  v-if="(summary as any)?.monthPaceProjection > (summary as any)?.monthToDateInvoicedTotal"
+                  v-if="(summary as any)?.monthPaceProjection > ((summary as any)?.monthToDateInvoicedNet ?? (summary as any)?.monthToDateInvoicedTotal)"
                   size="sm"
                   variant="subtle"
                   color="info"
@@ -993,7 +1004,7 @@ const agingSections = [
                 <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency(quotesSummary?.total) }}</p>
               </div>
             </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mb-2">{{ quotesSummary?.count }} active quote{{ (quotesSummary?.count ?? 0) === 1 ? '' : 's' }} not yet invoiced</p>
+            <p class="text-xs text-[var(--ui-text-muted)] mb-2">{{ quotesSummary?.count }} active quote{{ (quotesSummary?.count ?? 0) === 1 ? '' : 's' }} from the last 12 months</p>
             <div class="flex flex-wrap items-center gap-1.5">
               <UBadge v-if="(quotesSummary?.byStatus.accepted.count || 0) > 0" color="success" variant="subtle" size="sm">
                 Accepted: {{ formatCurrency(quotesSummary?.byStatus.accepted.total) }}
@@ -1036,28 +1047,13 @@ const agingSections = [
             </div>
           </UCard>
 
-          <!-- GST / Tax collected — sum of totalTax on issued invoices over rolling windows. -->
-          <UCard v-if="((summary as any)?.taxSummary?.last90 ?? 0) > 0">
-            <div class="flex items-center gap-3 mb-2">
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-teal-50 dark:bg-teal-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-percent" class="h-5 w-5 text-teal-600 dark:text-teal-400" />
-              </div>
-              <div class="min-w-0">
-                <UTooltip text="GST/VAT collected on sales invoices. The headline is FY-to-date which maps to BAS box 1A — always reconcile against Xero's official BAS report before lodging.">
-                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1 truncate">
-                    GST Collected
-                    <UIcon name="i-lucide-info" class="h-3 w-3" />
-                  </p>
-                </UTooltip>
-                <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.taxSummary?.fyToDate) }}</p>
-              </div>
-            </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mb-2">FY-to-date · since {{ formatDate((summary as any)?.taxSummary?.fyStart) }}</p>
-            <div class="flex flex-wrap items-center gap-1.5">
-              <UBadge color="neutral" variant="subtle" size="sm">30d: {{ formatCurrency((summary as any)?.taxSummary?.last30) }}</UBadge>
-              <UBadge color="neutral" variant="subtle" size="sm">90d: {{ formatCurrency((summary as any)?.taxSummary?.last90) }}</UBadge>
-            </div>
-          </UCard>
+          <!-- The "GST Collected" card was removed 2026-07-16: it summed
+               totalTax on invoices ISSUED since FY start (accrual, incl.
+               paid, excl. credit notes, no GST-paid netting) — not a BAS
+               figure and not the GST on outstanding AR, so it misled on
+               this page. Proper BAS reporting (1A − 1B, cash/accrual)
+               belongs on the Reports page. taxSummary is still returned
+               by the endpoint for future use. -->
 
           <!-- Credit notes outstanding — money owed back to customers / unapplied credits. -->
           <UCard v-if="(creditNotesSummary?.count || 0) > 0">
@@ -2025,7 +2021,7 @@ const agingSections = [
           Invoiced this month
         </p>
         <p class="text-xs text-[var(--ui-text-muted)] truncate font-normal">
-          {{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }} · {{ (summary as any)?.monthToDateInvoicedCount }} invoices · day {{ (summary as any)?.monthDayOfMonth }}/{{ (summary as any)?.monthDaysInMonth }}
+          {{ formatCurrency((summary as any)?.monthToDateInvoicedNet ?? (summary as any)?.monthToDateInvoicedTotal) }} · {{ (summary as any)?.monthToDateInvoicedCount }} invoices · day {{ (summary as any)?.monthDayOfMonth }}/{{ (summary as any)?.monthDaysInMonth }}
         </p>
       </div>
     </template>

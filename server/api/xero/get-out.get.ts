@@ -75,15 +75,39 @@ export default eventHandler(async (event) => {
       return { invoices: all, truncated: true }
     }
 
-    const { invoices, truncated } = await fetchAllPages()
+    // Sales credit notes issued this month — netted off the invoiced totals
+    // so credited-back billing doesn't count toward Get Out coverage.
+    async function fetchMonthCreditNotes(): Promise<any[]> {
+      const where = `Type=="ACCRECCREDIT"&&Date>=${toXeroDateTime(monthStart)}&&Status!="DRAFT"&&Status!="DELETED"&&Status!="VOIDED"`
+      const params = new URLSearchParams({ where, order: 'Date DESC', page: '1', pageSize: '100' })
+      const body = await dedupedXeroCall(
+        `get-out-credits:${tenantId}:${year}-${month}`,
+        'get-out-credits',
+        () => xeroFetch<any>({ accessToken, tenantId, path: `CreditNotes?${params.toString()}` }),
+      )
+      return body?.creditNotes || []
+    }
+
+    const [{ invoices, truncated }, creditNotes] = await Promise.all([
+      fetchAllPages(),
+      fetchMonthCreditNotes().catch((err) => {
+        // Non-fatal — coverage just stays gross of credits, as it was before.
+        console.warn('[get-out] credit-note fetch failed:', err?.message)
+        return [] as any[]
+      }),
+    ])
     // Split the month's invoicing into gross / ex-GST / GST. The Get Out target
     // is a GST-exclusive cash obligation, so coverage must be measured ex-GST —
     // crediting the ~1/11 GST (the ATO's money) overstates how covered we are.
     const invoiceTotals = splitInvoiceTotals(invoices)
-    const currentMonthInvoicedTotal = invoiceTotals.inclGst   // gross — preserves existing semantics
-    const currentMonthInvoicedExGst = invoiceTotals.exGst
-    const currentMonthGst = invoiceTotals.gst
+    const creditTotals = splitInvoiceTotals(creditNotes)
+    const round2 = (n: number) => Math.round(n * 100) / 100
+    const currentMonthInvoicedTotal = round2(invoiceTotals.inclGst - creditTotals.inclGst)   // gross, net of credits
+    const currentMonthInvoicedExGst = round2(invoiceTotals.exGst - creditTotals.exGst)
+    const currentMonthGst = round2(invoiceTotals.gst - creditTotals.gst)
     const currentMonthInvoicedCount = invoices.length
+    const currentMonthCreditsExGst = creditTotals.exGst
+    const currentMonthCreditsCount = creditNotes.length
 
     // ── Configurable inputs (DB-backed via agency_settings) ──
     const config = await loadGetOutConfig(tenantId)
@@ -169,9 +193,11 @@ export default eventHandler(async (event) => {
       },
       getOutTarget,
       currentMonth: {
-        invoicedTotal: Math.round(currentMonthInvoicedTotal * 100) / 100,   // gross (incl GST)
-        invoicedExGst: currentMonthInvoicedExGst,                            // ex-GST (coverage basis)
-        gstCollected: currentMonthGst,                                      // GST owed to ATO
+        invoicedTotal: currentMonthInvoicedTotal,   // gross (incl GST), net of credit notes
+        invoicedExGst: currentMonthInvoicedExGst,   // ex-GST (coverage basis), net of credit notes
+        gstCollected: currentMonthGst,              // GST owed to ATO, net of credit notes
+        creditsExGst: currentMonthCreditsExGst,     // ex-GST credit notes issued this month
+        creditsCount: currentMonthCreditsCount,
         invoicedCount: currentMonthInvoicedCount,
         paceProjection: monthPaceProjection,
         truncated,

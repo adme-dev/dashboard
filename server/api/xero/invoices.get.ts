@@ -58,14 +58,54 @@ export default eventHandler(async (event) => {
       return { invoices: all, truncated: true }
     }
 
+    // Sales credit notes issued since the start of LAST month — needed to
+    // net the "This Month Invoiced" figure (and its last-month comparison)
+    // so a $6k credit doesn't masquerade as $6k of billing. AUTHORISED and
+    // PAID both count: an applied credit note flips to PAID but still
+    // reduced what was billed.
+    async function fetchCreditNotesSince(fromISO: string): Promise<any[]> {
+      const [y, m, d] = fromISO.split('-').map(Number)
+      const where = `Type=="ACCRECCREDIT"&&Date>=DateTime(${y},${m},${d})&&Status!="DRAFT"&&Status!="DELETED"&&Status!="VOIDED"`
+      const all: any[] = []
+      for (let page = 1; page <= 3; page++) {
+        const params = new URLSearchParams({ where, order: 'Date DESC', page: String(page), pageSize: '100' })
+        const body = await dedupedXeroCall(
+          `invoices-credit-notes:${tenantId}:${dateKey}:p${page}`,
+          `invoices-credit-notes-p${page}`,
+          () => xeroFetch<any>({
+            accessToken: token.access_token!,
+            tenantId,
+            path: `CreditNotes?${params.toString()}`,
+          })
+        )
+        const notes = body?.creditNotes || []
+        all.push(...notes)
+        if (notes.length < 100) break
+      }
+      return all
+    }
+
+    const now = new Date()
+    const creditsFromISO = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10)
+
     // AUTHORISED: 10 pages × 100 = up to 1000 open invoices. Anything
     // bigger and the org is past where this dashboard is the right tool.
     // PAID: 3 pages × 100 = 300 most-recent paid (only the last 30 days
     // is surfaced anyway, so 300 is plenty).
-    const [authorisedResult, paidResult] = await Promise.all([
+    const [authorisedResult, paidResult, recentCreditNotesRaw] = await Promise.all([
       fetchAllPages('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC', 'invoices-accrec-authorised', 'invoices-authorised', 10),
       fetchAllPages('Type=="ACCREC"&&Status=="PAID"', 'Date DESC', 'invoices-accrec-paid', 'invoices-paid', 3),
+      fetchCreditNotesSince(creditsFromISO).catch((err) => {
+        // Non-fatal — worst case the invoiced figure stays gross, exactly
+        // as it was before credit-note netting existed.
+        console.warn('[invoices] credit-note fetch failed:', err?.message)
+        return [] as any[]
+      }),
     ])
+    const recentCreditNotes = recentCreditNotesRaw.map((cn: any) => ({
+      date: typeof cn.date === 'string' ? cn.date.slice(0, 10) : null,
+      total: Number(cn.total) || 0,
+    }))
     const authorisedBody = { invoices: authorisedResult.invoices }
     const paidBody = { invoices: paidResult.invoices }
     const truncated = {
@@ -267,6 +307,16 @@ export default eventHandler(async (event) => {
     )
     const monthToDateInvoicedCount = monthToDateInvoicedAll.length
 
+    // Net off credit notes issued this month — the gross sum above counts
+    // an invoice that was later credited back as if it were real billing.
+    const sumCredits = (fromISO: string, toISO?: string) => Math.round(
+      recentCreditNotes
+        .filter((cn) => cn.date && cn.date >= fromISO && (!toISO || cn.date < toISO))
+        .reduce((sum, cn) => sum + cn.total, 0)
+    )
+    const monthToDateCreditsTotal = sumCredits(monthStartISO)
+    const monthToDateInvoicedNet = monthToDateInvoicedTotal - monthToDateCreditsTotal
+
     // Same window from last month (1st → today's day-of-month) so the
     // comparison is apples-to-apples regardless of where in the month
     // we are. If today is the 14th, we compare against last month's
@@ -278,16 +328,16 @@ export default eventHandler(async (event) => {
     )
     const lastMonthSameWindowTotal = Math.round(
       lastMonthSameWindow.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
-    )
+    ) - sumCredits(lastMonthStartISO, lastMonthCutoff)
     const monthVsLastMonthPct = lastMonthSameWindowTotal > 0
-      ? Math.round(((monthToDateInvoicedTotal - lastMonthSameWindowTotal) / lastMonthSameWindowTotal) * 100)
+      ? Math.round(((monthToDateInvoicedNet - lastMonthSameWindowTotal) / lastMonthSameWindowTotal) * 100)
       : null
 
     // Pace projection — straight-line extrapolation to end of month.
     // Naive but useful as a "if we keep going at this rate" signal.
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
     const monthPaceProjection = dayOfMonth > 0
-      ? Math.round((monthToDateInvoicedTotal / dayOfMonth) * daysInMonth)
+      ? Math.round((monthToDateInvoicedNet / dayOfMonth) * daysInMonth)
       : 0
 
     // Average invoice value MTD.
@@ -522,6 +572,8 @@ export default eventHandler(async (event) => {
         notSentTotal,
         dso30,
         monthToDateInvoicedTotal,
+        monthToDateInvoicedNet,
+        monthToDateCreditsTotal,
         monthToDateInvoicedCount,
         monthStart: monthStartISO,
         monthLastSameWindowTotal: lastMonthSameWindowTotal,
