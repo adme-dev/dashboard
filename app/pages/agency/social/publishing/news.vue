@@ -25,6 +25,12 @@ async function refresh() {
   catch (e: any) { error.value = e?.data?.statusMessage || 'Could not load the news inbox' }
   finally { pending.value = false }
 }
+async function refreshSource() {
+  pending.value = true
+  try { await apiFetch('/api/agency/social/news/refresh', { method: 'POST' } as any); await refresh(); toast.add({ title: 'News refreshed', color: 'success' }) }
+  catch (e: any) { toast.add({ title: 'Could not refresh news', description: e?.data?.statusMessage || 'Check the source settings', color: 'error' }) }
+  finally { pending.value = false }
+}
 function toggle(id: string) { selected.value = selected.value.includes(id) ? selected.value.filter(x => x !== id) : [...selected.value, id] }
 function fmtDate(value: string | null) { return value ? new Date(value).toLocaleString() : 'Date unknown' }
 onMounted(refresh)
@@ -53,7 +59,7 @@ async function createDrafts() {
   <SocialPublishingShell title="News Inbox" subtitle="Cherry-pick MCP news, rewrite it if needed, and send it to selected accounts and platforms.">
     <div class="flex items-center gap-2 mb-5">
       <USelectMenu v-model="status" :items="[{ label: 'Unread', value: 'unread' }, { label: 'Selected', value: 'selected' }, { label: 'Used', value: 'used' }, { label: 'Dismissed', value: 'dismissed' }]" value-key="value" class="w-36" />
-      <UButton icon="i-lucide-refresh-cw" color="neutral" variant="subtle" label="Refresh" :loading="pending" @click="refresh" />
+      <UButton icon="i-lucide-refresh-cw" color="neutral" variant="subtle" label="Refresh source" :loading="pending" @click="refreshSource" />
       <span class="text-sm text-muted ml-auto">{{ selected.length }} selected</span>
       <UButton icon="i-lucide-send" label="Create drafts" :disabled="!selected.length" @click="showDraftOptions = true" />
     </div>

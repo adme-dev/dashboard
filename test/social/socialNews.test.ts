@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeMcpNewsItem } from '~~/server/utils/socialNews'
-import { isSafeNewsSourceUrl, sourceFromRow } from '~~/server/utils/socialNewsSources'
+import { fetchMcpNewsSource, isSafeNewsSourceUrl, sourceFromRow } from '~~/server/utils/socialNewsSources'
 
 describe('normalizeMcpNewsItem', () => {
   it('normalizes MCP link fields and preserves the raw source', () => {
@@ -18,5 +18,12 @@ describe('normalizeMcpNewsItem', () => {
     expect(isSafeNewsSourceUrl('https://example.test/mcp')).toBe(true)
     expect(isSafeNewsSourceUrl('http://example.test/mcp')).toBe(false)
     expect(sourceFromRow({ source_key: 'mcp_news', display_name: 'MCP News', endpoint_url: 'https://example.test', enabled: true, settings: {} }).sourceKey).toBe('mcp_news')
+  })
+
+  it('extracts news items from an MCP tools/call response', async () => {
+    const result = await fetchMcpNewsSource({ sourceKey: 'mcp_news', displayName: 'MCP', endpointUrl: 'https://example.test/mcp', enabled: true, settings: { toolName: 'news' } }, {
+      fetchImpl: (async () => new Response(JSON.stringify({ result: { content: [{ type: 'text', text: JSON.stringify({ items: [{ id: '1', title: 'Story' }] }) }] } })) as Response) as typeof fetch,
+    })
+    expect(result).toEqual([{ id: '1', title: 'Story' }])
   })
 })
