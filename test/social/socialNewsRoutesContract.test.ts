@@ -55,4 +55,10 @@ describe('MCP news inbox contract', () => {
     expect(source).toContain('volume limit reached')
     expect(source).toContain('packageUsageWarnings')
   })
+
+  it('applies package approval SLA when approval is requested', () => {
+    const source = readFileSync('server/api/agency/social/publishing/posts/[id]/request-approval.post.ts', 'utf8')
+    expect(source).toContain('approvalSlaHours')
+    expect(source).toContain('due_at = $4')
+  })
 })
