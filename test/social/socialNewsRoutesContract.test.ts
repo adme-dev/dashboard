@@ -61,4 +61,12 @@ describe('MCP news inbox contract', () => {
     expect(source).toContain('approvalSlaHours')
     expect(source).toContain('due_at = (')
   })
+
+  it('imports Slack exports as pending client-scoped evidence', () => {
+    const source = readFileSync('server/api/agency/social/news/profiles/[clientId]/evidence/imports/slack.post.ts', 'utf8')
+    expect(source).toContain('requireRole(event, PERMISSIONS.ADMIN)')
+    expect(source).toContain("sourceSystem: 'slack'")
+    expect(source).toContain("reviewStatus: 'pending'")
+    expect(source).toContain('client_operational_evidence')
+  })
 })
