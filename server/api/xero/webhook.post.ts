@@ -60,13 +60,22 @@ export default eventHandler(async (event) => {
   const legacyTenant = getHeader(event, 'xero-tenant-id') || payload?.tenantId
   if (legacyTenant) tenantIds.add(String(legacyTenant))
 
+  // Clear the three key FAMILIES rather than a hand-maintained list of
+  // per-endpoint prefixes — a five-prefix list was already missing
+  // xero:credit-notes, xero:expenses, xero:budgets and friends, and every
+  // new cached endpoint would silently miss invalidation. Family-wide
+  // clearing over-invalidates across tenants, which is only a perf cost
+  // (next request rebuilds) and this is a single-tenant deployment.
+  // NB: 'xero:' does not match the 'xero-org-token'/'xero-org-tenant'
+  // keys (no colon after 'xero'), so auth is untouched.
   let cleared = 0
-  for (const tenantId of tenantIds) {
-    cleared += await kvDeleteByPrefix(event, `xero-report:${tenantId}:`)
-    cleared += await kvDeleteByPrefix(event, `xero-get-out:${tenantId}`)
-    cleared += await kvDeleteByPrefix(event, `xero:kpis-advanced:${tenantId}`)
-    cleared += await kvDeleteByPrefix(event, `xero:aging:${tenantId}:`)
-    cleared += await kvDeleteByPrefix(event, `xero:contacts:${tenantId}`)
+  if (tenantIds.size > 0) {
+    const results = await Promise.all([
+      kvDeleteByPrefix(event, 'xero:'),
+      kvDeleteByPrefix(event, 'xero-report:'),
+      kvDeleteByPrefix(event, 'xero-get-out:'),
+    ])
+    cleared = results.reduce((sum, n) => sum + n, 0)
   }
 
   return { ok: true, tenants: tenantIds.size, cleared }

@@ -169,7 +169,9 @@ async function loadTenants() {
 }
 
 onMounted(async () => {
-  await fetchUser()
+  // Route middleware usually populated the shared user ref already — only
+  // hit /api/auth/me when it didn't, so the connection fetches start sooner.
+  if (!user.value) await fetchUser()
   // Only fetch what this user's role can see — the endpoints are gated
   // server-side too; this just avoids guaranteed-403 calls.
   await Promise.allSettled([

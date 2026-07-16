@@ -79,13 +79,19 @@ export default eventHandler(async (event) => {
     // so credited-back billing doesn't count toward Get Out coverage.
     async function fetchMonthCreditNotes(): Promise<any[]> {
       const where = `Type=="ACCRECCREDIT"&&Date>=${toXeroDateTime(monthStart)}&&Status!="DRAFT"&&Status!="DELETED"&&Status!="VOIDED"`
-      const params = new URLSearchParams({ where, order: 'Date DESC', page: '1', pageSize: '100' })
-      const body = await dedupedXeroCall(
-        `get-out-credits:${tenantId}:${year}-${month}`,
-        'get-out-credits',
-        () => xeroFetch<any>({ accessToken, tenantId, path: `CreditNotes?${params.toString()}` }),
-      )
-      return body?.creditNotes || []
+      const all: any[] = []
+      for (let page = 1; page <= 3; page++) {
+        const params = new URLSearchParams({ where, order: 'Date DESC', page: String(page), pageSize: '100' })
+        const body = await dedupedXeroCall(
+          `get-out-credits:${tenantId}:${year}-${month}:p${page}`,
+          `get-out-credits-p${page}`,
+          () => xeroFetch<any>({ accessToken, tenantId, path: `CreditNotes?${params.toString()}` }),
+        )
+        const notes = body?.creditNotes || []
+        all.push(...notes)
+        if (notes.length < 100) break
+      }
+      return all
     }
 
     const [{ invoices, truncated }, creditNotes] = await Promise.all([

@@ -4,6 +4,7 @@ import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '../../utils/kv'
 import { dedupedXeroCall } from '../../utils/xeroRateLimit'
+import { QUOTE_PIPELINE_MAX_AGE_DAYS, quotePipelineDateFrom } from '../../utils/quotePipeline'
 
 /**
  * Active quote pipeline — quotes that are DRAFT, SENT, or ACCEPTED but
@@ -18,8 +19,6 @@ import { dedupedXeroCall } from '../../utils/xeroRateLimit'
  *
  * Cached 5 minutes — quotes don't change minute-to-minute.
  */
-const QUOTE_MAX_AGE_DAYS = 365
-
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
   const tenantId = await getSelectedTenant(event)
@@ -30,8 +29,7 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero-report:${tenantId}:quotes-summary`
 
   return cachedFetch(event, cacheKey, 300, async () => {
-    const cutoff = new Date(Date.now() - QUOTE_MAX_AGE_DAYS * 86400_000)
-    const dateFrom = cutoff.toISOString().slice(0, 10)
+    const dateFrom = quotePipelineDateFrom()
     const fetchByStatus = (status: 'DRAFT' | 'SENT' | 'ACCEPTED') => dedupedXeroCall(
       `quotes-${status.toLowerCase()}:${tenantId}:${dateFrom}`,
       `quotes-${status.toLowerCase()}`,
@@ -63,7 +61,7 @@ export default eventHandler(async (event) => {
       total: draft.total + sent.total + accepted.total,
       count: draft.count + sent.count + accepted.count,
       byStatus: { draft, sent, accepted },
-      maxAgeDays: QUOTE_MAX_AGE_DAYS,
+      maxAgeDays: QUOTE_PIPELINE_MAX_AGE_DAYS,
     }
   })
 })

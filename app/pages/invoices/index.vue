@@ -1052,8 +1052,7 @@ const agingSections = [
                paid, excl. credit notes, no GST-paid netting) — not a BAS
                figure and not the GST on outstanding AR, so it misled on
                this page. Proper BAS reporting (1A − 1B, cash/accrual)
-               belongs on the Reports page. taxSummary is still returned
-               by the endpoint for future use. -->
+               belongs on the Reports page. -->
 
           <!-- Credit notes outstanding — money owed back to customers / unapplied credits. -->
           <UCard v-if="(creditNotesSummary?.count || 0) > 0">
@@ -2014,7 +2013,7 @@ const agingSections = [
 
   <!-- "This month" drill-down: every invoice issued this calendar month
        (paid + unpaid) with comparison stats and the full per-invoice list. -->
-  <USlideover v-model:open="showMonthDetail" :title="`Invoiced this month: ${formatCurrency((summary as any)?.monthToDateInvoicedTotal)}`" :description="`${(summary as any)?.monthToDateInvoicedCount ?? 0} invoices since ${formatDate((summary as any)?.monthStart)}`">
+  <USlideover v-model:open="showMonthDetail" :title="`Invoiced this month: ${formatCurrency((summary as any)?.monthToDateInvoicedNet ?? (summary as any)?.monthToDateInvoicedTotal)}`" :description="`${(summary as any)?.monthToDateInvoicedCount ?? 0} invoices since ${formatDate((summary as any)?.monthStart)}`">
     <template #title>
       <div class="min-w-0">
         <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">
@@ -2030,7 +2029,7 @@ const agingSections = [
         <!-- KPI grid -->
         <div class="grid grid-cols-2 gap-3">
           <div class="p-3 rounded-lg border border-[var(--ui-border)]">
-            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Total billed</p>
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">{{ ((summary as any)?.monthToDateCreditsTotal || 0) > 0 ? 'Billed (gross of credits)' : 'Total billed' }}</p>
             <p class="text-lg font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }}</p>
           </div>
           <div class="p-3 rounded-lg border border-[var(--ui-border)]">

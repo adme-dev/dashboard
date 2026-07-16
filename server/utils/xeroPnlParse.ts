@@ -170,11 +170,17 @@ export function extractExpenseBreakdown(rows: XeroRow[], valueIndex: number) {
  *
  *   revenue      = Total Income
  *   costOfSales  = Total Cost of Sales (DIRECTCOSTS accounts)
- *   expenses     = costOfSales + Total Operating Expenses — "everything
- *                  spent", which is what a dashboard 'Expenses' card means
- *                  to a non-accountant (Xero's own 'Total Expenses' line
- *                  EXCLUDES cost of sales)
+ *   expenses     = Total Operating Expenses — deliberately the literal
+ *                  report line, NOT costOfSales + operating: a bookkeeper
+ *                  reconciles each dashboard figure against a named P&L
+ *                  row, and this org books PPC recharges as contra-COGS
+ *                  (negative Cost of Sales), which would make a combined
+ *                  figure match nothing on the report
  *   netProfit    = the report's Net Profit line
+ *
+ * Verified against this org's live ProfitAndLoss layout 2026-07-16
+ * (row titles: Total Income / Total Cost of Sales / Total Operating
+ * Expenses / Net Profit; cash + accrual).
  */
 export function extractPnlTotals(report: any): {
   revenue: number
@@ -188,7 +194,9 @@ export function extractPnlTotals(report: any): {
   const columnCount = getPeriodLabels(rows).length
   const latest = columnCount > 0 ? columnCount - 1 : 0
 
-  const revenue = findRowValues(rows, /total\s+revenue|total\s+income/i, columnCount)[latest] ?? 0
+  // Xero layouts vary: "Total Income", "Total Revenue", "Total Operating
+  // Income", "Total Trading Income", "Total Sales" all appear in the wild.
+  const revenue = findRowValues(rows, /total\s+(operating\s+|trading\s+)?(revenue|income|sales)\b/i, columnCount)[latest] ?? 0
   const costOfSales = findRowValues(rows, /total\s+cost\s+of\s+sales|total\s+direct\s+costs/i, columnCount)[latest] ?? 0
   const operatingExpenses = findRowValues(rows, /total\s+expense|total\s+operating\s+expense/i, columnCount)[latest] ?? 0
   const netProfit = findRowValues(rows, /net\s+profit|profit\s+for\s+the\s+period|net\s+income|net\s+loss/i, columnCount)[latest] ?? 0
@@ -197,7 +205,7 @@ export function extractPnlTotals(report: any): {
     revenue,
     costOfSales,
     operatingExpenses,
-    expenses: costOfSales + operatingExpenses,
+    expenses: operatingExpenses,
     netProfit,
   }
 }

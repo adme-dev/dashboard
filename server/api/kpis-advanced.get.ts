@@ -128,11 +128,21 @@ export default eventHandler(async (event) => {
     }
   }
 
-  // Revenue / expenses / profit straight off the P&L report. `expenses`
-  // includes Cost of Sales — "everything spent" is what the dashboard
-  // card means; Xero's own "Total Expenses" line excludes direct costs.
-  const currentPnl = extractPnlTotals(extractData(currentPnlResponse))
-  const lastPnl = extractPnlTotals(extractData(lastMonthPnlResponse))
+  // Revenue / expenses / profit straight off the P&L report — each equals
+  // a literal named report line (Total Income / Total Operating Expenses /
+  // Net Profit) so a bookkeeper can reconcile every card against Xero.
+  //
+  // A failed P&L call must THROW, not degrade to zeros — otherwise a
+  // transient Xero 429/timeout would cache "$0 revenue / -100% growth"
+  // for the full 5-minute TTL and the dashboard would report the business
+  // as dead with no error shown.
+  const currentPnlRaw = extractData(currentPnlResponse)
+  const lastPnlRaw = extractData(lastMonthPnlResponse)
+  if (!currentPnlRaw || !lastPnlRaw) {
+    throw createError({ statusCode: 502, statusMessage: 'Xero P&L report unavailable — try again shortly' })
+  }
+  const currentPnl = extractPnlTotals(currentPnlRaw)
+  const lastPnl = extractPnlTotals(lastPnlRaw)
 
   const currentMonthRevenue = currentPnl.revenue
   const lastMonthRevenue = lastPnl.revenue

@@ -4,7 +4,7 @@ import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '../../utils/kv'
 import { dedupedXeroCall } from '../../utils/xeroRateLimit'
-import { ensureDateString } from '../../utils/xeroDataFetcher'
+import { ensureDateString, toXeroDateTime } from '../../utils/xeroDataFetcher'
 import { queryRows } from '../../utils/db'
 
 export default eventHandler(async (event) => {
@@ -63,9 +63,8 @@ export default eventHandler(async (event) => {
     // so a $6k credit doesn't masquerade as $6k of billing. AUTHORISED and
     // PAID both count: an applied credit note flips to PAID but still
     // reduced what was billed.
-    async function fetchCreditNotesSince(fromISO: string): Promise<any[]> {
-      const [y, m, d] = fromISO.split('-').map(Number)
-      const where = `Type=="ACCRECCREDIT"&&Date>=DateTime(${y},${m},${d})&&Status!="DRAFT"&&Status!="DELETED"&&Status!="VOIDED"`
+    async function fetchCreditNotesSince(fromDate: Date): Promise<any[]> {
+      const where = `Type=="ACCRECCREDIT"&&Date>=${toXeroDateTime(fromDate)}&&Status!="DRAFT"&&Status!="DELETED"&&Status!="VOIDED"`
       const all: any[] = []
       for (let page = 1; page <= 3; page++) {
         const params = new URLSearchParams({ where, order: 'Date DESC', page: String(page), pageSize: '100' })
@@ -85,8 +84,11 @@ export default eventHandler(async (event) => {
       return all
     }
 
-    const now = new Date()
-    const creditsFromISO = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10)
+    // Single time snapshot for the whole request so the credit-note window
+    // and the invoice comparison windows can never straddle midnight and
+    // land on different days.
+    const today = new Date()
+    const creditsFromDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
 
     // AUTHORISED: 10 pages × 100 = up to 1000 open invoices. Anything
     // bigger and the org is past where this dashboard is the right tool.
@@ -95,7 +97,7 @@ export default eventHandler(async (event) => {
     const [authorisedResult, paidResult, recentCreditNotesRaw] = await Promise.all([
       fetchAllPages('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC', 'invoices-accrec-authorised', 'invoices-authorised', 10),
       fetchAllPages('Type=="ACCREC"&&Status=="PAID"', 'Date DESC', 'invoices-accrec-paid', 'invoices-paid', 3),
-      fetchCreditNotesSince(creditsFromISO).catch((err) => {
+      fetchCreditNotesSince(creditsFromDate).catch((err) => {
         // Non-fatal — worst case the invoiced figure stays gross, exactly
         // as it was before credit-note netting existed.
         console.warn('[invoices] credit-note fetch failed:', err?.message)
@@ -115,7 +117,6 @@ export default eventHandler(async (event) => {
       paidLimit: 300,
     }
 
-    const today = new Date()
     const todayISO = today.toISOString().slice(0, 10)
 
     function simplify(inv: any) {
@@ -322,7 +323,13 @@ export default eventHandler(async (event) => {
     // we are. If today is the 14th, we compare against last month's
     // 1st-14th total.
     const dayOfMonth = today.getDate()
-    const lastMonthCutoff = new Date(today.getFullYear(), today.getMonth() - 1, dayOfMonth + 1).toISOString().slice(0, 10)
+    // Clamp the cutoff to the start of THIS month: when today's day-of-month
+    // exceeds last month's length (e.g. 31 July vs 30 June), the raw
+    // Date(y, m-1, 32) rolls over into this month and would count 1-July
+    // invoices as "last month".
+    const rawCutoff = new Date(today.getFullYear(), today.getMonth() - 1, dayOfMonth + 1)
+    const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    const lastMonthCutoff = (rawCutoff > thisMonthStart ? thisMonthStart : rawCutoff).toISOString().slice(0, 10)
     const lastMonthSameWindow = [...openInvoices, ...paidDetailed].filter(
       (inv: any) => inv.date && inv.date >= lastMonthStartISO && inv.date < lastMonthCutoff
     )
@@ -368,36 +375,10 @@ export default eventHandler(async (event) => {
     // slideover needs (client merges with annotated data when rendering).
     const monthInvoiceIds = monthToDateInvoicedAll.map((inv: any) => inv.id).filter(Boolean)
 
-    // Tax / GST summary — sales GST collected over rolling windows.
-    // For Australian BAS prep: GST on sales is `1A` on the form.
-    // We sum totalTax across every invoice issued in the period (open
-    // + paid + overdue all roll up here). Australian financial year
-    // (Jul 1 – Jun 30) is detected so YTD makes sense for AU agencies.
-    const taxSummary = (() => {
-      const allByIssueDate = [...openInvoices, ...paidDetailed]
-      const taxBetween = (fromISO: string) => allByIssueDate
-        .filter((inv: any) => inv.date && inv.date >= fromISO)
-        .reduce((sum: number, inv: any) => sum + (Number(inv.totalTax) || 0), 0)
-      const salesBetween = (fromISO: string) => allByIssueDate
-        .filter((inv: any) => inv.date && inv.date >= fromISO)
-        .reduce((sum: number, inv: any) => sum + (Number(inv.subTotal) || 0), 0)
-      const dateAgo = (days: number) => new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10)
-      // Australian financial year starts 1 July. If we're past 1 Jul this
-      // calendar year, FY started this Jul; otherwise it started last Jul.
-      const fyStartYear = today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1
-      const fyStart = `${fyStartYear}-07-01`
-      // Calendar YTD as a fallback for non-AU users.
-      const calYearStart = `${today.getFullYear()}-01-01`
-      return {
-        last30: Math.round(taxBetween(dateAgo(30))),
-        last90: Math.round(taxBetween(dateAgo(90))),
-        salesLast30: Math.round(salesBetween(dateAgo(30))),
-        salesLast90: Math.round(salesBetween(dateAgo(90))),
-        fyToDate: Math.round(taxBetween(fyStart)),
-        fyStart,
-        calendarYtd: Math.round(taxBetween(calYearStart)),
-      }
-    })()
+    // (The old taxSummary block was removed 2026-07-16 along with its only
+    // consumer, the misleading "GST Collected" card — it was accrual GST on
+    // issued sales invoices with no 1B netting, not a BAS figure. Proper
+    // BAS reporting belongs on the Reports page; see git history.)
 
     // Cash collection forecast — projects expected cash inflow from
     // every open invoice, bucketed by due date relative to today.
@@ -594,7 +575,6 @@ export default eventHandler(async (event) => {
         concentration,
         latePayers,
         cashForecast,
-        taxSummary,
         agingBuckets,
         agingDetails,
         truncated

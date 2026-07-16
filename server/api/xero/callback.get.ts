@@ -116,8 +116,10 @@ export default defineEventHandler(async (event) => {
     setCookie(event, 'auth_token_client', jwtToken, { ...cookieOpts, httpOnly: false })
   }
 
+  // Multi-tenant orgs must land on /settings to pick a tenant — /agency
+  // would leave every Xero endpoint erroring on "no organization selected".
   const dest = mode === 'popup'
     ? '/xero-popup-close'
-    : sessionUser ? '/settings' : '/agency'
+    : (sessionUser || tenants.length !== 1) ? '/settings' : '/agency'
   return sendRedirect(event, dest, 302)
 })

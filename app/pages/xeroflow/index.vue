@@ -16,15 +16,9 @@ const { data: statusData, refresh: refreshStatus } = useFetch('/api/xero/status'
 const isConnected = computed(() => statusData.value?.connected || false)
 
 // Reporting basis for the money KPIs (accrual ⇄ cash). Persisted per
-// browser; the reactive query re-fetches automatically when it changes.
-const kpiBasis = ref<'accrual' | 'cash'>('accrual')
-onMounted(() => {
-  const saved = localStorage.getItem('kpi-basis')
-  if (saved === 'cash' || saved === 'accrual') kpiBasis.value = saved
-})
-watch(kpiBasis, (value) => {
-  if (import.meta.client) localStorage.setItem('kpi-basis', value)
-})
+// browser (same key as the Reports page so the choice follows the user);
+// the reactive query re-fetches automatically when it changes.
+const kpiBasis = useLocalStorage<'accrual' | 'cash'>('kpi-basis', 'accrual')
 
 // Data fetches — gated on Xero connection, default to null to prevent Vue prop warnings
 const { data: kpiData, pending: kpiPending, error: kpiError, refresh: refreshKPI } = useFetch('/api/kpis-advanced', {

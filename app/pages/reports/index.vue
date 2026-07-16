@@ -202,13 +202,8 @@ function createReportState<T>(
 
 // Reporting basis (accrual ⇄ cash) — shares the 'kpi-basis' localStorage key
 // with the dashboard KPI cards so the choice follows the user across pages.
-const pnlBasis = ref<'accrual' | 'cash'>('accrual')
-onMounted(() => {
-  const saved = localStorage.getItem('kpi-basis')
-  if (saved === 'cash' || saved === 'accrual') pnlBasis.value = saved
-})
-watch(pnlBasis, (value) => {
-  if (import.meta.client) localStorage.setItem('kpi-basis', value)
+const pnlBasis = useLocalStorage<'accrual' | 'cash'>('kpi-basis', 'accrual')
+watch(pnlBasis, () => {
   pnlState.refresh()
 })
 

@@ -100,7 +100,7 @@ const getHealthScoreColor = (score: number) => {
     <!-- Basis toggle — these figures come from Xero's actual P&L report;
          the toggle mirrors the Cash/Accrual picker on Xero's own report. -->
     <div class="flex items-center justify-end gap-2">
-      <span class="text-xs text-muted">From Xero P&amp;L ·</span>
+      <span class="text-xs text-muted">From Xero P&amp;L · ex&#8209;GST ·</span>
       <UTabs
         v-model="basis"
         :items="basisItems"
