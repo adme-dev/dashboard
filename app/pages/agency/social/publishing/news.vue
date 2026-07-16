@@ -41,7 +41,8 @@ watch(clientId, async (id) => {
 })
 async function createDrafts() {
   try {
-    const result = await apiFetch<{ postIds: string[] }>('/api/agency/social/news/drafts', { method: 'POST', body: { newsIds: selected.value, clientId: clientId.value, platforms: platforms.value, accountIds: accountIds.value, rewrite: rewrite.value, tone: tone.value } } as any)
+    const targets = accounts.value.filter(a => accountIds.value.includes(a.id)).map(a => ({ platform: a.platform, accountId: a.id }))
+    const result = await apiFetch<{ postIds: string[] }>('/api/agency/social/news/drafts', { method: 'POST', body: { newsIds: selected.value, clientId: clientId.value, platforms: platforms.value, accountIds: accountIds.value, targets, rewrite: rewrite.value, tone: tone.value } } as any)
     toast.add({ title: 'Drafts created', description: `${result.postIds.length} item(s) sent to Compose / Approvals`, color: 'success' })
     selected.value = []; showDraftOptions.value = false; status.value = 'used'; await refresh()
   } catch (e: any) { toast.add({ title: 'Could not create drafts', description: e?.data?.statusMessage || 'Check connected accounts', color: 'error' }) }

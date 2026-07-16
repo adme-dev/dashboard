@@ -9,11 +9,13 @@ import { GROQ_MODELS } from '~~/server/utils/groqClient'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
-  const body = await readBody<{ newsIds?: string[]; clientId?: string; platforms?: string[]; accountIds?: string[]; rewrite?: boolean; tone?: string }>(event)
+  const body = await readBody<{ newsIds?: string[]; clientId?: string; platforms?: string[]; accountIds?: string[]; targets?: Array<{ platform: string; accountId: string }>; rewrite?: boolean; tone?: string }>(event)
   const newsIds = Array.isArray(body?.newsIds) ? body.newsIds.filter(Boolean).slice(0, 20) : []
   if (!newsIds.length || !body?.clientId) throw createError({ statusCode: 400, statusMessage: 'newsIds and clientId required' })
   await requireSocialClientAccess(event, body.clientId)
-  const explicit = await normalizePublishingTargets(body.clientId, { platforms: body.platforms, accountIds: body.accountIds })
+  const requestedAccounts = Array.isArray(body.accountIds) ? body.accountIds : []
+  const targetInput = Array.isArray(body.targets) ? body.targets : []
+  const explicit = targetInput.length ? await normalizePublishingTargets(body.clientId, targetInput) : null
   const platforms = explicit?.platforms ?? normalizeProductionReadyPublishPlatforms(body.platforms)
   const accountIds = explicit?.accountIds ?? await assertPublishingTargets(body.clientId, platforms, body.accountIds)
   const created: string[] = []
