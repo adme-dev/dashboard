@@ -16,6 +16,8 @@ describe('news recommendation contract', () => {
   })
 
   it('exposes the recommendation preview in the news draft flow', () => {
-    expect(readFileSync('app/pages/agency/social/publishing/news.vue', 'utf8')).toContain('AI planning inputs')
+    const source = readFileSync('app/pages/agency/social/publishing/news.vue', 'utf8')
+    expect(source).toContain('AI planning inputs')
+    expect(source).toContain('account.health')
   })
 })
