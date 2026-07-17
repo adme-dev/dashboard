@@ -3,15 +3,17 @@
  */
 
 import { queryRows } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
+  await requireAuth(event)
   const query = getQuery(event)
   const departmentId = query.departmentId as string | undefined
   const workspaceId = query.workspaceId as string | undefined
 
   try {
     let sql: string
-    let params: any[] = []
+    let params: unknown[] = []
 
     if (departmentId) {
       // Get statuses for specific department (includes global statuses)
@@ -57,7 +59,7 @@ export default defineEventHandler(async (event) => {
       isDefault: s.is_default,
       isFinal: s.is_final,
       sortOrder: s.sort_order,
-      createdAt: s.created_at,
+      createdAt: s.created_at
     }))
   } catch (error) {
     console.error('Failed to fetch statuses:', error)
