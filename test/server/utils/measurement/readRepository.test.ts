@@ -49,6 +49,7 @@ describe('Postgres measurement read repository', () => {
       profile_enabled: false,
       profile_environment: 'test',
       cache_status: 'fresh',
+      outcome_authority: 'client_webhook',
       live_approved: false,
       privacy_approved: true,
       destinations: '2',
@@ -60,6 +61,8 @@ describe('Postgres measurement read repository', () => {
       degraded_capabilities: '0',
       blocked_capabilities: '1',
       active_mappings: '1',
+      outcome_endpoints: '1',
+      ready_outcome_endpoints: '0',
       last_validated_at: new Date('2026-07-17T02:00:00.000Z'),
       last_success_at: null
     }))
@@ -76,13 +79,16 @@ describe('Postgres measurement read repository', () => {
       configVersion: 4,
       liveApproved: false,
       privacyApproved: true,
+      profile: { outcomeAuthority: 'client_webhook' },
       counts: {
         destinations: 2,
         readyDestinations: 1,
         blockedDestinations: 1,
         capabilities: 4,
         blockedCapabilities: 1,
-        activeMappings: 1
+        activeMappings: 1,
+        outcomeEndpoints: 1,
+        readyOutcomeEndpoints: 0
       },
       lastValidatedAt: '2026-07-17T02:00:00.000Z'
     })

@@ -55,6 +55,8 @@ interface ReadinessRow {
   capabilities: number | string
   ready_capabilities: number | string
   active_mappings: number | string
+  outcome_endpoints: number | string
+  ready_outcome_endpoints: number | string
 }
 
 const PROFILE_COLUMNS = `
@@ -103,6 +105,7 @@ export type ActivationBlocker
     | 'destination_not_ready'
     | 'capability_not_ready'
     | 'no_active_mappings'
+    | 'outcome_endpoint_not_ready'
 
 export type ActivationResult
   = { status: 'activated', profile: MeasurementProfile, activatedDestinations: number }
@@ -257,7 +260,16 @@ export function createPostgresMeasurementActivationRepository(
                   COUNT(DISTINCT d.id) FILTER (WHERE d.health_status = 'ready') AS ready_destinations,
                   COUNT(DISTINCT c.id) AS capabilities,
                   COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'ready') AS ready_capabilities,
-                  COUNT(DISTINCT m.id) FILTER (WHERE m.is_active) AS active_mappings
+                  COUNT(DISTINCT m.id) FILTER (WHERE m.is_active) AS active_mappings,
+                  (SELECT COUNT(*)
+                     FROM outcome_endpoints oe
+                    WHERE oe.client_id = $1
+                      AND oe.profile_id = $2) AS outcome_endpoints,
+                  (SELECT COUNT(*)
+                     FROM outcome_endpoints oe
+                    WHERE oe.client_id = $1
+                      AND oe.profile_id = $2
+                      AND oe.status IN ('test', 'live')) AS ready_outcome_endpoints
              FROM conversion_destinations d
              LEFT JOIN conversion_destination_capabilities c
                ON c.client_id = d.client_id
@@ -275,6 +287,7 @@ export function createPostgresMeasurementActivationRepository(
         const capabilities = Number(readiness.capabilities)
         const readyCapabilities = Number(readiness.ready_capabilities)
         const activeMappings = Number(readiness.active_mappings)
+        const readyOutcomeEndpoints = Number(readiness.ready_outcome_endpoints)
         const blockers: ActivationBlocker[] = []
 
         if (profile.cacheStatus !== 'fresh' || profile.cacheVersion !== profile.configVersion) {
@@ -293,6 +306,9 @@ export function createPostgresMeasurementActivationRepository(
           blockers.push('capability_not_ready')
         }
         if (activeMappings === 0) blockers.push('no_active_mappings')
+        if (profile.outcomeAuthority === 'client_webhook' && readyOutcomeEndpoints === 0) {
+          blockers.push('outcome_endpoint_not_ready')
+        }
         if (blockers.length > 0) return { status: 'not_ready' as const, blockers }
 
         const nextVersion = profile.configVersion + 1

@@ -30,6 +30,7 @@ interface ReadinessRow {
   profile_enabled: boolean
   profile_environment: 'test' | 'live' | 'paused'
   cache_status: 'not_published' | 'fresh' | 'stale' | 'error'
+  outcome_authority: 'zero_native' | 'client_webhook' | 'connector_sync' | 'manual_import'
   live_approved: boolean
   privacy_approved: boolean
   destinations: number | string
@@ -41,6 +42,8 @@ interface ReadinessRow {
   degraded_capabilities: number | string
   blocked_capabilities: number | string
   active_mappings: number | string
+  outcome_endpoints: number | string
+  ready_outcome_endpoints: number | string
   last_validated_at: Date | string | null
   last_success_at: Date | string | null
 }
@@ -88,6 +91,7 @@ export interface MeasurementReadinessEvidence {
     enabled: boolean
     environment: 'test' | 'live' | 'paused'
     cacheStatus: 'not_published' | 'fresh' | 'stale' | 'error'
+    outcomeAuthority: 'zero_native' | 'client_webhook' | 'connector_sync' | 'manual_import'
   }
   liveApproved: boolean
   privacyApproved: boolean
@@ -101,6 +105,8 @@ export interface MeasurementReadinessEvidence {
     degradedCapabilities: number
     blockedCapabilities: number
     activeMappings: number
+    outcomeEndpoints: number
+    readyOutcomeEndpoints: number
   }
   lastValidatedAt: string | null
   lastSuccessAt: string | null
@@ -166,6 +172,7 @@ export function createPostgresMeasurementReadRepository(
                 p.enabled AS profile_enabled,
                 p.environment AS profile_environment,
                 p.cache_status,
+                p.outcome_authority,
                 COALESCE(approvals.live_approved, FALSE) AS live_approved,
                 COALESCE(approvals.privacy_approved, FALSE) AS privacy_approved,
                 COALESCE(d.destinations, 0) AS destinations,
@@ -177,6 +184,8 @@ export function createPostgresMeasurementReadRepository(
                 COALESCE(c.degraded_capabilities, 0) AS degraded_capabilities,
                 COALESCE(c.blocked_capabilities, 0) AS blocked_capabilities,
                 COALESCE(m.active_mappings, 0) AS active_mappings,
+                COALESCE(oe.outcome_endpoints, 0) AS outcome_endpoints,
+                COALESCE(oe.ready_outcome_endpoints, 0) AS ready_outcome_endpoints,
                 d.last_validated_at,
                 d.last_success_at
            FROM client_measurement_profiles p
@@ -212,6 +221,13 @@ export function createPostgresMeasurementReadRepository(
                FROM conversion_event_mappings
               WHERE client_id = p.client_id
            ) m ON TRUE
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*) AS outcome_endpoints,
+                    COUNT(*) FILTER (WHERE status IN ('test', 'live')) AS ready_outcome_endpoints
+               FROM outcome_endpoints
+              WHERE client_id = p.client_id
+                AND profile_id = p.id
+           ) oe ON TRUE
           WHERE p.client_id = $1`,
         [clientId]
       )
@@ -224,7 +240,8 @@ export function createPostgresMeasurementReadRepository(
         profile: {
           enabled: row.profile_enabled,
           environment: row.profile_environment,
-          cacheStatus: row.cache_status
+          cacheStatus: row.cache_status,
+          outcomeAuthority: row.outcome_authority
         },
         liveApproved: row.live_approved,
         privacyApproved: row.privacy_approved,
@@ -237,7 +254,9 @@ export function createPostgresMeasurementReadRepository(
           readyCapabilities: Number(row.ready_capabilities),
           degradedCapabilities: Number(row.degraded_capabilities),
           blockedCapabilities: Number(row.blocked_capabilities),
-          activeMappings: Number(row.active_mappings)
+          activeMappings: Number(row.active_mappings),
+          outcomeEndpoints: Number(row.outcome_endpoints),
+          readyOutcomeEndpoints: Number(row.ready_outcome_endpoints)
         },
         lastValidatedAt: optionalIso(row.last_validated_at),
         lastSuccessAt: optionalIso(row.last_success_at)

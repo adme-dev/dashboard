@@ -13,7 +13,12 @@ function evidence(overrides: Partial<MeasurementReadinessEvidence> = {}): Measur
     clientId: CLIENT_ID,
     profileId: PROFILE_ID,
     configVersion: 4,
-    profile: { enabled: false, environment: 'test', cacheStatus: 'fresh' },
+    profile: {
+      enabled: false,
+      environment: 'test',
+      cacheStatus: 'fresh',
+      outcomeAuthority: 'zero_native'
+    },
     liveApproved: false,
     privacyApproved: false,
     counts: {
@@ -25,7 +30,9 @@ function evidence(overrides: Partial<MeasurementReadinessEvidence> = {}): Measur
       readyCapabilities: 0,
       degradedCapabilities: 0,
       blockedCapabilities: 0,
-      activeMappings: 1
+      activeMappings: 1,
+      outcomeEndpoints: 0,
+      readyOutcomeEndpoints: 0
     },
     lastValidatedAt: null,
     lastSuccessAt: null,
@@ -65,7 +72,12 @@ describe('Measurement read service', () => {
 
   it('prioritizes blocked evidence and returns stable readiness blockers', async () => {
     const test = harness(evidence({
-      profile: { enabled: false, environment: 'test', cacheStatus: 'stale' },
+      profile: {
+        enabled: false,
+        environment: 'test',
+        cacheStatus: 'stale',
+        outcomeAuthority: 'zero_native'
+      },
       counts: {
         ...evidence().counts,
         blockedDestinations: 1,
@@ -89,7 +101,12 @@ describe('Measurement read service', () => {
 
   it('keeps fully evidenced delivery separate from live activation eligibility', async () => {
     const test = harness(evidence({
-      profile: { enabled: true, environment: 'live', cacheStatus: 'fresh' },
+      profile: {
+        enabled: true,
+        environment: 'live',
+        cacheStatus: 'fresh',
+        outcomeAuthority: 'zero_native'
+      },
       liveApproved: true,
       privacyApproved: true,
       counts: {
@@ -101,7 +118,9 @@ describe('Measurement read service', () => {
         readyCapabilities: 2,
         degradedCapabilities: 0,
         blockedCapabilities: 0,
-        activeMappings: 1
+        activeMappings: 1,
+        outcomeEndpoints: 0,
+        readyOutcomeEndpoints: 0
       },
       lastValidatedAt: '2026-07-17T02:00:00.000Z',
       lastSuccessAt: '2026-07-17T03:00:00.000Z'
@@ -116,7 +135,12 @@ describe('Measurement read service', () => {
 
   it('marks a disabled test profile live-eligible when current evidence and approvals pass', async () => {
     const test = harness(evidence({
-      profile: { enabled: false, environment: 'test', cacheStatus: 'fresh' },
+      profile: {
+        enabled: false,
+        environment: 'test',
+        cacheStatus: 'fresh',
+        outcomeAuthority: 'zero_native'
+      },
       liveApproved: true,
       privacyApproved: true,
       counts: {
@@ -128,7 +152,9 @@ describe('Measurement read service', () => {
         readyCapabilities: 2,
         degradedCapabilities: 0,
         blockedCapabilities: 0,
-        activeMappings: 1
+        activeMappings: 1,
+        outcomeEndpoints: 0,
+        readyOutcomeEndpoints: 0
       }
     }))
 
@@ -141,7 +167,12 @@ describe('Measurement read service', () => {
 
   it('does not report ready when a nested capability lacks ready evidence', async () => {
     const test = harness(evidence({
-      profile: { enabled: true, environment: 'live', cacheStatus: 'fresh' },
+      profile: {
+        enabled: true,
+        environment: 'live',
+        cacheStatus: 'fresh',
+        outcomeAuthority: 'zero_native'
+      },
       liveApproved: true,
       privacyApproved: true,
       counts: {
@@ -153,7 +184,9 @@ describe('Measurement read service', () => {
         readyCapabilities: 1,
         degradedCapabilities: 0,
         blockedCapabilities: 0,
-        activeMappings: 1
+        activeMappings: 1,
+        outcomeEndpoints: 0,
+        readyOutcomeEndpoints: 0
       }
     }))
 
@@ -172,6 +205,40 @@ describe('Measurement read service', () => {
     await expect(test.service.getReadiness(CLIENT_ID)).rejects.toMatchObject({
       code: 'MEASUREMENT_NOT_FOUND',
       statusCode: 404
+    })
+  })
+
+  it('blocks only external-webhook authority when no tested outcome endpoint exists', async () => {
+    const test = harness(evidence({
+      profile: {
+        enabled: false,
+        environment: 'test',
+        cacheStatus: 'fresh',
+        outcomeAuthority: 'client_webhook'
+      },
+      liveApproved: true,
+      privacyApproved: true,
+      counts: {
+        destinations: 1,
+        readyDestinations: 1,
+        degradedDestinations: 0,
+        blockedDestinations: 0,
+        capabilities: 1,
+        readyCapabilities: 1,
+        degradedCapabilities: 0,
+        blockedCapabilities: 0,
+        activeMappings: 1,
+        outcomeEndpoints: 1,
+        readyOutcomeEndpoints: 0
+      }
+    }))
+
+    const result = await test.service.getReadiness(CLIENT_ID)
+
+    expect(result.liveEligible).toBe(false)
+    expect(result.blockers).toContainEqual({
+      code: 'outcome_endpoint_not_ready',
+      message: 'External outcome authority requires a tested outcome endpoint'
     })
   })
 })

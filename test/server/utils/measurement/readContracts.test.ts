@@ -63,7 +63,8 @@ describe('Measurement read contracts', () => {
       profile: {
         enabled: false,
         environment: 'test',
-        cacheStatus: 'fresh'
+        cacheStatus: 'fresh',
+        outcomeAuthority: 'zero_native'
       },
       counts: {
         destinations: 1,
@@ -74,7 +75,9 @@ describe('Measurement read contracts', () => {
         readyCapabilities: 0,
         degradedCapabilities: 0,
         blockedCapabilities: 0,
-        activeMappings: 1
+        activeMappings: 1,
+        outcomeEndpoints: 0,
+        readyOutcomeEndpoints: 0
       },
       blockers: [{ code: 'profile_disabled', message: 'Measurement profile is disabled' }],
       lastValidatedAt: null,

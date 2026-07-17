@@ -94,6 +94,15 @@ function readinessBlockers(evidence: MeasurementReadinessEvidence): ReadinessBlo
       message: 'Privacy and consent approval has not been recorded'
     })
   }
+  if (
+    evidence.profile.outcomeAuthority === 'client_webhook'
+    && evidence.counts.readyOutcomeEndpoints === 0
+  ) {
+    blockers.push({
+      code: 'outcome_endpoint_not_ready',
+      message: 'External outcome authority requires a tested outcome endpoint'
+    })
+  }
   return blockers
 }
 

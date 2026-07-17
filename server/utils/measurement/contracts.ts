@@ -423,6 +423,46 @@ export const MeasurementActivationApprovalSchema = z.strictObject({
   createdAt: z.string().datetime({ offset: true })
 })
 
+const OutcomeEndpointConfigurationInputSchema = z.strictObject({
+  label: z.string().trim().min(1).max(100),
+  sourceSystem: z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9_-]*$/),
+  currentSecretRef: OpaqueCredentialRefSchema,
+  replayWindowSeconds: z.number().int().min(60).max(900).default(300),
+  rateLimitPerMinute: z.number().int().min(1).max(1000).default(60)
+})
+
+export const CreateOutcomeEndpointConfigurationSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  expectedProfileVersion: z.number().int().positive(),
+  actor: MeasurementTeamActorSchema,
+  reason: z.string().trim().min(1).max(1000),
+  endpoint: OutcomeEndpointConfigurationInputSchema
+})
+
+export const OutcomeEndpointReadModelSchema = z.strictObject({
+  id: z.string().uuid(),
+  clientId: z.string().uuid(),
+  profileId: z.string().uuid(),
+  endpointKey: z.string().min(32).max(128).regex(/^[A-Za-z0-9_-]+$/),
+  label: z.string().trim().min(1).max(100),
+  sourceSystem: z.string().trim().min(1).max(100),
+  secretConfigured: z.boolean(),
+  secretVersion: z.number().int().positive(),
+  status: z.enum(['disabled', 'test', 'live', 'paused']),
+  replayWindowSeconds: z.number().int().min(60).max(900),
+  rateLimitPerMinute: z.number().int().min(1).max(1000),
+  configVersion: z.number().int().positive(),
+  lastReceivedAt: z.string().datetime({ offset: true }).nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true })
+})
+
+export const ListOutcomeEndpointsSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25)
+})
+
 export const ConversionDestinationCapabilityStateSchema = z.strictObject({
   id: z.string().uuid(),
   destinationId: z.string().uuid(),
@@ -538,6 +578,7 @@ export const MeasurementReadinessBlockerCodeSchema = z.enum([
   'no_active_mappings',
   'live_approval_missing',
   'privacy_approval_missing',
+  'outcome_endpoint_not_ready',
   'activation_gate_unavailable'
 ])
 
@@ -550,7 +591,9 @@ const MeasurementReadinessCountsSchema = z.strictObject({
   readyCapabilities: z.number().int().nonnegative(),
   degradedCapabilities: z.number().int().nonnegative(),
   blockedCapabilities: z.number().int().nonnegative(),
-  activeMappings: z.number().int().nonnegative()
+  activeMappings: z.number().int().nonnegative(),
+  outcomeEndpoints: z.number().int().nonnegative(),
+  readyOutcomeEndpoints: z.number().int().nonnegative()
 })
 
 export const MeasurementReadinessSummarySchema = z.strictObject({
@@ -562,7 +605,8 @@ export const MeasurementReadinessSummarySchema = z.strictObject({
   profile: z.strictObject({
     enabled: z.boolean(),
     environment: MeasurementEnvironmentSchema,
-    cacheStatus: z.enum(['not_published', 'fresh', 'stale', 'error'])
+    cacheStatus: z.enum(['not_published', 'fresh', 'stale', 'error']),
+    outcomeAuthority: OutcomeAuthoritySchema
   }),
   counts: MeasurementReadinessCountsSchema,
   blockers: z.array(z.strictObject({
@@ -631,6 +675,9 @@ export type RecordDestinationValidationEvidence = z.infer<typeof RecordDestinati
 export type ApproveMeasurementActivation = z.infer<typeof ApproveMeasurementActivationSchema>
 export type ActivateMeasurementProfile = z.infer<typeof ActivateMeasurementProfileSchema>
 export type MeasurementActivationApproval = z.infer<typeof MeasurementActivationApprovalSchema>
+export type CreateOutcomeEndpointConfiguration = z.infer<typeof CreateOutcomeEndpointConfigurationSchema>
+export type OutcomeEndpointReadModel = z.infer<typeof OutcomeEndpointReadModelSchema>
+export type ListOutcomeEndpoints = z.infer<typeof ListOutcomeEndpointsSchema>
 export type ConversionDestinationReadModel = z.infer<typeof ConversionDestinationReadModelSchema>
 export type ConversionDestinationCapabilityState = z.infer<typeof ConversionDestinationCapabilityStateSchema>
 export type ConversionEventMappingState = z.infer<typeof ConversionEventMappingStateSchema>

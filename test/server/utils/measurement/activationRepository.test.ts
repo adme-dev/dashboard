@@ -141,7 +141,9 @@ describe('Postgres measurement activation repository', () => {
             ready_destinations: '1',
             capabilities: '1',
             ready_capabilities: '1',
-            active_mappings: '1'
+            active_mappings: '1',
+            outcome_endpoints: '1',
+            ready_outcome_endpoints: '1'
           }] }
         }
         if (/UPDATE client_measurement_profiles/.test(sql)) {
@@ -178,7 +180,9 @@ describe('Postgres measurement activation repository', () => {
   it('returns blockers without mutating when provider readiness is incomplete', async () => {
     const db = {
       query: vi.fn(async (sql: string) => {
-        if (/client_measurement_profiles/.test(sql)) return { rows: [profileRow()] }
+        if (/client_measurement_profiles/.test(sql)) {
+          return { rows: [{ ...profileRow(), outcome_authority: 'client_webhook' }] }
+        }
         if (/measurement_activation_approvals/.test(sql)) {
           return { rows: [
             { approval_kind: 'privacy', approved_by: PRIVACY_APPROVER_ID, created_at: CREATED_AT },
@@ -190,7 +194,9 @@ describe('Postgres measurement activation repository', () => {
           ready_destinations: '0',
           capabilities: '1',
           ready_capabilities: '0',
-          active_mappings: '1'
+          active_mappings: '1',
+          outcome_endpoints: '0',
+          ready_outcome_endpoints: '0'
         }] }
       })
     }
@@ -202,7 +208,11 @@ describe('Postgres measurement activation repository', () => {
 
     await expect(repository.activate(activationInput())).resolves.toEqual({
       status: 'not_ready',
-      blockers: ['destination_not_ready', 'capability_not_ready']
+      blockers: [
+        'destination_not_ready',
+        'capability_not_ready',
+        'outcome_endpoint_not_ready'
+      ]
     })
     expect(db.query).toHaveBeenCalledTimes(3)
   })
