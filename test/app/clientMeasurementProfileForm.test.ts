@@ -59,7 +59,7 @@ describe('ClientMeasurementProfileForm', () => {
       warnings: []
     }))
     Object.assign(globalThis, { $fetch: fetchMock })
-    const saved: ClientMeasurementProfile[] = []
+    const saved: Array<{ profile: ClientMeasurementProfile, warnings: Array<{ code: string }> }> = []
 
     const host = document.createElement('div')
     const app = createApp({
@@ -67,7 +67,7 @@ describe('ClientMeasurementProfileForm', () => {
         clientId: CLIENT_ID,
         profile,
         canConfigure: true,
-        onSaved: (value: ClientMeasurementProfile) => saved.push(value)
+        onSaved: (value: { profile: ClientMeasurementProfile, warnings: Array<{ code: string }> }) => saved.push(value)
       })
     })
     Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
@@ -97,7 +97,10 @@ describe('ClientMeasurementProfileForm', () => {
           patch: { consentMode: 'au_optout' }
         }
       })
-      expect(saved).toEqual([expect.objectContaining({ consentMode: 'au_optout', configVersion: 5 })])
+      expect(saved).toEqual([{
+        profile: expect.objectContaining({ consentMode: 'au_optout', configVersion: 5 }),
+        warnings: []
+      }])
       expect(host.textContent).not.toContain('cloudflare/measurement')
     } finally {
       app.unmount()

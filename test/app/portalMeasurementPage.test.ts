@@ -5,6 +5,7 @@ import { createApp, h, nextTick } from 'vue'
 
 const testGlobal = globalThis as typeof globalThis & {
   definePageMeta: (meta: unknown) => void
+  useRequestFetch: () => (request: string) => Promise<unknown>
 }
 testGlobal.definePageMeta = vi.fn()
 
@@ -41,13 +42,9 @@ describe('portal Measurement page', () => {
     const fetchMock = vi.fn(async () => ({
       status: 'degraded',
       statusMessage: 'Measurement needs agency attention; your lead intake and CRM remain available.',
-      environment: 'test',
-      deliveryEnabled: false,
-      liveEligible: false,
-      collection: { tier: 'backend_only', consentMode: 'consent_gated' },
+      deliveryState: 'dormant',
       authority: {
         source: 'Zero CRM',
-        mode: 'zero_native',
         lastSyncAt: '2026-07-17T01:10:00.000Z',
         acceptedOutcomeCount: 8,
         rejectedOutcomeCount: 2
@@ -58,8 +55,8 @@ describe('portal Measurement page', () => {
         crm: { status: 'ready', owners: ['zero'], lastEvidenceAt: '2026-07-17T02:00:00.000Z' }
       },
       destinations: [
-        { platform: 'meta', label: 'Meta', status: 'ready', deliveryState: 'dormant', capabilityCount: 2, activeMappingCount: 1, lastSuccessAt: '2026-07-17T01:30:00.000Z' },
-        { platform: 'google_data_manager', label: 'Google Data Manager', status: 'configured', deliveryState: 'dormant', capabilityCount: 1, activeMappingCount: 0, lastSuccessAt: null }
+        { platform: 'meta', label: 'Meta', status: 'ready', deliveryState: 'dormant', lastSuccessAt: '2026-07-17T01:30:00.000Z' },
+        { platform: 'google_data_manager', label: 'Google Data Manager', status: 'configured', deliveryState: 'dormant', lastSuccessAt: null }
       ],
       delivery: {
         acceptedCount: 5,
@@ -73,7 +70,7 @@ describe('portal Measurement page', () => {
       lastValidatedAt: '2026-07-17T02:00:00.000Z',
       nextSteps: ['One or more provider destinations still needs validation.', 'Live-delivery approval is still pending.']
     }))
-    Object.assign(globalThis, { $fetch: fetchMock })
+    testGlobal.useRequestFetch = () => fetchMock
     const PortalMeasurementPage = (await import('~~/app/pages/portal/measurement.vue')).default
 
     const host = document.createElement('div')
@@ -88,10 +85,13 @@ describe('portal Measurement page', () => {
       expect(host.textContent).toContain('Needs attention')
       expect(host.textContent).toContain('your lead intake and CRM remain available')
       expect(host.textContent).toContain('Browser tracking')
+      expect(host.textContent).toContain('Found')
       expect(host.textContent).toContain('Google Tag Manager')
       expect(host.textContent).toContain('Server-side tracking')
+      expect(host.textContent).toContain('Set up')
       expect(host.textContent).toContain('Externally managed')
       expect(host.textContent).toContain('CRM outcomes')
+      expect(host.textContent).toContain('Healthy')
       expect(host.textContent).toContain('Managed by Zero')
       expect(host.textContent).toContain('Zero CRM')
       expect(host.textContent).toContain('8 accepted')
@@ -104,6 +104,9 @@ describe('portal Measurement page', () => {
       expect(host.textContent).not.toContain('Activate')
       expect(host.textContent).not.toContain('573284833843027')
       expect(host.textContent).not.toContain('credential')
+      expect(host.textContent).not.toContain('capabilities')
+      expect(host.textContent).not.toContain('active mappings')
+      expect(host.textContent).not.toContain('backend_only')
     } finally {
       app.unmount()
     }

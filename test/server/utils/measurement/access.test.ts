@@ -119,6 +119,21 @@ describe('Measurement client access', () => {
     expect(mockQueryOne).not.toHaveBeenCalled()
   })
 
+  it('fails closed for an unexpected measurement permission value', async () => {
+    const { requireMeasurementClientAccess } = await import(
+      '../../../../server/utils/measurement/access'
+    )
+
+    await expect(requireMeasurementClientAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111',
+      'delete' as never
+    )).rejects.toMatchObject({ statusCode: 400 })
+
+    expect(mockRequireWriteAccess).not.toHaveBeenCalled()
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
   it('restricts approval and activation actions to measurement management roles', async () => {
     mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'media_buyer' })
     mockQueryOne.mockResolvedValue({ '?column?': 1 })

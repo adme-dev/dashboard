@@ -9,7 +9,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  saved: [profile: ClientMeasurementProfile]
+  saved: [result: { profile: ClientMeasurementProfile, warnings: Array<{ code: string }> }]
 }>()
 
 type EditableProfile = Pick<
@@ -35,7 +35,6 @@ const form = reactive<EditableProfile>({
 const reason = ref('')
 const saving = ref(false)
 const saveError = ref<string | null>(null)
-const savedMessage = ref<string | null>(null)
 const apiFetch = $fetch as <T>(
   request: string,
   options: { method: 'PUT', body: unknown }
@@ -106,7 +105,6 @@ async function saveProfile() {
   if (!canSave.value) return
   saving.value = true
   saveError.value = null
-  savedMessage.value = null
 
   try {
     const response = await apiFetch<{
@@ -121,12 +119,7 @@ async function saveProfile() {
       }
     })
 
-    if (response.warnings.some(warning => warning.code === 'MEASUREMENT_CACHE_STALE')) {
-      savedMessage.value = 'Saved in Zero; edge publication needs attention.'
-    } else {
-      savedMessage.value = 'Configuration saved in Zero.'
-    }
-    emit('saved', response.profile)
+    emit('saved', response)
     resetForm(response.profile)
   } catch (error: unknown) {
     saveError.value = errorMessage(error)
@@ -243,11 +236,8 @@ async function saveProfile() {
 
         <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div class="text-sm">
-            <p v-if="saveError" class="text-error">
+            <p v-if="saveError" role="alert" class="text-error">
               {{ saveError }}
-            </p>
-            <p v-else-if="savedMessage" class="text-success">
-              {{ savedMessage }}
             </p>
             <p v-else class="text-muted">
               Only changed fields will be recorded in audit history.

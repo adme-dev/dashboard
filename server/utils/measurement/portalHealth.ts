@@ -13,16 +13,9 @@ const PortalCapabilityStatusSchema = z.enum([
 export const PortalMeasurementHealthSchema = z.strictObject({
   status: z.enum(['onboarding', 'paused', 'degraded', 'healthy']),
   statusMessage: z.string().min(1).max(500),
-  environment: z.enum(['test', 'live', 'paused']),
-  deliveryEnabled: z.boolean(),
-  liveEligible: z.boolean(),
-  collection: z.strictObject({
-    tier: z.enum(['cloudflare_owned', 'first_party_cname', 'shared_endpoint', 'backend_only']),
-    consentMode: z.enum(['off', 'au_optout', 'consent_gated'])
-  }),
+  deliveryState: z.enum(['dormant', 'test', 'live', 'paused']),
   authority: z.strictObject({
     source: z.string().min(1).max(100),
-    mode: z.enum(['zero_native', 'client_webhook', 'connector_sync', 'manual_import']),
     lastSyncAt: z.string().datetime({ offset: true }).nullable(),
     acceptedOutcomeCount: z.number().int().nonnegative(),
     rejectedOutcomeCount: z.number().int().nonnegative()
@@ -49,8 +42,6 @@ export const PortalMeasurementHealthSchema = z.strictObject({
     label: z.string().min(1).max(100),
     status: PortalCapabilityStatusSchema,
     deliveryState: z.enum(['dormant', 'test', 'live', 'paused']),
-    capabilityCount: z.number().int().nonnegative(),
-    activeMappingCount: z.number().int().nonnegative(),
     lastSuccessAt: z.string().datetime({ offset: true }).nullable()
   })),
   delivery: z.strictObject({
@@ -105,6 +96,7 @@ export interface PortalMeasurementAggregateRow {
   accepted_count?: number | string | null
   delivered_count?: number | string | null
   rejected_count?: number | string | null
+  recent_rejected_count?: number | string | null
   pending_count?: number | string | null
   last_accepted_at?: Date | string | null
   last_delivered_at?: Date | string | null
@@ -119,9 +111,9 @@ const STATUS_PRIORITY: Record<CapabilityStatus, number> = {
   blocked: 7,
   degraded: 6,
   not_configured: 5,
-  validating: 4,
+  detected: 4,
   configured: 3,
-  detected: 2,
+  validating: 2,
   ready: 1
 }
 
@@ -175,7 +167,7 @@ function signalSummary(capabilities: PortalCapabilityInput[], modes: Set<string>
 
   const status = matching.reduce<CapabilityStatus>((current, capability) => (
     STATUS_PRIORITY[capability.status] > STATUS_PRIORITY[current] ? capability.status : current
-  ), matching[0].status)
+  ), matching[0]!.status)
   const owners = [...new Set(matching.map(capability => capability.managementOrigin))]
 
   return {
@@ -200,18 +192,28 @@ export function buildPortalMeasurementHealth(input: {
 }) {
   const aggregate = input.aggregate ?? {}
   const rejectedCount = numberValue(aggregate.rejected_count)
-  const allCapabilities = input.destinations.flatMap(destination => destination.capabilities)
-  const status = input.profile.environment === 'paused'
-    ? 'paused'
-    : input.readiness.status === 'blocked'
-      || input.readiness.status === 'degraded'
-      || rejectedCount > 0
-      ? 'degraded'
-      : input.readiness.status === 'ready'
-        && input.profile.enabled
-        && input.profile.environment === 'live'
-        ? 'healthy'
-        : 'onboarding'
+  const recentRejectedCount = numberValue(aggregate.recent_rejected_count)
+  const relevantDestinations = input.profile.enabled
+    ? input.destinations.filter(destination => destination.enabled)
+    : input.destinations
+  const allCapabilities = relevantDestinations.flatMap(destination => destination.capabilities)
+  let status: 'onboarding' | 'paused' | 'degraded' | 'healthy' = 'onboarding'
+  if (input.profile.environment === 'paused' || input.readiness.status === 'paused') {
+    status = 'paused'
+  } else if (
+    input.readiness.status === 'blocked'
+    || input.readiness.status === 'degraded'
+    || recentRejectedCount > 0
+  ) {
+    status = 'degraded'
+  } else if (
+    input.readiness.status === 'ready'
+    && input.readiness.liveEligible
+    && input.profile.enabled
+    && input.profile.environment === 'live'
+  ) {
+    status = 'healthy'
+  }
 
   const statusMessage = status === 'healthy'
     ? 'Measurement delivery is healthy and has current provider evidence.'
@@ -230,16 +232,9 @@ export function buildPortalMeasurementHealth(input: {
   return PortalMeasurementHealthSchema.parse({
     status,
     statusMessage,
-    environment: input.profile.environment,
-    deliveryEnabled: input.profile.enabled,
-    liveEligible: input.readiness.liveEligible,
-    collection: {
-      tier: input.profile.collectionTier,
-      consentMode: input.profile.consentMode
-    },
+    deliveryState: input.profile.enabled ? input.profile.environment : 'dormant',
     authority: {
       source: authorityLabel(input.profile.outcomeAuthority),
-      mode: input.profile.outcomeAuthority,
       lastSyncAt: authoritySync,
       acceptedOutcomeCount: numberValue(aggregate.outcome_accepted_count),
       rejectedOutcomeCount: numberValue(aggregate.outcome_rejected_count)
@@ -254,8 +249,6 @@ export function buildPortalMeasurementHealth(input: {
       label: destination.platform === 'meta' ? 'Meta' : 'Google Data Manager',
       status: destination.healthStatus,
       deliveryState: destination.enabled ? destination.environment : 'dormant',
-      capabilityCount: destination.capabilities.length,
-      activeMappingCount: destination.mappings.filter(mapping => mapping.isActive).length,
       lastSuccessAt: iso(destination.lastSuccessAt)
     })),
     delivery: {
@@ -268,9 +261,12 @@ export function buildPortalMeasurementHealth(input: {
       lastRejectedAt: iso(aggregate.last_rejected_at)
     },
     lastValidatedAt: iso(input.readiness.lastValidatedAt),
-    nextSteps: [...new Set(input.readiness.blockers.map(blocker => (
-      NEXT_STEP_BY_BLOCKER[blocker.code] || 'Your agency is reviewing a measurement readiness item.'
-    )))].slice(0, 10)
+    nextSteps: [...new Set([
+      ...input.readiness.blockers.map(blocker => (
+        NEXT_STEP_BY_BLOCKER[blocker.code] || 'Your agency is reviewing a measurement readiness item.'
+      )),
+      ...(recentRejectedCount > 0 ? ['Your agency is reviewing recent provider delivery rejections.'] : [])
+    ])].slice(0, 10)
   })
 }
 

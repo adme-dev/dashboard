@@ -130,16 +130,9 @@ export interface PortalMeasurementSignalSummary {
 export interface PortalMeasurementHealth {
   status: 'onboarding' | 'paused' | 'degraded' | 'healthy'
   statusMessage: string
-  environment: MeasurementEnvironment
-  deliveryEnabled: boolean
-  liveEligible: boolean
-  collection: {
-    tier: ClientMeasurementProfile['collectionTier']
-    consentMode: ClientMeasurementProfile['consentMode']
-  }
+  deliveryState: 'dormant' | MeasurementEnvironment
   authority: {
     source: string
-    mode: ClientMeasurementProfile['outcomeAuthority']
     lastSyncAt: string | null
     acceptedOutcomeCount: number
     rejectedOutcomeCount: number
@@ -154,8 +147,6 @@ export interface PortalMeasurementHealth {
     label: string
     status: MeasurementCapabilityStatus
     deliveryState: 'dormant' | MeasurementEnvironment
-    capabilityCount: number
-    activeMappingCount: number
     lastSuccessAt: string | null
   }>
   delivery: {

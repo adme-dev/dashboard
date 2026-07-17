@@ -239,4 +239,57 @@ describe('ClientMeasurementPanel', () => {
       host.remove()
     }
   })
+
+  it('keeps canonical profile and destination data visible when audit history is unavailable', async () => {
+    const fetchMock = vi.fn(async (request: string) => {
+      if (request.endsWith('/audit')) throw new Error('Audit service unavailable')
+      return responseFor(request)
+    })
+    Object.assign(globalThis, { $fetch: fetchMock })
+
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementPanel, { clientId: CLIENT_ID })
+    })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    app.mount(host)
+    await flushUi()
+
+    try {
+      expect(host.textContent).toContain('Backend only')
+      expect(host.textContent).toContain('Meta CRM CAPI')
+      expect(host.textContent).toContain('Audit history unavailable')
+      expect(host.textContent).not.toContain('Measurement data unavailable')
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('keeps mutation warnings visible after refreshing canonical data', async () => {
+    const fetchMock = vi.fn(async (request: string) => responseFor(request))
+    Object.assign(globalThis, { $fetch: fetchMock })
+
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementPanel, { clientId: CLIENT_ID, canConfigure: true })
+    })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    app.component('ClientMeasurementProfileForm', {
+      emits: ['saved'],
+      template: `<button data-testid="emit-profile-warning" @click="$emit('saved', {
+        profile: {},
+        warnings: [{ code: 'MEASUREMENT_CACHE_STALE' }]
+      })">Emit warning</button>`
+    })
+    app.mount(host)
+    await flushUi()
+
+    try {
+      host.querySelector<HTMLButtonElement>('[data-testid="emit-profile-warning"]')!.click()
+      await flushUi()
+      expect(host.textContent).toContain('Saved in Zero; edge publication needs attention')
+    } finally {
+      app.unmount()
+    }
+  })
 })

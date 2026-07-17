@@ -8,7 +8,7 @@ import type {
 
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
-const apiFetch = $fetch as <T>(request: string) => Promise<T>
+const apiFetch = useRequestFetch() as <T>(request: string) => Promise<T>
 const health = ref<PortalMeasurementHealth | null>(null)
 const pending = ref(true)
 const loadError = ref<string | null>(null)
@@ -25,6 +25,16 @@ const ownerLabels: Record<PortalMeasurementSignalSummary['owners'][number], stri
   gtm: 'Google Tag Manager',
   partner: 'Partner managed',
   external: 'Externally managed'
+}
+
+const capabilityStatusLabels: Record<MeasurementCapabilityStatus, string> = {
+  not_configured: 'Not set up',
+  detected: 'Found',
+  configured: 'Set up',
+  validating: 'Checking',
+  ready: 'Healthy',
+  degraded: 'Needs attention',
+  blocked: 'Blocked'
 }
 
 const signalCards = computed(() => health.value
@@ -164,7 +174,7 @@ void refreshHealth()
                     Delivery state
                   </dt>
                   <dd class="mt-1 text-sm font-medium text-highlighted">
-                    {{ health.deliveryEnabled ? titleCase(health.environment) : 'Dormant' }}
+                    {{ titleCase(health.deliveryState) }}
                   </dd>
                 </div>
                 <div>
@@ -213,7 +223,7 @@ void refreshHealth()
                     </div>
                   </div>
                   <UBadge :color="statusColor(card.signal.status)" variant="subtle">
-                    {{ titleCase(card.signal.status) }}
+                    {{ capabilityStatusLabels[card.signal.status] }}
                   </UBadge>
                 </div>
                 <div class="mt-4 flex flex-wrap gap-2">
@@ -320,22 +330,19 @@ void refreshHealth()
               <span class="text-xs text-muted">{{ health.destinations.length }} configured</span>
             </div>
             <div v-if="health.destinations.length" class="mt-4 divide-y divide-default">
-              <div v-for="destination in health.destinations" :key="destination.platform" class="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+              <div v-for="(destination, index) in health.destinations" :key="`${destination.platform}-${index}`" class="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div class="flex flex-wrap items-center gap-2">
                     <h3 class="text-sm font-medium text-highlighted">
                       {{ destination.label }}
                     </h3>
                     <UBadge :color="statusColor(destination.status)" variant="subtle">
-                      {{ titleCase(destination.status) }}
+                      {{ capabilityStatusLabels[destination.status] }}
                     </UBadge>
                     <UBadge color="neutral" variant="outline">
                       {{ titleCase(destination.deliveryState) }}
                     </UBadge>
                   </div>
-                  <p class="mt-1 text-xs text-muted">
-                    {{ destination.capabilityCount }} capabilities · {{ destination.activeMappingCount }} active mappings
-                  </p>
                 </div>
                 <p class="text-xs text-muted">
                   Last success: {{ formatDateTime(destination.lastSuccessAt) }}

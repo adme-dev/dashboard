@@ -111,6 +111,7 @@ describe('portal measurement health endpoint', () => {
       accepted_count: '5',
       delivered_count: '4',
       rejected_count: '1',
+      recent_rejected_count: '1',
       pending_count: '0',
       last_accepted_at: '2026-07-17T01:15:00.000Z',
       last_delivered_at: '2026-07-17T01:20:00.000Z',
@@ -132,6 +133,7 @@ describe('portal measurement health endpoint', () => {
     expect(mockQueryOne.mock.calls[0]?.[1]).toEqual([CLIENT_ID])
     expect(result).toMatchObject({
       status: 'degraded',
+      deliveryState: 'dormant',
       authority: {
         source: 'Zero CRM',
         lastSyncAt: '2026-07-17T01:10:00.000Z',
@@ -151,6 +153,30 @@ describe('portal measurement health endpoint', () => {
     })
 
     const output = JSON.stringify(result)
+    expect(Object.keys(result)).toEqual([
+      'status',
+      'statusMessage',
+      'deliveryState',
+      'authority',
+      'signals',
+      'destinations',
+      'delivery',
+      'lastValidatedAt',
+      'nextSteps'
+    ])
+    expect(Object.keys(result.authority)).toEqual([
+      'source',
+      'lastSyncAt',
+      'acceptedOutcomeCount',
+      'rejectedOutcomeCount'
+    ])
+    expect(Object.keys(result.destinations[0])).toEqual([
+      'platform',
+      'label',
+      'status',
+      'deliveryState',
+      'lastSuccessAt'
+    ])
     expect(output).not.toContain('attacker-client')
     expect(output).not.toContain('profile-secret-id')
     expect(output).not.toContain('destination-secret-id')
@@ -171,5 +197,72 @@ describe('portal measurement health endpoint', () => {
     expect(mockReadRuntime).not.toHaveBeenCalled()
     expect(mockDestinationRuntime).not.toHaveBeenCalled()
     expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('uses current evidence instead of permanently degrading on historical failures', async () => {
+    const { buildPortalMeasurementHealth } = await import('~~/server/utils/measurement/portalHealth')
+    const base = {
+      profile: {
+        enabled: true,
+        environment: 'live' as const,
+        collectionTier: 'backend_only' as const,
+        consentMode: 'consent_gated' as const,
+        outcomeAuthority: 'zero_native' as const
+      },
+      readiness: {
+        status: 'ready' as const,
+        liveEligible: true,
+        blockers: [],
+        lastValidatedAt: '2026-07-17T02:00:00.000Z'
+      },
+      destinations: [{
+        platform: 'meta' as const,
+        enabled: true,
+        environment: 'live' as const,
+        healthStatus: 'ready' as const,
+        lastSuccessAt: '2026-07-17T01:30:00.000Z',
+        capabilities: [
+          { mode: 'meta_pixel', status: 'detected' as const, managementOrigin: 'gtm' as const, evidenceAt: '2026-07-17T01:00:00.000Z' },
+          { mode: 'google_tag_enhanced_conversions', status: 'configured' as const, managementOrigin: 'external' as const, evidenceAt: '2026-07-17T01:30:00.000Z' }
+        ],
+        mappings: [{ isActive: true }]
+      }]
+    }
+
+    const healthy = buildPortalMeasurementHealth({
+      ...base,
+      aggregate: { rejected_count: '12', recent_rejected_count: '0' }
+    })
+    expect(healthy.status).toBe('healthy')
+    expect(healthy.delivery.rejectedCount).toBe(12)
+    expect(healthy.signals.browser.status).toBe('detected')
+
+    expect(buildPortalMeasurementHealth({
+      ...base,
+      aggregate: { rejected_count: '12', recent_rejected_count: '1' }
+    }).status).toBe('degraded')
+
+    expect(buildPortalMeasurementHealth({
+      ...base,
+      readiness: { ...base.readiness, status: 'paused' as const },
+      aggregate: { recent_rejected_count: '0' }
+    }).status).toBe('paused')
+
+    expect(buildPortalMeasurementHealth({
+      ...base,
+      readiness: { ...base.readiness, liveEligible: false },
+      aggregate: { recent_rejected_count: '0' }
+    }).status).not.toBe('healthy')
+  })
+
+  it('uses bounded grouped aggregates scoped to the current authority', async () => {
+    const handler = (await import('~~/server/api/portal/measurement.get')).default
+    await handler({ context: {} } as never)
+
+    const sql = String(mockQueryOne.mock.calls[0]?.[0])
+    expect(sql).toContain('WITH delivery AS')
+    expect(sql).toContain('updated_at >= NOW() - INTERVAL \'24 hours\'')
+    expect(sql).toContain('authority_mode = (')
+    expect(sql).toContain('status IN (\'test\', \'live\', \'paused\')')
   })
 })

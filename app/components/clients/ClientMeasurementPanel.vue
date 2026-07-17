@@ -23,6 +23,10 @@ const auditEntries = ref<MeasurementAuditEntry[]>([])
 const pending = ref(true)
 const loadError = ref<string | null>(null)
 const showDestinationEditor = ref(false)
+const readinessUnavailable = ref(false)
+const destinationsUnavailable = ref(false)
+const auditUnavailable = ref(false)
+const operationNotice = ref<{ tone: 'success' | 'warning', message: string } | null>(null)
 
 const titleCase = (value: string) => value
   .replaceAll('_', ' ')
@@ -119,28 +123,70 @@ function measurementErrorMessage(error: unknown) {
 async function refreshMeasurement() {
   pending.value = true
   loadError.value = null
+  readinessUnavailable.value = false
+  destinationsUnavailable.value = false
+  auditUnavailable.value = false
 
-  try {
-    const basePath = `/api/agency/measurement/clients/${props.clientId}`
-    const [profileResponse, readinessResponse, destinationResponse, auditResponse] = await Promise.all([
-      apiFetch<{ profile: ClientMeasurementProfile }>(basePath),
-      apiFetch<MeasurementReadinessSummary>(`${basePath}/readiness`),
-      apiFetch<PaginatedMeasurementResponse<MeasurementDestination>>(`${basePath}/destinations`),
-      apiFetch<PaginatedMeasurementResponse<MeasurementAuditEntry>>(`${basePath}/audit`)
-    ])
+  const basePath = `/api/agency/measurement/clients/${props.clientId}`
+  const [profileResult, readinessResult, destinationResult, auditResult] = await Promise.allSettled([
+    apiFetch<{ profile: ClientMeasurementProfile }>(basePath),
+    apiFetch<MeasurementReadinessSummary>(`${basePath}/readiness`),
+    apiFetch<PaginatedMeasurementResponse<MeasurementDestination>>(`${basePath}/destinations`),
+    apiFetch<PaginatedMeasurementResponse<MeasurementAuditEntry>>(`${basePath}/audit`)
+  ])
 
-    profile.value = profileResponse.profile
-    readiness.value = readinessResponse
-    destinations.value = destinationResponse.items
-    auditEntries.value = auditResponse.items
-  } catch (error: unknown) {
-    loadError.value = measurementErrorMessage(error)
-  } finally {
-    pending.value = false
+  if (profileResult.status === 'fulfilled') {
+    profile.value = profileResult.value.profile
+  } else {
+    profile.value = null
+    loadError.value = measurementErrorMessage(profileResult.reason)
+  }
+
+  if (readinessResult.status === 'fulfilled') {
+    readiness.value = readinessResult.value
+  } else {
+    readiness.value = null
+    readinessUnavailable.value = true
+  }
+
+  if (destinationResult.status === 'fulfilled') {
+    destinations.value = destinationResult.value.items
+  } else {
+    destinations.value = []
+    destinationsUnavailable.value = true
+  }
+
+  if (auditResult.status === 'fulfilled') {
+    auditEntries.value = auditResult.value.items
+  } else {
+    auditEntries.value = []
+    auditUnavailable.value = true
+  }
+
+  pending.value = false
+}
+
+function mutationNotice(warnings: Array<{ code: string }>) {
+  if (warnings.some(warning => warning.code === 'MEASUREMENT_CACHE_STALE')) {
+    return {
+      tone: 'warning' as const,
+      message: 'Saved in Zero; edge publication needs attention.'
+    }
+  }
+
+  return {
+    tone: 'success' as const,
+    message: 'Configuration saved in Zero.'
   }
 }
 
-async function handleDestinationSaved() {
+async function handleProfileSaved(result: { warnings: Array<{ code: string }> }) {
+  operationNotice.value = mutationNotice(result.warnings)
+  await refreshMeasurement()
+}
+
+async function handleDestinationSaved(result: { warnings: Array<{ code: string }> }) {
+  operationNotice.value = mutationNotice(result.warnings)
   showDestinationEditor.value = false
   await refreshMeasurement()
 }
@@ -166,15 +212,18 @@ void refreshMeasurement()
             </p>
           </div>
 
-          <div v-if="profile && readiness" class="flex flex-wrap items-center gap-2">
+          <div v-if="profile" class="flex flex-wrap items-center gap-2">
             <UBadge :color="profile.enabled ? 'success' : 'neutral'" variant="subtle">
               {{ profileState }}
             </UBadge>
-            <UBadge :color="statusColor(readiness.status)" variant="subtle">
+            <UBadge v-if="readiness" :color="statusColor(readiness.status)" variant="subtle">
               {{ titleCase(readiness.status) }}
             </UBadge>
-            <UBadge :color="readiness.liveEligible ? 'success' : 'warning'" variant="outline">
+            <UBadge v-if="readiness" :color="readiness.liveEligible ? 'success' : 'warning'" variant="outline">
               {{ readiness.liveEligible ? 'Eligible for live delivery' : 'Not eligible for live delivery' }}
+            </UBadge>
+            <UBadge v-else color="warning" variant="outline">
+              Readiness unavailable
             </UBadge>
           </div>
         </div>
@@ -204,7 +253,7 @@ void refreshMeasurement()
         </div>
       </div>
 
-      <div v-else-if="profile && readiness" class="p-5 sm:p-6">
+      <div v-else-if="profile" class="p-5 sm:p-6">
         <dl class="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt class="text-xs font-medium uppercase tracking-wide text-dimmed">
@@ -254,15 +303,26 @@ void refreshMeasurement()
       </div>
     </div>
 
+    <div
+      v-if="operationNotice"
+      role="status"
+      class="rounded-lg border p-4 text-sm"
+      :class="operationNotice.tone === 'warning'
+        ? 'border-warning/30 bg-warning/5 text-warning'
+        : 'border-success/30 bg-success/5 text-success'"
+    >
+      {{ operationNotice.message }}
+    </div>
+
     <ClientMeasurementProfileForm
       v-if="!pending && !loadError && profile"
       :client-id="clientId"
       :profile="profile"
       :can-configure="canConfigure ?? false"
-      @saved="refreshMeasurement"
+      @saved="handleProfileSaved"
     />
 
-    <div v-if="!pending && !loadError && readiness" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <div v-if="!pending && !loadError && profile" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div class="space-y-4">
         <div class="flex items-end justify-between gap-4">
           <div>
@@ -294,7 +354,16 @@ void refreshMeasurement()
           @cancel="showDestinationEditor = false"
         />
 
-        <div v-if="destinations.length" class="space-y-4">
+        <div v-if="destinationsUnavailable" role="alert" class="rounded-xl border border-warning/30 bg-warning/5 p-5">
+          <p class="font-medium text-warning">
+            Destination health unavailable
+          </p>
+          <p class="mt-1 text-sm text-muted">
+            Profile configuration remains available. Retry before making readiness decisions.
+          </p>
+        </div>
+
+        <div v-else-if="destinations.length" class="space-y-4">
           <article
             v-for="destination in destinations"
             :key="destination.id"
@@ -388,7 +457,7 @@ void refreshMeasurement()
       </div>
 
       <aside class="space-y-6">
-        <div class="rounded-xl border border-default bg-default p-5 shadow-xs">
+        <div v-if="readiness" class="rounded-xl border border-default bg-default p-5 shadow-xs">
           <div class="flex items-center justify-between gap-3">
             <h3 class="font-semibold text-highlighted">
               Readiness gates
@@ -449,6 +518,15 @@ void refreshMeasurement()
           </p>
         </div>
 
+        <div v-else-if="readinessUnavailable" role="alert" class="rounded-xl border border-warning/30 bg-warning/5 p-5">
+          <p class="font-medium text-warning">
+            Readiness summary unavailable
+          </p>
+          <p class="mt-1 text-sm text-muted">
+            Review the canonical profile and destination evidence, then retry before activation decisions.
+          </p>
+        </div>
+
         <div class="rounded-xl border border-default bg-default p-5 shadow-xs">
           <div class="flex items-center justify-between gap-3">
             <h3 class="font-semibold text-highlighted">
@@ -456,7 +534,10 @@ void refreshMeasurement()
             </h3>
             <span class="text-xs text-muted">Audit trail</span>
           </div>
-          <ol v-if="auditEntries.length" class="mt-4 space-y-4">
+          <p v-if="auditUnavailable" role="alert" class="mt-4 text-sm text-warning">
+            Audit history unavailable. Canonical configuration and delivery evidence are still shown.
+          </p>
+          <ol v-else-if="auditEntries.length" class="mt-4 space-y-4">
             <li v-for="entry in auditEntries" :key="entry.id" class="border-l-2 border-default pl-3">
               <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
                 <span class="font-medium text-highlighted">{{ titleCase(entry.entityType) }} {{ titleCase(entry.action) }}</span>

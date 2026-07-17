@@ -20,29 +20,40 @@ export default defineEventHandler(async (event) => {
     readService.getReadiness(clientId),
     destinationService.list({ clientId, page: 1, pageSize: 100 }),
     queryOne<PortalMeasurementAggregateRow>(
-      `SELECT
-         (SELECT COUNT(*) FROM conversion_deliveries
-           WHERE client_id = $1 AND status = 'accepted') AS accepted_count,
-         (SELECT COUNT(*) FROM conversion_deliveries
-           WHERE client_id = $1 AND status = 'delivered') AS delivered_count,
-         (SELECT COUNT(*) FROM conversion_deliveries
-           WHERE client_id = $1 AND status = 'permanent_failure') AS rejected_count,
-         (SELECT COUNT(*) FROM conversion_deliveries
-           WHERE client_id = $1 AND status IN ('pending', 'claimed', 'retryable')) AS pending_count,
-         (SELECT MAX(last_attempt_at) FROM conversion_deliveries
-           WHERE client_id = $1 AND status = 'accepted') AS last_accepted_at,
-         (SELECT MAX(delivered_at) FROM conversion_deliveries
-           WHERE client_id = $1 AND status = 'delivered') AS last_delivered_at,
-         (SELECT MAX(last_attempt_at) FROM conversion_deliveries
-           WHERE client_id = $1 AND status = 'permanent_failure') AS last_rejected_at,
-         (SELECT COUNT(*) FROM lead_status_events
-           WHERE client_id = $1 AND authority_decision = 'accepted') AS outcome_accepted_count,
-         (SELECT COUNT(*) FROM lead_status_events
-           WHERE client_id = $1 AND authority_decision = 'rejected') AS outcome_rejected_count,
-         (SELECT MAX(occurred_at) FROM lead_status_events
-           WHERE client_id = $1) AS last_outcome_sync_at,
-         (SELECT MAX(last_received_at) FROM outcome_endpoints
-           WHERE client_id = $1) AS last_endpoint_received_at`,
+      `WITH delivery AS (
+         SELECT
+           COUNT(*) FILTER (WHERE status = 'accepted') AS accepted_count,
+           COUNT(*) FILTER (WHERE status = 'delivered') AS delivered_count,
+           COUNT(*) FILTER (WHERE status = 'permanent_failure') AS rejected_count,
+           COUNT(*) FILTER (
+             WHERE status = 'permanent_failure'
+               AND updated_at >= NOW() - INTERVAL '24 hours'
+           ) AS recent_rejected_count,
+           COUNT(*) FILTER (WHERE status IN ('pending', 'claimed', 'retryable')) AS pending_count,
+           MAX(last_attempt_at) FILTER (WHERE status = 'accepted') AS last_accepted_at,
+           MAX(delivered_at) FILTER (WHERE status = 'delivered') AS last_delivered_at,
+           MAX(last_attempt_at) FILTER (WHERE status = 'permanent_failure') AS last_rejected_at
+         FROM conversion_deliveries
+         WHERE client_id = $1
+       ), outcome AS (
+         SELECT
+           COUNT(*) FILTER (WHERE authority_decision = 'accepted') AS outcome_accepted_count,
+           COUNT(*) FILTER (WHERE authority_decision = 'rejected') AS outcome_rejected_count,
+           MAX(occurred_at) AS last_outcome_sync_at
+         FROM lead_status_events
+         WHERE client_id = $1
+           AND authority_mode = (
+             SELECT outcome_authority
+             FROM client_measurement_profiles
+             WHERE client_id = $1
+           )
+       ), endpoint AS (
+         SELECT MAX(last_received_at) AS last_endpoint_received_at
+         FROM outcome_endpoints
+         WHERE client_id = $1
+           AND status IN ('test', 'live', 'paused')
+       )
+       SELECT * FROM delivery CROSS JOIN outcome CROSS JOIN endpoint`,
       [clientId]
     )
   ])

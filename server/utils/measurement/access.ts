@@ -10,6 +10,9 @@ export async function requireMeasurementClientAccess(
   clientId: string | undefined,
   permission: 'view' | 'configure'
 ) {
+  if (permission !== 'view' && permission !== 'configure') {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid measurement permission' })
+  }
   const user = await requirePermission(event, 'MEDIA_BUYING')
   if (permission === 'configure') {
     await requireWriteAccess(event)

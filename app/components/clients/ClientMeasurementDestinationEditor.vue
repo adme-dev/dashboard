@@ -7,7 +7,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  saved: [result: { destination: { id: string }, profileConfigVersion: number }]
+  saved: [result: { destination: { id: string }, profileConfigVersion: number, warnings: Array<{ code: string }> }]
   cancel: []
 }>()
 
@@ -70,6 +70,7 @@ const accountsPending = ref(true)
 const accountError = ref<string | null>(null)
 const saving = ref(false)
 const saveError = ref<string | null>(null)
+let accountRequestId = 0
 
 const apiFetch = $fetch as <T>(
   request: string,
@@ -77,7 +78,9 @@ const apiFetch = $fetch as <T>(
 ) => Promise<T>
 
 const currentCapabilities = computed(() => capabilityDefinitions[platform.value])
-const currentAccounts = computed(() => accounts.value[platform.value])
+const currentAccounts = computed(() => accounts.value[platform.value].filter(account => (
+  ['connected', 'active', 'healthy'].includes(account.status.toLowerCase())
+)))
 const selectedCapabilityRows = computed(() => currentCapabilities.value.filter(definition => selectedCapabilities[definition.mode]))
 const selectedMappingRows = computed(() => mappingDefinitions.filter(definition => activeMappings[definition.name]))
 const requiresConnection = computed(() => selectedCapabilityRows.value.some(definition => capabilityOrigins[definition.mode] === 'zero'))
@@ -107,7 +110,10 @@ function resetPlatformState() {
   }
 }
 
-watch(platform, resetPlatformState)
+watch(platform, (nextPlatform) => {
+  resetPlatformState()
+  void loadAccounts(nextPlatform)
+})
 resetPlatformState()
 
 function errorMessage(error: unknown, fallback: string) {
@@ -123,19 +129,24 @@ function errorMessage(error: unknown, fallback: string) {
     || fallback
 }
 
-async function loadAccounts() {
+async function loadAccounts(targetPlatform: Platform = platform.value) {
+  const requestId = ++accountRequestId
   accountsPending.value = true
   accountError.value = null
   try {
-    const [meta, google] = await Promise.all([
-      apiFetch<ConnectedAccount[]>('/api/agency/social/meta/accounts'),
-      apiFetch<ConnectedAccount[]>('/api/agency/social/google/accounts')
-    ])
-    accounts.value = { meta, google_data_manager: google }
+    const endpoint = targetPlatform === 'meta'
+      ? '/api/agency/social/meta/accounts'
+      : '/api/agency/social/google/accounts'
+    const result = await apiFetch<ConnectedAccount[]>(endpoint)
+    accounts.value = { ...accounts.value, [targetPlatform]: result }
   } catch (error: unknown) {
-    accountError.value = errorMessage(error, 'Connected accounts could not be loaded')
+    if (requestId === accountRequestId) {
+      accountError.value = errorMessage(error, 'Connected accounts could not be loaded')
+    }
   } finally {
-    accountsPending.value = false
+    if (requestId === accountRequestId) {
+      accountsPending.value = false
+    }
   }
 }
 
@@ -148,6 +159,7 @@ async function saveDestination() {
     const result = await apiFetch<{
       destination: { id: string }
       profileConfigVersion: number
+      warnings: Array<{ code: string }>
     }>(`/api/agency/measurement/clients/${props.clientId}/destinations`, {
       method: 'POST',
       body: {
@@ -180,7 +192,7 @@ async function saveDestination() {
   }
 }
 
-void loadAccounts()
+void loadAccounts('meta')
 </script>
 
 <template>
@@ -198,6 +210,7 @@ void loadAccounts()
         label="Cancel"
         color="neutral"
         variant="ghost"
+        :disabled="saving"
         @click="emit('cancel')"
       />
     </div>
@@ -224,7 +237,12 @@ void loadAccounts()
             {{ account.accountName }} · {{ account.accountId }}
           </option>
         </select>
-        <span v-if="accountError" class="text-xs text-error">{{ accountError }}</span>
+        <span v-if="accountError" role="alert" class="flex items-center gap-2 text-xs text-error">
+          {{ accountError }}
+          <button type="button" class="font-medium underline" @click="loadAccounts()">
+            Retry
+          </button>
+        </span>
         <span v-else-if="!accountsPending && !currentAccounts.length" class="text-xs text-warning">No connected account is available for this provider.</span>
       </label>
 
@@ -332,7 +350,7 @@ void loadAccounts()
         />
       </label>
       <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p class="text-sm text-error">
+        <p role="alert" class="text-sm text-error">
           {{ saveError }}
         </p>
         <UButton
