@@ -1,0 +1,461 @@
+import {
+  query as defaultQuery,
+  queryOne as defaultQueryOne,
+  transaction as defaultTransaction
+} from '~~/server/utils/db'
+import {
+  ConversionDestinationCapabilityStateSchema,
+  ConversionDestinationReadModelSchema,
+  ConversionEventMappingStateSchema
+} from '~~/server/utils/measurement/contracts'
+import type {
+  CreateConversionDestinationConfiguration,
+  ConversionDestinationCapabilityState,
+  ConversionDestinationReadModel,
+  ConversionEventMappingState,
+  ListConversionDestinations
+} from '~~/server/utils/measurement/contracts'
+import {
+  mapMeasurementProfileRow,
+  type MeasurementProfile
+} from '~~/server/utils/measurement/profileRepository'
+
+interface DestinationRow {
+  id: string
+  client_id: string
+  profile_id: string
+  platform: string
+  social_connection_id: string | null
+  external_destination_id: string
+  credential_configured: boolean
+  enabled: boolean
+  environment: string
+  health_status: string
+  config_version: number | string
+  last_validated_at: Date | string | null
+  last_success_at: Date | string | null
+  last_failure_at: Date | string | null
+  provider_request_id: string | null
+  error_class: string | null
+  redacted_error: string | null
+  created_at: Date | string
+  updated_at: Date | string
+}
+
+interface CapabilityRow {
+  id: string
+  destination_id: string
+  platform: string
+  mode: string
+  status: string
+  management_origin: string
+  can_zero_mutate: boolean
+  evidence_at: Date | string | null
+  blocking_reason: string | null
+  config_version: number | string
+  created_at: Date | string
+  updated_at: Date | string
+}
+
+interface MappingRow {
+  id: string
+  destination_id: string
+  canonical_event_name: string
+  provider_event_name: string
+  is_active: boolean
+  config_version: number | string
+  created_at: Date | string
+  updated_at: Date | string
+}
+
+interface ProfileRow {
+  id: string
+  client_id: string
+  enabled: boolean
+  environment: string
+  collection_tier: string
+  tracking_site_id: string | null
+  first_party_hostname: string | null
+  hostname_status: string
+  consent_mode: string
+  vertical: string
+  outcome_authority: string
+  native_lifecycle_mode: string
+  portal_outcome_mode: string
+  config_version: number | string
+  cache_status: string
+  cache_version: number | string | null
+  cache_error_class: string | null
+  created_at: Date | string
+  updated_at: Date | string
+}
+
+const PROFILE_COLUMNS = `
+  id, client_id, enabled, environment, collection_tier, tracking_site_id,
+  first_party_hostname, hostname_status, consent_mode, vertical,
+  outcome_authority, native_lifecycle_mode, portal_outcome_mode, config_version,
+  cache_status, cache_version, cache_error_class, created_at, updated_at
+`
+
+const DESTINATION_COLUMNS = `
+  id, client_id, profile_id, platform, social_connection_id,
+  external_destination_id, (credential_ref IS NOT NULL) AS credential_configured,
+  enabled, environment, health_status, config_version, last_validated_at,
+  last_success_at, last_failure_at, provider_request_id, error_class,
+  redacted_error, created_at, updated_at
+`
+
+const CAPABILITY_COLUMNS = `
+  id, destination_id, platform, mode, status, management_origin,
+  can_zero_mutate, evidence_at, blocking_reason, config_version,
+  created_at, updated_at
+`
+
+const MAPPING_COLUMNS = `
+  id, destination_id, canonical_event_name, provider_event_name,
+  is_active, config_version, created_at, updated_at
+`
+
+function iso(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString()
+}
+
+function optionalIso(value: Date | string | null): string | null {
+  return value === null ? null : iso(value)
+}
+
+function mapCapability(row: CapabilityRow): ConversionDestinationCapabilityState {
+  return ConversionDestinationCapabilityStateSchema.parse({
+    id: row.id,
+    destinationId: row.destination_id,
+    platform: row.platform,
+    mode: row.mode,
+    status: row.status,
+    managementOrigin: row.management_origin,
+    canZeroMutate: row.can_zero_mutate,
+    evidenceAt: optionalIso(row.evidence_at),
+    blockingReason: row.blocking_reason,
+    configVersion: Number(row.config_version),
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at)
+  })
+}
+
+function mapMapping(row: MappingRow): ConversionEventMappingState {
+  return ConversionEventMappingStateSchema.parse({
+    id: row.id,
+    destinationId: row.destination_id,
+    canonicalEventName: row.canonical_event_name,
+    providerEventName: row.provider_event_name,
+    isActive: row.is_active,
+    configVersion: Number(row.config_version),
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at)
+  })
+}
+
+function mapDestination(
+  row: DestinationRow,
+  capabilities: ConversionDestinationCapabilityState[],
+  mappings: ConversionEventMappingState[]
+): ConversionDestinationReadModel {
+  return ConversionDestinationReadModelSchema.parse({
+    id: row.id,
+    clientId: row.client_id,
+    profileId: row.profile_id,
+    platform: row.platform,
+    socialConnectionId: row.social_connection_id,
+    externalDestinationId: row.external_destination_id,
+    credentialConfigured: row.credential_configured,
+    enabled: row.enabled,
+    environment: row.environment,
+    healthStatus: row.health_status,
+    configVersion: Number(row.config_version),
+    lastValidatedAt: optionalIso(row.last_validated_at),
+    lastSuccessAt: optionalIso(row.last_success_at),
+    lastFailureAt: optionalIso(row.last_failure_at),
+    providerRequestId: row.provider_request_id,
+    errorClass: row.error_class,
+    redactedError: row.redacted_error,
+    capabilities,
+    mappings,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at)
+  })
+}
+
+function aggregateHealth(input: CreateConversionDestinationConfiguration['destination']) {
+  if (input.capabilities.some(capability => capability.status === 'blocked')) return 'blocked'
+  if (input.capabilities.some(capability => capability.status === 'configured')) return 'configured'
+  return 'not_configured'
+}
+
+function connectionPlatform(platform: CreateConversionDestinationConfiguration['destination']['platform']) {
+  return platform === 'meta' ? 'meta' : 'google'
+}
+
+export interface DestinationPage {
+  items: ConversionDestinationReadModel[]
+  pagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+  }
+}
+
+export type CreateDestinationResult
+  = { status: 'created', profile: MeasurementProfile, destination: ConversionDestinationReadModel }
+    | { status: 'not_found' }
+    | { status: 'connection_not_found' }
+    | { status: 'version_conflict', currentVersion: number }
+    | { status: 'duplicate' }
+
+export interface MeasurementDestinationRepository {
+  list(input: ListConversionDestinations): Promise<DestinationPage>
+  create(input: CreateConversionDestinationConfiguration): Promise<CreateDestinationResult>
+}
+
+export interface PostgresMeasurementDestinationRepositoryDeps {
+  query: typeof defaultQuery
+  queryOne: typeof defaultQueryOne
+  transaction: typeof defaultTransaction
+}
+
+const defaultDeps: PostgresMeasurementDestinationRepositoryDeps = {
+  query: defaultQuery,
+  queryOne: defaultQueryOne,
+  transaction: defaultTransaction
+}
+
+export function createPostgresMeasurementDestinationRepository(
+  deps: PostgresMeasurementDestinationRepositoryDeps = defaultDeps
+): MeasurementDestinationRepository {
+  return {
+    async list(input) {
+      const countRow = await deps.queryOne<{ count: number | string }>(
+        `SELECT COUNT(*) AS count
+           FROM conversion_destinations
+          WHERE client_id = $1
+            AND ($2::text IS NULL OR platform = $2)`,
+        [input.clientId, input.platform ?? null]
+      )
+      const totalItems = Number(countRow?.count ?? 0)
+      const offset = (input.page - 1) * input.pageSize
+      const destinationRows = await deps.query<DestinationRow>(
+        `SELECT ${DESTINATION_COLUMNS}
+           FROM conversion_destinations
+          WHERE client_id = $1
+            AND ($2::text IS NULL OR platform = $2)
+          ORDER BY created_at DESC, id DESC
+          LIMIT $3 OFFSET $4`,
+        [input.clientId, input.platform ?? null, input.pageSize, offset]
+      )
+      const destinationIds = destinationRows.map(row => row.id)
+      if (destinationIds.length === 0) {
+        return {
+          items: [],
+          pagination: {
+            page: input.page,
+            pageSize: input.pageSize,
+            totalItems,
+            totalPages: Math.ceil(totalItems / input.pageSize)
+          }
+        }
+      }
+
+      const capabilityRows = await deps.query<CapabilityRow>(
+        `SELECT ${CAPABILITY_COLUMNS}
+           FROM conversion_destination_capabilities
+          WHERE client_id = $1
+            AND destination_id = ANY($2::uuid[])
+          ORDER BY mode ASC`,
+        [input.clientId, destinationIds]
+      )
+      const mappingRows = await deps.query<MappingRow>(
+        `SELECT ${MAPPING_COLUMNS}
+           FROM conversion_event_mappings
+          WHERE client_id = $1
+            AND destination_id = ANY($2::uuid[])
+          ORDER BY canonical_event_name ASC`,
+        [input.clientId, destinationIds]
+      )
+
+      return {
+        items: destinationRows.map(row => mapDestination(
+          row,
+          capabilityRows.filter(capability => capability.destination_id === row.id).map(mapCapability),
+          mappingRows.filter(mapping => mapping.destination_id === row.id).map(mapMapping)
+        )),
+        pagination: {
+          page: input.page,
+          pageSize: input.pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / input.pageSize)
+        }
+      }
+    },
+
+    async create(input) {
+      try {
+        return await deps.transaction(async (db) => {
+          const currentResult = await db.query(
+            `SELECT ${PROFILE_COLUMNS}
+               FROM client_measurement_profiles
+              WHERE client_id = $1
+              FOR UPDATE`,
+            [input.clientId]
+          )
+          const currentRow = currentResult.rows?.[0] as ProfileRow | undefined
+          if (!currentRow) return { status: 'not_found' as const }
+
+          const currentProfile = mapMeasurementProfileRow(currentRow)
+          if (currentProfile.configVersion !== input.expectedProfileVersion) {
+            return {
+              status: 'version_conflict' as const,
+              currentVersion: currentProfile.configVersion
+            }
+          }
+
+          const destinationInput = input.destination
+          if (destinationInput.socialConnectionId) {
+            const connectionResult = await db.query(
+              `SELECT id
+                 FROM social_connections
+                WHERE id = $1
+                  AND client_id = $2
+                  AND platform = $3
+                  AND status = 'active'`,
+              [
+                destinationInput.socialConnectionId,
+                input.clientId,
+                connectionPlatform(destinationInput.platform)
+              ]
+            )
+            if (!connectionResult.rows?.[0]) return { status: 'connection_not_found' as const }
+          }
+
+          const profileResult = await db.query(
+            `UPDATE client_measurement_profiles
+                SET config_version = config_version + 1,
+                    cache_status = 'not_published',
+                    cache_version = NULL,
+                    cache_error_class = NULL,
+                    updated_by = $3
+              WHERE client_id = $1
+                AND config_version = $2
+          RETURNING ${PROFILE_COLUMNS}`,
+            [input.clientId, input.expectedProfileVersion, input.actor.id]
+          )
+          const profileRow = profileResult.rows?.[0] as ProfileRow | undefined
+          if (!profileRow) {
+            return {
+              status: 'version_conflict' as const,
+              currentVersion: currentProfile.configVersion
+            }
+          }
+          const profile = mapMeasurementProfileRow(profileRow)
+          const configVersion = profile.configVersion
+          const healthStatus = aggregateHealth(destinationInput)
+
+          const destinationResult = await db.query(
+            `INSERT INTO conversion_destinations (
+               client_id, profile_id, platform, social_connection_id,
+               external_destination_id, credential_ref, enabled, environment,
+               health_status, config_version, created_by, updated_by
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+             RETURNING ${DESTINATION_COLUMNS}`,
+            [
+              input.clientId,
+              profile.id,
+              destinationInput.platform,
+              destinationInput.socialConnectionId,
+              destinationInput.externalDestinationId,
+              destinationInput.credentialRef,
+              false,
+              'test',
+              healthStatus,
+              configVersion,
+              input.actor.id
+            ]
+          )
+          const destinationRow = destinationResult.rows?.[0] as DestinationRow
+
+          const capabilities: ConversionDestinationCapabilityState[] = []
+          for (const capability of destinationInput.capabilities) {
+            const capabilityResult = await db.query(
+              `INSERT INTO conversion_destination_capabilities (
+                 client_id, destination_id, platform, mode, status,
+                 management_origin, can_zero_mutate, evidence_at,
+                 blocking_reason, config_version
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $9)
+               RETURNING ${CAPABILITY_COLUMNS}`,
+              [
+                input.clientId,
+                destinationRow.id,
+                destinationInput.platform,
+                capability.mode,
+                capability.status,
+                capability.managementOrigin,
+                capability.canZeroMutate,
+                capability.blockingReason,
+                configVersion
+              ]
+            )
+            capabilities.push(mapCapability(capabilityResult.rows[0] as CapabilityRow))
+          }
+
+          const mappings: ConversionEventMappingState[] = []
+          for (const mapping of destinationInput.mappings) {
+            const mappingResult = await db.query(
+              `INSERT INTO conversion_event_mappings (
+                 client_id, destination_id, canonical_event_name,
+                 provider_event_name, is_active, config_version,
+                 created_by, updated_by
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+               RETURNING ${MAPPING_COLUMNS}`,
+              [
+                input.clientId,
+                destinationRow.id,
+                mapping.canonicalEventName,
+                mapping.providerEventName,
+                mapping.isActive,
+                configVersion,
+                input.actor.id
+              ]
+            )
+            mappings.push(mapMapping(mappingResult.rows[0] as MappingRow))
+          }
+
+          const destination = mapDestination(destinationRow, capabilities, mappings)
+          await db.query(
+            `INSERT INTO measurement_config_audit (
+               client_id, profile_id, entity_type, entity_id, action,
+               config_version, before_state, after_state, changed_fields,
+               actor_type, actor_id, reason
+             ) VALUES (
+               $1, $2, 'destination', $3, 'created', $4,
+               NULL, $5::jsonb, $6, $7, $8, $9
+             )`,
+            [
+              input.clientId,
+              profile.id,
+              destination.id,
+              configVersion,
+              JSON.stringify(destination),
+              ['destination', 'capabilities', 'mappings'],
+              input.actor.type,
+              input.actor.id,
+              input.reason
+            ]
+          )
+
+          return { status: 'created' as const, profile, destination }
+        })
+      } catch (error) {
+        if ((error as { code?: string }).code === '23505') return { status: 'duplicate' }
+        throw error
+      }
+    }
+  }
+}
