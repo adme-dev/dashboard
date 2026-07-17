@@ -206,6 +206,31 @@
 - Max width: 1152px (max-w-6xl)
 - Padding: 24px horizontal
 
+### Form Composition Grid
+
+Forms use one composition grid per related field group so controls align predictably at every breakpoint.
+
+```html
+<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+  <!-- Short controls occupy one grid cell each. -->
+  <UInput class="w-full" />
+  <USelectMenu class="w-full" />
+
+  <!-- Multiline controls and their action rows span the full form width. -->
+  <UTextarea class="w-full col-span-full" :rows="3" />
+  <div class="col-span-full">...</div>
+</div>
+```
+
+**Specs**:
+- Mobile: one column; tablet and desktop: two columns for standard forms.
+- Dense reference/linking forms may extend to four columns at `xl`, but must still start with `grid-cols-1`.
+- Inputs, selects, textareas, and rich-text controls use `w-full`; never rely on intrinsic control width.
+- Textareas, rich-text fields, file controls, and other long-form inputs use `col-span-full` and at least three visible rows.
+- Submit/action controls following a long-form field use a separate `col-span-full` row. They must not flow beside or overlap the field.
+- Helper and validation text stays with its field and wraps within the same grid span.
+- Verify form composition at 320px, 768px, 1024px, and 1440px before release.
+
 ---
 
 ## 7. Navigation

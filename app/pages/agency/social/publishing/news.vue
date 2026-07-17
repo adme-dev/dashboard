@@ -382,7 +382,7 @@ async function createDrafts() {
         <div class="font-medium">Client social content profile</div>
         <p class="text-sm text-muted">Controls explainable news relevance and supplies approved context to AI rewrites.</p>
       </div>
-      <div class="grid gap-3 md:grid-cols-2">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
         <UInput v-model="profileForm.industry" placeholder="Industry" />
         <UInput v-model="profileForm.targetAudience" placeholder="Target audience" />
         <UInput v-model="profileForm.contentPillars" placeholder="Content pillars, comma separated" />
@@ -393,8 +393,8 @@ async function createDrafts() {
         <UInput v-model="profileForm.defaultTone" placeholder="Default AI tone" />
         <UInput v-model="profileForm.timezone" placeholder="Timezone" />
         <USelectMenu v-model="profileForm.defaultWorkflow" :items="[{ label: 'Create drafts', value: 'draft' }, { label: 'Schedule explicitly', value: 'schedule' }]" value-key="value" />
+        <UTextarea v-model="profileForm.aiInstructions" class="w-full col-span-full" placeholder="Additional client AI instructions" :rows="3" />
       </div>
-      <UTextarea v-model="profileForm.aiInstructions" placeholder="Additional client AI instructions" :rows="3" />
       <div class="flex flex-wrap gap-3">
         <UCheckbox v-for="p in ['facebook','instagram','linkedin','tiktok','youtube','google-business']" :key="p" v-model="profileForm.preferredPlatforms" :value="p" :label="p" />
       </div>
@@ -407,7 +407,7 @@ async function createDrafts() {
             <div class="font-medium">Content package and budget link</div>
             <p class="text-sm text-muted">The package is versioned here; commercial value stays in the linked XeroFlow project, rate card, and job budget.</p>
           </div>
-          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <USelectMenu v-model="packageForm.packageVersionId" :items="packageOptions.packages.map(p => ({ label: `${p.name} · v${p.version}`, value: p.versionId }))" value-key="value" placeholder="Package version" />
             <USelectMenu v-model="packageForm.projectId" :items="[{ label: 'No project link', value: '' }, ...packageOptions.projects.map(p => ({ label: `${p.name} · ${p.status}`, value: p.id }))]" value-key="value" placeholder="Project / retainer" />
             <USelectMenu v-model="packageForm.budgetAllocationId" :items="[{ label: 'No budget allocation', value: '' }, ...packageOptions.allocations.filter(a => !packageForm.projectId || a.projectId === packageForm.projectId).map(a => ({ label: `${a.platform || a.campaignType || 'Social'} · ${a.currency} ${a.amount} ${a.period}`, value: a.id }))]" value-key="value" placeholder="Budget allocation" />
@@ -419,7 +419,7 @@ async function createDrafts() {
         </div>
         <div class="rounded-md border border-default p-3 space-y-3">
           <div class="text-sm font-medium">Create a reusable package from this profile</div>
-          <div class="grid gap-3 md:grid-cols-2">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <UInput v-model="newPackage.name" placeholder="Package name" />
             <UInput v-model="newPackage.includedVolumes" placeholder="facebook: 8, linkedin: 4" />
             <UInput v-model.number="newPackage.approvalSlaHours" type="number" min="0" placeholder="Approval SLA hours" />
@@ -479,8 +479,12 @@ async function createDrafts() {
           <div v-if="isAdmin" class="rounded-md border border-default p-3 space-y-2">
             <div class="text-sm font-medium">Import Slack export for review</div>
             <p class="text-xs text-muted">Paste a JSON array of exported messages. Imports remain pending until an admin approves them.</p>
-            <UTextarea v-model="slackImportText" :rows="4" placeholder='[{"title":"Decision","content":"...","sourceId":"slack-123"}]' />
-            <UButton label="Import Slack evidence" icon="i-lucide-upload" color="neutral" variant="subtle" :loading="slackImporting" :disabled="!slackImportText.trim()" @click="importSlackEvidence" />
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <UTextarea v-model="slackImportText" class="w-full col-span-full" :rows="4" placeholder='[{"title":"Decision","content":"...","sourceId":"slack-123"}]' />
+              <div class="col-span-full">
+                <UButton label="Import Slack evidence" icon="i-lucide-upload" color="neutral" variant="subtle" :loading="slackImporting" :disabled="!slackImportText.trim()" @click="importSlackEvidence" />
+              </div>
+            </div>
           </div>
         </section>
         <USeparator />
@@ -492,12 +496,14 @@ async function createDrafts() {
           <div v-if="governance?.evidence.approved.length" class="space-y-1">
             <div v-for="item in governance.evidence.approved" :key="item.id" class="text-sm"><UBadge color="neutral" variant="subtle" size="xs">{{ item.evidence_type }}</UBadge> {{ item.title }}</div>
           </div>
-          <div class="grid gap-3 md:grid-cols-2">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <USelectMenu v-model="evidenceForm.evidenceType" :items="[{ label: 'Decision', value: 'decision' }, { label: 'Approved brief', value: 'brief' }, { label: 'Plan', value: 'plan' }, { label: 'Performance finding', value: 'performance' }]" value-key="value" />
             <UInput v-model="evidenceForm.title" placeholder="Guidance title" />
+            <UTextarea v-model="evidenceForm.content" class="w-full col-span-full" :rows="3" placeholder="Approved instruction, decision, or finding" />
+            <div class="col-span-full">
+              <UButton label="Approve into XeroFlow guidance" icon="i-lucide-badge-check" :loading="evidenceSaving" :disabled="!evidenceForm.title.trim() || !evidenceForm.content.trim()" @click="saveCanonicalEvidence" />
+            </div>
           </div>
-          <UTextarea v-model="evidenceForm.content" :rows="3" placeholder="Approved instruction, decision, or finding" />
-          <UButton label="Approve into XeroFlow guidance" icon="i-lucide-badge-check" :loading="evidenceSaving" :disabled="!evidenceForm.title.trim() || !evidenceForm.content.trim()" @click="saveCanonicalEvidence" />
         </div>
       </template>
     </div>
