@@ -588,7 +588,8 @@ export const MeasurementConfigEntityTypeSchema = z.enum([
   'destination',
   'capability',
   'mapping',
-  'outcome_endpoint'
+  'outcome_endpoint',
+  'lifecycle_mapping'
 ])
 export const MeasurementConfigAuditActionSchema = z.enum([
   'created',
