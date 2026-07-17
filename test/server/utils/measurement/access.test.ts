@@ -1,0 +1,92 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mockRequirePermission = vi.fn()
+const mockQueryOne = vi.fn()
+
+vi.mock('~~/server/utils/auth', () => ({
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args)
+}))
+
+vi.mock('~~/server/utils/db', () => ({
+  queryOne: (...args: unknown[]) => mockQueryOne(...args)
+}))
+
+vi.mock('h3', () => ({
+  createError: (input: { statusCode: number, statusMessage: string }) => Object.assign(
+    new Error(input.statusMessage),
+    input
+  )
+}))
+
+describe('Measurement client access', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'owner' })
+    mockQueryOne.mockResolvedValue(null)
+  })
+
+  it('allows management roles without an assignment lookup', async () => {
+    const { requireMeasurementClientAccess } = await import(
+      '../../../../server/utils/measurement/access'
+    )
+
+    await expect(requireMeasurementClientAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111',
+      'view'
+    )).resolves.toMatchObject({ role: 'owner' })
+
+    expect(mockRequirePermission).toHaveBeenCalledWith(expect.anything(), 'MEDIA_BUYING')
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('allows an assigned media operator and scopes the lookup by client and user', async () => {
+    mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'media_buyer' })
+    mockQueryOne.mockResolvedValue({ '?column?': 1 })
+    const { requireMeasurementClientAccess } = await import(
+      '../../../../server/utils/measurement/access'
+    )
+
+    await expect(requireMeasurementClientAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111',
+      'configure'
+    )).resolves.toMatchObject({ role: 'media_buyer' })
+
+    expect(mockQueryOne).toHaveBeenCalledWith(expect.stringMatching(/client_id = \$1/), [
+      '11111111-1111-4111-8111-111111111111',
+      'staff-1'
+    ])
+  })
+
+  it('hides an unassigned tenant profile behind the same not-found response', async () => {
+    mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'account_manager' })
+    const { requireMeasurementClientAccess } = await import(
+      '../../../../server/utils/measurement/access'
+    )
+
+    await expect(requireMeasurementClientAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111',
+      'view'
+    )).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: 'Measurement profile not found'
+    })
+  })
+
+  it('rejects malformed client IDs before querying assignments', async () => {
+    mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'media_buyer' })
+    const { requireMeasurementClientAccess } = await import(
+      '../../../../server/utils/measurement/access'
+    )
+
+    await expect(requireMeasurementClientAccess(
+      { context: {} } as never,
+      'not-a-client-id',
+      'view'
+    )).rejects.toMatchObject({ statusCode: 400 })
+
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+})
