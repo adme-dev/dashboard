@@ -5,6 +5,8 @@ import { createMeasurementDestinationService } from '~~/server/utils/measurement
 import { createMeasurementProfileCachePublisher } from '~~/server/utils/measurement/profileCache'
 import { createPostgresMeasurementProfileRepository } from '~~/server/utils/measurement/profileRepository'
 import { createMeasurementProfileService } from '~~/server/utils/measurement/profileService'
+import { createPostgresMeasurementReadRepository } from '~~/server/utils/measurement/readRepository'
+import { createMeasurementReadService } from '~~/server/utils/measurement/readService'
 
 function createMeasurementRuntimeCache(event: H3Event) {
   const kv = getKV(event)
@@ -33,5 +35,11 @@ export function createMeasurementDestinationRuntime(event: H3Event) {
     repository: createPostgresMeasurementDestinationRepository(),
     profileRepository,
     cache: createMeasurementRuntimeCache(event)
+  })
+}
+
+export function createMeasurementReadRuntime() {
+  return createMeasurementReadService({
+    repository: createPostgresMeasurementReadRepository()
   })
 }
