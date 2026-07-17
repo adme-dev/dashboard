@@ -76,6 +76,46 @@ describe('public/track.js transport', () => {
     }
   })
 
+  it('reuses one conversion event ID for the server batch and GTM data layer', async () => {
+    const script = document.createElement('script')
+    script.setAttribute('data-auto', 'false')
+    document.head.appendChild(script)
+    Object.defineProperty(script, 'src', { value: 'https://dashboard.example/track.js' })
+    const currentScript = vi.spyOn(document, 'currentScript', 'get').mockReturnValue(script)
+    const insertScript = vi.spyOn(document.head, 'insertBefore').mockImplementation(node => node)
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        gtm: {
+          enabled: true,
+          containerId: 'GTM-TEST'
+        }
+      })
+    }))
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', gtmBridge: true })
+    await vi.waitFor(() => {
+      expect((window as any).dataLayer).toBeTruthy()
+    })
+
+    beacons = []
+    ;(window as any).dataLayer = []
+    ;(window as any).xf.track('lead', { form_id: 'test-lead-form' })
+
+    expect(beacons).toHaveLength(1)
+    expect((window as any).dataLayer).toHaveLength(1)
+
+    const serverEvent = JSON.parse(beacons[0].body).events[0]
+    const browserEvent = (window as any).dataLayer[0]
+    expect(browserEvent.event).toBe('generate_lead')
+    expect(browserEvent.event_id).toBe(serverEvent.event_id)
+
+    currentScript.mockRestore()
+    insertScript.mockRestore()
+  })
+
   it('forwards email click IDs from the landing URL attribution', () => {
     window.history.pushState({}, '', '/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=click-1')
     loadTag()

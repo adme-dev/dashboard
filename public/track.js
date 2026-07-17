@@ -171,7 +171,7 @@
   }
 
   // Push qualifying events to dataLayer for GTM/sGTM
-  function pushToDataLayer(eventName, eventData) {
+  function pushToDataLayer(eventName, eventData, eventId) {
     if (!_gtmConfig || !_gtmConfig.gtm || !_gtmConfig.gtm.enabled) return
 
     var dlEvent = null
@@ -245,7 +245,7 @@
 
     // Add event_id and Facebook cookies for conversion events
     if (dlEvent === 'generate_lead' || dlEvent === 'test_drive_booking' || dlEvent === 'purchase') {
-      payload.event_id = generateEventId()
+      payload.event_id = eventId
       var fbCookies = getFbCookies()
       if (fbCookies.fbc) payload.fbc = fbCookies.fbc
       if (fbCookies.fbp) payload.fbp = fbCookies.fbp
@@ -461,12 +461,16 @@
       return
     }
 
+    // Generate once and reuse across the browser data layer and server batch.
+    // Meta deduplicates only when browser eventID and server event_id match.
+    var eventId = generateEventId()
+
     // Reshape the flat payload into the Slice-1 batch shape the public collect
     // endpoint expects: { events: [{ event_id, anon_id, session_id, occurred_at,
     // attribution: {...}, event_data }] }. event_id is browser-canonical (dedup).
     var batch = {
       events: [{
-        event_id: generateId(),
+        event_id: eventId,
         event_name: payload.event_name,
         anon_id: payload.client_id,
         session_id: payload.session_id,
@@ -516,7 +520,7 @@
     }
 
     // Push to dataLayer for sGTM (if GTM is enabled and event qualifies)
-    pushToDataLayer(eventName, eventData)
+    pushToDataLayer(eventName, eventData, eventId)
   }
 
   // Detect vehicle context from page URL and structured data

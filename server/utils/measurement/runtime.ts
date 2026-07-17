@@ -9,8 +9,15 @@ import { createMeasurementOutcomeEndpointService } from '~~/server/utils/measure
 import { createMeasurementProfileCachePublisher } from '~~/server/utils/measurement/profileCache'
 import { createPostgresMeasurementProfileRepository } from '~~/server/utils/measurement/profileRepository'
 import { createMeasurementProfileService } from '~~/server/utils/measurement/profileService'
+import { createPostgresMeasurementProviderTestRepository } from '~~/server/utils/measurement/providerTestRepository'
+import { createMeasurementProviderTestService } from '~~/server/utils/measurement/providerTestService'
 import { createPostgresMeasurementReadRepository } from '~~/server/utils/measurement/readRepository'
 import { createMeasurementReadService } from '~~/server/utils/measurement/readService'
+import {
+  deliverGoogleDataManagerEvent,
+  deliverMetaConversionEvent,
+  refreshGoogleDataManagerAccessToken
+} from '~~/workers/measurement-delivery/src/providers'
 
 function createMeasurementRuntimeCache(event: H3Event) {
   const kv = getKV(event)
@@ -63,5 +70,23 @@ export function createMeasurementOutcomeEndpointRuntime(event: H3Event) {
     repository: createPostgresMeasurementOutcomeEndpointRepository(),
     profileRepository,
     cache: createMeasurementRuntimeCache(event)
+  })
+}
+
+export function createMeasurementProviderTestRuntime(event: H3Event) {
+  const config = useRuntimeConfig(event)
+  const providerFetch = globalThis.fetch.bind(globalThis)
+  return createMeasurementProviderTestService({
+    repository: createPostgresMeasurementProviderTestRepository(),
+    deliverMeta: input => deliverMetaConversionEvent({ ...input, fetch: providerFetch }),
+    deliverGoogle: input => deliverGoogleDataManagerEvent({ ...input, fetch: providerFetch }),
+    refreshGoogleAccessToken: input => refreshGoogleDataManagerAccessToken({
+      ...input,
+      fetch: providerFetch
+    }),
+    graphApiVersion: String(config.metaGraphApiVersion || 'v25.0'),
+    googleClientId: String(config.googleClientId || ''),
+    googleClientSecret: String(config.googleClientSecret || ''),
+    now: () => new Date()
   })
 }

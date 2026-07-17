@@ -25,20 +25,23 @@ export interface ProviderDeliveryResult {
 
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
-interface MetaDeliveryInput {
+export interface MetaDeliveryInput {
   delivery: MeasurementProviderDelivery
   accessToken: string
   graphApiVersion: string
+  environment?: 'test' | 'live'
+  testEventCode?: string
   fetch: FetchLike
 }
 
-interface GoogleDeliveryInput {
+export interface GoogleDeliveryInput {
   delivery: MeasurementProviderDelivery
   accessToken: string
+  validateOnly?: boolean
   fetch: FetchLike
 }
 
-interface RefreshGoogleAccessTokenInput {
+export interface RefreshGoogleAccessTokenInput {
   refreshToken: string
   clientId: string
   clientSecret: string
@@ -89,6 +92,22 @@ export async function deliverMetaConversionEvent(
   input: MetaDeliveryInput
 ): Promise<ProviderDeliveryResult> {
   const { delivery } = input
+  if (input.testEventCode && (input.environment ?? 'live') !== 'test') {
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'meta_test_code_live_forbidden',
+      redactedDiagnostic: 'Meta Test Events codes are restricted to test delivery'
+    }
+  }
+  if (input.testEventCode && !/^[a-z0-9_-]{4,128}$/i.test(input.testEventCode)) {
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'invalid_meta_test_event_code',
+      redactedDiagnostic: 'Meta Test Events code is not valid'
+    }
+  }
   if (!delivery.attribution.metaLeadId) {
     return {
       outcome: 'permanent_failure',
@@ -128,7 +147,8 @@ export async function deliverMetaConversionEvent(
           event_id: delivery.attribution.browserEventId ?? delivery.eventId,
           action_source: 'other',
           user_data: { lead_id: delivery.attribution.metaLeadId }
-        }]
+        }],
+        ...(input.testEventCode ? { test_event_code: input.testEventCode } : {})
       })
     }
   )
@@ -188,12 +208,20 @@ export async function deliverGoogleDataManagerEvent(
         transactionId: delivery.idempotencyKey,
         eventSource: 'WEB'
       }],
-      validateOnly: false
+      validateOnly: input.validateOnly ?? false
     })
   })
   if (!response.ok) return httpFailure('Google Data Manager', response.status)
 
   const body = await responseObject(response)
+  if (input.validateOnly) {
+    return {
+      outcome: 'accepted',
+      providerRequestId: null,
+      errorClass: null,
+      redactedDiagnostic: null
+    }
+  }
   if (typeof body.requestId !== 'string' || body.requestId.length === 0) {
     return {
       outcome: 'retryable',
