@@ -324,6 +324,9 @@ export class MondayClient {
                 value
                 text
               }
+              subitems {
+                id
+              }
             }
           }
         }
@@ -353,6 +356,9 @@ export class MondayClient {
                   type
                   value
                   text
+                }
+                subitems {
+                  id
                 }
               }
             }
