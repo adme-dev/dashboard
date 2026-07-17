@@ -4,6 +4,13 @@
 **Execution branch:** `feature/measurement-signal-hub-foundation`
 **Operating rule:** Zero owns configuration, delivery health, and rollout work. Monday remains migration input/history and receives only the governed final reconciliation.
 
+## Delivery status — 17 July 2026
+
+- **Complete:** T1 contract/ADR/threat-model foundation and T2 additive canonical schema.
+- **In progress:** T3 overall. The profile repository/service/API/cache slice is complete; destination, mapping, capability-health, and audit-history APIs remain.
+- **Pending evidence:** T0 Monday snapshot, pilot approval, and fresh Meta/Google identifier-bearing diagnostics. No provider readiness is inferred from an existing connection.
+- **Safety state:** All 58 seeded client profiles remain disabled in `test`; no destination, provider, Monday, or live-KV mutation has been performed.
+
 ## Graphic mapping
 
 ```mermaid
@@ -27,10 +34,10 @@ flowchart LR
   P5 --> P6
 
   subgraph G0["P0 subtasks"]
-    T0["T0 Pilot + board snapshot"] --> T1["T1 ADR + contracts + threat model"]
+    T0["T0 Pilot + board snapshot · evidence pending"] --> T1["T1 ADR + contracts + threat model · complete"]
   end
   subgraph G1["P1 subtasks"]
-    T2["T2 Canonical schema"] --> T3["T3 Repositories + APIs"] --> T4["T4 Internal configuration UI"]
+    T2["T2 Canonical schema · complete"] --> T3["T3 Repositories + APIs · in progress"] --> T4["T4 Internal configuration UI"]
   end
   subgraph G2["P2 subtasks"]
     T4A["T4A Import Monday jobs into Zero"]
@@ -233,12 +240,10 @@ flowchart LR
 - **Done when:** Monday matches the accepted final Zero state, contains no secrets/PII, and staff use Zero for all future rollout work.
 - **Depends on:** T18 and execution-time approval.
 
-## First development slice
+## Implementation ledger
 
-The first implementation slice is **T1 contract foundation**:
-
-1. define the capability, status, management-origin, profile, destination, and canonical-event contracts;
-2. make all profiles and destinations disabled/test by default;
-3. reject secret-bearing or malformed public configuration input;
-4. prove the contract with small deterministic Vitest tests;
-5. defer persistence, provider calls, and UI until the contract is green and reviewed.
+1. **T1 complete:** capability/profile/destination/event contracts, ADR, threat model, provider-readiness R&D, and deterministic contract tests.
+2. **T2 complete:** migration `256`, schema contract tests, rollback/forward-fix runbook, disabled/test seed, idempotent apply, and Neon readback.
+3. **T3 profile slice complete:** optimistic versioning, same-transaction audit, tenant-scoped Postgres repository, strict profile service, redacted KV projection, stale-writer repair, permission/assignment guard, and GET/PUT agency endpoints.
+4. **T3 next:** destination/capability/mapping repositories and APIs, readiness evidence records, audit-history reads, and dedicated live-activation approval gate.
+5. **T4 after T3 boundary:** internal Measurement configuration and delivery-health dashboard, followed by the redacted client-portal surface.
