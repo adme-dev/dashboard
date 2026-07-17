@@ -89,4 +89,23 @@ describe('Measurement client access', () => {
 
     expect(mockQueryOne).not.toHaveBeenCalled()
   })
+
+  it('restricts approval and activation actions to measurement management roles', async () => {
+    mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'media_buyer' })
+    mockQueryOne.mockResolvedValue({ '?column?': 1 })
+    const { requireMeasurementActivationAccess } = await import(
+      '../../../../server/utils/measurement/access'
+    )
+
+    await expect(requireMeasurementActivationAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111'
+    )).rejects.toMatchObject({ statusCode: 403 })
+
+    mockRequirePermission.mockResolvedValue({ id: 'staff-2', role: 'admin' })
+    await expect(requireMeasurementActivationAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111'
+    )).resolves.toMatchObject({ role: 'admin' })
+  })
 })

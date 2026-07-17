@@ -391,6 +391,38 @@ export const RecordDestinationValidationEvidenceSchema = z.strictObject({
   })
 })
 
+export const MeasurementApprovalKindSchema = z.enum(['privacy', 'live'])
+const MeasurementTeamActorSchema = z.strictObject({
+  type: z.literal('team_member'),
+  id: z.string().uuid()
+})
+
+export const ApproveMeasurementActivationSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  expectedConfigVersion: z.number().int().positive(),
+  approvalKind: MeasurementApprovalKindSchema,
+  actor: MeasurementTeamActorSchema,
+  reason: z.string().trim().min(1).max(1000)
+})
+
+export const ActivateMeasurementProfileSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  expectedConfigVersion: z.number().int().positive(),
+  actor: MeasurementTeamActorSchema,
+  reason: z.string().trim().min(1).max(1000)
+})
+
+export const MeasurementActivationApprovalSchema = z.strictObject({
+  id: z.string().uuid(),
+  clientId: z.string().uuid(),
+  profileId: z.string().uuid(),
+  configVersion: z.number().int().positive(),
+  approvalKind: MeasurementApprovalKindSchema,
+  approvedBy: z.string().uuid(),
+  reason: z.string().trim().min(1).max(1000),
+  createdAt: z.string().datetime({ offset: true })
+})
+
 export const ConversionDestinationCapabilityStateSchema = z.strictObject({
   id: z.string().uuid(),
   destinationId: z.string().uuid(),
@@ -461,7 +493,9 @@ export const MeasurementConfigAuditActionSchema = z.enum([
   'enabled',
   'disabled',
   'paused',
-  'validated'
+  'validated',
+  'approved',
+  'activated'
 ])
 
 export const MeasurementAuditEntrySchema = z.strictObject({
@@ -594,6 +628,9 @@ export type ConversionDestinationCreate = z.infer<typeof ConversionDestinationCr
 export type CreateConversionDestinationConfiguration = z.infer<typeof CreateConversionDestinationConfigurationSchema>
 export type UpdateConversionDestinationConfiguration = z.infer<typeof UpdateConversionDestinationConfigurationSchema>
 export type RecordDestinationValidationEvidence = z.infer<typeof RecordDestinationValidationEvidenceSchema>
+export type ApproveMeasurementActivation = z.infer<typeof ApproveMeasurementActivationSchema>
+export type ActivateMeasurementProfile = z.infer<typeof ActivateMeasurementProfileSchema>
+export type MeasurementActivationApproval = z.infer<typeof MeasurementActivationApprovalSchema>
 export type ConversionDestinationReadModel = z.infer<typeof ConversionDestinationReadModelSchema>
 export type ConversionDestinationCapabilityState = z.infer<typeof ConversionDestinationCapabilityStateSchema>
 export type ConversionEventMappingState = z.infer<typeof ConversionEventMappingStateSchema>

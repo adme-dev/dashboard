@@ -86,7 +86,11 @@ describe('Postgres measurement read repository', () => {
       },
       lastValidatedAt: '2026-07-17T02:00:00.000Z'
     })
-    expect(queryOne).toHaveBeenCalledWith(expect.stringMatching(/WHERE p\.client_id = \$1/), [CLIENT_ID])
+    const readinessSql = queryOne.mock.calls[0]?.[0] as string
+    expect(readinessSql).toMatch(/WHERE p\.client_id = \$1/)
+    expect(readinessSql).toMatch(/FROM measurement_activation_approvals/)
+    expect(readinessSql).toMatch(/a\.config_version = p\.config_version/)
+    expect(queryOne).toHaveBeenCalledWith(expect.any(String), [CLIENT_ID])
     expect(JSON.stringify(result)).not.toMatch(/providerRequest|redactedError|payload/i)
   })
 })

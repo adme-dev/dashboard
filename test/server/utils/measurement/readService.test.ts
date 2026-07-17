@@ -78,14 +78,13 @@ describe('Measurement read service', () => {
     expect(result.status).toBe('blocked')
     expect(result.liveEligible).toBe(false)
     expect(result.blockers.map(blocker => blocker.code)).toEqual(expect.arrayContaining([
-      'profile_disabled',
       'cache_stale',
       'destination_not_ready',
       'capability_blocked',
       'live_approval_missing',
-      'privacy_approval_missing',
-      'activation_gate_unavailable'
+      'privacy_approval_missing'
     ]))
+    expect(result.blockers.map(blocker => blocker.code)).not.toContain('activation_gate_unavailable')
   })
 
   it('keeps fully evidenced delivery separate from live activation eligibility', async () => {
@@ -111,11 +110,33 @@ describe('Measurement read service', () => {
     const result = await test.service.getReadiness(CLIENT_ID)
 
     expect(result.status).toBe('ready')
-    expect(result.liveEligible).toBe(false)
-    expect(result.blockers).toEqual([{
-      code: 'activation_gate_unavailable',
-      message: 'Live activation remains locked until the dedicated approval gate is implemented'
-    }])
+    expect(result.liveEligible).toBe(true)
+    expect(result.blockers).toEqual([])
+  })
+
+  it('marks a disabled test profile live-eligible when current evidence and approvals pass', async () => {
+    const test = harness(evidence({
+      profile: { enabled: false, environment: 'test', cacheStatus: 'fresh' },
+      liveApproved: true,
+      privacyApproved: true,
+      counts: {
+        destinations: 1,
+        readyDestinations: 1,
+        degradedDestinations: 0,
+        blockedDestinations: 0,
+        capabilities: 2,
+        readyCapabilities: 2,
+        degradedCapabilities: 0,
+        blockedCapabilities: 0,
+        activeMappings: 1
+      }
+    }))
+
+    const result = await test.service.getReadiness(CLIENT_ID)
+
+    expect(result.status).toBe('ready')
+    expect(result.liveEligible).toBe(true)
+    expect(result.blockers).toEqual([])
   })
 
   it('does not report ready when a nested capability lacks ready evidence', async () => {

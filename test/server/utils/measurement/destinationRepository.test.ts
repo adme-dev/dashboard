@@ -224,6 +224,8 @@ describe('Postgres measurement destination repository', () => {
       expect.stringMatching(/INSERT INTO measurement_config_audit/)
     ])
     const destinationInsert = statements[3]!
+    expect(statements[2]!.sql).toMatch(/live_approved_by = NULL/)
+    expect(statements[2]!.sql).toMatch(/privacy_approved_by = NULL/)
     expect(destinationInsert.params).toContain(false)
     expect(destinationInsert.params).toContain('test')
     expect(destinationInsert.params).toContain(2)

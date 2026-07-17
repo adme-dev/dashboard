@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ActivateMeasurementProfileSchema,
+  ApproveMeasurementActivationSchema,
   CanonicalConversionEventSchema,
   ClientMeasurementProfileCreateSchema,
   ConversionDestinationCreateSchema,
@@ -400,6 +402,47 @@ describe('RecordDestinationValidationEvidenceSchema', () => {
       ...evidence,
       actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
       providerResponse: { access_token: 'must-not-enter-health-state' }
+    }).success).toBe(false)
+  })
+})
+
+describe('Measurement activation command schemas', () => {
+  it('accepts separate version-bound privacy and live approval commands', () => {
+    const approval = ApproveMeasurementActivationSchema.parse({
+      clientId: CLIENT_ID,
+      expectedConfigVersion: 3,
+      approvalKind: 'privacy',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      reason: 'Consent and data-processing configuration reviewed'
+    })
+
+    expect(approval.approvalKind).toBe('privacy')
+  })
+
+  it('rejects system/client actors and client-supplied approval identities', () => {
+    expect(ApproveMeasurementActivationSchema.safeParse({
+      clientId: CLIENT_ID,
+      expectedConfigVersion: 3,
+      approvalKind: 'live',
+      approvedBy: '99999999-9999-4999-8999-999999999999',
+      actor: { type: 'system', id: 'spoofed' },
+      reason: 'Unsafe approval'
+    }).success).toBe(false)
+  })
+
+  it('accepts a version-bound activation command without client-controlled state', () => {
+    const activation = ActivateMeasurementProfileSchema.parse({
+      clientId: CLIENT_ID,
+      expectedConfigVersion: 3,
+      actor: { type: 'team_member', id: '44444444-4444-4444-8444-444444444444' },
+      reason: 'All readiness and approval gates passed'
+    })
+
+    expect(activation.expectedConfigVersion).toBe(3)
+    expect(ActivateMeasurementProfileSchema.safeParse({
+      ...activation,
+      enabled: true,
+      environment: 'live'
     }).success).toBe(false)
   })
 })

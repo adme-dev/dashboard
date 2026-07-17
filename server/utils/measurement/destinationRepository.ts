@@ -351,6 +351,10 @@ export function createPostgresMeasurementDestinationRepository(
                     cache_status = 'not_published',
                     cache_version = NULL,
                     cache_error_class = NULL,
+                    live_approved_by = NULL,
+                    live_approved_at = NULL,
+                    privacy_approved_by = NULL,
+                    privacy_approved_at = NULL,
                     updated_by = $3
               WHERE client_id = $1
                 AND config_version = $2

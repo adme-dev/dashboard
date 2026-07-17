@@ -30,3 +30,17 @@ export async function requireMeasurementClientAccess(
   }
   return user
 }
+
+export async function requireMeasurementActivationAccess(
+  event: H3Event,
+  clientId: string | undefined
+) {
+  const user = await requireMeasurementClientAccess(event, clientId, 'configure')
+  if (!(MANAGEMENT_ROLES as readonly string[]).includes(user.role)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Measurement activation requires a management role'
+    })
+  }
+  return user
+}

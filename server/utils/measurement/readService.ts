@@ -33,7 +33,10 @@ function notFoundError() {
   )
 }
 
-function readinessStatus(evidence: MeasurementReadinessEvidence) {
+function readinessStatus(
+  evidence: MeasurementReadinessEvidence,
+  blockers: ReadinessBlocker[]
+) {
   if (evidence.profile.environment === 'paused') return 'paused' as const
   if (evidence.counts.blockedDestinations > 0 || evidence.counts.blockedCapabilities > 0) {
     return 'blocked' as const
@@ -41,22 +44,12 @@ function readinessStatus(evidence: MeasurementReadinessEvidence) {
   if (evidence.counts.degradedDestinations > 0 || evidence.counts.degradedCapabilities > 0) {
     return 'degraded' as const
   }
-  if (
-    !evidence.profile.enabled
-    || evidence.counts.destinations === 0
-    || evidence.counts.readyDestinations !== evidence.counts.destinations
-    || evidence.counts.capabilities === 0
-    || evidence.counts.readyCapabilities !== evidence.counts.capabilities
-    || evidence.counts.activeMappings === 0
-  ) return 'onboarding' as const
+  if (blockers.length > 0) return 'onboarding' as const
   return 'ready' as const
 }
 
 function readinessBlockers(evidence: MeasurementReadinessEvidence): ReadinessBlocker[] {
   const blockers: ReadinessBlocker[] = []
-  if (!evidence.profile.enabled) {
-    blockers.push({ code: 'profile_disabled', message: 'Measurement profile is disabled' })
-  }
   if (evidence.profile.environment === 'paused') {
     blockers.push({ code: 'profile_paused', message: 'Measurement profile is paused' })
   }
@@ -101,10 +94,6 @@ function readinessBlockers(evidence: MeasurementReadinessEvidence): ReadinessBlo
       message: 'Privacy and consent approval has not been recorded'
     })
   }
-  blockers.push({
-    code: 'activation_gate_unavailable',
-    message: 'Live activation remains locked until the dedicated approval gate is implemented'
-  })
   return blockers
 }
 
@@ -123,15 +112,16 @@ export function createMeasurementReadService(deps: MeasurementReadServiceDeps) {
       const evidence = await deps.repository.getReadinessEvidence(clientResult.data)
       if (!evidence) throw notFoundError()
 
+      const blockers = readinessBlockers(evidence)
       return MeasurementReadinessSummarySchema.parse({
         clientId: evidence.clientId,
         profileId: evidence.profileId,
         configVersion: evidence.configVersion,
-        status: readinessStatus(evidence),
-        liveEligible: false,
+        status: readinessStatus(evidence, blockers),
+        liveEligible: blockers.length === 0,
         profile: evidence.profile,
         counts: evidence.counts,
-        blockers: readinessBlockers(evidence),
+        blockers,
         lastValidatedAt: evidence.lastValidatedAt,
         lastSuccessAt: evidence.lastSuccessAt
       })

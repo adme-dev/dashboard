@@ -166,8 +166,8 @@ export function createPostgresMeasurementReadRepository(
                 p.enabled AS profile_enabled,
                 p.environment AS profile_environment,
                 p.cache_status,
-                (p.live_approved_at IS NOT NULL) AS live_approved,
-                (p.privacy_approved_at IS NOT NULL) AS privacy_approved,
+                COALESCE(approvals.live_approved, FALSE) AS live_approved,
+                COALESCE(approvals.privacy_approved, FALSE) AS privacy_approved,
                 COALESCE(d.destinations, 0) AS destinations,
                 COALESCE(d.ready_destinations, 0) AS ready_destinations,
                 COALESCE(d.degraded_destinations, 0) AS degraded_destinations,
@@ -180,6 +180,14 @@ export function createPostgresMeasurementReadRepository(
                 d.last_validated_at,
                 d.last_success_at
            FROM client_measurement_profiles p
+           LEFT JOIN LATERAL (
+             SELECT BOOL_OR(a.approval_kind = 'live') AS live_approved,
+                    BOOL_OR(a.approval_kind = 'privacy') AS privacy_approved
+               FROM measurement_activation_approvals a
+              WHERE a.client_id = p.client_id
+                AND a.profile_id = p.id
+                AND a.config_version = p.config_version
+           ) approvals ON TRUE
            LEFT JOIN LATERAL (
              SELECT COUNT(*) AS destinations,
                     COUNT(*) FILTER (WHERE health_status = 'ready') AS ready_destinations,

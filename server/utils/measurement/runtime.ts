@@ -1,5 +1,7 @@
 import type { H3Event } from 'h3'
 import { getKV } from '~~/server/utils/kv'
+import { createPostgresMeasurementActivationRepository } from '~~/server/utils/measurement/activationRepository'
+import { createMeasurementActivationService } from '~~/server/utils/measurement/activationService'
 import { createPostgresMeasurementDestinationRepository } from '~~/server/utils/measurement/destinationRepository'
 import { createMeasurementDestinationService } from '~~/server/utils/measurement/destinationService'
 import { createMeasurementProfileCachePublisher } from '~~/server/utils/measurement/profileCache'
@@ -41,5 +43,14 @@ export function createMeasurementDestinationRuntime(event: H3Event) {
 export function createMeasurementReadRuntime() {
   return createMeasurementReadService({
     repository: createPostgresMeasurementReadRepository()
+  })
+}
+
+export function createMeasurementActivationRuntime(event: H3Event) {
+  const profileRepository = createPostgresMeasurementProfileRepository()
+  return createMeasurementActivationService({
+    repository: createPostgresMeasurementActivationRepository(),
+    profileRepository,
+    cache: createMeasurementRuntimeCache(event)
   })
 }

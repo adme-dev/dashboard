@@ -116,6 +116,8 @@ describe('Postgres measurement profile repository', () => {
       expect.stringMatching(/config_version = config_version \+ 1/),
       expect.stringMatching(/INSERT INTO measurement_config_audit/)
     ])
+    expect(queries[1]!.sql).toMatch(/live_approved_by = NULL/)
+    expect(queries[1]!.sql).toMatch(/privacy_approved_by = NULL/)
 
     const audit = queries[2]!
     expect(audit.params).toContain('Prepare first-party collection in test mode')
