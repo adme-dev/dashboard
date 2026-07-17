@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const ofetchMock = vi.fn()
 
 vi.mock('ofetch', () => ({
-  ofetch: ofetchMock,
+  ofetch: ofetchMock
 }))
 
 describe('MondayClient GraphQL schema compatibility', () => {
@@ -39,6 +39,9 @@ describe('MondayClient GraphQL schema compatibility', () => {
 
     for (const call of ofetchMock.mock.calls.slice(-3)) {
       expect(call[1]?.body?.query).toMatch(/\n\s+url\s*\n/)
+    }
+    for (const call of ofetchMock.mock.calls.slice(0, 2)) {
+      expect(call[1]?.body?.query).toMatch(/subitems\s*{\s*id\s*}/)
     }
   })
 
