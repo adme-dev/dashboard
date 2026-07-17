@@ -251,6 +251,21 @@ const DestinationConfigurationInputSchema = z.strictObject({
     }
   })
 
+  const hasConfiguredZeroCapability = destination.capabilities.some(capability => (
+    capability.managementOrigin === 'zero' && capability.status === 'configured'
+  ))
+  if (
+    hasConfiguredZeroCapability
+    && destination.socialConnectionId === null
+    && destination.credentialRef === null
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['credentialRef'],
+      message: 'Zero-managed configured capabilities require a connection or credential reference'
+    })
+  }
+
   const canonicalNames = new Set<string>()
   destination.mappings.forEach((mapping, index) => {
     if (canonicalNames.has(mapping.canonicalEventName)) {

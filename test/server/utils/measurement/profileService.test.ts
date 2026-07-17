@@ -300,6 +300,20 @@ describe('Measurement profile service', () => {
     expect(result.warnings).toEqual([{ code: 'MEASUREMENT_CACHE_STALE' }])
   })
 
+  it('returns one cache warning when publication and exact-version health recording both fail', async () => {
+    const test = harness({ cacheFailure: true, cacheStatusRejected: true })
+
+    const result = await test.service.update({
+      clientId: CLIENT_ID,
+      expectedVersion: 1,
+      reason: 'Prepare a dormant test profile',
+      actor: { type: 'system', id: 'measurement-bootstrap' },
+      patch: { vertical: 'automotive-retail' }
+    })
+
+    expect(result.warnings).toEqual([{ code: 'MEASUREMENT_CACHE_STALE' }])
+  })
+
   it('repairs cache from Neon when a newer profile wins during publication', async () => {
     const test = harness({ concurrentNewerVersion: true })
 

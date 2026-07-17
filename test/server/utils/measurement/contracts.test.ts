@@ -234,6 +234,27 @@ describe('CreateConversionDestinationConfigurationSchema', () => {
 
     expect(result.success).toBe(false)
   })
+
+  it('requires a credential source before a Zero-managed capability is configured', () => {
+    const result = CreateConversionDestinationConfigurationSchema.safeParse({
+      clientId: CLIENT_ID,
+      expectedProfileVersion: 1,
+      reason: 'Missing credential source',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      destination: {
+        platform: 'meta',
+        externalDestinationId: '573284833843027',
+        capabilities: [{
+          mode: 'meta_crm_capi',
+          status: 'configured',
+          managementOrigin: 'zero',
+          canZeroMutate: true
+        }]
+      }
+    })
+
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('ConversionDestinationReadModelSchema', () => {

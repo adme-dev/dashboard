@@ -49,7 +49,9 @@ function notFoundError() {
   )
 }
 
-function cacheProjection(profile: MeasurementProfile): MeasurementProfileCacheProjection {
+export function toMeasurementProfileCacheProjection(
+  profile: MeasurementProfile
+): MeasurementProfileCacheProjection {
   return {
     profileId: profile.id,
     clientId: profile.clientId,
@@ -64,8 +66,8 @@ function cacheProjection(profile: MeasurementProfile): MeasurementProfileCachePr
   }
 }
 
-async function repairCacheFromCanonical(
-  deps: MeasurementProfileServiceDeps,
+export async function repairMeasurementProfileCacheFromCanonical(
+  deps: Pick<MeasurementProfileServiceDeps, 'repository' | 'cache'>,
   supersededProfile: MeasurementProfile
 ): Promise<void> {
   let observedVersion = supersededProfile.configVersion
@@ -80,7 +82,7 @@ async function repairCacheFromCanonical(
     if (!latest || latest.configVersion <= observedVersion) return
 
     try {
-      await deps.cache.publish(cacheProjection(latest))
+      await deps.cache.publish(toMeasurementProfileCacheProjection(latest))
     } catch {
       try {
         await deps.repository.recordCachePublication({
@@ -181,7 +183,7 @@ export function createMeasurementProfileService(deps: MeasurementProfileServiceD
       let cacheErrorClass: string | null = null
 
       try {
-        await deps.cache.publish(cacheProjection(persisted.profile))
+        await deps.cache.publish(toMeasurementProfileCacheProjection(persisted.profile))
       } catch {
         cacheStatus = 'stale'
         cacheErrorClass = 'cache_publication_failed'
@@ -197,8 +199,8 @@ export function createMeasurementProfileService(deps: MeasurementProfileServiceD
           errorClass: cacheErrorClass
         })
         if (!cacheHealthRecorded) {
-          warnings.push({ code: 'MEASUREMENT_CACHE_STALE' })
-          await repairCacheFromCanonical(deps, persisted.profile)
+          if (warnings.length === 0) warnings.push({ code: 'MEASUREMENT_CACHE_STALE' })
+          await repairMeasurementProfileCacheFromCanonical(deps, persisted.profile)
           return { profile: persisted.profile, warnings }
         }
       } catch {
