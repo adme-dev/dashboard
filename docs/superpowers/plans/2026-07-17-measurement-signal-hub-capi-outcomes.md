@@ -1,12 +1,14 @@
 # Zero Measurement Signal Hub — CAPI, Outcome Feedback, and Delivery Health Plan
 
 **Date:** 17 July 2026
-**Status:** Proposed implementation plan
+**Status:** Implementation in progress — transactional outcomes, outbox, queue publication, and provider ingestion are built; no live destination is activated
 **Primary owner:** Digital / Media Operations
 **Primary users:** ADME media/ops staff; client portal users
 **Current incumbent job board:** [Meta CAPI Rollout — Monday board 18422459929](https://adme2.monday.com/boards/18422459929)
 **Source PRD:** `/Users/paulgiurin/Downloads/meta-capi-rollout-prd.md`
 **Parent/subtask execution backlog:** [Measurement Signal Hub execution backlog](./2026-07-17-measurement-signal-hub-execution-backlog.md)
+
+**Production implementation update (17 July 2026):** Zero now has the dormant production path from a native CRM stage move through immutable lifecycle evidence, a deterministic transactional conversion outbox, repairable Queue publication, and a standalone Hyperdrive-backed delivery Worker. Meta CRM CAPI and Google Data Manager ingestion adapters are implemented. Production certification is not complete: Google request-status polling, provider test evidence, infrastructure/secrets provisioning, OAuth re-consent, and the internal/client delivery-health surfaces remain open. No live client profile or destination has been enabled and no provider event has been sent.
 
 ## 1. Outcome
 

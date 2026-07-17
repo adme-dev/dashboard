@@ -6,10 +6,11 @@
 
 ## Delivery status — 17 July 2026
 
-- **Complete:** T1 contract/ADR/threat-model foundation and T2 additive canonical schema.
-- **In progress:** T3 overall. Canonical profile, destination, capability, mapping, optional outcome-endpoint, audit, delivery-health evidence, readiness, and governed activation control-plane paths are complete. Provider validation/test actions, outcome-endpoint promotion/rotation, and event/delivery runtime repositories remain for the later adapter and delivery slices.
-- **Pending evidence:** T0 Monday snapshot, pilot approval, and fresh Meta/Google identifier-bearing diagnostics. No provider readiness is inferred from an existing connection.
-- **Safety state:** All 58 seeded client profiles remain disabled in `test`; no destination, provider, Monday, or live-KV mutation has been performed.
+- **Complete in code:** T1 contracts/governance, T2 additive schema, the T5–T6 native CRM/portal transactional outcome path, T8 transactional outbox and repair publisher, and the T11 provider-neutral delivery Worker foundation.
+- **Adapter implementation complete:** T12 Meta CRM CAPI ingestion and T13 Google Data Manager ingestion are implemented behind dormant destination policy. Both classify retryable/permanent failures, store redacted attempt evidence, and keep provider calls outside the lifecycle request transaction.
+- **In progress:** T3 provider validation/test actions and endpoint rotation; T12 provider certification; and T13 terminal request-status reconciliation. Google ingestion currently records the returned `requestId` as accepted, but automated diagnostics polling is still required before Zero can call it delivered.
+- **Pending surfaces/evidence:** T0 Monday snapshot and pilot approval; T4 configuration UI; T9–T10 browser dedup/first-party transport; T14–T15 internal/client health; queue/Hyperdrive/secrets provisioning; Google `datamanager` re-consent; and fresh Meta/Google identifier-bearing test evidence.
+- **Safety state:** All seeded client profiles remain disabled in `test`; the latest production readback found no enabled profile or destination. Migration `260` is applied with no active lifecycle mappings, and no provider event, Monday write, or live-KV mutation has been performed.
 
 ## Graphic mapping
 
@@ -37,21 +38,21 @@ flowchart LR
     T0["T0 Pilot + board snapshot · evidence pending"] --> T1["T1 ADR + contracts + threat model · complete"]
   end
   subgraph G1["P1 subtasks"]
-    T2["T2 Canonical schema · complete"] --> T3["T3 Repositories + APIs · in progress"] --> T4["T4 Internal configuration UI"]
+    T2["T2 Canonical schema · complete"] --> T3["T3 Control plane · adapters pending"] --> T4["T4 Internal configuration UI · pending"]
   end
   subgraph G2["P2 subtasks"]
     T4A["T4A Import Monday jobs into Zero"]
   end
   subgraph G3["P3 subtasks"]
-    T5["T5 Shared lifecycle services"] --> T6["T6 Portal-native CRM flow"]
+    T5["T5 Shared lifecycle services · code complete"] --> T6["T6 Portal-native CRM flow · server complete"]
     T5 --> T7["T7 External outcome webhook"]
-    T5 --> T8["T8 Transactional outbox"]
+    T5 --> T8["T8 Transactional outbox · complete"]
   end
   subgraph G4["P4 subtasks"]
     T8 --> T9["T9 Browser/server dedup"] --> T10["T10 First-party transport"]
-    T8 --> T11["T11 Delivery Worker"]
-    T11 --> T12["T12 Meta adapter"]
-    T11 --> T13["T13 Google Data Manager adapter"]
+    T8 --> T11["T11 Delivery Worker · code complete"]
+    T11 --> T12["T12 Meta adapter · certification pending"]
+    T11 --> T13["T13 Google adapter · diagnostics pending"]
   end
   subgraph G5["P5 subtasks"]
     T12 --> T14["T14 Internal health + replay"]
@@ -243,10 +244,12 @@ flowchart LR
 ## Implementation ledger
 
 1. **T1 complete:** capability/profile/destination/event contracts, ADR, threat model, provider-readiness R&D, and deterministic contract tests.
-2. **T2 complete:** migration `256`, schema contract tests, rollback/forward-fix runbook, disabled/test seed, idempotent apply, and Neon readback.
-3. **T3 profile slice complete:** optimistic versioning, same-transaction audit, tenant-scoped Postgres repository, strict profile service, redacted KV projection, stale-writer repair, permission/assignment guard, and GET/PUT agency endpoints.
-4. **T3 destination/read slice complete:** migration `257` enforces client ownership for linked social connections; destination/capability/mapping create, list, and fail-closed update operations are versioned, tenant-scoped, dormant by default, and credential-redacted; audit-history reads return metadata only.
-5. **T3 health/activation slice complete:** system-only validation evidence rejects stale config versions and derives destination health; migration `259` adds immutable current-version privacy/live approvals from distinct management users; readiness exposes real gate blockers; activation atomically enables the profile and ready destinations only after every canonical gate passes.
-6. **T3 outcome-authority slice complete:** Zero-native CRM remains the default with no webhook dependency; external-CRM cohorts can create/list disabled outcome endpoint policy with server-generated identity and opaque secret references, and cannot activate until a tested endpoint exists.
-7. **T3 next:** provider validation/test actions, endpoint rotation and system-owned status promotion, then event/delivery repositories as T7–T13 introduce signed webhooks and provider adapters.
-8. **T4 after the configuration boundary:** internal Measurement configuration and delivery-health dashboard, followed by the redacted client-portal surface.
+2. **T2 complete:** migrations `256`–`260`, schema contract tests, rollback/forward-fix runbook, disabled/test seed, idempotent apply, and Neon readback. Migration `260` adds lifecycle-stage outcome mappings and is applied with zero active mappings.
+3. **T3 control-plane slices complete:** versioned tenant-safe profiles, destinations, capabilities, mappings, privacy/live approvals, audit history, readiness, governed activation, and dormant external outcome-endpoint policy. Provider validation/test actions plus endpoint rotation/promotion remain.
+4. **T5–T6 server path complete:** commit `c54b9ff1` makes agency and portal CRM opportunity moves optimistic and transactional, writes immutable lifecycle evidence, applies client-scoped mapping, and inserts one canonical outbox event in the same transaction. Portal browser/UI acceptance remains with T6/T15.
+5. **T8 complete:** commits `a8d8e3fe` and `94091f7e` add deterministic event idempotency, transactional outbox creation, minimal queue messages, post-commit publication, a protected five-minute repair endpoint, and recovery for pending, retryable, and lease-expired work.
+6. **T11 code complete:** commit `4e60490c` adds the standalone Queue/Hyperdrive Worker, tenant-scoped `SKIP LOCKED` claims, immutable attempts, redacted logs, independent provider fan-out, retry/backoff, stale-claim recovery, DLQ binding, configuration tests, and a deployment runbook. Cloudflare resources and secrets are intentionally not provisioned yet.
+7. **T12 adapter code complete; certification open:** Meta CRM CAPI sends the mapped event, valid event time/action source, stable event ID, and retained Meta lead ID to the configured dataset. Test Events, dedup, eligibility, and live provider evidence remain release gates.
+8. **T13 ingestion code complete; diagnostics open:** Google Data Manager ingestion uses the configured Google Ads account/conversion action, click identifier, event timestamp, and stable transaction ID, and stores the returned request ID. Existing OAuth grants require explicit `datamanager` re-consent; the scheduled 30-minute-to-24-hour terminal diagnostics reconciler is not yet implemented.
+9. **Quality evidence:** Worker typecheck passes independently; new production files pass scoped ESLint; provider, processor, repository, queue publisher, repair route, binding, and Worker configuration tests pass as separately spaced test-file runs. The legacy `googleAdsClient.ts` still has pre-existing repository lint debt; this slice changes only its scope constant.
+10. **Next production slices:** implement Google diagnostics reconciliation, then T4/T14/T15 configuration and health surfaces, perform dormant infrastructure deployment, and run the approved pilot evidence sequence. T18 must close in Zero before T19 performs the single final Monday reconciliation.
