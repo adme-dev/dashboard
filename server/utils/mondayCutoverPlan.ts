@@ -48,6 +48,7 @@ export interface MondayCutoverPlanInput {
   targetTasks: MondayCutoverTargetTask[]
   clients: MondayCutoverClient[]
   isSourceTruncated: boolean
+  isTargetTruncated?: boolean
 }
 
 const CutoverExceptionSchema = z.strictObject({
@@ -75,7 +76,8 @@ export const MondayCutoverPlanResponseSchema = z.strictObject({
     boardName: z.string().min(1).max(500),
     rootTasks: z.number().int().nonnegative(),
     subtasks: z.number().int().nonnegative(),
-    totalRecords: z.number().int().nonnegative()
+    totalRecords: z.number().int().nonnegative(),
+    isTruncated: z.boolean()
   }),
   columnMappings: z.array(z.strictObject({
     sourceColumnId: z.string().min(1).max(255),
@@ -267,6 +269,16 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
     })
   }
 
+  if (input.isTargetTruncated) {
+    exceptions.push({
+      code: 'TARGET_TRUNCATED',
+      severity: 'blocking',
+      sourceId: null,
+      columnId: null,
+      message: 'The Zero target exceeded the bounded dry-run read and cannot be reconciled completely.'
+    })
+  }
+
   for (const mapping of columnMappings.filter(mapping => mapping.action === 'review')) {
     exceptions.push({
       code: 'COLUMN_REVIEW_REQUIRED',
@@ -409,7 +421,8 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
       boardName: input.targetBoard.name,
       rootTasks,
       subtasks: targetSubtasks,
-      totalRecords: input.targetTasks.length
+      totalRecords: input.targetTasks.length,
+      isTruncated: Boolean(input.isTargetTruncated)
     },
     columnMappings,
     records,

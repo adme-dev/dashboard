@@ -237,4 +237,28 @@ describe('buildMondayCutoverPlan', () => {
     ]))
     expect(plan.summary).toEqual(expect.objectContaining({ ambiguous: 1, isReadyForImport: false }))
   })
+
+  it('blocks import when the Zero target inventory exceeds the dry-run safety cap', () => {
+    const plan = buildMondayCutoverPlan({
+      sourceBoard: {
+        id: '18422459929',
+        name: 'Meta CAPI Rollout',
+        state: 'active',
+        groups: [],
+        columns: []
+      },
+      sourceRecords: [],
+      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetTasks: [],
+      clients: [],
+      isSourceTruncated: false,
+      isTargetTruncated: true
+    })
+
+    expect(plan.target.isTruncated).toBe(true)
+    expect(plan.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'TARGET_TRUNCATED', severity: 'blocking' })
+    ]))
+    expect(plan.summary.isReadyForImport).toBe(false)
+  })
 })
