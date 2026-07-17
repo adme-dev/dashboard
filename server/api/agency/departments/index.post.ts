@@ -3,6 +3,7 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 
 interface CreateDepartmentBody {
   name: string
@@ -13,7 +14,15 @@ interface CreateDepartmentBody {
   managerId?: string
 }
 
+function hasDatabaseErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as { code?: unknown }).code === code
+}
+
 export default defineEventHandler(async (event) => {
+  await requireAuth(event)
   const body = await readBody<CreateDepartmentBody>(event)
 
   if (!body.name?.trim()) {
@@ -37,7 +46,7 @@ export default defineEventHandler(async (event) => {
       body.description?.trim() || null,
       body.color || '#6B7280',
       body.icon || 'folder',
-      body.managerId || null,
+      body.managerId || null
     ])
 
     return {
@@ -51,10 +60,10 @@ export default defineEventHandler(async (event) => {
       isActive: department.is_active,
       sortOrder: department.sort_order,
       createdAt: department.created_at,
-      updatedAt: department.updated_at,
+      updatedAt: department.updated_at
     }
-  } catch (error: any) {
-    if (error.code === '23505') { // Unique violation
+  } catch (error: unknown) {
+    if (hasDatabaseErrorCode(error, '23505')) { // Unique violation
       throw createError({
         statusCode: 409,
         statusMessage: 'A department with this slug already exists'
