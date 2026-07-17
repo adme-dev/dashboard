@@ -128,7 +128,9 @@ describe('Postgres measurement profile repository', () => {
     const repository = createPostgresMeasurementProfileRepository({
       queryOne: vi.fn() as never,
       execute: vi.fn() as never,
-      transaction: (async callback => callback(db as never)) as never
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
     })
 
     await expect(repository.update({

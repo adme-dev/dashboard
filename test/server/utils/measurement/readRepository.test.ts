@@ -6,8 +6,8 @@ const PROFILE_ID = '22222222-2222-4222-8222-222222222222'
 
 describe('Postgres measurement read repository', () => {
   it('paginates tenant-scoped audit metadata without selecting state JSON', async () => {
-    const queryOne = vi.fn(async () => ({ count: '1' }))
-    const query = vi.fn(async () => [{
+    const queryOne = vi.fn(async (_sql: string, _params?: unknown[]) => ({ count: '1' }))
+    const query = vi.fn(async (_sql: string, _params?: unknown[]) => [{
       id: '33333333-3333-4333-8333-333333333333',
       profile_id: PROFILE_ID,
       entity_type: 'destination',

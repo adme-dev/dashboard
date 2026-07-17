@@ -4,7 +4,7 @@ import { MeasurementError } from '../../../server/utils/measurement/errors'
 const mockRequireClientAccess = vi.fn()
 const mockGet = vi.fn()
 const mockUpdate = vi.fn()
-const mockRuntime = vi.fn(() => ({ get: mockGet, update: mockUpdate }))
+const mockRuntime = vi.fn((..._args: unknown[]) => ({ get: mockGet, update: mockUpdate }))
 let mockBody: Record<string, unknown> = {}
 
 vi.mock('~~/server/utils/measurement/access', () => ({

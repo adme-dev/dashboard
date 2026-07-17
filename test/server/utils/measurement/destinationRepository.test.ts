@@ -216,7 +216,9 @@ describe('Postgres measurement destination repository', () => {
     const repository = createPostgresMeasurementDestinationRepository({
       queryOne: vi.fn() as never,
       query: vi.fn() as never,
-      transaction: (async callback => callback(db as never)) as never
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
     })
 
     await expect(repository.create(createInput())).resolves.toEqual({
@@ -228,7 +230,7 @@ describe('Postgres measurement destination repository', () => {
 
   it('hides a connection that is inactive, wrong-platform, or owned by another client', async () => {
     const db = {
-      query: vi.fn(async (sql: string) => {
+      query: vi.fn(async (sql: string, _params: unknown[] = []) => {
         if (/FOR UPDATE/.test(sql)) return { rows: [profileRow(1)] }
         return { rows: [] }
       })
@@ -236,7 +238,9 @@ describe('Postgres measurement destination repository', () => {
     const repository = createPostgresMeasurementDestinationRepository({
       queryOne: vi.fn() as never,
       query: vi.fn() as never,
-      transaction: (async callback => callback(db as never)) as never
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
     })
 
     await expect(repository.create(createInput())).resolves.toEqual({ status: 'connection_not_found' })

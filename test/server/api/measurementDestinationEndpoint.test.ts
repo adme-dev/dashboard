@@ -6,7 +6,7 @@ const ACTOR_ID = '33333333-3333-4333-8333-333333333333'
 const mockRequireClientAccess = vi.fn()
 const mockList = vi.fn()
 const mockCreate = vi.fn()
-const mockRuntime = vi.fn(() => ({ list: mockList, create: mockCreate }))
+const mockRuntime = vi.fn((..._args: unknown[]) => ({ list: mockList, create: mockCreate }))
 let mockBody: Record<string, unknown> = {}
 let mockQuery: Record<string, string> = {}
 

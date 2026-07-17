@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { MeasurementDestinationRepository } from '../../../../server/utils/measurement/destinationRepository'
 import type { MeasurementProfileRepository } from '../../../../server/utils/measurement/profileRepository'
 import { createMeasurementDestinationService } from '../../../../server/utils/measurement/destinationService'
+import type { MeasurementProfileCacheProjection } from '../../../../server/utils/measurement/profileService'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const PROFILE_ID = '22222222-2222-4222-8222-222222222222'
@@ -113,7 +114,7 @@ function harness(options: {
       .mockResolvedValue(true)
   }
   const cache = {
-    publish: vi.fn(async () => {
+    publish: vi.fn(async (_projection: MeasurementProfileCacheProjection) => {
       if (options.cacheFailure) throw new Error('KV failure with internal details')
     })
   }

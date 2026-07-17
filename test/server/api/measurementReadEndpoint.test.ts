@@ -4,7 +4,7 @@ const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const mockRequireClientAccess = vi.fn()
 const mockListAudit = vi.fn()
 const mockGetReadiness = vi.fn()
-const mockRuntime = vi.fn(() => ({
+const mockRuntime = vi.fn((..._args: unknown[]) => ({
   listAudit: mockListAudit,
   getReadiness: mockGetReadiness
 }))

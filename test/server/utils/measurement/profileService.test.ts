@@ -5,7 +5,10 @@ import type {
   MeasurementProfileRepository,
   PersistProfileUpdate
 } from '../../../../server/utils/measurement/profileRepository'
-import { createMeasurementProfileService } from '../../../../server/utils/measurement/profileService'
+import {
+  createMeasurementProfileService,
+  type MeasurementProfileCacheProjection
+} from '../../../../server/utils/measurement/profileService'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const PROFILE_ID = '22222222-2222-4222-8222-222222222222'
@@ -80,7 +83,7 @@ function harness(options: {
   }
 
   const cache = {
-    publish: vi.fn(async () => {
+    publish: vi.fn(async (_projection: MeasurementProfileCacheProjection) => {
       operations.push('cache:publish')
       if (options.cacheFailure) throw new Error('KV unavailable with secret details')
       if (options.concurrentNewerVersion && cache.publish.mock.calls.length === 1) {

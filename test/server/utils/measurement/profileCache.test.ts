@@ -17,8 +17,12 @@ const projection: MeasurementProfileCacheProjection = {
 
 function cache(existing: string | null = null) {
   return {
-    get: vi.fn(async () => existing),
-    put: vi.fn(async () => {})
+    get: vi.fn(async (_key: string) => existing),
+    put: vi.fn(async (
+      _key: string,
+      _value: string,
+      _options: { expirationTtl: number }
+    ) => {})
   }
 }
 
