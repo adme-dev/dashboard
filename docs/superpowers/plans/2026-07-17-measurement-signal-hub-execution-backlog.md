@@ -7,7 +7,7 @@
 ## Delivery status — 17 July 2026
 
 - **Complete:** T1 contract/ADR/threat-model foundation and T2 additive canonical schema.
-- **In progress:** T3 overall. The profile repository/service/API/cache slice is complete; destination, mapping, capability-health, and audit-history APIs remain.
+- **In progress:** T3 overall. Profile configuration, dormant destination create/list, connection-tenant enforcement, metadata-only audit reads, and fail-closed readiness summaries are complete. Destination update/validation, outcome-endpoint, health-evidence mutation, and governed live-activation APIs remain.
 - **Pending evidence:** T0 Monday snapshot, pilot approval, and fresh Meta/Google identifier-bearing diagnostics. No provider readiness is inferred from an existing connection.
 - **Safety state:** All 58 seeded client profiles remain disabled in `test`; no destination, provider, Monday, or live-KV mutation has been performed.
 
@@ -245,5 +245,6 @@ flowchart LR
 1. **T1 complete:** capability/profile/destination/event contracts, ADR, threat model, provider-readiness R&D, and deterministic contract tests.
 2. **T2 complete:** migration `256`, schema contract tests, rollback/forward-fix runbook, disabled/test seed, idempotent apply, and Neon readback.
 3. **T3 profile slice complete:** optimistic versioning, same-transaction audit, tenant-scoped Postgres repository, strict profile service, redacted KV projection, stale-writer repair, permission/assignment guard, and GET/PUT agency endpoints.
-4. **T3 next:** destination/capability/mapping repositories and APIs, readiness evidence records, audit-history reads, and dedicated live-activation approval gate.
-5. **T4 after T3 boundary:** internal Measurement configuration and delivery-health dashboard, followed by the redacted client-portal surface.
+4. **T3 destination/read slice complete:** migration `257` enforces client ownership for linked social connections; destination/capability/mapping create and list operations are versioned, tenant-scoped, dormant by default, and credential-redacted; audit-history reads return metadata only; readiness is deterministic and fails closed while the activation gate is unavailable.
+5. **T3 next:** destination update, system-owned validation and delivery-health evidence, CRM/outcome endpoint configuration, and the dedicated two-person live-activation approval gate.
+6. **T4 after T3 boundary:** internal Measurement configuration and delivery-health dashboard, followed by the redacted client-portal surface.
