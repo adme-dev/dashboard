@@ -16,6 +16,15 @@ export const OutcomeAuthoritySchema = z.enum([
 ])
 export const NativeLifecycleModeSchema = z.enum(['crm_preferred', 'leads_only'])
 export const PortalOutcomeModeSchema = z.enum(['disabled', 'propose', 'authoritative'])
+export const CanonicalEventNameSchema = z.enum([
+  'lead_created',
+  'lead_contacted',
+  'lead_qualified',
+  'lead_won',
+  'lead_lost',
+  'purchase',
+  'web_conversion'
+])
 
 export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager'])
 export const CapabilityModeSchema = z.enum([
@@ -165,15 +174,161 @@ export const ConversionDestinationCreateSchema = z.strictObject({
   })
 })
 
-export const CanonicalEventNameSchema = z.enum([
-  'lead_created',
-  'lead_contacted',
-  'lead_qualified',
-  'lead_won',
-  'lead_lost',
-  'purchase',
-  'web_conversion'
+export const OperatorCapabilityStatusSchema = z.enum([
+  'not_configured',
+  'configured',
+  'blocked'
 ])
+
+export const DestinationCapabilityConfigurationSchema = z.strictObject({
+  mode: CapabilityModeSchema,
+  status: OperatorCapabilityStatusSchema.default('not_configured'),
+  managementOrigin: ManagementOriginSchema,
+  canZeroMutate: z.boolean().default(false),
+  blockingReason: z.string().trim().min(1).max(1000).nullable().default(null)
+}).superRefine((capability, ctx) => {
+  if (capability.managementOrigin !== 'zero' && capability.canZeroMutate) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['canZeroMutate'],
+      message: 'Only Zero-managed capabilities may be mutated by Zero'
+    })
+  }
+  if (capability.status === 'blocked' && capability.blockingReason === null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['blockingReason'],
+      message: 'Blocked capabilities require a reason'
+    })
+  }
+  if (capability.status !== 'blocked' && capability.blockingReason !== null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['blockingReason'],
+      message: 'Only blocked capabilities may include a blocking reason'
+    })
+  }
+})
+
+export const ConversionEventMappingConfigurationSchema = z.strictObject({
+  canonicalEventName: CanonicalEventNameSchema,
+  providerEventName: z.string().trim().min(1).max(255),
+  isActive: z.boolean().default(false)
+})
+
+const DestinationConfigurationInputSchema = z.strictObject({
+  platform: MeasurementPlatformSchema,
+  socialConnectionId: z.string().uuid().nullable().default(null),
+  externalDestinationId: z.string().trim().min(1).max(255),
+  credentialRef: OpaqueCredentialRefSchema.nullable().default(null),
+  capabilities: z.array(DestinationCapabilityConfigurationSchema)
+    .min(1)
+    .max(CapabilityModeSchema.options.length),
+  mappings: z.array(ConversionEventMappingConfigurationSchema)
+    .max(CanonicalEventNameSchema.options.length)
+    .default([])
+}).superRefine((destination, ctx) => {
+  const capabilityModes = new Set<string>()
+  destination.capabilities.forEach((capability, index) => {
+    if (capabilityModes.has(capability.mode)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['capabilities', index, 'mode'],
+        message: 'Capability modes must be unique within a destination'
+      })
+    }
+    capabilityModes.add(capability.mode)
+
+    const belongsToPlatform = destination.platform === 'meta'
+      ? capability.mode.startsWith('meta_')
+      : capability.mode.startsWith('google_')
+    if (!belongsToPlatform) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['capabilities', index, 'mode'],
+        message: 'Capability mode does not belong to the destination platform'
+      })
+    }
+  })
+
+  const canonicalNames = new Set<string>()
+  destination.mappings.forEach((mapping, index) => {
+    if (canonicalNames.has(mapping.canonicalEventName)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['mappings', index, 'canonicalEventName'],
+        message: 'Canonical event mappings must be unique within a destination'
+      })
+    }
+    canonicalNames.add(mapping.canonicalEventName)
+  })
+})
+
+export const CreateConversionDestinationConfigurationSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  expectedProfileVersion: z.number().int().positive(),
+  reason: z.string().trim().min(1).max(1000),
+  actor: MeasurementActorSchema,
+  destination: DestinationConfigurationInputSchema
+})
+
+export const ConversionDestinationCapabilityStateSchema = z.strictObject({
+  id: z.string().uuid(),
+  destinationId: z.string().uuid(),
+  platform: MeasurementPlatformSchema,
+  mode: CapabilityModeSchema,
+  status: CapabilityStatusSchema,
+  managementOrigin: ManagementOriginSchema,
+  canZeroMutate: z.boolean(),
+  evidenceAt: z.string().datetime({ offset: true }).nullable(),
+  blockingReason: z.string().trim().min(1).max(1000).nullable(),
+  configVersion: z.number().int().positive(),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true })
+})
+
+export const ConversionEventMappingStateSchema = z.strictObject({
+  id: z.string().uuid(),
+  destinationId: z.string().uuid(),
+  canonicalEventName: CanonicalEventNameSchema,
+  providerEventName: z.string().trim().min(1).max(255),
+  isActive: z.boolean(),
+  configVersion: z.number().int().positive(),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true })
+})
+
+export const ConversionDestinationReadModelSchema = z.strictObject({
+  id: z.string().uuid(),
+  clientId: z.string().uuid(),
+  profileId: z.string().uuid(),
+  platform: MeasurementPlatformSchema,
+  socialConnectionId: z.string().uuid().nullable(),
+  externalDestinationId: z.string().trim().min(1).max(255),
+  credentialConfigured: z.boolean(),
+  enabled: z.boolean(),
+  environment: MeasurementEnvironmentSchema,
+  healthStatus: CapabilityStatusSchema,
+  configVersion: z.number().int().positive(),
+  lastValidatedAt: z.string().datetime({ offset: true }).nullable(),
+  lastSuccessAt: z.string().datetime({ offset: true }).nullable(),
+  lastFailureAt: z.string().datetime({ offset: true }).nullable(),
+  providerRequestId: z.string().trim().min(1).max(255).nullable(),
+  errorClass: z.string().trim().min(1).max(255).nullable(),
+  redactedError: z.string().trim().min(1).max(1000).nullable(),
+  capabilities: z.array(ConversionDestinationCapabilityStateSchema),
+  mappings: z.array(ConversionEventMappingStateSchema),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true })
+})
+
+export const ListConversionDestinationsSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  platform: MeasurementPlatformSchema.optional()
+})
+
 export const CanonicalEventSourceSystemSchema = z.enum([
   'browser',
   'zero_lead',
@@ -226,5 +381,10 @@ export type ClientMeasurementProfileState = z.infer<typeof ClientMeasurementProf
 export type UpdateClientMeasurementProfile = z.infer<typeof UpdateClientMeasurementProfileSchema>
 export type MeasurementActor = z.infer<typeof MeasurementActorSchema>
 export type ConversionDestinationCreate = z.infer<typeof ConversionDestinationCreateSchema>
+export type CreateConversionDestinationConfiguration = z.infer<typeof CreateConversionDestinationConfigurationSchema>
+export type ConversionDestinationReadModel = z.infer<typeof ConversionDestinationReadModelSchema>
+export type ConversionDestinationCapabilityState = z.infer<typeof ConversionDestinationCapabilityStateSchema>
+export type ConversionEventMappingState = z.infer<typeof ConversionEventMappingStateSchema>
+export type ListConversionDestinations = z.infer<typeof ListConversionDestinationsSchema>
 export type CapabilityState = z.infer<typeof CapabilityStateSchema>
 export type CanonicalConversionEvent = z.infer<typeof CanonicalConversionEventSchema>

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   CanonicalConversionEventSchema,
   ClientMeasurementProfileCreateSchema,
-  ConversionDestinationCreateSchema
+  ConversionDestinationCreateSchema,
+  ConversionDestinationReadModelSchema,
+  CreateConversionDestinationConfigurationSchema
 } from '../../../../server/utils/measurement/contracts'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
@@ -133,6 +135,138 @@ describe('ConversionDestinationCreateSchema', () => {
     })
 
     expect(result.success).toBe(false)
+  })
+})
+
+describe('CreateConversionDestinationConfigurationSchema', () => {
+  it('defines a dormant operator configuration with explicit capability ownership and Qualified mapping', () => {
+    const result = CreateConversionDestinationConfigurationSchema.parse({
+      clientId: CLIENT_ID,
+      expectedProfileVersion: 1,
+      reason: 'Configure Meta CRM outcome delivery in test mode',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      destination: {
+        platform: 'meta',
+        socialConnectionId: '44444444-4444-4444-8444-444444444444',
+        externalDestinationId: '573284833843027',
+        credentialRef: 'cloudflare/measurement/meta/ferntree',
+        capabilities: [
+          {
+            mode: 'meta_crm_capi',
+            status: 'configured',
+            managementOrigin: 'zero',
+            canZeroMutate: true
+          },
+          {
+            mode: 'meta_web_capi',
+            status: 'not_configured',
+            managementOrigin: 'gtm',
+            canZeroMutate: false
+          }
+        ],
+        mappings: [
+          {
+            canonicalEventName: 'lead_qualified',
+            providerEventName: 'QualifiedLead',
+            isActive: true
+          }
+        ]
+      }
+    })
+
+    expect(result.destination.capabilities).toHaveLength(2)
+    expect(result.destination.mappings).toEqual([expect.objectContaining({
+      canonicalEventName: 'lead_qualified',
+      isActive: true
+    })])
+  })
+
+  it('rejects manual claims of provider-validated health and live activation', () => {
+    const result = CreateConversionDestinationConfigurationSchema.safeParse({
+      clientId: CLIENT_ID,
+      expectedProfileVersion: 1,
+      reason: 'Unsafe readiness claim',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      destination: {
+        platform: 'meta',
+        externalDestinationId: '573284833843027',
+        enabled: true,
+        environment: 'live',
+        capabilities: [
+          {
+            mode: 'meta_crm_capi',
+            status: 'ready',
+            managementOrigin: 'zero',
+            canZeroMutate: true,
+            evidenceAt: '2026-07-17T03:00:00.000Z'
+          }
+        ]
+      }
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects duplicate canonical mappings and raw provider credentials', () => {
+    const result = CreateConversionDestinationConfigurationSchema.safeParse({
+      clientId: CLIENT_ID,
+      expectedProfileVersion: 1,
+      reason: 'Invalid destination setup',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      destination: {
+        platform: 'google_data_manager',
+        externalDestinationId: 'customers/4221552633/conversionActions/99',
+        accessToken: 'must-not-enter-canonical-config',
+        capabilities: [
+          {
+            mode: 'google_data_manager',
+            status: 'configured',
+            managementOrigin: 'zero',
+            canZeroMutate: true
+          }
+        ],
+        mappings: [
+          { canonicalEventName: 'lead_qualified', providerEventName: 'Qualified', isActive: true },
+          { canonicalEventName: 'lead_qualified', providerEventName: 'Qualified Again', isActive: false }
+        ]
+      }
+    })
+
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('ConversionDestinationReadModelSchema', () => {
+  it('exposes credential presence without exposing the opaque reference', () => {
+    const base = {
+      id: '55555555-5555-4555-8555-555555555555',
+      clientId: CLIENT_ID,
+      profileId: PROFILE_ID,
+      platform: 'meta',
+      socialConnectionId: null,
+      externalDestinationId: '573284833843027',
+      credentialConfigured: true,
+      enabled: false,
+      environment: 'test',
+      healthStatus: 'configured',
+      configVersion: 1,
+      lastValidatedAt: null,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      providerRequestId: null,
+      errorClass: null,
+      redactedError: null,
+      capabilities: [],
+      mappings: [],
+      createdAt: '2026-07-17T00:00:00.000Z',
+      updatedAt: '2026-07-17T00:00:00.000Z'
+    }
+
+    expect(ConversionDestinationReadModelSchema.parse(base).credentialConfigured).toBe(true)
+    expect(ConversionDestinationReadModelSchema.safeParse({
+      ...base,
+      credentialRef: 'cloudflare/measurement/meta/ferntree'
+    }).success).toBe(false)
   })
 })
 
