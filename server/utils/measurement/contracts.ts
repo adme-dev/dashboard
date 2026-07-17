@@ -344,6 +344,97 @@ export const ListConversionDestinationsSchema = z.strictObject({
   platform: MeasurementPlatformSchema.optional()
 })
 
+export const MeasurementConfigEntityTypeSchema = z.enum([
+  'profile',
+  'destination',
+  'capability',
+  'mapping',
+  'outcome_endpoint'
+])
+export const MeasurementConfigAuditActionSchema = z.enum([
+  'created',
+  'updated',
+  'enabled',
+  'disabled',
+  'paused',
+  'validated'
+])
+
+export const MeasurementAuditEntrySchema = z.strictObject({
+  id: z.string().uuid(),
+  profileId: z.string().uuid(),
+  entityType: MeasurementConfigEntityTypeSchema,
+  entityId: z.string().uuid(),
+  action: MeasurementConfigAuditActionSchema,
+  configVersion: z.number().int().positive(),
+  changedFields: z.array(z.string().trim().min(1).max(100)).max(100),
+  actorType: z.enum(['team_member', 'client_user', 'system', 'import']),
+  actorId: z.string().trim().min(1).max(255).nullable(),
+  reason: z.string().trim().min(1).max(1000),
+  requestId: z.string().trim().min(1).max(255).nullable(),
+  createdAt: z.string().datetime({ offset: true })
+})
+
+export const ListMeasurementAuditSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  entityType: MeasurementConfigEntityTypeSchema.optional()
+})
+
+export const MeasurementReadinessStatusSchema = z.enum([
+  'onboarding',
+  'paused',
+  'blocked',
+  'degraded',
+  'ready'
+])
+export const MeasurementReadinessBlockerCodeSchema = z.enum([
+  'profile_disabled',
+  'profile_paused',
+  'cache_stale',
+  'no_destinations',
+  'destination_not_ready',
+  'capability_not_ready',
+  'capability_blocked',
+  'no_active_mappings',
+  'live_approval_missing',
+  'privacy_approval_missing',
+  'activation_gate_unavailable'
+])
+
+const MeasurementReadinessCountsSchema = z.strictObject({
+  destinations: z.number().int().nonnegative(),
+  readyDestinations: z.number().int().nonnegative(),
+  degradedDestinations: z.number().int().nonnegative(),
+  blockedDestinations: z.number().int().nonnegative(),
+  capabilities: z.number().int().nonnegative(),
+  readyCapabilities: z.number().int().nonnegative(),
+  degradedCapabilities: z.number().int().nonnegative(),
+  blockedCapabilities: z.number().int().nonnegative(),
+  activeMappings: z.number().int().nonnegative()
+})
+
+export const MeasurementReadinessSummarySchema = z.strictObject({
+  clientId: z.string().uuid(),
+  profileId: z.string().uuid(),
+  configVersion: z.number().int().positive(),
+  status: MeasurementReadinessStatusSchema,
+  liveEligible: z.boolean(),
+  profile: z.strictObject({
+    enabled: z.boolean(),
+    environment: MeasurementEnvironmentSchema,
+    cacheStatus: z.enum(['not_published', 'fresh', 'stale', 'error'])
+  }),
+  counts: MeasurementReadinessCountsSchema,
+  blockers: z.array(z.strictObject({
+    code: MeasurementReadinessBlockerCodeSchema,
+    message: z.string().trim().min(1).max(500)
+  })).max(20),
+  lastValidatedAt: z.string().datetime({ offset: true }).nullable(),
+  lastSuccessAt: z.string().datetime({ offset: true }).nullable()
+})
+
 export const CanonicalEventSourceSystemSchema = z.enum([
   'browser',
   'zero_lead',
@@ -401,5 +492,8 @@ export type ConversionDestinationReadModel = z.infer<typeof ConversionDestinatio
 export type ConversionDestinationCapabilityState = z.infer<typeof ConversionDestinationCapabilityStateSchema>
 export type ConversionEventMappingState = z.infer<typeof ConversionEventMappingStateSchema>
 export type ListConversionDestinations = z.infer<typeof ListConversionDestinationsSchema>
+export type MeasurementAuditEntry = z.infer<typeof MeasurementAuditEntrySchema>
+export type ListMeasurementAudit = z.infer<typeof ListMeasurementAuditSchema>
+export type MeasurementReadinessSummary = z.infer<typeof MeasurementReadinessSummarySchema>
 export type CapabilityState = z.infer<typeof CapabilityStateSchema>
 export type CanonicalConversionEvent = z.infer<typeof CanonicalConversionEventSchema>
