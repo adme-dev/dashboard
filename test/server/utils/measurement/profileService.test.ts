@@ -12,6 +12,7 @@ import {
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const PROFILE_ID = '22222222-2222-4222-8222-222222222222'
+const TRACKING_SITE_ID = '55555555-5555-4555-8555-555555555555'
 
 function baseProfile(): MeasurementProfile {
   return {
@@ -119,15 +120,17 @@ describe('Measurement profile service', () => {
       actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
       patch: {
         collectionTier: 'first_party_cname',
-        firstPartyHostname: 'track.example.com',
-        hostnameStatus: 'pending'
+        trackingSiteId: TRACKING_SITE_ID,
+        firstPartyHostname: 'track.example.com'
       }
     })
 
     expect(result.profile).toMatchObject({
       clientId: CLIENT_ID,
       collectionTier: 'first_party_cname',
+      trackingSiteId: TRACKING_SITE_ID,
       firstPartyHostname: 'track.example.com',
+      hostnameStatus: 'pending',
       configVersion: 2,
       cacheStatus: 'fresh',
       cacheVersion: 2
@@ -142,7 +145,58 @@ describe('Measurement profile service', () => {
     expect(test.audits[0]).toMatchObject({
       clientId: CLIENT_ID,
       expectedVersion: 1,
-      changedFields: ['collectionTier', 'firstPartyHostname', 'hostnameStatus']
+      changedFields: ['collectionTier', 'trackingSiteId', 'firstPartyHostname', 'hostnameStatus']
+    })
+  })
+
+  it('rejects an operator-supplied hostname readiness claim', async () => {
+    const test = harness()
+
+    await expect(test.service.update({
+      clientId: CLIENT_ID,
+      expectedVersion: 1,
+      reason: 'Attempt to bypass provider verification',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: {
+        collectionTier: 'first_party_cname',
+        trackingSiteId: TRACKING_SITE_ID,
+        firstPartyHostname: 'track.example.com',
+        hostnameStatus: 'active'
+      }
+    } as never)).rejects.toMatchObject({
+      code: 'MEASUREMENT_VALIDATION_ERROR',
+      statusCode: 422
+    })
+
+    expect(test.repository.update).not.toHaveBeenCalled()
+  })
+
+  it('clears hostname state when leaving first-party collection', async () => {
+    const test = harness()
+    await test.service.update({
+      clientId: CLIENT_ID,
+      expectedVersion: 1,
+      reason: 'Prepare verified first-party collection',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: {
+        collectionTier: 'first_party_cname',
+        trackingSiteId: TRACKING_SITE_ID,
+        firstPartyHostname: 'track.example.com'
+      }
+    })
+
+    const result = await test.service.update({
+      clientId: CLIENT_ID,
+      expectedVersion: 2,
+      reason: 'Exercise the shared-endpoint rollback',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: { collectionTier: 'shared_endpoint' }
+    })
+
+    expect(result.profile).toMatchObject({
+      collectionTier: 'shared_endpoint',
+      firstPartyHostname: null,
+      hostnameStatus: 'not_required'
     })
   })
 
@@ -154,7 +208,7 @@ describe('Measurement profile service', () => {
       expectedVersion: 9,
       reason: 'Stale editor update',
       actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
-      patch: { hostnameStatus: 'active' }
+      patch: { consentMode: 'au_optout' }
     })).rejects.toMatchObject({
       code: 'MEASUREMENT_VERSION_CONFLICT',
       statusCode: 409

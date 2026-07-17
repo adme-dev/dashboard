@@ -5,6 +5,7 @@ import {
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const PROFILE_ID = '22222222-2222-4222-8222-222222222222'
+const TRACKING_SITE_ID = '55555555-5555-4555-8555-555555555555'
 
 function row(version = 1) {
   return {
@@ -61,6 +62,7 @@ describe('Postgres measurement profile repository', () => {
             rows: [{
               ...row(2),
               collection_tier: 'first_party_cname',
+              tracking_site_id: TRACKING_SITE_ID,
               first_party_hostname: 'track.example.com',
               hostname_status: 'pending'
             }]
@@ -86,7 +88,7 @@ describe('Postgres measurement profile repository', () => {
         enabled: false,
         environment: 'test',
         collectionTier: 'first_party_cname',
-        trackingSiteId: null,
+        trackingSiteId: TRACKING_SITE_ID,
         firstPartyHostname: 'track.example.com',
         hostnameStatus: 'pending',
         consentMode: 'consent_gated',
@@ -101,7 +103,7 @@ describe('Postgres measurement profile repository', () => {
         createdAt: current.created_at.toISOString(),
         updatedAt: current.updated_at.toISOString()
       },
-      changedFields: ['collectionTier', 'firstPartyHostname', 'hostnameStatus'],
+      changedFields: ['collectionTier', 'trackingSiteId', 'firstPartyHostname', 'hostnameStatus'],
       actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
       reason: 'Prepare first-party collection in test mode'
     })

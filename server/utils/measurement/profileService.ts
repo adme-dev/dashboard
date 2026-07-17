@@ -33,6 +33,20 @@ export interface MeasurementProfileUpdateResult {
   warnings: Array<{ code: 'MEASUREMENT_CACHE_STALE' }>
 }
 
+const MUTABLE_PROFILE_FIELDS = [
+  'enabled',
+  'environment',
+  'collectionTier',
+  'trackingSiteId',
+  'firstPartyHostname',
+  'hostnameStatus',
+  'consentMode',
+  'vertical',
+  'outcomeAuthority',
+  'nativeLifecycleMode',
+  'portalOutcomeMode'
+] as const satisfies ReadonlyArray<keyof MeasurementProfile>
+
 function validationError() {
   return new MeasurementError(
     'MEASUREMENT_VALIDATION_ERROR',
@@ -141,9 +155,21 @@ export function createMeasurementProfileService(deps: MeasurementProfileServiceD
         )
       }
 
+      const nextCollectionTier = input.patch.collectionTier ?? current.collectionTier
+      const transportPatch: Partial<MeasurementProfile> = { ...input.patch }
+      if (nextCollectionTier === 'first_party_cname') {
+        const transportChanged = current.collectionTier !== 'first_party_cname'
+          || input.patch.trackingSiteId !== undefined
+          || input.patch.firstPartyHostname !== undefined
+        if (transportChanged) transportPatch.hostnameStatus = 'pending'
+      } else if (current.collectionTier === 'first_party_cname') {
+        transportPatch.firstPartyHostname = null
+        transportPatch.hostnameStatus = 'not_required'
+      }
+
       const nextResult = ClientMeasurementProfileStateSchema.safeParse({
         ...current,
-        ...input.patch,
+        ...transportPatch,
         configVersion: current.configVersion + 1,
         cacheStatus: 'not_published',
         cacheVersion: null,
@@ -151,6 +177,7 @@ export function createMeasurementProfileService(deps: MeasurementProfileServiceD
       })
       if (!nextResult.success) throw validationError()
       const next = nextResult.data
+      const changedFields = MUTABLE_PROFILE_FIELDS.filter(field => current[field] !== next[field])
 
       if (next.enabled || next.environment === 'live') {
         throw new MeasurementError(
@@ -164,7 +191,7 @@ export function createMeasurementProfileService(deps: MeasurementProfileServiceD
         clientId: input.clientId,
         expectedVersion: input.expectedVersion,
         nextProfile: next,
-        changedFields: Object.keys(input.patch),
+        changedFields,
         actor: input.actor,
         reason: input.reason
       })

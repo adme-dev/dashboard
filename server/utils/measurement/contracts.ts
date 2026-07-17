@@ -47,6 +47,16 @@ export const CapabilityStatusSchema = z.enum([
 ])
 export const ManagementOriginSchema = z.enum(['zero', 'gtm', 'partner', 'external'])
 
+const FirstPartyHostnameSchema = z.string()
+  .trim()
+  .min(1)
+  .max(253)
+  .toLowerCase()
+  .regex(
+    /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/,
+    'Invalid first-party hostname'
+  )
+
 export const CapabilityStateSchema = z.strictObject({
   mode: CapabilityModeSchema,
   status: CapabilityStatusSchema.default('not_configured'),
@@ -72,13 +82,13 @@ export const CapabilityStateSchema = z.strictObject({
   }
 })
 
-export const ClientMeasurementProfileCreateSchema = z.strictObject({
+const ClientMeasurementProfileCoreSchema = z.strictObject({
   clientId: z.string().uuid(),
   enabled: z.boolean().default(false),
   environment: MeasurementEnvironmentSchema.default('test'),
   collectionTier: CollectionTierSchema.default('backend_only'),
   trackingSiteId: z.string().uuid().nullable().default(null),
-  firstPartyHostname: z.string().trim().min(1).max(253).toLowerCase().nullable().default(null),
+  firstPartyHostname: FirstPartyHostnameSchema.nullable().default(null),
   hostnameStatus: z.enum(['not_required', 'pending', 'active', 'error']).default('not_required'),
   consentMode: ConsentModeSchema.default('consent_gated'),
   vertical: z.string().trim().min(1).max(100),
@@ -87,13 +97,65 @@ export const ClientMeasurementProfileCreateSchema = z.strictObject({
   portalOutcomeMode: PortalOutcomeModeSchema.default('disabled')
 })
 
+function validateCollectionTransport(
+  profile: {
+    collectionTier: z.infer<typeof CollectionTierSchema>
+    trackingSiteId: string | null
+    firstPartyHostname: string | null
+    hostnameStatus: 'not_required' | 'pending' | 'active' | 'error'
+  },
+  ctx: z.RefinementCtx
+) {
+  if (profile.collectionTier === 'first_party_cname') {
+    if (profile.trackingSiteId === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['trackingSiteId'],
+        message: 'First-party collection requires a linked tracking site'
+      })
+    }
+    if (profile.firstPartyHostname === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['firstPartyHostname'],
+        message: 'First-party collection requires a hostname'
+      })
+    }
+    if (profile.hostnameStatus === 'not_required') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['hostnameStatus'],
+        message: 'First-party hostname readiness must be provider verified'
+      })
+    }
+    return
+  }
+
+  if (profile.firstPartyHostname !== null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['firstPartyHostname'],
+      message: 'Only first-party collection may configure a hostname'
+    })
+  }
+  if (profile.hostnameStatus !== 'not_required') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['hostnameStatus'],
+      message: 'Hostname readiness is not applicable to this collection tier'
+    })
+  }
+}
+
+export const ClientMeasurementProfileCreateSchema = ClientMeasurementProfileCoreSchema
+  .superRefine(validateCollectionTransport)
+
 export const ClientMeasurementProfilePatchSchema = z.strictObject({
   enabled: z.boolean().optional(),
   environment: MeasurementEnvironmentSchema.optional(),
   collectionTier: CollectionTierSchema.optional(),
   trackingSiteId: z.string().uuid().nullable().optional(),
-  firstPartyHostname: z.string().trim().min(1).max(253).toLowerCase().nullable().optional(),
-  hostnameStatus: z.enum(['not_required', 'pending', 'active', 'error']).optional(),
+  firstPartyHostname: FirstPartyHostnameSchema.nullable().optional(),
   consentMode: ConsentModeSchema.optional(),
   vertical: z.string().trim().min(1).max(100).optional(),
   outcomeAuthority: OutcomeAuthoritySchema.optional(),
@@ -116,7 +178,7 @@ export const UpdateClientMeasurementProfileSchema = z.strictObject({
   patch: ClientMeasurementProfilePatchSchema
 })
 
-export const ClientMeasurementProfileStateSchema = ClientMeasurementProfileCreateSchema.extend({
+export const ClientMeasurementProfileStateSchema = ClientMeasurementProfileCoreSchema.extend({
   id: z.string().uuid(),
   configVersion: z.number().int().positive(),
   cacheStatus: z.enum(['not_published', 'fresh', 'stale', 'error']),
@@ -125,6 +187,7 @@ export const ClientMeasurementProfileStateSchema = ClientMeasurementProfileCreat
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true })
 }).superRefine((profile, ctx) => {
+  validateCollectionTransport(profile, ctx)
   if (profile.portalOutcomeMode === 'authoritative' && profile.outcomeAuthority !== 'zero_native') {
     ctx.addIssue({
       code: 'custom',

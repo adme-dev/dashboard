@@ -13,6 +13,7 @@ import {
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const PROFILE_ID = '22222222-2222-4222-8222-222222222222'
+const TRACKING_SITE_ID = '55555555-5555-4555-8555-555555555555'
 
 describe('ClientMeasurementProfileCreateSchema', () => {
   it('defaults new profiles to a disabled test configuration owned by Zero', () => {
@@ -38,6 +39,39 @@ describe('ClientMeasurementProfileCreateSchema', () => {
       clientId: CLIENT_ID,
       vertical: 'automotive',
       accessToken: 'must-not-enter-canonical-config'
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('requires a linked tracking site and valid hostname for first-party collection', () => {
+    const missingSite = ClientMeasurementProfileCreateSchema.safeParse({
+      clientId: CLIENT_ID,
+      vertical: 'automotive',
+      collectionTier: 'first_party_cname',
+      firstPartyHostname: 'signals.example.com',
+      hostnameStatus: 'pending'
+    })
+    const urlInsteadOfHostname = ClientMeasurementProfileCreateSchema.safeParse({
+      clientId: CLIENT_ID,
+      vertical: 'automotive',
+      collectionTier: 'first_party_cname',
+      trackingSiteId: TRACKING_SITE_ID,
+      firstPartyHostname: 'https://signals.example.com',
+      hostnameStatus: 'pending'
+    })
+
+    expect(missingSite.success).toBe(false)
+    expect(urlInsteadOfHostname.success).toBe(false)
+  })
+
+  it('rejects stale hostname state outside the first-party tier', () => {
+    const result = ClientMeasurementProfileCreateSchema.safeParse({
+      clientId: CLIENT_ID,
+      vertical: 'automotive',
+      collectionTier: 'shared_endpoint',
+      firstPartyHostname: 'signals.example.com',
+      hostnameStatus: 'active'
     })
 
     expect(result.success).toBe(false)
