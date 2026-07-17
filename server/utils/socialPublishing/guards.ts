@@ -41,6 +41,8 @@ export interface SocialPostClientRef {
   account_ids?: string[] | null
   status?: string | null
   approval_requested_at?: string | null
+  client_approval_status?: string | null
+  metadata?: Record<string, any> | null
 }
 
 export interface NormalizedPublishingTarget {
@@ -208,7 +210,9 @@ export function assertNoControlledSocialPostFields(body: Record<string, unknown>
 
 export async function requireSocialPostClientAccess(event: H3Event, postId: string): Promise<SocialPostClientRef> {
   const row = await queryOne<SocialPostClientRef>(
-    `SELECT id, client_id, platforms, account_ids, status, approval_requested_at FROM social_posts WHERE id = $1`,
+    `SELECT id, client_id, platforms, account_ids, status, approval_requested_at,
+            client_approval_status, metadata
+       FROM social_posts WHERE id = $1`,
     [postId]
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Post not found' })

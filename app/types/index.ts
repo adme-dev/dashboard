@@ -1669,6 +1669,10 @@ export interface SocialPost {
   approved_by: string | null
   approved_at: string | null
   rejection_reason: string | null
+  client_approval_status?: 'pending' | 'approved' | 'rejected' | 'revision_requested' | null
+  client_approval_responded_by?: string | null
+  client_approval_responded_at?: string | null
+  client_approval_feedback?: string | null
   queue_position: number | null
   campaign_id: string | null
   assigned_to: string | null
@@ -1676,6 +1680,50 @@ export interface SocialPost {
   metadata: Record<string, any>
   created_at: string
   updated_at: string
+}
+
+export type PortalSocialNewsApprovalStatus = 'pending' | 'approved' | 'rejected' | 'revision_requested'
+export type PortalSocialNewsAction = 'approve' | 'reject' | 'request_changes'
+
+export interface PortalSocialNewsDraft {
+  id: string
+  content: string
+  mediaUrls: string[]
+  platformPreviews: Array<{
+    platform: string
+    content: string
+    mediaUrls: string[]
+    isAiRewrite: boolean
+  }>
+  source: {
+    title: string
+    url: string | null
+    author: string | null
+    publishedAt: string | null
+    attributionLocked: boolean
+  }
+  targetAccounts: Array<{ id: string, platform: string, name: string }>
+  scheduledAt: string | null
+  timezone: string
+  approval: {
+    status: PortalSocialNewsApprovalStatus
+    requestedAt: string
+    dueAt: string | null
+    respondedAt: string | null
+    respondedBy: string | null
+    feedback: string | null
+    internalStatus: string
+  }
+  package: {
+    name: string
+    version: number
+    includedPostVolumes: Record<string, number>
+    approvalSlaHours: number | null
+    overagePolicy: string
+    usageByPlatform: Record<string, number>
+    warnings: string[]
+  } | null
+  audit: Array<{ action: string, createdAt: string, actorType: 'client' | 'agency' }>
 }
 
 export interface SocialAccount {

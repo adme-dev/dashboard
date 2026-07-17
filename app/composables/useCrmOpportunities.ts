@@ -44,8 +44,15 @@ export function useCrmOpportunities(clientId: Ref<string | null>) {
     await refresh()
     return r.item
   }
-  async function move(id: string, stageId: string) {
-    const r = await apiFetch<{ item: CrmOpportunity }>(`${base}/opportunities/${id}/move`, { method: 'PATCH', body: { client_id: clientId.value, stage_id: stageId } })
+  async function move(id: string, stageId: string, expectedStageId: string) {
+    const r = await apiFetch<{ item: CrmOpportunity }>(`${base}/opportunities/${id}/move`, {
+      method: 'PATCH',
+      body: {
+        client_id: clientId.value,
+        stage_id: stageId,
+        expected_stage_id: expectedStageId
+      }
+    })
     return r.item
   }
   async function remove(id: string) {

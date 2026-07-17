@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
   await requireSocialClientAccess(event, clientId)
   const requested = String(query.platforms || '').split(',').map(value => value.trim()).filter(Boolean)
-  const [profile, accounts, performance, news] = await Promise.all([
+  const [profile, accounts, performance, feedback, news] = await Promise.all([
     queryOne<{ preferred_platforms: string[] | null; target_audience: string | null; timezone: string | null; include_keywords: string[] | null; exclude_keywords: string[] | null }>(
       `SELECT preferred_platforms, target_audience, timezone FROM social_news_client_profiles WHERE client_id = $1`, [clientId]),
     queryRows<{ id: string; platform: string; account_name: string | null; last_error: string | null; token_expires_at: string | null }>(
@@ -23,6 +23,11 @@ export default defineEventHandler(async (event) => {
          FROM social_post_metrics m JOIN social_posts p ON p.id = m.post_id
         WHERE p.client_id = $1 AND p.status IN ('published', 'partially_published')
         GROUP BY m.platform`, [clientId]),
+    queryRows<{ event_type: string; count: number }>(
+      `SELECT event_type, COUNT(*)::int AS count
+         FROM social_news_feedback_events
+        WHERE client_id = $1 AND ($2 = '' OR news_item_id = NULLIF($2, '')::uuid)
+        GROUP BY event_type`, [clientId, newsId]),
     newsId ? queryOne<{ title: string; topics: string[] | null }>(
       `SELECT title, topics FROM social_news_items WHERE id = $1`, [newsId]) : Promise.resolve(null),
   ])
@@ -43,6 +48,8 @@ export default defineEventHandler(async (event) => {
   const articleText = `${news?.title || ''} ${(news?.topics || []).join(' ')}`.toLowerCase()
   const included = (profile?.include_keywords || []).filter(keyword => articleText.includes(keyword.toLowerCase()))
   const excluded = (profile?.exclude_keywords || []).filter(keyword => articleText.includes(keyword.toLowerCase()))
+  const feedbackCounts = Object.fromEntries(feedback.map(row => [row.event_type, Number(row.count || 0)]))
+  const dismissed = Boolean(newsId && feedbackCounts.dismissed)
   return {
     clientId,
     audience: profile?.target_audience || null,
@@ -54,8 +61,9 @@ export default defineEventHandler(async (event) => {
       lastError: account.last_error,
     })),
     nextSlot: slots[0]?.toISOString() || null,
-    article: news ? { title: news.title, relevant: included.length > 0 && excluded.length === 0, matchedKeywords: included, excludedKeywords: excluded } : null,
-    basis: performance.length ? 'client profile and published engagement rate history' : 'client profile and connected accounts',
+    article: news ? { title: news.title, relevant: !dismissed && included.length > 0 && excluded.length === 0, matchedKeywords: included, excludedKeywords: excluded } : null,
+    feedback: feedbackCounts,
+    basis: performance.length ? 'client profile, published engagement rate history, and source feedback' : 'client profile, connected accounts, and source feedback',
     approvalRequired: true,
   }
 })

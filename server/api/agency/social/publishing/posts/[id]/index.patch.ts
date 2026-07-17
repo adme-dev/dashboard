@@ -47,7 +47,8 @@ const APPROVAL_SENSITIVE_FIELDS = new Set([
   'platforms',
   'accountIds',
   'targets',
-  'platformOverrides'
+  'platformOverrides',
+  'metadata'
 ])
 
 const CONTENT_LOCKED_STATUSES = new Set(['publishing', 'published', 'partially_published', 'cancelled'])
@@ -73,6 +74,17 @@ export default defineEventHandler(async (event) => {
     b.platforms = normalizeProductionReadyPublishPlatforms(b.platforms)
   }
   normalizeSocialPostPayloadFields(b)
+  if ('metadata' in b && existing.metadata?.source === 'mcp_news') {
+    const requestedMetadata = b.metadata && typeof b.metadata === 'object' && !Array.isArray(b.metadata)
+      ? b.metadata as Record<string, unknown>
+      : {}
+    b.metadata = {
+      ...requestedMetadata,
+      source: existing.metadata.source,
+      newsItemId: existing.metadata.newsItemId,
+      newsAttribution: existing.metadata.newsAttribution
+    }
+  }
   if (!('targets' in b) && ('accountIds' in b || 'platforms' in b)) {
     const nextPlatforms = 'platforms' in b
       ? b.platforms
@@ -92,6 +104,9 @@ export default defineEventHandler(async (event) => {
     Boolean(existing.approval_requested_at)
     || (existing.status ? APPROVAL_RESET_STATUSES.has(existing.status) : false)
   )
+  const shouldResetClientApproval = shouldResetApproval
+    && existing.metadata?.source === 'mcp_news'
+    && Boolean(existing.client_approval_status)
 
   const sets: string[] = []
   const params: unknown[] = []
@@ -108,6 +123,14 @@ export default defineEventHandler(async (event) => {
       'approval_requested_at = NULL',
       'approval_requested_by = NULL',
       'rejection_reason = NULL'
+    )
+  }
+  if (shouldResetClientApproval) {
+    sets.push(
+      'client_approval_status = \'pending\'',
+      'client_approval_responded_by = NULL',
+      'client_approval_responded_at = NULL',
+      'client_approval_feedback = NULL'
     )
   }
   if (sets.length === 0) throw createError({ statusCode: 400, statusMessage: 'No updatable fields provided' })
@@ -127,7 +150,8 @@ export default defineEventHandler(async (event) => {
     action: 'post_updated',
     metadata: {
       fields: Object.keys(b).filter(key => key in FIELDS),
-      approvalReset: shouldResetApproval
+      approvalReset: shouldResetApproval,
+      clientApprovalReset: shouldResetClientApproval
     }
   })
   return row

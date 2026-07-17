@@ -69,4 +69,30 @@ describe('MCP news inbox contract', () => {
     expect(source).toContain("reviewStatus: 'pending'")
     expect(source).toContain('client_operational_evidence')
   })
+
+  it('records append-only, client-scoped feedback tied to immutable news stories', () => {
+    const source = readFileSync('server/api/agency/social/news/feedback.post.ts', 'utf8')
+    expect(source).toContain('requireRole(event, PERMISSIONS.CREATIVE)')
+    expect(source).toContain('requireSocialClientAccess(event, clientId)')
+    expect(source).toContain('social_news_items')
+    expect(source).toContain('recordSocialNewsFeedback')
+    expect(readFileSync('server/utils/socialNewsFeedback.ts', 'utf8')).toContain('social_news_feedback_events')
+  })
+
+  it('snapshots immutable source attribution onto every news-backed draft', () => {
+    const source = readFileSync('server/api/agency/social/news/drafts.post.ts', 'utf8')
+    expect(source).toContain('newsAttribution')
+    expect(source).toContain('item.title')
+    expect(source).toContain('item.author')
+    expect(source).toContain('item.published_at')
+  })
+
+  it('requires a portal decision before internal approval of a news-backed draft', () => {
+    const request = readFileSync('server/api/agency/social/publishing/posts/[id]/request-approval.post.ts', 'utf8')
+    const approve = readFileSync('server/api/agency/social/publishing/posts/[id]/approve.post.ts', 'utf8')
+    expect(request).toContain("client_approval_status = CASE")
+    expect(request).toContain('client_approval_responded_at = NULL')
+    expect(approve).toContain("existing.metadata?.source === 'mcp_news'")
+    expect(approve).toContain("existing.client_approval_status !== 'approved'")
+  })
 })

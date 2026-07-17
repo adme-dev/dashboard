@@ -16,6 +16,7 @@ export interface ServerClientUser {
   avatarUrl: string | null
   role: string
   isPrimaryContact: boolean
+  canManageLeadOutcomes: boolean
   clientId: string
   clientName: string
   clientLogo: string | null
@@ -89,6 +90,7 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       cu.avatar_url,
       cu.role,
       cu.is_primary_contact,
+      cu.can_manage_lead_outcomes,
       cu.can_view_projects,
       cu.can_view_invoices,
       cu.can_approve_work,
@@ -126,6 +128,7 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
     avatarUrl: user.avatar_url,
     role: user.role,
     isPrimaryContact: user.is_primary_contact,
+    canManageLeadOutcomes: user.can_manage_lead_outcomes ?? false,
     clientId: user.client_id,
     clientName: user.client_name,
     clientLogo: user.client_logo,

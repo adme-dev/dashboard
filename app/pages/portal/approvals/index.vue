@@ -237,6 +237,8 @@ const statusColors: Record<string, string> = {
       </div>
     </UCard>
 
+    <PortalSocialNewsApprovals :status="statusFilter" />
+
     <div v-if="pending" class="space-y-3">
       <div v-for="i in 4" :key="i" class="h-24 rounded-lg bg-elevated animate-pulse" />
     </div>

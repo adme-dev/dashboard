@@ -1,53 +1,85 @@
 // server/api/client-portal/crm/opportunities/[id]/move.patch.ts — session-scoped.
 import { z } from 'zod'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
-import { queryOne } from '~~/server/utils/db'
-import { recordStageChange } from '~~/server/utils/crm/stageAutomation'
+import { opportunityStageTransitionService } from '~~/server/utils/crm/opportunityStageTransition'
+import { runStageEntryAutomations } from '~~/server/utils/crm/stageAutomation'
+import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
 
-const Body = z.object({ stage_id: z.string().uuid() })
+const Body = z.object({
+  stage_id: z.string().uuid(),
+  expected_stage_id: z.string().uuid(),
+  reason: z.string().trim().min(1).max(1000).optional()
+})
 
 export default defineEventHandler(async (event) => {
   const client = await requireClientAuth(event)
+  if (!client.canManageLeadOutcomes) {
+    throw createError({ statusCode: 403, statusMessage: 'Lead outcome permission required' })
+  }
   const id = getRouterParam(event, 'id')
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   const b = parsed.data
-  const stage = await queryOne<{ id: string, probability: number, is_won: boolean, is_lost: boolean }>(
-    `SELECT id, probability, is_won, is_lost FROM crm_stages WHERE id = $1 AND (client_id IS NULL OR client_id = $2)`,
-    [b.stage_id, client.clientId],
-  )
-  if (!stage) throw createError({ statusCode: 400, statusMessage: 'Invalid stage' })
-  const prev = await queryOne<{ stage_id: string, owner_id: string | null }>(
-    `SELECT stage_id, owner_id FROM crm_opportunities WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`,
-    [id, client.clientId],
-  )
-  if (!prev) throw createError({ statusCode: 404, statusMessage: 'Opportunity not found' })
-  const status = stage.is_won ? 'won' : stage.is_lost ? 'lost' : 'open'
-  const closeSet = (stage.is_won || stage.is_lost) ? ', actual_close_date = CURRENT_DATE' : ''
-  const row = await queryOne<{ owner_id: string | null }>(
-    `UPDATE crm_opportunities
-        SET stage_id = $1, status = $2, probability = $3, stage_changed_at = NOW(), updated_at = NOW(),
-            stage_history = stage_history || jsonb_build_object('stage_id', $1::text, 'at', NOW()::text, 'by', $4::text)
-            ${closeSet}
-      WHERE id = $5 AND client_id = $6 AND deleted_at IS NULL
-      RETURNING *`,
-    [b.stage_id, status, stage.probability, client.id, id, client.clientId],
-  )
-  if (!row) throw createError({ statusCode: 404, statusMessage: 'Opportunity not found' })
-  if (prev.stage_id !== b.stage_id) {
+  const occurredAt = new Date().toISOString()
+  const result = await opportunityStageTransitionService.move({
+    clientId: client.clientId,
+    opportunityId: id as string,
+    toStageId: b.stage_id,
+    expectedStageId: b.expected_stage_id,
+    actor: { type: 'client_user', id: client.id },
+    occurredAt,
+    consentDecision: 'unknown',
+    reason: b.reason ?? 'Client portal CRM stage move'
+  })
+
+  if (result.status === 'stage_not_found') {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid stage' })
+  }
+  if (result.status === 'opportunity_not_found') {
+    throw createError({ statusCode: 404, statusMessage: 'Opportunity not found' })
+  }
+  if (result.status === 'stage_conflict') {
+    throw createError({ statusCode: 409, statusMessage: 'Opportunity stage changed; reload and try again' })
+  }
+  if (result.status === 'terminal_state') {
+    throw createError({ statusCode: 409, statusMessage: 'Won or lost opportunities cannot be moved' })
+  }
+  if (result.status === 'no_change') {
+    return { item: { id, stage_id: result.currentStageId } }
+  }
+
+  if (result.outbox?.event.outboxStatus === 'pending') {
     try {
-      await recordStageChange({
+      await conversionOutboxPublisher.publishEvent(event, result.outbox.event.eventId)
+    } catch (error) {
+      console.warn({
+        event: 'measurement_outbox_post_commit_publish_failed',
         clientId: client.clientId,
-        opportunityId: id as string,
-        fromStageId: prev.stage_id,
-        toStageId: b.stage_id,
-        ownerId: row.owner_id ?? prev.owner_id,
-        changedBy: client.id,
-        isWon: stage.is_won,
+        eventId: result.outbox.event.eventId,
+        errorClass: error instanceof Error ? error.name : 'unknown'
       })
-    } catch (e) {
-      console.error('[crm] stage-change hook failed', e)
     }
   }
-  return { item: row }
+
+  try {
+    await runStageEntryAutomations({
+      clientId: client.clientId,
+      opportunityId: id as string,
+      fromStageId: b.expected_stage_id,
+      toStageId: b.stage_id,
+      ownerId: result.item.owner_id,
+      changedBy: client.id,
+      isWon: result.item.status === 'won',
+      now: new Date(occurredAt)
+    })
+  } catch (error) {
+    console.warn({
+      event: 'crm_stage_automation_failed',
+      clientId: client.clientId,
+      opportunityId: id,
+      historyId: result.historyId,
+      errorClass: error instanceof Error ? error.name : 'unknown'
+    })
+  }
+  return { item: result.item }
 })

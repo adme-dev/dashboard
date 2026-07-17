@@ -1,0 +1,19 @@
+{
+  "name": "measurement-delivery-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:dry-run": "node scripts/deploy.mjs --dry-run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pg": "*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "*",
+    "@types/pg": "*",
+    "typescript": "*",
+    "wrangler": "^4.99.0"
+  }
+}

@@ -43,6 +43,7 @@ const ROUTES: Record<string, string[]> = {
     '/api/cron/office-assistant',
     '/api/cron/video-generation-reconcile',
     '/api/cron/monday-webhooks',
+    '/api/cron/measurement-outbox-repair',
   ],
   // every 15 min — keep the Xero customer cache and rollups fresh. Delta syncs
   // are idempotent and use the shared cron token resolver.

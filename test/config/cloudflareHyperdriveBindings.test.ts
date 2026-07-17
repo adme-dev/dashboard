@@ -11,7 +11,8 @@ const HYPERDRIVE_WORKER_CONFIGS = [
   'workers/leads-delivery-worker/wrangler.toml',
   'workers/audio-jobs/wrangler.toml',
   'workers/video-generation/wrangler.toml',
-  'workers/asset-intelligence/wrangler.toml'
+  'workers/asset-intelligence/wrangler.toml',
+  'workers/measurement-delivery/wrangler.toml'
 ]
 
 function readToml(path: string): HyperdriveConfig {

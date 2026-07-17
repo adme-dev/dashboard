@@ -13,6 +13,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 export const GOOGLE_ADS_OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/adwords',
   'https://www.googleapis.com/auth/content',
+  'https://www.googleapis.com/auth/datamanager',
 ]
 
 // ============================================

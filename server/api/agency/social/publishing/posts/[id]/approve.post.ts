@@ -5,6 +5,7 @@ import { createNotification } from '~~/server/utils/notifications'
 import { requireSocialPostClientAccess } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
 import { startSocialPublishingWorkflow } from '~~/server/utils/agencyWorkflows/client'
+import { recordSocialNewsFeedback } from '~~/server/utils/socialNewsFeedback'
 
 interface ApprovedPost {
   id: string
@@ -23,6 +24,9 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const existing = await requireSocialPostClientAccess(event, id)
+  if (existing.metadata?.source === 'mcp_news' && existing.client_approval_status !== 'approved') {
+    throw createError({ statusCode: 409, statusMessage: 'Client approval is required before internal approval' })
+  }
 
   const post = await queryOne<ApprovedPost>(
     `UPDATE social_posts
@@ -44,6 +48,10 @@ export default defineEventHandler(async (event) => {
     actorId: user.id,
     action: 'post_approved'
   })
+  const newsItemId = (existing as { metadata?: { newsItemId?: string } }).metadata?.newsItemId
+  if (newsItemId) {
+    await recordSocialNewsFeedback({ clientId: existing.client_id, newsItemId, postId: id, actorId: user.id, eventType: 'approved', metadata: { status: post.status } })
+  }
 
   if (post.approval_requested_by) {
     try {

@@ -36,7 +36,12 @@ export default defineEventHandler(async (event) => {
             COALESCE(SUM(m.comments_count),0)::int AS comments_count,
             COALESCE(SUM(m.shares),0)::int AS shares,
             COALESCE(SUM(m.saves),0)::int AS saves,
-            COALESCE(SUM(m.video_views),0)::int AS video_views
+            COALESCE(SUM(m.video_views),0)::int AS video_views,
+            COALESCE((SELECT jsonb_object_agg(f.event_type, f.event_count)
+                        FROM (SELECT event_type, COUNT(*)::int AS event_count
+                                FROM social_news_feedback_events
+                               WHERE client_id = p.client_id AND post_id = p.id
+                               GROUP BY event_type) f), '{}'::jsonb) AS news_feedback
        FROM social_posts p
        LEFT JOIN social_post_metrics m ON m.post_id = p.id${platform ? ' AND m.platform = $4' : ''}
       WHERE p.client_id = $1

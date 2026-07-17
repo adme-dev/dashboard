@@ -34,4 +34,17 @@ describe('news recommendation contract', () => {
     expect(source).toContain('slackImportText')
     expect(source).toContain('pending approval')
   })
+
+  it('includes source feedback in explainable client-scoped recommendations', () => {
+    const source = readFileSync('server/api/agency/social/news/recommendations.get.ts', 'utf8')
+    expect(source).toContain('social_news_feedback_events')
+    expect(source).toContain('feedbackCounts')
+    expect(source).toContain('source feedback')
+  })
+
+  it('exposes news feedback alongside per-post reporting metrics', () => {
+    const source = readFileSync('server/api/agency/social/reporting/posts.get.ts', 'utf8')
+    expect(source).toContain('social_news_feedback_events')
+    expect(source).toContain('news_feedback')
+  })
 })

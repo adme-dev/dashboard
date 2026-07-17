@@ -48,15 +48,36 @@ export function buildAutomationTasks(rules: StageAutomationRule[], opp: Automati
         task_type: t.task_type || 'follow_up',
         priority: t.priority || 'medium',
         due_at,
-        assigned_to: t.assigned_to ?? opp.owner_id ?? null,
+        assigned_to: t.assigned_to ?? opp.owner_id ?? null
       }
     })
 }
 
-// Called by both agency + portal move endpoints after a successful stage change.
-// Best-effort: callers wrap in try/catch so an automation failure never rolls back
-// the move itself. Idempotent by (opportunity + title) on open tasks.
+// Backward-compatible wrapper for callers that do not yet own a transaction.
+// Canonical CRM move endpoints write history in opportunityStageTransition and call
+// runStageEntryAutomations only after commit, avoiding duplicate history rows.
 export async function recordStageChange(opts: {
+  clientId: string
+  opportunityId: string
+  fromStageId: string | null
+  toStageId: string
+  ownerId: string | null
+  changedBy: string | null
+  isWon?: boolean
+  now?: Date
+}): Promise<void> {
+  await execute(
+    `INSERT INTO crm_opportunity_stage_history (client_id, opportunity_id, from_stage_id, to_stage_id, changed_by)
+     VALUES ($1,$2,$3,$4,$5)`,
+    [opts.clientId, opts.opportunityId, opts.fromStageId, opts.toStageId, opts.changedBy]
+  )
+
+  await runStageEntryAutomations(opts)
+}
+
+// Called after the transactional stage move/history/outbox commit. These score,
+// lifecycle-tag and follow-up task side effects are intentionally best-effort.
+export async function runStageEntryAutomations(opts: {
   clientId: string
   opportunityId: string
   fromStageId: string | null
@@ -68,16 +89,14 @@ export async function recordStageChange(opts: {
 }): Promise<void> {
   const now = opts.now ?? new Date()
 
-  await execute(
-    `INSERT INTO crm_opportunity_stage_history (client_id, opportunity_id, from_stage_id, to_stage_id, changed_by)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [opts.clientId, opts.opportunityId, opts.fromStageId, opts.toStageId, opts.changedBy],
-  )
-
   // A stage change shifts open-opportunity intent — refresh the linked contact's score.
   const contacts = await queryOne<{ person_id: string | null, company_id: string | null }>(
-    `SELECT person_id, company_id FROM crm_opportunities WHERE id = $1`,
-    [opts.opportunityId],
+    `SELECT person_id, company_id
+       FROM crm_opportunities
+      WHERE id = $1
+        AND client_id = $2
+        AND deleted_at IS NULL`,
+    [opts.opportunityId, opts.clientId]
   )
   if (contacts) {
     await recomputeIfScorable(opts.clientId, 'person', contacts.person_id, 'opportunity_stage')
@@ -95,7 +114,7 @@ export async function recordStageChange(opts: {
 
   const rules = await queryRows<StageAutomationRule>(
     `SELECT * FROM crm_stage_automations WHERE client_id = $1 AND stage_id = $2 AND is_active = true`,
-    [opts.clientId, opts.toStageId],
+    [opts.clientId, opts.toStageId]
   )
   if (!rules.length) return
 
@@ -107,14 +126,14 @@ export async function recordStageChange(opts: {
         WHERE client_id = $1 AND target_type = 'opportunity' AND target_id = $2
           AND title = $3 AND status IN ('pending','in_progress') AND deleted_at IS NULL
         LIMIT 1`,
-      [opts.clientId, opts.opportunityId, p.title],
+      [opts.clientId, opts.opportunityId, p.title]
     )
     if (existing) continue
     await execute(
       `INSERT INTO crm_tasks
          (client_id, target_type, target_id, title, task_type, priority, due_at, assigned_to, created_by)
        VALUES ($1,'opportunity',$2,$3,$4,$5,$6,$7,$8)`,
-      [opts.clientId, opts.opportunityId, p.title, p.task_type, p.priority, p.due_at, p.assigned_to, opts.changedBy],
+      [opts.clientId, opts.opportunityId, p.title, p.task_type, p.priority, p.due_at, p.assigned_to, opts.changedBy]
     )
   }
 }
