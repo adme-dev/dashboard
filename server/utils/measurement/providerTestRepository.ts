@@ -1,0 +1,234 @@
+import { transaction as defaultTransaction } from '~~/server/utils/db'
+import type {
+  MeasurementProviderTestInput,
+  MeasurementProviderTestRepository,
+  ProviderTestMode,
+  ProviderTestRunSummary,
+  ReserveProviderTestResult
+} from '~~/server/utils/measurement/providerTestService'
+
+interface QueryResult {
+  rows?: unknown[]
+  rowCount?: number | null
+}
+
+interface TransactionClient {
+  query(sql: string, params?: unknown[]): Promise<QueryResult>
+}
+
+interface ProviderContextRow {
+  profile_id: string
+  profile_enabled: boolean
+  profile_environment: string
+  profile_config_version: number | string
+  destination_enabled: boolean
+  destination_environment: string
+  platform: 'meta' | 'google_data_manager'
+  external_destination_id: string
+  provider_event_name: string | null
+  account_id: string | null
+  access_token: string | null
+  refresh_token: string | null
+  scopes: unknown
+  metadata: unknown
+}
+
+interface TestRunRow {
+  id: string
+  mode: ProviderTestMode
+  status: 'requested' | 'accepted' | 'failed'
+  provider_request_id: string | null
+  error_class: string | null
+  redacted_error: string | null
+  completed_at: Date | string | null
+}
+
+type Transaction = <T>(callback: (db: TransactionClient) => Promise<T>) => Promise<T>
+
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function runSummary(row: TestRunRow): ProviderTestRunSummary {
+  return {
+    id: row.id,
+    mode: row.mode,
+    status: row.status,
+    providerRequestId: row.provider_request_id,
+    errorClass: row.error_class,
+    redactedError: row.redacted_error,
+    completedAt: row.completed_at === null ? null : new Date(row.completed_at).toISOString()
+  }
+}
+
+function expectedPlatform(mode: ProviderTestMode) {
+  return mode === 'meta_test_events' ? 'meta' : 'google_data_manager'
+}
+
+export function createPostgresMeasurementProviderTestRepository(
+  transaction: Transaction = defaultTransaction as unknown as Transaction
+): MeasurementProviderTestRepository {
+  return {
+    async reserve(input: MeasurementProviderTestInput): Promise<ReserveProviderTestResult> {
+      return transaction(async (db) => {
+        const existingResult = await db.query(
+          `SELECT id, mode, status, provider_request_id, error_class, redacted_error, completed_at
+             FROM measurement_provider_test_runs
+            WHERE client_id = $1
+              AND idempotency_key = $2`,
+          [input.clientId, input.idempotencyKey]
+        )
+        const existing = existingResult.rows?.[0] as TestRunRow | undefined
+        if (existing) return { status: 'existing', run: runSummary(existing) }
+
+        const contextResult = await db.query(
+          `SELECT p.id AS profile_id,
+                  p.enabled AS profile_enabled,
+                  p.environment AS profile_environment,
+                  p.config_version AS profile_config_version,
+                  d.enabled AS destination_enabled,
+                  d.environment AS destination_environment,
+                  d.platform,
+                  d.external_destination_id,
+                  m.provider_event_name,
+                  sc.account_id,
+                  sc.access_token,
+                  sc.refresh_token,
+                  sc.scopes,
+                  sc.metadata
+             FROM conversion_destinations d
+             JOIN client_measurement_profiles p
+               ON p.client_id = d.client_id
+              AND p.id = d.profile_id
+             LEFT JOIN conversion_event_mappings m
+               ON m.client_id = d.client_id
+              AND m.destination_id = d.id
+              AND m.canonical_event_name = $3
+              AND m.is_active = TRUE
+             LEFT JOIN social_connections sc
+               ON sc.client_id = d.client_id
+              AND sc.id = d.social_connection_id
+              AND sc.status = 'active'
+              AND sc.platform = CASE WHEN d.platform = 'meta' THEN 'meta' ELSE 'google' END
+            WHERE d.client_id = $1
+              AND d.id = $2
+            FOR UPDATE OF d`,
+          [input.clientId, input.destinationId, input.canonicalEventName]
+        )
+        const row = contextResult.rows?.[0] as ProviderContextRow | undefined
+        if (!row) return { status: 'not_found' }
+        if (Number(row.profile_config_version) !== input.expectedConfigVersion) {
+          return { status: 'version_conflict' }
+        }
+        if (
+          row.profile_enabled
+          || row.profile_environment !== 'test'
+          || row.destination_enabled
+          || row.destination_environment !== 'test'
+        ) return { status: 'not_test_mode' }
+        if (row.platform !== expectedPlatform(input.mode)) return { status: 'not_found' }
+        if (!row.provider_event_name) return { status: 'mapping_not_found' }
+        if (!row.account_id) return { status: 'connection_not_found' }
+
+        const insertedResult = await db.query(
+          `INSERT INTO measurement_provider_test_runs (
+             client_id, profile_id, destination_id, platform, mode, status,
+             canonical_event_name, provider_event_name, config_version,
+             idempotency_key, actor_id, reason
+           ) VALUES ($1, $2, $3, $4, $5, 'requested', $6, $7, $8, $9, $10, $11)
+           ON CONFLICT (client_id, idempotency_key) DO NOTHING
+           RETURNING id, mode, status, provider_request_id, error_class, redacted_error, completed_at`,
+          [
+            input.clientId,
+            row.profile_id,
+            input.destinationId,
+            row.platform,
+            input.mode,
+            input.canonicalEventName,
+            row.provider_event_name,
+            input.expectedConfigVersion,
+            input.idempotencyKey,
+            input.actor.id,
+            input.reason
+          ]
+        )
+        const inserted = insertedResult.rows?.[0] as TestRunRow | undefined
+        if (!inserted) {
+          const racedResult = await db.query(
+            `SELECT id, mode, status, provider_request_id, error_class, redacted_error, completed_at
+               FROM measurement_provider_test_runs
+              WHERE client_id = $1
+                AND idempotency_key = $2`,
+            [input.clientId, input.idempotencyKey]
+          )
+          const raced = racedResult.rows?.[0] as TestRunRow | undefined
+          if (!raced) throw new Error('Provider test reservation was not persisted')
+          return { status: 'existing', run: runSummary(raced) }
+        }
+
+        const metadata = record(row.metadata)
+        const operatingAccountId = row.account_id.replaceAll('-', '')
+        const loginAccountId = (
+          stringValue(metadata.google_login_customer_id)
+          ?? stringValue(metadata.login_customer_id)
+          ?? operatingAccountId
+        ).replaceAll('-', '')
+        const scopes = Array.isArray(row.scopes)
+          ? row.scopes.filter((scope): scope is string => typeof scope === 'string')
+          : []
+
+        return {
+          status: 'reserved',
+          context: {
+            run: runSummary(inserted),
+            delivery: {
+              eventId: inserted.id,
+              eventName: input.canonicalEventName,
+              providerEventName: row.provider_event_name,
+              occurredAt: input.occurredAt,
+              idempotencyKey: input.idempotencyKey,
+              externalDestinationId: row.external_destination_id,
+              operatingAccountId,
+              loginAccountId
+            },
+            credential: {
+              accessToken: row.access_token,
+              refreshToken: row.refresh_token,
+              scopes
+            }
+          }
+        }
+      })
+    },
+
+    async complete(input) {
+      await transaction(async (db) => {
+        const result = await db.query(
+          `UPDATE measurement_provider_test_runs
+              SET status = $3,
+                  provider_request_id = $4,
+                  error_class = $5,
+                  redacted_error = $6,
+                  completed_at = $7::timestamptz
+            WHERE client_id = $1
+              AND id = $2
+              AND status = 'requested'`,
+          [
+            input.clientId,
+            input.runId,
+            input.status,
+            input.providerRequestId,
+            input.errorClass,
+            input.redactedError,
+            input.completedAt
+          ]
+        )
+        if (result.rowCount !== 1) throw new Error('Provider test evidence was not completed')
+      })
+    }
+  }
+}
