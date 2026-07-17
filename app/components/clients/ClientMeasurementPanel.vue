@@ -23,6 +23,7 @@ const auditEntries = ref<MeasurementAuditEntry[]>([])
 const pending = ref(true)
 const loadError = ref<string | null>(null)
 const showDestinationEditor = ref(false)
+const testingDestinationId = ref<string | null>(null)
 const readinessUnavailable = ref(false)
 const destinationsUnavailable = ref(false)
 const auditUnavailable = ref(false)
@@ -189,6 +190,13 @@ async function handleDestinationSaved(result: { warnings: Array<{ code: string }
   operationNotice.value = mutationNotice(result.warnings)
   showDestinationEditor.value = false
   await refreshMeasurement()
+}
+
+function handleProviderTestCompleted() {
+  operationNotice.value = {
+    tone: 'success',
+    message: 'Provider test evidence recorded in Zero.'
+  }
 }
 
 void refreshMeasurement()
@@ -425,9 +433,20 @@ void refreshMeasurement()
             </div>
 
             <div class="mt-4 border-t border-default pt-4">
-              <p class="text-xs font-medium uppercase tracking-wide text-dimmed">
-                Canonical event mappings
-              </p>
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <p class="text-xs font-medium uppercase tracking-wide text-dimmed">
+                  Canonical event mappings
+                </p>
+                <UButton
+                  v-if="canConfigure && !profile.enabled && profile.environment === 'test' && !destination.enabled && destination.environment === 'test' && destination.mappings.some(mapping => mapping.isActive)"
+                  :label="testingDestinationId === destination.id ? 'Hide provider test' : 'Run provider test'"
+                  icon="i-lucide-flask-conical"
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  @click="testingDestinationId = testingDestinationId === destination.id ? null : destination.id"
+                />
+              </div>
               <div v-if="destination.mappings.length" class="mt-2 flex flex-wrap gap-2">
                 <span
                   v-for="mapping in destination.mappings"
@@ -441,6 +460,15 @@ void refreshMeasurement()
               <p v-else class="mt-2 text-sm text-muted">
                 No event mappings configured.
               </p>
+
+              <ClientMeasurementProviderTest
+                v-if="testingDestinationId === destination.id"
+                :client-id="clientId"
+                :profile-config-version="profile.configVersion"
+                :destination="destination"
+                @close="testingDestinationId = null"
+                @completed="handleProviderTestCompleted"
+              />
             </div>
           </article>
         </div>
