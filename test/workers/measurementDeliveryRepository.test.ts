@@ -122,7 +122,56 @@ describe('measurement delivery repository', () => {
       NOW.toISOString(),
       'meta-request-1',
       null,
+      null,
+      'not_required',
       null
     ])
+  })
+
+  it('schedules Google diagnostics without marking provider processing delivered', async () => {
+    const statements: Array<{ sql: string, params: unknown[] }> = []
+    const client = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        statements.push({ sql, params })
+        return { rows: [] }
+      })
+    }
+    const repository = createMeasurementDeliveryRepository({
+      transaction: (async (callback: (db: typeof client) => Promise<unknown>) => callback(client)) as never
+    })
+    const claimed = {
+      ...deliveryRow(),
+      clientId: CLIENT_ID,
+      deliveryId: DELIVERY_ID,
+      destinationId: deliveryRow().destination_id,
+      attemptNumber: 1,
+      platform: 'google_data_manager'
+    } as never
+
+    await repository.complete(claimed, {
+      outcome: 'accepted',
+      providerRequestId: 'google-request-1',
+      errorClass: null,
+      redactedDiagnostic: null
+    }, NOW)
+
+    expect(statements[1]?.sql).toMatch(/diagnostic_status = \$8/)
+    expect(statements[1]?.params).toEqual([
+      DELIVERY_ID,
+      'accepted',
+      null,
+      NOW.toISOString(),
+      'google-request-1',
+      null,
+      null,
+      'pending',
+      '2026-07-17T06:35:00.000Z'
+    ])
+    expect(statements[2]?.params).toEqual(expect.arrayContaining([
+      claimed.destinationId,
+      'validating',
+      false,
+      false
+    ]))
   })
 })

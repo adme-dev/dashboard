@@ -92,7 +92,10 @@ function policyFailure(claim: MeasurementDeliveryClaim): RecordedDeliveryResult 
   if (
     !claim.destinationEnabled
     || claim.destinationEnvironment !== 'live'
-    || !['ready', 'degraded'].includes(claim.destinationHealthStatus)
+    || !(
+      ['ready', 'degraded'].includes(claim.destinationHealthStatus)
+      || (claim.platform === 'google_data_manager' && claim.destinationHealthStatus === 'validating')
+    )
   ) {
     return {
       outcome: 'policy_skipped',

@@ -8,7 +8,7 @@
 **Source PRD:** `/Users/paulgiurin/Downloads/meta-capi-rollout-prd.md`
 **Parent/subtask execution backlog:** [Measurement Signal Hub execution backlog](./2026-07-17-measurement-signal-hub-execution-backlog.md)
 
-**Production implementation update (17 July 2026):** Zero now has the dormant production path from a native CRM stage move through immutable lifecycle evidence, a deterministic transactional conversion outbox, repairable Queue publication, and a standalone Hyperdrive-backed delivery Worker. Meta CRM CAPI and Google Data Manager ingestion adapters are implemented. Production certification is not complete: Google request-status polling, provider test evidence, infrastructure/secrets provisioning, OAuth re-consent, and the internal/client delivery-health surfaces remain open. No live client profile or destination has been enabled and no provider event has been sent.
+**Production implementation update (17 July 2026):** Zero now has the dormant production path from a native CRM stage move through immutable lifecycle evidence, a deterministic transactional conversion outbox, repairable Queue publication, and a standalone Hyperdrive-backed delivery Worker. Meta CRM CAPI and Google Data Manager ingestion are implemented, including scheduled Google terminal request-status reconciliation and append-only redacted diagnostic evidence. Production certification is not complete: provider test evidence, infrastructure/secrets provisioning, OAuth re-consent, and the internal/client delivery-health surfaces remain open. No live client profile or destination has been enabled and no provider event has been sent.
 
 ## 1. Outcome
 

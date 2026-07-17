@@ -194,9 +194,17 @@ export async function deliverGoogleDataManagerEvent(
   if (!response.ok) return httpFailure('Google Data Manager', response.status)
 
   const body = await responseObject(response)
+  if (typeof body.requestId !== 'string' || body.requestId.length === 0) {
+    return {
+      outcome: 'retryable',
+      providerRequestId: null,
+      errorClass: 'google_request_id_missing',
+      redactedDiagnostic: 'Google Data Manager did not return a request ID'
+    }
+  }
   return {
     outcome: 'accepted',
-    providerRequestId: typeof body.requestId === 'string' ? body.requestId.slice(0, 255) : null,
+    providerRequestId: body.requestId.slice(0, 255),
     errorClass: null,
     redactedDiagnostic: null
   }

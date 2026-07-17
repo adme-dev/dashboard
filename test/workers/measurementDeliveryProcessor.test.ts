@@ -129,6 +129,23 @@ describe('measurement delivery processor', () => {
     }, expect.any(Date))
   })
 
+  it('continues Google ingestion while earlier requests are validating', async () => {
+    const google = claim({
+      platform: 'google_data_manager',
+      destinationHealthStatus: 'validating',
+      refreshToken: 'google-refresh-token',
+      connectionScopes: ['https://www.googleapis.com/auth/datamanager']
+    })
+    const { processor, deliverGoogle } = setup([google, null])
+
+    await expect(processor.process(MESSAGE)).resolves.toMatchObject({
+      claimed: 1,
+      accepted: 1,
+      policySkipped: 0
+    })
+    expect(deliverGoogle).toHaveBeenCalledOnce()
+  })
+
   it('turns provider network exceptions into a redacted retryable outcome', async () => {
     const meta = claim()
     const state = setup([meta, null])

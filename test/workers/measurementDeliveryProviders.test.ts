@@ -129,6 +129,24 @@ describe('measurement delivery provider adapters', () => {
     expect(JSON.stringify(result)).not.toContain('credential-bearing')
   })
 
+  it('retries a Google success response that cannot be reconciled without a request ID', async () => {
+    const fetch = vi.fn(async () => new Response('{}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }))
+
+    await expect(deliverGoogleDataManagerEvent({
+      delivery: baseDelivery,
+      accessToken: 'google-access-token',
+      fetch
+    })).resolves.toEqual({
+      outcome: 'retryable',
+      providerRequestId: null,
+      errorClass: 'google_request_id_missing',
+      redactedDiagnostic: 'Google Data Manager did not return a request ID'
+    })
+  })
+
   it('classifies a rejected Google refresh grant as a permanent re-consent condition', async () => {
     const fetch = vi.fn(async () => new Response('token response detail', { status: 400 }))
 

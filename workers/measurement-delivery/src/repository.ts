@@ -225,6 +225,13 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
         const nextAttemptAt = result.outcome === 'retryable'
           ? retryAt(claim.attemptNumber, now)
           : null
+        const pendingGoogleDiagnostics = claim.platform === 'google_data_manager'
+          && result.outcome === 'accepted'
+          && Boolean(result.providerRequestId)
+        const diagnosticStatus = pendingGoogleDiagnostics ? 'pending' : 'not_required'
+        const diagnosticNextCheckAt = pendingGoogleDiagnostics
+          ? new Date(now.getTime() + 30 * 60 * 1000).toISOString()
+          : null
         await db.query(
           `INSERT INTO conversion_delivery_attempts (
              client_id, delivery_id, attempt_number, outcome,
@@ -251,6 +258,9 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
                   provider_request_id = $5,
                   error_class = $6,
                   redacted_error = $7,
+                  diagnostic_status = $8,
+                  diagnostic_started_at = CASE WHEN $8 = 'pending' THEN $4::timestamptz ELSE NULL END,
+                  diagnostic_next_check_at = $9::timestamptz,
                   updated_at = $4::timestamptz
             WHERE id = $1
               AND status = 'claimed'`,
@@ -261,11 +271,15 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
             now.toISOString(),
             result.providerRequestId,
             result.errorClass,
-            result.redactedDiagnostic
+            result.redactedDiagnostic,
+            diagnosticStatus,
+            diagnosticNextCheckAt
           ]
         )
 
         if (result.outcome !== 'policy_skipped') {
+          const successful = result.outcome === 'accepted' && claim.platform === 'meta'
+          const failed = result.outcome === 'retryable' || result.outcome === 'permanent_failure'
           const blocked = result.outcome === 'permanent_failure'
             && ['meta_credential_missing', 'google_credential_missing', 'google_oauth_reconsent_required']
               .includes(result.errorClass ?? '')
@@ -273,7 +287,7 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
             `UPDATE conversion_destinations
                 SET health_status = $2,
                     last_success_at = CASE WHEN $3 THEN $4::timestamptz ELSE last_success_at END,
-                    last_failure_at = CASE WHEN $3 THEN last_failure_at ELSE $4::timestamptz END,
+                    last_failure_at = CASE WHEN $9 THEN $4::timestamptz ELSE last_failure_at END,
                     provider_request_id = $5,
                     error_class = $6,
                     redacted_error = $7,
@@ -282,13 +296,14 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
                 AND client_id = $8`,
             [
               claim.destinationId,
-              result.outcome === 'accepted' ? 'ready' : blocked ? 'blocked' : 'degraded',
-              result.outcome === 'accepted',
+              pendingGoogleDiagnostics ? 'validating' : successful ? 'ready' : blocked ? 'blocked' : 'degraded',
+              successful,
               now.toISOString(),
               result.providerRequestId,
               result.errorClass,
               result.redactedDiagnostic,
-              claim.clientId
+              claim.clientId,
+              failed
             ]
           )
         }

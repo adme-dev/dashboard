@@ -7,10 +7,10 @@
 ## Delivery status — 17 July 2026
 
 - **Complete in code:** T1 contracts/governance, T2 additive schema, the T5–T6 native CRM/portal transactional outcome path, T8 transactional outbox and repair publisher, and the T11 provider-neutral delivery Worker foundation.
-- **Adapter implementation complete:** T12 Meta CRM CAPI ingestion and T13 Google Data Manager ingestion are implemented behind dormant destination policy. Both classify retryable/permanent failures, store redacted attempt evidence, and keep provider calls outside the lifecycle request transaction.
-- **In progress:** T3 provider validation/test actions and endpoint rotation; T12 provider certification; and T13 terminal request-status reconciliation. Google ingestion currently records the returned `requestId` as accepted, but automated diagnostics polling is still required before Zero can call it delivered.
+- **Adapter implementation complete:** T12 Meta CRM CAPI ingestion and T13 Google Data Manager ingestion plus terminal diagnostics reconciliation are implemented behind dormant destination policy. Both classify retryable/permanent failures, store redacted evidence, and keep provider calls outside the lifecycle request transaction.
+- **In progress:** T3 provider validation/test actions and endpoint rotation, plus T12–T13 provider certification. Google acceptance now schedules request-status checks after 30 minutes, polls with backoff/jitter for up to 24 hours, and only records delivered after terminal `SUCCESS`; live test evidence remains required.
 - **Pending surfaces/evidence:** T0 Monday snapshot and pilot approval; T4 configuration UI; T9–T10 browser dedup/first-party transport; T14–T15 internal/client health; queue/Hyperdrive/secrets provisioning; Google `datamanager` re-consent; and fresh Meta/Google identifier-bearing test evidence.
-- **Safety state:** All seeded client profiles remain disabled in `test`; the latest production readback found no enabled profile or destination. Migration `260` is applied with no active lifecycle mappings, and no provider event, Monday write, or live-KV mutation has been performed.
+- **Safety state:** All seeded client profiles remain disabled in `test`; the latest production readback found no enabled profile or destination. Migrations `260`–`261` are applied with no active lifecycle mappings, delivery rows, or diagnostic checks, and no provider event, Monday write, or live-KV mutation has been performed.
 
 ## Graphic mapping
 
@@ -52,7 +52,7 @@ flowchart LR
     T8 --> T9["T9 Browser/server dedup"] --> T10["T10 First-party transport"]
     T8 --> T11["T11 Delivery Worker · code complete"]
     T11 --> T12["T12 Meta adapter · certification pending"]
-    T11 --> T13["T13 Google adapter · diagnostics pending"]
+    T11 --> T13["T13 Google adapter + reconciler · certification pending"]
   end
   subgraph G5["P5 subtasks"]
     T12 --> T14["T14 Internal health + replay"]
@@ -244,12 +244,12 @@ flowchart LR
 ## Implementation ledger
 
 1. **T1 complete:** capability/profile/destination/event contracts, ADR, threat model, provider-readiness R&D, and deterministic contract tests.
-2. **T2 complete:** migrations `256`–`260`, schema contract tests, rollback/forward-fix runbook, disabled/test seed, idempotent apply, and Neon readback. Migration `260` adds lifecycle-stage outcome mappings and is applied with zero active mappings.
+2. **T2 complete:** migrations `256`–`261`, schema contract tests, rollback/forward-fix runbook, disabled/test seed, idempotent apply, and Neon readback. Migration `260` adds lifecycle-stage outcome mappings; migration `261` adds leased diagnostic cadence and append-only redacted check evidence. Both are applied with zero active runtime rows.
 3. **T3 control-plane slices complete:** versioned tenant-safe profiles, destinations, capabilities, mappings, privacy/live approvals, audit history, readiness, governed activation, and dormant external outcome-endpoint policy. Provider validation/test actions plus endpoint rotation/promotion remain.
 4. **T5–T6 server path complete:** commit `c54b9ff1` makes agency and portal CRM opportunity moves optimistic and transactional, writes immutable lifecycle evidence, applies client-scoped mapping, and inserts one canonical outbox event in the same transaction. Portal browser/UI acceptance remains with T6/T15.
 5. **T8 complete:** commits `a8d8e3fe` and `94091f7e` add deterministic event idempotency, transactional outbox creation, minimal queue messages, post-commit publication, a protected five-minute repair endpoint, and recovery for pending, retryable, and lease-expired work.
 6. **T11 code complete:** commit `4e60490c` adds the standalone Queue/Hyperdrive Worker, tenant-scoped `SKIP LOCKED` claims, immutable attempts, redacted logs, independent provider fan-out, retry/backoff, stale-claim recovery, DLQ binding, configuration tests, and a deployment runbook. Cloudflare resources and secrets are intentionally not provisioned yet.
 7. **T12 adapter code complete; certification open:** Meta CRM CAPI sends the mapped event, valid event time/action source, stable event ID, and retained Meta lead ID to the configured dataset. Test Events, dedup, eligibility, and live provider evidence remain release gates.
-8. **T13 ingestion code complete; diagnostics open:** Google Data Manager ingestion uses the configured Google Ads account/conversion action, click identifier, event timestamp, and stable transaction ID, and stores the returned request ID. Existing OAuth grants require explicit `datamanager` re-consent; the scheduled 30-minute-to-24-hour terminal diagnostics reconciler is not yet implemented.
-9. **Quality evidence:** Worker typecheck passes independently; new production files pass scoped ESLint; provider, processor, repository, queue publisher, repair route, binding, and Worker configuration tests pass as separately spaced test-file runs. The legacy `googleAdsClient.ts` still has pre-existing repository lint debt; this slice changes only its scope constant.
-10. **Next production slices:** implement Google diagnostics reconciliation, then T4/T14/T15 configuration and health surfaces, perform dormant infrastructure deployment, and run the approved pilot evidence sequence. T18 must close in Zero before T19 performs the single final Monday reconciliation.
+8. **T13 code complete; certification open:** Google Data Manager ingestion uses the configured Google Ads account/conversion action, click identifier, event timestamp, and stable transaction ID. Its scheduled reconciler polls status per destination after 30 minutes, backs off by 1.3 with jitter up to 60 minutes, stops at 24 hours, preserves warnings/error counts without raw bodies, and atomically promotes only terminal `SUCCESS` to delivered. Existing OAuth grants still require explicit `datamanager` re-consent.
+9. **Quality evidence:** Worker typecheck passes independently; new production files pass scoped ESLint; provider, processor, ingestion/diagnostic repositories, diagnostic parser/reconciler, queue publisher, repair route, migration, binding, and Worker configuration tests pass as separately spaced test-file runs. The legacy `googleAdsClient.ts` still has pre-existing repository lint debt; this slice changes only its scope constant.
+10. **Next production slices:** build T4/T14/T15 configuration and canonical health surfaces, perform dormant infrastructure deployment, reconnect the approved Google pilot, and run the approved provider evidence sequence. T18 must close in Zero before T19 performs the single final Monday reconciliation.

@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest'
 
 interface WorkerConfig {
   name?: string
+  triggers?: {
+    crons?: string[]
+  }
   queues?: {
     consumers?: Array<Record<string, unknown>>
   }
@@ -28,6 +31,7 @@ describe('measurement delivery Worker production wiring', () => {
       binding: 'HYPERDRIVE',
       id: '900b4b74ec41462cbbabebd0aa8775aa'
     })
+    expect(config.triggers?.crons).toEqual(['*/15 * * * *'])
   })
 
   it('requests the Data Manager scope when Google connections are re-consented', () => {
@@ -44,5 +48,7 @@ describe('measurement delivery Worker production wiring', () => {
     expect(config).not.toMatch(/DATABASE_URL\s*=/)
     expect(entry).toContain('env.GOOGLE_CLIENT_SECRET')
     expect(entry).toContain('env.HYPERDRIVE.connectionString')
+    expect(entry).toContain('async scheduled(')
+    expect(entry).toContain('createMeasurementDiagnosticReconciler')
   })
 })

@@ -1,6 +1,9 @@
 import { createMeasurementWorkerDatabase } from './db'
 import { createMeasurementDeliveryProcessor } from './delivery'
 import type { MeasurementDeliveryMessage } from './delivery'
+import { retrieveGoogleDataManagerRequestStatus } from './diagnostics'
+import { createMeasurementDiagnosticReconciler } from './diagnosticReconciler'
+import { createMeasurementDiagnosticRepository } from './diagnosticRepository'
 import {
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
@@ -86,6 +89,39 @@ export default {
           message.retry({ delaySeconds: 30 })
         }
       }
+    } finally {
+      await database.close()
+    }
+  },
+
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    _ctx: ExecutionContext
+  ): Promise<void> {
+    const database = createMeasurementWorkerDatabase(env.HYPERDRIVE.connectionString)
+    const repository = createMeasurementDiagnosticRepository(database)
+    const reconciler = createMeasurementDiagnosticReconciler({
+      repository,
+      retrieve: retrieveGoogleDataManagerRequestStatus,
+      refreshGoogleAccessToken: refreshGoogleDataManagerAccessToken,
+      workerId: () => `${env.WORKER_ID_PREFIX}:diagnostics:${crypto.randomUUID()}`,
+      now: () => new Date(),
+      random: Math.random,
+      googleClientId: env.GOOGLE_CLIENT_ID,
+      googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+      fetch: globalThis.fetch.bind(globalThis)
+    })
+
+    try {
+      const result = await reconciler.reconcile()
+      console.log({ event: 'measurement_diagnostics_reconciled', ...result })
+    } catch (error) {
+      console.warn({
+        event: 'measurement_diagnostics_failed',
+        errorClass: errorClass(error)
+      })
+      throw error
     } finally {
       await database.close()
     }
