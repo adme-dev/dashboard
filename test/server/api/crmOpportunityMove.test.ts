@@ -25,6 +25,7 @@ const mockRequireAuth = vi.fn()
 const mockRequireWriteAccess = vi.fn()
 const mockRequireClientAuth = vi.fn()
 const mockMove = vi.fn()
+const mockPublishEvent = vi.fn()
 const mockRunStageEntryAutomations = vi.fn()
 const mockQueryOne = vi.fn()
 
@@ -44,6 +45,12 @@ vi.mock('~~/server/utils/db', () => ({
 vi.mock('~~/server/utils/crm/opportunityStageTransition', () => ({
   opportunityStageTransitionService: {
     move: (...args: unknown[]) => mockMove(...args)
+  }
+}))
+
+vi.mock('~~/server/utils/measurement/publisher', () => ({
+  conversionOutboxPublisher: {
+    publishEvent: (...args: unknown[]) => mockPublishEvent(...args)
   }
 }))
 
@@ -72,7 +79,14 @@ function movedResult() {
     historyId: '66666666-6666-4666-8666-666666666666',
     canonicalEventName: 'lead_qualified' as const,
     linkedLeadId: null,
-    outbox: { status: 'created' as const, deliveryCount: 1 }
+    outbox: {
+      status: 'created' as const,
+      event: {
+        eventId: '77777777-7777-4777-8777-777777777777',
+        outboxStatus: 'pending' as const
+      },
+      deliveryCount: 1
+    }
   }
 }
 
@@ -87,6 +101,7 @@ describe('CRM opportunity move endpoints', () => {
       canManageLeadOutcomes: true
     })
     mockMove.mockResolvedValue(movedResult())
+    mockPublishEvent.mockResolvedValue({ status: 'published' })
     mockRunStageEntryAutomations.mockResolvedValue(undefined)
     mockQueryOne.mockResolvedValue(null)
   })
@@ -115,6 +130,10 @@ describe('CRM opportunity move endpoints', () => {
       opportunityId: OPPORTUNITY_ID,
       toStageId: TO_STAGE_ID
     }))
+    expect(mockPublishEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      movedResult().outbox.event.eventId
+    )
     expect(result).toEqual({ item: movedResult().item })
   })
 

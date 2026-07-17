@@ -29,6 +29,12 @@ queue = "agency-jobs"
 binding = "LEADS_DELIVERY_QUEUE"
 queue = "leads-delivery-queue"
 
+# Minimal conversion identity messages only. The standalone measurement delivery
+# Worker consumes this queue; canonical event and destination data stay in Neon.
+[[queues.producers]]
+binding = "MEASUREMENT_DELIVERY_QUEUE"
+queue = "measurement-delivery"
+
 # Producer binding for the Audio Studio music-generation queue. Consumer runs in
 # workers/audio-jobs/ (the Pages worker entry exports only fetch+scheduled, so a
 # Pages-side queue consumer never fires — it must live in a standalone Worker).

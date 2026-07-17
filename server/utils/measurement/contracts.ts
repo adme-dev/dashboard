@@ -691,6 +691,13 @@ export const CanonicalConversionOutboxEventSchema = CanonicalConversionEventSche
   policyReason: z.string().trim().min(1).max(255).nullable()
 })
 
+export const ConversionDeliveryQueueMessageSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  clientId: z.string().uuid(),
+  eventId: z.string().uuid(),
+  enqueuedAt: z.string().datetime({ offset: true })
+})
+
 export type ClientMeasurementProfileCreate = z.infer<typeof ClientMeasurementProfileCreateSchema>
 export type ClientMeasurementProfilePatch = z.infer<typeof ClientMeasurementProfilePatchSchema>
 export type ClientMeasurementProfileState = z.infer<typeof ClientMeasurementProfileStateSchema>
@@ -717,3 +724,4 @@ export type CapabilityState = z.infer<typeof CapabilityStateSchema>
 export type CanonicalConversionEvent = z.infer<typeof CanonicalConversionEventSchema>
 export type AppendCanonicalConversionEvent = z.infer<typeof AppendCanonicalConversionEventSchema>
 export type CanonicalConversionOutboxEvent = z.infer<typeof CanonicalConversionOutboxEventSchema>
+export type ConversionDeliveryQueueMessage = z.infer<typeof ConversionDeliveryQueueMessageSchema>

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { opportunityStageTransitionService } from '~~/server/utils/crm/opportunityStageTransition'
 import { runStageEntryAutomations } from '~~/server/utils/crm/stageAutomation'
+import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -44,6 +45,19 @@ export default defineEventHandler(async (event) => {
   }
   if (result.status === 'no_change') {
     return { item: { id, stage_id: result.currentStageId } }
+  }
+
+  if (result.outbox?.event.outboxStatus === 'pending') {
+    try {
+      await conversionOutboxPublisher.publishEvent(event, result.outbox.event.eventId)
+    } catch (error) {
+      console.warn({
+        event: 'measurement_outbox_post_commit_publish_failed',
+        clientId: b.client_id,
+        eventId: result.outbox.event.eventId,
+        errorClass: error instanceof Error ? error.name : 'unknown'
+      })
+    }
   }
 
   try {
