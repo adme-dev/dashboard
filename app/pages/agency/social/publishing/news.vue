@@ -395,7 +395,7 @@ async function createDrafts() {
         </div>
         <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" aria-label="Close client content profile" @click="closeClientProfile" />
       </div>
-      <div class="grid gap-4 md:grid-cols-2">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
         <UFormField label="Industry">
           <UInput v-model="profileForm.industry" class="w-full" placeholder="e.g. Automotive retail" />
         </UFormField>
@@ -428,7 +428,7 @@ async function createDrafts() {
         </UFormField>
       </div>
       <UFormField label="Additional AI instructions" help="Approved client-specific constraints for relevance and rewriting.">
-        <UTextarea v-model="profileForm.aiInstructions" :rows="4" class="w-full" placeholder="Add only instructions approved for this client" />
+        <UTextarea v-model="profileForm.aiInstructions" class="w-full col-span-full" :rows="4" placeholder="Add only instructions approved for this client" />
       </UFormField>
       <fieldset>
         <legend class="mb-2 text-sm font-medium text-default">Preferred platforms</legend>
@@ -468,7 +468,7 @@ async function createDrafts() {
         </div>
         <div class="space-y-3 rounded-lg border border-default bg-elevated/20 p-4">
           <div class="text-sm font-medium">Create a reusable package from this profile</div>
-          <div class="grid gap-4 md:grid-cols-2">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <UFormField label="Package name"><UInput v-model="newPackage.name" class="w-full" /></UFormField>
             <UFormField label="Included volumes" help="Use platform: quantity pairs."><UInput v-model="newPackage.includedVolumes" class="w-full" placeholder="facebook: 8, linkedin: 4" /></UFormField>
             <UFormField label="Approval SLA (hours)"><UInput v-model.number="newPackage.approvalSlaHours" type="number" min="0" class="w-full" /></UFormField>
@@ -540,7 +540,7 @@ async function createDrafts() {
             </summary>
             <div class="space-y-3 border-t border-default p-4">
               <p class="text-xs text-muted">Paste a JSON array of exported messages. Imports remain pending until an admin approves them.</p>
-              <UTextarea v-model="slackImportText" :rows="5" class="w-full font-mono text-xs" placeholder='[{"title":"Decision","content":"...","sourceId":"slack-123"}]' />
+              <UTextarea v-model="slackImportText" class="w-full col-span-full" :rows="5" placeholder='[{"title":"Decision","content":"...","sourceId":"slack-123"}]' />
               <div class="flex justify-end"><UButton label="Import Slack evidence" icon="i-lucide-upload" color="neutral" variant="subtle" :loading="slackImporting" :disabled="!slackImportText.trim()" @click="importSlackEvidence" /></div>
             </div>
           </details>
@@ -555,12 +555,12 @@ async function createDrafts() {
             <div v-for="item in governance.evidence.approved" :key="item.id" class="rounded-md bg-elevated/50 px-3 py-2 text-sm"><UBadge color="neutral" variant="subtle" size="xs">{{ item.evidence_type }}</UBadge> <span class="ml-1">{{ item.title }}</span></div>
           </div>
           <div class="space-y-4 rounded-lg border border-default bg-elevated/20 p-4">
-            <div class="grid gap-4 md:grid-cols-2">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
               <UFormField label="Guidance type"><USelectMenu v-model="evidenceForm.evidenceType" :items="[{ label: 'Decision', value: 'decision' }, { label: 'Approved brief', value: 'brief' }, { label: 'Plan', value: 'plan' }, { label: 'Performance finding', value: 'performance' }]" value-key="value" class="w-full" /></UFormField>
               <UFormField label="Guidance title"><UInput v-model="evidenceForm.title" class="w-full" placeholder="A short, specific title" /></UFormField>
             </div>
             <UFormField label="Approved guidance" help="Only approved instructions, decisions, or findings should be recorded here.">
-              <UTextarea v-model="evidenceForm.content" :rows="4" class="w-full" placeholder="What should future recommendations follow?" />
+              <UTextarea v-model="evidenceForm.content" class="w-full col-span-full" :rows="4" placeholder="What should future recommendations follow?" />
             </UFormField>
             <div class="flex justify-end"><UButton label="Approve into XeroFlow guidance" icon="i-lucide-badge-check" :loading="evidenceSaving" :disabled="!evidenceForm.title.trim() || !evidenceForm.content.trim()" @click="saveCanonicalEvidence" /></div>
           </div>
