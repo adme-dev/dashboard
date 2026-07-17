@@ -99,8 +99,9 @@ function responseFor(request: string) {
         {
           id: '33333333-3333-4333-8333-333333333333',
           platform: 'meta',
+          socialConnectionId: '77777777-7777-4777-8777-777777777777',
           externalDestinationId: '573284833843027',
-          credentialConfigured: true,
+          credentialConfigured: false,
           enabled: false,
           environment: 'test',
           healthStatus: 'ready',
@@ -143,6 +144,7 @@ function responseFor(request: string) {
         {
           id: '44444444-4444-4444-8444-444444444444',
           platform: 'google_data_manager',
+          socialConnectionId: null,
           externalDestinationId: 'customers/123/conversionActions/456',
           credentialConfigured: true,
           enabled: false,
@@ -234,7 +236,8 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Externally managed')
       expect(host.textContent).toContain('lead_qualified → QualifiedLead')
       expect(host.textContent).toContain('Document externally managed Google delivery')
-      expect(host.textContent).toContain('Credential configured')
+      expect(host.textContent).toContain('Connected account linked')
+      expect(host.textContent).toContain('Credential reference configured')
       expect(host.querySelector('[data-testid="measurement-profile-form"]')).not.toBeNull()
       expect(host.textContent).not.toContain('cloudflare/measurement')
       expect(host.textContent).not.toContain('access token')

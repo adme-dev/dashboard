@@ -108,6 +108,12 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value))
 }
 
+function credentialSourceLabel(destination: MeasurementDestination) {
+  if (destination.credentialConfigured) return 'Credential reference configured'
+  if (destination.socialConnectionId) return 'Connected account linked'
+  return 'No credential source configured'
+}
+
 function measurementErrorMessage(error: unknown) {
   const candidate = error as {
     data?: { statusMessage?: string }
@@ -396,7 +402,7 @@ void refreshMeasurement()
               </div>
               <div class="text-left sm:text-right">
                 <p class="text-xs font-medium text-highlighted">
-                  {{ destination.credentialConfigured ? 'Credential configured' : 'Credential not configured' }}
+                  {{ credentialSourceLabel(destination) }}
                 </p>
                 <p class="mt-1 text-xs text-muted">
                   Last success: {{ formatDateTime(destination.lastSuccessAt) }}
