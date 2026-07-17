@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { buildNewsPublishTargets } from '~/utils/socialNewsPublishing'
+import { updateStringSelection } from '~/utils/stringSelection'
+
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 useHead({ title: 'News Inbox' })
 
@@ -56,9 +58,15 @@ const evidenceTransitionLoading = ref(false)
 const evidenceReviewingId = ref('')
 const recommendation = ref<{ audience: string | null; timezone: string; platforms: string[]; accounts: Array<{ id: string; platform: string; accountName: string | null; health: string; lastError: string | null }>; nextSlot: string | null; basis: string; approvalRequired: boolean; article: { title: string; relevant: boolean; matchedKeywords: string[]; excludedKeywords: string[] } | null } | null>(null)
 const recommendationLoading = ref(false)
+const platformOptions = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'google-business'] as const
 let clientLoadSequence = 0
 const publishTargetCount = computed(() => buildNewsPublishTargets(accounts.value, accountIds.value, platforms.value).length)
 
+function platformLabel(platform: string) {
+  return platform === 'google-business'
+    ? 'Google Business'
+    : platform.charAt(0).toUpperCase() + platform.slice(1)
+}
 function toList(value: string) { return value.split(',').map(item => item.trim()).filter(Boolean) }
 function toCsv(value: string[] | undefined) { return (value || []).join(', ') }
 function parseIncludedVolumes(value: string) {
@@ -377,29 +385,67 @@ async function createDrafts() {
       <div v-if="governance.evidence.approvedCount"><span class="text-muted">Approved guidance</span> {{ governance.evidence.approvedCount }}</div>
       <div v-if="governance.evidence.pendingCount"><UBadge color="warning" variant="subtle" size="xs">{{ governance.evidence.pendingCount }} imported item(s) awaiting review</UBadge></div>
     </div>
-    <div v-if="showClientProfile" class="rounded-lg border border-primary/30 bg-default p-4 mb-5 space-y-4">
-      <div>
-        <div class="font-medium">Client social content profile</div>
-        <p class="text-sm text-muted">Controls explainable news relevance and supplies approved context to AI rewrites.</p>
+    <div v-if="showClientProfile" class="mb-5 space-y-6 rounded-xl border border-primary/30 bg-default p-5">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="font-medium text-highlighted">Client social content profile</div>
+          <p class="text-sm text-muted">Controls explainable news relevance and supplies approved context to AI rewrites.</p>
+        </div>
+        <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" aria-label="Close client content profile" @click="closeClientProfile" />
       </div>
-      <div class="grid gap-3 md:grid-cols-2">
-        <UInput v-model="profileForm.industry" placeholder="Industry" />
-        <UInput v-model="profileForm.targetAudience" placeholder="Target audience" />
-        <UInput v-model="profileForm.contentPillars" placeholder="Content pillars, comma separated" />
-        <UInput v-model="profileForm.includeKeywords" placeholder="Include keywords, comma separated" />
-        <UInput v-model="profileForm.excludeKeywords" placeholder="Exclude keywords, comma separated" />
-        <UInput v-model="profileForm.makes" placeholder="Makes / brands, comma separated" />
-        <UInput v-model="profileForm.brandVoice" placeholder="Brand voice" />
-        <UInput v-model="profileForm.defaultTone" placeholder="Default AI tone" />
-        <UInput v-model="profileForm.timezone" placeholder="Timezone" />
-        <USelectMenu v-model="profileForm.defaultWorkflow" :items="[{ label: 'Create drafts', value: 'draft' }, { label: 'Schedule explicitly', value: 'schedule' }]" value-key="value" />
+      <div class="grid gap-4 md:grid-cols-2">
+        <UFormField label="Industry">
+          <UInput v-model="profileForm.industry" class="w-full" placeholder="e.g. Automotive retail" />
+        </UFormField>
+        <UFormField label="Target audience">
+          <UInput v-model="profileForm.targetAudience" class="w-full" placeholder="Who should this content reach?" />
+        </UFormField>
+        <UFormField label="Content pillars" help="Separate multiple pillars with commas.">
+          <UInput v-model="profileForm.contentPillars" class="w-full" placeholder="Advice, community, product" />
+        </UFormField>
+        <UFormField label="Include keywords" help="Topics that improve news relevance.">
+          <UInput v-model="profileForm.includeKeywords" class="w-full" placeholder="Comma-separated keywords" />
+        </UFormField>
+        <UFormField label="Exclude keywords" help="Topics this client does not want to cover.">
+          <UInput v-model="profileForm.excludeKeywords" class="w-full" placeholder="Comma-separated keywords" />
+        </UFormField>
+        <UFormField label="Makes and brands">
+          <UInput v-model="profileForm.makes" class="w-full" placeholder="Comma-separated names" />
+        </UFormField>
+        <UFormField label="Brand voice">
+          <UInput v-model="profileForm.brandVoice" class="w-full" placeholder="How the client should sound" />
+        </UFormField>
+        <UFormField label="Default AI tone">
+          <UInput v-model="profileForm.defaultTone" class="w-full" placeholder="Professional" />
+        </UFormField>
+        <UFormField label="Timezone">
+          <UInput v-model="profileForm.timezone" class="w-full" placeholder="Australia/Melbourne" />
+        </UFormField>
+        <UFormField label="Default workflow">
+          <USelectMenu v-model="profileForm.defaultWorkflow" :items="[{ label: 'Create drafts', value: 'draft' }, { label: 'Schedule explicitly', value: 'schedule' }]" value-key="value" class="w-full" />
+        </UFormField>
       </div>
-      <UTextarea v-model="profileForm.aiInstructions" placeholder="Additional client AI instructions" :rows="3" />
-      <div class="flex flex-wrap gap-3">
-        <UCheckbox v-for="p in ['facebook','instagram','linkedin','tiktok','youtube','google-business']" :key="p" v-model="profileForm.preferredPlatforms" :value="p" :label="p" />
+      <UFormField label="Additional AI instructions" help="Approved client-specific constraints for relevance and rewriting.">
+        <UTextarea v-model="profileForm.aiInstructions" :rows="4" class="w-full" placeholder="Add only instructions approved for this client" />
+      </UFormField>
+      <UFormField label="Preferred platforms">
+        <div class="flex flex-wrap gap-x-5 gap-y-3 rounded-lg bg-elevated/40 px-4 py-3">
+          <UCheckbox
+            v-for="p in platformOptions"
+            :key="p"
+            :model-value="profileForm.preferredPlatforms.includes(p)"
+            :label="platformLabel(p)"
+            @update:model-value="checked => profileForm.preferredPlatforms = updateStringSelection(profileForm.preferredPlatforms, p, checked === true)"
+          />
+        </div>
+      </UFormField>
+      <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:items-center">
+        <p class="text-xs text-muted">Generated posts still require XeroFlow approval before publishing.</p>
+        <div class="ml-auto flex gap-2">
+          <UButton label="Cancel" color="neutral" variant="ghost" @click="closeClientProfile" />
+          <UButton label="Save profile" icon="i-lucide-save" :loading="profileSaving" @click="saveClientProfile" />
+        </div>
       </div>
-      <p class="text-xs text-muted">All generated posts remain subject to XeroFlow's approval gate before publishing.</p>
-      <div class="flex gap-2"><UButton label="Save profile" :loading="profileSaving" @click="saveClientProfile" /><UButton label="Cancel" color="neutral" variant="ghost" @click="closeClientProfile" /></div>
       <template v-if="isAdmin">
         <USeparator />
         <div class="space-y-3">
@@ -407,25 +453,25 @@ async function createDrafts() {
             <div class="font-medium">Content package and budget link</div>
             <p class="text-sm text-muted">The package is versioned here; commercial value stays in the linked XeroFlow project, rate card, and job budget.</p>
           </div>
-          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <USelectMenu v-model="packageForm.packageVersionId" :items="packageOptions.packages.map(p => ({ label: `${p.name} · v${p.version}`, value: p.versionId }))" value-key="value" placeholder="Package version" />
-            <USelectMenu v-model="packageForm.projectId" :items="[{ label: 'No project link', value: '' }, ...packageOptions.projects.map(p => ({ label: `${p.name} · ${p.status}`, value: p.id }))]" value-key="value" placeholder="Project / retainer" />
-            <USelectMenu v-model="packageForm.budgetAllocationId" :items="[{ label: 'No budget allocation', value: '' }, ...packageOptions.allocations.filter(a => !packageForm.projectId || a.projectId === packageForm.projectId).map(a => ({ label: `${a.platform || a.campaignType || 'Social'} · ${a.currency} ${a.amount} ${a.period}`, value: a.id }))]" value-key="value" placeholder="Budget allocation" />
-            <USelectMenu v-model="packageForm.rateCardItemId" :items="[{ label: 'No rate-card item', value: '' }, ...packageOptions.rateCards.map(r => ({ label: `${r.serviceName} · $${r.price}/${r.priceUnit}`, value: r.id }))]" value-key="value" placeholder="Rate-card item" />
-            <UInput v-model="packageForm.startsOn" type="date" aria-label="Package starts" />
-            <UInput v-model="packageForm.endsOn" type="date" aria-label="Package ends" />
+          <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <UFormField label="Package version"><USelectMenu v-model="packageForm.packageVersionId" :items="packageOptions.packages.map(p => ({ label: `${p.name} · v${p.version}`, value: p.versionId }))" value-key="value" class="w-full" placeholder="Choose a package" /></UFormField>
+            <UFormField label="Project or retainer"><USelectMenu v-model="packageForm.projectId" :items="[{ label: 'No project link', value: '' }, ...packageOptions.projects.map(p => ({ label: `${p.name} · ${p.status}`, value: p.id }))]" value-key="value" class="w-full" /></UFormField>
+            <UFormField label="Budget allocation"><USelectMenu v-model="packageForm.budgetAllocationId" :items="[{ label: 'No budget allocation', value: '' }, ...packageOptions.allocations.filter(a => !packageForm.projectId || a.projectId === packageForm.projectId).map(a => ({ label: `${a.platform || a.campaignType || 'Social'} · ${a.currency} ${a.amount} ${a.period}`, value: a.id }))]" value-key="value" class="w-full" /></UFormField>
+            <UFormField label="Rate-card item"><USelectMenu v-model="packageForm.rateCardItemId" :items="[{ label: 'No rate-card item', value: '' }, ...packageOptions.rateCards.map(r => ({ label: `${r.serviceName} · $${r.price}/${r.priceUnit}`, value: r.id }))]" value-key="value" class="w-full" /></UFormField>
+            <UFormField label="Starts"><UInput v-model="packageForm.startsOn" type="date" class="w-full" /></UFormField>
+            <UFormField label="Ends"><UInput v-model="packageForm.endsOn" type="date" class="w-full" /></UFormField>
           </div>
-          <UButton label="Assign package" icon="i-lucide-package-check" :loading="packageSaving" :disabled="!packageForm.packageVersionId" @click="assignPackage" />
+          <div class="flex justify-end"><UButton label="Assign package" icon="i-lucide-package-check" :loading="packageSaving" :disabled="!packageForm.packageVersionId" @click="assignPackage" /></div>
         </div>
-        <div class="rounded-md border border-default p-3 space-y-3">
+        <div class="space-y-3 rounded-lg border border-default bg-elevated/20 p-4">
           <div class="text-sm font-medium">Create a reusable package from this profile</div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <UInput v-model="newPackage.name" placeholder="Package name" />
-            <UInput v-model="newPackage.includedVolumes" placeholder="facebook: 8, linkedin: 4" />
-            <UInput v-model.number="newPackage.approvalSlaHours" type="number" min="0" placeholder="Approval SLA hours" />
-            <USelectMenu v-model="newPackage.overagePolicy" :items="[{ label: 'Warn', value: 'warn' }, { label: 'Block', value: 'block' }, { label: 'Quote before work', value: 'quote-before-work' }, { label: 'Allow', value: 'allow' }]" value-key="value" />
+          <div class="grid gap-4 md:grid-cols-2">
+            <UFormField label="Package name"><UInput v-model="newPackage.name" class="w-full" /></UFormField>
+            <UFormField label="Included volumes" help="Use platform: quantity pairs."><UInput v-model="newPackage.includedVolumes" class="w-full" placeholder="facebook: 8, linkedin: 4" /></UFormField>
+            <UFormField label="Approval SLA (hours)"><UInput v-model.number="newPackage.approvalSlaHours" type="number" min="0" class="w-full" /></UFormField>
+            <UFormField label="Overage policy"><USelectMenu v-model="newPackage.overagePolicy" :items="[{ label: 'Warn', value: 'warn' }, { label: 'Block', value: 'block' }, { label: 'Quote before work', value: 'quote-before-work' }, { label: 'Allow', value: 'allow' }]" value-key="value" class="w-full" /></UFormField>
           </div>
-          <UButton label="Create package version" color="neutral" variant="subtle" :loading="packageSaving" :disabled="!newPackage.name.trim()" @click="createPackageFromProfile" />
+          <div class="flex justify-end"><UButton label="Create package version" color="neutral" variant="subtle" :loading="packageSaving" :disabled="!newPackage.name.trim()" @click="createPackageFromProfile" /></div>
         </div>
         <USeparator />
         <section class="space-y-3" aria-labelledby="pending-evidence-heading">
@@ -441,7 +487,12 @@ async function createDrafts() {
           </div>
           <div v-if="mondayEvidencePreview.length" class="max-h-72 overflow-y-auto rounded-md border border-default divide-y divide-default" aria-label="Monday evidence preview">
             <label v-for="item in mondayEvidencePreview" :key="item.sourceId" class="flex gap-3 p-3">
-              <UCheckbox v-model="mondayEvidenceSelected" :value="item.sourceId" :disabled="Boolean(item.importedStatus)" class="mt-0.5" />
+              <UCheckbox
+                :model-value="mondayEvidenceSelected.includes(item.sourceId)"
+                :disabled="Boolean(item.importedStatus)"
+                class="mt-0.5"
+                @update:model-value="checked => mondayEvidenceSelected = updateStringSelection(mondayEvidenceSelected, item.sourceId, checked === true)"
+              />
               <span class="min-w-0 flex-1">
                 <span class="flex flex-wrap items-center gap-2 text-xs text-muted">
                   <UBadge color="neutral" variant="subtle" size="xs">{{ item.evidenceType }}</UBadge>
@@ -474,51 +525,71 @@ async function createDrafts() {
               </div>
             </article>
           </div>
-          <div v-else class="rounded-md border border-dashed border-default px-4 py-5 text-sm text-muted">No imported evidence is waiting for review.</div>
-          <p class="text-xs text-muted">Slack stays disconnected until an approved OAuth connection or export is provided. Monday and Slack never become live AI dependencies.</p>
-          <div v-if="isAdmin" class="rounded-md border border-default p-3 space-y-2">
-            <div class="text-sm font-medium">Import Slack export for review</div>
-            <p class="text-xs text-muted">Paste a JSON array of exported messages. Imports remain pending until an admin approves them.</p>
-            <UTextarea v-model="slackImportText" :rows="4" placeholder='[{"title":"Decision","content":"...","sourceId":"slack-123"}]' />
-            <UButton label="Import Slack evidence" icon="i-lucide-upload" color="neutral" variant="subtle" :loading="slackImporting" :disabled="!slackImportText.trim()" @click="importSlackEvidence" />
+          <div v-else class="flex items-center gap-3 rounded-lg bg-elevated/40 px-4 py-3 text-sm text-muted">
+            <UIcon name="i-lucide-inbox" class="size-4 shrink-0" />
+            <span><strong class="font-medium text-highlighted">No evidence awaiting review.</strong> Preview Monday evidence or import a Slack export when source material is ready.</span>
           </div>
+          <p class="flex items-start gap-2 text-xs text-muted"><UIcon name="i-lucide-shield-check" class="mt-0.5 size-3.5 shrink-0" /><span>Monday and Slack are review-only sources. They never become live AI dependencies, and imported material cannot be used until it is approved here.</span></p>
+          <details v-if="isAdmin" class="group rounded-lg border border-default bg-elevated/20">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-highlighted marker:hidden">
+              <span class="flex items-center gap-2"><UIcon name="i-lucide-file-json-2" class="size-4 text-muted" />Import a Slack JSON export</span>
+              <UIcon name="i-lucide-chevron-down" class="size-4 text-muted transition-transform group-open:rotate-180" />
+            </summary>
+            <div class="space-y-3 border-t border-default p-4">
+              <p class="text-xs text-muted">Paste a JSON array of exported messages. Imports remain pending until an admin approves them.</p>
+              <UTextarea v-model="slackImportText" :rows="5" class="w-full font-mono text-xs" placeholder='[{"title":"Decision","content":"...","sourceId":"slack-123"}]' />
+              <div class="flex justify-end"><UButton label="Import Slack evidence" icon="i-lucide-upload" color="neutral" variant="subtle" :loading="slackImporting" :disabled="!slackImportText.trim()" @click="importSlackEvidence" /></div>
+            </div>
+          </details>
         </section>
         <USeparator />
-        <div class="space-y-3">
+        <section class="space-y-4" aria-labelledby="approved-guidance-heading">
           <div>
-            <div class="font-medium">Approved client guidance</div>
+            <div id="approved-guidance-heading" class="font-medium">Approved client guidance</div>
             <p class="text-sm text-muted">Capture decisions in XeroFlow so this platform—not Monday or Slack—becomes the authoritative brief for recommendations.</p>
           </div>
-          <div v-if="governance?.evidence.approved.length" class="space-y-1">
-            <div v-for="item in governance.evidence.approved" :key="item.id" class="text-sm"><UBadge color="neutral" variant="subtle" size="xs">{{ item.evidence_type }}</UBadge> {{ item.title }}</div>
+          <div v-if="governance?.evidence.approved.length" class="flex flex-wrap gap-2">
+            <div v-for="item in governance.evidence.approved" :key="item.id" class="rounded-md bg-elevated/50 px-3 py-2 text-sm"><UBadge color="neutral" variant="subtle" size="xs">{{ item.evidence_type }}</UBadge> <span class="ml-1">{{ item.title }}</span></div>
           </div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <USelectMenu v-model="evidenceForm.evidenceType" :items="[{ label: 'Decision', value: 'decision' }, { label: 'Approved brief', value: 'brief' }, { label: 'Plan', value: 'plan' }, { label: 'Performance finding', value: 'performance' }]" value-key="value" />
-            <UInput v-model="evidenceForm.title" placeholder="Guidance title" />
+          <div class="space-y-4 rounded-lg border border-default bg-elevated/20 p-4">
+            <div class="grid gap-4 md:grid-cols-2">
+              <UFormField label="Guidance type"><USelectMenu v-model="evidenceForm.evidenceType" :items="[{ label: 'Decision', value: 'decision' }, { label: 'Approved brief', value: 'brief' }, { label: 'Plan', value: 'plan' }, { label: 'Performance finding', value: 'performance' }]" value-key="value" class="w-full" /></UFormField>
+              <UFormField label="Guidance title"><UInput v-model="evidenceForm.title" class="w-full" placeholder="A short, specific title" /></UFormField>
+            </div>
+            <UFormField label="Approved guidance" help="Only approved instructions, decisions, or findings should be recorded here.">
+              <UTextarea v-model="evidenceForm.content" :rows="4" class="w-full" placeholder="What should future recommendations follow?" />
+            </UFormField>
+            <div class="flex justify-end"><UButton label="Approve into XeroFlow guidance" icon="i-lucide-badge-check" :loading="evidenceSaving" :disabled="!evidenceForm.title.trim() || !evidenceForm.content.trim()" @click="saveCanonicalEvidence" /></div>
           </div>
-          <UTextarea v-model="evidenceForm.content" :rows="3" placeholder="Approved instruction, decision, or finding" />
-          <UButton label="Approve into XeroFlow guidance" icon="i-lucide-badge-check" :loading="evidenceSaving" :disabled="!evidenceForm.title.trim() || !evidenceForm.content.trim()" @click="saveCanonicalEvidence" />
-        </div>
+        </section>
       </template>
     </div>
     <div v-if="showSourceSettings" class="rounded-lg border border-default bg-default p-4 mb-5 space-y-3">
       <div class="text-sm font-medium">News source plug-in</div>
-      <UInput v-model="sourceUrl" label="Endpoint URL" class="w-full" />
+      <UFormField label="Endpoint URL"><UInput v-model="sourceUrl" type="url" class="w-full" /></UFormField>
       <UCheckbox v-model="sourceEnabled" label="Enabled" />
       <div class="flex gap-2"><UButton label="Save" :loading="sourceSaving" @click="saveSourceSettings" /><UButton label="Cancel" color="neutral" variant="ghost" @click="closeSourceSettings" /></div>
     </div>
     <div v-if="showDraftOptions" class="rounded-lg border border-primary/30 bg-default p-4 mb-5 space-y-3">
       <div class="flex flex-wrap items-center gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm"><span class="font-medium">AI planning inputs</span><span v-if="recommendation">{{ recommendation.platforms.join(', ') || 'No matching platforms' }}<span v-if="recommendation.audience"> · audience: {{ recommendation.audience }}</span><span v-if="recommendation.nextSlot"> · next slot: {{ new Date(recommendation.nextSlot).toLocaleString() }}</span><UBadge v-if="recommendation.article" :color="recommendation.article.relevant ? 'success' : 'warning'" variant="subtle" size="xs">{{ recommendation.article.relevant ? 'Matches client brief' : 'Review relevance' }}</UBadge><span v-for="account in recommendation.accounts" :key="account.id" class="inline-flex items-center gap-1"><UBadge :color="account.health === 'ready' ? 'success' : 'error'" variant="subtle" size="xs">{{ account.platform }} {{ account.health }}</UBadge></span></span><span v-else class="text-muted">Use the selected article, client brief, and engagement history to suggest a starting point.</span><UButton label="Suggest" size="xs" color="neutral" variant="subtle" :loading="recommendationLoading" @click="loadRecommendation" /></div>
-      <div class="flex flex-wrap gap-3 items-center">
-        <USelectMenu v-model="clientId" :items="clients.map(c => ({ label: c.name, value: c.id }))" value-key="value" placeholder="Target client" class="w-52" />
-        <UCheckbox v-for="p in ['facebook','instagram','linkedin','tiktok','youtube','google-business']" :key="p" v-model="platforms" :value="p" :label="p" />
-        <UCheckbox v-model="rewrite" label="Rewrite with AI" />
-        <UInput v-if="rewrite" v-model="tone" placeholder="Tone" class="w-36" />
-        <USelectMenu v-model="scheduleMode" :items="[{ label: 'Save as draft', value: 'draft' }, { label: 'Choose date and time', value: 'exact' }, { label: 'Use next client slot', value: 'next-slot' }]" value-key="value" class="w-52" />
-        <UInput v-if="scheduleMode === 'exact'" v-model="scheduledAt" type="datetime-local" class="w-56" aria-label="Publish time" />
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <UFormField label="Target client"><USelectMenu v-model="clientId" :items="clients.map(c => ({ label: c.name, value: c.id }))" value-key="value" class="w-full" /></UFormField>
+        <UFormField label="Workflow"><USelectMenu v-model="scheduleMode" :items="[{ label: 'Save as draft', value: 'draft' }, { label: 'Choose date and time', value: 'exact' }, { label: 'Use next client slot', value: 'next-slot' }]" value-key="value" class="w-full" /></UFormField>
+        <UFormField v-if="scheduleMode === 'exact'" label="Publish time"><UInput v-model="scheduledAt" type="datetime-local" class="w-full" /></UFormField>
       </div>
-      <div class="flex flex-wrap gap-2">
-        <UCheckbox v-for="a in accounts" :key="a.id" v-model="accountIds" :value="a.id" :label="`${a.platform}: ${a.account_name || 'account'}`" />
+      <UFormField label="Platforms">
+        <div class="flex flex-wrap gap-x-5 gap-y-3 rounded-lg bg-elevated/40 px-4 py-3">
+          <UCheckbox v-for="p in platformOptions" :key="p" :model-value="platforms.includes(p)" :label="platformLabel(p)" @update:model-value="checked => platforms = updateStringSelection(platforms, p, checked === true)" />
+        </div>
+      </UFormField>
+      <UFormField label="Connected accounts">
+        <div class="flex flex-wrap gap-x-5 gap-y-3 rounded-lg bg-elevated/40 px-4 py-3">
+          <UCheckbox v-for="a in accounts" :key="a.id" :model-value="accountIds.includes(a.id)" :label="`${platformLabel(a.platform)} · ${a.account_name || 'Account'}`" @update:model-value="checked => accountIds = updateStringSelection(accountIds, a.id, checked === true)" />
+        </div>
+      </UFormField>
+      <div class="flex flex-wrap items-end gap-4">
+        <UCheckbox v-model="rewrite" label="Rewrite with AI" />
+        <UFormField v-if="rewrite" label="Tone"><UInput v-model="tone" class="w-44" /></UFormField>
       </div>
       <div class="flex flex-wrap items-center gap-2"><UButton label="Create drafts" :loading="draftSaving" :disabled="!clientId || !platforms.length || !publishTargetCount || draftSaving" @click="createDrafts" /><span v-if="clientId && platforms.length && !publishTargetCount" class="text-xs text-warning">Select at least one connected account for the chosen platform(s).</span><UButton label="Cancel" color="neutral" variant="ghost" @click="closeDraftOptions" /></div>
     </div>
