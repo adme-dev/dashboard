@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "deploy": "wrangler deploy",
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:dry-run": "node scripts/deploy.mjs --dry-run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

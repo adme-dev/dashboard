@@ -43,6 +43,9 @@ describe('measurement delivery Worker production wiring', () => {
   it('keeps worker secrets out of committed configuration', () => {
     const config = readFileSync('workers/measurement-delivery/wrangler.toml', 'utf8')
     const entry = readFileSync('workers/measurement-delivery/src/index.ts', 'utf8')
+    const packageJson = JSON.parse(
+      readFileSync('workers/measurement-delivery/package.json', 'utf8')
+    ) as { scripts?: Record<string, string> }
 
     expect(config).not.toMatch(/GOOGLE_CLIENT_SECRET\s*=/)
     expect(config).not.toMatch(/DATABASE_URL\s*=/)
@@ -50,5 +53,7 @@ describe('measurement delivery Worker production wiring', () => {
     expect(entry).toContain('env.HYPERDRIVE.connectionString')
     expect(entry).toContain('async scheduled(')
     expect(entry).toContain('createMeasurementDiagnosticReconciler')
+    expect(packageJson.scripts?.deploy).toBe('node scripts/deploy.mjs')
+    expect(packageJson.scripts?.['deploy:dry-run']).toBe('node scripts/deploy.mjs --dry-run')
   })
 })
