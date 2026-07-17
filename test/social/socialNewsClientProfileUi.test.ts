@@ -9,7 +9,6 @@ describe('social news client content profile UI', () => {
       'Industry',
       'Target audience',
       'Content pillars',
-      'Preferred platforms',
       'Guidance title',
       'Approved guidance'
     ]) {
@@ -18,6 +17,14 @@ describe('social news client content profile UI', () => {
 
     expect(page).toContain('v-model="evidenceForm.content" :rows="4" class="w-full"')
     expect(page).toContain('class="flex justify-end"')
+  })
+
+  it('uses semantic fieldsets for checkbox groups so each option keeps its own accessible name', () => {
+    expect(page).not.toContain('<UFormField label="Preferred platforms">')
+    expect(page).not.toContain('<UFormField label="Platforms">')
+    expect(page).not.toContain('<UFormField label="Connected accounts">')
+    expect(page.match(/<fieldset/g)).toHaveLength(3)
+    expect(page).toContain('>Preferred platforms</legend>')
   })
 
   it('keeps the raw Slack importer secondary to the review workflow', () => {

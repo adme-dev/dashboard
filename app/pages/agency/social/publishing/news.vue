@@ -428,7 +428,8 @@ async function createDrafts() {
       <UFormField label="Additional AI instructions" help="Approved client-specific constraints for relevance and rewriting.">
         <UTextarea v-model="profileForm.aiInstructions" :rows="4" class="w-full" placeholder="Add only instructions approved for this client" />
       </UFormField>
-      <UFormField label="Preferred platforms">
+      <fieldset>
+        <legend class="mb-2 text-sm font-medium text-default">Preferred platforms</legend>
         <div class="flex flex-wrap gap-x-5 gap-y-3 rounded-lg bg-elevated/40 px-4 py-3">
           <UCheckbox
             v-for="p in platformOptions"
@@ -438,7 +439,7 @@ async function createDrafts() {
             @update:model-value="checked => profileForm.preferredPlatforms = updateStringSelection(profileForm.preferredPlatforms, p, checked === true)"
           />
         </div>
-      </UFormField>
+      </fieldset>
       <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:items-center">
         <p class="text-xs text-muted">Generated posts still require XeroFlow approval before publishing.</p>
         <div class="ml-auto flex gap-2">
@@ -577,16 +578,18 @@ async function createDrafts() {
         <UFormField label="Workflow"><USelectMenu v-model="scheduleMode" :items="[{ label: 'Save as draft', value: 'draft' }, { label: 'Choose date and time', value: 'exact' }, { label: 'Use next client slot', value: 'next-slot' }]" value-key="value" class="w-full" /></UFormField>
         <UFormField v-if="scheduleMode === 'exact'" label="Publish time"><UInput v-model="scheduledAt" type="datetime-local" class="w-full" /></UFormField>
       </div>
-      <UFormField label="Platforms">
+      <fieldset>
+        <legend class="mb-2 text-sm font-medium text-default">Platforms</legend>
         <div class="flex flex-wrap gap-x-5 gap-y-3 rounded-lg bg-elevated/40 px-4 py-3">
           <UCheckbox v-for="p in platformOptions" :key="p" :model-value="platforms.includes(p)" :label="platformLabel(p)" @update:model-value="checked => platforms = updateStringSelection(platforms, p, checked === true)" />
         </div>
-      </UFormField>
-      <UFormField label="Connected accounts">
+      </fieldset>
+      <fieldset>
+        <legend class="mb-2 text-sm font-medium text-default">Connected accounts</legend>
         <div class="flex flex-wrap gap-x-5 gap-y-3 rounded-lg bg-elevated/40 px-4 py-3">
           <UCheckbox v-for="a in accounts" :key="a.id" :model-value="accountIds.includes(a.id)" :label="`${platformLabel(a.platform)} · ${a.account_name || 'Account'}`" @update:model-value="checked => accountIds = updateStringSelection(accountIds, a.id, checked === true)" />
         </div>
-      </UFormField>
+      </fieldset>
       <div class="flex flex-wrap items-end gap-4">
         <UCheckbox v-model="rewrite" label="Rewrite with AI" />
         <UFormField v-if="rewrite" label="Tone"><UInput v-model="tone" class="w-44" /></UFormField>
