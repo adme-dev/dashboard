@@ -18,6 +18,9 @@ const stubs = {
   UIcon: {
     props: ['name'],
     template: '<i :data-icon="name" />'
+  },
+  ClientsClientMeasurementProfileForm: {
+    template: '<div data-testid="measurement-profile-form" />'
   }
 }
 
@@ -232,6 +235,7 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('lead_qualified → QualifiedLead')
       expect(host.textContent).toContain('Document externally managed Google delivery')
       expect(host.textContent).toContain('Credential configured')
+      expect(host.querySelector('[data-testid="measurement-profile-form"]')).not.toBeNull()
       expect(host.textContent).not.toContain('cloudflare/measurement')
       expect(host.textContent).not.toContain('access token')
     } finally {
@@ -274,7 +278,7 @@ describe('ClientMeasurementPanel', () => {
       render: () => h(ClientMeasurementPanel, { clientId: CLIENT_ID, canConfigure: true })
     })
     Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
-    app.component('ClientMeasurementProfileForm', {
+    app.component('ClientsClientMeasurementProfileForm', {
       emits: ['saved'],
       template: `<button data-testid="emit-profile-warning" @click="$emit('saved', {
         profile: {},
