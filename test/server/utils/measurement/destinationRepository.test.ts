@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createPostgresMeasurementDestinationRepository
 } from '../../../../server/utils/measurement/destinationRepository'
-import type { CreateConversionDestinationConfiguration } from '../../../../server/utils/measurement/contracts'
+import type {
+  CreateConversionDestinationConfiguration,
+  UpdateConversionDestinationConfiguration
+} from '../../../../server/utils/measurement/contracts'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const PROFILE_ID = '22222222-2222-4222-8222-222222222222'
@@ -102,6 +105,31 @@ function createInput(): CreateConversionDestinationConfiguration {
       socialConnectionId: CONNECTION_ID,
       externalDestinationId: '573284833843027',
       credentialRef: 'cloudflare/measurement/meta/ferntree',
+      capabilities: [{
+        mode: 'meta_crm_capi',
+        status: 'configured',
+        managementOrigin: 'zero',
+        canZeroMutate: true,
+        blockingReason: null
+      }],
+      mappings: [{
+        canonicalEventName: 'lead_qualified',
+        providerEventName: 'QualifiedLead',
+        isActive: true
+      }]
+    }
+  }
+}
+
+function updateInput(): UpdateConversionDestinationConfiguration {
+  return {
+    clientId: CLIENT_ID,
+    destinationId: DESTINATION_ID,
+    expectedProfileVersion: 2,
+    reason: 'Rotate the credential and retain the Qualified mapping in test mode',
+    actor: { type: 'team_member', id: ACTOR_ID },
+    patch: {
+      credentialRef: 'cloudflare/measurement/meta/ferntree-v2',
       capabilities: [{
         mode: 'meta_crm_capi',
         status: 'configured',
@@ -247,5 +275,85 @@ describe('Postgres measurement destination repository', () => {
     expect(db.query).toHaveBeenCalledTimes(2)
     expect(db.query.mock.calls[1]?.[0]).toMatch(/client_id = \$2/)
     expect(db.query.mock.calls[1]?.[1]).toEqual([CONNECTION_ID, CLIENT_ID, 'meta'])
+  })
+
+  it('updates one tenant-scoped destination, replaces nested config, and audits only redacted state', async () => {
+    const statements: Array<{ sql: string, params: unknown[] }> = []
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        statements.push({ sql, params })
+        if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) return { rows: [profileRow(2)] }
+        if (/conversion_destinations[\s\S]*FOR UPDATE/.test(sql)) return { rows: [destinationRow(2)] }
+        if (/FROM conversion_destination_capabilities/.test(sql)) return { rows: [capabilityRow(2)] }
+        if (/FROM conversion_event_mappings/.test(sql)) return { rows: [mappingRow(2)] }
+        if (/FROM social_connections/.test(sql)) return { rows: [{ id: CONNECTION_ID }] }
+        if (/UPDATE client_measurement_profiles/.test(sql)) return { rows: [profileRow(3)] }
+        if (/UPDATE conversion_destinations/.test(sql)) return { rows: [destinationRow(3)] }
+        if (/INSERT INTO conversion_destination_capabilities/.test(sql)) return { rows: [capabilityRow(3)] }
+        if (/INSERT INTO conversion_event_mappings/.test(sql)) return { rows: [mappingRow(3)] }
+        return { rows: [] }
+      })
+    }
+    const repository = createPostgresMeasurementDestinationRepository({
+      queryOne: vi.fn() as never,
+      query: vi.fn() as never,
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
+    })
+
+    const result = await repository.update(updateInput())
+
+    expect(result).toMatchObject({
+      status: 'updated',
+      profile: { configVersion: 3 },
+      destination: {
+        id: DESTINATION_ID,
+        configVersion: 3,
+        credentialConfigured: true,
+        enabled: false,
+        environment: 'test'
+      }
+    })
+    expect(statements.map(statement => statement.sql)).toEqual([
+      expect.stringMatching(/client_measurement_profiles[\s\S]*FOR UPDATE/),
+      expect.stringMatching(/conversion_destinations[\s\S]*FOR UPDATE/),
+      expect.stringMatching(/FROM conversion_destination_capabilities/),
+      expect.stringMatching(/FROM conversion_event_mappings/),
+      expect.stringMatching(/FROM social_connections/),
+      expect.stringMatching(/UPDATE client_measurement_profiles/),
+      expect.stringMatching(/UPDATE conversion_destinations/),
+      expect.stringMatching(/DELETE FROM conversion_destination_capabilities/),
+      expect.stringMatching(/INSERT INTO conversion_destination_capabilities/),
+      expect.stringMatching(/DELETE FROM conversion_event_mappings/),
+      expect.stringMatching(/INSERT INTO conversion_event_mappings/),
+      expect.stringMatching(/INSERT INTO measurement_config_audit/)
+    ])
+    const audit = statements.at(-1)!
+    const auditJson = audit.params.filter(value => (
+      typeof value === 'string' && value.startsWith('{')
+    )) as string[]
+    expect(auditJson).toHaveLength(2)
+    expect(auditJson.join(' ')).not.toContain('cloudflare/measurement/meta/ferntree-v2')
+    expect(audit.params).toContain(3)
+  })
+
+  it('hides a destination owned by another client before any nested reads or writes', async () => {
+    const db = {
+      query: vi.fn(async (sql: string) => {
+        if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) return { rows: [profileRow(2)] }
+        return { rows: [] }
+      })
+    }
+    const repository = createPostgresMeasurementDestinationRepository({
+      queryOne: vi.fn() as never,
+      query: vi.fn() as never,
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
+    })
+
+    await expect(repository.update(updateInput())).resolves.toEqual({ status: 'not_found' })
+    expect(db.query).toHaveBeenCalledTimes(2)
   })
 })

@@ -287,6 +287,59 @@ export const CreateConversionDestinationConfigurationSchema = z.strictObject({
   destination: DestinationConfigurationInputSchema
 })
 
+const DestinationConfigurationPatchSchema = z.strictObject({
+  socialConnectionId: z.string().uuid().nullable().optional(),
+  externalDestinationId: z.string().trim().min(1).max(255).optional(),
+  credentialRef: OpaqueCredentialRefSchema.nullable().optional(),
+  capabilities: z.array(DestinationCapabilityConfigurationSchema)
+    .min(1)
+    .max(CapabilityModeSchema.options.length)
+    .optional(),
+  mappings: z.array(ConversionEventMappingConfigurationSchema)
+    .max(CanonicalEventNameSchema.options.length)
+    .optional()
+}).superRefine((patch, ctx) => {
+  if (Object.keys(patch).length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'At least one destination field must change'
+    })
+  }
+
+  const capabilityModes = new Set<string>()
+  patch.capabilities?.forEach((capability, index) => {
+    if (capabilityModes.has(capability.mode)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['capabilities', index, 'mode'],
+        message: 'Capability modes must be unique within a destination'
+      })
+    }
+    capabilityModes.add(capability.mode)
+  })
+
+  const canonicalNames = new Set<string>()
+  patch.mappings?.forEach((mapping, index) => {
+    if (canonicalNames.has(mapping.canonicalEventName)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['mappings', index, 'canonicalEventName'],
+        message: 'Canonical event mappings must be unique within a destination'
+      })
+    }
+    canonicalNames.add(mapping.canonicalEventName)
+  })
+})
+
+export const UpdateConversionDestinationConfigurationSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  destinationId: z.string().uuid(),
+  expectedProfileVersion: z.number().int().positive(),
+  reason: z.string().trim().min(1).max(1000),
+  actor: MeasurementActorSchema,
+  patch: DestinationConfigurationPatchSchema
+})
+
 export const ConversionDestinationCapabilityStateSchema = z.strictObject({
   id: z.string().uuid(),
   destinationId: z.string().uuid(),
@@ -488,6 +541,7 @@ export type UpdateClientMeasurementProfile = z.infer<typeof UpdateClientMeasurem
 export type MeasurementActor = z.infer<typeof MeasurementActorSchema>
 export type ConversionDestinationCreate = z.infer<typeof ConversionDestinationCreateSchema>
 export type CreateConversionDestinationConfiguration = z.infer<typeof CreateConversionDestinationConfigurationSchema>
+export type UpdateConversionDestinationConfiguration = z.infer<typeof UpdateConversionDestinationConfigurationSchema>
 export type ConversionDestinationReadModel = z.infer<typeof ConversionDestinationReadModelSchema>
 export type ConversionDestinationCapabilityState = z.infer<typeof ConversionDestinationCapabilityStateSchema>
 export type ConversionEventMappingState = z.infer<typeof ConversionEventMappingStateSchema>

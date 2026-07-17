@@ -4,7 +4,8 @@ import {
   ClientMeasurementProfileCreateSchema,
   ConversionDestinationCreateSchema,
   ConversionDestinationReadModelSchema,
-  CreateConversionDestinationConfigurationSchema
+  CreateConversionDestinationConfigurationSchema,
+  UpdateConversionDestinationConfigurationSchema
 } from '../../../../server/utils/measurement/contracts'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
@@ -287,6 +288,74 @@ describe('ConversionDestinationReadModelSchema', () => {
     expect(ConversionDestinationReadModelSchema.safeParse({
       ...base,
       credentialRef: 'cloudflare/measurement/meta/ferntree'
+    }).success).toBe(false)
+  })
+})
+
+describe('UpdateConversionDestinationConfigurationSchema', () => {
+  const update = {
+    clientId: CLIENT_ID,
+    destinationId: '55555555-5555-4555-8555-555555555555',
+    expectedProfileVersion: 2,
+    reason: 'Add the Qualified mapping before provider validation',
+    actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+    patch: {
+      externalDestinationId: '573284833843027',
+      credentialRef: 'cloudflare/measurement/meta/ferntree-v2',
+      capabilities: [{
+        mode: 'meta_crm_capi',
+        status: 'configured',
+        managementOrigin: 'zero',
+        canZeroMutate: true,
+        blockingReason: null
+      }],
+      mappings: [{
+        canonicalEventName: 'lead_qualified',
+        providerEventName: 'QualifiedLead',
+        isActive: true
+      }]
+    }
+  } as const
+
+  it('accepts a versioned operator patch with complete capability and mapping replacements', () => {
+    const result = UpdateConversionDestinationConfigurationSchema.parse(update)
+
+    expect(result.expectedProfileVersion).toBe(2)
+    expect(result.patch.mappings).toEqual([expect.objectContaining({
+      canonicalEventName: 'lead_qualified'
+    })])
+  })
+
+  it('rejects operator-owned activation and provider evidence fields', () => {
+    expect(UpdateConversionDestinationConfigurationSchema.safeParse({
+      ...update,
+      patch: {
+        ...update.patch,
+        enabled: true,
+        environment: 'live',
+        healthStatus: 'ready',
+        lastValidatedAt: '2026-07-17T05:00:00.000Z',
+        providerRequestId: 'provider-secret-diagnostic'
+      }
+    }).success).toBe(false)
+  })
+
+  it('rejects an empty patch and manual provider-ready capability claims', () => {
+    expect(UpdateConversionDestinationConfigurationSchema.safeParse({
+      ...update,
+      patch: {}
+    }).success).toBe(false)
+    expect(UpdateConversionDestinationConfigurationSchema.safeParse({
+      ...update,
+      patch: {
+        capabilities: [{
+          mode: 'meta_crm_capi',
+          status: 'ready',
+          managementOrigin: 'zero',
+          canZeroMutate: true,
+          evidenceAt: '2026-07-17T05:00:00.000Z'
+        }]
+      }
     }).success).toBe(false)
   })
 })

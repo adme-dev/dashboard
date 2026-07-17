@@ -13,7 +13,8 @@ import type {
   ConversionDestinationCapabilityState,
   ConversionDestinationReadModel,
   ConversionEventMappingState,
-  ListConversionDestinations
+  ListConversionDestinations,
+  UpdateConversionDestinationConfiguration
 } from '~~/server/utils/measurement/contracts'
 import {
   mapMeasurementProfileRow,
@@ -211,9 +212,18 @@ export type CreateDestinationResult
     | { status: 'version_conflict', currentVersion: number }
     | { status: 'duplicate' }
 
+export type UpdateDestinationResult
+  = { status: 'updated', profile: MeasurementProfile, destination: ConversionDestinationReadModel }
+    | { status: 'not_found' }
+    | { status: 'connection_not_found' }
+    | { status: 'invalid_configuration' }
+    | { status: 'version_conflict', currentVersion: number }
+    | { status: 'duplicate' }
+
 export interface MeasurementDestinationRepository {
   list(input: ListConversionDestinations): Promise<DestinationPage>
   create(input: CreateConversionDestinationConfiguration): Promise<CreateDestinationResult>
+  update(input: UpdateConversionDestinationConfiguration): Promise<UpdateDestinationResult>
 }
 
 export interface PostgresMeasurementDestinationRepositoryDeps {
@@ -451,6 +461,276 @@ export function createPostgresMeasurementDestinationRepository(
           )
 
           return { status: 'created' as const, profile, destination }
+        })
+      } catch (error) {
+        if ((error as { code?: string }).code === '23505') return { status: 'duplicate' }
+        throw error
+      }
+    },
+
+    async update(input) {
+      try {
+        return await deps.transaction(async (db) => {
+          const currentProfileResult = await db.query(
+            `SELECT ${PROFILE_COLUMNS}
+               FROM client_measurement_profiles
+              WHERE client_id = $1
+              FOR UPDATE`,
+            [input.clientId]
+          )
+          const currentProfileRow = currentProfileResult.rows?.[0] as ProfileRow | undefined
+          if (!currentProfileRow) return { status: 'not_found' as const }
+
+          const currentProfile = mapMeasurementProfileRow(currentProfileRow)
+          if (currentProfile.configVersion !== input.expectedProfileVersion) {
+            return {
+              status: 'version_conflict' as const,
+              currentVersion: currentProfile.configVersion
+            }
+          }
+
+          const currentDestinationResult = await db.query(
+            `SELECT ${DESTINATION_COLUMNS}
+               FROM conversion_destinations
+              WHERE client_id = $1
+                AND id = $2
+              FOR UPDATE`,
+            [input.clientId, input.destinationId]
+          )
+          const currentDestinationRow = currentDestinationResult.rows?.[0] as DestinationRow | undefined
+          if (!currentDestinationRow) return { status: 'not_found' as const }
+
+          const currentCapabilityResult = await db.query(
+            `SELECT ${CAPABILITY_COLUMNS}
+               FROM conversion_destination_capabilities
+              WHERE client_id = $1
+                AND destination_id = $2
+              ORDER BY mode ASC`,
+            [input.clientId, input.destinationId]
+          )
+          const currentMappingResult = await db.query(
+            `SELECT ${MAPPING_COLUMNS}
+               FROM conversion_event_mappings
+              WHERE client_id = $1
+                AND destination_id = $2
+              ORDER BY canonical_event_name ASC`,
+            [input.clientId, input.destinationId]
+          )
+          const currentCapabilities = (currentCapabilityResult.rows as CapabilityRow[]).map(mapCapability)
+          const currentMappings = (currentMappingResult.rows as MappingRow[]).map(mapMapping)
+          const currentDestination = mapDestination(
+            currentDestinationRow,
+            currentCapabilities,
+            currentMappings
+          )
+
+          const capabilities = input.patch.capabilities ?? currentCapabilities.map(capability => ({
+            mode: capability.mode,
+            status: capability.status === 'blocked'
+              ? 'blocked' as const
+              : capability.status === 'not_configured'
+                ? 'not_configured' as const
+                : 'configured' as const,
+            managementOrigin: capability.managementOrigin,
+            canZeroMutate: capability.canZeroMutate,
+            blockingReason: capability.status === 'blocked' ? capability.blockingReason : null
+          }))
+          const mappings = input.patch.mappings ?? currentMappings.map(mapping => ({
+            canonicalEventName: mapping.canonicalEventName,
+            providerEventName: mapping.providerEventName,
+            isActive: mapping.isActive
+          }))
+          const socialConnectionId = input.patch.socialConnectionId === undefined
+            ? currentDestination.socialConnectionId
+            : input.patch.socialConnectionId
+          const credentialConfigured = input.patch.credentialRef === undefined
+            ? currentDestination.credentialConfigured
+            : input.patch.credentialRef !== null
+
+          const invalidPlatformMode = capabilities.some(capability => (
+            currentDestination.platform === 'meta'
+              ? !capability.mode.startsWith('meta_')
+              : !capability.mode.startsWith('google_')
+          ))
+          const configuredZeroCapability = capabilities.some(capability => (
+            capability.managementOrigin === 'zero' && capability.status === 'configured'
+          ))
+          if (
+            invalidPlatformMode
+            || (configuredZeroCapability && socialConnectionId === null && !credentialConfigured)
+          ) return { status: 'invalid_configuration' as const }
+
+          if (socialConnectionId) {
+            const connectionResult = await db.query(
+              `SELECT id
+                 FROM social_connections
+                WHERE id = $1
+                  AND client_id = $2
+                  AND platform = $3
+                  AND status = 'active'`,
+              [
+                socialConnectionId,
+                input.clientId,
+                connectionPlatform(currentDestination.platform)
+              ]
+            )
+            if (!connectionResult.rows?.[0]) return { status: 'connection_not_found' as const }
+          }
+
+          const profileResult = await db.query(
+            `UPDATE client_measurement_profiles
+                SET config_version = config_version + 1,
+                    cache_status = 'not_published',
+                    cache_version = NULL,
+                    cache_error_class = NULL,
+                    live_approved_by = NULL,
+                    live_approved_at = NULL,
+                    privacy_approved_by = NULL,
+                    privacy_approved_at = NULL,
+                    updated_by = $3
+              WHERE client_id = $1
+                AND config_version = $2
+          RETURNING ${PROFILE_COLUMNS}`,
+            [input.clientId, input.expectedProfileVersion, input.actor.id]
+          )
+          const profileRow = profileResult.rows?.[0] as ProfileRow | undefined
+          if (!profileRow) {
+            return {
+              status: 'version_conflict' as const,
+              currentVersion: currentProfile.configVersion
+            }
+          }
+          const profile = mapMeasurementProfileRow(profileRow)
+          const configVersion = profile.configVersion
+          const healthStatus = aggregateHealth({
+            platform: currentDestination.platform,
+            socialConnectionId,
+            externalDestinationId: input.patch.externalDestinationId
+              ?? currentDestination.externalDestinationId,
+            credentialRef: input.patch.credentialRef ?? null,
+            capabilities,
+            mappings
+          })
+
+          const destinationResult = await db.query(
+            `UPDATE conversion_destinations
+                SET social_connection_id = CASE WHEN $3 THEN $4::uuid ELSE social_connection_id END,
+                    external_destination_id = CASE WHEN $5 THEN $6 ELSE external_destination_id END,
+                    credential_ref = CASE WHEN $7 THEN $8 ELSE credential_ref END,
+                    enabled = FALSE,
+                    environment = 'test',
+                    health_status = $9,
+                    config_version = $10,
+                    last_validated_at = NULL,
+                    last_success_at = NULL,
+                    last_failure_at = NULL,
+                    provider_request_id = NULL,
+                    error_class = NULL,
+                    redacted_error = NULL,
+                    updated_by = $11,
+                    updated_at = NOW()
+              WHERE client_id = $1
+                AND id = $2
+          RETURNING ${DESTINATION_COLUMNS}`,
+            [
+              input.clientId,
+              input.destinationId,
+              input.patch.socialConnectionId !== undefined,
+              input.patch.socialConnectionId ?? null,
+              input.patch.externalDestinationId !== undefined,
+              input.patch.externalDestinationId ?? null,
+              input.patch.credentialRef !== undefined,
+              input.patch.credentialRef ?? null,
+              healthStatus,
+              configVersion,
+              input.actor.id
+            ]
+          )
+          const destinationRow = destinationResult.rows?.[0] as DestinationRow
+
+          await db.query(
+            `DELETE FROM conversion_destination_capabilities
+              WHERE client_id = $1
+                AND destination_id = $2`,
+            [input.clientId, input.destinationId]
+          )
+          const updatedCapabilities: ConversionDestinationCapabilityState[] = []
+          for (const capability of capabilities) {
+            const capabilityResult = await db.query(
+              `INSERT INTO conversion_destination_capabilities (
+                 client_id, destination_id, platform, mode, status,
+                 management_origin, can_zero_mutate, evidence_at,
+                 blocking_reason, config_version
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $9)
+               RETURNING ${CAPABILITY_COLUMNS}`,
+              [
+                input.clientId,
+                input.destinationId,
+                currentDestination.platform,
+                capability.mode,
+                capability.status,
+                capability.managementOrigin,
+                capability.canZeroMutate,
+                capability.blockingReason,
+                configVersion
+              ]
+            )
+            updatedCapabilities.push(mapCapability(capabilityResult.rows[0] as CapabilityRow))
+          }
+
+          await db.query(
+            `DELETE FROM conversion_event_mappings
+              WHERE client_id = $1
+                AND destination_id = $2`,
+            [input.clientId, input.destinationId]
+          )
+          const updatedMappings: ConversionEventMappingState[] = []
+          for (const mapping of mappings) {
+            const mappingResult = await db.query(
+              `INSERT INTO conversion_event_mappings (
+                 client_id, destination_id, canonical_event_name,
+                 provider_event_name, is_active, config_version,
+                 created_by, updated_by
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+               RETURNING ${MAPPING_COLUMNS}`,
+              [
+                input.clientId,
+                input.destinationId,
+                mapping.canonicalEventName,
+                mapping.providerEventName,
+                mapping.isActive,
+                configVersion,
+                input.actor.id
+              ]
+            )
+            updatedMappings.push(mapMapping(mappingResult.rows[0] as MappingRow))
+          }
+
+          const destination = mapDestination(destinationRow, updatedCapabilities, updatedMappings)
+          await db.query(
+            `INSERT INTO measurement_config_audit (
+               client_id, profile_id, entity_type, entity_id, action,
+               config_version, before_state, after_state, changed_fields,
+               actor_type, actor_id, reason
+             ) VALUES (
+               $1, $2, 'destination', $3, 'updated', $4,
+               $5::jsonb, $6::jsonb, $7, $8, $9, $10
+             )`,
+            [
+              input.clientId,
+              profile.id,
+              destination.id,
+              configVersion,
+              JSON.stringify(currentDestination),
+              JSON.stringify(destination),
+              Object.keys(input.patch),
+              input.actor.type,
+              input.actor.id,
+              input.reason
+            ]
+          )
+
+          return { status: 'updated' as const, profile, destination }
         })
       } catch (error) {
         if ((error as { code?: string }).code === '23505') return { status: 'duplicate' }

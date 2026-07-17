@@ -87,10 +87,12 @@ function createInput() {
 
 function harness(options: {
   createStatus?: 'created' | 'not_found' | 'connection_not_found' | 'version_conflict' | 'duplicate'
+  updateStatus?: 'updated' | 'not_found' | 'connection_not_found' | 'invalid_configuration' | 'version_conflict' | 'duplicate'
   cacheFailure?: boolean
   cacheStatusRejected?: boolean
 } = {}) {
   const createStatus = options.createStatus ?? 'created'
+  const updateStatus = options.updateStatus ?? 'updated'
   const repository: MeasurementDestinationRepository = {
     list: vi.fn(async () => ({
       items: [destination()],
@@ -104,6 +106,15 @@ function harness(options: {
         return { status: 'version_conflict' as const, currentVersion: 2 }
       }
       return { status: createStatus }
+    }),
+    update: vi.fn(async () => {
+      if (updateStatus === 'updated') {
+        return { status: 'updated' as const, profile: profile(), destination: destination() }
+      }
+      if (updateStatus === 'version_conflict') {
+        return { status: 'version_conflict' as const, currentVersion: 2 }
+      }
+      return { status: updateStatus }
     })
   }
   const profileRepository: MeasurementProfileRepository = {
@@ -221,5 +232,58 @@ describe('Measurement destination service', () => {
       }
     })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR', statusCode: 422 })
     expect(test.repository.create).not.toHaveBeenCalled()
+  })
+
+  it('updates configuration and publishes the committed canonical profile version', async () => {
+    const test = harness()
+
+    const result = await test.service.update({
+      clientId: CLIENT_ID,
+      destinationId: DESTINATION_ID,
+      expectedProfileVersion: 1,
+      reason: 'Rotate the opaque credential reference',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: {
+        credentialRef: 'cloudflare/measurement/meta/ferntree-v2',
+        capabilities: [{
+          mode: 'meta_crm_capi',
+          status: 'configured',
+          managementOrigin: 'zero',
+          canZeroMutate: true,
+          blockingReason: null
+        }]
+      }
+    })
+
+    expect(result).toEqual({
+      destination: destination(),
+      profileConfigVersion: 2,
+      warnings: []
+    })
+    expect(test.repository.update).toHaveBeenCalledOnce()
+    expect(test.cache.publish).toHaveBeenCalledWith(expect.objectContaining({
+      clientId: CLIENT_ID,
+      configVersion: 2
+    }))
+  })
+
+  it.each([
+    ['not_found', 'MEASUREMENT_NOT_FOUND', 404],
+    ['connection_not_found', 'MEASUREMENT_NOT_FOUND', 404],
+    ['invalid_configuration', 'MEASUREMENT_VALIDATION_ERROR', 422],
+    ['version_conflict', 'MEASUREMENT_VERSION_CONFLICT', 409],
+    ['duplicate', 'MEASUREMENT_DUPLICATE', 409]
+  ] as const)('maps update repository %s to a stable service error', async (updateStatus, code, statusCode) => {
+    const test = harness({ updateStatus })
+
+    await expect(test.service.update({
+      clientId: CLIENT_ID,
+      destinationId: DESTINATION_ID,
+      expectedProfileVersion: 1,
+      reason: 'Update destination configuration',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: { credentialRef: null }
+    })).rejects.toMatchObject({ code, statusCode })
+    expect(test.cache.publish).not.toHaveBeenCalled()
   })
 })

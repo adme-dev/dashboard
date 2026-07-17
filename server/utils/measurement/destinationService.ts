@@ -1,10 +1,14 @@
 import {
   CreateConversionDestinationConfigurationSchema,
-  ListConversionDestinationsSchema
+  ListConversionDestinationsSchema,
+  UpdateConversionDestinationConfigurationSchema
 } from '~~/server/utils/measurement/contracts'
 import type { MeasurementDestinationRepository } from '~~/server/utils/measurement/destinationRepository'
 import { MeasurementError } from '~~/server/utils/measurement/errors'
-import type { MeasurementProfileRepository } from '~~/server/utils/measurement/profileRepository'
+import type {
+  MeasurementProfile,
+  MeasurementProfileRepository
+} from '~~/server/utils/measurement/profileRepository'
 import {
   repairMeasurementProfileCacheFromCanonical,
   toMeasurementProfileCacheProjection,
@@ -41,6 +45,52 @@ function versionConflictError() {
   )
 }
 
+function duplicateError() {
+  return new MeasurementError(
+    'MEASUREMENT_DUPLICATE',
+    409,
+    'Measurement destination already exists'
+  )
+}
+
+async function publishCanonicalProfile(
+  deps: MeasurementDestinationServiceDeps,
+  profile: MeasurementProfile
+) {
+  const warnings: Array<{ code: 'MEASUREMENT_CACHE_STALE' }> = []
+  let cacheStatus: 'fresh' | 'stale' = 'fresh'
+  let cacheErrorClass: string | null = null
+
+  try {
+    await deps.cache.publish(toMeasurementProfileCacheProjection(profile))
+  } catch {
+    cacheStatus = 'stale'
+    cacheErrorClass = 'cache_publication_failed'
+    warnings.push({ code: 'MEASUREMENT_CACHE_STALE' })
+  }
+
+  try {
+    const recorded = await deps.profileRepository.recordCachePublication({
+      clientId: profile.clientId,
+      profileId: profile.id,
+      configVersion: profile.configVersion,
+      status: cacheStatus,
+      errorClass: cacheErrorClass
+    })
+    if (!recorded) {
+      if (warnings.length === 0) warnings.push({ code: 'MEASUREMENT_CACHE_STALE' })
+      await repairMeasurementProfileCacheFromCanonical({
+        repository: deps.profileRepository,
+        cache: deps.cache
+      }, profile)
+    }
+  } catch {
+    if (warnings.length === 0) warnings.push({ code: 'MEASUREMENT_CACHE_STALE' })
+  }
+
+  return warnings
+}
+
 export function createMeasurementDestinationService(deps: MeasurementDestinationServiceDeps) {
   return {
     async list(rawInput: unknown) {
@@ -58,45 +108,30 @@ export function createMeasurementDestinationService(deps: MeasurementDestination
         throw notFoundError()
       }
       if (persisted.status === 'version_conflict') throw versionConflictError()
-      if (persisted.status === 'duplicate') {
-        throw new MeasurementError(
-          'MEASUREMENT_DUPLICATE',
-          409,
-          'Measurement destination already exists'
-        )
+      if (persisted.status === 'duplicate') throw duplicateError()
+
+      const warnings = await publishCanonicalProfile(deps, persisted.profile)
+
+      return {
+        destination: persisted.destination,
+        profileConfigVersion: persisted.profile.configVersion,
+        warnings
       }
+    },
 
-      const warnings: Array<{ code: 'MEASUREMENT_CACHE_STALE' }> = []
-      let cacheStatus: 'fresh' | 'stale' = 'fresh'
-      let cacheErrorClass: string | null = null
+    async update(rawInput: unknown) {
+      const inputResult = UpdateConversionDestinationConfigurationSchema.safeParse(rawInput)
+      if (!inputResult.success) throw validationError()
 
-      try {
-        await deps.cache.publish(toMeasurementProfileCacheProjection(persisted.profile))
-      } catch {
-        cacheStatus = 'stale'
-        cacheErrorClass = 'cache_publication_failed'
-        warnings.push({ code: 'MEASUREMENT_CACHE_STALE' })
+      const persisted = await deps.repository.update(inputResult.data)
+      if (persisted.status === 'not_found' || persisted.status === 'connection_not_found') {
+        throw notFoundError()
       }
+      if (persisted.status === 'invalid_configuration') throw validationError()
+      if (persisted.status === 'version_conflict') throw versionConflictError()
+      if (persisted.status === 'duplicate') throw duplicateError()
 
-      try {
-        const recorded = await deps.profileRepository.recordCachePublication({
-          clientId: persisted.profile.clientId,
-          profileId: persisted.profile.id,
-          configVersion: persisted.profile.configVersion,
-          status: cacheStatus,
-          errorClass: cacheErrorClass
-        })
-        if (!recorded) {
-          if (warnings.length === 0) warnings.push({ code: 'MEASUREMENT_CACHE_STALE' })
-          await repairMeasurementProfileCacheFromCanonical({
-            repository: deps.profileRepository,
-            cache: deps.cache
-          }, persisted.profile)
-        }
-      } catch {
-        if (warnings.length === 0) warnings.push({ code: 'MEASUREMENT_CACHE_STALE' })
-      }
-
+      const warnings = await publishCanonicalProfile(deps, persisted.profile)
       return {
         destination: persisted.destination,
         profileConfigVersion: persisted.profile.configVersion,

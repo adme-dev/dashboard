@@ -3,10 +3,16 @@ import { MeasurementError } from '../../../server/utils/measurement/errors'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const ACTOR_ID = '33333333-3333-4333-8333-333333333333'
+const DESTINATION_ID = '55555555-5555-4555-8555-555555555555'
 const mockRequireClientAccess = vi.fn()
 const mockList = vi.fn()
 const mockCreate = vi.fn()
-const mockRuntime = vi.fn((..._args: unknown[]) => ({ list: mockList, create: mockCreate }))
+const mockUpdate = vi.fn()
+const mockRuntime = vi.fn((..._args: unknown[]) => ({
+  list: mockList,
+  create: mockCreate,
+  update: mockUpdate
+}))
 let mockBody: Record<string, unknown> = {}
 let mockQuery: Record<string, string> = {}
 
@@ -20,7 +26,9 @@ vi.mock('~~/server/utils/measurement/runtime', () => ({
 
 vi.mock('h3', () => ({
   defineEventHandler: (handler: unknown) => handler,
-  getRouterParam: () => CLIENT_ID,
+  getRouterParam: (_event: unknown, name: string) => (
+    name === 'destinationId' ? DESTINATION_ID : CLIENT_ID
+  ),
   getQuery: () => mockQuery,
   readBody: () => mockBody,
   createError: (input: { statusCode: number, statusMessage: string }) => Object.assign(
@@ -40,8 +48,13 @@ describe('agency Measurement destination endpoints', () => {
       pagination: { page: 1, pageSize: 25, totalItems: 0, totalPages: 0 }
     })
     mockCreate.mockResolvedValue({
-      destination: { id: '55555555-5555-4555-8555-555555555555', configVersion: 2 },
+      destination: { id: DESTINATION_ID, configVersion: 2 },
       profileConfigVersion: 2,
+      warnings: []
+    })
+    mockUpdate.mockResolvedValue({
+      destination: { id: DESTINATION_ID, configVersion: 3 },
+      profileConfigVersion: 3,
       warnings: []
     })
   })
@@ -143,6 +156,40 @@ describe('agency Measurement destination endpoints', () => {
           message: 'Measurement destination already exists'
         }
       }
+    })
+  })
+
+  it('scopes destination updates by the authorised body client and route destination', async () => {
+    mockBody = {
+      clientId: CLIENT_ID,
+      destinationId: '99999999-9999-4999-8999-999999999999',
+      expectedProfileVersion: 2,
+      reason: 'Rotate the destination credential reference',
+      actor: { type: 'system', id: 'spoofed' },
+      patch: {
+        credentialRef: 'cloudflare/measurement/meta/ferntree-v2',
+        capabilities: [{
+          mode: 'meta_crm_capi',
+          status: 'configured',
+          managementOrigin: 'zero',
+          canZeroMutate: true
+        }]
+      }
+    }
+    const handler = (await import(
+      '~~/server/api/agency/measurement/destinations/[destinationId].patch'
+    )).default
+
+    await handler({ context: {} } as never)
+
+    expect(mockRequireClientAccess).toHaveBeenCalledWith(expect.anything(), CLIENT_ID, 'configure')
+    expect(mockUpdate).toHaveBeenCalledWith({
+      clientId: CLIENT_ID,
+      destinationId: DESTINATION_ID,
+      expectedProfileVersion: 2,
+      reason: 'Rotate the destination credential reference',
+      actor: { type: 'team_member', id: ACTOR_ID },
+      patch: mockBody.patch
     })
   })
 })
