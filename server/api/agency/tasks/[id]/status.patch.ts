@@ -2,7 +2,7 @@
  * Update task status (quick status change for drag-drop)
  */
 
-import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { queryOne, transaction } from '~~/server/utils/db'
 import { notifyTaskStatusChanged } from '~~/server/utils/notifications'
 import { emitBoardEvent } from '~~/server/utils/boardEvents'
 import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
@@ -11,14 +11,23 @@ import { evaluateLifecycleTransition } from '~~/server/utils/automation/lifecycl
 import { enqueue } from '~~/server/utils/queue'
 import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
 import { maybeProposeBriefCompletion } from '~~/server/utils/briefConversion/completionAlert'
+import { requireBoardAccess, requireWriteAccess } from '~~/server/utils/auth'
 
 interface UpdateStatusBody {
   statusId: string
-  userId?: string
-  expectedVersion?: number  // For optimistic locking / conflict detection
+  expectedVersion?: number // For optimistic locking / conflict detection
+}
+
+function isHttpError(error: unknown): error is { statusCode: number } {
+  return typeof error === 'object'
+    && error !== null
+    && 'statusCode' in error
+    && typeof error.statusCode === 'number'
 }
 
 export default defineEventHandler(async (event) => {
+  const user = await requireWriteAccess(event)
+  const actorUserId = user.id
   const id = getRouterParam(event, 'id')
   const body = await readBody<UpdateStatusBody>(event)
 
@@ -52,6 +61,8 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    await requireBoardAccess(event, currentTask.department_id)
+
     // Check for version conflict (optimistic locking)
     if (body.expectedVersion !== undefined && currentTask.version !== body.expectedVersion) {
       throw createError({
@@ -67,11 +78,16 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get new status info
-    const newStatus = await queryOne('SELECT * FROM task_statuses WHERE id = $1', [body.statusId])
+    const newStatus = await queryOne(`
+      SELECT *
+      FROM task_statuses
+      WHERE id = $1
+        AND (department_id IS NULL OR department_id = $2)
+    `, [body.statusId, currentTask.department_id])
     if (!newStatus) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Invalid status ID'
+        statusMessage: 'Invalid status ID for this board'
       })
     }
 
@@ -87,7 +103,7 @@ export default defineEventHandler(async (event) => {
         UPDATE tasks
         SET status_id = $1, completed_at = ${completedAt}, updated_at = NOW(), last_modified_by = $3
         WHERE id = $2
-      `, [body.statusId, id, body.userId || null])
+      `, [body.statusId, id, actorUserId])
 
       // Log status change activity
       await client.query(`
@@ -95,10 +111,10 @@ export default defineEventHandler(async (event) => {
         VALUES ($1, $2, 'status_change', $3, $4, $5)
       `, [
         id,
-        body.userId || null,
+        actorUserId,
         `Changed status from "${currentTask.old_status_name}" to "${newStatus.name}"`,
         JSON.stringify({ statusId: currentTask.status_id, statusName: currentTask.old_status_name }),
-        JSON.stringify({ statusId: newStatus.id, statusName: newStatus.name }),
+        JSON.stringify({ statusId: newStatus.id, statusName: newStatus.name })
       ])
     })
 
@@ -108,23 +124,23 @@ export default defineEventHandler(async (event) => {
         oldStatusId: currentTask.status_id,
         oldStatusName: currentTask.old_status_name,
         newStatusId: newStatus.id,
-        newStatusName: newStatus.name,
+        newStatusName: newStatus.name
       }
 
       emitBoardEvent({
         boardId: currentTask.department_id,
         type: 'status_changed',
         taskId: id,
-        userId: body.userId,
-        changes: statusChanges,
+        userId: actorUserId,
+        changes: statusChanges
       }, event)
 
       const boardEvent = {
         boardId: currentTask.department_id,
         type: 'status_changed',
         taskId: id,
-        actorId: body.userId || '',
-        changes: statusChanges,
+        actorId: actorUserId,
+        changes: statusChanges
       }
 
       // Notify board subscribers (queued with retry, fallback to fire-and-forget)
@@ -136,12 +152,14 @@ export default defineEventHandler(async (event) => {
       // A.3 lifecycle guard: observe the transition; raise an A.1 escalation for 🟡 gate
       // stages. Read-only to task state (never moves the task) — cannot double-fire vs the
       // engine above. Inert on generic statuses. (queued with retry, fire-and-forget fallback)
-      enqueue(event, 'lifecycle.evaluate', boardEvent, async () => { await evaluateLifecycleTransition(boardEvent) })
+      enqueue(event, 'lifecycle.evaluate', boardEvent, async () => {
+        await evaluateLifecycleTransition(boardEvent)
+      })
 
       // Post to linked chat channels (fire-and-forget)
       postBoardEventToChat({
         ...boardEvent,
-        taskTitle: currentTask.title,
+        taskTitle: currentTask.title
       }).catch(() => {})
     }
 
@@ -160,10 +178,10 @@ export default defineEventHandler(async (event) => {
 
     // Notify watchers about status change (assignee, reporter, and anyone who has interacted)
     const watcherIds = new Set<string>()
-    if (currentTask.assignee_id && currentTask.assignee_id !== body.userId) {
+    if (currentTask.assignee_id && currentTask.assignee_id !== actorUserId) {
       watcherIds.add(currentTask.assignee_id)
     }
-    if (currentTask.reporter_id && currentTask.reporter_id !== body.userId) {
+    if (currentTask.reporter_id && currentTask.reporter_id !== actorUserId) {
       watcherIds.add(currentTask.reporter_id)
     }
 
@@ -173,7 +191,7 @@ export default defineEventHandler(async (event) => {
         currentTask.title,
         currentTask.old_status_name,
         newStatus.name,
-        body.userId || '',
+        actorUserId,
         Array.from(watcherIds)
       ).catch(err => console.error('Failed to send status change notification:', err))
     }
@@ -181,7 +199,7 @@ export default defineEventHandler(async (event) => {
     // G6: when a task reaches a final status, propose completing the brief this project came
     // from — only if every task is now done. AI-proposes / human-confirms, never auto-completes.
     if (newStatus.is_final && currentTask.project_id) {
-      maybeProposeBriefCompletion({ projectId: currentTask.project_id, actorId: body.userId || null })
+      maybeProposeBriefCompletion({ projectId: currentTask.project_id, actorId: actorUserId })
         .catch(err => console.error('[Brief] completion proposal failed:', err))
     }
 
@@ -197,11 +215,11 @@ export default defineEventHandler(async (event) => {
         name: updatedTask.status_name,
         color: updatedTask.status_color,
         category: updatedTask.status_category,
-        isFinal: updatedTask.status_is_final,
-      },
+        isFinal: updatedTask.status_is_final
+      }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (isHttpError(error)) throw error
     console.error('Failed to update task status:', error)
     throw createError({
       statusCode: 500,

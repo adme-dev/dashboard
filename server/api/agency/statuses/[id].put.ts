@@ -3,6 +3,7 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
+import { requireBoardAccess, requireWriteAccess } from '~~/server/utils/auth'
 
 interface UpdateStatusBody {
   name?: string
@@ -15,7 +16,22 @@ interface UpdateStatusBody {
   sortOrder?: number
 }
 
+function isHttpError(error: unknown): error is { statusCode: number } {
+  return typeof error === 'object'
+    && error !== null
+    && 'statusCode' in error
+    && typeof error.statusCode === 'number'
+}
+
+function hasDatabaseErrorCode(error: unknown): error is { code: string } {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && typeof error.code === 'string'
+}
+
 export default defineEventHandler(async (event) => {
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   const body = await readBody<UpdateStatusBody>(event)
 
@@ -23,6 +39,28 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: 'Status ID is required'
+    })
+  }
+
+  const existingStatus = await queryOne(`
+    SELECT id, department_id
+    FROM task_statuses
+    WHERE id = $1
+  `, [id])
+
+  if (!existingStatus) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Status not found'
+    })
+  }
+
+  if (existingStatus.department_id) {
+    await requireBoardAccess(event, existingStatus.department_id)
+  } else if (user.role !== 'owner' && user.role !== 'admin') {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Only owners and admins can update global statuses'
     })
   }
 
@@ -39,7 +77,7 @@ export default defineEventHandler(async (event) => {
 
   // Build dynamic update
   const fields: string[] = []
-  const values: any[] = []
+  const values: unknown[] = []
   let idx = 1
 
   if (body.name !== undefined) {
@@ -125,11 +163,11 @@ export default defineEventHandler(async (event) => {
       isDefault: status.is_default,
       isFinal: status.is_final,
       sortOrder: status.sort_order,
-      createdAt: status.created_at,
+      createdAt: status.created_at
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
-    if (error.code === '23505') {
+  } catch (error: unknown) {
+    if (isHttpError(error)) throw error
+    if (hasDatabaseErrorCode(error) && error.code === '23505') {
       throw createError({
         statusCode: 409,
         statusMessage: 'A status with this slug already exists'

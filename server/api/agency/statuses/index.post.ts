@@ -3,6 +3,7 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
+import { requireBoardAccess, requireWriteAccess } from '~~/server/utils/auth'
 
 interface CreateStatusBody {
   name: string
@@ -15,8 +16,25 @@ interface CreateStatusBody {
   isFinal?: boolean
 }
 
+function hasDatabaseErrorCode(error: unknown): error is { code: string } {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && typeof error.code === 'string'
+}
+
 export default defineEventHandler(async (event) => {
+  const user = await requireWriteAccess(event)
   const body = await readBody<CreateStatusBody>(event)
+
+  if (body.departmentId) {
+    await requireBoardAccess(event, body.departmentId)
+  } else if (user.role !== 'owner' && user.role !== 'admin') {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Only owners and admins can create global statuses'
+    })
+  }
 
   if (!body.name?.trim()) {
     throw createError({
@@ -66,7 +84,7 @@ export default defineEventHandler(async (event) => {
       body.departmentId || null,
       body.isDefault ?? false,
       body.isFinal ?? (body.category === 'done' || body.category === 'cancelled'),
-      sortOrder,
+      sortOrder
     ])
 
     return {
@@ -80,10 +98,10 @@ export default defineEventHandler(async (event) => {
       isDefault: status.is_default,
       isFinal: status.is_final,
       sortOrder: status.sort_order,
-      createdAt: status.created_at,
+      createdAt: status.created_at
     }
-  } catch (error: any) {
-    if (error.code === '23505') {
+  } catch (error: unknown) {
+    if (hasDatabaseErrorCode(error) && error.code === '23505') {
       throw createError({
         statusCode: 409,
         statusMessage: 'A status with this slug already exists'
