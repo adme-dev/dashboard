@@ -120,3 +120,53 @@ export interface PaginatedMeasurementResponse<T> {
     totalPages: number
   }
 }
+
+export interface PortalMeasurementSignalSummary {
+  status: MeasurementCapabilityStatus
+  owners: Array<'zero' | 'gtm' | 'partner' | 'external'>
+  lastEvidenceAt: string | null
+}
+
+export interface PortalMeasurementHealth {
+  status: 'onboarding' | 'paused' | 'degraded' | 'healthy'
+  statusMessage: string
+  environment: MeasurementEnvironment
+  deliveryEnabled: boolean
+  liveEligible: boolean
+  collection: {
+    tier: ClientMeasurementProfile['collectionTier']
+    consentMode: ClientMeasurementProfile['consentMode']
+  }
+  authority: {
+    source: string
+    mode: ClientMeasurementProfile['outcomeAuthority']
+    lastSyncAt: string | null
+    acceptedOutcomeCount: number
+    rejectedOutcomeCount: number
+  }
+  signals: {
+    browser: PortalMeasurementSignalSummary
+    server: PortalMeasurementSignalSummary
+    crm: PortalMeasurementSignalSummary
+  }
+  destinations: Array<{
+    platform: MeasurementDestination['platform']
+    label: string
+    status: MeasurementCapabilityStatus
+    deliveryState: 'dormant' | MeasurementEnvironment
+    capabilityCount: number
+    activeMappingCount: number
+    lastSuccessAt: string | null
+  }>
+  delivery: {
+    acceptedCount: number
+    deliveredCount: number
+    rejectedCount: number
+    pendingCount: number
+    lastAcceptedAt: string | null
+    lastDeliveredAt: string | null
+    lastRejectedAt: string | null
+  }
+  lastValidatedAt: string | null
+  nextSteps: string[]
+}

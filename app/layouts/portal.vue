@@ -39,6 +39,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Requests', icon: 'i-lucide-message-square-plus', to: stats.value?.openRequests ? '/portal/requests?view=open' : '/portal/requests?view=resolved', badge: navBadge(stats.value?.openRequests), onSelect: close },
   { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },
   { label: 'CRM', icon: 'i-lucide-contact', to: '/portal/crm', onSelect: close },
+  { label: 'Measurement', icon: 'i-lucide-activity', to: '/portal/measurement', onSelect: close },
   ...portalSocialNavItems(close),
   { label: 'Meetings', icon: 'i-lucide-video', to: '/portal/meetings?view=upcoming', onSelect: close },
   ...(user.value?.permissions?.canSubmitRequests
