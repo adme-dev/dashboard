@@ -1,16 +1,17 @@
 # Zero Measurement Signal Hub — Parent Task and Subtask Backlog
 
 **Master PRD:** [Zero Measurement Signal Hub plan](./2026-07-17-measurement-signal-hub-capi-outcomes.md)
-**Execution branch:** `feature/measurement-signal-hub-foundation`
+**Execution state:** foundation branches are merged to `main`; pilot evidence updates use short-lived review branches
 **Operating rule:** Zero owns configuration, delivery health, and rollout work. Monday remains migration input/history and receives only the governed final reconciliation.
 
-## Delivery status — 17 July 2026
+## Delivery status — 18 July 2026
 
-- **Complete in code:** T1 contracts/governance, T2 additive schema, the T5–T6 native CRM/portal transactional outcome path, T8 transactional outbox and repair publisher, and the T11 provider-neutral delivery Worker foundation.
-- **Adapter implementation complete:** T12 Meta CRM CAPI ingestion and T13 Google Data Manager ingestion plus terminal diagnostics reconciliation are implemented behind dormant destination policy. Both classify retryable/permanent failures, store redacted evidence, and keep provider calls outside the lifecycle request transaction.
-- **In progress:** T3 provider validation/test actions and endpoint rotation, plus T12–T13 provider certification. Google acceptance now schedules request-status checks after 30 minutes, polls with backoff/jitter for up to 24 hours, and only records delivered after terminal `SUCCESS`; live test evidence remains required.
-- **Pending surfaces/evidence:** T0 Monday snapshot and pilot approval; T4 configuration UI; T9–T10 browser dedup/first-party transport; T14–T15 internal/client health; queue/Hyperdrive/secrets provisioning; Google `datamanager` re-consent; and fresh Meta/Google identifier-bearing test evidence.
-- **Safety state:** All seeded client profiles remain disabled in `test`; the latest production readback found no enabled profile or destination. Migrations `260`–`261` are applied with no active lifecycle mappings, delivery rows, or diagnostic checks, and no provider event, Monday write, or live-KV mutation has been performed.
+- **Production foundation verified:** T1–T5, T8, T10, and T11 have production evidence. Zero now exposes the versioned client configuration UI, canonical readiness and audit views, native/client lifecycle services, first-party hostname transport, transactional outbox, dedicated Queue consumer, Hyperdrive, DLQ, and dormant provider adapters.
+- **Controlled pilot approved and configured:** Big Garage Subaru (`436e159b-d053-4de2-ad0e-e589b938ced7`) is the owned-site pilot. Its profile is disabled in `test`, `consent_gated`, and uses active first-party collection at `signals.biggaragesubaru.com.au`. The exact dormant destinations are Meta dataset `202987455920103` and Google conversion action `customers/6257728347/conversionActions/7687832282`, both mapped to `lead_qualified`.
+- **Canonical Zero board established:** the native `Meta CAPI Rollout` board contains seven parents and 21 subtasks. Eight production-evidenced subtasks and parent P1 are `Verified`; 13 subtasks remain open. Monday board `18422459929` is still read-only migration input and has not been mutated.
+- **Provider certification blocked, not failed:** the linked Google account is active for Ads but its token expired on 17 July and lacks `https://www.googleapis.com/auth/datamanager`; re-consent is open in the controlled-pilot browser session. Zero contains zero Big Garage leads and the pilot tracking site contains zero events, so no real Meta lead ID or Google click ID exists yet. No provider event has been sent.
+- **Remaining acceptance evidence:** complete Google re-consent, create an approved identifier-bearing pilot lead/click, obtain a Meta Test Events code, run Meta/Google test delivery and diagnostic reconciliation, prove browser/server dedup in Meta, execute failure/rollback drills and the soak window, then complete T4A/T17–T19.
+- **Security state:** production board-status routes require authentication, board membership, and authenticated actor attribution following PR #209. Configuration and destination secrets remain opaque; production evidence records only secret presence and redacted health.
 
 ## Graphic mapping
 
@@ -35,10 +36,10 @@ flowchart LR
   P5 --> P6
 
   subgraph G0["P0 subtasks"]
-    T0["T0 Pilot + board snapshot · evidence pending"] --> T1["T1 ADR + contracts + threat model · complete"]
+    T0["T0 Pilot approved · provider baseline pending"] --> T1["T1 ADR + contracts + threat model · verified"]
   end
   subgraph G1["P1 subtasks"]
-    T2["T2 Canonical schema · complete"] --> T3["T3 Control plane · adapters pending"] --> T4["T4 Internal configuration UI · pending"]
+    T2["T2 Canonical schema · verified"] --> T3["T3 Control plane · provider evidence pending"] --> T4["T4 Internal configuration UI · verified"]
   end
   subgraph G2["P2 subtasks"]
     T4A["T4A Import Monday jobs into Zero"]
@@ -49,8 +50,8 @@ flowchart LR
     T5 --> T8["T8 Transactional outbox · complete"]
   end
   subgraph G4["P4 subtasks"]
-    T8 --> T9["T9 Browser/server dedup"] --> T10["T10 First-party transport"]
-    T8 --> T11["T11 Delivery Worker · code complete"]
+    T8 --> T9["T9 Browser/server dedup · provider proof pending"] --> T10["T10 First-party transport · verified"]
+    T8 --> T11["T11 Delivery Worker · verified"]
     T11 --> T12["T12 Meta adapter · certification pending"]
     T11 --> T13["T13 Google adapter + reconciler · certification pending"]
   end
@@ -72,9 +73,9 @@ flowchart LR
 
 ### T0 — Pilot and incumbent-board baseline
 
-- **Details:** Snapshot Monday board `18422459929` read-only; map its fields to Zero; provisionally validate Ferntree Gully Automotive and name a fallback; capture the current Meta and Google diagnostics before Zero sends events.
-- **Deliverable:** Board schema/mapping note, pilot decision record, named owners, provider baseline, fresh identifier-bearing test-lead evidence.
-- **Done when:** Ferntree is approved or rejected with reasons, a fallback is named, and no existing provider fault can be misattributed to the rollout.
+- **Details:** Keep Monday board `18422459929` read-only; map its fields to Zero; operate Big Garage Subaru as the approved owned-site pilot; capture current Meta and Google diagnostics before Zero sends events.
+- **Deliverable:** Board schema/mapping note, Big Garage pilot decision record, named owners, provider baseline, fresh identifier-bearing test-lead evidence.
+- **Done when:** Big Garage is recorded as the pilot, the exact destinations and pre-existing provider faults are baselined, and fresh real test identifiers are approved without fabricating provider data.
 - **Depends on:** None.
 
 ### T1 — Architecture, lifecycle contract, and threat model
@@ -248,8 +249,10 @@ flowchart LR
 3. **T3 control-plane slices complete:** versioned tenant-safe profiles, destinations, capabilities, mappings, privacy/live approvals, audit history, readiness, governed activation, and dormant external outcome-endpoint policy. Provider validation/test actions plus endpoint rotation/promotion remain.
 4. **T5–T6 server path complete:** commit `c54b9ff1` makes agency and portal CRM opportunity moves optimistic and transactional, writes immutable lifecycle evidence, applies client-scoped mapping, and inserts one canonical outbox event in the same transaction. Portal browser/UI acceptance remains with T6/T15.
 5. **T8 complete:** commits `a8d8e3fe` and `94091f7e` add deterministic event idempotency, transactional outbox creation, minimal queue messages, post-commit publication, a protected five-minute repair endpoint, and recovery for pending, retryable, and lease-expired work.
-6. **T11 code complete:** commit `4e60490c` adds the standalone Queue/Hyperdrive Worker, tenant-scoped `SKIP LOCKED` claims, immutable attempts, redacted logs, independent provider fan-out, retry/backoff, stale-claim recovery, DLQ binding, configuration tests, and a deployment runbook. Cloudflare resources and secrets are intentionally not provisioned yet.
+6. **T11 production foundation verified:** commit `4e60490c` adds the standalone Queue/Hyperdrive Worker, tenant-scoped `SKIP LOCKED` claims, immutable attempts, redacted logs, independent provider fan-out, retry/backoff, stale-claim recovery, DLQ binding, configuration tests, and a deployment runbook. Production has queue `measurement-delivery`, consumer `measurement-delivery-worker`, DLQ `measurement-delivery-dlq`, Hyperdrive binding, and Google secret names provisioned; secret values were not read.
 7. **T12 adapter code complete; certification open:** Meta CRM CAPI sends the mapped event, valid event time/action source, stable event ID, and retained Meta lead ID to the configured dataset. Test Events, dedup, eligibility, and live provider evidence remain release gates.
 8. **T13 code complete; certification open:** Google Data Manager ingestion uses the configured Google Ads account/conversion action, click identifier, event timestamp, and stable transaction ID. Its scheduled reconciler polls status per destination after 30 minutes, backs off by 1.3 with jitter up to 60 minutes, stops at 24 hours, preserves warnings/error counts without raw bodies, and atomically promotes only terminal `SUCCESS` to delivered. Existing OAuth grants still require explicit `datamanager` re-consent.
 9. **Quality evidence:** Worker typecheck passes independently; new production files pass scoped ESLint; provider, processor, ingestion/diagnostic repositories, diagnostic parser/reconciler, queue publisher, repair route, migration, binding, and Worker configuration tests pass as separately spaced test-file runs. The legacy `googleAdsClient.ts` still has pre-existing repository lint debt; this slice changes only its scope constant.
-10. **Next production slices:** build T4/T14/T15 configuration and canonical health surfaces, perform dormant infrastructure deployment, reconnect the approved Google pilot, and run the approved provider evidence sequence. T18 must close in Zero before T19 performs the single final Monday reconciliation.
+10. **T4/T14/T15 surfaces deployed:** the Big Garage client page renders its profile, capability matrix, exact destinations, readiness blockers, redacted health, and provider-test controls. T14–T15 remain open until real provider diagnostics and client-facing acceptance are captured.
+11. **Zero board evidence:** board `86054ef6-6454-46fb-9002-1ba4d8d060b8` contains seven parents and 21 detailed subtasks. T1, T2, T3, T4, T5, T8, T10, and T11 plus parent P1 are `Verified`; the remaining work is intentionally open.
+12. **Next production slice:** complete Google `datamanager` re-consent, create/approve real Big Garage test identifiers and a Meta Test Events code, then run the provider evidence sequence. T18 must close in Zero before T19 performs the single final Monday reconciliation.
