@@ -57,6 +57,61 @@ describe('measurement delivery provider adapters', () => {
     })
   })
 
+  it('routes an explicitly requested Meta pilot event through Test Events', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      events_received: 1,
+      fbtrace_id: 'meta-test-trace-1'
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    await expect(deliverMetaConversionEvent({
+      delivery: baseDelivery,
+      accessToken: 'meta-access-token',
+      graphApiVersion: 'v25.0',
+      environment: 'test',
+      testEventCode: 'TEST123456',
+      fetch
+    })).resolves.toMatchObject({ outcome: 'accepted' })
+
+    const [, request] = fetch.mock.calls[0]!
+    expect(JSON.parse(request.body as string)).toMatchObject({
+      test_event_code: 'TEST123456'
+    })
+  })
+
+  it('refuses to attach a Meta Test Events code to live delivery', async () => {
+    const fetch = vi.fn()
+
+    await expect(deliverMetaConversionEvent({
+      delivery: baseDelivery,
+      accessToken: 'meta-access-token',
+      graphApiVersion: 'v25.0',
+      environment: 'live',
+      testEventCode: 'TEST123456',
+      fetch
+    })).resolves.toMatchObject({
+      outcome: 'permanent_failure',
+      errorClass: 'meta_test_code_live_forbidden'
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('refuses malformed Meta Test Events codes before dispatch', async () => {
+    const fetch = vi.fn()
+
+    await expect(deliverMetaConversionEvent({
+      delivery: baseDelivery,
+      accessToken: 'meta-access-token',
+      graphApiVersion: 'v25.0',
+      environment: 'test',
+      testEventCode: 'invalid code with spaces',
+      fetch
+    })).resolves.toMatchObject({
+      outcome: 'permanent_failure',
+      errorClass: 'invalid_meta_test_event_code'
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('refuses Meta delivery without a supported match key', async () => {
     const fetch = vi.fn()
 
@@ -109,6 +164,28 @@ describe('measurement delivery provider adapters', () => {
       }],
       validateOnly: false
     })
+  })
+
+  it('validates a Google pilot event without executing the conversion', async () => {
+    const fetch = vi.fn(async () => new Response('{}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }))
+
+    await expect(deliverGoogleDataManagerEvent({
+      delivery: baseDelivery,
+      accessToken: 'google-access-token',
+      validateOnly: true,
+      fetch
+    })).resolves.toEqual({
+      outcome: 'accepted',
+      providerRequestId: null,
+      errorClass: null,
+      redactedDiagnostic: null
+    })
+
+    const [, request] = fetch.mock.calls[0]!
+    expect(JSON.parse(request.body as string)).toMatchObject({ validateOnly: true })
   })
 
   it('classifies provider throttling as retryable without retaining response content', async () => {
