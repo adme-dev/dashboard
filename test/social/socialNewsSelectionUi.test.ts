@@ -31,4 +31,11 @@ describe('social news multi-select controls', () => {
     expect(page).toContain(':model-value="platforms.includes(p)"')
     expect(page).toContain(':model-value="accountIds.includes(a.id)"')
   })
+
+  it('requires an explicit connected-account selection for each client', () => {
+    const page = readFileSync('app/pages/agency/social/publishing/news.vue', 'utf8')
+
+    expect(page).not.toContain('accountIds.value = accounts.value.filter(a => a.is_active).map(a => a.id)')
+    expect(page).toContain('accountIds.value = []')
+  })
 })

@@ -156,6 +156,8 @@ async function loadClientProfile(id: string) {
 watch(clientId, async (id) => {
   if (!id) return
   const sequence = ++clientLoadSequence
+  accounts.value = []
+  accountIds.value = []
   pendingEvidence.value = []
   mondayEvidencePreview.value = []
   mondayEvidenceSelected.value = []
@@ -171,7 +173,7 @@ watch(clientId, async (id) => {
     governance.value = loadedGovernance
     hydratePackageForm(loadedGovernance)
     if (loadedPackageOptions) packageOptions.value = loadedPackageOptions
-    accountIds.value = accounts.value.filter(a => a.is_active).map(a => a.id)
+    accountIds.value = []
     if (showClientProfile.value && isAdmin.value) await loadPendingEvidence(id)
     await refresh()
   } catch (e: any) {
