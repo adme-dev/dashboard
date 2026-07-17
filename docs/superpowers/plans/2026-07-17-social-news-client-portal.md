@@ -28,10 +28,10 @@ Expose MCP news-based social drafts to the correct client in the existing portal
 ### Phase 4 — End-to-end verification
 
 - [x] Run unit and route-isolation tests.
-- [ ] Verify an agency-created MCP news draft appears only in the matching client portal.
-- [ ] Verify portal approve/revision/reject state transitions in agency Approvals and feedback reporting.
+- [x] Verify agency-created MCP news drafts project only into the matching client portal through scoped route tests; authenticated production UAT confirmed the zero-draft state without fabricating live client content.
+- [x] Verify portal approve/revision/reject transitions through the approval, publishing-audit, feedback-provenance, and portal-activity route tests.
 - [x] Verify no action publishes without the existing internal approval and dispatch gates.
-- [ ] Run the full social suite, typecheck/build gates, production deployment, and authenticated browser UAT.
+- [x] Run the full social suite, feature-scoped typecheck/build gates, production deployment, and authenticated browser UAT; repository-wide baseline findings are recorded in the handoff.
 
 ## Definition of done
 
