@@ -53,6 +53,25 @@ describe('Measurement read contracts', () => {
     }).success).toBe(false)
   })
 
+  it('accepts lifecycle mapping rows added by the lifecycle migration', () => {
+    const entry = {
+      id: '33333333-3333-4333-8333-333333333333',
+      profileId: PROFILE_ID,
+      entityType: 'lifecycle_mapping',
+      entityId: '44444444-4444-4444-8444-444444444444',
+      action: 'created',
+      configVersion: 5,
+      changedFields: ['lifecycleMapping'],
+      actorType: 'team_member',
+      actorId: '55555555-5555-4555-8555-555555555555',
+      reason: 'Map qualified leads to the canonical qualified event',
+      requestId: null,
+      createdAt: '2026-07-17T01:00:00.000Z'
+    }
+
+    expect(MeasurementAuditEntrySchema.parse(entry).entityType).toBe('lifecycle_mapping')
+  })
+
   it('represents readiness with counts and stable blockers rather than provider claims', () => {
     const result = MeasurementReadinessSummarySchema.parse({
       clientId: CLIENT_ID,
