@@ -411,7 +411,8 @@ async function saveKpiTargets() {
               { label: 'Time Entries', value: 'time', icon: 'i-lucide-clock' },
               { label: 'Invoices', value: 'invoices', icon: 'i-lucide-receipt' },
               { label: 'Media Spend', value: 'media', icon: 'i-lucide-megaphone' },
-              { label: 'Website', value: 'website', icon: 'i-lucide-radio' }
+              { label: 'Website', value: 'website', icon: 'i-lucide-radio' },
+              { label: 'Measurement', value: 'measurement', icon: 'i-lucide-activity' }
             ]"
             class="mb-6"
           />
@@ -844,6 +845,10 @@ async function saveKpiTargets() {
           <!-- Website analytics Tab -->
           <div v-if="activeTab === 'website'">
             <TrackingAnalyticsContainer :client-id="clientId" />
+          </div>
+
+          <div v-if="activeTab === 'measurement'">
+            <ClientMeasurementPanel :client-id="clientId" />
           </div>
         </template>
 
