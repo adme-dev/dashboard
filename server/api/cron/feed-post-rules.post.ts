@@ -8,8 +8,8 @@
  * create a DRAFT social post (never scheduled/published automatically) and
  * notify the rule's owner. Dedupe via feed_rule_executions.
  *
- * Flag-gated by DEALER_FEEDS_ENABLED; cron trigger intentionally NOT
- * registered until the operator enables it.
+ * Flag-gated by DEALER_FEEDS_ENABLED; the registered daily trigger remains
+ * inert until the operator enables and configures dealer feeds.
  */
 
 import { defineEventHandler, getHeader, createError } from 'h3'
@@ -20,11 +20,21 @@ import { getSocialDashboardClient, isDealerFeedsEnabled } from '~~/server/utils/
 import { getFeedProvider } from '~~/server/utils/feeds/registry'
 import { cloudflareRuntimeEnv, mergedRuntimeEnv } from '~~/server/utils/feeds/serverContext'
 import { loadAutoFeedInventory } from '~~/server/utils/feeds/autoFeedInventory'
+import { autoFeedEventType, isAutoFeedVehicleReady } from '~~/server/utils/feeds/autoFeedContent'
 
 const ITEMS_PER_CLIENT = 25
 const MAX_DRAFTS_PER_RUN_PER_RULE = 5 // guard against a first run flooding drafts
 
-function renderCaption(template: string | null, item: { title: string; price: number | null; stockNumber: string | null; url: string | null }): string {
+interface FeedPostRule {
+  id: string
+  client_id: string
+  event_types: Array<'new' | 'listing'>
+  caption_template: string | null
+  notify_user_id: string | null
+  created_by: string | null
+}
+
+function renderCaption(template: string | null, item: { title: string, price: number | null, stockNumber: string | null, url: string | null }): string {
   const price = typeof item.price === 'number' && item.price > 0
     ? item.price.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
     : ''
@@ -54,13 +64,14 @@ export default defineEventHandler(async (event) => {
     return { ok: true, skipped: 'feed provider not configured' }
   }
 
-  const rules = await queryRows<any>(
+  const rules = await queryRows<FeedPostRule>(
     `SELECT id, client_id, event_types, caption_template, notify_user_id, created_by
-       FROM feed_post_rules WHERE enabled = true ORDER BY created_at ASC LIMIT 50`,
+       FROM feed_post_rules WHERE enabled = true ORDER BY created_at ASC LIMIT 50`
   )
   if (!rules.length) return { ok: true, rules: 0, drafts: 0 }
 
   let drafts = 0
+  let skippedIncomplete = 0
   const errors: string[] = []
 
   for (const rule of rules) {
@@ -74,13 +85,17 @@ export default defineEventHandler(async (event) => {
       let created = 0
       for (const v of preview.items) {
         if (created >= MAX_DRAFTS_PER_RUN_PER_RULE) break
-        const eventType = v.condition && /new/i.test(v.condition) ? 'new' : 'listing'
-        if (!(rule.event_types as string[]).includes(eventType)) continue
+        if (!isAutoFeedVehicleReady(v)) {
+          skippedIncomplete++
+          continue
+        }
+        const eventType = autoFeedEventType(v)
+        if (!rule.event_types.includes(eventType)) continue
         const feedItemId = `${rule.client_id}:${v.id}`
 
         const already = await queryOne(
           `SELECT 1 AS x FROM feed_rule_executions WHERE rule_id = $1 AND feed_item_id = $2`,
-          [rule.id, feedItemId],
+          [rule.id, feedItemId]
         )
         if (already) continue
 
@@ -90,12 +105,12 @@ export default defineEventHandler(async (event) => {
           `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, status)
            VALUES ($1, $2, $3, $4, '{}', 'draft')
            RETURNING id`,
-          [rule.client_id, rule.created_by || 'auto-feed-rule', caption, v.image ? [v.image] : []],
+          [rule.client_id, rule.created_by || 'auto-feed-rule', caption, v.image ? [v.image] : []]
         )
         await execute(
           `INSERT INTO feed_rule_executions (rule_id, feed_item_id, social_post_id)
            VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-          [rule.id, feedItemId, post?.id ?? null],
+          [rule.id, feedItemId, post?.id ?? null]
         )
         created++
         drafts++
@@ -107,15 +122,16 @@ export default defineEventHandler(async (event) => {
             title: 'Auto Feed draft created',
             message: `New ${eventType} item "${title}" was drafted for review.`,
             link: `/agency/social/publishing/compose?edit=${post.id}`,
-            metadata: { ruleId: rule.id, feedItemId },
+            metadata: { ruleId: rule.id, feedItemId }
           })
         }
       }
-    } catch (err: any) {
-      errors.push(`${rule.id}: ${err?.message}`)
-      console.warn('[feed-post-rules] rule failed', rule.id, err?.message)
+    } catch (error: unknown) {
+      const errorType = error instanceof Error ? error.name : typeof error
+      errors.push(`${rule.id}: ${errorType}`)
+      console.warn('[feed-post-rules] rule failed', { ruleId: rule.id, errorType })
     }
   }
 
-  return { ok: errors.length === 0, rules: rules.length, drafts, errors }
+  return { ok: errors.length === 0, rules: rules.length, drafts, skippedIncomplete, errors }
 })

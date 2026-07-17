@@ -41,6 +41,18 @@ function firstString(value: unknown): string | null {
   return null
 }
 
+function safeHttpUrl(value: unknown): string | null {
+  const raw = firstString(value)?.trim()
+  if (!raw || raw.length > 2048) return null
+  try {
+    const parsed = new URL(raw)
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return null
+    return raw
+  } catch {
+    return null
+  }
+}
+
 function num(...vals: unknown[]): number | null {
   for (const v of vals) {
     if (v === null || v === undefined || v === '') continue
@@ -52,14 +64,14 @@ function num(...vals: unknown[]): number | null {
 
 export function normalizeVehicle(raw: unknown): VehicleSummary {
   const value = asRecord(raw)
-  const image = firstString(value.images)
+  const image = safeHttpUrl(firstString(value.images)
     || firstString(value.photos)
     || firstString(value.photo_urls)
     || firstString(value.main_photo_url)
     || firstString(value.image)
     || firstString(value.image_url)
     || firstString(value['g:image_link'])
-    || null
+    || null)
   return {
     id: String(value.id ?? ''),
     make: String(value.make ?? ''),
@@ -68,7 +80,7 @@ export function normalizeVehicle(raw: unknown): VehicleSummary {
     price: num(value.dap_price, value.price),
     condition: firstString([value.listing_type, value.condition, value.category, value.stock_type]),
     stockNumber: firstString(value.stock_number),
-    url: firstString(value.url),
+    url: safeHttpUrl(value.url),
     image
   }
 }
