@@ -200,6 +200,37 @@ describe('Measurement profile service', () => {
     })
   })
 
+  it('does not restart hostname verification for an unrelated profile update', async () => {
+    const test = harness()
+    await test.service.update({
+      clientId: CLIENT_ID,
+      expectedVersion: 1,
+      reason: 'Prepare first-party collection',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: {
+        collectionTier: 'first_party_cname',
+        trackingSiteId: TRACKING_SITE_ID,
+        firstPartyHostname: 'track.example.com'
+      }
+    })
+
+    const result = await test.service.update({
+      clientId: CLIENT_ID,
+      expectedVersion: 2,
+      reason: 'Update consent policy without changing transport',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      patch: { consentMode: 'au_optout' }
+    })
+
+    expect(result.profile).toMatchObject({
+      collectionTier: 'first_party_cname',
+      firstPartyHostname: 'track.example.com',
+      hostnameStatus: 'pending',
+      consentMode: 'au_optout'
+    })
+    expect(test.audits[1]?.changedFields).toEqual(['consentMode'])
+  })
+
   it('returns a stable conflict without publishing when the expected version is stale', async () => {
     const test = harness()
 
