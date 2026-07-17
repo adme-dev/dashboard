@@ -81,6 +81,7 @@ export interface MeasurementEventMapping {
 export interface MeasurementDestination {
   id: string
   platform: 'meta' | 'google_data_manager'
+  socialConnectionId?: string | null
   externalDestinationId: string
   credentialConfigured: boolean
   enabled: boolean

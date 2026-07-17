@@ -12,6 +12,7 @@ import type {
 
 const props = defineProps<{
   clientId: string
+  canConfigure?: boolean
 }>()
 
 const apiFetch = $fetch as <T>(request: string) => Promise<T>
@@ -21,6 +22,7 @@ const destinations = ref<MeasurementDestination[]>([])
 const auditEntries = ref<MeasurementAuditEntry[]>([])
 const pending = ref(true)
 const loadError = ref<string | null>(null)
+const showDestinationEditor = ref(false)
 
 const titleCase = (value: string) => value
   .replaceAll('_', ' ')
@@ -138,6 +140,11 @@ async function refreshMeasurement() {
   }
 }
 
+async function handleDestinationSaved() {
+  showDestinationEditor.value = false
+  await refreshMeasurement()
+}
+
 void refreshMeasurement()
 </script>
 
@@ -247,6 +254,14 @@ void refreshMeasurement()
       </div>
     </div>
 
+    <ClientMeasurementProfileForm
+      v-if="!pending && !loadError && profile"
+      :client-id="clientId"
+      :profile="profile"
+      :can-configure="canConfigure ?? false"
+      @saved="refreshMeasurement"
+    />
+
     <div v-if="!pending && !loadError && readiness" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div class="space-y-4">
         <div class="flex items-end justify-between gap-4">
@@ -258,8 +273,26 @@ void refreshMeasurement()
               Provider identifiers are visible for mapping; credentials remain redacted.
             </p>
           </div>
-          <span class="text-xs text-muted">{{ destinations.length }} configured</span>
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-muted">{{ destinations.length }} configured</span>
+            <UButton
+              v-if="canConfigure"
+              label="Configure destination"
+              icon="i-lucide-plus"
+              size="sm"
+              variant="outline"
+              @click="showDestinationEditor = true"
+            />
+          </div>
         </div>
+
+        <ClientMeasurementDestinationEditor
+          v-if="showDestinationEditor && profile"
+          :client-id="clientId"
+          :profile-config-version="profile.configVersion"
+          @saved="handleDestinationSaved"
+          @cancel="showDestinationEditor = false"
+        />
 
         <div v-if="destinations.length" class="space-y-4">
           <article

@@ -10,7 +10,7 @@ const route = useRoute()
 const toast = useToast()
 // KPI targets are editable only by MANAGEMENT roles (matches the kpi-targets PUT
 // guard) — non-managers get a read-only view instead of a 403 on save.
-const { isManager } = useAuth()
+const { isManager, canAccessMediaBuying, canWrite } = useAuth()
 const clientId = route.params.id as string
 const apiFetch = $fetch as <T = unknown>(
   request: string,
@@ -412,7 +412,7 @@ async function saveKpiTargets() {
               { label: 'Invoices', value: 'invoices', icon: 'i-lucide-receipt' },
               { label: 'Media Spend', value: 'media', icon: 'i-lucide-megaphone' },
               { label: 'Website', value: 'website', icon: 'i-lucide-radio' },
-              { label: 'Measurement', value: 'measurement', icon: 'i-lucide-activity' }
+              ...(canAccessMediaBuying ? [{ label: 'Measurement', value: 'measurement', icon: 'i-lucide-activity' }] : [])
             ]"
             class="mb-6"
           />
@@ -847,8 +847,8 @@ async function saveKpiTargets() {
             <TrackingAnalyticsContainer :client-id="clientId" />
           </div>
 
-          <div v-if="activeTab === 'measurement'">
-            <ClientMeasurementPanel :client-id="clientId" />
+          <div v-if="activeTab === 'measurement' && canAccessMediaBuying">
+            <ClientMeasurementPanel :client-id="clientId" :can-configure="canWrite" />
           </div>
         </template>
 
