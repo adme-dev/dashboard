@@ -78,6 +78,53 @@ export const ClientMeasurementProfileCreateSchema = z.strictObject({
   portalOutcomeMode: PortalOutcomeModeSchema.default('disabled')
 })
 
+export const ClientMeasurementProfilePatchSchema = z.strictObject({
+  enabled: z.boolean().optional(),
+  environment: MeasurementEnvironmentSchema.optional(),
+  collectionTier: CollectionTierSchema.optional(),
+  trackingSiteId: z.string().uuid().nullable().optional(),
+  firstPartyHostname: z.string().trim().min(1).max(253).toLowerCase().nullable().optional(),
+  hostnameStatus: z.enum(['not_required', 'pending', 'active', 'error']).optional(),
+  consentMode: ConsentModeSchema.optional(),
+  vertical: z.string().trim().min(1).max(100).optional(),
+  outcomeAuthority: OutcomeAuthoritySchema.optional(),
+  nativeLifecycleMode: NativeLifecycleModeSchema.optional(),
+  portalOutcomeMode: PortalOutcomeModeSchema.optional()
+}).refine(patch => Object.keys(patch).length > 0, {
+  message: 'At least one profile field must change'
+})
+
+export const MeasurementActorSchema = z.strictObject({
+  type: z.enum(['team_member', 'client_user', 'system', 'import']),
+  id: z.string().trim().min(1).max(255).nullable().default(null)
+})
+
+export const UpdateClientMeasurementProfileSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  expectedVersion: z.number().int().positive(),
+  reason: z.string().trim().min(1).max(1000),
+  actor: MeasurementActorSchema,
+  patch: ClientMeasurementProfilePatchSchema
+})
+
+export const ClientMeasurementProfileStateSchema = ClientMeasurementProfileCreateSchema.extend({
+  id: z.string().uuid(),
+  configVersion: z.number().int().positive(),
+  cacheStatus: z.enum(['not_published', 'fresh', 'stale', 'error']),
+  cacheVersion: z.number().int().positive().nullable(),
+  cacheErrorClass: z.string().trim().min(1).max(255).nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true })
+}).superRefine((profile, ctx) => {
+  if (profile.portalOutcomeMode === 'authoritative' && profile.outcomeAuthority !== 'zero_native') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['portalOutcomeMode'],
+      message: 'Authoritative portal outcomes require Zero-native lifecycle authority'
+    })
+  }
+})
+
 const OpaqueCredentialRefSchema = z.string()
   .trim()
   .min(1)
@@ -174,6 +221,10 @@ export const CanonicalConversionEventSchema = z.strictObject({
 })
 
 export type ClientMeasurementProfileCreate = z.infer<typeof ClientMeasurementProfileCreateSchema>
+export type ClientMeasurementProfilePatch = z.infer<typeof ClientMeasurementProfilePatchSchema>
+export type ClientMeasurementProfileState = z.infer<typeof ClientMeasurementProfileStateSchema>
+export type UpdateClientMeasurementProfile = z.infer<typeof UpdateClientMeasurementProfileSchema>
+export type MeasurementActor = z.infer<typeof MeasurementActorSchema>
 export type ConversionDestinationCreate = z.infer<typeof ConversionDestinationCreateSchema>
 export type CapabilityState = z.infer<typeof CapabilityStateSchema>
 export type CanonicalConversionEvent = z.infer<typeof CanonicalConversionEventSchema>
