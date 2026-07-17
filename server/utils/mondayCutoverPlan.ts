@@ -401,6 +401,19 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
     })
   }
 
+  const valueMappedDestinations = new Set(['task.assigneeId', 'task.status', 'exception'])
+  for (const mapping of columnMappings.filter(mapping => (
+    mapping.resolutionDecision === 'import' && valueMappedDestinations.has(mapping.destination)
+  ))) {
+    exceptions.push({
+      code: 'COLUMN_VALUE_MAPPING_REQUIRED',
+      severity: 'blocking',
+      sourceId: null,
+      columnId: mapping.sourceColumnId,
+      message: `${mapping.sourceTitle} still requires a source-value to Zero-value mapping artifact.`
+    })
+  }
+
   const clientResolutions = new Map<string, MondayCutoverClient>()
   for (const resolution of resolutions.clients) {
     const source = input.sourceRecords.find(record => record.id === resolution.sourceId)
@@ -492,7 +505,7 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
         columnId: null,
         message: `Source ${source.id} requires an explicit Zero client link.`
       })
-    } else if (clientLink.status === 'exact' && !clientLink.measurementProfileId) {
+    } else if ((clientLink.status === 'exact' || clientLink.status === 'resolved') && !clientLink.measurementProfileId) {
       exceptions.push({
         code: 'MEASUREMENT_PROFILE_LINK_PENDING',
         severity: 'warning',
