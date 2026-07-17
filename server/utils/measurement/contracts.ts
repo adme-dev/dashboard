@@ -663,6 +663,34 @@ export const CanonicalConversionEventSchema = z.strictObject({
   attribution: CanonicalAttributionSchema.default(EMPTY_CANONICAL_ATTRIBUTION)
 })
 
+export const CanonicalConsentDecisionSchema = z.enum(['granted', 'denied', 'unknown'])
+export const CanonicalOutboxStatusSchema = z.enum([
+  'paused',
+  'pending',
+  'claimed',
+  'published',
+  'policy_skipped',
+  'failed'
+])
+
+export const AppendCanonicalConversionEventSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  eventName: CanonicalEventNameSchema,
+  sourceSystem: CanonicalEventSourceSystemSchema,
+  sourceEntityType: CanonicalEventSourceEntitySchema,
+  sourceEntityId: z.string().trim().min(1).max(255),
+  sourceEventId: z.string().trim().min(1).max(255),
+  occurredAt: z.string().datetime({ offset: true }),
+  consentDecision: CanonicalConsentDecisionSchema.default('unknown'),
+  attribution: CanonicalAttributionSchema.default(EMPTY_CANONICAL_ATTRIBUTION)
+})
+
+export const CanonicalConversionOutboxEventSchema = CanonicalConversionEventSchema.extend({
+  profileId: z.string().uuid(),
+  outboxStatus: CanonicalOutboxStatusSchema,
+  policyReason: z.string().trim().min(1).max(255).nullable()
+})
+
 export type ClientMeasurementProfileCreate = z.infer<typeof ClientMeasurementProfileCreateSchema>
 export type ClientMeasurementProfilePatch = z.infer<typeof ClientMeasurementProfilePatchSchema>
 export type ClientMeasurementProfileState = z.infer<typeof ClientMeasurementProfileStateSchema>
@@ -687,3 +715,5 @@ export type ListMeasurementAudit = z.infer<typeof ListMeasurementAuditSchema>
 export type MeasurementReadinessSummary = z.infer<typeof MeasurementReadinessSummarySchema>
 export type CapabilityState = z.infer<typeof CapabilityStateSchema>
 export type CanonicalConversionEvent = z.infer<typeof CanonicalConversionEventSchema>
+export type AppendCanonicalConversionEvent = z.infer<typeof AppendCanonicalConversionEventSchema>
+export type CanonicalConversionOutboxEvent = z.infer<typeof CanonicalConversionOutboxEventSchema>
