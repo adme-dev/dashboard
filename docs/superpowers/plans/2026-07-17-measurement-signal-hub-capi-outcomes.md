@@ -1,14 +1,14 @@
 # Zero Measurement Signal Hub — CAPI, Outcome Feedback, and Delivery Health Plan
 
-**Date:** 17 July 2026
-**Status:** Implementation in progress — transactional outcomes, outbox, queue publication, and provider ingestion are built; no live destination is activated
+**Date:** 18 July 2026
+**Status:** Controlled production pilot in progress — the dormant control plane and delivery foundation are deployed; provider certification, soak, and board cutover remain open
 **Primary owner:** Digital / Media Operations
 **Primary users:** ADME media/ops staff; client portal users
 **Current incumbent job board:** [Meta CAPI Rollout — Monday board 18422459929](https://adme2.monday.com/boards/18422459929)
 **Source PRD:** `/Users/paulgiurin/Downloads/meta-capi-rollout-prd.md`
 **Parent/subtask execution backlog:** [Measurement Signal Hub execution backlog](./2026-07-17-measurement-signal-hub-execution-backlog.md)
 
-**Production implementation update (17 July 2026):** Zero now has the dormant production path from a native CRM stage move through immutable lifecycle evidence, a deterministic transactional conversion outbox, repairable Queue publication, and a standalone Hyperdrive-backed delivery Worker. Meta CRM CAPI and Google Data Manager ingestion are implemented, including scheduled Google terminal request-status reconciliation and append-only redacted diagnostic evidence. Production certification is not complete: provider test evidence, infrastructure/secrets provisioning, OAuth re-consent, and the internal/client delivery-health surfaces remain open. No live client profile or destination has been enabled and no provider event has been sent.
+**Production implementation update (18 July 2026):** Big Garage Subaru is the approved controlled pilot. Zero is the canonical configuration and delivery-health source for its disabled test profile, active first-party hostname, consent policy, exact Meta dataset and Google conversion action, capability matrix, mappings, audit history, and readiness blockers. The dedicated Queue/Worker/Hyperdrive/DLQ foundation and the internal/client health surfaces are deployed. Google still requires `datamanager` re-consent, and Zero currently has no Big Garage lead, tracking event, valid Meta lead ID, or Google click ID. Therefore provider test delivery, diagnostic reconciliation, dedup proof, failure/rollback drills, soak, Monday import/cutover, GraphWiki refresh, and final Monday reconciliation remain open. No provider event or Monday write has occurred.
 
 ## 1. Outcome
 
@@ -84,9 +84,11 @@ The read-only [Meta and Google conversion readiness audit](../research/2026-07-1
 - the user-supplied Meta account is an inactive app-source shell, while Ferntree has an active `FTG Used` dataset with Pixel plus web CAPI; that connection is explicitly web-only, Meta separately recommends CRM CAPI, and the live Lead event is `6.2/10` with an update recommended;
 - Ferntree has Google Enhanced Conversions for Leads managed through GTM, but its ten-action Submit lead form goal needs attention and one of eight enhanced-conversion actions has an urgent diagnostic issue;
 - Zero has 113 active Meta and 102 active Google connections, but only 20/17 are client-linked and no Google connection has `datamanager` scope;
+
+**18 July pilot decision:** Big Garage Subaru supersedes the provisional Ferntree candidate because ADME controls the published website and its Cloudflare/Netlify delivery path. The approved exact destinations are Meta dataset `202987455920103` and Google conversion action `customers/6257728347/conversionActions/7687832282`. This decision does not waive provider gates: the matched Google connection is expired and lacks `datamanager`, while Zero has no identifier-bearing Big Garage lead or tracking event.
 - current intake contains no valid retained Meta Lead IDs or Google `gclid` values, and native CRM production has no opportunities/stage history yet.
 
-Therefore T0 must confirm Ferntree's owners and fallback, capture provider baselines, and prove a new provider lead identifier → CRM opportunity → stage history path before the provider adapters can be accepted. Existing web CAPI or GTM enhanced conversions are baseline signals, not evidence that CRM outcome delivery is ready.
+Therefore T0's pilot-selection decision is resolved, but its provider-evidence portion remains open: capture the Big Garage baselines and prove a new provider lead identifier → CRM opportunity → stage history path before the adapters can be accepted. Existing web CAPI or GTM enhanced conversions are baseline signals, not evidence that CRM outcome delivery is ready.
 
 ## 4. Canonical ownership model
 
@@ -902,7 +904,7 @@ Sizes are relative implementation sizes, not calendar commitments: **S** ≈ 1�
 
 ### Gate 1 — Build-ready
 
-- Ferntree confirmed or rejected with evidence, fallback selected, and board mapped;
+- Big Garage Subaru approved with evidence and the Zero rollout board mapped;
 - existing Meta web-CAPI and Google ECL diagnostics baselined;
 - ADR, lifecycle contract, privacy/retention, and threat model approved;
 - Meta and Google access owners named.
@@ -924,7 +926,7 @@ Sizes are relative implementation sizes, not calendar commitments: **S** ≈ 1�
 ### Gate 4 — Google pilot live
 
 - Data Manager auth model and scope approved;
-- Ferntree's exact conversion action selected and pre-existing goal/urgent diagnostic resolved or accepted as a signed baseline;
+- Big Garage's exact conversion action selected and pre-existing goal/authorization diagnostics resolved or accepted as a signed baseline;
 - Data Manager diagnostic reconciliation verified;
 - existing spend connection unaffected.
 
@@ -952,13 +954,13 @@ Set exact thresholds during T1/T16 after baseline measurement. Track at minimum:
 
 Do not promise the PRD's 20–40% signal recovery as an engineering acceptance criterion. Treat it as a business hypothesis measured during pilot/cohort rollout.
 
-## 15. Decisions to make at T1—not during implementation
+## 15. Decision outcomes and remaining execution gates
 
-1. Do the named owners approve Ferntree Gully Automotive as the native-Zero-CRM pilot, and which dual-connected client is the fallback?
+1. **Resolved:** Big Garage Subaru is the controlled pilot because ADME controls its published site delivery path. Ferntree remains research context, not the active pilot.
 2. Is the portal authoritative for outcomes by default, or only when no CRM is connected?
 3. What state regressions are permitted, and who can override terminal states?
 4. Does `Qualified` map to a Meta standard event, Conversion Leads workflow, or client-specific mapping for the pilot?
-5. Is Google operated with advertiser OAuth, a service account, or an ADME data-partner link?
+5. **Selected for the pilot:** reuse advertiser OAuth through the existing Google connection, with explicit `datamanager` re-consent. Service-account/data-partner operation remains a later architectural option.
 6. What identifier retention and encrypted-envelope window are contractually permitted?
 7. What evidence may clients see versus internal-only diagnostics?
 8. What thresholds define healthy, degraded, and rollout-ready?
