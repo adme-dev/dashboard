@@ -15,7 +15,7 @@ describe('social news client content profile UI', () => {
       expect(page).toContain(`label="${label}"`)
     }
 
-    expect(page).toContain('v-model="evidenceForm.content" :rows="4" class="w-full"')
+    expect(page).toContain('v-model="evidenceForm.content" class="w-full col-span-full" :rows="4"')
     expect(page).toContain('class="flex justify-end"')
   })
 
@@ -30,7 +30,7 @@ describe('social news client content profile UI', () => {
   it('keeps the raw Slack importer secondary to the review workflow', () => {
     expect(page).toContain('<details')
     expect(page).toContain('Import a Slack JSON export')
-    expect(page).toContain('v-model="slackImportText" :rows="5" class="w-full font-mono text-xs"')
+    expect(page).toContain('v-model="slackImportText" class="w-full col-span-full" :rows="5"')
   })
 
   it('renders a compact pending-evidence empty state', () => {
