@@ -149,6 +149,7 @@ export default defineNuxtConfig({
     metaAppId: process.env.META_APP_ID || '',
     metaAppSecret: process.env.META_APP_SECRET || '',
     metaRedirectUri: process.env.META_REDIRECT_URI || '/api/agency/social/meta/callback',
+    metaGraphApiVersion: process.env.META_GRAPH_API_VERSION || 'v25.0',
 
     // Google Ads
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
