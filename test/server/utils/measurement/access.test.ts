@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockRequirePermission = vi.fn()
+const mockRequireWriteAccess = vi.fn()
 const mockQueryOne = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
-  requirePermission: (...args: unknown[]) => mockRequirePermission(...args)
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
+  requireWriteAccess: (...args: unknown[]) => mockRequireWriteAccess(...args)
 }))
 
 vi.mock('~~/server/utils/db', () => ({
@@ -22,6 +24,7 @@ describe('Measurement client access', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'owner' })
+    mockRequireWriteAccess.mockResolvedValue({ id: 'staff-1', role: 'owner' })
     mockQueryOne.mockResolvedValue(null)
   })
 
@@ -42,6 +45,7 @@ describe('Measurement client access', () => {
 
   it('allows an assigned media operator and scopes the lookup by client and user', async () => {
     mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'media_buyer' })
+    mockRequireWriteAccess.mockResolvedValue({ id: 'staff-1', role: 'media_buyer' })
     mockQueryOne.mockResolvedValue({ '?column?': 1 })
     const { requireMeasurementClientAccess } = await import(
       '../../../../server/utils/measurement/access'
@@ -57,6 +61,31 @@ describe('Measurement client access', () => {
       '11111111-1111-4111-8111-111111111111',
       'staff-1'
     ])
+  })
+
+  it('requires server-side write access for configuration but not read-only views', async () => {
+    mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'owner' })
+    mockRequireWriteAccess.mockRejectedValue(Object.assign(new Error('Read-only access'), {
+      statusCode: 403,
+      statusMessage: 'Forbidden - Read-only access'
+    }))
+    const { requireMeasurementClientAccess } = await import(
+      '../../../../server/utils/measurement/access'
+    )
+
+    await expect(requireMeasurementClientAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111',
+      'view'
+    )).resolves.toMatchObject({ role: 'owner' })
+    expect(mockRequireWriteAccess).not.toHaveBeenCalled()
+
+    await expect(requireMeasurementClientAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111',
+      'configure'
+    )).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockRequireWriteAccess).toHaveBeenCalledWith(expect.anything())
   })
 
   it('hides an unassigned tenant profile behind the same not-found response', async () => {
@@ -87,6 +116,21 @@ describe('Measurement client access', () => {
       'view'
     )).rejects.toMatchObject({ statusCode: 400 })
 
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('fails closed for an unexpected measurement permission value', async () => {
+    const { requireMeasurementClientAccess } = await import(
+      '../../../../server/utils/measurement/access'
+    )
+
+    await expect(requireMeasurementClientAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111',
+      'delete' as never
+    )).rejects.toMatchObject({ statusCode: 400 })
+
+    expect(mockRequireWriteAccess).not.toHaveBeenCalled()
     expect(mockQueryOne).not.toHaveBeenCalled()
   })
 
