@@ -29,11 +29,11 @@ describe('socialDashboard provider', () => {
   })
 
   it('searchInventory previews seller-scoped filters and normalizes vehicles', async () => {
-    const { client, call } = fakeClient({ 'POST /api/feeds/preview': { ok: true, total: 1, items: [{ id: 'v1', make: 'Kia', model: 'EV5', build_year: 2025, dap_price: 56990, images: ['x.jpg'] }] } })
+    const { client, call } = fakeClient({ 'POST /api/feeds/preview': { ok: true, total: 1, items: [{ id: 'v1', make: 'Kia', model: 'EV5', build_year: 2025, dap_price: 56990, images: ['https://cdn.example/x.jpg'] }] } })
     const p = createSocialDashboardProvider(client)
     const out = await p.searchInventory(ctx, link, { makes: ['Kia'] })
     expect(out.total).toBe(1)
-    expect(out.items[0]).toMatchObject({ id: 'v1', make: 'Kia', price: 56990, image: 'x.jpg' })
+    expect(out.items[0]).toMatchObject({ id: 'v1', make: 'Kia', price: 56990, image: 'https://cdn.example/x.jpg' })
     expect(call).toHaveBeenCalledWith(ctx, 'POST', '/api/feeds/preview', {
       filters: { makes: ['Kia'], onlyActive: true, sellerIds: ['kia-springvale'] },
       limit: 100,
