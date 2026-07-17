@@ -37,7 +37,7 @@ Do not place OAuth tokens, refresh tokens, app secrets, or database URLs in
    diagnostics index plus append-only check table.
 3. Set the Worker secrets.
 4. Run `pnpm typecheck` in `workers/measurement-delivery/`.
-5. Deploy the consumer/scheduled Worker with `pnpm deploy` in
+5. Deploy the consumer/scheduled Worker with `pnpm run deploy` in
    `workers/measurement-delivery/`. Its 15-minute cron only leases rows whose
    `diagnostic_next_check_at` is due.
 6. Deploy the Pages app so the producer binding and repair endpoint are active.
