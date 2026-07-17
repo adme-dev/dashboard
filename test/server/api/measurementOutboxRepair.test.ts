@@ -18,10 +18,12 @@ testGlobal.getHeader = (event, name) => event.headers?.[name]
 testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
 
 const mockRepairPending = vi.fn()
+const mockRepairDueDeliveries = vi.fn()
 
 vi.mock('~~/server/utils/measurement/publisher', () => ({
   conversionOutboxPublisher: {
-    repairPending: (...args: unknown[]) => mockRepairPending(...args)
+    repairPending: (...args: unknown[]) => mockRepairPending(...args),
+    repairDueDeliveries: (...args: unknown[]) => mockRepairDueDeliveries(...args)
   }
 }))
 
@@ -42,6 +44,12 @@ describe('measurement outbox repair endpoint', () => {
       retryable: 0,
       unconfirmed: 0
     })
+    mockRepairDueDeliveries.mockResolvedValue({
+      status: 'processed',
+      due: 1,
+      queued: 1,
+      failed: 0
+    })
   })
 
   afterEach(() => {
@@ -52,6 +60,7 @@ describe('measurement outbox repair endpoint', () => {
   it('rejects a missing or incorrect cron secret', async () => {
     await expect(handler({ headers: {} } as never)).rejects.toMatchObject({ statusCode: 401 })
     expect(mockRepairPending).not.toHaveBeenCalled()
+    expect(mockRepairDueDeliveries).not.toHaveBeenCalled()
   })
 
   it('repairs a bounded batch for an authenticated cron request', async () => {
@@ -60,13 +69,22 @@ describe('measurement outbox repair endpoint', () => {
     const result = await handler(event as never)
 
     expect(mockRepairPending).toHaveBeenCalledWith(event, 100)
+    expect(mockRepairDueDeliveries).toHaveBeenCalledWith(event, 100)
     expect(result).toEqual({
       ran: true,
-      status: 'processed',
-      claimed: 2,
-      published: 2,
-      retryable: 0,
-      unconfirmed: 0
+      outbox: {
+        status: 'processed',
+        claimed: 2,
+        published: 2,
+        retryable: 0,
+        unconfirmed: 0
+      },
+      deliveries: {
+        status: 'processed',
+        due: 1,
+        queued: 1,
+        failed: 0
+      }
     })
   })
 })

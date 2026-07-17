@@ -6,9 +6,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const result = await conversionOutboxPublisher.repairPending(event, 100)
+  const [outbox, deliveries] = await Promise.all([
+    conversionOutboxPublisher.repairPending(event, 100),
+    conversionOutboxPublisher.repairDueDeliveries(event, 100)
+  ])
   return {
-    ran: result.status === 'processed',
-    ...result
+    ran: outbox.status === 'processed' && deliveries.status === 'processed',
+    outbox,
+    deliveries
   }
 })

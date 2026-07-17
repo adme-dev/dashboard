@@ -114,4 +114,18 @@ describe('conversion outbox publisher', () => {
       errorClass: 'claim_not_confirmed'
     })
   })
+
+  it('requeues event identities for due provider-managed delivery retries', async () => {
+    const { publisher, queryRows, execute, send } = setup()
+
+    const result = await publisher.repairDueDeliveries({} as never, 40)
+
+    expect(result).toEqual({ status: 'processed', due: 1, queued: 1, failed: 0 })
+    expect(queryRows).toHaveBeenCalledWith(
+      expect.stringMatching(/FROM conversion_deliveries d[\s\S]*d.status = 'retryable'[\s\S]*d.status = 'claimed'/),
+      [40, NOW.toISOString()]
+    )
+    expect(send).toHaveBeenCalledOnce()
+    expect(execute).not.toHaveBeenCalled()
+  })
 })

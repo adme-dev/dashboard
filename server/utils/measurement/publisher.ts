@@ -31,6 +31,13 @@ export interface RepairConversionOutboxResult {
   unconfirmed: number
 }
 
+export interface RepairDueDeliveriesResult {
+  status: 'processed' | 'queue_unavailable'
+  due: number
+  queued: number
+  failed: number
+}
+
 function getQueueFromEvent(event: H3Event): QueueProducer | null {
   try {
     const context = event.context as {
@@ -203,6 +210,54 @@ export function createConversionOutboxPublisher(deps: PublisherDeps = defaultDep
         retryable,
         unconfirmed
       }
+    },
+
+    async repairDueDeliveries(event: H3Event, limit = 100): Promise<RepairDueDeliveriesResult> {
+      const queue = deps.getQueue(event)
+      if (!queue) return { status: 'queue_unavailable', due: 0, queued: 0, failed: 0 }
+
+      const boundedLimit = Math.max(1, Math.min(250, Math.trunc(limit)))
+      const observedAt = deps.now().toISOString()
+      const rows = await deps.queryRows(
+        `SELECT e.id, e.client_id
+           FROM conversion_deliveries d
+           JOIN conversion_events e
+             ON e.client_id = d.client_id
+            AND e.id = d.event_id
+          WHERE (
+            (d.status = 'retryable' AND d.next_attempt_at <= $2::timestamptz)
+            OR (
+              d.status = 'claimed'
+              AND d.claimed_at < $2::timestamptz - INTERVAL '5 minutes'
+            )
+          )
+          GROUP BY e.id, e.client_id
+          ORDER BY MIN(d.next_attempt_at), e.id
+          LIMIT $1`,
+        [boundedLimit, observedAt]
+      )
+      let queued = 0
+      let failed = 0
+      for (const row of rows) {
+        const message = ConversionDeliveryQueueMessageSchema.parse({
+          schemaVersion: 1,
+          clientId: row.client_id,
+          eventId: row.id,
+          enqueuedAt: observedAt
+        })
+        try {
+          await queue.send(message, { contentType: 'json' })
+          queued += 1
+        } catch (error) {
+          failed += 1
+          deps.warn({
+            event: 'measurement_delivery_retry_publish_failed',
+            eventId: row.id,
+            errorClass: errorClass(error)
+          })
+        }
+      }
+      return { status: 'processed', due: rows.length, queued, failed }
     }
   }
 }

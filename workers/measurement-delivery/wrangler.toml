@@ -1,0 +1,23 @@
+name = "measurement-delivery-worker"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[queues.consumers]]
+queue = "measurement-delivery"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "measurement-delivery-dlq"
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
+
+[vars]
+META_GRAPH_API_VERSION = "v25.0"
+WORKER_ID_PREFIX = "measurement-w"
+
+# Secrets are configured with Wrangler, never committed:
+#   wrangler secret put GOOGLE_CLIENT_ID
+#   wrangler secret put GOOGLE_CLIENT_SECRET
