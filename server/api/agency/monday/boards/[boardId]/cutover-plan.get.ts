@@ -70,9 +70,10 @@ function toSourceRecord(
   clientColumnId: string | null,
   parentSourceId: string | null
 ): MondayCutoverSourceRecord {
+  const columnValues = item.column_values ?? []
   const clientHint = parentSourceId
     ? null
-    : (item.column_values ?? []).find(value => value.id === clientColumnId)?.text?.trim().slice(0, 500) || null
+    : columnValues.find(value => value.id === clientColumnId)?.text?.trim().slice(0, 500) || null
 
   return {
     id: item.id,
@@ -84,7 +85,10 @@ function toSourceRecord(
     groupId: parentSourceId ? null : item.group_id ?? null,
     groupTitle: parentSourceId ? null : item.group_title ?? null,
     subitemCount: item.subitems?.length ?? 0,
-    clientHint
+    clientHint,
+    populatedColumnIds: [...new Set(columnValues
+      .filter(value => Boolean(value.text?.trim()))
+      .map(value => value.id))]
   }
 }
 

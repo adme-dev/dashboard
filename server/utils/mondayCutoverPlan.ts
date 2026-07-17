@@ -23,6 +23,7 @@ export interface MondayCutoverSourceRecord {
   groupTitle: string | null
   subitemCount: number
   clientHint: string | null
+  populatedColumnIds?: string[]
 }
 
 export interface MondayCutoverTargetTask {
@@ -49,7 +50,49 @@ export interface MondayCutoverPlanInput {
   clients: MondayCutoverClient[]
   isSourceTruncated: boolean
   isTargetTruncated?: boolean
+  resolutions?: MondayCutoverResolutions
 }
+
+const ResolutionReasonSchema = z.string().trim().min(10).max(1000)
+
+export const MondayCutoverResolutionsSchema = z.strictObject({
+  clients: z.array(z.strictObject({
+    sourceId: z.string().trim().regex(/^\d+$/).max(30),
+    clientId: z.string().uuid(),
+    reason: ResolutionReasonSchema
+  })).max(500),
+  columns: z.array(z.strictObject({
+    sourceColumnId: z.string().trim().min(1).max(255),
+    decision: z.enum(['import', 'exclude']),
+    reason: ResolutionReasonSchema
+  })).max(200)
+}).superRefine((value, context) => {
+  const clientSourceIds = new Set<string>()
+  for (const resolution of value.clients) {
+    if (clientSourceIds.has(resolution.sourceId)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['clients'],
+        message: `Duplicate client resolution for source ${resolution.sourceId}`
+      })
+    }
+    clientSourceIds.add(resolution.sourceId)
+  }
+
+  const columnIds = new Set<string>()
+  for (const resolution of value.columns) {
+    if (columnIds.has(resolution.sourceColumnId)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['columns'],
+        message: `Duplicate column resolution for ${resolution.sourceColumnId}`
+      })
+    }
+    columnIds.add(resolution.sourceColumnId)
+  }
+})
+
+export type MondayCutoverResolutions = z.infer<typeof MondayCutoverResolutionsSchema>
 
 const CutoverExceptionSchema = z.strictObject({
   code: z.string().min(1).max(100),
@@ -85,7 +128,10 @@ export const MondayCutoverPlanResponseSchema = z.strictObject({
     sourceType: z.string().min(1).max(100),
     destination: z.string().min(1).max(100),
     action: z.enum(['import', 'review', 'exclude']),
-    reason: z.string().min(1).max(1000)
+    reason: z.string().min(1).max(1000),
+    populatedRecords: z.number().int().nonnegative().max(5500),
+    resolutionStatus: z.enum(['not_required', 'pending', 'applied']),
+    resolutionDecision: z.enum(['import', 'exclude']).nullable()
   })).max(200),
   records: z.array(z.strictObject({
     sourceId: z.string().min(1).max(100),
@@ -103,7 +149,7 @@ export const MondayCutoverPlanResponseSchema = z.strictObject({
       candidateTaskIds: z.array(z.string().min(1).max(100)).max(20)
     }),
     clientLink: z.strictObject({
-      status: z.enum(['exact', 'suggested', 'missing', 'not_applicable']),
+      status: z.enum(['exact', 'resolved', 'suggested', 'missing', 'not_applicable']),
       clientId: z.string().uuid().or(z.string().min(1).max(100)).nullable(),
       clientName: z.string().min(1).max(500).nullable(),
       measurementProfileId: z.string().uuid().or(z.string().min(1).max(100)).nullable(),
@@ -209,7 +255,8 @@ function mappedColumn(
 function buildClientLink(
   source: MondayCutoverSourceRecord,
   clients: MondayCutoverClient[],
-  clientFuse: Fuse<MondayCutoverClient>
+  clientFuse: Fuse<MondayCutoverClient>,
+  resolvedClient?: MondayCutoverClient
 ) {
   if (!source.clientHint) {
     return {
@@ -217,6 +264,16 @@ function buildClientLink(
       clientId: null,
       clientName: null,
       measurementProfileId: null,
+      candidates: []
+    }
+  }
+
+  if (resolvedClient) {
+    return {
+      status: 'resolved' as const,
+      clientId: resolvedClient.id,
+      clientName: resolvedClient.name,
+      measurementProfileId: resolvedClient.measurementProfileId,
       candidates: []
     }
   }
@@ -250,7 +307,52 @@ function buildClientLink(
 
 export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
   const exceptions: Array<z.infer<typeof CutoverExceptionSchema>> = []
-  const columnMappings = input.sourceBoard.columns.map(classifyColumn)
+  const resolutions = MondayCutoverResolutionsSchema.parse(input.resolutions ?? {
+    clients: [],
+    columns: []
+  })
+  const columnResolutions = new Map(resolutions.columns.map(resolution => [resolution.sourceColumnId, resolution]))
+  const sourceColumnIds = new Set(input.sourceBoard.columns.map(column => column.id))
+  const columnMappings = input.sourceBoard.columns.map((column) => {
+    const mapping = classifyColumn(column)
+    const resolution = columnResolutions.get(column.id)
+    const populatedRecords = input.sourceRecords.filter(record => (
+      record.populatedColumnIds?.includes(column.id)
+    )).length
+
+    if (!resolution) {
+      return {
+        ...mapping,
+        populatedRecords,
+        resolutionStatus: mapping.action === 'review' ? 'pending' as const : 'not_required' as const,
+        resolutionDecision: null
+      }
+    }
+
+    if (mapping.action !== 'review') {
+      exceptions.push({
+        code: 'RESOLUTION_INVALID',
+        severity: 'blocking',
+        sourceId: null,
+        columnId: column.id,
+        message: `${column.title} does not require a review resolution.`
+      })
+      return {
+        ...mapping,
+        populatedRecords,
+        resolutionStatus: 'not_required' as const,
+        resolutionDecision: null
+      }
+    }
+
+    return {
+      ...mapping,
+      action: resolution.decision,
+      populatedRecords,
+      resolutionStatus: 'applied' as const,
+      resolutionDecision: resolution.decision
+    }
+  })
   const matchedTargetIds = new Set<string>()
   const clientFuse = new Fuse(input.clients, {
     keys: ['name'],
@@ -279,7 +381,17 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
     })
   }
 
-  for (const mapping of columnMappings.filter(mapping => mapping.action === 'review')) {
+  for (const resolution of resolutions.columns.filter(resolution => !sourceColumnIds.has(resolution.sourceColumnId))) {
+    exceptions.push({
+      code: 'RESOLUTION_INVALID',
+      severity: 'blocking',
+      sourceId: null,
+      columnId: resolution.sourceColumnId,
+      message: `Column resolution ${resolution.sourceColumnId} does not belong to the source board.`
+    })
+  }
+
+  for (const mapping of columnMappings.filter(mapping => mapping.resolutionStatus === 'pending')) {
     exceptions.push({
       code: 'COLUMN_REVIEW_REQUIRED',
       severity: 'blocking',
@@ -287,6 +399,23 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
       columnId: mapping.sourceColumnId,
       message: `${mapping.sourceTitle} requires an explicit governed mapping before import.`
     })
+  }
+
+  const clientResolutions = new Map<string, MondayCutoverClient>()
+  for (const resolution of resolutions.clients) {
+    const source = input.sourceRecords.find(record => record.id === resolution.sourceId)
+    const client = input.clients.find(candidate => candidate.id === resolution.clientId)
+    if (!source || source.parentSourceId || !source.clientHint || !client) {
+      exceptions.push({
+        code: 'RESOLUTION_INVALID',
+        severity: 'blocking',
+        sourceId: resolution.sourceId,
+        columnId: null,
+        message: `Client resolution for source ${resolution.sourceId} is not valid for this cutover plan.`
+      })
+      continue
+    }
+    clientResolutions.set(resolution.sourceId, client)
   }
 
   const records = input.sourceRecords.map((source) => {
@@ -354,7 +483,7 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
       match = { strategy: 'none', targetTaskId: null, candidateTaskIds: [] }
     }
 
-    const clientLink = buildClientLink(source, input.clients, clientFuse)
+    const clientLink = buildClientLink(source, input.clients, clientFuse, clientResolutions.get(source.id))
     if (clientLink.status === 'suggested' || clientLink.status === 'missing') {
       exceptions.push({
         code: 'CLIENT_LINK_REQUIRED',

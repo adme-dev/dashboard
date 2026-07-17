@@ -163,6 +163,12 @@ describe('GET /api/agency/monday/boards/:boardId/cutover-plan', () => {
       action: 'reuse',
       clientLink: expect.objectContaining({ status: 'exact', clientId: 'client-alan' })
     }))
+    expect(result.columnMappings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceColumnId: 'dealer', populatedRecords: 1 }),
+      expect.objectContaining({ sourceColumnId: 'token', populatedRecords: 1 }),
+      expect.objectContaining({ sourceColumnId: 'owner', populatedRecords: 1 }),
+      expect.objectContaining({ sourceColumnId: 'notes', populatedRecords: 2 })
+    ]))
     expect(JSON.stringify(result)).not.toContain('real-token-must-not-leak')
     expect(JSON.stringify(result)).not.toContain('private-note-must-not-leak')
     expect(JSON.stringify(result)).not.toContain('subitem-secret')
