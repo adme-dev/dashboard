@@ -5,6 +5,7 @@ import {
   ConversionDestinationCreateSchema,
   ConversionDestinationReadModelSchema,
   CreateConversionDestinationConfigurationSchema,
+  RecordDestinationValidationEvidenceSchema,
   UpdateConversionDestinationConfigurationSchema
 } from '../../../../server/utils/measurement/contracts'
 
@@ -356,6 +357,49 @@ describe('UpdateConversionDestinationConfigurationSchema', () => {
           evidenceAt: '2026-07-17T05:00:00.000Z'
         }]
       }
+    }).success).toBe(false)
+  })
+})
+
+describe('RecordDestinationValidationEvidenceSchema', () => {
+  const evidence = {
+    clientId: CLIENT_ID,
+    destinationId: '55555555-5555-4555-8555-555555555555',
+    expectedConfigVersion: 3,
+    observedAt: '2026-07-17T05:30:00.000Z',
+    actor: { type: 'system', id: 'measurement-meta-validator' },
+    reason: 'Meta test-event validation completed',
+    providerRequestId: 'request-redacted-123',
+    capabilities: [{ mode: 'meta_crm_capi', status: 'ready', blockingReason: null }]
+  } as const
+
+  it('accepts version-bound system evidence without provider payloads or credentials', () => {
+    const result = RecordDestinationValidationEvidenceSchema.parse(evidence)
+
+    expect(result.expectedConfigVersion).toBe(3)
+    expect(result.capabilities[0]?.status).toBe('ready')
+  })
+
+  it('requires a redacted reason for degraded or blocked capability evidence', () => {
+    expect(RecordDestinationValidationEvidenceSchema.safeParse({
+      ...evidence,
+      capabilities: [{ mode: 'meta_crm_capi', status: 'degraded', blockingReason: null }]
+    }).success).toBe(false)
+    expect(RecordDestinationValidationEvidenceSchema.safeParse({
+      ...evidence,
+      capabilities: [{
+        mode: 'meta_crm_capi',
+        status: 'blocked',
+        blockingReason: 'Provider authorization scope missing'
+      }]
+    }).success).toBe(true)
+  })
+
+  it('rejects operator actors and raw provider responses', () => {
+    expect(RecordDestinationValidationEvidenceSchema.safeParse({
+      ...evidence,
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      providerResponse: { access_token: 'must-not-enter-health-state' }
     }).success).toBe(false)
   })
 })

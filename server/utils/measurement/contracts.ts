@@ -340,6 +340,57 @@ export const UpdateConversionDestinationConfigurationSchema = z.strictObject({
   patch: DestinationConfigurationPatchSchema
 })
 
+const ValidationEvidenceCapabilitySchema = z.strictObject({
+  mode: CapabilityModeSchema,
+  status: z.enum(['ready', 'degraded', 'blocked']),
+  blockingReason: z.string().trim().min(1).max(1000).nullable().default(null)
+}).superRefine((capability, ctx) => {
+  if (capability.status !== 'ready' && capability.blockingReason === null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['blockingReason'],
+      message: 'Degraded and blocked evidence requires a redacted reason'
+    })
+  }
+  if (capability.status === 'ready' && capability.blockingReason !== null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['blockingReason'],
+      message: 'Ready evidence cannot include a blocking reason'
+    })
+  }
+})
+
+export const RecordDestinationValidationEvidenceSchema = z.strictObject({
+  clientId: z.string().uuid(),
+  destinationId: z.string().uuid(),
+  expectedConfigVersion: z.number().int().positive(),
+  observedAt: z.string().datetime({ offset: true }),
+  actor: z.strictObject({
+    type: z.literal('system'),
+    id: z.string().trim().min(1).max(255)
+  }),
+  reason: z.string().trim().min(1).max(1000),
+  providerRequestId: z.string().trim().min(1).max(255).nullable().default(null),
+  errorClass: z.string().trim().min(1).max(255).nullable().default(null),
+  redactedError: z.string().trim().min(1).max(1000).nullable().default(null),
+  capabilities: z.array(ValidationEvidenceCapabilitySchema)
+    .min(1)
+    .max(CapabilityModeSchema.options.length)
+}).superRefine((evidence, ctx) => {
+  const modes = new Set<string>()
+  evidence.capabilities.forEach((capability, index) => {
+    if (modes.has(capability.mode)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['capabilities', index, 'mode'],
+        message: 'Validation evidence must contain each capability once'
+      })
+    }
+    modes.add(capability.mode)
+  })
+})
+
 export const ConversionDestinationCapabilityStateSchema = z.strictObject({
   id: z.string().uuid(),
   destinationId: z.string().uuid(),
@@ -542,6 +593,7 @@ export type MeasurementActor = z.infer<typeof MeasurementActorSchema>
 export type ConversionDestinationCreate = z.infer<typeof ConversionDestinationCreateSchema>
 export type CreateConversionDestinationConfiguration = z.infer<typeof CreateConversionDestinationConfigurationSchema>
 export type UpdateConversionDestinationConfiguration = z.infer<typeof UpdateConversionDestinationConfigurationSchema>
+export type RecordDestinationValidationEvidence = z.infer<typeof RecordDestinationValidationEvidenceSchema>
 export type ConversionDestinationReadModel = z.infer<typeof ConversionDestinationReadModelSchema>
 export type ConversionDestinationCapabilityState = z.infer<typeof ConversionDestinationCapabilityStateSchema>
 export type ConversionEventMappingState = z.infer<typeof ConversionEventMappingStateSchema>
