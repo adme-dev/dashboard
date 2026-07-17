@@ -24,6 +24,9 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const existing = await requireSocialPostClientAccess(event, id)
+  if (existing.metadata?.source === 'mcp_news' && existing.client_approval_status !== 'approved') {
+    throw createError({ statusCode: 409, statusMessage: 'Client approval is required before internal approval' })
+  }
 
   const post = await queryOne<ApprovedPost>(
     `UPDATE social_posts

@@ -471,7 +471,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-share-2',
     categoryIconBg: 'bg-sky-50',
     categoryIconColor: 'text-sky-600',
-    description: 'A request → approve/reject workflow with notifications, so nothing goes out without the right sign-off.',
+    description: 'Agency and client-portal sign-off with source-aware previews, feedback, and publish-safe approval gates.',
     details: [
       {
         title: 'Built-In Sign-Off',
@@ -482,8 +482,8 @@ const features: Record<string, Feature> = {
         content: 'Approval requests fan out to management-permission staff through the same notification system that powers the rest of the dashboard — in-app and web push. Decisions notify the original requester instantly, so approvals never stall waiting on someone to check a separate inbox.'
       },
       {
-        title: 'Ready for Client Approvals',
-        content: 'The approval workflow is architected so external client-portal sign-off drops in as an alternate approver — letting clients approve their own content without agency staff acting as a relay. Internal approvals ship first; client-facing approval is a fast-follow.'
+        title: 'Client-Portal Review',
+        content: 'Clients review news-backed social drafts in their own scoped portal, switch between platform-specific versions, verify the original source and target accounts, and approve, reject, or request changes with attributable feedback. Client sign-off remains separate from agency approval, so it can never publish content directly.'
       }
     ]
   },

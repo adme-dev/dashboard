@@ -75,4 +75,19 @@ describe('social publishing migrations', () => {
     expect(sql).toMatch(/REFERENCES social_posts\(id\)/)
     expect(sql).toMatch(/CHECK \(event_type IN/)
   })
+
+  it('255 stores client decisions separately from the internal publish approval gate', () => {
+    const sql = mig('255_social_news_portal_approvals.sql')
+    for (const col of [
+      'client_approval_status',
+      'client_approval_responded_by',
+      'client_approval_responded_at',
+      'client_approval_feedback'
+    ]) {
+      expect(sql).toContain(col)
+    }
+    expect(sql).toContain("'revision_requested'")
+    expect(sql).toContain('newsAttribution')
+    expect(sql).toMatch(/idx_social_posts_client_approval/)
+  })
 })

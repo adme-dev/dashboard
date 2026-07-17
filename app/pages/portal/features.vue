@@ -66,7 +66,7 @@ const features = computed<FeatureCard[]>(() => {
     },
     {
       title: 'Approvals',
-      description: 'Review and approve deliverables, creative concepts, and campaign briefs in one place.',
+      description: 'Review deliverables, creative concepts, campaign briefs, and source-linked social drafts in one place.',
       icon: 'i-lucide-check-circle',
       iconColor: 'text-amber-500',
       to: '/portal/approvals?status=pending'

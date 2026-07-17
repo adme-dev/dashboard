@@ -4,11 +4,13 @@ import { queryOne, queryRows } from '~~/server/utils/db'
 import { createBulkNotifications } from '~~/server/utils/notifications'
 import { requireSocialPostClientAccess } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
+import { recordSocialNewsFeedback } from '~~/server/utils/socialNewsFeedback'
 
 interface ApprovalRequestPost {
   id: string
   content: string | null
   client_id: string
+  metadata: { source?: string, newsItemId?: string } | null
 }
 
 /**
@@ -23,6 +25,13 @@ export default defineEventHandler(async (event) => {
   const post = await queryOne<ApprovalRequestPost>(
     `UPDATE social_posts
         SET approval_requested_at = NOW(), approval_requested_by = $2,
+            client_approval_status = CASE
+              WHEN metadata->>'source' = 'mcp_news' THEN 'pending'
+              ELSE client_approval_status
+            END,
+            client_approval_responded_by = CASE WHEN metadata->>'source' = 'mcp_news' THEN NULL ELSE client_approval_responded_by END,
+            client_approval_responded_at = NULL,
+            client_approval_feedback = CASE WHEN metadata->>'source' = 'mcp_news' THEN NULL ELSE client_approval_feedback END,
             due_at = (
               SELECT CASE WHEN (v.commercial_scope->>'approvalSlaHours') ~ '^[0-9]+$'
                 THEN NOW() + ((v.commercial_scope->>'approvalSlaHours')::int * INTERVAL '1 hour')
@@ -31,7 +40,7 @@ export default defineEventHandler(async (event) => {
                 JOIN social_content_package_versions v ON v.id = a.package_version_id
                WHERE a.id::text = social_posts.metadata->>'socialPackageAssignmentId'
             ), updated_at = NOW()
-      WHERE id = $1 AND client_id = $3 RETURNING id, content, client_id`,
+      WHERE id = $1 AND client_id = $3 RETURNING id, content, client_id, metadata`,
     [id, user.id, existing.client_id]
   )
   if (!post) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
@@ -41,6 +50,16 @@ export default defineEventHandler(async (event) => {
     actorId: user.id,
     action: 'approval_requested'
   })
+  if (post.metadata?.source === 'mcp_news' && post.metadata.newsItemId) {
+    await recordSocialNewsFeedback({
+      clientId: existing.client_id,
+      newsItemId: post.metadata.newsItemId,
+      postId: id,
+      actorId: user.id,
+      eventType: 'approval_requested',
+      metadata: { source: 'agency' },
+    })
+  }
 
   // Notify managers (best-effort — never block the request on notification failure).
   try {

@@ -2,7 +2,7 @@ import { queryOne } from '~~/server/utils/db'
 
 export const SOCIAL_NEWS_FEEDBACK_TYPES = [
   'selected', 'dismissed', 'rewritten', 'drafted', 'scheduled',
-  'approval_requested', 'approved', 'rejected', 'published', 'failed', 'performance',
+  'approval_requested', 'approved', 'rejected', 'revision_requested', 'published', 'failed', 'performance',
 ] as const
 
 export type SocialNewsFeedbackType = typeof SOCIAL_NEWS_FEEDBACK_TYPES[number]

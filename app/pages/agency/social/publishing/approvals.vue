@@ -35,6 +35,19 @@ const platformOptions = computed(() =>
 const previewContent = computed(() =>
   selectedPost.value ? approvalPrimaryContent(selectedPost.value, previewPlatform.value) : ''
 )
+const clientApprovalBlocked = computed(() =>
+  selectedPost.value?.metadata?.source === 'mcp_news'
+  && selectedPost.value.client_approval_status !== 'approved'
+)
+
+function clientDecisionLabel(status: SocialPost['client_approval_status']) {
+  if (!status) return 'Not requested'
+  return status.replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function clientDecisionColor(status: SocialPost['client_approval_status']) {
+  return ({ pending: 'warning', approved: 'success', rejected: 'error', revision_requested: 'info' } as const)[status || 'pending'] || 'neutral'
+}
 
 async function load() {
   if (!clientId.value) {
@@ -166,6 +179,14 @@ async function confirmReject() {
                 <UBadge v-for="pl in p.platforms" :key="pl" color="neutral" variant="subtle" size="xs">
                   {{ platformLabel(pl) }}
                 </UBadge>
+                <UBadge
+                  v-if="p.metadata?.source === 'mcp_news'"
+                  :color="clientDecisionColor(p.client_approval_status)"
+                  variant="outline"
+                  size="xs"
+                >
+                  Client: {{ clientDecisionLabel(p.client_approval_status) }}
+                </UBadge>
               </div>
             </div>
             <UIcon name="i-lucide-chevron-right" class="size-4 text-muted mt-1 shrink-0" />
@@ -246,7 +267,23 @@ async function confirmReject() {
                   <dt class="text-xs text-muted">Assigned to</dt>
                   <dd class="text-sm">{{ selectedPost.assigned_to || 'Unassigned' }}</dd>
                 </div>
+                <div v-if="selectedPost.metadata?.source === 'mcp_news'">
+                  <dt class="text-xs text-muted">Client decision</dt>
+                  <dd class="mt-0.5">
+                    <UBadge :color="clientDecisionColor(selectedPost.client_approval_status)" variant="subtle" size="xs">
+                      {{ clientDecisionLabel(selectedPost.client_approval_status) }}
+                    </UBadge>
+                  </dd>
+                </div>
+                <div v-if="selectedPost.client_approval_responded_at">
+                  <dt class="text-xs text-muted">Client responded</dt>
+                  <dd class="text-sm">{{ formatApprovalDate(selectedPost.client_approval_responded_at, selectedPost.timezone) }}</dd>
+                </div>
               </dl>
+              <div v-if="selectedPost.client_approval_feedback" class="mt-4 rounded-md border border-default bg-elevated p-3">
+                <p class="text-xs font-medium text-muted">Client feedback</p>
+                <p class="mt-1 whitespace-pre-wrap text-sm">{{ selectedPost.client_approval_feedback }}</p>
+              </div>
               <div v-if="selectedPost.hashtags?.length || selectedPost.tags?.length" class="flex flex-wrap gap-1 mt-4">
                 <UBadge v-for="tag in selectedPost.tags" :key="`tag-${tag}`" color="neutral" variant="subtle" size="xs">
                   {{ tag }}
@@ -287,12 +324,21 @@ async function confirmReject() {
 
             <div class="rounded-lg border border-default p-4">
               <h3 class="text-sm font-semibold mb-3">Decision</h3>
+              <UAlert
+                v-if="clientApprovalBlocked"
+                color="warning"
+                variant="subtle"
+                title="Client approval is required before agency approval"
+                description="Review the portal decision or send the draft back for changes."
+                class="mb-3"
+              />
               <div class="grid gap-2">
                 <UButton
                   color="success"
                   icon="i-lucide-check"
                   block
                   :loading="approvingId === selectedPost.id"
+                  :disabled="selectedPost.metadata?.source === 'mcp_news' && selectedPost.client_approval_status !== 'approved'"
                   @click="approve(selectedPost)"
                 >
                   Approve

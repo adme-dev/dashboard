@@ -169,6 +169,20 @@ describe('approval workflow', () => {
     expect(mockStartSocialPublishingWorkflow).not.toHaveBeenCalled()
   })
 
+  it('does not let internal approval bypass a pending client decision for news content', async () => {
+    mockQueryOne.mockResolvedValueOnce({
+      id: 'P1',
+      client_id: 'C1',
+      metadata: { source: 'mcp_news', newsItemId: 'N1' },
+      client_approval_status: 'pending'
+    })
+
+    await expect(approveH({ params: { id: 'P1' } })).rejects.toMatchObject({ statusCode: 409 })
+    expect(mockQueryOne).toHaveBeenCalledTimes(1)
+    expect(mockCreateNotification).not.toHaveBeenCalled()
+    expect(mockStartSocialPublishingWorkflow).not.toHaveBeenCalled()
+  })
+
   it('approve starts the publishing workflow when a future scheduled post becomes scheduled', async () => {
     const scheduledAt = new Date(Date.now() + 86_400_000).toISOString()
     const event: TestEvent = { params: { id: 'P1' } }

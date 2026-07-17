@@ -362,6 +362,66 @@ describe('publishing posts CRUD', () => {
     expect(sql).toMatch(/approval_requested_by = NULL/)
   })
 
+  it('invalidates a client decision when news-backed content changes', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({
+        id: 'P1',
+        client_id: 'C1',
+        status: 'draft',
+        approval_requested_at: '2026-07-17T00:00:00.000Z',
+        client_approval_status: 'approved',
+        metadata: { source: 'mcp_news', newsItemId: 'N1' }
+      })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
+
+    await patchH({ params: { id: 'P1' }, body: { content: 'copy changed after client sign-off' } })
+
+    const [sql] = mockQueryOne.mock.calls[1]
+    expect(sql).toMatch(/client_approval_status = 'pending'/)
+    expect(sql).toMatch(/client_approval_responded_by = NULL/)
+    expect(sql).toMatch(/client_approval_responded_at = NULL/)
+    expect(sql).toMatch(/client_approval_feedback = NULL/)
+  })
+
+  it('preserves news provenance when agency metadata is patched', async () => {
+    const attribution = {
+      title: 'Original source',
+      url: 'https://news.example.test/original',
+      author: 'Reporter',
+      publishedAt: '2026-07-16T00:00:00.000Z'
+    }
+    mockQueryOne
+      .mockResolvedValueOnce({
+        id: 'P1',
+        client_id: 'C1',
+        status: 'draft',
+        approval_requested_at: null,
+        metadata: { source: 'mcp_news', newsItemId: 'N1', newsAttribution: attribution }
+      })
+      .mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'draft' })
+
+    await patchH({
+      params: { id: 'P1' },
+      body: {
+        metadata: {
+          source: 'manual',
+          newsItemId: 'N2',
+          newsAttribution: { title: 'Replacement' },
+          editorialNote: 'Keep this note'
+        }
+      }
+    })
+
+    const [sql, params] = mockQueryOne.mock.calls[1]
+    const metadataParam = params[Number(sql.match(/metadata = \$(\d+)::jsonb/)?.[1]) - 1]
+    expect(JSON.parse(metadataParam)).toEqual({
+      source: 'mcp_news',
+      newsItemId: 'N1',
+      newsAttribution: attribution,
+      editorialNote: 'Keep this note'
+    })
+  })
+
   it('rejects content edits for already-published posts', async () => {
     mockQueryOne.mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'published', approval_requested_at: null })
     await expect(patchH({ params: { id: 'P1' }, body: { content: 'too late' } }))
