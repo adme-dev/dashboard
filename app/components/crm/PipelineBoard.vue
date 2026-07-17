@@ -40,7 +40,7 @@ async function onDrop(stage: CrmStage) {
   const current = (data.value?.items ?? []).find(o => o.id === id)
   if (!current || current.stage_id === stage.id) return
   try {
-    await move(id, stage.id)
+    await move(id, stage.id, current.stage_id)
     await Promise.all([refresh(), refreshSummary()])
   } catch (e: any) {
     toast.add({ title: 'Move failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
