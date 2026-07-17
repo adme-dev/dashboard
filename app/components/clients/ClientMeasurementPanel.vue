@@ -322,7 +322,7 @@ void refreshMeasurement()
       {{ operationNotice.message }}
     </div>
 
-    <ClientMeasurementProfileForm
+    <ClientsClientMeasurementProfileForm
       v-if="!pending && !loadError && profile"
       :client-id="clientId"
       :profile="profile"
@@ -354,7 +354,7 @@ void refreshMeasurement()
           </div>
         </div>
 
-        <ClientMeasurementDestinationEditor
+        <ClientsClientMeasurementDestinationEditor
           v-if="showDestinationEditor && profile"
           :client-id="clientId"
           :profile-config-version="profile.configVersion"
@@ -461,7 +461,7 @@ void refreshMeasurement()
                 No event mappings configured.
               </p>
 
-              <ClientMeasurementProviderTest
+              <ClientsClientMeasurementProviderTest
                 v-if="testingDestinationId === destination.id"
                 :client-id="clientId"
                 :profile-config-version="profile.configVersion"
