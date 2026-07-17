@@ -7,7 +7,7 @@
 ## Delivery status — 17 July 2026
 
 - **Complete:** T1 contract/ADR/threat-model foundation and T2 additive canonical schema.
-- **In progress:** T3 overall. Profile configuration, dormant destination create/list, connection-tenant enforcement, metadata-only audit reads, and fail-closed readiness summaries are complete. Destination update/validation, outcome-endpoint, health-evidence mutation, and governed live-activation APIs remain.
+- **In progress:** T3 overall. Canonical profile, destination, capability, mapping, optional outcome-endpoint, audit, delivery-health evidence, readiness, and governed activation control-plane paths are complete. Provider validation/test actions, outcome-endpoint promotion/rotation, and event/delivery runtime repositories remain for the later adapter and delivery slices.
 - **Pending evidence:** T0 Monday snapshot, pilot approval, and fresh Meta/Google identifier-bearing diagnostics. No provider readiness is inferred from an existing connection.
 - **Safety state:** All 58 seeded client profiles remain disabled in `test`; no destination, provider, Monday, or live-KV mutation has been performed.
 
@@ -245,6 +245,8 @@ flowchart LR
 1. **T1 complete:** capability/profile/destination/event contracts, ADR, threat model, provider-readiness R&D, and deterministic contract tests.
 2. **T2 complete:** migration `256`, schema contract tests, rollback/forward-fix runbook, disabled/test seed, idempotent apply, and Neon readback.
 3. **T3 profile slice complete:** optimistic versioning, same-transaction audit, tenant-scoped Postgres repository, strict profile service, redacted KV projection, stale-writer repair, permission/assignment guard, and GET/PUT agency endpoints.
-4. **T3 destination/read slice complete:** migration `257` enforces client ownership for linked social connections; destination/capability/mapping create and list operations are versioned, tenant-scoped, dormant by default, and credential-redacted; audit-history reads return metadata only; readiness is deterministic and fails closed while the activation gate is unavailable.
-5. **T3 next:** destination update, system-owned validation and delivery-health evidence, CRM/outcome endpoint configuration, and the dedicated two-person live-activation approval gate.
-6. **T4 after T3 boundary:** internal Measurement configuration and delivery-health dashboard, followed by the redacted client-portal surface.
+4. **T3 destination/read slice complete:** migration `257` enforces client ownership for linked social connections; destination/capability/mapping create, list, and fail-closed update operations are versioned, tenant-scoped, dormant by default, and credential-redacted; audit-history reads return metadata only.
+5. **T3 health/activation slice complete:** system-only validation evidence rejects stale config versions and derives destination health; migration `259` adds immutable current-version privacy/live approvals from distinct management users; readiness exposes real gate blockers; activation atomically enables the profile and ready destinations only after every canonical gate passes.
+6. **T3 outcome-authority slice complete:** Zero-native CRM remains the default with no webhook dependency; external-CRM cohorts can create/list disabled outcome endpoint policy with server-generated identity and opaque secret references, and cannot activate until a tested endpoint exists.
+7. **T3 next:** provider validation/test actions, endpoint rotation and system-owned status promotion, then event/delivery repositories as T7–T13 introduce signed webhooks and provider adapters.
+8. **T4 after the configuration boundary:** internal Measurement configuration and delivery-health dashboard, followed by the redacted client-portal surface.
