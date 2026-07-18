@@ -21,6 +21,16 @@ const stubs = {
   },
   ClientsClientMeasurementProfileForm: {
     template: '<div data-testid="measurement-profile-form" />'
+  },
+  UTextarea: {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<textarea />'
+  },
+  UCheckbox: {
+    props: ['modelValue', 'label'],
+    emits: ['update:modelValue'],
+    template: '<label>{{ label }}</label>'
   }
 }
 
@@ -65,6 +75,7 @@ function responseFor(request: string) {
       configVersion: 4,
       status: 'onboarding',
       liveEligible: false,
+      approvals: { privacy: false, live: false },
       profile: {
         enabled: false,
         environment: 'test',
@@ -227,6 +238,8 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Consent gated')
       expect(host.textContent).toContain('Not eligible for live delivery')
       expect(host.textContent).toContain('Live approval has not been recorded')
+      expect(host.textContent).toContain('Privacy approval pending')
+      expect(host.textContent).toContain('Live approval pending')
       expect(host.textContent).toContain('Meta')
       expect(host.textContent).toContain('Google Data Manager')
       expect(host.textContent).toContain('Meta Pixel')

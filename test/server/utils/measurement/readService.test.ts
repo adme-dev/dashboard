@@ -89,6 +89,7 @@ describe('Measurement read service', () => {
 
     expect(result.status).toBe('blocked')
     expect(result.liveEligible).toBe(false)
+    expect(result.approvals).toEqual({ privacy: false, live: false })
     expect(result.blockers.map(blocker => blocker.code)).toEqual(expect.arrayContaining([
       'cache_stale',
       'destination_not_ready',
@@ -130,6 +131,7 @@ describe('Measurement read service', () => {
 
     expect(result.status).toBe('ready')
     expect(result.liveEligible).toBe(true)
+    expect(result.approvals).toEqual({ privacy: true, live: true })
     expect(result.blockers).toEqual([])
   })
 

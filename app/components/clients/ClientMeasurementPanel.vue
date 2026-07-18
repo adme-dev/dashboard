@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import ClientMeasurementActivationControls from '~/components/clients/ClientMeasurementActivationControls.vue'
 import type {
   ClientMeasurementProfile,
   MeasurementAuditEntry,
@@ -216,6 +217,36 @@ function handleProviderTestCompleted() {
   }
 }
 
+function openDestinationEditor() {
+  showDestinationEditor.value = true
+}
+
+function toggleProviderTest(destinationId: string) {
+  testingDestinationId.value = testingDestinationId.value === destinationId
+    ? null
+    : destinationId
+}
+
+async function handleActivationCompleted(result: {
+  kind: 'privacy' | 'live' | 'activation'
+  warnings: Array<{ code: string }>
+}) {
+  if (result.kind === 'activation') {
+    operationNotice.value = mutationNotice(result.warnings)
+    operationNotice.value.message = result.warnings.length
+      ? 'Live delivery activated in Zero; edge publication needs attention.'
+      : 'Live delivery activated in Zero.'
+  } else {
+    operationNotice.value = {
+      tone: 'success',
+      message: result.kind === 'privacy'
+        ? 'Privacy approval recorded for the current configuration.'
+        : 'Live approval recorded for the current configuration.'
+    }
+  }
+  await refreshMeasurement()
+}
+
 void refreshMeasurement()
 </script>
 
@@ -366,7 +397,7 @@ void refreshMeasurement()
               icon="i-lucide-plus"
               size="sm"
               variant="outline"
-              @click="showDestinationEditor = true"
+              @click="openDestinationEditor"
             />
           </div>
         </div>
@@ -461,7 +492,7 @@ void refreshMeasurement()
                   size="xs"
                   color="neutral"
                   variant="outline"
-                  @click="testingDestinationId = testingDestinationId === destination.id ? null : destination.id"
+                  @click="toggleProviderTest(destination.id)"
                 />
               </div>
               <div v-if="destination.mappings.length" class="mt-2 flex flex-wrap gap-2">
@@ -503,6 +534,15 @@ void refreshMeasurement()
       </div>
 
       <aside class="space-y-6">
+        <ClientMeasurementActivationControls
+          v-if="readiness"
+          :client-id="clientId"
+          :profile="profile"
+          :readiness="readiness"
+          :can-configure="canConfigure ?? false"
+          @completed="handleActivationCompleted"
+        />
+
         <div v-if="readiness" class="rounded-xl border border-default bg-default p-5 shadow-xs">
           <div class="flex items-center justify-between gap-3">
             <h3 class="font-semibold text-highlighted">
