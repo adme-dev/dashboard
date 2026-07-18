@@ -7,6 +7,7 @@ import {
   type MondayCutoverResolutions,
   type MondayCutoverSourceRecord
 } from '~~/server/utils/mondayCutoverPlan'
+import type { MondayCutoverExecutionSourceRecord } from '~~/server/utils/mondayCutoverExecution'
 
 const MAX_SOURCE_ITEMS = 500
 const MAX_SOURCE_PAGES = 10
@@ -65,34 +66,44 @@ const ExternalItemsPageSchema = z.object({
   ).optional()
 })
 
+type LoadedSourceRecord = {
+  record: MondayCutoverSourceRecord
+  columnTexts: Record<string, string>
+}
+
 function toSourceRecord(
   item: z.infer<typeof ExternalItemSchema>,
   clientColumnId: string | null,
   parentSourceId: string | null
-): MondayCutoverSourceRecord {
+): LoadedSourceRecord {
   const columnValues = item.column_values ?? []
   const clientHint = parentSourceId
     ? null
     : columnValues.find(value => value.id === clientColumnId)?.text?.trim().slice(0, 500) || null
 
   return {
-    id: item.id,
-    title: item.name.slice(0, 500),
-    state: item.state,
-    createdAt: item.created_at,
-    updatedAt: item.updated_at,
-    parentSourceId,
-    groupId: parentSourceId ? null : item.group_id ?? null,
-    groupTitle: parentSourceId ? null : item.group_title ?? null,
-    subitemCount: item.subitems?.length ?? 0,
-    clientHint,
-    populatedColumnIds: [...new Set(columnValues
+    record: {
+      id: item.id,
+      title: item.name.slice(0, 500),
+      state: item.state,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+      parentSourceId,
+      groupId: parentSourceId ? null : item.group_id ?? null,
+      groupTitle: parentSourceId ? null : item.group_title ?? null,
+      subitemCount: item.subitems?.length ?? 0,
+      clientHint,
+      populatedColumnIds: [...new Set(columnValues
+        .filter(value => Boolean(value.text?.trim()))
+        .map(value => value.id))]
+    },
+    columnTexts: Object.fromEntries(columnValues
       .filter(value => Boolean(value.text?.trim()))
-      .map(value => value.id))]
+      .map(value => [value.id, value.text!.slice(0, 5000)]))
   }
 }
 
-export async function loadMondayCutoverPlan(input: {
+async function loadMondayCutoverSnapshot(input: {
   boardId: string
   targetBoardId: string
   resolutions?: MondayCutoverResolutions
@@ -137,7 +148,7 @@ export async function loadMondayCutoverPlan(input: {
   const clientColumn = (sourceBoard.columns ?? []).find(column => (
     column.type === 'dropdown' && /(dealer\s+group|client)/i.test(column.title)
   ))
-  const sourceRecords: MondayCutoverSourceRecord[] = sourceItems.map(item => (
+  const loadedSourceRecords: LoadedSourceRecord[] = sourceItems.map(item => (
     toSourceRecord(item, clientColumn?.id ?? null, null)
   ))
 
@@ -146,8 +157,8 @@ export async function loadMondayCutoverPlan(input: {
 
   for (const parent of parentsWithSubitems.slice(0, MAX_SUBITEM_PARENTS)) {
     const subitems = z.array(ExternalItemSchema).max(1000).parse(await client.getSubitems(parent.id))
-    const remaining = MAX_SOURCE_SUBITEMS - (sourceRecords.length - sourceItems.length)
-    sourceRecords.push(...subitems.slice(0, remaining).map(subitem => (
+    const remaining = MAX_SOURCE_SUBITEMS - (loadedSourceRecords.length - sourceItems.length)
+    loadedSourceRecords.push(...subitems.slice(0, remaining).map(subitem => (
       toSourceRecord(subitem, null, parent.id)
     )))
     if (subitems.length > remaining) {
@@ -201,7 +212,7 @@ export async function loadMondayCutoverPlan(input: {
     )
   ])
 
-  return buildMondayCutoverPlan({
+  const plan = buildMondayCutoverPlan({
     sourceBoard: {
       id: sourceBoard.id,
       name: sourceBoard.name,
@@ -209,7 +220,7 @@ export async function loadMondayCutoverPlan(input: {
       groups: sourceBoard.groups ?? [],
       columns: sourceBoard.columns ?? []
     },
-    sourceRecords,
+    sourceRecords: loadedSourceRecords.map(source => source.record),
     targetBoard: {
       id: String(targetBoard.id),
       name: String(targetBoard.name),
@@ -221,4 +232,44 @@ export async function loadMondayCutoverPlan(input: {
     isTargetTruncated: targetTasks.length > MAX_TARGET_TASKS,
     resolutions: input.resolutions
   })
+
+  return { plan, loadedSourceRecords }
+}
+
+export async function loadMondayCutoverPlan(input: {
+  boardId: string
+  targetBoardId: string
+  resolutions?: MondayCutoverResolutions
+}) {
+  return (await loadMondayCutoverSnapshot(input)).plan
+}
+
+export async function loadMondayCutoverExecutionSnapshot(input: {
+  boardId: string
+  targetBoardId: string
+  resolutions: MondayCutoverResolutions
+}): Promise<{
+  plan: Awaited<ReturnType<typeof loadMondayCutoverPlan>>
+  sourceRecords: MondayCutoverExecutionSourceRecord[]
+}> {
+  const { plan, loadedSourceRecords } = await loadMondayCutoverSnapshot(input)
+  const allowedTaskColumnIds = new Set(plan.columnMappings
+    .filter(mapping => (
+      mapping.action === 'import'
+      && (mapping.destination === 'task.dueDate' || mapping.destination === 'task.description')
+    ))
+    .map(mapping => mapping.sourceColumnId))
+
+  return {
+    plan,
+    sourceRecords: loadedSourceRecords.map(source => ({
+      id: source.record.id,
+      parentSourceId: source.record.parentSourceId,
+      updatedAt: source.record.updatedAt,
+      groupId: source.record.groupId,
+      groupTitle: source.record.groupTitle,
+      columnTexts: Object.fromEntries(Object.entries(source.columnTexts)
+        .filter(([columnId]) => allowedTaskColumnIds.has(columnId)))
+    }))
+  }
 }
