@@ -8,6 +8,8 @@ import type {
 } from '~~/workers/measurement-delivery/src/providers'
 
 const GOOGLE_DATA_MANAGER_SCOPE = 'https://www.googleapis.com/auth/datamanager'
+const META_WEB_TEST_EVENTS = new Set(['lead_created', 'purchase', 'web_conversion'])
+const META_BROWSER_IDENTIFIER_PATTERN = /^fb\.\d+\.\d{10,16}\.[^\s]{1,384}$/
 
 const CommonProviderTestSchema = z.strictObject({
   clientId: z.string().uuid(),
@@ -29,11 +31,50 @@ const CommonProviderTestSchema = z.strictObject({
   actor: z.strictObject({ id: z.string().uuid() })
 })
 
-const MetaProviderTestSchema = CommonProviderTestSchema.extend({
+const MetaProviderTestCommonSchema = CommonProviderTestSchema.extend({
   mode: z.literal('meta_test_events'),
-  testEventCode: z.string().trim().min(4).max(128).regex(/^[a-z0-9_-]+$/i),
+  testEventCode: z.string().trim().min(4).max(128).regex(/^[a-z0-9_-]+$/i)
+})
+
+const MetaCrmProviderTestSchema = MetaProviderTestCommonSchema.extend({
+  deliveryMode: z.literal('crm').default('crm'),
   metaLeadId: z.string().regex(/^\d{15,16}$/),
-  browserEventId: z.string().trim().min(1).max(128).nullable().default(null)
+  browserEventId: z.null().default(null)
+})
+
+const MetaWebProviderTestSchema = MetaProviderTestCommonSchema.extend({
+  deliveryMode: z.literal('web'),
+  browserEventId: z.string().trim().min(1).max(128),
+  fbc: z.string().trim().max(512).regex(META_BROWSER_IDENTIFIER_PATTERN).nullable().default(null),
+  fbp: z.string().trim().max(512).regex(META_BROWSER_IDENTIFIER_PATTERN).nullable().default(null),
+  eventSourceUrl: z.string().trim().url().max(2048).refine((value) => {
+    try {
+      const url = new URL(value)
+      return (url.protocol === 'https:' || url.protocol === 'http:')
+        && !url.username
+        && !url.password
+        && !url.search
+        && !url.hash
+    } catch {
+      return false
+    }
+  }),
+  clientUserAgent: z.string().trim().min(1).max(1024)
+}).superRefine((value, context) => {
+  if (!value.fbc && !value.fbp) {
+    context.addIssue({
+      code: 'custom',
+      path: ['fbc'],
+      message: 'Meta Web Test Events require fbc or fbp browser context'
+    })
+  }
+  if (!META_WEB_TEST_EVENTS.has(value.canonicalEventName)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['canonicalEventName'],
+      message: 'Downstream lifecycle outcomes must use the Meta CRM delivery path'
+    })
+  }
 })
 
 const GoogleProviderTestSchema = CommonProviderTestSchema.extend({
@@ -44,8 +85,9 @@ const GoogleProviderTestSchema = CommonProviderTestSchema.extend({
   })
 })
 
-export const MeasurementProviderTestInputSchema = z.discriminatedUnion('mode', [
-  MetaProviderTestSchema,
+export const MeasurementProviderTestInputSchema = z.union([
+  MetaCrmProviderTestSchema,
+  MetaWebProviderTestSchema,
   GoogleProviderTestSchema
 ])
 
@@ -74,6 +116,7 @@ export interface ReservedProviderTestContext {
     externalDestinationId: string
     operatingAccountId: string
     loginAccountId: string
+    metaDeliveryMode: 'crm' | 'web'
   }
   credential: {
     accessToken: string | null
@@ -85,7 +128,7 @@ export interface ReservedProviderTestContext {
 export type ReserveProviderTestResult
   = | { status: 'reserved', context: ReservedProviderTestContext }
     | { status: 'existing', run: ProviderTestRunSummary }
-    | { status: 'not_found' | 'version_conflict' | 'not_test_mode' | 'mapping_not_found' | 'connection_not_found' }
+    | { status: 'not_found' | 'version_conflict' | 'not_test_mode' | 'mapping_not_found' | 'connection_not_found' | 'capability_not_configured' | 'delivery_mode_mismatch' | 'source_origin_not_approved' }
 
 export interface MeasurementProviderTestRepository {
   reserve(input: MeasurementProviderTestInput): Promise<ReserveProviderTestResult>
@@ -128,12 +171,25 @@ function repositoryError(status: Exclude<ReserveProviderTestResult['status'], 'r
   }
   if (status === 'not_test_mode') {
     return new MeasurementError(
-      'MEASUREMENT_TEST_MODE_REQUIRED',
+      'MEASUREMENT_NOT_READY',
       409,
       'Provider tests require a dormant test profile and destination'
     )
   }
   if (status === 'mapping_not_found') return validationError('No active mapping exists for this event')
+  if (status === 'capability_not_configured') {
+    return new MeasurementError(
+      'MEASUREMENT_NOT_READY',
+      409,
+      'The requested provider delivery capability is not configured and owned by Zero'
+    )
+  }
+  if (status === 'delivery_mode_mismatch') {
+    return validationError('The selected event does not match its server-owned Meta delivery path')
+  }
+  if (status === 'source_origin_not_approved') {
+    return validationError('The event source origin is not approved for this client tracking site')
+  }
   return validationError('The destination has no active provider connection')
 }
 
@@ -174,9 +230,21 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
       ) throw validationError('Provider test timestamps must be within the supported seven-day window')
 
       const transientValues = input.mode === 'meta_test_events'
-        ? [input.testEventCode, input.metaLeadId, input.browserEventId]
+        ? input.deliveryMode === 'web'
+          ? [
+              input.testEventCode,
+              input.browserEventId,
+              input.fbc,
+              input.fbp,
+              input.eventSourceUrl,
+              input.clientUserAgent
+            ]
+          : [input.testEventCode, input.metaLeadId]
         : [input.clickIdentifier.value]
-      if (transientValues.some(value => value && input.reason.includes(value))) {
+      const normalizedReason = input.reason.toLocaleLowerCase()
+      if (transientValues.some(value => (
+        value && normalizedReason.includes(value.toLocaleLowerCase())
+      ))) {
         throw validationError('Approval reasons must not contain transient provider identifiers')
       }
       const reserved = await deps.repository.reserve(input)
@@ -184,12 +252,14 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
       if (reserved.status !== 'reserved') throw repositoryError(reserved.status)
 
       const { context } = reserved
+      const isMetaWeb = input.mode === 'meta_test_events' && input.deliveryMode === 'web'
       const baseDelivery = {
         ...context.delivery,
-        metaDeliveryMode: 'crm' as const,
         attribution: {
-          browserEventId: null,
-          metaLeadId: input.mode === 'meta_test_events' ? input.metaLeadId : null,
+          browserEventId: isMetaWeb ? input.browserEventId : null,
+          metaLeadId: input.mode === 'meta_test_events' && input.deliveryMode === 'crm'
+            ? input.metaLeadId
+            : null,
           gclid: input.mode === 'google_validate_only' && input.clickIdentifier.type === 'gclid'
             ? input.clickIdentifier.value
             : null,
@@ -199,10 +269,10 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
           wbraid: input.mode === 'google_validate_only' && input.clickIdentifier.type === 'wbraid'
             ? input.clickIdentifier.value
             : null,
-          fbc: null,
-          fbp: null,
-          eventSourceUrl: null,
-          clientUserAgent: null
+          fbc: isMetaWeb ? input.fbc : null,
+          fbp: isMetaWeb ? input.fbp : null,
+          eventSourceUrl: isMetaWeb ? input.eventSourceUrl : null,
+          clientUserAgent: isMetaWeb ? input.clientUserAgent : null
         }
       }
 

@@ -23,7 +23,10 @@ function baseInput() {
   }
 }
 
-function context(platform: 'meta' | 'google_data_manager') {
+function context(
+  platform: 'meta' | 'google_data_manager',
+  metaDeliveryMode: 'crm' | 'web' = 'crm'
+) {
   return {
     run: {
       id: ids.run,
@@ -38,7 +41,8 @@ function context(platform: 'meta' | 'google_data_manager') {
       idempotencyKey: ids.idempotency,
       externalDestinationId: '573284833843027',
       operatingAccountId: '4221552633',
-      loginAccountId: '4221552633'
+      loginAccountId: '4221552633',
+      metaDeliveryMode
     },
     credential: {
       accessToken: platform === 'meta' ? 'meta-token' : null,
@@ -88,9 +92,10 @@ describe('measurement provider test service', () => {
     const result = await test.service.run({
       ...baseInput(),
       mode: 'meta_test_events',
+      deliveryMode: 'crm',
       testEventCode: 'TEST123456',
       metaLeadId: '1234567890123456',
-      browserEventId: 'browser-event-1'
+      browserEventId: null
     })
 
     expect(test.deliverMeta).toHaveBeenCalledWith(expect.objectContaining({
@@ -134,6 +139,7 @@ describe('measurement provider test service', () => {
     await test.service.run({
       ...baseInput(),
       mode: 'meta_test_events',
+      deliveryMode: 'crm',
       testEventCode: 'TEST123456',
       metaLeadId: '1234567890123456',
       browserEventId: null
@@ -152,6 +158,7 @@ describe('measurement provider test service', () => {
     await expect(test.service.run({
       ...baseInput(),
       mode: 'meta_test_events',
+      deliveryMode: 'crm',
       testEventCode: 'TEST123456',
       metaLeadId: '12345678901234567',
       browserEventId: null
@@ -168,6 +175,7 @@ describe('measurement provider test service', () => {
       ...baseInput(),
       confirmed: false,
       mode: 'meta_test_events',
+      deliveryMode: 'crm',
       testEventCode: 'TEST123456',
       metaLeadId: '1234567890123456',
       browserEventId: null
@@ -186,6 +194,7 @@ describe('measurement provider test service', () => {
     await test.service.run({
       ...baseInput(),
       mode: 'meta_test_events',
+      deliveryMode: 'crm',
       testEventCode: 'TEST123456',
       metaLeadId: '1234567890123456',
       browserEventId: null
@@ -201,6 +210,7 @@ describe('measurement provider test service', () => {
     await expect(test.service.run({
       ...baseInput(),
       mode: 'meta_test_events',
+      deliveryMode: 'crm',
       testEventCode: 'TEST123456',
       metaLeadId: '1234567890123456',
       browserEventId: null,
@@ -216,10 +226,177 @@ describe('measurement provider test service', () => {
       ...baseInput(),
       occurredAt: '2026-07-17T09:00:00.000Z',
       mode: 'meta_test_events',
+      deliveryMode: 'crm',
       testEventCode: 'TEST123456',
       metaLeadId: '1234567890123456',
       browserEventId: null
     })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
     expect(test.repository.reserve).not.toHaveBeenCalled()
+  })
+
+  it('sends an approved Meta Web Test Event with shared browser identity and ephemeral context', async () => {
+    const webContext = context('meta', 'web')
+    webContext.delivery = {
+      ...webContext.delivery,
+      eventName: 'lead_created',
+      providerEventName: 'Lead'
+    }
+    const test = setup(webContext)
+
+    const result = await test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'lead_created',
+      mode: 'meta_test_events',
+      deliveryMode: 'web',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      fbc: 'fb.1.1234567890123.approved-click',
+      fbp: null,
+      eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
+      clientUserAgent: 'Approved Pilot Browser'
+    })
+
+    expect(test.deliverMeta).toHaveBeenCalledWith(expect.objectContaining({
+      environment: 'test',
+      testEventCode: 'TEST123456',
+      delivery: expect.objectContaining({
+        metaDeliveryMode: 'web',
+        attribution: {
+          browserEventId: 'browser-event-1',
+          metaLeadId: null,
+          gclid: null,
+          gbraid: null,
+          wbraid: null,
+          fbc: 'fb.1.1234567890123.approved-click',
+          fbp: null,
+          eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
+          clientUserAgent: 'Approved Pilot Browser'
+        }
+      })
+    }))
+    expect(JSON.stringify(result)).not.toContain('browser-event-1')
+    expect(JSON.stringify(result)).not.toContain('approved-click')
+  })
+
+  it('rejects Meta Web tests without fbc or fbp before reservation', async () => {
+    const test = setup()
+
+    await expect(test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'lead_created',
+      mode: 'meta_test_events',
+      deliveryMode: 'web',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      fbc: null,
+      fbp: null,
+      eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
+      clientUserAgent: 'Approved Pilot Browser'
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+    expect(test.deliverMeta).not.toHaveBeenCalled()
+  })
+
+  it('requires the approved browser user agent for a Meta Web event', async () => {
+    const test = setup(context('meta', 'web'))
+
+    await expect(test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'lead_created',
+      mode: 'meta_test_events',
+      deliveryMode: 'web',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      fbc: 'fb.1.1234567890123.approved-click',
+      fbp: null,
+      eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
+      clientUserAgent: null
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+  })
+
+  it('rejects browser URL and user-agent leakage through the persisted approval reason', async () => {
+    const test = setup(context('meta', 'web'))
+
+    await expect(test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'lead_created',
+      mode: 'meta_test_events',
+      deliveryMode: 'web',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      fbc: 'fb.1.1234567890123.approved-click',
+      fbp: null,
+      eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
+      clientUserAgent: 'Approved Pilot Browser',
+      reason: 'Use Approved Pilot Browser for this controlled test'
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+  })
+
+  it('rejects source URLs with userinfo, query parameters, or fragments', async () => {
+    const test = setup(context('meta', 'web'))
+
+    for (const eventSourceUrl of [
+      'https://operator@example.com/enquire',
+      'https://example.com/enquire?email=person%40example.com',
+      'https://example.com/enquire#contact'
+    ]) {
+      await expect(test.service.run({
+        ...baseInput(),
+        canonicalEventName: 'lead_created',
+        mode: 'meta_test_events',
+        deliveryMode: 'web',
+        testEventCode: 'TEST123456',
+        browserEventId: 'browser-event-1',
+        fbc: 'fb.1.1234567890123.approved-click',
+        fbp: null,
+        eventSourceUrl,
+        clientUserAgent: 'Approved Pilot Browser'
+      })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+    }
+
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+  })
+
+  it('rejects malformed Meta browser identifiers before reservation', async () => {
+    const test = setup(context('meta', 'web'))
+
+    await expect(test.service.run({
+      ...baseInput(),
+      canonicalEventName: 'lead_created',
+      mode: 'meta_test_events',
+      deliveryMode: 'web',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      fbc: 'not-a-meta-browser-id',
+      fbp: null,
+      eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
+      clientUserAgent: 'Approved Pilot Browser'
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+  })
+
+  it('rejects downstream lifecycle events on the Meta Web delivery path', async () => {
+    const test = setup()
+
+    await expect(test.service.run({
+      ...baseInput(),
+      mode: 'meta_test_events',
+      deliveryMode: 'web',
+      testEventCode: 'TEST123456',
+      browserEventId: 'browser-event-1',
+      fbc: 'fb.1.1234567890123.approved-click',
+      fbp: null,
+      eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
+      clientUserAgent: 'Approved Pilot Browser'
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+    expect(test.deliverMeta).not.toHaveBeenCalled()
   })
 })
