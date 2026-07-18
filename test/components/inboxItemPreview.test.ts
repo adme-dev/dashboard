@@ -45,9 +45,13 @@ describe('InboxItemPreview', () => {
   })
 
   it('renders the loading state for an anomaly link without throwing', async () => {
-    vi.stubGlobal('$fetch', () => new Promise(() => {}))
+    const fetch = vi.fn(() => new Promise(() => {}))
+    vi.stubGlobal('$fetch', fetch)
     const html = await render({ link: '/anomalies?focus=a1' })
     expect(html).toContain('skeleton')
+    expect(fetch).toHaveBeenCalledWith('/api/ai/anomalies/a1', {
+      query: { missing: 'empty' }
+    })
   })
 
   it('renders nothing meaningful for an unpreviewable link (parent shows fallback)', async () => {

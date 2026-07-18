@@ -1,13 +1,23 @@
 // server/api/crm/verticals/index.get.ts
 import { z } from 'zod'
+import { createError } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 
-const Query = z.object({ client_id: z.string().uuid().optional() })
+const Query = z.object({
+  client_id: z.preprocess(
+    value => value === '' ? undefined : value,
+    z.string().uuid().optional()
+  )
+})
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
-  const { client_id } = Query.parse(getQuery(event))
+  const parsed = Query.safeParse(getQuery(event))
+  if (!parsed.success) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid client_id' })
+  }
+  const { client_id } = parsed.data
   const all = await queryRows(`SELECT * FROM crm_verticals ORDER BY is_core DESC, name`)
   let enabled: string[] = ['generic']
   if (client_id) {
