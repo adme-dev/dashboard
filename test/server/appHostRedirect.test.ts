@@ -7,6 +7,7 @@ describe('app host marketing redirects', () => {
     expect(shouldRedirectAppHostPath('/pricing/')).toBe(true)
     expect(shouldRedirectAppHostPath('/features/ad-platform-export')).toBe(true)
     expect(shouldRedirectAppHostPath('/resources/quick-start')).toBe(true)
+    expect(shouldRedirectAppHostPath('/voice-ai')).toBe(true)
   })
 
   it('leaves app and auth routes on app.xeroflow.io alone', () => {

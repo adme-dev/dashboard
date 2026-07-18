@@ -269,6 +269,7 @@ export default defineNuxtConfig({
     '/landing': { prerender: true },
     '/creativity': { prerender: true },
     '/ai-training': { prerender: true },
+    '/voice-ai': { prerender: true },
     '/resources': { prerender: true },
     '/resources/**': { prerender: true },
     '/platform/**': { prerender: true },

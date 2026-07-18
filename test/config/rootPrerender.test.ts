@@ -8,4 +8,10 @@ describe('root host routing prerender config', () => {
 
     expect(prerenderIgnore).toMatch(/['"]\/['"]/)
   })
+
+  it('prerenders the public Voice AI marketing page', () => {
+    const config = readFileSync('nuxt.config.ts', 'utf8')
+
+    expect(config).toMatch(/['"]\/voice-ai['"]:\s*\{\s*prerender:\s*true\s*\}/)
+  })
 })
