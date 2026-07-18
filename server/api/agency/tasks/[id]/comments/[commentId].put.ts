@@ -64,9 +64,9 @@ export default defineEventHandler(async (event) => {
     // Update the comment
     const updated = await queryOne(`
       UPDATE task_activities
-      SET content = $1, updated_at = NOW()
+      SET content = $1, edited_at = NOW()
       WHERE id = $2
-      RETURNING id, content, updated_at
+      RETURNING id, content, edited_at
     `, [body.content.trim(), commentId])
 
     // Get user info for response
@@ -79,16 +79,18 @@ export default defineEventHandler(async (event) => {
       id: updated.id,
       taskId,
       content: updated.content,
-      updatedAt: updated.updated_at,
-      user: userInfo ? {
-        id: userInfo.id,
-        name: userInfo.name,
-        email: userInfo.email,
-        avatarUrl: userInfo.avatar_url
-      } : null
+      updatedAt: updated.edited_at,
+      user: userInfo
+        ? {
+            id: userInfo.id,
+            name: userInfo.name,
+            email: userInfo.email,
+            avatarUrl: userInfo.avatar_url
+          }
+        : null
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to update comment:', error)
     throw createError({
       statusCode: 500,

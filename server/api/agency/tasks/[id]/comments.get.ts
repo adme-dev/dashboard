@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
         ta.task_id,
         ta.content,
         ta.created_at,
-        ta.updated_at,
+        ta.edited_at,
         tm.id as user_id,
         tm.name as user_name,
         tm.email as user_email,
@@ -63,13 +63,15 @@ export default defineEventHandler(async (event) => {
         taskId: c.task_id,
         content: c.content,
         createdAt: c.created_at,
-        updatedAt: c.updated_at,
-        user: c.user_id ? {
-          id: c.user_id,
-          name: c.user_name,
-          email: c.user_email,
-          avatarUrl: c.user_avatar
-        } : null
+        updatedAt: c.edited_at,
+        user: c.user_id
+          ? {
+              id: c.user_id,
+              name: c.user_name,
+              email: c.user_email,
+              avatarUrl: c.user_avatar
+            }
+          : null
       })),
       pagination: {
         total: Number(countResult?.total) || 0,
@@ -78,8 +80,8 @@ export default defineEventHandler(async (event) => {
         hasMore: offset + comments.length < Number(countResult?.total)
       }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to fetch comments:', error)
     throw createError({
       statusCode: 500,
