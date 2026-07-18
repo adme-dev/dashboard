@@ -200,6 +200,8 @@ export const MondayCutoverPlanResponseSchema = z.strictObject({
   })
 })
 
+export type MondayCutoverPlan = z.infer<typeof MondayCutoverPlanResponseSchema>
+
 function normalizeName(value: string): string {
   return value
     .normalize('NFKC')
