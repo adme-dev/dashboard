@@ -32,7 +32,7 @@ function deliveryRow() {
     refresh_token: null,
     scopes: ['ads_management'],
     metadata: {},
-    attribution: { metaLeadId: '123456789012345' },
+    attribution: { metaLeadId: '1234567890123456' },
     capability_modes: ['meta_crm_capi'],
     tracking_fbc: null,
     tracking_fbp: null,
@@ -71,7 +71,8 @@ describe('measurement delivery repository', () => {
       operatingAccountId: '9876543210',
       loginAccountId: '9876543210',
       profileCacheCurrent: true,
-      deliveryConfigCurrent: true
+      deliveryConfigCurrent: true,
+      attribution: expect.objectContaining({ metaLeadId: '1234567890123456' })
     })
     expect(result?.metaDeliveryMode).toBe('crm')
     expect(client.query.mock.calls[0]?.[1]).toEqual([CLIENT_ID, EVENT_ID, NOW.toISOString()])
@@ -83,6 +84,61 @@ describe('measurement delivery repository', () => {
       'measurement-worker:test',
       NOW.toISOString()
     ])
+  })
+
+  it('does not truncate overlong Meta lead IDs into deliverable identifiers', async () => {
+    const row = { ...deliveryRow(), attribution: { metaLeadId: '12345678901234567' } }
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (/SELECT[\s\S]*FOR UPDATE OF d SKIP LOCKED/.test(sql)) return { rows: [row] }
+        if (/UPDATE conversion_deliveries/.test(sql)) return { rows: [{ attempt_count: 1 }] }
+        return { rows: [] }
+      })
+    }
+    const repository = createMeasurementDeliveryRepository({
+      transaction: (async (callback: (db: typeof client) => Promise<unknown>) => callback(client)) as never
+    })
+
+    const claim = await repository.claimNext({
+      schemaVersion: 1,
+      clientId: CLIENT_ID,
+      eventId: EVENT_ID,
+      enqueuedAt: NOW.toISOString()
+    }, 'measurement-worker:test', NOW)
+
+    expect(claim?.attribution.metaLeadId).toBeNull()
+  })
+
+  it('keeps a valid Meta lead-ad event on CRM delivery when web context also exists', async () => {
+    const row = {
+      ...deliveryRow(),
+      attribution: { browserEventId: 'browser-event-1', metaLeadId: '1234567890123456' },
+      capability_modes: ['meta_crm_capi', 'meta_conversion_leads', 'meta_web_capi'],
+      tracking_fbc: 'fb.1.123.click',
+      tracking_page_url: 'https://www.biggaragesubaru.com.au/enquire'
+    }
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (/SELECT[\s\S]*FOR UPDATE OF d SKIP LOCKED/.test(sql)) return { rows: [row] }
+        if (/UPDATE conversion_deliveries/.test(sql)) return { rows: [{ attempt_count: 1 }] }
+        return { rows: [] }
+      })
+    }
+    const repository = createMeasurementDeliveryRepository({
+      transaction: (async (callback: (db: typeof client) => Promise<unknown>) => callback(client)) as never
+    })
+
+    const claim = await repository.claimNext({
+      schemaVersion: 1,
+      clientId: CLIENT_ID,
+      eventId: EVENT_ID,
+      enqueuedAt: NOW.toISOString()
+    }, 'measurement-worker:test', NOW)
+
+    expect(claim).toMatchObject({
+      metaDeliveryMode: 'crm',
+      attribution: { metaLeadId: '1234567890123456' }
+    })
   })
 
   it('claims a browser-paired lead through ready Meta Web CAPI with tracking context joined by event ID', async () => {

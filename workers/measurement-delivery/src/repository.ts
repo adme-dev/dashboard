@@ -64,6 +64,12 @@ function optionalString(value: unknown, max = 512): string | null {
   return typeof value === 'string' && value.length > 0 ? value.slice(0, max) : null
 }
 
+function validMetaLeadId(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const candidate = value.trim()
+  return /^\d{15,16}$/.test(candidate) ? candidate : null
+}
+
 function safeEventSourceUrl(value: unknown): string | null {
   const candidate = optionalString(value, 2048)
   if (!candidate) return null
@@ -94,9 +100,11 @@ function mapClaim(
     ? row.capability_modes.filter((mode): mode is string => typeof mode === 'string')
     : []
   const browserEventId = optionalString(attribution.browserEventId, 128)
+  const metaLeadId = validMetaLeadId(attribution.metaLeadId)
   const metaDeliveryMode = row.platform === 'meta'
     && Boolean(browserEventId)
     && capabilityModes.includes('meta_web_capi')
+    && !metaLeadId
     ? 'web'
     : 'crm'
 
@@ -129,7 +137,7 @@ function mapClaim(
     connectionScopes: scopes,
     attribution: {
       browserEventId,
-      metaLeadId: optionalString(attribution.metaLeadId, 16),
+      metaLeadId,
       gclid: optionalString(attribution.gclid) ?? optionalString(row.tracking_gclid),
       gbraid: optionalString(attribution.gbraid) ?? optionalString(row.tracking_gbraid),
       wbraid: optionalString(attribution.wbraid) ?? optionalString(row.tracking_wbraid),

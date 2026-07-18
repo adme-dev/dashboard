@@ -511,6 +511,24 @@ describe('CanonicalConversionEventSchema', () => {
     expect(result.configVersion).toBe(1)
   })
 
+  it('accepts the documented 16-digit Meta lead identifier format', () => {
+    const result = CanonicalConversionEventSchema.parse({
+      ...qualifiedEvent,
+      attribution: { ...qualifiedEvent.attribution, metaLeadId: '1234567890123456' }
+    })
+
+    expect(result.attribution.metaLeadId).toBe('1234567890123456')
+  })
+
+  it('rejects an overlong Meta lead identifier instead of truncating it', () => {
+    const result = CanonicalConversionEventSchema.safeParse({
+      ...qualifiedEvent,
+      attribution: { ...qualifiedEvent.attribution, metaLeadId: '12345678901234567' }
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   it('rejects invalid Meta lead identifiers', () => {
     const result = CanonicalConversionEventSchema.safeParse({
       ...qualifiedEvent,

@@ -64,7 +64,7 @@ describe('opportunity stage transition service', () => {
           return { rows: [{
             lead_id: LEAD_ID,
             source: 'meta',
-            source_lead_id: '123456789012345',
+            source_lead_id: '1234567890123456',
             attribution: { browserEventId: 'browser-event-1', gclid: 'gclid-1' }
           }] }
         }
@@ -101,7 +101,7 @@ describe('opportunity stage transition service', () => {
       sourceEventId: `crm-stage-history:${HISTORY_ID}`,
       attribution: {
         browserEventId: null,
-        metaLeadId: '123456789012345',
+        metaLeadId: '1234567890123456',
         gclid: 'gclid-1',
         gbraid: null,
         wbraid: null
