@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildMondayCutoverPlan } from '~~/server/utils/mondayCutoverPlan'
 import {
   executeMondayCutoverRun,
-  prepareMondayCutoverExecutionRun
+  prepareMondayCutoverExecutionRun,
+  rollbackMondayCutoverRun
 } from '~~/server/utils/mondayCutoverExecutionStore'
 
 const mockTransaction = vi.fn()
@@ -183,8 +184,13 @@ describe('Monday cutover execution persistence', () => {
       'fa9fd922-3a18-46e8-a7bb-849167a9cb46',
       '962d975c-7915-42c8-84a0-0a2e4747828f'
     ]
+    const clientValueIds = [
+      '516c0af4-2917-4f89-a53f-7b4e1d5367e0',
+      '59295c2f-e954-463e-bf5f-e0fda2eadfbf'
+    ]
     let taskIndex = 0
     let mappingIndex = 0
+    let clientValueIndex = 0
 
     mockTxQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
       if (sql.includes(`SET status = 'executing'`)) return { rows: [runRow({ status: 'executing', started_at: new Date() })] }
@@ -197,7 +203,9 @@ describe('Monday cutover execution persistence', () => {
       if (sql.includes('FROM custom_columns')) return { rows: [{ id: 'c20f11eb-7286-4254-a9a0-e655729b9da7' }] }
       if (sql.includes('INSERT INTO tasks')) return { rows: [{ id: taskIds[taskIndex++]!, version: 1 }] }
       if (sql.includes('INSERT INTO monday_item_mappings')) return { rows: [{ id: mappingIds[mappingIndex++]! }] }
-      if (sql.includes('INSERT INTO task_column_values')) return { rows: [] }
+      if (sql.includes('INSERT INTO task_column_values')) {
+        return { rows: [{ id: clientValueIds[clientValueIndex++]! }] }
+      }
       if (sql.includes('INSERT INTO monday_cutover_execution_items')) return { rows: [] }
       if (sql.includes(`SET status = 'completed'`)) {
         return { rows: [runRow({ status: 'completed', created_tasks: 2, completed_at: new Date() })] }
@@ -229,5 +237,156 @@ describe('Monday cutover execution persistence', () => {
       && JSON.stringify(params).includes('436e159b-d053-4de2-ad0e-e589b938ced7')
     ))).toBe(true)
     expect(mockTxQuery.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO monday_item_mappings'))).toHaveLength(2)
+    const itemCalls = mockTxQuery.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO monday_cutover_execution_items'))
+    expect(itemCalls[0]![1]).toEqual(expect.arrayContaining([
+      clientValueIds[0],
+      'c20f11eb-7286-4254-a9a0-e655729b9da7'
+    ]))
+    expect(itemCalls[1]![1]).toEqual(expect.arrayContaining([
+      clientValueIds[1],
+      'c20f11eb-7286-4254-a9a0-e655729b9da7'
+    ]))
+  })
+
+  it('rolls back only unchanged created tasks in child-first order', async () => {
+    const parentTaskId = '3baef6d0-c0c4-4f23-aa3a-0551489f7460'
+    const childTaskId = 'f2298ca4-096b-4e2b-a1a4-90c6230f02f6'
+    const parentMappingId = 'fa9fd922-3a18-46e8-a7bb-849167a9cb46'
+    const childMappingId = '962d975c-7915-42c8-84a0-0a2e4747828f'
+    const parentClientValueId = '516c0af4-2917-4f89-a53f-7b4e1d5367e0'
+    const childClientValueId = '59295c2f-e954-463e-bf5f-e0fda2eadfbf'
+    const clientId = '436e159b-d053-4de2-ad0e-e589b938ced7'
+    const clientColumnId = 'c20f11eb-7286-4254-a9a0-e655729b9da7'
+
+    mockTxQuery
+      .mockResolvedValueOnce({ rows: [runRow({ status: 'completed', created_tasks: 2, completed_at: new Date() })] })
+      .mockResolvedValueOnce({ rows: [runRow({ status: 'rollback_pending', created_tasks: 2, rollback_started_at: new Date() })] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [
+        {
+          source_item_id: '2002',
+          task_id: childTaskId,
+          mapping_id: childMappingId,
+          client_id: clientId,
+          client_column_value_id: childClientValueId,
+          client_column_id: clientColumnId,
+          created_task_version: 1,
+          sort_order: 1
+        },
+        {
+          source_item_id: '2001',
+          task_id: parentTaskId,
+          mapping_id: parentMappingId,
+          client_id: clientId,
+          client_column_value_id: parentClientValueId,
+          client_column_id: clientColumnId,
+          created_task_version: 1,
+          sort_order: 0
+        }
+      ] })
+      .mockResolvedValueOnce({ rows: [
+        { id: parentTaskId, version: 1 },
+        { id: childTaskId, version: 1 }
+      ] })
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+      .mockResolvedValueOnce({ rows: [{ has_dependencies: false }] })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [runRow({
+        status: 'rolled_back',
+        created_tasks: 2,
+        rollback_reason: 'Rollback the controlled drill after confirming no task edits.',
+        rollback_by: actorId,
+        rolled_back_at: new Date()
+      })] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    const result = await rollbackMondayCutoverRun({
+      runId,
+      sourceBoardId,
+      targetBoardId,
+      expectedPlanFingerprint: fingerprint,
+      actorId,
+      reason: 'Rollback the controlled drill after confirming no task edits.'
+    })
+
+    expect(result.status).toBe('rolled_back')
+    const mappingDeletes = mockTxQuery.mock.calls.filter(([sql]) => String(sql).includes('DELETE FROM monday_item_mappings'))
+    const clientValueDeletes = mockTxQuery.mock.calls.filter(([sql]) => String(sql).includes('DELETE FROM task_column_values'))
+    const taskDeletes = mockTxQuery.mock.calls.filter(([sql]) => String(sql).includes('DELETE FROM tasks'))
+    expect(mappingDeletes).toHaveLength(2)
+    expect(clientValueDeletes).toHaveLength(2)
+    expect(taskDeletes).toHaveLength(2)
+    expect(mockTxQuery.mock.calls.some(([sql]) => (
+      String(sql).includes('monday_cutover_tasks_have_external_dependencies')
+    ))).toBe(true)
+    expect(mappingDeletes[0]![1]).toEqual([childMappingId, childTaskId, sourceBoardId, '2002'])
+    expect(mappingDeletes[1]![1]).toEqual([parentMappingId, parentTaskId, sourceBoardId, '2001'])
+    expect(taskDeletes[0]![1]).toEqual([childTaskId, 1])
+    expect(taskDeletes[1]![1]).toEqual([parentTaskId, 1])
+  })
+
+  it('refuses rollback when any created task was modified', async () => {
+    const taskId = '3baef6d0-c0c4-4f23-aa3a-0551489f7460'
+    mockTxQuery
+      .mockResolvedValueOnce({ rows: [runRow({ status: 'completed', created_tasks: 1, completed_at: new Date() })] })
+      .mockResolvedValueOnce({ rows: [runRow({ status: 'rollback_pending', created_tasks: 1, rollback_started_at: new Date() })] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        source_item_id: '2001',
+        task_id: taskId,
+        mapping_id: 'fa9fd922-3a18-46e8-a7bb-849167a9cb46',
+        client_id: null,
+        client_column_value_id: null,
+        client_column_id: null,
+        created_task_version: 1,
+        sort_order: 0
+      }] })
+      .mockResolvedValueOnce({ rows: [{ id: taskId, version: 2 }] })
+
+    await expect(rollbackMondayCutoverRun({
+      runId,
+      sourceBoardId,
+      targetBoardId,
+      expectedPlanFingerprint: fingerprint,
+      actorId,
+      reason: 'Rollback the controlled drill after confirming no task edits.'
+    })).rejects.toThrow('modified after cutover')
+    expect(mockTxQuery.mock.calls.some(([sql]) => String(sql).includes('DELETE FROM tasks'))).toBe(false)
+  })
+
+  it('refuses rollback when created tasks gained related content', async () => {
+    const taskId = '3baef6d0-c0c4-4f23-aa3a-0551489f7460'
+    mockTxQuery
+      .mockResolvedValueOnce({ rows: [runRow({ status: 'completed', created_tasks: 1, completed_at: new Date() })] })
+      .mockResolvedValueOnce({ rows: [runRow({ status: 'rollback_pending', created_tasks: 1, rollback_started_at: new Date() })] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        source_item_id: '2001',
+        task_id: taskId,
+        mapping_id: 'fa9fd922-3a18-46e8-a7bb-849167a9cb46',
+        client_id: null,
+        client_column_value_id: null,
+        client_column_id: null,
+        created_task_version: 1,
+        sort_order: 0
+      }] })
+      .mockResolvedValueOnce({ rows: [{ id: taskId, version: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+      .mockResolvedValueOnce({ rows: [{ has_dependencies: true }] })
+
+    await expect(rollbackMondayCutoverRun({
+      runId,
+      sourceBoardId,
+      targetBoardId,
+      expectedPlanFingerprint: fingerprint,
+      actorId,
+      reason: 'Rollback the controlled drill after confirming no task edits.'
+    })).rejects.toThrow('related content after cutover')
+    expect(mockTxQuery.mock.calls.some(([sql]) => String(sql).includes('DELETE FROM tasks'))).toBe(false)
   })
 })

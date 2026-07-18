@@ -17,6 +17,15 @@ export const MondayCutoverExecutionCommandSchema = z.strictObject({
 
 export type MondayCutoverExecutionCommand = z.infer<typeof MondayCutoverExecutionCommandSchema>
 
+export const MondayCutoverRollbackCommandSchema = z.strictObject({
+  targetBoardId: TargetBoardIdSchema,
+  expectedPlanFingerprint: FingerprintSchema,
+  confirmation: z.string().trim().min(1).max(200),
+  reason: ReasonSchema
+})
+
+export type MondayCutoverRollbackCommand = z.infer<typeof MondayCutoverRollbackCommandSchema>
+
 export class MondayCutoverExecutionValidationError extends Error {
   constructor(message: string) {
     super(message)
@@ -39,6 +48,17 @@ export function hasValidMondayCutoverExecutionConfirmation(
     sourceBoardId,
     command.targetBoardId
   )
+}
+
+export function buildMondayCutoverRollbackConfirmation(runId: string): string {
+  return `ROLLBACK MONDAY CUTOVER ${z.string().uuid().parse(runId)}`
+}
+
+export function hasValidMondayCutoverRollbackConfirmation(
+  runId: string,
+  command: MondayCutoverRollbackCommand
+): boolean {
+  return command.confirmation === buildMondayCutoverRollbackConfirmation(runId)
 }
 
 type CutoverPlanRecord = {

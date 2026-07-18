@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   MondayCutoverExecutionCommandSchema,
   MondayCutoverExecutionValidationError,
+  MondayCutoverRollbackCommandSchema,
   buildMondayCutoverExecutionConfirmation,
+  buildMondayCutoverRollbackConfirmation,
   buildMondayCutoverTaskDrafts
 } from '~~/server/utils/mondayCutoverExecution'
 
@@ -144,5 +146,24 @@ describe('Monday cutover execution contract', () => {
       plan: { ...plan(), placement: { targetGroupId: null, targetGroupName: null, status: 'pending' as const } },
       sourceRecords
     })).toThrow('approved target placement')
+  })
+
+  it('requires an exact run-bound rollback confirmation and fingerprint', () => {
+    const runId = '2325bc08-5995-44b8-a89d-b651bce1c507'
+    const confirmation = buildMondayCutoverRollbackConfirmation(runId)
+
+    expect(MondayCutoverRollbackCommandSchema.parse({
+      targetBoardId,
+      expectedPlanFingerprint: 'a'.repeat(64),
+      confirmation,
+      reason: 'Rollback the controlled drill after confirming no task edits.'
+    })).toEqual(expect.objectContaining({ confirmation }))
+
+    expect(MondayCutoverRollbackCommandSchema.safeParse({
+      targetBoardId,
+      expectedPlanFingerprint: 'bad',
+      confirmation: 'ROLLBACK',
+      reason: 'short'
+    }).success).toBe(false)
   })
 })

@@ -384,15 +384,17 @@ export async function executeMondayCutoverRun(input: {
       const mappingId = String(mappingResult.rows[0]?.id ?? '')
       if (!mappingId) throw new Error('Provenance mapping insert did not return evidence')
 
+      let clientColumnValueId: string | null = null
       if (draft.clientId && draft.clientName) {
-        await db.query(
+        const clientValueResult = await db.query(
           `INSERT INTO task_column_values (
              task_id, column_id, text_value, json_value
            ) VALUES ($1::uuid, $2::uuid, $3, $4::jsonb)
            ON CONFLICT (task_id, column_id) DO UPDATE SET
              text_value = EXCLUDED.text_value,
              json_value = EXCLUDED.json_value,
-             updated_at = NOW()`,
+             updated_at = NOW()
+           RETURNING id`,
           [
             taskId,
             clientColumnId,
@@ -400,6 +402,10 @@ export async function executeMondayCutoverRun(input: {
             JSON.stringify({ clientId: draft.clientId, clientName: draft.clientName })
           ]
         )
+        clientColumnValueId = String(clientValueResult.rows[0]?.id ?? '')
+        if (!clientColumnValueId) {
+          throw new Error('Client column insert did not return execution evidence')
+        }
       }
 
       await db.query(
@@ -411,10 +417,12 @@ export async function executeMondayCutoverRun(input: {
            task_id,
            mapping_id,
            client_id,
+           client_column_value_id,
+           client_column_id,
            source_updated_at,
            created_task_version,
            sort_order
-         ) VALUES ($1::uuid, $2, $3, 'created', $4::uuid, $5::uuid, $6::uuid, $7::timestamptz, $8, $9)`,
+         ) VALUES ($1::uuid, $2, $3, 'created', $4::uuid, $5::uuid, $6::uuid, $7::uuid, $8::uuid, $9::timestamptz, $10, $11)`,
         [
           input.runId,
           draft.sourceId,
@@ -422,6 +430,8 @@ export async function executeMondayCutoverRun(input: {
           taskId,
           mappingId,
           draft.clientId,
+          clientColumnValueId,
+          draft.clientId ? clientColumnId : null,
           draft.sourceUpdatedAt,
           taskVersion,
           draft.sortOrder
@@ -521,5 +531,208 @@ export async function failMondayCutoverExecutionRun(input: {
       [input.runId, input.actorId, hashReason(input.reason), input.planFingerprint]
     )
     return toRun(failed.rows[0])
+  })
+}
+
+export async function rollbackMondayCutoverRun(input: {
+  runId: string
+  sourceBoardId: string
+  targetBoardId: string
+  expectedPlanFingerprint: string
+  actorId: string
+  reason: string
+}): Promise<MondayCutoverExecutionRun> {
+  return transaction(async (db) => {
+    const locked = await db.query(
+      `SELECT ${RUN_COLUMNS}
+         FROM monday_cutover_execution_runs
+        WHERE id = $1::uuid
+          AND source_board_id = $2
+          AND target_board_id = $3::uuid
+          AND plan_fingerprint = $4
+          AND status = 'completed'
+        FOR UPDATE`,
+      [input.runId, input.sourceBoardId, input.targetBoardId, input.expectedPlanFingerprint]
+    )
+    if (!locked.rows[0]) {
+      throw new MondayCutoverExecutionConflictError('Completed execution run not found for rollback')
+    }
+    const completedRun = toRun(locked.rows[0])
+
+    const pending = await db.query(
+      `UPDATE monday_cutover_execution_runs
+          SET status = 'rollback_pending',
+              rollback_reason = $2,
+              rollback_by = $3::uuid,
+              rollback_started_at = NOW()
+        WHERE id = $1::uuid
+          AND status = 'completed'
+      RETURNING ${RUN_COLUMNS}`,
+      [input.runId, input.reason, input.actorId]
+    )
+    if (!pending.rows[0]) throw new MondayCutoverExecutionConflictError('Rollback state conflict')
+
+    await db.query(
+      `INSERT INTO monday_cutover_execution_audit (
+         run_id, action, actor_id, reason_hash, plan_fingerprint, counts
+       ) VALUES ($1::uuid, 'rollback_started', $2::uuid, $3, $4, $5::jsonb)`,
+      [
+        input.runId,
+        input.actorId,
+        hashReason(input.reason),
+        input.expectedPlanFingerprint,
+        JSON.stringify({ createdTasks: completedRun.createdTasks })
+      ]
+    )
+
+    const itemResult = await db.query(
+      `SELECT source_item_id,
+              task_id,
+              mapping_id,
+              client_id,
+              client_column_value_id,
+              client_column_id,
+              created_task_version,
+              sort_order
+         FROM monday_cutover_execution_items
+        WHERE run_id = $1::uuid
+          AND action = 'created'
+        ORDER BY sort_order DESC`,
+      [input.runId]
+    )
+    if (itemResult.rows.length !== completedRun.createdTasks) {
+      throw new MondayCutoverExecutionConflictError('Rollback item evidence is incomplete')
+    }
+
+    const createdItems = itemResult.rows.map((row: Record<string, unknown>) => ({
+      sourceItemId: String(row.source_item_id ?? ''),
+      taskId: String(row.task_id ?? ''),
+      mappingId: String(row.mapping_id ?? ''),
+      clientId: row.client_id ? String(row.client_id) : null,
+      clientColumnValueId: row.client_column_value_id
+        ? String(row.client_column_value_id)
+        : null,
+      clientColumnId: row.client_column_id ? String(row.client_column_id) : null,
+      createdTaskVersion: Number(row.created_task_version ?? 0)
+    }))
+    if (createdItems.some(item => (
+      !/^\d{1,30}$/.test(item.sourceItemId)
+      || !item.taskId
+      || !item.mappingId
+      || item.createdTaskVersion < 1
+      || Boolean(item.clientId) !== Boolean(item.clientColumnValueId)
+      || Boolean(item.clientId) !== Boolean(item.clientColumnId)
+    ))) {
+      throw new MondayCutoverExecutionConflictError('Rollback item evidence is invalid')
+    }
+
+    const taskIds = createdItems.map(item => item.taskId)
+    const taskResult = await db.query(
+      `SELECT id, version
+         FROM tasks
+        WHERE id = ANY($1::uuid[])
+        FOR UPDATE`,
+      [taskIds]
+    )
+    const versionByTask = new Map(taskResult.rows.map((row: Record<string, unknown>) => (
+      [String(row.id), Number(row.version)]
+    )))
+    if (
+      versionByTask.size !== createdItems.length
+      || createdItems.some(item => versionByTask.get(item.taskId) !== item.createdTaskVersion)
+    ) {
+      throw new MondayCutoverExecutionConflictError('Created task was modified after cutover')
+    }
+
+    const unexpectedChildren = await db.query(
+      `SELECT COUNT(*)::text AS count
+         FROM tasks
+        WHERE parent_task_id = ANY($1::uuid[])
+          AND NOT (id = ANY($1::uuid[]))`,
+      [taskIds]
+    )
+    if (Number(unexpectedChildren.rows[0]?.count ?? 0) > 0) {
+      throw new MondayCutoverExecutionConflictError('Created task has new descendants after cutover')
+    }
+
+    const mappingIds = createdItems.map(item => item.mappingId)
+    const clientColumnValueIds = createdItems.flatMap(item => (
+      item.clientColumnValueId ? [item.clientColumnValueId] : []
+    ))
+    const dependencyResult = await db.query(
+      `SELECT monday_cutover_tasks_have_external_dependencies(
+                $1::uuid[],
+                $2::uuid[],
+                $3::uuid[]
+              ) AS has_dependencies`,
+      [taskIds, mappingIds, clientColumnValueIds]
+    )
+    if (dependencyResult.rows[0]?.has_dependencies !== false) {
+      throw new MondayCutoverExecutionConflictError('Created task has related content after cutover')
+    }
+
+    for (const item of createdItems) {
+      if (item.clientId && item.clientColumnValueId && item.clientColumnId) {
+        const clientValueDelete = await db.query(
+          `DELETE FROM task_column_values
+            WHERE id = $1::uuid
+              AND task_id = $2::uuid
+              AND column_id = $3::uuid
+              AND json_value ->> 'clientId' = $4
+              AND text_value = json_value ->> 'clientName'`,
+          [item.clientColumnValueId, item.taskId, item.clientColumnId, item.clientId]
+        )
+        if (clientValueDelete.rowCount !== 1) {
+          throw new MondayCutoverExecutionConflictError('Client column value changed after cutover')
+        }
+      }
+
+      const mappingDelete = await db.query(
+        `DELETE FROM monday_item_mappings
+          WHERE id = $1::uuid
+            AND task_id = $2::uuid
+            AND monday_board_id = $3
+            AND monday_item_id = $4`,
+        [item.mappingId, item.taskId, input.sourceBoardId, item.sourceItemId]
+      )
+      if (mappingDelete.rowCount !== 1) {
+        throw new MondayCutoverExecutionConflictError('Provenance mapping changed after cutover')
+      }
+
+      const taskDelete = await db.query(
+        `DELETE FROM tasks
+          WHERE id = $1::uuid
+            AND version = $2`,
+        [item.taskId, item.createdTaskVersion]
+      )
+      if (taskDelete.rowCount !== 1) {
+        throw new MondayCutoverExecutionConflictError('Created task changed during rollback')
+      }
+    }
+
+    const rolledBack = await db.query(
+      `UPDATE monday_cutover_execution_runs
+          SET status = 'rolled_back',
+              rolled_back_at = NOW()
+        WHERE id = $1::uuid
+          AND status = 'rollback_pending'
+      RETURNING ${RUN_COLUMNS}`,
+      [input.runId]
+    )
+    if (!rolledBack.rows[0]) throw new MondayCutoverExecutionConflictError('Rollback completion conflict')
+
+    await db.query(
+      `INSERT INTO monday_cutover_execution_audit (
+         run_id, action, actor_id, reason_hash, plan_fingerprint, counts
+       ) VALUES ($1::uuid, 'rolled_back', $2::uuid, $3, $4, $5::jsonb)`,
+      [
+        input.runId,
+        input.actorId,
+        hashReason(input.reason),
+        input.expectedPlanFingerprint,
+        JSON.stringify({ deletedTasks: createdItems.length })
+      ]
+    )
+    return toRun(rolledBack.rows[0])
   })
 }
