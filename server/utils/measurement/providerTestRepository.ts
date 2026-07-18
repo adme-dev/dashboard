@@ -1,4 +1,5 @@
 import { transaction as defaultTransaction } from '~~/server/utils/db'
+import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEventIdentity'
 import type {
   MeasurementProviderTestInput,
   MeasurementProviderTestRepository,
@@ -31,6 +32,8 @@ interface ProviderContextRow {
   refresh_token: string | null
   scopes: unknown
   metadata: unknown
+  allowed_origins: unknown
+  capability_modes: unknown
 }
 
 interface TestRunRow {
@@ -69,6 +72,16 @@ function expectedPlatform(mode: ProviderTestMode) {
   return mode === 'meta_test_events' ? 'meta' : 'google_data_manager'
 }
 
+function normalizedOrigin(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.origin : null
+  } catch {
+    return null
+  }
+}
+
 export function createPostgresMeasurementProviderTestRepository(
   transaction: Transaction = defaultTransaction as unknown as Transaction
 ): MeasurementProviderTestRepository {
@@ -99,7 +112,9 @@ export function createPostgresMeasurementProviderTestRepository(
                   sc.access_token,
                   sc.refresh_token,
                   sc.scopes,
-                  sc.metadata
+                  sc.metadata,
+                  ts.allowed_origins,
+                  caps.capability_modes
              FROM conversion_destinations d
              JOIN client_measurement_profiles p
                ON p.client_id = d.client_id
@@ -112,8 +127,21 @@ export function createPostgresMeasurementProviderTestRepository(
              LEFT JOIN social_connections sc
                ON sc.client_id = d.client_id
               AND sc.id = d.social_connection_id
-              AND sc.status = 'active'
-              AND sc.platform = CASE WHEN d.platform = 'meta' THEN 'meta' ELSE 'google' END
+               AND sc.status = 'active'
+               AND sc.platform = CASE WHEN d.platform = 'meta' THEN 'meta' ELSE 'google' END
+             LEFT JOIN tracking_sites ts
+               ON ts.client_id = d.client_id
+              AND ts.id = p.tracking_site_id
+              AND ts.is_active = TRUE
+             LEFT JOIN LATERAL (
+               SELECT ARRAY_AGG(c.mode ORDER BY c.mode) AS capability_modes
+                 FROM conversion_destination_capabilities c
+                WHERE c.client_id = d.client_id
+                  AND c.destination_id = d.id
+                  AND c.management_origin = 'zero'
+                  AND c.can_zero_mutate = TRUE
+                  AND c.status IN ('configured', 'validating', 'ready', 'degraded')
+             ) caps ON TRUE
             WHERE d.client_id = $1
               AND d.id = $2
             FOR UPDATE OF d`,
@@ -133,6 +161,33 @@ export function createPostgresMeasurementProviderTestRepository(
         if (row.platform !== expectedPlatform(input.mode)) return { status: 'not_found' }
         if (!row.provider_event_name) return { status: 'mapping_not_found' }
         if (!row.account_id) return { status: 'connection_not_found' }
+        const capabilityModes = Array.isArray(row.capability_modes)
+          ? row.capability_modes.filter((mode): mode is string => typeof mode === 'string')
+          : []
+        let metaDeliveryMode: 'crm' | 'web' = 'crm'
+        if (input.mode === 'meta_test_events') {
+          const requestedCapabilityConfigured = input.deliveryMode === 'web'
+            ? capabilityModes.includes('meta_web_capi')
+            : capabilityModes.includes('meta_crm_capi')
+              || capabilityModes.includes('meta_conversion_leads')
+          if (!requestedCapabilityConfigured) return { status: 'capability_not_configured' }
+          metaDeliveryMode = classifyMeasurementEventIdentity(
+            input.canonicalEventName,
+            capabilityModes
+          ).mode === 'browser_server_dedup'
+            ? 'web'
+            : 'crm'
+          if (input.deliveryMode !== metaDeliveryMode) return { status: 'delivery_mode_mismatch' }
+          if (input.deliveryMode === 'web') {
+            const approvedOrigins = Array.isArray(row.allowed_origins)
+              ? row.allowed_origins.map(normalizedOrigin).filter((origin): origin is string => Boolean(origin))
+              : []
+            const eventSourceOrigin = normalizedOrigin(input.eventSourceUrl)
+            if (!eventSourceOrigin || !approvedOrigins.includes(eventSourceOrigin)) {
+              return { status: 'source_origin_not_approved' }
+            }
+          }
+        }
 
         const insertedResult = await db.query(
           `INSERT INTO measurement_provider_test_runs (
@@ -193,7 +248,8 @@ export function createPostgresMeasurementProviderTestRepository(
               idempotencyKey: input.idempotencyKey,
               externalDestinationId: row.external_destination_id,
               operatingAccountId,
-              loginAccountId
+              loginAccountId,
+              metaDeliveryMode
             },
             credential: {
               accessToken: row.access_token,
