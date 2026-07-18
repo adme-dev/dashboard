@@ -32,7 +32,15 @@ function deliveryRow() {
     refresh_token: null,
     scopes: ['ads_management'],
     metadata: {},
-    attribution: { metaLeadId: '123456789012345' }
+    attribution: { metaLeadId: '123456789012345' },
+    capability_modes: ['meta_crm_capi'],
+    tracking_fbc: null,
+    tracking_fbp: null,
+    tracking_page_url: null,
+    tracking_ua: null,
+    tracking_gclid: null,
+    tracking_gbraid: null,
+    tracking_wbraid: null
   }
 }
 
@@ -65,13 +73,60 @@ describe('measurement delivery repository', () => {
       profileCacheCurrent: true,
       deliveryConfigCurrent: true
     })
+    expect(result?.metaDeliveryMode).toBe('crm')
     expect(client.query.mock.calls[0]?.[1]).toEqual([CLIENT_ID, EVENT_ID, NOW.toISOString()])
     expect(client.query.mock.calls[0]?.[0]).toMatch(/d.status = 'claimed'[\s\S]*INTERVAL '5 minutes'/)
+    expect(client.query.mock.calls[0]?.[0]).toMatch(/tracking_events/)
+    expect(client.query.mock.calls[0]?.[0]).toMatch(/conversion_destination_capabilities/)
     expect(client.query.mock.calls[1]?.[1]).toEqual([
       DELIVERY_ID,
       'measurement-worker:test',
       NOW.toISOString()
     ])
+  })
+
+  it('claims a browser-paired lead through ready Meta Web CAPI with tracking context joined by event ID', async () => {
+    const row = {
+      ...deliveryRow(),
+      event_name: 'lead_created',
+      provider_event_name: 'Lead',
+      attribution: { browserEventId: 'browser-event-1' },
+      capability_modes: ['meta_web_capi'],
+      tracking_fbc: 'fb.1.123.click',
+      tracking_fbp: 'fb.1.123.browser',
+      tracking_page_url: 'https://www.biggaragesubaru.com.au/enquire?secret=removed',
+      tracking_ua: 'Pilot Browser',
+      tracking_gclid: 'gclid-from-browser'
+    }
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (/SELECT[\s\S]*FOR UPDATE OF d SKIP LOCKED/.test(sql)) return { rows: [row] }
+        if (/UPDATE conversion_deliveries/.test(sql)) return { rows: [{ attempt_count: 1 }] }
+        return { rows: [] }
+      })
+    }
+    const repository = createMeasurementDeliveryRepository({
+      transaction: (async (callback: (db: typeof client) => Promise<unknown>) => callback(client)) as never
+    })
+
+    const claim = await repository.claimNext({
+      schemaVersion: 1,
+      clientId: CLIENT_ID,
+      eventId: EVENT_ID,
+      enqueuedAt: NOW.toISOString()
+    }, 'measurement-worker:test', NOW)
+
+    expect(claim).toMatchObject({
+      metaDeliveryMode: 'web',
+      attribution: {
+        browserEventId: 'browser-event-1',
+        fbc: 'fb.1.123.click',
+        fbp: 'fb.1.123.browser',
+        eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
+        clientUserAgent: 'Pilot Browser',
+        gclid: 'gclid-from-browser'
+      }
+    })
   })
 
   it('atomically appends an accepted attempt and updates delivery and destination health', async () => {

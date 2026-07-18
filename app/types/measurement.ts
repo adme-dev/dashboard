@@ -142,6 +142,11 @@ export interface PortalMeasurementHealth {
     server: PortalMeasurementSignalSummary
     crm: PortalMeasurementSignalSummary
   }
+  eventIdentity: Array<{
+    canonicalEventName: string
+    mode: 'browser_server_dedup' | 'server_only'
+    label: string
+  }>
   destinations: Array<{
     platform: MeasurementDestination['platform']
     label: string

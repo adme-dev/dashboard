@@ -116,6 +116,56 @@ describe('public/track.js transport', () => {
     insertScript.mockRestore()
   })
 
+  it('bridges a caller-owned conversion ID to an existing dataLayer without injecting GTM', () => {
+    const insertScript = vi.spyOn(document.head, 'insertBefore').mockImplementation(node => node)
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    ;(window as any).dataLayer = []
+
+    loadTag()
+    ;(window as any).xf.init({
+      writeKey: 'TESTKEY',
+      dataLayerBridge: true,
+      forms: false
+    })
+    beacons = []
+    ;(window as any).dataLayer = []
+
+    const eventId = (window as any).xf.createEventId()
+    const returnedEventId = (window as any).xf.track(
+      'generate_lead',
+      { form_id: 'big-garage-enquiry' },
+      { eventId }
+    )
+
+    expect(returnedEventId).toBe(eventId)
+    expect(beacons).toHaveLength(1)
+    expect((window as any).dataLayer).toEqual([
+      expect.objectContaining({
+        event: 'generate_lead',
+        event_id: eventId,
+        form_id: 'big-garage-enquiry'
+      })
+    ])
+    expect(JSON.parse(beacons[0].body).events[0].event_id).toBe(eventId)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(insertScript).not.toHaveBeenCalled()
+
+    insertScript.mockRestore()
+  })
+
+  it('replaces an invalid caller event ID before transport', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    beacons = []
+
+    const eventId = (window as any).xf.track('generate_lead', {}, { eventId: '   ' })
+
+    expect(eventId).toBeTruthy()
+    expect(eventId).not.toBe('   ')
+    expect(JSON.parse(beacons[0].body).events[0].event_id).toBe(eventId)
+  })
+
   it('forwards email click IDs from the landing URL attribution', () => {
     window.history.pushState({}, '', '/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=click-1')
     loadTag()

@@ -75,6 +75,19 @@ function titleCase(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
 }
 
+function canonicalEventLabel(value: string) {
+  const labels: Record<string, string> = {
+    lead_created: 'Lead Created',
+    lead_contacted: 'Lead Contacted',
+    lead_qualified: 'Qualified Lead',
+    lead_won: 'Won Lead',
+    lead_lost: 'Lost Lead',
+    web_conversion: 'Web Conversion',
+    purchase: 'Purchase'
+  }
+  return labels[value] || titleCase(value)
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return 'No evidence yet'
   return new Intl.DateTimeFormat('en-AU', {
@@ -234,6 +247,25 @@ void refreshHealth()
                 </div>
                 <p class="mt-3 text-xs text-dimmed">
                   Evidence: {{ formatDateTime(card.signal.lastEvidenceAt) }}
+                </p>
+              </article>
+            </div>
+          </section>
+
+          <section v-if="health.eventIdentity.length" class="rounded-xl border border-default bg-default p-5 shadow-xs sm:p-6">
+            <h2 class="font-semibold text-highlighted">
+              Event delivery identity
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Shows which outcomes use a shared website event ID and which originate only from lead or CRM lifecycle changes.
+            </p>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+              <article v-for="identity in health.eventIdentity" :key="`${identity.canonicalEventName}:${identity.mode}`" class="rounded-lg border border-default bg-elevated/40 p-4">
+                <p class="text-sm font-medium text-highlighted">
+                  {{ canonicalEventLabel(identity.canonicalEventName) }}
+                </p>
+                <p class="mt-1 text-xs text-muted">
+                  {{ identity.label }}
                 </p>
               </article>
             </div>

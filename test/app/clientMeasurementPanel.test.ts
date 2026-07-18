@@ -235,6 +235,7 @@ describe('ClientMeasurementPanel', () => {
       expect(host.textContent).toContain('Managed by Zero')
       expect(host.textContent).toContain('Externally managed')
       expect(host.textContent).toContain('lead_qualified → QualifiedLead')
+      expect(host.textContent).toContain('Server-only lifecycle event')
       expect(host.textContent).toContain('Document externally managed Google delivery')
       expect(host.textContent).toContain('Connected account linked')
       expect(host.textContent).toContain('Credential reference configured')

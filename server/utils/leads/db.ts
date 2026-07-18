@@ -31,9 +31,16 @@ export interface InsertLeadInput {
   is_test?: boolean
 }
 
+export interface LeadTransactionClient {
+  query(sql: string, params?: unknown[]): Promise<{ rows?: unknown[] }>
+}
+
 /** INSERT … ON CONFLICT DO NOTHING RETURNING id. Returns null if duplicate. */
-export async function insertLeadWithDedup(input: InsertLeadInput): Promise<string | null> {
-  const row = await queryOne<{ id: string }>(`
+export async function insertLeadWithDedup(
+  input: InsertLeadInput,
+  db?: LeadTransactionClient
+): Promise<string | null> {
+  const sql = `
     INSERT INTO leads (
       client_id, source, source_lead_id, form_id, form_name,
       ad_id, ad_name, campaign_id, campaign_name, page_id,
@@ -44,14 +51,18 @@ export async function insertLeadWithDedup(input: InsertLeadInput): Promise<strin
     ON CONFLICT (source, source_lead_id) WHERE deleted_at IS NULL
     DO NOTHING
     RETURNING id
-  `, [
+  `
+  const params = [
     input.client_id, input.source, input.source_lead_id, input.form_id, input.form_name,
     input.ad_id, input.ad_name, input.campaign_id, input.campaign_name, input.page_id,
     input.submitted_at,
     JSON.stringify(input.field_data),
     input.attribution ? JSON.stringify(input.attribution) : null,
     input.assigned_to, input.created_by, Boolean(input.is_test)
-  ])
+  ]
+  const row = db
+    ? (await db.query(sql, params)).rows?.[0] as { id: string } | undefined
+    : await queryOne<{ id: string }>(sql, params)
   return row?.id ?? null
 }
 

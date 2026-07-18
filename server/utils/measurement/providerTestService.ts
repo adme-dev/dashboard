@@ -186,8 +186,9 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
       const { context } = reserved
       const baseDelivery = {
         ...context.delivery,
+        metaDeliveryMode: 'crm' as const,
         attribution: {
-          browserEventId: input.mode === 'meta_test_events' ? input.browserEventId : null,
+          browserEventId: null,
           metaLeadId: input.mode === 'meta_test_events' ? input.metaLeadId : null,
           gclid: input.mode === 'google_validate_only' && input.clickIdentifier.type === 'gclid'
             ? input.clickIdentifier.value
@@ -197,7 +198,11 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
             : null,
           wbraid: input.mode === 'google_validate_only' && input.clickIdentifier.type === 'wbraid'
             ? input.clickIdentifier.value
-            : null
+            : null,
+          fbc: null,
+          fbp: null,
+          eventSourceUrl: null,
+          clientUserAgent: null
         }
       }
 

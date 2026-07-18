@@ -101,7 +101,10 @@ function optionalAttribution(value: unknown, key: string): string | null {
 function canonicalAttribution(lead: LinkedLeadRow | undefined) {
   const sourceLeadId = lead?.source_lead_id?.trim() ?? ''
   return {
-    browserEventId: optionalAttribution(lead?.attribution, 'browserEventId')?.slice(0, 128) ?? null,
+    // CRM stage outcomes are server-only lifecycle events. Reusing the original
+    // website Lead ID with QualifiedLead/Won/Lost would not be valid provider
+    // deduplication because the event names differ.
+    browserEventId: null,
     metaLeadId: lead?.source === 'meta' && /^\d{15,16}$/.test(sourceLeadId) ? sourceLeadId : null,
     gclid: optionalAttribution(lead?.attribution, 'gclid'),
     gbraid: optionalAttribution(lead?.attribution, 'gbraid'),

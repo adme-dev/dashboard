@@ -145,6 +145,11 @@ describe('portal measurement health endpoint', () => {
         server: { status: 'configured', owners: ['external'] },
         crm: { status: 'ready', owners: ['zero'] }
       },
+      eventIdentity: [{
+        canonicalEventName: 'lead_qualified',
+        mode: 'server_only',
+        label: 'Server-only lifecycle event'
+      }],
       delivery: {
         acceptedCount: 5,
         deliveredCount: 4,
@@ -159,6 +164,7 @@ describe('portal measurement health endpoint', () => {
       'deliveryState',
       'authority',
       'signals',
+      'eventIdentity',
       'destinations',
       'delivery',
       'lastValidatedAt',

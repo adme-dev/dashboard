@@ -22,24 +22,39 @@
 
 import { queryOne } from '~~/server/utils/db'
 import {
-  insertLeadWithDedup, upsertFormMetadata, logIngestionError, loadLead,
+  upsertFormMetadata, logIngestionError, loadLead
 } from '~~/server/utils/leads/db'
+import { leadIntakeService } from '~~/server/utils/leads/intake'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { allowRequest } from '~~/server/utils/leads/rateLimit'
 import { enqueueLeadJob } from '~~/server/utils/leads/queue'
 import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
+import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
 import { timingSafeEqual, randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import type { LeadSource } from '~~/app/types'
+
+const FieldMap = z.record(
+  z.string().trim().min(1).max(128),
+  z.union([z.string().max(4096), z.number(), z.boolean()])
+).refine(fields => Object.keys(fields).length <= 100, 'too_many_fields')
+
+const AttributionMap = z.record(
+  z.string().trim().min(1).max(128),
+  z.string().max(512)
+).refine(attribution => Object.keys(attribution).length <= 30, 'too_many_attribution_fields')
 
 const Body = z.object({
-  key: z.string(),
-  lead_id: z.string().optional(),
-  form_id: z.string().optional(),
-  form_name: z.string().optional(),
+  key: z.string().min(1).max(512),
+  lead_id: z.string().min(1).max(255).optional(),
+  form_id: z.string().max(255).optional(),
+  form_name: z.string().max(500).optional(),
   source: z.enum(['webhook', 'meta', 'manual', 'csv', 'google']).default('webhook'),
-  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
-  attribution: z.record(z.string(), z.string()).optional(),
-  submitted_at: z.string().optional(),
+  fields: FieldMap,
+  attribution: AttributionMap.optional(),
+  consent_decision: z.enum(['granted', 'denied', 'unknown']).default('unknown'),
+  submitted_at: z.string().datetime({ offset: true }).optional(),
+  is_test: z.boolean().default(false)
 })
 
 function safeEqual(a: string, b: string): boolean {
@@ -61,30 +76,34 @@ export default defineEventHandler(async (event) => {
   const ep = await queryOne<{
     id: string
     client_id: string
+    source: string
     secret_key: string
     secret_key_previous: string | null
     secret_key_grace_until: string | null
   }>(
-    `SELECT id, client_id, secret_key, secret_key_previous, secret_key_grace_until
+    `SELECT id, client_id, source, secret_key, secret_key_previous, secret_key_grace_until
        FROM lead_webhook_endpoints WHERE url_token = $1`,
-    [token],
+    [token]
   )
   if (!ep) throw createError({ statusCode: 404, statusMessage: 'unknown_token' })
 
-  const rawBody = await readBody(event).catch(() => null) as any
+  const rawBody: unknown = await readBody(event).catch(() => null)
   const parsed = Body.safeParse(rawBody)
   if (!parsed.success) {
-    await logIngestionError('webhook' as any, rawBody, getRequestHeaders(event), 'invalid_body')
+    await logIngestionError('webhook', rawBody, getRequestHeaders(event), 'invalid_body')
     return { ok: true } // always-200
   }
   const input = parsed.data
+  const trustedSource: LeadSource = ep.source === 'webhook' ? 'webhook' : input.source
 
   const submittedKey = input.key
   const matchPrimary = safeEqual(submittedKey, ep.secret_key)
-  const inGrace = ep.secret_key_previous &&
-    ep.secret_key_grace_until &&
-    new Date(ep.secret_key_grace_until).getTime() > Date.now()
-  const matchPrevious = inGrace && safeEqual(submittedKey, ep.secret_key_previous!)
+  const inGrace = Boolean(
+    ep.secret_key_previous
+    && ep.secret_key_grace_until
+    && new Date(ep.secret_key_grace_until).getTime() > Date.now()
+  )
+  const matchPrevious = inGrace && safeEqual(submittedKey, ep.secret_key_previous as string)
   if (!matchPrimary && !matchPrevious) {
     throw createError({ statusCode: 401, statusMessage: 'invalid_key' })
   }
@@ -98,7 +117,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (!Object.keys(fieldData).length) {
-    await logIngestionError('webhook' as any, rawBody, getRequestHeaders(event), 'empty_fields')
+    await logIngestionError('webhook', rawBody, getRequestHeaders(event), 'empty_fields')
     return { ok: true }
   }
 
@@ -107,35 +126,56 @@ export default defineEventHandler(async (event) => {
     const submittedAt = input.submitted_at ? new Date(input.submitted_at).toISOString() : new Date().toISOString()
     const assignedTo = await resolveAssignedAm(ep.client_id)
 
-    const leadId = await insertLeadWithDedup({
-      client_id: ep.client_id,
-      source: input.source as any,
-      source_lead_id: sourceLeadId,
-      form_id: input.form_id ?? null,
-      form_name: input.form_name ?? null,
-      ad_id: null, ad_name: null,
-      campaign_id: null, campaign_name: null,
-      page_id: null,
-      submitted_at: submittedAt,
-      field_data: fieldData,
-      attribution: input.attribution ?? null,
-      assigned_to: assignedTo,
-      created_by: null,
-      is_test: false,
+    const intake = await leadIntakeService.ingest({
+      lead: {
+        client_id: ep.client_id,
+        source: trustedSource,
+        source_lead_id: sourceLeadId,
+        form_id: input.form_id ?? null,
+        form_name: input.form_name ?? null,
+        ad_id: null, ad_name: null,
+        campaign_id: null, campaign_name: null,
+        page_id: null,
+        submitted_at: submittedAt,
+        field_data: fieldData,
+        attribution: input.attribution ?? null,
+        assigned_to: assignedTo,
+        created_by: null,
+        is_test: input.is_test
+      },
+      consentDecision: input.consent_decision
     })
 
     if (input.form_id) {
-      await upsertFormMetadata(input.source as any, input.form_id, input.form_name ?? null, fieldData)
+      await upsertFormMetadata(trustedSource, input.form_id, input.form_name ?? null, fieldData)
     }
-    if (!leadId) return { ok: true, skipped: true }
+    if (intake.status === 'duplicate') return { ok: true, skipped: true }
+    const leadId = intake.leadId
+
+    if (
+      intake.outbox.status !== 'profile_not_found'
+      && intake.outbox.event.outboxStatus === 'pending'
+    ) {
+      try {
+        await conversionOutboxPublisher.publishEvent(event, intake.outbox.event.eventId)
+      } catch (error) {
+        console.warn({
+          event: 'measurement_outbox_post_commit_publish_failed',
+          clientId: ep.client_id,
+          eventId: intake.outbox.event.eventId,
+          errorClass: error instanceof Error ? error.name : 'unknown'
+        })
+      }
+    }
 
     await enqueueLeadJob({ type: 'rules.evaluate', payload: { lead_id: leadId } })
     const fresh = await loadLead(leadId)
     if (fresh) await notifyOnNewLead(fresh)
 
     return { ok: true, lead_id: leadId }
-  } catch (e: any) {
-    await logIngestionError('webhook' as any, rawBody, getRequestHeaders(event), e?.message ?? String(e))
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    await logIngestionError('webhook', rawBody, getRequestHeaders(event), message)
     return { ok: true }
   }
 })

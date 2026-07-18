@@ -763,6 +763,7 @@ export const ConversionDeliveryQueueMessageSchema = z.strictObject({
 })
 
 export type ClientMeasurementProfileCreate = z.infer<typeof ClientMeasurementProfileCreateSchema>
+export type CanonicalConsentDecision = z.infer<typeof CanonicalConsentDecisionSchema>
 export type ClientMeasurementProfilePatch = z.infer<typeof ClientMeasurementProfilePatchSchema>
 export type ClientMeasurementProfileState = z.infer<typeof ClientMeasurementProfileStateSchema>
 export type UpdateClientMeasurementProfile = z.infer<typeof UpdateClientMeasurementProfileSchema>

@@ -99,7 +99,7 @@ describe('measurement provider test service', () => {
       delivery: expect.objectContaining({
         attribution: expect.objectContaining({
           metaLeadId: '1234567890123456',
-          browserEventId: 'browser-event-1'
+          browserEventId: null
         })
       })
     }))
