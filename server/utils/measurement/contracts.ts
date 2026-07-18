@@ -673,6 +673,10 @@ export const MeasurementReadinessSummarySchema = z.strictObject({
   configVersion: z.number().int().positive(),
   status: MeasurementReadinessStatusSchema,
   liveEligible: z.boolean(),
+  approvals: z.strictObject({
+    privacy: z.boolean(),
+    live: z.boolean()
+  }),
   profile: z.strictObject({
     enabled: z.boolean(),
     environment: MeasurementEnvironmentSchema,

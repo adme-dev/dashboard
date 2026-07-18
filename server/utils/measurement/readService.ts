@@ -128,6 +128,10 @@ export function createMeasurementReadService(deps: MeasurementReadServiceDeps) {
         configVersion: evidence.configVersion,
         status: readinessStatus(evidence, blockers),
         liveEligible: blockers.length === 0,
+        approvals: {
+          privacy: evidence.privacyApproved,
+          live: evidence.liveApproved
+        },
         profile: evidence.profile,
         counts: evidence.counts,
         blockers,

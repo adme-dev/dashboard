@@ -37,6 +37,10 @@ export interface MeasurementReadinessSummary {
   configVersion: number
   status: MeasurementReadinessStatus
   liveEligible: boolean
+  approvals: {
+    privacy: boolean
+    live: boolean
+  }
   profile: {
     enabled: boolean
     environment: MeasurementEnvironment

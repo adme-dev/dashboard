@@ -79,6 +79,7 @@ describe('Measurement read contracts', () => {
       configVersion: 2,
       status: 'onboarding',
       liveEligible: false,
+      approvals: { privacy: false, live: false },
       profile: {
         enabled: false,
         environment: 'test',
@@ -105,5 +106,6 @@ describe('Measurement read contracts', () => {
 
     expect(result.status).toBe('onboarding')
     expect(result.liveEligible).toBe(false)
+    expect(result.approvals).toEqual({ privacy: false, live: false })
   })
 })
