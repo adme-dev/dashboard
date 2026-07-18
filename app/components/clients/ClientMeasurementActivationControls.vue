@@ -201,9 +201,11 @@ watch(
       />
       <UButton
         data-testid="open-live-activation"
-        label="Activate live delivery"
+        :label="canActivate ? 'Activate live delivery' : 'Activation blocked'"
         icon="i-lucide-power"
         size="sm"
+        :color="canActivate ? 'primary' : 'neutral'"
+        :variant="canActivate ? 'solid' : 'outline'"
         :disabled="!canActivate"
         @click="openCommand('activation')"
       />
