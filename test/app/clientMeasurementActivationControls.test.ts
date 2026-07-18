@@ -156,6 +156,8 @@ describe('ClientMeasurementActivationControls', () => {
 
     expect(test.host.querySelector<HTMLButtonElement>('[data-testid="open-live-activation"]')?.disabled)
       .toBe(true)
+    expect(test.host.querySelector<HTMLButtonElement>('[data-testid="open-live-activation"]')?.textContent)
+      .toContain('Activation blocked')
     expect(test.host.textContent).toContain('A different team member must record the other approval')
     test.app.unmount()
   })
