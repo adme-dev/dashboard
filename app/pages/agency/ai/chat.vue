@@ -1293,7 +1293,7 @@ function getRenderedMarkdown(content: string): string {
               </div>
             </Transition>
 
-            <VoiceDiscoveryGuide
+            <AiVoiceDiscoveryGuide
               v-if="showVoiceGuide"
               :permission="microphonePermission"
               :hands-free-available="handsFreeVoiceAvailable"

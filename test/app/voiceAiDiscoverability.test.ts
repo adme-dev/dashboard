@@ -11,7 +11,7 @@ describe('Voice AI dashboard discoverability', () => {
   })
 
   it('labels both voice actions and exposes readiness guidance', () => {
-    expect(chat).toContain('<VoiceDiscoveryGuide')
+    expect(chat).toContain('<AiVoiceDiscoveryGuide')
     expect(chat).toContain('Start Voice')
     expect(chat).toContain('Voice message')
     expect(chat).toContain('Voice ready')
