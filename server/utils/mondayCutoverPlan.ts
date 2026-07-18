@@ -45,7 +45,11 @@ export interface MondayCutoverClient {
 export interface MondayCutoverPlanInput {
   sourceBoard: MondayCutoverSourceBoard
   sourceRecords: MondayCutoverSourceRecord[]
-  targetBoard: { id: string, name: string }
+  targetBoard: {
+    id: string
+    name: string
+    groups?: Array<{ id: string, name: string }>
+  }
   targetTasks: MondayCutoverTargetTask[]
   clients: MondayCutoverClient[]
   isSourceTruncated: boolean
@@ -65,7 +69,11 @@ export const MondayCutoverResolutionsSchema = z.strictObject({
     sourceColumnId: z.string().trim().min(1).max(255),
     decision: z.enum(['import', 'exclude']),
     reason: ResolutionReasonSchema
-  })).max(200)
+  })).max(200),
+  placement: z.strictObject({
+    targetGroupId: z.string().uuid(),
+    reason: ResolutionReasonSchema
+  }).nullable().default(null)
 }).superRefine((value, context) => {
   const clientSourceIds = new Set<string>()
   for (const resolution of value.clients) {
@@ -120,7 +128,16 @@ export const MondayCutoverPlanResponseSchema = z.strictObject({
     rootTasks: z.number().int().nonnegative(),
     subtasks: z.number().int().nonnegative(),
     totalRecords: z.number().int().nonnegative(),
-    isTruncated: z.boolean()
+    isTruncated: z.boolean(),
+    groups: z.array(z.strictObject({
+      id: z.string().uuid(),
+      name: z.string().min(1).max(500)
+    })).max(100)
+  }),
+  placement: z.strictObject({
+    targetGroupId: z.string().uuid().nullable(),
+    targetGroupName: z.string().min(1).max(500).nullable(),
+    status: z.enum(['not_required', 'pending', 'applied', 'invalid'])
   }),
   columnMappings: z.array(z.strictObject({
     sourceColumnId: z.string().min(1).max(255),
@@ -182,6 +199,8 @@ export const MondayCutoverPlanResponseSchema = z.strictObject({
     isReadyForImport: z.boolean()
   })
 })
+
+export type MondayCutoverPlan = z.infer<typeof MondayCutoverPlanResponseSchema>
 
 function normalizeName(value: string): string {
   return value
@@ -309,7 +328,8 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
   const exceptions: Array<z.infer<typeof CutoverExceptionSchema>> = []
   const resolutions = MondayCutoverResolutionsSchema.parse(input.resolutions ?? {
     clients: [],
-    columns: []
+    columns: [],
+    placement: null
   })
   const columnResolutions = new Map(resolutions.columns.map(resolution => [resolution.sourceColumnId, resolution]))
   const sourceColumnIds = new Set(input.sourceBoard.columns.map(column => column.id))
@@ -551,6 +571,52 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
       statusName: target.statusName
     }))
 
+  const targetGroups = input.targetBoard.groups ?? []
+  const recordsToCreate = records.filter(record => record.action === 'create')
+  let placement: z.infer<typeof MondayCutoverPlanResponseSchema>['placement']
+  if (recordsToCreate.length === 0) {
+    placement = {
+      targetGroupId: null,
+      targetGroupName: null,
+      status: 'not_required'
+    }
+  } else if (!resolutions.placement) {
+    placement = {
+      targetGroupId: null,
+      targetGroupName: null,
+      status: 'pending'
+    }
+    exceptions.push({
+      code: 'TARGET_PLACEMENT_REQUIRED',
+      severity: 'blocking',
+      sourceId: null,
+      columnId: null,
+      message: 'Created Monday records require an explicit target group on the exact Zero board.'
+    })
+  } else {
+    const targetGroup = targetGroups.find(group => group.id === resolutions.placement?.targetGroupId)
+    if (!targetGroup) {
+      placement = {
+        targetGroupId: resolutions.placement.targetGroupId,
+        targetGroupName: null,
+        status: 'invalid'
+      }
+      exceptions.push({
+        code: 'TARGET_PLACEMENT_INVALID',
+        severity: 'blocking',
+        sourceId: null,
+        columnId: null,
+        message: 'The approved target group does not belong to the exact Zero target board.'
+      })
+    } else {
+      placement = {
+        targetGroupId: targetGroup.id,
+        targetGroupName: targetGroup.name,
+        status: 'applied'
+      }
+    }
+  }
+
   const topLevelItems = input.sourceRecords.filter(record => !record.parentSourceId).length
   const subitems = input.sourceRecords.length - topLevelItems
   const rootTasks = input.targetTasks.filter(task => !task.parentTaskId).length
@@ -576,8 +642,10 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
       rootTasks,
       subtasks: targetSubtasks,
       totalRecords: input.targetTasks.length,
-      isTruncated: Boolean(input.isTargetTruncated)
+      isTruncated: Boolean(input.isTargetTruncated),
+      groups: targetGroups
     },
+    placement,
     columnMappings,
     records,
     targetOnly,

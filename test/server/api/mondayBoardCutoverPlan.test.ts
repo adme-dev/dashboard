@@ -142,6 +142,10 @@ describe('GET /api/agency/monday/boards/:boardId/cutover-plan', () => {
           measurementProfileId: 'profile-alan'
         }
       ])
+      .mockResolvedValueOnce([{
+        id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+        name: 'P2 — Native rollout work cutover'
+      }])
   })
 
   it('requires owner/admin and returns a bounded redacted no-write cutover plan', async () => {
@@ -178,6 +182,37 @@ describe('GET /api/agency/monday/boards/:boardId/cutover-plan', () => {
     expect(JSON.stringify(result)).not.toContain('private@example.com')
     expect(JSON.stringify(result)).not.toContain('private-item')
     expect(JSON.stringify(result)).not.toContain('creator_id')
+  })
+
+  it('builds an execution snapshot containing only approved task-field text', async () => {
+    const { loadMondayCutoverExecutionSnapshot } = await import('~~/server/utils/mondayCutoverPlanLoader')
+
+    const result = await loadMondayCutoverExecutionSnapshot({
+      boardId: '18422459929',
+      targetBoardId: '86054ef6-6454-46fb-9002-1ba4d8d060b8',
+      resolutions: {
+        clients: [],
+        columns: [
+          { sourceColumnId: 'dealer', decision: 'exclude', reason: 'Client linkage comes from reviewed client resolutions.' },
+          { sourceColumnId: 'owner', decision: 'exclude', reason: 'Exclude owner values until identities are governed.' },
+          { sourceColumnId: 'notes', decision: 'import', reason: 'Notes were reviewed for operational context only.' }
+        ],
+        placement: {
+          targetGroupId: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+          reason: 'Place native client rollout work in the reviewed P2 group.'
+        }
+      }
+    })
+
+    expect(result.sourceRecords.find(record => record.id === '1001')?.columnTexts).toEqual({
+      notes: 'private-note-must-not-leak'
+    })
+    expect(result.sourceRecords.find(record => record.id === '1101')?.columnTexts).toEqual({
+      notes: 'subitem-secret'
+    })
+    expect(JSON.stringify(result.sourceRecords)).not.toContain('real-token-must-not-leak')
+    expect(JSON.stringify(result.sourceRecords)).not.toContain('personsAndTeams')
+    expect(JSON.stringify(result.sourceRecords)).not.toContain('private-person')
   })
 
   it('rejects invalid source and target identifiers before database or Monday access', async () => {
@@ -281,6 +316,10 @@ describe('GET /api/agency/monday/boards/:boardId/cutover-plan', () => {
         id: '436e159b-d053-4de2-ad0e-e589b938ced7',
         name: 'Alan Mance Motors',
         measurementProfileId: 'profile-alan'
+      }])
+      .mockResolvedValueOnce([{
+        id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+        name: 'P2 — Native rollout work cutover'
       }])
     body = {
       targetBoardId: '86054ef6-6454-46fb-9002-1ba4d8d060b8',

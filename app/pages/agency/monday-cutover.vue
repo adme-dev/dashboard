@@ -17,6 +17,11 @@ type ColumnResolution = {
   reason: string
 }
 
+type PlacementResolution = {
+  targetGroupId: string
+  reason: string
+}
+
 type CutoverArtifact = {
   id: string
   revision: number
@@ -24,6 +29,7 @@ type CutoverArtifact = {
   resolutions: {
     clients: ClientResolution[]
     columns: ColumnResolution[]
+    placement: PlacementResolution | null
   }
   approvalReason: string | null
   approvedAt: string | null
@@ -57,7 +63,18 @@ type CutoverResponse = {
   artifact: CutoverArtifact | null
   plan: {
     source: { boardId: string, boardName: string, totalRecords: number, isTruncated: boolean }
-    target: { boardId: string, boardName: string, totalRecords: number, isTruncated: boolean }
+    target: {
+      boardId: string
+      boardName: string
+      totalRecords: number
+      isTruncated: boolean
+      groups: Array<{ id: string, name: string }>
+    }
+    placement: {
+      targetGroupId: string | null
+      targetGroupName: string | null
+      status: 'not_required' | 'pending' | 'applied' | 'invalid'
+    }
     records: CutoverRecord[]
     columnMappings: ColumnMapping[]
     summary: {
@@ -98,6 +115,8 @@ const selectedClients = ref<Record<string, string>>({})
 const clientReasons = ref<Record<string, string>>({})
 const columnDecisions = ref<Record<string, 'import' | 'exclude' | undefined>>({})
 const columnReasons = ref<Record<string, string>>({})
+const selectedTargetGroupId = ref<string>()
+const placementReason = ref('')
 
 const isApproved = computed(() => response.value?.artifact?.state === 'approved')
 const clientReviewRecords = computed(() => (response.value?.plan.records ?? []).filter(record => (
@@ -113,12 +132,18 @@ const decisionItems = [
   { label: 'Import through governed mapping', value: 'import' },
   { label: 'Exclude from cutover', value: 'exclude' }
 ]
+const targetGroupItems = computed(() => (response.value?.plan.target.groups ?? []).map(group => ({
+  label: group.name,
+  value: group.id
+})))
 
 function resetDraftState(artifact: CutoverArtifact | null) {
   selectedClients.value = {}
   clientReasons.value = {}
   columnDecisions.value = {}
   columnReasons.value = {}
+  selectedTargetGroupId.value = artifact?.resolutions.placement?.targetGroupId
+  placementReason.value = artifact?.resolutions.placement?.reason ?? ''
 
   for (const resolution of artifact?.resolutions.clients ?? []) {
     selectedClients.value[resolution.sourceId] = resolution.clientId
@@ -192,7 +217,16 @@ function buildResolutions() {
     columnResolutions.push({ sourceColumnId: column.sourceColumnId, decision, reason })
   }
 
-  return { clients: clientResolutions, columns: columnResolutions }
+  let placement: PlacementResolution | null = null
+  if (selectedTargetGroupId.value) {
+    const reason = placementReason.value.trim()
+    if (reason.length < 10) {
+      throw new Error('Add a review reason for the target placement.')
+    }
+    placement = { targetGroupId: selectedTargetGroupId.value, reason }
+  }
+
+  return { clients: clientResolutions, columns: columnResolutions, placement }
 }
 
 async function saveDraft() {
@@ -342,6 +376,38 @@ watch([sourceBoardId, targetBoardId], load, { immediate: true })
             </div>
           </div>
         </div>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div>
+            <h2 class="font-semibold">
+              Target placement
+            </h2>
+            <p class="mt-1 text-sm text-gray-500">
+              Choose the exact Zero group for records created by this cutover. Monday's generic source group is not mapped automatically.
+            </p>
+          </div>
+        </template>
+        <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+          <USelect
+            v-model="selectedTargetGroupId"
+            :items="targetGroupItems"
+            value-key="value"
+            placeholder="Select governed Zero group"
+            :disabled="isApproved"
+          />
+          <UInput
+            v-model="placementReason"
+            placeholder="Why should imported work live in this group?"
+            :disabled="isApproved"
+          />
+        </div>
+        <p class="mt-3 text-xs text-gray-500">
+          Current evidence: {{ response.plan.placement.status }}<span v-if="response.plan.placement.targetGroupName">
+            · {{ response.plan.placement.targetGroupName }}
+          </span>
+        </p>
       </UCard>
 
       <UCard>

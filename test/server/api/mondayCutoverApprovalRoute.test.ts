@@ -53,7 +53,8 @@ const resolutions = {
     sourceColumnId: 'notes',
     decision: 'exclude' as const,
     reason: 'Exclude legacy notes after the governed privacy review.'
-  }]
+  }],
+  placement: null
 }
 const plan = {
   mode: 'dry_run',

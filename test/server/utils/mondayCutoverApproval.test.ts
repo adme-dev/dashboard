@@ -7,6 +7,7 @@ import {
 } from '~~/server/utils/mondayCutoverApproval'
 
 const targetBoardId = '86054ef6-6454-46fb-9002-1ba4d8d060b8'
+const targetGroupId = '90fa5900-e221-4ae6-b003-6f804ec3b8c6'
 const resolutions = {
   clients: [{
     sourceId: '1001',
@@ -17,7 +18,11 @@ const resolutions = {
     sourceColumnId: 'dealer',
     decision: 'import' as const,
     reason: 'Import through the reviewed client links.'
-  }]
+  }],
+  placement: {
+    targetGroupId,
+    reason: 'Place client rollout work in the governed native cutover group.'
+  }
 }
 
 describe('Monday cutover approval contract', () => {
@@ -56,6 +61,24 @@ describe('Monday cutover approval contract', () => {
       expectedRevision: null,
       resolutions,
       execute: true
+    }).success).toBe(false)
+  })
+
+  it('defaults legacy draft placement to null and validates governed placement', () => {
+    expect(MondayCutoverApprovalDraftSchema.parse({
+      targetBoardId,
+      expectedRevision: null,
+      resolutions: { clients: [], columns: [] }
+    }).resolutions.placement).toBeNull()
+
+    expect(MondayCutoverApprovalDraftSchema.safeParse({
+      targetBoardId,
+      expectedRevision: null,
+      resolutions: {
+        clients: [],
+        columns: [],
+        placement: { targetGroupId, reason: 'short' }
+      }
     }).success).toBe(false)
   })
 
