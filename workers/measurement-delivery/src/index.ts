@@ -10,6 +10,7 @@ import {
   refreshGoogleDataManagerAccessToken
 } from './providers'
 import { createMeasurementDeliveryRepository } from './repository'
+import { resolveMeasurementProviderCredential } from './credential'
 
 interface Env {
   HYPERDRIVE: { connectionString: string }
@@ -17,6 +18,7 @@ interface Env {
   GOOGLE_CLIENT_SECRET: string
   META_GRAPH_API_VERSION: string
   WORKER_ID_PREFIX: string
+  [key: string]: unknown
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -60,6 +62,10 @@ export default {
       deliverMeta: deliverMetaConversionEvent,
       deliverGoogle: deliverGoogleDataManagerEvent,
       refreshGoogleAccessToken: refreshGoogleDataManagerAccessToken,
+      resolveProviderCredential: credentialRef => resolveMeasurementProviderCredential(
+        env,
+        credentialRef
+      ),
       workerId: () => `${env.WORKER_ID_PREFIX}:${crypto.randomUUID()}`,
       now: () => new Date(),
       metaGraphApiVersion: env.META_GRAPH_API_VERSION,

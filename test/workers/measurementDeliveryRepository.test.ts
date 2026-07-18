@@ -27,6 +27,7 @@ function deliveryRow() {
     occurred_at: '2026-07-17T06:00:00.000Z',
     idempotency_key: 'v1:canonical-event-key',
     external_destination_id: '123456789012345',
+    credential_ref: 'MEASUREMENT_PROVIDER_META_BIG_GARAGE',
     account_id: '9876543210',
     access_token: 'meta-token',
     refresh_token: null,
@@ -74,6 +75,9 @@ describe('measurement delivery repository', () => {
       deliveryConfigCurrent: true,
       attribution: expect.objectContaining({ metaLeadId: '1234567890123456' })
     })
+    expect(result?.credentialRef).toBe('MEASUREMENT_PROVIDER_META_BIG_GARAGE')
+    expect(client.query.mock.calls[0]?.[0]).toContain('dest.credential_ref')
+    expect(client.query.mock.calls[0]?.[0]).not.toContain('sc.access_token')
     expect(result?.metaDeliveryMode).toBe('crm')
     expect(client.query.mock.calls[0]?.[1]).toEqual([CLIENT_ID, EVENT_ID, NOW.toISOString()])
     expect(client.query.mock.calls[0]?.[0]).toMatch(/d.status = 'claimed'[\s\S]*INTERVAL '5 minutes'/)

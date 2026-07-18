@@ -167,7 +167,7 @@ describe('agency Measurement destination endpoints', () => {
       reason: 'Rotate the destination credential reference',
       actor: { type: 'system', id: 'spoofed' },
       patch: {
-        credentialRef: 'cloudflare/measurement/meta/ferntree-v2',
+        credentialRef: 'MEASUREMENT_PROVIDER_META_FERNTREE_V2',
         capabilities: [{
           mode: 'meta_crm_capi',
           status: 'configured',

@@ -45,6 +45,7 @@ function context(
       metaDeliveryMode
     },
     credential: {
+      credentialRef: platform === 'meta' ? 'MEASUREMENT_PROVIDER_META_BIG_GARAGE' : null,
       accessToken: platform === 'meta' ? 'meta-token' : null,
       refreshToken: platform === 'google_data_manager' ? 'google-refresh' : null,
       scopes: platform === 'google_data_manager'
@@ -72,17 +73,26 @@ function setup(reserved = context('meta')) {
     redactedDiagnostic: null
   }))
   const refreshGoogleAccessToken = vi.fn(async () => 'google-access')
+  const resolveProviderCredential = vi.fn(async () => 'meta-dataset-token')
   const service = createMeasurementProviderTestService({
     repository,
     deliverMeta,
     deliverGoogle,
     refreshGoogleAccessToken,
+    resolveProviderCredential,
     graphApiVersion: 'v25.0',
     googleClientId: 'google-client',
     googleClientSecret: 'google-secret',
     now: () => new Date('2026-07-17T08:00:01.000Z')
   })
-  return { service, repository, deliverMeta, deliverGoogle, refreshGoogleAccessToken }
+  return {
+    service,
+    repository,
+    deliverMeta,
+    deliverGoogle,
+    refreshGoogleAccessToken,
+    resolveProviderCredential
+  }
 }
 
 describe('measurement provider test service', () => {
@@ -99,6 +109,7 @@ describe('measurement provider test service', () => {
     })
 
     expect(test.deliverMeta).toHaveBeenCalledWith(expect.objectContaining({
+      accessToken: 'meta-dataset-token',
       environment: 'test',
       testEventCode: 'TEST123456',
       delivery: expect.objectContaining({
@@ -115,6 +126,52 @@ describe('measurement provider test service', () => {
     }))
     expect(JSON.stringify(result)).not.toContain('TEST123456')
     expect(JSON.stringify(result)).not.toContain('1234567890123456')
+    expect(test.resolveProviderCredential).toHaveBeenCalledWith(
+      'MEASUREMENT_PROVIDER_META_BIG_GARAGE'
+    )
+  })
+
+  it('never substitutes a linked Meta OAuth token when the CAPI secret reference is absent', async () => {
+    const metaContext = context('meta')
+    metaContext.credential.credentialRef = null
+    metaContext.credential.accessToken = 'linked-facebook-oauth-token'
+    const test = setup(metaContext)
+
+    await test.service.run({
+      ...baseInput(),
+      mode: 'meta_test_events',
+      deliveryMode: 'crm',
+      testEventCode: 'TEST123456',
+      metaLeadId: '1234567890123456',
+      browserEventId: null
+    })
+
+    expect(test.resolveProviderCredential).not.toHaveBeenCalled()
+    expect(test.deliverMeta).not.toHaveBeenCalled()
+    expect(test.repository.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      errorClass: 'meta_capi_credential_ref_required'
+    }))
+  })
+
+  it('fails closed when the referenced Meta CAPI secret binding is unavailable', async () => {
+    const test = setup()
+    test.resolveProviderCredential.mockResolvedValueOnce(null)
+
+    await test.service.run({
+      ...baseInput(),
+      mode: 'meta_test_events',
+      deliveryMode: 'crm',
+      testEventCode: 'TEST123456',
+      metaLeadId: '1234567890123456',
+      browserEventId: null
+    })
+
+    expect(test.deliverMeta).not.toHaveBeenCalled()
+    expect(test.repository.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      errorClass: 'meta_capi_credential_unavailable'
+    }))
   })
 
   it('uses Google validate-only and accepts the expected empty provider request id', async () => {

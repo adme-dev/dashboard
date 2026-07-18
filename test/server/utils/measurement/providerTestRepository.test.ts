@@ -32,6 +32,7 @@ describe('measurement provider test repository', () => {
         destination_config_version: 3,
         platform: 'meta',
         external_destination_id: '573284833843027',
+        credential_ref: 'MEASUREMENT_PROVIDER_META_BIG_GARAGE',
         provider_event_name: 'QualifiedLead',
         account_id: '5717158431690024',
         access_token: 'meta-token',
@@ -56,12 +57,14 @@ describe('measurement provider test repository', () => {
       status: 'reserved',
       context: {
         delivery: { externalDestinationId: '573284833843027' },
-        credential: { accessToken: 'meta-token' }
+        credential: { credentialRef: 'MEASUREMENT_PROVIDER_META_BIG_GARAGE' }
       }
     })
 
     const contextSql = query.mock.calls[1]![0] as string
     expect(contextSql).toContain('sc.client_id = d.client_id')
+    expect(contextSql).toContain('d.credential_ref')
+    expect(contextSql).not.toContain('sc.access_token')
     expect(contextSql).toContain('d.client_id = $1')
     expect(contextSql).toContain('conversion_destination_capabilities')
     const insertSql = query.mock.calls[2]![0] as string

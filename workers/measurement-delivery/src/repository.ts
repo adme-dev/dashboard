@@ -36,8 +36,8 @@ interface DeliveryRow {
   occurred_at: Date | string
   idempotency_key: string
   external_destination_id: string
+  credential_ref: string | null
   account_id: string | null
-  access_token: string | null
   refresh_token: string | null
   scopes: unknown
   metadata: unknown
@@ -132,7 +132,7 @@ function mapClaim(
     operatingAccountId: accountId,
     loginAccountId: loginAccountId.replace(/-/g, ''),
     metaDeliveryMode,
-    accessToken: row.access_token,
+    credentialRef: row.credential_ref,
     refreshToken: row.refresh_token,
     connectionScopes: scopes,
     attribution: {
@@ -196,8 +196,8 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
                   browser.gbraid AS tracking_gbraid,
                   browser.wbraid AS tracking_wbraid,
                   dest.external_destination_id,
+                  dest.credential_ref,
                   sc.account_id,
-                  sc.access_token,
                   sc.refresh_token,
                   sc.scopes,
                   sc.metadata
