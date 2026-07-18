@@ -13,6 +13,7 @@ describe('Monday cutover approval UI contract', () => {
     expect(page).toContain('Approve mapping evidence')
     expect(page).toContain('Client links')
     expect(page).toContain('Column decisions')
+    expect(page).toContain('Target placement')
     expect(page).toContain('No import is executed')
   })
 

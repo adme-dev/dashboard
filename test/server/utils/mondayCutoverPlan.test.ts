@@ -26,7 +26,11 @@ describe('buildMondayCutoverPlan', () => {
         ]
       },
       sourceRecords: [],
-      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetBoard: {
+        id: '86054ef6-6454-46fb-9002-1ba4d8d060b8',
+        name: 'Meta CAPI Rollout',
+        groups: [{ id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6', name: 'P2 — Native rollout work cutover' }]
+      },
       targetTasks: [],
       clients: [],
       isSourceTruncated: false
@@ -109,7 +113,11 @@ describe('buildMondayCutoverPlan', () => {
           clientHint: null
         }
       ],
-      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetBoard: {
+        id: '86054ef6-6454-46fb-9002-1ba4d8d060b8',
+        name: 'Meta CAPI Rollout',
+        groups: [{ id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6', name: 'P2 — Native rollout work cutover' }]
+      },
       targetTasks: [
         {
           id: 'task-alan',
@@ -288,7 +296,11 @@ describe('buildMondayCutoverPlan', () => {
         clientHint: 'BGS',
         populatedColumnIds: ['dealer', 'owner', 'notes']
       }],
-      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetBoard: {
+        id: '86054ef6-6454-46fb-9002-1ba4d8d060b8',
+        name: 'Meta CAPI Rollout',
+        groups: [{ id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6', name: 'P2 — Native rollout work cutover' }]
+      },
       targetTasks: [],
       clients: [{
         id: '436e159b-d053-4de2-ad0e-e589b938ced7',
@@ -306,7 +318,11 @@ describe('buildMondayCutoverPlan', () => {
           { sourceColumnId: 'dealer', decision: 'import', reason: 'Use the reviewed client links.' },
           { sourceColumnId: 'owner', decision: 'exclude', reason: 'Exclude after explicit owner review.' },
           { sourceColumnId: 'notes', decision: 'exclude', reason: 'Exclude legacy notes after privacy review.' }
-        ]
+        ],
+        placement: {
+          targetGroupId: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+          reason: 'Place native client rollout work in the reviewed P2 group.'
+        }
       }
     })
 
@@ -383,7 +399,11 @@ describe('buildMondayCutoverPlan', () => {
         clientHint: null,
         populatedColumnIds: ['owner']
       }],
-      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetBoard: {
+        id: '86054ef6-6454-46fb-9002-1ba4d8d060b8',
+        name: 'Meta CAPI Rollout',
+        groups: [{ id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6', name: 'P2 — Native rollout work cutover' }]
+      },
       targetTasks: [],
       clients: [],
       isSourceTruncated: false,
@@ -428,7 +448,11 @@ describe('buildMondayCutoverPlan', () => {
         subitemCount: 0,
         clientHint: 'Pilot'
       }],
-      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetBoard: {
+        id: '86054ef6-6454-46fb-9002-1ba4d8d060b8',
+        name: 'Meta CAPI Rollout',
+        groups: [{ id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6', name: 'P2 — Native rollout work cutover' }]
+      },
       targetTasks: [],
       clients: [{
         id: '436e159b-d053-4de2-ad0e-e589b938ced7',
@@ -442,7 +466,11 @@ describe('buildMondayCutoverPlan', () => {
           clientId: '436e159b-d053-4de2-ad0e-e589b938ced7',
           reason: 'Explicitly map the reviewed pilot client.'
         }],
-        columns: []
+        columns: [],
+        placement: {
+          targetGroupId: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+          reason: 'Place native client rollout work in the reviewed P2 group.'
+        }
       }
     })
 
@@ -526,5 +554,80 @@ describe('buildMondayCutoverPlan', () => {
     ]))
     expect(plan.summary.isReadyForImport).toBe(false)
     expect(JSON.stringify(plan)).not.toContain('outside the reviewed')
+  })
+
+  it('requires an explicit in-board target group before created records are import-ready', () => {
+    const baseInput = {
+      sourceBoard: {
+        id: '18422459929',
+        name: 'Meta CAPI Rollout',
+        state: 'active' as const,
+        groups: [{ id: 'source-group', title: 'Group Title' }],
+        columns: []
+      },
+      sourceRecords: [{
+        id: '1001',
+        title: 'Big Garage Subaru',
+        state: 'active' as const,
+        createdAt: '2026-07-17T00:00:00Z',
+        updatedAt: '2026-07-18T00:00:00Z',
+        parentSourceId: null,
+        groupId: 'source-group',
+        groupTitle: 'Group Title',
+        subitemCount: 0,
+        clientHint: null
+      }],
+      targetBoard: {
+        id: '86054ef6-6454-46fb-9002-1ba4d8d060b8',
+        name: 'Meta CAPI Rollout',
+        groups: [{
+          id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+          name: 'P2 — Native rollout work cutover'
+        }]
+      },
+      targetTasks: [],
+      clients: [],
+      isSourceTruncated: false
+    }
+
+    const unresolved = buildMondayCutoverPlan(baseInput)
+    expect(unresolved.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'TARGET_PLACEMENT_REQUIRED', severity: 'blocking' })
+    ]))
+    expect(unresolved.summary.isReadyForImport).toBe(false)
+
+    const resolved = buildMondayCutoverPlan({
+      ...baseInput,
+      resolutions: {
+        clients: [],
+        columns: [],
+        placement: {
+          targetGroupId: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+          reason: 'Place native client rollout work in the reviewed P2 group.'
+        }
+      }
+    })
+    expect(resolved.target.groups).toEqual(baseInput.targetBoard.groups)
+    expect(resolved.placement).toEqual({
+      targetGroupId: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+      targetGroupName: 'P2 — Native rollout work cutover',
+      status: 'applied'
+    })
+    expect(resolved.summary.isReadyForImport).toBe(true)
+
+    const invalid = buildMondayCutoverPlan({
+      ...baseInput,
+      resolutions: {
+        clients: [],
+        columns: [],
+        placement: {
+          targetGroupId: '11111111-1111-4111-8111-111111111111',
+          reason: 'Attempt to place work outside the exact target board.'
+        }
+      }
+    })
+    expect(invalid.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'TARGET_PLACEMENT_INVALID', severity: 'blocking' })
+    ]))
   })
 })

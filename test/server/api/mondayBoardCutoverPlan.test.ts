@@ -142,6 +142,10 @@ describe('GET /api/agency/monday/boards/:boardId/cutover-plan', () => {
           measurementProfileId: 'profile-alan'
         }
       ])
+      .mockResolvedValueOnce([{
+        id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+        name: 'P2 — Native rollout work cutover'
+      }])
   })
 
   it('requires owner/admin and returns a bounded redacted no-write cutover plan', async () => {
@@ -281,6 +285,10 @@ describe('GET /api/agency/monday/boards/:boardId/cutover-plan', () => {
         id: '436e159b-d053-4de2-ad0e-e589b938ced7',
         name: 'Alan Mance Motors',
         measurementProfileId: 'profile-alan'
+      }])
+      .mockResolvedValueOnce([{
+        id: '90fa5900-e221-4ae6-b003-6f804ec3b8c6',
+        name: 'P2 — Native rollout work cutover'
       }])
     body = {
       targetBoardId: '86054ef6-6454-46fb-9002-1ba4d8d060b8',

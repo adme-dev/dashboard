@@ -156,7 +156,7 @@ export async function loadMondayCutoverPlan(input: {
     }
   }
 
-  const [targetTasks, clients] = await Promise.all([
+  const [targetTasks, clients, targetGroups] = await Promise.all([
     queryRows(
       `SELECT t.id,
               t.title,
@@ -191,6 +191,13 @@ export async function loadMondayCutoverPlan(input: {
         WHERE ac.is_active = TRUE
         ORDER BY ac.name
         LIMIT 2000`
+    ),
+    queryRows(
+      `SELECT id, name
+         FROM board_groups
+        WHERE department_id = $1::uuid
+        ORDER BY sort_order, created_at`,
+      [input.targetBoardId]
     )
   ])
 
@@ -205,7 +212,8 @@ export async function loadMondayCutoverPlan(input: {
     sourceRecords,
     targetBoard: {
       id: String(targetBoard.id),
-      name: String(targetBoard.name)
+      name: String(targetBoard.name),
+      groups: targetGroups
     },
     targetTasks: targetTasks.slice(0, MAX_TARGET_TASKS),
     clients,

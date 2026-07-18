@@ -26,7 +26,8 @@ const resolutions = {
     sourceColumnId: 'notes',
     decision: 'exclude' as const,
     reason: 'Exclude legacy notes after the governed privacy review.'
-  }]
+  }],
+  placement: null
 }
 
 function row(overrides: Record<string, unknown> = {}) {
