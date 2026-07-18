@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEventIdentity'
 
 const PortalCapabilityStatusSchema = z.enum([
   'not_configured',
@@ -37,6 +38,11 @@ export const PortalMeasurementHealthSchema = z.strictObject({
       lastEvidenceAt: z.string().datetime({ offset: true }).nullable()
     })
   }),
+  eventIdentity: z.array(z.strictObject({
+    canonicalEventName: z.string().min(1).max(100),
+    mode: z.enum(['browser_server_dedup', 'server_only']),
+    label: z.string().min(1).max(100)
+  })).max(20),
   destinations: z.array(z.strictObject({
     platform: z.enum(['meta', 'google_data_manager']),
     label: z.string().min(1).max(100),
@@ -89,7 +95,7 @@ interface PortalDestinationInput {
   healthStatus: CapabilityStatus
   lastSuccessAt: string | null
   capabilities: PortalCapabilityInput[]
-  mappings: Array<{ isActive: boolean }>
+  mappings: Array<{ isActive: boolean, canonicalEventName?: string }>
 }
 
 export interface PortalMeasurementAggregateRow {
@@ -184,6 +190,23 @@ function authorityLabel(authority: PortalProfileInput['outcomeAuthority']) {
   return 'Manual import'
 }
 
+function eventIdentity(destinations: PortalDestinationInput[]) {
+  const identities = destinations.flatMap(destination => destination.mappings
+    .filter(mapping => mapping.isActive && mapping.canonicalEventName)
+    .map(mapping => ({
+      canonicalEventName: mapping.canonicalEventName as string,
+      ...classifyMeasurementEventIdentity(
+        mapping.canonicalEventName as string,
+        destination.capabilities.map(capability => capability.mode)
+      )
+    })))
+  const unique = new Map(identities.map(identity => [
+    `${identity.canonicalEventName}:${identity.mode}`,
+    identity
+  ]))
+  return [...unique.values()].slice(0, 20)
+}
+
 export function buildPortalMeasurementHealth(input: {
   profile: PortalProfileInput
   readiness: PortalReadinessInput
@@ -244,6 +267,7 @@ export function buildPortalMeasurementHealth(input: {
       server: signalSummary(allCapabilities, SERVER_MODES),
       crm: signalSummary(allCapabilities, CRM_MODES)
     },
+    eventIdentity: eventIdentity(relevantDestinations),
     destinations: input.destinations.map(destination => ({
       platform: destination.platform,
       label: destination.platform === 'meta' ? 'Meta' : 'Google Data Manager',

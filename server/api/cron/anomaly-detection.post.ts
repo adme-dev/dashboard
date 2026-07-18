@@ -12,6 +12,7 @@
 
 import { defineEventHandler, getHeader, getQuery, createError } from 'h3'
 import { queryOne } from '~~/server/utils/db'
+import { resolveCronXeroAuth } from '~~/server/utils/xeroCronAuth'
 import { runDetectionForTenant } from '~~/server/utils/anomalyDetection/runForTenant'
 
 export default defineEventHandler(async (event) => {
@@ -34,19 +35,24 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const force = query.force === 'true' || query.force === '1'
 
-  // Resolve the connected Xero org
-  const conn = await queryOne<{ tenant_id: string; timezone: string }>(
-    `SELECT tenant_id, timezone FROM xero_org_connection ORDER BY connected_at DESC LIMIT 1`,
-  )
-  if (!conn) {
+  // Resolve the canonical non-legacy tenant while keeping the newest token row
+  // on the live refresh-token chain. Selecting the newest connection directly
+  // can return the legacy `__default__` credential row and mis-scope anomalies.
+  const auth = await resolveCronXeroAuth('anomaly-detection')
+  if (!auth) {
     return { ok: true, skipped: 'no Xero connection' }
   }
+  const tenantId = auth.tenantId
+  const conn = await queryOne<{ timezone: string }>(
+    `SELECT timezone FROM xero_org_connection WHERE tenant_id = $1 LIMIT 1`,
+    [tenantId]
+  )
 
   // Local-hour gate: only run once per day at 7am local time, unless force=true.
   // Using Intl.DateTimeFormat is the most reliable way to compute "what hour is it
   // RIGHT NOW in this timezone" in a Cloudflare Workers runtime (no luxon/date-fns-tz
   // dependency required).
-  const tz = conn.timezone || 'Australia/Sydney'
+  const tz = conn?.timezone || 'Australia/Sydney'
   let localHour: number
   try {
     localHour = Number(
@@ -58,16 +64,16 @@ export default defineEventHandler(async (event) => {
   }
 
   if (!force && localHour !== 7) {
-    return { ok: true, tenant_id: conn.tenant_id, timezone: tz, skipped: `local hour=${localHour}` }
+    return { ok: true, tenant_id: tenantId, timezone: tz, skipped: `local hour=${localHour}` }
   }
 
   // Run detection
   const start = Date.now()
-  const result = await runDetectionForTenant(conn.tenant_id, { event })
+  const result = await runDetectionForTenant(tenantId, { event })
   const durationMs = Date.now() - start
 
   console.log('[anomaly-cron]', {
-    tenant_id: conn.tenant_id,
+    tenant_id: tenantId,
     timezone: tz,
     localHour,
     forced: force,
@@ -77,7 +83,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     ok: true,
-    tenant_id: conn.tenant_id,
+    tenant_id: tenantId,
     timezone: tz,
     forced: force,
     durationMs,

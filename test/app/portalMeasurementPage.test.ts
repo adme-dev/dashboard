@@ -54,6 +54,11 @@ describe('portal Measurement page', () => {
         server: { status: 'configured', owners: ['external'], lastEvidenceAt: null },
         crm: { status: 'ready', owners: ['zero'], lastEvidenceAt: '2026-07-17T02:00:00.000Z' }
       },
+      eventIdentity: [{
+        canonicalEventName: 'lead_qualified',
+        mode: 'server_only',
+        label: 'Server-only lifecycle event'
+      }],
       destinations: [
         { platform: 'meta', label: 'Meta', status: 'ready', deliveryState: 'dormant', lastSuccessAt: '2026-07-17T01:30:00.000Z' },
         { platform: 'google_data_manager', label: 'Google Data Manager', status: 'configured', deliveryState: 'dormant', lastSuccessAt: null }
@@ -93,6 +98,9 @@ describe('portal Measurement page', () => {
       expect(host.textContent).toContain('CRM outcomes')
       expect(host.textContent).toContain('Healthy')
       expect(host.textContent).toContain('Managed by Zero')
+      expect(host.textContent).toContain('Event delivery identity')
+      expect(host.textContent).toContain('Qualified Lead')
+      expect(host.textContent).toContain('Server-only lifecycle event')
       expect(host.textContent).toContain('Zero CRM')
       expect(host.textContent).toContain('8 accepted')
       expect(host.textContent).toContain('2 rejected')

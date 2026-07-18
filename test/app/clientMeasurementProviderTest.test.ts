@@ -33,6 +33,7 @@ describe('ClientMeasurementProviderTest', () => {
     const destination = {
       id: '22222222-2222-4222-8222-222222222222',
       platform: 'meta' as const,
+      capabilities: [{ mode: 'meta_crm_capi' }],
       mappings: [{
         id: '77777777-7777-4777-8777-777777777777',
         canonicalEventName: 'lead_qualified',
@@ -58,7 +59,8 @@ describe('ClientMeasurementProviderTest', () => {
     try {
       input(host.querySelector('[data-testid="provider-test-code"]')!, 'TEST123456')
       input(host.querySelector('[data-testid="provider-test-meta-lead-id"]')!, '1234567890123456')
-      input(host.querySelector('[data-testid="provider-test-browser-event-id"]')!, 'browser-event-1')
+      expect(host.querySelector('[data-testid="provider-test-browser-event-id"]')).toBeNull()
+      expect(host.textContent).toContain('Server-only lifecycle event')
       input(host.querySelector('[data-testid="provider-test-reason"]')!, 'Approved controlled pilot test')
       const confirmation = host.querySelector<HTMLInputElement>('[data-testid="provider-test-confirmed"]')!
       confirmation.checked = true
@@ -78,7 +80,7 @@ describe('ClientMeasurementProviderTest', () => {
             canonicalEventName: 'lead_qualified',
             testEventCode: 'TEST123456',
             metaLeadId: '1234567890123456',
-            browserEventId: 'browser-event-1',
+            browserEventId: null,
             confirmed: true,
             reason: 'Approved controlled pilot test'
           })

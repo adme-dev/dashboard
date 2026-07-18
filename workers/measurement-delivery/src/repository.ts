@@ -42,6 +42,14 @@ interface DeliveryRow {
   scopes: unknown
   metadata: unknown
   attribution: unknown
+  capability_modes: unknown
+  tracking_fbc: string | null
+  tracking_fbp: string | null
+  tracking_page_url: string | null
+  tracking_ua: string | null
+  tracking_gclid: string | null
+  tracking_gbraid: string | null
+  tracking_wbraid: string | null
 }
 
 function iso(value: Date | string): string {
@@ -54,6 +62,18 @@ function record(value: unknown): Record<string, unknown> {
 
 function optionalString(value: unknown, max = 512): string | null {
   return typeof value === 'string' && value.length > 0 ? value.slice(0, max) : null
+}
+
+function safeEventSourceUrl(value: unknown): string | null {
+  const candidate = optionalString(value, 2048)
+  if (!candidate) return null
+  try {
+    const url = new URL(candidate)
+    if (!['http:', 'https:'].includes(url.protocol)) return null
+    return `${url.origin}${url.pathname}`.slice(0, 2048)
+  } catch {
+    return null
+  }
 }
 
 function mapClaim(
@@ -70,6 +90,15 @@ function mapClaim(
   const scopes = Array.isArray(row.scopes)
     ? row.scopes.filter((scope): scope is string => typeof scope === 'string')
     : []
+  const capabilityModes = Array.isArray(row.capability_modes)
+    ? row.capability_modes.filter((mode): mode is string => typeof mode === 'string')
+    : []
+  const browserEventId = optionalString(attribution.browserEventId, 128)
+  const metaDeliveryMode = row.platform === 'meta'
+    && Boolean(browserEventId)
+    && capabilityModes.includes('meta_web_capi')
+    ? 'web'
+    : 'crm'
 
   return {
     clientId,
@@ -94,15 +123,20 @@ function mapClaim(
     externalDestinationId: row.external_destination_id,
     operatingAccountId: accountId,
     loginAccountId: loginAccountId.replace(/-/g, ''),
+    metaDeliveryMode,
     accessToken: row.access_token,
     refreshToken: row.refresh_token,
     connectionScopes: scopes,
     attribution: {
-      browserEventId: optionalString(attribution.browserEventId, 128),
+      browserEventId,
       metaLeadId: optionalString(attribution.metaLeadId, 16),
-      gclid: optionalString(attribution.gclid),
-      gbraid: optionalString(attribution.gbraid),
-      wbraid: optionalString(attribution.wbraid)
+      gclid: optionalString(attribution.gclid) ?? optionalString(row.tracking_gclid),
+      gbraid: optionalString(attribution.gbraid) ?? optionalString(row.tracking_gbraid),
+      wbraid: optionalString(attribution.wbraid) ?? optionalString(row.tracking_wbraid),
+      fbc: optionalString(row.tracking_fbc),
+      fbp: optionalString(row.tracking_fbp),
+      eventSourceUrl: safeEventSourceUrl(row.tracking_page_url),
+      clientUserAgent: optionalString(row.tracking_ua, 1024)
     }
   }
 }
@@ -145,6 +179,14 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
                   e.occurred_at,
                   e.idempotency_key,
                   e.attribution,
+                  caps.capability_modes,
+                  browser.fbc AS tracking_fbc,
+                  browser.fbp AS tracking_fbp,
+                  browser.page_url AS tracking_page_url,
+                  browser.ua AS tracking_ua,
+                  browser.gclid AS tracking_gclid,
+                  browser.gbraid AS tracking_gbraid,
+                  browser.wbraid AS tracking_wbraid,
                   dest.external_destination_id,
                   sc.account_id,
                   sc.access_token,
@@ -166,6 +208,22 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
               AND m.destination_id = d.destination_id
               AND m.canonical_event_name = e.event_name
               AND m.is_active = TRUE
+             LEFT JOIN LATERAL (
+               SELECT ARRAY_AGG(c.mode ORDER BY c.mode) AS capability_modes
+                 FROM conversion_destination_capabilities c
+                WHERE c.client_id = dest.client_id
+                  AND c.destination_id = dest.id
+                  AND c.status IN ('ready', 'degraded')
+             ) caps ON TRUE
+             LEFT JOIN LATERAL (
+               SELECT te.fbc, te.fbp, te.page_url, te.ua,
+                      te.gclid, te.gbraid, te.wbraid
+                 FROM tracking_events te
+                WHERE te.client_id = e.client_id
+                  AND te.event_id = e.attribution->>'browserEventId'
+                ORDER BY te.occurred_at DESC, te.id DESC
+                LIMIT 1
+             ) browser ON TRUE
              LEFT JOIN social_connections sc
                ON sc.client_id = dest.client_id
               AND sc.id = dest.social_connection_id

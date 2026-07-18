@@ -7,12 +7,17 @@ export interface MeasurementProviderDelivery {
   externalDestinationId: string
   operatingAccountId: string
   loginAccountId: string
+  metaDeliveryMode: 'crm' | 'web'
   attribution: {
     browserEventId: string | null
     metaLeadId: string | null
     gclid: string | null
     gbraid: string | null
     wbraid: string | null
+    fbc: string | null
+    fbp: string | null
+    eventSourceUrl: string | null
+    clientUserAgent: string | null
   }
 }
 
@@ -108,12 +113,27 @@ export async function deliverMetaConversionEvent(
       redactedDiagnostic: 'Meta Test Events code is not valid'
     }
   }
-  if (!delivery.attribution.metaLeadId) {
+  if (delivery.metaDeliveryMode === 'crm' && !delivery.attribution.metaLeadId) {
     return {
       outcome: 'permanent_failure',
       providerRequestId: null,
       errorClass: 'missing_meta_match_key',
       redactedDiagnostic: 'Meta delivery requires a Meta lead ID'
+    }
+  }
+  if (
+    delivery.metaDeliveryMode === 'web'
+    && (
+      !delivery.attribution.browserEventId
+      || (!delivery.attribution.fbc && !delivery.attribution.fbp)
+      || !delivery.attribution.eventSourceUrl
+    )
+  ) {
+    return {
+      outcome: 'retryable',
+      providerRequestId: null,
+      errorClass: 'meta_web_context_unavailable',
+      redactedDiagnostic: 'Meta Web CAPI browser context is not available yet'
     }
   }
   if (!/^v\d+\.\d+$/.test(input.graphApiVersion)) {
@@ -135,6 +155,16 @@ export async function deliverMetaConversionEvent(
     }
   }
 
+  const isWeb = delivery.metaDeliveryMode === 'web'
+  const userData = isWeb
+    ? {
+        ...(delivery.attribution.fbc ? { fbc: delivery.attribution.fbc } : {}),
+        ...(delivery.attribution.fbp ? { fbp: delivery.attribution.fbp } : {}),
+        ...(delivery.attribution.clientUserAgent
+          ? { client_user_agent: delivery.attribution.clientUserAgent }
+          : {})
+      }
+    : { lead_id: delivery.attribution.metaLeadId }
   const response = await input.fetch(
     `https://graph.facebook.com/${input.graphApiVersion}/${encodeURIComponent(delivery.externalDestinationId)}/events`,
     {
@@ -144,9 +174,10 @@ export async function deliverMetaConversionEvent(
         data: [{
           event_name: delivery.providerEventName,
           event_time: Math.floor(occurredAt.getTime() / 1000),
-          event_id: delivery.attribution.browserEventId ?? delivery.eventId,
-          action_source: 'other',
-          user_data: { lead_id: delivery.attribution.metaLeadId }
+          event_id: isWeb ? delivery.attribution.browserEventId : delivery.eventId,
+          action_source: isWeb ? 'website' : 'other',
+          ...(isWeb ? { event_source_url: delivery.attribution.eventSourceUrl } : {}),
+          user_data: userData
         }],
         ...(input.testEventCode ? { test_event_code: input.testEventCode } : {})
       })
@@ -178,6 +209,14 @@ export async function deliverGoogleDataManagerEvent(
         ? { wbraid: delivery.attribution.wbraid }
         : null
   if (!adIdentifiers) {
+    if (delivery.attribution.browserEventId) {
+      return {
+        outcome: 'retryable',
+        providerRequestId: null,
+        errorClass: 'google_browser_context_unavailable',
+        redactedDiagnostic: 'Google browser match context is not available yet'
+      }
+    }
     return {
       outcome: 'permanent_failure',
       providerRequestId: null,
@@ -205,7 +244,11 @@ export async function deliverGoogleDataManagerEvent(
       events: [{
         adIdentifiers,
         eventTimestamp: delivery.occurredAt,
-        transactionId: delivery.idempotencyKey,
+        // Google Data Manager uses transactionId to deduplicate a tag event and
+        // an additional API source. Browser-paired events therefore reuse the
+        // browser ID; server-only lifecycle events keep the canonical key.
+        // Source: https://developers.google.com/data-manager/api/devguides/events/send-events
+        transactionId: delivery.attribution.browserEventId ?? delivery.idempotencyKey,
         eventSource: 'WEB'
       }],
       validateOnly: input.validateOnly ?? false

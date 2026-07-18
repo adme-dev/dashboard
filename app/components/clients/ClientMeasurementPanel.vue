@@ -9,6 +9,7 @@ import type {
   MeasurementReadinessSummary,
   PaginatedMeasurementResponse
 } from '~/types/measurement'
+import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEventIdentity'
 
 const props = defineProps<{
   clientId: string
@@ -112,6 +113,16 @@ function credentialSourceLabel(destination: MeasurementDestination) {
   if (destination.credentialConfigured) return 'Credential reference configured'
   if (destination.socialConnectionId) return 'Connected account linked'
   return 'No credential source configured'
+}
+
+function mappingIdentityLabel(
+  destination: MeasurementDestination,
+  canonicalEventName: string
+) {
+  return classifyMeasurementEventIdentity(
+    canonicalEventName,
+    destination.capabilities.map(capability => capability.mode)
+  ).label
 }
 
 function measurementErrorMessage(error: unknown) {
@@ -461,6 +472,7 @@ void refreshMeasurement()
                 >
                   {{ mapping.canonicalEventName }} → {{ mapping.providerEventName }}
                   <span class="ml-1 text-muted">{{ mapping.isActive ? 'Active' : 'Inactive' }}</span>
+                  <span class="ml-1 text-muted">· {{ mappingIdentityLabel(destination, mapping.canonicalEventName) }}</span>
                 </span>
               </div>
               <p v-else class="mt-2 text-sm text-muted">

@@ -1,5 +1,5 @@
 // server/api/ai/anomalies/[id].get.ts
-import { defineEventHandler, getRouterParam, createError } from 'h3'
+import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getSelectedTenant } from '~~/server/utils/session'
@@ -26,7 +26,12 @@ export default defineEventHandler(async (event) => {
     `SELECT * FROM anomalies WHERE id = $1 AND tenant_id = $2`,
     [id, tenantId],
   )
-  if (!row) throw createError({ statusCode: 404, statusMessage: 'Anomaly not found' })
+  if (!row) {
+    if (getQuery(event).missing === 'empty') {
+      return { anomaly: null, events: [] }
+    }
+    throw createError({ statusCode: 404, statusMessage: 'Anomaly not found' })
+  }
 
   const events = await queryRows<AnomalyEventRow>(
     `SELECT id, event, user_id, metadata, created_at FROM anomaly_events

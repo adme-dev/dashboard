@@ -14,17 +14,22 @@ const baseDelivery = {
   externalDestinationId: '123456789012345',
   operatingAccountId: '9876543210',
   loginAccountId: '9876543210',
+  metaDeliveryMode: 'crm' as const,
   attribution: {
-    browserEventId: 'browser-event-1',
+    browserEventId: null,
     metaLeadId: '123456789012345',
     gclid: 'gclid-1',
     gbraid: null,
-    wbraid: null
+    wbraid: null,
+    fbc: null,
+    fbp: null,
+    eventSourceUrl: null,
+    clientUserAgent: null
   }
 }
 
 describe('measurement delivery provider adapters', () => {
-  it('sends a Meta CRM event with lead matching and browser-compatible deduplication', async () => {
+  it('sends a server-only Meta CRM event with lead matching and its canonical server event ID', async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({
       events_received: 1,
       fbtrace_id: 'meta-trace-1'
@@ -50,9 +55,53 @@ describe('measurement delivery provider adapters', () => {
       data: [{
         event_name: 'QualifiedLead',
         event_time: 1784268000,
-        event_id: 'browser-event-1',
+        event_id: '11111111-1111-4111-8111-111111111111',
         action_source: 'other',
         user_data: { lead_id: '123456789012345' }
+      }]
+    })
+  })
+
+  it('sends a Meta Web CAPI lead with the same browser event ID and browser match context', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      events_received: 1,
+      fbtrace_id: 'meta-web-trace-1'
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    await expect(deliverMetaConversionEvent({
+      delivery: {
+        ...baseDelivery,
+        eventName: 'lead_created',
+        providerEventName: 'Lead',
+        metaDeliveryMode: 'web',
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          metaLeadId: null,
+          fbc: 'fb.1.123.click',
+          fbp: 'fb.1.123.browser',
+          eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
+          clientUserAgent: 'Pilot Browser'
+        }
+      },
+      accessToken: 'meta-access-token',
+      graphApiVersion: 'v25.0',
+      fetch
+    })).resolves.toMatchObject({ outcome: 'accepted' })
+
+    const [, request] = fetch.mock.calls[0]!
+    expect(JSON.parse(request.body as string)).toEqual({
+      data: [{
+        event_name: 'Lead',
+        event_time: 1784268000,
+        event_id: 'browser-event-1',
+        action_source: 'website',
+        event_source_url: 'https://www.biggaragesubaru.com.au/enquire',
+        user_data: {
+          fbc: 'fb.1.123.click',
+          fbp: 'fb.1.123.browser',
+          client_user_agent: 'Pilot Browser'
+        }
       }]
     })
   })
@@ -164,6 +213,50 @@ describe('measurement delivery provider adapters', () => {
       }],
       validateOnly: false
     })
+  })
+
+  it('reuses the browser event ID as Google transactionId for a paired web conversion', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ requestId: 'google-request-web' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }))
+
+    await deliverGoogleDataManagerEvent({
+      delivery: {
+        ...baseDelivery,
+        eventName: 'lead_created',
+        attribution: { ...baseDelivery.attribution, browserEventId: 'browser-event-1' }
+      },
+      accessToken: 'google-access-token',
+      fetch
+    })
+
+    const [, request] = fetch.mock.calls[0]!
+    expect(JSON.parse(request.body as string).events[0].transactionId).toBe('browser-event-1')
+  })
+
+  it('retries a browser-paired Google event while its tracking match context is still arriving', async () => {
+    const fetch = vi.fn()
+
+    await expect(deliverGoogleDataManagerEvent({
+      delivery: {
+        ...baseDelivery,
+        eventName: 'lead_created',
+        attribution: {
+          ...baseDelivery.attribution,
+          browserEventId: 'browser-event-1',
+          gclid: null,
+          gbraid: null,
+          wbraid: null
+        }
+      },
+      accessToken: 'google-access-token',
+      fetch
+    })).resolves.toMatchObject({
+      outcome: 'retryable',
+      errorClass: 'google_browser_context_unavailable'
+    })
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('validates a Google pilot event without executing the conversion', async () => {

@@ -17,7 +17,7 @@ const acting = ref(false)
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string, body?: unknown }
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
 ) => Promise<T>
 
 async function load() {
@@ -27,7 +27,10 @@ async function load() {
   if (!e) return
   pending.value = true
   try {
-    const res: any = await apiFetch(e.apiPath)
+    const res: any = await apiFetch(
+      e.apiPath,
+      e.kind === 'anomaly' ? { query: { missing: 'empty' } } : undefined
+    )
     // The anomaly endpoint nests the record under `.anomaly`; tasks/briefs return it directly.
     item.value = e.kind === 'anomaly' ? (res?.anomaly ?? null) : res
     if (!item.value) failed.value = true

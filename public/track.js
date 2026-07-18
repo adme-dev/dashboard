@@ -40,6 +40,7 @@
   var DATALAYER_EVENTS = {
     page_view: 'page_view',
     lead: 'generate_lead',
+    generate_lead: 'generate_lead',
     form_submit: 'generate_lead',
     test_drive: 'test_drive_booking',
     purchase: 'purchase',
@@ -168,6 +169,26 @@
       return crypto.randomUUID()
     }
     return Date.now() + '-' + Math.random().toString(36).substring(2, 11)
+  }
+
+  function resolveEventId(options) {
+    var supplied = options && typeof options.eventId === 'string'
+      ? options.eventId.trim()
+      : ''
+    return supplied && supplied.length <= 128 ? supplied : generateEventId()
+  }
+
+  // Use the site's already-installed GTM container without fetching Zero's
+  // GTM config or injecting another container script.
+  function enableExistingDataLayerBridge() {
+    _gtmConfig = { gtm: { enabled: true } }
+    _gtmReady = true
+    window.dataLayer = window.dataLayer || []
+
+    for (var i = 0; i < _pendingDataLayerPushes.length; i++) {
+      window.dataLayer.push(_pendingDataLayerPushes[i])
+    }
+    _pendingDataLayerPushes = []
   }
 
   // Push qualifying events to dataLayer for GTM/sGTM
@@ -420,7 +441,7 @@
   }
 
   // Send event to server
-  function track(eventName, eventData) {
+  function track(eventName, eventData, options) {
     var clientId = getClientId()
     var sessionId = getSessionId()
     var utmParams = getUtmParams()
@@ -463,7 +484,7 @@
 
     // Generate once and reuse across the browser data layer and server batch.
     // Meta deduplicates only when browser eventID and server event_id match.
-    var eventId = generateEventId()
+    var eventId = resolveEventId(options)
 
     // Reshape the flat payload into the Slice-1 batch shape the public collect
     // endpoint expects: { events: [{ event_id, anon_id, session_id, occurred_at,
@@ -521,6 +542,7 @@
 
     // Push to dataLayer for sGTM (if GTM is enabled and event qualifies)
     pushToDataLayer(eventName, eventData, eventId)
+    return eventId
   }
 
   // Detect vehicle context from page URL and structured data
@@ -1040,7 +1062,9 @@
     // GTM auto-injection bridge is OFF by default in Slice 1 (we do not serve
     // /api/tracking/config; dealers install this tag VIA GTM, not vice-versa).
     // Opt in with init({ gtmBridge: true }) only if a config endpoint exists.
-    if (config.gtmBridge && _scriptOrigin) {
+    if (config.dataLayerBridge) {
+      enableExistingDataLayerBridge()
+    } else if (config.gtmBridge && _scriptOrigin) {
       fetchGtmConfig(_scriptOrigin, function (configData) {
         injectGtmScript(configData, _scriptOrigin)
       })
@@ -1149,6 +1173,7 @@
   window.xf = {
     init: init,
     track: track,
+    createEventId: generateEventId,
     destroy: destroy,
     linkSession: linkSession,
     getClientId: getClientId,

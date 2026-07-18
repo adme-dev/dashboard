@@ -100,7 +100,7 @@ describe('opportunity stage transition service', () => {
       sourceEntityId: OPPORTUNITY_ID,
       sourceEventId: `crm-stage-history:${HISTORY_ID}`,
       attribution: {
-        browserEventId: 'browser-event-1',
+        browserEventId: null,
         metaLeadId: '123456789012345',
         gclid: 'gclid-1',
         gbraid: null,

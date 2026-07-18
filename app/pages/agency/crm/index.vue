@@ -37,7 +37,7 @@ const verticalsData = ref<{ all: CrmVertical[], enabled: string[] }>({ all: [], 
 
 async function refreshVerticals() {
   verticalsData.value = await apiFetch<{ all: CrmVertical[], enabled: string[] }>('/api/crm/verticals', {
-    query: { client_id: clientId.value ?? '' },
+    query: clientId.value ? { client_id: clientId.value } : undefined
   }).catch(() => ({ all: [], enabled: ['generic'] }))
 }
 

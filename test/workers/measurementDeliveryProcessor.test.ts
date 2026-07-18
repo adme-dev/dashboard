@@ -30,6 +30,7 @@ function claim(overrides: Record<string, unknown> = {}) {
     externalDestinationId: '123456789012345',
     operatingAccountId: '9876543210',
     loginAccountId: '9876543210',
+    metaDeliveryMode: 'crm' as const,
     accessToken: 'provider-token',
     refreshToken: null,
     connectionScopes: ['ads_management'],
@@ -38,7 +39,11 @@ function claim(overrides: Record<string, unknown> = {}) {
       metaLeadId: '123456789012345',
       gclid: null,
       gbraid: null,
-      wbraid: null
+      wbraid: null,
+      fbc: null,
+      fbp: null,
+      eventSourceUrl: null,
+      clientUserAgent: null
     },
     ...overrides
   }
