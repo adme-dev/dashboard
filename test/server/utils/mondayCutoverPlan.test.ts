@@ -261,4 +261,270 @@ describe('buildMondayCutoverPlan', () => {
     ]))
     expect(plan.summary.isReadyForImport).toBe(false)
   })
+
+  it('applies explicit client and column resolutions without exposing source values', () => {
+    const plan = buildMondayCutoverPlan({
+      sourceBoard: {
+        id: '18422459929',
+        name: 'Meta CAPI Rollout',
+        state: 'active',
+        groups: [{ id: 'topics', title: 'Rollout' }],
+        columns: [
+          { id: 'dealer', title: 'Dealer Group', type: 'dropdown' },
+          { id: 'owner', title: 'Owner', type: 'people' },
+          { id: 'notes', title: 'Notes', type: 'long_text' }
+        ]
+      },
+      sourceRecords: [{
+        id: '1001',
+        title: 'Big Garage Subaru',
+        state: 'active',
+        createdAt: '2026-07-17T00:00:00Z',
+        updatedAt: '2026-07-18T00:00:00Z',
+        parentSourceId: null,
+        groupId: 'topics',
+        groupTitle: 'Rollout',
+        subitemCount: 0,
+        clientHint: 'BGS',
+        populatedColumnIds: ['dealer', 'owner', 'notes']
+      }],
+      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetTasks: [],
+      clients: [{
+        id: '436e159b-d053-4de2-ad0e-e589b938ced7',
+        name: 'Big Garage Subaru',
+        measurementProfileId: 'profile-big-garage'
+      }],
+      isSourceTruncated: false,
+      resolutions: {
+        clients: [{
+          sourceId: '1001',
+          clientId: '436e159b-d053-4de2-ad0e-e589b938ced7',
+          reason: 'Approved against the canonical Big Garage client profile.'
+        }],
+        columns: [
+          { sourceColumnId: 'dealer', decision: 'import', reason: 'Use the reviewed client links.' },
+          { sourceColumnId: 'owner', decision: 'exclude', reason: 'Exclude after explicit owner review.' },
+          { sourceColumnId: 'notes', decision: 'exclude', reason: 'Exclude legacy notes after privacy review.' }
+        ]
+      }
+    })
+
+    expect(plan.records[0]?.clientLink).toEqual({
+      status: 'resolved',
+      clientId: '436e159b-d053-4de2-ad0e-e589b938ced7',
+      clientName: 'Big Garage Subaru',
+      measurementProfileId: 'profile-big-garage',
+      candidates: []
+    })
+    expect(plan.columnMappings).toEqual([
+      expect.objectContaining({
+        sourceColumnId: 'dealer',
+        action: 'import',
+        populatedRecords: 1,
+        resolutionStatus: 'applied',
+        resolutionDecision: 'import'
+      }),
+      expect.objectContaining({
+        sourceColumnId: 'owner',
+        action: 'exclude',
+        populatedRecords: 1,
+        resolutionStatus: 'applied',
+        resolutionDecision: 'exclude'
+      }),
+      expect.objectContaining({
+        sourceColumnId: 'notes',
+        action: 'exclude',
+        populatedRecords: 1,
+        resolutionStatus: 'applied',
+        resolutionDecision: 'exclude'
+      })
+    ])
+    expect(plan.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'POPULATED_COLUMN_EXCLUDED',
+        columnId: 'owner',
+        severity: 'warning'
+      }),
+      expect.objectContaining({
+        code: 'POPULATED_COLUMN_EXCLUDED',
+        columnId: 'notes',
+        severity: 'warning'
+      })
+    ]))
+    expect(plan.summary).toEqual(expect.objectContaining({
+      blockingExceptions: 0,
+      warningExceptions: 2,
+      isReadyForImport: true
+    }))
+    expect(JSON.stringify(plan)).not.toContain('Approved against the canonical')
+    expect(JSON.stringify(plan)).not.toContain('privacy review')
+  })
+
+  it('keeps mapped-value column imports blocked until their mapping artifact exists', () => {
+    const plan = buildMondayCutoverPlan({
+      sourceBoard: {
+        id: '18422459929',
+        name: 'Meta CAPI Rollout',
+        state: 'active',
+        groups: [],
+        columns: [{ id: 'owner', title: 'Owner', type: 'people' }]
+      },
+      sourceRecords: [{
+        id: '1001',
+        title: 'Big Garage Subaru',
+        state: 'active',
+        createdAt: '2026-07-17T00:00:00Z',
+        updatedAt: '2026-07-18T00:00:00Z',
+        parentSourceId: null,
+        groupId: null,
+        groupTitle: null,
+        subitemCount: 0,
+        clientHint: null,
+        populatedColumnIds: ['owner']
+      }],
+      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetTasks: [],
+      clients: [],
+      isSourceTruncated: false,
+      resolutions: {
+        clients: [],
+        columns: [{
+          sourceColumnId: 'owner',
+          decision: 'import',
+          reason: 'Preserve owners after mapping identities.'
+        }]
+      }
+    })
+
+    expect(plan.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'COLUMN_VALUE_MAPPING_REQUIRED',
+        columnId: 'owner',
+        severity: 'blocking'
+      })
+    ]))
+    expect(plan.summary.isReadyForImport).toBe(false)
+  })
+
+  it('warns when an explicitly resolved client lacks a Measurement profile', () => {
+    const plan = buildMondayCutoverPlan({
+      sourceBoard: {
+        id: '18422459929',
+        name: 'Meta CAPI Rollout',
+        state: 'active',
+        groups: [],
+        columns: []
+      },
+      sourceRecords: [{
+        id: '1001',
+        title: 'Pilot client',
+        state: 'active',
+        createdAt: '2026-07-17T00:00:00Z',
+        updatedAt: '2026-07-18T00:00:00Z',
+        parentSourceId: null,
+        groupId: null,
+        groupTitle: null,
+        subitemCount: 0,
+        clientHint: 'Pilot'
+      }],
+      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetTasks: [],
+      clients: [{
+        id: '436e159b-d053-4de2-ad0e-e589b938ced7',
+        name: 'Pilot client',
+        measurementProfileId: null
+      }],
+      isSourceTruncated: false,
+      resolutions: {
+        clients: [{
+          sourceId: '1001',
+          clientId: '436e159b-d053-4de2-ad0e-e589b938ced7',
+          reason: 'Explicitly map the reviewed pilot client.'
+        }],
+        columns: []
+      }
+    })
+
+    expect(plan.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'MEASUREMENT_PROFILE_LINK_PENDING',
+        sourceId: '1001',
+        severity: 'warning'
+      })
+    ]))
+    expect(plan.summary).toEqual(expect.objectContaining({
+      warningExceptions: 1,
+      isReadyForImport: true
+    }))
+  })
+
+  it('fails closed for duplicate or out-of-scope resolutions', () => {
+    const baseInput = {
+      sourceBoard: {
+        id: '18422459929',
+        name: 'Meta CAPI Rollout',
+        state: 'active' as const,
+        groups: [],
+        columns: [{ id: 'dealer', title: 'Dealer Group', type: 'dropdown' }]
+      },
+      sourceRecords: [{
+        id: '1001',
+        title: 'Big Garage Subaru',
+        state: 'active' as const,
+        createdAt: '2026-07-17T00:00:00Z',
+        updatedAt: '2026-07-18T00:00:00Z',
+        parentSourceId: null,
+        groupId: null,
+        groupTitle: null,
+        subitemCount: 0,
+        clientHint: 'BGS',
+        populatedColumnIds: ['dealer']
+      }],
+      targetBoard: { id: '86054ef6-6454-46fb-9002-1ba4d8d060b8', name: 'Meta CAPI Rollout' },
+      targetTasks: [],
+      clients: [{
+        id: '436e159b-d053-4de2-ad0e-e589b938ced7',
+        name: 'Big Garage Subaru',
+        measurementProfileId: 'profile-big-garage'
+      }],
+      isSourceTruncated: false
+    }
+
+    expect(() => buildMondayCutoverPlan({
+      ...baseInput,
+      resolutions: {
+        clients: [
+          { sourceId: '1001', clientId: '436e159b-d053-4de2-ad0e-e589b938ced7', reason: 'First reviewed link.' },
+          { sourceId: '1001', clientId: '436e159b-d053-4de2-ad0e-e589b938ced7', reason: 'Duplicate reviewed link.' }
+        ],
+        columns: []
+      }
+    })).toThrow()
+
+    const plan = buildMondayCutoverPlan({
+      ...baseInput,
+      resolutions: {
+        clients: [{
+          sourceId: '9999',
+          clientId: '436e159b-d053-4de2-ad0e-e589b938ced7',
+          reason: 'This source is outside the reviewed plan.'
+        }],
+        columns: [{
+          sourceColumnId: 'unknown-column',
+          decision: 'exclude',
+          reason: 'This column is outside the reviewed board.'
+        }]
+      }
+    })
+
+    expect(plan.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'RESOLUTION_INVALID', sourceId: '9999' }),
+      expect.objectContaining({ code: 'RESOLUTION_INVALID', columnId: 'unknown-column' }),
+      expect.objectContaining({ code: 'CLIENT_LINK_REQUIRED', sourceId: '1001' }),
+      expect.objectContaining({ code: 'COLUMN_REVIEW_REQUIRED', columnId: 'dealer' })
+    ]))
+    expect(plan.summary.isReadyForImport).toBe(false)
+    expect(JSON.stringify(plan)).not.toContain('outside the reviewed')
+  })
 })

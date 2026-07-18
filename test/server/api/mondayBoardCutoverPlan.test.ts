@@ -12,6 +12,7 @@ let routerBoardId = '18422459929'
 let query: Record<string, unknown> = {
   targetBoardId: '86054ef6-6454-46fb-9002-1ba4d8d060b8'
 }
+let body: Record<string, unknown> = {}
 
 vi.mock('~~/server/utils/auth', () => ({
   requireRole: (...args: unknown[]) => mockRequireRole(...args)
@@ -30,6 +31,7 @@ vi.mock('h3', () => ({
   defineEventHandler: <T>(handler: T) => handler,
   getRouterParam: () => routerBoardId,
   getQuery: () => query,
+  readBody: () => body,
   createError: (input: { statusCode: number, statusMessage: string }) => Object.assign(new Error(input.statusMessage), input)
 }))
 
@@ -39,6 +41,7 @@ describe('GET /api/agency/monday/boards/:boardId/cutover-plan', () => {
     vi.resetModules()
     routerBoardId = '18422459929'
     query = { targetBoardId: '86054ef6-6454-46fb-9002-1ba4d8d060b8' }
+    body = {}
     mockRequireRole.mockResolvedValue({ id: 'owner-1', role: 'owner' })
     mockCreateMondayClient.mockResolvedValue({
       getBoard: mockGetBoard,
@@ -163,6 +166,12 @@ describe('GET /api/agency/monday/boards/:boardId/cutover-plan', () => {
       action: 'reuse',
       clientLink: expect.objectContaining({ status: 'exact', clientId: 'client-alan' })
     }))
+    expect(result.columnMappings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceColumnId: 'dealer', populatedRecords: 1 }),
+      expect.objectContaining({ sourceColumnId: 'token', populatedRecords: 1 }),
+      expect.objectContaining({ sourceColumnId: 'owner', populatedRecords: 1 }),
+      expect.objectContaining({ sourceColumnId: 'notes', populatedRecords: 2 })
+    ]))
     expect(JSON.stringify(result)).not.toContain('real-token-must-not-leak')
     expect(JSON.stringify(result)).not.toContain('private-note-must-not-leak')
     expect(JSON.stringify(result)).not.toContain('subitem-secret')
@@ -262,5 +271,77 @@ describe('GET /api/agency/monday/boards/:boardId/cutover-plan', () => {
       statusCode: 502,
       statusMessage: 'Monday cutover plan unavailable'
     })
+  })
+
+  it('applies bounded review resolutions through a no-write POST plan', async () => {
+    mockQueryRows.mockReset()
+    mockQueryRows
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        id: '436e159b-d053-4de2-ad0e-e589b938ced7',
+        name: 'Alan Mance Motors',
+        measurementProfileId: 'profile-alan'
+      }])
+    body = {
+      targetBoardId: '86054ef6-6454-46fb-9002-1ba4d8d060b8',
+      resolutions: {
+        clients: [{
+          sourceId: '1001',
+          clientId: '436e159b-d053-4de2-ad0e-e589b938ced7',
+          reason: 'Approved against the existing Zero client profile.'
+        }],
+        columns: [
+          { sourceColumnId: 'dealer', decision: 'import', reason: 'Use the reviewed client links.' },
+          { sourceColumnId: 'owner', decision: 'exclude', reason: 'Exclude after explicit owner review.' },
+          { sourceColumnId: 'notes', decision: 'exclude', reason: 'Exclude after explicit privacy review.' }
+        ]
+      }
+    }
+    const handler = (await import('~~/server/api/agency/monday/boards/[boardId]/cutover-plan.post')).default
+
+    const result = await handler({ context: {} } as never)
+
+    expect(mockRequireRole).toHaveBeenCalledWith(expect.anything(), ['owner', 'admin'])
+    expect(result.mode).toBe('dry_run')
+    expect(result.records.find((record: { sourceId: string }) => record.sourceId === '1001')).toEqual(expect.objectContaining({
+      clientLink: expect.objectContaining({ status: 'resolved', clientId: '436e159b-d053-4de2-ad0e-e589b938ced7' })
+    }))
+    expect(result.columnMappings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceColumnId: 'dealer', resolutionStatus: 'applied', resolutionDecision: 'import' }),
+      expect.objectContaining({ sourceColumnId: 'owner', resolutionStatus: 'applied', resolutionDecision: 'exclude' }),
+      expect.objectContaining({ sourceColumnId: 'notes', resolutionStatus: 'applied', resolutionDecision: 'exclude' })
+    ]))
+    expect(JSON.stringify(result)).not.toContain('Approved against the existing')
+    expect(JSON.stringify(result)).not.toContain('privacy review')
+  })
+
+  it('rejects malformed or duplicate POST resolutions before database or Monday access', async () => {
+    body = {
+      targetBoardId: '86054ef6-6454-46fb-9002-1ba4d8d060b8',
+      resolutions: {
+        clients: [
+          {
+            sourceId: '1001',
+            clientId: '436e159b-d053-4de2-ad0e-e589b938ced7',
+            reason: 'First explicit mapping decision.'
+          },
+          {
+            sourceId: '1001',
+            clientId: '436e159b-d053-4de2-ad0e-e589b938ced7',
+            reason: 'Conflicting duplicate mapping decision.'
+          }
+        ],
+        columns: []
+      },
+      unexpected: 'must be rejected'
+    }
+    const handler = (await import('~~/server/api/agency/monday/boards/[boardId]/cutover-plan.post')).default
+
+    await expect(handler({ context: {} } as never)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Invalid Monday cutover resolution request'
+    })
+    expect(mockQueryOne).not.toHaveBeenCalled()
+    expect(mockCreateMondayClient).not.toHaveBeenCalled()
   })
 })
