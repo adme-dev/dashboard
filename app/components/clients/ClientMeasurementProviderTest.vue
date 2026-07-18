@@ -34,12 +34,19 @@ const result = ref<{
   redactedError: string | null
 } | null>(null)
 
+const metaLeadIdIsValid = computed(() => /^\d{15,16}$/.test(metaLeadId.value.trim()))
+const showMetaLeadIdError = computed(() => (
+  props.destination.platform === 'meta'
+  && Boolean(metaLeadId.value)
+  && !metaLeadIdIsValid.value
+))
+
 const canRun = computed(() => (
   Boolean(canonicalEventName.value)
   && Boolean(reason.value.trim())
   && confirmed.value
   && (props.destination.platform === 'meta'
-    ? Boolean(testEventCode.value.trim() && /^\d{15,16}$/.test(metaLeadId.value.trim()))
+    ? Boolean(testEventCode.value.trim() && metaLeadIdIsValid.value)
     : Boolean(clickValue.value.trim()))
   && !pending.value
 ))
@@ -160,9 +167,16 @@ async function runTest() {
             data-testid="provider-test-meta-lead-id"
             inputmode="numeric"
             autocomplete="off"
-            maxlength="16"
+            aria-describedby="provider-test-meta-lead-id-help"
+            :aria-invalid="showMetaLeadIdError"
             class="w-full rounded-md border border-default bg-default px-3 py-2 font-mono text-sm"
           >
+          <span
+            id="provider-test-meta-lead-id-help"
+            data-testid="provider-test-meta-lead-id-help"
+            class="block text-xs"
+            :class="showMetaLeadIdError ? 'text-error' : 'text-muted'"
+          >Meta Lead Ads leadgen_id; exactly 15 or 16 digits.</span>
         </label>
         <label v-if="selectedIdentity.mode === 'browser_server_dedup'" class="space-y-1.5 text-sm">
           <span class="font-medium text-highlighted">Shared browser event ID</span>

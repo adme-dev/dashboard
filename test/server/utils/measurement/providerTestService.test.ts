@@ -128,6 +128,39 @@ describe('measurement provider test service', () => {
     }))
   })
 
+  it('accepts the documented 16-digit Meta lead identifier format', async () => {
+    const test = setup()
+
+    await test.service.run({
+      ...baseInput(),
+      mode: 'meta_test_events',
+      testEventCode: 'TEST123456',
+      metaLeadId: '1234567890123456',
+      browserEventId: null
+    })
+
+    expect(test.deliverMeta).toHaveBeenCalledWith(expect.objectContaining({
+      delivery: expect.objectContaining({
+        attribution: expect.objectContaining({ metaLeadId: '1234567890123456' })
+      })
+    }))
+  })
+
+  it('rejects an overlong Meta lead identifier before reserving provider traffic', async () => {
+    const test = setup()
+
+    await expect(test.service.run({
+      ...baseInput(),
+      mode: 'meta_test_events',
+      testEventCode: 'TEST123456',
+      metaLeadId: '12345678901234567',
+      browserEventId: null
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+    expect(test.deliverMeta).not.toHaveBeenCalled()
+  })
+
   it('rejects an unconfirmed request before reserving or calling a provider', async () => {
     const test = setup()
 

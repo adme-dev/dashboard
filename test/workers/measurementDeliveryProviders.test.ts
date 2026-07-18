@@ -56,8 +56,12 @@ describe('measurement delivery provider adapters', () => {
         event_name: 'QualifiedLead',
         event_time: 1784268000,
         event_id: '11111111-1111-4111-8111-111111111111',
-        action_source: 'other',
-        user_data: { lead_id: '123456789012345' }
+        action_source: 'system_generated',
+        user_data: { lead_id: '123456789012345' },
+        custom_data: {
+          lead_event_source: 'XeroFlow',
+          event_source: 'crm'
+        }
       }]
     })
   })

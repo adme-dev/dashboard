@@ -21,6 +21,8 @@ export interface MeasurementProviderDelivery {
   }
 }
 
+const META_CRM_LEAD_EVENT_SOURCE = 'XeroFlow'
+
 export interface ProviderDeliveryResult {
   outcome: 'accepted' | 'retryable' | 'permanent_failure'
   providerRequestId: string | null
@@ -175,9 +177,20 @@ export async function deliverMetaConversionEvent(
           event_name: delivery.providerEventName,
           event_time: Math.floor(occurredAt.getTime() / 1000),
           event_id: isWeb ? delivery.attribution.browserEventId : delivery.eventId,
-          action_source: isWeb ? 'website' : 'other',
+          action_source: isWeb ? 'website' : 'system_generated',
           ...(isWeb ? { event_source_url: delivery.attribution.eventSourceUrl } : {}),
-          user_data: userData
+          user_data: userData,
+          ...(!isWeb
+            ? {
+                custom_data: {
+                  // Required Conversion Leads CRM markers. Website CAPI events
+                  // intentionally do not use this payload contract.
+                  // https://developers.facebook.com/docs/marketing-api/conversions-api/conversion-leads-integration/crm-integration/3-implementing-the-crm-integration
+                  lead_event_source: META_CRM_LEAD_EVENT_SOURCE,
+                  event_source: 'crm'
+                }
+              }
+            : {})
         }],
         ...(input.testEventCode ? { test_event_code: input.testEventCode } : {})
       })

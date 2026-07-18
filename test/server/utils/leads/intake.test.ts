@@ -94,13 +94,13 @@ describe('first-party lead intake', () => {
     })
     const metaInput = input()
     metaInput.lead.source = 'meta'
-    metaInput.lead.source_lead_id = '123456789012345'
+    metaInput.lead.source_lead_id = '1234567890123456'
     metaInput.lead.attribution = null
 
     await service.ingest(metaInput)
 
     expect(appendOutbox).toHaveBeenCalledWith(db, expect.objectContaining({
-      attribution: expect.objectContaining({ metaLeadId: '123456789012345' })
+      attribution: expect.objectContaining({ metaLeadId: '1234567890123456' })
     }))
   })
 })

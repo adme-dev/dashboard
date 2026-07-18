@@ -65,7 +65,7 @@ This plan extends the tracking foundation already present in the repository. It 
 - GraphWiki shows broad coupling around the general queue and duplicated lead modules across Pages and the leads Worker. Conversion delivery should not add another responsibility to those hubs.
 - Graphify does not parse Vue SFC architecture deeply, so UI conclusions in this plan were cross-checked directly against the Vue source.
 
-### External API implications verified on 17 July 2026
+### External API implications verified on 18 July 2026
 
 - Meta requires matching `event_name` and matching browser `eventID` / server `event_id` for deduplication; website events also require `event_source_url`. See [Meta server event parameters](https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/server-event).
 - Meta's Conversion Leads CRM integration is separate from ordinary web CAPI. Its published fit criteria include Instant Forms, retention of the 15–16 digit Meta Lead ID, roughly 200+ leads per month, at least daily uploads, a target stage within 28 days, and a 1–40% stage conversion rate. Clients that do not meet those criteria may still use CAPI for measurement, but must not be presented as Conversion Leads optimization-ready. See [Meta Conversion Leads CRM Integration](https://developers.facebook.com/docs/marketing-api/conversions-api/conversion-leads-integration).
