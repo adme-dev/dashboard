@@ -11,7 +11,7 @@
         </p>
       </div>
       <UButton
-        to="/agency/monday/cutover"
+        to="/agency/monday-cutover"
         color="primary"
         variant="soft"
         icon="i-lucide-shield-check"
