@@ -119,7 +119,7 @@ export interface ReservedProviderTestContext {
     metaDeliveryMode: 'crm' | 'web'
   }
   credential: {
-    accessToken: string | null
+    credentialRef: string | null
     refreshToken: string | null
     scopes: string[]
   }
@@ -148,6 +148,7 @@ interface ProviderTestServiceDeps {
   deliverMeta(input: Omit<MetaDeliveryInput, 'fetch'>): Promise<ProviderDeliveryResult>
   deliverGoogle(input: Omit<GoogleDeliveryInput, 'fetch'>): Promise<ProviderDeliveryResult>
   refreshGoogleAccessToken(input: Omit<RefreshGoogleAccessTokenInput, 'fetch'>): Promise<string>
+  resolveProviderCredential(credentialRef: string): Promise<string | null>
   graphApiVersion: string
   googleClientId: string
   googleClientSecret: string
@@ -279,20 +280,30 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
       let providerResult: ProviderDeliveryResult
       try {
         if (input.mode === 'meta_test_events') {
-          providerResult = context.credential.accessToken
-            ? await deps.deliverMeta({
-                delivery: baseDelivery,
-                accessToken: context.credential.accessToken,
-                graphApiVersion: deps.graphApiVersion,
-                environment: 'test',
-                testEventCode: input.testEventCode
-              })
-            : {
-                outcome: 'permanent_failure',
-                providerRequestId: null,
-                errorClass: 'meta_credential_missing',
-                redactedDiagnostic: 'Meta connection has no active credential'
-              }
+          if (!context.credential.credentialRef) {
+            providerResult = {
+              outcome: 'permanent_failure',
+              providerRequestId: null,
+              errorClass: 'meta_capi_credential_ref_required',
+              redactedDiagnostic: 'Meta CAPI requires a purpose-scoped secret binding'
+            }
+          } else {
+            const accessToken = await deps.resolveProviderCredential(context.credential.credentialRef)
+            providerResult = accessToken
+              ? await deps.deliverMeta({
+                  delivery: baseDelivery,
+                  accessToken,
+                  graphApiVersion: deps.graphApiVersion,
+                  environment: 'test',
+                  testEventCode: input.testEventCode
+                })
+              : {
+                  outcome: 'permanent_failure',
+                  providerRequestId: null,
+                  errorClass: 'meta_capi_credential_unavailable',
+                  redactedDiagnostic: 'Meta CAPI secret binding is unavailable'
+                }
+          }
         } else if (!context.credential.scopes.includes(GOOGLE_DATA_MANAGER_SCOPE)) {
           providerResult = {
             outcome: 'permanent_failure',

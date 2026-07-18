@@ -29,7 +29,7 @@ export interface MeasurementDeliveryClaim extends MeasurementProviderDelivery {
   destinationEnvironment: 'test' | 'live' | 'paused'
   destinationHealthStatus: 'not_configured' | 'detected' | 'configured' | 'validating' | 'ready' | 'degraded' | 'blocked'
   deliveryConfigCurrent: boolean
-  accessToken: string | null
+  credentialRef: string | null
   refreshToken: string | null
   connectionScopes: string[]
 }
@@ -56,6 +56,7 @@ interface DeliveryProcessorDeps {
   deliverMeta: typeof deliverMetaConversionEvent
   deliverGoogle: typeof deliverGoogleDataManagerEvent
   refreshGoogleAccessToken: typeof refreshGoogleDataManagerAccessToken
+  resolveProviderCredential(credentialRef: string): Promise<string | null>
   workerId: () => string
   now: () => Date
   metaGraphApiVersion: string
@@ -142,21 +143,29 @@ export function createMeasurementDeliveryProcessor(deps: DeliveryProcessorDeps) 
 
         let deliveryResult = policyFailure(claim)
         if (!deliveryResult && claim.platform === 'meta') {
-          if (!claim.accessToken) {
+          if (!claim.credentialRef) {
             deliveryResult = {
               outcome: 'permanent_failure',
               providerRequestId: null,
-              errorClass: 'meta_credential_missing',
-              redactedDiagnostic: 'Meta connection has no active credential'
+              errorClass: 'meta_capi_credential_ref_required',
+              redactedDiagnostic: 'Meta CAPI requires a purpose-scoped secret binding'
             }
           } else {
             try {
-              deliveryResult = await deps.deliverMeta({
-                delivery: claim,
-                accessToken: claim.accessToken,
-                graphApiVersion: deps.metaGraphApiVersion,
-                fetch: deps.fetch
-              })
+              const accessToken = await deps.resolveProviderCredential(claim.credentialRef)
+              deliveryResult = accessToken
+                ? await deps.deliverMeta({
+                    delivery: claim,
+                    accessToken,
+                    graphApiVersion: deps.metaGraphApiVersion,
+                    fetch: deps.fetch
+                  })
+                : {
+                    outcome: 'permanent_failure',
+                    providerRequestId: null,
+                    errorClass: 'meta_capi_credential_unavailable',
+                    redactedDiagnostic: 'Meta CAPI secret binding is unavailable'
+                  }
             } catch {
               deliveryResult = networkFailure()
             }

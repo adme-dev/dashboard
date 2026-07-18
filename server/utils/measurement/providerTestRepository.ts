@@ -26,9 +26,9 @@ interface ProviderContextRow {
   destination_environment: string
   platform: 'meta' | 'google_data_manager'
   external_destination_id: string
+  credential_ref: string | null
   provider_event_name: string | null
   account_id: string | null
-  access_token: string | null
   refresh_token: string | null
   scopes: unknown
   metadata: unknown
@@ -107,9 +107,9 @@ export function createPostgresMeasurementProviderTestRepository(
                   d.environment AS destination_environment,
                   d.platform,
                   d.external_destination_id,
+                  d.credential_ref,
                   m.provider_event_name,
                   sc.account_id,
-                  sc.access_token,
                   sc.refresh_token,
                   sc.scopes,
                   sc.metadata,
@@ -252,7 +252,7 @@ export function createPostgresMeasurementProviderTestRepository(
               metaDeliveryMode
             },
             credential: {
-              accessToken: row.access_token,
+              credentialRef: row.credential_ref,
               refreshToken: row.refresh_token,
               scopes
             }

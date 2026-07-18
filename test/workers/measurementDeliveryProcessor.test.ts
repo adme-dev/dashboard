@@ -31,7 +31,8 @@ function claim(overrides: Record<string, unknown> = {}) {
     operatingAccountId: '9876543210',
     loginAccountId: '9876543210',
     metaDeliveryMode: 'crm' as const,
-    accessToken: 'provider-token',
+    credentialRef: 'MEASUREMENT_PROVIDER_META_BIG_GARAGE',
+    accessToken: 'linked-facebook-oauth-token',
     refreshToken: null,
     connectionScopes: ['ads_management'],
     attribution: {
@@ -66,11 +67,13 @@ function setup(claims: Array<ReturnType<typeof claim> | null>) {
     redactedDiagnostic: null
   }))
   const refreshGoogleAccessToken = vi.fn(async () => 'fresh-google-token')
+  const resolveProviderCredential = vi.fn(async () => 'meta-dataset-token')
   const processor = createMeasurementDeliveryProcessor({
     repository: { claimNext, complete },
     deliverMeta,
     deliverGoogle,
     refreshGoogleAccessToken,
+    resolveProviderCredential,
     workerId: () => 'measurement-worker:test',
     now: () => new Date('2026-07-17T06:05:00.000Z'),
     metaGraphApiVersion: 'v25.0',
@@ -78,7 +81,15 @@ function setup(claims: Array<ReturnType<typeof claim> | null>) {
     googleClientSecret: 'google-client-secret',
     fetch: vi.fn() as never
   })
-  return { processor, claimNext, complete, deliverMeta, deliverGoogle, refreshGoogleAccessToken }
+  return {
+    processor,
+    claimNext,
+    complete,
+    deliverMeta,
+    deliverGoogle,
+    refreshGoogleAccessToken,
+    resolveProviderCredential
+  }
 }
 
 describe('measurement delivery processor', () => {
@@ -103,6 +114,7 @@ describe('measurement delivery processor', () => {
 
     expect(result).toEqual({ claimed: 2, accepted: 2, retryable: 0, permanentFailure: 0, policySkipped: 0 })
     expect(deliverMeta).toHaveBeenCalledOnce()
+    expect(deliverMeta).toHaveBeenCalledWith(expect.objectContaining({ accessToken: 'meta-dataset-token' }))
     expect(refreshGoogleAccessToken).toHaveBeenCalledWith({
       refreshToken: 'google-refresh-token',
       clientId: 'google-client-id',
@@ -111,6 +123,34 @@ describe('measurement delivery processor', () => {
     })
     expect(deliverGoogle).toHaveBeenCalledWith(expect.objectContaining({ accessToken: 'fresh-google-token' }))
     expect(complete).toHaveBeenCalledTimes(2)
+  })
+
+  it('never sends Meta with a linked OAuth token when the CAPI secret reference is absent', async () => {
+    const meta = claim({ credentialRef: null, accessToken: 'linked-facebook-oauth-token' })
+    const state = setup([meta, null])
+
+    const result = await state.processor.process(MESSAGE)
+
+    expect(result).toMatchObject({ claimed: 1, permanentFailure: 1 })
+    expect(state.resolveProviderCredential).not.toHaveBeenCalled()
+    expect(state.deliverMeta).not.toHaveBeenCalled()
+    expect(state.complete).toHaveBeenCalledWith(meta, expect.objectContaining({
+      errorClass: 'meta_capi_credential_ref_required'
+    }), expect.any(Date))
+  })
+
+  it('fails closed when the referenced Meta CAPI binding is unavailable', async () => {
+    const meta = claim()
+    const state = setup([meta, null])
+    state.resolveProviderCredential.mockResolvedValueOnce(null)
+
+    const result = await state.processor.process(MESSAGE)
+
+    expect(result).toMatchObject({ claimed: 1, permanentFailure: 1 })
+    expect(state.deliverMeta).not.toHaveBeenCalled()
+    expect(state.complete).toHaveBeenCalledWith(meta, expect.objectContaining({
+      errorClass: 'meta_capi_credential_unavailable'
+    }), expect.any(Date))
   })
 
   it('policy-skips Google delivery until the connected account has the Data Manager scope', async () => {

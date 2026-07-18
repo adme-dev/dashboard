@@ -24,3 +24,6 @@ WORKER_ID_PREFIX = "measurement-w"
 # Secrets are configured with Wrangler, never committed:
 #   wrangler secret put GOOGLE_CLIENT_ID
 #   wrangler secret put GOOGLE_CLIENT_SECRET
+# Meta dataset tokens use purpose-scoped names such as:
+#   wrangler secret put MEASUREMENT_PROVIDER_META_BIG_GARAGE
+# The same name/value must be configured as a Pages secret for dormant provider tests.
