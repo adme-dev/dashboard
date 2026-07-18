@@ -3,15 +3,16 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 import { notifyMention, notifyTaskComment } from '~~/server/utils/notifications'
 import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 
 interface AddCommentBody {
   content: string
-  userId?: string
 }
 
 export default defineEventHandler(async (event) => {
+  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')
   const body = await readBody<AddCommentBody>(event)
 
@@ -44,36 +45,30 @@ export default defineEventHandler(async (event) => {
       INSERT INTO task_activities (task_id, user_id, activity_type, content)
       VALUES ($1, $2, 'comment', $3)
       RETURNING *
-    `, [id, body.userId || null, body.content.trim()])
+    `, [id, user.id, body.content.trim()])
 
-    // Get user info if provided
-    let user = null
-    if (body.userId) {
-      user = await queryOne('SELECT id, name, email FROM team_members WHERE id = $1', [body.userId])
-    }
+    const userInfo = await queryOne('SELECT id, name, email FROM team_members WHERE id = $1', [user.id])
 
     // Notify task stakeholders about the comment (assignee, reporter)
-    if (body.userId) {
-      notifyTaskComment({
-        taskId: id,
-        taskTitle: task.title || 'Task',
-        commenterId: body.userId,
-        assigneeId: task.assignee_id,
-        reporterId: task.reporter_id,
-        commentSnippet: body.content.substring(0, 100)
-      }).catch(err => console.error('Failed to send comment notification:', err))
+    notifyTaskComment({
+      taskId: id,
+      taskTitle: task.title || 'Task',
+      commenterId: user.id,
+      assigneeId: task.assignee_id,
+      reporterId: task.reporter_id,
+      commentSnippet: body.content.substring(0, 100)
+    }).catch(err => console.error('Failed to send comment notification:', err))
 
-      // Auto-subscribe the commenter to this task's activity at item scope.
-      if (task.department_id) {
-        autoSubscribeIfEnabled(body.userId, task.department_id, id).catch(err =>
-          console.error('Auto-subscribe commenter failed:', err)
-        )
-      }
+    // Auto-subscribe the commenter to this task's activity at item scope.
+    if (task.department_id) {
+      autoSubscribeIfEnabled(user.id, task.department_id, id).catch(err =>
+        console.error('Auto-subscribe commenter failed:', err)
+      )
     }
 
     // Extract @mentions from content and notify users (separately from general comment notifications)
     const mentionMatches = body.content.match(/@(\w+)/g)
-    if (mentionMatches && body.userId) {
+    if (mentionMatches) {
       // Find mentioned users by name pattern
       const mentionNames = mentionMatches.map(m => m.substring(1).toLowerCase())
       const mentionedUsers = await queryRows(`
@@ -84,12 +79,12 @@ export default defineEventHandler(async (event) => {
 
       // Send notifications for @mentions (higher priority than general comment)
       for (const mentionedUser of mentionedUsers) {
-        if (mentionedUser.id !== body.userId) {
+        if (mentionedUser.id !== user.id) {
           notifyMention({
             mentionedUserId: mentionedUser.id,
             taskId: id,
             taskTitle: task.title || 'Task',
-            mentionerId: body.userId,
+            mentionerId: user.id,
             commentSnippet: body.content.substring(0, 100)
           }).catch(err => console.error('Failed to send mention notification:', err))
         }
@@ -102,14 +97,16 @@ export default defineEventHandler(async (event) => {
       type: 'comment',
       content: comment.content,
       createdAt: comment.created_at,
-      user: user ? {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-      } : null,
+      user: userInfo
+        ? {
+            id: userInfo.id,
+            name: userInfo.name,
+            email: userInfo.email
+          }
+        : null
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to add comment:', error)
     throw createError({
       statusCode: 500,
