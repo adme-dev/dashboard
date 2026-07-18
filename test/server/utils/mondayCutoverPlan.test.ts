@@ -340,9 +340,21 @@ describe('buildMondayCutoverPlan', () => {
         resolutionDecision: 'exclude'
       })
     ])
-    expect(plan.exceptions).toEqual([])
+    expect(plan.exceptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'POPULATED_COLUMN_EXCLUDED',
+        columnId: 'owner',
+        severity: 'warning'
+      }),
+      expect.objectContaining({
+        code: 'POPULATED_COLUMN_EXCLUDED',
+        columnId: 'notes',
+        severity: 'warning'
+      })
+    ]))
     expect(plan.summary).toEqual(expect.objectContaining({
       blockingExceptions: 0,
+      warningExceptions: 2,
       isReadyForImport: true
     }))
     expect(JSON.stringify(plan)).not.toContain('Approved against the canonical')

@@ -414,6 +414,18 @@ export function buildMondayCutoverPlan(input: MondayCutoverPlanInput) {
     })
   }
 
+  for (const mapping of columnMappings.filter(mapping => (
+    mapping.resolutionDecision === 'exclude' && mapping.populatedRecords > 0
+  ))) {
+    exceptions.push({
+      code: 'POPULATED_COLUMN_EXCLUDED',
+      severity: 'warning',
+      sourceId: null,
+      columnId: mapping.sourceColumnId,
+      message: `${mapping.sourceTitle} is explicitly excluded despite containing values in ${mapping.populatedRecords} source records.`
+    })
+  }
+
   const clientResolutions = new Map<string, MondayCutoverClient>()
   for (const resolution of resolutions.clients) {
     const source = input.sourceRecords.find(record => record.id === resolution.sourceId)
