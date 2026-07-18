@@ -1,13 +1,23 @@
 <template>
   <div class="p-6">
     <!-- Header -->
-    <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-        Monday.com Migration
-      </h1>
-      <p class="text-gray-600 dark:text-gray-400">
-        Import all your Monday.com boards, items, and history into your new workflow system.
-      </p>
+    <div class="mb-8 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 class="mb-2 text-2xl font-bold text-gray-900 dark:text-white">
+          Monday.com Migration
+        </h1>
+        <p class="text-gray-600 dark:text-gray-400">
+          Import all your Monday.com boards, items, and history into your new workflow system.
+        </p>
+      </div>
+      <UButton
+        to="/agency/monday/cutover"
+        color="primary"
+        variant="soft"
+        icon="i-lucide-shield-check"
+      >
+        Cutover governance
+      </UButton>
     </div>
 
     <!-- Connection Status -->
