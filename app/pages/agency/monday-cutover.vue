@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({
-  title: 'Monday Cutover Governance',
+  title: 'Monday Cutover Approval',
   layout: 'agency',
   middleware: ['role-admin']
 })

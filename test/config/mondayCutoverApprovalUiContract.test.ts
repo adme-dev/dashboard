@@ -1,7 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const pagePath = new URL('../../app/pages/agency/monday/cutover.vue', import.meta.url)
+const pagePath = new URL('../../app/pages/agency/monday-cutover.vue', import.meta.url)
 
 describe('Monday cutover approval UI contract', () => {
   it('exposes governed dry-run mapping controls to internal admins', () => {
@@ -14,6 +14,13 @@ describe('Monday cutover approval UI contract', () => {
     expect(page).toContain('Client links')
     expect(page).toContain('Column decisions')
     expect(page).toContain('No import is executed')
+  })
+
+  it('uses a standalone Nuxt page instead of a nested child of the legacy migration page', () => {
+    const nestedPage = new URL('../../app/pages/agency/monday/cutover.vue', import.meta.url)
+
+    expect(existsSync(pagePath)).toBe(true)
+    expect(existsSync(nestedPage)).toBe(false)
   })
 
   it('uses only approval and read endpoints, never legacy migration execution', () => {
