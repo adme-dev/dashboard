@@ -1,6 +1,13 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { getMonthlySpend, refreshGoogleToken } from '~~/server/utils/googleAdsClient'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  persistGoogleCredentialRefresh,
+  resolveGoogleCredential,
+  type GoogleCredentialRow,
+} from '~~/server/utils/googleCredentialProfiles'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 /**
@@ -22,7 +29,7 @@ export default eventHandler(async (event) => {
 
   const config = resolveGoogleAdsRuntimeConfig(undefined, event)
 
-  const conn = await queryOne<{
+  const conn = await queryOne<GoogleCredentialRow & {
     id: string
     account_id: string
     account_name: string
@@ -30,10 +37,14 @@ export default eventHandler(async (event) => {
     refresh_token: string | null
     token_expires_at: string | null
     status: string
+    metadata: any
   }>(
-    `SELECT id, account_id, account_name, access_token, refresh_token, token_expires_at, status
-     FROM social_connections
-     WHERE id = $1 AND platform = 'google'`,
+    `SELECT sc.id, sc.account_id, sc.account_name, sc.access_token,
+            sc.refresh_token, sc.token_expires_at, sc.status, sc.metadata,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+     FROM social_connections sc
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+     WHERE sc.id = $1 AND sc.platform = 'google'`,
     [connectionId]
   )
 
@@ -45,23 +56,27 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: `Connection is ${conn.status}. Please reconnect.` })
   }
 
+  const credential = await resolveGoogleCredential(conn)
+
   // Refresh token if expired
-  let accessToken = conn.access_token
-  if (conn.refresh_token && conn.token_expires_at) {
-    const expiresAt = new Date(conn.token_expires_at)
+  let accessToken = credential.accessToken
+  if (credential.refreshToken && credential.tokenExpiresAt) {
+    const expiresAt = new Date(credential.tokenExpiresAt)
     if (expiresAt.getTime() < Date.now() + 5 * 60 * 1000) {
       try {
         const refreshed = await refreshGoogleToken(
-          conn.refresh_token,
+          credential.refreshToken,
           config.googleClientId,
           config.googleClientSecret
         )
         accessToken = refreshed.access_token
         const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000)
-        await queryOne(
-          `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
-          [accessToken, newExpiry, conn.id]
-        )
+        await persistGoogleCredentialRefresh({
+          connectionId: conn.id,
+          profileId: credential.profileId,
+          accessToken,
+          expiresAt: newExpiry,
+        })
       } catch {
         throw createError({ statusCode: 401, statusMessage: 'Failed to refresh Google token. Please reconnect.' })
       }
@@ -73,7 +88,8 @@ export default eventHandler(async (event) => {
     accessToken,
     config.googleDeveloperToken,
     month,
-    year
+    year,
+    conn.metadata?.managerCustomerId || undefined
   )
 
   return {

@@ -7,6 +7,13 @@
 
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { getCachedBinding } from '~~/server/utils/email'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  persistGoogleCredentialRefresh,
+  resolveGoogleCredential,
+  type GoogleCredentialRow,
+} from '~~/server/utils/googleCredentialProfiles'
 import type { H3Event } from 'h3'
 
 // ─── Meta Spend Sync ────────────────────────────────────────────
@@ -265,7 +272,7 @@ export function resolveGoogleManagerId(opts: {
   return accessible.find(id => !connected.has(id)) || accessible[0] || undefined
 }
 
-interface GoogleConnRow {
+interface GoogleConnRow extends GoogleCredentialRow {
   id: string
   account_id: string
   account_name: string
@@ -273,6 +280,17 @@ interface GoogleConnRow {
   refresh_token: string | null
   token_expires_at: string | null
   metadata: any
+}
+
+async function hydrateGoogleConnection(row: GoogleConnRow): Promise<GoogleConnRow> {
+  const credential = await resolveGoogleCredential(row)
+  return {
+    ...row,
+    access_token: credential.accessToken,
+    refresh_token: credential.refreshToken,
+    token_expires_at: credential.tokenExpiresAt,
+    google_credential_profile_id: credential.profileId,
+  }
 }
 
 interface GoogleSyncCtx {
@@ -340,10 +358,12 @@ async function processGoogleConnection(
         const refreshed = await refreshGoogleToken(conn.refresh_token, config.googleClientId, config.googleClientSecret)
         accessToken = refreshed.access_token
         const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000)
-        await queryOne(
-          `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
-          [accessToken, newExpiry, conn.id]
-        )
+        await persistGoogleCredentialRefresh({
+          connectionId: conn.id,
+          profileId: conn.google_credential_profile_id || null,
+          accessToken,
+          expiresAt: newExpiry,
+        })
       } catch (err: any) {
         console.error(`[GoogleSync] Failed to refresh token for ${conn.account_name}:`, err.message)
         failures.push({ account: conn.account_name, reason: `Token refresh failed: ${err?.message || 'unknown'}` })
@@ -353,16 +373,21 @@ async function processGoogleConnection(
   }
 
   let campaigns
-  let effectiveMccId = mccId
+  // Explicit runtime config remains authoritative. Otherwise use the manager
+  // recorded for this credential profile/account pair before legacy detection.
+  const accountMccId = config.googleAdsLoginCustomerId
+    ? mccId
+    : (conn.metadata?.managerCustomerId || mccId)
+  let effectiveMccId = accountMccId
   try {
     try {
-      campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, mccId)
+      campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, accountMccId)
     } catch (err: any) {
       const status = err?.status || err?.statusCode
       // A 403 under a manager context can also mean this account is directly
       // owned (not a child of the MCC) — retry once without the manager
       // header before recording a failure.
-      if (status === 403 && mccId) {
+      if (status === 403 && accountMccId) {
         campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, undefined)
         effectiveMccId = undefined
       } else {
@@ -475,19 +500,15 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
   const period = `${year}-${String(month).padStart(2, '0')}`
   const config = resolveGoogleAdsRuntimeConfig()
 
-  const connections = await queryRows<{
-    id: string
-    account_id: string
-    account_name: string
-    access_token: string
-    refresh_token: string | null
-    token_expires_at: string | null
-    metadata: any
-  }>(
-    `SELECT id, account_id, account_name, access_token, refresh_token, token_expires_at, metadata
-     FROM social_connections
-     WHERE platform = 'google' AND status = 'active'`
+  const rawConnections = await queryRows<GoogleConnRow>(
+    `SELECT sc.id, sc.account_id, sc.account_name, sc.access_token,
+            sc.refresh_token, sc.token_expires_at, sc.metadata,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+     FROM social_connections sc
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+     WHERE sc.platform = 'google' AND sc.status = 'active'`
   )
+  const connections = await Promise.all(rawConnections.map(hydrateGoogleConnection))
 
   if (connections.length === 0) return { synced: 0, totalSpend: 0, failures }
 
@@ -544,12 +565,17 @@ export async function syncGoogleSpendByConnectionId(connectionId: string, month:
   const period = `${year}-${String(month).padStart(2, '0')}`
   const config = resolveGoogleAdsRuntimeConfig()
 
-  const conn = await queryOne<GoogleConnRow>(
-    `SELECT id, account_id, account_name, access_token, refresh_token, token_expires_at, metadata
-     FROM social_connections WHERE id = $1 AND platform = 'google' AND status = 'active'`,
+  const rawConn = await queryOne<GoogleConnRow>(
+    `SELECT sc.id, sc.account_id, sc.account_name, sc.access_token,
+            sc.refresh_token, sc.token_expires_at, sc.metadata,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+     FROM social_connections sc
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+     WHERE sc.id = $1 AND sc.platform = 'google' AND sc.status = 'active'`,
     [connectionId]
   )
-  if (!conn) return { synced: 0, totalSpend: 0, failures: [{ account: connectionId, reason: 'connection not found' }] }
+  if (!rawConn) return { synced: 0, totalSpend: 0, failures: [{ account: connectionId, reason: 'connection not found' }] }
+  const conn = await hydrateGoogleConnection(rawConn)
 
   const mappings = await queryRows<GoogleSyncCtx['mappings'][number]>(
     `SELECT connection_id, campaign_id, campaign_name_pattern, xero_client_name, xero_client_code FROM ad_account_client_map`
@@ -560,6 +586,8 @@ export async function syncGoogleSpendByConnectionId(connectionId: string, month:
   let mccId: string | undefined
   if (configuredMcc) {
     mccId = resolveGoogleManagerId({ configured: configuredMcc })
+  } else if (conn.metadata?.managerCustomerId) {
+    mccId = resolveGoogleManagerId({ configured: conn.metadata.managerCustomerId })
   } else {
     try {
       const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
@@ -1571,11 +1599,22 @@ export async function syncBreakdowns(platform: string, connectionId: string, mon
   const campaignToSpendId = new Map(spendRows.map(r => [r.campaign_id, r.id]))
 
   // Get connection info
-  const conn = await queryOne<{ access_token: string; account_id: string; metadata: any; refresh_token: string | null; token_expires_at: string | null }>(
-    `SELECT access_token, account_id, metadata, refresh_token, token_expires_at FROM social_connections WHERE id = $1`,
+  const conn = await queryOne<GoogleCredentialRow & { access_token: string; account_id: string; metadata: any; refresh_token: string | null; token_expires_at: string | null }>(
+    `SELECT sc.id, sc.access_token, sc.account_id, sc.metadata, sc.refresh_token, sc.token_expires_at,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+     FROM social_connections sc
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+     WHERE sc.id = $1`,
     [connectionId]
   )
   if (!conn) return 0
+  if (platform === 'google_ads') {
+    const credential = await resolveGoogleCredential(conn)
+    conn.access_token = credential.accessToken
+    conn.refresh_token = credential.refreshToken
+    conn.token_expires_at = credential.tokenExpiresAt
+    conn.google_credential_profile_id = credential.profileId
+  }
 
   let allRows: BreakdownRow[] = []
 
@@ -1605,12 +1644,14 @@ export async function syncBreakdowns(platform: string, connectionId: string, mon
       const segments = ['age', 'gender', 'device', 'geo'] as const
 
       // Detect MCC for login-customer-id
-      let mccId: string | undefined
+      let mccId: string | undefined = conn.metadata?.managerCustomerId || undefined
       try {
-        const { listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
-        const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
-        const cleanAccountId = conn.account_id.replace(/-/g, '')
-        mccId = accessibleIds.find(id => id !== cleanAccountId) || undefined
+        if (!mccId) {
+          const { listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
+          const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
+          const cleanAccountId = conn.account_id.replace(/-/g, '')
+          mccId = accessibleIds.find(id => id !== cleanAccountId) || undefined
+        }
       } catch { /* ignore */ }
 
       for (const seg of segments) {
@@ -1703,11 +1744,23 @@ export async function syncCreatives(platform: string, connectionId: string, mont
   )
   if (spendRows.length === 0) return 0
 
-  const conn = await queryOne<{ access_token: string; account_id: string; metadata: any }>(
-    `SELECT access_token, account_id, metadata FROM social_connections WHERE id = $1`,
+  const conn = await queryOne<GoogleCredentialRow & { access_token: string; account_id: string; metadata: any }>(
+    `SELECT sc.id, sc.access_token, sc.refresh_token, sc.token_expires_at,
+            sc.account_id, sc.metadata,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+     FROM social_connections sc
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+     WHERE sc.id = $1`,
     [connectionId]
   )
   if (!conn) return 0
+  if (platform === 'google_ads') {
+    const credential = await resolveGoogleCredential(conn)
+    conn.access_token = credential.accessToken
+    conn.refresh_token = credential.refreshToken
+    conn.token_expires_at = credential.tokenExpiresAt
+    conn.google_credential_profile_id = credential.profileId
+  }
 
   let upserted = 0
 
@@ -1735,12 +1788,14 @@ export async function syncCreatives(platform: string, connectionId: string, mont
     const { getCampaignAdAssets } = await import('~~/server/utils/googleAdsClient')
     const config = useRuntimeConfig()
 
-    let mccId: string | undefined
+    let mccId: string | undefined = conn.metadata?.managerCustomerId || undefined
     try {
-      const { listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
-      const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
-      const cleanAccountId = conn.account_id.replace(/-/g, '')
-      mccId = accessibleIds.find(id => id !== cleanAccountId) || undefined
+      if (!mccId) {
+        const { listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
+        const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
+        const cleanAccountId = conn.account_id.replace(/-/g, '')
+        mccId = accessibleIds.find(id => id !== cleanAccountId) || undefined
+      }
     } catch { /* ignore */ }
 
     for (const row of spendRows) {

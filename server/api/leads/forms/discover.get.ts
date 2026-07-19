@@ -8,18 +8,25 @@
 // instead of pasting form_ids out of platform URLs.
 
 import { z } from 'zod'
-import { queryRows, execute } from '~~/server/utils/db'
+import { queryRows } from '~~/server/utils/db'
 import { listMetaPageLeadForms } from '~~/server/utils/metaClient'
 import {
   listGoogleLeadFormAssets,
   refreshGoogleToken,
 } from '~~/server/utils/googleAdsClient'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  persistGoogleCredentialRefresh,
+  resolveGoogleCredential,
+  type GoogleCredentialRow,
+} from '~~/server/utils/googleCredentialProfiles'
 
 const Query = z.object({
   source: z.enum(['google', 'meta']),
 })
 
-interface ConnectionRow {
+interface ConnectionRow extends GoogleCredentialRow {
   id: string
   account_id: string
   account_name: string | null
@@ -41,11 +48,13 @@ export default defineEventHandler(async (event) => {
   const { source } = Query.parse(getQuery(event))
 
   const connections = await queryRows<ConnectionRow>(
-    `SELECT id, account_id, account_name, access_token, refresh_token,
-            token_expires_at, metadata
-       FROM social_connections
-      WHERE platform = $1 AND status = 'active'
-      ORDER BY account_name`,
+    `SELECT sc.id, sc.account_id, sc.account_name, sc.access_token, sc.refresh_token,
+            sc.token_expires_at, sc.metadata,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+       FROM social_connections sc
+       ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+      WHERE sc.platform = $1 AND sc.status = 'active'
+      ORDER BY sc.account_name`,
     [source],
   )
 
@@ -89,30 +98,33 @@ export default defineEventHandler(async (event) => {
       }))
     }
     // Google — refresh token if near-expiry, then query.
-    let accessToken = c.access_token ?? ''
+    const credential = await resolveGoogleCredential(c)
+    let accessToken = credential.accessToken
     if (
-      c.refresh_token &&
-      c.token_expires_at &&
-      new Date(c.token_expires_at).getTime() <= Date.now() + 5 * 60_000
+      credential.refreshToken &&
+      credential.tokenExpiresAt &&
+      new Date(credential.tokenExpiresAt).getTime() <= Date.now() + 5 * 60_000
     ) {
       try {
         const tokens = await refreshGoogleToken(
-          c.refresh_token,
+          credential.refreshToken,
           (config as any).googleClientId,
           (config as any).googleClientSecret,
         )
         accessToken = tokens.access_token
-        await execute(
-          `UPDATE social_connections SET access_token = $1, token_expires_at = NOW() + INTERVAL '1 hour' WHERE id = $2`,
-          [accessToken, c.id],
-        )
+        await persistGoogleCredentialRefresh({
+          connectionId: c.id,
+          profileId: credential.profileId,
+          accessToken,
+          expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+        })
       } catch {
         return []
       }
     }
     if (!accessToken) return []
     const meta = typeof c.metadata === 'string' ? JSON.parse(c.metadata) : c.metadata || {}
-    const loginCustomerId = meta.loginCustomerId || c.account_id
+    const loginCustomerId = meta.managerCustomerId || meta.loginCustomerId || c.account_id
     const developerToken = (config as any).googleDeveloperToken
     if (!developerToken) return []
     const assets = await listGoogleLeadFormAssets(

@@ -39,11 +39,16 @@ export default eventHandler(async (event) => {
       status: string
       token_expires_at: string | null
       refresh_token: string | null
+      profile_has_refresh_token: boolean
       last_synced_at: string | null
     }>(
-      `SELECT sc.platform, sc.status, sc.token_expires_at, sc.refresh_token,
+      `SELECT sc.platform, sc.status,
+              COALESCE(gcp.token_expires_at, sc.token_expires_at) AS token_expires_at,
+              sc.refresh_token,
+              (gcp.refresh_token_encrypted IS NOT NULL) AS profile_has_refresh_token,
               (SELECT MAX(ms.synced_at) FROM media_spend ms WHERE ms.connection_id = sc.id) as last_synced_at
-       FROM social_connections sc`
+       FROM social_connections sc
+       LEFT JOIN google_credential_profiles gcp ON gcp.id = sc.google_credential_profile_id`
     )
 
     const out: Record<string, PlatformSummary> = {}
@@ -61,7 +66,7 @@ export default eventHandler(async (event) => {
       const { health } = classifyConnectionHealth({
         status: row.status,
         tokenExpiresAt: row.token_expires_at,
-        refreshToken: row.refresh_token,
+        refreshToken: row.profile_has_refresh_token ? 'profile-refresh-available' : row.refresh_token,
         lastSyncedAt: row.last_synced_at,
       })
       summary.total += 1

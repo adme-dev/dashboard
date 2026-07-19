@@ -1,4 +1,4 @@
-import { queryOne, transaction } from '~~/server/utils/db'
+import { execute, queryOne, transaction } from '~~/server/utils/db'
 import { decryptToken, encryptToken } from '~~/server/utils/tokenCrypto'
 
 const OAUTH_ATTEMPT_TTL_MS = 10 * 60 * 1000
@@ -14,24 +14,24 @@ function generateState(): string {
   return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)))
 }
 
-export async function sha256Hex(value: string): Promise<string> {
+export async function hashGoogleOAuthState(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
 interface CreateAttemptDeps {
   randomState?: () => string
-  insertAttempt?: (input: { userId: string; stateDigest: string; expiresAt: Date }) => Promise<{ id: string } | null>
+  insertAttempt?: (input: { userId: string, stateDigest: string, expiresAt: Date }) => Promise<{ id: string } | null>
 }
 
 export async function createGoogleOAuthAttempt(
   userId: string,
-  deps: CreateAttemptDeps = {},
-): Promise<{ attemptId: string; state: string }> {
+  deps: CreateAttemptDeps = {}
+): Promise<{ attemptId: string, state: string }> {
   const state = (deps.randomState || generateState)()
   if (!STATE_PATTERN.test(state)) throw new Error('Generated OAuth state is invalid')
 
-  const stateDigest = await sha256Hex(state)
+  const stateDigest = await hashGoogleOAuthState(state)
   const expiresAt = new Date(Date.now() + OAUTH_ATTEMPT_TTL_MS)
   const insertAttempt = deps.insertAttempt || (async input => queryOne<{ id: string }>(
     `INSERT INTO google_oauth_attempts (state_digest, initiated_by, expires_at)
@@ -45,16 +45,16 @@ export async function createGoogleOAuthAttempt(
 }
 
 interface ConsumeAttemptDeps {
-  consumeAttempt?: (input: { userId: string; stateDigest: string }) => Promise<{ id: string } | null>
+  consumeAttempt?: (input: { userId: string, stateDigest: string }) => Promise<{ id: string } | null>
 }
 
 export async function consumeGoogleOAuthAttempt(
   state: string,
   userId: string,
-  deps: ConsumeAttemptDeps = {},
+  deps: ConsumeAttemptDeps = {}
 ): Promise<{ id: string } | null> {
   if (!STATE_PATTERN.test(state)) return null
-  const stateDigest = await sha256Hex(state)
+  const stateDigest = await hashGoogleOAuthState(state)
   const consumeAttempt = deps.consumeAttempt || (async input => queryOne<{ id: string }>(
     `UPDATE google_oauth_attempts
      SET consumed_at = NOW()
@@ -104,7 +104,7 @@ interface ResolveCredentialDeps {
 
 export async function resolveGoogleCredential(
   row: GoogleCredentialRow,
-  deps: ResolveCredentialDeps = {},
+  deps: ResolveCredentialDeps = {}
 ): Promise<{
   accessToken: string
   refreshToken: string | null
@@ -119,7 +119,7 @@ export async function resolveGoogleCredential(
       refreshToken: row.refresh_token,
       tokenExpiresAt: row.token_expires_at,
       profileId: null,
-      source: 'legacy',
+      source: 'legacy'
     }
   }
 
@@ -142,8 +142,65 @@ export async function resolveGoogleCredential(
     refreshToken,
     tokenExpiresAt: row.profile_token_expires_at || null,
     profileId: row.google_credential_profile_id,
-    source: 'profile',
+    source: 'profile'
   }
+}
+
+interface PersistGoogleCredentialRefreshInput {
+  connectionId: string
+  profileId: string | null
+  accessToken: string
+  expiresAt: Date
+}
+
+interface PersistGoogleCredentialRefreshDeps {
+  encrypt?: typeof encryptToken
+  updateProfile?: (input: {
+    profileId: string
+    ciphertext: Uint8Array
+    iv: Uint8Array
+    expiresAt: Date
+  }) => Promise<unknown>
+  updateLegacy?: (input: {
+    connectionId: string
+    accessToken: string
+    expiresAt: Date
+  }) => Promise<unknown>
+}
+
+export async function persistGoogleCredentialRefresh(
+  input: PersistGoogleCredentialRefreshInput,
+  deps: PersistGoogleCredentialRefreshDeps = {}
+): Promise<void> {
+  if (input.profileId) {
+    const encrypt = deps.encrypt || encryptToken
+    const encrypted = await encrypt(input.accessToken)
+    const updateProfile = deps.updateProfile || (async value => execute(
+      `UPDATE google_credential_profiles
+       SET access_token_encrypted = $1,
+           access_token_iv = $2,
+           token_expires_at = $3,
+           status = 'active',
+           updated_at = NOW()
+       WHERE id = $4`,
+      [value.ciphertext, value.iv, value.expiresAt, value.profileId]
+    ))
+    await updateProfile({
+      profileId: input.profileId,
+      ciphertext: encrypted.ciphertext,
+      iv: encrypted.iv,
+      expiresAt: input.expiresAt
+    })
+    return
+  }
+
+  const updateLegacy = deps.updateLegacy || (async value => execute(
+    `UPDATE social_connections
+     SET access_token = $1, token_expires_at = $2, updated_at = NOW()
+     WHERE id = $3`,
+    [value.accessToken, value.expiresAt, value.connectionId]
+  ))
+  await updateLegacy(input)
 }
 
 export interface GoogleDiscoveredAccount {
@@ -168,8 +225,16 @@ interface StoreGoogleCredentialProfileInput {
 
 interface StoreGoogleCredentialProfileDeps {
   encrypt?: typeof encryptToken
-  runTransaction?: typeof transaction
+  runTransaction?: GoogleProfileTransactionRunner
 }
+
+interface GoogleProfileTransactionClient {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>
+}
+
+type GoogleProfileTransactionRunner = <T>(
+  callback: (db: GoogleProfileTransactionClient) => Promise<T>
+) => Promise<T>
 
 function formatCustomerId(customerId: string): string {
   const digits = customerId.replace(/\D/g, '')
@@ -186,8 +251,8 @@ function profileLabel(managerIds: string[]): string {
 
 export async function storeGoogleCredentialProfile(
   input: StoreGoogleCredentialProfileInput,
-  deps: StoreGoogleCredentialProfileDeps = {},
-): Promise<{ profileId: string; storedCount: number }> {
+  deps: StoreGoogleCredentialProfileDeps = {}
+): Promise<{ profileId: string, storedCount: number }> {
   const encrypt = deps.encrypt || encryptToken
   const encryptedAccess = await encrypt(input.tokens.accessToken)
   const encryptedRefresh = input.tokens.refreshToken
@@ -196,9 +261,9 @@ export async function storeGoogleCredentialProfile(
   const managerIds = Array.from(new Set(
     input.accounts.map(account => account.managerCustomerId).filter((id): id is string => Boolean(id))
   ))
-  const runTransaction = deps.runTransaction || transaction
+  const runTransaction = deps.runTransaction || transaction as unknown as GoogleProfileTransactionRunner
 
-  return runTransaction(async (db: any) => {
+  return runTransaction(async (db) => {
     const profileResult = await db.query(
       `INSERT INTO google_credential_profiles (
          label, access_token_encrypted, access_token_iv,
@@ -217,9 +282,9 @@ export async function storeGoogleCredentialProfile(
         input.tokens.scopes,
         JSON.stringify({
           accessibleCustomerIds: input.accessibleCustomerIds,
-          managerCustomerIds: managerIds,
+          managerCustomerIds: managerIds
         }),
-        input.userId,
+        input.userId
       ]
     )
     const profileId = profileResult.rows[0]?.id as string | undefined
@@ -253,10 +318,10 @@ export async function storeGoogleCredentialProfile(
           JSON.stringify({
             currencyCode: account.currencyCode,
             descriptiveName: account.descriptiveName || null,
-            managerCustomerId: account.managerCustomerId,
+            managerCustomerId: account.managerCustomerId
           }),
           input.userId,
-          profileId,
+          profileId
         ]
       )
       const connectionId = connectionResult.rows[0]?.id as string | undefined

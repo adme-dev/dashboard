@@ -1054,7 +1054,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Google Ads API Integration',
-        content: 'Connect your Google Ads manager accounts via OAuth. XeroFlow syncs campaign data, spend metrics, and performance indicators through the Google Ads REST API. Like Meta, multiple customer accounts map to XeroFlow clients, giving your media buying team a single source of truth for Google spend across every client in the agency.'
+        content: 'Connect multiple Google login identities and manager accounts via OAuth. Each secure credential profile discovers its own manager and child accounts, while overlapping customer access preserves the existing XeroFlow client mapping. XeroFlow syncs campaign data, spend metrics, and performance indicators through the Google Ads REST API, giving your media buying team one source of truth across every client and Google account structure in the agency.'
       },
       {
         title: 'Campaign-Level Breakdowns',

@@ -5,6 +5,12 @@
  */
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  persistGoogleCredentialRefresh,
+  resolveGoogleCredential,
+} from '~~/server/utils/googleCredentialProfiles'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -34,11 +40,12 @@ export default defineEventHandler(async (event) => {
 
   // Get the Google Ads connection
   const connection = await queryOne(`
-    SELECT id, account_id AS "accountId", account_name AS "accountName",
-      access_token AS "accessToken", refresh_token AS "refreshToken",
-      token_expires_at AS "tokenExpiresAt", metadata
-    FROM social_connections
-    WHERE id = $1 AND platform = 'google'
+    SELECT sc.id, sc.account_id, sc.account_name, sc.access_token,
+      sc.refresh_token, sc.token_expires_at, sc.metadata,
+      ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+    FROM social_connections sc
+    ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+    WHERE sc.id = $1 AND sc.platform = 'google'
   `, [connectionId]) as any
 
   if (!connection) {
@@ -47,24 +54,25 @@ export default defineEventHandler(async (event) => {
 
   // Refresh token if needed
   const config = useRuntimeConfig()
-  let accessToken = connection.accessToken
+  const credential = await resolveGoogleCredential(connection)
+  let accessToken = credential.accessToken
 
-  if (new Date(connection.tokenExpiresAt) <= new Date(Date.now() + 300000)) {
+  if (credential.refreshToken && credential.tokenExpiresAt && new Date(credential.tokenExpiresAt) <= new Date(Date.now() + 300000)) {
     try {
       const { refreshGoogleToken } = await import('~~/server/utils/googleAdsClient')
       const tokens = await refreshGoogleToken(
-        connection.refreshToken,
+        credential.refreshToken,
         config.googleClientId,
         config.googleClientSecret,
       )
       accessToken = tokens.access_token
 
-      // Update token in DB
-      await queryOne(`
-        UPDATE social_connections
-        SET access_token = $1, token_expires_at = NOW() + INTERVAL '1 hour'
-        WHERE id = $2
-      `, [accessToken, connectionId])
+      await persistGoogleCredentialRefresh({
+        connectionId,
+        profileId: credential.profileId,
+        accessToken,
+        expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+      })
     } catch {
       throw createError({ statusCode: 401, statusMessage: 'Failed to refresh Google Ads token' })
     }
@@ -72,8 +80,8 @@ export default defineEventHandler(async (event) => {
 
   // Determine MCC login customer ID
   const metadata = typeof connection.metadata === 'string' ? JSON.parse(connection.metadata) : (connection.metadata || {})
-  const loginCustomerId = metadata.loginCustomerId || connection.accountId
-  const customerId = connection.accountId.replace(/-/g, '')
+  const loginCustomerId = metadata.managerCustomerId || metadata.loginCustomerId || connection.account_id
+  const customerId = connection.account_id.replace(/-/g, '')
 
   // Create the ad via Google Ads API
   // For HTML5 banners, we need to create a media bundle asset

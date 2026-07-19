@@ -11,22 +11,22 @@ const mocks = vi.hoisted(() => ({
   getCustomerInfo: vi.fn(),
   storeProfile: vi.fn(),
   sendRedirect: vi.fn(),
-  query: {} as Record<string, unknown>,
+  query: {} as Record<string, unknown>
 }))
 
 vi.mock('h3', () => ({
   getRequestURL: () => new URL('https://app.xeroflow.io/api/agency/social/google/connect'),
-  sendRedirect: (...args: unknown[]) => mocks.sendRedirect(...args),
+  sendRedirect: (...args: unknown[]) => mocks.sendRedirect(...args)
 }))
 
 vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mocks.requireAuth(...args),
+  requireAuth: (...args: unknown[]) => mocks.requireAuth(...args)
 }))
 
 vi.mock('~~/server/utils/googleCredentialProfiles', () => ({
   createGoogleOAuthAttempt: (...args: unknown[]) => mocks.createAttempt(...args),
   consumeGoogleOAuthAttempt: (...args: unknown[]) => mocks.consumeAttempt(...args),
-  storeGoogleCredentialProfile: (...args: unknown[]) => mocks.storeProfile(...args),
+  storeGoogleCredentialProfile: (...args: unknown[]) => mocks.storeProfile(...args)
 }))
 
 vi.mock('~~/server/utils/googleAdsClient', () => ({
@@ -35,7 +35,7 @@ vi.mock('~~/server/utils/googleAdsClient', () => ({
   exchangeGoogleCode: (...args: unknown[]) => mocks.exchangeCode(...args),
   listAccessibleCustomers: (...args: unknown[]) => mocks.listAccessibleCustomers(...args),
   listClientAccounts: (...args: unknown[]) => mocks.listClientAccounts(...args),
-  getCustomerInfo: (...args: unknown[]) => mocks.getCustomerInfo(...args),
+  getCustomerInfo: (...args: unknown[]) => mocks.getCustomerInfo(...args)
 }))
 
 vi.mock('~~/server/utils/spendSync', () => ({
@@ -43,8 +43,8 @@ vi.mock('~~/server/utils/spendSync', () => ({
     googleClientId: 'client-id',
     googleClientSecret: 'client-secret',
     googleDeveloperToken: 'developer-token',
-    googleAdsLoginCustomerId: '',
-  }),
+    googleAdsLoginCustomerId: ''
+  })
 }))
 
 ;(globalThis as any).eventHandler = (handler: unknown) => handler
@@ -70,7 +70,7 @@ describe('Google multi-profile OAuth routes', () => {
     expect(mocks.getGoogleAuthUrl).toHaveBeenCalledWith(
       'client-id',
       'https://app.xeroflow.io/api/agency/social/google/callback',
-      'state-1',
+      'state-1'
     )
     expect(result).toEqual({ url: 'https://accounts.google.test/oauth', attemptId: 'attempt-1' })
   })
@@ -94,7 +94,7 @@ describe('Google multi-profile OAuth routes', () => {
       access_token: 'access-secret',
       refresh_token: 'refresh-secret',
       expires_in: 3600,
-      scope: 'https://www.googleapis.com/auth/adwords',
+      scope: 'https://www.googleapis.com/auth/adwords'
     })
     mocks.listAccessibleCustomers.mockResolvedValue(['1111111111', '3333333333'])
     mocks.listClientAccounts
@@ -111,8 +111,8 @@ describe('Google multi-profile OAuth routes', () => {
       accessibleCustomerIds: ['1111111111', '3333333333'],
       accounts: [
         expect.objectContaining({ customerId: '2222222222', managerCustomerId: '1111111111' }),
-        expect.objectContaining({ customerId: '3333333333', managerCustomerId: null }),
-      ],
+        expect.objectContaining({ customerId: '3333333333', managerCustomerId: null })
+      ]
     }))
     expect(result.location).toContain('success=true')
     expect(result.location).toContain('accounts=2')

@@ -2,6 +2,13 @@ import { queryOne, execute } from '~~/server/utils/db'
 import { getCampaignInsightsById } from '~~/server/utils/metaClient'
 import { resolveGoogleWriteAuth } from '~~/server/utils/googleWriteAuth'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  persistGoogleCredentialRefresh,
+  resolveGoogleCredential,
+  type GoogleCredentialRow,
+} from '~~/server/utils/googleCredentialProfiles'
 
 /**
  * Re-pull ONE campaign's month-to-date core metrics and update its media_spend row.
@@ -15,7 +22,7 @@ import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
  * misdiagnosis — the reads work given a fresh token + the right manager header.
  */
 export async function refreshSingleCampaignSpend(mediaSpendId: string): Promise<{ refreshed: boolean, error?: string }> {
-  const row = await queryOne<{
+  const row = await queryOne<GoogleCredentialRow & {
     platform: 'meta' | 'google_ads'
     campaign_id: string | null
     connection_id: string
@@ -26,13 +33,15 @@ export async function refreshSingleCampaignSpend(mediaSpendId: string): Promise<
     period: string
   }>(
     `SELECT ms.platform, ms.campaign_id, ms.connection_id::text,
-            sc.account_id, sc.access_token, sc.refresh_token, sc.token_expires_at, ms.period
+            sc.account_id, sc.access_token, sc.refresh_token, sc.token_expires_at, ms.period,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
        FROM media_spend ms
        JOIN social_connections sc ON sc.id = ms.connection_id
+       ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
       WHERE ms.id = $1`,
     [mediaSpendId],
   )
-  if (!row || !row.campaign_id || !row.access_token) {
+  if (!row || !row.campaign_id || (row.platform === 'meta' && !row.access_token)) {
     return { refreshed: false, error: 'missing connection or campaign' }
   }
 
@@ -60,15 +69,16 @@ export async function refreshSingleCampaignSpend(mediaSpendId: string): Promise<
     }
 
     // Google
+    const credential = await resolveGoogleCredential(row)
     const config = resolveGoogleAdsRuntimeConfig()
     const { refreshGoogleToken, listAccessibleCustomers, getCampaignSpendById } = await import('~~/server/utils/googleAdsClient')
     const { accessToken, loginCustomerId } = await resolveGoogleWriteAuth(
       {
         id: row.connection_id,
         account_id: row.account_id,
-        access_token: row.access_token,
-        refresh_token: row.refresh_token,
-        token_expires_at: row.token_expires_at,
+        access_token: credential.accessToken,
+        refresh_token: credential.refreshToken,
+        token_expires_at: credential.tokenExpiresAt,
       },
       {
         googleClientId: config.googleClientId,
@@ -80,10 +90,12 @@ export async function refreshSingleCampaignSpend(mediaSpendId: string): Promise<
         refreshGoogleToken,
         listAccessibleCustomers,
         updateToken: async (cid, tok, exp) => {
-          await execute(
-            `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
-            [tok, exp, cid],
-          )
+          await persistGoogleCredentialRefresh({
+            connectionId: cid,
+            profileId: credential.profileId,
+            accessToken: tok,
+            expiresAt: exp,
+          })
         },
       },
     )

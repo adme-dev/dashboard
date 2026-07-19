@@ -162,7 +162,7 @@ export function useSocialConnections() {
   async function connectPlatform(platform: SocialPlatform): Promise<OAuthResult> {
     const { url } = await apiFetch<{ url: string }>(`/api/agency/social/${platform}/connect`)
     // Open OAuth popup
-    const popup = window.open(url, `${platform}_connect`, 'width=600,height=700,scrollbars=yes')
+    const popup = window.open(url, `${platform}_connect_${Date.now()}`, 'width=600,height=700,scrollbars=yes')
 
     return new Promise<OAuthResult>((resolve) => {
       let resolved = false

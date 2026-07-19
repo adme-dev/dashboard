@@ -14,7 +14,8 @@ export default eventHandler(async (event) => {
        sc.account_id,
        sc.account_name,
        sc.status,
-       sc.token_expires_at,
+       COALESCE(gcp.token_expires_at, sc.token_expires_at) AS token_expires_at,
+       sc.google_credential_profile_id,
        sc.scopes,
        sc.metadata,
        sc.connected_by,
@@ -24,6 +25,7 @@ export default eventHandler(async (event) => {
        (SELECT MAX(synced_at) FROM media_spend WHERE connection_id = sc.id) AS last_synced_at,
        (SELECT COUNT(*) FROM ad_account_client_map WHERE connection_id = sc.id) AS mapped_clients
      FROM social_connections sc
+     LEFT JOIN google_credential_profiles gcp ON gcp.id = sc.google_credential_profile_id
      LEFT JOIN team_members tm ON sc.connected_by = tm.id
      WHERE sc.platform = 'google'
      ORDER BY sc.account_name ASC`
@@ -35,6 +37,7 @@ export default eventHandler(async (event) => {
     accountName: a.account_name,
     status: a.status,
     tokenExpiresAt: a.token_expires_at,
+    credentialProfileId: a.google_credential_profile_id || null,
     scopes: a.scopes || [],
     metadata: a.metadata || {},
     connectedBy: a.connected_by,
