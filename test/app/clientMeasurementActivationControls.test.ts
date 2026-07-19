@@ -92,6 +92,7 @@ function mountControls(input: {
   liveEligible?: boolean
   approvals?: { privacy: boolean, live: boolean }
   canOwnerOverride?: boolean
+  profile?: typeof profile
 } = {}) {
   const fetchMock = vi.fn(async () => ({}))
   Object.assign(globalThis, { $fetch: fetchMock })
@@ -99,7 +100,7 @@ function mountControls(input: {
   const app = createApp({
     render: () => h(ClientMeasurementActivationControls, {
       clientId: CLIENT_ID,
-      profile,
+      profile: input.profile ?? profile,
       readiness: readiness({
         liveEligible: input.liveEligible ?? false,
         approvals: input.approvals ?? { privacy: false, live: false }
@@ -126,6 +127,28 @@ function confirm(host: HTMLElement) {
 }
 
 describe('ClientMeasurementActivationControls', () => {
+  it('shows consumed governance without pending approval claims after activation', async () => {
+    const test = mountControls({
+      profile: {
+        ...profile,
+        enabled: true,
+        environment: 'live',
+        configVersion: 6,
+        cacheVersion: 6
+      },
+      approvals: { privacy: false, live: false },
+      liveEligible: true,
+      canOwnerOverride: true
+    })
+    await flushUi()
+
+    expect(test.host.textContent).toContain('Approval gates were consumed at activation')
+    expect(test.host.textContent).not.toContain('Privacy approval pending')
+    expect(test.host.textContent).not.toContain('Live approval pending')
+    expect(test.host.querySelector('[data-testid="open-owner-override"]')).toBeNull()
+    test.app.unmount()
+  })
+
   it('records an explicitly confirmed privacy approval for the current config version', async () => {
     const test = mountControls()
     await flushUi()
