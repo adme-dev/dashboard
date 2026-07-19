@@ -475,6 +475,20 @@ describe('Measurement activation command schemas', () => {
     })
 
     expect(approval.approvalKind).toBe('privacy')
+    expect(approval.separationOverride).toBe(false)
+  })
+
+  it('accepts an explicit server-derived owner separation override', () => {
+    const approval = ApproveMeasurementActivationSchema.parse({
+      clientId: CLIENT_ID,
+      expectedConfigVersion: 3,
+      approvalKind: 'live',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      reason: 'Application owner authorizes a break-glass single-owner launch',
+      separationOverride: true
+    })
+
+    expect(approval.separationOverride).toBe(true)
   })
 
   it('rejects system/client actors and client-supplied approval identities', () => {

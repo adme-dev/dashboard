@@ -121,6 +121,52 @@ describe('Postgres measurement activation repository', () => {
     expect(db.query).toHaveBeenCalledTimes(2)
   })
 
+  it('records an explicit owner separation override for the live gate', async () => {
+    const statements: Array<{ sql: string, params: unknown[] }> = []
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        statements.push({ sql, params })
+        if (/client_measurement_profiles/.test(sql)) return { rows: [profileRow()] }
+        if (/FROM measurement_activation_approvals/.test(sql)) {
+          return { rows: [{ approval_kind: 'privacy', approved_by: PRIVACY_APPROVER_ID }] }
+        }
+        if (/INSERT INTO measurement_activation_approvals/.test(sql)) {
+          return { rows: [{
+            id: '66666666-6666-4666-8666-666666666666',
+            client_id: CLIENT_ID,
+            profile_id: PROFILE_ID,
+            config_version: 3,
+            approval_kind: 'live',
+            approved_by: PRIVACY_APPROVER_ID,
+            reason: 'Application owner authorizes a break-glass single-owner launch',
+            separation_override: true,
+            created_at: CREATED_AT
+          }] }
+        }
+        return { rows: [] }
+      })
+    }
+    const repository = createPostgresMeasurementActivationRepository({
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
+    })
+
+    const result = await repository.approve({
+      ...approvalInput(),
+      approvalKind: 'live',
+      separationOverride: true,
+      reason: 'Application owner authorizes a break-glass single-owner launch'
+    })
+
+    expect(result).toMatchObject({
+      status: 'approved',
+      approval: { approvalKind: 'live', separationOverride: true }
+    })
+    expect(statements.find(statement => /INSERT INTO measurement_activation_approvals/.test(statement.sql))?.params)
+      .toContain(true)
+  })
+
   it('activates only when distinct current-version approvals and all readiness evidence pass', async () => {
     const statements: Array<{ sql: string, params: unknown[] }> = []
     const db = {
@@ -215,5 +261,54 @@ describe('Postgres measurement activation repository', () => {
       ]
     })
     expect(db.query).toHaveBeenCalledTimes(3)
+  })
+
+  it('allows activation when the owner live approval explicitly overrides separation', async () => {
+    const db = {
+      query: vi.fn(async (sql: string) => {
+        if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) return { rows: [profileRow()] }
+        if (/FROM measurement_activation_approvals/.test(sql)) {
+          return { rows: [
+            {
+              approval_kind: 'privacy',
+              approved_by: PRIVACY_APPROVER_ID,
+              separation_override: false,
+              created_at: CREATED_AT
+            },
+            {
+              approval_kind: 'live',
+              approved_by: PRIVACY_APPROVER_ID,
+              separation_override: true,
+              created_at: CREATED_AT
+            }
+          ] }
+        }
+        if (/AS destinations/.test(sql)) {
+          return { rows: [{
+            destinations: '1',
+            ready_destinations: '1',
+            capabilities: '1',
+            ready_capabilities: '1',
+            active_mappings: '1',
+            outcome_endpoints: '0',
+            ready_outcome_endpoints: '0'
+          }] }
+        }
+        if (/UPDATE client_measurement_profiles/.test(sql)) {
+          return { rows: [profileRow(4, true, 'live')] }
+        }
+        return { rows: [] }
+      })
+    }
+    const repository = createPostgresMeasurementActivationRepository({
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
+    })
+
+    await expect(repository.activate(activationInput())).resolves.toMatchObject({
+      status: 'activated',
+      activatedDestinations: 1
+    })
   })
 })

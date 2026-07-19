@@ -152,4 +152,22 @@ describe('Measurement client access', () => {
       '11111111-1111-4111-8111-111111111111'
     )).resolves.toMatchObject({ role: 'admin' })
   })
+
+  it('restricts a separation-of-duties override to the application owner', async () => {
+    const { requireMeasurementOwnerOverrideAccess } = await import(
+      '../../../../server/utils/measurement/access'
+    )
+
+    mockRequirePermission.mockResolvedValue({ id: 'staff-1', role: 'admin' })
+    await expect(requireMeasurementOwnerOverrideAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111'
+    )).rejects.toMatchObject({ statusCode: 403 })
+
+    mockRequirePermission.mockResolvedValue({ id: 'staff-2', role: 'owner' })
+    await expect(requireMeasurementOwnerOverrideAccess(
+      { context: {} } as never,
+      '11111111-1111-4111-8111-111111111111'
+    )).resolves.toMatchObject({ id: 'staff-2', role: 'owner' })
+  })
 })

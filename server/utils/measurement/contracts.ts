@@ -472,7 +472,8 @@ export const ApproveMeasurementActivationSchema = z.strictObject({
   expectedConfigVersion: z.number().int().positive(),
   approvalKind: MeasurementApprovalKindSchema,
   actor: MeasurementTeamActorSchema,
-  reason: z.string().trim().min(1).max(1000)
+  reason: z.string().trim().min(1).max(1000),
+  separationOverride: z.boolean().default(false)
 })
 
 export const ActivateMeasurementProfileSchema = z.strictObject({
@@ -490,6 +491,7 @@ export const MeasurementActivationApprovalSchema = z.strictObject({
   approvalKind: MeasurementApprovalKindSchema,
   approvedBy: z.string().uuid(),
   reason: z.string().trim().min(1).max(1000),
+  separationOverride: z.boolean().default(false),
   createdAt: z.string().datetime({ offset: true })
 })
 
