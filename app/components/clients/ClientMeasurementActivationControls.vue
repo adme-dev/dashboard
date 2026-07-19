@@ -31,6 +31,9 @@ const commandError = ref<string | null>(null)
 const configurationIsDormant = computed(() => (
   !props.profile.enabled && props.profile.environment === 'test'
 ))
+const deliveryIsActive = computed(() => (
+  props.profile.enabled && props.profile.environment === 'live'
+))
 const approvalsComplete = computed(() => (
   props.readiness.approvals.privacy && props.readiness.approvals.live
 ))
@@ -170,14 +173,17 @@ watch(
         <h3 class="font-semibold text-highlighted">
           Governed activation
         </h3>
-        <p class="mt-1 text-sm leading-5 text-muted">
+        <p v-if="!deliveryIsActive" class="mt-1 text-sm leading-5 text-muted">
           Approvals apply only to configuration version {{ readiness.configVersion }}. Activation rechecks canonical readiness before enabling delivery.
+        </p>
+        <p v-else class="mt-1 text-sm leading-5 text-muted">
+          Delivery is active. Approval gates were consumed at activation and remain available in the audit log.
         </p>
       </div>
       <UIcon name="i-lucide-shield-check" class="mt-0.5 size-5 shrink-0 text-primary" />
     </div>
 
-    <div class="mt-4 space-y-2">
+    <div v-if="!deliveryIsActive" class="mt-4 space-y-2">
       <div class="flex items-center justify-between gap-3 rounded-lg bg-elevated p-3 text-sm">
         <span class="text-highlighted">Privacy approval</span>
         <UBadge :color="readiness.approvals.privacy ? 'success' : 'warning'" variant="subtle">
@@ -192,7 +198,7 @@ watch(
       </div>
     </div>
 
-    <p class="mt-3 text-xs leading-5 text-muted">
+    <p v-if="!deliveryIsActive" class="mt-3 text-xs leading-5 text-muted">
       A different team member must record the other approval. Zero enforces the two-person rule for the same configuration version. The application owner may use the explicit audited break-glass exception when a second approver is unavailable.
     </p>
 
@@ -245,6 +251,9 @@ watch(
     <p v-else-if="!canConfigure" class="mt-4 flex items-center gap-2 text-sm text-muted">
       <UIcon name="i-lucide-lock" class="size-4" />
       Read-only access
+    </p>
+    <p v-else-if="deliveryIsActive" class="mt-4 text-sm text-muted">
+      Live delivery is active. Configuration changes create a new governed version.
     </p>
     <p v-else class="mt-4 text-sm text-muted">
       Approval commands are available only while the profile is dormant in test mode.
