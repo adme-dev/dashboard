@@ -45,7 +45,12 @@ export async function refreshSingleCampaignSpend(mediaSpendId: string): Promise<
     return { refreshed: false, error: 'missing connection or campaign' }
   }
 
-  const [year, month] = row.period.split('-').map(Number)
+  const [yearValue, monthValue] = row.period.split('-').map(Number)
+  if (!Number.isFinite(yearValue) || !Number.isFinite(monthValue)) {
+    return { refreshed: false, error: 'invalid spend period' }
+  }
+  const year = yearValue as number
+  const month = monthValue as number
 
   const writeMetrics = async (spend: number, impressions: number, clicks: number) => {
     // Don't write NaN into numeric columns if the platform returns a malformed value.
@@ -63,6 +68,7 @@ export async function refreshSingleCampaignSpend(mediaSpendId: string): Promise<
 
   try {
     if (row.platform === 'meta') {
+      if (!row.access_token) return { refreshed: false, error: 'missing connection or campaign' }
       const match = await getCampaignInsightsById(row.campaign_id, row.access_token, month, year)
       if (!match) return { refreshed: false, error: 'campaign not in insights' }
       return await writeMetrics(Number(match.spend), Number(match.impressions), Number(match.clicks))

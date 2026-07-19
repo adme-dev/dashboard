@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import { getKV } from '~~/server/utils/kv'
+import { resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 import { createPostgresMeasurementActivationRepository } from '~~/server/utils/measurement/activationRepository'
 import { createMeasurementActivationService } from '~~/server/utils/measurement/activationService'
 import { createPostgresMeasurementDestinationRepository } from '~~/server/utils/measurement/destinationRepository'
@@ -76,6 +77,10 @@ export function createMeasurementOutcomeEndpointRuntime(event: H3Event) {
 
 export function createMeasurementProviderTestRuntime(event: H3Event) {
   const config = useRuntimeConfig(event)
+  const googleConfig = resolveGoogleOAuthRuntimeConfig(event, {
+    googleClientId: String(config.googleClientId || ''),
+    googleClientSecret: String(config.googleClientSecret || '')
+  })
   const providerFetch = globalThis.fetch.bind(globalThis)
   const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } })
     .cloudflare?.env ?? {}
@@ -92,8 +97,8 @@ export function createMeasurementProviderTestRuntime(event: H3Event) {
       credentialRef
     ),
     graphApiVersion: String(config.metaGraphApiVersion || 'v25.0'),
-    googleClientId: String(config.googleClientId || ''),
-    googleClientSecret: String(config.googleClientSecret || ''),
+    googleClientId: googleConfig.googleClientId,
+    googleClientSecret: googleConfig.googleClientSecret,
     now: () => new Date()
   })
 }

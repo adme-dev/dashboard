@@ -10,7 +10,7 @@ const route = useRoute()
 const toast = useToast()
 // KPI targets are editable only by MANAGEMENT roles (matches the kpi-targets PUT
 // guard) — non-managers get a read-only view instead of a 403 on save.
-const { isManager, canAccessMediaBuying, canWrite } = useAuth()
+const { isManager, isOwner, canAccessMediaBuying, canWrite } = useAuth()
 const clientId = route.params.id as string
 const apiFetch = $fetch as <T = unknown>(
   request: string,
@@ -848,7 +848,11 @@ async function saveKpiTargets() {
           </div>
 
           <div v-if="activeTab === 'measurement' && canAccessMediaBuying">
-            <ClientsClientMeasurementPanel :client-id="clientId" :can-configure="canWrite" />
+            <ClientsClientMeasurementPanel
+              :client-id="clientId"
+              :can-configure="canWrite"
+              :can-owner-override="isOwner"
+            />
           </div>
         </template>
 

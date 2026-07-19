@@ -42,6 +42,11 @@ describe('storeGoogleCredentialProfile', () => {
     expect(queries.find(q => q.sql.includes('INSERT INTO social_connections'))?.sql)
       .toContain('google_credential_profile_id = EXCLUDED.google_credential_profile_id')
     expect(queries.some(q => q.sql.includes('INSERT INTO google_credential_profile_accounts'))).toBe(true)
+    const connectionParams = queries.find(q => q.sql.includes('INSERT INTO social_connections'))?.params
+    expect(JSON.parse(String(connectionParams?.[4]))).toMatchObject({
+      managerCustomerId: '1111111111',
+      google_login_customer_id: '1111111111'
+    })
     expect(JSON.stringify(queries)).not.toContain('access-secret')
     expect(JSON.stringify(queries)).not.toContain('refresh-secret')
   })

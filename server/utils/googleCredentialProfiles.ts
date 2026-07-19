@@ -318,7 +318,8 @@ export async function storeGoogleCredentialProfile(
           JSON.stringify({
             currencyCode: account.currencyCode,
             descriptiveName: account.descriptiveName || null,
-            managerCustomerId: account.managerCustomerId
+            managerCustomerId: account.managerCustomerId,
+            google_login_customer_id: account.managerCustomerId
           }),
           input.userId,
           profileId

@@ -146,8 +146,8 @@ export async function syncCampaignBreakdowns(mediaSpendId: string): Promise<Brea
   }
 
   const [yearStr, monthStr] = campaign.period.split('-')
-  const month = parseInt(monthStr, 10)
-  const year = parseInt(yearStr, 10)
+  const month = parseInt(monthStr || '', 10)
+  const year = parseInt(yearStr || '', 10)
 
   const allRows: Array<{ dimensionType: string; dimensionValue: string; spend: number; impressions: number; clicks: number; conversions: number; revenue: number }> = []
   const extraMetrics: ExtraMetrics = { ...EMPTY_EXTRA_METRICS }
@@ -221,7 +221,7 @@ export async function syncCampaignBreakdowns(mediaSpendId: string): Promise<Brea
   for (const r of allRows) {
     if (breakdowns[r.dimensionType]) {
       const metrics = computeMetrics(r.spend, r.impressions, r.clicks, r.conversions, r.revenue)
-      breakdowns[r.dimensionType].push({
+      breakdowns[r.dimensionType]!.push({
         dimensionValue: r.dimensionValue,
         spend: r.spend, impressions: r.impressions, clicks: r.clicks,
         conversions: r.conversions, revenue: r.revenue,
@@ -232,13 +232,13 @@ export async function syncCampaignBreakdowns(mediaSpendId: string): Promise<Brea
   // Sort non-hourly by spend desc, hourly by hour asc
   for (const key of Object.keys(breakdowns)) {
     if (key === 'hourly') {
-      breakdowns[key].sort((a: any, b: any) => {
+      breakdowns[key]!.sort((a: any, b: any) => {
         const hourA = parseInt(a.dimensionValue, 10)
         const hourB = parseInt(b.dimensionValue, 10)
         return hourA - hourB
       })
     } else {
-      breakdowns[key].sort((a: any, b: any) => b.spend - a.spend)
+      breakdowns[key]!.sort((a: any, b: any) => b.spend - a.spend)
     }
   }
 
@@ -1004,6 +1004,6 @@ function normalizeStoryType(val: string): string {
 function normalizeMetaHour(val: string): string {
   // Extract the leading hour number
   const match = val.match(/^(\d{1,2}):/)
-  if (match) return String(parseInt(match[1], 10))
+  if (match) return String(parseInt(match[1]!, 10))
   return val
 }

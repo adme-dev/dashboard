@@ -135,6 +135,39 @@ describe('Measurement read service', () => {
     expect(result.blockers).toEqual([])
   })
 
+  it('does not reopen consumed approval gates after a profile is active', async () => {
+    const test = harness(evidence({
+      profile: {
+        enabled: true,
+        environment: 'live',
+        cacheStatus: 'fresh',
+        outcomeAuthority: 'zero_native'
+      },
+      liveApproved: false,
+      privacyApproved: false,
+      counts: {
+        destinations: 1,
+        readyDestinations: 1,
+        degradedDestinations: 0,
+        blockedDestinations: 0,
+        capabilities: 2,
+        readyCapabilities: 2,
+        degradedCapabilities: 0,
+        blockedCapabilities: 0,
+        activeMappings: 1,
+        outcomeEndpoints: 0,
+        readyOutcomeEndpoints: 0
+      }
+    }))
+
+    const result = await test.service.getReadiness(CLIENT_ID)
+
+    expect(result.status).toBe('ready')
+    expect(result.liveEligible).toBe(true)
+    expect(result.approvals).toEqual({ privacy: false, live: false })
+    expect(result.blockers).toEqual([])
+  })
+
   it('marks a disabled test profile live-eligible when current evidence and approvals pass', async () => {
     const test = harness(evidence({
       profile: {

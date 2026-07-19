@@ -523,21 +523,34 @@
       consent: getCookie(CONSENT_COOKIE_NAME) || null,
     }
 
-    // POST cross-origin to OUR origin with the write key on the query string
-    // (sendBeacon can't set headers, so the key rides the URL).
+    // POST cross-origin to OUR origin with the write key on the query string.
+    // Prefer fetch with keepalive: some browsers leave cross-origin JSON
+    // sendBeacon requests pending indefinitely after a successful preflight.
+    // Retain sendBeacon as a best-effort fallback for network-level failures
+    // and older browsers without fetch.
     var url = (_scriptOrigin || '') + ENDPOINT + '?k=' + encodeURIComponent(WRITE_KEY)
     var data = JSON.stringify(batch)
 
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(url, new Blob([data], { type: 'application/json' }))
+    function sendBeaconFallback() {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, new Blob([data], { type: 'application/json' }))
+      }
+    }
+
+    if (typeof fetch === 'function') {
+      try {
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: data,
+          keepalive: true,
+          mode: 'cors',
+        }).catch(sendBeaconFallback)
+      } catch (e) {
+        sendBeaconFallback()
+      }
     } else {
-      fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: data,
-        keepalive: true,
-        mode: 'cors',
-      }).catch(function () {})
+      sendBeaconFallback()
     }
 
     // Push to dataLayer for sGTM (if GTM is enabled and event qualifies)
@@ -991,8 +1004,8 @@
         var fields = Object.keys(interaction.fields)
 
         // Route through track() so the event gets the write-key URL, absolute
-        // origin and Slice-1 batch shape (track() itself uses sendBeacon, which
-        // is reliable on unload). Never post the old flat shape to a bare path.
+        // origin and Slice-1 batch shape. Its keepalive transport is eligible
+        // to finish during unload. Never post the old flat shape to a bare path.
         track('form_abandonment', {
           form_key: formKey,
           fields_interacted: fields,

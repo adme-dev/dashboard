@@ -50,3 +50,17 @@ export async function requireMeasurementActivationAccess(
   }
   return user
 }
+
+export async function requireMeasurementOwnerOverrideAccess(
+  event: H3Event,
+  clientId: string | undefined
+) {
+  const user = await requireMeasurementActivationAccess(event, clientId)
+  if (user.role !== 'owner') {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Measurement separation override requires the application owner'
+    })
+  }
+  return user
+}
