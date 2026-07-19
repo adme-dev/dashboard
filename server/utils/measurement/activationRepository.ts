@@ -40,12 +40,14 @@ interface ApprovalRow {
   approval_kind: string
   approved_by: string
   reason: string
+  separation_override: boolean
   created_at: Date | string
 }
 
 interface ApprovalIdentityRow {
   approval_kind: 'privacy' | 'live'
   approved_by: string
+  separation_override: boolean
   created_at: Date | string
 }
 
@@ -68,7 +70,7 @@ const PROFILE_COLUMNS = `
 
 const APPROVAL_COLUMNS = `
   id, client_id, profile_id, config_version, approval_kind,
-  approved_by, reason, created_at
+  approved_by, reason, separation_override, created_at
 `
 
 function iso(value: Date | string): string {
@@ -84,6 +86,7 @@ function mapApproval(row: ApprovalRow): MeasurementActivationApproval {
     approvalKind: row.approval_kind,
     approvedBy: row.approved_by,
     reason: row.reason,
+    separationOverride: row.separation_override,
     createdAt: iso(row.created_at)
   })
 }
@@ -155,7 +158,7 @@ export function createPostgresMeasurementActivationRepository(
           }
 
           const existingResult = await db.query(
-            `SELECT approval_kind, approved_by
+            `SELECT approval_kind, approved_by, separation_override
                FROM measurement_activation_approvals
               WHERE client_id = $1
                 AND profile_id = $2
@@ -166,15 +169,18 @@ export function createPostgresMeasurementActivationRepository(
           if (existingApprovals.some(approval => (
             approval.approval_kind === input.approvalKind
           ))) return { status: 'duplicate_approval' as const }
-          if (existingApprovals.some(approval => approval.approved_by === input.actor.id)) {
+          if (
+            existingApprovals.some(approval => approval.approved_by === input.actor.id)
+            && !input.separationOverride
+          ) {
             return { status: 'approver_conflict' as const }
           }
 
           const approvalResult = await db.query(
             `INSERT INTO measurement_activation_approvals (
                client_id, profile_id, config_version, approval_kind,
-               approved_by, reason
-             ) VALUES ($1, $2, $3, $4, $5, $6)
+               approved_by, reason, separation_override
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING ${APPROVAL_COLUMNS}`,
             [
               input.clientId,
@@ -182,7 +188,8 @@ export function createPostgresMeasurementActivationRepository(
               profile.configVersion,
               input.approvalKind,
               input.actor.id,
-              input.reason
+              input.reason,
+              input.separationOverride
             ]
           )
           const approval = mapApproval(approvalResult.rows[0] as ApprovalRow)
@@ -203,7 +210,8 @@ export function createPostgresMeasurementActivationRepository(
               JSON.stringify({
                 approvalKind: approval.approvalKind,
                 approvedBy: approval.approvedBy,
-                configVersion: approval.configVersion
+                configVersion: approval.configVersion,
+                separationOverride: approval.separationOverride
               }),
               [`${approval.approvalKind}_approval`],
               input.actor.id,
@@ -215,8 +223,9 @@ export function createPostgresMeasurementActivationRepository(
         })
       } catch (error) {
         const dbError = error as { code?: string }
-        if (dbError.code !== '23505') throw error
-        return { status: 'duplicate_approval' }
+        if (dbError.code === '23505') return { status: 'duplicate_approval' }
+        if (dbError.code === '23514') return { status: 'approver_conflict' }
+        throw error
       }
     },
 
@@ -243,12 +252,24 @@ export function createPostgresMeasurementActivationRepository(
         }
 
         const approvalResult = await db.query(
-          `SELECT approval_kind, approved_by, created_at
-             FROM measurement_activation_approvals
-            WHERE client_id = $1
-              AND profile_id = $2
-              AND config_version = $3
-            ORDER BY approval_kind ASC`,
+          `SELECT approval.approval_kind,
+                  approval.approved_by,
+                  CASE
+                    WHEN approval.separation_override THEN EXISTS (
+                      SELECT 1
+                        FROM team_members owner
+                       WHERE owner.id = approval.approved_by
+                         AND owner.user_role = 'owner'
+                         AND owner.is_active = TRUE
+                    )
+                    ELSE FALSE
+                  END AS separation_override,
+                  approval.created_at
+             FROM measurement_activation_approvals approval
+            WHERE approval.client_id = $1
+              AND approval.profile_id = $2
+              AND approval.config_version = $3
+            ORDER BY approval.approval_kind ASC`,
           [input.clientId, profile.id, profile.configVersion]
         )
         const approvals = approvalResult.rows as ApprovalIdentityRow[]
@@ -297,7 +318,12 @@ export function createPostgresMeasurementActivationRepository(
           blockers.push('hostname_not_ready')
         }
         if (!privacyApproval || !liveApproval) blockers.push('approval_missing')
-        if (privacyApproval && liveApproval && privacyApproval.approved_by === liveApproval.approved_by) {
+        if (
+          privacyApproval
+          && liveApproval
+          && privacyApproval.approved_by === liveApproval.approved_by
+          && !liveApproval.separation_override
+        ) {
           blockers.push('approver_conflict')
         }
         if (destinations === 0) blockers.push('no_destinations')

@@ -10,7 +10,8 @@ const mockRuntime = vi.fn(() => ({ approve: mockApprove, activate: mockActivate 
 let mockBody: Record<string, unknown> = {}
 
 vi.mock('~~/server/utils/measurement/access', () => ({
-  requireMeasurementActivationAccess: (...args: unknown[]) => mockRequireActivationAccess(...args)
+  requireMeasurementActivationAccess: (...args: unknown[]) => mockRequireActivationAccess(...args),
+  requireMeasurementOwnerOverrideAccess: (...args: unknown[]) => mockRequireActivationAccess(...args)
 }))
 
 vi.mock('~~/server/utils/measurement/runtime', () => ({
@@ -84,6 +85,31 @@ describe('agency Measurement activation endpoints', () => {
       expectedConfigVersion: 3,
       actor: { type: 'team_member', id: ACTOR_ID },
       reason: 'All gates passed'
+    })
+  })
+
+  it('derives the owner override marker from the owner-only route', async () => {
+    mockBody = {
+      expectedConfigVersion: 3,
+      approvalKind: 'privacy',
+      separationOverride: false,
+      actor: { type: 'system', id: 'spoofed' },
+      reason: 'Application owner authorizes a break-glass single-owner launch'
+    }
+    const handler = (await import(
+      '~~/server/api/agency/measurement/clients/[clientId]/owner-override.post'
+    )).default
+
+    await handler({ context: {} } as never)
+
+    expect(mockRequireActivationAccess).toHaveBeenCalledWith(expect.anything(), CLIENT_ID)
+    expect(mockApprove).toHaveBeenCalledWith({
+      clientId: CLIENT_ID,
+      expectedConfigVersion: 3,
+      approvalKind: 'live',
+      actor: { type: 'team_member', id: ACTOR_ID },
+      reason: 'Application owner authorizes a break-glass single-owner launch',
+      separationOverride: true
     })
   })
 
