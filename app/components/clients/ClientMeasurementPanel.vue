@@ -15,6 +15,7 @@ import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEve
 const props = defineProps<{
   clientId: string
   canConfigure?: boolean
+  canOwnerOverride?: boolean
 }>()
 
 const apiFetch = $fetch as <T>(request: string) => Promise<T>
@@ -228,7 +229,7 @@ function toggleProviderTest(destinationId: string) {
 }
 
 async function handleActivationCompleted(result: {
-  kind: 'privacy' | 'live' | 'activation'
+  kind: 'privacy' | 'live' | 'owner_override' | 'activation'
   warnings: Array<{ code: string }>
 }) {
   if (result.kind === 'activation') {
@@ -241,7 +242,9 @@ async function handleActivationCompleted(result: {
       tone: 'success',
       message: result.kind === 'privacy'
         ? 'Privacy approval recorded for the current configuration.'
-        : 'Live approval recorded for the current configuration.'
+        : result.kind === 'owner_override'
+          ? 'Audited owner override recorded for the current configuration.'
+          : 'Live approval recorded for the current configuration.'
     }
   }
   await refreshMeasurement()
@@ -540,6 +543,7 @@ void refreshMeasurement()
           :profile="profile"
           :readiness="readiness"
           :can-configure="canConfigure ?? false"
+          :can-owner-override="canOwnerOverride ?? false"
           @completed="handleActivationCompleted"
         />
 

@@ -88,7 +88,11 @@ async function flushUi() {
   }
 }
 
-function mountControls(input: { liveEligible?: boolean, approvals?: { privacy: boolean, live: boolean } } = {}) {
+function mountControls(input: {
+  liveEligible?: boolean
+  approvals?: { privacy: boolean, live: boolean }
+  canOwnerOverride?: boolean
+} = {}) {
   const fetchMock = vi.fn(async () => ({}))
   Object.assign(globalThis, { $fetch: fetchMock })
   const host = document.createElement('div')
@@ -100,7 +104,8 @@ function mountControls(input: { liveEligible?: boolean, approvals?: { privacy: b
         liveEligible: input.liveEligible ?? false,
         approvals: input.approvals ?? { privacy: false, live: false }
       }),
-      canConfigure: true
+      canConfigure: true,
+      canOwnerOverride: input.canOwnerOverride ?? false
     })
   })
   Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
@@ -159,6 +164,39 @@ describe('ClientMeasurementActivationControls', () => {
     expect(test.host.querySelector<HTMLButtonElement>('[data-testid="open-live-activation"]')?.textContent)
       .toContain('Activation blocked')
     expect(test.host.textContent).toContain('A different team member must record the other approval')
+    test.app.unmount()
+  })
+
+  it('offers the explicit break-glass route only to the application owner', async () => {
+    const test = mountControls({
+      approvals: { privacy: true, live: false },
+      canOwnerOverride: true
+    })
+    await flushUi()
+
+    const overrideButton = test.host.querySelector<HTMLButtonElement>(
+      '[data-testid="open-owner-override"]'
+    )
+    expect(overrideButton?.textContent).toContain('Owner override')
+    overrideButton!.click()
+    await nextTick()
+    expect(test.host.textContent).toContain('Break-glass owner approval')
+    setTextarea(test.host, 'Application owner authorizes the single-owner production launch')
+    confirm(test.host)
+    await nextTick()
+    test.host.querySelector<HTMLButtonElement>('[data-testid="submit-governed-command"]')!.click()
+    await flushUi()
+
+    expect(test.fetchMock).toHaveBeenCalledWith(
+      `/api/agency/measurement/clients/${CLIENT_ID}/owner-override`,
+      {
+        method: 'POST',
+        body: {
+          expectedConfigVersion: 5,
+          reason: 'Application owner authorizes the single-owner production launch'
+        }
+      }
+    )
     test.app.unmount()
   })
 

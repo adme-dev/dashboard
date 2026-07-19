@@ -10,16 +10,17 @@ const props = defineProps<{
   profile: ClientMeasurementProfile
   readiness: MeasurementReadinessSummary
   canConfigure: boolean
+  canOwnerOverride?: boolean
 }>()
 
 const emit = defineEmits<{
   completed: [result: {
-    kind: 'privacy' | 'live' | 'activation'
+    kind: 'privacy' | 'live' | 'owner_override' | 'activation'
     warnings: Array<{ code: string }>
   }]
 }>()
 
-type GovernedCommand = 'privacy' | 'live' | 'activation'
+type GovernedCommand = 'privacy' | 'live' | 'owner_override' | 'activation'
 
 const activeCommand = ref<GovernedCommand | null>(null)
 const reason = ref('')
@@ -50,6 +51,7 @@ const canSubmit = computed(() => (
 const commandTitle = computed(() => {
   if (activeCommand.value === 'privacy') return 'Record privacy approval'
   if (activeCommand.value === 'live') return 'Record live approval'
+  if (activeCommand.value === 'owner_override') return 'Break-glass owner approval'
   return 'Activate live delivery'
 })
 
@@ -59,6 +61,9 @@ const confirmationLabel = computed(() => {
   }
   if (activeCommand.value === 'live') {
     return 'I approve this exact configuration for live delivery and am not the privacy approver.'
+  }
+  if (activeCommand.value === 'owner_override') {
+    return 'I am the application owner and explicitly authorize this audited separation-of-duties exception for this exact version.'
   }
   return 'I confirm all readiness, provider evidence, rollback, and pilot approval gates are satisfied.'
 })
@@ -74,6 +79,9 @@ function openCommand(command: GovernedCommand) {
   if (!props.canConfigure || !configurationIsDormant.value || pending.value) return
   if (command === 'privacy' && props.readiness.approvals.privacy) return
   if (command === 'live' && props.readiness.approvals.live) return
+  if (command === 'owner_override' && (
+    !props.canOwnerOverride || props.readiness.approvals.live
+  )) return
   if (command === 'activation' && !canActivate.value) return
   resetCommand()
   activeCommand.value = command
@@ -115,6 +123,18 @@ async function submitCommand() {
         kind: 'activation',
         warnings: response.warnings ?? []
       })
+    } else if (submittedCommand === 'owner_override') {
+      await $fetch(
+        `/api/agency/measurement/clients/${props.clientId}/owner-override` as string,
+        {
+          method: 'POST',
+          body: {
+            expectedConfigVersion: props.readiness.configVersion,
+            reason: reason.value.trim()
+          }
+        }
+      )
+      emit('completed', { kind: submittedCommand, warnings: [] })
     } else {
       await $fetch(
         `/api/agency/measurement/clients/${props.clientId}/approvals` as string,
@@ -173,7 +193,7 @@ watch(
     </div>
 
     <p class="mt-3 text-xs leading-5 text-muted">
-      A different team member must record the other approval. Zero enforces the two-person rule for the same configuration version.
+      A different team member must record the other approval. Zero enforces the two-person rule for the same configuration version. The application owner may use the explicit audited break-glass exception when a second approver is unavailable.
     </p>
 
     <div v-if="canConfigure && configurationIsDormant" class="mt-4 flex flex-wrap gap-2">
@@ -198,6 +218,17 @@ watch(
         variant="outline"
         :disabled="pending"
         @click="openCommand('live')"
+      />
+      <UButton
+        v-if="canOwnerOverride && !readiness.approvals.live"
+        data-testid="open-owner-override"
+        label="Owner override"
+        icon="i-lucide-shield-alert"
+        size="sm"
+        color="warning"
+        variant="outline"
+        :disabled="pending"
+        @click="openCommand('owner_override')"
       />
       <UButton
         data-testid="open-live-activation"
