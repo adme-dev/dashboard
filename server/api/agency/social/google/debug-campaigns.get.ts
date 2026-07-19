@@ -2,6 +2,13 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { refreshGoogleToken, listAccessibleCustomers } from '~~/server/utils/googleAdsClient'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  persistGoogleCredentialRefresh,
+  resolveGoogleCredential,
+  type GoogleCredentialRow,
+} from '~~/server/utils/googleCredentialProfiles'
 import { ofetch } from 'ofetch'
 
 /**
@@ -22,43 +29,50 @@ export default eventHandler(async (event) => {
   const config = resolveGoogleAdsRuntimeConfig(undefined, event)
 
   // Get stored tokens for this account
-  const conn = await queryOne<{
+  const conn = await queryOne<GoogleCredentialRow & {
     id: string
     access_token: string
     refresh_token: string | null
     token_expires_at: string | null
+    metadata: any
   }>(
-    `SELECT id, access_token, refresh_token, token_expires_at
-     FROM social_connections
-     WHERE platform = 'google' AND account_id = $1 AND status = 'active'`,
+    `SELECT sc.id, sc.access_token, sc.refresh_token, sc.token_expires_at, sc.metadata,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+     FROM social_connections sc
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+     WHERE sc.platform = 'google' AND sc.account_id = $1 AND sc.status = 'active'`,
     [accountId]
   )
   if (!conn) {
     throw createError({ statusCode: 404, statusMessage: 'No active Google connection for this account' })
   }
 
+  const credential = await resolveGoogleCredential(conn)
+
   // Refresh token if expired or about to expire
-  let accessToken = conn.access_token
-  if (conn.refresh_token) {
-    const expiresAt = conn.token_expires_at ? new Date(conn.token_expires_at) : new Date(0)
+  let accessToken = credential.accessToken
+  if (credential.refreshToken) {
+    const expiresAt = credential.tokenExpiresAt ? new Date(credential.tokenExpiresAt) : new Date(0)
     if (expiresAt.getTime() < Date.now() + 5 * 60 * 1000) {
       console.log(`[DebugCampaigns] Refreshing expired token for account ${accountId}`)
       const refreshed = await refreshGoogleToken(
-        conn.refresh_token,
+        credential.refreshToken,
         config.googleClientId,
         config.googleClientSecret
       )
       accessToken = refreshed.access_token
       const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000)
-      await queryOne(
-        `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
-        [accessToken, newExpiry, conn.id]
-      )
+      await persistGoogleCredentialRefresh({
+        connectionId: conn.id,
+        profileId: credential.profileId,
+        accessToken,
+        expiresAt: newExpiry,
+      })
     }
   }
 
   // Find MCC login-customer-id: use param, or auto-detect from accessible customers
-  let loginCustomerId = String(query.loginCustomerId || '')
+  let loginCustomerId = String(query.loginCustomerId || conn.metadata?.managerCustomerId || '')
   if (!loginCustomerId) {
     try {
       const accessibleIds = await listAccessibleCustomers(accessToken, config.googleDeveloperToken)

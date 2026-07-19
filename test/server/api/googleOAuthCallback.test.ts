@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  queryOne: vi.fn(),
-  deleteCookie: vi.fn(),
+  consumeAttempt: vi.fn(),
+  storeProfile: vi.fn(),
   sendRedirect: vi.fn((_event, location: string, statusCode: number) => ({ location, statusCode })),
   exchangeGoogleCode: vi.fn(),
   listAccessibleCustomers: vi.fn(),
@@ -11,8 +11,6 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('h3', () => ({
-  getCookie: vi.fn(() => 'approved-state'),
-  deleteCookie: mocks.deleteCookie,
   sendRedirect: mocks.sendRedirect,
   getRequestURL: vi.fn(() => new URL('https://app.xeroflow.io/api/agency/social/google/callback'))
 }))
@@ -21,8 +19,9 @@ vi.mock('~~/server/utils/auth', () => ({
   requireAuth: vi.fn(async () => ({ id: '11111111-1111-4111-8111-111111111111' }))
 }))
 
-vi.mock('~~/server/utils/db', () => ({
-  queryOne: mocks.queryOne
+vi.mock('~~/server/utils/googleCredentialProfiles', () => ({
+  consumeGoogleOAuthAttempt: mocks.consumeAttempt,
+  storeGoogleCredentialProfile: mocks.storeProfile
 }))
 
 vi.mock('~~/server/utils/googleAdsClient', () => ({
@@ -52,6 +51,7 @@ describe('Google OAuth callback', () => {
     vi.stubGlobal('useRuntimeConfig', () => ({
       googleRedirectUri: '/api/agency/social/google/callback'
     }))
+    mocks.consumeAttempt.mockResolvedValue({ id: 'attempt-id' })
     mocks.exchangeGoogleCode.mockResolvedValue({
       access_token: 'access-token',
       refresh_token: 'refresh-token',
@@ -65,18 +65,21 @@ describe('Google OAuth callback', () => {
       currencyCode: 'AUD',
       descriptiveName: 'Child account'
     }])
-    mocks.queryOne.mockResolvedValue({ id: 'connection-id' })
+    mocks.storeProfile.mockResolvedValue({ profileId: 'profile-id', storedCount: 1 })
   })
 
-  it('persists the parent manager as the Data Manager login account for child accounts', async () => {
+  it('persists the parent manager with the credential profile for child accounts', async () => {
     const handler = (await import(
       '~~/server/api/agency/social/google/callback.get'
     )).default as (event: unknown) => Promise<unknown>
 
     await handler({})
 
-    const insertParameters = mocks.queryOne.mock.calls[0]?.[1] as unknown[]
-    const metadata = JSON.parse(String(insertParameters[8]))
-    expect(metadata.google_login_customer_id).toBe('1234567890')
+    expect(mocks.storeProfile).toHaveBeenCalledWith(expect.objectContaining({
+      accounts: [expect.objectContaining({
+        customerId: '9876543210',
+        managerCustomerId: '1234567890'
+      })]
+    }))
   })
 })

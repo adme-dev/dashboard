@@ -10,6 +10,8 @@ const props = defineProps<{
   description: string
   connected: boolean
   accountCount: number
+  credentialProfileCount?: number
+  allowMultiple?: boolean
   lastSyncedAt: string | null
   worstHealth?: ConnectionHealth | null
   daysUntilExpiry?: number | null
@@ -25,6 +27,7 @@ const emit = defineEmits<{
   sync: [platform: string]
   'view-accounts': [platform: string]
   'paste-token': [platform: string]
+  'add-connection': [platform: string]
 }>()
 
 const lastSyncedText = computed(() => {
@@ -95,10 +98,14 @@ const expiryLabel = computed(() => {
     <div class="px-5 py-4">
       <!-- Connected state -->
       <template v-if="connected">
-        <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="grid gap-3 mb-4" :class="allowMultiple ? 'grid-cols-3' : 'grid-cols-2'">
           <div class="bg-default/50 rounded-lg px-3 py-2">
             <p class="text-xs text-muted mb-0.5">Ad Accounts</p>
             <p class="text-sm font-medium">{{ accountCount }} account{{ accountCount !== 1 ? 's' : '' }}</p>
+          </div>
+          <div v-if="allowMultiple" class="bg-default/50 rounded-lg px-3 py-2">
+            <p class="text-xs text-muted mb-0.5">Google connections</p>
+            <p class="text-sm font-medium">{{ credentialProfileCount || 0 }} login{{ credentialProfileCount === 1 ? '' : 's' }}</p>
           </div>
           <div class="bg-default/50 rounded-lg px-3 py-2">
             <p class="text-xs text-muted mb-0.5">Last Sync</p>
@@ -117,6 +124,17 @@ const expiryLabel = computed(() => {
         <div class="flex items-center gap-2">
           <UButton size="xs" variant="soft" icon="i-lucide-list" @click="emit('view-accounts', platform)">
             View Accounts
+          </UButton>
+          <UButton
+            v-if="allowMultiple"
+            size="xs"
+            variant="soft"
+            color="primary"
+            icon="i-lucide-plus"
+            :loading="connecting"
+            @click="emit('add-connection', platform)"
+          >
+            Add connection
           </UButton>
           <UButton
             v-if="isBroken"

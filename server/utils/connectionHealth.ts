@@ -6,7 +6,7 @@
  *
  * Health rules (priority order — first match wins):
  *   1. error          — status != 'active'
- *   2. expired        — tokenExpiresAt is in the past
+ *   2. expired        — tokenExpiresAt is in the past and cannot refresh
  *   3. expiring_soon  — tokenExpiresAt within 7 days AND no refreshToken
  *                       (Google's tokens auto-refresh — skip the warning)
  *   4. never_synced   — lastSyncedAt is null
@@ -53,7 +53,7 @@ export function classifyConnectionHealth(input: ClassifyInput): ClassifyResult {
   if (input.status !== 'active') {
     return { health: 'error', daysUntilExpiry }
   }
-  if (tokenExpiresAt && tokenExpiresAt.getTime() < now.getTime()) {
+  if (tokenExpiresAt && tokenExpiresAt.getTime() < now.getTime() && !input.refreshToken) {
     return { health: 'expired', daysUntilExpiry }
   }
   if (

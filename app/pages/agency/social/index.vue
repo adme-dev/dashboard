@@ -46,6 +46,7 @@ const platformSummaries = computed(() => {
   const map: Record<string, {
     connected: boolean
     accountCount: number
+    credentialProfileCount: number
     lastSyncedAt: string | null
     worstHealth: ConnectionHealth | null
     daysUntilExpiry: number | null
@@ -74,6 +75,9 @@ const platformSummaries = computed(() => {
     map[p.key] = {
       connected: conns.length > 0,
       accountCount: conns.length,
+      credentialProfileCount: p.key === 'google'
+        ? new Set(conns.map((c: any) => c.credentialProfileId || 'legacy')).size
+        : 0,
       lastSyncedAt: lastSync,
       worstHealth,
       daysUntilExpiry: worstDays,
@@ -304,6 +308,8 @@ const graphExplorerLabel = computed(() => {
             :description="p.description"
             :connected="platformSummaries[p.key]?.connected || false"
             :account-count="platformSummaries[p.key]?.accountCount || 0"
+            :credential-profile-count="platformSummaries[p.key]?.credentialProfileCount || 0"
+            :allow-multiple="p.key === 'google'"
             :last-synced-at="platformSummaries[p.key]?.lastSyncedAt || null"
             :worst-health="platformSummaries[p.key]?.worstHealth || null"
             :days-until-expiry="platformSummaries[p.key]?.daysUntilExpiry ?? null"
@@ -316,6 +322,7 @@ const graphExplorerLabel = computed(() => {
             @reconnect="handleConnect"
             @view-accounts="handleViewAccounts"
             @paste-token="handleManualToken"
+            @add-connection="handleConnect"
           />
         </div>
       </template>

@@ -1,8 +1,15 @@
 import { requireAuth, requireRole } from '~~/server/utils/auth'
-import { queryOne, execute } from '~~/server/utils/db'
+import { queryOne } from '~~/server/utils/db'
 import { resolveGoogleWriteAuth } from '~~/server/utils/googleWriteAuth'
 import { fetchGoogleRecommendations } from '~~/server/utils/googleRecommendations'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  persistGoogleCredentialRefresh,
+  resolveGoogleCredential,
+  type GoogleCredentialRow,
+} from '~~/server/utils/googleCredentialProfiles'
 
 /**
  * GET /api/agency/social/spend/:id/google-recommendations
@@ -18,7 +25,7 @@ export default eventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id is required' })
 
-  const row = await queryOne<{
+  const row = await queryOne<GoogleCredentialRow & {
     platform: 'meta' | 'google_ads'
     campaign_id: string | null
     conn_id: string
@@ -28,9 +35,11 @@ export default eventHandler(async (event) => {
     token_expires_at: string | null
   }>(
     `SELECT ms.platform, ms.campaign_id,
-            sc.id::text AS conn_id, sc.account_id, sc.access_token, sc.refresh_token, sc.token_expires_at
+            sc.id::text AS conn_id, sc.account_id, sc.access_token, sc.refresh_token, sc.token_expires_at,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
      FROM media_spend ms
      JOIN social_connections sc ON sc.id = ms.connection_id
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
      WHERE ms.id = $1`,
     [id],
   )
@@ -43,9 +52,10 @@ export default eventHandler(async (event) => {
 
   const config = resolveGoogleAdsRuntimeConfig()
   try {
+    const credential = await resolveGoogleCredential(row)
     const { refreshGoogleToken, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
     const { accessToken, loginCustomerId } = await resolveGoogleWriteAuth(
-      { id: row.conn_id, account_id: row.account_id, access_token: row.access_token, refresh_token: row.refresh_token, token_expires_at: row.token_expires_at },
+      { id: row.conn_id, account_id: row.account_id, access_token: credential.accessToken, refresh_token: credential.refreshToken, token_expires_at: credential.tokenExpiresAt },
       {
         googleClientId: config.googleClientId,
         googleClientSecret: config.googleClientSecret,
@@ -56,10 +66,12 @@ export default eventHandler(async (event) => {
         refreshGoogleToken,
         listAccessibleCustomers,
         updateToken: async (cid, tok, exp) => {
-          await execute(
-            `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
-            [tok, exp, cid],
-          )
+          await persistGoogleCredentialRefresh({
+            connectionId: cid,
+            profileId: credential.profileId,
+            accessToken: tok,
+            expiresAt: exp,
+          })
         },
       },
     )
