@@ -66,7 +66,13 @@ export default eventHandler(async (event) => {
     let storedCount = 0
 
     // Collect all ad accounts: try each accessible customer as MCC first, then as direct account
-    const allAccounts: Array<{ customerId: string; name: string; currencyCode: string; descriptiveName?: string | null }> = []
+    const allAccounts: Array<{
+      customerId: string
+      name: string
+      currencyCode: string
+      descriptiveName?: string | null
+      loginCustomerId?: string
+    }> = []
     const seen = new Set<string>()
 
     for (const customerId of customerIds) {
@@ -77,7 +83,7 @@ export default eventHandler(async (event) => {
           for (const child of children) {
             if (!seen.has(child.customerId)) {
               seen.add(child.customerId)
-              allAccounts.push(child)
+              allAccounts.push({ ...child, loginCustomerId: customerId })
             }
           }
           continue
@@ -125,7 +131,10 @@ export default eventHandler(async (event) => {
           'active',
           JSON.stringify({
             currencyCode: account.currencyCode,
-            descriptiveName: account.descriptiveName || null
+            descriptiveName: account.descriptiveName || null,
+            ...(account.loginCustomerId
+              ? { google_login_customer_id: account.loginCustomerId }
+              : {})
           }),
           user.id
         ]
