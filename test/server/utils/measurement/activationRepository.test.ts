@@ -264,8 +264,10 @@ describe('Postgres measurement activation repository', () => {
   })
 
   it('allows activation when the owner live approval explicitly overrides separation', async () => {
+    const statements: string[] = []
     const db = {
       query: vi.fn(async (sql: string) => {
+        statements.push(sql)
         if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) return { rows: [profileRow()] }
         if (/FROM measurement_activation_approvals/.test(sql)) {
           return { rows: [
@@ -309,6 +311,53 @@ describe('Postgres measurement activation repository', () => {
     await expect(repository.activate(activationInput())).resolves.toMatchObject({
       status: 'activated',
       activatedDestinations: 1
+    })
+    const approvalSql = statements.find(sql => /FROM measurement_activation_approvals/.test(sql))!
+    expect(approvalSql).toMatch(/FROM team_members/)
+    expect(approvalSql).toMatch(/user_role = 'owner'/)
+    expect(approvalSql).toMatch(/is_active = TRUE/)
+  })
+
+  it('blocks activation when the owner override authorization is no longer current', async () => {
+    const db = {
+      query: vi.fn(async (sql: string) => {
+        if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) return { rows: [profileRow()] }
+        if (/FROM measurement_activation_approvals/.test(sql)) {
+          return { rows: [
+            {
+              approval_kind: 'privacy',
+              approved_by: PRIVACY_APPROVER_ID,
+              separation_override: false,
+              created_at: CREATED_AT
+            },
+            {
+              approval_kind: 'live',
+              approved_by: PRIVACY_APPROVER_ID,
+              separation_override: false,
+              created_at: CREATED_AT
+            }
+          ] }
+        }
+        return { rows: [{
+          destinations: '1',
+          ready_destinations: '1',
+          capabilities: '1',
+          ready_capabilities: '1',
+          active_mappings: '1',
+          outcome_endpoints: '0',
+          ready_outcome_endpoints: '0'
+        }] }
+      })
+    }
+    const repository = createPostgresMeasurementActivationRepository({
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
+    })
+
+    await expect(repository.activate(activationInput())).resolves.toEqual({
+      status: 'not_ready',
+      blockers: ['approver_conflict']
     })
   })
 })

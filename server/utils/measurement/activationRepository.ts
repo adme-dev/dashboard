@@ -252,12 +252,24 @@ export function createPostgresMeasurementActivationRepository(
         }
 
         const approvalResult = await db.query(
-          `SELECT approval_kind, approved_by, separation_override, created_at
-             FROM measurement_activation_approvals
-            WHERE client_id = $1
-              AND profile_id = $2
-              AND config_version = $3
-            ORDER BY approval_kind ASC`,
+          `SELECT approval.approval_kind,
+                  approval.approved_by,
+                  CASE
+                    WHEN approval.separation_override THEN EXISTS (
+                      SELECT 1
+                        FROM team_members owner
+                       WHERE owner.id = approval.approved_by
+                         AND owner.user_role = 'owner'
+                         AND owner.is_active = TRUE
+                    )
+                    ELSE FALSE
+                  END AS separation_override,
+                  approval.created_at
+             FROM measurement_activation_approvals approval
+            WHERE approval.client_id = $1
+              AND approval.profile_id = $2
+              AND approval.config_version = $3
+            ORDER BY approval.approval_kind ASC`,
           [input.clientId, profile.id, profile.configVersion]
         )
         const approvals = approvalResult.rows as ApprovalIdentityRow[]

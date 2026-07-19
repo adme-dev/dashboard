@@ -81,4 +81,7 @@ CREATE TRIGGER trg_measurement_approval_separation
 COMMENT ON COLUMN measurement_activation_approvals.separation_override IS
   'True only for an active application owner explicitly overriding the two-person live-approval gate.';
 
+COMMENT ON TABLE measurement_activation_approvals IS
+  'Append-only privacy/live approvals bound to one canonical profile version; distinct approvers are standard and active owners may record an audited live-gate override.';
+
 COMMIT;
