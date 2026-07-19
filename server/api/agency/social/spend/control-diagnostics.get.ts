@@ -26,18 +26,26 @@ export default eventHandler(async (event) => {
        sc.account_id AS "accountId",
        sc.account_name AS "accountName",
        sc.status AS "status",
-       sc.token_expires_at::text AS "tokenExpiresAt",
-       sc.refresh_token AS "refreshToken",
+       COALESCE(gcp.token_expires_at, sc.token_expires_at)::text AS "tokenExpiresAt",
+       CASE
+         WHEN gcp.refresh_token_encrypted IS NOT NULL
+          AND gcp.refresh_token_iv IS NOT NULL THEN '[credential-profile]'
+         ELSE sc.refresh_token
+       END AS "refreshToken",
        MAX(ms.synced_at)::text AS "lastSyncedAt",
        sc.client_id::text AS "clientId",
        COALESCE(SUM(ms.actual_spend), 0)::float AS "spend",
        COALESCE(SUM(ms.budget_allocated), 0)::float AS "budget",
        COUNT(ms.id)::int AS "campaignCount"
      FROM social_connections sc
+     LEFT JOIN google_credential_profiles gcp
+       ON gcp.id = sc.google_credential_profile_id
+      AND gcp.status = 'active'
      LEFT JOIN media_spend ms ON ms.connection_id = sc.id AND ms.period = $1
      WHERE 1 = 1 ${platformFilter}
      GROUP BY sc.id, sc.platform, sc.account_id, sc.account_name, sc.status,
-              sc.token_expires_at, sc.refresh_token, sc.client_id
+              sc.token_expires_at, sc.refresh_token, sc.client_id,
+              gcp.token_expires_at, gcp.refresh_token_encrypted, gcp.refresh_token_iv
      ORDER BY sc.platform, sc.account_name`,
     connectionParams
   )

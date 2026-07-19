@@ -1,4 +1,9 @@
 import { transaction as defaultTransaction } from '~~/server/utils/db'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  resolveGoogleRefreshToken,
+  type GoogleRefreshCredentialRow
+} from '~~/server/utils/googleCredentialProfiles'
 import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEventIdentity'
 import type {
   MeasurementProviderTestInput,
@@ -17,7 +22,8 @@ interface TransactionClient {
   query(sql: string, params?: unknown[]): Promise<QueryResult>
 }
 
-interface ProviderContextRow {
+interface ProviderContextRow extends GoogleRefreshCredentialRow {
+  id: string
   profile_id: string
   profile_enabled: boolean
   profile_environment: string
@@ -83,7 +89,8 @@ function normalizedOrigin(value: unknown): string | null {
 }
 
 export function createPostgresMeasurementProviderTestRepository(
-  transaction: Transaction = defaultTransaction as unknown as Transaction
+  transaction: Transaction = defaultTransaction as unknown as Transaction,
+  resolveRefreshToken: typeof resolveGoogleRefreshToken = resolveGoogleRefreshToken
 ): MeasurementProviderTestRepository {
   return {
     async reserve(input: MeasurementProviderTestInput): Promise<ReserveProviderTestResult> {
@@ -109,8 +116,12 @@ export function createPostgresMeasurementProviderTestRepository(
                   d.external_destination_id,
                   d.credential_ref,
                   m.provider_event_name,
+                  sc.id,
                   sc.account_id,
                   sc.refresh_token,
+                  sc.google_credential_profile_id,
+                  gcp.refresh_token_encrypted AS profile_refresh_token_encrypted,
+                  gcp.refresh_token_iv AS profile_refresh_token_iv,
                   sc.scopes,
                   sc.metadata,
                   ts.allowed_origins,
@@ -129,6 +140,7 @@ export function createPostgresMeasurementProviderTestRepository(
               AND sc.id = d.social_connection_id
                AND sc.status = 'active'
                AND sc.platform = CASE WHEN d.platform = 'meta' THEN 'meta' ELSE 'google' END
+             ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
              LEFT JOIN tracking_sites ts
                ON ts.client_id = d.client_id
               AND ts.id = p.tracking_site_id
@@ -235,6 +247,9 @@ export function createPostgresMeasurementProviderTestRepository(
         const scopes = Array.isArray(row.scopes)
           ? row.scopes.filter((scope): scope is string => typeof scope === 'string')
           : []
+        const googleRefreshToken = input.mode === 'google_validate_only'
+          ? await resolveRefreshToken(row)
+          : null
 
         return {
           status: 'reserved',
@@ -253,7 +268,9 @@ export function createPostgresMeasurementProviderTestRepository(
             },
             credential: {
               credentialRef: row.credential_ref,
-              refreshToken: row.refresh_token,
+              refreshToken: input.mode === 'google_validate_only'
+                ? googleRefreshToken
+                : row.refresh_token,
               scopes
             }
           }
