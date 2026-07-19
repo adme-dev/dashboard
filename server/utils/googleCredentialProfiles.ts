@@ -1,5 +1,5 @@
-import { queryOne } from '~~/server/utils/db'
-import { decryptToken } from '~~/server/utils/tokenCrypto'
+import { queryOne, transaction } from '~~/server/utils/db'
+import { decryptToken, encryptToken } from '~~/server/utils/tokenCrypto'
 
 const OAUTH_ATTEMPT_TTL_MS = 10 * 60 * 1000
 const STATE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/
@@ -144,4 +144,138 @@ export async function resolveGoogleCredential(
     profileId: row.google_credential_profile_id,
     source: 'profile',
   }
+}
+
+export interface GoogleDiscoveredAccount {
+  customerId: string
+  name: string
+  currencyCode: string
+  descriptiveName?: string | null
+  managerCustomerId: string | null
+}
+
+interface StoreGoogleCredentialProfileInput {
+  userId: string
+  tokens: {
+    accessToken: string
+    refreshToken: string | null
+    expiresAt: Date
+    scopes: string[]
+  }
+  accessibleCustomerIds: string[]
+  accounts: GoogleDiscoveredAccount[]
+}
+
+interface StoreGoogleCredentialProfileDeps {
+  encrypt?: typeof encryptToken
+  runTransaction?: typeof transaction
+}
+
+function formatCustomerId(customerId: string): string {
+  const digits = customerId.replace(/\D/g, '')
+  return digits.length === 10
+    ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+    : customerId
+}
+
+function profileLabel(managerIds: string[]): string {
+  if (managerIds.length === 1) return `Google Ads manager ${formatCustomerId(managerIds[0]!)}`
+  if (managerIds.length > 1) return `Google Ads · ${managerIds.length} managers`
+  return 'Google Ads direct connection'
+}
+
+export async function storeGoogleCredentialProfile(
+  input: StoreGoogleCredentialProfileInput,
+  deps: StoreGoogleCredentialProfileDeps = {},
+): Promise<{ profileId: string; storedCount: number }> {
+  const encrypt = deps.encrypt || encryptToken
+  const encryptedAccess = await encrypt(input.tokens.accessToken)
+  const encryptedRefresh = input.tokens.refreshToken
+    ? await encrypt(input.tokens.refreshToken)
+    : null
+  const managerIds = Array.from(new Set(
+    input.accounts.map(account => account.managerCustomerId).filter((id): id is string => Boolean(id))
+  ))
+  const runTransaction = deps.runTransaction || transaction
+
+  return runTransaction(async (db: any) => {
+    const profileResult = await db.query(
+      `INSERT INTO google_credential_profiles (
+         label, access_token_encrypted, access_token_iv,
+         refresh_token_encrypted, refresh_token_iv,
+         token_expires_at, scopes, status, metadata, connected_by
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9)
+       RETURNING id`,
+      [
+        profileLabel(managerIds),
+        encryptedAccess.ciphertext,
+        encryptedAccess.iv,
+        encryptedRefresh?.ciphertext || null,
+        encryptedRefresh?.iv || null,
+        input.tokens.expiresAt,
+        input.tokens.scopes,
+        JSON.stringify({
+          accessibleCustomerIds: input.accessibleCustomerIds,
+          managerCustomerIds: managerIds,
+        }),
+        input.userId,
+      ]
+    )
+    const profileId = profileResult.rows[0]?.id as string | undefined
+    if (!profileId) throw new Error('Unable to store Google credential profile')
+
+    let storedCount = 0
+    for (const account of input.accounts) {
+      const connectionResult = await db.query(
+        `INSERT INTO social_connections (
+           platform, account_id, account_name, access_token, refresh_token,
+           token_expires_at, scopes, status, metadata, connected_by,
+           google_credential_profile_id
+         )
+         VALUES ('google', $1, $2, NULL, NULL, $3, $4, 'active', $5, $6, $7)
+         ON CONFLICT (platform, account_id)
+         DO UPDATE SET
+           account_name = EXCLUDED.account_name,
+           token_expires_at = EXCLUDED.token_expires_at,
+           scopes = EXCLUDED.scopes,
+           status = 'active',
+           metadata = COALESCE(social_connections.metadata, '{}'::jsonb) || EXCLUDED.metadata,
+           connected_by = EXCLUDED.connected_by,
+           google_credential_profile_id = EXCLUDED.google_credential_profile_id,
+           updated_at = NOW()
+         RETURNING id`,
+        [
+          account.customerId,
+          account.name,
+          input.tokens.expiresAt,
+          input.tokens.scopes,
+          JSON.stringify({
+            currencyCode: account.currencyCode,
+            descriptiveName: account.descriptiveName || null,
+            managerCustomerId: account.managerCustomerId,
+          }),
+          input.userId,
+          profileId,
+        ]
+      )
+      const connectionId = connectionResult.rows[0]?.id as string | undefined
+      if (!connectionId) throw new Error('Unable to link Google Ads account')
+
+      await db.query(
+        `INSERT INTO google_credential_profile_accounts (
+           profile_id, connection_id, manager_customer_id
+         )
+         VALUES ($1, $2, $3)
+         ON CONFLICT (profile_id, connection_id)
+         DO UPDATE SET
+           manager_customer_id = EXCLUDED.manager_customer_id,
+           discovered_at = NOW()`,
+        [profileId, connectionId, account.managerCustomerId]
+      )
+      storedCount++
+    }
+
+    return { profileId, storedCount }
+  })
 }

@@ -1,6 +1,7 @@
-import { setCookie, getRequestURL } from 'h3'
+import { getRequestURL } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { getGoogleAuthUrl } from '~~/server/utils/googleAdsClient'
+import { createGoogleOAuthAttempt } from '~~/server/utils/googleCredentialProfiles'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 /**
@@ -8,7 +9,7 @@ import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
  * Generates Google OAuth URL and returns it for frontend redirect/popup
  */
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const runtimeConfig = useRuntimeConfig()
   const config = resolveGoogleAdsRuntimeConfig(undefined, event)
@@ -16,17 +17,8 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: 'Google Ads credentials not configured' })
   }
 
-  // Generate CSRF state
-  const state = crypto.randomUUID()
-
-  // Store state in httpOnly cookie (10 min expiry)
-  setCookie(event, 'google_oauth_state', state, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 10
-  })
+  // Independent, user-bound attempts support concurrent agency login flows.
+  const { attemptId, state } = await createGoogleOAuthAttempt(user.id)
 
   // Always derive the redirect URI from the incoming request host so it
   // matches the current environment (localhost, preview, production). If the
@@ -38,5 +30,5 @@ export default eventHandler(async (event) => {
 
   const url = getGoogleAuthUrl(config.googleClientId, redirectUri, state)
 
-  return { url }
+  return { url, attemptId }
 })
