@@ -102,6 +102,28 @@ interface ResolveCredentialDeps {
   decrypt?: (ciphertext: BinaryToken, iv: BinaryToken) => Promise<string>
 }
 
+export interface GoogleRefreshCredentialRow {
+  refresh_token: string | null
+  google_credential_profile_id?: string | null
+  profile_refresh_token_encrypted?: BinaryToken | null
+  profile_refresh_token_iv?: BinaryToken | null
+}
+
+export async function resolveGoogleRefreshToken(
+  row: GoogleRefreshCredentialRow,
+  deps: ResolveCredentialDeps = {}
+): Promise<string | null> {
+  if (!row.google_credential_profile_id) return row.refresh_token
+  if (!row.profile_refresh_token_encrypted && !row.profile_refresh_token_iv) return null
+  if (!row.profile_refresh_token_encrypted || !row.profile_refresh_token_iv) {
+    throw new Error('Google credential profile is incomplete')
+  }
+  return (deps.decrypt || decryptToken)(
+    row.profile_refresh_token_encrypted,
+    row.profile_refresh_token_iv
+  )
+}
+
 export async function resolveGoogleCredential(
   row: GoogleCredentialRow,
   deps: ResolveCredentialDeps = {}
@@ -302,6 +324,8 @@ export async function storeGoogleCredentialProfile(
          ON CONFLICT (platform, account_id)
          DO UPDATE SET
            account_name = EXCLUDED.account_name,
+           access_token = NULL,
+           refresh_token = NULL,
            token_expires_at = EXCLUDED.token_expires_at,
            scopes = EXCLUDED.scopes,
            status = 'active',

@@ -4,6 +4,7 @@ import {
   createGoogleOAuthAttempt,
   persistGoogleCredentialRefresh,
   resolveGoogleCredential,
+  resolveGoogleRefreshToken,
   hashGoogleOAuthState
 } from '~~/server/utils/googleCredentialProfiles'
 
@@ -54,6 +55,30 @@ describe('Google OAuth attempts', () => {
 })
 
 describe('Google credential resolution', () => {
+  it('decrypts only the refresh token required by Google provider validation', async () => {
+    const decrypt = vi.fn().mockResolvedValue('profile-refresh')
+
+    await expect(resolveGoogleRefreshToken({
+      refresh_token: 'must-not-fallback',
+      google_credential_profile_id: 'profile-1',
+      profile_refresh_token_encrypted: new Uint8Array([3]),
+      profile_refresh_token_iv: new Uint8Array([4])
+    }, { decrypt })).resolves.toBe('profile-refresh')
+
+    expect(decrypt).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps refresh-token-only resolution compatible with legacy rows', async () => {
+    const decrypt = vi.fn()
+
+    await expect(resolveGoogleRefreshToken({
+      refresh_token: 'legacy-refresh',
+      google_credential_profile_id: null
+    }, { decrypt })).resolves.toBe('legacy-refresh')
+
+    expect(decrypt).not.toHaveBeenCalled()
+  })
+
   it('prefers and decrypts the active profile credential', async () => {
     const decrypt = vi.fn()
       .mockResolvedValueOnce('profile-access')

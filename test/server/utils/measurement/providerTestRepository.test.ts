@@ -19,6 +19,76 @@ const input = {
 }
 
 describe('measurement provider test repository', () => {
+  it('resolves Google credentials from an encrypted profile instead of legacy token columns', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        id: 'connection-1',
+        profile_id: '77777777-7777-4777-8777-777777777777',
+        profile_enabled: false,
+        profile_environment: 'test',
+        profile_config_version: 3,
+        destination_enabled: false,
+        destination_environment: 'test',
+        platform: 'google_data_manager',
+        external_destination_id: '1234567890',
+        credential_ref: null,
+        provider_event_name: 'QualifiedLead',
+        account_id: '3584435581',
+        access_token: null,
+        refresh_token: null,
+        token_expires_at: null,
+        google_credential_profile_id: 'profile-1',
+        profile_access_token_encrypted: new Uint8Array([1]),
+        profile_access_token_iv: new Uint8Array([2]),
+        profile_refresh_token_encrypted: new Uint8Array([3]),
+        profile_refresh_token_iv: new Uint8Array([4]),
+        profile_token_expires_at: '2026-07-20T08:00:00.000Z',
+        scopes: ['https://www.googleapis.com/auth/datamanager'],
+        metadata: { google_login_customer_id: '111-222-3333' },
+        allowed_origins: [],
+        capability_modes: []
+      }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '33333333-3333-4333-8333-333333333333',
+        mode: 'google_validate_only',
+        status: 'requested',
+        provider_request_id: null,
+        error_class: null,
+        redacted_error: null,
+        completed_at: null
+      }] })
+    const resolveCredential = vi.fn().mockResolvedValue('profile-refresh-token')
+    const repository = createPostgresMeasurementProviderTestRepository(
+      async callback => callback({ query }),
+      resolveCredential
+    )
+
+    const result = await repository.reserve({
+      ...input,
+      mode: 'google_validate_only',
+      clickIdentifier: { type: 'gclid', value: 'test-click-id' }
+    } as never)
+
+    expect(result).toMatchObject({
+      status: 'reserved',
+      context: {
+        delivery: {
+          operatingAccountId: '3584435581',
+          loginAccountId: '1112223333'
+        },
+        credential: { refreshToken: 'profile-refresh-token' }
+      }
+    })
+    expect(resolveCredential).toHaveBeenCalledWith(expect.objectContaining({
+      google_credential_profile_id: 'profile-1'
+    }))
+    const contextSql = query.mock.calls[1]![0] as string
+    expect(contextSql).toContain('LEFT JOIN google_credential_profiles gcp')
+    expect(contextSql).toContain('gcp.refresh_token_encrypted AS profile_refresh_token_encrypted')
+    expect(contextSql).not.toContain('sc.access_token')
+  })
+
   it('reserves a dormant tenant-owned destination without persisting transient identifiers', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })

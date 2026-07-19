@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockRequireAuth = vi.fn()
 const mockQueryRows = vi.fn()
@@ -18,6 +18,8 @@ vi.mock('~~/server/utils/db', () => ({
 describe('GET /api/agency/social/spend/control-diagnostics', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-25T12:00:00.000Z'))
     mockQuery = { month: 6, year: 2026, platform: 'google' }
     mockRequireAuth.mockResolvedValue({ id: 'user-1' })
     mockQueryRows
@@ -49,6 +51,10 @@ describe('GET /api/agency/social/spend/control-diagnostics', () => {
       ])
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('returns control diagnostics for the selected period and normalized platform', async () => {
     const handler = (await import('~~/server/api/agency/social/spend/control-diagnostics.get')).default
 
@@ -57,6 +63,10 @@ describe('GET /api/agency/social/spend/control-diagnostics', () => {
     expect(mockRequireAuth).toHaveBeenCalled()
     expect(mockQueryRows.mock.calls[0][1]).toEqual(['2026-06', 'google'])
     expect(mockQueryRows.mock.calls[1][1]).toEqual(['2026-06', 'google_ads'])
+    const connectionSql = mockQueryRows.mock.calls[0][0] as string
+    expect(connectionSql).toContain('LEFT JOIN google_credential_profiles gcp')
+    expect(connectionSql).toContain('COALESCE(gcp.token_expires_at, sc.token_expires_at)')
+    expect(connectionSql).toContain('gcp.refresh_token_encrypted IS NOT NULL')
     expect(result).toMatchObject({
       month: 6,
       year: 2026,
