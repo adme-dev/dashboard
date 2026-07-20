@@ -1824,6 +1824,126 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'portal-crm-leads': {
+    title: 'CRM & Lead Management',
+    slug: 'portal-crm-leads',
+    icon: 'i-lucide-contact-round',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Give clients a scoped CRM for contacts, companies, opportunities, and portal-visible leads — with follow-up status and outcome tracking built in.',
+    details: [
+      {
+        title: 'A CRM Scoped to the Client Relationship',
+        content: 'The portal CRM uses the same relationship model as the agency workspace while routing every request through the client-scoped portal API. Clients can work with the contacts, companies, activities, and opportunities you deliberately expose without gaining access to another client record or internal agency data.'
+      },
+      {
+        title: 'Shared Lead Follow-Up',
+        content: 'Portal-visible leads arrive in a dedicated inbox with contact state, notes, response timing, and outcome context. Clients can see what needs attention, mark follow-up progress, and keep the agency aligned on contacted, qualified, and won outcomes without a separate spreadsheet.'
+      },
+      {
+        title: 'Permission and Audit Boundaries',
+        content: 'Portal sessions and agency access remain distinct. The server derives client ownership from the authenticated session, enforces permissions at the endpoint, and records agency preview access so collaborative CRM work remains accountable.'
+      }
+    ]
+  },
+  'portal-campaign-analytics': {
+    title: 'Campaign Analytics',
+    slug: 'portal-campaign-analytics',
+    icon: 'i-lucide-chart-no-axes-combined',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Share permission-gated campaign performance, spend, platform trends, leads, outcomes, and exports without exposing internal agency data.',
+    details: [
+      {
+        title: 'Campaign and Platform Performance',
+        content: 'Clients can review campaign totals, platform breakdowns, spend, impressions, clicks, conversions, and lead performance from a portal-specific analytics view. Trend charts and campaign tables provide useful detail without exposing the rest of the agency portfolio.'
+      },
+      {
+        title: 'Leads Connected to Outcomes',
+        content: 'Campaign reporting includes portal-visible lead volume, contacted and uncontacted states, won outcomes, response time, and cost-per-lead context. This keeps media delivery and commercial follow-up in the same client conversation.'
+      },
+      {
+        title: 'Access-Controlled Reporting',
+        content: 'Analytics navigation, reports, and exports appear only for client users with analytics permission. The same permission is rechecked by the server, so hiding a menu item is never the only access control.'
+      }
+    ]
+  },
+  'portal-measurement': {
+    title: 'Measurement Health',
+    slug: 'portal-measurement',
+    icon: 'i-lucide-activity',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Show clients how browser events, server delivery, and CRM outcomes contribute to measurement — with ownership and evidence kept distinct.',
+    details: [
+      {
+        title: 'Evidence, Not a Blended Status Light',
+        content: 'The measurement view separates browser signals, server delivery, and CRM outcomes so one healthy layer cannot conceal a gap in another. Clients can understand which evidence exists, where it originated, and who owns the next action.'
+      },
+      {
+        title: 'Outcome and Delivery Context',
+        content: 'Portal reporting connects campaign outcomes with delivery health while preserving the difference between shared website event IDs and lead- or CRM-only lifecycle changes. That distinction makes the reporting more useful and harder to misread.'
+      },
+      {
+        title: 'Client-Safe Operational Detail',
+        content: 'Clients receive enough diagnostic context to have an informed measurement conversation without access to internal credentials, unrelated accounts, or implementation controls. The agency retains the operational control plane.'
+      }
+    ]
+  },
+  'portal-meetings-reviews': {
+    title: 'Meetings & Video Reviews',
+    slug: 'portal-meetings-reviews',
+    icon: 'i-lucide-video',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Share upcoming meetings, recordings, and review-ready video so decisions and feedback stay attached to the client relationship.',
+    details: [
+      {
+        title: 'Upcoming and Completed Meetings',
+        content: 'Clients can see upcoming sessions, completed meetings, and the shared artifacts associated with each one. This creates a durable meeting history instead of scattering invites, recordings, and follow-up across inboxes.'
+      },
+      {
+        title: 'Review Video in Context',
+        content: 'Video review pages give clients a focused place to watch shared work and provide feedback. Review activity stays connected to the relevant client and project context rather than becoming an untraceable email thread.'
+      },
+      {
+        title: 'Controlled Sharing',
+        content: 'Only portal-visible meetings, recordings, and review items are returned to the client session. Agency-only notes and unrelated client artifacts remain outside the portal boundary.'
+      }
+    ]
+  },
+  'portal-briefs-social': {
+    title: 'Briefs & Social Workspace',
+    slug: 'portal-briefs-social',
+    icon: 'i-lucide-panels-top-left',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.',
+    details: [
+      {
+        title: 'Structured Brief Submission',
+        content: 'Clients can choose an approved template, complete the required fields, submit a brief, and follow its status from the portal. The agency receives structured information that can move directly into delivery instead of reconstructing requirements from email.'
+      },
+      {
+        title: 'Shared Social Operations',
+        content: 'Permissioned portal routes bring together the social inbox, listening, reporting, and approved news workflows. Clients can participate in the parts of social delivery that require their context while the agency keeps publishing controls and internal operations separate.'
+      },
+      {
+        title: 'One Relationship Record',
+        content: 'Briefs, files, social activity, jobs, approvals, and meetings live alongside CRM and campaign context. The result is a single client workspace with fewer handoffs and less duplicated reporting.'
+      }
+    ]
+  },
 
   // ─── Time & Capacity ──────────────────────────────────────────
   'time-tracking': {

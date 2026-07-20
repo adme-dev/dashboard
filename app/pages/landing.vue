@@ -233,7 +233,7 @@
                 Client<br>Access
               </h3>
               <p class="text-[14px] text-white/60 leading-relaxed mb-6">
-                Dedicated portal for clients to view projects, approve work, access invoices, and browse the creative gallery — all permission-gated.
+                Permission-gated CRM, campaign insights, jobs, briefs, approvals, meetings, shared files, social reporting, and billing for every client.
               </p>
               <div class="flex flex-wrap gap-2">
                 <span v-for="tag in portalTags" :key="tag" class="px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/15 text-[11px] text-rose-400 font-medium">
@@ -617,11 +617,11 @@ const platformFeatures = [
   },
   {
     title: 'Client Portal',
-    desc: 'Dedicated portal for clients to approve work, view invoices, browse galleries, and track projects.',
+    desc: 'Client CRM, campaign insights, jobs, briefs, approvals, meetings, shared work, and billing in one permission-gated portal.',
     icon: 'i-lucide-building-2',
     bg: 'bg-rose-500/15',
     color: 'text-rose-400',
-    tags: ['Approvals', 'Invoices', 'Gallery', 'Permissions']
+    tags: ['CRM', 'Campaigns', 'Jobs', 'Billing']
   },
   {
     title: 'Banner Studio',
@@ -685,7 +685,7 @@ const aiFeatures = [
 
 // ---- Chat & Portal tags ----
 const chatTags = ['Channels', 'DMs', 'Threads', 'File Sharing', 'Reactions', 'Presence', 'Cmd+K', 'Read Receipts']
-const portalTags = ['Approvals', 'Invoices', 'Gallery', 'Projects', 'Comments', 'Notifications', 'Permissions']
+const portalTags = ['CRM', 'Leads', 'Campaigns', 'Jobs', 'Briefs', 'Approvals', 'Billing', 'Meetings', 'Social']
 
 // ---- Banner studio features ----
 const bannerFeatures = [

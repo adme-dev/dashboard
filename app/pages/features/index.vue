@@ -270,7 +270,7 @@ const categories = [
   },
   {
     title: 'Client Portal',
-    subtitle: 'External access for your clients',
+    subtitle: 'CRM, campaigns, jobs, billing, approvals, and shared work',
     icon: 'i-lucide-briefcase',
     iconBg: 'bg-pink-50 dark:bg-pink-500/10',
     iconColor: 'text-pink-600',
@@ -281,6 +281,11 @@ const categories = [
       { title: 'Invoice Access', slug: 'invoice-access', icon: 'i-lucide-receipt', description: 'Permission-gated invoice viewing so clients can check billing without emails.' },
       { title: 'Creative Gallery', slug: 'creative-gallery', icon: 'i-lucide-image', description: 'Browse all delivered assets in a visual gallery with download and preview.' },
       { title: 'Notifications', slug: 'notifications', icon: 'i-lucide-bell', description: 'Clients get notified when new deliverables, invoices, or updates are ready.' },
+      { title: 'CRM & Lead Management', slug: 'portal-crm-leads', icon: 'i-lucide-contact-round', description: 'Give clients a scoped CRM for contacts, companies, opportunities, and portal-visible leads — with follow-up status and outcome tracking.' },
+      { title: 'Campaign Analytics', slug: 'portal-campaign-analytics', icon: 'i-lucide-chart-no-axes-combined', description: 'Share permission-gated campaign performance, spend, platform trends, leads, outcomes, and exports without exposing internal agency data.' },
+      { title: 'Measurement Health', slug: 'portal-measurement', icon: 'i-lucide-activity', description: 'Show clients how browser events, server delivery, and CRM outcomes contribute to measurement — with ownership and evidence kept distinct.' },
+      { title: 'Meetings & Video Reviews', slug: 'portal-meetings-reviews', icon: 'i-lucide-video', description: 'Share upcoming meetings, recordings, and review-ready video so decisions and feedback stay attached to the client relationship.' },
+      { title: 'Briefs & Social Workspace', slug: 'portal-briefs-social', icon: 'i-lucide-panels-top-left', description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.' },
     ]
   },
   {

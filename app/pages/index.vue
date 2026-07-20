@@ -413,7 +413,7 @@
               Client Portal
             </h2>
             <p class="text-[#45474D] dark:text-white/60 text-base md:text-lg leading-relaxed max-w-[480px]">
-              Dedicated portal for your clients to view projects, approve work, access invoices and browse the creative gallery — all permission-gated.
+              A permission-gated client workspace for CRM and leads, campaign measurement, jobs, briefs, approvals, meetings, shared files, and billing.
             </p>
             <NuxtLink to="/platform/client-portal" class="inline-flex items-center gap-1.5 mt-5 text-[15px] font-medium text-[#121317] dark:text-white hover:opacity-70 transition-opacity group">
               Learn more
@@ -1204,7 +1204,7 @@ const platformCards = [
   { title: 'People Operations', subtitle: 'Role clarity, private business reviews, evidence controls, and human governance.', to: '/features/hr-people-operations', bg: 'bg-cyan-300', image: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=600&h=600&fit=crop&crop=faces' },
   { title: 'AI Insights', subtitle: 'Smart project generation, anomaly detection, and AI recommendations.', to: '/platform/ai', bg: 'bg-yellow-300', image: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&h=600&fit=crop&crop=center' },
   { title: 'Time Tracking', subtitle: 'Weekly timesheets, timer, approvals, and utilization reports.', to: '/platform/time-tracking', bg: 'bg-rose-300', image: 'https://images.unsplash.com/photo-1501139083538-0139583c060f?w=600&h=600&fit=crop&crop=center' },
-  { title: 'Client Portal', subtitle: 'Client-facing approvals, invoices, deliverables, and project updates.', to: '/platform/client-portal', bg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&h=600&fit=crop&crop=faces' },
+  { title: 'Client Portal', subtitle: 'Client CRM, campaign insights, jobs, approvals, meetings, shared work, and billing.', to: '/platform/client-portal', bg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&h=600&fit=crop&crop=faces' },
   { title: 'Ad Spend', subtitle: 'Meta & Google Ads connections with spend syncing and budget management.', to: '/platform/ad-spend', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&h=600&fit=crop&crop=center' },
   { title: 'Automations', subtitle: 'Trigger-action recipes, board event hooks, and workflow automation.', to: '/platform/automations', bg: 'bg-orange-300', image: 'https://images.unsplash.com/photo-1518432031352-d6fc5c10da5a?w=600&h=600&fit=crop&crop=center' },
   { title: 'Banner Studio', subtitle: 'Design, animate, and publish HTML5 display ads at scale from one editor.', to: '/banner-studio', bg: 'bg-rose-400', image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600&h=600&fit=crop&crop=center' },
