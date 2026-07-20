@@ -27,7 +27,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:deployment-guards": "vitest run test/config/pagesDeployGuard.test.ts",
+    "test:deployment-guards": "vitest run test/config/pagesDeployGuard.test.ts test/config/prerenderIgnore.test.ts",
     "test:social-publishing": "vitest run test/social test/server/utils/socialPublishingNavCounts.test.ts test/server/api/publishingPlannerAgentEndpoint.test.ts test/app/publishingPlannerAgentPanel.test.ts test/ai/tools/scheduleSocialPost.test.ts test/ai/executors.test.ts test/config/agencyWorkflowsReadinessScript.test.ts test/config/agencyWorkflowsBindings.test.ts test/config/cloudflareHyperdriveBindings.test.ts",
     "readiness:agency-workflows": "node scripts/agency-workflows-readiness.mjs",
     "smoke:agency-workflows": "node scripts/agency-workflows-production-smoke.mjs",
