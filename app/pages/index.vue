@@ -42,7 +42,7 @@
         </NuxtLink>
 
         <h1 class="text-[clamp(40px,7vw,80px)] font-[450] text-[#121317] dark:text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[900px] mx-auto">
-          Run your agency<br class="hidden sm:block">from a single platform
+          Run your agency<br class="hidden sm:block"> from a single platform
         </h1>
 
         <p class="text-lg md:text-xl text-[#45474D] dark:text-white/60 max-w-[560px] mx-auto mb-10 leading-relaxed">
@@ -1104,7 +1104,7 @@
               <span class="text-white text-xs font-semibold tracking-tight">XF</span>
             </div>
             <h2 class="text-[clamp(28px,4vw,48px)] font-[450] text-white leading-[1.15] tracking-[-0.02em] mb-10">
-              Ready to streamline<br class="hidden sm:block">your agency?
+              Ready to streamline<br class="hidden sm:block"> your agency?
             </h2>
             <NuxtLink
               to="/auth/login"
