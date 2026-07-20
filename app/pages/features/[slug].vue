@@ -3143,6 +3143,36 @@ const features: Record<string, Feature> = {
     ]
   },
 
+  // ─── People Operations ──────────────────────────────────────
+  'hr-people-operations': {
+    title: 'HR & People Operations',
+    slug: 'hr-people-operations',
+    icon: 'i-lucide-users-round',
+    category: 'People Operations',
+    categoryIcon: 'i-lucide-shield-check',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Bring role clarity, private business reviews, evidence-aware scorecards, responsibility mapping, contract controls, and launch governance into one restricted people operations workspace.',
+    details: [
+      {
+        title: 'Start With Role Clarity',
+        content: 'Build versioned role profiles from contractual responsibilities, actual decision rights, agreed outcomes, and role-specific evidence requirements. Assign the published baseline to each team member before a review begins, then let them acknowledge it or record a correction when the role no longer reflects the work they perform.'
+      },
+      {
+        title: 'Run Evidence-Aware Business Reviews',
+        content: 'Commission neutral questionnaires from approved role profiles, schedule private review cycles, and keep participant responses inside a restricted workspace. Scorecards separate evidenced delivery from operational enablement, disclose their sources, and abstain when the configured evidence threshold has not been met.'
+      },
+      {
+        title: 'Keep People in the Decision Loop',
+        content: 'XeroFlow does not turn a questionnaire, operational signal, or score into an employment decision. Reviewers must consider contrary evidence, participants can challenge incorrect KPI evidence or role assumptions, and final findings require a recorded human review with the participant response attached.'
+      },
+      {
+        title: 'Govern Every Launch and Change',
+        content: 'Use explicit launch gates, current approval evidence, a contract vault, responsibility mapping, and an append-only decision history to keep the process accountable. Sensitive evidence remains access-controlled, private messages and protected attributes stay outside the review scope, and expired approvals return the workflow to a blocked state.'
+      }
+    ]
+  },
+
   // ─── Administration ─────────────────────────────────────────
   'custom-roles': {
     title: 'Custom Roles',

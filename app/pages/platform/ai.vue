@@ -24,10 +24,10 @@
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="grid md:grid-cols-2 gap-12 md:gap-16 items-start">
           <!-- Left: Text -->
-          <div>
+          <div class="md:sticky md:top-24">
             <div class="flex items-center gap-3 mb-6">
-              <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-                <UIcon name="i-lucide-bot" class="w-5 h-5 text-amber-600" />
+              <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-bot" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
               <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Conversational AI</h2>
             </div>
@@ -65,8 +65,8 @@
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="text-center mb-12">
           <div class="flex items-center justify-center gap-3 mb-4">
-            <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <UIcon name="i-lucide-alert-triangle" class="w-5 h-5 text-amber-600" />
+            <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+              <UIcon name="i-lucide-alert-triangle" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
           </div>
           <h2 class="text-[clamp(24px,3vw,36px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-3">8 specialized analyzers</h2>
@@ -98,8 +98,8 @@
           <!-- Left: Text -->
           <div>
             <div class="flex items-center gap-3 mb-6">
-              <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-                <UIcon name="i-lucide-search" class="w-5 h-5 text-amber-600" />
+              <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-search" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
               <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Semantic Search</h2>
             </div>
@@ -207,8 +207,8 @@
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="text-center mb-12">
           <div class="flex items-center justify-center gap-3 mb-4">
-            <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <UIcon name="i-lucide-cpu" class="w-5 h-5 text-amber-600" />
+            <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+              <UIcon name="i-lucide-cpu" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
           </div>
           <h2 class="text-[clamp(24px,3vw,36px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-3">Fine-tune with your data</h2>
