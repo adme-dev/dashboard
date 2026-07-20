@@ -750,6 +750,140 @@
       </div>
     </section>
 
+    <!-- First-party Measurement -->
+    <section
+      id="measurement"
+      aria-labelledby="first-party-measurement-title"
+      class="py-20 md:py-28"
+    >
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="overflow-hidden rounded-[2rem] bg-[#0a0b0e] text-white border border-white/[0.08]">
+          <div class="grid lg:grid-cols-[1.05fr_0.95fr]">
+            <div class="p-7 sm:p-10 md:p-14 lg:p-16">
+              <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-400/10 border border-emerald-300/15 mb-7">
+                <UIcon name="i-lucide-activity" class="w-3.5 h-3.5 text-emerald-300" />
+                <span class="text-[13px] font-medium text-emerald-200">First-party measurement</span>
+              </div>
+
+              <h2
+                id="first-party-measurement-title"
+                class="text-[clamp(30px,4.5vw,52px)] font-[450] leading-[1.08] tracking-[-0.03em] mb-5"
+              >
+                Measure every consented enquiry from site to ad platform
+              </h2>
+              <p class="text-base md:text-lg leading-relaxed text-white/60 max-w-[580px] mb-8">
+                Connect client websites, capture consented first-party events, and manage server-side conversion delivery to Google and Meta from one agency workspace.
+              </p>
+
+              <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-5" aria-label="First-party measurement capabilities">
+                <li
+                  v-for="capability in measurementCapabilities"
+                  :key="capability.title"
+                  class="flex gap-3"
+                >
+                  <div class="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <UIcon :name="capability.icon" class="w-4 h-4 text-emerald-300" />
+                  </div>
+                  <div>
+                    <h3 class="text-[14px] font-medium text-white mb-1">
+                      {{ capability.title }}
+                    </h3>
+                    <p class="text-[13px] leading-relaxed text-white/60">
+                      {{ capability.description }}
+                    </p>
+                  </div>
+                </li>
+              </ul>
+
+              <NuxtLink
+                to="/platform/ad-spend"
+                class="inline-flex items-center gap-2 mt-9 text-[15px] font-medium text-white hover:text-emerald-200 transition-colors group"
+              >
+                Explore advertising operations
+                <UIcon name="i-lucide-arrow-right" class="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </NuxtLink>
+            </div>
+
+            <div class="relative min-h-[430px] bg-white/[0.025] border-t lg:border-t-0 lg:border-l border-white/[0.08] p-6 sm:p-9 flex items-center">
+              <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+                <div class="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-emerald-400/10 blur-3xl" />
+                <div class="absolute -bottom-24 -left-20 w-72 h-72 rounded-full bg-blue-400/[0.07] blur-3xl" />
+              </div>
+
+              <div class="relative w-full max-w-[460px] mx-auto rounded-2xl bg-[#121317] border border-white/[0.1] p-4 sm:p-5 shadow-2xl">
+                <div class="flex items-center justify-between pb-4 border-b border-white/[0.08]">
+                  <div>
+                    <p class="text-[11px] uppercase tracking-[0.16em] text-white/60 mb-1">
+                      Measurement control
+                    </p>
+                    <p class="text-[14px] font-medium text-white">
+                      Client conversion pipeline
+                    </p>
+                  </div>
+                  <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-400/10 text-[10px] text-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-300" />
+                    Consent-gated
+                  </div>
+                </div>
+
+                <ol class="mt-4 space-y-3" aria-label="Governed measurement delivery flow">
+                  <li
+                    v-for="(stage, index) in measurementStages"
+                    :key="stage.title"
+                    class="relative flex items-center gap-3 rounded-xl bg-white/[0.04] border border-white/[0.06] p-3.5"
+                  >
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" :class="stage.iconBg">
+                      <UIcon :name="stage.icon" class="w-4 h-4" :class="stage.iconColor" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center justify-between gap-3">
+                        <p class="text-[12px] font-medium text-white">
+                          {{ stage.title }}
+                        </p>
+                        <span class="text-[10px] text-white/50">
+                          0{{ index + 1 }}
+                        </span>
+                      </div>
+                      <p class="text-[11px] text-white/60 mt-0.5">
+                        {{ stage.description }}
+                      </p>
+                    </div>
+                    <UIcon
+                      v-if="index < measurementStages.length - 1"
+                      name="i-lucide-chevron-down"
+                      class="absolute -bottom-3.5 left-[1.65rem] z-10 w-3 h-3 text-white/20"
+                      aria-hidden="true"
+                    />
+                  </li>
+                </ol>
+
+                <div class="grid grid-cols-2 gap-3 mt-4">
+                  <div class="rounded-xl bg-white/[0.035] border border-white/[0.06] p-3">
+                    <div class="flex items-center gap-2 mb-1.5">
+                      <UIcon name="i-simple-icons-googleads" class="w-3.5 h-3.5 text-[#4285F4]" />
+                      <span class="text-[11px] font-medium text-white">Google</span>
+                    </div>
+                    <p class="text-[10px] leading-relaxed text-white/60">
+                      Data Manager &amp; enhanced conversions
+                    </p>
+                  </div>
+                  <div class="rounded-xl bg-white/[0.035] border border-white/[0.06] p-3">
+                    <div class="flex items-center gap-2 mb-1.5">
+                      <UIcon name="i-simple-icons-meta" class="w-3.5 h-3.5 text-[#0081FB]" />
+                      <span class="text-[11px] font-medium text-white">Meta</span>
+                    </div>
+                    <p class="text-[10px] leading-relaxed text-white/60">
+                      Conversions API delivery
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Integration Strip -->
     <section class="py-16 md:py-20 bg-[#b7bfd9]/[0.04] dark:bg-white/[0.02]">
       <div class="max-w-[1200px] mx-auto px-6 text-center">
@@ -1008,9 +1142,9 @@ definePageMeta({
 
 useSeoMeta({
   title: 'XeroFlow — Agency Operations Platform',
-  description: 'Run your agency from a single platform. Work management, client portal, financials, real-time chat, and AI-powered insights.',
+  description: 'Run your agency from one platform with work management, financials, client portals, AI insights, and consent-gated first-party measurement.',
   ogTitle: 'XeroFlow — Agency Operations Platform',
-  ogDescription: 'Run your agency from a single platform. Work management, client portal, financials, real-time chat, and AI-powered insights.',
+  ogDescription: 'Run your agency from one platform with work management, financials, client portals, AI insights, and consent-gated first-party measurement.'
 })
 
 const route = useRoute()
@@ -1173,6 +1307,53 @@ const integrations = [
   { name: 'TikTok', icon: 'i-simple-icons-tiktok', color: 'text-[#121317] dark:text-white' },
   { name: 'Cloudflare', icon: 'i-simple-icons-cloudflare', color: 'text-[#F38020]' },
   { name: 'Resend', icon: 'i-lucide-send', color: 'text-[#121317] dark:text-white' }
+]
+
+const measurementCapabilities = [
+  {
+    title: 'Consent-aware collection',
+    description: 'Collect the event classes each visitor has approved, with clear privacy controls.',
+    icon: 'i-lucide-shield-check'
+  },
+  {
+    title: 'Multi-account connections',
+    description: 'Attach separate Google and Meta profiles across every client in the agency.',
+    icon: 'i-lucide-network'
+  },
+  {
+    title: 'Governed server delivery',
+    description: 'Map exact conversion destinations and validate providers before live delivery.',
+    icon: 'i-lucide-server-cog'
+  },
+  {
+    title: 'Approvals and audit trails',
+    description: 'Versioned configuration, privacy approval, evidence, and controlled activation.',
+    icon: 'i-lucide-file-check-2'
+  }
+]
+
+const measurementStages = [
+  {
+    title: 'Collect consented site events',
+    description: 'Page, engagement and enquiry signals',
+    icon: 'i-lucide-mouse-pointer-click',
+    iconBg: 'bg-blue-400/10',
+    iconColor: 'text-blue-300'
+  },
+  {
+    title: 'Apply policy and approvals',
+    description: 'Consent, destination and evidence gates',
+    icon: 'i-lucide-shield-check',
+    iconBg: 'bg-amber-400/10',
+    iconColor: 'text-amber-300'
+  },
+  {
+    title: 'Deliver approved conversions',
+    description: 'Controlled Google and Meta destinations',
+    icon: 'i-lucide-send',
+    iconBg: 'bg-emerald-400/10',
+    iconColor: 'text-emerald-300'
+  }
 ]
 
 function scrollToFeatures() {
