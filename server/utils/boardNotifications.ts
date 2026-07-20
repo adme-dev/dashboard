@@ -12,6 +12,7 @@ import { getSubscribers } from '~~/server/utils/subscriptions'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { sendBoardMemberAddedEmail } from '~~/server/utils/email'
 import { findKeywordMatches } from '~~/server/utils/keywordSubscriptions'
+import { isNotificationPreferenceEnabled } from '~~/shared/utils/notificationPreferences'
 
 interface BoardEventNotification {
   boardId: string
@@ -356,7 +357,7 @@ export async function notifyBoardMemberAdded(
   })
 
   const prefs = member.notification_preferences || {}
-  if (prefs.email_board_member_added !== false) {
+  if (isNotificationPreferenceEnabled(prefs, 'email_board_member_added')) {
     await sendBoardMemberAddedEmail({
       to: member.email,
       name: member.name,

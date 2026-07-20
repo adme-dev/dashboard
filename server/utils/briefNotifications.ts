@@ -7,6 +7,7 @@ import { queryRows, queryOne } from '~~/server/utils/db'
 import { createNotification, createBulkNotifications } from '~~/server/utils/notifications'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { sendBriefStatusEmail, sendBriefCommentEmail, sendBriefAssignedEmail } from '~~/server/utils/email'
+import { isNotificationPreferenceEnabled } from '~~/shared/utils/notificationPreferences'
 
 const formatStatus = (s: string) =>
   s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
@@ -60,7 +61,7 @@ export async function notifyBriefStatusChanged(params: {
     // Send emails to watchers who have email enabled
     for (const watcher of watchers) {
       const prefs = watcher.notification_preferences || {}
-      if (prefs.email_brief_status !== false) {
+      if (isNotificationPreferenceEnabled(prefs, 'email_brief_status')) {
         await sendBriefStatusEmail({
           to: watcher.email,
           name: watcher.name,
@@ -129,7 +130,7 @@ export async function notifyBriefCommented(params: {
     // Send emails
     for (const watcher of watchers) {
       const prefs = watcher.notification_preferences || {}
-      if (prefs.email_brief_comment !== false) {
+      if (isNotificationPreferenceEnabled(prefs, 'email_brief_comment')) {
         await sendBriefCommentEmail({
           to: watcher.email,
           name: watcher.name,
@@ -182,7 +183,7 @@ export async function notifyBriefAssigned(params: {
 
     // Send email
     const prefs = assignee.notification_preferences || {}
-    if (prefs.email_brief_assigned !== false) {
+    if (isNotificationPreferenceEnabled(prefs, 'email_brief_assigned')) {
       await sendBriefAssignedEmail({
         to: assignee.email,
         name: assignee.name,

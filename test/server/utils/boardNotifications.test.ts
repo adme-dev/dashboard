@@ -32,8 +32,8 @@ describe('notifyBoardMemberAdded', () => {
   it('creates a notification and sends an email when a member is added', async () => {
     mockQueryOne
       .mockResolvedValueOnce({ name: 'Alice' }) // actor
-      .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com', notification_preferences: {} }) // member
-      .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() }) // notification insert
+      .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com', notification_preferences: { email_board_member_added: true } }) // member
+      .mockResolvedValueOnce({ notification_preferences: { inapp_board_member_added: true } })
 
     const result = await notifyBoardMemberAdded({
       memberId: 'bob-id',
@@ -78,7 +78,7 @@ describe('notifyBoardMemberAdded', () => {
         email: 'bob@example.com',
         notification_preferences: { email_board_member_added: false },
       })
-      .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() })
+      .mockResolvedValueOnce({ notification_preferences: { inapp_board_member_added: true } })
 
     const result = await notifyBoardMemberAdded({
       memberId: 'bob-id',

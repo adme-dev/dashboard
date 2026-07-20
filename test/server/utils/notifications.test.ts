@@ -3,6 +3,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../../shared/utils/notificationPreferences'
+
+const allNotificationPreferencesEnabled = Object.fromEntries(
+  Object.keys(DEFAULT_NOTIFICATION_PREFERENCES).map(key => [key, true])
+)
 
 // Mock database queries
 const mockQueryOne = vi.fn()
@@ -55,7 +60,13 @@ import {
 describe('notifications utility', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockQueryOne.mockResolvedValue({ id: 'notif-1', created_at: new Date().toISOString() })
+    mockQueryOne.mockReset()
+    mockQueryRows.mockReset()
+    mockQueryOne.mockResolvedValue({
+      id: 'notif-1',
+      created_at: new Date().toISOString(),
+      notification_preferences: allNotificationPreferencesEnabled
+    })
     mockSendTaskAssignedEmail.mockResolvedValue(undefined)
     mockSendMentionEmail.mockResolvedValue(undefined)
     mockSendApprovalRequestEmail.mockResolvedValue(undefined)
@@ -86,7 +97,7 @@ describe('notifications utility', () => {
           null  // metadata
         ])
       )
-      expect(result).toEqual({ id: 'notif-1', created_at: expect.any(String) })
+      expect(result).toMatchObject({ id: 'notif-1', created_at: expect.any(String) })
     })
 
     it('should include optional fields when provided', async () => {
@@ -170,19 +181,19 @@ describe('notifications utility', () => {
         expect(result).toEqual({ id: 'notif-1', created_at: expect.any(String) })
       })
 
-      it('defaults to creating when no preference is set', async () => {
+      it('defaults to skipping when no preference is set', async () => {
         mockQueryOne
           .mockResolvedValueOnce({ notification_preferences: {} })
-          .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() })
 
-        await createNotification({
+        const result = await createNotification({
           userId: 'user-123',
           type: 'task_assigned',
           title: 'New Task',
           message: 'You were assigned',
         })
 
-        expect(mockQueryOne).toHaveBeenCalledTimes(2)
+        expect(mockQueryOne).toHaveBeenCalledTimes(1)
+        expect(result).toBeNull()
       })
 
       it('creates ungated notification types regardless of preferences', async () => {
@@ -259,8 +270,8 @@ describe('notifications utility', () => {
     it('should create notification and send email', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' }) // assigner
-        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: {} }) // assignee
-        .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() }) // notification
+        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: { email_task_assigned: true } }) // assignee
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: true } })
 
       await notifyTaskAssigned({
         taskId: 'task-123',
@@ -297,7 +308,7 @@ describe('notifications utility', () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' })
         .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: { email_task_assigned: false } })
-        .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() })
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: true } })
 
       await notifyTaskAssigned({
         taskId: 'task-123',
@@ -313,6 +324,22 @@ describe('notifications utility', () => {
       )
 
       // Email should NOT be sent
+      expect(mockSendTaskAssignedEmail).not.toHaveBeenCalled()
+    })
+
+    it('should not send email if no email preference is set', async () => {
+      mockQueryOne
+        .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' })
+        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: {} })
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: true } })
+
+      await notifyTaskAssigned({
+        taskId: 'task-123',
+        taskTitle: 'Complete report',
+        assigneeId: 'assignee-id',
+        assignerId: 'assigner-id'
+      })
+
       expect(mockSendTaskAssignedEmail).not.toHaveBeenCalled()
     })
 
@@ -348,7 +375,7 @@ describe('notifications utility', () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' }) // assigner
         .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: { email_task_assigned: false } }) // assignee
-        .mockResolvedValueOnce({ notification_preferences: {} }) // in-app preference lookup
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: true } }) // in-app preference lookup
         .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() }) // notification
         .mockResolvedValueOnce({ department_id: null }) // skip auto subscribe in this focused metadata test
         .mockResolvedValueOnce({ auto_ack_assignments: true }) // auto ack pref
@@ -389,8 +416,8 @@ describe('notifications utility', () => {
     it('notifies the new assignee on a real change', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' }) // assigner
-        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: {} }) // assignee
-        .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() }) // notification insert
+        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: { email_task_assigned: true } }) // assignee
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: true } })
 
       const result = await notifyTaskAssigneeChanged({
         taskId: 'task-1',
@@ -453,8 +480,8 @@ describe('notifications utility', () => {
     it('passes dueDate and projectName through to the email', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' })
-        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: {} })
-        .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() })
+        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: { email_task_assigned: true } })
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: true } })
 
       const due = new Date('2026-12-31T00:00:00Z')
       await notifyTaskAssigneeChanged({
@@ -477,8 +504,8 @@ describe('notifications utility', () => {
     it('should create notification and send email for mention', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'Alice', email: 'alice@example.com' }) // mentioner
-        .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com', notification_preferences: {} }) // mentioned
-        .mockResolvedValueOnce({ id: 'notif-1' }) // notification
+        .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com', notification_preferences: { email_task_mentioned: true } }) // mentioned
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_mentioned: true } })
 
       await notifyMention({
         taskId: 'task-456',
@@ -512,8 +539,8 @@ describe('notifications utility', () => {
     it('should truncate long comment snippets in metadata', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'Alice', email: 'alice@example.com' })
-        .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com', notification_preferences: {} })
-        .mockResolvedValueOnce({ id: 'notif-1' })
+        .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com', notification_preferences: { email_task_mentioned: true } })
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_mentioned: true } })
 
       const longComment = 'A'.repeat(200)
 
@@ -538,8 +565,8 @@ describe('notifications utility', () => {
     it('should create notification and send email for approval', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'Requester', email: 'req@example.com' })
-        .mockResolvedValueOnce({ name: 'Approver', email: 'appr@example.com', notification_preferences: {} })
-        .mockResolvedValueOnce({ id: 'notif-1' })
+        .mockResolvedValueOnce({ name: 'Approver', email: 'appr@example.com', notification_preferences: { email_approval_request: true } })
+        .mockResolvedValueOnce({ notification_preferences: { inapp_approval: true } })
 
       await notifyApprovalRequest({
         taskId: 'task-789',
@@ -574,8 +601,8 @@ describe('notifications utility', () => {
   describe('notifyDueReminder', () => {
     it('should create notification for upcoming task', async () => {
       mockQueryOne
-        .mockResolvedValueOnce({ name: 'User', email: 'user@example.com', notification_preferences: {} })
-        .mockResolvedValueOnce({ id: 'notif-1' })
+        .mockResolvedValueOnce({ name: 'User', email: 'user@example.com', notification_preferences: { email_task_due: true } })
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_due: true } })
 
       const dueDate = new Date()
       dueDate.setDate(dueDate.getDate() + 1) // Tomorrow
@@ -610,8 +637,8 @@ describe('notifications utility', () => {
 
     it('should create notification for overdue task', async () => {
       mockQueryOne
-        .mockResolvedValueOnce({ name: 'User', email: 'user@example.com', notification_preferences: {} })
-        .mockResolvedValueOnce({ id: 'notif-1' })
+        .mockResolvedValueOnce({ name: 'User', email: 'user@example.com', notification_preferences: { email_task_due: true } })
+        .mockResolvedValueOnce({ notification_preferences: { inapp_task_due: true } })
 
       const dueDate = new Date()
       dueDate.setDate(dueDate.getDate() - 1) // Yesterday
@@ -640,7 +667,7 @@ describe('notifications utility', () => {
     it('should notify all watchers about status change', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'Changer' }) // Who changed
-        .mockResolvedValue({ id: 'notif-1' }) // Notifications
+        .mockResolvedValue({ id: 'notif-1', notification_preferences: { inapp_task_status: true } }) // Notifications
 
       const watcherIds = ['watcher-1', 'watcher-2', 'watcher-3']
 
@@ -686,7 +713,7 @@ describe('notifications utility', () => {
     it('should include status change details in metadata', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'User' })
-        .mockResolvedValue({ id: 'notif-1' })
+        .mockResolvedValue({ id: 'notif-1', notification_preferences: { inapp_task_status: true } })
 
       await notifyTaskStatusChanged(
         'task-123',
@@ -728,7 +755,10 @@ describe('notifications utility', () => {
       ] as const
 
       for (const type of types) {
-        mockQueryOne.mockResolvedValueOnce({ id: `notif-${type}` })
+        mockQueryOne.mockResolvedValueOnce({
+          id: `notif-${type}`,
+          notification_preferences: allNotificationPreferencesEnabled
+        })
 
         await createNotification({
           userId: 'user-123',
@@ -749,11 +779,13 @@ describe('notifications utility', () => {
 describe('notification reason propagation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockQueryOne.mockReset()
+    mockQueryRows.mockReset()
   })
 
   it('createNotification stores reason when provided', async () => {
     mockQueryOne
-      .mockResolvedValueOnce({ notification_preferences: {} })
+      .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: true } })
       .mockResolvedValueOnce({ id: 'n1', created_at: new Date().toISOString() })
 
     await createNotification({
@@ -776,7 +808,7 @@ describe('notification reason propagation', () => {
 
   it('createNotification stores null reason when not provided', async () => {
     mockQueryOne
-      .mockResolvedValueOnce({ notification_preferences: {} })
+      .mockResolvedValueOnce({ notification_preferences: { inapp_task_mentioned: true } })
       .mockResolvedValueOnce({ id: 'n2', created_at: new Date().toISOString() })
 
     await createNotification({
@@ -797,7 +829,7 @@ describe('notification reason propagation', () => {
     mockQueryOne
       .mockResolvedValueOnce({ name: 'Alice', email: 'a@x.com' })
       .mockResolvedValueOnce({ name: 'Bob', email: 'b@x.com', notification_preferences: { email_task_mentioned: false } })
-      .mockResolvedValueOnce({ notification_preferences: {} })
+      .mockResolvedValueOnce({ notification_preferences: { inapp_task_mentioned: true } })
       .mockResolvedValueOnce({ id: 'n', created_at: new Date().toISOString() })
 
     await notifyMention({
@@ -819,7 +851,7 @@ describe('notification reason propagation', () => {
     mockQueryOne
       .mockResolvedValueOnce({ name: 'Alice', email: 'a@x.com' })
       .mockResolvedValueOnce({ name: 'Bob', email: 'b@x.com', notification_preferences: { email_task_assigned: false } })
-      .mockResolvedValueOnce({ notification_preferences: {} })
+      .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: true } })
       .mockResolvedValueOnce({ id: 'n', created_at: new Date().toISOString() })
 
     await notifyTaskAssigned({

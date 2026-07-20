@@ -35,8 +35,8 @@ describe('notifyBriefAssigneeChanged', () => {
   it('notifies the new assignee on a real change', async () => {
     mockQueryOne
       .mockResolvedValueOnce({ name: 'John' }) // assigner
-      .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: {} }) // assignee
-      .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() }) // notification
+      .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: { email_brief_assigned: true } }) // assignee
+      .mockResolvedValueOnce({ notification_preferences: { inapp_brief_assigned: true } })
 
     const result = await notifyBriefAssigneeChanged({
       briefId: 'brief-1',
