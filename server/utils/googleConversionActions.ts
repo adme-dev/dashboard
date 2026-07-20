@@ -22,7 +22,7 @@ const ListGoogleConversionActionsInputSchema = z.strictObject({
   accessToken: z.string().min(1),
   developerToken: z.string().min(1),
   loginCustomerId: GoogleAccountIdSchema.nullable(),
-  page: z.number().int().min(1),
+  page: z.number().int().min(1).max(100),
   pageSize: z.number().int().min(1).max(100)
 })
 
@@ -67,7 +67,10 @@ export function createGoogleConversionActionDiscovery(
       }
       const input = parsed.data
       const offset = (input.page - 1) * input.pageSize
-      const limit = input.pageSize + 1
+      // GAQL supports LIMIT but not SQL-style OFFSET. searchStream returns all
+      // rows up to the limit, so request through the end of the desired page
+      // plus one look-ahead row and page the bounded result locally.
+      const limit = offset + input.pageSize + 1
 
       // Data Manager requires the numeric ID of an ENABLED Google Ads
       // conversion action. UPLOAD_CLICKS supports offline/enhanced leads;
@@ -90,7 +93,7 @@ export function createGoogleConversionActionDiscovery(
         WHERE conversion_action.status = 'ENABLED'
           AND conversion_action.type IN ('UPLOAD_CLICKS', 'WEBPAGE')
         ORDER BY conversion_action.name, conversion_action.id
-        LIMIT ${limit} OFFSET ${offset}
+        LIMIT ${limit}
       `.trim()
 
       const rows = await deps.query(
@@ -105,8 +108,8 @@ export function createGoogleConversionActionDiscovery(
         throw new GoogleConversionActionDiscoveryError('GOOGLE_CONVERSION_ACTION_RESPONSE_INVALID')
       }
 
-      const hasNextPage = providerRows.data.length > input.pageSize
-      const items = providerRows.data.slice(0, input.pageSize).map(({ conversionAction }) => ({
+      const hasNextPage = providerRows.data.length > offset + input.pageSize
+      const items = providerRows.data.slice(offset, offset + input.pageSize).map(({ conversionAction }) => ({
         id: conversionAction.id,
         resourceName: conversionAction.resourceName,
         name: conversionAction.name,
