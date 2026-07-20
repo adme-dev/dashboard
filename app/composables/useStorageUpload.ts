@@ -8,11 +8,11 @@
  */
 
 type FileCategory = 'avatars' | 'attachments' | 'expenses' | 'briefs' | 'invoices' | 'general'
+type PresignedUploadCategory = Extract<FileCategory, 'avatars' | 'attachments' | 'expenses'>
 
 interface UploadOptions {
-  category: FileCategory
-  entityId?: string
-  entityType?: 'task' | 'expense' | 'brief' | 'invoice' | 'avatar'
+  category: PresignedUploadCategory
+  entityId: string
   onProgress?: (progress: number) => void
 }
 
@@ -29,6 +29,7 @@ interface PresignedResponse {
   success: boolean
   uploadUrl: string
   key: string
+  confirmationToken: string
   expiresIn: number
   maxSize: number
   allowedTypes: string[]
@@ -46,10 +47,30 @@ interface ConfirmResponse {
   }
 }
 
+interface ServerUploadResponse {
+  success?: boolean
+  fileUrl?: string
+  avatarUrl?: string
+  url?: string
+  storageKey?: string
+  key?: string
+}
+
+interface ErrorResponse {
+  message?: string
+  data?: { statusMessage?: string }
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error !== 'object' || error === null) return fallback
+  const response = error as ErrorResponse
+  return response.data?.statusMessage || response.message || fallback
+}
+
 export function useStorageUpload() {
   const apiFetch = $fetch as <T = unknown>(
     request: string,
-    options?: { method?: string; body?: unknown }
+    options?: { method?: string, body?: unknown }
   ) => Promise<T>
   const isUploading = ref(false)
   const uploadProgress = ref(0)
@@ -88,9 +109,7 @@ export function useStorageUpload() {
         method: 'POST',
         body: {
           key: presignedResponse.key,
-          category: options.category,
-          entityId: options.entityId,
-          entityType: options.entityType
+          confirmationToken: presignedResponse.confirmationToken
         }
       })
 
@@ -107,8 +126,8 @@ export function useStorageUpload() {
         size: confirmResponse.file.size,
         contentType: confirmResponse.file.contentType
       }
-    } catch (err: any) {
-      const errorMessage = err.data?.statusMessage || err.message || 'Upload failed'
+    } catch (err: unknown) {
+      const errorMessage = getErrorMessage(err, 'Upload failed')
       error.value = errorMessage
       return {
         success: false,
@@ -183,7 +202,7 @@ export function useStorageUpload() {
       }
 
       // Use XMLHttpRequest for progress tracking
-      const result = await new Promise<any>((resolve, reject) => {
+      const result = await new Promise<ServerUploadResponse>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
 
         xhr.upload.addEventListener('progress', (event) => {
@@ -196,14 +215,14 @@ export function useStorageUpload() {
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              resolve(JSON.parse(xhr.responseText))
+              resolve(JSON.parse(xhr.responseText) as ServerUploadResponse)
             } catch {
               resolve({ success: true })
             }
           } else {
             try {
-              const errorData = JSON.parse(xhr.responseText)
-              reject(new Error(errorData.statusMessage || `Upload failed with status ${xhr.status}`))
+              const errorData = JSON.parse(xhr.responseText) as ErrorResponse
+              reject(new Error(errorData.data?.statusMessage || errorData.message || `Upload failed with status ${xhr.status}`))
             } catch {
               reject(new Error(`Upload failed with status ${xhr.status}`))
             }
@@ -227,8 +246,8 @@ export function useStorageUpload() {
         size: file.size,
         contentType: file.type
       }
-    } catch (err: any) {
-      const errorMessage = err.message || 'Upload failed'
+    } catch (err: unknown) {
+      const errorMessage = getErrorMessage(err, 'Upload failed')
       error.value = errorMessage
       return {
         success: false,
@@ -242,16 +261,16 @@ export function useStorageUpload() {
   /**
    * Delete a file from storage
    */
-  async function deleteFile(key: string): Promise<{ success: boolean; error?: string }> {
+  async function deleteFile(key: string): Promise<{ success: boolean, error?: string }> {
     try {
       await apiFetch(`/api/storage/${encodeURIComponent(key)}`, {
         method: 'DELETE'
       })
       return { success: true }
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false,
-        error: err.data?.statusMessage || err.message || 'Delete failed'
+        error: getErrorMessage(err, 'Delete failed')
       }
     }
   }
@@ -265,7 +284,7 @@ export function useStorageUpload() {
       maxSize?: number
       allowedTypes?: string[]
     }
-  ): { valid: boolean; error?: string } {
+  ): { valid: boolean, error?: string } {
     if (options.maxSize && file.size > options.maxSize) {
       const maxSizeMB = Math.round(options.maxSize / (1024 * 1024))
       return {

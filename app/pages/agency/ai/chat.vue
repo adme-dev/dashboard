@@ -39,6 +39,57 @@ const {
   sendVoiceMessage, playAudio, stopAudio,
 } = useVoiceChat()
 
+type MicrophonePermissionState = PermissionState | 'unknown' | 'unsupported'
+
+const VOICE_GUIDE_DISMISSED_KEY = 'xeroflow:voice-guide-dismissed'
+const microphonePermission = ref<MicrophonePermissionState>('unknown')
+const voiceGuideDismissed = ref(false)
+const voiceGuidePreferenceLoaded = ref(false)
+const handsFreeVoiceAvailable = computed(() => aiToolsEnabled && voiceAvailable.value)
+const voiceGuideRequested = computed(() => route.query.mode === 'voice')
+const showVoiceGuide = computed(() =>
+  voiceAvailable.value
+  && (voiceGuideRequested.value || (voiceGuidePreferenceLoaded.value && !voiceGuideDismissed.value))
+)
+
+let microphonePermissionStatus: PermissionStatus | null = null
+
+onMounted(async () => {
+  voiceGuideDismissed.value = localStorage.getItem(VOICE_GUIDE_DISMISSED_KEY) === '1'
+  voiceGuidePreferenceLoaded.value = true
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    microphonePermission.value = 'unsupported'
+    return
+  }
+
+  if (!navigator.permissions?.query) return
+
+  try {
+    microphonePermissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+    microphonePermission.value = microphonePermissionStatus.state
+    microphonePermissionStatus.onchange = () => {
+      if (microphonePermissionStatus) microphonePermission.value = microphonePermissionStatus.state
+    }
+  } catch {
+    microphonePermission.value = 'unknown'
+  }
+})
+
+onBeforeUnmount(() => {
+  if (microphonePermissionStatus) microphonePermissionStatus.onchange = null
+})
+
+function dismissVoiceGuide() {
+  voiceGuideDismissed.value = true
+  localStorage.setItem(VOICE_GUIDE_DISMISSED_KEY, '1')
+
+  if (voiceGuideRequested.value) {
+    const { mode: _mode, ...query } = route.query
+    void router.replace({ query })
+  }
+}
+
 watch(voiceError, (err) => {
   if (err) toast.add({ title: 'Voice', description: err, color: 'warning' })
 })
@@ -1242,6 +1293,13 @@ function getRenderedMarkdown(content: string): string {
               </div>
             </Transition>
 
+            <AiVoiceDiscoveryGuide
+              v-if="showVoiceGuide"
+              :permission="microphonePermission"
+              :hands-free-available="handsFreeVoiceAvailable"
+              @dismiss="dismissVoiceGuide"
+            />
+
             <!-- Hands-free voice session status -->
             <VoiceModePanel
               v-if="voiceSession.isActive.value"
@@ -1331,7 +1389,19 @@ function getRenderedMarkdown(content: string): string {
                     </span>
                   </template>
                   <template v-else>
-                    <span class="text-[10px] text-muted px-1">
+                    <span
+                      v-if="voiceAvailable"
+                      class="inline-flex items-center gap-1 px-1 text-[10px] font-medium"
+                      :class="microphonePermission === 'denied' || microphonePermission === 'unsupported' ? 'text-warning' : 'text-success'"
+                    >
+                      <span
+                        class="size-1.5 rounded-full"
+                        :class="microphonePermission === 'denied' || microphonePermission === 'unsupported' ? 'bg-warning' : 'bg-success'"
+                        aria-hidden="true"
+                      />
+                      {{ microphonePermission === 'denied' || microphonePermission === 'unsupported' ? 'Mic permission needed' : 'Voice ready' }}
+                    </span>
+                    <span class="hidden px-1 text-[10px] text-muted md:inline">
                       <kbd class="font-mono text-[10px] px-1 py-0.5 rounded bg-default border border-default">@</kbd>
                       to reference
                       <span class="mx-1 text-muted/40">&middot;</span>
@@ -1350,9 +1420,12 @@ function getRenderedMarkdown(content: string): string {
                     size="sm"
                     class="rounded-lg"
                     :disabled="sending || isRecording || voiceProcessing"
+                    :aria-label="voiceSession.isActive.value ? 'Stop hands-free Voice AI' : 'Start hands-free Voice AI'"
                     :title="voiceSession.isActive.value ? 'Stop voice session' : 'Start hands-free voice session'"
                     @click="toggleVoiceSession"
-                  />
+                  >
+                    <span class="hidden lg:inline">{{ voiceSession.isActive.value ? 'Stop Voice' : 'Start Voice' }}</span>
+                  </UButton>
                   <!-- Voice button -->
                   <UButton
                     v-if="voiceAvailable"
@@ -1363,8 +1436,12 @@ function getRenderedMarkdown(content: string): string {
                     class="rounded-lg"
                     :loading="voiceProcessing"
                     :disabled="sending || voiceProcessing || voiceSession.isActive.value"
+                    :aria-label="voicePlaying ? 'Stop Voice AI playback' : isRecording ? 'Stop recording Voice AI message' : 'Record Voice AI message'"
+                    :title="voicePlaying ? 'Stop playback' : isRecording ? 'Stop recording' : 'Record a voice message'"
                     @click="handleVoiceRecord"
-                  />
+                  >
+                    <span class="hidden lg:inline">Voice message</span>
+                  </UButton>
                   <!-- Send button -->
                   <UButton
                     icon="i-lucide-arrow-up"

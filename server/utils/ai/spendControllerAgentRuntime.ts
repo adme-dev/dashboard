@@ -16,10 +16,12 @@ import {
   failPlatformAgentRun,
   startPlatformAgentRun,
 } from '~~/server/utils/ai/platformAgentRuns'
+import type { PlatformAgentScope } from '~~/server/utils/ai/platformAgentScope'
 
 export interface SpendControllerAgentRuntimeInput {
   prompt: string
   context?: Record<string, unknown>
+  scope: PlatformAgentScope
   draftActions?: boolean
   userId?: string | null
   route?: string
@@ -43,24 +45,30 @@ export async function runSpendControllerAgentRequest(input: SpendControllerAgent
   const context = input.context && typeof input.context === 'object' ? input.context : {}
   const period = requestedPeriod(context.period)
   const selectedPlatform = platformFilter(context.platform)
+  const scopedClientIds = input.scope.client.kind === 'single'
+    ? [input.scope.client.clientId]
+    : [...input.scope.client.clientIds]
   const startedAtMs = Date.now()
   const run = await startPlatformAgentRun({
     agentType: 'spend_controller',
     featureKey: 'agent_spend_controller',
     mode: input.draftActions ? 'read_propose' : 'read_only',
     userId: input.userId ?? null,
-    clientId: typeof context.clientId === 'string' ? context.clientId : null,
+    clientId: input.scope.client.kind === 'single' ? input.scope.client.clientId : null,
     route: input.route ?? '/agency/social/spend',
     prompt,
     context: {
       period,
       platform: selectedPlatform ?? 'all',
+      clientScopeCount: scopedClientIds.length,
     },
   })
 
   try {
     const params: any[] = [period]
     let where = `WHERE ms.period = $1 AND ms.platform IN ('meta', 'google_ads')`
+    params.push(scopedClientIds)
+    where += ` AND ms.client_id = ANY($${params.length}::uuid[])`
     if (selectedPlatform) {
       params.push(selectedPlatform)
       where += ` AND ms.platform = $${params.length}`
@@ -75,7 +83,10 @@ export async function runSpendControllerAgentRequest(input: SpendControllerAgent
        LIMIT 100`,
       params,
     )
-    const review = buildPacingReview(rows, { now: new Date(), period })
+    const scopedRows = rows.filter(row => (
+      typeof row.client_id === 'string' && scopedClientIds.includes(row.client_id)
+    ))
+    const review = buildPacingReview(scopedRows, { now: new Date(), period })
     const proposedActions = input.draftActions
       ? await draftSpendControllerActions(review, input.userId ?? null, run.ok ? run.runId : null)
       : []

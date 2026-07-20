@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '~~/shared/utils/notificationPreferences'
+
 const toast = useToast()
 
 const loading = ref(true)
@@ -58,32 +60,10 @@ async function togglePush(enable: boolean) {
 }
 
 const state = reactive<{ [key: string]: boolean }>({
-  // Email notifications
-  email_task_assigned: true,
-  email_task_mentioned: true,
-  email_task_due: true,
-  email_approval_request: true,
-  email_weekly_digest: false,
-  email_board_member_added: true,
-  email_brief_assigned: true,
-  email_brief_status: true,
-  email_brief_comment: true,
-  // In-app notifications
-  inapp_task_assigned: true,
-  inapp_task_mentioned: true,
-  inapp_task_status: true,
-  inapp_task_comment: true,
-  inapp_task_due: true,
-  inapp_approval: true,
-  inapp_board_member_added: true,
-  inapp_brief_assigned: true,
-  inapp_brief_status: true,
-  inapp_brief_comment: true,
-  inapp_chat_mention: true,
-  inapp_chat_dm: true
+  ...DEFAULT_NOTIFICATION_PREFERENCES
 })
 
-const autoSubscribeOnParticipation = ref(true)
+const autoSubscribeOnParticipation = ref(false)
 const autoAckAssignments = ref(false)
 
 async function onAutoAckChange(value: boolean) {
@@ -221,7 +201,7 @@ async function onAutoSubscribeChange(value: boolean) {
 
 const sections = [{
   title: 'Email Notifications',
-  description: 'Choose which events trigger email notifications.',
+  description: 'Off by default. Choose which events trigger email notifications.',
   fields: [{
     name: 'email_task_assigned',
     label: 'Task Assignments',
@@ -261,7 +241,7 @@ const sections = [{
   }]
 }, {
   title: 'In-App Notifications',
-  description: 'Choose which events show in your notification bell.',
+  description: 'Off by default. Choose which events show in your notification bell.',
   fields: [{
     name: 'inapp_task_assigned',
     label: 'Task Assignments',

@@ -139,6 +139,15 @@ export default defineNuxtConfig({
     // Portal Tier 2 own-data WRITES (e.g. respond_to_approval) — OFF by default, DOUBLY dormant
     // (also needs AI_PORTAL_ENABLED). Write tools are absent from the portal toolset until this is on.
     aiPortalWritesEnabled: process.env.AI_PORTAL_WRITES_ENABLED === 'true',
+    // Send workspace slice — disabled until its staged rollout is explicitly enabled.
+    sendEnabled: process.env.SEND_ENABLED === 'true',
+    sendWorkspaceMaxTransferBytes: Number(process.env.SEND_WORKSPACE_MAX_TRANSFER_BYTES || 2 * 1024 * 1024 * 1024),
+    sendWorkspaceMaxFileBytes: Number(process.env.SEND_WORKSPACE_MAX_FILE_BYTES || 2 * 1024 * 1024 * 1024),
+    sendWorkspaceMaxFiles: Number(process.env.SEND_WORKSPACE_MAX_FILES || 20),
+    sendWorkspaceDefaultRetentionDays: Number(process.env.SEND_WORKSPACE_DEFAULT_RETENTION_DAYS || 7),
+    sendWorkspaceMaxRetentionDays: Number(process.env.SEND_WORKSPACE_MAX_RETENTION_DAYS || 30),
+    sendWorkspaceMaxRecipients: Number(process.env.SEND_WORKSPACE_MAX_RECIPIENTS || 20),
+    sendWorkspaceMaxDownloads: Number(process.env.SEND_WORKSPACE_MAX_DOWNLOADS || 100),
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 
@@ -226,6 +235,7 @@ export default defineNuxtConfig({
       appName: process.env.APP_NAME || 'XeroFlow Agency',
       appUrl: process.env.APP_URL || 'http://localhost:3000',
       zeroServerUrl: process.env.NUXT_PUBLIC_ZERO_SERVER_URL || 'http://localhost:4848',
+      sendEnabled: process.env.NUXT_PUBLIC_SEND_ENABLED === 'true',
       // Cloudflare Turnstile site key for the public email subscribe form. Empty
       // until the operator creates a widget — the widget + server check stay
       // inert (form works without it) while unset.

@@ -31,7 +31,29 @@ ALTER TABLE team_members ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT '
 ALTER TABLE team_members ADD COLUMN IF NOT EXISTS locale VARCHAR(10) DEFAULT 'en';
 ALTER TABLE team_members ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 ALTER TABLE team_members ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;
-ALTER TABLE team_members ADD COLUMN IF NOT EXISTS notification_preferences JSONB DEFAULT '{"email": true, "inApp": true}';
+ALTER TABLE team_members ADD COLUMN IF NOT EXISTS notification_preferences JSONB DEFAULT '{
+  "email_task_assigned": false,
+  "email_task_mentioned": false,
+  "email_task_due": false,
+  "email_approval_request": false,
+  "email_weekly_digest": false,
+  "email_board_member_added": false,
+  "email_brief_assigned": false,
+  "email_brief_status": false,
+  "email_brief_comment": false,
+  "inapp_task_assigned": false,
+  "inapp_task_mentioned": false,
+  "inapp_task_status": false,
+  "inapp_task_comment": false,
+  "inapp_task_due": false,
+  "inapp_approval": false,
+  "inapp_board_member_added": false,
+  "inapp_brief_assigned": false,
+  "inapp_brief_status": false,
+  "inapp_brief_comment": false,
+  "inapp_chat_mention": false,
+  "inapp_chat_dm": false
+}';
 
 -- ============================================
 -- User Sessions (for JWT token management)

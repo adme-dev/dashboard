@@ -6,12 +6,13 @@
  * The key is passed as a URL parameter.
  */
 
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
 import { deleteFile, fileExists, isStorageConfigured } from '~~/server/utils/storage'
 import { queryOne } from '~~/server/utils/db'
+import { canDeleteStorageObject } from '~~/server/utils/storageAccess'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
 
   if (!isStorageConfigured()) {
     throw createError({
@@ -29,25 +30,31 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Decode the key (it's passed as a single param but may contain path segments)
-  const key = decodeURIComponent(encodedKey)
+  let key: string
+  try {
+    key = decodeURIComponent(encodedKey)
+  } catch {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid storage key encoding' })
+  }
+  if (!key || key.length > 1024 || key.includes('\0')) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid storage key' })
+  }
 
   try {
-    // Verify file exists
+    // Authorise before checking existence so callers cannot probe arbitrary keys.
+    const canDelete = await canDeleteStorageObject(key, user.id)
+    if (!canDelete) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'You do not have permission to delete this file'
+      })
+    }
+
     const exists = await fileExists(key)
     if (!exists) {
       throw createError({
         statusCode: 404,
         statusMessage: 'File not found'
-      })
-    }
-
-    // Check ownership/permissions based on the file category
-    const canDelete = await checkDeletePermission(key, user.id)
-    if (!canDelete) {
-      throw createError({
-        statusCode: 403,
-        statusMessage: 'You do not have permission to delete this file'
       })
     }
 
@@ -61,8 +68,8 @@ export default defineEventHandler(async (event) => {
       success: true,
       message: 'File deleted successfully'
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to delete file:', error)
     throw createError({
       statusCode: 500,
@@ -70,44 +77,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 })
-
-/**
- * Check if user has permission to delete the file
- */
-async function checkDeletePermission(key: string, userId: string): Promise<boolean> {
-  // Avatars: Only the owner can delete
-  if (key.startsWith('avatars/')) {
-    const result = await queryOne(
-      `SELECT id FROM team_members WHERE avatar_storage_key = $1 AND id = $2`,
-      [key, userId]
-    )
-    return !!result
-  }
-
-  // Task attachments: Uploader or task assignee/reporter can delete
-  if (key.startsWith('attachments/')) {
-    const result = await queryOne(`
-      SELECT ta.id
-      FROM task_attachments ta
-      JOIN tasks t ON ta.task_id = t.id
-      WHERE ta.storage_key = $1
-        AND (ta.uploaded_by = $2 OR t.assignee_id = $2 OR t.reporter_id = $2)
-    `, [key, userId])
-    return !!result
-  }
-
-  // Expenses: Only the submitter can delete
-  if (key.startsWith('expenses/')) {
-    const result = await queryOne(
-      `SELECT id FROM expenses WHERE receipt_storage_key = $1 AND submitted_by = $2`,
-      [key, userId]
-    )
-    return !!result
-  }
-
-  // Default: Allow deletion (could be made more restrictive)
-  return true
-}
 
 /**
  * Remove database references to the deleted file

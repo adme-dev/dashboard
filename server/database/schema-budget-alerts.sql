@@ -66,6 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_budget_alert_configs_active ON budget_alert_confi
 CREATE TABLE IF NOT EXISTS budget_alerts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   config_id UUID REFERENCES budget_alert_configs(id) ON DELETE SET NULL,
+  tenant_id TEXT NOT NULL,
 
   -- Context
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,

@@ -1,5 +1,7 @@
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { runSpendControllerAgentRequest } from '~~/server/utils/ai/spendControllerAgentRuntime'
+import { resolveUserPlatformAgentAuthority } from '~~/server/utils/ai/platformAgentAuthority'
+import { resolvePlatformAgentScope } from '~~/server/utils/ai/platformAgentScope'
 
 function enabled() {
   return process.env.SPEND_CONTROLLER_AGENT_ENABLED === 'true'
@@ -27,11 +29,23 @@ export default defineEventHandler(async (event) => {
   }
 
   const context = body?.context && typeof body.context === 'object' ? body.context : {}
+  const authority = await resolveUserPlatformAgentAuthority(event, {
+    permissionGroups: ['MEDIA_BUYING'],
+    tenant: 'none'
+  })
+  if (authority.actor.id !== user.id) {
+    throw createError({ statusCode: 403, statusMessage: 'Assistant authority actor mismatch' })
+  }
+  const scope = resolvePlatformAgentScope(authority, {
+    requestedClientId: typeof context.clientId === 'string' ? context.clientId : null,
+    clientSelection: 'all_allowed'
+  })
   return runSpendControllerAgentRequest({
     prompt,
     context,
+    scope,
     draftActions,
-    userId: user?.id ?? null,
-    route: '/agency/social/spend',
+    userId: authority.actor.id,
+    route: '/agency/social/spend'
   })
 })

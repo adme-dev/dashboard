@@ -13,6 +13,9 @@ binding = "AI"
 [vars]
 APP_BASE_URL = "https://app.xeroflow.io"
 THINK_MODEL = "@cf/moonshotai/kimi-k2.7-code"
+# Coordinated with PLATFORM_AGENT_THINK_TURNS_ENABLED in the Pages app.
+# Leave false until secrets, Access policy, evaluation, and rollout approval are complete.
+THINK_TURNS_ENABLED = "false"
 
 [durable_objects]
 bindings = [
@@ -40,3 +43,5 @@ new_sqlite_classes = ["TrafficControllerAgent"]
 
 # Secrets:
 #   INTERNAL_API_KEY - must match the Pages app secret for Worker -> app calls.
+#   PLATFORM_AGENT_SCOPE_SIGNING_SECRET - separate 32+ character HMAC secret;
+#     must match Pages and must never be reused as INTERNAL_API_KEY.

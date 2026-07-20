@@ -311,10 +311,11 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     }
   )
 
-  // Tools — AI Chat + Reports visible to all; Settings/Training/Knowledge admin-only; Automation gated
+  // Tools — AI Chat + Voice AI + Reports visible to all; Settings/Training/Knowledge admin-only; Automation gated
   items.push(
     { type: 'label', label: 'Tools' },
-    { label: 'AI Chat', icon: 'i-lucide-sparkles', to: '/agency/ai/chat', onSelect: close },
+    { label: 'AI Chat', icon: 'i-lucide-sparkles', to: '/agency/ai/chat', exact: true, onSelect: close },
+    { label: 'Voice AI', icon: 'i-lucide-audio-lines', to: '/agency/ai/chat?mode=voice', exact: true, onSelect: close },
     { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close },
     { label: 'Connect AI Assistants', icon: 'i-lucide-plug', to: '/agency/ai/connectors', onSelect: close }
   )

@@ -1,15 +1,15 @@
 import { runPublishingPlannerAgentRequest } from '~~/server/utils/ai/publishingPlannerAgentRuntime'
+import { resolveServicePlatformAgentAuthority } from '~~/server/utils/ai/platformAgentAuthority'
+import { optionalPlatformAgentAssertionAuthority } from '~~/server/utils/ai/platformAgentBridgeAssertion'
+import { resolvePlatformAgentScope } from '~~/server/utils/ai/platformAgentScope'
+import { requirePlatformAgentServiceAuth } from '~~/server/utils/ai/platformAgentServiceAuth'
 
 function enabled() {
   return process.env.PUBLISHING_PLANNER_AGENT_ENABLED === 'true'
 }
 
 export default defineEventHandler(async (event) => {
-  const expectedKey = process.env.INTERNAL_API_KEY?.trim()
-  const authHeader = getHeader(event, 'authorization')
-  if (!expectedKey || authHeader !== `Bearer ${expectedKey}`) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  await requirePlatformAgentServiceAuth(event)
 
   if (!enabled()) {
     throw createError({ statusCode: 404, statusMessage: 'Publishing Planner Agent is not enabled.' })
@@ -26,10 +26,20 @@ export default defineEventHandler(async (event) => {
   }
 
   const context = body?.context && typeof body.context === 'object' ? body.context : {}
+  const assertedAuthority = await optionalPlatformAgentAssertionAuthority(event, 'publishing-planner')
+  const authority = assertedAuthority ?? await resolveServicePlatformAgentAuthority({
+    serviceId: 'cloudflare-platform-agents',
+    tenant: 'none'
+  })
+  const scope = resolvePlatformAgentScope(authority, {
+    requestedClientId: typeof context.clientId === 'string' ? context.clientId : null,
+    clientSelection: 'required'
+  })
   return runPublishingPlannerAgentRequest({
     prompt,
     context,
-    userId: null,
-    route: '/internal/platform-agents/publishing-planner',
+    scope,
+    userId: assertedAuthority ? authority.actor.id : null,
+    route: '/internal/platform-agents/publishing-planner'
   })
 })

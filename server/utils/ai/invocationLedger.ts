@@ -6,6 +6,7 @@ export interface AiInvocationUsage {
   promptTokens?: number | null
   completionTokens?: number | null
   totalTokens?: number | null
+  cachedInputTokens?: number | null
 }
 
 export interface AiInvocationInput extends AiInvocationUsage {
@@ -27,12 +28,13 @@ export interface AiInvocationInput extends AiInvocationUsage {
 
 let warnedMissingLedger = false
 
-const TOKEN_PRICING_PER_MILLION: Record<string, { input: number, output: number }> = {
+const TOKEN_PRICING_PER_MILLION: Record<string, { input: number, output: number, cachedInput?: number }> = {
   'openai/gpt-oss-120b': { input: 0.15, output: 0.60 },
   'openai/gpt-oss-20b': { input: 0.10, output: 0.40 },
   'llama-3.3-70b-versatile': { input: 0.59, output: 0.79 },
   'llama-3.1-8b-instant': { input: 0.05, output: 0.08 },
   'claude-sonnet-4-6': { input: 3, output: 15 },
+  '@cf/moonshotai/kimi-k2.7-code': { input: 0.95, output: 4, cachedInput: 0.19 }
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -54,6 +56,7 @@ export function estimateAiInvocationCostUsd(input: {
   modelId: string
   promptTokens?: number | null
   completionTokens?: number | null
+  cachedInputTokens?: number | null
 }): number | null {
   const normalized = input.modelId.replace(/^groq\//, '').replace(/^anthropic\//, '')
   const pricing = TOKEN_PRICING_PER_MILLION[normalized]
@@ -61,7 +64,16 @@ export function estimateAiInvocationCostUsd(input: {
 
   const promptTokens = nullableInteger(input.promptTokens) ?? 0
   const completionTokens = nullableInteger(input.completionTokens) ?? 0
-  return ((promptTokens * pricing.input) + (completionTokens * pricing.output)) / 1_000_000
+  const cachedInputTokens = Math.min(
+    promptTokens,
+    nullableInteger(input.cachedInputTokens) ?? 0
+  )
+  const uncachedInputTokens = promptTokens - cachedInputTokens
+  return (
+    (uncachedInputTokens * pricing.input)
+    + (cachedInputTokens * (pricing.cachedInput ?? pricing.input))
+    + (completionTokens * pricing.output)
+  ) / 1_000_000
 }
 
 export async function recordAiInvocation(input: AiInvocationInput): Promise<void> {
@@ -76,7 +88,8 @@ export async function recordAiInvocation(input: AiInvocationInput): Promise<void
     ?? estimateAiInvocationCostUsd({
       modelId: input.modelId,
       promptTokens,
-      completionTokens
+      completionTokens,
+      cachedInputTokens: input.cachedInputTokens
     })
 
   try {

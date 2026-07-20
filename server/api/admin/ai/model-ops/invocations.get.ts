@@ -26,6 +26,8 @@ type BreakdownRow = {
 
 type RecentRow = {
   id: string
+  agent_run_id: string | null
+  request_id: string | null
   feature_key: string
   provider: string
   model_id: string
@@ -38,6 +40,7 @@ type RecentRow = {
   status: string
   error_code: string | null
   latency_ms: number | string | null
+  metadata: unknown
   created_at: string
 }
 
@@ -86,7 +89,7 @@ const unavailable = (reason = 'AI invocation ledger is not available yet.') => (
     distinctModels: 0,
     hasRequestTelemetry: false,
     hasRuntimeTelemetry: false,
-    hasCompletionTelemetry: false,
+    hasCompletionTelemetry: false
   },
   coverage: {
     mappedFeatureCount: listAiModelMap().reduce((set, row) => set.add(row.featureKey), new Set<string>()).size,
@@ -94,7 +97,7 @@ const unavailable = (reason = 'AI invocation ledger is not available yet.') => (
     unmappedSeenFeatureCount: 0,
     missingMappedFeatureKeys: [],
     unmappedSeenFeatureKeys: [],
-    coverageRate: 0,
+    coverageRate: 0
   },
   summary: {
     totalInvocations: 0,
@@ -109,7 +112,7 @@ const unavailable = (reason = 'AI invocation ledger is not available yet.') => (
     lastSeenAt: null,
     fallbackRate: 0,
     errorRate: 0,
-    gatewayRate: 0,
+    gatewayRate: 0
   },
   byFeature: [],
   byModel: [],
@@ -120,8 +123,8 @@ const unavailable = (reason = 'AI invocation ledger is not available yet.') => (
     estimatedCostUsd: 0,
     totalTokens: 0,
     firstSeenAt: null,
-    lastSeenAt: null,
-  },
+    lastSeenAt: null
+  }
 })
 
 function isMissingLedgerError(error: unknown): boolean {
@@ -136,8 +139,14 @@ function mapBreakdown(row: BreakdownRow) {
     estimatedCostUsd: toNumber(row.estimated_cost_usd),
     totalTokens: toNumber(row.total_tokens),
     fallbackCount: toNumber(row.fallback_count),
-    errorCount: toNumber(row.error_count),
+    errorCount: toNumber(row.error_count)
   }
+}
+
+function metadataObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 function unavailableLegacyMessages() {
@@ -147,7 +156,7 @@ function unavailableLegacyMessages() {
     estimatedCostUsd: 0,
     totalTokens: 0,
     firstSeenAt: null,
-    lastSeenAt: null,
+    lastSeenAt: null
   }
 }
 
@@ -160,7 +169,7 @@ function mapLegacyMessages(row: LegacyMessageUsageRow | undefined) {
     estimatedCostUsd: toNumber(row.estimated_cost_usd),
     totalTokens: toNumber(row.total_tokens),
     firstSeenAt: row.first_seen_at ?? null,
-    lastSeenAt: row.last_seen_at ?? null,
+    lastSeenAt: row.last_seen_at ?? null
   }
 }
 
@@ -254,6 +263,8 @@ export default eventHandler(async (event) => {
       queryRows<RecentRow>(`
         SELECT
           id::text,
+          agent_run_id::text,
+          request_id,
           feature_key,
           provider,
           model_id,
@@ -266,12 +277,13 @@ export default eventHandler(async (event) => {
           status,
           error_code,
           latency_ms,
+          metadata,
           created_at
         FROM ai_invocations
         ORDER BY created_at DESC
         LIMIT 25
       `),
-      loadLegacyMessageUsageRows(),
+      loadLegacyMessageUsageRows()
     ])
 
     const row = summaryRows[0]
@@ -283,12 +295,12 @@ export default eventHandler(async (event) => {
     const requestRows = toNumber(health?.request_rows)
     const runtimeRows = toNumber(health?.runtime_rows)
     const completionRows = toNumber(health?.completion_rows)
-    const mappedFeatureKeys = Array.from(new Set(listAiModelMap().map((item) => item.featureKey))).sort()
-    const seenFeatureKeys = new Set(seenFeatureRows.map((item) => item.feature_key))
-    const missingMappedFeatureKeys = mappedFeatureKeys.filter((key) => !seenFeatureKeys.has(key))
+    const mappedFeatureKeys = Array.from(new Set(listAiModelMap().map(item => item.featureKey))).sort()
+    const seenFeatureKeys = new Set(seenFeatureRows.map(item => item.feature_key))
+    const missingMappedFeatureKeys = mappedFeatureKeys.filter(key => !seenFeatureKeys.has(key))
     const unmappedSeenFeatureKeys = seenFeatureRows
-      .map((item) => item.feature_key)
-      .filter((key) => !mappedFeatureKeys.includes(key))
+      .map(item => item.feature_key)
+      .filter(key => !mappedFeatureKeys.includes(key))
       .sort()
     const seenMappedFeatureCount = mappedFeatureKeys.length - missingMappedFeatureKeys.length
 
@@ -307,7 +319,7 @@ export default eventHandler(async (event) => {
         distinctModels: toNumber(health?.distinct_models),
         hasRequestTelemetry: requestRows > 0,
         hasRuntimeTelemetry: runtimeRows > 0,
-        hasCompletionTelemetry: completionRows > 0,
+        hasCompletionTelemetry: completionRows > 0
       },
       coverage: {
         mappedFeatureCount: mappedFeatureKeys.length,
@@ -315,7 +327,7 @@ export default eventHandler(async (event) => {
         unmappedSeenFeatureCount: unmappedSeenFeatureKeys.length,
         missingMappedFeatureKeys,
         unmappedSeenFeatureKeys,
-        coverageRate: mappedFeatureKeys.length > 0 ? seenMappedFeatureCount / mappedFeatureKeys.length : 0,
+        coverageRate: mappedFeatureKeys.length > 0 ? seenMappedFeatureCount / mappedFeatureKeys.length : 0
       },
       summary: {
         totalInvocations,
@@ -330,27 +342,34 @@ export default eventHandler(async (event) => {
         lastSeenAt: row?.last_seen_at ?? null,
         fallbackRate: totalInvocations > 0 ? fallbackCount / totalInvocations : 0,
         errorRate: totalInvocations > 0 ? errorCount / totalInvocations : 0,
-        gatewayRate: totalInvocations > 0 ? gatewayCount / totalInvocations : 0,
+        gatewayRate: totalInvocations > 0 ? gatewayCount / totalInvocations : 0
       },
       byFeature: byFeature.map(mapBreakdown),
       byModel: byModel.map(mapBreakdown),
       legacyMessages: mapLegacyMessages(legacyMessageRows[0]),
-      recent: recent.map((item) => ({
-        id: item.id,
-        featureKey: item.feature_key,
-        provider: item.provider,
-        modelId: item.model_id,
-        gatewayUsed: item.gateway_used,
-        fallbackUsed: item.fallback_used,
-        promptTokens: toNumber(item.prompt_tokens),
-        completionTokens: toNumber(item.completion_tokens),
-        totalTokens: toNumber(item.total_tokens),
-        estimatedCostUsd: toNumber(item.estimated_cost_usd),
-        status: item.status,
-        errorCode: item.error_code,
-        latencyMs: toNumber(item.latency_ms),
-        createdAt: item.created_at,
-      })),
+      recent: recent.map((item) => {
+        const metadata = metadataObject(item.metadata)
+        return {
+          id: item.id,
+          agentRunId: item.agent_run_id,
+          requestId: item.request_id,
+          correlationId: typeof metadata.correlationId === 'string' ? metadata.correlationId : null,
+          transport: typeof metadata.transport === 'string' ? metadata.transport : null,
+          featureKey: item.feature_key,
+          provider: item.provider,
+          modelId: item.model_id,
+          gatewayUsed: item.gateway_used,
+          fallbackUsed: item.fallback_used,
+          promptTokens: toNumber(item.prompt_tokens),
+          completionTokens: toNumber(item.completion_tokens),
+          totalTokens: toNumber(item.total_tokens),
+          estimatedCostUsd: toNumber(item.estimated_cost_usd),
+          status: item.status,
+          errorCode: item.error_code,
+          latencyMs: toNumber(item.latency_ms),
+          createdAt: item.created_at
+        }
+      })
     }
   } catch (error) {
     if (isMissingLedgerError(error)) {

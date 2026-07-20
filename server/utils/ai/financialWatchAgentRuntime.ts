@@ -4,11 +4,11 @@ import {
   failPlatformAgentRun,
   startPlatformAgentRun,
 } from '~~/server/utils/ai/platformAgentRuns'
+import type { PlatformAgentScope } from '~~/server/utils/ai/platformAgentScope'
 
 export interface FinancialWatchAgentRuntimeInput {
   prompt: string
-  tenantId: string
-  clientId?: string | null
+  scope: PlatformAgentScope
   userId?: string | null
   route?: string
 }
@@ -36,6 +36,21 @@ function watchStatus(previous: { fingerprint: string, severity_score: number } |
   if (severityScore > previous.severity_score) return 'worsened'
   if (severityScore < previous.severity_score) return 'improved'
   return 'unchanged'
+}
+
+function rowMatchesTenant(row: Record<string, unknown>, tenantId: string) {
+  return row.tenant_id === tenantId
+}
+
+function rowMatchesClientScope(
+  row: Record<string, unknown>,
+  clientId: string | null,
+  allowedClientIds: readonly string[],
+) {
+  if (!Object.prototype.hasOwnProperty.call(row, 'client_id')) return false
+  if (row.client_id !== null && typeof row.client_id !== 'string') return false
+  const rowClientId = row.client_id
+  return clientId ? rowClientId === clientId : rowClientId === null || allowedClientIds.includes(rowClientId)
 }
 
 async function persistFinancialWatchState(input: {
@@ -92,8 +107,12 @@ async function persistFinancialWatchState(input: {
 
 export async function runFinancialWatchAgentRequest(input: FinancialWatchAgentRuntimeInput) {
   const prompt = input.prompt.trim()
-  const tenantId = input.tenantId.trim()
+  const tenantId = (input.scope.tenantId ?? '').trim()
   if (!tenantId) throw createError({ statusCode: 400, statusMessage: 'tenantId required' })
+  const clientId = input.scope.client.kind === 'single' ? input.scope.client.clientId : null
+  const allowedClientIds = input.scope.client.kind === 'single'
+    ? [input.scope.client.clientId]
+    : [...input.scope.client.clientIds]
 
   const startedAtMs = Date.now()
   const run = await startPlatformAgentRun({
@@ -101,19 +120,20 @@ export async function runFinancialWatchAgentRequest(input: FinancialWatchAgentRu
     featureKey: 'agent_financial_watch',
     mode: 'read_only',
     userId: input.userId ?? null,
-    clientId: input.clientId ?? null,
+    clientId,
     route: input.route ?? '/agency/ai/finance',
     prompt,
     context: {
       tenantId,
-      clientId: input.clientId ?? null,
+      clientId,
+      clientScopeCount: allowedClientIds.length,
     },
   })
 
   try {
-    const [reportRows, recommendationRows, budgetAlertRows] = await Promise.all([
+    const [unscopedReportRows, unscopedRecommendationRows, unscopedBudgetAlertRows] = await Promise.all([
       queryRows<any>(
-        `SELECT id::text, period_key, period_label, grade, score, headline, verdict, payload, generated_at::text
+        `SELECT id::text, tenant_id, period_key, period_label, grade, score, headline, verdict, payload, generated_at::text
          FROM financial_advisor_reports
          WHERE tenant_id = $1
          ORDER BY generated_at DESC
@@ -121,25 +141,42 @@ export async function runFinancialWatchAgentRequest(input: FinancialWatchAgentRu
         [tenantId],
       ),
       queryRows<any>(
-        `SELECT id::text, title, action, impact, priority, status, target_metric, target_direction, due_date::text, created_at::text
+        `SELECT id::text, tenant_id, client_id::text, title, action, impact, priority, status, target_metric, target_direction, due_date::text, created_at::text
          FROM recommendations
          WHERE tenant_id = $1
            AND status IN ('open', 'in_progress')
-           AND ($2::uuid IS NULL OR client_id = $2::uuid)
+           AND (
+             ($2::uuid IS NOT NULL AND client_id = $2::uuid)
+             OR ($2::uuid IS NULL AND ($3::uuid[] IS NULL OR client_id IS NULL OR client_id = ANY($3::uuid[])))
+           )
          ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, created_at DESC
          LIMIT 10`,
-        [tenantId, input.clientId ?? null],
+        [tenantId, clientId, allowedClientIds],
       ),
       queryRows<any>(
-        `SELECT id::text, alert_type, severity, status, message, budget_amount, actual_amount, variance_amount, created_at::text
+        `SELECT id::text, tenant_id, client_id::text, alert_type, severity, status, message, budget_amount, actual_amount, variance_amount, created_at::text
          FROM budget_alerts
-         WHERE status IN ('active', 'acknowledged')
-           AND ($1::uuid IS NULL OR client_id = $1::uuid)
+         WHERE tenant_id = $1
+           AND status IN ('active', 'acknowledged')
+           AND (
+             ($2::uuid IS NOT NULL AND client_id = $2::uuid)
+             OR ($2::uuid IS NULL AND ($3::uuid[] IS NULL OR client_id IS NULL OR client_id = ANY($3::uuid[])))
+           )
          ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, created_at DESC
          LIMIT 10`,
-        [input.clientId ?? null],
+        [tenantId, clientId, allowedClientIds],
       ).catch(() => []),
     ])
+
+    // SQL predicates are the primary boundary. These checks are a second boundary
+    // so a future join/regression cannot turn mixed source rows into model output.
+    const reportRows = unscopedReportRows.filter(row => rowMatchesTenant(row, tenantId))
+    const recommendationRows = unscopedRecommendationRows.filter(row => (
+      rowMatchesTenant(row, tenantId) && rowMatchesClientScope(row, clientId, allowedClientIds)
+    ))
+    const budgetAlertRows = unscopedBudgetAlertRows.filter(row => (
+      rowMatchesTenant(row, tenantId) && rowMatchesClientScope(row, clientId, allowedClientIds)
+    ))
 
     const latestReport = reportRows[0] ?? null
     const highPriorityRecommendations = recommendationRows.filter(row => row.priority === 'high').length
@@ -191,7 +228,7 @@ export async function runFinancialWatchAgentRequest(input: FinancialWatchAgentRu
     })
     const watchState = await persistFinancialWatchState({
       tenantId,
-      clientId: input.clientId ?? null,
+      clientId,
       fingerprint,
       severityScore,
       summary: {
@@ -209,7 +246,7 @@ export async function runFinancialWatchAgentRequest(input: FinancialWatchAgentRu
         : 'Financial Watch could not find an archived advisor report for this tenant yet.',
       summary: {
         tenantId,
-        clientId: input.clientId ?? null,
+        clientId,
         latestReport: latestReport ? {
           id: latestReport.id,
           periodKey: latestReport.period_key,
@@ -263,7 +300,7 @@ export async function runFinancialWatchAgentRequest(input: FinancialWatchAgentRu
         summary: {
           answerPreview: response.answer.slice(0, 240),
           tenantId,
-          clientId: input.clientId ?? null,
+          clientId,
         },
       })
     }
