@@ -641,7 +641,7 @@ const featuresCol4 = [
 
 const featuresCol5 = [
   { title: 'HR & People Operations', subtitle: 'Governed reviews, roles & evidence', icon: 'i-lucide-users-round', iconBg: 'bg-cyan-500/15', iconColor: 'text-cyan-400', to: '/features/hr-people-operations' },
-  { title: 'Client Portal', subtitle: 'Approvals, invoices, gallery', icon: 'i-lucide-building-2', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/client-portal' },
+  { title: 'Client Portal', subtitle: 'CRM, campaigns, jobs & billing', icon: 'i-lucide-building-2', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/client-portal' },
   { title: 'Time Tracking', subtitle: 'Timesheets and approvals', icon: 'i-lucide-timer', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/time-tracking' },
   { title: 'Briefs', subtitle: 'Templates, AI tools, and quotes', icon: 'i-lucide-file-text', iconBg: 'bg-orange-500/15', iconColor: 'text-orange-400', to: '/features/brief-templates' },
   { title: 'Roles & Admin', subtitle: 'Custom roles and permissions', icon: 'i-lucide-shield', iconBg: 'bg-slate-500/15', iconColor: 'text-slate-400', to: '/features/custom-roles' },
