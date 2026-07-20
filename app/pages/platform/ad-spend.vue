@@ -153,6 +153,106 @@
       </div>
     </section>
 
+    <!-- First-party Measurement -->
+    <section
+      id="measurement"
+      aria-labelledby="measurement-title"
+      class="scroll-mt-20 pb-20 md:pb-28"
+    >
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="overflow-hidden rounded-[2rem] bg-[#0a0b0e] text-white border border-white/[0.08]">
+          <div class="grid lg:grid-cols-[0.82fr_1.18fr]">
+            <div class="p-7 sm:p-10 md:p-14 lg:p-16 border-b lg:border-b-0 lg:border-r border-white/[0.08]">
+              <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-400/10 border border-emerald-300/15 mb-7">
+                <UIcon name="i-lucide-activity" class="w-3.5 h-3.5 text-emerald-300" />
+                <span class="text-[13px] font-medium text-emerald-200">First-party measurement</span>
+              </div>
+
+              <h2
+                id="measurement-title"
+                class="text-[clamp(30px,4.5vw,48px)] font-[450] leading-[1.08] tracking-[-0.03em] mb-5"
+              >
+                Measure outcomes, not just spend
+              </h2>
+              <p class="text-[16px] md:text-[17px] leading-relaxed text-white/65 mb-8">
+                XeroFlow imports spend and performance data across connected platforms, then delivers only approved, consented conversion events to configured Google and Meta destinations.
+              </p>
+
+              <div class="flex items-start gap-3 rounded-xl bg-white/[0.04] border border-white/[0.08] p-4">
+                <UIcon name="i-lucide-shield-check" class="w-5 h-5 text-emerald-300 flex-shrink-0 mt-0.5" />
+                <p class="text-[13px] leading-relaxed text-white/60">
+                  Reporting data and conversion delivery remain separate, governed flows for every client workspace.
+                </p>
+              </div>
+            </div>
+
+            <div class="relative p-7 sm:p-10 md:p-14 lg:p-16 bg-white/[0.025]">
+              <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+                <div class="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-blue-400/[0.08] blur-3xl" />
+                <div class="absolute -bottom-24 -left-20 w-72 h-72 rounded-full bg-emerald-400/[0.08] blur-3xl" />
+              </div>
+
+              <div class="relative">
+                <ol class="grid md:grid-cols-3 gap-8 md:gap-8 items-stretch" aria-label="XeroFlow measurement data flow">
+                  <li
+                    v-for="(stage, index) in measurementFlow"
+                    :key="stage.title"
+                    class="relative rounded-2xl bg-white/[0.04] border border-white/[0.08] p-5"
+                  >
+                    <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-5" :class="stage.iconBg">
+                      <UIcon :name="stage.icon" class="w-5 h-5" :class="stage.iconColor" />
+                    </div>
+                    <p class="text-[11px] uppercase tracking-[0.14em] text-white/50 mb-2">
+                      {{ stage.eyebrow }}
+                    </p>
+                    <h3 class="text-[15px] font-medium text-white mb-2">
+                      {{ stage.title }}
+                    </h3>
+                    <p class="text-[12px] leading-relaxed text-white/60">
+                      {{ stage.description }}
+                    </p>
+
+                    <UIcon
+                      v-if="index < measurementFlow.length - 1"
+                      name="i-lucide-arrow-down"
+                      class="absolute -bottom-6 left-1/2 -translate-x-1/2 w-4 h-4 text-white/35 md:hidden"
+                      aria-hidden="true"
+                    />
+                    <UIcon
+                      v-if="index < measurementFlow.length - 1"
+                      name="i-lucide-arrow-right"
+                      class="hidden md:block absolute top-1/2 -right-6 -translate-y-1/2 w-4 h-4 text-white/35"
+                      aria-hidden="true"
+                    />
+                  </li>
+                </ol>
+
+                <ul class="grid sm:grid-cols-2 gap-3 mt-6" aria-label="Measurement governance controls">
+                  <li
+                    v-for="control in measurementControls"
+                    :key="control.title"
+                    class="flex items-start gap-3 rounded-xl bg-white/[0.035] border border-white/[0.07] p-4"
+                  >
+                    <div class="w-8 h-8 rounded-lg bg-emerald-400/10 flex items-center justify-center flex-shrink-0">
+                      <UIcon :name="control.icon" class="w-4 h-4 text-emerald-300" />
+                    </div>
+                    <div>
+                      <h3 class="text-[13px] font-medium text-white mb-1">
+                        {{ control.title }}
+                      </h3>
+                      <p class="text-[11px] leading-relaxed text-white/60">
+                        {{ control.description }}
+                      </p>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Unified Dashboard -->
     <section class="py-20 md:py-28 bg-[#f4f5f7] dark:bg-[#121317]">
       <div class="max-w-[1200px] mx-auto px-6">
@@ -281,6 +381,13 @@ definePageMeta({
   public: true
 })
 
+useSeoMeta({
+  title: 'Ad Spend & First-Party Measurement | XeroFlow',
+  description: 'Connect advertising accounts, unify spend reporting, and govern consent-gated server-side conversion delivery to Google and Meta with XeroFlow.',
+  ogTitle: 'Ad Spend & First-Party Measurement | XeroFlow',
+  ogDescription: 'Unify cross-platform spend with consent-gated first-party conversion measurement for Google and Meta.'
+})
+
 const metaFeatures = [
   'OAuth connection — one-click setup',
   'Daily spend syncing across all accounts',
@@ -320,6 +427,56 @@ const importFeatures = [
   'Manual single entry',
   'Any platform',
   'Template download',
+]
+
+const measurementFlow = [
+  {
+    eyebrow: 'Reporting data in',
+    title: 'Connected ad platforms',
+    description: 'OAuth spend, campaign and performance data from every supported platform.',
+    icon: 'i-lucide-panel-top-open',
+    iconBg: 'bg-blue-400/10',
+    iconColor: 'text-blue-300'
+  },
+  {
+    eyebrow: 'Governed in XeroFlow',
+    title: 'Client measurement policy',
+    description: 'Consent, account mapping, destination validation and privacy approval.',
+    icon: 'i-lucide-shield-check',
+    iconBg: 'bg-amber-400/10',
+    iconColor: 'text-amber-300'
+  },
+  {
+    eyebrow: 'Approved signals out',
+    title: 'Google & Meta delivery',
+    description: 'Enhanced conversions and Conversions API events sent to configured destinations.',
+    icon: 'i-lucide-send',
+    iconBg: 'bg-emerald-400/10',
+    iconColor: 'text-emerald-300'
+  }
+]
+
+const measurementControls = [
+  {
+    title: 'Consent-aware collection',
+    description: 'Only eligible first-party events enter the delivery pipeline.',
+    icon: 'i-lucide-shield-check'
+  },
+  {
+    title: 'Per-client destinations',
+    description: 'Exact Google and Meta destinations are mapped for each client.',
+    icon: 'i-lucide-route'
+  },
+  {
+    title: 'Agency multi-account access',
+    description: 'Separate provider identities and ad accounts stay clearly assigned.',
+    icon: 'i-lucide-network'
+  },
+  {
+    title: 'Approvals and evidence',
+    description: 'Versioned configuration, validation evidence and auditable activation.',
+    icon: 'i-lucide-file-check-2'
+  }
 ]
 
 const dashboardFeatures = [
