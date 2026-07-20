@@ -67,6 +67,14 @@ Secrets are represented only by opaque secret-manager references. Raw access
 tokens, webhook secrets, provider payloads, and contact PII are prohibited in
 canonical configuration, audit rows, diagnostics, logs, Monday, and task evidence.
 
+Google conversion actions are discovered through a client-scoped, read-only
+boundary using the selected connected credential. The operator chooses an enabled
+`UPLOAD_CLICKS` or `WEBPAGE` action returned by Google; Zero stores the numeric
+conversion-action ID required by Data Manager, not a customer ID, OAuth token, or
+free-form resource guess. `UPLOAD_CLICKS` is required for Zero-managed offline or
+enhanced-lead delivery, while `WEBPAGE` is reserved for a website-tag additional
+data source.
+
 ### Versioning and mutation
 
 All configuration mutations pass through a typed measurement service.
@@ -115,6 +123,15 @@ transition remains in immutable history.
 
 Consent is snapshotted on the canonical event. Policy skips are recorded as a
 delivery outcome and are not retried as transport failures.
+
+A newly inserted browser `generate_lead` tracking event with marketing consent is
+promoted to the canonical `web_conversion` outbox in the tracking transaction. The
+browser event ID is reused for deduplication and only allowlisted click identifiers
+are copied; event data, form fields, and contact PII are not copied. A database
+savepoint isolates promotion failure so behavioural tracking remains durable while
+the failure is logged with client and event identifiers only. Duplicate tracking
+events do not append duplicate canonical events, and denied marketing consent never
+enters the provider-delivery outbox.
 
 The initial retention policy is:
 
@@ -218,6 +235,11 @@ The implementation must prove these outcomes:
 7. A disabled or paused client creates no provider delivery.
 8. A cache publication failure leaves the incremented Neon version readable and
    surfaces a redacted health warning.
+9. A Google destination selector cannot return another client's connection,
+   expose credential material, or store a customer/resource name as the Data
+   Manager `productDestinationId`.
+10. A consented browser lead produces one canonical `web_conversion`; a duplicate
+    or marketing-denied event produces no provider-delivery event.
 
 ## Related
 
