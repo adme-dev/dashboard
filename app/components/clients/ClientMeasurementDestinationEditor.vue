@@ -33,6 +33,17 @@ interface MappingDefinition {
   label: string
 }
 
+interface GoogleConversionAction {
+  id: string
+  name: string
+  status: 'ENABLED'
+  type: 'UPLOAD_CLICKS' | 'WEBPAGE'
+  category: string
+  isPrimary: boolean
+  includesInConversions: boolean
+  deliveryMode: 'offline_click' | 'additional_data_source'
+}
+
 const capabilityDefinitions: Record<Platform, CapabilityDefinition[]> = {
   meta: [
     { mode: 'meta_pixel', label: 'Meta Pixel', description: 'Browser events, usually managed in GTM or the client website.', defaultOrigin: 'gtm' },
@@ -68,9 +79,13 @@ const reason = ref('')
 const accounts = ref<Record<Platform, ConnectedAccount[]>>({ meta: [], google_data_manager: [] })
 const accountsPending = ref(true)
 const accountError = ref<string | null>(null)
+const googleActions = ref<GoogleConversionAction[]>([])
+const googleActionsPending = ref(false)
+const googleActionError = ref<string | null>(null)
 const saving = ref(false)
 const saveError = ref<string | null>(null)
 let accountRequestId = 0
+let googleActionRequestId = 0
 
 const apiFetch = $fetch as <T>(
   request: string,
@@ -85,20 +100,42 @@ const selectedCapabilityRows = computed(() => currentCapabilities.value.filter(d
 const selectedMappingRows = computed(() => mappingDefinitions.filter(definition => activeMappings[definition.name]))
 const requiresConnection = computed(() => selectedCapabilityRows.value.some(definition => capabilityOrigins[definition.mode] === 'zero'))
 const mappingsComplete = computed(() => selectedMappingRows.value.every(definition => providerEventNames[definition.name]?.trim()))
+const selectedGoogleAction = computed(() => googleActions.value.find(action => action.id === externalDestinationId.value) ?? null)
+const needsOfflineClickAction = computed(() => selectedCapabilityRows.value.some(definition => (
+  capabilityOrigins[definition.mode] === 'zero'
+  && ['google_enhanced_conversions_for_leads', 'google_data_manager'].includes(definition.mode)
+)))
+const needsWebsiteAction = computed(() => selectedCapabilityRows.value.some(definition => (
+  definition.mode === 'google_tag_enhanced_conversions'
+  && capabilityOrigins[definition.mode] !== 'zero'
+)))
+const googleActionCompatible = computed(() => {
+  if (platform.value !== 'google_data_manager') return true
+  if (!selectedGoogleAction.value) return false
+  if (needsOfflineClickAction.value && needsWebsiteAction.value) return false
+  if (needsOfflineClickAction.value) return selectedGoogleAction.value.type === 'UPLOAD_CLICKS'
+  if (needsWebsiteAction.value) return selectedGoogleAction.value.type === 'WEBPAGE'
+  return true
+})
 const canSave = computed(() => (
   externalDestinationId.value.trim().length > 0
   && selectedCapabilityRows.value.length > 0
   && (!requiresConnection.value || Boolean(socialConnectionId.value))
   && mappingsComplete.value
+  && googleActionCompatible.value
   && Boolean(reason.value.trim())
   && !saving.value
 ))
 
 function resetPlatformState() {
+  googleActionRequestId += 1
   socialConnectionId.value = ''
   externalDestinationId.value = ''
   reason.value = ''
   saveError.value = null
+  googleActions.value = []
+  googleActionError.value = null
+  googleActionsPending.value = false
 
   for (const definition of Object.values(capabilityDefinitions).flat()) {
     selectedCapabilities[definition.mode] = false
@@ -114,6 +151,15 @@ watch(platform, (nextPlatform) => {
   resetPlatformState()
   void loadAccounts(nextPlatform)
 })
+watch(socialConnectionId, (connectionId) => {
+  googleActionRequestId += 1
+  externalDestinationId.value = ''
+  googleActions.value = []
+  googleActionError.value = null
+  if (platform.value === 'google_data_manager' && connectionId) {
+    void loadGoogleActions(connectionId)
+  }
+}, { flush: 'sync' })
 resetPlatformState()
 
 function errorMessage(error: unknown, fallback: string) {
@@ -147,6 +193,29 @@ async function loadAccounts(targetPlatform: Platform = platform.value) {
     if (requestId === accountRequestId) {
       accountsPending.value = false
     }
+  }
+}
+
+async function loadGoogleActions(connectionId: string) {
+  const requestId = ++googleActionRequestId
+  googleActionsPending.value = true
+  googleActionError.value = null
+  try {
+    const result = await apiFetch<{
+      items: GoogleConversionAction[]
+      pagination: { hasNextPage: boolean }
+    }>(`/api/agency/measurement/clients/${props.clientId}/google-conversion-actions?connectionId=${encodeURIComponent(connectionId)}&page=1&pageSize=100`)
+    if (requestId !== googleActionRequestId) return
+    googleActions.value = result.items
+    if (result.pagination.hasNextPage) {
+      googleActionError.value = 'More than 100 eligible actions exist. Refine the account in Google Ads before activation.'
+    }
+  } catch (error: unknown) {
+    if (requestId === googleActionRequestId) {
+      googleActionError.value = errorMessage(error, 'Google conversion actions could not be loaded')
+    }
+  } finally {
+    if (requestId === googleActionRequestId) googleActionsPending.value = false
   }
 }
 
@@ -247,16 +316,38 @@ void loadAccounts('meta')
       </label>
 
       <label class="space-y-1.5 text-sm md:col-span-2">
-        <span class="font-medium text-highlighted">{{ platform === 'meta' ? 'Dataset ID' : 'Conversion Action resource' }}</span>
+        <span class="font-medium text-highlighted">{{ platform === 'meta' ? 'Dataset ID' : 'Conversion Action ID' }}</span>
         <input
+          v-if="platform === 'meta'"
           v-model="externalDestinationId"
           data-testid="measurement-destination-id"
           type="text"
           maxlength="255"
-          :placeholder="platform === 'meta' ? 'e.g. 573284833843027' : 'e.g. customers/123/conversionActions/456'"
+          placeholder="e.g. 573284833843027"
           class="w-full rounded-md border border-default bg-default px-3 py-2 font-mono text-sm"
         >
-        <span class="text-xs text-muted">This explicit mapping prevents an ad account from being mistaken for a conversion destination.</span>
+        <select
+          v-else
+          v-model="externalDestinationId"
+          data-testid="measurement-destination-id"
+          class="w-full rounded-md border border-default bg-default px-3 py-2 text-sm"
+          :disabled="!socialConnectionId || googleActionsPending"
+        >
+          <option value="">
+            {{ googleActionsPending ? 'Loading eligible conversion actions…' : 'Select an enabled conversion action' }}
+          </option>
+          <option v-for="action in googleActions" :key="action.id" :value="action.id">
+            {{ action.name }} · ID {{ action.id }} · {{ action.deliveryMode === 'offline_click' ? 'Offline click' : 'Website tag' }}{{ action.isPrimary ? ' · Primary' : ' · Secondary' }}
+          </option>
+        </select>
+        <span v-if="googleActionError" role="alert" class="block text-xs text-error">{{ googleActionError }}</span>
+        <span v-else-if="platform === 'google_data_manager' && socialConnectionId && !googleActionsPending && !googleActions.length" class="block text-xs text-warning">
+          No enabled WEBPAGE or UPLOAD_CLICKS conversion action is available in this account.
+        </span>
+        <span class="block text-xs text-muted">This explicit mapping prevents an ad account from being mistaken for a conversion destination.</span>
+        <span v-if="platform === 'google_data_manager' && selectedGoogleAction && !googleActionCompatible" class="block text-xs text-error">
+          The selected action type does not match the capability owner. Zero-managed delivery requires an Offline click action; GTM-owned tag delivery requires a Website tag action.
+        </span>
       </label>
     </div>
 

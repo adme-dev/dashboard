@@ -8,11 +8,11 @@
  * Cross-origin: identity cookies are managed client-side by the tag; we do NOT
  * Set-Cookie here. We resolve the tenant by write key, not request host.
  */
-import { execute } from '~~/server/utils/db'
 import { parseTrackPayload } from '~~/server/utils/tracking/track-schema'
 import { resolveSiteByWriteKey, isOriginAllowed, shouldBlockOrigin } from '~~/server/utils/tracking/site-config'
 import { snapshotConsent } from '~~/server/utils/tracking/consent'
 import { buildEventRows } from '~~/server/utils/tracking/event-insert'
+import { trackingEventPersistence } from '~~/server/utils/tracking/eventPersistence'
 import { rateCheck } from '~~/server/utils/tracking/rate-limit'
 import { resolveClientIp } from '~~/server/utils/tracking/client-ip'
 
@@ -117,26 +117,17 @@ export default defineEventHandler(async (event) => {
       // No binding (dev/local) ⇒ no-op, allow.
     }
 
-    // 7. Build + insert rows (dedup on (site_id, event_id)).
+    // 7. Build + insert rows (dedup on (site_id, event_id)). Consented
+    // generate_lead events are promoted in the same transaction to the
+    // canonical server-delivery outbox; a savepoint keeps tracking durable if
+    // the governed promotion path is temporarily unavailable.
+    const receivedAt = new Date().toISOString()
     const rows = buildEventRows(site, parsed.payload, ctx)
-    for (const r of rows) {
-      await execute(
-        `INSERT INTO tracking_events (
-            site_id, client_id, event_id, anon_id, session_id, event_name, page_url, referrer,
-            utm_source, utm_medium, utm_campaign, utm_term, utm_content,
-            gclid, gbraid, wbraid, fbclid, fbc, fbp, ttclid, msclkid, li_fat_id,
-            event_data, consent, ua, ip_hash, origin, occurred_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-                 $23,$24,$25,$26,$27,$28)
-         ON CONFLICT (site_id, event_id) DO NOTHING`,
-        [
-          r.site_id, r.client_id, r.event_id, r.anon_id, r.session_id, r.event_name, r.page_url, r.referrer,
-          r.utm_source, r.utm_medium, r.utm_campaign, r.utm_term, r.utm_content,
-          r.gclid, r.gbraid, r.wbraid, r.fbclid, r.fbc, r.fbp, r.ttclid, r.msclkid, r.li_fat_id,
-          JSON.stringify(r.event_data), JSON.stringify(r.consent), r.ua, r.ip_hash, r.origin, r.occurred_at,
-        ],
-      )
-    }
+    await trackingEventPersistence.persist({
+      rows,
+      marketingConsent: consent.marketing,
+      receivedAt
+    })
 
     setResponseStatus(event, 200)
     return { ok: true, received: rows.length }
