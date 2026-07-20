@@ -698,21 +698,21 @@
           </div>
 
           <!-- Roles & Admin -->
-          <div class="md:col-span-2 rounded-3xl bento-gradient-roles overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-            <div class="flex flex-col md:flex-row gap-6 p-6 md:p-10">
-              <div class="flex-1 flex flex-col justify-center">
+          <div class="rounded-3xl bento-gradient-roles overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 p-6 md:p-8">
+            <div class="flex flex-col gap-5">
+              <div>
                 <div class="flex items-center gap-2 mb-3">
                   <UIcon name="i-lucide-shield-check" class="w-5 h-5 text-slate-600 dark:text-slate-400" />
                   <span class="text-[13px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Admin &amp; Roles</span>
                 </div>
-                <h3 class="text-[clamp(22px,3vw,28px)] font-[450] text-[#121317] dark:text-white leading-[1.2] tracking-[-0.02em] mb-3">
-                  Granular permissions &amp;<br>custom roles
+                <h3 class="text-[20px] font-[450] text-[#121317] dark:text-white tracking-[-0.01em] mb-2">
+                  Granular permissions &amp; custom roles
                 </h3>
-                <p class="text-[#45474D] dark:text-white/60 text-[15px] leading-relaxed max-w-[400px]">
+                <p class="text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">
                   15 built-in roles, custom role builder, and 3-layer enforcement across server middleware, route middleware, and sidebar gating.
                 </p>
               </div>
-              <div class="flex-1">
+              <div>
                 <div class="rounded-2xl bg-white/80 dark:bg-white/[0.08] backdrop-blur-sm shadow-sm dark:shadow-none overflow-hidden p-4">
                   <!-- Roles mockup -->
                   <div class="flex items-center justify-between mb-3">
