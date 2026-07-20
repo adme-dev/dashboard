@@ -17,7 +17,7 @@
           Client Portal Administration
         </h1>
         <p class="text-lg text-[#45474D] dark:text-white/60 leading-relaxed mb-3">
-          Set up client access, configure permissions, manage approval workflows, and customise the portal experience.
+          Set up client access, configure permissions, and govern CRM, campaign reporting, shared work, approvals, and billing.
         </p>
         <p class="text-[13px] text-[#45474D]/50 dark:text-white/40 mb-14">9 min read</p>
 
@@ -25,31 +25,31 @@
         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-14">
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
             <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-check-circle" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <UIcon name="i-lucide-contact-round" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
-            <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Approvals</p>
-            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Submit deliverables for client review with tracked status.</p>
+            <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">CRM &amp; Leads</p>
+            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Share scoped contacts, opportunities, leads, and follow-up outcomes.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
             <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-receipt" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <UIcon name="i-lucide-chart-no-axes-combined" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
-            <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Invoices</p>
-            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Clients view billing history and outstanding invoices.</p>
+            <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Campaigns &amp; Measurement</p>
+            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Expose approved performance, lead, and measurement evidence.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
             <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-image" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <UIcon name="i-lucide-folder-check" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
-            <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Gallery</p>
-            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Visual grid of delivered assets with download and preview.</p>
+            <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Work &amp; Reviews</p>
+            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Coordinate jobs, briefs, meetings, files, and approval history.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
             <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-bell" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <UIcon name="i-lucide-shield-check" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
-            <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Notifications</p>
-            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Alerts for new deliverables, invoices, and project updates.</p>
+            <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Billing &amp; Access</p>
+            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Control invoices, analytics, approvals, requests, and access per contact.</p>
           </div>
         </div>
 
@@ -71,9 +71,18 @@
           <section>
             <h2 class="text-[22px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4">Configuring Permissions</h2>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-4">
-              Each client portal user has a set of granular permissions that control exactly what they can see and do. The three primary permissions are:
+              Each client portal user has granular permissions that control exactly what they can see and do. Core controls include:
             </p>
             <ul class="list-none flex flex-col gap-3 mb-4">
+              <li class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-md bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <UIcon name="i-lucide-folder-open" class="w-3.5 h-3.5 text-[#121317] dark:text-white" />
+                </div>
+                <div>
+                  <p class="text-[15px] text-[#121317] dark:text-white font-medium">canViewProjects</p>
+                  <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">Controls access to client-visible projects, status, tasks, timelines, and shared deliverables.</p>
+                </div>
+              </li>
               <li class="flex items-start gap-3">
                 <div class="w-6 h-6 rounded-md bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
                   <UIcon name="i-lucide-receipt" class="w-3.5 h-3.5 text-[#121317] dark:text-white" />
@@ -101,6 +110,24 @@
                   <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">Enables the user to leave comments on projects, approvals, and deliverables. This is useful for client contacts who need to provide feedback but should not have approval authority.</p>
                 </div>
               </li>
+              <li class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-md bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <UIcon name="i-lucide-chart-no-axes-combined" class="w-3.5 h-3.5 text-[#121317] dark:text-white" />
+                </div>
+                <div>
+                  <p class="text-[15px] text-[#121317] dark:text-white font-medium">canViewAnalytics</p>
+                  <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">Shows campaign performance, lead volume, outcome trends, and approved exports for the client account.</p>
+                </div>
+              </li>
+              <li class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-md bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <UIcon name="i-lucide-file-plus-2" class="w-3.5 h-3.5 text-[#121317] dark:text-white" />
+                </div>
+                <div>
+                  <p class="text-[15px] text-[#121317] dark:text-white font-medium">canSubmitRequests</p>
+                  <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">Allows the contact to submit structured briefs, job requests, and support items from the portal.</p>
+                </div>
+              </li>
             </ul>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-6">
               Permissions are set per user, not per client, so you can give a marketing director full access while limiting a junior contact to view-only. Changes take effect immediately -- no logout required.
@@ -114,7 +141,7 @@
                 </div>
                 <div>
                   <p class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">Per-User Permission Control</p>
-                  <p class="text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">Each client contact gets their own permission set. A marketing director can approve work and view invoices, while a junior contact sees only project updates -- all managed from one screen with instant effect.</p>
+                  <p class="text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">Each contact gets their own permission set. A marketing director can access analytics, leads, briefs, and approvals while a finance contact sees billing only -- all managed from one screen with instant effect.</p>
                 </div>
               </div>
             </div>
@@ -138,7 +165,7 @@
               The portal layout adapts based on permissions. If a client user does not have invoice access, the Invoices tab disappears from their sidebar entirely -- they never see it. The same applies to approvals and other permission-gated sections. This means each client contact sees a clean, relevant interface tailored to their role.
             </p>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
-              The portal includes a dashboard with an overview of active projects, pending approvals, and recent notifications. A creative gallery page shows all delivered assets in a visual grid with download and preview capabilities. The notifications system alerts clients when new deliverables are ready, invoices are issued, or project updates occur.
+              The portal can bring together CRM and leads, campaign analytics, measurement health, projects, briefs, requests, meetings, video reviews, shared assets, social workflows, approvals, and invoices. Only client-scoped records and enabled actions are returned, while notifications surface the updates that need attention.
             </p>
           </section>
 
@@ -170,7 +197,7 @@
               <span class="text-white text-xs font-semibold">XF</span>
             </div>
             <h3 class="text-[22px] font-[450] text-white tracking-[-0.02em] mb-3">Give clients their own portal</h3>
-            <p class="text-[15px] text-white/60 mb-6 max-w-[400px] mx-auto">Branded approvals, invoices, and project updates -- all self-service.</p>
+            <p class="text-[15px] text-white/60 mb-6 max-w-[440px] mx-auto">A governed workspace for relationships, campaign outcomes, delivery, collaboration, and billing.</p>
             <NuxtLink to="/auth/login" class="inline-flex items-center gap-2 px-6 py-2.5 bg-white text-[#121317] text-[15px] font-medium rounded-full hover:bg-white/90 transition-colors">
               Get Started
             </NuxtLink>
@@ -221,8 +248,8 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Client Portal Administration — XeroFlow',
-  description: 'Set up and manage the XeroFlow client portal. Configure permissions, approvals, invoices, galleries, and client-facing notifications.',
+  description: 'Set up and manage the XeroFlow client portal. Configure access for CRM, leads, campaign analytics, measurement, work, approvals, meetings, shared files, and billing.',
   ogTitle: 'Client Portal Administration — XeroFlow',
-  ogDescription: 'Set up and manage the XeroFlow client portal. Configure permissions, approvals, invoices, galleries, and client-facing notifications.',
+  ogDescription: 'Configure a secure, client-scoped workspace for relationships, campaign outcomes, delivery, collaboration, and billing.',
 })
 </script>
