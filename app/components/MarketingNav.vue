@@ -72,6 +72,7 @@
           <!-- Mobile Hamburger -->
           <button
             class="md:hidden flex items-center justify-center w-9 h-9 rounded-lg hover:bg-white/[0.08] transition-colors"
+            aria-label="Open navigation menu"
             @click="mobileOpen = true"
           >
             <UIcon name="i-lucide-menu" class="w-5 h-5 text-white" />
@@ -398,6 +399,7 @@
                 </NuxtLink>
                 <button
                   class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-white/[0.06] transition-colors"
+                  aria-label="Close navigation menu"
                   @click="mobileOpen = false"
                 >
                   <UIcon name="i-lucide-x" class="w-5 h-5 text-white/60" />
@@ -608,6 +610,7 @@ const featuresCol2 = [
 
 const featuresCol3a = [
   { title: 'Real-Time Chat', subtitle: 'Channels, threads, and DMs', icon: 'i-lucide-message-circle', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/chat' },
+  { title: 'Virtual Office', subtitle: 'Presence, rooms, guests & follow-up', icon: 'i-lucide-building-2', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/office' },
   { title: 'Smart Watch', subtitle: 'AI-prioritised notifications & digest', icon: 'i-lucide-bell-ring', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/features/smart-watch' },
   { title: 'Email Marketing', subtitle: 'Campaigns, visual builder, and lists', icon: 'i-lucide-send', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/features/email-campaigns' },
   { title: 'Automations', subtitle: 'Trigger-action workflows', icon: 'i-lucide-zap', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/automations' },
