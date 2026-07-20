@@ -1680,7 +1680,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Branded Experience',
-        content: 'The client portal uses a clean, dedicated layout separate from the agency dashboard. Clients see a focused sidebar with only the sections relevant to them — dashboard, projects, approvals, gallery, invoices, and notifications. No internal tools, no other client data, no agency operations. The experience is professional and purpose-built for external stakeholders.'
+        content: 'The client portal uses a clean, dedicated layout separate from the agency dashboard. Clients see only the sections relevant to them — CRM, leads, campaign analytics, measurement, meetings, briefs, social workflows, projects, approvals, shared files, invoices, and notifications. No internal tools, no other client data, no agency operations. The experience is professional and purpose-built for external stakeholders.'
       }
     ]
   },

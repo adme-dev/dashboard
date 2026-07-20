@@ -1025,9 +1025,9 @@
               For clients
             </div>
             <h3 class="text-[clamp(24px,3.5vw,36px)] font-[450] text-[#121317] dark:text-white leading-[1.15] tracking-[-0.02em] mb-2">
-              View your projects
+              Run your client workspace
             </h3>
-            <p class="text-[#45474D] dark:text-white/60 text-lg mb-8">Approvals, invoices & deliverables</p>
+            <p class="text-[#45474D] dark:text-white/60 text-lg mb-8">CRM, campaigns, shared work & billing</p>
             <NuxtLink
               to="/portal/login"
               class="inline-flex items-center gap-2 px-6 py-3 bg-[#b7bfd9]/10 dark:bg-white/[0.06] text-[#121317] dark:text-white text-[15px] font-medium rounded-full hover:bg-[#b7bfd9]/20 dark:hover:bg-white/[0.1] transition-colors"

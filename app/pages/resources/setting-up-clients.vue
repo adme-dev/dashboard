@@ -35,7 +35,7 @@
               <UIcon name="i-lucide-globe" class="w-4 h-4 text-amber-600 dark:text-amber-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Client Portal</p>
-            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Give clients their own login to view projects, approve work, and check invoices.</p>
+            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Give clients governed access to CRM, campaign analytics, leads, shared work, and billing.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
             <div class="w-9 h-9 rounded-lg bg-teal-50 dark:bg-teal-500/10 flex items-center justify-center mb-3">
@@ -82,7 +82,7 @@
           <section>
             <h2 class="text-[clamp(22px,3vw,28px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4">Configuring portal access</h2>
             <p class="text-[16px] text-[#45474D] dark:text-white/60 leading-relaxed mb-4">
-              The client portal gives your clients a dedicated login to see their projects, approve deliverables, view invoices, and browse creative assets. To enable portal access for a client, go to their client detail page and open the "Portal" tab.
+              The client portal gives each client a dedicated workspace for CRM, campaign analytics, leads, measurement, projects, briefs, approvals, meetings, shared assets, social workflows, and billing. To enable portal access for a client, go to their client detail page and open the "Portal" tab.
             </p>
             <p class="text-[16px] text-[#45474D] dark:text-white/60 leading-relaxed mb-4">
               From here, you can invite client contacts by email. Each contact receives a separate login and can be assigned individual permissions:
@@ -116,9 +116,23 @@
                   <span class="text-[14px] text-[#45474D]/70 dark:text-white/40 ml-2">Leave feedback on tasks and deliverables</span>
                 </div>
               </div>
+              <div class="flex items-center gap-3 p-4">
+                <UIcon name="i-lucide-chart-no-axes-combined" class="w-4 h-4 text-cyan-500 flex-shrink-0" />
+                <div>
+                  <span class="text-[15px] font-medium text-[#121317] dark:text-white">View Analytics</span>
+                  <span class="text-[14px] text-[#45474D]/70 dark:text-white/40 ml-2">See campaign performance, lead volume, outcomes, and trends</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 p-4">
+                <UIcon name="i-lucide-file-plus-2" class="w-4 h-4 text-rose-500 flex-shrink-0" />
+                <div>
+                  <span class="text-[15px] font-medium text-[#121317] dark:text-white">Submit Requests</span>
+                  <span class="text-[14px] text-[#45474D]/70 dark:text-white/40 ml-2">Create briefs, job requests, and support items</span>
+                </div>
+              </div>
             </div>
             <p class="text-[16px] text-[#45474D] dark:text-white/60 leading-relaxed">
-              Permissions are per-contact, so one client might have a marketing manager with full access and a CFO who only sees invoices. You can change permissions at any time without interrupting the client's session.
+              Permissions are per-contact, so one client might have a marketing manager with analytics, leads, approvals, and request access while a CFO only sees invoices. You can change permissions at any time without interrupting the client's session.
             </p>
           </section>
 
@@ -241,8 +255,8 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Setting Up Clients — XeroFlow',
-  description: 'Configure client profiles in XeroFlow. Link Xero contacts, manage briefs, set up the client portal, and organize project work.',
+  description: 'Configure client profiles in XeroFlow. Link Xero contacts and ad accounts, manage billing, and set up portal access for CRM, analytics, leads, work, and approvals.',
   ogTitle: 'Setting Up Clients — XeroFlow',
-  ogDescription: 'Configure client profiles in XeroFlow. Link Xero contacts, manage briefs, set up the client portal, and organize project work.',
+  ogDescription: 'Create the client record that connects CRM, campaigns, leads, portal access, project delivery, and billing.',
 })
 </script>
