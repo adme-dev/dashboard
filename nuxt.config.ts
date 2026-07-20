@@ -1,5 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { fileURLToPath } from 'node:url'
+import { NUXT_PAYLOAD_EXTRACTION, shouldIgnorePrerenderRoute } from './lib/prerender-ignore'
 
 // @flyhub/* email-builder packages are CLIENT-ONLY (the visual editor runs in the
 // browser). Alias them to a stub in the Nitro/Workers server bundle so the heavy
@@ -321,7 +322,11 @@ export default defineNuxtConfig({
   },
 
   experimental: {
-    appManifest: false
+    appManifest: false,
+    // The public pages contain static content, while protected app routes are
+    // client-only. Inline route state so Nuxt never prefetches empty
+    // `_payload.json` files that are not emitted for every prerendered route.
+    payloadExtraction: NUXT_PAYLOAD_EXTRACTION
   },
 
   compatibilityDate: '2024-12-01',
@@ -336,8 +341,10 @@ export default defineNuxtConfig({
     },
     prerender: {
       crawlLinks: true,
-      // Ignore the host-aware root, auth-gated routes and API endpoints during prerendering
-      ignore: ['/', '/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake']
+      // Nitro treats string ignore rules as prefixes, so a literal '/' would
+      // suppress every public route. Use an explicit marketing allowlist to
+      // keep auth-gated, API, development and utility surfaces dynamic.
+      ignore: [shouldIgnorePrerenderRoute]
     },
     rollupConfig: {
       external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native'],
