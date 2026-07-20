@@ -5,30 +5,7 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-
-const ALLOWED_KEYS = [
-  'email_task_assigned',
-  'email_task_mentioned',
-  'email_task_due',
-  'email_approval_request',
-  'email_weekly_digest',
-  'email_board_member_added',
-  'email_brief_assigned',
-  'email_brief_status',
-  'email_brief_comment',
-  'inapp_task_assigned',
-  'inapp_task_mentioned',
-  'inapp_task_status',
-  'inapp_task_comment',
-  'inapp_task_due',
-  'inapp_approval',
-  'inapp_board_member_added',
-  'inapp_brief_assigned',
-  'inapp_brief_status',
-  'inapp_brief_comment',
-  'inapp_chat_mention',
-  'inapp_chat_dm'
-]
+import { NOTIFICATION_PREFERENCE_KEYS } from '~~/shared/utils/notificationPreferences'
 
 function validateQuietHours(input: any): { valid: boolean; reason?: string } {
   if (input === null) return { valid: true }
@@ -69,7 +46,7 @@ export default defineEventHandler(async (event) => {
   // Filter to only allowed keys and validate values are booleans
   const sanitizedPreferences: Record<string, boolean> = {}
   if (preferences && typeof preferences === 'object') {
-    for (const key of ALLOWED_KEYS) {
+    for (const key of NOTIFICATION_PREFERENCE_KEYS) {
       if (key in preferences) {
         if (typeof preferences[key] !== 'boolean') {
           throw createError({
@@ -100,24 +77,27 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'autoAckAssignments must be a boolean' })
   }
 
+  const hasNotificationPreferenceUpdates = Object.keys(sanitizedPreferences).length > 0
+  if (
+    !hasNotificationPreferenceUpdates
+    && autoSubscribeOnParticipation === undefined
+    && quietHours === undefined
+    && autoAckAssignments === undefined
+  ) {
+    throw createError({ statusCode: 400, statusMessage: 'No recognized preference fields were provided' })
+  }
+
   try {
-    // Get current preferences
-    const current = await queryOne(`
-      SELECT notification_preferences
-      FROM team_members
-      WHERE id = $1
-    `, [user.id])
-
-    // Merge with existing preferences
-    const merged = {
-      ...(current?.notification_preferences || {}),
-      ...sanitizedPreferences
+    // Patch JSONB in the UPDATE itself so overlapping preference saves cannot
+    // overwrite one another. Non-notification updates leave the JSON untouched.
+    const sets: string[] = []
+    const values: any[] = [user.id]
+    let idx = 2
+    if (hasNotificationPreferenceUpdates) {
+      sets.push(`notification_preferences = COALESCE(notification_preferences, '{}'::jsonb) || $${idx}::jsonb`)
+      values.push(JSON.stringify(sanitizedPreferences))
+      idx++
     }
-
-    // Build dynamic UPDATE based on which fields were provided
-    const sets: string[] = ['notification_preferences = $2']
-    const values: any[] = [user.id, JSON.stringify(merged)]
-    let idx = 3
     if (autoSubscribeOnParticipation !== undefined) {
       sets.push(`auto_subscribe_on_participation = $${idx}`)
       values.push(autoSubscribeOnParticipation)
@@ -143,8 +123,8 @@ export default defineEventHandler(async (event) => {
 
     return {
       success: true,
-      preferences: result?.notification_preferences || merged,
-      autoSubscribeOnParticipation: result?.auto_subscribe_on_participation ?? true,
+      preferences: result?.notification_preferences || sanitizedPreferences,
+      autoSubscribeOnParticipation: result?.auto_subscribe_on_participation ?? false,
       quietHours: result?.quiet_hours || null,
       autoAckAssignments: result?.auto_ack_assignments ?? false,
     }

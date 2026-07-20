@@ -9,6 +9,7 @@ import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, send
 import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 import { isWithinQuietHours } from '~~/server/utils/quietHours'
 import { computeImportance } from '~~/server/utils/notificationImportance'
+import { isNotificationPreferenceEnabled, type NotificationPreferenceKey } from '~~/shared/utils/notificationPreferences'
 
 export type NotificationType = 'task_assigned' | 'task_mentioned' | 'task_comment' | 'task_status_changed' | 'task_due_soon' | 'task_overdue' | 'monday_inactive' | 'monday_blocked' | 'approval_requested' | 'approval_completed' | 'approval_response' | 'team_update' | 'system' | 'ai_digest' | 'chat_mention' | 'chat_dm' | 'brief_status_changed' | 'brief_commented' | 'brief_assigned' | 'brief_submitted' | 'brief_converted' | 'brief_completion_proposed' | 'board_member_added' | 'anomaly_critical' | 'lead' | 'social_assigned' | 'social_sla_breach' | 'brief_actioned' | 'hr_review_assigned' | 'hr_role_assigned' | 'hr_review_reminder' | 'hr_review_overdue' | 'hr_review_cancel' | 'hr_review_reopen' | 'hr_review_extension' | 'hr_review_reschedule' | 'hr_review_interview' | 'hr_review_interview_cancelled' | 'hr_review_interview_completed' | 'hr_interview_scheduled' | 'hr_scorecard_published' | 'hr_finding_response_requested' | 'hr_finding_participant_response' | 'hr_finding_published' | 'hr_follow_up_assigned' | 'hr_follow_up_due'
 
@@ -64,10 +65,10 @@ interface NotifyDueReminderParams {
 
 /**
  * Map notification type → user-controllable in-app preference key.
- * Types not in this map always create (system, chat, brief, invitation, digest, etc.)
- * because they're either critical or have their own opt-in/out elsewhere.
+ * User-controllable keys require an explicit opt-in. The legacy critical-anomaly
+ * key remains opt-out, and types outside this map retain their existing behavior.
  */
-const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, string>> = {
+const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, NotificationPreferenceKey | 'inapp_anomaly_critical'>> = {
   task_assigned: 'inapp_task_assigned',
   task_mentioned: 'inapp_task_mentioned',
   task_comment: 'inapp_task_comment',
@@ -91,8 +92,8 @@ const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, string>> = {
  *
  * Two gates, evaluated independently:
  *   - In-app: honours `inapp_*` keys in team_members.notification_preferences.
- *     If the recipient has explicitly disabled this type, no row is inserted
- *     (no inbox / bell / Activity Hub entry).
+ *     User-controllable types are inserted only after an explicit opt-in
+ *     (no opt-in means no inbox / bell / Activity Hub entry).
  *   - Web Push: fans out to every device the user has subscribed, regardless
  *     of in-app prefs. The user controls push via the per-device toggle in
  *     /settings/notifications, which adds/removes their push_subscriptions
@@ -130,7 +131,11 @@ export async function createNotification(params: CreateNotificationParams) {
     if (prefKey) {
       const row = await queryOne(`SELECT notification_preferences FROM team_members WHERE id = $1`, [params.userId])
       const prefs = row?.notification_preferences || {}
-      if (prefs[prefKey] === false) return null
+      if (prefKey === 'inapp_anomaly_critical') {
+        if (prefs[prefKey] === false) return null
+      } else if (!isNotificationPreferenceEnabled(prefs, prefKey)) {
+        return null
+      }
     }
 
     const importanceScore = computeImportance({
@@ -293,7 +298,7 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
 
   // Send email notification (check preference)
   const prefs = assignee.notification_preferences || {}
-  if (prefs.email_task_assigned !== false) {
+  if (isNotificationPreferenceEnabled(prefs, 'email_task_assigned')) {
     await sendTaskAssignedEmail({
       to: assignee.email,
       name: assignee.name,
@@ -439,7 +444,7 @@ export async function notifyMention(params: NotifyMentionParams) {
 
   // Send email notification (check preference)
   const prefs = mentioned.notification_preferences || {}
-  if (prefs.email_task_mentioned !== false) {
+  if (isNotificationPreferenceEnabled(prefs, 'email_task_mentioned')) {
     await sendMentionEmail({
       to: mentioned.email,
       name: mentioned.name,
@@ -490,7 +495,7 @@ export async function notifyApprovalRequest(params: NotifyApprovalRequestParams)
 
   // Send email notification (check preference)
   const prefs = approver.notification_preferences || {}
-  if (prefs.email_approval_request !== false) {
+  if (isNotificationPreferenceEnabled(prefs, 'email_approval_request')) {
     await sendApprovalRequestEmail({
       to: approver.email,
       name: approver.name,
@@ -537,7 +542,7 @@ export async function notifyDueReminder(params: NotifyDueReminderParams) {
 
   // Send email notification (check preference)
   const prefs = assignee.notification_preferences || {}
-  if (prefs.email_task_due !== false) {
+  if (isNotificationPreferenceEnabled(prefs, 'email_task_due')) {
     await sendDueReminderEmail({
       to: assignee.email,
       name: assignee.name,
@@ -641,7 +646,7 @@ export async function notifyNextApprover(params: { taskId: string; taskTitle: st
 
   // Send email notification (check preference)
   const prefs = approver.notification_preferences || {}
-  if (prefs.email_approval_request !== false) {
+  if (isNotificationPreferenceEnabled(prefs, 'email_approval_request')) {
     await sendApprovalRequestEmail({
       to: approver.email,
       name: approver.name,
