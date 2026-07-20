@@ -105,7 +105,7 @@
             <div v-if="openDropdown === 'features'" class="py-12">
               <div class="grid grid-cols-[1.2fr_1fr_1fr_1fr] gap-12">
                 <!-- Left CTA Column -->
-                <div class="flex flex-col justify-between pr-8 border-r border-white/[0.06]">
+                <div class="sticky top-12 flex h-[calc(100dvh-148px)] self-start flex-col justify-between border-r border-white/[0.06] pr-8">
                   <div>
                     <h3 class="text-[28px] font-[450] text-white leading-[1.2] tracking-[-0.02em] mb-4">
                       Explore our<br>complete platform
@@ -247,7 +247,9 @@
                     </NuxtLink>
                   </div>
 
-                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">Portal & Time</h4>
+                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">
+                    People & Operations
+                  </h4>
                   <div class="flex flex-col gap-1">
                     <NuxtLink
                       v-for="item in featuresCol5"
@@ -638,6 +640,7 @@ const featuresCol4 = [
 ]
 
 const featuresCol5 = [
+  { title: 'HR & People Operations', subtitle: 'Governed reviews, roles & evidence', icon: 'i-lucide-users-round', iconBg: 'bg-cyan-500/15', iconColor: 'text-cyan-400', to: '/features/hr-people-operations' },
   { title: 'Client Portal', subtitle: 'Approvals, invoices, gallery', icon: 'i-lucide-building-2', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/client-portal' },
   { title: 'Time Tracking', subtitle: 'Timesheets and approvals', icon: 'i-lucide-timer', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/time-tracking' },
   { title: 'Briefs', subtitle: 'Templates, AI tools, and quotes', icon: 'i-lucide-file-text', iconBg: 'bg-orange-500/15', iconColor: 'text-orange-400', to: '/features/brief-templates' },
@@ -688,7 +691,7 @@ const mobileFeatureSections = [
   { label: 'Communication', items: featuresCol3a },
   { label: 'Sales & CRM', items: featuresCrm },
   { label: 'AI & Intelligence', items: featuresCol4 },
-  { label: 'Portal & Time', items: featuresCol5 },
+  { label: 'People & Operations', items: featuresCol5 },
 ]
 
 const mobileResourceSections = [

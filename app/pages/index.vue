@@ -1142,9 +1142,9 @@ definePageMeta({
 
 useSeoMeta({
   title: 'XeroFlow — Agency Operations Platform',
-  description: 'Run your agency from one platform with work management, financials, client portals, AI insights, and consent-gated first-party measurement.',
+  description: 'Run your agency from one platform with work management, financials, governed people operations, client portals, AI insights, and consent-gated first-party measurement.',
   ogTitle: 'XeroFlow — Agency Operations Platform',
-  ogDescription: 'Run your agency from one platform with work management, financials, client portals, AI insights, and consent-gated first-party measurement.'
+  ogDescription: 'Run your agency from one platform with work management, financials, governed people operations, client portals, AI insights, and consent-gated first-party measurement.'
 })
 
 const route = useRoute()
@@ -1201,6 +1201,7 @@ const platformCards = [
   { title: 'Financials', subtitle: 'End-of-month invoicing engine with Xero integration and P&L tracking.', to: '/platform/financials', bg: 'bg-emerald-300', image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&h=600&fit=crop&crop=center' },
   { title: 'Chat', subtitle: 'Real-time channels, threads, file sharing, and team messaging.', to: '/platform/chat', bg: 'bg-violet-400', image: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&h=600&fit=crop&crop=faces' },
   { title: 'Office', subtitle: 'Live presence, virtual rooms, guest lobbies, and organised meeting follow-up.', to: '/platform/office', bg: 'bg-emerald-300', image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=600&h=600&fit=crop&crop=faces' },
+  { title: 'People Operations', subtitle: 'Role clarity, private business reviews, evidence controls, and human governance.', to: '/features/hr-people-operations', bg: 'bg-cyan-300', image: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=600&h=600&fit=crop&crop=faces' },
   { title: 'AI Insights', subtitle: 'Smart project generation, anomaly detection, and AI recommendations.', to: '/platform/ai', bg: 'bg-yellow-300', image: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&h=600&fit=crop&crop=center' },
   { title: 'Time Tracking', subtitle: 'Weekly timesheets, timer, approvals, and utilization reports.', to: '/platform/time-tracking', bg: 'bg-rose-300', image: 'https://images.unsplash.com/photo-1501139083538-0139583c060f?w=600&h=600&fit=crop&crop=center' },
   { title: 'Client Portal', subtitle: 'Client-facing approvals, invoices, deliverables, and project updates.', to: '/platform/client-portal', bg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&h=600&fit=crop&crop=faces' },
