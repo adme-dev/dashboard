@@ -101,9 +101,11 @@ const selectedMappingRows = computed(() => mappingDefinitions.filter(definition 
 const requiresConnection = computed(() => selectedCapabilityRows.value.some(definition => capabilityOrigins[definition.mode] === 'zero'))
 const mappingsComplete = computed(() => selectedMappingRows.value.every(definition => providerEventNames[definition.name]?.trim()))
 const selectedGoogleAction = computed(() => googleActions.value.find(action => action.id === externalDestinationId.value) ?? null)
+// Data Manager supports both offline-click actions and WEBPAGE actions used as
+// an additional source. Only the enhanced-leads capability requires UPLOAD_CLICKS.
 const needsOfflineClickAction = computed(() => selectedCapabilityRows.value.some(definition => (
   capabilityOrigins[definition.mode] === 'zero'
-  && ['google_enhanced_conversions_for_leads', 'google_data_manager'].includes(definition.mode)
+  && definition.mode === 'google_enhanced_conversions_for_leads'
 )))
 const needsWebsiteAction = computed(() => selectedCapabilityRows.value.some(definition => (
   definition.mode === 'google_tag_enhanced_conversions'

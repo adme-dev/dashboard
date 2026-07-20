@@ -262,12 +262,12 @@ describe('ClientMeasurementDestinationEditor', () => {
       expect(destination.textContent).toContain('Offline click')
       expect(destination.textContent).toContain('Legacy browser lead')
 
-      select(destination, '9001')
+      select(destination, '9002')
       check(host.querySelector<HTMLInputElement>('[data-testid="capability-google_data_manager"]')!)
       check(host.querySelector<HTMLInputElement>('[data-testid="mapping-web_conversion"]')!)
       await nextTick()
-      input(host.querySelector<HTMLInputElement>('[data-testid="provider-event-web_conversion"]')!, 'XeroFlow website lead')
-      input(host.querySelector<HTMLTextAreaElement>('[data-testid="measurement-destination-reason"]')!, 'Map the consent-gated CP Ford website conversion to the exact Google Ads action')
+      input(host.querySelector<HTMLInputElement>('[data-testid="provider-event-web_conversion"]')!, 'Legacy browser lead')
+      input(host.querySelector<HTMLTextAreaElement>('[data-testid="measurement-destination-reason"]')!, 'Use Data Manager as an additional source for the consent-gated Google Ads website conversion')
       await nextTick()
 
       const save = host.querySelector<HTMLButtonElement>('[data-testid="save-measurement-destination"]')!
@@ -281,7 +281,7 @@ describe('ClientMeasurementDestinationEditor', () => {
           destination: expect.objectContaining({
             platform: 'google_data_manager',
             socialConnectionId: googleConnectionId,
-            externalDestinationId: '9001',
+            externalDestinationId: '9002',
             capabilities: [expect.objectContaining({
               mode: 'google_data_manager',
               managementOrigin: 'zero'
