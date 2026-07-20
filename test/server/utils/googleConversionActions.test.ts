@@ -47,9 +47,10 @@ describe('Google conversion-action discovery', () => {
       '3584435581',
       'must-not-leak',
       'must-not-leak',
-      expect.stringMatching(/status = 'ENABLED'[\s\S]+type IN \('UPLOAD_CLICKS', 'WEBPAGE'\)[\s\S]+LIMIT 51 OFFSET 0/),
+      expect.stringMatching(/status = 'ENABLED'[\s\S]+type IN \('UPLOAD_CLICKS', 'WEBPAGE'\)[\s\S]+LIMIT 51/),
       '5250473322'
     )
+    expect(String(query.mock.calls[0]?.[3])).not.toContain('OFFSET')
     expect(result).toEqual({
       items: [
         {
@@ -83,7 +84,7 @@ describe('Google conversion-action discovery', () => {
   })
 
   it('uses bounded page input and one look-ahead row for pagination', async () => {
-    const rows = Array.from({ length: 11 }, (_, index) => ({
+    const rows = Array.from({ length: 21 }, (_, index) => ({
       conversionAction: {
         resourceName: `customers/3584435581/conversionActions/${index + 1}`,
         id: String(index + 1),
@@ -108,8 +109,10 @@ describe('Google conversion-action discovery', () => {
       pageSize: 10
     })
 
-    expect(String(query.mock.calls[0]?.[3])).toMatch(/LIMIT 11 OFFSET 10/)
+    expect(String(query.mock.calls[0]?.[3])).toMatch(/LIMIT 21/)
+    expect(String(query.mock.calls[0]?.[3])).not.toContain('OFFSET')
     expect(result.items).toHaveLength(10)
+    expect(result.items[0]?.id).toBe('11')
     expect(result.pagination).toEqual({ page: 2, pageSize: 10, hasNextPage: true })
   })
 
