@@ -94,7 +94,7 @@
     <Transition name="dropdown">
       <div
         v-if="openDropdown"
-        class="fixed top-[52px] left-0 right-0 z-40 hidden md:block"
+        class="fixed top-[52px] left-0 right-0 z-40 hidden max-h-[calc(100dvh-52px)] overflow-y-auto overscroll-y-contain md:block"
         @mouseenter="cancelClose"
         @mouseleave="scheduleClose"
       >
