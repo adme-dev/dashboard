@@ -65,6 +65,8 @@ function db(overrides: Partial<PersonalAssistantContextDb> = {}): PersonalAssist
           release_id: '20000000-0000-4000-8000-000000000001',
           department_id: CREATIVE_ID,
           pack_version_id: '30000000-0000-4000-8000-000000000001',
+          pack_version: 3,
+          pack_label: 'Creative Studio',
           pack_key: 'creative_studio',
           instructions_preamble: 'Use the approved creative workflow.',
           pack_model_feature_key: 'creative_assistant',
@@ -126,7 +128,9 @@ describe('resolvePersonalAssistantContext', () => {
       releaseId: '20000000-0000-4000-8000-000000000001',
       departmentId: CREATIVE_ID,
       packVersionId: '30000000-0000-4000-8000-000000000001',
-      packKey: 'creative_studio'
+      packKey: 'creative_studio',
+      version: 3,
+      label: 'Creative Studio'
     }])
     expect(context.catalogRows).toHaveLength(1)
 
