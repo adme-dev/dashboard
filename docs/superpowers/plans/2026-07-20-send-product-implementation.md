@@ -1,11 +1,17 @@
 # Implementation Plan: XeroFlow Send
 
 **Date:** 2026-07-20
-**Status:** Approved — private internal v1 implementation in progress
+**Status:** Approved — private internal v1 live; verified-public activation in progress
 **Source of truth:** `docs/superpowers/specs/2026-07-20-send-product-prd.md`
-**Goal-loop objective:** Incrementally deliver private, authenticated, workspace-scoped transfers for internal Dashboard users while keeping the PRD and this task plan current.
+**Goal-loop objective:** Operate private Workspace Send and incrementally activate the cost-capped verified-public beta while keeping the PRD and this task plan current.
 
 **2026-07-21 scope amendment:** [ADR-006](../../decisions/ADR-006-private-internal-dashboard-send-v1.md) removes guest links, external recipients, recipient email, public senders, and scanner deployment from the v1 launch path. T14–T19, T24, and L1 are preserved as deferred backlog, not required goal work. The locally implemented T8 scanner adapter remains dormant and does not block T9.
+
+**2026-07-21 public activation amendment:** The user subsequently approved public
+planning and explicitly authorised activation. [ADR-007](../../decisions/ADR-007-cost-capped-verified-public-send.md)
+reactivates T8 and T14–T19 for a cost-capped verified-public beta. Recipient delivery,
+passwords, public multipart, Workspace-generated guest links, T24 marketing promotion,
+and L1 remain deferred.
 
 ## 1. Overview
 
@@ -396,11 +402,11 @@ The unchecked integration item is deferred and is not a private-v1 acceptance ga
 - [ ] `pnpm typecheck`, repository or appropriately scoped lint, and `pnpm build` results are recorded with pre-existing issues distinguished.
 - [ ] Human approves the selected internal cohort and feature-flag enablement. External/public work remains deferred.
 
-### Deferred Phase 2 — External delivery and Verified Public Send
+### Phase 2 — Cost-capped Verified Public Send beta
 
-Tasks T14–T19 preserve the original backlog only. They are not approved, not required
-for private-v1 completion, and must not be started without a PRD, threat-model, cost,
-and product approval.
+Tasks T14–T19 are approved under ADR-007. They must land as tested vertical slices behind
+independent fail-closed server/UI flags. No public flag may be enabled until T8's
+controlled scan fixtures, T14–T18's security gates, and the rollback drill pass.
 
 #### T14 — Add public draft and sender verification backend
 
@@ -846,18 +852,18 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 | T5 | COMPLETE | 50/50 focused tests; ESLint clean; no path-filtered type errors; isolated PostgreSQL and headless Chrome checks passed on 2026-07-21 | Strict create/list API, policy-aware draft service, and accessible feature-flagged agency UI delivered; no navigation change while the layout has unrelated edits |
 | T6 | COMPLETE | 83/83 focused tests; focused ESLint clean; no path-filtered type errors; approved live CORS read-back and real-Chrome/R2 preflight, PUT, HEAD, console, and cleanup evidence on 2026-07-21 | Single-part application and live browser-storage path complete; both Send flags remain disabled. Disposable PostgreSQL recheck remains pending host IPC capacity but T2's prior apply-twice evidence and current static contracts are green. |
 | T7 | COMPLETE | 120/120 slice tests plus the final 185/185 release matrix; focused ESLint and production build pass; prior interruption/resume test plus live 101 MiB production lifecycle evidence on 2026-07-21 | Multipart identities stay server-owned; migrations 268–271 and private Send flags are live; the six-test workerd adapter suite covers signed control-plane requests and bounded pagination |
-| T8 | DORMANT / DEFERRED FOR PRIVATE V1 | Provider-neutral contract, canonical repository, Queue boundary, Cloudflare Container/ClamAV adapter, migration 270, 151/151 local tests, Worker typecheck, Go test/vet/cross-build, clean dependency audits, and a failing-closed deployment preflight | No image build, resource provisioning, deployment, or activation is required for private v1; reconsider before any external sharing; both Send flags are false |
+| T8 | REACTIVATED — PUBLIC BETA GATE | Provider-neutral contract, canonical repository, Queue boundary, Cloudflare Container/ClamAV adapter, migration 270, 151/151 local tests, Worker typecheck, Go test/vet/cross-build, clean dependency audits, and a failing-closed deployment preflight | Reduce to one instance/concurrency, provision approved resources, run controlled clean/detected fixtures, and prove fail-closed publication before the public flag |
 | T9 | COMPLETE | Stable-object publication service/API, migration 271, focused lifecycle and contract tests | Single PUT waits for its short sealing window; multipart may publish immediately; no public token, recipient, email, or scanner job |
 | T10 | COMPLETE | Authenticated allowlist-only detail API and transfer-manifest UI | No object key, token/hash, policy internals, or signed URL is returned |
 | T11 | COMPLETE | One-minute attachment-only download capability, no-store/no-referrer route, idempotent event/count handling | Archive download remains intentionally omitted |
 | T12 | COMPLETE | Revocation plus policy-bounded expiry extension API/UI; ownership, bounds, replay, terminal-state and production smoke evidence; 197/197 release matrix | Extension is creation-anchored, forward-only, idempotent, audited, and cannot reactivate terminal content |
 | T13 | COMPLETE | Protected cleanup cron plus bounded report-only reconciliation; live production scan found zero object drift; lifecycle read-back, 210/210 tests, and the disposable concurrent partial-delete/retry drill passed | Cleanup remains intentionally limited to private Send data and the protected scheduled path |
-| T14 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires PRD, threat-model, cost, and product approval |
-| T15 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires new approval |
-| T16 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires new approval |
-| T17 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires new approval |
-| T18 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires new approval; no real email |
-| T19 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Public-specific operations are not a v1 gate |
+| T14 | IN PROGRESS — APPROVED PUBLIC BETA | Approval recorded in ADR-007 | Implement fail-closed Turnstile, sender verification, secret-bound management session, and tests |
+| T15 | APPROVED / PENDING T14 | — | Public `/send` create/verify/upload experience; single-part only for first beta |
+| T16 | APPROVED / PENDING T14 | — | Strongly consistent layered limits; missing limiter fails closed |
+| T17 | APPROVED / PENDING T16 | — | Abuse report, operator quarantine/revoke, and independent kill switch |
+| T18 | APPROVED / PENDING T8, T14–T16 | — | Clean-scan publication, fragment-carried share/management links, sender email, public download/revoke |
+| T19 | APPROVED / PENDING T17–T18 | — | Redacted health/cost view and alerts before cohort expansion |
 | T20 | COMPLETE FOR PRIVATE V1 | Authenticated single-part and 101 MiB multipart production create/upload/publish/download/revoke smokes completed on 2026-07-21 | Public and external-recipient flows remain deferred |
 | T21 | PARTIAL | Authorisation, transition, signed-capability, active-content, revocation, expiry-extension, scanner-boundary, cleanup retry/concurrency, reconciliation, multipart control-plane tests, and the disposable expiry/partial-delete drill passed in the 210-test matrix | A broader production outage drill remains optional follow-up work |
 | T22 | COMPLETE FOR PRIVATE V1 | Latest deployment `c9e0bb46` from reviewed source `a0a3d74b` succeeded; the supported custom Send route returned 200, the unauthenticated cleanup boundary returned 401, and 37 files/210 focused tests plus the production build passed | Repository-wide typecheck debt remains separately recorded; no global green claim |

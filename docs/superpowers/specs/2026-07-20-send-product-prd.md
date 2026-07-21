@@ -1,12 +1,12 @@
 # PRD: XeroFlow Send
 
 **Date:** 2026-07-20
-**Status:** Approved — amended to private internal v1 on 2026-07-21
+**Status:** Approved — private v1 live; cost-capped verified-public beta activation approved 2026-07-21
 **Owner:** ADME / XeroFlow
 **Living task plan:** `docs/superpowers/plans/2026-07-20-send-product-implementation.md`
-**Goal-loop objective:** Incrementally deliver private, authenticated, workspace-scoped transfers for internal Dashboard users while keeping this PRD and its task plan current.
+**Goal-loop objective:** Operate private Workspace Send and incrementally activate a cost-capped, verified-public Send beta while keeping this PRD and its task plan current.
 
-**Approval record:** The user approved the original PRD on 2026-07-20 and, on 2026-07-21, approved a private internal-only v1. [ADR-006](../../decisions/ADR-006-private-internal-dashboard-send-v1.md) supersedes every guest, external-recipient, public-sender, recipient-email, and scanner-launch requirement for v1. Those capabilities remain recorded as deferred product options and require a new approval before implementation or activation.
+**Approval record:** The user approved the original PRD on 2026-07-20 and, on 2026-07-21, approved a private internal-only v1. Later on 2026-07-21 the user approved public planning and explicitly authorised activation. [ADR-007](../../decisions/ADR-007-cost-capped-verified-public-send.md) now authorises the bounded verified-public beta and scanner launch; [ADR-006](../../decisions/ADR-006-private-internal-dashboard-send-v1.md) remains authoritative for the private Workspace Send boundary.
 
 ## 1. Executive summary
 
@@ -130,23 +130,25 @@ In scope:
 - transfer list/detail UI and operational visibility;
 - no route that permits access without a current Dashboard session and workspace authorisation.
 
-### 7.2 Deferred — External delivery and Verified Public Send
+### 7.2 Approved activation — Verified Public Send beta
 
-Not approved or in scope for v1:
+Approved for the bounded beta in ADR-007:
 
 - unauthenticated transfer draft creation;
 - Turnstile validation;
 - sender email verification before upload authorization;
-- conservative public quota and retention policies;
+- conservative public quota and retention policies (250 MiB transfer, 100 MiB file,
+  10 files, three days, 20 downloads by default);
 - sender management link for status and revocation;
 - abuse reporting, operator review, and kill switch;
-- public landing/create UI and transactional email;
+- public landing/create UI and sender-verification transactional email;
 - controlled-beta rollout and usage monitoring;
-- guest/external recipient links and recipient notification email.
+- bearer share link and sender management link.
 
-This section preserves the original direction only. None of these capabilities may be
-implemented, provisioned, routed, or activated without a new product, security, and
-cost approval.
+Recipient notification email, passwords, public multipart upload, and guest links
+created from Workspace Send remain deferred until measured beta usage and follow-up
+approval. Public files require a verified clean malware-scan result; the private-v1
+`not_required` policy is never sufficient for this surface.
 
 ### 7.3 Future — Live Send
 
