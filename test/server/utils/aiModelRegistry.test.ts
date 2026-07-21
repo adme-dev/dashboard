@@ -82,7 +82,7 @@ describe('ai model registry', () => {
       label: 'Spend Controller Agent',
       surface: '/agency/social/spend',
       owner: 'Growth',
-      provider: 'groq',
+      provider: 'workers_ai',
       modality: 'text',
       riskTier: 'high',
     })
