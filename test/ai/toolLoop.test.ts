@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { MockLanguageModelV3 } from 'ai/test'
 import { extractLoopOutput, runToolLoop, estimateCostUsd } from '~~/server/utils/ai/toolLoop'
 import * as economics from '~~/server/utils/ai/tools/economics'
+import type { ActiveCatalogRow } from '~~/server/utils/ai/governance/catalogComposition'
 
 const mockRecordAiInvocation = vi.fn()
 
@@ -129,6 +130,51 @@ describe('runToolLoop (injected mock model)', () => {
     expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
       fallbackUsed: true,
       modelId: 'injected',
+    }))
+  })
+
+  it('intersects the live registry with evaluated active catalog releases', async () => {
+    const catalogRow: ActiveCatalogRow = {
+      sourceType: 'pack',
+      releaseState: 'active',
+      releaseId: '20000000-0000-4000-8000-000000000001',
+      departmentId: '10000000-0000-4000-8000-000000000001',
+      packVersionId: '30000000-0000-4000-8000-000000000001',
+      packKey: 'finance_operations',
+      instructionsPreamble: 'Use the evaluated finance workflow.',
+      packModelFeatureKey: 'finance_assistant',
+      packMaxInputTokens: 6000,
+      packMaxOutputTokens: 900,
+      packMaxCostUsdMicros: 50000,
+      packMaxLatencyMs: 15000,
+      capabilityVersionId: '40000000-0000-4000-8000-000000000001',
+      capabilityKey: 'client_profitability',
+      requiredPermissionGroup: 'FINANCE',
+      capabilityModelFeatureKey: 'finance_assistant',
+      capabilityMaxInputTokens: 5000,
+      capabilityMaxOutputTokens: 800,
+      capabilityMaxCostUsdMicros: 40000,
+      capabilityMaxLatencyMs: 12000,
+      toolName: 'get_client_profitability',
+      accessMode: 'read'
+    }
+
+    await runToolLoop({
+      ctx: ctx as any,
+      system: 'sys',
+      messages: [{ role: 'user', content: 'Show profitability.' }],
+      seed: 'c1',
+      model: textModel('Done.'),
+      catalogRows: [catalogRow],
+      permissionGroups: ['FINANCE']
+    })
+
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({
+        catalogMode: 'governed',
+        catalogReleaseIds: [catalogRow.releaseId],
+        toolCount: 1
+      })
     }))
   })
 })

@@ -42,11 +42,19 @@ export function effectiveRiskTier(t: Pick<AiTool<any>, 'mutates' | 'riskTier'>):
  * Pre-send RBAC filter: the model never sees tools the role lacks permission for.
  * Synchronous + fail-closed (see roleHasPermission in permissions.ts).
  */
-export function filterToolsForUser<A>(reg: AiTool<A>[], role: string): AiTool<A>[] {
+export function filterToolsForUser<A>(
+  reg: AiTool<A>[],
+  role: string,
+  resolvedPermissionGroups?: readonly PermissionGroup[],
+  resolvedReadOnly?: boolean
+): AiTool<A>[] {
   return reg.filter((t) => {
     // Write tools are never shown to read-only roles (viewer/guest).
-    if (t.mutates && isReadOnlyRole(role)) return false
-    return !t.requiredPermission || roleHasPermission(role, t.requiredPermission)
+    if (t.mutates && (resolvedReadOnly === true || isReadOnlyRole(role))) return false
+    if (!t.requiredPermission) return true
+    return resolvedPermissionGroups
+      ? resolvedPermissionGroups.includes(t.requiredPermission)
+      : roleHasPermission(role, t.requiredPermission)
   })
 }
 
@@ -70,7 +78,10 @@ export function toSdkTools(tools: AiTool<any>[], ctx: ToolContext, seed: string)
       inputSchema: t.parameters,
       execute: async (args: any) => {
         // Defense-in-depth re-check at execution time.
-        if (t.requiredPermission && !roleHasPermission(ctx.userRole, t.requiredPermission)) {
+        const permissionGranted = !t.requiredPermission || (ctx.permissionGroups
+          ? ctx.permissionGroups.includes(t.requiredPermission)
+          : roleHasPermission(ctx.userRole, t.requiredPermission))
+        if (!permissionGranted || (t.mutates && (ctx.assistantReadOnly === true || isReadOnlyRole(ctx.userRole)))) {
           return { ok: false, error: 'Not permitted.' }
         }
         const res = await t.handler(args, ctx)

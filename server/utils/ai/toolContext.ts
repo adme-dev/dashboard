@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 
 /**
  * Runtime context the tool layer injects into every handler. `userId`/`userRole` are always set by
@@ -10,12 +11,24 @@ import type { H3Event } from 'h3'
 export type ToolContext = {
   userId: string
   userRole: string
+  /** Current resolved groups; when present these supersede legacy role-derived groups. */
+  permissionGroups?: PermissionGroup[]
+  /** Current custom/system role write policy. */
+  assistantReadOnly?: boolean
   /** Optional — only set on client-scoped surfaces (portal); undefined in the agency staff chat. */
   clientScope?: string
   /** Set by the loop; required for write tools that persist a proposal (create_task). */
   conversationId?: string
   /** Origin of the call. Non-chat surfaces persist proposals with conversation_id NULL and source set. */
   source?: 'chat' | 'mcp' | 'social_inbox'
+  /** Server-derived admission scope. This is a narrowing hint for handlers and never authorizes a
+   * model-supplied identifier by itself; handlers must still enforce their storage-level ACL. */
+  assistantScope?: {
+    departmentIds: string[]
+    clientAccessMode: 'all_active' | 'assigned'
+    assignedClientIds: string[]
+    catalogReleaseIds: string[]
+  }
   /** Optional — set when the co-pilot is docked in a virtual office room (Mode A). Read-only context;
    *  membership is verified server-side before these are populated (see office/roomContext.ts §7). */
   officeId?: string

@@ -7,7 +7,11 @@ import { getRelevantPatterns } from '~~/server/utils/aiFeedbackProcessor'
 import { shouldUseToolLoop } from '~~/server/utils/ai/gate'
 import { resolvePersona } from '~~/server/utils/ai/personas'
 import { selectSkillPack } from '~~/server/utils/ai/controller/route'
-import { getAgentConfig } from '~~/server/utils/ai/agentConfig'
+import {
+  renderPersonalAssistantContext,
+  resolvePersonalAssistantContext
+} from '~~/server/utils/ai/personalAssistantContext'
+import { fetchScopedMentionedEntities } from '~~/server/utils/ai/mentionedEntityContext'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -206,139 +210,10 @@ function mapMessageRow(row: any): AiMessage {
   }
 }
 
-/**
- * Fetch full details for explicitly @mentioned entities.
- * These get pinned to the top of context so the AI has precise data
- * about what the user is referencing.
- */
-async function fetchMentionedEntities(
-  entities: Array<{ type: string; id: string }>
-): Promise<AiContextSource[]> {
-  const results: AiContextSource[] = []
-
-  for (const entity of entities) {
-    try {
-      let row: any = null
-
-      switch (entity.type) {
-        case 'task':
-          row = await queryOne(`
-            SELECT t.id, t.title, t.status, t.description, t.due_date,
-                   p.name as project_name,
-                   tm.name as assignee_name
-            FROM tasks t
-            LEFT JOIN projects p ON p.id = t.project_id
-            LEFT JOIN team_members tm ON tm.id = t.assignee_id
-            WHERE t.id = $1
-          `, [entity.id])
-          if (row) {
-            const parts = [
-              `Status: ${row.status || 'todo'}`,
-              row.project_name ? `Project: ${row.project_name}` : null,
-              row.assignee_name ? `Assignee: ${row.assignee_name}` : null,
-              row.due_date ? `Due: ${new Date(row.due_date).toLocaleDateString()}` : null,
-              row.description ? row.description.slice(0, 150) : null,
-            ].filter(Boolean)
-            results.push({
-              type: 'task',
-              id: row.id,
-              title: row.title,
-              snippet: parts.join(' | '),
-              url: `/agency/tasks/${row.id}`,
-            })
-          }
-          break
-
-        case 'client':
-          row = await queryOne(`
-            SELECT ac.id, ac.name, ac.is_active, ac.billing_type,
-                   COUNT(DISTINCT br.id)::int as brief_count
-            FROM agency_clients ac
-            LEFT JOIN briefs br ON br.client_id = ac.id
-            WHERE ac.id = $1
-            GROUP BY ac.id
-          `, [entity.id])
-          if (row) {
-            const parts = [
-              `Status: ${row.is_active ? 'active' : 'inactive'}`,
-              row.billing_type ? `Billing: ${row.billing_type}` : null,
-              `${row.brief_count} brief${row.brief_count === 1 ? '' : 's'}`,
-            ].filter(Boolean)
-            results.push({
-              type: 'client',
-              id: row.id,
-              title: row.name,
-              snippet: parts.join(' | '),
-              url: `/agency/clients/${row.id}`,
-            })
-          }
-          break
-
-        case 'project':
-          row = await queryOne(`
-            SELECT p.id, p.name, p.status, p.description, p.budget_amount,
-                   ac.name as client_name,
-                   COUNT(t.id)::int as task_count
-            FROM projects p
-            LEFT JOIN agency_clients ac ON ac.id = p.client_id
-            LEFT JOIN tasks t ON t.project_id = p.id
-            WHERE p.id = $1
-            GROUP BY p.id, ac.name
-          `, [entity.id])
-          if (row) {
-            const parts = [
-              `Status: ${row.status || 'draft'}`,
-              row.client_name ? `Client: ${row.client_name}` : null,
-              `${row.task_count} tasks`,
-              row.budget_amount ? `Budget: $${Number(row.budget_amount).toLocaleString()}` : null,
-              row.description ? row.description.slice(0, 100) : null,
-            ].filter(Boolean)
-            results.push({
-              type: 'project',
-              id: row.id,
-              title: row.name,
-              snippet: parts.join(' | '),
-              url: `/agency/projects/${row.id}`,
-            })
-          }
-          break
-
-        case 'brief':
-          row = await queryOne(`
-            SELECT br.id, br.title, br.status, br.description,
-                   ac.name as client_name
-            FROM briefs br
-            LEFT JOIN agency_clients ac ON ac.id = br.client_id
-            WHERE br.id = $1
-          `, [entity.id])
-          if (row) {
-            const parts = [
-              `Status: ${row.status || 'draft'}`,
-              row.client_name ? `Client: ${row.client_name}` : null,
-              row.description ? row.description.slice(0, 100) : null,
-            ].filter(Boolean)
-            results.push({
-              type: 'brief',
-              id: row.id,
-              title: row.title,
-              snippet: parts.join(' | '),
-              url: `/agency/briefs/${row.id}`,
-            })
-          }
-          break
-      }
-    } catch (err) {
-      console.error(`Failed to fetch mentioned entity ${entity.type}:${entity.id}`, err)
-    }
-  }
-
-  return results
-}
-
 export async function processUserMessage(
   conversationId: string,
   userId: string,
-  userRole: string,
+  _callerUserRole: string,
   content: string,
   event?: H3Event,
   mentionedEntities?: Array<{ type: string; id: string }>,
@@ -347,6 +222,12 @@ export async function processUserMessage(
   room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
 ): Promise<ChatResponse> {
   const startTime = Date.now()
+  // Re-admit the actor from current server state for every turn. This is the authority source for
+  // role, departments, clients, personal narrowing, and evaluated catalog releases; the role passed
+  // by older callers is deliberately not trusted as the runtime authorization decision.
+  const assistantContext = await resolvePersonalAssistantContext({ userId, event })
+  const effectiveUserRole = assistantContext.identity.role
+  const agentConfig = assistantContext.preferences
   // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
   // picker) or the persona persisted on the conversation wins and sticks; otherwise the L1 traffic
   // controller auto-selects by intent+role AFTER context retrieval (below). Resolve the pinned choice
@@ -357,6 +238,7 @@ export async function processUserMessage(
       `SELECT system_context FROM ai_conversations WHERE id = $1`, [conversationId])
     explicitOrPersisted = (convRow?.system_context as any)?.persona ?? null
   }
+  explicitOrPersisted ??= agentConfig.personaKey
   // Persist an explicit choice (migration-free: system_context JSONB) so it sticks across reloads and
   // for the voice/quick-action paths. Non-fatal if persistence fails.
   if (persona && event) {
@@ -367,10 +249,6 @@ export async function processUserMessage(
       [conversationId, resolvePersona(persona).key],
     ).catch(() => {})
   }
-
-  // Self-service config (spec §4a): the user's "My Assistant" settings — disabled tools (subtracted
-  // from the tool set, never added) and a memory on/off toggle. Fail-safe (null when none/on error).
-  const agentConfig = await getAgentConfig(userId)
 
   // 1. Load recent conversation history (last 10 messages)
   const historyRows = await queryRows(`
@@ -387,7 +265,21 @@ export async function processUserMessage(
   }))
 
   // 2. Retrieve relevant context (now intent-aware with relevance scoring)
-  const contextBundle = await retrieveContext(userId, userRole, content, event, boardId)
+  const contextBundle = await retrieveContext(
+    userId,
+    effectiveUserRole,
+    content,
+    event,
+    boardId,
+    {
+      departmentIds: assistantContext.departments.map(department => department.departmentId),
+      clientAccess: {
+        mode: assistantContext.clientScope.mode,
+        assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId)
+      },
+      permissionGroups: assistantContext.permissionGroups
+    }
+  )
   const contextSources: AiContextSource[] = contextBundle.items.map(item => ({
     type: item.type,
     id: item.id,
@@ -400,12 +292,12 @@ export async function processUserMessage(
   // intent+role unless the user pinned one. Pure + total (explicit → intent → role-default → generalist),
   // so it never throws and the role-default is always honored. Per-turn routing (a finance question
   // routes to Finance for this turn); RBAC still governs the actual tools.
-  const routed = selectSkillPack({ intent: contextBundle.intent, userRole }, explicitOrPersisted)
+  const routed = selectSkillPack({ intent: contextBundle.intent, userRole: effectiveUserRole }, explicitOrPersisted)
   const activePersona = resolvePersona(routed.persona)
 
   // 2b. Fetch explicitly mentioned entities and pin them to top of context
   if (mentionedEntities && mentionedEntities.length > 0) {
-    const pinnedSources = await fetchMentionedEntities(mentionedEntities)
+    const pinnedSources = await fetchScopedMentionedEntities(mentionedEntities, assistantContext)
     // Deduplicate: remove any auto-retrieved items that match pinned ones
     const pinnedIds = new Set(pinnedSources.map(s => s.id))
     const dedupedContext = contextSources.filter(s => !pinnedIds.has(s.id))
@@ -433,18 +325,22 @@ export async function processUserMessage(
     ? new Set(mentionedEntities.map(e => e.id))
     : undefined
   let systemPrompt = buildSystemPrompt(
-    userRole,
+    effectiveUserRole,
     contextSources,
     learnedPatternStrings,
     contextBundle.intent,
     pinnedIds,
   )
+  systemPrompt = `${systemPrompt}\n\n${renderPersonalAssistantContext(assistantContext)}`
+  if (assistantContext.catalogInstructionsPreamble) {
+    systemPrompt = `${systemPrompt}\n\n${assistantContext.catalogInstructionsPreamble}`
+  }
 
   // 4b. Personal memory (Phase-0 WS-A): prepend the user's recalled facts/routines/preferences.
   // Strictly user-scoped (cross-user isolation enforced in orchestrate.ts) and best-effort — any
   // failure leaves the prompt unchanged so a turn never breaks on memory. Flows into BOTH the tool
   // loop and the fast path below since they read `systemPrompt`.
-  if (agentConfig?.memoryEnabled !== false) {
+  if (agentConfig.memoryEnabled !== false) {
     try {
       const { buildUserMemoryBlock } = await import('~~/server/utils/ai/memory/orchestrate')
       const memoryBlock = await buildUserMemoryBlock({ userId, query: content, event })
@@ -550,15 +446,33 @@ export async function processUserMessage(
               metadata: { route: 'aiChatEngine', conversationId },
             }),
           })
-          const plan = cls.tier === 'L2' ? planSpecialists(cls.domains, userRole) : { personas: [] }
+          const plan = cls.tier === 'L2' ? planSpecialists(cls.domains, effectiveUserRole) : { personas: [] }
           if (plan.personas.length >= 2) {
             const results = await delegateToSpecialists(plan.personas, {
               runLoop: async (pk) => {
                 const sub = await runToolLoop({
-                  ctx: { userId, userRole, conversationId, event, officeId: roomCtx?.officeId, meetingId: roomCtx?.meetingId },
+                  ctx: {
+                    userId,
+                    userRole: effectiveUserRole,
+                    permissionGroups: assistantContext.permissionGroups,
+                    assistantReadOnly: assistantContext.isReadOnly,
+                    conversationId,
+                    event,
+                    assistantScope: {
+                      departmentIds: assistantContext.departments.map(department => department.departmentId),
+                      clientAccessMode: assistantContext.clientScope.mode,
+                      assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId),
+                      catalogReleaseIds: assistantContext.catalogRows.map(row => row.releaseId)
+                    },
+                    officeId: roomCtx?.officeId,
+                    meetingId: roomCtx?.meetingId
+                  },
                   system: systemPrompt, messages: loopMessages, seed: `${conversationId}:${pk}`, persona: resolvePersona(pk),
                   readOnly: true, // L2 specialists READ only — never persist a write proposal
-                  disabledTools: agentConfig?.disabledTools,
+                  disabledTools: agentConfig.disabledTools,
+                  catalogRows: assistantContext.catalogRows,
+                  permissionGroups: assistantContext.permissionGroups,
+                  catalogInstructionsAlreadyIncluded: true,
                   featureKey: 'agency_ai_l2_specialist_loop',
                   requestId: conversationId,
                   metadata: { specialistPersona: pk, controller: 'l2' },
@@ -601,12 +515,30 @@ export async function processUserMessage(
         toolCostUsd = l2Cost || null
       } else {
         const loop = await runToolLoop({
-          ctx: { userId, userRole, conversationId, event, officeId: roomCtx?.officeId, meetingId: roomCtx?.meetingId },
+          ctx: {
+            userId,
+            userRole: effectiveUserRole,
+            permissionGroups: assistantContext.permissionGroups,
+            assistantReadOnly: assistantContext.isReadOnly,
+            conversationId,
+            event,
+            assistantScope: {
+              departmentIds: assistantContext.departments.map(department => department.departmentId),
+              clientAccessMode: assistantContext.clientScope.mode,
+              assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId),
+              catalogReleaseIds: assistantContext.catalogRows.map(row => row.releaseId)
+            },
+            officeId: roomCtx?.officeId,
+            meetingId: roomCtx?.meetingId
+          },
           system: systemPrompt,
           messages: loopMessages,
           seed: conversationId,
           persona: activePersona,
-          disabledTools: agentConfig?.disabledTools,
+          disabledTools: agentConfig.disabledTools,
+          catalogRows: assistantContext.catalogRows,
+          permissionGroups: assistantContext.permissionGroups,
+          catalogInstructionsAlreadyIncluded: true,
         })
         aiContent = loop.text
         toolTrace = loop.toolCalls

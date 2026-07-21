@@ -28,4 +28,31 @@ describe('filterToolsForUser', () => {
     const custom = filterToolsForUser(reg, 'some_custom_role')
     expect(custom.map(t => t.name)).toEqual(['get_y'])
   })
+
+  it('uses current resolved permission groups instead of a broader legacy role when supplied', () => {
+    const narrowedAdmin = filterToolsForUser(reg, 'admin', ['CREATIVE'])
+    const customFinance = filterToolsForUser(reg, 'some_custom_role', ['FINANCE'])
+
+    expect(narrowedAdmin.map(tool => tool.name)).toEqual(['get_y'])
+    expect(customFinance.map(tool => tool.name).sort()).toEqual(['get_x', 'get_y'])
+  })
+
+  it('removes mutating tools when current custom-role policy is read-only', () => {
+    const tools: AiTool<any>[] = [
+      ...reg,
+      {
+        name: 'propose_x',
+        description: 'd',
+        parameters: z.object({}),
+        requiredPermission: 'FINANCE',
+        mutates: true,
+        handler: async () => ok({})
+      }
+    ]
+
+    expect(filterToolsForUser(tools, 'admin', ['FINANCE'], true).map(tool => tool.name).sort())
+      .toEqual(['get_x', 'get_y'])
+    expect(filterToolsForUser(tools, 'viewer', ['FINANCE'], false).map(tool => tool.name).sort())
+      .toEqual(['get_x', 'get_y'])
+  })
 })
