@@ -20,7 +20,7 @@
           to="/ai-assistants"
           class="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-[15px] font-medium text-[#121317] transition-colors hover:bg-white/90"
         >
-          Meet AI Assistants
+          Meet governed assistants
           <UIcon name="i-lucide-arrow-right" class="size-4" />
         </NuxtLink>
       </div>

@@ -342,14 +342,18 @@
         <div class="flex flex-col gap-8 mb-24 md:flex-row-reverse">
           <div class="flex-1 flex flex-col justify-center">
             <h2 class="text-[clamp(28px,4vw,40px)] font-[450] text-[#121317] dark:text-white leading-[1.15] tracking-[-0.02em] mb-4">
-              AI assistants for every role
+              AI-Powered Insights
             </h2>
             <p class="text-[#45474D] dark:text-white/60 text-base md:text-lg leading-relaxed max-w-[480px]">
-              A personal assistant for each person, backed by permission-scoped specialists for paid media, publishing, finance, and operations.
+              Groq-powered chat with @entity mentions, anomaly detection across 8 analyzers, semantic search, and proactive recommendations.
             </p>
-            <NuxtLink to="/ai-assistants" class="inline-flex items-center gap-1.5 mt-5 text-[15px] font-medium text-[#121317] dark:text-white hover:opacity-70 transition-opacity group">
-              Meet the assistants
+            <NuxtLink to="/platform/ai" class="inline-flex items-center gap-1.5 mt-5 text-[15px] font-medium text-[#121317] dark:text-white hover:opacity-70 transition-opacity group">
+              Learn more
               <UIcon name="i-lucide-arrow-right" class="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </NuxtLink>
+            <NuxtLink to="/ai-assistants" class="mt-3 inline-flex items-center gap-1.5 text-[14px] font-medium text-amber-700 transition-opacity hover:opacity-70 dark:text-amber-300 group">
+              Meet governed assistants
+              <UIcon name="i-lucide-arrow-right" class="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
             </NuxtLink>
           </div>
           <div class="flex-1">
@@ -1202,7 +1206,8 @@ const platformCards = [
   { title: 'Chat', subtitle: 'Real-time channels, threads, file sharing, and team messaging.', to: '/platform/chat', bg: 'bg-violet-400', image: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&h=600&fit=crop&crop=faces' },
   { title: 'Office', subtitle: 'Live presence, virtual rooms, guest lobbies, and organised meeting follow-up.', to: '/platform/office', bg: 'bg-emerald-300', image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=600&h=600&fit=crop&crop=faces' },
   { title: 'People Operations', subtitle: 'Role clarity, private business reviews, evidence controls, and human governance.', to: '/features/hr-people-operations', bg: 'bg-cyan-300', image: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=600&h=600&fit=crop&crop=faces' },
-  { title: 'AI Assistants', subtitle: 'Personal guidance and permission-scoped specialists for every department.', to: '/ai-assistants', bg: 'bg-yellow-300', image: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&h=600&fit=crop&crop=center' },
+  { title: 'AI Insights', subtitle: 'Smart project generation, anomaly detection, and AI recommendations.', to: '/platform/ai', bg: 'bg-yellow-300', image: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&h=600&fit=crop&crop=center' },
+  { title: 'AI Assistants', subtitle: 'Personal guidance and permission-scoped specialists for every department.', to: '/ai-assistants', bg: 'bg-amber-300', image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&h=600&fit=crop&crop=center' },
   { title: 'Time Tracking', subtitle: 'Weekly timesheets, timer, approvals, and utilization reports.', to: '/platform/time-tracking', bg: 'bg-rose-300', image: 'https://images.unsplash.com/photo-1501139083538-0139583c060f?w=600&h=600&fit=crop&crop=center' },
   { title: 'Client Portal', subtitle: 'Client CRM, campaign insights, jobs, approvals, meetings, shared work, and billing.', to: '/platform/client-portal', bg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&h=600&fit=crop&crop=faces' },
   { title: 'Ad Spend', subtitle: 'Meta & Google Ads connections with spend syncing and budget management.', to: '/platform/ad-spend', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&h=600&fit=crop&crop=center' },
