@@ -16,6 +16,13 @@
         <p class="text-lg md:text-xl text-white/50 max-w-[560px] mx-auto leading-relaxed">
           Groq-powered conversational AI, 8 anomaly analyzers, semantic search, and fine-tuned models -- all trained on your agency data.
         </p>
+        <NuxtLink
+          to="/ai-assistants"
+          class="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-[15px] font-medium text-[#121317] transition-colors hover:bg-white/90"
+        >
+          Meet AI Assistants
+          <UIcon name="i-lucide-arrow-right" class="size-4" />
+        </NuxtLink>
       </div>
     </section>
 

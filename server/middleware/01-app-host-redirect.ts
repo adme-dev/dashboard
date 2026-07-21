@@ -12,6 +12,7 @@ const PUBLIC_MARKETING_PATHS = [
   '/support',
   '/creativity',
   '/ai-training',
+  '/ai-assistants',
   '/voice-ai',
   '/banner-studio',
   '/platform',

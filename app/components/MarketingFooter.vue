@@ -15,6 +15,7 @@
           <div class="flex flex-col gap-3.5 text-[15px]">
             <NuxtLink to="/landing" :class="linkClass">Home</NuxtLink>
             <NuxtLink to="/features" :class="linkClass">Features</NuxtLink>
+            <NuxtLink to="/ai-assistants" :class="linkClass">AI Assistants</NuxtLink>
             <NuxtLink to="/pricing" :class="linkClass">Pricing</NuxtLink>
             <NuxtLink to="/resources" :class="linkClass">Resources</NuxtLink>
           </div>

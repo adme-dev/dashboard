@@ -60,6 +60,23 @@
       </div>
     </section>
 
+    <section class="px-6 pb-16 md:pb-24">
+      <NuxtLink
+        to="/ai-assistants"
+        class="group mx-auto flex max-w-[1200px] flex-col justify-between gap-6 rounded-[28px] bg-amber-300 px-7 py-8 text-[#121317] transition-transform hover:-translate-y-0.5 sm:flex-row sm:items-center md:px-10"
+      >
+        <div>
+          <p class="text-[12px] font-medium uppercase tracking-[0.14em] text-[#121317]/55">New AI workforce layer</p>
+          <h2 class="mt-2 text-[clamp(24px,3vw,34px)] font-[450] tracking-[-0.025em]">Meet XeroFlow AI Assistants</h2>
+          <p class="mt-2 max-w-[660px] text-[14px] leading-relaxed text-[#121317]/65">Personal assistance for each person, with focused specialists for paid media, publishing, finance and operations.</p>
+        </div>
+        <span class="inline-flex shrink-0 items-center gap-2 text-[14px] font-medium">
+          Explore AI Assistants
+          <UIcon name="i-lucide-arrow-right" class="size-4 transition-transform group-hover:translate-x-1" />
+        </span>
+      </NuxtLink>
+    </section>
+
     <!-- CTA -->
     <section class="py-10 md:py-16">
       <div class="max-w-[1200px] mx-auto px-6">
