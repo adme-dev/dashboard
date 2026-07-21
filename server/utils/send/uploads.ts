@@ -10,10 +10,26 @@ import {
 import {
   FileStatusSchema,
   type FileDeclaration,
+  type WorkspaceMultipartPartResponse,
+  type WorkspaceMultipartResumeResponse,
   type WorkspaceUploadedFile,
   type WorkspaceUploadIntentResponse
 } from '../../../shared/types/send'
 import type { WorkspaceSendActor } from './workspace'
+import {
+  expectedMultipartPartSize,
+  resolveMultipartGeometry,
+  type MultipartGeometry
+} from './multipart'
+import {
+  abortMultipartObject,
+  completeMultipartObject,
+  createMultipartObject,
+  getPresignedMultipartPartUrl,
+  isMultipartUploadMissing,
+  listMultipartObjectParts,
+  type MultipartStoragePart
+} from './multipartStorage'
 
 const MANAGEMENT_ROLES = new Set(['owner', 'admin', 'lead', 'project_manager'])
 
@@ -52,6 +68,9 @@ interface UploadIntentRow {
   actual_mime_type: string | null
   object_etag: string | null
   uploaded_at: Date | string | null
+  upload_method: 'single' | 'multipart'
+  multipart_upload_id: string | null
+  multipart_part_size_bytes: number | string | null
 }
 
 export interface SendObjectMetadata {
@@ -71,6 +90,9 @@ export type WorkspaceSendUploadErrorCode
     | 'CAPABILITY_INVALID'
     | 'OBJECT_NOT_FOUND'
     | 'OBJECT_MISMATCH'
+    | 'MULTIPART_REQUIRED'
+    | 'MULTIPART_INVALID_PART'
+    | 'MULTIPART_MISMATCH'
     | 'STORAGE_UNAVAILABLE'
 
 export class WorkspaceSendUploadError extends Error {
@@ -88,6 +110,20 @@ export interface WorkspaceSendUploadServiceDeps {
   hashCapability(value: string): string
   createUploadUrl(key: string, contentType: string, expiresIn: number): Promise<string>
   getObjectMetadata(key: string): Promise<SendObjectMetadata | null>
+  createMultipartUpload(key: string, contentType: string): Promise<string>
+  createMultipartPartUrl(input: {
+    key: string
+    uploadId: string
+    partNumber: number
+    expiresIn: number
+  }): Promise<string>
+  listMultipartParts(input: { key: string, uploadId: string }): Promise<MultipartStoragePart[]>
+  completeMultipartUpload(input: {
+    key: string
+    uploadId: string
+    parts: MultipartStoragePart[]
+  }): Promise<void>
+  abortMultipartUpload(input: { key: string, uploadId: string }): Promise<void>
 }
 
 const INTENT_COLUMNS = `
@@ -95,7 +131,8 @@ const INTENT_COLUMNS = `
   i.expected_size_bytes, i.expected_mime_type, i.status,
   i.capability_nonce_hash, i.expires_at, i.completed_at,
   f.original_filename, f.display_filename, f.state AS file_state,
-  f.actual_size_bytes, f.actual_mime_type, f.object_etag, f.uploaded_at
+  f.actual_size_bytes, f.actual_mime_type, f.object_etag, f.uploaded_at,
+  i.upload_method, i.multipart_upload_id, i.multipart_part_size_bytes
 `
 
 function sha256(value: string): string {
@@ -155,6 +192,57 @@ function assertIntentUsable(row: UploadIntentRow, now: Date): void {
   }
 }
 
+function multipartGeometry(row: UploadIntentRow): MultipartGeometry {
+  if (row.upload_method !== 'multipart'
+    || !row.multipart_upload_id
+    || row.multipart_part_size_bytes === null) {
+    throw new WorkspaceSendUploadError('MULTIPART_REQUIRED', 'Upload intent is not ready for multipart upload')
+  }
+  try {
+    return resolveMultipartGeometry(
+      Number(row.expected_size_bytes),
+      Number(row.multipart_part_size_bytes)
+    )
+  } catch {
+    throw new WorkspaceSendUploadError('MULTIPART_MISMATCH', 'Multipart upload geometry is invalid')
+  }
+}
+
+function assertMultipartActive(row: UploadIntentRow): void {
+  if (row.status === 'completed') {
+    throw new WorkspaceSendUploadError('INTENT_UNAVAILABLE', 'Completed upload cannot accept multipart operations')
+  }
+}
+
+function validateMultipartParts(
+  geometry: MultipartGeometry,
+  parts: MultipartStoragePart[],
+  requireComplete: boolean
+): MultipartStoragePart[] {
+  const seen = new Set<number>()
+  const canonical = [...parts].sort((left, right) => left.partNumber - right.partNumber)
+  for (const part of canonical) {
+    if (seen.has(part.partNumber)) {
+      throw new WorkspaceSendUploadError('MULTIPART_MISMATCH', 'Multipart upload contains a duplicate part')
+    }
+    seen.add(part.partNumber)
+    let expectedSize: number
+    try {
+      expectedSize = expectedMultipartPartSize(geometry, part.partNumber)
+    } catch {
+      throw new WorkspaceSendUploadError('MULTIPART_MISMATCH', 'Multipart upload contains an unexpected part')
+    }
+    if (part.sizeBytes !== expectedSize || !part.etag) {
+      throw new WorkspaceSendUploadError('MULTIPART_MISMATCH', 'Multipart upload part metadata does not match its intent')
+    }
+  }
+  if (requireComplete && (canonical.length !== geometry.partCount
+    || canonical.some((part, index) => part.partNumber !== index + 1))) {
+    throw new WorkspaceSendUploadError('MULTIPART_MISMATCH', 'Multipart upload is incomplete')
+  }
+  return canonical
+}
+
 async function defaultGetObjectMetadata(key: string): Promise<SendObjectMetadata | null> {
   const metadata = await getFileMetadata(key)
   if (!metadata) return null
@@ -177,7 +265,12 @@ export function createWorkspaceSendUploadService(
     createCapability: overrides.createCapability ?? (() => randomBytes(32).toString('base64url')),
     hashCapability: overrides.hashCapability ?? sha256,
     createUploadUrl: overrides.createUploadUrl ?? getPresignedUploadUrl,
-    getObjectMetadata: overrides.getObjectMetadata ?? defaultGetObjectMetadata
+    getObjectMetadata: overrides.getObjectMetadata ?? defaultGetObjectMetadata,
+    createMultipartUpload: overrides.createMultipartUpload ?? createMultipartObject,
+    createMultipartPartUrl: overrides.createMultipartPartUrl ?? getPresignedMultipartPartUrl,
+    listMultipartParts: overrides.listMultipartParts ?? listMultipartObjectParts,
+    completeMultipartUpload: overrides.completeMultipartUpload ?? completeMultipartObject,
+    abortMultipartUpload: overrides.abortMultipartUpload ?? abortMultipartObject
   }
 
   async function getAuthorizedIntent(input: {
@@ -218,6 +311,7 @@ export function createWorkspaceSendUploadService(
       transferId: string
       declaration: FileDeclaration & { idempotencyKey: string }
       ttlSeconds: number
+      multipart?: { thresholdBytes: number, partSizeBytes: number }
       now?: Date
     }): Promise<WorkspaceUploadIntentResponse> {
       const now = input.now ?? new Date()
@@ -235,6 +329,28 @@ export function createWorkspaceSendUploadService(
       )
       const objectKey = `send/${input.transferId}/${fileId}`
       const displayFilename = canonicalFilename(input.declaration.fileName)
+      const configuredMultipart = input.multipart ?? {
+        thresholdBytes: 100 * 1024 * 1024,
+        partSizeBytes: 16 * 1024 * 1024
+      }
+      if (!Number.isSafeInteger(configuredMultipart.thresholdBytes)
+        || configuredMultipart.thresholdBytes <= 0) {
+        throw new WorkspaceSendUploadError('POLICY_REJECTED', 'Multipart upload threshold is invalid')
+      }
+      const requestedUploadMethod = input.declaration.fileSize >= configuredMultipart.thresholdBytes
+        ? 'multipart'
+        : 'single'
+      let requestedGeometry: MultipartGeometry | null = null
+      if (requestedUploadMethod === 'multipart') {
+        try {
+          requestedGeometry = resolveMultipartGeometry(
+            input.declaration.fileSize,
+            configuredMultipart.partSizeBytes
+          )
+        } catch {
+          throw new WorkspaceSendUploadError('POLICY_REJECTED', 'Multipart upload geometry is outside policy')
+        }
+      }
 
       const canonical = await deps.transaction(async (database) => {
         const db = database as unknown as QueryClientLike
@@ -324,7 +440,7 @@ export function createWorkspaceSendUploadService(
              id, transfer_id, object_key, original_filename, display_filename,
              expected_size_bytes, declared_mime_type, upload_method,
              state, upload_started_at
-           ) VALUES ($1, $2, $3, $4, $4, $5, $6, 'single', 'uploading', $7)
+           ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, 'uploading', $8)
            RETURNING id`,
           [
             fileId,
@@ -333,6 +449,7 @@ export function createWorkspaceSendUploadService(
             displayFilename,
             input.declaration.fileSize,
             input.declaration.contentType,
+            requestedUploadMethod,
             now.toISOString()
           ]
         )
@@ -340,8 +457,8 @@ export function createWorkspaceSendUploadService(
           `INSERT INTO send_upload_intents (
              id, transfer_id, file_id, uploader_class, uploader_id,
              object_key, expected_size_bytes, expected_mime_type, upload_method,
-             capability_nonce_hash, idempotency_key, expires_at
-           ) VALUES ($1, $2, $3, 'workspace', $4, $5, $6, $7, 'single', $8, $9, $10)
+             multipart_part_size_bytes, capability_nonce_hash, idempotency_key, expires_at
+           ) VALUES ($1, $2, $3, 'workspace', $4, $5, $6, $7, $8, $9, $10, $11, $12)
            RETURNING id`,
           [
             intentId,
@@ -351,6 +468,8 @@ export function createWorkspaceSendUploadService(
             objectKey,
             input.declaration.fileSize,
             input.declaration.contentType,
+            requestedUploadMethod,
+            requestedGeometry?.partSizeBytes ?? null,
             capabilityHash,
             idempotencyHash,
             expiresAt.toISOString()
@@ -382,7 +501,7 @@ export function createWorkspaceSendUploadService(
               fileId,
               expectedSizeBytes: input.declaration.fileSize,
               expectedMimeType: input.declaration.contentType,
-              uploadMethod: 'single'
+              uploadMethod: requestedUploadMethod
             })
           ]
         )
@@ -395,9 +514,45 @@ export function createWorkspaceSendUploadService(
           declaration: input.declaration,
           displayFilename,
           capabilityHash,
-          expiresAt
+          expiresAt,
+          uploadMethod: requestedUploadMethod,
+          multipartPartSizeBytes: requestedGeometry?.partSizeBytes ?? null
         })
       })
+
+      if (canonical.upload_method === 'multipart') {
+        let uploadId = canonical.multipart_upload_id
+        if (!uploadId) {
+          try {
+            uploadId = await deps.createMultipartUpload(canonical.object_key, canonical.expected_mime_type)
+            const registered = await deps.queryOne<{ id: string }>(
+              `UPDATE send_upload_intents
+                  SET multipart_upload_id = $2, status = 'uploading', updated_at = NOW()
+                WHERE id = $1
+                  AND upload_method = 'multipart'
+                  AND multipart_upload_id IS NULL
+              RETURNING id`,
+              [canonical.id, uploadId]
+            )
+            if (!registered) {
+              await deps.abortMultipartUpload({ key: canonical.object_key, uploadId })
+              throw new Error('Multipart upload registration lost its canonical intent')
+            }
+          } catch {
+            throw new WorkspaceSendUploadError('STORAGE_UNAVAILABLE', 'Multipart upload storage is unavailable')
+          }
+        }
+        const geometry = multipartGeometry({ ...canonical, multipart_upload_id: uploadId })
+        return {
+          uploadMethod: 'multipart',
+          fileId: canonical.file_id,
+          intentId: canonical.id,
+          capability,
+          partSizeBytes: geometry.partSizeBytes,
+          partCount: geometry.partCount,
+          expiresAt: asDate(canonical.expires_at).toISOString()
+        }
+      }
 
       let uploadUrl: string
       try {
@@ -412,12 +567,96 @@ export function createWorkspaceSendUploadService(
       }
 
       return {
+        uploadMethod: 'single',
         fileId: canonical.file_id,
         intentId: canonical.id,
         uploadUrl,
         capability,
         requiredHeaders: { 'Content-Type': canonical.expected_mime_type },
         expiresAt: asDate(canonical.expires_at).toISOString()
+      }
+    },
+
+    async resumeMultipartIntent(input: {
+      actor: WorkspaceSendActor
+      transferId: string
+      fileId: string
+      intentId: string
+      capability: string
+      now?: Date
+    }): Promise<WorkspaceMultipartResumeResponse> {
+      const now = input.now ?? new Date()
+      const candidate = await getAuthorizedIntent(input)
+      if (!candidate) throw new WorkspaceSendUploadError('NOT_FOUND', 'Upload intent not found')
+      assertCapability(candidate, input.capability, deps.hashCapability)
+      assertIntentUsable(candidate, now)
+      assertMultipartActive(candidate)
+      const geometry = multipartGeometry(candidate)
+      let parts: MultipartStoragePart[]
+      try {
+        parts = await deps.listMultipartParts({
+          key: candidate.object_key,
+          uploadId: candidate.multipart_upload_id as string
+        })
+      } catch (error) {
+        if (error instanceof WorkspaceSendUploadError) throw error
+        throw new WorkspaceSendUploadError('STORAGE_UNAVAILABLE', 'Multipart upload storage is unavailable')
+      }
+      const canonical = validateMultipartParts(geometry, parts, false)
+      return {
+        partSizeBytes: geometry.partSizeBytes,
+        partCount: geometry.partCount,
+        uploadedParts: canonical.map(part => ({
+          partNumber: part.partNumber,
+          sizeBytes: part.sizeBytes
+        })),
+        expiresAt: asDate(candidate.expires_at).toISOString()
+      }
+    },
+
+    async createMultipartPartIntent(input: {
+      actor: WorkspaceSendActor
+      transferId: string
+      fileId: string
+      intentId: string
+      capability: string
+      partNumber: number
+      ttlSeconds: number
+      now?: Date
+    }): Promise<WorkspaceMultipartPartResponse> {
+      const now = input.now ?? new Date()
+      if (!Number.isInteger(input.ttlSeconds) || input.ttlSeconds < 60 || input.ttlSeconds > 3600) {
+        throw new WorkspaceSendUploadError('POLICY_REJECTED', 'Multipart part lifetime is outside policy')
+      }
+      const candidate = await getAuthorizedIntent(input)
+      if (!candidate) throw new WorkspaceSendUploadError('NOT_FOUND', 'Upload intent not found')
+      assertCapability(candidate, input.capability, deps.hashCapability)
+      assertIntentUsable(candidate, now)
+      assertMultipartActive(candidate)
+      const geometry = multipartGeometry(candidate)
+      try {
+        expectedMultipartPartSize(geometry, input.partNumber)
+      } catch {
+        throw new WorkspaceSendUploadError('MULTIPART_INVALID_PART', 'Multipart part number is invalid')
+      }
+      const secondsRemaining = Math.max(1, Math.min(
+        input.ttlSeconds,
+        Math.floor((asDate(candidate.expires_at).getTime() - now.getTime()) / 1000)
+      ))
+      try {
+        const uploadUrl = await deps.createMultipartPartUrl({
+          key: candidate.object_key,
+          uploadId: candidate.multipart_upload_id as string,
+          partNumber: input.partNumber,
+          expiresIn: secondsRemaining
+        })
+        return {
+          partNumber: input.partNumber,
+          uploadUrl,
+          expiresAt: new Date(now.getTime() + secondsRemaining * 1000).toISOString()
+        }
+      } catch {
+        throw new WorkspaceSendUploadError('STORAGE_UNAVAILABLE', 'Multipart upload storage is unavailable')
       }
     },
 
@@ -435,6 +674,38 @@ export function createWorkspaceSendUploadService(
       assertCapability(candidate, input.capability, deps.hashCapability)
       assertIntentUsable(candidate, now)
       if (candidate.status === 'completed') return mapUploadedFile(candidate)
+
+      if (candidate.upload_method === 'multipart') {
+        const geometry = multipartGeometry(candidate)
+        try {
+          const parts = validateMultipartParts(
+            geometry,
+            await deps.listMultipartParts({
+              key: candidate.object_key,
+              uploadId: candidate.multipart_upload_id as string
+            }),
+            true
+          )
+          await deps.completeMultipartUpload({
+            key: candidate.object_key,
+            uploadId: candidate.multipart_upload_id as string,
+            parts
+          })
+        } catch (error) {
+          if (error instanceof WorkspaceSendUploadError) throw error
+          const recovered = await deps.getObjectMetadata(candidate.object_key).catch(() => null)
+          const finalObjectMatches = recovered
+            && recovered.key === candidate.object_key
+            && recovered.size === Number(candidate.expected_size_bytes)
+            && recovered.contentType.trim().toLowerCase() === candidate.expected_mime_type.trim().toLowerCase()
+          if (!finalObjectMatches) {
+            const message = isMultipartUploadMissing(error)
+              ? 'Multipart upload is no longer available'
+              : 'Multipart upload storage is unavailable'
+            throw new WorkspaceSendUploadError('STORAGE_UNAVAILABLE', message)
+          }
+        }
+      }
 
       const metadata = await deps.getObjectMetadata(candidate.object_key)
       if (!metadata) throw new WorkspaceSendUploadError('OBJECT_NOT_FOUND', 'Uploaded object was not found')
@@ -552,6 +823,38 @@ export function createWorkspaceSendUploadService(
       now?: Date
     }): Promise<{ aborted: true }> {
       const now = input.now ?? new Date()
+      const candidate = await getAuthorizedIntent(input)
+      if (!candidate) throw new WorkspaceSendUploadError('NOT_FOUND', 'Upload intent not found')
+      assertCapability(candidate, input.capability, deps.hashCapability)
+      if (candidate.status === 'aborted') return { aborted: true as const }
+      if (candidate.status === 'completed') {
+        throw new WorkspaceSendUploadError('INTENT_UNAVAILABLE', 'Completed upload cannot be aborted')
+      }
+      assertIntentUsable(candidate, now)
+      if (candidate.upload_method === 'multipart') {
+        const geometry = multipartGeometry(candidate)
+        if (geometry.partCount < 1) {
+          throw new WorkspaceSendUploadError('MULTIPART_MISMATCH', 'Multipart upload geometry is invalid')
+        }
+        try {
+          await deps.abortMultipartUpload({
+            key: candidate.object_key,
+            uploadId: candidate.multipart_upload_id as string
+          })
+        } catch (error) {
+          if (isMultipartUploadMissing(error)) {
+            const finalObject = await deps.getObjectMetadata(candidate.object_key).catch(() => null)
+            if (finalObject) {
+              throw new WorkspaceSendUploadError(
+                'INTENT_UNAVAILABLE',
+                'Multipart upload has already been completed and cannot be aborted'
+              )
+            }
+          } else {
+            throw new WorkspaceSendUploadError('STORAGE_UNAVAILABLE', 'Multipart upload storage is unavailable')
+          }
+        }
+      }
       return deps.transaction(async (database) => {
         const db = database as unknown as QueryClientLike
         const lockedResult = await db.query(
@@ -641,6 +944,8 @@ function intentRowFromCreate(input: {
   displayFilename: string
   capabilityHash: string
   expiresAt: Date
+  uploadMethod: 'single' | 'multipart'
+  multipartPartSizeBytes: number | null
 }): UploadIntentRow {
   return {
     id: input.intentId,
@@ -660,7 +965,10 @@ function intentRowFromCreate(input: {
     actual_size_bytes: null,
     actual_mime_type: null,
     object_etag: null,
-    uploaded_at: null
+    uploaded_at: null,
+    upload_method: input.uploadMethod,
+    multipart_upload_id: null,
+    multipart_part_size_bytes: input.multipartPartSizeBytes
   }
 }
 
@@ -675,6 +983,9 @@ export function toWorkspaceSendUploadHttpError(error: unknown): never {
     CAPABILITY_INVALID: 403,
     OBJECT_NOT_FOUND: 409,
     OBJECT_MISMATCH: 409,
+    MULTIPART_REQUIRED: 409,
+    MULTIPART_INVALID_PART: 400,
+    MULTIPART_MISMATCH: 409,
     STORAGE_UNAVAILABLE: 503
   }[error.code]
   throw createError({ statusCode, statusMessage: error.message })

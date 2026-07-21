@@ -33,7 +33,10 @@ const mockList = vi.fn()
 const mockCreateIntent = vi.fn()
 const mockCompleteIntent = vi.fn()
 const mockAbortIntent = vi.fn()
+const mockResumeMultipartIntent = vi.fn()
+const mockCreateMultipartPartIntent = vi.fn()
 const mockUploadTtl = vi.fn()
+const mockMultipartConfig = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
@@ -42,6 +45,7 @@ vi.mock('~~/server/utils/auth', () => ({
 vi.mock('~~/server/utils/send/feature', () => ({
   requireWorkspaceSendEnabled: (...args: unknown[]) => mockRequireEnabled(...args),
   resolveWorkspaceSendPolicyConfig: (...args: unknown[]) => mockPolicy(...args),
+  resolveWorkspaceSendMultipartConfig: (...args: unknown[]) => mockMultipartConfig(...args),
   resolveWorkspaceSendUploadIntentTtlSeconds: (...args: unknown[]) => mockUploadTtl(...args)
 }))
 vi.mock('~~/server/utils/send/workspace', () => ({
@@ -52,7 +56,9 @@ vi.mock('~~/server/utils/send/uploads', () => ({
   createWorkspaceSendUploadService: () => ({
     createIntent: mockCreateIntent,
     completeIntent: mockCompleteIntent,
-    abortIntent: mockAbortIntent
+    abortIntent: mockAbortIntent,
+    resumeMultipartIntent: mockResumeMultipartIntent,
+    createMultipartPartIntent: mockCreateMultipartPartIntent
   }),
   toWorkspaceSendUploadHttpError: (error: unknown) => { throw error }
 }))
@@ -62,6 +68,8 @@ const { default: listHandler } = await import('../../../server/api/agency/send/i
 const { default: createIntentHandler } = await import('../../../server/api/agency/send/[id]/files/intents.post')
 const { default: completeIntentHandler } = await import('../../../server/api/agency/send/[id]/files/[fileId]/intents/[intentId]/complete.post')
 const { default: abortIntentHandler } = await import('../../../server/api/agency/send/[id]/files/[fileId]/intents/[intentId]/abort.post')
+const { default: resumeMultipartHandler } = await import('../../../server/api/agency/send/[id]/files/[fileId]/intents/[intentId]/multipart/resume.post')
+const { default: createMultipartPartHandler } = await import('../../../server/api/agency/send/[id]/files/[fileId]/intents/[intentId]/multipart/parts.post')
 
 const validBody = {
   title: 'Campaign assets',
@@ -88,7 +96,12 @@ describe('workspace Send API boundaries', () => {
     mockCreateDraft.mockResolvedValue({ id: 'transfer-1', status: 'draft' })
     mockList.mockResolvedValue({ transfers: [], page: 1, pageSize: 25, hasMore: false })
     mockUploadTtl.mockReturnValue(900)
+    mockMultipartConfig.mockReturnValue({
+      thresholdBytes: 100 * 1024 * 1024,
+      partSizeBytes: 16 * 1024 * 1024
+    })
     mockCreateIntent.mockResolvedValue({
+      uploadMethod: 'single',
       fileId: '55555555-5555-4555-8555-555555555555',
       intentId: '66666666-6666-4666-8666-666666666666',
       uploadUrl: 'https://example.r2.cloudflarestorage.com/signed',
@@ -98,6 +111,17 @@ describe('workspace Send API boundaries', () => {
     })
     mockCompleteIntent.mockResolvedValue({ id: 'file-1', state: 'uploaded' })
     mockAbortIntent.mockResolvedValue({ aborted: true })
+    mockResumeMultipartIntent.mockResolvedValue({
+      partSizeBytes: 16 * 1024 * 1024,
+      partCount: 3,
+      uploadedParts: [],
+      expiresAt: '2026-07-21T00:15:00.000Z'
+    })
+    mockCreateMultipartPartIntent.mockResolvedValue({
+      partNumber: 1,
+      uploadUrl: 'https://example.r2.cloudflarestorage.com/part',
+      expiresAt: '2026-07-21T00:15:00.000Z'
+    })
   })
 
   it('enforces the kill switch before authenticating or reading a create body', async () => {
@@ -161,6 +185,10 @@ describe('workspace Send API boundaries', () => {
       actor: { id: 'member-1', role: 'member' },
       transferId: event.params!.id,
       ttlSeconds: 900,
+      multipart: {
+        thresholdBytes: 100 * 1024 * 1024,
+        partSizeBytes: 16 * 1024 * 1024
+      },
       declaration: expect.not.objectContaining({ objectKey: expect.anything() })
     }))
     expect(result).toMatchObject({ uploadUrl: expect.stringContaining('cloudflarestorage.com') })
@@ -207,5 +235,38 @@ describe('workspace Send API boundaries', () => {
       fileId: params.fileId,
       intentId: params.intentId
     }))
+  })
+
+  it('binds multipart resume and part signing to route identity and a body capability', async () => {
+    const params = {
+      id: '44444444-4444-4444-8444-444444444444',
+      fileId: '55555555-5555-4555-8555-555555555555',
+      intentId: '66666666-6666-4666-8666-666666666666'
+    }
+    const capability = 'c'.repeat(43)
+
+    await resumeMultipartHandler({ params, body: { capability } } as never)
+    await createMultipartPartHandler({ params, body: { capability, partNumber: 2 } } as never)
+
+    expect(mockResumeMultipartIntent).toHaveBeenCalledWith({
+      actor: { id: 'member-1', role: 'member' },
+      transferId: params.id,
+      fileId: params.fileId,
+      intentId: params.intentId,
+      capability
+    })
+    expect(mockCreateMultipartPartIntent).toHaveBeenCalledWith(expect.objectContaining({
+      transferId: params.id,
+      fileId: params.fileId,
+      intentId: params.intentId,
+      capability,
+      partNumber: 2,
+      ttlSeconds: 900
+    }))
+
+    await expect(createMultipartPartHandler({
+      params,
+      body: { capability, partNumber: 2, uploadId: 'caller-selected' }
+    } as never)).rejects.toMatchObject({ statusCode: 400 })
   })
 })

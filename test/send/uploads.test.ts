@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   WorkspaceUploadCompleteSchema,
-  WorkspaceUploadIntentRequestSchema
+  WorkspaceUploadIntentRequestSchema,
+  WorkspaceUploadMultipartPartSchema,
+  WorkspaceUploadMultipartResumeSchema
 } from '../../shared/types/send'
 import {
   createWorkspaceSendUploadService,
@@ -74,6 +76,25 @@ describe('workspace Send upload contracts', () => {
   it('requires an opaque completion capability and rejects unknown fields', () => {
     expect(WorkspaceUploadCompleteSchema.parse({ capability: CAPABILITY })).toEqual({ capability: CAPABILITY })
     expect(() => WorkspaceUploadCompleteSchema.parse({ capability: CAPABILITY, objectKey: 'substitute' })).toThrow()
+  })
+
+  it('accepts only server-scoped multipart part and resume capabilities', () => {
+    expect(WorkspaceUploadMultipartPartSchema.parse({
+      capability: CAPABILITY,
+      partNumber: 3
+    })).toEqual({ capability: CAPABILITY, partNumber: 3 })
+    expect(WorkspaceUploadMultipartResumeSchema.parse({ capability: CAPABILITY }))
+      .toEqual({ capability: CAPABILITY })
+    expect(() => WorkspaceUploadMultipartPartSchema.parse({
+      capability: CAPABILITY,
+      partNumber: 3,
+      uploadId: 'caller-selected',
+      objectKey: 'send/substitute'
+    })).toThrow()
+    expect(() => WorkspaceUploadMultipartPartSchema.parse({
+      capability: CAPABILITY,
+      partNumber: 10_001
+    })).toThrow()
   })
 })
 
@@ -260,6 +281,7 @@ describe('workspace Send upload service', () => {
       })
     }
     const service = createWorkspaceSendUploadService({
+      queryOne: vi.fn(async () => intentRow()) as never,
       transaction: (async callback => callback(db)) as never,
       hashCapability: vi.fn(() => CAPABILITY_HASH)
     })

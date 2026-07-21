@@ -118,6 +118,15 @@ export const WorkspaceUploadAbortSchema = z.object({
   capability: UploadCapabilitySchema
 }).strict()
 
+export const WorkspaceUploadMultipartPartSchema = z.object({
+  capability: UploadCapabilitySchema,
+  partNumber: z.number().int().min(1).max(10_000)
+}).strict()
+
+export const WorkspaceUploadMultipartResumeSchema = z.object({
+  capability: UploadCapabilitySchema
+}).strict()
+
 export type WorkspaceTransferDraft = z.infer<typeof WorkspaceTransferDraftSchema>
 export type PublicTransferDraft = z.infer<typeof PublicTransferDraftSchema>
 export type WorkspaceTransferListQuery = z.infer<typeof WorkspaceTransferListQuerySchema>
@@ -125,12 +134,45 @@ export type FileDeclaration = z.infer<typeof FileDeclarationSchema>
 export type WorkspaceUploadIntentRequest = z.infer<typeof WorkspaceUploadIntentRequestSchema>
 export type WorkspaceUploadComplete = z.infer<typeof WorkspaceUploadCompleteSchema>
 
-export interface WorkspaceUploadIntentResponse {
+export interface WorkspaceSingleUploadIntentResponse {
+  uploadMethod: 'single'
   fileId: string
   intentId: string
   uploadUrl: string
   capability: string
   requiredHeaders: { 'Content-Type': string }
+  expiresAt: string
+}
+
+export interface WorkspaceMultipartUploadIntentResponse {
+  uploadMethod: 'multipart'
+  fileId: string
+  intentId: string
+  capability: string
+  partSizeBytes: number
+  partCount: number
+  expiresAt: string
+}
+
+export type WorkspaceUploadIntentResponse
+  = | WorkspaceSingleUploadIntentResponse
+    | WorkspaceMultipartUploadIntentResponse
+
+export interface WorkspaceMultipartUploadedPart {
+  partNumber: number
+  sizeBytes: number
+}
+
+export interface WorkspaceMultipartResumeResponse {
+  partSizeBytes: number
+  partCount: number
+  uploadedParts: WorkspaceMultipartUploadedPart[]
+  expiresAt: string
+}
+
+export interface WorkspaceMultipartPartResponse {
+  partNumber: number
+  uploadUrl: string
   expiresAt: string
 }
 

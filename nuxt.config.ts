@@ -150,6 +150,8 @@ export default defineNuxtConfig({
     sendWorkspaceMaxRecipients: Number(process.env.SEND_WORKSPACE_MAX_RECIPIENTS || 20),
     sendWorkspaceMaxDownloads: Number(process.env.SEND_WORKSPACE_MAX_DOWNLOADS || 100),
     sendWorkspaceUploadIntentTtlSeconds: Number(process.env.SEND_WORKSPACE_UPLOAD_INTENT_TTL_SECONDS || 900),
+    sendWorkspaceMultipartThresholdBytes: Number(process.env.SEND_WORKSPACE_MULTIPART_THRESHOLD_BYTES || 100 * 1024 * 1024),
+    sendWorkspaceMultipartPartSizeBytes: Number(process.env.SEND_WORKSPACE_MULTIPART_PART_SIZE_BYTES || 16 * 1024 * 1024),
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 

@@ -3,6 +3,7 @@ import { WorkspaceUploadIntentRequestSchema } from '../../../../../../shared/typ
 import { requireWriteAccess } from '~~/server/utils/auth'
 import {
   requireWorkspaceSendEnabled,
+  resolveWorkspaceSendMultipartConfig,
   resolveWorkspaceSendUploadIntentTtlSeconds
 } from '~~/server/utils/send/feature'
 import {
@@ -27,7 +28,8 @@ export default defineEventHandler(async (event) => {
       actor: { id: user.id, role: user.role },
       transferId: transferId.data,
       declaration: body.data,
-      ttlSeconds: resolveWorkspaceSendUploadIntentTtlSeconds(event)
+      ttlSeconds: resolveWorkspaceSendUploadIntentTtlSeconds(event),
+      multipart: resolveWorkspaceSendMultipartConfig(event)
     })
     setResponseHeader(event, 'Cache-Control', 'no-store')
     setResponseHeader(event, 'Referrer-Policy', 'no-referrer')

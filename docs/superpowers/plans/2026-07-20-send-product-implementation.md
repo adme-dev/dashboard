@@ -235,7 +235,7 @@ The goal is complete only when all required tasks through T25 are done, required
 **Verification:**
 
 - [x] Tests cover key substitution, expired intent, wrong size/type, replay, cross-tenant actor, and success.
-- [ ] Browser/local R2 test uploads one file and confirms canonical `uploaded`/`quarantined` state.
+- [x] Browser/local R2 test uploads one file and confirms canonical `uploaded`/`quarantined` state.
 - [x] R2 CORS is read and verified before any proposed change is applied.
 
 **Dependencies:** T1, T5
@@ -248,15 +248,15 @@ The goal is complete only when all required tasks through T25 are done, required
 
 **Acceptance criteria:**
 
-- [ ] Configured large files use multipart while smaller files keep the single-part path.
-- [ ] Client state can resume using server-validated multipart identity and completed parts.
-- [ ] Create/part/complete/abort retries are idempotent and cannot cross transfer/file boundaries.
+- [x] Configured large files use multipart while smaller files keep the single-part path.
+- [x] Client state can resume using server-validated multipart identity and completed parts.
+- [x] Create/part/complete/abort retries are idempotent and cannot cross transfer/file boundaries.
 
 **Verification:**
 
-- [ ] Unit/API tests cover resume, duplicate part, invalid part number, wrong upload ID, abort, and completion mismatch.
-- [ ] Manual interruption test resumes a multipart file without reuploading successful parts.
-- [ ] Incomplete upload expiry/backstop behavior is documented.
+- [x] Unit/API tests cover resume, duplicate part, invalid part number, wrong upload ID, abort, and completion mismatch.
+- [x] Manual interruption test resumes a multipart file without reuploading successful parts.
+- [x] Incomplete upload expiry/backstop behavior is documented.
 
 **Dependencies:** T6
 **Files likely touched:** multipart service, up to three multipart API route files, one focused test file
@@ -777,15 +777,25 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 - The final focused matrix passes 50/50 tests across ten files, focused ESLint is clean, and the path-filtered full typecheck reports no Send-related diagnostics. Headless Chrome verified the enabled page heading, eight labelled controls, empty state, creation-denial state, screenshot layout, and a clean Send-surface console; the browser check caught and drove a Nuxt component-resolution fix.
 - `pnpm audit --audit-level high` reports three pre-existing high advisories through `@rocicorp/zero`, `promptfoo`, and `concurrently`; this slice added no dependency and none of those paths are introduced or invoked by Send T5.
 
-### T6 implementation evidence and CORS hold
+### T6 completion evidence
 
 - The feature-flagged control plane now creates server-keyed single-part intents, persists only SHA-256 capability hashes, scopes every read/write to the authenticated workspace actor and transfer, rotates pending retry capabilities, verifies canonical R2 `HEAD` metadata, completes once without double-counting, and records explicit completion/abort events. Callers cannot submit an object key.
 - The browser uploader performs a direct R2 `PUT`; application Workers receive only small JSON control requests. It exposes per-file progress, retry, cancellation, local policy failures, and server failures without rendering or logging the presigned URL. Cancellation aborts the browser request and consumes the durable server intent.
 - The focused T1–T6 matrix passes 83/83 tests across 14 files. All T6/shared-storage changed files pass focused ESLint, and a full Nuxt typecheck remains red on unrelated repository debt while its path-filtered output contains no Send/storage diagnostics.
 - Current R2 binding behavior was checked against `@cloudflare/workers-types@5.20260719.1`; confirmation uses native `R2Bucket.head()` metadata in Cloudflare and the existing S3-compatible HEAD fallback elsewhere.
-- A read-only live audit on 2026-07-21 found both `agency-files` CORS rules allow only `GET, HEAD`. Browser `PUT` therefore remains intentionally blocked. No bucket configuration was changed; enabling `PUT` on the existing origin-restricted rules is an Ask-first action.
+- After explicit approval on 2026-07-21, `agency-files` retained its two existing origin-restricted `GET, HEAD` rules and gained two separate `PUT` rules restricted to the same origins and the `Content-Type` request header. An immediate Wrangler read-back matched the approved four-rule policy; no wildcard origin, deployment, flag, or navigation change was introduced.
+- A real system-Chrome test from the exact `http://localhost:3000` origin received a `204` preflight with exact origin, `PUT`, and `Content-Type`, uploaded a 70-byte `text/plain` object with status 200, verified canonical R2 HEAD metadata, and produced zero console warnings/errors. The non-sensitive smoke object was deleted and subsequent HEAD returned 404; the test was repeated with verified cleanup.
 - A fresh migration-268 recheck was attempted without touching any shared database, but the host exhausted its System V IPC segment pool before disposable PostgreSQL could bootstrap. Static migration contracts remain green and T2's earlier approved disposable PostgreSQL apply-twice/live-constraint evidence still stands; the new workspace intent uniqueness constraint must be re-run when the host IPC pool is available.
 - Cloudflare documents that presigned URLs are reusable until expiry. T8 now explicitly gates clean state until the single-part write capability has expired and canonical metadata is re-read, preventing post-scan overwrite through a still-valid upload URL.
+
+### T7 completion evidence
+
+- Files at or above the configuration-driven 100 MiB default threshold now use server-owned R2 multipart identities and persisted 16 MiB default geometry; smaller files retain the T6 single-part path. The upload ID and object key never enter request or response contracts.
+- Authenticated resume lists canonical R2 parts and exposes only validated part numbers/sizes. Part signing is bounded to the persisted geometry; completion rejects missing, duplicate, out-of-range, or wrong-sized parts and constructs the R2 completion request from canonical ETags rather than caller input.
+- The browser uploader retries the existing scoped intent, skips server-validated completed byte ranges, uploads remaining parts sequentially with progress/cancellation, and then uses the existing idempotent completion boundary. Abort handles R2/database retry gaps and refuses to mark a final object aborted.
+- The complete T1–T7 focused matrix passes 120/120 tests across 18 files; focused ESLint and the cache-free production build pass. The repository-wide Nuxt typecheck remains red on unrelated existing debt, so no global typecheck pass is claimed. No dependency was added, both Send flags remain disabled, and migration `269_send_multipart_geometry.sql` has not been applied to a shared database.
+- A real system-Chrome/R2 smoke uploaded a 5 MiB first part, closed that browser context to simulate interruption, recovered the single canonical completed part, uploaded only the 1 MiB remainder from a fresh context, completed and HEAD-verified the 6 MiB `application/octet-stream` object, and recorded zero console warnings/errors. The temporary object was deleted and cleanup was verified.
+- [send-multipart-uploads.md](../../runbooks/send-multipart-uploads.md) records intent expiry, R2's default seven-day incomplete-upload backstop, T13 reconciliation responsibilities, retry behavior, safe cleanup, and the migration/flag gates.
 
 ## 10. Implementation ledger
 
@@ -797,9 +807,9 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 | T3 | COMPLETE | 14 domain tests; focused ESLint; scoped TypeScript compile passed on 2026-07-21 | Strict contracts, explicit transition graphs, configuration-driven policy, 256-bit token hashing, and allowlist public mapping delivered |
 | T4 | COMPLETE | 10 focused tests; T1–T4 combined suite 55/55; focused ESLint and path-filtered typecheck clean on 2026-07-21 | Actor-scoped reads/writes, client assignments, optimistic transitions, state/event binding, and recursive redaction delivered |
 | T5 | COMPLETE | 50/50 focused tests; ESLint clean; no path-filtered type errors; isolated PostgreSQL and headless Chrome checks passed on 2026-07-21 | Strict create/list API, policy-aware draft service, and accessible feature-flagged agency UI delivered; no navigation change while the layout has unrelated edits |
-| T6 | AWAITING APPROVAL | 83/83 focused tests; focused ESLint clean; no path-filtered type errors; live CORS inspected read-only on 2026-07-21 | Application slice is implemented and dormant. `agency-files` allows only `GET, HEAD`; approval is required to add browser `PUT`, then run a real browser/R2 upload and finish T6. Disposable PostgreSQL recheck is also pending host IPC capacity. |
-| T7 | NOT STARTED | — | — |
-| T8 | NOT STARTED | — | Scanner selection is Ask-first |
+| T6 | COMPLETE | 83/83 focused tests; focused ESLint clean; no path-filtered type errors; approved live CORS read-back and real-Chrome/R2 preflight, PUT, HEAD, console, and cleanup evidence on 2026-07-21 | Single-part application and live browser-storage path complete; both Send flags remain disabled. Disposable PostgreSQL recheck remains pending host IPC capacity but T2's prior apply-twice evidence and current static contracts are green. |
+| T7 | COMPLETE | 120/120 focused tests; focused ESLint and cache-free production build pass; real Chrome/R2 interruption-resume, HEAD, console, and cleanup evidence on 2026-07-21 | Repository-wide typecheck remains red on unrelated existing debt; multipart identities stay server-owned; migration 269 remains unapplied to shared databases; both Send flags remain disabled |
+| T8 | AWAITING APPROVAL | T7 complete | Scanner provider/dependency selection is Ask-first; provider-neutral design can start after the direction is confirmed |
 | T9 | NOT STARTED | — | — |
 | T10 | NOT STARTED | — | — |
 | T11 | NOT STARTED | — | Archive behavior follows T0 decision |
@@ -821,11 +831,11 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 
 ## 11. Current goal-loop handoff
 
-T0–T5 and Checkpoint A are complete. T6's application slice is implemented and dormant; the current action is the **T6 R2 CORS approval hold**. The loop should:
+T0–T7 and Checkpoint A are complete. The current action is the **T8 scanner Ask-first gate**. Before implementation resumes, the loop should:
 
-1. obtain explicit approval before changing `agency-files` CORS;
-2. if approved, preserve the current origin allowlist and add only the `PUT` method required by the signed single-part upload contract;
-3. immediately re-read CORS state, then run one non-sensitive browser/R2 upload through intent creation, direct PUT, metadata confirmation, and cancellation/retry where practical;
-4. re-run migration 268's apply-twice and workspace-idempotency drill when the host IPC pool permits a disposable PostgreSQL instance;
-5. keep both Send feature flags disabled and do not deploy or expose navigation as part of T6 verification;
-6. mark T6 complete only after the real browser/R2 evidence is recorded, then begin T7.
+1. present a current, source-backed scanner/queue recommendation with cost, privacy, file-size, latency, and Cloudflare integration trade-offs;
+2. obtain explicit approval before selecting or adding a scanner provider/dependency;
+3. after approval, write failing provider-neutral orchestration tests before the adapter;
+4. keep publication fail-closed and preserve the single-part capability-expiry/re-read rule;
+5. use only non-sensitive malware test fixtures and do not send real files to an external provider without separate approval;
+6. preserve both disabled Send flags, the unapplied shared-database migration gate, and unrelated worktree changes.

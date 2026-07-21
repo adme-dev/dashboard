@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import type {
+  WorkspaceMultipartPartResponse,
+  WorkspaceMultipartResumeResponse,
   WorkspaceSendPolicySummary,
+  WorkspaceSingleUploadIntentResponse,
+  WorkspaceMultipartUploadIntentResponse,
   WorkspaceUploadIntentResponse
 } from '~~/shared/types/send'
 
@@ -108,17 +112,23 @@ function onFilesSelected(event: Event) {
   input.value = ''
 }
 
-function putDirectly(item: UploadItem, intent: WorkspaceUploadIntentResponse): Promise<void> {
+function putBody(input: {
+  item: UploadItem
+  url: string
+  body: Blob
+  headers?: Record<string, string>
+  onProgress(loaded: number, total: number): void
+}): Promise<void> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest()
-    requests.set(item.id, request)
-    request.open('PUT', intent.uploadUrl, true)
-    for (const [name, value] of Object.entries(intent.requiredHeaders)) {
+    requests.set(input.item.id, request)
+    request.open('PUT', input.url, true)
+    for (const [name, value] of Object.entries(input.headers ?? {})) {
       request.setRequestHeader(name, value)
     }
     request.upload.onprogress = (event) => {
       if (!event.lengthComputable || event.total <= 0) return
-      item.progress = Math.min(99, Math.round((event.loaded / event.total) * 100))
+      input.onProgress(event.loaded, event.total)
     }
     request.onerror = () => reject(new Error('The upload connection failed. Check your connection and retry.'))
     request.onabort = () => reject(new Error('Upload cancelled.'))
@@ -126,10 +136,60 @@ function putDirectly(item: UploadItem, intent: WorkspaceUploadIntentResponse): P
       if (request.status >= 200 && request.status < 300) resolve()
       else reject(new Error(`Storage rejected the upload (${request.status}). Retry to request a fresh upload link.`))
     }
-    request.send(item.file)
+    request.send(input.body)
   }).finally(() => {
-    requests.delete(item.id)
+    requests.delete(input.item.id)
   })
+}
+
+function putDirectly(item: UploadItem, intent: WorkspaceSingleUploadIntentResponse): Promise<void> {
+  return putBody({
+    item,
+    url: intent.uploadUrl,
+    body: item.file,
+    headers: intent.requiredHeaders,
+    onProgress: (loaded, total) => {
+      item.progress = Math.min(99, Math.round((loaded / total) * 100))
+    }
+  })
+}
+
+async function uploadMultipart(item: UploadItem, intent: WorkspaceMultipartUploadIntentResponse) {
+  const baseUrl = `/api/agency/send/${props.transferId}/files/${intent.fileId}/intents/${intent.intentId}/multipart`
+  const resume = await apiFetch<WorkspaceMultipartResumeResponse>(`${baseUrl}/resume`, {
+    method: 'POST',
+    body: { capability: intent.capability }
+  })
+  if (resume.partSizeBytes !== intent.partSizeBytes || resume.partCount !== intent.partCount) {
+    throw new Error('The server returned inconsistent multipart upload geometry.')
+  }
+
+  const completedParts = new Set(resume.uploadedParts.map(part => part.partNumber))
+  let uploadedBytes = resume.uploadedParts.reduce((total, part) => total + part.sizeBytes, 0)
+  item.progress = Math.min(99, Math.round((uploadedBytes / item.file.size) * 100))
+
+  for (let partNumber = 1; partNumber <= intent.partCount; partNumber += 1) {
+    if (completedParts.has(partNumber)) continue
+    if (item.cancelRequested) throw new Error('Upload cancelled.')
+    const start = (partNumber - 1) * intent.partSizeBytes
+    const end = Math.min(start + intent.partSizeBytes, item.file.size)
+    const body = item.file.slice(start, end)
+    if (body.size <= 0) throw new Error('The multipart upload geometry exceeds the selected file.')
+
+    const partIntent = await apiFetch<WorkspaceMultipartPartResponse>(`${baseUrl}/parts`, {
+      method: 'POST',
+      body: { capability: intent.capability, partNumber }
+    })
+    await putBody({
+      item,
+      url: partIntent.uploadUrl,
+      body,
+      onProgress: (loaded) => {
+        item.progress = Math.min(99, Math.round(((uploadedBytes + loaded) / item.file.size) * 100))
+      }
+    })
+    uploadedBytes += body.size
+  }
 }
 
 async function uploadItem(item: UploadItem) {
@@ -170,7 +230,8 @@ async function uploadItem(item: UploadItem) {
       return
     }
     item.state = 'uploading'
-    await putDirectly(item, intent)
+    if (intent.uploadMethod === 'multipart') await uploadMultipart(item, intent)
+    else await putDirectly(item, intent)
     item.state = 'confirming'
     item.progress = 100
     await apiFetch(
