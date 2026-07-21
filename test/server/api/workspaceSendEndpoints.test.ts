@@ -37,6 +37,11 @@ const mockResumeMultipartIntent = vi.fn()
 const mockCreateMultipartPartIntent = vi.fn()
 const mockUploadTtl = vi.fn()
 const mockMultipartConfig = vi.fn()
+const mockGetDetail = vi.fn()
+const mockPublish = vi.fn()
+const mockRevoke = vi.fn()
+const mockExtendExpiry = vi.fn()
+const mockCreateDownload = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
@@ -62,6 +67,16 @@ vi.mock('~~/server/utils/send/uploads', () => ({
   }),
   toWorkspaceSendUploadHttpError: (error: unknown) => { throw error }
 }))
+vi.mock('~~/server/utils/send/internalLifecycle', () => ({
+  createInternalSendService: () => ({
+    getDetail: mockGetDetail,
+    publish: mockPublish,
+    revoke: mockRevoke,
+    extendExpiry: mockExtendExpiry,
+    createDownload: mockCreateDownload
+  }),
+  toInternalSendHttpError: (error: unknown) => error
+}))
 
 const { default: createHandler } = await import('../../../server/api/agency/send/index.post')
 const { default: listHandler } = await import('../../../server/api/agency/send/index.get')
@@ -70,10 +85,14 @@ const { default: completeIntentHandler } = await import('../../../server/api/age
 const { default: abortIntentHandler } = await import('../../../server/api/agency/send/[id]/files/[fileId]/intents/[intentId]/abort.post')
 const { default: resumeMultipartHandler } = await import('../../../server/api/agency/send/[id]/files/[fileId]/intents/[intentId]/multipart/resume.post')
 const { default: createMultipartPartHandler } = await import('../../../server/api/agency/send/[id]/files/[fileId]/intents/[intentId]/multipart/parts.post')
+const { default: detailHandler } = await import('../../../server/api/agency/send/[id]/index.get')
+const { default: publishHandler } = await import('../../../server/api/agency/send/[id]/publish.post')
+const { default: revokeHandler } = await import('../../../server/api/agency/send/[id]/revoke.post')
+const { default: expiryHandler } = await import('../../../server/api/agency/send/[id]/expiry.patch')
+const { default: downloadHandler } = await import('../../../server/api/agency/send/[id]/files/[fileId]/downloads.post')
 
 const validBody = {
   title: 'Campaign assets',
-  recipients: ['CLIENT@example.com'],
   expiresAt: '2026-07-28T00:00:00.000Z',
   idempotencyKey: 'create-send-draft-0001'
 }
@@ -122,6 +141,14 @@ describe('workspace Send API boundaries', () => {
       uploadUrl: 'https://example.r2.cloudflarestorage.com/part',
       expiresAt: '2026-07-21T00:15:00.000Z'
     })
+    mockGetDetail.mockResolvedValue({ id: 'transfer-1', status: 'ready', files: [] })
+    mockPublish.mockResolvedValue({ id: 'transfer-1', status: 'ready', version: 3 })
+    mockRevoke.mockResolvedValue({ id: 'transfer-1', status: 'revoked', version: 4 })
+    mockExtendExpiry.mockResolvedValue({ id: 'transfer-1', status: 'ready', version: 4 })
+    mockCreateDownload.mockResolvedValue({
+      url: 'https://example.r2.cloudflarestorage.com/signed-download',
+      expiresAt: '2026-07-21T02:01:00.000Z'
+    })
   })
 
   it('enforces the kill switch before authenticating or reading a create body', async () => {
@@ -134,13 +161,16 @@ describe('workspace Send API boundaries', () => {
     expect(mockCreateDraft).not.toHaveBeenCalled()
   })
 
-  it('normalizes strict create input and derives the actor from authentication', async () => {
+  it('accepts only private create input and derives the actor from authentication', async () => {
     await createHandler({ body: validBody } as never)
 
     expect(mockCreateDraft).toHaveBeenCalledWith(expect.objectContaining({
       actor: { id: 'member-1', role: 'member' },
-      draft: expect.objectContaining({ recipients: ['client@example.com'] })
+      draft: expect.not.objectContaining({ recipients: expect.anything(), password: expect.anything() })
     }))
+
+    await expect(createHandler({ body: { ...validBody, recipients: ['outside@example.com'] } } as never))
+      .rejects.toMatchObject({ statusCode: 400 })
   })
 
   it('rejects unknown create fields before calling the service', async () => {
@@ -267,6 +297,62 @@ describe('workspace Send API boundaries', () => {
     await expect(createMultipartPartHandler({
       params,
       body: { capability, partNumber: 2, uploadId: 'caller-selected' }
+    } as never)).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('keeps detail, publish, revoke, and download behind auth and strict route identities', async () => {
+    const transferId = '44444444-4444-4444-8444-444444444444'
+    const fileId = '55555555-5555-4555-8555-555555555555'
+    const action = { expectedVersion: 2, idempotencyKey: 'private-action-0001' }
+
+    await detailHandler({ params: { id: transferId } } as never)
+    await publishHandler({ params: { id: transferId }, body: action } as never)
+    await revokeHandler({ params: { id: transferId }, body: action } as never)
+    const event: Event = {
+      params: { id: transferId, fileId },
+      body: { idempotencyKey: 'private-download-0001' }
+    }
+    const download = await downloadHandler(event as never)
+
+    expect(mockGetDetail).toHaveBeenCalledWith(expect.objectContaining({
+      actor: { id: 'member-1', role: 'member' }, transferId
+    }))
+    expect(mockPublish).toHaveBeenCalledWith(expect.objectContaining({
+      actor: { id: 'member-1', role: 'member' }, transferId, expectedVersion: 2
+    }))
+    expect(mockRevoke).toHaveBeenCalledWith(expect.objectContaining({ transferId, expectedVersion: 2 }))
+    expect(mockCreateDownload).toHaveBeenCalledWith(expect.objectContaining({ transferId, fileId }))
+    expect(download).toMatchObject({ url: expect.stringContaining('signed-download') })
+    expect(event.responseHeaders).toEqual({
+      'cache-control': 'no-store',
+      'referrer-policy': 'no-referrer'
+    })
+
+    await expect(publishHandler({
+      params: { id: transferId },
+      body: { ...action, shareToken: 'caller-selected' }
+    } as never)).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('binds expiry extension to write auth, optimistic versioning, and the server policy', async () => {
+    const transferId = '44444444-4444-4444-8444-444444444444'
+    const body = {
+      expiresAt: '2026-08-20T00:00:00.000Z',
+      expectedVersion: 3,
+      idempotencyKey: 'extend-expiry-000001'
+    }
+
+    await expiryHandler({ params: { id: transferId }, body } as never)
+
+    expect(mockExtendExpiry).toHaveBeenCalledWith({
+      actor: { id: 'member-1', role: 'member' },
+      transferId,
+      maxRetentionDays: 30,
+      ...body
+    })
+    await expect(expiryHandler({
+      params: { id: transferId },
+      body: { ...body, maxRetentionDays: 365 }
     } as never)).rejects.toMatchObject({ statusCode: 400 })
   })
 })

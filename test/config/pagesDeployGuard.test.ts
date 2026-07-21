@@ -40,7 +40,8 @@ describe('Pages deployment target guard', () => {
       'agency-dashboard',
       '--branch',
       'preview',
-      '--commit-dirty=true'
+      '--commit-dirty=true',
+      '--no-bundle'
     ])
   })
 

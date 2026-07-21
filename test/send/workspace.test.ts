@@ -15,13 +15,12 @@ const policy = {
   maxRetentionDays: 30,
   maxRecipients: 20,
   maxDownloads: 100,
-  scanRequired: true
+  scanRequired: false
 }
 
 const draft = {
   title: 'Campaign assets',
   message: 'For launch',
-  recipients: ['client@example.com'],
   expiresAt: '2026-07-28T00:00:00.000Z',
   maxDownloads: 5,
   idempotencyKey: 'create-send-draft-0001',
@@ -46,7 +45,7 @@ function row(overrides: Record<string, unknown> = {}) {
     max_downloads: 5,
     expected_file_count: 0,
     expected_total_bytes: 0,
-    recipient_count: 1,
+    recipient_count: 0,
     expires_at: new Date('2026-07-28T00:00:00.000Z'),
     created_at: new Date('2026-07-21T00:00:00.000Z'),
     updated_at: new Date('2026-07-21T00:00:00.000Z'),
@@ -70,24 +69,20 @@ describe('workspace Send service', () => {
       })
     }
     const transaction = vi.fn(async callback => callback(db))
-    const service = createWorkspaceSendService({
-      transaction: transaction as never,
-      hashPassword: vi.fn(async () => 'unused')
-    })
+    const service = createWorkspaceSendService({ transaction: transaction as never })
 
     await expect(service.createDraft({
       actor,
       draft,
       policy,
       now: new Date('2026-07-21T00:00:00.000Z')
-    })).resolves.toMatchObject({ id: TRANSFER_ID, status: 'draft', recipientCount: 1 })
+    })).resolves.toMatchObject({ id: TRANSFER_ID, status: 'draft', recipientCount: 0 })
 
     expect(statements.map(item => item.sql)).toEqual([
       expect.stringMatching(/creation_idempotency_key/),
       expect.stringMatching(/client_team_assignments/),
       expect.stringMatching(/FROM projects/),
       expect.stringMatching(/INSERT INTO send_transfers/),
-      expect.stringMatching(/INSERT INTO send_recipients/),
       expect.stringMatching(/INSERT INTO send_events/)
     ])
     const transferInsert = statements.find(item => /INSERT INTO send_transfers/.test(item.sql))!
@@ -155,7 +150,7 @@ describe('workspace Send service', () => {
     expect(transaction).not.toHaveBeenCalled()
   })
 
-  it('lists only owner, management, or assigned-client rows with status pagination', async () => {
+  it('lists internal unscoped transfers plus owner, management, or assigned-client rows', async () => {
     const queryRows = vi.fn(async () => [row(), row({ id: '55555555-5555-4555-8555-555555555555' })])
     const service = createWorkspaceSendService({ queryRows: queryRows as never })
 
@@ -167,7 +162,7 @@ describe('workspace Send service', () => {
     })
 
     const [sql, params] = queryRows.mock.calls[0]!
-    expect(sql).toMatch(/owner_team_member_id = \$1[\s\S]*client_team_assignments/)
+    expect(sql).toMatch(/owner_team_member_id = \$1[\s\S]*client_id IS NULL[\s\S]*client_team_assignments/)
     expect(sql).toMatch(/status = \$3/)
     expect(params).toEqual(['member-1', false, 'draft', 2, 1])
   })

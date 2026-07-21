@@ -4,6 +4,7 @@ import { socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
 
 const route = useRoute()
+const runtimeConfig = useRuntimeConfig()
 const open = ref(false)
 const selectedWorkspace = ref<string | null>(null)
 const isClientAnalyticsRoute = computed(() => route.path.startsWith('/agency/analytics/client/'))
@@ -161,6 +162,9 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     { label: 'Workflow', icon: 'i-lucide-git-branch', to: '/agency/workflow', onSelect: close },
     { label: 'Timeline', icon: 'i-lucide-gantt-chart', to: '/agency/workflow/timeline', onSelect: close },
     { label: 'Tasks', icon: 'i-lucide-check-square', to: '/agency/tasks', onSelect: close },
+    ...(runtimeConfig.public.sendEnabled === true
+      ? [{ label: 'Send', icon: 'i-lucide-package-up', to: '/agency/send', onSelect: close }]
+      : []),
 
     // Projects — visible to all authenticated users
     { type: 'label', label: 'Projects' },

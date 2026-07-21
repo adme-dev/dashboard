@@ -5,13 +5,20 @@
  * This utility handles file uploads, downloads, and presigned URLs.
  */
 
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command
+} from '@aws-sdk/client-s3'
 import { FetchHttpHandler } from '@smithy/fetch-http-handler'
 import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { join, dirname } from 'path'
 import { getCachedObjectBinding } from '~~/server/utils/email'
+import { createR2PresignedObjectUrl } from '~~/server/utils/r2Presign'
 
 // Local upload directory for dev without R2
 const LOCAL_UPLOAD_DIR = join(process.cwd(), 'server', 'uploads')
@@ -46,9 +53,22 @@ function getR2Client(): S3Client {
   })
 }
 
-/** Server-only S3 control plane used by Send multipart coordination. */
-export function getR2StorageControlPlane(): { client: S3Client, bucket: string } {
-  return { client: getR2Client(), bucket: R2_BUCKET_NAME }
+/** Server-only R2 credentials used by workerd-safe SigV4 control-plane adapters. */
+export function getR2StorageConfig(): {
+  accountId: string
+  accessKeyId: string
+  secretAccessKey: string
+  bucket: string
+} {
+  if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
+    throw new Error('R2 storage is not configured. Please set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY environment variables.')
+  }
+  return {
+    accountId: R2_ACCOUNT_ID,
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
+    bucket: R2_BUCKET_NAME
+  }
 }
 
 // Minimal shape of the Cloudflare native R2 bucket binding (MEDIA_BUCKET).
@@ -67,6 +87,22 @@ interface R2BucketBinding {
     customMetadata?: Record<string, string>
   } | null>
   delete: (key: string) => Promise<void>
+  list?: (options?: {
+    prefix?: string
+    cursor?: string
+    limit?: number
+    include?: string[]
+  }) => Promise<{
+    objects: Array<{ key: string, size: number, uploaded: Date }>
+    truncated: boolean
+    cursor?: string
+  }>
+}
+
+export interface StoredObjectListPage {
+  objects: Array<{ key: string, size: number, uploaded: Date | undefined }>
+  truncated: boolean
+  cursor?: string
 }
 
 /**
@@ -335,15 +371,16 @@ export async function getPresignedUploadUrl(
   contentType: string,
   expiresIn: number = 3600 // 1 hour default
 ): Promise<string> {
-  const client = getR2Client()
-
-  const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: key,
-    ContentType: contentType
+  void contentType
+  return createR2PresignedObjectUrl({
+    accountId: R2_ACCOUNT_ID,
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
+    bucket: R2_BUCKET_NAME,
+    key,
+    method: 'PUT',
+    expiresIn
   })
-
-  return getSignedUrl(client, command, { expiresIn })
 }
 
 /**
@@ -351,16 +388,33 @@ export async function getPresignedUploadUrl(
  */
 export async function getPresignedDownloadUrl(
   key: string,
-  expiresIn: number = 3600 // 1 hour default
+  expiresIn: number = 3600, // 1 hour default
+  options: { fileName?: string } = {}
 ): Promise<string> {
-  const client = getR2Client()
-
-  const command = new GetObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: key
+  return createR2PresignedObjectUrl({
+    accountId: R2_ACCOUNT_ID,
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
+    bucket: R2_BUCKET_NAME,
+    key,
+    method: 'GET',
+    expiresIn,
+    responseContentDisposition: options.fileName
+      ? buildAttachmentContentDisposition(options.fileName)
+      : undefined
   })
+}
 
-  return getSignedUrl(client, command, { expiresIn })
+export function buildAttachmentContentDisposition(fileName: string): string {
+  const cleaned = fileName
+    .replace(/[\p{Cc}]/gu, '')
+    .replace(/[\\/"]/g, '_')
+    .trim()
+    .slice(0, 180) || 'download'
+  const fallback = cleaned.replace(/[^\x20-\x7E]/g, '_')
+  const encoded = encodeURIComponent(cleaned)
+    .replace(/[!'()*]/g, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`
 }
 
 /**
@@ -401,8 +455,71 @@ export async function getFileMetadata(key: string): Promise<{
       lastModified: response.LastModified,
       metadata: response.Metadata
     }
-  } catch {
-    return null
+  } catch (error) {
+    const failure = error as {
+      name?: string
+      $metadata?: { httpStatusCode?: number }
+    } | null
+    if (failure?.$metadata?.httpStatusCode === 404
+      || failure?.name === 'NotFound'
+      || failure?.name === 'NoSuchKey') {
+      return null
+    }
+    throw error
+  }
+}
+
+/**
+ * List one bounded object page. Callers must follow `truncated` rather than
+ * assuming a short page is complete; R2 may return fewer objects than `limit`.
+ */
+export async function listStoredObjects(input: {
+  prefix: string
+  cursor?: string
+  limit?: number
+}): Promise<StoredObjectListPage> {
+  if (!input.prefix || input.prefix.startsWith('/') || input.prefix.includes('..')) {
+    throw new Error('Storage list prefix is invalid')
+  }
+  const limit = Math.max(1, Math.min(input.limit ?? 1000, 1000))
+  const bucket = getNativeBucket()
+  if (bucket?.list) {
+    const page = await bucket.list({
+      prefix: input.prefix,
+      ...(input.cursor ? { cursor: input.cursor } : {}),
+      limit,
+      include: []
+    })
+    if (page.truncated && !page.cursor) {
+      throw new Error('R2 returned a truncated object list without a cursor')
+    }
+    return {
+      objects: page.objects.map(object => ({
+        key: object.key,
+        size: object.size,
+        uploaded: object.uploaded
+      })),
+      truncated: page.truncated,
+      ...(page.cursor ? { cursor: page.cursor } : {})
+    }
+  }
+
+  const response = await getR2Client().send(new ListObjectsV2Command({
+    Bucket: R2_BUCKET_NAME,
+    Prefix: input.prefix,
+    ContinuationToken: input.cursor,
+    MaxKeys: limit
+  }))
+  const truncated = response.IsTruncated === true
+  if (truncated && !response.NextContinuationToken) {
+    throw new Error('R2 returned a truncated object list without a cursor')
+  }
+  return {
+    objects: (response.Contents ?? []).flatMap(object => object.Key
+      ? [{ key: object.Key, size: object.Size ?? 0, uploaded: object.LastModified }]
+      : []),
+    truncated,
+    ...(response.NextContinuationToken ? { cursor: response.NextContinuationToken } : {})
   }
 }
 

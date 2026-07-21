@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import bcrypt from 'bcryptjs'
 import {
   queryRows as defaultQueryRows,
   transaction as defaultTransaction
@@ -84,7 +83,7 @@ const WORKSPACE_TRANSFER_COLUMNS = `
   t.id, t.tenant_id, t.client_id, t.project_id, t.status, t.version,
   t.title, t.message, t.access_mode, t.max_downloads,
   t.expected_file_count, t.expected_total_bytes,
-  (SELECT COUNT(*) FROM send_recipients r WHERE r.transfer_id = t.id) AS recipient_count,
+  0::bigint AS recipient_count,
   t.expires_at, t.created_at, t.updated_at
 `
 
@@ -102,18 +101,12 @@ function scopedIdempotencyKey(actorId: string, callerKey: string): string {
 export interface WorkspaceSendServiceDeps {
   queryRows: typeof defaultQueryRows
   transaction: typeof defaultTransaction
-  hashPassword(password: string): Promise<string>
-}
-
-async function defaultHashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12)
 }
 
 export function createWorkspaceSendService(overrides: Partial<WorkspaceSendServiceDeps> = {}) {
   const deps: WorkspaceSendServiceDeps = {
     queryRows: overrides.queryRows ?? defaultQueryRows,
-    transaction: overrides.transaction ?? defaultTransaction,
-    hashPassword: overrides.hashPassword ?? defaultHashPassword
+    transaction: overrides.transaction ?? defaultTransaction
   }
 
   return {
@@ -130,7 +123,7 @@ export function createWorkspaceSendService(overrides: Partial<WorkspaceSendServi
           now,
           expiresAt: new Date(input.draft.expiresAt),
           fileSizes: [],
-          recipientCount: input.draft.recipients.length,
+          recipientCount: 0,
           maxDownloads: input.draft.maxDownloads
         })
       } catch (error) {
@@ -141,10 +134,6 @@ export function createWorkspaceSendService(overrides: Partial<WorkspaceSendServi
       }
 
       const idempotencyHash = scopedIdempotencyKey(input.actor.id, input.draft.idempotencyKey)
-      const passwordHash = input.draft.password
-        ? await deps.hashPassword(input.draft.password)
-        : null
-
       return deps.transaction(async (database) => {
         const db = database as unknown as QueryClientLike
         const existing = await db.query(
@@ -212,8 +201,8 @@ export function createWorkspaceSendService(overrides: Partial<WorkspaceSendServi
             input.draft.title,
             input.draft.message ?? null,
             null,
-            passwordHash ? 'password' : 'link',
-            passwordHash,
+            'link',
+            null,
             resolvedPolicy.snapshot.maxDownloads,
             resolvedPolicy.snapshot.maxTransferBytes,
             resolvedPolicy.snapshot.maxFiles,
@@ -238,15 +227,6 @@ export function createWorkspaceSendService(overrides: Partial<WorkspaceSendServi
           return mapWorkspaceTransfer(replayRow)
         }
 
-        if (input.draft.recipients.length > 0) {
-          await db.query(
-            `INSERT INTO send_recipients (transfer_id, email_normalized)
-             SELECT $1, recipient
-               FROM UNNEST($2::text[]) AS recipient`,
-            [transferRow.id, input.draft.recipients]
-          )
-        }
-
         await db.query(
           `INSERT INTO send_events (
              transfer_id, actor_class, actor_id, event_type, idempotency_key, metadata
@@ -258,14 +238,14 @@ export function createWorkspaceSendService(overrides: Partial<WorkspaceSendServi
             JSON.stringify({
               clientId: input.draft.clientId ?? null,
               projectId: input.draft.projectId ?? null,
-              recipientCount: input.draft.recipients.length
+              access: 'authenticated_workspace'
             })
           ]
         )
 
         return mapWorkspaceTransfer({
           ...transferRow,
-          recipient_count: input.draft.recipients.length
+          recipient_count: 0
         })
       })
     },
@@ -295,6 +275,7 @@ export function createWorkspaceSendService(overrides: Partial<WorkspaceSendServi
             AND (
               t.owner_team_member_id = $1
               OR $2 = TRUE
+              OR t.client_id IS NULL
               OR (t.client_id IS NOT NULL AND EXISTS (
                 SELECT 1
                   FROM client_team_assignments a

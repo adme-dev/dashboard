@@ -348,19 +348,7 @@ describe('workspace Send multipart service', () => {
       uploadId: UPLOAD_ID,
       parts
     })
-    expect(db.query.mock.calls).toContainEqual([
-      expect.stringMatching(/INSERT INTO send_scan_jobs/),
-      [
-        TRANSFER_ID,
-        FILE_ID,
-        `send/${TRANSFER_ID}/${FILE_ID}`,
-        declaration.fileSize,
-        declaration.contentType,
-        'multipart-final-etag',
-        'multipart',
-        NOW.toISOString()
-      ]
-    ])
+    expect(db.query.mock.calls.some(([sql]) => /INSERT INTO send_scan_jobs/.test(String(sql)))).toBe(false)
   })
 
   it('refuses multipart completion while any part is missing', async () => {
@@ -487,6 +475,36 @@ describe('workspace Send multipart service', () => {
       now: NOW
     })).rejects.toEqual(expect.objectContaining<Partial<WorkspaceSendUploadError>>({
       code: 'INTENT_UNAVAILABLE'
+    }))
+    expect(transaction).not.toHaveBeenCalled()
+  })
+
+  it('does not mark a multipart intent aborted when final-object verification is unavailable', async () => {
+    const transaction = vi.fn()
+    const service = createWorkspaceSendUploadService({
+      queryOne: vi.fn(async () => multipartIntentRow()) as never,
+      transaction: transaction as never,
+      hashCapability: vi.fn(() => CAPABILITY_HASH),
+      abortMultipartUpload: vi.fn(async () => {
+        throw Object.assign(new Error('missing'), { name: 'NoSuchUpload' })
+      }),
+      getObjectMetadata: vi.fn(async () => {
+        throw Object.assign(new Error('R2 unavailable'), {
+          name: 'ServiceUnavailable',
+          $metadata: { httpStatusCode: 503 }
+        })
+      })
+    })
+
+    await expect(service.abortIntent({
+      actor: ACTOR,
+      transferId: TRANSFER_ID,
+      fileId: FILE_ID,
+      intentId: INTENT_ID,
+      capability: CAPABILITY,
+      now: NOW
+    })).rejects.toEqual(expect.objectContaining<Partial<WorkspaceSendUploadError>>({
+      code: 'STORAGE_UNAVAILABLE'
     }))
     expect(transaction).not.toHaveBeenCalled()
   })

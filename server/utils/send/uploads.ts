@@ -71,6 +71,7 @@ interface UploadIntentRow {
   upload_method: 'single' | 'multipart'
   multipart_upload_id: string | null
   multipart_part_size_bytes: number | string | null
+  policy_snapshot?: unknown
 }
 
 export interface SendObjectMetadata {
@@ -158,6 +159,13 @@ function maxFileBytes(snapshot: unknown): number | null {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return null
   const value = (snapshot as Record<string, unknown>).maxFileBytes
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null
+}
+
+function scanRequired(snapshot: unknown): boolean {
+  return !!snapshot
+    && typeof snapshot === 'object'
+    && !Array.isArray(snapshot)
+    && (snapshot as Record<string, unknown>).scanRequired === true
 }
 
 function scopedIdempotencyKey(actorId: string, transferId: string, callerKey: string): string {
@@ -290,15 +298,16 @@ export function createWorkspaceSendUploadService(
           AND i.file_id = $2
           AND i.transfer_id = $3
           AND i.uploader_class = 'workspace'
-          AND i.uploader_id = $4
+          AND i.uploader_id = $4::text
           AND t.sender_class = 'workspace'
+          AND t.status IN ('draft', 'uploading')
           AND (
             $5::boolean
-            OR t.owner_team_member_id = $4
+            OR t.owner_team_member_id = $4::uuid
             OR (t.client_id IS NOT NULL AND EXISTS (
               SELECT 1 FROM client_team_assignments a
                WHERE a.client_id = t.client_id
-                 AND a.team_member_id = $4
+                 AND a.team_member_id = $4::uuid
             ))
           )`,
       [input.intentId, input.fileId, input.transferId, input.actor.id, MANAGEMENT_ROLES.has(input.actor.role)]
@@ -340,6 +349,11 @@ export function createWorkspaceSendUploadService(
       const requestedUploadMethod = input.declaration.fileSize >= configuredMultipart.thresholdBytes
         ? 'multipart'
         : 'single'
+      // A completed single PUT can still be overwritten until its signed URL expires.
+      // Keep that sealing window short without constraining large multipart uploads.
+      const effectiveTtlSeconds = requestedUploadMethod === 'single'
+        ? Math.min(input.ttlSeconds, 90)
+        : input.ttlSeconds
       let requestedGeometry: MultipartGeometry | null = null
       if (requestedUploadMethod === 'multipart') {
         try {
@@ -398,7 +412,7 @@ export function createWorkspaceSendUploadService(
         )
         const existing = existingResult.rows[0] as UploadIntentRow | undefined
         const expiresAt = new Date(Math.min(
-          now.getTime() + input.ttlSeconds * 1000,
+          now.getTime() + effectiveTtlSeconds * 1000,
           transferExpiresAt.getTime()
         ))
         if (existing) {
@@ -562,7 +576,10 @@ export function createWorkspaceSendUploadService(
           canonical.expected_mime_type,
           secondsRemaining
         )
-      } catch {
+      } catch (error) {
+        console.warn('[SendUpload] Failed to create presigned upload URL', {
+          error: error instanceof Error ? error.message : String(error)
+        })
         throw new WorkspaceSendUploadError('STORAGE_UNAVAILABLE', 'Upload storage is unavailable')
       }
 
@@ -719,7 +736,7 @@ export function createWorkspaceSendUploadService(
       return deps.transaction(async (database) => {
         const db = database as unknown as QueryClientLike
         const lockedResult = await db.query(
-          `SELECT ${INTENT_COLUMNS}
+          `SELECT ${INTENT_COLUMNS}, t.policy_snapshot
              FROM send_upload_intents i
              JOIN send_files f
                ON f.transfer_id = i.transfer_id
@@ -729,18 +746,19 @@ export function createWorkspaceSendUploadService(
               AND i.file_id = $2
               AND i.transfer_id = $3
               AND i.uploader_class = 'workspace'
-              AND i.uploader_id = $4
+              AND i.uploader_id = $4::text
               AND t.sender_class = 'workspace'
+              AND t.status IN ('draft', 'uploading')
               AND (
                 $5::boolean
-                OR t.owner_team_member_id = $4
+                OR t.owner_team_member_id = $4::uuid
                 OR (t.client_id IS NOT NULL AND EXISTS (
                   SELECT 1 FROM client_team_assignments a
                    WHERE a.client_id = t.client_id
-                     AND a.team_member_id = $4
+                     AND a.team_member_id = $4::uuid
                 ))
               )
-            FOR UPDATE OF i, f`,
+            FOR UPDATE OF t, i, f`,
           [input.intentId, input.fileId, input.transferId, input.actor.id, MANAGEMENT_ROLES.has(input.actor.role)]
         )
         const locked = lockedResult.rows[0] as UploadIntentRow | undefined
@@ -755,10 +773,17 @@ export function createWorkspaceSendUploadService(
           throw new WorkspaceSendUploadError('OBJECT_MISMATCH', 'Upload intent changed before confirmation')
         }
 
+        const requiresScan = scanRequired(locked.policy_snapshot)
         const fileResult = await db.query(
           `UPDATE send_files
               SET state = 'quarantined',
-                  scan_status = 'pending',
+                  scan_status = CASE WHEN $7::boolean THEN 'pending' ELSE 'not_required' END,
+                  scan_provider = NULL,
+                  scan_version = NULL,
+                  scan_evidence = CASE
+                    WHEN $7::boolean THEN '{}'::jsonb
+                    ELSE jsonb_build_object('policy', 'private_internal_v1', 'decision', 'not_required')
+                  END,
                   actual_size_bytes = $3,
                   actual_mime_type = $4,
                   object_etag = $5,
@@ -777,32 +802,35 @@ export function createWorkspaceSendUploadService(
             metadata.size,
             metadata.contentType,
             metadata.etag,
-            (metadata.uploaded ?? completionTime).toISOString()
+            (metadata.uploaded ?? completionTime).toISOString(),
+            requiresScan
           ]
         )
         const updatedFile = fileResult.rows[0] as UploadIntentRow | undefined
         if (!updatedFile) throw new WorkspaceSendUploadError('INTENT_UNAVAILABLE', 'File is no longer uploadable')
 
-        const scanAvailableAt = locked.upload_method === 'single'
-          ? asDate(locked.expires_at)
-          : completionTime
-        await db.query(
-          `INSERT INTO send_scan_jobs (
-             transfer_id, file_id, object_key, expected_size_bytes,
-             expected_mime_type, object_etag, upload_method, available_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (file_id) DO NOTHING`,
-          [
-            input.transferId,
-            input.fileId,
-            locked.object_key,
-            metadata.size,
-            metadata.contentType,
-            metadata.etag,
-            locked.upload_method,
-            scanAvailableAt.toISOString()
-          ]
-        )
+        if (requiresScan) {
+          const scanAvailableAt = locked.upload_method === 'single'
+            ? asDate(locked.expires_at)
+            : completionTime
+          await db.query(
+            `INSERT INTO send_scan_jobs (
+               transfer_id, file_id, object_key, expected_size_bytes,
+               expected_mime_type, object_etag, upload_method, available_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (file_id) DO NOTHING`,
+            [
+              input.transferId,
+              input.fileId,
+              locked.object_key,
+              metadata.size,
+              metadata.contentType,
+              metadata.etag,
+              locked.upload_method,
+              scanAvailableAt.toISOString()
+            ]
+          )
+        }
 
         await db.query(
           `UPDATE send_upload_intents
@@ -866,7 +894,15 @@ export function createWorkspaceSendUploadService(
           })
         } catch (error) {
           if (isMultipartUploadMissing(error)) {
-            const finalObject = await deps.getObjectMetadata(candidate.object_key).catch(() => null)
+            let finalObject: SendObjectMetadata | null
+            try {
+              finalObject = await deps.getObjectMetadata(candidate.object_key)
+            } catch {
+              throw new WorkspaceSendUploadError(
+                'STORAGE_UNAVAILABLE',
+                'Multipart upload state could not be verified'
+              )
+            }
             if (finalObject) {
               throw new WorkspaceSendUploadError(
                 'INTENT_UNAVAILABLE',
@@ -891,15 +927,15 @@ export function createWorkspaceSendUploadService(
               AND i.file_id = $2
               AND i.transfer_id = $3
               AND i.uploader_class = 'workspace'
-              AND i.uploader_id = $4
+              AND i.uploader_id = $4::text
               AND t.sender_class = 'workspace'
               AND (
                 $5::boolean
-                OR t.owner_team_member_id = $4
+                OR t.owner_team_member_id = $4::uuid
                 OR (t.client_id IS NOT NULL AND EXISTS (
                   SELECT 1 FROM client_team_assignments a
                    WHERE a.client_id = t.client_id
-                     AND a.team_member_id = $4
+                     AND a.team_member_id = $4::uuid
                 ))
               )
             FOR UPDATE OF i, f`,

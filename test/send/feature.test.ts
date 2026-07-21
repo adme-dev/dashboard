@@ -37,9 +37,9 @@ describe('workspace Send feature configuration', () => {
       maxFiles: 20,
       defaultRetentionDays: 7,
       maxRetentionDays: 30,
-      maxRecipients: 20,
+      maxRecipients: 0,
       maxDownloads: 100,
-      scanRequired: true
+      scanRequired: false
     })
   })
 })

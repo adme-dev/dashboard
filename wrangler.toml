@@ -122,6 +122,12 @@ service = "agency-workflows"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 EMAIL_FROM = "notification@adme.net.au"
+# Private internal Send v1. SEND_ENABLED is the product flag consumed at build
+# time; the NUXT_* aliases keep both server and client runtime config enabled on
+# Cloudflare Pages. Disable all three together for the release kill switch.
+SEND_ENABLED = "true"
+NUXT_SEND_ENABLED = "true"
+NUXT_PUBLIC_SEND_ENABLED = "true"
 # Cloudflare AI Gateway root for server-side Groq SDK calls. The app normalizes
 # Groq requests to /groq and falls back to direct Groq if Gateway auth rejects.
 AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f9357b17/default"

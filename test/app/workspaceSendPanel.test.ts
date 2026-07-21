@@ -9,6 +9,24 @@ Object.assign(globalThis, { computed, ref, watch })
 const stubs = {
   UCard: { template: '<section><slot name="header" /><slot /><slot name="footer" /></section>' },
   UBadge: { template: '<span><slot /></span>' },
+  UAlert: { props: ['description'], template: '<div role="alert">{{ description }}<slot /><slot name="description" /></div>' },
+  UFormField: { props: ['label', 'name'], template: '<label><span>{{ label }}</span><slot /></label>' },
+  UInput: {
+    props: ['modelValue', 'type'],
+    emits: ['update:modelValue'],
+    template: '<input v-bind="$attrs" :type="type || \'text\'" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">'
+  },
+  UTextarea: {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<textarea v-bind="$attrs" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+  },
+  USelect: {
+    props: ['modelValue', 'items'],
+    emits: ['update:modelValue'],
+    template: '<select v-bind="$attrs" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option></select>'
+  },
+  UModal: { props: ['open'], template: '<div v-if="open"><slot name="content" /></div>' },
   UButton: {
     props: ['disabled', 'loading', 'type'],
     emits: ['click'],
@@ -48,7 +66,7 @@ const transfer = {
   maxDownloads: 100,
   fileCount: 0,
   totalBytes: 0,
-  recipientCount: 2,
+  recipientCount: 0,
   expiresAt: '2026-07-28T00:00:00.000Z',
   createdAt: '2026-07-21T00:00:00.000Z',
   updatedAt: '2026-07-21T00:00:00.000Z'
@@ -57,7 +75,7 @@ const transfer = {
 const policy = {
   defaultRetentionDays: 7,
   maxRetentionDays: 30,
-  maxRecipients: 20,
+  maxRecipients: 0,
   maxDownloads: 100,
   maxTransferBytes: 2147483648,
   maxFileBytes: 2147483648,
@@ -74,7 +92,9 @@ describe('WorkspaceSendPanel', () => {
 
     expect(host.querySelector('[data-testid="send-list-empty"]')).toBeTruthy()
     expect(host.textContent).toContain('No transfers yet')
-    expect(host.querySelector('label[for="send-title"]')).toBeTruthy()
+    expect(host.querySelector('[data-testid="send-title"]')).toBeTruthy()
+    expect(host.textContent).toContain('Internal workspace')
+    expect(host.textContent).not.toMatch(/recipient|password/i)
     app.unmount()
     host.remove()
   })
@@ -88,7 +108,8 @@ describe('WorkspaceSendPanel', () => {
 
     expect(host.querySelector('[data-testid="send-list"]')).toBeTruthy()
     expect(host.textContent).toContain('Campaign assets')
-    expect(host.textContent).toContain('2 recipients')
+    expect(host.textContent).toContain('0 files')
+    expect(host.textContent).not.toContain('recipients')
     app.unmount()
     host.remove()
   })
@@ -117,8 +138,114 @@ describe('WorkspaceSendPanel', () => {
     host.remove()
   })
 
+  it('offers a bounded expiry extension for a manageable active transfer', async () => {
+    const detail = {
+      ...transfer,
+      status: 'ready',
+      version: 3,
+      files: [],
+      downloadCount: 0,
+      canManage: true,
+      canPublish: false,
+      publishAvailableAt: null
+    }
+    const fetchMock = vi.fn(async (url: string, options?: { method?: string, body?: unknown }) => {
+      if (url === '/api/agency/clients') return []
+      if (url === `/api/agency/send/${transfer.id}`) return { transfer: detail }
+      if (url === `/api/agency/send/${transfer.id}/expiry` && options?.method === 'PATCH') {
+        return { transfer: { ...detail, version: 4, expiresAt: '2026-08-20T00:00:00.000Z' } }
+      }
+      return { transfers: [detail], page: 1, pageSize: 25, hasMore: false, policy }
+    })
+    const { app, host } = mountPanel(fetchMock)
+    await flushUi()
+    ;[...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Open')?.click()
+    await flushUi()
+
+    const extend = [...host.querySelectorAll('button')]
+      .find(button => button.textContent?.trim() === 'Extend expiry')
+    expect(extend).toBeTruthy()
+    extend?.click()
+    await flushUi()
+    expect(host.textContent).toContain('Extend this transfer?')
+
+    ;[...host.querySelectorAll('button')]
+      .find(button => button.textContent?.trim() === 'Extend transfer')?.click()
+    await flushUi()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/agency/send/${transfer.id}/expiry`,
+      expect.objectContaining({
+        method: 'PATCH',
+        body: expect.objectContaining({
+          expectedVersion: 3,
+          expiresAt: '2026-08-04T00:00:00.000Z'
+        })
+      })
+    )
+    app.unmount()
+    host.remove()
+  })
+
+  it('refreshes the manifest when a single-part upload sealing window ends', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-21T02:00:00.000Z'))
+    let detailReads = 0
+    const sealingDetail = {
+      ...transfer,
+      status: 'uploading',
+      version: 2,
+      files: [{
+        id: '55555555-5555-4555-8555-555555555555',
+        fileName: 'campaign.pdf',
+        state: 'quarantined',
+        size: 1024,
+        contentType: 'application/pdf',
+        uploadedAt: '2026-07-21T01:59:59.000Z'
+      }],
+      downloadCount: 0,
+      canManage: true,
+      canPublish: false,
+      publishAvailableAt: '2026-07-21T02:00:01.000Z'
+    }
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/agency/clients') return []
+      if (url === `/api/agency/send/${transfer.id}`) {
+        detailReads += 1
+        return {
+          transfer: detailReads === 1
+            ? sealingDetail
+            : { ...sealingDetail, canPublish: true, publishAvailableAt: null }
+        }
+      }
+      return { transfers: [sealingDetail], page: 1, pageSize: 25, hasMore: false, policy }
+    })
+    const { app, host } = mountPanel(fetchMock)
+    try {
+      await flushUi()
+      ;[...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Open')?.click()
+      await flushUi()
+
+      const publish = [...host.querySelectorAll('button')]
+        .find(button => button.textContent?.trim() === 'Publish internally')
+      expect(publish?.disabled).toBe(true)
+
+      await vi.advanceTimersByTimeAsync(1_500)
+      await flushUi()
+
+      expect(detailReads).toBe(2)
+      const refreshedPublish = [...host.querySelectorAll('button')]
+        .find(button => button.textContent?.trim() === 'Publish internally')
+      expect(refreshedPublish?.disabled).toBe(false)
+    } finally {
+      app.unmount()
+      host.remove()
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps the route disabled by default at the client boundary', () => {
-    const page = readFileSync('app/pages/agency/send/index.vue', 'utf8')
+    const page = readFileSync('app/pages/agency/send/index.client.vue', 'utf8')
     expect(page).toContain('config.public.sendEnabled !== true')
     expect(page).toContain('statusCode: 404')
   })

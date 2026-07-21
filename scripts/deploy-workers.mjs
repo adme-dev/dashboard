@@ -44,7 +44,7 @@ for (const name of targets) {
     continue
   }
   console.log(`\n▶ deploying ${name} …`)
-  const res = spawnSync('npx', ['wrangler', 'deploy'], { cwd, stdio: 'inherit' })
+  const res = spawnSync('npx', ['wrangler', 'deploy', '--config', 'wrangler.toml'], { cwd, stdio: 'inherit' })
   if (res.status !== 0) {
     console.error(`✗ ${name}: wrangler deploy exited ${res.status}`)
     failed.push(name)

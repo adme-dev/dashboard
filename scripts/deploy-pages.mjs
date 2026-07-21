@@ -34,7 +34,10 @@ export function buildPagesDeployArgs(branch) {
     ALLOWED_PAGES_PROJECT,
     '--branch',
     branch,
-    '--commit-dirty=true'
+    '--commit-dirty=true',
+    // Nitro already emits an ESM module graph under dist/_worker.js. Rebundling
+    // it duplicates enough code to breach Pages' 25 MiB Function upload limit.
+    '--no-bundle'
   ]
 }
 

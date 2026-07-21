@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FileDeclarationSchema,
   PublicTransferDraftSchema,
+  WorkspaceTransferExpiryExtensionSchema,
   WorkspaceTransferDraftSchema,
   canTransitionFile,
   canTransitionTransfer
@@ -10,13 +11,12 @@ import {
 const future = '2026-08-01T00:00:00.000Z'
 
 describe('Send external contracts', () => {
-  it('parses and normalizes a strict workspace draft', () => {
+  it('parses a strict private workspace draft without external recipient controls', () => {
     const result = WorkspaceTransferDraftSchema.parse({
       title: '  Quarterly assets  ',
       message: ' Ready for review ',
       clientId: '11111111-1111-4111-8111-111111111111',
       projectId: '22222222-2222-4222-8222-222222222222',
-      recipients: [' Client@Example.COM '],
       expiresAt: future,
       maxDownloads: 5,
       idempotencyKey: 'draft-idempotency-0001'
@@ -24,13 +24,21 @@ describe('Send external contracts', () => {
 
     expect(result.title).toBe('Quarterly assets')
     expect(result.message).toBe('Ready for review')
-    expect(result.recipients).toEqual(['client@example.com'])
+    expect(result).not.toHaveProperty('recipients')
+    expect(result).not.toHaveProperty('password')
+    expect(WorkspaceTransferDraftSchema.safeParse({
+      ...result,
+      recipients: ['outside@example.com']
+    }).success).toBe(false)
+    expect(WorkspaceTransferDraftSchema.safeParse({
+      ...result,
+      password: 'not-for-private-v1'
+    }).success).toBe(false)
   })
 
   it('rejects unknown keys and a project without a client', () => {
     const draft = {
       title: 'Assets',
-      recipients: [],
       expiresAt: future,
       idempotencyKey: 'draft-idempotency-0001'
     }
@@ -63,7 +71,7 @@ describe('Send external contracts', () => {
     }).success).toBe(false)
   })
 
-  it('rejects passwords that exceed bcrypt input capacity in UTF-8 bytes', () => {
+  it('keeps public password validation dormant without accepting it on workspace drafts', () => {
     const draft = {
       title: 'Protected assets',
       recipients: [],
@@ -71,8 +79,9 @@ describe('Send external contracts', () => {
       idempotencyKey: 'draft-idempotency-0003'
     }
 
-    expect(WorkspaceTransferDraftSchema.safeParse({ ...draft, password: 'a'.repeat(72) }).success).toBe(true)
-    expect(WorkspaceTransferDraftSchema.safeParse({ ...draft, password: 'é'.repeat(37) }).success).toBe(false)
+    expect(PublicTransferDraftSchema.safeParse({ ...draft, password: 'a'.repeat(72) }).success).toBe(true)
+    expect(PublicTransferDraftSchema.safeParse({ ...draft, password: 'é'.repeat(37) }).success).toBe(false)
+    expect(WorkspaceTransferDraftSchema.safeParse({ ...draft, recipients: undefined }).success).toBe(false)
   })
 
   it('validates file declarations without accepting an object key', () => {
@@ -92,6 +101,20 @@ describe('Send external contracts', () => {
       fileName: 'campaign.zip',
       fileSize: 1024,
       contentType: 'application/zip\r\nx-injected: true'
+    }).success).toBe(false)
+  })
+
+  it('accepts only the expiry-extension concurrency contract', () => {
+    const request = {
+      expiresAt: future,
+      expectedVersion: 3,
+      idempotencyKey: 'extend-expiry-000001'
+    }
+
+    expect(WorkspaceTransferExpiryExtensionSchema.parse(request)).toEqual(request)
+    expect(WorkspaceTransferExpiryExtensionSchema.safeParse({
+      ...request,
+      retentionDays: 90
     }).success).toBe(false)
   })
 })

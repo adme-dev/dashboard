@@ -89,4 +89,32 @@ describe('uploadFile native R2 binding', () => {
     })
     expect(head).toHaveBeenCalledWith('send/transfer/file')
   })
+
+  it('lists a bounded page through the native binding using the R2 cursor contract', async () => {
+    const { setCfBindings } = await import('~~/server/utils/email')
+    const { listStoredObjects } = await import('~~/server/utils/storage')
+    const uploaded = new Date('2026-07-21T00:00:00.000Z')
+    const list = vi.fn(async () => ({
+      objects: [{ key: 'send/transfer/file', size: 42, uploaded }],
+      truncated: true,
+      cursor: 'next-page',
+      delimitedPrefixes: []
+    }))
+    setCfBindings({
+      MEDIA_BUCKET: { put: vi.fn(), head: vi.fn(), delete: vi.fn(), list }
+    })
+
+    await expect(listStoredObjects({ prefix: 'send/', cursor: 'cursor-1', limit: 500 }))
+      .resolves.toEqual({
+        objects: [{ key: 'send/transfer/file', size: 42, uploaded }],
+        truncated: true,
+        cursor: 'next-page'
+      })
+    expect(list).toHaveBeenCalledWith({
+      prefix: 'send/',
+      cursor: 'cursor-1',
+      limit: 500,
+      include: []
+    })
+  })
 })

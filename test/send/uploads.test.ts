@@ -13,9 +13,9 @@ import {
 const TRANSFER_ID = '44444444-4444-4444-8444-444444444444'
 const FILE_ID = '55555555-5555-4555-8555-555555555555'
 const INTENT_ID = '66666666-6666-4666-8666-666666666666'
-const ACTOR = { id: 'member-1', role: 'member' }
+const ACTOR = { id: '77777777-7777-4777-8777-777777777777', role: 'member' }
 const NOW = new Date('2026-07-21T00:00:00.000Z')
-const EXPIRES_AT = new Date('2026-07-21T00:15:00.000Z')
+const EXPIRES_AT = new Date('2026-07-21T00:01:30.000Z')
 const CAPABILITY = 'c'.repeat(43)
 const CAPABILITY_HASH = 'a'.repeat(64)
 
@@ -102,7 +102,7 @@ describe('workspace Send upload contracts', () => {
 })
 
 describe('workspace Send upload service', () => {
-  it('creates a server-keyed, policy-bound intent and advances a draft to uploading', async () => {
+  it('creates a short-lived server-keyed single-upload intent and advances a draft to uploading', async () => {
     const statements: Array<{ sql: string, params: unknown[] }> = []
     const db = {
       query: vi.fn(async (sql: string, params: unknown[] = []) => {
@@ -217,10 +217,19 @@ describe('workspace Send upload service', () => {
     })).resolves.toMatchObject({ state: 'quarantined', size: 2048, contentType: 'application/pdf' })
 
     expect(db.query.mock.calls.filter(([sql]) => /actual_file_count = actual_file_count \+ 1/.test(String(sql)))).toHaveLength(1)
-    expect(db.query.mock.calls).toContainEqual([
-      expect.stringMatching(/INSERT INTO send_scan_jobs/),
-      [TRANSFER_ID, FILE_ID, `send/${TRANSFER_ID}/${FILE_ID}`, 2048, 'application/pdf', 'etag-1', 'single', EXPIRES_AT.toISOString()]
-    ])
+    expect(db.query.mock.calls.some(([sql]) => /INSERT INTO send_scan_jobs/.test(String(sql)))).toBe(false)
+    expect(db.query.mock.calls.some(([sql, params]) =>
+      /scan_status = CASE/.test(String(sql)) && Array.isArray(params) && params.includes(false)
+    )).toBe(true)
+    expect(db.query.mock.calls.some(([sql]) =>
+      /t\.status IN \('draft', 'uploading'\)/.test(String(sql))
+      && /FOR UPDATE OF t, i, f/.test(String(sql))
+    )).toBe(true)
+    expect(String(queryOne.mock.calls[0]?.[0])).toContain('i.uploader_id = $4::text')
+    expect(String(queryOne.mock.calls[0]?.[0])).toContain('t.owner_team_member_id = $4::uuid')
+    expect(db.query.mock.calls.some(([sql]) =>
+      String(sql).includes('a.team_member_id = $4::uuid')
+    )).toBe(true)
   })
 
   it.each([

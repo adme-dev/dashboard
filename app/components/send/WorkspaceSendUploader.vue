@@ -119,7 +119,7 @@ function putBody(input: {
   headers?: Record<string, string>
   onProgress(loaded: number, total: number): void
 }): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest()
     requests.set(input.item.id, request)
     request.open('PUT', input.url, true)
@@ -242,7 +242,7 @@ async function uploadItem(item: UploadItem) {
     item.intent = undefined
     emit('uploaded')
   } catch (error) {
-    if (item.state === 'cancelling' || item.state === 'cancelled') return
+    if (item.cancelRequested) return
     item.state = 'failed'
     item.retryable = true
     item.error = readableError(error, 'The file could not be uploaded. Retry to request a fresh upload link.')
@@ -296,7 +296,7 @@ async function abortServerIntent(intent: WorkspaceUploadIntentResponse): Promise
           Add files
         </h3>
         <p class="mt-1 text-xs text-muted">
-          Files upload directly to private storage and are verified before delivery.
+          Files upload directly to private storage and are delivered as attachments.
         </p>
       </div>
       <label class="cursor-pointer rounded-lg border border-default bg-default px-3 py-2 text-sm font-medium hover:bg-elevated">
@@ -323,24 +323,27 @@ async function abortServerIntent(intent: WorkspaceUploadIntentResponse): Promise
             </p>
           </div>
           <div class="flex shrink-0 gap-2">
-            <button
+            <UButton
               v-if="['preparing', 'uploading', 'confirming'].includes(item.state)"
               type="button"
-              class="text-xs font-medium text-error hover:underline"
+              size="xs"
+              color="error"
+              variant="ghost"
               data-testid="cancel-send-upload"
               @click="cancelUpload(item)"
             >
               Cancel
-            </button>
-            <button
+            </UButton>
+            <UButton
               v-else-if="item.state === 'cancelled' || (item.state === 'failed' && item.retryable)"
               type="button"
-              class="text-xs font-medium text-primary hover:underline"
+              size="xs"
+              variant="ghost"
               data-testid="retry-send-upload"
               @click="uploadItem(item)"
             >
               Retry
-            </button>
+            </UButton>
           </div>
         </div>
         <div v-if="['uploading', 'confirming', 'uploaded'].includes(item.state)" class="mt-2 h-1.5 overflow-hidden rounded-full bg-elevated">
@@ -352,15 +355,16 @@ async function abortServerIntent(intent: WorkspaceUploadIntentResponse): Promise
       </li>
     </ul>
 
-    <button
+    <UButton
       v-if="items.some(item => item.state === 'queued')"
       type="button"
-      class="mt-4 w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+      block
+      class="mt-4"
       :disabled="uploading"
       data-testid="send-upload-all"
       @click="uploadAll"
     >
       Upload ready files
-    </button>
+    </UButton>
   </section>
 </template>

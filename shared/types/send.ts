@@ -51,24 +51,16 @@ const RecipientListSchema = z.array(RecipientEmailSchema).max(100).superRefine((
   }
 })
 
-const CommonTransferDraftShape = {
+const InternalTransferDraftShape = {
   title: z.string().trim().min(1).max(255),
   message: z.string().trim().max(5000).optional(),
-  recipients: RecipientListSchema.default([]),
   expiresAt: z.string().datetime({ offset: true }),
-  password: z.string()
-    .min(8)
-    .max(128)
-    .refine(password => new TextEncoder().encode(password).byteLength <= 72, {
-      message: 'Password must be at most 72 UTF-8 bytes'
-    })
-    .optional(),
   maxDownloads: z.number().int().positive().optional(),
   idempotencyKey: z.string().trim().min(16).max(255)
 }
 
 export const WorkspaceTransferDraftSchema = z.object({
-  ...CommonTransferDraftShape,
+  ...InternalTransferDraftShape,
   clientId: z.string().uuid().optional(),
   projectId: z.string().uuid().optional()
 }).strict().superRefine((draft, context) => {
@@ -81,7 +73,17 @@ export const WorkspaceTransferDraftSchema = z.object({
   }
 })
 
-export const PublicTransferDraftSchema = z.object(CommonTransferDraftShape).strict()
+export const PublicTransferDraftSchema = z.object({
+  ...InternalTransferDraftShape,
+  recipients: RecipientListSchema.default([]),
+  password: z.string()
+    .min(8)
+    .max(128)
+    .refine(password => new TextEncoder().encode(password).byteLength <= 72, {
+      message: 'Password must be at most 72 UTF-8 bytes'
+    })
+    .optional()
+}).strict()
 
 const QueryIntegerSchema = z.preprocess(
   value => typeof value === 'string' ? Number(value) : value,
@@ -127,12 +129,26 @@ export const WorkspaceUploadMultipartResumeSchema = z.object({
   capability: UploadCapabilitySchema
 }).strict()
 
+export const WorkspaceTransferActionSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  idempotencyKey: z.string().trim().min(16).max(255)
+}).strict()
+
+export const WorkspaceTransferExpiryExtensionSchema = WorkspaceTransferActionSchema.extend({
+  expiresAt: z.string().datetime({ offset: true })
+}).strict()
+
+export const WorkspaceDownloadRequestSchema = z.object({
+  idempotencyKey: z.string().trim().min(16).max(255)
+}).strict()
+
 export type WorkspaceTransferDraft = z.infer<typeof WorkspaceTransferDraftSchema>
 export type PublicTransferDraft = z.infer<typeof PublicTransferDraftSchema>
 export type WorkspaceTransferListQuery = z.infer<typeof WorkspaceTransferListQuerySchema>
 export type FileDeclaration = z.infer<typeof FileDeclarationSchema>
 export type WorkspaceUploadIntentRequest = z.infer<typeof WorkspaceUploadIntentRequestSchema>
 export type WorkspaceUploadComplete = z.infer<typeof WorkspaceUploadCompleteSchema>
+export type WorkspaceTransferExpiryExtension = z.infer<typeof WorkspaceTransferExpiryExtensionSchema>
 
 export interface WorkspaceSingleUploadIntentResponse {
   uploadMethod: 'single'
@@ -184,6 +200,28 @@ export interface WorkspaceUploadedFile {
   contentType: string
   etag: string | null
   uploadedAt: string | null
+}
+
+export interface WorkspaceTransferFileSummary {
+  id: string
+  fileName: string
+  state: FileStatus
+  size: number
+  contentType: string
+  uploadedAt: string | null
+}
+
+export interface WorkspaceTransferDetail extends WorkspaceTransferSummary {
+  files: WorkspaceTransferFileSummary[]
+  downloadCount: number
+  canManage: boolean
+  canPublish: boolean
+  publishAvailableAt: string | null
+}
+
+export interface WorkspaceDownloadResponse {
+  url: string
+  expiresAt: string
 }
 
 export interface WorkspaceTransferSummary {

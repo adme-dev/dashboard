@@ -21,7 +21,7 @@ useHead({ title: 'Send · XeroFlow' })
         Deliver files without leaving the workspace
       </h1>
       <p class="mt-2 max-w-3xl text-muted">
-        Create a secure, expiring transfer draft for a client or project. Upload and publication controls arrive in the next delivery slice.
+        Create an expiring file handoff for authenticated internal users, then upload, publish, download, or revoke it from one place.
       </p>
     </header>
 

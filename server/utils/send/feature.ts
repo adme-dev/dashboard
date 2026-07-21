@@ -61,8 +61,8 @@ export function resolveWorkspaceSendPolicyConfig(event: unknown): SendPolicyConf
     maxFiles: config.sendWorkspaceMaxFiles,
     defaultRetentionDays: config.sendWorkspaceDefaultRetentionDays,
     maxRetentionDays: config.sendWorkspaceMaxRetentionDays,
-    maxRecipients: config.sendWorkspaceMaxRecipients,
+    maxRecipients: 0,
     maxDownloads: config.sendWorkspaceMaxDownloads,
-    scanRequired: true
+    scanRequired: false
   })
 }
