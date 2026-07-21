@@ -3,9 +3,11 @@ import { PERMISSION_GROUPS, type PermissionGroup } from '~~/server/utils/permiss
 
 export type CatalogSourceType = 'pack' | 'capability'
 export type CatalogAccessMode = 'read' | 'draft' | 'propose'
+export type CatalogControlReleaseState = 'active' | 'suspended' | 'retired'
 
 export interface ActiveCatalogRow {
   sourceType: CatalogSourceType
+  releaseState: CatalogControlReleaseState
   releaseId: string
   departmentId: string
   packVersionId: string | null
@@ -34,6 +36,7 @@ export interface CatalogCompositionDb {
 
 interface ActiveCatalogDbRow {
   source_type: string
+  release_state: string
   release_id: string
   department_id: string
   pack_version_id: string | null
@@ -70,6 +73,9 @@ function boundedNumber(value: number | string | null): number | null {
 function mapCatalogRow(row: ActiveCatalogDbRow): ActiveCatalogRow {
   return {
     sourceType: row.source_type === 'capability' ? 'capability' : 'pack',
+    releaseState: row.release_state === 'active' || row.release_state === 'suspended'
+      ? row.release_state
+      : 'retired',
     releaseId: row.release_id,
     departmentId: row.department_id,
     packVersionId: row.pack_version_id,
@@ -96,11 +102,11 @@ function mapCatalogRow(row: ActiveCatalogDbRow): ActiveCatalogRow {
 }
 
 /**
- * Read only production-active catalog material for an already-authorized department scope.
- * The LEFT JOINs intentionally preserve active empty packs/capabilities so composition fails
- * closed to zero tools instead of mistaking an empty governed release for legacy mode.
+ * Read production-active catalog material plus suspended/retired control markers for an
+ * already-authorized department scope. The LEFT JOINs intentionally preserve empty releases so
+ * composition fails closed instead of mistaking a suspended or empty governed pack for legacy mode.
  */
-export async function loadActiveCatalogRows(
+export async function loadCatalogControlRows(
   departmentIds: string[],
   db: CatalogCompositionDb = defaultDb
 ): Promise<ActiveCatalogRow[]> {
@@ -114,6 +120,7 @@ export async function loadActiveCatalogRows(
     `WITH active_pack_rows AS (
        SELECT
          'pack'::text AS source_type,
+         pack_release.release_state,
          pack_release.id AS release_id,
          pack_release.department_id,
          pack_version.id AS pack_version_id,
@@ -144,13 +151,16 @@ export async function loadActiveCatalogRows(
        LEFT JOIN ai_capabilities capability ON capability.id = capability_version.capability_id
        LEFT JOIN ai_capability_tool_bindings binding ON binding.capability_version_id = capability_version.id
        WHERE pack_release.department_id = ANY($1::uuid[])
-         AND pack_release.release_state = 'active'
-         AND pack_release.evaluation_gate_passed = TRUE
-         AND pack_release.evaluation_run_status = 'completed'
+         AND pack_release.release_state IN ('active', 'suspended', 'retired')
+         AND (
+           pack_release.release_state <> 'active'
+           OR (pack_release.evaluation_gate_passed = TRUE AND pack_release.evaluation_run_status = 'completed')
+         )
      ),
      active_capability_rows AS (
        SELECT
          'capability'::text AS source_type,
+         capability_release.release_state,
          capability_release.id AS release_id,
          capability_release.department_id,
          NULL::uuid AS pack_version_id,
@@ -178,9 +188,14 @@ export async function loadActiveCatalogRows(
        JOIN ai_capabilities capability ON capability.id = capability_release.capability_id
        LEFT JOIN ai_capability_tool_bindings binding ON binding.capability_version_id = capability_version.id
        WHERE capability_release.department_id = ANY($1::uuid[])
-         AND capability_release.release_state = 'active'
-         AND capability_release.evaluation_gate_passed = TRUE
-         AND capability_release.evaluation_run_status = 'completed'
+         AND capability_release.release_state IN ('active', 'suspended', 'retired')
+         AND (
+           capability_release.release_state <> 'active'
+           OR (
+             capability_release.evaluation_gate_passed = TRUE
+             AND capability_release.evaluation_run_status = 'completed'
+           )
+         )
      )
      SELECT * FROM active_pack_rows
      UNION ALL
@@ -190,6 +205,34 @@ export async function loadActiveCatalogRows(
   )
 
   return rows.map(mapCatalogRow)
+}
+
+/**
+ * Derive assistant department scope from authenticated server identity. Owners/admins receive all
+ * active departments; everyone else receives only explicit membership or managed departments.
+ * The 101-row sentinel prevents an accidentally unbounded catalog query.
+ */
+export async function loadAssistantDepartmentScope(
+  userId: string,
+  userRole: string,
+  db: CatalogCompositionDb = defaultDb
+): Promise<string[]> {
+  if (!UUID_PATTERN.test(userId)) throw new Error('Assistant user identifier must be a valid UUID.')
+  const companyWide = userRole === 'owner' || userRole === 'admin'
+  const rows = await db.queryRows<{ id: string }>(
+    `SELECT DISTINCT department.id
+       FROM departments department
+       LEFT JOIN department_members membership
+         ON membership.department_id = department.id
+        AND membership.team_member_id = $1
+      WHERE department.is_active = TRUE
+        AND ($2::boolean OR membership.team_member_id IS NOT NULL OR department.manager_id = $1)
+      ORDER BY department.id
+      LIMIT 101`,
+    [userId, companyWide]
+  )
+  if (rows.length > 100) throw new Error('Assistant catalog scope supports at most 100 departments.')
+  return rows.map(row => row.id)
 }
 
 export interface CatalogBudgetCeiling {
@@ -209,6 +252,22 @@ export interface GovernedCatalogComposition<T> {
   packVersionIds: string[]
   capabilityVersionIds: string[]
   modelFeatureKeys: string[]
+  denials: CatalogToolDenial[]
+}
+
+export type CatalogToolDenialReason
+  = 'release_suspended'
+    | 'release_retired'
+    | 'not_in_active_catalog'
+    | 'capability_permission_missing'
+    | 'access_mode_mismatch'
+    | 'persona_narrowed'
+    | 'read_only'
+    | 'personal_disabled'
+
+export interface CatalogToolDenial {
+  toolName: string
+  reason: CatalogToolDenialReason
 }
 
 function strictest(values: Array<number | null>): number | null {
@@ -240,13 +299,24 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
       departmentIds: [],
       packVersionIds: [],
       capabilityVersionIds: [],
-      modelFeatureKeys: []
+      modelFeatureKeys: [],
+      denials: []
     }
   }
 
   const granted = new Set<PermissionGroup>(grantedPermissionGroups)
+  const capabilityControlState = new Map<string, 'suspended' | 'retired'>()
+  for (const row of catalogRows) {
+    if (row.sourceType !== 'capability' || !row.capabilityVersionId || row.releaseState === 'active') continue
+    const previous = capabilityControlState.get(row.capabilityVersionId)
+    if (row.releaseState === 'suspended' || !previous) {
+      capabilityControlState.set(row.capabilityVersionId, row.releaseState)
+    }
+  }
   const authorizedRows = catalogRows.filter(row =>
-    row.capabilityVersionId
+    row.releaseState === 'active'
+    && row.capabilityVersionId
+    && !capabilityControlState.has(row.capabilityVersionId)
     && row.requiredPermissionGroup
     && granted.has(row.requiredPermissionGroup)
   )
@@ -262,6 +332,36 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
     const modes = accessModesByTool.get(tool.name)
     return modes ? [...modes].some(mode => bindingAllowsTool(tool, mode)) : false
   })
+  const allowedToolNames = new Set(tools.map(tool => tool.name))
+  const denials: CatalogToolDenial[] = []
+  for (const tool of rbacFilteredTools) {
+    if (allowedToolNames.has(tool.name)) continue
+    const matchingRows = catalogRows.filter(row => row.toolName === tool.name)
+    const activeRows = matchingRows.filter(row => row.releaseState === 'active')
+    let reason: CatalogToolDenialReason
+    const inactiveCapabilityStates = matchingRows.flatMap((row) => {
+      const state = row.capabilityVersionId ? capabilityControlState.get(row.capabilityVersionId) : null
+      return state ? [state] : []
+    })
+    if (inactiveCapabilityStates.includes('suspended')) {
+      reason = 'release_suspended'
+    } else if (inactiveCapabilityStates.includes('retired')) {
+      reason = 'release_retired'
+    } else if (activeRows.length === 0) {
+      if (matchingRows.some(row => row.releaseState === 'suspended')) reason = 'release_suspended'
+      else if (matchingRows.some(row => row.releaseState === 'retired')) reason = 'release_retired'
+      else reason = 'not_in_active_catalog'
+    } else if (!activeRows.some(row =>
+      row.capabilityVersionId
+      && row.requiredPermissionGroup
+      && granted.has(row.requiredPermissionGroup)
+    )) {
+      reason = 'capability_permission_missing'
+    } else {
+      reason = 'access_mode_mismatch'
+    }
+    denials.push({ toolName: tool.name, reason })
+  }
 
   const preambles = new Map<string, string>()
   for (const row of authorizedRows) {
@@ -306,6 +406,57 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
     modelFeatureKeys: [...new Set(authorizedRows.flatMap(row => [
       row.packModelFeatureKey,
       row.capabilityModelFeatureKey
-    ].filter((key): key is string => Boolean(key))))]
+    ].filter((key): key is string => Boolean(key))))],
+    denials
   }
+}
+
+export interface EffectiveAssistantCompositionInput<T> {
+  rbacFilteredTools: T[]
+  catalogRows: ActiveCatalogRow[]
+  grantedPermissionGroups: readonly PermissionGroup[]
+  personaToolAllowlist?: readonly string[]
+  disabledTools?: readonly string[]
+  readOnly?: boolean
+}
+
+/** Apply every configuration layer after RBAC strictly by subtraction, preserving denial evidence. */
+export function composeEffectiveAssistantTools<T extends { name: string, mutates?: boolean }>(
+  input: EffectiveAssistantCompositionInput<T>
+): GovernedCatalogComposition<T> {
+  const composed = composeGovernedCatalog(
+    input.rbacFilteredTools,
+    input.catalogRows,
+    input.grantedPermissionGroups
+  )
+  let tools = composed.tools
+  const denials = [...composed.denials]
+
+  if (input.personaToolAllowlist) {
+    const allowed = new Set(input.personaToolAllowlist)
+    const removed = tools.filter(tool => !allowed.has(tool.name))
+    denials.push(...removed.map(tool => ({
+      toolName: tool.name,
+      reason: 'persona_narrowed' as const
+    })))
+    tools = tools.filter(tool => allowed.has(tool.name))
+  }
+
+  if (input.readOnly) {
+    const removed = tools.filter(tool => tool.mutates)
+    denials.push(...removed.map(tool => ({ toolName: tool.name, reason: 'read_only' as const })))
+    tools = tools.filter(tool => !tool.mutates)
+  }
+
+  if (input.disabledTools?.length) {
+    const disabled = new Set(input.disabledTools)
+    const removed = tools.filter(tool => disabled.has(tool.name))
+    denials.push(...removed.map(tool => ({
+      toolName: tool.name,
+      reason: 'personal_disabled' as const
+    })))
+    tools = tools.filter(tool => !disabled.has(tool.name))
+  }
+
+  return { ...composed, tools, denials }
 }

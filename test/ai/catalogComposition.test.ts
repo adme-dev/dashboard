@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  composeEffectiveAssistantTools,
   composeGovernedCatalog,
-  loadActiveCatalogRows,
+  loadCatalogControlRows,
+  loadAssistantDepartmentScope,
   type ActiveCatalogRow,
   type CatalogCompositionDb
 } from '~~/server/utils/ai/governance/catalogComposition'
@@ -17,6 +19,7 @@ const tools = [
 function row(overrides: Partial<ActiveCatalogRow> = {}): ActiveCatalogRow {
   return {
     sourceType: 'pack',
+    releaseState: 'active',
     releaseId: '20000000-0000-4000-8000-000000000001',
     departmentId: DEPARTMENT_ID,
     packVersionId: '30000000-0000-4000-8000-000000000001',
@@ -124,18 +127,99 @@ describe('composeGovernedCatalog', () => {
     expect(composed.mode).toBe('governed')
     expect(composed.tools).toEqual([])
   })
+
+  it('keeps suspended and retired releases as control markers instead of falling back open', () => {
+    for (const releaseState of ['suspended', 'retired'] as const) {
+      const composed = composeGovernedCatalog(tools, [row({ releaseState })], ['MEDIA_BUYING'])
+
+      expect(composed.mode).toBe('governed')
+      expect(composed.tools).toEqual([])
+      expect(composed.denials).toContainEqual({
+        toolName: 'get_budget_health',
+        reason: releaseState === 'suspended' ? 'release_suspended' : 'release_retired'
+      })
+    }
+  })
+
+  it('lets a direct capability suspension override the same version inside an active pack', () => {
+    const composed = composeGovernedCatalog(tools, [
+      row(),
+      row({
+        sourceType: 'capability',
+        releaseState: 'suspended',
+        releaseId: '20000000-0000-4000-8000-000000000002',
+        packVersionId: null,
+        packKey: null,
+        instructionsPreamble: '',
+        packModelFeatureKey: null,
+        packMaxInputTokens: null,
+        packMaxOutputTokens: null,
+        packMaxCostUsdMicros: null,
+        packMaxLatencyMs: null
+      })
+    ], ['MEDIA_BUYING'])
+
+    expect(composed.tools).toEqual([])
+    expect(composed.denials).toContainEqual({
+      toolName: 'get_budget_health',
+      reason: 'release_suspended'
+    })
+  })
+
+  it('returns deterministic permission and access-mode denial reasons', () => {
+    const permissionDenied = composeGovernedCatalog(tools, [row()], ['CREATIVE'])
+    expect(permissionDenied.denials).toContainEqual({
+      toolName: 'get_budget_health',
+      reason: 'capability_permission_missing'
+    })
+
+    const accessDenied = composeGovernedCatalog(tools, [row({ accessMode: 'propose' })], ['MEDIA_BUYING'])
+    expect(accessDenied.denials).toContainEqual({
+      toolName: 'get_budget_health',
+      reason: 'access_mode_mismatch'
+    })
+  })
 })
 
-describe('loadActiveCatalogRows', () => {
-  it('loads only completed passing active releases with a parameterized department list', async () => {
+describe('composeEffectiveAssistantTools', () => {
+  it('applies persona, read-only, and personal disables only as subtraction', () => {
+    const composed = composeEffectiveAssistantTools({
+      rbacFilteredTools: tools,
+      catalogRows: [
+        row(),
+        row({ toolName: 'search_knowledge', accessMode: 'draft' }),
+        row({
+          capabilityVersionId: '40000000-0000-4000-8000-000000000002',
+          toolName: 'propose_budget_change',
+          accessMode: 'propose'
+        })
+      ],
+      grantedPermissionGroups: ['MEDIA_BUYING'],
+      personaToolAllowlist: ['get_budget_health', 'propose_budget_change'],
+      disabledTools: ['get_budget_health'],
+      readOnly: true
+    })
+
+    expect(composed.tools).toEqual([])
+    expect(composed.denials).toEqual(expect.arrayContaining([
+      { toolName: 'search_knowledge', reason: 'persona_narrowed' },
+      { toolName: 'propose_budget_change', reason: 'read_only' },
+      { toolName: 'get_budget_health', reason: 'personal_disabled' }
+    ]))
+    expect(composed.tools.every(tool => tools.includes(tool))).toBe(true)
+  })
+})
+
+describe('loadCatalogControlRows', () => {
+  it('loads completed active releases and inactive control markers with a parameterized department list', async () => {
     const queryRows = vi.fn().mockResolvedValue([])
     const db: CatalogCompositionDb = { queryRows }
 
-    await loadActiveCatalogRows([DEPARTMENT_ID], db)
+    await loadCatalogControlRows([DEPARTMENT_ID], db)
 
     const [sql, params] = queryRows.mock.calls[0]!
     expect(params).toEqual([[DEPARTMENT_ID]])
-    expect(sql).toContain('release_state = \'active\'')
+    expect(sql).toContain('release_state IN (\'active\', \'suspended\', \'retired\')')
     expect(sql).toContain('evaluation_gate_passed = TRUE')
     expect(sql).toContain('evaluation_run_status = \'completed\'')
     expect(sql).toContain('ANY($1::uuid[])')
@@ -146,10 +230,45 @@ describe('loadActiveCatalogRows', () => {
     const queryRows = vi.fn().mockResolvedValue([])
     const db: CatalogCompositionDb = { queryRows }
 
-    await expect(loadActiveCatalogRows([], db)).resolves.toEqual([])
-    await expect(loadActiveCatalogRows(['not-a-uuid'], db)).rejects.toThrow('valid UUID')
-    await expect(loadActiveCatalogRows(Array.from({ length: 101 }, () => DEPARTMENT_ID), db))
+    await expect(loadCatalogControlRows([], db)).resolves.toEqual([])
+    await expect(loadCatalogControlRows(['not-a-uuid'], db)).rejects.toThrow('valid UUID')
+    await expect(loadCatalogControlRows(Array.from({ length: 101 }, () => DEPARTMENT_ID), db))
       .rejects.toThrow('at most 100')
     expect(queryRows).not.toHaveBeenCalled()
+  })
+})
+
+describe('loadAssistantDepartmentScope', () => {
+  it('derives ordinary-user scope from membership or department management', async () => {
+    const queryRows = vi.fn().mockResolvedValue([{ id: DEPARTMENT_ID }])
+    const db: CatalogCompositionDb = { queryRows }
+
+    await expect(loadAssistantDepartmentScope(
+      '50000000-0000-4000-8000-000000000001',
+      'account_manager',
+      db
+    )).resolves.toEqual([DEPARTMENT_ID])
+
+    const [sql, params] = queryRows.mock.calls[0]!
+    expect(sql).toContain('department_members')
+    expect(sql).toContain('manager_id')
+    expect(params).toEqual(['50000000-0000-4000-8000-000000000001', false])
+  })
+
+  it('uses server-derived company-wide scope for owner/admin and bounds the result', async () => {
+    const queryRows = vi.fn().mockResolvedValue([{ id: DEPARTMENT_ID }])
+    const db: CatalogCompositionDb = { queryRows }
+
+    await loadAssistantDepartmentScope('50000000-0000-4000-8000-000000000001', 'admin', db)
+    expect(queryRows.mock.calls[0]![1]).toEqual(['50000000-0000-4000-8000-000000000001', true])
+
+    queryRows.mockResolvedValueOnce(Array.from({ length: 101 }, (_, index) => ({
+      id: `10000000-0000-4000-8000-${index.toString().padStart(12, '0')}`
+    })))
+    await expect(loadAssistantDepartmentScope(
+      '50000000-0000-4000-8000-000000000001',
+      'owner',
+      db
+    )).rejects.toThrow('at most 100')
   })
 })
