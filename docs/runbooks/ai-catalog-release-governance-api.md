@@ -57,3 +57,17 @@ The release update and append-only `ai_catalog_audit_events` insert share one tr
 - `active_release_conflict` — another version is already active
 
 Authentication and authorization failures use the existing `401`/`403` application contract.
+
+## Governance inventory
+
+`GET /api/admin/ai/governance/catalog` provides the read model used by governance surfaces. It requires the same `ADMIN` permission and returns `Cache-Control: private, no-store`.
+
+Optional query parameters are:
+
+- `departmentId` — an exact department UUID
+- `kind` — `pack` or `capability`
+- `releaseState` — `draft`, `pilot`, `active`, `suspended`, or `retired`
+- `limit` — 1–100, default 50
+- `cursor` — the opaque `nextCursor` returned by the previous page
+
+Rows include department and accountable-owner identity, immutable material version, release and evaluation status, model/budget controls, capability/tool counts, and at most 100 sorted tool names. `toolsTruncated` indicates that the complete tool set requires a later detail page. The read model does not select evaluation prompts, fixtures, raw output, traces, secrets, or owner email addresses.
