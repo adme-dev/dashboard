@@ -558,7 +558,7 @@ and product approval.
 
 - [ ] Security/abuse test suite and operational failure drills pass.
 - [ ] Logs and traces are inspected for token, password, email, R2 credential, signed-URL, and cross-tenant leakage.
-- [ ] Security review records no unresolved critical/high issue.
+- [x] Security review records no unresolved critical/high Send issue.
 
 **Dependencies:** T20
 **Files likely touched:** security/abuse tests, failure fixtures, one drill script or harness, one evidence document
@@ -819,6 +819,8 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 - Deployment `09703d23` serves both the immutable and custom Send routes with HTTP 200, while the protected cleanup route returns 401 without its scheduler secret. A separate read-only production scan examined three Send objects and two expected file rows: zero orphan, malformed, missing, metadata-failure, multipart-stale, retryable-deletion, truncation, or batch-limit findings. One expired single-part intent belongs to an already-revoked transfer and is inaccessible pending normal cleanup.
 - Live Wrangler read-back confirmed `agency-files` has its enabled default rule aborting incomplete multipart uploads after seven days. The reviewed focused release matrix passes 210/210 tests across 37 files; focused ESLint and both root and isolated production builds pass.
 - A disposable PostgreSQL 14 and filesystem-object drill ran two cleanup workers concurrently against an expired transfer. Exactly one worker claimed it; an injected failure on the second object left the transfer retryable, and a retry after 16 minutes idempotently finished both deletes. The transfer reached `deleted`, both file rows reached `deleted`, exactly one claim and one deletion event remained, no objects remained, and the final report-only reconciliation found zero issues.
+- The final five-axis review corrected transient S3 HEAD errors being reported as missing objects, object-key normalization before signing, multipart-abort final-object verification during an R2 outage, and the missing automatic UI refresh after a single-upload sealing window. Each correction has a failing-then-passing regression test in the 210-test matrix.
+- Reviewed source save points are `b00ef135` (dormant scanner adapter), `51332e4d` (private lifecycle and UI), and `fd348e5c` (cleanup, reconciliation, and operations). The isolated dormant scanner audit reports no known vulnerabilities. The unchanged root workspace still reports a pre-existing high advisory through `@rocicorp/zero`'s unused Prometheus exporter dependency; Send neither configures nor imports that exporter, and dependency remediation remains outside this release.
 
 ### T8 foundation evidence
 

@@ -710,6 +710,10 @@ Released on 2026-07-21 for authenticated internal Dashboard users:
   recovery from an injected partial object-delete failure after the retry window,
   terminal `deleted` state, exactly-once claim/deletion events, zero remaining objects,
   and zero reconciliation issues;
+- final source review added regression coverage for transient R2 metadata failures,
+  traversal-like key normalization, multipart abort recovery during an R2 outage, and
+  automatic publication refresh after single-upload sealing; the reviewed source is
+  recorded in commits `b00ef135`, `51332e4d`, and `fd348e5c`;
 - the reviewed focused release matrix passed 210 tests across 37 files, focused ESLint
   passed, and both the root and isolated production builds completed successfully.
 
