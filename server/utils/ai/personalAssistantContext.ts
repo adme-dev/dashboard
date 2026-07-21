@@ -3,6 +3,7 @@ import { queryOne as realQueryOne, queryRows as realQueryRows } from '~~/server/
 import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS, type PermissionGroup } from '~~/server/utils/permissions'
 import { resolveUserPermissions } from '~~/server/utils/roleResolver'
 import {
+  composeGovernedCatalog,
   loadCatalogControlRows,
   type ActiveCatalogRow,
   type CatalogCompositionDb
@@ -77,6 +78,7 @@ export interface PersonalAssistantContext {
     packVersionId: string
     packKey: string
   }>
+  catalogInstructionsPreamble: string
   /** Internal governance material used to narrow the runtime tool registry. Never send to clients. */
   catalogRows: ActiveCatalogRow[]
 }
@@ -306,6 +308,8 @@ export async function resolvePersonalAssistantContext(
     })
   }
   const activePacks = [...activePackMap.values()]
+  const catalogInstructionsPreamble = composeGovernedCatalog([], catalogRows, permissionGroups)
+    .instructionsPreamble
 
   return {
     identity: { userId: identity.id, role: identity.role },
@@ -318,6 +322,7 @@ export async function resolvePersonalAssistantContext(
     },
     preferences,
     activePacks,
+    catalogInstructionsPreamble,
     catalogRows
   }
 }

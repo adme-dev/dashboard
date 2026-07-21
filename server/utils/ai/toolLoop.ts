@@ -7,6 +7,11 @@ import { spotlightSystemClause } from './spotlight'
 import type { ToolContext } from './toolContext'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 import { resolveAiModelAssignment, type RuntimeModelProvider } from '~~/server/utils/ai/modelAssignments'
+import {
+  composeEffectiveAssistantTools,
+  type ActiveCatalogRow
+} from '~~/server/utils/ai/governance/catalogComposition'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 
 export interface LoopOutput {
   text: string
@@ -108,6 +113,12 @@ export async function runToolLoop(opts: {
   readOnly?: boolean
   /** The user's self-disabled tools (config narrows, never grants — applied by subtraction). */
   disabledTools?: string[]
+  /** Evaluated release controls for the actor's server-derived department scope. */
+  catalogRows?: ActiveCatalogRow[]
+  /** Current server-resolved permissions used as an additional catalog capability gate. */
+  permissionGroups?: PermissionGroup[]
+  /** Avoid repeating the catalog preamble when a caller already included it for its fast path. */
+  catalogInstructionsAlreadyIncluded?: boolean
   /** Model Ops telemetry metadata. Content/prompts are never recorded. */
   featureKey?: string
   clientId?: string | null
@@ -118,27 +129,37 @@ export async function runToolLoop(opts: {
   const cfg = useRuntimeConfig() as any
   const persona = opts.persona ?? DEFAULT_PERSONA
 
-  let tools = filterToolsForUser(registry, opts.ctx.userRole)
-  if (persona.toolAllowlist) tools = tools.filter(t => persona.toolAllowlist!.includes(t.name))
-  if (opts.readOnly) tools = tools.filter(t => !t.mutates)
-  // Self-service config (spec §4a): subtract the user's disabled tools. Applied LAST, over the
-  // RBAC+persona set, so it can only ever remove — never grant a tool the role lacks.
-  if (opts.disabledTools?.length) tools = tools.filter(t => !opts.disabledTools!.includes(t.name))
+  const composition = composeEffectiveAssistantTools({
+    rbacFilteredTools: filterToolsForUser(registry, opts.ctx.userRole),
+    catalogRows: opts.catalogRows ?? [],
+    grantedPermissionGroups: opts.permissionGroups ?? [],
+    personaToolAllowlist: persona.toolAllowlist,
+    readOnly: opts.readOnly,
+    disabledTools: opts.disabledTools
+  })
+  const tools = composition.tools
   const sdkTools = toSdkTools(tools, opts.ctx, opts.seed)
 
-  const system = [opts.system, persona.instructionsPreamble, spotlightSystemClause()]
+  const system = [
+    opts.system,
+    opts.catalogInstructionsAlreadyIncluded ? '' : composition.instructionsPreamble,
+    persona.instructionsPreamble,
+    spotlightSystemClause()
+  ]
     .filter(Boolean)
     .join('\n\n')
 
   // Fresh deadline per attempt: if a caller signal is injected both attempts share it, otherwise
   // each gets its own timeout so a primary TIMEOUT doesn't instantly abort the fallback too.
+  const deadlineMs = Math.min(DEADLINE_MS, composition.budget?.maxLatencyMs ?? DEADLINE_MS)
   const run = (m: LanguageModel) => generateText({
     model: m,
     system,
     messages: opts.messages,
     tools: sdkTools,
     stopWhen: [stepCountIs(STEP_CAP)],
-    abortSignal: opts.signal ?? AbortSignal.timeout(DEADLINE_MS),
+    abortSignal: opts.signal ?? AbortSignal.timeout(deadlineMs),
+    maxOutputTokens: composition.budget?.maxOutputTokens,
     // OTel GenAI spans — metadata only (no prompt/arg/output capture). No-op unless a tracer is registered.
     experimental_telemetry: { isEnabled: true, recordInputs: false, recordOutputs: false, functionId: 'ai-tool-loop' },
   })
@@ -197,6 +218,11 @@ export async function runToolLoop(opts: {
       persona: persona.key,
       readOnly: Boolean(opts.readOnly),
       toolCount: tools.length,
+      catalogMode: composition.mode,
+      catalogReleaseIds: composition.releaseIds,
+      catalogPackVersionIds: composition.packVersionIds,
+      catalogCapabilityVersionIds: composition.capabilityVersionIds,
+      catalogDenials: composition.denials.slice(0, 100),
       toolCalls: out.toolCalls.map((call) => call.name).slice(0, 20),
       proposedTool: out.proposedAction?.toolName ?? null,
       injectedModel: Boolean(opts.model),

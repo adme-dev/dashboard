@@ -382,4 +382,55 @@ describe('aiContextRetriever — composite scoring', () => {
     // Items with ~150 tokens each, budget is 3000, so should cap around 20
     expect(result.items.length).toBeLessThan(30)
   })
+
+  it('applies server-derived department and assigned-client scope to retrieval queries', async () => {
+    mockedClassifyIntent.mockResolvedValue({
+      intent: 'search',
+      confidence: 0.9,
+      entities: ['Example Client']
+    })
+    mockedQueryRows.mockResolvedValue([])
+
+    await retrieveContext('user-1', 'creative', 'find Example Client', undefined, undefined, {
+      departmentIds: ['10000000-0000-4000-8000-000000000001'],
+      clientAccess: {
+        mode: 'assigned',
+        assignedClientIds: ['60000000-0000-4000-8000-000000000001']
+      },
+      permissionGroups: ['CREATIVE']
+    })
+
+    const taskCall = mockedQueryRows.mock.calls.find(([sql]) => String(sql).includes('FROM tasks t'))
+    expect(taskCall?.[0]).toContain('t.department_id = ANY($3::uuid[])')
+    expect(taskCall?.[1]).toEqual([
+      'find|example|client',
+      'user-1',
+      ['10000000-0000-4000-8000-000000000001']
+    ])
+
+    const clientCall = mockedQueryRows.mock.calls.find(([sql]) => String(sql).includes('FROM agency_clients c'))
+    expect(clientCall?.[0]).toContain('c.id = ANY($2::uuid[])')
+    expect(clientCall?.[1]).toEqual([
+      'find|example|client',
+      ['60000000-0000-4000-8000-000000000001']
+    ])
+  })
+
+  it('does not retrieve finance or team context without the required permission groups', async () => {
+    for (const intent of ['financial_query', 'team_query'] as const) {
+      vi.clearAllMocks()
+      mockedSearchSimilar.mockResolvedValue([])
+      mockedClassifyIntent.mockResolvedValue({ intent, confidence: 0.95, entities: [] })
+      mockedQueryRows.mockResolvedValue([])
+
+      await retrieveContext('user-1', 'creative', `restricted ${intent}`, undefined, undefined, {
+        departmentIds: ['10000000-0000-4000-8000-000000000001'],
+        clientAccess: { mode: 'assigned', assignedClientIds: [] },
+        permissionGroups: ['CREATIVE']
+      })
+
+      expect(mockedQueryRows.mock.calls.some(([sql]) =>
+        String(sql).includes('media_spend') || String(sql).includes('FROM team_members tm'))).toBe(false)
+    }
+  })
 })

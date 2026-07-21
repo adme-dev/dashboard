@@ -16,6 +16,14 @@ export type ToolContext = {
   conversationId?: string
   /** Origin of the call. Non-chat surfaces persist proposals with conversation_id NULL and source set. */
   source?: 'chat' | 'mcp' | 'social_inbox'
+  /** Server-derived admission scope. This is a narrowing hint for handlers and never authorizes a
+   * model-supplied identifier by itself; handlers must still enforce their storage-level ACL. */
+  assistantScope?: {
+    departmentIds: string[]
+    clientAccessMode: 'all_active' | 'assigned'
+    assignedClientIds: string[]
+    catalogReleaseIds: string[]
+  }
   /** Optional — set when the co-pilot is docked in a virtual office room (Mode A). Read-only context;
    *  membership is verified server-side before these are populated (see office/roomContext.ts §7). */
   officeId?: string

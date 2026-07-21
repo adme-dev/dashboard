@@ -7,7 +7,10 @@ import { getRelevantPatterns } from '~~/server/utils/aiFeedbackProcessor'
 import { shouldUseToolLoop } from '~~/server/utils/ai/gate'
 import { resolvePersona } from '~~/server/utils/ai/personas'
 import { selectSkillPack } from '~~/server/utils/ai/controller/route'
-import { getAgentConfig } from '~~/server/utils/ai/agentConfig'
+import {
+  renderPersonalAssistantContext,
+  resolvePersonalAssistantContext
+} from '~~/server/utils/ai/personalAssistantContext'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -338,7 +341,7 @@ async function fetchMentionedEntities(
 export async function processUserMessage(
   conversationId: string,
   userId: string,
-  userRole: string,
+  _callerUserRole: string,
   content: string,
   event?: H3Event,
   mentionedEntities?: Array<{ type: string; id: string }>,
@@ -347,6 +350,12 @@ export async function processUserMessage(
   room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
 ): Promise<ChatResponse> {
   const startTime = Date.now()
+  // Re-admit the actor from current server state for every turn. This is the authority source for
+  // role, departments, clients, personal narrowing, and evaluated catalog releases; the role passed
+  // by older callers is deliberately not trusted as the runtime authorization decision.
+  const assistantContext = await resolvePersonalAssistantContext({ userId, event })
+  const effectiveUserRole = assistantContext.identity.role
+  const agentConfig = assistantContext.preferences
   // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
   // picker) or the persona persisted on the conversation wins and sticks; otherwise the L1 traffic
   // controller auto-selects by intent+role AFTER context retrieval (below). Resolve the pinned choice
@@ -357,6 +366,7 @@ export async function processUserMessage(
       `SELECT system_context FROM ai_conversations WHERE id = $1`, [conversationId])
     explicitOrPersisted = (convRow?.system_context as any)?.persona ?? null
   }
+  explicitOrPersisted ??= agentConfig.personaKey
   // Persist an explicit choice (migration-free: system_context JSONB) so it sticks across reloads and
   // for the voice/quick-action paths. Non-fatal if persistence fails.
   if (persona && event) {
@@ -367,10 +377,6 @@ export async function processUserMessage(
       [conversationId, resolvePersona(persona).key],
     ).catch(() => {})
   }
-
-  // Self-service config (spec §4a): the user's "My Assistant" settings — disabled tools (subtracted
-  // from the tool set, never added) and a memory on/off toggle. Fail-safe (null when none/on error).
-  const agentConfig = await getAgentConfig(userId)
 
   // 1. Load recent conversation history (last 10 messages)
   const historyRows = await queryRows(`
@@ -387,7 +393,21 @@ export async function processUserMessage(
   }))
 
   // 2. Retrieve relevant context (now intent-aware with relevance scoring)
-  const contextBundle = await retrieveContext(userId, userRole, content, event, boardId)
+  const contextBundle = await retrieveContext(
+    userId,
+    effectiveUserRole,
+    content,
+    event,
+    boardId,
+    {
+      departmentIds: assistantContext.departments.map(department => department.departmentId),
+      clientAccess: {
+        mode: assistantContext.clientScope.mode,
+        assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId)
+      },
+      permissionGroups: assistantContext.permissionGroups
+    }
+  )
   const contextSources: AiContextSource[] = contextBundle.items.map(item => ({
     type: item.type,
     id: item.id,
@@ -400,7 +420,7 @@ export async function processUserMessage(
   // intent+role unless the user pinned one. Pure + total (explicit → intent → role-default → generalist),
   // so it never throws and the role-default is always honored. Per-turn routing (a finance question
   // routes to Finance for this turn); RBAC still governs the actual tools.
-  const routed = selectSkillPack({ intent: contextBundle.intent, userRole }, explicitOrPersisted)
+  const routed = selectSkillPack({ intent: contextBundle.intent, userRole: effectiveUserRole }, explicitOrPersisted)
   const activePersona = resolvePersona(routed.persona)
 
   // 2b. Fetch explicitly mentioned entities and pin them to top of context
@@ -433,18 +453,22 @@ export async function processUserMessage(
     ? new Set(mentionedEntities.map(e => e.id))
     : undefined
   let systemPrompt = buildSystemPrompt(
-    userRole,
+    effectiveUserRole,
     contextSources,
     learnedPatternStrings,
     contextBundle.intent,
     pinnedIds,
   )
+  systemPrompt = `${systemPrompt}\n\n${renderPersonalAssistantContext(assistantContext)}`
+  if (assistantContext.catalogInstructionsPreamble) {
+    systemPrompt = `${systemPrompt}\n\n${assistantContext.catalogInstructionsPreamble}`
+  }
 
   // 4b. Personal memory (Phase-0 WS-A): prepend the user's recalled facts/routines/preferences.
   // Strictly user-scoped (cross-user isolation enforced in orchestrate.ts) and best-effort — any
   // failure leaves the prompt unchanged so a turn never breaks on memory. Flows into BOTH the tool
   // loop and the fast path below since they read `systemPrompt`.
-  if (agentConfig?.memoryEnabled !== false) {
+  if (agentConfig.memoryEnabled !== false) {
     try {
       const { buildUserMemoryBlock } = await import('~~/server/utils/ai/memory/orchestrate')
       const memoryBlock = await buildUserMemoryBlock({ userId, query: content, event })
@@ -550,15 +574,31 @@ export async function processUserMessage(
               metadata: { route: 'aiChatEngine', conversationId },
             }),
           })
-          const plan = cls.tier === 'L2' ? planSpecialists(cls.domains, userRole) : { personas: [] }
+          const plan = cls.tier === 'L2' ? planSpecialists(cls.domains, effectiveUserRole) : { personas: [] }
           if (plan.personas.length >= 2) {
             const results = await delegateToSpecialists(plan.personas, {
               runLoop: async (pk) => {
                 const sub = await runToolLoop({
-                  ctx: { userId, userRole, conversationId, event, officeId: roomCtx?.officeId, meetingId: roomCtx?.meetingId },
+                  ctx: {
+                    userId,
+                    userRole: effectiveUserRole,
+                    conversationId,
+                    event,
+                    assistantScope: {
+                      departmentIds: assistantContext.departments.map(department => department.departmentId),
+                      clientAccessMode: assistantContext.clientScope.mode,
+                      assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId),
+                      catalogReleaseIds: assistantContext.catalogRows.map(row => row.releaseId)
+                    },
+                    officeId: roomCtx?.officeId,
+                    meetingId: roomCtx?.meetingId
+                  },
                   system: systemPrompt, messages: loopMessages, seed: `${conversationId}:${pk}`, persona: resolvePersona(pk),
                   readOnly: true, // L2 specialists READ only — never persist a write proposal
-                  disabledTools: agentConfig?.disabledTools,
+                  disabledTools: agentConfig.disabledTools,
+                  catalogRows: assistantContext.catalogRows,
+                  permissionGroups: assistantContext.permissionGroups,
+                  catalogInstructionsAlreadyIncluded: true,
                   featureKey: 'agency_ai_l2_specialist_loop',
                   requestId: conversationId,
                   metadata: { specialistPersona: pk, controller: 'l2' },
@@ -601,12 +641,28 @@ export async function processUserMessage(
         toolCostUsd = l2Cost || null
       } else {
         const loop = await runToolLoop({
-          ctx: { userId, userRole, conversationId, event, officeId: roomCtx?.officeId, meetingId: roomCtx?.meetingId },
+          ctx: {
+            userId,
+            userRole: effectiveUserRole,
+            conversationId,
+            event,
+            assistantScope: {
+              departmentIds: assistantContext.departments.map(department => department.departmentId),
+              clientAccessMode: assistantContext.clientScope.mode,
+              assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId),
+              catalogReleaseIds: assistantContext.catalogRows.map(row => row.releaseId)
+            },
+            officeId: roomCtx?.officeId,
+            meetingId: roomCtx?.meetingId
+          },
           system: systemPrompt,
           messages: loopMessages,
           seed: conversationId,
           persona: activePersona,
-          disabledTools: agentConfig?.disabledTools,
+          disabledTools: agentConfig.disabledTools,
+          catalogRows: assistantContext.catalogRows,
+          permissionGroups: assistantContext.permissionGroups,
+          catalogInstructionsAlreadyIncluded: true,
         })
         aiContent = loop.text
         toolTrace = loop.toolCalls

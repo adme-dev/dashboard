@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { classifyIntent, type AiIntent } from '~~/server/utils/aiIntentClassifier'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
@@ -21,6 +22,16 @@ export interface ContextBundle {
   intent: AiIntent
   intentConfidence: number
   entities: string[]
+}
+
+/** Server-derived narrowing applied before any context leaves storage. Omitted for legacy callers. */
+export interface AssistantRetrievalScope {
+  departmentIds: string[]
+  clientAccess: {
+    mode: 'all_active' | 'assigned'
+    assignedClientIds: string[]
+  }
+  permissionGroups: PermissionGroup[]
 }
 
 // Simple keyword extraction from user question
@@ -109,7 +120,12 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
-async function searchTasks(userId: string, keywords: string[]): Promise<ContextItem[]> {
+async function searchTasks(
+  userId: string,
+  keywords: string[],
+  departmentIds?: string[]
+): Promise<ContextItem[]> {
+  if (departmentIds && departmentIds.length === 0) return []
   if (keywords.length === 0) {
     // Fallback: get user's recently assigned tasks
     const rows = await queryRows(`
@@ -119,9 +135,10 @@ async function searchTasks(userId: string, keywords: string[]): Promise<ContextI
       JOIN departments d ON t.department_id = d.id
       WHERE t.assignee_id = $1
         AND t.parent_task_id IS NULL
+        ${departmentIds ? 'AND t.department_id = ANY($2::uuid[])' : ''}
       ORDER BY t.updated_at DESC
       LIMIT 5
-    `, [userId])
+    `, departmentIds ? [userId, departmentIds] : [userId])
 
     return rows.map(r => ({
       type: 'task',
@@ -140,6 +157,7 @@ async function searchTasks(userId: string, keywords: string[]): Promise<ContextI
     FROM tasks t
     JOIN departments d ON t.department_id = d.id
     WHERE t.parent_task_id IS NULL
+      ${departmentIds ? 'AND t.department_id = ANY($3::uuid[])' : ''}
       AND (
         t.name ~* $1
         OR t.description ~* $1
@@ -149,7 +167,7 @@ async function searchTasks(userId: string, keywords: string[]): Promise<ContextI
       CASE WHEN t.assignee_id = $2 THEN 0 ELSE 1 END,
       t.updated_at DESC
     LIMIT 5
-  `, [pattern, userId])
+  `, departmentIds ? [pattern, userId, departmentIds] : [pattern, userId])
 
   return rows.map(r => ({
     type: 'task',
@@ -161,7 +179,11 @@ async function searchTasks(userId: string, keywords: string[]): Promise<ContextI
   }))
 }
 
-async function searchBriefs(keywords: string[]): Promise<ContextItem[]> {
+async function searchBriefs(
+  keywords: string[],
+  clientAccess?: AssistantRetrievalScope['clientAccess']
+): Promise<ContextItem[]> {
+  if (clientAccess?.mode === 'assigned' && clientAccess.assignedClientIds.length === 0) return []
   const pattern = keywords.length > 0 ? keywords.join('|') : '.*'
   const rows = await queryRows(`
     SELECT b.id, b.title, b.status, b.reference_number, b.priority,
@@ -184,16 +206,20 @@ async function searchBriefs(keywords: string[]): Promise<ContextItem[]> {
     LEFT JOIN brief_templates bt ON b.template_id = bt.id
     LEFT JOIN brief_categories bc ON bt.category_id = bc.id
     LEFT JOIN users u ON b.assigned_to = u.id
-    WHERE b.title ~* $1
-       OR c.name ~* $1
-       OR b.reference_number ~* $1
-       OR EXISTS (
-         SELECT 1 FROM brief_field_values bfv
-         WHERE bfv.brief_id = b.id AND bfv.value ~* $1
-       )
+    WHERE (
+      b.title ~* $1
+      OR c.name ~* $1
+      OR b.reference_number ~* $1
+      OR EXISTS (
+        SELECT 1 FROM brief_field_values bfv
+        WHERE bfv.brief_id = b.id AND bfv.value ~* $1
+      )
+    )
+      ${clientAccess?.mode === 'assigned' ? 'AND b.client_id = ANY($2::uuid[])' : ''}
+      ${clientAccess?.mode === 'all_active' ? 'AND c.is_active = TRUE' : ''}
     ORDER BY b.updated_at DESC NULLS LAST
     LIMIT 8
-  `, [pattern])
+  `, clientAccess?.mode === 'assigned' ? [pattern, clientAccess.assignedClientIds] : [pattern])
 
   return rows.map(r => {
     const parts = [
@@ -218,7 +244,8 @@ async function searchBriefs(keywords: string[]): Promise<ContextItem[]> {
   })
 }
 
-async function searchBoards(userId: string): Promise<ContextItem[]> {
+async function searchBoards(userId: string, departmentIds?: string[]): Promise<ContextItem[]> {
+  if (departmentIds && departmentIds.length === 0) return []
   const rows = await queryRows(`
     SELECT d.id, d.name, d.description,
            COUNT(t.id) FILTER (WHERE t.parent_task_id IS NULL) as task_count,
@@ -227,11 +254,11 @@ async function searchBoards(userId: string): Promise<ContextItem[]> {
     FROM departments d
     LEFT JOIN tasks t ON t.department_id = d.id
     LEFT JOIN department_members dm ON dm.department_id = d.id AND dm.team_member_id = $1
-    WHERE dm.team_member_id IS NOT NULL OR d.manager_id = $1
+    WHERE ${departmentIds ? 'd.id = ANY($2::uuid[])' : '(dm.team_member_id IS NOT NULL OR d.manager_id = $1)'}
     GROUP BY d.id, d.name, d.description
     ORDER BY MAX(t.updated_at) DESC NULLS LAST
     LIMIT 5
-  `, [userId])
+  `, departmentIds ? [userId, departmentIds] : [userId])
 
   return rows.map(r => ({
     type: 'board',
@@ -243,7 +270,11 @@ async function searchBoards(userId: string): Promise<ContextItem[]> {
   }))
 }
 
-async function searchClients(keywords: string[]): Promise<ContextItem[]> {
+async function searchClients(
+  keywords: string[],
+  clientAccess?: AssistantRetrievalScope['clientAccess']
+): Promise<ContextItem[]> {
+  if (clientAccess?.mode === 'assigned' && clientAccess.assignedClientIds.length === 0) return []
   const pattern = keywords.length > 0 ? keywords.join('|') : '.*'
   const rows = await queryRows(`
     SELECT c.id, c.name, c.is_active, c.created_at,
@@ -251,10 +282,12 @@ async function searchClients(keywords: string[]): Promise<ContextItem[]> {
     FROM agency_clients c
     LEFT JOIN briefs b ON b.client_id = c.id
     WHERE c.name ~* $1
+      ${clientAccess?.mode === 'assigned' ? 'AND c.id = ANY($2::uuid[])' : ''}
+      ${clientAccess ? 'AND c.is_active = TRUE' : ''}
     GROUP BY c.id, c.name, c.is_active, c.created_at
     ORDER BY c.name ASC
     LIMIT 5
-  `, [pattern])
+  `, clientAccess?.mode === 'assigned' ? [pattern, clientAccess.assignedClientIds] : [pattern])
 
   return rows.map(r => ({
     type: 'client',
@@ -978,6 +1011,7 @@ export async function retrieveContext(
   question: string,
   event?: H3Event,
   boardId?: string,
+  scope?: AssistantRetrievalScope
 ): Promise<ContextBundle> {
   const keywords = extractKeywords(question)
 
@@ -991,19 +1025,24 @@ export async function retrieveContext(
     sources.add('tasks')
   }
 
+  // High-sensitivity sources require explicit current permissions when governed scope is present.
+  // Legacy callers retain their existing behavior until they are migrated to server-derived scope.
+  if (scope && !scope.permissionGroups.includes('FINANCE')) sources.delete('financial')
+  if (scope && !scope.permissionGroups.includes('MANAGEMENT')) sources.delete('team')
+
   const queryPromises: Promise<ContextItem[]>[] = []
 
   if (sources.has('tasks')) {
-    queryPromises.push(searchTasks(userId, keywords).catch(() => []))
+    queryPromises.push(searchTasks(userId, keywords, scope?.departmentIds).catch(() => []))
   }
   if (sources.has('briefs')) {
-    queryPromises.push(searchBriefs(keywords).catch(() => []))
+    queryPromises.push(searchBriefs(keywords, scope?.clientAccess).catch(() => []))
   }
   if (sources.has('boards')) {
-    queryPromises.push(searchBoards(userId).catch(() => []))
+    queryPromises.push(searchBoards(userId, scope?.departmentIds).catch(() => []))
   }
   if (sources.has('clients')) {
-    queryPromises.push(searchClients(keywords).catch(() => []))
+    queryPromises.push(searchClients(keywords, scope?.clientAccess).catch(() => []))
   }
   if (sources.has('financial')) {
     queryPromises.push(searchFinancial(keywords, question, event).catch(() => []))
