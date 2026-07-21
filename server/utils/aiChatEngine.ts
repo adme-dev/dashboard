@@ -11,6 +11,7 @@ import {
   renderPersonalAssistantContext,
   resolvePersonalAssistantContext
 } from '~~/server/utils/ai/personalAssistantContext'
+import { fetchScopedMentionedEntities } from '~~/server/utils/ai/mentionedEntityContext'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -209,135 +210,6 @@ function mapMessageRow(row: any): AiMessage {
   }
 }
 
-/**
- * Fetch full details for explicitly @mentioned entities.
- * These get pinned to the top of context so the AI has precise data
- * about what the user is referencing.
- */
-async function fetchMentionedEntities(
-  entities: Array<{ type: string; id: string }>
-): Promise<AiContextSource[]> {
-  const results: AiContextSource[] = []
-
-  for (const entity of entities) {
-    try {
-      let row: any = null
-
-      switch (entity.type) {
-        case 'task':
-          row = await queryOne(`
-            SELECT t.id, t.title, t.status, t.description, t.due_date,
-                   p.name as project_name,
-                   tm.name as assignee_name
-            FROM tasks t
-            LEFT JOIN projects p ON p.id = t.project_id
-            LEFT JOIN team_members tm ON tm.id = t.assignee_id
-            WHERE t.id = $1
-          `, [entity.id])
-          if (row) {
-            const parts = [
-              `Status: ${row.status || 'todo'}`,
-              row.project_name ? `Project: ${row.project_name}` : null,
-              row.assignee_name ? `Assignee: ${row.assignee_name}` : null,
-              row.due_date ? `Due: ${new Date(row.due_date).toLocaleDateString()}` : null,
-              row.description ? row.description.slice(0, 150) : null,
-            ].filter(Boolean)
-            results.push({
-              type: 'task',
-              id: row.id,
-              title: row.title,
-              snippet: parts.join(' | '),
-              url: `/agency/tasks/${row.id}`,
-            })
-          }
-          break
-
-        case 'client':
-          row = await queryOne(`
-            SELECT ac.id, ac.name, ac.is_active, ac.billing_type,
-                   COUNT(DISTINCT br.id)::int as brief_count
-            FROM agency_clients ac
-            LEFT JOIN briefs br ON br.client_id = ac.id
-            WHERE ac.id = $1
-            GROUP BY ac.id
-          `, [entity.id])
-          if (row) {
-            const parts = [
-              `Status: ${row.is_active ? 'active' : 'inactive'}`,
-              row.billing_type ? `Billing: ${row.billing_type}` : null,
-              `${row.brief_count} brief${row.brief_count === 1 ? '' : 's'}`,
-            ].filter(Boolean)
-            results.push({
-              type: 'client',
-              id: row.id,
-              title: row.name,
-              snippet: parts.join(' | '),
-              url: `/agency/clients/${row.id}`,
-            })
-          }
-          break
-
-        case 'project':
-          row = await queryOne(`
-            SELECT p.id, p.name, p.status, p.description, p.budget_amount,
-                   ac.name as client_name,
-                   COUNT(t.id)::int as task_count
-            FROM projects p
-            LEFT JOIN agency_clients ac ON ac.id = p.client_id
-            LEFT JOIN tasks t ON t.project_id = p.id
-            WHERE p.id = $1
-            GROUP BY p.id, ac.name
-          `, [entity.id])
-          if (row) {
-            const parts = [
-              `Status: ${row.status || 'draft'}`,
-              row.client_name ? `Client: ${row.client_name}` : null,
-              `${row.task_count} tasks`,
-              row.budget_amount ? `Budget: $${Number(row.budget_amount).toLocaleString()}` : null,
-              row.description ? row.description.slice(0, 100) : null,
-            ].filter(Boolean)
-            results.push({
-              type: 'project',
-              id: row.id,
-              title: row.name,
-              snippet: parts.join(' | '),
-              url: `/agency/projects/${row.id}`,
-            })
-          }
-          break
-
-        case 'brief':
-          row = await queryOne(`
-            SELECT br.id, br.title, br.status, br.description,
-                   ac.name as client_name
-            FROM briefs br
-            LEFT JOIN agency_clients ac ON ac.id = br.client_id
-            WHERE br.id = $1
-          `, [entity.id])
-          if (row) {
-            const parts = [
-              `Status: ${row.status || 'draft'}`,
-              row.client_name ? `Client: ${row.client_name}` : null,
-              row.description ? row.description.slice(0, 100) : null,
-            ].filter(Boolean)
-            results.push({
-              type: 'brief',
-              id: row.id,
-              title: row.title,
-              snippet: parts.join(' | '),
-              url: `/agency/briefs/${row.id}`,
-            })
-          }
-          break
-      }
-    } catch (err) {
-      console.error(`Failed to fetch mentioned entity ${entity.type}:${entity.id}`, err)
-    }
-  }
-
-  return results
-}
-
 export async function processUserMessage(
   conversationId: string,
   userId: string,
@@ -425,7 +297,7 @@ export async function processUserMessage(
 
   // 2b. Fetch explicitly mentioned entities and pin them to top of context
   if (mentionedEntities && mentionedEntities.length > 0) {
-    const pinnedSources = await fetchMentionedEntities(mentionedEntities)
+    const pinnedSources = await fetchScopedMentionedEntities(mentionedEntities, assistantContext)
     // Deduplicate: remove any auto-retrieved items that match pinned ones
     const pinnedIds = new Set(pinnedSources.map(s => s.id))
     const dedupedContext = contextSources.filter(s => !pinnedIds.has(s.id))
