@@ -51,6 +51,9 @@ function intentRow(overrides: Record<string, unknown> = {}) {
     expected_mime_type: 'application/pdf',
     original_filename: 'launch-plan.pdf',
     display_filename: 'launch-plan.pdf',
+    upload_method: 'single',
+    multipart_upload_id: null,
+    multipart_part_size_bytes: null,
     status: 'pending',
     file_state: 'uploading',
     capability_nonce_hash: CAPABILITY_HASH,
@@ -181,7 +184,7 @@ describe('workspace Send upload service', () => {
         }
         if (/UPDATE send_files/.test(sql)) return { rows: [intentRow({
           status: 'completed',
-          file_state: 'uploaded',
+          file_state: 'quarantined',
           completed_at: NOW,
           actual_size_bytes: 2048,
           actual_mime_type: 'application/pdf',
@@ -211,9 +214,13 @@ describe('workspace Send upload service', () => {
       intentId: INTENT_ID,
       capability: CAPABILITY,
       now: NOW
-    })).resolves.toMatchObject({ state: 'uploaded', size: 2048, contentType: 'application/pdf' })
+    })).resolves.toMatchObject({ state: 'quarantined', size: 2048, contentType: 'application/pdf' })
 
     expect(db.query.mock.calls.filter(([sql]) => /actual_file_count = actual_file_count \+ 1/.test(String(sql)))).toHaveLength(1)
+    expect(db.query.mock.calls).toContainEqual([
+      expect.stringMatching(/INSERT INTO send_scan_jobs/),
+      [TRANSFER_ID, FILE_ID, `send/${TRANSFER_ID}/${FILE_ID}`, 2048, 'application/pdf', 'etag-1', 'single', EXPIRES_AT.toISOString()]
+    ])
   })
 
   it.each([
