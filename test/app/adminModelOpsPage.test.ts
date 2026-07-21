@@ -2,7 +2,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Suspense, computed, createApp, createSSRApp, h, nextTick, ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import ModelOpsPage from '~~/app/pages/admin/ai/model-ops.vue'
 
 Object.assign(globalThis, {
   computed,
@@ -187,6 +186,10 @@ const agentRunsResponse = {
     orchestratorReadToolFailures: 0,
     platformAgentRuns: 1,
     platformAgentFailures: 0,
+    thinkTurnRuns: 1,
+    thinkTurnFailures: 0,
+    thinkToolFailures: 2,
+    thinkRecoveryExhausted: 1,
     platformAgentProposedActions: 2,
     platformAgentBlockedActions: 1,
     platformAgentAcceptedProposals: 1,
@@ -219,6 +222,14 @@ const agentRunsResponse = {
     featureKey: 'agent_spend_controller',
     proposedActionCount: 2,
     blockedActionCount: 1,
+    transport: 'cloudflare_think',
+    correlationId: 'correlation-123',
+    workerRequestId: 'worker-request-123',
+    modelId: '@cf/moonshotai/kimi-k2.7-code',
+    finishReason: 'stop',
+    toolFailureCount: 2,
+    failureStage: 'recovery',
+    recoveryExhausted: true,
     proposalDecisionCounts: {
       accepted: 1,
       rejected: 1,
@@ -238,6 +249,10 @@ const responses: Record<string, unknown> = {
 }
 
 const stubs = {
+  UDashboardPanel: {
+    name: 'UDashboardPanel',
+    template: '<main v-bind="$attrs"><slot name="body" /><slot /></main>',
+  },
   UAlert: {
     name: 'UAlert',
     props: ['title', 'description'],
@@ -289,13 +304,13 @@ async function flushAsyncUi() {
 }
 
 async function render(options: { modelMap?: typeof modelMapResponse } = {}) {
-  ;(globalThis as any).useFetch = vi.fn(async (url: string) => ({
-    data: ref(url === '/api/admin/ai/model-ops/model-map' ? options.modelMap ?? responses[url] : responses[url]),
-    pending: ref(false),
-    error: ref(null),
-    refresh: vi.fn(),
-  }))
-  ;(globalThis as any).$fetch = vi.fn()
+  ;(globalThis as any).$fetch = vi.fn(async (url: string) => (
+    url === '/api/admin/ai/model-ops/model-map'
+      ? options.modelMap ?? responses[url]
+      : responses[url]
+  ))
+  vi.resetModules()
+  const ModelOpsPage = (await import('~~/app/pages/admin/ai/model-ops.vue')).default
 
   const app = createSSRApp({ render: () => h(ModelOpsPage) })
   Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
@@ -309,6 +324,7 @@ async function mountPage(options: {
 } = {}) {
   const host = document.createElement('div')
   const refreshMocks: Record<string, ReturnType<typeof vi.fn>> = {}
+  const loadedUrls = new Set<string>()
   const fetchMock = options.fetchMock ?? vi.fn(async () => options.fetchResult ?? {
     ok: true,
     mode: 'manual_read_only_check',
@@ -321,17 +337,20 @@ async function mountPage(options: {
     results: [],
   })
 
-  ;(globalThis as any).useFetch = vi.fn(async (url: string) => {
-    const refresh = vi.fn()
-    refreshMocks[url] = refresh
-    return {
-      data: ref(url === '/api/admin/ai/model-ops/model-map' ? options.modelMap ?? responses[url] : responses[url]),
-      pending: ref(false),
-      error: ref(null),
-      refresh,
+  ;(globalThis as any).$fetch = vi.fn(async (url: string, requestOptions?: { method?: string }) => {
+    if (!requestOptions?.method && url in responses) {
+      const refresh = refreshMocks[url] ?? vi.fn()
+      refreshMocks[url] = refresh
+      if (loadedUrls.has(url)) refresh()
+      else loadedUrls.add(url)
+      return url === '/api/admin/ai/model-ops/model-map'
+        ? options.modelMap ?? responses[url]
+        : responses[url]
     }
+    return fetchMock(url, requestOptions)
   })
-  ;(globalThis as any).$fetch = fetchMock
+  vi.resetModules()
+  const ModelOpsPage = (await import('~~/app/pages/admin/ai/model-ops.vue')).default
 
   const app = createApp({
     render: () => h(Suspense, null, {
@@ -373,6 +392,16 @@ describe('Admin AI Model Ops page', () => {
     expect(html).toContain('Spend Controller')
     expect(html).toContain('Read-only + proposal drafts')
     expect(html).toContain('run-spend-1')
+  })
+
+  it('renders operator-visible Think failures, recovery exhaustion, and correlation', async () => {
+    const html = await render()
+
+    expect(html).toContain('Think turns')
+    expect(html).toContain('Tool failures')
+    expect(html).toContain('Recovery exhausted')
+    expect(html).toContain('correlation-123')
+    expect(html).toContain('@cf/moonshotai/kimi-k2.7-code')
   })
 
   it('renders the model assignment brief and editable assignment controls', async () => {

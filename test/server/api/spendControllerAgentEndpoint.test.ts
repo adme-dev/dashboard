@@ -8,6 +8,8 @@ const mockRecordCampaignAction = vi.fn()
 const mockStartRun = vi.fn()
 const mockCompleteRun = vi.fn()
 const mockFailRun = vi.fn()
+const mockResolveUserPlatformAgentAuthority = vi.fn()
+const mockResolveServicePlatformAgentAuthority = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
@@ -27,6 +29,11 @@ vi.mock('~~/server/utils/ai/platformAgentRuns', () => ({
   startPlatformAgentRun: (...args: unknown[]) => mockStartRun(...args),
   completePlatformAgentRun: (...args: unknown[]) => mockCompleteRun(...args),
   failPlatformAgentRun: (...args: unknown[]) => mockFailRun(...args),
+}))
+
+vi.mock('~~/server/utils/ai/platformAgentAuthority', () => ({
+  resolveUserPlatformAgentAuthority: (...args: unknown[]) => mockResolveUserPlatformAgentAuthority(...args),
+  resolveServicePlatformAgentAuthority: (...args: unknown[]) => mockResolveServicePlatformAgentAuthority(...args),
 }))
 
 ;(globalThis as any).defineEventHandler = (fn: any) => fn
@@ -53,14 +60,33 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
     mockStartRun.mockReset()
     mockCompleteRun.mockReset()
     mockFailRun.mockReset()
+    mockResolveUserPlatformAgentAuthority.mockReset()
+    mockResolveServicePlatformAgentAuthority.mockReset()
     mockRequireAuth.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' })
     mockRequireWriteAccess.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' })
+    mockResolveUserPlatformAgentAuthority.mockResolvedValue(Object.freeze({
+      actor: Object.freeze({ type: 'user', id: '11111111-1111-4111-8111-111111111111' }),
+      tenantId: null,
+      allowedClientIds: Object.freeze(['11111111-1111-4111-8111-111111111112']),
+      permissions: Object.freeze(['MEDIA_BUYING']),
+      correlationId: 'request-1',
+      source: 'authenticated_app',
+    }))
+    mockResolveServicePlatformAgentAuthority.mockResolvedValue(Object.freeze({
+      actor: Object.freeze({ type: 'service', id: 'cloudflare-platform-agents' }),
+      tenantId: null,
+      allowedClientIds: Object.freeze(['11111111-1111-4111-8111-111111111112']),
+      permissions: Object.freeze(['PLATFORM_AGENTS_SERVICE']),
+      correlationId: 'request-2',
+      source: 'authenticated_service',
+    }))
     mockStartRun.mockResolvedValue({ ok: true, runId: 'run-1' })
     mockCompleteRun.mockResolvedValue(undefined)
     mockFailRun.mockResolvedValue(undefined)
     mockQueryRows.mockResolvedValue([
       {
         media_spend_id: 'spend-1',
+        client_id: '11111111-1111-4111-8111-111111111112',
         client_name: 'Acme',
         platform: 'meta',
         campaign_id: 'camp-1',
@@ -104,14 +130,19 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
     } as any)
 
     expect(mockRequireAuth).toHaveBeenCalled()
-    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['2026-06', 'meta'])
+    expect(mockQueryRows.mock.calls[0]?.[0]).toContain('ms.client_id = ANY($2::uuid[])')
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual([
+      '2026-06',
+      ['11111111-1111-4111-8111-111111111112'],
+      'meta',
+    ])
     expect(mockStartRun).toHaveBeenCalledWith(expect.objectContaining({
       agentType: 'spend_controller',
       featureKey: 'agent_spend_controller',
       mode: 'read_only',
       route: '/agency/social/spend',
       prompt: 'What needs attention?',
-      context: { period: '2026-06', platform: 'meta' },
+      context: { period: '2026-06', platform: 'meta', clientScopeCount: 1 },
     }))
     expect(mockCompleteRun).toHaveBeenCalledWith(expect.objectContaining({
       runId: 'run-1',
@@ -129,6 +160,74 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
       },
     })
     expect(result.proposedActions).toEqual([])
+  })
+
+  it('rejects a client outside the authenticated authority before querying spend', async () => {
+    const handler = (await import('~~/server/api/agency/agents/spend-controller/ask.post')).default
+
+    await expect(handler({
+      body: {
+        prompt: 'Review another client.',
+        context: { clientId: '22222222-2222-4222-8222-222222222222' },
+      },
+    } as any)).rejects.toMatchObject({
+      code: 'CLIENT_SCOPE_VIOLATION',
+      statusCode: 403,
+    })
+    expect(mockQueryRows).not.toHaveBeenCalled()
+  })
+
+  it('returns only allowed-client outcomes when a spend source yields mixed rows', async () => {
+    mockQueryRows.mockResolvedValue([
+      {
+        media_spend_id: 'spend-a',
+        client_id: '11111111-1111-4111-8111-111111111112',
+        client_name: 'Tenant A Client',
+        platform: 'meta',
+        campaign_id: 'campaign-a',
+        campaign_name: 'Tenant A Campaign',
+        campaign_status: 'ACTIVE',
+        budget_allocated: '1000',
+        actual_spend: '2000',
+        impressions: '1000',
+        clicks: '100',
+        conversions: '1',
+        reach: '900',
+        frequency: '1.1',
+        period: '2026-07',
+        synced_at: '2026-07-21T00:00:00.000Z',
+        end_date: null,
+      },
+      {
+        media_spend_id: 'spend-b',
+        client_id: '22222222-2222-4222-8222-222222222222',
+        client_name: 'Tenant B Secret Client',
+        platform: 'meta',
+        campaign_id: 'campaign-b',
+        campaign_name: 'Tenant B Secret Campaign',
+        campaign_status: 'ACTIVE',
+        budget_allocated: '1000',
+        actual_spend: '2500',
+        impressions: '1000',
+        clicks: '100',
+        conversions: '1',
+        reach: '900',
+        frequency: '1.1',
+        period: '2026-07',
+        synced_at: '2026-07-21T00:00:00.000Z',
+        end_date: null,
+      },
+    ])
+
+    const handler = (await import('~~/server/api/agency/agents/spend-controller/ask.post')).default
+    const result = await handler({
+      body: { prompt: 'Review scoped spend.', context: { period: '2026-07' } },
+    } as any)
+
+    expect(result.findings.map((finding: any) => finding.title)).toEqual([
+      expect.stringContaining('Tenant A Client'),
+    ])
+    expect(JSON.stringify(result)).not.toContain('Tenant B Secret')
   })
 
   it('is disabled by default unless the feature flag is enabled', async () => {
@@ -226,12 +325,16 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
 
     expect(mockRequireAuth).not.toHaveBeenCalled()
     expect(mockRequireWriteAccess).not.toHaveBeenCalled()
-    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['2026-06', 'google_ads'])
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual([
+      '2026-06',
+      ['11111111-1111-4111-8111-111111111112'],
+      'google_ads',
+    ])
     expect(mockStartRun).toHaveBeenCalledWith(expect.objectContaining({
       mode: 'read_only',
       route: '/internal/platform-agents/spend-controller',
       userId: null,
-      context: { period: '2026-06', platform: 'google_ads' },
+      context: { period: '2026-06', platform: 'google_ads', clientScopeCount: 1 },
     }))
     expect(result.mode).toBe('read_only')
     expect(result.proposedActions).toEqual([])

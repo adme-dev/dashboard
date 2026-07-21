@@ -7,6 +7,7 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { resolveUserPlatformAgentAuthority } from '~~/server/utils/ai/platformAgentAuthority'
 
 interface CreateAlertBody {
   alertType: 'budget_threshold' | 'burn_rate' | 'projected_overrun' | 'time_exceeded' | 'expense_exceeded'
@@ -29,6 +30,15 @@ export default defineEventHandler(async (event) => {
 
   // Only admins and owners can create alerts
   await requireRole(event, ['owner', 'admin'])
+
+  const authority = await resolveUserPlatformAgentAuthority(event, {
+    permissionGroups: ['FINANCE'],
+    tenant: 'required',
+    clientAccess: 'all'
+  })
+  if (!authority.tenantId) {
+    throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
+  }
 
   const body = await readBody<CreateAlertBody>(event)
 
@@ -90,6 +100,7 @@ export default defineEventHandler(async (event) => {
 
     const alert = await queryOne(`
       INSERT INTO budget_alerts (
+        tenant_id,
         alert_type,
         severity,
         title,
@@ -105,9 +116,10 @@ export default defineEventHandler(async (event) => {
         burn_rate_daily,
         status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active')
       RETURNING *
     `, [
+      authority.tenantId,
       body.alertType,
       body.severity,
       body.title.trim(),
@@ -144,8 +156,8 @@ export default defineEventHandler(async (event) => {
         createdAt: alert.created_at
       }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to create budget alert:', error)
     throw createError({
       statusCode: 500,

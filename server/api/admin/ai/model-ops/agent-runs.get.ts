@@ -10,6 +10,10 @@ type AgentSummaryRow = {
   orchestrator_read_tool_failures: string | number | null
   platform_agent_runs: string | number | null
   platform_agent_failures: string | number | null
+  think_turn_runs: string | number | null
+  think_turn_failures: string | number | null
+  think_tool_failures: string | number | null
+  think_recovery_exhausted: string | number | null
   platform_agent_proposed_actions: string | number | null
   platform_agent_blocked_actions: string | number | null
   platform_agent_accepted_proposals: string | number | null
@@ -60,8 +64,8 @@ function errorCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0
 }
 
-function summaryObject(value: unknown): Record<string, any> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {}
+function summaryObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
 function isMissingAgentRunsError(error: unknown): boolean {
@@ -82,6 +86,10 @@ function unavailable(reason = 'AI agent run table is not available yet.') {
       orchestratorReadToolFailures: 0,
       platformAgentRuns: 0,
       platformAgentFailures: 0,
+      thinkTurnRuns: 0,
+      thinkTurnFailures: 0,
+      thinkToolFailures: 0,
+      thinkRecoveryExhausted: 0,
       platformAgentProposedActions: 0,
       platformAgentBlockedActions: 0,
       platformAgentAcceptedProposals: 0,
@@ -93,9 +101,9 @@ function unavailable(reason = 'AI agent run table is not available yet.') {
       totalNotifications: 0,
       avgDurationMs: 0,
       lastRunAt: null,
-      failureRate: 0,
+      failureRate: 0
     },
-    recent: [],
+    recent: []
   }
 }
 
@@ -114,6 +122,20 @@ export default eventHandler(async (event) => {
           COUNT(*) FILTER (WHERE r.run_type = 'ai_orchestrator_read_tool' AND r.status <> 'completed') AS orchestrator_read_tool_failures,
           COUNT(*) FILTER (WHERE r.summary->>'source' = 'platform_agent') AS platform_agent_runs,
           COUNT(*) FILTER (WHERE r.summary->>'source' = 'platform_agent' AND r.status <> 'completed') AS platform_agent_failures,
+          COUNT(*) FILTER (WHERE r.summary->>'transport' = 'cloudflare_think') AS think_turn_runs,
+          COUNT(*) FILTER (WHERE r.summary->>'transport' = 'cloudflare_think' AND r.status <> 'completed') AS think_turn_failures,
+          COALESCE(SUM(
+            CASE
+              WHEN r.summary->>'transport' = 'cloudflare_think'
+                AND COALESCE(r.summary->>'toolFailureCount', '') ~ '^[0-9]+$'
+              THEN (r.summary->>'toolFailureCount')::int
+              ELSE 0
+            END
+          ), 0) AS think_tool_failures,
+          COUNT(*) FILTER (
+            WHERE r.summary->>'transport' = 'cloudflare_think'
+              AND r.summary->>'recoveryExhausted' = 'true'
+          ) AS think_recovery_exhausted,
           COALESCE(SUM(NULLIF(r.summary->>'proposedActionCount', '')::int) FILTER (WHERE r.summary->>'source' = 'platform_agent'), 0) AS platform_agent_proposed_actions,
           COALESCE(SUM(NULLIF(r.summary->>'blockedActionCount', '')::int) FILTER (WHERE r.summary->>'source' = 'platform_agent'), 0) AS platform_agent_blocked_actions,
           (
@@ -202,7 +224,7 @@ export default eventHandler(async (event) => {
         GROUP BY r.id, action_counts.accepted_count, action_counts.rejected_count, action_counts.edited_count, action_counts.ignored_count
         ORDER BY r.created_at DESC
         LIMIT 25
-      `),
+      `)
     ])
 
     const summary = summaryRows[0]
@@ -221,6 +243,10 @@ export default eventHandler(async (event) => {
         orchestratorReadToolFailures: toNumber(summary?.orchestrator_read_tool_failures),
         platformAgentRuns: toNumber(summary?.platform_agent_runs),
         platformAgentFailures: toNumber(summary?.platform_agent_failures),
+        thinkTurnRuns: toNumber(summary?.think_turn_runs),
+        thinkTurnFailures: toNumber(summary?.think_turn_failures),
+        thinkToolFailures: toNumber(summary?.think_tool_failures),
+        thinkRecoveryExhausted: toNumber(summary?.think_recovery_exhausted),
         platformAgentProposedActions: toNumber(summary?.platform_agent_proposed_actions),
         platformAgentBlockedActions: toNumber(summary?.platform_agent_blocked_actions),
         platformAgentAcceptedProposals: toNumber(summary?.platform_agent_accepted_proposals),
@@ -232,7 +258,7 @@ export default eventHandler(async (event) => {
         totalNotifications: toNumber(summary?.total_notifications),
         avgDurationMs: Math.round(toNumber(summary?.avg_duration_ms)),
         lastRunAt: summary?.last_run_at ?? null,
-        failureRate: totalRuns > 0 ? failedRuns / totalRuns : 0,
+        failureRate: totalRuns > 0 ? failedRuns / totalRuns : 0
       },
       recent: recentRows.map((row) => {
         const summary = summaryObject(row.summary)
@@ -255,16 +281,24 @@ export default eventHandler(async (event) => {
           featureKey: typeof summary.featureKey === 'string' ? summary.featureKey : null,
           proposedActionCount: toNumber(summary.proposedActionCount),
           blockedActionCount: toNumber(summary.blockedActionCount),
+          transport: typeof summary.transport === 'string' ? summary.transport : null,
+          correlationId: typeof summary.correlationId === 'string' ? summary.correlationId : null,
+          workerRequestId: typeof summary.workerRequestId === 'string' ? summary.workerRequestId : null,
+          modelId: typeof summary.modelId === 'string' ? summary.modelId : null,
+          finishReason: typeof summary.finishReason === 'string' ? summary.finishReason : null,
+          toolFailureCount: toNumber(summary.toolFailureCount),
+          failureStage: typeof summary.failureStage === 'string' ? summary.failureStage : null,
+          recoveryExhausted: summary.recoveryExhausted === true,
           proposalDecisionCounts: {
             accepted: toNumber(row.proposal_accepted_count),
             rejected: toNumber(row.proposal_rejected_count),
             edited: toNumber(row.proposal_edited_count),
-            ignored: toNumber(row.proposal_ignored_count),
+            ignored: toNumber(row.proposal_ignored_count)
           },
           summary,
-          createdAt: row.created_at,
+          createdAt: row.created_at
         }
-      }),
+      })
     }
   } catch (error) {
     if (isMissingAgentRunsError(error)) {

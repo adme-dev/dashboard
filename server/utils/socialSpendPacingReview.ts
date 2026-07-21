@@ -18,6 +18,7 @@ export type PacingReviewSeverity = 'critical' | 'warning' | 'info'
 
 export interface PacingReviewRow {
   media_spend_id: string
+  client_id?: string | null
   client_name: string | null
   platform: string
   campaign_id: string | null
@@ -52,6 +53,7 @@ export interface PacingReviewRow {
  */
 export const PACING_REVIEW_SELECT_COLUMNS = `
   ms.id::text AS media_spend_id,
+  ms.client_id::text AS client_id,
   COALESCE(ac.name, ms.campaign_name, 'Unknown') AS client_name,
   ms.platform,
   ms.campaign_id,

@@ -1,11 +1,11 @@
 import { execute, queryRows } from '~~/server/utils/db'
 
-export type PlatformAgentType =
-  | 'spend_controller'
-  | 'publishing_planner'
-  | 'financial_watch'
-  | 'traffic_controller'
-  | 'office_watch'
+export type PlatformAgentType
+  = | 'spend_controller'
+    | 'publishing_planner'
+    | 'financial_watch'
+    | 'traffic_controller'
+    | 'office_watch'
 
 export type PlatformAgentMode = 'read_only' | 'read_propose' | 'draft_only'
 
@@ -18,6 +18,7 @@ export interface StartPlatformAgentRunInput {
   route?: string | null
   prompt?: string | null
   context?: Record<string, unknown>
+  idempotencyKey?: string | null
 }
 
 export interface CompletePlatformAgentRunInput {
@@ -37,6 +38,7 @@ export interface FailPlatformAgentRunInput {
   error: unknown
   toolCallCount?: number
   findingCount?: number
+  summary?: Record<string, unknown>
 }
 
 interface InsertedRunRow {
@@ -66,6 +68,10 @@ export async function startPlatformAgentRun(input: StartPlatformAgentRunInput): 
   | { ok: true, runId: string }
   | { ok: false, reason: string }
 > {
+  const idempotencyKey = input.idempotencyKey?.trim() || null
+  if (idempotencyKey && !/^[A-Za-z0-9:_-]{16,255}$/.test(idempotencyKey)) {
+    return { ok: false, reason: 'invalid_idempotency_key' }
+  }
   const summary = {
     source: 'platform_agent',
     agentType: input.agentType,
@@ -75,29 +81,61 @@ export async function startPlatformAgentRun(input: StartPlatformAgentRunInput): 
     clientId: input.clientId ?? null,
     route: input.route ?? null,
     promptPreview: compactPrompt(input.prompt),
-    context: input.context ?? {},
+    context: {
+      ...(input.context ?? {}),
+      ...(idempotencyKey ? { idempotencyKey } : {})
+    }
   }
 
   try {
-    const rows = await queryRows<InsertedRunRow>(`
-      INSERT INTO ai_agent_runs (
-        run_type,
-        status,
-        checks_performed,
-        findings_count,
-        notifications_sent,
-        errors,
-        summary
-      )
-      VALUES ($1, 'running', 0, 0, 0, '[]'::jsonb, $2::jsonb)
-      RETURNING id::text
-    `, [
-      platformAgentRunType(input.agentType),
-      JSON.stringify(summary),
-    ])
+    const rows = idempotencyKey
+      ? await queryRows<InsertedRunRow>(`
+          WITH event_lock AS MATERIALIZED (
+            SELECT pg_advisory_xact_lock(hashtextextended($3, 0))
+          )
+          INSERT INTO ai_agent_runs (
+            run_type,
+            status,
+            checks_performed,
+            findings_count,
+            notifications_sent,
+            errors,
+            summary
+          )
+          SELECT $1, 'running', 0, 0, 0, '[]'::jsonb, $2::jsonb
+          FROM event_lock
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM ai_agent_runs
+            WHERE summary->'context'->>'idempotencyKey' = $3
+          )
+          RETURNING id::text
+        `, [
+          platformAgentRunType(input.agentType),
+          JSON.stringify(summary),
+          idempotencyKey
+        ])
+      : await queryRows<InsertedRunRow>(`
+          INSERT INTO ai_agent_runs (
+            run_type,
+            status,
+            checks_performed,
+            findings_count,
+            notifications_sent,
+            errors,
+            summary
+          )
+          VALUES ($1, 'running', 0, 0, 0, '[]'::jsonb, $2::jsonb)
+          RETURNING id::text
+        `, [
+          platformAgentRunType(input.agentType),
+          JSON.stringify(summary)
+        ])
 
     const runId = rows[0]?.id
-    if (!runId) return { ok: false, reason: 'Platform agent run insert returned no id.' }
+    if (!runId) {
+      return { ok: false, reason: idempotencyKey ? 'duplicate' : 'Platform agent run insert returned no id.' }
+    }
     return { ok: true, runId }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -109,7 +147,7 @@ export async function completePlatformAgentRun(input: CompletePlatformAgentRunIn
   const summary = {
     ...(input.summary ?? {}),
     proposedActionCount: input.proposedActionCount ?? 0,
-    blockedActionCount: input.blockedActionCount ?? 0,
+    blockedActionCount: input.blockedActionCount ?? 0
   }
 
   await execute(`
@@ -128,7 +166,7 @@ export async function completePlatformAgentRun(input: CompletePlatformAgentRunIn
     input.findingCount ?? 0,
     input.notificationCount ?? 0,
     JSON.stringify(summary),
-    input.runId,
+    input.runId
   ])
 }
 
@@ -141,13 +179,15 @@ export async function failPlatformAgentRun(input: FailPlatformAgentRunInput) {
         checks_performed = $2,
         findings_count = $3,
         notifications_sent = 0,
-        errors = $4::jsonb
-    WHERE id = $5
+        errors = $4::jsonb,
+        summary = COALESCE(summary, '{}'::jsonb) || $5::jsonb
+    WHERE id = $6
   `, [
     durationSince(input.startedAtMs),
     input.toolCallCount ?? 0,
     input.findingCount ?? 0,
     JSON.stringify([{ error: errorMessage(input.error) }]),
-    input.runId,
+    JSON.stringify(input.summary ?? {}),
+    input.runId
   ])
 }

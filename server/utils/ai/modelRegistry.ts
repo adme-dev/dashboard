@@ -9,6 +9,7 @@ export type AiRiskTier = 'low' | 'medium' | 'high'
 export interface AiModelPricing {
   inputPricePerMillionUsd?: number
   outputPricePerMillionUsd?: number
+  cachedInputPricePerMillionUsd?: number
   unitPriceCents?: number
   unitName?: string
 }
@@ -57,6 +58,7 @@ export interface AiModelCatalogOption {
 
 const DEFAULT_AI_LOOP_MODEL = 'groq/openai/gpt-oss-120b'
 const DEFAULT_AI_LOOP_FALLBACK_MODEL = 'groq/openai/gpt-oss-20b'
+const DEFAULT_PLATFORM_AGENT_THINK_MODEL = '@cf/moonshotai/kimi-k2.7-code'
 
 const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
   [GROQ_MODELS.REASONING_120B]: {
@@ -109,6 +111,14 @@ const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
   '@cf/moonshotai/kimi-k2-instruct': {
     status: 'production'
   },
+  [DEFAULT_PLATFORM_AGENT_THINK_MODEL]: {
+    status: 'production',
+    pricing: {
+      inputPricePerMillionUsd: 0.95,
+      outputPricePerMillionUsd: 4,
+      cachedInputPricePerMillionUsd: 0.19
+    }
+  },
   '@cf/meta/llama-3.1-8b-instruct': {
     status: 'production'
   },
@@ -148,48 +158,48 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     label: 'Spend Controller Agent',
     surface: '/agency/social/spend',
     owner: 'Growth',
-    provider: 'groq',
-    modelId: DEFAULT_AI_LOOP_MODEL,
-    fallback: DEFAULT_AI_LOOP_FALLBACK_MODEL,
+    provider: 'workers_ai',
+    modelId: DEFAULT_PLATFORM_AGENT_THINK_MODEL,
+    fallback: null,
     modality: 'text',
     riskTier: 'high',
-    sourceFile: 'workers/platform-agents/src/agents/SpendControllerAgent.ts'
+    sourceFile: 'workers/platform-agents/src/index.ts'
   },
   {
     featureKey: 'agent_publishing_planner',
     label: 'Publishing Planner Agent',
     surface: '/agency/social/publishing/planner',
     owner: 'Creative',
-    provider: 'groq',
-    modelId: DEFAULT_AI_LOOP_MODEL,
-    fallback: DEFAULT_AI_LOOP_FALLBACK_MODEL,
+    provider: 'workers_ai',
+    modelId: DEFAULT_PLATFORM_AGENT_THINK_MODEL,
+    fallback: null,
     modality: 'text',
     riskTier: 'high',
-    sourceFile: 'workers/platform-agents/src/agents/PublishingPlannerAgent.ts'
+    sourceFile: 'workers/platform-agents/src/index.ts'
   },
   {
     featureKey: 'agent_financial_watch',
     label: 'Financial Watch Agent',
     surface: '/agency/ai/finance',
     owner: 'Finance',
-    provider: 'anthropic',
-    modelId: CLAUDE_MODELS.SONNET_4_6,
-    fallback: DEFAULT_AI_LOOP_MODEL,
+    provider: 'workers_ai',
+    modelId: DEFAULT_PLATFORM_AGENT_THINK_MODEL,
+    fallback: null,
     modality: 'text',
     riskTier: 'high',
-    sourceFile: 'workers/platform-agents/src/agents/FinancialWatchAgent.ts'
+    sourceFile: 'workers/platform-agents/src/index.ts'
   },
   {
     featureKey: 'agent_traffic_controller',
     label: 'Traffic Controller Agent',
     surface: '/agency/social/spend',
     owner: 'Growth',
-    provider: 'groq',
-    modelId: DEFAULT_AI_LOOP_MODEL,
-    fallback: DEFAULT_AI_LOOP_FALLBACK_MODEL,
+    provider: 'workers_ai',
+    modelId: DEFAULT_PLATFORM_AGENT_THINK_MODEL,
+    fallback: null,
     modality: 'text',
     riskTier: 'high',
-    sourceFile: 'workers/platform-agents/src/agents/TrafficControllerAgent.ts'
+    sourceFile: 'workers/platform-agents/src/index.ts'
   },
   {
     featureKey: 'agent_office_watch',
@@ -951,7 +961,7 @@ function toRow(seed: FeatureSeed): AiModelMapRow {
 }
 
 function buildVideoGenerationRows(): AiModelMapRow[] {
-  return listSelectableVideoGenerationModels().map((model) => ({
+  return listSelectableVideoGenerationModels().map(model => ({
     featureKey: 'video_generation_job',
     label: `Video generation: ${model.displayName}`,
     surface: '/agency/video',
@@ -971,7 +981,7 @@ function buildVideoGenerationRows(): AiModelMapRow[] {
 }
 
 function buildAssetIntelligenceRows(): AiModelMapRow[] {
-  return listAssetIntelligenceModels().map((model) => ({
+  return listAssetIntelligenceModels().map(model => ({
     featureKey: 'video_asset_intelligence_job',
     label: `Video asset intelligence: ${model.displayName}`,
     surface: '/agency/video',
@@ -997,8 +1007,8 @@ export function getAiModelMapSummary(rows = listAiModelMap()) {
   const warningCount = rows.reduce((sum, row) => sum + row.warnings.length, 0)
   return {
     totalRows: rows.length,
-    providers: Array.from(new Set(rows.map((row) => row.provider))).sort(),
-    highRiskCount: rows.filter((row) => row.riskTier === 'high').length,
+    providers: Array.from(new Set(rows.map(row => row.provider))).sort(),
+    highRiskCount: rows.filter(row => row.riskTier === 'high').length,
     warningCount
   }
 }

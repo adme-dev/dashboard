@@ -7,6 +7,8 @@ const mockQueryOne = vi.fn()
 const mockStartRun = vi.fn()
 const mockCompleteRun = vi.fn()
 const mockFailRun = vi.fn()
+const mockResolveUserPlatformAgentAuthority = vi.fn()
+const mockResolveServicePlatformAgentAuthority = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
@@ -25,6 +27,11 @@ vi.mock('~~/server/utils/ai/platformAgentRuns', () => ({
   startPlatformAgentRun: (...args: unknown[]) => mockStartRun(...args),
   completePlatformAgentRun: (...args: unknown[]) => mockCompleteRun(...args),
   failPlatformAgentRun: (...args: unknown[]) => mockFailRun(...args),
+}))
+
+vi.mock('~~/server/utils/ai/platformAgentAuthority', () => ({
+  resolveUserPlatformAgentAuthority: (...args: unknown[]) => mockResolveUserPlatformAgentAuthority(...args),
+  resolveServicePlatformAgentAuthority: (...args: unknown[]) => mockResolveServicePlatformAgentAuthority(...args),
 }))
 
 ;(globalThis as any).defineEventHandler = (fn: any) => fn
@@ -49,14 +56,33 @@ describe('Financial Watch Agent endpoints', () => {
     mockStartRun.mockReset()
     mockCompleteRun.mockReset()
     mockFailRun.mockReset()
+    mockResolveUserPlatformAgentAuthority.mockReset()
+    mockResolveServicePlatformAgentAuthority.mockReset()
     mockRequireAuth.mockResolvedValue({ id: 'user-1' })
     mockGetSelectedTenant.mockResolvedValue('tenant-1')
+    mockResolveUserPlatformAgentAuthority.mockResolvedValue(Object.freeze({
+      actor: Object.freeze({ type: 'user', id: 'user-1' }),
+      tenantId: 'tenant-1',
+      allowedClientIds: Object.freeze(['client-1']),
+      permissions: Object.freeze(['FINANCE']),
+      correlationId: 'request-1',
+      source: 'authenticated_app',
+    }))
+    mockResolveServicePlatformAgentAuthority.mockResolvedValue(Object.freeze({
+      actor: Object.freeze({ type: 'service', id: 'cloudflare-platform-agents' }),
+      tenantId: 'tenant-1',
+      allowedClientIds: Object.freeze(['client-1']),
+      permissions: Object.freeze(['PLATFORM_AGENTS_SERVICE']),
+      correlationId: 'request-2',
+      source: 'authenticated_service',
+    }))
     mockStartRun.mockResolvedValue({ ok: true, runId: 'run-1' })
     mockCompleteRun.mockResolvedValue(undefined)
     mockFailRun.mockResolvedValue(undefined)
     mockQueryRows
       .mockResolvedValueOnce([{
         id: 'report-1',
+        tenant_id: 'tenant-1',
         period_key: '2026-06-26',
         period_label: 'June 2026',
         grade: 'C',
@@ -71,6 +97,8 @@ describe('Financial Watch Agent endpoints', () => {
       }])
       .mockResolvedValueOnce([{
         id: 'rec-1',
+        tenant_id: 'tenant-1',
+        client_id: 'client-1',
         title: 'Tighten collections',
         action: 'Call overdue accounts',
         impact: '$10k cash acceleration',
@@ -83,6 +111,8 @@ describe('Financial Watch Agent endpoints', () => {
       }])
       .mockResolvedValueOnce([{
         id: 'alert-1',
+        tenant_id: 'tenant-1',
+        client_id: 'client-1',
         alert_type: 'forecast_overrun',
         severity: 'critical',
         status: 'active',
@@ -120,6 +150,7 @@ describe('Financial Watch Agent endpoints', () => {
       context: {
         tenantId: 'tenant-1',
         clientId: 'client-1',
+        clientScopeCount: 1,
       },
     }))
     expect(mockCompleteRun).toHaveBeenCalledWith(expect.objectContaining({
@@ -188,6 +219,121 @@ describe('Financial Watch Agent endpoints', () => {
     } as any)
 
     expect(result.summary.watchState.status).toBe(expectedStatus)
+  })
+
+  it('rejects cross-tenant and cross-client context before finance reads', async () => {
+    const handler = (await import('~~/server/api/agency/agents/financial-watch/ask.post')).default
+
+    await expect(handler({
+      body: { prompt: 'Review finance risk.', context: { tenantId: 'tenant-2' } },
+    } as any)).rejects.toMatchObject({ code: 'TENANT_SCOPE_VIOLATION', statusCode: 403 })
+
+    await expect(handler({
+      body: { prompt: 'Review finance risk.', context: { clientId: 'client-2' } },
+    } as any)).rejects.toMatchObject({ code: 'CLIENT_SCOPE_VIOLATION', statusCode: 403 })
+    expect(mockQueryRows).not.toHaveBeenCalled()
+  })
+
+  it('returns only Tenant A and allowed-client outcomes when a data source yields mixed rows', async () => {
+    mockQueryRows.mockReset()
+    mockQueryRows
+      .mockResolvedValueOnce([
+        {
+          id: 'report-a',
+          tenant_id: 'tenant-1',
+          period_key: '2026-07',
+          period_label: 'July 2026',
+          grade: 'B',
+          score: 80,
+          headline: 'Tenant A report',
+          verdict: 'Tenant A verdict',
+          payload: { alerts: [{ level: 'info', message: 'Tenant A advisor alert' }] },
+          generated_at: '2026-07-21T00:00:00.000Z',
+        },
+        {
+          id: 'report-b',
+          tenant_id: 'tenant-2',
+          period_key: '2026-07',
+          period_label: 'July 2026',
+          grade: 'F',
+          score: 10,
+          headline: 'Tenant B secret report',
+          verdict: 'Tenant B secret verdict',
+          payload: { alerts: [{ level: 'critical', message: 'Tenant B secret advisor alert' }] },
+          generated_at: '2026-07-21T00:00:00.000Z',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'rec-a',
+          tenant_id: 'tenant-1',
+          client_id: 'client-1',
+          title: 'Tenant A recommendation',
+          priority: 'medium',
+          status: 'open',
+        },
+        {
+          id: 'rec-b',
+          tenant_id: 'tenant-2',
+          client_id: 'client-2',
+          title: 'Tenant B secret recommendation',
+          priority: 'high',
+          status: 'open',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'alert-a',
+          tenant_id: 'tenant-1',
+          client_id: 'client-1',
+          alert_type: 'forecast_overrun',
+          severity: 'warning',
+          status: 'active',
+          message: 'Tenant A budget alert',
+        },
+        {
+          id: 'alert-b',
+          tenant_id: 'tenant-2',
+          client_id: 'client-2',
+          alert_type: 'forecast_overrun',
+          severity: 'critical',
+          status: 'active',
+          message: 'Tenant B secret budget alert',
+        },
+        {
+          id: 'alert-unclassified',
+          tenant_id: null,
+          client_id: 'client-1',
+          alert_type: 'forecast_overrun',
+          severity: 'critical',
+          status: 'active',
+          message: 'Unclassified legacy secret budget alert',
+        },
+      ])
+    mockQueryOne.mockReset()
+    mockQueryOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        state_status: 'new',
+        previous_fingerprint: null,
+        previous_severity_score: null,
+      })
+
+    const handler = (await import('~~/server/api/agency/agents/financial-watch/ask.post')).default
+    const result = await handler({
+      body: { prompt: 'Review Tenant A.', context: { clientId: 'client-1' } },
+    } as any)
+
+    expect(result.summary).toMatchObject({
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      reportCount: 1,
+      activeRecommendationCount: 1,
+      activeBudgetAlertCount: 1,
+    })
+    expect(JSON.stringify(result)).toContain('Tenant A')
+    expect(JSON.stringify(result)).not.toContain('Tenant B secret')
+    expect(JSON.stringify(result)).not.toContain('Unclassified legacy secret')
   })
 
   it('allows the internal bridge with INTERNAL_API_KEY and blocks direct write actions', async () => {

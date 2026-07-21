@@ -206,6 +206,10 @@ type InvocationBreakdown = {
 
 type RecentInvocation = {
   id: string
+  agentRunId: string | null
+  requestId: string | null
+  correlationId: string | null
+  transport: string | null
   featureKey: string
   provider: string
   modelId: string
@@ -342,6 +346,14 @@ type AgentRun = {
   featureKey: string | null
   proposedActionCount: number
   blockedActionCount: number
+  transport: string | null
+  correlationId: string | null
+  workerRequestId: string | null
+  modelId: string | null
+  finishReason: string | null
+  toolFailureCount: number
+  failureStage: string | null
+  recoveryExhausted: boolean
   proposalDecisionCounts: {
     accepted: number
     rejected: number
@@ -364,6 +376,10 @@ type AgentRunsResponse = {
     orchestratorReadToolFailures: number
     platformAgentRuns: number
     platformAgentFailures: number
+    thinkTurnRuns: number
+    thinkTurnFailures: number
+    thinkToolFailures: number
+    thinkRecoveryExhausted: number
     platformAgentProposedActions: number
     platformAgentBlockedActions: number
     platformAgentAcceptedProposals: number
@@ -713,6 +729,9 @@ const agentRunCards = computed(() => {
   return [
     { label: 'Runs (30d)', value: (summary?.totalRuns ?? 0).toLocaleString(), icon: 'i-lucide-bot' },
     { label: 'Platform agents', value: (summary?.platformAgentRuns ?? 0).toLocaleString(), icon: 'i-lucide-brain-circuit' },
+    { label: 'Think turns', value: (summary?.thinkTurnRuns ?? 0).toLocaleString(), icon: 'i-lucide-message-square-code' },
+    { label: 'Tool failures', value: (summary?.thinkToolFailures ?? 0).toLocaleString(), icon: 'i-lucide-triangle-alert' },
+    { label: 'Recovery exhausted', value: (summary?.thinkRecoveryExhausted ?? 0).toLocaleString(), icon: 'i-lucide-shield-alert' },
     { label: 'Proposals', value: (summary?.platformAgentProposedActions ?? 0).toLocaleString(), icon: 'i-lucide-file-plus-2' },
     { label: 'Avg duration', value: durationLabel(summary?.avgDurationMs ?? 0), icon: 'i-lucide-timer' },
   ]
@@ -1961,6 +1980,11 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
                   <p v-if="run.source === 'platform_agent'">
                     {{ run.proposedActionCount.toLocaleString() }} proposals / {{ run.blockedActionCount.toLocaleString() }} blocked
                   </p>
+                  <p v-if="run.transport === 'cloudflare_think'">
+                    {{ run.toolFailureCount.toLocaleString() }} tool failures<span v-if="run.recoveryExhausted"> / recovery exhausted</span>
+                  </p>
+                  <p v-if="run.correlationId" class="font-mono">{{ run.correlationId }}</p>
+                  <p v-if="run.modelId" class="font-mono">{{ run.modelId }}</p>
                 </td>
                 <td class="py-3 pr-4 text-xs text-muted">
                   <p>{{ run.reportCount.toLocaleString() }} reports</p>
@@ -2040,6 +2064,8 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
                     {{ row.status }}
                   </UBadge>
                   <p v-if="row.errorCode" class="mt-1 max-w-xs truncate text-xs text-error">{{ row.errorCode }}</p>
+                  <p v-if="row.correlationId" class="mt-1 max-w-xs truncate font-mono text-[11px] text-muted">{{ row.correlationId }}</p>
+                  <p v-if="row.agentRunId" class="max-w-xs truncate font-mono text-[11px] text-muted">run {{ row.agentRunId }}</p>
                 </td>
               </tr>
             </tbody>

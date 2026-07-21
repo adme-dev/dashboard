@@ -11,7 +11,7 @@ vi.mock('~~/server/utils/db', () => ({
 const {
   completePlatformAgentRun,
   failPlatformAgentRun,
-  startPlatformAgentRun,
+  startPlatformAgentRun
 } = await import('~~/server/utils/ai/platformAgentRuns')
 
 describe('platform agent run audit helpers', () => {
@@ -31,14 +31,14 @@ describe('platform agent run audit helpers', () => {
       clientId: '22222222-2222-4222-8222-222222222222',
       route: '/agency/social/spend',
       prompt: 'What needs attention?',
-      context: { period: '2026-06' },
+      context: { period: '2026-06' }
     })
 
     expect(result).toEqual({ ok: true, runId: 'run-1' })
     expect(mockQueryRows.mock.calls[0]?.[0]).toContain('INSERT INTO ai_agent_runs')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual([
       'platform_agent_spend_controller',
-      expect.stringContaining('"agentType":"spend_controller"'),
+      expect.stringContaining('"agentType":"spend_controller"')
     ])
     expect(JSON.parse(String(mockQueryRows.mock.calls[0]?.[1]?.[1]))).toMatchObject({
       source: 'platform_agent',
@@ -49,8 +49,35 @@ describe('platform agent run audit helpers', () => {
       clientId: '22222222-2222-4222-8222-222222222222',
       route: '/agency/social/spend',
       promptPreview: 'What needs attention?',
-      context: { period: '2026-06' },
+      context: { period: '2026-06' }
     })
+  })
+
+  it('atomically deduplicates a bounded platform-agent event key', async () => {
+    const idempotencyKey = `think_recovery_${'a'.repeat(64)}`
+    mockQueryRows.mockResolvedValueOnce([{ id: 'run-recovery' }]).mockResolvedValueOnce([])
+
+    const input = {
+      agentType: 'financial_watch' as const,
+      featureKey: 'agent_financial_watch',
+      mode: 'read_only' as const,
+      route: '/internal/platform-agents/think/recovery-exhausted',
+      idempotencyKey,
+      context: { transport: 'cloudflare_think_recovery' }
+    }
+
+    await expect(startPlatformAgentRun(input)).resolves.toEqual({ ok: true, runId: 'run-recovery' })
+    await expect(startPlatformAgentRun(input)).resolves.toEqual({ ok: false, reason: 'duplicate' })
+
+    const [sql, params] = mockQueryRows.mock.calls[0]!
+    expect(sql).toContain('pg_advisory_xact_lock')
+    expect(sql).toContain('hashtextextended')
+    expect(sql).toContain('WHERE NOT EXISTS')
+    expect(params).toEqual([
+      'platform_agent_financial_watch',
+      expect.stringContaining(`"idempotencyKey":"${idempotencyKey}"`),
+      idempotencyKey
+    ])
   })
 
   it('completes platform agent runs with counts and proposed action metadata', async () => {
@@ -61,22 +88,22 @@ describe('platform agent run audit helpers', () => {
       findingCount: 3,
       proposedActionCount: 2,
       blockedActionCount: 1,
-      summary: { answerPreview: 'Review critical pacing first.' },
+      summary: { answerPreview: 'Review critical pacing first.' }
     })
 
-    expect(mockExecute.mock.calls[0]?.[0]).toContain("SET status = 'completed'")
+    expect(mockExecute.mock.calls[0]?.[0]).toContain('SET status = \'completed\'')
     expect(mockExecute.mock.calls[0]?.[1]).toEqual([
       expect.any(Number),
       4,
       3,
       0,
       expect.stringContaining('"proposedActionCount":2'),
-      'run-1',
+      'run-1'
     ])
     expect(JSON.parse(String(mockExecute.mock.calls[0]?.[1]?.[4]))).toMatchObject({
       proposedActionCount: 2,
       blockedActionCount: 1,
-      answerPreview: 'Review critical pacing first.',
+      answerPreview: 'Review critical pacing first.'
     })
   })
 
@@ -86,10 +113,10 @@ describe('platform agent run audit helpers', () => {
       startedAtMs: Date.now() - 100,
       error: new Error('tool unavailable'),
       toolCallCount: 2,
-      findingCount: 1,
+      findingCount: 1
     })
 
-    expect(mockExecute.mock.calls[0]?.[0]).toContain("SET status = 'failed'")
+    expect(mockExecute.mock.calls[0]?.[0]).toContain('SET status = \'failed\'')
     expect(JSON.parse(String(mockExecute.mock.calls[0]?.[1]?.[3]))).toEqual([{ error: 'tool unavailable' }])
   })
 })

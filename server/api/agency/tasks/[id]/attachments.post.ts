@@ -1,12 +1,12 @@
 /**
  * Add an attachment to a task
  *
- * Supports two modes:
- * 1. Direct file upload via multipart form data (uses R2 when configured)
- * 2. Metadata-only mode when file was uploaded separately via presigned URL
+ * Accepts direct multipart uploads only. Presigned uploads are confirmed through
+ * the actor-bound generic storage confirmation endpoint.
  */
 
 import { queryOne, transaction } from '~~/server/utils/db'
+import { requireBoardAccess, requireWriteAccess } from '~~/server/utils/auth'
 import {
   isStorageConfigured,
   uploadFile,
@@ -19,16 +19,8 @@ import {
   getAllowedTypes
 } from '~~/server/utils/storage'
 
-interface AddAttachmentBody {
-  fileName: string
-  fileType: string
-  fileSize: number
-  fileUrl?: string // Optional: provided if uploaded via presigned URL
-  storageKey?: string // Optional: storage key if uploaded via presigned URL
-  uploadedBy?: string
-}
-
 export default defineEventHandler(async (event) => {
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -38,113 +30,81 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const contentType = getHeader(event, 'content-type') || ''
+  if (!contentType.includes('multipart/form-data')) {
+    throw createError({
+      statusCode: 415,
+      statusMessage: 'Task attachments require a direct multipart file upload'
+    })
+  }
+
   // Verify task exists
-  const task = await queryOne('SELECT id, title FROM tasks WHERE id = $1', [id])
+  const task = await queryOne('SELECT id, title, department_id FROM tasks WHERE id = $1', [id])
   if (!task) {
     throw createError({
       statusCode: 404,
       statusMessage: 'Task not found'
     })
   }
-
-  // Check if this is a multipart form upload or JSON metadata
-  const contentType = getHeader(event, 'content-type') || ''
-  const isMultipart = contentType.includes('multipart/form-data')
+  await requireBoardAccess(event, task.department_id)
 
   try {
-    let fileName: string
-    let fileType: string
-    let fileSize: number
     let fileUrl: string
     let storageKey: string | null = null
-    let uploadedBy: string | null = null
+    const uploadedBy = user.id
 
-    if (isMultipart) {
-      // Direct file upload via multipart form
-      const formData = await readMultipartFormData(event)
+    // Direct file upload via multipart form
+    const formData = await readMultipartFormData(event)
 
-      if (!formData || formData.length === 0) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: 'No file uploaded'
-        })
-      }
+    if (!formData || formData.length === 0) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'No file uploaded'
+      })
+    }
 
-      const file = formData.find(f => f.name === 'file')
-      const uploaderField = formData.find(f => f.name === 'uploadedBy')
+    const file = formData.find(f => f.name === 'file')
 
-      if (!file) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: 'File is required'
-        })
-      }
+    if (!file) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'File is required'
+      })
+    }
 
-      fileName = file.filename || 'attachment'
-      fileType = file.type || 'application/octet-stream'
-      fileSize = file.data.length
-      uploadedBy = uploaderField?.data?.toString() || null
+    const fileName = file.filename || 'attachment'
+    const fileType = file.type || 'application/octet-stream'
+    const fileSize = file.data.length
 
-      // Validate file type and size
-      if (!validateFileType(fileType, 'attachments')) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: `Invalid file type. Allowed types: ${getAllowedTypes('attachments').join(', ')}`
-        })
-      }
+    // Validate file type and size
+    if (!validateFileType(fileType, 'attachments')) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `Invalid file type. Allowed types: ${getAllowedTypes('attachments').join(', ')}`
+      })
+    }
 
-      if (!validateFileSize(fileSize, 'attachments')) {
-        const maxSizeMB = Math.round(getMaxFileSize('attachments') / (1024 * 1024))
-        throw createError({
-          statusCode: 400,
-          statusMessage: `File too large. Maximum size is ${maxSizeMB}MB`
-        })
-      }
+    if (!validateFileSize(fileSize, 'attachments')) {
+      const maxSizeMB = Math.round(getMaxFileSize('attachments') / (1024 * 1024))
+      throw createError({
+        statusCode: 400,
+        statusMessage: `File too large. Maximum size is ${maxSizeMB}MB`
+      })
+    }
 
-      // Upload to R2 if configured
-      if (isStorageConfigured()) {
-        storageKey = generateStorageKey('attachments', fileName, id)
-        await uploadFile(file.data, storageKey, fileType, {
-          taskId: id,
-          uploadedBy: uploadedBy || '',
-          originalName: fileName,
-        })
-        fileUrl = getPublicUrl(storageKey) || await getPresignedDownloadUrl(storageKey, 7 * 24 * 60 * 60)
-      } else {
-        // Fallback: store as base64 data URL (not recommended for large files)
-        const base64 = file.data.toString('base64')
-        fileUrl = `data:${fileType};base64,${base64}`
-      }
+    // Upload to R2 if configured
+    if (isStorageConfigured()) {
+      storageKey = generateStorageKey('attachments', fileName, id)
+      await uploadFile(file.data, storageKey, fileType, {
+        taskId: id,
+        uploadedBy,
+        originalName: fileName
+      })
+      fileUrl = getPublicUrl(storageKey) || await getPresignedDownloadUrl(storageKey, 7 * 24 * 60 * 60)
     } else {
-      // JSON metadata mode (file uploaded via presigned URL)
-      const body = await readBody<AddAttachmentBody>(event)
-
-      if (!body.fileName?.trim()) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: 'File name is required'
-        })
-      }
-
-      if (!body.fileUrl?.trim() && !body.storageKey?.trim()) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: 'File URL or storage key is required'
-        })
-      }
-
-      fileName = body.fileName.trim()
-      fileType = body.fileType || 'application/octet-stream'
-      fileSize = body.fileSize || 0
-      storageKey = body.storageKey?.trim() || null
-      uploadedBy = body.uploadedBy || null
-
-      // Generate URL from storage key if not provided
-      if (body.storageKey && !body.fileUrl) {
-        fileUrl = getPublicUrl(body.storageKey) || await getPresignedDownloadUrl(body.storageKey, 7 * 24 * 60 * 60)
-      } else {
-        fileUrl = body.fileUrl!.trim()
-      }
+      // Fallback: store as base64 data URL (not recommended for large files)
+      const base64 = file.data.toString('base64')
+      fileUrl = `data:${fileType};base64,${base64}`
     }
 
     const result = await transaction(async (client) => {
@@ -160,7 +120,7 @@ export default defineEventHandler(async (event) => {
         fileSize,
         fileUrl,
         storageKey,
-        uploadedBy,
+        uploadedBy
       ])
 
       const attachment = attachmentResult.rows[0]
@@ -172,17 +132,14 @@ export default defineEventHandler(async (event) => {
       `, [
         id,
         uploadedBy,
-        `Added attachment "${fileName}"`,
+        `Added attachment "${fileName}"`
       ])
 
       return attachment
     })
 
     // Get uploader info
-    let uploader = null
-    if (uploadedBy) {
-      uploader = await queryOne('SELECT id, name, email FROM team_members WHERE id = $1', [uploadedBy])
-    }
+    const uploader = await queryOne('SELECT id, name, email FROM team_members WHERE id = $1', [uploadedBy])
 
     return {
       id: result.id,
@@ -193,14 +150,16 @@ export default defineEventHandler(async (event) => {
       fileUrl: result.file_url,
       storageKey: result.storage_key,
       createdAt: result.created_at,
-      uploadedBy: uploader ? {
-        id: uploader.id,
-        name: uploader.name,
-        email: uploader.email,
-      } : null,
+      uploadedBy: uploader
+        ? {
+            id: uploader.id,
+            name: uploader.name,
+            email: uploader.email
+          }
+        : null
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to add attachment:', error)
     throw createError({
       statusCode: 500,

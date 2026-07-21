@@ -119,6 +119,16 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
       runtimeRoutingStatus: 'worker_side',
       runtimeControlEnabled: false,
     })
+    expect(result.rows.find((row: any) => row.featureKey === 'agent_spend_controller')).toMatchObject({
+      provider: 'workers_ai',
+      modelId: '@cf/moonshotai/kimi-k2.7-code',
+      pricing: {
+        inputPricePerMillionUsd: 0.95,
+        outputPricePerMillionUsd: 4,
+        cachedInputPricePerMillionUsd: 0.19,
+      },
+      sourceFile: 'workers/platform-agents/src/index.ts',
+    })
     expect(result.assignments).toMatchObject({
       available: true,
       reason: null,
@@ -636,6 +646,8 @@ describe('GET /api/admin/ai/model-ops/invocations', () => {
       }])
       .mockResolvedValueOnce([{
         id: 'inv-1',
+        agent_run_id: 'run-1',
+        request_id: 'worker-request-123',
         feature_key: 'social_spend_ai_analysis',
         provider: 'groq',
         model_id: 'openai/gpt-oss-120b',
@@ -648,6 +660,7 @@ describe('GET /api/admin/ai/model-ops/invocations', () => {
         status: 'success',
         error_code: null,
         latency_ms: 430,
+        metadata: { correlationId: 'correlation-123', transport: 'cloudflare_think' },
         created_at: '2026-06-25T01:00:00.000Z',
       }])
       .mockResolvedValueOnce([{
@@ -688,6 +701,12 @@ describe('GET /api/admin/ai/model-ops/invocations', () => {
     expect(result.byFeature[0].key).toBe('social_spend_ai_analysis')
     expect(result.byModel[0].key).toBe('openai/gpt-oss-120b')
     expect(result.recent[0].featureKey).toBe('social_spend_ai_analysis')
+    expect(result.recent[0]).toMatchObject({
+      agentRunId: 'run-1',
+      requestId: 'worker-request-123',
+      correlationId: 'correlation-123',
+      transport: 'cloudflare_think',
+    })
     expect(result.legacyMessages).toMatchObject({
       available: true,
       turns: 6,
@@ -901,6 +920,10 @@ describe('GET /api/admin/ai/model-ops/agent-runs', () => {
         orchestrator_read_tool_failures: '1',
         platform_agent_runs: '1',
         platform_agent_failures: '0',
+        think_turn_runs: '1',
+        think_turn_failures: '1',
+        think_tool_failures: '2',
+        think_recovery_exhausted: '1',
         platform_agent_proposed_actions: '2',
         platform_agent_blocked_actions: '1',
         platform_agent_accepted_proposals: '1',
@@ -932,6 +955,14 @@ describe('GET /api/admin/ai/model-ops/agent-runs', () => {
           featureKey: 'agent_spend_controller',
           proposedActionCount: 2,
           blockedActionCount: 1,
+          transport: 'cloudflare_think',
+          correlationId: 'correlation-123',
+          workerRequestId: 'worker-request-123',
+          modelId: '@cf/moonshotai/kimi-k2.7-code',
+          finishReason: 'stop',
+          toolFailureCount: 2,
+          failureStage: 'recovery',
+          recoveryExhausted: true,
           proposalDecisionCounts: {
             accepted: 1,
             rejected: 1,
@@ -963,6 +994,10 @@ describe('GET /api/admin/ai/model-ops/agent-runs', () => {
         orchestratorReadToolFailures: 1,
         platformAgentRuns: 1,
         platformAgentFailures: 0,
+        thinkTurnRuns: 1,
+        thinkTurnFailures: 1,
+        thinkToolFailures: 2,
+        thinkRecoveryExhausted: 1,
         platformAgentProposedActions: 2,
         platformAgentBlockedActions: 1,
         platformAgentAcceptedProposals: 1,
@@ -992,6 +1027,14 @@ describe('GET /api/admin/ai/model-ops/agent-runs', () => {
       featureKey: 'agent_spend_controller',
       proposedActionCount: 2,
       blockedActionCount: 1,
+      transport: 'cloudflare_think',
+      correlationId: 'correlation-123',
+      workerRequestId: 'worker-request-123',
+      modelId: '@cf/moonshotai/kimi-k2.7-code',
+      finishReason: 'stop',
+      toolFailureCount: 2,
+      failureStage: 'recovery',
+      recoveryExhausted: true,
       proposalDecisionCounts: {
         accepted: 1,
         rejected: 1,

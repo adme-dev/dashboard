@@ -6,7 +6,8 @@
  * This is more efficient than uploading through the server.
  */
 
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
+import { z } from 'zod'
 import {
   generateStorageKey,
   getPresignedUploadUrl,
@@ -14,57 +15,35 @@ import {
   validateFileSize,
   getMaxFileSize,
   getAllowedTypes,
-  isStorageConfigured,
-  type FileCategory
+  isStorageConfigured
 } from '~~/server/utils/storage'
+import {
+  requireStorageEntityAccess,
+  resolveStorageUploadTarget,
+  signStorageUploadCapability
+} from '~~/server/utils/storageAccess'
 
-interface PresignedUploadRequest {
-  fileName: string
-  fileType: string
-  fileSize: number
-  category: FileCategory
-  entityId?: string // Optional: task ID, expense ID, etc.
-}
+const PresignedUploadRequestSchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  fileType: z.string().trim().min(1).max(255),
+  fileSize: z.number().int().positive(),
+  category: z.enum(['avatars', 'attachments', 'expenses']),
+  entityId: z.string().uuid()
+}).strict()
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
-  const body = await readBody<PresignedUploadRequest>(event)
+  const user = await requireWriteAccess(event)
+  const parsedBody = PresignedUploadRequestSchema.safeParse(await readBody(event))
+  if (!parsedBody.success) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid upload request' })
+  }
+  const body = parsedBody.data
 
   // Check if storage is configured
   if (!isStorageConfigured()) {
     throw createError({
       statusCode: 503,
       statusMessage: 'File storage is not configured. Please contact administrator.'
-    })
-  }
-
-  // Validate request
-  if (!body.fileName?.trim()) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'File name is required'
-    })
-  }
-
-  if (!body.fileType?.trim()) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'File type (MIME type) is required'
-    })
-  }
-
-  if (!body.fileSize || body.fileSize <= 0) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'File size is required and must be greater than 0'
-    })
-  }
-
-  const validCategories: FileCategory[] = ['avatars', 'attachments', 'expenses', 'briefs', 'invoices', 'general']
-  if (!body.category || !validCategories.includes(body.category)) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: `Invalid category. Must be one of: ${validCategories.join(', ')}`
     })
   }
 
@@ -86,22 +65,49 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const target = resolveStorageUploadTarget(body.category)
+  if (!target) {
+    throw createError({ statusCode: 400, statusMessage: 'This storage category does not support generic uploads' })
+  }
+
+  await requireStorageEntityAccess({
+    category: body.category,
+    entityType: target.entityType,
+    entityId: body.entityId,
+    actorId: user.id
+  })
+
+  const secret = useRuntimeConfig(event).sessionSecret
+  if (typeof secret !== 'string' || secret.length < 32) {
+    throw createError({ statusCode: 503, statusMessage: 'Secure upload confirmation is not configured' })
+  }
+
   try {
     // Generate storage key
-    const key = generateStorageKey(body.category, body.fileName, body.entityId)
+    const key = generateStorageKey(body.category, body.fileName, `${body.entityId}/${user.id}`)
 
     // Generate presigned upload URL (valid for 1 hour)
     const uploadUrl = await getPresignedUploadUrl(key, body.fileType, 3600)
+    const confirmationToken = await signStorageUploadCapability({
+      actorId: user.id,
+      key,
+      category: body.category,
+      entityType: target.entityType,
+      entityId: body.entityId,
+      fileType: body.fileType,
+      fileSize: body.fileSize
+    }, secret)
 
     return {
       success: true,
       uploadUrl,
       key,
+      confirmationToken,
       expiresIn: 3600,
       maxSize: getMaxFileSize(body.category),
       allowedTypes: getAllowedTypes(body.category)
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to generate presigned upload URL:', error)
     throw createError({
       statusCode: 500,
