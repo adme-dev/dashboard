@@ -711,7 +711,8 @@ export function createWorkspaceSendUploadService(
       if (!metadata) throw new WorkspaceSendUploadError('OBJECT_NOT_FOUND', 'Uploaded object was not found')
       if (metadata.key !== candidate.object_key
         || metadata.size !== Number(candidate.expected_size_bytes)
-        || metadata.contentType.trim().toLowerCase() !== candidate.expected_mime_type.trim().toLowerCase()) {
+        || metadata.contentType.trim().toLowerCase() !== candidate.expected_mime_type.trim().toLowerCase()
+        || !metadata.etag) {
         throw new WorkspaceSendUploadError('OBJECT_MISMATCH', 'Uploaded object does not match its upload intent')
       }
 
@@ -756,7 +757,8 @@ export function createWorkspaceSendUploadService(
 
         const fileResult = await db.query(
           `UPDATE send_files
-              SET state = 'uploaded',
+              SET state = 'quarantined',
+                  scan_status = 'pending',
                   actual_size_bytes = $3,
                   actual_mime_type = $4,
                   object_etag = $5,
@@ -780,6 +782,27 @@ export function createWorkspaceSendUploadService(
         )
         const updatedFile = fileResult.rows[0] as UploadIntentRow | undefined
         if (!updatedFile) throw new WorkspaceSendUploadError('INTENT_UNAVAILABLE', 'File is no longer uploadable')
+
+        const scanAvailableAt = locked.upload_method === 'single'
+          ? asDate(locked.expires_at)
+          : completionTime
+        await db.query(
+          `INSERT INTO send_scan_jobs (
+             transfer_id, file_id, object_key, expected_size_bytes,
+             expected_mime_type, object_etag, upload_method, available_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (file_id) DO NOTHING`,
+          [
+            input.transferId,
+            input.fileId,
+            locked.object_key,
+            metadata.size,
+            metadata.contentType,
+            metadata.etag,
+            locked.upload_method,
+            scanAvailableAt.toISOString()
+          ]
+        )
 
         await db.query(
           `UPDATE send_upload_intents

@@ -311,7 +311,7 @@ describe('workspace Send multipart service', () => {
         if (/FROM send_upload_intents i/.test(sql)) return { rows: [multipartIntentRow()] }
         if (/UPDATE send_files/.test(sql)) return { rows: [multipartIntentRow({
           status: 'completed',
-          file_state: 'uploaded',
+          file_state: 'quarantined',
           actual_size_bytes: declaration.fileSize,
           actual_mime_type: declaration.contentType,
           object_etag: 'multipart-final-etag',
@@ -342,12 +342,25 @@ describe('workspace Send multipart service', () => {
       intentId: INTENT_ID,
       capability: CAPABILITY,
       now: NOW
-    })).resolves.toMatchObject({ state: 'uploaded', size: declaration.fileSize })
+    })).resolves.toMatchObject({ state: 'quarantined', size: declaration.fileSize })
     expect(completeMultipartUpload).toHaveBeenCalledWith({
       key: `send/${TRANSFER_ID}/${FILE_ID}`,
       uploadId: UPLOAD_ID,
       parts
     })
+    expect(db.query.mock.calls).toContainEqual([
+      expect.stringMatching(/INSERT INTO send_scan_jobs/),
+      [
+        TRANSFER_ID,
+        FILE_ID,
+        `send/${TRANSFER_ID}/${FILE_ID}`,
+        declaration.fileSize,
+        declaration.contentType,
+        'multipart-final-etag',
+        'multipart',
+        NOW.toISOString()
+      ]
+    ])
   })
 
   it('refuses multipart completion while any part is missing', async () => {
@@ -381,7 +394,7 @@ describe('workspace Send multipart service', () => {
         if (/FROM send_upload_intents i/.test(sql)) return { rows: [multipartIntentRow()] }
         if (/UPDATE send_files/.test(sql)) return { rows: [multipartIntentRow({
           status: 'completed',
-          file_state: 'uploaded',
+          file_state: 'quarantined',
           actual_size_bytes: declaration.fileSize,
           actual_mime_type: declaration.contentType,
           object_etag: 'multipart-final-etag',
@@ -414,7 +427,7 @@ describe('workspace Send multipart service', () => {
       intentId: INTENT_ID,
       capability: CAPABILITY,
       now: NOW
-    })).resolves.toMatchObject({ state: 'uploaded', size: declaration.fileSize })
+    })).resolves.toMatchObject({ state: 'quarantined', size: declaration.fileSize })
     expect(getObjectMetadata).toHaveBeenCalled()
   })
 

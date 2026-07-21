@@ -268,15 +268,15 @@ The goal is complete only when all required tasks through T25 are done, required
 
 **Acceptance criteria:**
 
-- [ ] Every completed upload enters quarantine and produces idempotent scan work.
-- [ ] Single-part scan work cannot mark a file clean before its reusable presigned write capability expires; the scanner re-reads canonical size, type, ETag/checksum evidence after that boundary.
-- [ ] Only verified clean results transition a file to `clean`; detected/error/timeout states remain inaccessible.
-- [ ] Scanner evidence is redacted, versioned, and attributable without storing unsafe response bodies.
+- [x] Every completed upload enters quarantine and produces idempotent scan work.
+- [x] Single-part scan work cannot mark a file clean before its reusable presigned write capability expires; the scanner re-reads canonical size, type, ETag/checksum evidence after that boundary.
+- [x] Only verified clean results transition a file to `clean`; detected/error/timeout states remain inaccessible.
+- [x] Scanner evidence is redacted, versioned, and attributable without storing unsafe response bodies.
 
 **Verification:**
 
-- [ ] Tests cover clean, detected, scanner error, timeout, duplicate result, mismatched object, and queue redelivery.
-- [ ] Safe test fixtures prove magic-byte/type checks and active-content disposition.
+- [x] Tests cover clean, detected, scanner error, timeout, duplicate result, mismatched object, and queue redelivery.
+- [x] Safe synthetic fixtures prove magic-byte/type checks and active-content disposition.
 - [ ] Selected scanner's non-production integration is verified without real sensitive content.
 
 **Dependencies:** T6, T7 where multipart is enabled
@@ -797,6 +797,14 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 - A real system-Chrome/R2 smoke uploaded a 5 MiB first part, closed that browser context to simulate interruption, recovered the single canonical completed part, uploaded only the 1 MiB remainder from a fresh context, completed and HEAD-verified the 6 MiB `application/octet-stream` object, and recorded zero console warnings/errors. The temporary object was deleted and cleanup was verified.
 - [send-multipart-uploads.md](../../runbooks/send-multipart-uploads.md) records intent expiry, R2's default seven-day incomplete-upload backstop, T13 reconciliation responsibilities, retry behavior, safe cleanup, and the migration/flag gates.
 
+### T8 foundation evidence
+
+- Upload completion now transitions every file to `quarantined` and transactionally creates one canonical `send_scan_jobs` row. Single PUT work remains unavailable until the reusable presigned capability expires; multipart work becomes available only after canonical completion metadata is verified.
+- The provider-neutral orchestration re-reads canonical object metadata before and after scanning, binds normalized results to the claimed job and ETag, rejects MIME mismatches, fails closed on mutation/error/timeout, and fences delayed attempts by canonical attempt number.
+- R2 and internal Queue messages are wake-ups only. The boundary validates account, bucket, generated Send object keys, and identifier-only replay messages, while logs exclude message bodies, object keys, ETags, raw scanner output, and signed capabilities.
+- Migration `270_send_scan_jobs.sql` creates dormant schema only. It does not create a Queue, R2 event notification, Container, route, provider adapter, or secret, and it remains unapplied to shared databases. Both Send flags remain disabled.
+- Scanner/provider selection, external dependencies, Cloudflare resource provisioning, non-production integration, deployment, and activation remain behind the existing Ask-first gate.
+
 ## 10. Implementation ledger
 
 | Task | Status | Evidence | Notes / blocker |
@@ -809,7 +817,7 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 | T5 | COMPLETE | 50/50 focused tests; ESLint clean; no path-filtered type errors; isolated PostgreSQL and headless Chrome checks passed on 2026-07-21 | Strict create/list API, policy-aware draft service, and accessible feature-flagged agency UI delivered; no navigation change while the layout has unrelated edits |
 | T6 | COMPLETE | 83/83 focused tests; focused ESLint clean; no path-filtered type errors; approved live CORS read-back and real-Chrome/R2 preflight, PUT, HEAD, console, and cleanup evidence on 2026-07-21 | Single-part application and live browser-storage path complete; both Send flags remain disabled. Disposable PostgreSQL recheck remains pending host IPC capacity but T2's prior apply-twice evidence and current static contracts are green. |
 | T7 | COMPLETE | 120/120 focused tests; focused ESLint and cache-free production build pass; real Chrome/R2 interruption-resume, HEAD, console, and cleanup evidence on 2026-07-21 | Repository-wide typecheck remains red on unrelated existing debt; multipart identities stay server-owned; migration 269 remains unapplied to shared databases; both Send flags remain disabled |
-| T8 | AWAITING APPROVAL | T7 complete | Scanner provider/dependency selection is Ask-first; provider-neutral design can start after the direction is confirmed |
+| T8 | FOUNDATION COMPLETE / ADAPTER AWAITING APPROVAL | Provider-neutral contract, canonical job repository, queue boundary, quarantine transition, migration 270, and focused tests | Scanner provider/dependency selection, infrastructure provisioning, integration, deployment, and activation remain Ask-first; no provider runtime has been added |
 | T9 | NOT STARTED | — | — |
 | T10 | NOT STARTED | — | — |
 | T11 | NOT STARTED | — | Archive behavior follows T0 decision |
@@ -831,11 +839,11 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 
 ## 11. Current goal-loop handoff
 
-T0–T7 and Checkpoint A are complete. The current action is the **T8 scanner Ask-first gate**. Before implementation resumes, the loop should:
+T0–T7, Checkpoint A, and the provider-neutral T8 foundation are complete. The current action is the **T8 scanner adapter Ask-first gate**. Before provider-specific implementation resumes, the loop should:
 
 1. present a current, source-backed scanner/queue recommendation with cost, privacy, file-size, latency, and Cloudflare integration trade-offs;
 2. obtain explicit approval before selecting or adding a scanner provider/dependency;
-3. after approval, write failing provider-neutral orchestration tests before the adapter;
+3. after approval, write failing adapter/integration tests against the existing provider-neutral orchestration contract;
 4. keep publication fail-closed and preserve the single-part capability-expiry/re-read rule;
 5. use only non-sensitive malware test fixtures and do not send real files to an external provider without separate approval;
 6. preserve both disabled Send flags, the unapplied shared-database migration gate, and unrelated worktree changes.
