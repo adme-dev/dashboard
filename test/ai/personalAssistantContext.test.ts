@@ -184,6 +184,30 @@ describe('resolvePersonalAssistantContext', () => {
     expect(departmentCall?.[1]).toEqual([USER_ID, false])
   })
 
+  it('limits company-wide department scope to organizational departments', async () => {
+    const contextDb = db({
+      queryOne: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM team_members actor')) {
+          return { id: USER_ID, role: 'owner', custom_role_id: null }
+        }
+        if (sql.includes('FROM ai_agent_configs')) return null
+        return null
+      }) as PersonalAssistantContextDb['queryOne'],
+      queryRows: vi.fn().mockResolvedValue([]) as PersonalAssistantContextDb['queryRows'],
+      resolvePermissions: vi.fn(async () => ({ groups: ['ADMIN'], isReadOnly: false }))
+    })
+
+    await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
+
+    const departmentCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) =>
+      sql.includes('FROM departments department')
+    )
+    expect(departmentCall?.[0]).toContain(
+      "department.department_kind = 'organizational' AND $2::boolean"
+    )
+    expect(departmentCall?.[1]).toEqual([USER_ID, true])
+  })
+
   it('rejects unbounded department context instead of silently truncating authority', async () => {
     const queryRows = vi.fn(async (sql: string) => {
       if (sql.includes('FROM departments department')) {
