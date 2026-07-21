@@ -46,6 +46,11 @@ function getR2Client(): S3Client {
   })
 }
 
+/** Server-only S3 control plane used by Send multipart coordination. */
+export function getR2StorageControlPlane(): { client: S3Client, bucket: string } {
+  return { client: getR2Client(), bucket: R2_BUCKET_NAME }
+}
+
 // Minimal shape of the Cloudflare native R2 bucket binding (MEDIA_BUCKET).
 interface R2BucketBinding {
   put: (key: string, value: Uint8Array, options?: {

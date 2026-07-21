@@ -95,6 +95,7 @@ describe('WorkspaceSendUploader', () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith('/files/intents')) {
         return {
+          uploadMethod: 'single',
           fileId: '55555555-5555-4555-8555-555555555555',
           intentId: '66666666-6666-4666-8666-666666666666',
           uploadUrl: 'https://example.r2.cloudflarestorage.com/signed',
@@ -129,6 +130,7 @@ describe('WorkspaceSendUploader', () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith('/files/intents')) {
         return {
+          uploadMethod: 'single',
           fileId: '55555555-5555-4555-8555-555555555555',
           intentId: '66666666-6666-4666-8666-666666666666',
           uploadUrl: 'https://example.r2.cloudflarestorage.com/signed',
@@ -166,6 +168,68 @@ describe('WorkspaceSendUploader', () => {
     expect(host.getAttribute('data-v-app')).not.toBeNull()
     expect(host.textContent).toContain('exceeds the per-file limit')
     expect(fetchMock).not.toHaveBeenCalled()
+    app.unmount()
+    host.remove()
+  })
+
+  it('resumes multipart uploads from server-validated completed parts without re-uploading them', async () => {
+    let resumeCalls = 0
+    const fetchMock = vi.fn(async (url: string, options?: Record<string, unknown>) => {
+      if (url.endsWith('/files/intents')) {
+        return {
+          uploadMethod: 'multipart',
+          fileId: '55555555-5555-4555-8555-555555555555',
+          intentId: '66666666-6666-4666-8666-666666666666',
+          capability: 'c'.repeat(43),
+          partSizeBytes: 4,
+          partCount: 3,
+          expiresAt: '2026-07-21T00:15:00.000Z'
+        }
+      }
+      if (url.endsWith('/multipart/resume')) {
+        resumeCalls += 1
+        return {
+          partSizeBytes: 4,
+          partCount: 3,
+          uploadedParts: resumeCalls === 1 ? [] : [{ partNumber: 1, sizeBytes: 4 }],
+          expiresAt: '2026-07-21T00:15:00.000Z'
+        }
+      }
+      if (url.endsWith('/multipart/parts')) {
+        const partNumber = (options?.body as { partNumber: number }).partNumber
+        return {
+          partNumber,
+          uploadUrl: `https://example.r2.cloudflarestorage.com/part-${partNumber}`,
+          expiresAt: '2026-07-21T00:15:00.000Z'
+        }
+      }
+      return { file: { id: 'file-1', state: 'uploaded' } }
+    })
+    let sent = 0
+    FakeRequest.prototype.send = function (body: unknown) {
+      this.body = body
+      sent += 1
+      if (sent === 2) this.status = 503
+      queueMicrotask(() => this.onload?.())
+    }
+
+    const { app, host } = mountUploader(fetchMock)
+    selectFile(host, new File(['0123456789'], 'master.bin', { type: 'application/octet-stream' }))
+    await flushUi()
+    host.querySelector<HTMLButtonElement>('[data-testid="send-upload-all"]')!.click()
+    await flushUi()
+    expect(host.textContent).toContain('Needs attention')
+
+    host.querySelector<HTMLButtonElement>('[data-testid="retry-send-upload"]')!.click()
+    await flushUi()
+
+    expect(FakeRequest.instances.filter(request => request.url.endsWith('/part-1'))).toHaveLength(1)
+    expect(FakeRequest.instances.filter(request => request.url.endsWith('/part-2'))).toHaveLength(2)
+    expect(FakeRequest.instances.filter(request => request.url.endsWith('/part-3'))).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/complete'), expect.objectContaining({
+      method: 'POST', body: { capability: 'c'.repeat(43) }
+    }))
+    expect(host.textContent).toContain('Uploaded')
     app.unmount()
     host.remove()
   })
