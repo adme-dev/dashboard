@@ -98,7 +98,7 @@ export async function listSharedMemories(departmentIds: string[], limit: number,
 /** The department ids a user belongs to (drives shared-memory visibility). */
 export async function listUserDepartments(userId: string, db: MemoryDb = defaultDb): Promise<string[]> {
   const rows = await db.queryRows<{ department_id: string }>(
-    `SELECT department_id FROM department_members WHERE user_id = $1`,
+    `SELECT department_id FROM department_members WHERE team_member_id = $1`,
     [userId]
   )
   return rows.map(r => r.department_id)

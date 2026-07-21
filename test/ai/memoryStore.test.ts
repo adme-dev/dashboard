@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   upsertMemory, getMemoriesByIds, listRecentMemories, stampUsed, deleteUserMemory, markEmbedded,
-  listUserMemoriesBySource, deleteMemoryById,
+  listUserMemoriesBySource, listUserDepartments, deleteMemoryById,
   REINFORCE_STEP, type MemoryDb
 } from '~~/server/utils/ai/memory/store'
 
@@ -115,6 +115,20 @@ describe('listUserMemoriesBySource', () => {
     const [sql, params] = queryRows.mock.calls[0]!
     expect(sql).toContain('WHERE user_id = $1 AND source = $2')
     expect(params).toEqual(['u1', 'observed', 50])
+  })
+})
+
+describe('listUserDepartments', () => {
+  it('uses the current department_members team_member_id column', async () => {
+    const queryRows = vi.fn().mockResolvedValue([{ department_id: 'dept-1' }])
+
+    await expect(listUserDepartments('user-1', fakeDb({ queryRows })))
+      .resolves.toEqual(['dept-1'])
+
+    const [sql, params] = queryRows.mock.calls[0]!
+    expect(sql).toContain('team_member_id = $1')
+    expect(sql).not.toContain('user_id = $1')
+    expect(params).toEqual(['user-1'])
   })
 })
 
