@@ -227,3 +227,28 @@ export async function failPlatformAgentThinkTurn(
   }))
   await Promise.allSettled(writes)
 }
+
+export async function denyPlatformAgentThinkTurn(
+  run: PlatformAgentThinkRun,
+  input: {
+    code: 'user_daily_turn_limit' | 'global_daily_turn_limit' | 'budget_unavailable'
+    retryAfterSeconds: number
+    resetAt?: string
+  }
+): Promise<void> {
+  if (!run.runId) return
+  await failPlatformAgentRun({
+    runId: run.runId,
+    startedAtMs: run.startedAtMs,
+    error: input.code,
+    summary: {
+      transport: 'cloudflare_think',
+      correlationId: run.correlationId,
+      failureStage: 'admission',
+      admissionCode: input.code,
+      retryAfterSeconds: input.retryAfterSeconds,
+      resetAt: input.resetAt ?? null,
+      modelInvoked: false
+    }
+  })
+}
