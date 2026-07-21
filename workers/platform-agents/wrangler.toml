@@ -14,8 +14,10 @@ binding = "AI"
 APP_BASE_URL = "https://app.xeroflow.io"
 THINK_MODEL = "@cf/moonshotai/kimi-k2.7-code"
 # Coordinated with PLATFORM_AGENT_THINK_TURNS_ENABLED in the Pages app.
-# Leave false until secrets, Access policy, evaluation, and rollout approval are complete.
-THINK_TURNS_ENABLED = "false"
+# Production activation approved 2026-07-21 after the C0 security packet,
+# database readiness migration, shared signing-secret installation, and
+# fail-closed Worker smoke checks completed successfully.
+THINK_TURNS_ENABLED = "true"
 
 [durable_objects]
 bindings = [
