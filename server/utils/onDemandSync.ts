@@ -6,6 +6,13 @@
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { computeMetrics } from '~~/server/utils/analyticsMetrics'
 import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  persistGoogleCredentialRefresh,
+  resolveGoogleCredential,
+  type GoogleCredentialRow,
+} from '~~/server/utils/googleCredentialProfiles'
 
 const BREAKDOWN_PLATFORMS = ['meta', 'google_ads']
 
@@ -14,7 +21,7 @@ const BREAKDOWN_PLATFORMS = ['meta', 'google_ads']
  * Updates the DB and returns the new access token, or null if no refresh needed.
  */
 async function refreshGoogleTokenIfNeeded(
-  conn: { access_token: string; refresh_token: string | null; token_expires_at: string | null },
+  conn: { access_token: string; refresh_token: string | null; token_expires_at: string | null; google_credential_profile_id?: string | null },
   connectionId: string
 ): Promise<string | null> {
   if (!conn.refresh_token || !conn.token_expires_at) return null
@@ -26,10 +33,12 @@ async function refreshGoogleTokenIfNeeded(
     const config = useRuntimeConfig()
     const refreshed = await refreshGoogleToken(conn.refresh_token, config.googleClientId, config.googleClientSecret)
     const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000)
-    await execute(
-      `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
-      [refreshed.access_token, newExpiry, connectionId]
-    )
+    await persistGoogleCredentialRefresh({
+      connectionId,
+      profileId: conn.google_credential_profile_id || null,
+      accessToken: refreshed.access_token,
+      expiresAt: newExpiry,
+    })
     return refreshed.access_token
   } catch (err: any) {
     console.error(`[OnDemandSync] Failed to refresh Google token for connection ${connectionId}:`, err.message)
@@ -112,24 +121,33 @@ export async function syncCampaignBreakdowns(mediaSpendId: string): Promise<Brea
   if (!campaign || !campaign.connection_id || !campaign.campaign_id) return empty
   if (!BREAKDOWN_PLATFORMS.includes(campaign.platform)) return empty
 
-  const conn = await queryOne<{
+  const conn = await queryOne<GoogleCredentialRow & {
     access_token: string; account_id: string; metadata: any
     refresh_token: string | null; token_expires_at: string | null
   }>(
-    `SELECT access_token, account_id, metadata, refresh_token, token_expires_at FROM social_connections WHERE id = $1`,
+    `SELECT sc.id, sc.access_token, sc.account_id, sc.metadata, sc.refresh_token, sc.token_expires_at,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+     FROM social_connections sc
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+     WHERE sc.id = $1`,
     [campaign.connection_id]
   )
   if (!conn) return empty
 
   // Refresh Google token if expired (same logic as spendSync.ts)
   if (campaign.platform === 'google_ads') {
+    const credential = await resolveGoogleCredential(conn)
+    conn.access_token = credential.accessToken
+    conn.refresh_token = credential.refreshToken
+    conn.token_expires_at = credential.tokenExpiresAt
+    conn.google_credential_profile_id = credential.profileId
     const freshToken = await refreshGoogleTokenIfNeeded(conn, campaign.connection_id)
     if (freshToken) conn.access_token = freshToken
   }
 
   const [yearStr, monthStr] = campaign.period.split('-')
-  const month = parseInt(monthStr, 10)
-  const year = parseInt(yearStr, 10)
+  const month = parseInt(monthStr || '', 10)
+  const year = parseInt(yearStr || '', 10)
 
   const allRows: Array<{ dimensionType: string; dimensionValue: string; spend: number; impressions: number; clicks: number; conversions: number; revenue: number }> = []
   const extraMetrics: ExtraMetrics = { ...EMPTY_EXTRA_METRICS }
@@ -203,7 +221,7 @@ export async function syncCampaignBreakdowns(mediaSpendId: string): Promise<Brea
   for (const r of allRows) {
     if (breakdowns[r.dimensionType]) {
       const metrics = computeMetrics(r.spend, r.impressions, r.clicks, r.conversions, r.revenue)
-      breakdowns[r.dimensionType].push({
+      breakdowns[r.dimensionType]!.push({
         dimensionValue: r.dimensionValue,
         spend: r.spend, impressions: r.impressions, clicks: r.clicks,
         conversions: r.conversions, revenue: r.revenue,
@@ -214,13 +232,13 @@ export async function syncCampaignBreakdowns(mediaSpendId: string): Promise<Brea
   // Sort non-hourly by spend desc, hourly by hour asc
   for (const key of Object.keys(breakdowns)) {
     if (key === 'hourly') {
-      breakdowns[key].sort((a: any, b: any) => {
+      breakdowns[key]!.sort((a: any, b: any) => {
         const hourA = parseInt(a.dimensionValue, 10)
         const hourB = parseInt(b.dimensionValue, 10)
         return hourA - hourB
       })
     } else {
-      breakdowns[key].sort((a: any, b: any) => b.spend - a.spend)
+      breakdowns[key]!.sort((a: any, b: any) => b.spend - a.spend)
     }
   }
 
@@ -242,17 +260,26 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
   if (!campaign || !campaign.connection_id || !campaign.campaign_id) return empty
   if (campaign.platform !== 'meta' && campaign.platform !== 'google_ads') return empty
 
-  const conn = await queryOne<{
+  const conn = await queryOne<GoogleCredentialRow & {
     access_token: string; account_id: string; metadata: any
     refresh_token: string | null; token_expires_at: string | null
   }>(
-    `SELECT access_token, account_id, metadata, refresh_token, token_expires_at FROM social_connections WHERE id = $1`,
+    `SELECT sc.id, sc.access_token, sc.account_id, sc.metadata, sc.refresh_token, sc.token_expires_at,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+     FROM social_connections sc
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+     WHERE sc.id = $1`,
     [campaign.connection_id]
   )
   if (!conn) return empty
 
   // Refresh Google token if expired
   if (campaign.platform === 'google_ads') {
+    const credential = await resolveGoogleCredential(conn)
+    conn.access_token = credential.accessToken
+    conn.refresh_token = credential.refreshToken
+    conn.token_expires_at = credential.tokenExpiresAt
+    conn.google_credential_profile_id = credential.profileId
     const freshToken = await refreshGoogleTokenIfNeeded(conn, campaign.connection_id)
     if (freshToken) conn.access_token = freshToken
   }
@@ -977,6 +1004,6 @@ function normalizeStoryType(val: string): string {
 function normalizeMetaHour(val: string): string {
   // Extract the leading hour number
   const match = val.match(/^(\d{1,2}):/)
-  if (match) return String(parseInt(match[1], 10))
+  if (match) return String(parseInt(match[1]!, 10))
   return val
 }

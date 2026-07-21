@@ -85,14 +85,16 @@ function readinessBlockers(evidence: MeasurementReadinessEvidence): ReadinessBlo
   if (evidence.counts.activeMappings === 0) {
     blockers.push({ code: 'no_active_mappings', message: 'No canonical event mapping is active' })
   }
-  if (!evidence.liveApproved) {
-    blockers.push({ code: 'live_approval_missing', message: 'Live approval has not been recorded' })
-  }
-  if (!evidence.privacyApproved) {
-    blockers.push({
-      code: 'privacy_approval_missing',
-      message: 'Privacy and consent approval has not been recorded'
-    })
+  if (!evidence.profile.enabled || evidence.profile.environment !== 'live') {
+    if (!evidence.liveApproved) {
+      blockers.push({ code: 'live_approval_missing', message: 'Live approval has not been recorded' })
+    }
+    if (!evidence.privacyApproved) {
+      blockers.push({
+        code: 'privacy_approval_missing',
+        message: 'Privacy and consent approval has not been recorded'
+      })
+    }
   }
   if (
     evidence.profile.outcomeAuthority === 'client_webhook'
@@ -128,6 +130,10 @@ export function createMeasurementReadService(deps: MeasurementReadServiceDeps) {
         configVersion: evidence.configVersion,
         status: readinessStatus(evidence, blockers),
         liveEligible: blockers.length === 0,
+        approvals: {
+          privacy: evidence.privacyApproved,
+          live: evidence.liveApproved
+        },
         profile: evidence.profile,
         counts: evidence.counts,
         blockers,

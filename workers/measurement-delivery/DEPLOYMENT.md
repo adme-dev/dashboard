@@ -27,15 +27,40 @@ pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET
 ```
 
 Do not place OAuth tokens, refresh tokens, app secrets, or database URLs in
-`wrangler.toml`. Provider connection tokens are loaded from the tenant-scoped
-`social_connections` row at delivery time.
+`wrangler.toml`.
+
+Google Data Manager uses the tenant-scoped Google refresh grant in
+`social_connections`, and the Worker refreshes a short-lived access token only
+after verifying the `https://www.googleapis.com/auth/datamanager` scope.
+
+Meta CAPI does **not** use the linked Facebook OAuth token. Generate a
+dataset-specific CAPI access token in Meta Events Manager and provision the same
+purpose-scoped binding name in both runtimes that can execute provider traffic:
+
+```sh
+# Standalone delivery Worker
+pnpm exec wrangler secret put MEASUREMENT_PROVIDER_META_BIG_GARAGE
+
+# Pages provider-test runtime (replace with the production Pages project name)
+pnpm exec wrangler pages secret put MEASUREMENT_PROVIDER_META_BIG_GARAGE \
+  --project-name agency-dashboard
+```
+
+The destination stores only the binding name, for example
+`MEASUREMENT_PROVIDER_META_BIG_GARAGE`, in `credential_ref`. Provider references
+must match `MEASUREMENT_PROVIDER_[A-Z0-9_]+`; this prevents a destination from
+referencing unrelated application secrets. Never paste the token into Zero,
+Neon, logs, task comments, or source control. Pages and Worker secret values must
+be rotated together until Meta provider tests are routed through a Worker service
+binding.
 
 ## Deploy order
 
 1. Create the queue and DLQ.
 2. Apply migration `261_measurement_delivery_diagnostics.sql` and verify the due
    diagnostics index plus append-only check table.
-3. Set the Worker secrets.
+3. Set the Google Worker secrets and the Meta dataset-token binding in both
+   Pages and the delivery Worker.
 4. Run `pnpm typecheck` in `workers/measurement-delivery/`.
 5. Deploy the consumer/scheduled Worker with `pnpm run deploy` in
    `workers/measurement-delivery/`. Its 15-minute cron only leases rows whose
@@ -52,6 +77,8 @@ Do not place OAuth tokens, refresh tokens, app secrets, or database URLs in
 
 - Confirm Queue messages contain only `schemaVersion`, `clientId`, `eventId`, and
   `enqueuedAt`.
+- Confirm the destination contains only the purpose-scoped Meta binding name and
+  that neither provider-test nor delivery SQL selects `social_connections.access_token`.
 - Confirm `conversion_delivery_attempts` receives immutable, redacted attempt rows.
 - Confirm Meta reports received test events and Google returns a `requestId` that
   enters `pending` diagnostics with its first check due after 30 minutes.

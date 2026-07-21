@@ -89,6 +89,7 @@ describe('Measurement read service', () => {
 
     expect(result.status).toBe('blocked')
     expect(result.liveEligible).toBe(false)
+    expect(result.approvals).toEqual({ privacy: false, live: false })
     expect(result.blockers.map(blocker => blocker.code)).toEqual(expect.arrayContaining([
       'cache_stale',
       'destination_not_ready',
@@ -130,6 +131,40 @@ describe('Measurement read service', () => {
 
     expect(result.status).toBe('ready')
     expect(result.liveEligible).toBe(true)
+    expect(result.approvals).toEqual({ privacy: true, live: true })
+    expect(result.blockers).toEqual([])
+  })
+
+  it('does not reopen consumed approval gates after a profile is active', async () => {
+    const test = harness(evidence({
+      profile: {
+        enabled: true,
+        environment: 'live',
+        cacheStatus: 'fresh',
+        outcomeAuthority: 'zero_native'
+      },
+      liveApproved: false,
+      privacyApproved: false,
+      counts: {
+        destinations: 1,
+        readyDestinations: 1,
+        degradedDestinations: 0,
+        blockedDestinations: 0,
+        capabilities: 2,
+        readyCapabilities: 2,
+        degradedCapabilities: 0,
+        blockedCapabilities: 0,
+        activeMappings: 1,
+        outcomeEndpoints: 0,
+        readyOutcomeEndpoints: 0
+      }
+    }))
+
+    const result = await test.service.getReadiness(CLIENT_ID)
+
+    expect(result.status).toBe('ready')
+    expect(result.liveEligible).toBe(true)
+    expect(result.approvals).toEqual({ privacy: false, live: false })
     expect(result.blockers).toEqual([])
   })
 

@@ -2,6 +2,12 @@
 import { registerAdapter } from './registry'
 import { queryOne } from '~~/server/utils/db'
 import type { DestinationAdapter } from './types'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  resolveGoogleCredential,
+  type GoogleCredentialRow,
+} from '~~/server/utils/googleCredentialProfiles'
 
 interface Cfg { spreadsheet_id: string; sheet_name: string }
 
@@ -9,13 +15,17 @@ const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 async function loadGoogleAccessToken(): Promise<{ token: string | null; hasScope: boolean }> {
   // Pulls from social_connections.platform='google'. Returns the first active row's token.
-  const row = await queryOne<{ access_token: string; scopes: string[] }>(`
-    SELECT access_token, scopes FROM social_connections
-    WHERE platform = 'google' AND status = 'active' AND access_token IS NOT NULL
-    ORDER BY updated_at DESC LIMIT 1
+  const row = await queryOne<GoogleCredentialRow & { access_token: string | null; scopes: string[] }>(`
+    SELECT sc.id, sc.access_token, sc.refresh_token, sc.token_expires_at, sc.scopes,
+           ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+    FROM social_connections sc
+    ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+    WHERE sc.platform = 'google' AND sc.status = 'active'
+    ORDER BY sc.updated_at DESC LIMIT 1
   `)
   if (!row) return { token: null, hasScope: false }
-  return { token: row.access_token, hasScope: (row.scopes ?? []).includes(SHEETS_SCOPE) }
+  const credential = await resolveGoogleCredential(row)
+  return { token: credential.accessToken, hasScope: (row.scopes ?? []).includes(SHEETS_SCOPE) }
 }
 
 const adapter: DestinationAdapter<Cfg> = {

@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import { getKV } from '~~/server/utils/kv'
+import { resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 import { createPostgresMeasurementActivationRepository } from '~~/server/utils/measurement/activationRepository'
 import { createMeasurementActivationService } from '~~/server/utils/measurement/activationService'
 import { createPostgresMeasurementDestinationRepository } from '~~/server/utils/measurement/destinationRepository'
@@ -18,6 +19,7 @@ import {
   deliverMetaConversionEvent,
   refreshGoogleDataManagerAccessToken
 } from '~~/workers/measurement-delivery/src/providers'
+import { resolveMeasurementProviderCredential } from '~~/workers/measurement-delivery/src/credential'
 
 function createMeasurementRuntimeCache(event: H3Event) {
   const kv = getKV(event)
@@ -75,7 +77,13 @@ export function createMeasurementOutcomeEndpointRuntime(event: H3Event) {
 
 export function createMeasurementProviderTestRuntime(event: H3Event) {
   const config = useRuntimeConfig(event)
+  const googleConfig = resolveGoogleOAuthRuntimeConfig(event, {
+    googleClientId: String(config.googleClientId || ''),
+    googleClientSecret: String(config.googleClientSecret || '')
+  })
   const providerFetch = globalThis.fetch.bind(globalThis)
+  const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } })
+    .cloudflare?.env ?? {}
   return createMeasurementProviderTestService({
     repository: createPostgresMeasurementProviderTestRepository(),
     deliverMeta: input => deliverMetaConversionEvent({ ...input, fetch: providerFetch }),
@@ -84,9 +92,13 @@ export function createMeasurementProviderTestRuntime(event: H3Event) {
       ...input,
       fetch: providerFetch
     }),
+    resolveProviderCredential: credentialRef => resolveMeasurementProviderCredential(
+      env,
+      credentialRef
+    ),
     graphApiVersion: String(config.metaGraphApiVersion || 'v25.0'),
-    googleClientId: String(config.googleClientId || ''),
-    googleClientSecret: String(config.googleClientSecret || ''),
+    googleClientId: googleConfig.googleClientId,
+    googleClientSecret: googleConfig.googleClientSecret,
     now: () => new Date()
   })
 }

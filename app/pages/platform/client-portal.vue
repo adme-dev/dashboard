@@ -11,10 +11,10 @@
           <span class="text-[13px] text-rose-400 font-medium">Client Portal</span>
         </div>
         <h1 class="text-[clamp(36px,6vw,64px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
-          A dedicated space<br class="hidden sm:block">for your clients
+          A complete workspace<br class="hidden sm:block">for every client relationship
         </h1>
         <p class="text-lg md:text-xl text-white/50 max-w-[560px] mx-auto leading-relaxed">
-          Project visibility, approval workflows, job requests, invoices, and your team — all behind a secure, client-scoped login.
+          CRM and leads, campaign measurement, jobs, briefs, approvals, meetings, shared content, social reporting, and billing — all behind a secure, client-scoped login.
         </p>
       </div>
     </section>
@@ -67,10 +67,10 @@
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="text-center mb-14">
           <h2 class="text-[clamp(28px,4vw,44px)] font-[450] text-[#121317] dark:text-white leading-[1.15] tracking-[-0.02em] mb-4">
-            13 pages, purpose-built
+            A complete client workspace
           </h2>
           <p class="text-[16px] text-[#45474D] dark:text-white/60 max-w-[500px] mx-auto leading-relaxed">
-            Every page is designed for a specific client need — no feature bloat, no confusion.
+            From relationship management and campaign outcomes to delivery, review, and billing — each view is scoped to the client and their permissions.
           </p>
         </div>
 
@@ -190,6 +190,58 @@
                 <span class="text-[12px] text-[#121317]/70 dark:text-white/60">Invoice List & Detail</span>
               </div>
             </div>
+          </div>
+
+          <!-- CRM & Leads -->
+          <div class="rounded-3xl bento-gradient-portal-projects overflow-hidden p-6 md:p-8 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-500/15 flex items-center justify-center">
+                <UIcon name="i-lucide-contact-round" class="w-5 h-5 text-teal-600 dark:text-teal-400" />
+              </div>
+              <span class="text-[15px] font-medium text-[#121317] dark:text-white">CRM &amp; leads</span>
+            </div>
+            <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">
+              Client-scoped contacts, companies, opportunities, lead follow-up, response status, and won outcomes.
+            </p>
+          </div>
+
+          <!-- Campaigns & Measurement -->
+          <div class="rounded-3xl bento-gradient-portal-dash overflow-hidden p-6 md:p-8 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/15 flex items-center justify-center">
+                <UIcon name="i-lucide-chart-no-axes-combined" class="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <span class="text-[15px] font-medium text-[#121317] dark:text-white">Campaigns &amp; measurement</span>
+            </div>
+            <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">
+              Permission-gated campaign trends, spend, leads, outcomes, and separate browser, server, and CRM evidence.
+            </p>
+          </div>
+
+          <!-- Meetings & Video Reviews -->
+          <div class="rounded-3xl bento-gradient-portal-approvals overflow-hidden p-6 md:p-8 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-xl bg-cyan-50 dark:bg-cyan-500/15 flex items-center justify-center">
+                <UIcon name="i-lucide-video" class="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+              </div>
+              <span class="text-[15px] font-medium text-[#121317] dark:text-white">Meetings &amp; video reviews</span>
+            </div>
+            <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">
+              Upcoming sessions, shared recordings, review-ready video, and feedback kept with the client relationship.
+            </p>
+          </div>
+
+          <!-- Briefs & Social -->
+          <div class="rounded-3xl bento-gradient-portal-requests overflow-hidden p-6 md:p-8 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-xl bg-pink-50 dark:bg-pink-500/15 flex items-center justify-center">
+                <UIcon name="i-lucide-panels-top-left" class="w-5 h-5 text-pink-600 dark:text-pink-400" />
+              </div>
+              <span class="text-[15px] font-medium text-[#121317] dark:text-white">Briefs &amp; social</span>
+            </div>
+            <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">
+              Structured brief intake plus approved social inbox, listening, reporting, and news workflows.
+            </p>
           </div>
 
           <!-- Utility pages — compact strip -->
@@ -719,11 +771,18 @@ const invoiceFeatures = [
 
 // Stats strip data
 const portalStats = [
-  { value: '13', label: 'Portal pages' },
-  { value: '4', label: 'Permission gates' },
-  { value: '15', label: 'API endpoints' },
-  { value: '0', label: 'Shared tokens' }
+  { value: 'CRM', label: 'Contacts, companies, leads, and opportunities' },
+  { value: 'Live', label: 'Campaign and measurement context' },
+  { value: 'Scoped', label: 'Per-user modules and permissions' },
+  { value: 'Audited', label: 'Agency access and approval history' }
 ]
+
+useSeoMeta({
+  title: 'Client Portal CRM, Campaigns & Collaboration — XeroFlow',
+  description: 'Give every client a secure workspace for CRM and leads, campaign analytics, measurement, jobs, briefs, approvals, meetings, social reporting, shared files, and billing.',
+  ogTitle: 'Client Portal CRM, Campaigns & Collaboration — XeroFlow',
+  ogDescription: 'A client-scoped workspace for relationship management, campaign outcomes, delivery, approvals, shared work, and billing.'
+})
 
 // Rose particle colors for CTA waves
 const roseColors = ['#fb7185', '#f472b6', '#e11d48', '#fda4af', '#be123c']

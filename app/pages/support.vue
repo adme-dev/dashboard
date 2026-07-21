@@ -104,7 +104,7 @@ const faqs = [
   },
   {
     q: 'Can I invite my clients to the platform?',
-    a: 'Yes. Go to Clients, select a client, and use the "Invite to Portal" option. Clients get their own login with permissions you control — they can view projects, approve work, and access invoices.'
+    a: 'Yes. Go to Clients, select a client, and use the "Invite to Portal" option. Each contact gets a separate login with per-user controls for projects, invoices, approvals, campaign analytics, comments, and requests. Their client-scoped workspace can also bring together CRM and leads, shared files, meetings, measurement, and social workflows.'
   },
   {
     q: 'How does ad spend syncing work?',

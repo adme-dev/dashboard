@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isMeasurementProviderCredentialRef } from '~~/shared/utils/measurementProviderCredential'
 
 export const MeasurementEnvironmentSchema = z.enum(['test', 'live', 'paused'])
 export const CollectionTierSchema = z.enum([
@@ -203,12 +204,18 @@ const OpaqueCredentialRefSchema = z.string()
   .max(255)
   .regex(/^[a-zA-Z0-9][a-zA-Z0-9/_:.-]*$/, 'Invalid credential reference')
 
+const MeasurementProviderCredentialRefSchema = z.string()
+  .trim()
+  .refine(isMeasurementProviderCredentialRef, {
+    message: 'Provider credentials must use a purpose-scoped measurement binding'
+  })
+
 export const ConversionDestinationCreateSchema = z.strictObject({
   profileId: z.string().uuid(),
   platform: MeasurementPlatformSchema,
   socialConnectionId: z.string().uuid().nullable().default(null),
   externalDestinationId: z.string().trim().min(1).max(255),
-  credentialRef: OpaqueCredentialRefSchema.nullable().default(null),
+  credentialRef: MeasurementProviderCredentialRefSchema.nullable().default(null),
   enabled: z.boolean().default(false),
   environment: MeasurementEnvironmentSchema.default('test'),
   capabilities: z.array(CapabilityStateSchema).min(1).max(CapabilityModeSchema.options.length)
@@ -283,7 +290,7 @@ const DestinationConfigurationInputSchema = z.strictObject({
   platform: MeasurementPlatformSchema,
   socialConnectionId: z.string().uuid().nullable().default(null),
   externalDestinationId: z.string().trim().min(1).max(255),
-  credentialRef: OpaqueCredentialRefSchema.nullable().default(null),
+  credentialRef: MeasurementProviderCredentialRefSchema.nullable().default(null),
   capabilities: z.array(DestinationCapabilityConfigurationSchema)
     .min(1)
     .max(CapabilityModeSchema.options.length),
@@ -353,7 +360,7 @@ export const CreateConversionDestinationConfigurationSchema = z.strictObject({
 const DestinationConfigurationPatchSchema = z.strictObject({
   socialConnectionId: z.string().uuid().nullable().optional(),
   externalDestinationId: z.string().trim().min(1).max(255).optional(),
-  credentialRef: OpaqueCredentialRefSchema.nullable().optional(),
+  credentialRef: MeasurementProviderCredentialRefSchema.nullable().optional(),
   capabilities: z.array(DestinationCapabilityConfigurationSchema)
     .min(1)
     .max(CapabilityModeSchema.options.length)
@@ -465,7 +472,8 @@ export const ApproveMeasurementActivationSchema = z.strictObject({
   expectedConfigVersion: z.number().int().positive(),
   approvalKind: MeasurementApprovalKindSchema,
   actor: MeasurementTeamActorSchema,
-  reason: z.string().trim().min(1).max(1000)
+  reason: z.string().trim().min(1).max(1000),
+  separationOverride: z.boolean().default(false)
 })
 
 export const ActivateMeasurementProfileSchema = z.strictObject({
@@ -483,6 +491,7 @@ export const MeasurementActivationApprovalSchema = z.strictObject({
   approvalKind: MeasurementApprovalKindSchema,
   approvedBy: z.string().uuid(),
   reason: z.string().trim().min(1).max(1000),
+  separationOverride: z.boolean().default(false),
   createdAt: z.string().datetime({ offset: true })
 })
 
@@ -666,6 +675,10 @@ export const MeasurementReadinessSummarySchema = z.strictObject({
   configVersion: z.number().int().positive(),
   status: MeasurementReadinessStatusSchema,
   liveEligible: z.boolean(),
+  approvals: z.strictObject({
+    privacy: z.boolean(),
+    live: z.boolean()
+  }),
   profile: z.strictObject({
     enabled: z.boolean(),
     environment: MeasurementEnvironmentSchema,

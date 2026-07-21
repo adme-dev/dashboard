@@ -68,7 +68,7 @@ function createInput() {
       platform: 'meta' as const,
       socialConnectionId: null,
       externalDestinationId: '573284833843027',
-      credentialRef: 'cloudflare/measurement/meta/ferntree',
+      credentialRef: 'MEASUREMENT_PROVIDER_META_FERNTREE',
       capabilities: [{
         mode: 'meta_crm_capi' as const,
         status: 'configured' as const,
@@ -244,7 +244,7 @@ describe('Measurement destination service', () => {
       reason: 'Rotate the opaque credential reference',
       actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
       patch: {
-        credentialRef: 'cloudflare/measurement/meta/ferntree-v2',
+        credentialRef: 'MEASUREMENT_PROVIDER_META_FERNTREE_V2',
         capabilities: [{
           mode: 'meta_crm_capi',
           status: 'configured',

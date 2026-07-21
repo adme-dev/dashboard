@@ -1,6 +1,5 @@
-import { getCookie, deleteCookie, sendRedirect, getRequestURL } from 'h3'
+import { sendRedirect, getRequestURL } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
 import {
   exchangeGoogleCode,
   GOOGLE_ADS_OAUTH_SCOPES,
@@ -8,6 +7,11 @@ import {
   getCustomerInfo,
   listClientAccounts
 } from '~~/server/utils/googleAdsClient'
+import {
+  consumeGoogleOAuthAttempt,
+  storeGoogleCredentialProfile,
+  type GoogleDiscoveredAccount,
+} from '~~/server/utils/googleCredentialProfiles'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 /**
@@ -24,19 +28,22 @@ export default eventHandler(async (event) => {
     const code = String(query.code || '')
     const state = String(query.state || '')
     const errorParam = String(query.error || '')
-    const expectedState = getCookie(event, 'google_oauth_state')
+    const attempt = state
+      ? await consumeGoogleOAuthAttempt(state, user.id)
+      : null
+    if (!attempt) {
+      return sendRedirect(event, '/auth/oauth-callback?platform=google&success=false&error=' + encodeURIComponent('Invalid OAuth state. Please try again.'), 302)
+    }
 
-    // User denied permission or Google returned an error
+    // Consume valid attempts even when the operator denied permission, so the
+    // state can never be replayed into a later callback.
     if (errorParam) {
       const errorDesc = String(query.error_description || errorParam)
       return sendRedirect(event, `/auth/oauth-callback?platform=google&success=false&error=${encodeURIComponent(errorDesc)}`, 302)
     }
-
-    if (!code || !state || !expectedState || state !== expectedState) {
-      return sendRedirect(event, '/auth/oauth-callback?platform=google&success=false&error=' + encodeURIComponent('Invalid OAuth state. Please try again.'), 302)
+    if (!code) {
+      return sendRedirect(event, '/auth/oauth-callback?platform=google&success=false&error=' + encodeURIComponent('Google did not return an authorization code.'), 302)
     }
-
-    deleteCookie(event, 'google_oauth_state', { path: '/' })
 
     const runtimeConfig = useRuntimeConfig()
     const config = resolveGoogleAdsRuntimeConfig(undefined, event)
@@ -63,10 +70,8 @@ export default eventHandler(async (event) => {
       config.googleDeveloperToken
     )
 
-    let storedCount = 0
-
     // Collect all ad accounts: try each accessible customer as MCC first, then as direct account
-    const allAccounts: Array<{ customerId: string; name: string; currencyCode: string; descriptiveName?: string | null }> = []
+    const allAccounts: GoogleDiscoveredAccount[] = []
     const seen = new Set<string>()
 
     for (const customerId of customerIds) {
@@ -77,7 +82,7 @@ export default eventHandler(async (event) => {
           for (const child of children) {
             if (!seen.has(child.customerId)) {
               seen.add(child.customerId)
-              allAccounts.push(child)
+              allAccounts.push({ ...child, managerCustomerId: customerId })
             }
           }
           continue
@@ -91,49 +96,26 @@ export default eventHandler(async (event) => {
         const info = await getCustomerInfo(customerId, tokens.access_token, config.googleDeveloperToken)
         if (info && !seen.has(info.customerId)) {
           seen.add(info.customerId)
-          allAccounts.push(info)
+          allAccounts.push({ ...info, managerCustomerId: null })
         }
       } catch (err: any) {
         console.error(`[GoogleAds] Failed to get info for customer ${customerId}:`, err.message)
       }
     }
 
-    // Store all accounts
-    for (const account of allAccounts) {
-      await queryOne(
-        `INSERT INTO social_connections (platform, account_id, account_name, access_token, refresh_token, token_expires_at, scopes, status, metadata, connected_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         ON CONFLICT (platform, account_id)
-         DO UPDATE SET
-           access_token = EXCLUDED.access_token,
-           refresh_token = COALESCE(EXCLUDED.refresh_token, social_connections.refresh_token),
-           token_expires_at = EXCLUDED.token_expires_at,
-           scopes = EXCLUDED.scopes,
-           status = 'active',
-           metadata = EXCLUDED.metadata,
-           connected_by = EXCLUDED.connected_by,
-           updated_at = NOW()
-         RETURNING id`,
-        [
-          'google',
-          account.customerId,
-          account.name,
-          tokens.access_token,
-          tokens.refresh_token || null,
-          expiresAt,
-          tokens.scope ? tokens.scope.split(/\s+/).filter(Boolean) : GOOGLE_ADS_OAUTH_SCOPES,
-          'active',
-          JSON.stringify({
-            currencyCode: account.currencyCode,
-            descriptiveName: account.descriptiveName || null
-          }),
-          user.id
-        ]
-      )
-      storedCount++
-    }
+    const { profileId, storedCount } = await storeGoogleCredentialProfile({
+      userId: user.id,
+      tokens: {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresAt,
+        scopes: tokens.scope ? tokens.scope.split(/\s+/).filter(Boolean) : GOOGLE_ADS_OAUTH_SCOPES,
+      },
+      accessibleCustomerIds: customerIds,
+      accounts: allAccounts,
+    })
 
-    return sendRedirect(event, `/auth/oauth-callback?platform=google&success=true&accounts=${storedCount}`, 302)
+    return sendRedirect(event, `/auth/oauth-callback?platform=google&success=true&accounts=${storedCount}&profile=${profileId}`, 302)
   } catch (err: any) {
     console.error('[Google Callback] Error:', err.message || err)
     const msg = err.data?.statusMessage || err.data?.error?.message || err.message || 'Connection failed'

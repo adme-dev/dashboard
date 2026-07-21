@@ -177,6 +177,30 @@ describe('ConversionDestinationCreateSchema', () => {
 })
 
 describe('CreateConversionDestinationConfigurationSchema', () => {
+  it('rejects credential references outside the purpose-scoped measurement namespace', () => {
+    const result = CreateConversionDestinationConfigurationSchema.safeParse({
+      clientId: CLIENT_ID,
+      expectedProfileVersion: 1,
+      reason: 'Configure Meta CRM outcome delivery in test mode',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      destination: {
+        platform: 'meta',
+        socialConnectionId: null,
+        externalDestinationId: '573284833843027',
+        credentialRef: 'GOOGLE_CLIENT_SECRET',
+        capabilities: [{
+          mode: 'meta_crm_capi',
+          status: 'configured',
+          managementOrigin: 'zero',
+          canZeroMutate: true
+        }],
+        mappings: []
+      }
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   it('defines a dormant operator configuration with explicit capability ownership and Qualified mapping', () => {
     const result = CreateConversionDestinationConfigurationSchema.parse({
       clientId: CLIENT_ID,
@@ -187,7 +211,7 @@ describe('CreateConversionDestinationConfigurationSchema', () => {
         platform: 'meta',
         socialConnectionId: '44444444-4444-4444-8444-444444444444',
         externalDestinationId: '573284833843027',
-        credentialRef: 'cloudflare/measurement/meta/ferntree',
+        credentialRef: 'MEASUREMENT_PROVIDER_META_FERNTREE',
         capabilities: [
           {
             mode: 'meta_crm_capi',
@@ -324,7 +348,7 @@ describe('ConversionDestinationReadModelSchema', () => {
     expect(ConversionDestinationReadModelSchema.parse(base).credentialConfigured).toBe(true)
     expect(ConversionDestinationReadModelSchema.safeParse({
       ...base,
-      credentialRef: 'cloudflare/measurement/meta/ferntree'
+      credentialRef: 'MEASUREMENT_PROVIDER_META_FERNTREE'
     }).success).toBe(false)
   })
 })
@@ -338,7 +362,7 @@ describe('UpdateConversionDestinationConfigurationSchema', () => {
     actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
     patch: {
       externalDestinationId: '573284833843027',
-      credentialRef: 'cloudflare/measurement/meta/ferntree-v2',
+      credentialRef: 'MEASUREMENT_PROVIDER_META_FERNTREE_V2',
       capabilities: [{
         mode: 'meta_crm_capi',
         status: 'configured',
@@ -451,6 +475,20 @@ describe('Measurement activation command schemas', () => {
     })
 
     expect(approval.approvalKind).toBe('privacy')
+    expect(approval.separationOverride).toBe(false)
+  })
+
+  it('accepts an explicit server-derived owner separation override', () => {
+    const approval = ApproveMeasurementActivationSchema.parse({
+      clientId: CLIENT_ID,
+      expectedConfigVersion: 3,
+      approvalKind: 'live',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      reason: 'Application owner authorizes a break-glass single-owner launch',
+      separationOverride: true
+    })
+
+    expect(approval.separationOverride).toBe(true)
   })
 
   it('rejects system/client actors and client-supplied approval identities', () => {

@@ -45,6 +45,7 @@
               :key="feature.title"
               :to="`/features/${feature.slug}`"
               class="rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] p-6 flex flex-col gap-4 group hover:bg-[#eef0f3] dark:hover:bg-white/[0.06] transition-colors"
+              :class="category.features.length === 1 ? 'sm:flex-row sm:items-center sm:gap-6 lg:col-span-3' : ''"
             >
               <div class="w-11 h-11 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)] dark:shadow-none">
                 <UIcon :name="feature.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
@@ -89,9 +90,9 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Features — XeroFlow',
-  description: 'Explore 90+ features across work management, sales & CRM, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, time tracking, briefs & proposals, and administration.',
+  description: 'Explore 90+ features across work management, sales & CRM, creative production, financial operations, analytics, communication, AI intelligence, governed people operations, client portals, time tracking, briefs, and administration.',
   ogTitle: 'Features — XeroFlow',
-  ogDescription: 'Explore 90+ features across work management, sales & CRM, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, time tracking, briefs & proposals, and administration.',
+  ogDescription: 'Explore 90+ features across work management, sales & CRM, creative production, financial operations, analytics, communication, AI intelligence, governed people operations, client portals, time tracking, briefs, and administration.',
 })
 
 const categories = [
@@ -197,7 +198,7 @@ const categories = [
       { title: 'Xero Integration', slug: 'xero-integration', icon: 'i-lucide-link', description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts.' },
       { title: 'EOM Engine', slug: 'eom-engine', icon: 'i-lucide-file-spreadsheet', description: 'End-of-month invoice generation with configurable line items, tax, and auto-upload to Xero.' },
       { title: 'Meta Ads Tracking', slug: 'meta-ads-tracking', icon: 'i-lucide-megaphone', description: 'OAuth-connected Meta Ads spend syncing with daily breakdowns and campaign-level budgets.' },
-      { title: 'Google Ads Tracking', slug: 'google-ads-tracking', icon: 'i-lucide-bar-chart-3', description: 'Google Ads performance data with spend tracking, budget alerts, and audit trails.' },
+      { title: 'Google Ads Tracking', slug: 'google-ads-tracking', icon: 'i-lucide-bar-chart-3', description: 'Agency-wide Google Ads performance across multiple secure login and manager-account connections, with spend tracking, budget alerts, and audit trails.' },
       { title: 'Profit & Loss', slug: 'profit-loss', icon: 'i-lucide-trending-up', description: 'Real-time P&L dashboards with revenue, expenses, and margin analysis per client.' },
       { title: 'Budget Management', slug: 'budget-management', icon: 'i-lucide-wallet', description: 'Set monthly budgets per client and campaign. Get alerts when spend approaches limits.' },
       { title: 'Rate Cards', slug: 'rate-cards', icon: 'i-lucide-credit-card', description: 'Define service pricing with rate cards. Fuzzy match to Xero accounts, variance dashboards, and AI integration.' },
@@ -269,7 +270,7 @@ const categories = [
   },
   {
     title: 'Client Portal',
-    subtitle: 'External access for your clients',
+    subtitle: 'CRM, campaigns, jobs, billing, approvals, and shared work',
     icon: 'i-lucide-briefcase',
     iconBg: 'bg-pink-50 dark:bg-pink-500/10',
     iconColor: 'text-pink-600',
@@ -280,6 +281,11 @@ const categories = [
       { title: 'Invoice Access', slug: 'invoice-access', icon: 'i-lucide-receipt', description: 'Permission-gated invoice viewing so clients can check billing without emails.' },
       { title: 'Creative Gallery', slug: 'creative-gallery', icon: 'i-lucide-image', description: 'Browse all delivered assets in a visual gallery with download and preview.' },
       { title: 'Notifications', slug: 'notifications', icon: 'i-lucide-bell', description: 'Clients get notified when new deliverables, invoices, or updates are ready.' },
+      { title: 'CRM & Lead Management', slug: 'portal-crm-leads', icon: 'i-lucide-contact-round', description: 'Give clients a scoped CRM for contacts, companies, opportunities, and portal-visible leads — with follow-up status and outcome tracking.' },
+      { title: 'Campaign Analytics', slug: 'portal-campaign-analytics', icon: 'i-lucide-chart-no-axes-combined', description: 'Share permission-gated campaign performance, spend, platform trends, leads, outcomes, and exports without exposing internal agency data.' },
+      { title: 'Measurement Health', slug: 'portal-measurement', icon: 'i-lucide-activity', description: 'Show clients how browser events, server delivery, and CRM outcomes contribute to measurement — with ownership and evidence kept distinct.' },
+      { title: 'Meetings & Video Reviews', slug: 'portal-meetings-reviews', icon: 'i-lucide-video', description: 'Share upcoming meetings, recordings, and review-ready video so decisions and feedback stay attached to the client relationship.' },
+      { title: 'Briefs & Social Workspace', slug: 'portal-briefs-social', icon: 'i-lucide-panels-top-left', description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.' },
     ]
   },
   {
@@ -308,6 +314,16 @@ const categories = [
       { title: 'Brief-to-Quote', slug: 'brief-to-quote', icon: 'i-lucide-receipt', description: 'Auto-generate quotes from approved briefs. Rate card matching, Xero push, and quote-to-invoice conversion.' },
       { title: 'Bulk Operations', slug: 'bulk-brief-operations', icon: 'i-lucide-layers', description: 'Multi-select briefs for bulk status changes, assignment, duplication, and export. Floating action bar for fast ops.' },
       { title: 'Brief Analytics', slug: 'brief-analytics', icon: 'i-lucide-bar-chart-2', description: 'Cycle time funnels, completion rates, and aggregate analytics across all briefs and templates.' },
+    ]
+  },
+  {
+    title: 'People Operations',
+    subtitle: 'Role clarity, evidence-aware reviews, and human governance',
+    icon: 'i-lucide-users-round',
+    iconBg: 'bg-cyan-50 dark:bg-cyan-500/10',
+    iconColor: 'text-cyan-600',
+    features: [
+      { title: 'HR & People Operations', slug: 'hr-people-operations', icon: 'i-lucide-shield-check', description: 'Run role-governed business reviews with private workspaces, evidence thresholds, employee correction rights, responsibility mapping, contract controls, and human approval gates.' }
     ]
   },
   {

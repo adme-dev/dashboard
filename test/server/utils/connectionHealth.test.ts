@@ -64,6 +64,17 @@ describe('classifyConnectionHealth', () => {
     expect(r.health).toBe('healthy')
   })
 
+  it('does not mark an expired short-lived access token unhealthy when it can refresh', () => {
+    const r = classifyConnectionHealth({
+      status: 'active',
+      tokenExpiresAt: new Date(NOW.getTime() - 30 * 60 * 1000),
+      refreshToken: 'rt',
+      lastSyncedAt: new Date(NOW.getTime() - HOUR),
+      now: NOW
+    })
+    expect(r.health).toBe('healthy')
+  })
+
   it('returns "never_synced" when last_synced_at is null', () => {
     const r = classifyConnectionHealth({
       status: 'active',

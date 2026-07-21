@@ -13,6 +13,13 @@ import { executeAdSetSplitWrites } from '~~/server/utils/budgetSplitExecutor'
 import { kvDelete } from '~~/server/utils/kv'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 import { isSpendSyncStale } from '~~/server/utils/spendSyncFreshness'
+import {
+  GOOGLE_CREDENTIAL_PROFILE_JOIN,
+  GOOGLE_CREDENTIAL_PROFILE_SELECT,
+  persistGoogleCredentialRefresh,
+  resolveGoogleCredential,
+  type GoogleCredentialRow,
+} from '~~/server/utils/googleCredentialProfiles'
 
 export default eventHandler(async (event) => {
   const user = await requireRole(event, ['owner', 'admin'])
@@ -24,7 +31,7 @@ export default eventHandler(async (event) => {
   const override = body?.override === true
 
   // Load the approved action joined to its media_spend row.
-  const row = await queryOne<{
+  const row = await queryOne<GoogleCredentialRow & {
     platform: 'meta' | 'google_ads'
     connection_id: string
     campaign_id: string
@@ -47,6 +54,7 @@ export default eventHandler(async (event) => {
             sc.access_token,
             sc.refresh_token,
             sc.token_expires_at,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT},
             COALESCE((cal.previous_value->>'dailyBudget')::numeric, 0)::text AS current_daily,
             COALESCE((cal.new_value->>'dailyBudget')::numeric, 0)::text       AS recommended_daily,
             COALESCE(ms.budget_allocated, 0)::text AS budget_allocated,
@@ -62,6 +70,7 @@ export default eventHandler(async (event) => {
      FROM campaign_action_log cal
      JOIN media_spend ms ON ms.id = cal.media_spend_id
      JOIN social_connections sc ON sc.id = ms.connection_id
+     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
      WHERE cal.id = $2 AND cal.media_spend_id = $1 AND cal.action_status = 'approved'`,
     [id, actionId]
   )
@@ -265,6 +274,7 @@ export default eventHandler(async (event) => {
       readBack = res.readBackDailyMajor
     } else {
       const config = resolveGoogleAdsRuntimeConfig()
+      const credential = await resolveGoogleCredential(row)
       // The stored access_token is almost always stale (Google tokens expire
       // hourly), and client accounts under a manager need the login-customer-id
       // header — resolve both exactly like the working spend-sync read path.
@@ -273,9 +283,9 @@ export default eventHandler(async (event) => {
         {
           id: row.connection_id,
           account_id: row.account_id,
-          access_token: row.access_token,
-          refresh_token: row.refresh_token,
-          token_expires_at: row.token_expires_at,
+          access_token: credential.accessToken,
+          refresh_token: credential.refreshToken,
+          token_expires_at: credential.tokenExpiresAt,
         },
         {
           googleClientId: config.googleClientId,
@@ -287,10 +297,12 @@ export default eventHandler(async (event) => {
           refreshGoogleToken,
           listAccessibleCustomers,
           updateToken: async (cid, tok, exp) => {
-            await execute(
-              `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
-              [tok, exp, cid],
-            )
+            await persistGoogleCredentialRefresh({
+              connectionId: cid,
+              profileId: credential.profileId,
+              accessToken: tok,
+              expiresAt: exp,
+            })
           },
         },
       )

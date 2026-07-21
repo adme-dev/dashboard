@@ -1054,7 +1054,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Google Ads API Integration',
-        content: 'Connect your Google Ads manager accounts via OAuth. XeroFlow syncs campaign data, spend metrics, and performance indicators through the Google Ads REST API. Like Meta, multiple customer accounts map to XeroFlow clients, giving your media buying team a single source of truth for Google spend across every client in the agency.'
+        content: 'Connect multiple Google login identities and manager accounts via OAuth. Each secure credential profile discovers its own manager and child accounts, while overlapping customer access preserves the existing XeroFlow client mapping. XeroFlow syncs campaign data, spend metrics, and performance indicators through the Google Ads REST API, giving your media buying team one source of truth across every client and Google account structure in the agency.'
       },
       {
         title: 'Campaign-Level Breakdowns',
@@ -1680,7 +1680,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Branded Experience',
-        content: 'The client portal uses a clean, dedicated layout separate from the agency dashboard. Clients see a focused sidebar with only the sections relevant to them — dashboard, projects, approvals, gallery, invoices, and notifications. No internal tools, no other client data, no agency operations. The experience is professional and purpose-built for external stakeholders.'
+        content: 'The client portal uses a clean, dedicated layout separate from the agency dashboard. Clients see only the sections relevant to them — CRM, leads, campaign analytics, measurement, meetings, briefs, social workflows, projects, approvals, shared files, invoices, and notifications. No internal tools, no other client data, no agency operations. The experience is professional and purpose-built for external stakeholders.'
       }
     ]
   },
@@ -1821,6 +1821,126 @@ const features: Record<string, Feature> = {
       {
         title: 'Agency-Controlled Triggers',
         content: 'Your agency controls which events trigger client notifications. Configure whether clients are notified about status changes, file uploads, comment replies, or only explicit approval requests. This gives you editorial control over the client experience — you decide when clients hear about activity and what level of detail they see, keeping communication intentional rather than noisy.'
+      }
+    ]
+  },
+  'portal-crm-leads': {
+    title: 'CRM & Lead Management',
+    slug: 'portal-crm-leads',
+    icon: 'i-lucide-contact-round',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Give clients a scoped CRM for contacts, companies, opportunities, and portal-visible leads — with follow-up status and outcome tracking built in.',
+    details: [
+      {
+        title: 'A CRM Scoped to the Client Relationship',
+        content: 'The portal CRM uses the same relationship model as the agency workspace while routing every request through the client-scoped portal API. Clients can work with the contacts, companies, activities, and opportunities you deliberately expose without gaining access to another client record or internal agency data.'
+      },
+      {
+        title: 'Shared Lead Follow-Up',
+        content: 'Portal-visible leads arrive in a dedicated inbox with contact state, notes, response timing, and outcome context. Clients can see what needs attention, mark follow-up progress, and keep the agency aligned on contacted, qualified, and won outcomes without a separate spreadsheet.'
+      },
+      {
+        title: 'Permission and Audit Boundaries',
+        content: 'Portal sessions and agency access remain distinct. The server derives client ownership from the authenticated session, enforces permissions at the endpoint, and records agency preview access so collaborative CRM work remains accountable.'
+      }
+    ]
+  },
+  'portal-campaign-analytics': {
+    title: 'Campaign Analytics',
+    slug: 'portal-campaign-analytics',
+    icon: 'i-lucide-chart-no-axes-combined',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Share permission-gated campaign performance, spend, platform trends, leads, outcomes, and exports without exposing internal agency data.',
+    details: [
+      {
+        title: 'Campaign and Platform Performance',
+        content: 'Clients can review campaign totals, platform breakdowns, spend, impressions, clicks, conversions, and lead performance from a portal-specific analytics view. Trend charts and campaign tables provide useful detail without exposing the rest of the agency portfolio.'
+      },
+      {
+        title: 'Leads Connected to Outcomes',
+        content: 'Campaign reporting includes portal-visible lead volume, contacted and uncontacted states, won outcomes, response time, and cost-per-lead context. This keeps media delivery and commercial follow-up in the same client conversation.'
+      },
+      {
+        title: 'Access-Controlled Reporting',
+        content: 'Analytics navigation, reports, and exports appear only for client users with analytics permission. The same permission is rechecked by the server, so hiding a menu item is never the only access control.'
+      }
+    ]
+  },
+  'portal-measurement': {
+    title: 'Measurement Health',
+    slug: 'portal-measurement',
+    icon: 'i-lucide-activity',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Show clients how browser events, server delivery, and CRM outcomes contribute to measurement — with ownership and evidence kept distinct.',
+    details: [
+      {
+        title: 'Evidence, Not a Blended Status Light',
+        content: 'The measurement view separates browser signals, server delivery, and CRM outcomes so one healthy layer cannot conceal a gap in another. Clients can understand which evidence exists, where it originated, and who owns the next action.'
+      },
+      {
+        title: 'Outcome and Delivery Context',
+        content: 'Portal reporting connects campaign outcomes with delivery health while preserving the difference between shared website event IDs and lead- or CRM-only lifecycle changes. That distinction makes the reporting more useful and harder to misread.'
+      },
+      {
+        title: 'Client-Safe Operational Detail',
+        content: 'Clients receive enough diagnostic context to have an informed measurement conversation without access to internal credentials, unrelated accounts, or implementation controls. The agency retains the operational control plane.'
+      }
+    ]
+  },
+  'portal-meetings-reviews': {
+    title: 'Meetings & Video Reviews',
+    slug: 'portal-meetings-reviews',
+    icon: 'i-lucide-video',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Share upcoming meetings, recordings, and review-ready video so decisions and feedback stay attached to the client relationship.',
+    details: [
+      {
+        title: 'Upcoming and Completed Meetings',
+        content: 'Clients can see upcoming sessions, completed meetings, and the shared artifacts associated with each one. This creates a durable meeting history instead of scattering invites, recordings, and follow-up across inboxes.'
+      },
+      {
+        title: 'Review Video in Context',
+        content: 'Video review pages give clients a focused place to watch shared work and provide feedback. Review activity stays connected to the relevant client and project context rather than becoming an untraceable email thread.'
+      },
+      {
+        title: 'Controlled Sharing',
+        content: 'Only portal-visible meetings, recordings, and review items are returned to the client session. Agency-only notes and unrelated client artifacts remain outside the portal boundary.'
+      }
+    ]
+  },
+  'portal-briefs-social': {
+    title: 'Briefs & Social Workspace',
+    slug: 'portal-briefs-social',
+    icon: 'i-lucide-panels-top-left',
+    category: 'Client Portal',
+    categoryIcon: 'i-lucide-briefcase',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.',
+    details: [
+      {
+        title: 'Structured Brief Submission',
+        content: 'Clients can choose an approved template, complete the required fields, submit a brief, and follow its status from the portal. The agency receives structured information that can move directly into delivery instead of reconstructing requirements from email.'
+      },
+      {
+        title: 'Shared Social Operations',
+        content: 'Permissioned portal routes bring together the social inbox, listening, reporting, and approved news workflows. Clients can participate in the parts of social delivery that require their context while the agency keeps publishing controls and internal operations separate.'
+      },
+      {
+        title: 'One Relationship Record',
+        content: 'Briefs, files, social activity, jobs, approvals, and meetings live alongside CRM and campaign context. The result is a single client workspace with fewer handoffs and less duplicated reporting.'
       }
     ]
   },
@@ -3139,6 +3259,36 @@ const features: Record<string, Feature> = {
       {
         title: 'Aggregate Metrics',
         content: 'Dashboard widgets show total briefs in progress, average time to approval, briefs awaiting review, and briefs converted to quotes. Eight aggregate queries power the analytics dashboard, giving you a real-time pulse on your agency\'s brief pipeline across all clients and projects.'
+      }
+    ]
+  },
+
+  // ─── People Operations ──────────────────────────────────────
+  'hr-people-operations': {
+    title: 'HR & People Operations',
+    slug: 'hr-people-operations',
+    icon: 'i-lucide-users-round',
+    category: 'People Operations',
+    categoryIcon: 'i-lucide-shield-check',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Bring role clarity, private business reviews, evidence-aware scorecards, responsibility mapping, contract controls, and launch governance into one restricted people operations workspace.',
+    details: [
+      {
+        title: 'Start With Role Clarity',
+        content: 'Build versioned role profiles from contractual responsibilities, actual decision rights, agreed outcomes, and role-specific evidence requirements. Assign the published baseline to each team member before a review begins, then let them acknowledge it or record a correction when the role no longer reflects the work they perform.'
+      },
+      {
+        title: 'Run Evidence-Aware Business Reviews',
+        content: 'Commission neutral questionnaires from approved role profiles, schedule private review cycles, and keep participant responses inside a restricted workspace. Scorecards separate evidenced delivery from operational enablement, disclose their sources, and abstain when the configured evidence threshold has not been met.'
+      },
+      {
+        title: 'Keep People in the Decision Loop',
+        content: 'XeroFlow does not turn a questionnaire, operational signal, or score into an employment decision. Reviewers must consider contrary evidence, participants can challenge incorrect KPI evidence or role assumptions, and final findings require a recorded human review with the participant response attached.'
+      },
+      {
+        title: 'Govern Every Launch and Change',
+        content: 'Use explicit launch gates, current approval evidence, a contract vault, responsibility mapping, and an append-only decision history to keep the process accountable. Sensitive evidence remains access-controlled, private messages and protected attributes stay outside the review scope, and expired approvals return the workflow to a blocked state.'
       }
     ]
   },

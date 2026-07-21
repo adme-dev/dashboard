@@ -42,7 +42,7 @@
         </NuxtLink>
 
         <h1 class="text-[clamp(40px,7vw,80px)] font-[450] text-[#121317] dark:text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[900px] mx-auto">
-          Run your agency<br class="hidden sm:block">from a single platform
+          Run your agency<br class="hidden sm:block"> from a single platform
         </h1>
 
         <p class="text-lg md:text-xl text-[#45474D] dark:text-white/60 max-w-[560px] mx-auto mb-10 leading-relaxed">
@@ -413,7 +413,7 @@
               Client Portal
             </h2>
             <p class="text-[#45474D] dark:text-white/60 text-base md:text-lg leading-relaxed max-w-[480px]">
-              Dedicated portal for your clients to view projects, approve work, access invoices and browse the creative gallery — all permission-gated.
+              A permission-gated client workspace for CRM and leads, campaign measurement, jobs, briefs, approvals, meetings, shared files, and billing.
             </p>
             <NuxtLink to="/platform/client-portal" class="inline-flex items-center gap-1.5 mt-5 text-[15px] font-medium text-[#121317] dark:text-white hover:opacity-70 transition-opacity group">
               Learn more
@@ -698,21 +698,21 @@
           </div>
 
           <!-- Roles & Admin -->
-          <div class="md:col-span-2 rounded-3xl bento-gradient-roles overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-            <div class="flex flex-col md:flex-row gap-6 p-6 md:p-10">
-              <div class="flex-1 flex flex-col justify-center">
+          <div class="rounded-3xl bento-gradient-roles overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 p-6 md:p-8">
+            <div class="flex flex-col gap-5">
+              <div>
                 <div class="flex items-center gap-2 mb-3">
                   <UIcon name="i-lucide-shield-check" class="w-5 h-5 text-slate-600 dark:text-slate-400" />
                   <span class="text-[13px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Admin &amp; Roles</span>
                 </div>
-                <h3 class="text-[clamp(22px,3vw,28px)] font-[450] text-[#121317] dark:text-white leading-[1.2] tracking-[-0.02em] mb-3">
-                  Granular permissions &amp;<br>custom roles
+                <h3 class="text-[20px] font-[450] text-[#121317] dark:text-white tracking-[-0.01em] mb-2">
+                  Granular permissions &amp; custom roles
                 </h3>
-                <p class="text-[#45474D] dark:text-white/60 text-[15px] leading-relaxed max-w-[400px]">
+                <p class="text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">
                   15 built-in roles, custom role builder, and 3-layer enforcement across server middleware, route middleware, and sidebar gating.
                 </p>
               </div>
-              <div class="flex-1">
+              <div>
                 <div class="rounded-2xl bg-white/80 dark:bg-white/[0.08] backdrop-blur-sm shadow-sm dark:shadow-none overflow-hidden p-4">
                   <!-- Roles mockup -->
                   <div class="flex items-center justify-between mb-3">
@@ -741,6 +741,140 @@
                       <span class="text-[9px] font-medium text-[#121317] dark:text-white flex-1">Creative Lead</span>
                       <span class="text-[7px] text-violet-600 dark:text-violet-400">Briefs + studio</span>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- First-party Measurement -->
+    <section
+      id="measurement"
+      aria-labelledby="first-party-measurement-title"
+      class="py-20 md:py-28"
+    >
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="overflow-hidden rounded-[2rem] bg-[#0a0b0e] text-white border border-white/[0.08]">
+          <div class="grid lg:grid-cols-[1.05fr_0.95fr]">
+            <div class="p-7 sm:p-10 md:p-14 lg:p-16">
+              <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-400/10 border border-emerald-300/15 mb-7">
+                <UIcon name="i-lucide-activity" class="w-3.5 h-3.5 text-emerald-300" />
+                <span class="text-[13px] font-medium text-emerald-200">First-party measurement</span>
+              </div>
+
+              <h2
+                id="first-party-measurement-title"
+                class="text-[clamp(30px,4.5vw,52px)] font-[450] leading-[1.08] tracking-[-0.03em] mb-5"
+              >
+                Measure every consented enquiry from site to ad platform
+              </h2>
+              <p class="text-base md:text-lg leading-relaxed text-white/60 max-w-[580px] mb-8">
+                Connect client websites, capture consented first-party events, and manage server-side conversion delivery to Google and Meta from one agency workspace.
+              </p>
+
+              <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-5" aria-label="First-party measurement capabilities">
+                <li
+                  v-for="capability in measurementCapabilities"
+                  :key="capability.title"
+                  class="flex gap-3"
+                >
+                  <div class="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <UIcon :name="capability.icon" class="w-4 h-4 text-emerald-300" />
+                  </div>
+                  <div>
+                    <h3 class="text-[14px] font-medium text-white mb-1">
+                      {{ capability.title }}
+                    </h3>
+                    <p class="text-[13px] leading-relaxed text-white/60">
+                      {{ capability.description }}
+                    </p>
+                  </div>
+                </li>
+              </ul>
+
+              <NuxtLink
+                to="/platform/ad-spend"
+                class="inline-flex items-center gap-2 mt-9 text-[15px] font-medium text-white hover:text-emerald-200 transition-colors group"
+              >
+                Explore advertising operations
+                <UIcon name="i-lucide-arrow-right" class="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </NuxtLink>
+            </div>
+
+            <div class="relative min-h-[430px] bg-white/[0.025] border-t lg:border-t-0 lg:border-l border-white/[0.08] p-6 sm:p-9 flex items-center">
+              <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+                <div class="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-emerald-400/10 blur-3xl" />
+                <div class="absolute -bottom-24 -left-20 w-72 h-72 rounded-full bg-blue-400/[0.07] blur-3xl" />
+              </div>
+
+              <div class="relative w-full max-w-[460px] mx-auto rounded-2xl bg-[#121317] border border-white/[0.1] p-4 sm:p-5 shadow-2xl">
+                <div class="flex items-center justify-between pb-4 border-b border-white/[0.08]">
+                  <div>
+                    <p class="text-[11px] uppercase tracking-[0.16em] text-white/60 mb-1">
+                      Measurement control
+                    </p>
+                    <p class="text-[14px] font-medium text-white">
+                      Client conversion pipeline
+                    </p>
+                  </div>
+                  <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-400/10 text-[10px] text-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-300" />
+                    Consent-gated
+                  </div>
+                </div>
+
+                <ol class="mt-4 space-y-3" aria-label="Governed measurement delivery flow">
+                  <li
+                    v-for="(stage, index) in measurementStages"
+                    :key="stage.title"
+                    class="relative flex items-center gap-3 rounded-xl bg-white/[0.04] border border-white/[0.06] p-3.5"
+                  >
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" :class="stage.iconBg">
+                      <UIcon :name="stage.icon" class="w-4 h-4" :class="stage.iconColor" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center justify-between gap-3">
+                        <p class="text-[12px] font-medium text-white">
+                          {{ stage.title }}
+                        </p>
+                        <span class="text-[10px] text-white/50">
+                          0{{ index + 1 }}
+                        </span>
+                      </div>
+                      <p class="text-[11px] text-white/60 mt-0.5">
+                        {{ stage.description }}
+                      </p>
+                    </div>
+                    <UIcon
+                      v-if="index < measurementStages.length - 1"
+                      name="i-lucide-chevron-down"
+                      class="absolute -bottom-3.5 left-[1.65rem] z-10 w-3 h-3 text-white/20"
+                      aria-hidden="true"
+                    />
+                  </li>
+                </ol>
+
+                <div class="grid grid-cols-2 gap-3 mt-4">
+                  <div class="rounded-xl bg-white/[0.035] border border-white/[0.06] p-3">
+                    <div class="flex items-center gap-2 mb-1.5">
+                      <UIcon name="i-simple-icons-googleads" class="w-3.5 h-3.5 text-[#4285F4]" />
+                      <span class="text-[11px] font-medium text-white">Google</span>
+                    </div>
+                    <p class="text-[10px] leading-relaxed text-white/60">
+                      Data Manager &amp; enhanced conversions
+                    </p>
+                  </div>
+                  <div class="rounded-xl bg-white/[0.035] border border-white/[0.06] p-3">
+                    <div class="flex items-center gap-2 mb-1.5">
+                      <UIcon name="i-simple-icons-meta" class="w-3.5 h-3.5 text-[#0081FB]" />
+                      <span class="text-[11px] font-medium text-white">Meta</span>
+                    </div>
+                    <p class="text-[10px] leading-relaxed text-white/60">
+                      Conversions API delivery
+                    </p>
                   </div>
                 </div>
               </div>
@@ -891,9 +1025,9 @@
               For clients
             </div>
             <h3 class="text-[clamp(24px,3.5vw,36px)] font-[450] text-[#121317] dark:text-white leading-[1.15] tracking-[-0.02em] mb-2">
-              View your projects
+              Run your client workspace
             </h3>
-            <p class="text-[#45474D] dark:text-white/60 text-lg mb-8">Approvals, invoices & deliverables</p>
+            <p class="text-[#45474D] dark:text-white/60 text-lg mb-8">CRM, campaigns, shared work & billing</p>
             <NuxtLink
               to="/portal/login"
               class="inline-flex items-center gap-2 px-6 py-3 bg-[#b7bfd9]/10 dark:bg-white/[0.06] text-[#121317] dark:text-white text-[15px] font-medium rounded-full hover:bg-[#b7bfd9]/20 dark:hover:bg-white/[0.1] transition-colors"
@@ -970,7 +1104,7 @@
               <span class="text-white text-xs font-semibold tracking-tight">XF</span>
             </div>
             <h2 class="text-[clamp(28px,4vw,48px)] font-[450] text-white leading-[1.15] tracking-[-0.02em] mb-10">
-              Ready to streamline<br class="hidden sm:block">your agency?
+              Ready to streamline<br class="hidden sm:block"> your agency?
             </h2>
             <NuxtLink
               to="/auth/login"
@@ -1008,9 +1142,9 @@ definePageMeta({
 
 useSeoMeta({
   title: 'XeroFlow — Agency Operations Platform',
-  description: 'Run your agency from a single platform. Work management, client portal, financials, real-time chat, and AI-powered insights.',
+  description: 'Run your agency from one platform with work management, financials, governed people operations, client portals, AI insights, and consent-gated first-party measurement.',
   ogTitle: 'XeroFlow — Agency Operations Platform',
-  ogDescription: 'Run your agency from a single platform. Work management, client portal, financials, real-time chat, and AI-powered insights.',
+  ogDescription: 'Run your agency from one platform with work management, financials, governed people operations, client portals, AI insights, and consent-gated first-party measurement.'
 })
 
 const route = useRoute()
@@ -1066,9 +1200,11 @@ const platformCards = [
   { title: 'Boards', subtitle: 'Kanban, timeline & calendar views for managing all your tasks across projects.', to: '/platform/boards', bg: 'bg-pink-300', image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=600&fit=crop&crop=center' },
   { title: 'Financials', subtitle: 'End-of-month invoicing engine with Xero integration and P&L tracking.', to: '/platform/financials', bg: 'bg-emerald-300', image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&h=600&fit=crop&crop=center' },
   { title: 'Chat', subtitle: 'Real-time channels, threads, file sharing, and team messaging.', to: '/platform/chat', bg: 'bg-violet-400', image: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&h=600&fit=crop&crop=faces' },
+  { title: 'Office', subtitle: 'Live presence, virtual rooms, guest lobbies, and organised meeting follow-up.', to: '/platform/office', bg: 'bg-emerald-300', image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=600&h=600&fit=crop&crop=faces' },
+  { title: 'People Operations', subtitle: 'Role clarity, private business reviews, evidence controls, and human governance.', to: '/features/hr-people-operations', bg: 'bg-cyan-300', image: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=600&h=600&fit=crop&crop=faces' },
   { title: 'AI Insights', subtitle: 'Smart project generation, anomaly detection, and AI recommendations.', to: '/platform/ai', bg: 'bg-yellow-300', image: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&h=600&fit=crop&crop=center' },
   { title: 'Time Tracking', subtitle: 'Weekly timesheets, timer, approvals, and utilization reports.', to: '/platform/time-tracking', bg: 'bg-rose-300', image: 'https://images.unsplash.com/photo-1501139083538-0139583c060f?w=600&h=600&fit=crop&crop=center' },
-  { title: 'Client Portal', subtitle: 'Client-facing approvals, invoices, deliverables, and project updates.', to: '/platform/client-portal', bg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&h=600&fit=crop&crop=faces' },
+  { title: 'Client Portal', subtitle: 'Client CRM, campaign insights, jobs, approvals, meetings, shared work, and billing.', to: '/platform/client-portal', bg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&h=600&fit=crop&crop=faces' },
   { title: 'Ad Spend', subtitle: 'Meta & Google Ads connections with spend syncing and budget management.', to: '/platform/ad-spend', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&h=600&fit=crop&crop=center' },
   { title: 'Automations', subtitle: 'Trigger-action recipes, board event hooks, and workflow automation.', to: '/platform/automations', bg: 'bg-orange-300', image: 'https://images.unsplash.com/photo-1518432031352-d6fc5c10da5a?w=600&h=600&fit=crop&crop=center' },
   { title: 'Banner Studio', subtitle: 'Design, animate, and publish HTML5 display ads at scale from one editor.', to: '/banner-studio', bg: 'bg-rose-400', image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600&h=600&fit=crop&crop=center' },
@@ -1173,6 +1309,53 @@ const integrations = [
   { name: 'TikTok', icon: 'i-simple-icons-tiktok', color: 'text-[#121317] dark:text-white' },
   { name: 'Cloudflare', icon: 'i-simple-icons-cloudflare', color: 'text-[#F38020]' },
   { name: 'Resend', icon: 'i-lucide-send', color: 'text-[#121317] dark:text-white' }
+]
+
+const measurementCapabilities = [
+  {
+    title: 'Consent-aware collection',
+    description: 'Collect the event classes each visitor has approved, with clear privacy controls.',
+    icon: 'i-lucide-shield-check'
+  },
+  {
+    title: 'Multi-account connections',
+    description: 'Attach separate Google and Meta profiles across every client in the agency.',
+    icon: 'i-lucide-network'
+  },
+  {
+    title: 'Governed server delivery',
+    description: 'Map exact conversion destinations and validate providers before live delivery.',
+    icon: 'i-lucide-server-cog'
+  },
+  {
+    title: 'Approvals and audit trails',
+    description: 'Versioned configuration, privacy approval, evidence, and controlled activation.',
+    icon: 'i-lucide-file-check-2'
+  }
+]
+
+const measurementStages = [
+  {
+    title: 'Collect consented site events',
+    description: 'Page, engagement and enquiry signals',
+    icon: 'i-lucide-mouse-pointer-click',
+    iconBg: 'bg-blue-400/10',
+    iconColor: 'text-blue-300'
+  },
+  {
+    title: 'Apply policy and approvals',
+    description: 'Consent, destination and evidence gates',
+    icon: 'i-lucide-shield-check',
+    iconBg: 'bg-amber-400/10',
+    iconColor: 'text-amber-300'
+  },
+  {
+    title: 'Deliver approved conversions',
+    description: 'Controlled Google and Meta destinations',
+    icon: 'i-lucide-send',
+    iconBg: 'bg-emerald-400/10',
+    iconColor: 'text-emerald-300'
+  }
 ]
 
 function scrollToFeatures() {

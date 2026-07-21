@@ -19,9 +19,12 @@ function loadTag() {
 
 describe('public/track.js transport', () => {
   let beacons: { url: string, body: string }[]
+  let requests: { url: string, body: string }[]
+  let fetchSpy: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     beacons = []
+    requests = []
     // happy-dom may not implement sendBeacon — define a capturing stub.
     ;(navigator as any).sendBeacon = vi.fn((url: string, blob: any) => {
       // Blob.text() is async; read the stored parts synchronously via our own shape.
@@ -37,6 +40,13 @@ describe('public/track.js transport', () => {
         this._body = String(parts?.[0] ?? '')
       }
     }
+    fetchSpy = vi.fn((url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') {
+        requests.push({ url: String(url), body: String(options.body ?? '') })
+      }
+      return Promise.resolve({ ok: true })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
     document.cookie = ''
   })
 
@@ -58,11 +68,11 @@ describe('public/track.js transport', () => {
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })
     // init() fires its own page_view; clear and emit a deterministic one.
-    beacons = []
+    requests = []
     ;(window as any).xf.track('phone_click', { phone_number: '+61399999999' })
 
-    expect(beacons.length).toBe(1)
-    const { url, body } = beacons[0]
+    expect(requests.length).toBe(1)
+    const { url, body } = requests[0]
     expect(url).toContain('/api/public/track?k=TESTKEY')
 
     const parsed = parseTrackPayload(JSON.parse(body))
@@ -76,6 +86,41 @@ describe('public/track.js transport', () => {
     }
   })
 
+  it('prefers fetch delivery when sendBeacon is available', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    fetchSpy.mockClear()
+    requests = []
+    beacons = []
+
+    ;(window as any).xf.track('page_view', { verification: 'fetch-first' })
+
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/api/public/track?k=TESTKEY'),
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.any(String),
+        keepalive: true,
+        mode: 'cors'
+      })
+    )
+    expect(beacons).toHaveLength(0)
+  })
+
+  it('falls back to sendBeacon after a fetch network failure', async () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    await Promise.resolve()
+    fetchSpy.mockRejectedValueOnce(new Error('network unavailable'))
+    beacons = []
+
+    ;(window as any).xf.track('page_view', { verification: 'beacon-fallback' })
+
+    await vi.waitFor(() => expect(beacons).toHaveLength(1))
+    expect(beacons[0].url).toContain('/api/public/track?k=TESTKEY')
+  })
+
   it('reuses one conversion event ID for the server batch and GTM data layer', async () => {
     const script = document.createElement('script')
     script.setAttribute('data-auto', 'false')
@@ -84,13 +129,19 @@ describe('public/track.js transport', () => {
     const currentScript = vi.spyOn(document, 'currentScript', 'get').mockReturnValue(script)
     const insertScript = vi.spyOn(document.head, 'insertBefore').mockImplementation(node => node)
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        gtm: {
-          enabled: true,
-          containerId: 'GTM-TEST'
-        }
+    vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') {
+        requests.push({ url: String(url), body: String(options.body ?? '') })
+        return Promise.resolve({ ok: true })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          gtm: {
+            enabled: true,
+            containerId: 'GTM-TEST'
+          }
+        })
       })
     }))
 
@@ -100,14 +151,14 @@ describe('public/track.js transport', () => {
       expect((window as any).dataLayer).toBeTruthy()
     })
 
-    beacons = []
+    requests = []
     ;(window as any).dataLayer = []
     ;(window as any).xf.track('lead', { form_id: 'test-lead-form' })
 
-    expect(beacons).toHaveLength(1)
+    expect(requests).toHaveLength(1)
     expect((window as any).dataLayer).toHaveLength(1)
 
-    const serverEvent = JSON.parse(beacons[0].body).events[0]
+    const serverEvent = JSON.parse(requests[0].body).events[0]
     const browserEvent = (window as any).dataLayer[0]
     expect(browserEvent.event).toBe('generate_lead')
     expect(browserEvent.event_id).toBe(serverEvent.event_id)
@@ -118,8 +169,6 @@ describe('public/track.js transport', () => {
 
   it('bridges a caller-owned conversion ID to an existing dataLayer without injecting GTM', () => {
     const insertScript = vi.spyOn(document.head, 'insertBefore').mockImplementation(node => node)
-    const fetchSpy = vi.fn()
-    vi.stubGlobal('fetch', fetchSpy)
     ;(window as any).dataLayer = []
 
     loadTag()
@@ -128,7 +177,8 @@ describe('public/track.js transport', () => {
       dataLayerBridge: true,
       forms: false
     })
-    beacons = []
+    fetchSpy.mockClear()
+    requests = []
     ;(window as any).dataLayer = []
 
     const eventId = (window as any).xf.createEventId()
@@ -139,7 +189,7 @@ describe('public/track.js transport', () => {
     )
 
     expect(returnedEventId).toBe(eventId)
-    expect(beacons).toHaveLength(1)
+    expect(requests).toHaveLength(1)
     expect((window as any).dataLayer).toEqual([
       expect.objectContaining({
         event: 'generate_lead',
@@ -147,8 +197,8 @@ describe('public/track.js transport', () => {
         form_id: 'big-garage-enquiry'
       })
     ])
-    expect(JSON.parse(beacons[0].body).events[0].event_id).toBe(eventId)
-    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(JSON.parse(requests[0].body).events[0].event_id).toBe(eventId)
+    expect(fetchSpy).toHaveBeenCalledOnce()
     expect(insertScript).not.toHaveBeenCalled()
 
     insertScript.mockRestore()
@@ -157,23 +207,23 @@ describe('public/track.js transport', () => {
   it('replaces an invalid caller event ID before transport', () => {
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })
-    beacons = []
+    requests = []
 
     const eventId = (window as any).xf.track('generate_lead', {}, { eventId: '   ' })
 
     expect(eventId).toBeTruthy()
     expect(eventId).not.toBe('   ')
-    expect(JSON.parse(beacons[0].body).events[0].event_id).toBe(eventId)
+    expect(JSON.parse(requests[0].body).events[0].event_id).toBe(eventId)
   })
 
   it('forwards email click IDs from the landing URL attribution', () => {
     window.history.pushState({}, '', '/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=click-1')
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })
-    beacons = []
+    requests = []
     ;(window as any).xf.track('page_view', {})
 
-    const parsed = parseTrackPayload(JSON.parse(beacons[0].body))
+    const parsed = parseTrackPayload(JSON.parse(requests[0].body))
     expect(parsed.ok).toBe(true)
     if (parsed.ok) {
       expect(parsed.payload.events[0].attribution?.email_click_id).toBe('click-1')
@@ -185,11 +235,11 @@ describe('public/track.js transport', () => {
     document.cookie = '_xf_consent=' + encodeURIComponent(cookie)
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })
-    beacons = []
+    requests = []
     ;(window as any).xf.track('phone_click', {})
 
-    expect(beacons.length).toBe(1)
-    const payload = JSON.parse(beacons[0].body)
+    expect(requests.length).toBe(1)
+    const payload = JSON.parse(requests[0].body)
     expect(payload.consent).toBe(cookie)
     // and the server schema accepts it
     expect(parseTrackPayload(payload).ok).toBe(true)

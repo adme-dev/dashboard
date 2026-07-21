@@ -72,6 +72,7 @@
           <!-- Mobile Hamburger -->
           <button
             class="md:hidden flex items-center justify-center w-9 h-9 rounded-lg hover:bg-white/[0.08] transition-colors"
+            aria-label="Open navigation menu"
             @click="mobileOpen = true"
           >
             <UIcon name="i-lucide-menu" class="w-5 h-5 text-white" />
@@ -93,7 +94,7 @@
     <Transition name="dropdown">
       <div
         v-if="openDropdown"
-        class="fixed top-[52px] left-0 right-0 z-40 hidden md:block"
+        class="fixed top-[52px] left-0 right-0 z-40 hidden max-h-[calc(100dvh-52px)] overflow-y-auto overscroll-y-contain md:block"
         @mouseenter="cancelClose"
         @mouseleave="scheduleClose"
       >
@@ -104,7 +105,7 @@
             <div v-if="openDropdown === 'features'" class="py-12">
               <div class="grid grid-cols-[1.2fr_1fr_1fr_1fr] gap-12">
                 <!-- Left CTA Column -->
-                <div class="flex flex-col justify-between pr-8 border-r border-white/[0.06]">
+                <div class="sticky top-12 flex h-[calc(100dvh-148px)] self-start flex-col justify-between border-r border-white/[0.06] pr-8">
                   <div>
                     <h3 class="text-[28px] font-[450] text-white leading-[1.2] tracking-[-0.02em] mb-4">
                       Explore our<br>complete platform
@@ -246,7 +247,9 @@
                     </NuxtLink>
                   </div>
 
-                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">Portal & Time</h4>
+                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">
+                    People & Operations
+                  </h4>
                   <div class="flex flex-col gap-1">
                     <NuxtLink
                       v-for="item in featuresCol5"
@@ -398,6 +401,7 @@
                 </NuxtLink>
                 <button
                   class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-white/[0.06] transition-colors"
+                  aria-label="Close navigation menu"
                   @click="mobileOpen = false"
                 >
                   <UIcon name="i-lucide-x" class="w-5 h-5 text-white/60" />
@@ -601,13 +605,14 @@ const featuresCol1 = [
 
 const featuresCol2 = [
   { title: 'Xero Integration', subtitle: 'Sync invoices and accounts', icon: 'i-lucide-link', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
-  { title: 'Ad Spend', subtitle: 'Meta & Google Ads tracking', icon: 'i-lucide-bar-chart-3', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/ad-spend' },
+  { title: 'Ad Spend', subtitle: 'Meta & multi-account Google Ads tracking', icon: 'i-lucide-bar-chart-3', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/ad-spend' },
   { title: 'EOM Engine', subtitle: 'Automated invoice generation', icon: 'i-lucide-receipt', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
   { title: 'Lead Capture & Routing', subtitle: 'Real-time Meta + Google ad inquiries', icon: 'i-lucide-inbox', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/features/lead-capture-routing' },
 ]
 
 const featuresCol3a = [
   { title: 'Real-Time Chat', subtitle: 'Channels, threads, and DMs', icon: 'i-lucide-message-circle', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/chat' },
+  { title: 'Virtual Office', subtitle: 'Presence, rooms, guests & follow-up', icon: 'i-lucide-building-2', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/office' },
   { title: 'Smart Watch', subtitle: 'AI-prioritised notifications & digest', icon: 'i-lucide-bell-ring', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/features/smart-watch' },
   { title: 'Email Marketing', subtitle: 'Campaigns, visual builder, and lists', icon: 'i-lucide-send', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/features/email-campaigns' },
   { title: 'Automations', subtitle: 'Trigger-action workflows', icon: 'i-lucide-zap', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/automations' },
@@ -635,7 +640,8 @@ const featuresCol4 = [
 ]
 
 const featuresCol5 = [
-  { title: 'Client Portal', subtitle: 'Approvals, invoices, gallery', icon: 'i-lucide-building-2', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/client-portal' },
+  { title: 'HR & People Operations', subtitle: 'Governed reviews, roles & evidence', icon: 'i-lucide-users-round', iconBg: 'bg-cyan-500/15', iconColor: 'text-cyan-400', to: '/features/hr-people-operations' },
+  { title: 'Client Portal', subtitle: 'CRM, campaigns, jobs & billing', icon: 'i-lucide-building-2', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/client-portal' },
   { title: 'Time Tracking', subtitle: 'Timesheets and approvals', icon: 'i-lucide-timer', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/time-tracking' },
   { title: 'Briefs', subtitle: 'Templates, AI tools, and quotes', icon: 'i-lucide-file-text', iconBg: 'bg-orange-500/15', iconColor: 'text-orange-400', to: '/features/brief-templates' },
   { title: 'Roles & Admin', subtitle: 'Custom roles and permissions', icon: 'i-lucide-shield', iconBg: 'bg-slate-500/15', iconColor: 'text-slate-400', to: '/features/custom-roles' },
@@ -685,7 +691,7 @@ const mobileFeatureSections = [
   { label: 'Communication', items: featuresCol3a },
   { label: 'Sales & CRM', items: featuresCrm },
   { label: 'AI & Intelligence', items: featuresCol4 },
-  { label: 'Portal & Time', items: featuresCol5 },
+  { label: 'People & Operations', items: featuresCol5 },
 ]
 
 const mobileResourceSections = [

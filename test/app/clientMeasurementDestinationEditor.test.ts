@@ -176,4 +176,189 @@ describe('ClientMeasurementDestinationEditor', () => {
       app.unmount()
     }
   })
+
+  it('loads eligible actions from the selected Google account and stores the numeric Data Manager destination ID', async () => {
+    const googleConnectionId = '44444444-4444-4444-8444-444444444444'
+    const fetchMock = vi.fn(async (request: string, options?: { method?: string, body?: unknown }) => {
+      if (request === '/api/agency/social/meta/accounts') return []
+      if (request === '/api/agency/social/google/accounts') {
+        return [{
+          id: googleConnectionId,
+          accountId: '3584435581',
+          accountName: 'Courtney & Patterson Ford',
+          status: 'active'
+        }]
+      }
+      if (request === `/api/agency/measurement/clients/${CLIENT_ID}/google-conversion-actions?connectionId=${googleConnectionId}&page=1&pageSize=100`) {
+        return {
+          connection: {
+            id: googleConnectionId,
+            accountId: '3584435581',
+            accountName: 'Courtney & Patterson Ford'
+          },
+          items: [
+            {
+              id: '9001',
+              resourceName: 'customers/3584435581/conversionActions/9001',
+              name: 'XeroFlow website lead',
+              status: 'ENABLED',
+              type: 'UPLOAD_CLICKS',
+              category: 'SUBMIT_LEAD_FORM',
+              origin: 'WEBSITE',
+              isPrimary: false,
+              includesInConversions: true,
+              deliveryMode: 'offline_click'
+            },
+            {
+              id: '9002',
+              resourceName: 'customers/3584435581/conversionActions/9002',
+              name: 'Legacy browser lead',
+              status: 'ENABLED',
+              type: 'WEBPAGE',
+              category: 'SUBMIT_LEAD_FORM',
+              origin: 'WEBSITE',
+              isPrimary: true,
+              includesInConversions: true,
+              deliveryMode: 'additional_data_source'
+            }
+          ],
+          pagination: { page: 1, pageSize: 100, hasNextPage: false }
+        }
+      }
+      if (request.endsWith('/destinations') && options?.method === 'POST') {
+        return {
+          destination: { id: '55555555-5555-4555-8555-555555555555' },
+          profileConfigVersion: 5,
+          warnings: []
+        }
+      }
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    Object.assign(globalThis, { $fetch: fetchMock })
+
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementDestinationEditor, {
+        clientId: CLIENT_ID,
+        profileConfigVersion: 4
+      })
+    })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    app.mount(host)
+    await flushUi()
+
+    try {
+      select(host.querySelector<HTMLSelectElement>('select')!, 'google_data_manager')
+      await flushUi()
+      select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, googleConnectionId)
+      await flushUi()
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/agency/measurement/clients/${CLIENT_ID}/google-conversion-actions?connectionId=${googleConnectionId}&page=1&pageSize=100`
+      )
+      const destination = host.querySelector<HTMLSelectElement>('[data-testid="measurement-destination-id"]')!
+      expect(destination.tagName).toBe('SELECT')
+      expect(destination.textContent).toContain('XeroFlow website lead')
+      expect(destination.textContent).toContain('Offline click')
+      expect(destination.textContent).toContain('Legacy browser lead')
+
+      select(destination, '9002')
+      check(host.querySelector<HTMLInputElement>('[data-testid="capability-google_data_manager"]')!)
+      check(host.querySelector<HTMLInputElement>('[data-testid="mapping-web_conversion"]')!)
+      await nextTick()
+      input(host.querySelector<HTMLInputElement>('[data-testid="provider-event-web_conversion"]')!, 'Legacy browser lead')
+      input(host.querySelector<HTMLTextAreaElement>('[data-testid="measurement-destination-reason"]')!, 'Use Data Manager as an additional source for the consent-gated Google Ads website conversion')
+      await nextTick()
+
+      const save = host.querySelector<HTMLButtonElement>('[data-testid="save-measurement-destination"]')!
+      expect(save.disabled).toBe(false)
+      save.click()
+      await flushUi()
+
+      expect(fetchMock).toHaveBeenCalledWith(`/api/agency/measurement/clients/${CLIENT_ID}/destinations`, {
+        method: 'POST',
+        body: expect.objectContaining({
+          destination: expect.objectContaining({
+            platform: 'google_data_manager',
+            socialConnectionId: googleConnectionId,
+            externalDestinationId: '9002',
+            capabilities: [expect.objectContaining({
+              mode: 'google_data_manager',
+              managementOrigin: 'zero'
+            })],
+            mappings: [expect.objectContaining({ canonicalEventName: 'web_conversion' })]
+          })
+        })
+      })
+      expect(JSON.stringify(fetchMock.mock.calls)).not.toContain('resourceName')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('ignores a stale Google action response after the operator switches platforms', async () => {
+    const googleConnectionId = '44444444-4444-4444-8444-444444444444'
+    let resolveActions!: (value: unknown) => void
+    const pendingActions = new Promise<unknown>((resolve) => {
+      resolveActions = resolve
+    })
+    const fetchMock = vi.fn(async (request: string) => {
+      if (request === '/api/agency/social/meta/accounts') return []
+      if (request === '/api/agency/social/google/accounts') {
+        return [{
+          id: googleConnectionId,
+          accountId: '3584435581',
+          accountName: 'Courtney & Patterson Ford',
+          status: 'active'
+        }]
+      }
+      if (request.includes('/google-conversion-actions?')) return pendingActions
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    Object.assign(globalThis, { $fetch: fetchMock })
+
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementDestinationEditor, {
+        clientId: CLIENT_ID,
+        profileConfigVersion: 4
+      })
+    })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    app.mount(host)
+    await flushUi()
+
+    try {
+      select(host.querySelector<HTMLSelectElement>('select')!, 'google_data_manager')
+      await flushUi()
+      select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, googleConnectionId)
+      await flushUi()
+      select(host.querySelector<HTMLSelectElement>('select')!, 'meta')
+      await flushUi()
+      select(host.querySelector<HTMLSelectElement>('select')!, 'google_data_manager')
+      await flushUi()
+
+      resolveActions({
+        items: [{
+          id: '9001',
+          name: 'Stale Google lead',
+          status: 'ENABLED',
+          type: 'UPLOAD_CLICKS',
+          category: 'SUBMIT_LEAD_FORM',
+          isPrimary: false,
+          includesInConversions: true,
+          deliveryMode: 'offline_click'
+        }],
+        pagination: { hasNextPage: false }
+      })
+      await flushUi()
+
+      expect(host.textContent).not.toContain('Stale Google lead')
+      expect(host.textContent).toContain('Google Data Manager')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
 })
