@@ -128,6 +128,16 @@ EMAIL_FROM = "notification@adme.net.au"
 SEND_ENABLED = "true"
 NUXT_SEND_ENABLED = "true"
 NUXT_PUBLIC_SEND_ENABLED = "true"
+# Verified-public Send remains independently fail-closed while activation gates run.
+SEND_PUBLIC_ENABLED = "false"
+NUXT_PUBLIC_SEND_PUBLIC_ENABLED = "false"
+SEND_PUBLIC_MAX_TRANSFER_BYTES = "262144000"
+SEND_PUBLIC_MAX_FILE_BYTES = "104857600"
+SEND_PUBLIC_MAX_FILES = "10"
+SEND_PUBLIC_DEFAULT_RETENTION_DAYS = "3"
+SEND_PUBLIC_MAX_RETENTION_DAYS = "3"
+SEND_PUBLIC_MAX_DOWNLOADS = "20"
+SEND_PUBLIC_TURNSTILE_HOSTNAME = "app.xeroflow.io"
 # Cloudflare AI Gateway root for server-side Groq SDK calls. The app normalizes
 # Groq requests to /groq and falls back to direct Groq if Gateway auth rejects.
 AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f9357b17/default"

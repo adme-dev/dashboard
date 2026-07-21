@@ -12,6 +12,13 @@ interface SendRuntimeConfig {
   sendWorkspaceUploadIntentTtlSeconds?: number
   sendWorkspaceMultipartThresholdBytes?: number
   sendWorkspaceMultipartPartSizeBytes?: number
+  sendPublicEnabled?: boolean
+  sendPublicMaxTransferBytes?: number
+  sendPublicMaxFileBytes?: number
+  sendPublicMaxFiles?: number
+  sendPublicDefaultRetentionDays?: number
+  sendPublicMaxRetentionDays?: number
+  sendPublicMaxDownloads?: number
 }
 
 export function resolveWorkspaceSendMultipartConfig(event: unknown): {
@@ -52,6 +59,13 @@ export function requireWorkspaceSendEnabled(event: unknown): void {
   }
 }
 
+export function requirePublicSendEnabled(event: unknown): void {
+  const config = useRuntimeConfig(event as never) as SendRuntimeConfig
+  if (config.sendPublicEnabled !== true) {
+    throw createError({ statusCode: 404, statusMessage: 'Not found' })
+  }
+}
+
 export function resolveWorkspaceSendPolicyConfig(event: unknown): SendPolicyConfig {
   const config = useRuntimeConfig(event as never) as SendRuntimeConfig
   return SendPolicyConfigSchema.parse({
@@ -64,5 +78,20 @@ export function resolveWorkspaceSendPolicyConfig(event: unknown): SendPolicyConf
     maxRecipients: 0,
     maxDownloads: config.sendWorkspaceMaxDownloads,
     scanRequired: false
+  })
+}
+
+export function resolvePublicSendPolicyConfig(event: unknown): SendPolicyConfig {
+  const config = useRuntimeConfig(event as never) as SendRuntimeConfig
+  return SendPolicyConfigSchema.parse({
+    surface: 'public',
+    maxTransferBytes: config.sendPublicMaxTransferBytes,
+    maxFileBytes: config.sendPublicMaxFileBytes,
+    maxFiles: config.sendPublicMaxFiles,
+    defaultRetentionDays: config.sendPublicDefaultRetentionDays,
+    maxRetentionDays: config.sendPublicMaxRetentionDays,
+    maxRecipients: 0,
+    maxDownloads: config.sendPublicMaxDownloads,
+    scanRequired: true
   })
 }

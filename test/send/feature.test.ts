@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  requirePublicSendEnabled,
   requireWorkspaceSendEnabled,
+  resolvePublicSendPolicyConfig,
   resolveWorkspaceSendPolicyConfig
 } from '../../server/utils/send/feature'
 
@@ -40,6 +42,39 @@ describe('workspace Send feature configuration', () => {
       maxRecipients: 0,
       maxDownloads: 100,
       scanRequired: false
+    })
+  })
+})
+
+describe('public Send feature configuration', () => {
+  it('fails closed unless the independent public server flag is exactly true', () => {
+    globalThis.useRuntimeConfig = vi.fn(() => ({ sendPublicEnabled: false })) as never
+    expect(() => requirePublicSendEnabled({})).toThrow(expect.objectContaining({ statusCode: 404 }))
+
+    globalThis.useRuntimeConfig = vi.fn(() => ({ sendPublicEnabled: true })) as never
+    expect(() => requirePublicSendEnabled({})).not.toThrow()
+  })
+
+  it('resolves the approved scan-required beta policy', () => {
+    globalThis.useRuntimeConfig = vi.fn(() => ({
+      sendPublicMaxTransferBytes: 262144000,
+      sendPublicMaxFileBytes: 104857600,
+      sendPublicMaxFiles: 10,
+      sendPublicDefaultRetentionDays: 3,
+      sendPublicMaxRetentionDays: 3,
+      sendPublicMaxDownloads: 20
+    })) as never
+
+    expect(resolvePublicSendPolicyConfig({})).toEqual({
+      surface: 'public',
+      maxTransferBytes: 262144000,
+      maxFileBytes: 104857600,
+      maxFiles: 10,
+      defaultRetentionDays: 3,
+      maxRetentionDays: 3,
+      maxRecipients: 0,
+      maxDownloads: 20,
+      scanRequired: true
     })
   })
 })

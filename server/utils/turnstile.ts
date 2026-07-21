@@ -22,8 +22,21 @@ export function isTurnstileEnabled(): boolean {
 // Pure: a Turnstile siteverify response is a pass ONLY when `success === true`
 // (strict boolean). Anything else — success:false, missing field, string,
 // non-object — is a fail.
-export function turnstileVerdict(data: unknown): boolean {
-  return !!data && typeof data === 'object' && (data as { success?: unknown }).success === true
+export interface TurnstileVerificationOptions {
+  expectedAction?: string
+  expectedHostname?: string
+}
+
+export function turnstileVerdict(
+  data: unknown,
+  options: TurnstileVerificationOptions = {}
+): boolean {
+  if (!data || typeof data !== 'object') return false
+  const response = data as { success?: unknown, action?: unknown, hostname?: unknown }
+  if (response.success !== true) return false
+  if (options.expectedAction && response.action !== options.expectedAction) return false
+  if (options.expectedHostname && response.hostname !== options.expectedHostname) return false
+  return true
 }
 
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
@@ -31,14 +44,22 @@ const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverif
 // Verify a client token with Cloudflare. Assumes the caller already checked
 // isTurnstileEnabled(); fails CLOSED on a missing token or any network/parse
 // error so a verification outage can't be used to bypass the check.
-export async function verifyTurnstile(token: string | undefined | null, remoteip?: string): Promise<boolean> {
+export async function verifyTurnstile(
+  token: string | undefined | null,
+  remoteip?: string,
+  options: TurnstileVerificationOptions = {}
+): Promise<boolean> {
   const secret = turnstileSecret()
   if (!secret || !token) return false
   try {
     const body = new URLSearchParams({ secret, response: token })
     if (remoteip) body.set('remoteip', remoteip)
-    const res = await fetch(SITEVERIFY_URL, { method: 'POST', body })
-    return turnstileVerdict(await res.json())
+    const res = await fetch(SITEVERIFY_URL, {
+      method: 'POST',
+      body,
+      signal: AbortSignal.timeout(10_000)
+    })
+    return turnstileVerdict(await res.json(), options)
   } catch {
     return false
   }
