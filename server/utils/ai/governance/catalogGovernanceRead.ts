@@ -33,6 +33,7 @@ export interface CatalogGovernanceItem {
   release: {
     id: string
     state: GovernedReleaseState
+    rolloutScope: 'pilot' | 'department'
     evaluationRunId: string | null
     evaluationGatePassed: boolean | null
     reason: string
@@ -82,6 +83,7 @@ type CatalogGovernanceRow = {
   version: number | string
   version_label: string | null
   release_state: GovernedReleaseState
+  rollout_scope: 'pilot' | 'department'
   evaluation_run_id: string | null
   evaluation_gate_passed: boolean | null
   evaluation_run_status: string | null
@@ -191,6 +193,7 @@ function mapRow(row: CatalogGovernanceRow): CatalogGovernanceItem {
     release: {
       id: row.release_id,
       state: row.release_state,
+      rolloutScope: row.rollout_scope,
       evaluationRunId: row.evaluation_run_id,
       evaluationGatePassed: row.evaluation_gate_passed,
       reason: row.change_reason,
@@ -245,6 +248,7 @@ WITH catalog AS (
     v.version,
     NULL::text AS version_label,
     r.release_state,
+    r.rollout_scope,
     r.evaluation_run_id,
     r.evaluation_gate_passed,
     er.status AS evaluation_run_status,
@@ -298,6 +302,7 @@ WITH catalog AS (
     v.version,
     v.label AS version_label,
     r.release_state,
+    r.rollout_scope,
     r.evaluation_run_id,
     r.evaluation_gate_passed,
     er.status AS evaluation_run_status,

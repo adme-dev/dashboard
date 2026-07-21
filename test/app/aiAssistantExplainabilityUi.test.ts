@@ -12,7 +12,9 @@ describe('My Assistant explainability UI', () => {
     expect(page).toContain('Your access')
     expect(page).toContain('Department scope')
     expect(page).toContain('Client scope')
-    expect(page).toContain('Active capability packs')
+    expect(page).toContain('Capability packs')
+    expect(page).toContain('pack.releaseState === \'pilot\'')
+    expect(page).toContain('assigned to you as a pilot')
     expect(page).toContain('Why something may be unavailable')
   })
 

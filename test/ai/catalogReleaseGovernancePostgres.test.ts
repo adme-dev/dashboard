@@ -19,6 +19,7 @@ function dbRow(overrides: Record<string, unknown> = {}) {
     version_id: VERSION_ID,
     department_id: DEPARTMENT_ID,
     release_state: 'pilot',
+    rollout_scope: 'pilot',
     evaluation_run_id: EVALUATION_RUN_ID,
     evaluation_gate_passed: true,
     evaluation_run_status: 'completed',
@@ -37,6 +38,7 @@ function release(): CatalogReleaseRecord {
     versionId: VERSION_ID,
     departmentId: DEPARTMENT_ID,
     state: 'active',
+    rolloutScope: 'department',
     evaluationRunId: EVALUATION_RUN_ID,
     evaluationGatePassed: true,
     evaluationRunStatus: 'completed',
@@ -57,7 +59,8 @@ describe('Postgres catalog release transaction adapter', () => {
       kind: 'pack',
       entityId: ENTITY_ID,
       versionId: VERSION_ID,
-      state: 'pilot'
+      state: 'pilot',
+      rolloutScope: 'pilot'
     })
     expect(query).toHaveBeenCalledWith(expect.stringMatching(/FROM ai_pack_releases[\s\S]*FOR UPDATE/), [RELEASE_ID])
     expect(query.mock.calls[0]![0]).toContain('pack_id AS entity_id')
@@ -102,6 +105,7 @@ describe('Postgres catalog release transaction adapter', () => {
     expect(params).toEqual([
       RELEASE_ID,
       'active',
+      'department',
       EVALUATION_RUN_ID,
       true,
       'completed',
@@ -139,7 +143,9 @@ describe('Postgres catalog release transaction adapter', () => {
       details: {
         releaseId: RELEASE_ID,
         previousReleaseState: 'pilot',
-        nextReleaseState: 'active'
+        nextReleaseState: 'active',
+        previousRolloutScope: 'pilot',
+        nextRolloutScope: 'department'
       }
     })
 
@@ -160,7 +166,9 @@ describe('Postgres catalog release transaction adapter', () => {
     expect(JSON.parse(params?.[9] as string)).toEqual({
       releaseId: RELEASE_ID,
       previousReleaseState: 'pilot',
-      nextReleaseState: 'active'
+      nextReleaseState: 'active',
+      previousRolloutScope: 'pilot',
+      nextRolloutScope: 'department'
     })
   })
 })

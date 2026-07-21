@@ -39,6 +39,7 @@ export interface MyAssistantActivePackView {
   label: string
   version: number
   departmentName: string
+  releaseState: 'pilot' | 'active'
 }
 
 export interface MyAssistantAuthorityView {

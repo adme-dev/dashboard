@@ -9,6 +9,7 @@ import {
 } from '~~/server/utils/ai/governance/catalogComposition'
 
 const DEPARTMENT_ID = '10000000-0000-4000-8000-000000000001'
+const USER_ID = '50000000-0000-4000-8000-000000000001'
 
 const tools = [
   { name: 'get_budget_health' },
@@ -62,6 +63,14 @@ describe('composeGovernedCatalog', () => {
     expect(composed.mode).toBe('governed')
     expect(composed.tools.map(tool => tool.name)).toEqual(['get_budget_health'])
     expect(composed.tools.every(tool => tools.includes(tool))).toBe(true)
+  })
+
+  it('treats an explicitly assigned pilot release as governed runtime material', () => {
+    const composed = composeGovernedCatalog(tools, [row({ releaseState: 'pilot' })], ['MEDIA_BUYING'])
+
+    expect(composed.mode).toBe('governed')
+    expect(composed.tools.map(tool => tool.name)).toEqual(['get_budget_health'])
+    expect(composed.instructionsPreamble).toBe('Use the governed paid-media playbook.')
   })
 
   it('requires the capability permission group as an additional narrowing gate', () => {
@@ -215,11 +224,18 @@ describe('loadCatalogControlRows', () => {
     const queryRows = vi.fn().mockResolvedValue([])
     const db: CatalogCompositionDb = { queryRows }
 
-    await loadCatalogControlRows([DEPARTMENT_ID], db)
+    await loadCatalogControlRows([DEPARTMENT_ID], USER_ID, db)
 
     const [sql, params] = queryRows.mock.calls[0]!
-    expect(params).toEqual([[DEPARTMENT_ID]])
-    expect(sql).toContain('release_state IN (\'active\', \'suspended\', \'retired\')')
+    expect(params).toEqual([[DEPARTMENT_ID], USER_ID])
+    expect(sql).toContain('release_state IN (\'pilot\', \'active\', \'suspended\', \'retired\')')
+    expect(sql).toContain('ai_release_pilot_members')
+    expect(sql).toContain('pilot_member.team_member_id = $2')
+    expect(sql).toContain('pilot_member.revoked_at IS NULL')
+    expect(sql).toContain('department_members pilot_department_member')
+    expect(sql).toContain('pilot_actor.is_active = TRUE')
+    expect(sql).toContain('pack_release.rollout_scope <> \'pilot\'')
+    expect(sql).toContain('capability_release.rollout_scope <> \'pilot\'')
     expect(sql).toContain('evaluation_gate_passed = TRUE')
     expect(sql).toContain('evaluation_run_status = \'completed\'')
     expect(sql).toContain('ANY($1::uuid[])')
@@ -230,9 +246,10 @@ describe('loadCatalogControlRows', () => {
     const queryRows = vi.fn().mockResolvedValue([])
     const db: CatalogCompositionDb = { queryRows }
 
-    await expect(loadCatalogControlRows([], db)).resolves.toEqual([])
-    await expect(loadCatalogControlRows(['not-a-uuid'], db)).rejects.toThrow('valid UUID')
-    await expect(loadCatalogControlRows(Array.from({ length: 101 }, () => DEPARTMENT_ID), db))
+    await expect(loadCatalogControlRows([], USER_ID, db)).resolves.toEqual([])
+    await expect(loadCatalogControlRows(['not-a-uuid'], USER_ID, db)).rejects.toThrow('valid UUID')
+    await expect(loadCatalogControlRows([DEPARTMENT_ID], 'not-a-uuid', db)).rejects.toThrow('user identifier')
+    await expect(loadCatalogControlRows(Array.from({ length: 101 }, () => DEPARTMENT_ID), USER_ID, db))
       .rejects.toThrow('at most 100')
     expect(queryRows).not.toHaveBeenCalled()
   })
@@ -262,7 +279,7 @@ describe('loadAssistantDepartmentScope', () => {
     await loadAssistantDepartmentScope('50000000-0000-4000-8000-000000000001', 'admin', db)
     expect(queryRows.mock.calls[0]![1]).toEqual(['50000000-0000-4000-8000-000000000001', true])
     expect(queryRows.mock.calls[0]![0]).toContain(
-      "department.department_kind = 'organizational' AND $2::boolean"
+      'department.department_kind = \'organizational\' AND $2::boolean'
     )
 
     queryRows.mockResolvedValueOnce(Array.from({ length: 101 }, (_, index) => ({

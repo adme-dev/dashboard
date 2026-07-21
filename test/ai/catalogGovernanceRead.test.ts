@@ -26,6 +26,7 @@ function row(index: number, overrides: Record<string, unknown> = {}) {
     version: index + 1,
     version_label: index % 2 === 0 ? null : `Pack v${index + 1}`,
     release_state: 'pilot',
+    rollout_scope: 'pilot',
     evaluation_run_id: `60000000-0000-4000-8000-${index.toString().padStart(12, '0')}`,
     evaluation_gate_passed: true,
     evaluation_run_status: 'completed',
@@ -88,7 +89,11 @@ describe('listCatalogGovernance', () => {
         key: 'capability_0',
         department: { id: DEPARTMENT_ID, name: 'Marketing', slug: 'marketing' },
         owner: { id: OWNER_ID, name: 'Department Owner' },
-        release: expect.objectContaining({ state: 'pilot', evaluationGatePassed: true }),
+        release: expect.objectContaining({
+          state: 'pilot',
+          rolloutScope: 'pilot',
+          evaluationGatePassed: true
+        }),
         evaluation: {
           runId: '60000000-0000-4000-8000-000000000000',
           status: 'completed',

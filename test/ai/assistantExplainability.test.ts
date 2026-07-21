@@ -45,7 +45,8 @@ const context: PersonalAssistantContext = {
     packVersionId: '30000000-0000-4000-8000-000000000001',
     packKey: 'creative_studio',
     version: 3,
-    label: 'Creative Studio'
+    label: 'Creative Studio',
+    releaseState: 'pilot'
   }],
   catalogInstructionsPreamble: 'PRIVATE GOVERNANCE INSTRUCTIONS',
   catalogRows: []
@@ -96,7 +97,8 @@ describe('buildMyAssistantExplainability', () => {
           key: 'creative_studio',
           label: 'Creative Studio',
           version: 3,
-          departmentName: 'Creative'
+          departmentName: 'Creative',
+          releaseState: 'pilot'
         }]
       }
     })

@@ -78,6 +78,7 @@ export interface PersonalAssistantContext {
     packKey: string
     version: number
     label: string
+    releaseState: 'pilot' | 'active'
   }>
   catalogInstructionsPreamble: string
   /** Internal governance material used to narrow the runtime tool registry. Never send to clients. */
@@ -314,6 +315,7 @@ export async function resolvePersonalAssistantContext(
   const preferences = mapPreferences(config)
   const catalogRows = await loadCatalogControlRows(
     departments.map(department => department.departmentId),
+    identity.id,
     db
   )
 
@@ -321,7 +323,7 @@ export async function resolvePersonalAssistantContext(
   for (const row of catalogRows) {
     if (
       row.sourceType !== 'pack'
-      || row.releaseState !== 'active'
+      || (row.releaseState !== 'active' && row.releaseState !== 'pilot')
       || !row.packVersionId
       || !row.packKey
       || !row.packVersion
@@ -333,7 +335,8 @@ export async function resolvePersonalAssistantContext(
       packVersionId: row.packVersionId,
       packKey: row.packKey,
       version: row.packVersion,
-      label: row.packLabel
+      label: row.packLabel,
+      releaseState: row.releaseState
     })
   }
   const activePacks = [...activePackMap.values()]

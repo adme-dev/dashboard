@@ -3,7 +3,7 @@ import { PERMISSION_GROUPS, type PermissionGroup } from '~~/server/utils/permiss
 
 export type CatalogSourceType = 'pack' | 'capability'
 export type CatalogAccessMode = 'read' | 'draft' | 'propose'
-export type CatalogControlReleaseState = 'active' | 'suspended' | 'retired'
+export type CatalogControlReleaseState = 'pilot' | 'active' | 'suspended' | 'retired'
 
 export interface ActiveCatalogRow {
   sourceType: CatalogSourceType
@@ -77,7 +77,9 @@ function boundedNumber(value: number | string | null): number | null {
 function mapCatalogRow(row: ActiveCatalogDbRow): ActiveCatalogRow {
   return {
     sourceType: row.source_type === 'capability' ? 'capability' : 'pack',
-    releaseState: row.release_state === 'active' || row.release_state === 'suspended'
+    releaseState: row.release_state === 'pilot'
+      || row.release_state === 'active'
+      || row.release_state === 'suspended'
       ? row.release_state
       : 'retired',
     releaseId: row.release_id,
@@ -114,6 +116,7 @@ function mapCatalogRow(row: ActiveCatalogDbRow): ActiveCatalogRow {
  */
 export async function loadCatalogControlRows(
   departmentIds: string[],
+  userId: string,
   db: CatalogCompositionDb = defaultDb
 ): Promise<ActiveCatalogRow[]> {
   if (departmentIds.length === 0) return []
@@ -121,6 +124,7 @@ export async function loadCatalogControlRows(
   if (departmentIds.some(id => !UUID_PATTERN.test(id))) {
     throw new Error('Catalog department identifiers must be valid UUID values.')
   }
+  if (!UUID_PATTERN.test(userId)) throw new Error('Catalog user identifier must be a valid UUID value.')
 
   const rows = await db.queryRows<ActiveCatalogDbRow>(
     `WITH active_pack_rows AS (
@@ -159,9 +163,27 @@ export async function loadCatalogControlRows(
        LEFT JOIN ai_capabilities capability ON capability.id = capability_version.capability_id
        LEFT JOIN ai_capability_tool_bindings binding ON binding.capability_version_id = capability_version.id
        WHERE pack_release.department_id = ANY($1::uuid[])
-         AND pack_release.release_state IN ('active', 'suspended', 'retired')
+         AND pack_release.release_state IN ('pilot', 'active', 'suspended', 'retired')
          AND (
-           pack_release.release_state <> 'active'
+           pack_release.rollout_scope <> 'pilot'
+           OR EXISTS (
+             SELECT 1
+               FROM ai_release_pilot_members pilot_member
+               JOIN department_members pilot_department_member
+                 ON pilot_department_member.department_id = pilot_member.department_id
+                AND pilot_department_member.team_member_id = pilot_member.team_member_id
+               JOIN team_members pilot_actor
+                 ON pilot_actor.id = pilot_member.team_member_id
+                AND pilot_actor.is_active = TRUE
+              WHERE pilot_member.release_kind = 'pack'
+                AND pilot_member.pack_release_id = pack_release.id
+                AND pilot_member.department_id = pack_release.department_id
+                AND pilot_member.team_member_id = $2
+                AND pilot_member.revoked_at IS NULL
+           )
+         )
+         AND (
+           pack_release.release_state NOT IN ('pilot', 'active')
            OR (pack_release.evaluation_gate_passed = TRUE AND pack_release.evaluation_run_status = 'completed')
          )
      ),
@@ -198,9 +220,27 @@ export async function loadCatalogControlRows(
        JOIN ai_capabilities capability ON capability.id = capability_release.capability_id
        LEFT JOIN ai_capability_tool_bindings binding ON binding.capability_version_id = capability_version.id
        WHERE capability_release.department_id = ANY($1::uuid[])
-         AND capability_release.release_state IN ('active', 'suspended', 'retired')
+         AND capability_release.release_state IN ('pilot', 'active', 'suspended', 'retired')
          AND (
-           capability_release.release_state <> 'active'
+           capability_release.rollout_scope <> 'pilot'
+           OR EXISTS (
+             SELECT 1
+               FROM ai_release_pilot_members pilot_member
+               JOIN department_members pilot_department_member
+                 ON pilot_department_member.department_id = pilot_member.department_id
+                AND pilot_department_member.team_member_id = pilot_member.team_member_id
+               JOIN team_members pilot_actor
+                 ON pilot_actor.id = pilot_member.team_member_id
+                AND pilot_actor.is_active = TRUE
+              WHERE pilot_member.release_kind = 'capability'
+                AND pilot_member.capability_release_id = capability_release.id
+                AND pilot_member.department_id = capability_release.department_id
+                AND pilot_member.team_member_id = $2
+                AND pilot_member.revoked_at IS NULL
+           )
+         )
+         AND (
+           capability_release.release_state NOT IN ('pilot', 'active')
            OR (
              capability_release.evaluation_gate_passed = TRUE
              AND capability_release.evaluation_run_status = 'completed'
@@ -211,7 +251,7 @@ export async function loadCatalogControlRows(
      UNION ALL
      SELECT * FROM active_capability_rows
      ORDER BY department_id, source_type, release_id, capability_sort_order, tool_sort_order`,
-    [departmentIds]
+    [departmentIds, userId]
   )
 
   return rows.map(mapCatalogRow)
@@ -321,14 +361,18 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
   const granted = new Set<PermissionGroup>(grantedPermissionGroups)
   const capabilityControlState = new Map<string, 'suspended' | 'retired'>()
   for (const row of catalogRows) {
-    if (row.sourceType !== 'capability' || !row.capabilityVersionId || row.releaseState === 'active') continue
+    if (
+      row.sourceType !== 'capability'
+      || !row.capabilityVersionId
+      || (row.releaseState !== 'suspended' && row.releaseState !== 'retired')
+    ) continue
     const previous = capabilityControlState.get(row.capabilityVersionId)
     if (row.releaseState === 'suspended' || !previous) {
       capabilityControlState.set(row.capabilityVersionId, row.releaseState)
     }
   }
   const authorizedRows = catalogRows.filter(row =>
-    row.releaseState === 'active'
+    (row.releaseState === 'active' || row.releaseState === 'pilot')
     && row.capabilityVersionId
     && !capabilityControlState.has(row.capabilityVersionId)
     && row.requiredPermissionGroup
@@ -351,7 +395,9 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
   for (const tool of rbacFilteredTools) {
     if (allowedToolNames.has(tool.name)) continue
     const matchingRows = catalogRows.filter(row => row.toolName === tool.name)
-    const activeRows = matchingRows.filter(row => row.releaseState === 'active')
+    const activeRows = matchingRows.filter(row =>
+      row.releaseState === 'active' || row.releaseState === 'pilot'
+    )
     let reason: CatalogToolDenialReason
     const inactiveCapabilityStates = matchingRows.flatMap((row) => {
       const state = row.capabilityVersionId ? capabilityControlState.get(row.capabilityVersionId) : null

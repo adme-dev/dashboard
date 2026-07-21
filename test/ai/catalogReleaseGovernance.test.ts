@@ -25,6 +25,7 @@ function release(overrides: Partial<CatalogReleaseRecord> = {}): CatalogReleaseR
     versionId: VERSION_ID,
     departmentId: DEPARTMENT_ID,
     state: 'draft',
+    rolloutScope: 'department',
     evaluationRunId: null,
     evaluationGatePassed: null,
     evaluationRunStatus: null,
@@ -106,6 +107,7 @@ describe('transitionCatalogRelease', () => {
     const result = await transitionCatalogRelease(request(), repository)
 
     expect(result.state).toBe('active')
+    expect(result.rolloutScope).toBe('department')
     expect(result.evaluationRunId).toBe(EVALUATION_RUN_ID)
     expect(result.evaluationGatePassed).toBe(true)
     expect(result.evaluationRunStatus).toBe('completed')
@@ -124,7 +126,9 @@ describe('transitionCatalogRelease', () => {
       details: {
         releaseId: RELEASE_ID,
         previousReleaseState: 'pilot',
-        nextReleaseState: 'active'
+        nextReleaseState: 'active',
+        previousRolloutScope: 'department',
+        nextRolloutScope: 'department'
       }
     })])
   })
@@ -136,6 +140,17 @@ describe('transitionCatalogRelease', () => {
       .rejects.toMatchObject({ code: 'evaluation_required', statusCode: 422 })
     expect(repository.updateCount).toBe(0)
     expect(repository.audits).toEqual([])
+  })
+
+  it('sets pilot scope only after the exact evaluation passes', async () => {
+    const repository = new FakeRepository()
+
+    await expect(transitionCatalogRelease(request({ targetState: 'pilot' }), repository))
+      .resolves.toMatchObject({ state: 'pilot', rolloutScope: 'pilot' })
+    expect(repository.audits[0]?.details).toMatchObject({
+      previousRolloutScope: 'department',
+      nextRolloutScope: 'pilot'
+    })
   })
 
   it.each([
@@ -205,6 +220,7 @@ describe('transitionCatalogRelease', () => {
 
     expect(result).toMatchObject({
       state: 'suspended',
+      rolloutScope: 'department',
       evaluationRunId: EVALUATION_RUN_ID,
       evaluationGatePassed: true,
       evaluationRunStatus: 'completed'
@@ -215,7 +231,9 @@ describe('transitionCatalogRelease', () => {
       details: {
         releaseId: RELEASE_ID,
         previousReleaseState: 'active',
-        nextReleaseState: 'suspended'
+        nextReleaseState: 'suspended',
+        previousRolloutScope: 'department',
+        nextRolloutScope: 'department'
       }
     })
   })
