@@ -1,54 +1,62 @@
 # PRD: XeroFlow Send
 
 **Date:** 2026-07-20
-**Status:** Approved — implementation authorised 2026-07-20
+**Status:** Approved — amended to private internal v1 on 2026-07-21
 **Owner:** ADME / XeroFlow
 **Living task plan:** `docs/superpowers/plans/2026-07-20-send-product-implementation.md`
-**Goal-loop objective:** Define, plan, and incrementally deliver authenticated workspace transfers, secure expiring guest links, and a verified public WeTransfer-style service while keeping this PRD and its task plan current.
+**Goal-loop objective:** Incrementally deliver private, authenticated, workspace-scoped transfers for internal Dashboard users while keeping this PRD and its task plan current.
 
-**Approval record:** The user approved this PRD as written on 2026-07-20. Proposed defaults in section 2 are the implementation baseline; later changes still follow the named Ask-first boundaries.
+**Approval record:** The user approved the original PRD on 2026-07-20 and, on 2026-07-21, approved a private internal-only v1. [ADR-006](../../decisions/ADR-006-private-internal-dashboard-send-v1.md) supersedes every guest, external-recipient, public-sender, recipient-email, and scanner-launch requirement for v1. Those capabilities remain recorded as deferred product options and require a new approval before implementation or activation.
 
 ## 1. Executive summary
 
-XeroFlow Send is a secure file-delivery product with two launch surfaces backed by one transfer platform:
+XeroFlow Send v1 is one private file-transfer surface inside Dashboard. Authenticated
+internal users can upload large files, resume interrupted uploads, make a completed
+transfer available to other authorised workspace users, download files, revoke access,
+and retain an auditable history.
 
-1. **Workspace Send** lets authenticated agency staff send files to clients or collaborators, track delivery, revoke access, and retain an auditable history.
-2. **Public Send** lets a verified sender without a XeroFlow account upload files and create a short-lived WeTransfer-style link under conservative abuse and storage limits.
+There is no anonymous or bearer-link access in v1. A file can be downloaded only by a
+signed-in Dashboard user who passes the current workspace/transfer access check.
 
 An optional later **Live Send** mode may provide croc-like browser-to-browser transfer using WebRTC and TURN. It is not part of the initial release because croc's native TCP/PAKE relay and WeTransfer-style asynchronous storage solve different user jobs.
 
-The initial product will store files in a private Cloudflare R2 bucket, upload directly from the browser, use resumable multipart transfer for large files, and authorize every download before issuing a short-lived signed URL. It will reuse the application's existing Nuxt, Neon, R2, Resend, Turnstile, and Durable Object rate-limiting foundations.
+The initial product stores files in private Cloudflare R2, uploads directly from the
+browser, uses resumable multipart transfer for large files, and authorises every
+download before issuing a short-lived signed URL. It reuses the existing Nuxt, Neon,
+authentication, authorisation, and R2 foundations. Public verification, email delivery,
+abuse infrastructure, and the dedicated scanner runtime are not part of this release.
 
 ## 2. Assumptions and proposed defaults
 
-These assumptions make the PRD implementable. They remain reviewable until this document is approved.
+These approved assumptions define the private v1 boundary.
 
 1. The product is browser-first within the existing Nuxt 4 application; no native app or CLI is required for v1.
-2. Workspace Send and Public Send share one domain model, storage layout, recipient page, and event ledger.
+2. V1 exposes only authenticated Workspace Send. Public-compatible domain fields may remain dormant, but no public route or entitlement is enabled.
 3. R2 remains private. Transfer objects must never depend on `R2_PUBLIC_URL` or a permanently public bucket.
 4. Workspace transfers require an authenticated staff user and an explicit tenant/client scope when client data is involved.
-5. Public senders must pass Turnstile and verify their email before upload credentials are issued.
-6. Public Send starts with a proposed limit of **2 GB per transfer, 20 files, and seven-day retention**. These are configuration values, not hard-coded product constants.
-7. Workspace limits are entitlement-driven. Until billing entitlements exist, administrators receive a configurable default rather than an unlimited allowance.
-8. Transfers support an unguessable link, optional password, optional recipient emails, revocation, expiry, and configurable maximum downloads.
-9. Uploaded content remains quarantined until type, size, integrity, and malware checks pass. Public publication fails closed if scanning is unavailable.
-10. End-to-end/server-blind encryption is excluded from v1 because it prevents server-side malware scanning and previews. A later encrypted mode may explicitly trade those capabilities away.
-11. Public Send is unlisted, not publicly indexed: share pages use `noindex`, tokens are high entropy, and only holders of the link can discover a transfer.
-12. Public Send will launch as a controlled beta with monitoring and an operator kill switch before broad promotion.
+5. Every sender and downloader must be authenticated and pass the canonical workspace/transfer access policy; link possession is never sufficient.
+6. Workspace limits and retention are configuration-driven. Until billing entitlements exist, administrators receive a conservative configurable default rather than an unlimited allowance.
+7. V1 supports revocation, expiry, individual download, and an optional later archive download. It does not issue guest tokens, accept passwords, store recipients, or send recipient emails.
+8. V1 validates server-owned object identity, expected size/type, canonical R2 metadata, and safe filename representation. Files are served as attachments, never inline from the application origin.
+9. Dedicated malware scanning is deferred for private v1 to avoid fixed Container cost. The implemented scanner foundation remains disabled and is required for reconsideration before any external upload or unauthenticated download surface.
+10. End-to-end/server-blind encryption and inline previews are excluded from v1.
+11. Existing public-compatible schema and code are dormant compatibility work only and cannot be treated as launch authority.
+12. Both private/server and public/UI feature flags remain false until the internal release gate is explicitly approved.
 
 ## 3. Objective
 
-Build a dependable delivery experience for large client files that removes reliance on third-party transfer products while fitting naturally into XeroFlow's client, project, deliverable, notification, and audit workflows.
+Build a dependable internal delivery experience for large workspace files that reduces
+reliance on third-party transfer products while fitting naturally into XeroFlow's
+client, project, deliverable, and audit workflows.
 
 The product succeeds when:
 
-- staff can create, upload, publish, monitor, and revoke a transfer without leaving XeroFlow;
-- a recipient without a XeroFlow account can securely retrieve the intended files;
-- a verified public sender can create an expiring transfer without gaining application access;
+- authorised staff can create, upload, publish, monitor, download, and revoke a transfer without leaving XeroFlow;
+- another authorised Dashboard user can retrieve the intended files only within their current workspace scope;
 - large interrupted uploads can resume without restarting the whole file;
 - expired or revoked transfers cannot be downloaded;
-- tenant isolation, abuse controls, quarantine, and audit evidence are enforced server-side;
-- operations can explain storage use, delivery state, scan state, and abuse state without querying raw tables.
+- tenant isolation, object-contract validation, attachment-only delivery, and audit evidence are enforced server-side;
+- operations can explain storage use, transfer state, expiry, revocation, and deletion without querying raw tables.
 
 ## 4. Problem
 
@@ -62,54 +70,51 @@ Current gaps include:
 - storage keys and long-lived file URLs are inconsistently represented in records;
 - the generic upload confirmation route does not bind a key to a server-created upload intent, actor, tenant, or expected object metadata;
 - the generic storage deletion route defaults to allowing deletion for unknown key categories;
-- public anonymous storage introduces mail-bombing, malware, phishing, copyright, denial-of-wallet, and illegal-content risks that internal uploads do not fully address.
+- external and anonymous storage would introduce mail-bombing, malware, phishing, copyright, denial-of-wallet, and illegal-content risks, so those trust boundaries are deferred.
 
 ## 5. Users and jobs to be done
 
-### 5.1 Agency staff sender
+### 5.1 Internal sender
 
-- Send large deliverables to a client without leaving the workspace.
+- Send large files to other authorised Dashboard users without leaving the workspace.
 - Select existing XeroFlow assets and/or upload new files.
-- Add a title, message, recipients, password, expiry, and download policy.
-- Know whether recipients viewed or downloaded the transfer.
+- Add a title, message, workspace scope, expiry, and download policy.
+- Know whether the transfer was downloaded.
 - Revoke or extend a transfer when circumstances change.
 
-### 5.2 Client or external recipient
+### 5.2 Internal recipient
 
-- Open a link without creating an account.
+- Sign in with an existing Dashboard account.
+- See only transfers permitted by current workspace access.
 - Understand who sent the transfer, what it contains, and when it expires.
-- Unlock a password-protected transfer without exposing the password in a URL.
-- Download one file or all files and receive clear expired/revoked/not-ready states.
+- Download one file, and later an archive if approved, with clear expired/revoked/not-ready states.
 
-### 5.3 Public sender
+### 5.3 Deferred external and public users
 
-- Create a simple transfer without becoming a XeroFlow customer.
-- Verify ownership of the sender email before consuming storage.
-- Resume a large interrupted upload.
-- Receive the transfer link and expiry details by email.
-- Revoke the transfer using a secure management link.
+- Guest recipients, public senders, email verification, share links, password unlock,
+  recipient notifications, and public management links are not v1 users or jobs.
+- Reintroducing any of these jobs requires a PRD and threat-model amendment.
 
 ### 5.4 Operator
 
-- Configure public limits, retention, scanning, and availability.
-- Review quarantined or reported transfers without opening unsafe content inline.
+- Configure internal limits, retention, and availability.
 - Block abuse actors and revoke transfers.
 - Reconcile database records, incomplete uploads, and R2 objects.
-- Observe upload, scan, publish, delivery, expiry, and deletion health.
+- Observe upload, publication, download, expiry, and deletion health.
 
 ## 6. Product principles
 
-1. **One transfer model, multiple entry points.** Workspace and public flows differ in identity and entitlement, not storage semantics.
+1. **One authenticated entry point.** V1 has no anonymous or bearer-token access path.
 2. **Private by construction.** R2 keys are never access grants; every access decision happens in application code.
 3. **Server-authorised capabilities.** Clients receive narrow, expiring upload or download capabilities only after policy checks.
-4. **Fail closed at public trust boundaries.** Missing verification, scanner, quota, or ownership evidence blocks publication.
-5. **Recoverable transfers.** Uploads, publication, notifications, expiry, and deletion are idempotent and resumable.
-6. **Audit without surveillance.** Record security and delivery events needed for support while minimizing recipient PII.
+4. **Fail closed on identity and scope.** Missing authentication or workspace ownership evidence blocks metadata and download access.
+5. **Recoverable transfers.** Uploads, publication, expiry, and deletion are idempotent and resumable.
+6. **Audit without surveillance.** Record security and delivery events needed for support while minimising user PII.
 7. **No misleading encryption claims.** TLS plus private storage is not marketed as end-to-end encryption.
 
 ## 7. Scope
 
-### 7.1 Release 1 — Workspace Send and secure guest delivery
+### 7.1 Release 1 — Private internal Workspace Send
 
 In scope:
 
@@ -117,18 +122,17 @@ In scope:
 - tenant/client/project association;
 - upload from device and selection of eligible existing R2-backed assets;
 - direct single-part and multipart/resumable R2 uploads;
-- quarantine, integrity validation, and malware scan state;
-- recipient email delivery;
-- high-entropy guest link and optional password;
-- download-one and download-all experiences;
+- canonical metadata and object-contract validation;
+- authenticated transfer detail and download-one experience;
+- optional download-all only after the archive approach is approved;
 - view/download audit events;
 - expiry, revocation, and deletion;
 - transfer list/detail UI and operational visibility;
-- public recipient page that requires no account.
+- no route that permits access without a current Dashboard session and workspace authorisation.
 
-### 7.2 Release 2 — Verified Public Send beta
+### 7.2 Deferred — External delivery and Verified Public Send
 
-In scope:
+Not approved or in scope for v1:
 
 - unauthenticated transfer draft creation;
 - Turnstile validation;
@@ -137,7 +141,12 @@ In scope:
 - sender management link for status and revocation;
 - abuse reporting, operator review, and kill switch;
 - public landing/create UI and transactional email;
-- controlled-beta rollout and usage monitoring.
+- controlled-beta rollout and usage monitoring;
+- guest/external recipient links and recipient notification email.
+
+This section preserves the original direction only. None of these capabilities may be
+implemented, provisioned, routed, or activated without a new product, security, and
+cost approval.
 
 ### 7.3 Future — Live Send
 
@@ -149,15 +158,18 @@ Potential scope:
 - optional client-side content encryption;
 - receiver-presence and reconnect semantics.
 
-Live Send requires a separate technical spike and product decision. It must not delay Releases 1–2.
+Live Send requires a separate technical spike and product decision. It must not delay the private release.
 
-### 7.4 Explicitly out of scope for Releases 1–2
+### 7.4 Explicitly out of scope for private v1
 
 - native desktop or mobile applications;
 - importing or embedding the croc Go binary;
 - raw TCP relay infrastructure;
 - permanent public file hosting;
+- public or guest download links;
+- recipient email delivery;
 - anonymous upload without verified sender identity;
+- dedicated malware-scanner deployment;
 - payment plans, checkout, or overage billing;
 - collaborative editing or comments on transfer files;
 - server-blind encryption;
@@ -169,56 +181,54 @@ Live Send requires a separate technical spike and product decision. It must not 
 ### FR-1 Transfer creation
 
 - A workspace sender can create a draft within an authorised tenant/client scope.
-- A public sender can create a pre-verification draft only after Turnstile succeeds.
-- Draft inputs include title, message, expiry, password option, recipient list, and maximum-download option.
+- Draft inputs include title, message, scope, expiry, and maximum-download option.
 - Server validation uses strict Zod schemas and rejects unknown or oversized fields.
-- The server owns transfer IDs, public tokens, storage prefixes, status, and limits.
+- The server owns transfer IDs, storage prefixes, status, and limits.
+- V1 creation never accepts a public-sender identity, recipient list, password, or caller-selected access token.
 
 ### FR-2 Identity and access
 
 - Workspace mutations require `requireAuth` plus transfer-level tenant/owner permission.
-- Public upload credentials require a verified-sender session scoped to one transfer.
-- Share and management tokens use at least 256 bits of randomness and are stored as hashes.
-- Passwords are hashed with the existing password helper and never appear in URLs, logs, analytics, or database plaintext.
-- A successful password unlock creates a short-lived, secure, HttpOnly, SameSite access session scoped to the transfer.
+- Metadata and downloads require a current authenticated session plus transfer-level workspace permission.
+- An owner cannot broaden access beyond the canonical tenant/client/project scope.
+- Existing dormant share, management, password, and public-sender fields do not grant access and are not populated by v1 routes.
 
 ### FR-3 Upload intents
 
 - Every file begins as a server-created upload intent containing transfer ID, generated R2 key, expected size, declared MIME type, original filename, uploader identity, expiry, and upload method.
 - The client cannot choose or substitute the R2 key.
 - Upload capabilities expire quickly and authorise only the intended object or multipart upload.
-- Object metadata is verified against the intent before a file can leave `uploading` or `quarantined` state.
+- Object metadata is verified against the intent before a file can become publication-eligible.
 - Abandoned upload intents and multipart uploads are cleaned automatically.
 
 ### FR-4 Large and resumable upload
 
 - Small files may use a presigned single `PUT`.
-- A single-part presigned `PUT` remains reusable until its signature expires; API completion does not revoke it. Such files remain quarantined and cannot become `clean` until the write capability has expired and the scanner has re-read canonical object metadata, unless a future integrity-bound upload contract proves equivalent immutability.
+- A single-part presigned `PUT` remains reusable until its signature expires; API completion does not revoke it. Such files remain unavailable until the write capability has expired and canonical metadata is re-read, unless a future integrity-bound upload contract proves equivalent immutability.
 - Files at or above the configured threshold use multipart upload.
 - Multipart state records the R2 upload ID, completed parts, checksums/ETags, and expiry.
 - Retrying create, part-complete, final-complete, or abort operations is idempotent.
 - The UI shows per-file and total progress, retry, pause/resume where supported, and actionable failure states.
 
-### FR-5 Validation and quarantine
+### FR-5 Validation and safe internal delivery
 
 - Declared extension and MIME type are treated as hints, not proof.
-- The system validates size, permitted type, magic bytes where supported, checksum/integrity, and safe filename representation.
-- Public files remain unavailable until malware scanning returns clean.
-- Scanner error or timeout produces a visible retryable quarantine state and never silently publishes the file.
-- Rejected files are inaccessible and deleted according to the quarantine retention policy.
+- The system validates size, permitted type, canonical object metadata, checksum/integrity where available, and safe filename representation.
+- Under the private-v1 policy, a stable, complete internal upload may become publication-eligible with `scan_status = 'not_required'`; `clean` must never be presented as a malware-free claim in this mode.
+- The dormant scanner path, if later enabled, remains fail-closed on scanner error or timeout.
+- Rejected or incomplete files are inaccessible and deleted according to retention policy.
 - Active content downloads use safe content disposition and cannot execute under the application origin.
 
-### FR-6 Publication and recipient notification
+### FR-6 Internal publication
 
-- A transfer can publish only when every included file is clean and complete.
-- Publishing atomically fixes the file set, creates access policy, moves the transfer to `ready`, and emits notification work.
-- Recipient emails contain the application share page, sender identity, expiry, and file summary; they never contain signed R2 URLs.
-- Notification retries are idempotent and visible to the sender/operator.
+- A transfer can publish only when every included file is complete, immutable with respect to any outstanding upload capability, and eligible under the current internal validation policy.
+- Publishing atomically fixes the file set, records the policy decision, and moves the transfer to `ready`.
+- Publication does not create a public token or notification job and does not send email.
 
-### FR-7 Recipient experience
+### FR-7 Authenticated recipient experience
 
-- The share page exposes only safe transfer metadata before access is granted.
-- Expired, revoked, deleted, quarantined, exhausted, and invalid tokens return distinct user-safe states without revealing whether unrelated tokens exist.
+- No transfer metadata is exposed before authentication and workspace authorisation.
+- Expired, revoked, deleted, unavailable, exhausted, and unauthorised requests return user-safe states without revealing transfers outside the caller's scope.
 - An authorised recipient may download one file or request an archive where supported.
 - Each download revalidates transfer and file state, then returns or redirects to a short-lived signed capability.
 - Responses carrying sensitive capabilities use `Cache-Control: no-store` and a restrictive referrer policy.
@@ -226,33 +236,31 @@ Live Send requires a separate technical spike and product decision. It must not 
 ### FR-8 Sender management
 
 - Workspace senders can list and filter their authorised transfers.
-- Senders can view status, recipients, aggregate views/downloads, expiry, and scan state.
+- Senders can view status, aggregate downloads, expiry, revocation, and validation state.
 - Senders can revoke a transfer immediately.
 - Retention extension is allowed only within entitlement and policy limits.
-- Public senders use a separate high-entropy management token delivered through the verified email flow.
 
 ### FR-9 Expiry and deletion
 
 - Application state rejects access immediately at `expires_at`, independent of physical object deletion timing.
 - Scheduled cleanup deletes expired transfer objects and records deletion evidence.
-- R2 lifecycle rules provide a prefix-based backstop for public and incomplete-upload data.
+- R2 lifecycle rules provide a prefix-based backstop for incomplete-upload data.
 - Reconciliation detects orphan objects, missing objects, stale multipart uploads, and database/object drift.
 - Deletion is idempotent and deny-by-default.
 
-### FR-10 Abuse controls
+### FR-10 Internal controls
 
-- Public creation and upload endpoints enforce Turnstile, verified email, rate limits, concurrent-transfer limits, byte quotas, file-count limits, and retention limits.
-- Rate keys combine privacy-preserving IP evidence, verified email, and transfer identity rather than trusting one signal.
-- Operators can disable new public drafts without disabling existing valid downloads.
-- Reported transfers can be quarantined or revoked immediately.
-- User-facing responses do not expose internal abuse scores or make email enumeration possible.
+- Creation and upload enforce authenticated user, workspace entitlement, byte, file-count, concurrency, and retention limits before expensive storage work.
+- Operators can disable new internal drafts independently of currently authorised downloads.
+- Operators can revoke a transfer immediately.
+- Logs and responses do not expose cross-workspace identity, policy internals, or object credentials.
 
 ### FR-11 Audit and analytics
 
-- Append-only events cover draft creation, verification, upload intent, upload completion or abort, scan result, publication, notification, unlock, view, download, revocation, expiry, deletion, report, and operator action.
+- Append-only v1 events cover draft creation, upload intent, upload completion or abort, internal validation decision, publication, view, download, revocation, expiry, deletion, and operator action.
 - Audit events include actor class, transfer, timestamp, safe request correlation, and redacted metadata.
-- Product metrics separate workspace and public traffic.
-- Raw share tokens, passwords, signed URLs, object credentials, and full IP addresses are never logged.
+- Product metrics describe private workspace traffic; dormant public traffic must remain zero.
+- Raw tokens, signed URLs, object credentials, and full IP addresses are never logged.
 
 ## 9. Transfer state model
 
@@ -260,10 +268,9 @@ Live Send requires a separate technical spike and product decision. It must not 
 
 ```text
 draft
-  -> awaiting_verification       public sender only
-  -> uploading                   verified public or authorised workspace sender
-  -> scanning                    all upload intents complete
-  -> ready                       all selected files clean; publication committed
+  -> uploading                   authorised workspace sender
+  -> scanning                    legacy name: internal validation or optional future scan
+  -> ready                       all selected files policy-eligible; publication committed
   -> revoked                     sender/operator action
   -> expired                     access deadline passed
   -> deletion_pending            retention cleanup claimed work
@@ -284,6 +291,11 @@ any non-terminal state -> failed
 clean/rejected/failed -> deleted
 ```
 
+For private v1, `clean` means eligible under the recorded publication policy, not a
+malware-free assertion. `scan_status = 'not_required'` distinguishes an authenticated
+internal validation decision from a scanner verdict. Renaming this legacy state is
+deferred to avoid an unnecessary migration before launch.
+
 ## 10. Data model
 
 The exact SQL is an implementation detail, but the canonical model requires:
@@ -291,10 +303,10 @@ The exact SQL is an implementation detail, but the canonical model requires:
 ### `send_transfers`
 
 - `id`, nullable `tenant_id`, nullable `client_id`, nullable `project_id`;
-- sender class and authenticated owner or verified sender reference;
+- sender class and authenticated owner; public-sender references remain null in v1;
 - title/message and lifecycle status;
-- hashed share token and hashed management token;
-- access mode, optional password hash, maximum-download policy;
+- dormant nullable hashed share/management tokens and password fields, which remain null in v1;
+- authenticated access mode and maximum-download policy;
 - configured and actual byte/file totals;
 - `expires_at`, `published_at`, `revoked_at`, `deleted_at`;
 - immutable policy snapshot and timestamps.
@@ -305,14 +317,12 @@ The exact SQL is an implementation detail, but the canonical model requires:
 - expected and actual size/type;
 - checksum and object ETag where applicable;
 - upload method and multipart state reference;
-- scan status/provider/version/evidence;
+- validation/scan status and optional provider/version/evidence;
 - file lifecycle state and timestamps.
 
 ### `send_recipients`
 
-- transfer, normalized recipient email, delivery state;
-- sent/viewed/downloaded timestamps;
-- no recipient authentication secret in plaintext.
+- Dormant compatibility table; v1 routes do not create recipient rows.
 
 ### `send_upload_intents`
 
@@ -326,29 +336,23 @@ The exact SQL is an implementation detail, but the canonical model requires:
 
 ### `send_public_senders`
 
-- normalized verified email identity, verification status, abuse/limit state, and timestamps;
-- verification secrets stored only as hashes or signed short-lived tokens.
+- Dormant compatibility table; v1 routes do not create or resolve public-sender rows.
 
 ## 11. Architecture
 
 ```mermaid
 flowchart LR
-  WS[Workspace sender] --> API[Nuxt/Nitro Send API]
-  PS[Public sender] --> TS[Turnstile + email verification]
-  TS --> API
+  USER[Authenticated workspace user] --> API[Nuxt/Nitro Send API]
   API --> PG[(Neon canonical state)]
   API --> CAP[Short-lived upload capability]
   CAP --> R2[(Private R2)]
-  R2 --> Q[Queue / scan orchestration]
-  Q --> SCAN[Malware scanner]
-  SCAN --> PG
-  API --> EMAIL[Resend notifications]
-  RECIPIENT[Recipient] --> SHARE[Public share API/page]
-  SHARE --> PG
-  SHARE --> DL[Short-lived signed download]
+  USER --> AUTHZ[Authenticated detail/download API]
+  AUTHZ --> PG
+  AUTHZ --> DL[Short-lived signed download]
   DL --> R2
   CLEANUP[Scheduled cleanup + reconciliation] --> PG
   CLEANUP --> R2
+  R2 -. future approval .-> SCAN[Dormant scanner adapter]
 ```
 
 ### Architecture decisions
@@ -357,9 +361,9 @@ flowchart LR
 2. **R2 is private object storage.** Store keys in the database and mint signed URLs at the access boundary; do not persist signed URLs as file identity.
 3. **Direct browser uploads avoid Pages request-body limits.** The application authorises uploads; R2 receives bytes.
 4. **Multipart is the large-file path.** It provides resumability and parallelism and avoids restarting multi-gigabyte transfers.
-5. **Async scan and notification work is queue-backed.** Publication waits for clean results; email delivery does not hold the user request open.
+5. **Private publication records its validation policy.** Dedicated scan and notification queues remain dormant and are not launch dependencies.
 6. **Scheduled cleanup is authoritative; R2 lifecycle is a backstop.** Application expiry is immediate even if physical deletion is eventually completed.
-7. **Public and workspace traffic use the same services behind different identity policies.** This prevents two security models from drifting.
+7. **No public route is part of v1.** Dormant public-compatible fields and services do not create authority.
 8. **Live Send is a distinct transport adapter.** If approved later, it reuses transfer metadata and UI concepts without weakening stored-transfer semantics.
 
 ## 12. Security and privacy threat model
@@ -369,35 +373,31 @@ flowchart LR
 - browser to Nitro APIs;
 - Nitro to R2 capability signing;
 - browser directly to R2;
-- R2 event/queue to scanner;
-- public share page to download authorisation;
-- application to Resend;
+- authenticated detail/download API to short-lived R2 capability signing;
 - scheduled cleanup to database and R2;
-- operator actions over untrusted uploaded content.
+- operator actions over internal uploaded content.
 
 ### STRIDE summary
 
 | Threat | Example | Required mitigation |
 |---|---|---|
-| Spoofing | Attacker claims another sender email | Turnstile plus email verification; authenticated workspace identity |
+| Spoofing | Caller claims another workspace identity | Existing authenticated session plus server-derived actor identity |
 | Tampering | Replace an intended object/key or multipart part | Server-generated key, scoped upload intent, checksums/ETags, completion validation |
 | Repudiation | Sender denies publishing or revoking | Append-only actor-attributed event ledger |
-| Information disclosure | Cross-tenant key or token leaks | Transfer-level authorisation, hashed tokens, private bucket, short signed URLs, safe errors |
-| Denial of service/wallet | Automated large uploads or repeated downloads | Verification, byte/file/concurrency quotas, rate limits, expiry, kill switch, monitoring |
+| Information disclosure | Cross-tenant key or signed capability leaks | Transfer-level authorisation, private bucket, short signed URLs, safe errors |
+| Denial of service/wallet | Compromised account creates large uploads or repeated downloads | Workspace byte/file/concurrency quotas, expiry, kill switch, monitoring |
 | Elevation of privilege | Authenticated user confirms/deletes another user's object | Deny-by-default ownership checks bound to transfer and tenant |
 
 ### Abuse cases that must have tests
 
-- guessed, malformed, expired, revoked, or exhausted share token;
+- unauthenticated metadata or download request;
 - valid user attempting another tenant's transfer or R2 key;
 - upload completion with mismatched size/type/key/ETag;
-- replayed verification, completion, publication, notification, and deletion calls;
-- zip bomb, misleading extension, active HTML/SVG, malware, and oversized file;
-- public sender creating many drafts or multipart uploads without completing them;
-- password submitted in query string or leaked through logs/referrers;
-- recipient email mail-bombing and enumeration;
+- replayed completion, publication, download-count, revocation, and deletion calls;
+- misleading extension, active HTML/SVG, executable content, and oversized file;
+- authenticated user creating many drafts or multipart uploads without completing them;
 - deletion request for an unknown prefix or unowned transfer;
-- scanner outage and cleanup outage;
+- R2, database, and cleanup outage;
 - signed URL reuse after transfer revocation, bounded by the deliberately short signed-URL lifetime.
 
 ## 13. Non-functional requirements
@@ -405,27 +405,27 @@ flowchart LR
 ### Reliability
 
 - Every mutating operation accepts or derives an idempotency key.
-- Queue redelivery, notification retry, scan retry, and cleanup retry are safe.
+- Upload completion, publication, download accounting, and cleanup retry are safe.
 - Publication is atomic with respect to the canonical ready state and immutable file set.
 - Orphan and drift reconciliation is runnable on demand and on schedule.
 
 ### Performance
 
 - File bytes do not proxy through the Nuxt application during normal upload/download.
-- Transfer metadata pages target a p95 API response under 500 ms excluding email, scanning, archive creation, and R2 byte transfer.
+- Transfer metadata pages target a p95 API response under 500 ms excluding archive creation and R2 byte transfer.
 - Large upload progress remains responsive and supports retrying failed parts independently.
 
 ### Accessibility and UX
 
 - All forms use Nuxt UI v4, `UFormField`, accessible labels, keyboard operation, focus management, and visible error summaries.
 - Upload progress is conveyed with text as well as colour.
-- Public pages support mobile widths and dark mode.
-- Expired, revoked, locked, quarantined, and failed states explain the next available action.
+- Internal pages support mobile widths and dark mode.
+- Expired, revoked, unavailable, and failed states explain the next available action.
 
 ### Privacy and retention
 
-- Minimise stored recipient identity and hash IP evidence used for rate limiting.
-- Publish retention terms on the public form and share page.
+- Minimise stored actor evidence and do not duplicate identity data into recipient rows.
+- Display retention terms in the internal transfer form and detail page.
 - Delete expired content and record deletion evidence without retaining filenames or messages longer than policy requires.
 - Support operator legal hold only through an explicit, audited future policy; no silent indefinite retention.
 
@@ -434,12 +434,9 @@ flowchart LR
 ### Reuse
 
 - `server/utils/storage.ts`: R2 client, native binding, signed URLs, object metadata, and local fallback.
-- `server/utils/turnstile.ts`: fail-closed server validation.
-- `server/utils/tracking/rate-limit.ts` and `workers/rate-limiter`: layered Durable Object rate limiting.
-- `server/api/public/office-recordings/[token]/index.get.ts`: public token/password pattern and dynamic asset URL resolution.
+- Existing `requireAuth` and client/workspace access helpers: authenticated identity and scoped authorisation.
 - `server/database/schema-client-portal.sql`: client files, deliverables, collections, share expiry, and download counters.
-- Resend/email helpers and existing double-opt-in patterns.
-- Nuxt UI portal and public-page conventions.
+- Nuxt UI agency-page conventions.
 
 ### Harden before reuse
 
@@ -484,17 +481,15 @@ Expected locations; exact filenames may be refined in the implementation plan be
 
 ```text
 app/pages/agency/send/           authenticated sender pages
-app/pages/send/                  public sender and recipient pages
-app/components/send/             shared transfer/upload/recipient components
+app/components/send/             internal transfer/upload/detail components
 app/composables/                 resumable upload client orchestration
-app/types/                       public/runtime Send types
+app/types/                       runtime Send types
 shared/                          cross-runtime contracts where Worker reuse is required
 server/api/agency/send/          workspace transfer endpoints
-server/api/public/send/          public creation, verification, share, and download endpoints
-server/api/internal/send/        scanner/cleanup callbacks protected as internal APIs
+server/api/internal/send/        cleanup callbacks protected as internal APIs
 server/utils/send/               policy, repository, storage, token, and event services
 server/database/migrations/      additive Send schema migrations
-workers/                         scanner/queue worker only if separated from existing workers
+workers/send-scanner/            dormant future scanner adapter; not deployed for v1
 test/send/                       domain and orchestration unit tests
 test/server/api/send/            API boundary and abuse-case tests
 test/app/send/                   component/page contract tests
@@ -524,7 +519,7 @@ Conventions:
 
 - route handlers validate, authenticate, call a service, and serialize; business policy lives in `server/utils/send/`;
 - database queries are parameterized and tenant predicates are explicit;
-- public response mappers allowlist fields rather than spreading database rows;
+- response mappers allowlist fields rather than spreading database rows;
 - state changes go through named transition functions;
 - no endpoint accepts a caller-selected storage key;
 - UI uses Nuxt UI v4 components and semantic colour tokens;
@@ -535,37 +530,33 @@ Conventions:
 ### Unit and contract tests
 
 - transfer and file state transitions;
-- token generation/hash/lookup and password sessions;
 - policy limits and entitlement resolution;
 - R2 key generation and safe filename handling;
 - upload intent validation and multipart idempotency;
-- scan result normalization;
+- internal validation policy and dormant scan-result normalization;
 - expiry, revocation, and download-count rules;
 - event redaction.
 
 ### API integration tests
 
 - workspace auth, tenant/client scope, and ownership;
-- public verification, Turnstile, quota, and enumeration-safe errors;
-- create/upload/complete/scan/publish/download/revoke lifecycle;
+- create/upload/complete/validate/publish/download/revoke lifecycle;
 - cross-tenant, key substitution, replay, and unknown-prefix deletion failures;
 - signed download minted only after current policy checks;
-- scanner and R2 failure behavior.
+- R2 and database failure behavior.
 
 ### UI/component tests
 
 - draft form validation;
 - upload queue progress/retry/resume;
-- password unlock and error states;
 - sender management and revocation confirmation;
-- public verification and accessible status messaging.
+- authenticated detail/download and accessible status messaging.
 
 ### Browser tests
 
 - workspace happy path;
-- recipient password-protected download;
+- authenticated recipient download;
 - interrupted multipart resume;
-- verified public sender flow;
 - expired/revoked transfer behavior;
 - mobile and keyboard navigation.
 
@@ -573,10 +564,9 @@ Conventions:
 
 - apply migration to the target database and read back constraints/indexes;
 - confirm R2 CORS allows only approved application origins and required methods/headers;
-- confirm lifecycle rules for incomplete and public prefixes;
-- prove Turnstile Siteverify is called server-side;
-- inspect logs to confirm no token/password/signed URL leakage;
-- run abuse, rollback, scanner-outage, queue-redelivery, and orphan-cleanup drills.
+- confirm lifecycle rules for incomplete prefixes;
+- inspect logs to confirm no signed URL or credential leakage;
+- run cross-workspace, rollback, R2-outage, and orphan-cleanup drills.
 
 ## 19. Boundaries
 
@@ -585,45 +575,46 @@ Conventions:
 - Update this PRD before changing approved scope or security semantics.
 - Validate all external input and enforce transfer-level authorisation.
 - Keep the R2 bucket private and store object keys rather than access URLs.
-- Add an abuse-case test with each new public capability.
+- Add an authorisation or misuse-case test with each new access capability.
 - Run focused tests and changed-file lint for every task.
 - Apply and verify additive database migrations as part of their implementation task.
-- Use feature flags/kill switches for public creation and publication.
+- Keep both Send flags disabled until the private internal launch gate is approved.
 - Re-read all changed files and perform a security-focused review before commits.
 
 ### Ask first
 
-- Changing public size, retention, or quota defaults after approval.
-- Selecting or adding the malware-scanning provider/dependency.
+- Changing internal size, retention, or quota defaults after approval.
+- Provisioning, deploying, or activating the malware scanner.
+- Adding guest, external-recipient, public-sender, password, or recipient-email capability.
 - Adding payment/billing, legal-hold, or new PII retention.
 - Enabling server-blind encryption or Live Send.
 - Changing R2 CORS, lifecycle, public-bucket, or custom-domain configuration.
-- Deploying, applying production migrations, or broadly enabling Public Send.
+- Deploying, applying production migrations, or enabling Send.
 - Sending real external recipient emails during testing.
 
 ### Never do
 
 - Commit secrets or expose R2 credentials to the browser.
-- Persist plaintext share/management/verification tokens or passwords.
+- Treat a dormant share/management token or password field as internal-v1 authority.
 - Trust a client-selected storage key, MIME type, size, tenant, or ownership claim.
 - Default-allow an unknown file category, object prefix, or actor.
-- Publish unscanned public content when scanning is required or unavailable.
+- Describe an internal `not_required` validation decision as a malware-free scan result.
 - Put passwords or signed URLs in query strings, logs, analytics, or emails.
 - Serve untrusted active content inline from the application origin.
 - Mark the product end-to-end encrypted unless the server is cryptographically unable to decrypt file content.
 
 ## 20. Success metrics
 
-Product and operational targets for the controlled beta:
+Product and operational targets for the private internal release:
 
-- at least 95% of initiated clean-file transfers that begin uploading reach `ready` or a clear user-actionable failure state;
-- at least 99% of successful publication requests produce exactly one ready transfer and no duplicate recipient deliveries;
+- at least 95% of initiated policy-eligible transfers that begin uploading reach `ready` or a clear user-actionable failure state;
+- at least 99% of successful publication requests produce exactly one ready transfer;
 - zero confirmed cross-tenant or unauthorised file disclosures;
-- zero public files released before required clean scan state;
+- zero unauthenticated or cross-workspace metadata/file disclosures;
 - 100% of expired/revoked transfers rejected by application access checks immediately;
 - at least 99% of expired objects physically deleted within 24 hours of cleanup eligibility;
-- p95 metadata/share API response under 500 ms excluding R2 byte transfer and async work;
-- no secrets, passwords, raw share tokens, or signed URLs found in production logs;
+- p95 metadata API response under 500 ms excluding R2 byte transfer and async work;
+- no secrets, raw tokens, object credentials, or signed URLs found in production logs;
 - operator can trace every transfer from draft through deletion using redacted events.
 
 Metric thresholds may be refined before beta but must remain explicit and testable.
@@ -631,37 +622,31 @@ Metric thresholds may be refined before beta but must remain explicit and testab
 ## 21. Rollout
 
 1. Implement and verify storage-authorisation hardening with Send disabled.
-2. Release Workspace Send to administrators behind a feature flag.
-3. Run internal transfers, interruption tests, scan tests, revocation tests, and expiry cleanup.
-4. Enable selected workspace users and client recipients.
-5. Deploy Public Send UI with creation disabled; verify public recipient traffic separately.
-6. Enable verified public creation for an allowlisted beta cohort with conservative quotas.
-7. Complete abuse, cost, support, and retention review after an agreed soak window.
-8. Broaden or pause the beta based on evidence.
+2. Complete internal publication, authenticated download, revocation, and cleanup while both Send flags remain false.
+3. Apply approved migrations in a selected non-production environment and run internal interruption, authorisation, active-content, revocation, and expiry tests.
+4. Enable only an allowlisted administrator/internal cohort behind the feature flag.
+5. Complete cost, security, support, and retention review after an agreed soak window.
+6. Broaden, pause, or roll back the internal cohort based on evidence.
 
 Rollback order:
 
-- disable new public creation;
-- disable new publication while preserving authorised existing downloads if safe;
+- disable new internal creation;
+- disable new publication while preserving currently authorised downloads if safe;
 - revoke affected transfers;
-- stop queue consumers only after preserving recoverable state;
+- stop cleanup consumers only after preserving recoverable state;
 - leave additive schema in place and retain audit evidence;
 - use reconciliation to finish or remove orphaned storage work.
 
 ## 22. Open decisions for product review
 
-Proposed defaults are shown so review can approve or replace them.
+Defaults may be resolved task-by-task before launch without broadening the private boundary.
 
-1. **Public limits:** approve 2 GB, 20 files, seven days?
-2. **Workspace limits:** use one administrator default first, or define plan entitlements now?
-3. **Retention options:** public fixed at seven days; workspace selectable up to 30 days?
-4. **Malware scanning:** which provider/runtime meets file-size, privacy, regional, latency, and cost requirements?
-5. **Archive download:** create ZIP on demand, pre-build it after scanning, or omit “download all” from the first slice?
-6. **Recipient identity:** is anonymous link possession sufficient by default, with password/email OTP optional?
-7. **Branding/domain:** launch under the current application `/send` path or a dedicated send subdomain?
-8. **Public sender management:** email-delivered management link only, or optional account conversion?
-9. **Geography:** are Australian data-location or residency controls required before beta?
-10. **Commercial model:** remain free/controlled beta initially, with billing explicitly deferred?
+1. **Workspace limits:** use one administrator default first, or define plan entitlements now?
+2. **Retention options:** fixed internal retention or administrator-selectable up to 30 days?
+3. **Archive download:** omit “download all” initially, stream on demand, or build asynchronously?
+4. **Internal discovery:** owner-only list plus direct authorised detail, or a shared workspace inbox?
+5. **Geography:** are Australian data-location or residency controls required before internal enablement?
+6. **Future scanning:** what usage, external-sharing request, or policy threshold justifies activating the dormant adapter?
 
 ## 23. Source notes
 
@@ -670,13 +655,64 @@ Proposed defaults are shown so review can approve or replace them.
 - R2 presigned URLs are bearer capabilities and should be short lived and tightly scoped: https://developers.cloudflare.com/r2/api/s3/presigned-urls/
 - Browser use of presigned URLs requires an origin-restricted R2 CORS policy: https://developers.cloudflare.com/r2/buckets/cors/
 - R2 lifecycle rules can expire objects by policy/prefix and provide a deletion backstop: https://developers.cloudflare.com/r2/buckets/object-lifecycles/
-- Turnstile requires server-side Siteverify; tokens are short lived and single use: https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
 - Cloudflare TURN can relay WebRTC traffic when direct browser communication is blocked: https://developers.cloudflare.com/realtime/turn/
 
-## 24. Approval gate
+## 24. Approval and release status
 
-Implementation beyond document and read-only discovery work begins only after a human reviews this PRD and records one of:
+The private internal v1 amendment was approved on 2026-07-21. The product owner also
+approved the production migrations, deployment, and private feature-flag enablement.
+Those approvals were consumed by the release recorded below.
 
-- **Approved as written**;
-- **Approved with named changes**, which are applied to this document first; or
-- **Not approved**, with the goal loop remaining active but implementation blocked on revised product direction.
+Any external recipient, guest link, public sender, recipient email, or scanner
+deployment remains a separate explicit approval gate. The private release does not
+authorize those capabilities.
+
+## 25. Private production release evidence
+
+Released on 2026-07-21 for authenticated internal Dashboard users:
+
+- migrations `268_send_foundation.sql` through `271_send_private_internal.sql` were
+  applied to the production Neon database;
+- both server and public UI Send flags were enabled in the production configuration;
+- the Cloudflare Pages application and cleanup scheduler were deployed;
+- Send is available from the agency sidebar at `/agency/send`;
+- an authenticated browser smoke created a draft, uploaded a 48-byte attachment
+  directly to private R2, waited through the single-PUT sealing window, published,
+  downloaded, and revoked the transfer;
+- the Workers multipart control plane was hardened to use a workerd-compatible SigV4
+  adapter, bounded and progress-checked R2 part pagination, canonical server-side part
+  listing, and capped XML response parsing;
+- deployment `43c5a646` was served successfully from both its immutable Cloudflare Pages
+  URL and `https://app.xeroflow.io/agency/send`;
+- a second authenticated production smoke uploaded a 105,906,176-byte (101 MiB)
+  multipart attachment, published it, downloaded it once, and revoked it;
+- production records confirmed `upload_method = 'multipart'`, a completed upload
+  intent, a clean file with scanning correctly marked `not_required`, one download,
+  and exactly one event for draft creation, upload intent creation, upload completion,
+  publication, download, and revocation; the final transfer state was `revoked`;
+- follow-up deployment `8a2a6ada` added policy-bounded expiry extension for owners and
+  workspace management roles. A live authenticated smoke extended a zero-file draft
+  from 7 to 14 days, confirmed the new date and secret-free operator audit event in the
+  production database, then revoked the transfer;
+- both the immutable `8a2a6ada` route and `https://app.xeroflow.io/agency/send` returned
+  200 after the follow-up release;
+- deployment `09703d23` added bounded, report-only R2/database reconciliation after the
+  scheduled cleanup phase. The immutable and custom Send routes returned 200 and the
+  protected cron route returned 401 without its scheduler secret;
+- a separate read-only production reconciliation scanned three Send objects and two
+  expected file rows with zero orphan, malformed, missing, metadata-failure,
+  stale-multipart, retryable-deletion, truncation, or batch-limit findings. One expired
+  single-part intent belongs to an already-revoked transfer and is inaccessible pending
+  normal cleanup;
+- live lifecycle read-back confirmed the enabled default `agency-files` rule aborts
+  incomplete multipart uploads after seven days;
+- a disposable PostgreSQL 14 expiry drill proved concurrent single-claim cleanup,
+  recovery from an injected partial object-delete failure after the retry window,
+  terminal `deleted` state, exactly-once claim/deletion events, zero remaining objects,
+  and zero reconciliation issues;
+- the reviewed focused release matrix passed 210 tests across 37 files, focused ESLint
+  passed, and both the root and isolated production builds completed successfully.
+
+These smokes prove both the single-part and large-file multipart private lifecycles in
+production. Public sharing, external recipients, email, and the dormant scanner remain
+out of scope.

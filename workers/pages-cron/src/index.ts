@@ -51,8 +51,11 @@ const ROUTES: Record<string, string[]> = {
   // daily — refresh the Xero invoice line-item cache (AGI / True Position).
   // Syncs current + previous month so month-end backdated entries are caught.
   '20 3 * * *': ['/api/cron/xero-invoice-lines-sync'],
-  // daily — office meeting/recording retention cleanup
-  '35 3 * * *': ['/api/cron/office-retention'],
+  // daily — office meeting/recording retention and private Send cleanup
+  '35 3 * * *': [
+    '/api/cron/office-retention',
+    '/api/cron/send-cleanup'
+  ],
   // daily — purge tracking_events past each site's retention_days
   '45 3 * * *': ['/api/cron/tracking-retention'],
   // daily — create review-only Auto Feed drafts. The endpoint is a no-op until

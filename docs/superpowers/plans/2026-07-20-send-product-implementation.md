@@ -1,21 +1,22 @@
 # Implementation Plan: XeroFlow Send
 
 **Date:** 2026-07-20
-**Status:** Approved — implementation in progress
+**Status:** Approved — private internal v1 implementation in progress
 **Source of truth:** `docs/superpowers/specs/2026-07-20-send-product-prd.md`
-**Goal-loop objective:** Define, plan, and incrementally deliver authenticated workspace transfers, secure expiring guest links, and a verified public WeTransfer-style service while keeping the PRD and this task plan current.
+**Goal-loop objective:** Incrementally deliver private, authenticated, workspace-scoped transfers for internal Dashboard users while keeping the PRD and this task plan current.
+
+**2026-07-21 scope amendment:** [ADR-006](../../decisions/ADR-006-private-internal-dashboard-send-v1.md) removes guest links, external recipients, recipient email, public senders, and scanner deployment from the v1 launch path. T14–T19, T24, and L1 are preserved as deferred backlog, not required goal work. The locally implemented T8 scanner adapter remains dormant and does not block T9.
 
 ## 1. Overview
 
-Deliver one canonical transfer platform in vertical slices:
+Deliver one private transfer platform in vertical slices:
 
 1. harden the existing storage boundary;
 2. establish transfer state, policy, and tenant-safe persistence;
-3. deliver authenticated Workspace Send end to end;
-4. deliver secure guest access and download;
-5. add verified Public Send with strict abuse controls;
-6. prove operations, retention, security, and launch readiness;
-7. evaluate croc-like Live Send only as an optional later transport.
+3. deliver authenticated internal Workspace Send end to end;
+4. deliver authenticated transfer detail and download;
+5. prove operations, retention, security, and launch readiness;
+6. preserve external/public and croc-like Live Send only as deferred product options.
 
 No implementation task starts until T0 records PRD approval. Every later task should leave the application in a working state, remain behind feature flags until its checkpoint, and update the implementation ledger with evidence.
 
@@ -25,11 +26,11 @@ No implementation task starts until T0 records PRD approval. Every later task sh
 - Database records store R2 keys, never permanent or presigned access URLs.
 - The server creates upload intents and keys; the browser receives only narrow expiring capabilities.
 - Small uploads use presigned `PUT`; large uploads use R2 multipart upload.
-- Workspace and public flows share domain services but use different identity/entitlement policies.
-- Public content is quarantined and cannot publish without a clean scan result.
-- Recipient access is rechecked before each short-lived signed download.
+- V1 has no unauthenticated route; dormant public-compatible fields do not create authority.
+- Private-v1 publication requires stable canonical object metadata and records `scan_status = 'not_required'`; this is not represented as a malware-free verdict.
+- Authenticated workspace access is rechecked before each short-lived signed download.
 - Application expiry is immediate; scheduled deletion is authoritative and R2 lifecycle is a backstop.
-- Public creation, publication, and operational actions have independent kill switches.
+- Internal creation and publication remain behind disabled feature flags until the release gate.
 - Live Send is optional and cannot weaken or delay stored-transfer delivery.
 
 ## 3. Dependency graph
@@ -44,14 +45,14 @@ flowchart TD
   T4 --> T5[T5 Workspace create and list]
   T5 --> T6
   T6 --> T7[T7 Multipart resume]
-  T6 --> T8[T8 Quarantine and scanning]
+  T6 --> T8[T8 Dormant scanner foundation]
   T7 --> T8
-  T8 --> T9[T9 Publish and notify]
-  T9 --> T10[T10 Guest metadata and unlock]
+  T7 --> T9[T9 Internal publication]
+  T9 --> T10[T10 Authenticated detail]
   T10 --> T11[T11 Downloads and events]
   T11 --> T12[T12 Sender management]
-  T8 --> T13[T13 Expiry and reconciliation]
-  T3 --> T14[T14 Public verification backend]
+  T11 --> T13[T13 Expiry and reconciliation]
+  T3 -. deferred .-> T14[T14 Public verification backend]
   T14 --> T15[T15 Public sender UI]
   T14 --> T16[T16 Public quotas and rate limits]
   T15 --> T16
@@ -61,13 +62,13 @@ flowchart TD
   T16 --> T17
   T13 --> T19[T19 Operations and observability]
   T17 --> T19
-  T18 --> T20[T20 End-to-end product flows]
-  T19 --> T20
+  T12 --> T20[T20 Internal end-to-end flows]
+  T13 --> T20
   T20 --> T21[T21 Security and failure drills]
   T21 --> T22[T22 Release quality gate]
   T22 --> T23[T23 Operational runbooks]
-  T23 --> T24[T24 Public and marketing copy]
-  T24 --> T25[T25 Graph and staged launch]
+  T23 --> T25[T25 Graph and internal staged launch]
+  T23 -. deferred .-> T24[T24 Public and marketing copy]
   T25 -. optional .-> L1[L1 Live Send spike]
 ```
 
@@ -86,7 +87,7 @@ For each task in the goal loop:
 9. Update the PRD before implementing any changed product or security decision.
 10. Stop for human authority at every PRD “Ask first” boundary.
 
-The goal is complete only when all required tasks through T25 are done, required launch evidence exists, and no PRD success criterion remains unmet. Optional Live Send work is not required for goal completion unless the PRD is amended.
+The goal is complete when required tasks T0–T13, T20–T23, and T25 are done, private-launch evidence exists, and no private-v1 PRD success criterion remains unmet. T8 non-production integration, T14–T19, T24, and L1 are not required unless the PRD is amended.
 
 ## 5. Task list
 
@@ -98,14 +99,14 @@ The goal is complete only when all required tasks through T25 are done, required
 
 **Acceptance criteria:**
 
-- [ ] Human records `Approved as written` or names changes.
-- [ ] Named changes are applied to the PRD before implementation.
-- [ ] Public limits, retention, scanner direction, recipient identity, and launch path have explicit decisions or intentionally documented deferred defaults.
+- [x] Human records `Approved as written` or names changes.
+- [x] Named changes are applied to the PRD before implementation.
+- [x] Internal limits, retention, authenticated recipient identity, scanner deferral, and launch path have explicit decisions or intentionally documented defaults.
 
 **Verification:**
 
-- [ ] PRD status changes from `Proposed` to `Approved` with date/decision note.
-- [ ] This plan is reconciled with every approved scope change.
+- [x] PRD status changes from `Proposed` to `Approved` with date/decision note.
+- [x] This plan is reconciled with every approved scope change through 2026-07-21.
 
 **Dependencies:** None
 **Files likely touched:** PRD and this plan only
@@ -264,7 +265,7 @@ The goal is complete only when all required tasks through T25 are done, required
 
 #### T8 — Add quarantine and malware scan orchestration
 
-**Description:** Implement a provider-neutral scan contract, queue-backed orchestration, fail-closed publication gate, and selected scanner adapter after human approval.
+**Description:** Preserve the completed provider-neutral scan and Container adapter as a dormant future trust-boundary capability. Private v1 does not provision, deploy, or wait on this runtime.
 
 **Acceptance criteria:**
 
@@ -279,68 +280,70 @@ The goal is complete only when all required tasks through T25 are done, required
 - [x] Safe synthetic fixtures prove magic-byte/type checks and active-content disposition.
 - [ ] Selected scanner's non-production integration is verified without real sensitive content.
 
+The unchecked integration item is deferred and is not a private-v1 acceptance gate.
+
 **Dependencies:** T6, T7 where multipart is enabled
 **Files likely touched:** scan contracts/service, queue or worker entry, internal result boundary, scanner adapter, focused tests
 **Estimated scope:** M (provider selection is an Ask-first gate)
 
-#### T9 — Publish a clean transfer and notify recipients
+#### T9 — Publish an internally validated transfer
 
-**Description:** Atomically freeze a clean file set, create recipient access policy, transition to ready, and deliver idempotent recipient notifications.
+**Description:** Atomically freeze a complete, stable file set, record the private-v1 validation decision, and transition the transfer to ready without creating public tokens, recipients, or notification work.
 
 **Acceptance criteria:**
 
-- [ ] Transfers with incomplete, rejected, or unscanned files cannot publish.
-- [ ] Exactly one publication transition creates one immutable ready file set.
-- [ ] Recipient emails contain the application link and safe summary, never signed R2 URLs.
+- [x] Transfers with incomplete, rejected, mutable, or policy-ineligible files cannot publish.
+- [x] A private publication records `scan_status = 'not_required'`; it never claims a malware-clean scanner verdict.
+- [x] Exactly one publication transition creates one immutable ready file set.
+- [x] Publication creates no share/management token, recipient row, or email job.
 
 **Verification:**
 
-- [ ] Tests cover unclean publication, replay, changed file set, email retry, and redacted email content.
-- [ ] Email rendering snapshot/contract passes with a non-delivering test adapter.
-- [ ] No real external email is sent without approval.
+- [ ] Tests cover premature single-PUT publication, incomplete multipart, replay, changed file set, `not_required` evidence, and absent public/email side effects.
+- [x] Migration/contract tests prove the private policy fits the canonical ready-state constraints.
 
-**Dependencies:** T8
-**Files likely touched:** publish service/route, notification service/template, one focused test file
+**Dependencies:** T7; T8 local code is retained but its integration is not required
+**Files likely touched:** publish policy/service/route, private validation transition, one focused test file
 **Estimated scope:** M
 
-#### T10 — Deliver the public guest metadata and password-unlock page
+#### T10 — Deliver authenticated internal transfer detail
 
-**Description:** Build the no-account recipient page and safe metadata boundary, including password protection through an HttpOnly scoped access session.
+**Description:** Build the authenticated transfer detail boundary for workspace users who pass canonical transfer access checks.
 
 **Acceptance criteria:**
 
-- [ ] Invalid, locked, expired, revoked, quarantined, and ready states are safe and distinct.
-- [ ] Passwords never enter query strings, logs, analytics, or public responses.
-- [ ] Successful unlock produces a short-lived transfer-scoped secure session.
+- [x] Unauthenticated and cross-workspace requests reveal no transfer metadata and use the established not-found policy.
+- [x] Expired, revoked, unavailable, and ready states are safe and distinct.
+- [x] Responses allowlist fields and expose no object key, dormant token/hash, policy internals, or signed URL.
 
 **Verification:**
 
-- [ ] API tests cover token hashing lookup, password failure/success, expiry, revocation, and enumeration-safe errors.
-- [ ] Component tests cover accessible unlock and terminal-state UI.
-- [ ] Browser check confirms password absence from URL/history/referrer and cookie flags.
+- [ ] API tests cover missing auth, owner/manager/assigned-member access, cross-workspace denial, expiry, revocation, and safe errors.
+- [ ] Component tests cover accessible metadata and terminal-state UI.
+- [ ] Browser check confirms no public route or bearer-only access path exists.
 
 **Dependencies:** T9
-**Files likely touched:** public metadata/unlock API route pair, recipient page/component, one API/component test file
+**Files likely touched:** authenticated detail API route, agency detail page/component, one API/component test file
 **Estimated scope:** M
 
 #### T11 — Authorise downloads and record delivery events
 
-**Description:** Add download-one and initially approved download-all behavior, minting short capabilities only after current access policy checks.
+**Description:** Add download-one behavior for authenticated workspace users, minting short capabilities only after current access policy checks. Archive download remains a separate product choice.
 
 **Acceptance criteria:**
 
-- [ ] Every download checks token/session, transfer/file state, expiry, revocation, password, and maximum-download policy.
-- [ ] R2 capability lifetime is deliberately short and responses prevent caching/referrer leakage.
-- [ ] View/download counts and events are idempotent enough to avoid retry inflation under the approved policy.
+- [x] Every download checks current session, workspace/transfer access, file state, expiry, revocation, and maximum-download policy.
+- [x] R2 capability lifetime is deliberately short and responses prevent caching/referrer leakage.
+- [x] View/download counts and events are idempotent enough to avoid retry inflation under the approved policy.
 
 **Verification:**
 
 - [ ] Tests cover direct key guessing, revocation, expiry, max-download exhaustion, signed capability redaction, and retry behavior.
-- [ ] Manual check downloads a clean file and rejects the same path after revocation.
-- [ ] Archive behavior matches the T0 decision.
+- [ ] Manual check downloads a policy-eligible file and rejects the same path after revocation or from an unauthorised account.
+- [ ] V1 omits archive download until the open archive decision is approved.
 
 **Dependencies:** T10
-**Files likely touched:** download policy/service, one or two public download routes, event integration, one focused test file
+**Files likely touched:** download policy/service, authenticated download route, event integration, one focused test file
 **Estimated scope:** M
 
 #### T12 — Deliver sender management, revocation, and expiry controls
@@ -349,15 +352,15 @@ The goal is complete only when all required tasks through T25 are done, required
 
 **Acceptance criteria:**
 
-- [ ] Authorised senders see file, scan, recipient-delivery, view/download, expiry, and revocation state.
-- [ ] Revocation takes effect immediately and is idempotent.
-- [ ] Expiry extension cannot exceed entitlement/policy or reactivate deleted content silently.
+- [x] Authorised senders see file, validation, view/download, expiry, and revocation state.
+- [x] Revocation takes effect immediately and is idempotent.
+- [x] Expiry extension cannot exceed entitlement/policy or reactivate deleted content silently.
 
 **Verification:**
 
-- [ ] API tests cover ownership, extension bounds, revoke replay, and post-revoke denial.
-- [ ] Page tests cover management states and Nuxt UI confirmation modal.
-- [ ] Manual end-to-end workspace transfer succeeds behind the feature flag.
+- [x] API tests cover ownership, extension bounds, revoke replay, and post-revoke denial.
+- [x] Page tests cover management states and Nuxt UI confirmation modal.
+- [x] Manual end-to-end workspace transfer succeeds behind the feature flag.
 
 **Dependencies:** T11
 **Files likely touched:** management API route pair, agency detail page/component, one focused test file
@@ -369,31 +372,35 @@ The goal is complete only when all required tasks through T25 are done, required
 
 **Acceptance criteria:**
 
-- [ ] Access rejects at logical expiry before object deletion completes.
-- [ ] Cleanup claims work safely, deletes expected objects, records evidence, and tolerates already-missing objects.
-- [ ] Reconciliation reports orphan objects, missing objects, stale intents/multipart uploads, and retryable deletion failures.
+- [x] Access rejects at logical expiry before object deletion completes.
+- [x] Cleanup claims work safely, deletes expected objects, records evidence, and tolerates already-missing objects.
+- [x] Reconciliation reports orphan objects, missing objects, stale intents/multipart uploads, and retryable deletion failures.
 
 **Verification:**
 
-- [ ] Tests cover concurrent cleanup, retry, missing object, partial transfer deletion, and reconciliation classification.
-- [ ] Proposed R2 lifecycle configuration is reviewed before applying.
-- [ ] A non-production expiry drill reaches `deleted` and leaves no object.
+- [x] Tests cover concurrent cleanup, retry, missing object, partial transfer deletion, and reconciliation classification.
+- [x] Proposed R2 lifecycle configuration is reviewed before applying.
+- [x] A non-production expiry drill reaches `deleted` and leaves no object.
 
-**Dependencies:** T8, T11
+**Dependencies:** T11
 **Files likely touched:** cleanup service, protected cron/internal route, reconciliation script or service, focused tests, lifecycle config/runbook
 **Estimated scope:** M
 
-### Checkpoint B — Workspace and guest delivery
+### Checkpoint B — Private internal delivery
 
-- [ ] T5–T13 acceptance criteria pass.
-- [ ] Workspace sender can create, upload/resume, scan, publish, notify, monitor, revoke, and expire a transfer.
-- [ ] Guest can unlock and download only authorised clean files.
-- [ ] Cross-tenant/key-substitution/password-leak/replay tests pass.
-- [ ] Cleanup and scanner outage drills pass.
+- [x] T5–T13 acceptance criteria pass.
+- [ ] Workspace sender can create, upload/resume, internally validate, publish, monitor, revoke, and expire a transfer.
+- [ ] Authenticated authorised user can view and download; unauthenticated and cross-workspace users cannot.
+- [ ] Cross-tenant, key-substitution, active-content, signed-capability-leak, and replay tests pass.
+- [ ] Cleanup and R2/database outage drills pass.
 - [ ] `pnpm typecheck`, repository or appropriately scoped lint, and `pnpm build` results are recorded with pre-existing issues distinguished.
-- [ ] Human approves moving from internal Workspace Send to public-sender work.
+- [ ] Human approves the selected internal cohort and feature-flag enablement. External/public work remains deferred.
 
-### Phase 2 — Verified Public Send beta
+### Deferred Phase 2 — External delivery and Verified Public Send
+
+Tasks T14–T19 preserve the original backlog only. They are not approved, not required
+for private-v1 completion, and must not be started without a PRD, threat-model, cost,
+and product approval.
 
 #### T14 — Add public draft and sender verification backend
 
@@ -515,16 +522,16 @@ The goal is complete only when all required tasks through T25 are done, required
 **Files likely touched:** health aggregation service/API, operations page/component, one focused test file
 **Estimated scope:** M
 
-### Phase 3 — Battle test and launch
+### Phase 3 — Battle test and private internal launch
 
 #### T20 — Prove the end-to-end product flows
 
-**Description:** Prove the complete workspace, recipient, and verified-public user journeys in a real browser before adversarial release drills.
+**Description:** Prove the complete authenticated internal sender and downloader journeys in a real browser before adversarial release drills.
 
 **Acceptance criteria:**
 
-- [ ] Workspace and verified-public happy paths pass in a real browser.
-- [ ] Interrupted multipart resume, password access, individual/archive download, revocation, expiry, and public management paths pass.
+- [ ] Authenticated internal create-to-download happy path passes in a real browser.
+- [ ] Interrupted multipart resume, individual download, cross-workspace denial, revocation, and expiry paths pass.
 - [ ] Browser evidence identifies the tested environment, transfer IDs, state transitions, and safe outcomes without exposing secrets.
 
 **Verification:**
@@ -533,7 +540,7 @@ The goal is complete only when all required tasks through T25 are done, required
 - [ ] Mobile and keyboard completion of the core journeys is recorded.
 - [ ] Evidence is linked from the implementation ledger.
 
-**Dependencies:** T18, T19
+**Dependencies:** T12, T13, Checkpoint B
 **Files likely touched:** up to three browser-flow tests, fixtures, one evidence document
 **Estimated scope:** M
 
@@ -543,9 +550,9 @@ The goal is complete only when all required tasks through T25 are done, required
 
 **Acceptance criteria:**
 
-- [ ] Cross-tenant/key substitution, token/password leakage, replay, quota, mail-bombing, active-content, and malware cases produce safe outcomes.
-- [ ] Scanner, R2, queue, database, rate-limiter, Turnstile, and email failures follow documented retry/fail-closed policy.
-- [ ] Revocation, expiry, cleanup concurrency, orphan reconciliation, and kill switches work during degraded conditions.
+- [ ] Missing-auth, cross-tenant/key substitution, signed-capability leakage, replay, quota, and active-content cases produce safe outcomes.
+- [ ] R2 and database failures follow documented retry/fail-closed policy.
+- [ ] Revocation, expiry, cleanup concurrency, orphan reconciliation, and internal kill switches work during degraded conditions.
 
 **Verification:**
 
@@ -563,8 +570,8 @@ The goal is complete only when all required tasks through T25 are done, required
 
 **Acceptance criteria:**
 
-- [ ] Public and workspace pages pass keyboard, focus, label/error, mobile, and dark/light-mode review.
-- [ ] Metadata/share performance targets, upload responsiveness, CORS, security headers, cache/referrer policy, lifecycle rules, and feature flags are verified.
+- [ ] Internal Send pages pass keyboard, focus, label/error, mobile, and dark/light-mode review.
+- [ ] Metadata performance targets, upload responsiveness, CORS, security headers, cache/referrer policy, lifecycle rules, and feature flags are verified.
 - [ ] Repository checks distinguish Send regressions from known legacy debt and the deployment target guard passes.
 
 **Verification:**
@@ -579,27 +586,27 @@ The goal is complete only when all required tasks through T25 are done, required
 
 #### T23 — Publish operational and incident runbooks
 
-**Description:** Make the feature supportable by a second operator before marketing or staged enablement.
+**Description:** Make the feature supportable by a second operator before staged internal enablement.
 
 **Acceptance criteria:**
 
-- [ ] Runbooks cover configuration, scanning, abuse, retention, lifecycle, reconciliation, incident response, kill switches, rollback, and support.
+- [ ] Runbooks cover configuration, private validation policy, retention, lifecycle, reconciliation, incident response, kill switches, rollback, and support.
 - [ ] Runbooks identify owners, safe commands, decision points, evidence, and escalation paths.
 - [ ] A clean-room operator review finds no undocumented production-only knowledge.
 
 **Verification:**
 
 - [ ] A second operator can follow the runbooks in non-production.
-- [ ] Scanner, abuse, cleanup, and rollback procedures are dry-run or exercised safely.
+- [ ] Cross-workspace denial, cleanup, and rollback procedures are dry-run or exercised safely.
 - [ ] Runbook commands avoid secrets in output and target the guarded deployment path.
 
 **Dependencies:** T22
 **Files likely touched:** up to four focused documents under `docs/runbooks/` and this ledger
 **Estimated scope:** M
 
-#### T24 — Synchronise public, product, and marketing copy
+#### T24 — Synchronise public and marketing copy (deferred)
 
-**Description:** Make Send discoverable while ensuring every public claim matches approved limits, privacy, retention, and encryption behavior.
+**Description:** Preserved future-public backlog. No public or marketing promotion is required or approved for private v1.
 
 **Acceptance criteria:**
 
@@ -613,19 +620,19 @@ The goal is complete only when all required tasks through T25 are done, required
 - [ ] Page/component tests and responsive dark/light browser review pass for changed surfaces.
 - [ ] Marketing changes remain behind launch timing approved by the product owner.
 
-**Dependencies:** T23
+**Dependencies:** Future public PRD approval and T23
 **Files likely touched:** `app/pages/features/index.vue`, `app/pages/features/[slug].vue`, `app/components/MarketingNav.vue`, public Send page copy/tests
 **Estimated scope:** M
 
-#### T25 — Refresh architecture knowledge and record staged-launch evidence
+#### T25 — Refresh architecture knowledge and record private staged-launch evidence
 
 **Description:** Refresh Graphify/GraphWiki, close the implementation ledger, and prepare—but do not silently execute—the approved staged rollout.
 
 **Acceptance criteria:**
 
-- [ ] Graphify/GraphWiki represents the final Send contracts, routes, services, workers, storage, and public trust boundaries.
+- [ ] Graphify/GraphWiki represents the final internal Send contracts, routes, services, dormant workers, storage, and authenticated trust boundaries.
 - [ ] The implementation ledger points to verification and production-readiness evidence for every required task.
-- [ ] Staged rollout has an owner, cohort, feature-flag state, metrics, rollback trigger, review date, and explicit approval record.
+- [ ] Internal staged rollout has an owner, cohort, feature-flag state, metrics, rollback trigger, review date, and explicit approval record.
 
 **Verification:**
 
@@ -633,11 +640,11 @@ The goal is complete only when all required tasks through T25 are done, required
 - [ ] PRD success criteria and task ledger have no unexplained open required item.
 - [ ] Production migration/deployment/enablement occurs only with explicit approval and guarded commands.
 
-**Dependencies:** T24
+**Dependencies:** T23; T24 is not required for private v1
 **Files likely touched:** graph outputs according to repository convention, PRD, this plan, one launch evidence document
 **Estimated scope:** M
 
-### Optional Phase 4 — Croc-like Live Send
+### Deferred optional Phase 4 — Croc-like Live Send
 
 #### L1 — Run a browser Live Send feasibility spike
 
@@ -663,10 +670,8 @@ The goal is complete only when all required tasks through T25 are done, required
 
 After shared contracts are approved, the following work streams are logically independent, but they must coordinate through committed contracts and should not edit the same files concurrently:
 
-- recipient UI tests can proceed while download services are implemented;
-- email template work can proceed after publication response contracts are fixed;
+- authenticated detail UI tests can proceed while download services are implemented;
 - runbook drafts can proceed alongside late operational UI work;
-- public UI can proceed after verification/upload API contracts are fixed;
 - observability aggregation can proceed after event taxonomy is fixed.
 
 Must remain sequential:
@@ -675,28 +680,27 @@ Must remain sequential:
 - schema before repositories;
 - repositories before user-facing mutations;
 - upload intent before multipart;
-- clean scan state before publication;
-- publication before recipient download;
-- complete workspace/guest checkpoint before public sender enablement;
+- stable canonical upload plus recorded internal validation before publication;
+- publication before authenticated download;
+- complete private internal checkpoint before cohort enablement;
 - end-to-end, adversarial, and release-quality gates before production enablement.
 
 ## 7. Risks and mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Public storage abuse/denial of wallet | High | Verify before upload, rate/byte/concurrency limits, short retention, kill switch, monitoring |
-| Malware or active content distribution | High | Quarantine, approved scanner, fail-closed publication, attachment disposition, operator response |
+| Compromised internal account causes storage abuse | Medium | Auth, workspace byte/file/concurrency limits, short retention, kill switch, monitoring |
+| Internal user distributes unsafe or active content | Medium | Trusted-user boundary, endpoint protection, attachment-only disposition, no inline preview, audit/revocation; require scanner review before external sharing |
 | Cross-tenant/key substitution | High | Server-generated keys, intent binding, explicit tenant predicates, deny-default tests |
 | Signed URL leakage/reuse | High | Mint after policy check, short expiry, no logs/emails, no-store/referrer controls, immediate logical revocation |
 | Multipart orphan cost | Medium | Intent expiry, abort path, R2 incomplete-upload lifecycle, reconciliation |
-| Scanner cannot handle maximum size | High | Select provider before T8, align policy caps, chunk/stream or reduce product limit |
-| Public sender email mail-bombing | High | Turnstile, rate limits, generic responses, verification limits, suppression/audit |
+| Dormant scanner cost or capacity surprises later | Low for v1 | Do not deploy for private v1; re-benchmark and cost-review before external sharing |
 | ZIP generation exceeds runtime limits | Medium | Decide at T0; omit, queue/prebuild, or use streaming Worker/container path |
 | Long-lived feature branch conflicts | Medium | Small vertical commits, feature flags, short-lived branch/PR slices |
 | Existing dirty worktree overlap | Medium | Preserve unrelated changes, inspect before each task, isolate touched files |
 | False end-to-end encryption claims | High | Explicit PRD language and copy review; separate future encrypted mode |
 | Lifecycle deletion delay | Medium | Application access expiry is immediate; scheduled cleanup plus lifecycle backstop |
-| Cost grows through hot-linking/download loops | Medium | Download limits/rate controls, monitoring, capability expiry, abuse response |
+| Cost grows through repeated internal downloads | Medium | Download limits, monitoring, capability expiry, revocation, and cohort rollout |
 
 ## 8. Checkpoint command matrix
 
@@ -795,7 +799,26 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 - The browser uploader retries the existing scoped intent, skips server-validated completed byte ranges, uploads remaining parts sequentially with progress/cancellation, and then uses the existing idempotent completion boundary. Abort handles R2/database retry gaps and refuses to mark a final object aborted.
 - The complete T1–T7 focused matrix passes 120/120 tests across 18 files; focused ESLint and the cache-free production build pass. The repository-wide Nuxt typecheck remains red on unrelated existing debt, so no global typecheck pass is claimed. No dependency was added, both Send flags remain disabled, and migration `269_send_multipart_geometry.sql` has not been applied to a shared database.
 - A real system-Chrome/R2 smoke uploaded a 5 MiB first part, closed that browser context to simulate interruption, recovered the single canonical completed part, uploaded only the 1 MiB remainder from a fresh context, completed and HEAD-verified the 6 MiB `application/octet-stream` object, and recorded zero console warnings/errors. The temporary object was deleted and cleanup was verified.
+- The production multipart control plane now uses a workerd-compatible SigV4 adapter rather than the Node-oriented S3 client/presigner path. Canonical R2 part listing is paginated with a 10-page/10,000-part ceiling and rejects missing or repeated continuation markers; XML reads are capped at 2 MiB. Six adapter regression tests cover signing, pagination, completion XML, and normalized R2 errors.
+- Deployment `43c5a646` passed a live authenticated 105,906,176-byte (101 MiB) multipart create/upload/publish/download/revoke smoke. Production data confirmed `multipart`, `completed`, `clean`/`not_required`, one download, and exactly one event at every lifecycle boundary; the transfer finished `revoked`.
 - [send-multipart-uploads.md](../../runbooks/send-multipart-uploads.md) records intent expiry, R2's default seven-day incomplete-upload backstop, T13 reconciliation responsibilities, retry behavior, safe cleanup, and the migration/flag gates.
+
+### T12 completion evidence
+
+- The strict authenticated `PATCH /api/agency/send/:id/expiry` route permits owners and workspace management roles only, preserves out-of-scope non-disclosure, and resolves the maximum retention policy on the server.
+- Extensions are forward-only by at least one minute, capped at the policy milestone anchored to original creation time, protected by optimistic versioning, idempotently replayable, and recorded as secret-free operator audit events. Revoked, expired, deleted, and other terminal transfers cannot be reactivated.
+- The transfer manifest offers only exact later policy dates and hides the action when no extension remains or the transfer is terminal.
+- Deployment `8a2a6ada` passed a live authenticated production smoke: a zero-file draft was extended from 7 to 14 days, the new expiry was confirmed in the UI and database audit event, and the transfer was then revoked. Both immutable and custom Send routes returned 200.
+- The final focused Send release matrix passes 197/197 tests across 34 files; focused ESLint and the production build pass.
+
+### T13 reconciliation evidence
+
+- Cleanup remains the only destructive path: it uses bounded `FOR UPDATE SKIP LOCKED` claims, validates exact transfer ownership for every key, preserves partial failures for idempotent retry, and finalizes database state only after all R2 deletes succeed.
+- The new reconciliation phase is report-only. It follows R2 cursors with page ceilings, caps database batches, issue samples, and HEAD concurrency, and distinguishes a failed metadata lookup from proven absence.
+- Reports classify orphan/malformed objects, missing canonical objects, stale single/multipart intents, and cleanup claims eligible for retry. Results expose only UUIDs and short one-way fingerprints, never keys, upload IDs, capabilities, or signed URLs.
+- Deployment `09703d23` serves both the immutable and custom Send routes with HTTP 200, while the protected cleanup route returns 401 without its scheduler secret. A separate read-only production scan examined three Send objects and two expected file rows: zero orphan, malformed, missing, metadata-failure, multipart-stale, retryable-deletion, truncation, or batch-limit findings. One expired single-part intent belongs to an already-revoked transfer and is inaccessible pending normal cleanup.
+- Live Wrangler read-back confirmed `agency-files` has its enabled default rule aborting incomplete multipart uploads after seven days. The reviewed focused release matrix passes 210/210 tests across 37 files; focused ESLint and both root and isolated production builds pass.
+- A disposable PostgreSQL 14 and filesystem-object drill ran two cleanup workers concurrently against an expired transfer. Exactly one worker claimed it; an injected failure on the second object left the transfer retryable, and a retry after 16 minutes idempotently finished both deletes. The transfer reached `deleted`, both file rows reached `deleted`, exactly one claim and one deletion event remained, no objects remained, and the final report-only reconciliation found zero issues.
 
 ### T8 foundation evidence
 
@@ -803,47 +826,58 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 - The provider-neutral orchestration re-reads canonical object metadata before and after scanning, binds normalized results to the claimed job and ETag, rejects MIME mismatches, fails closed on mutation/error/timeout, and fences delayed attempts by canonical attempt number.
 - R2 and internal Queue messages are wake-ups only. The boundary validates account, bucket, generated Send object keys, and identifier-only replay messages, while logs exclude message bodies, object keys, ETags, raw scanner output, and signed capabilities.
 - Migration `270_send_scan_jobs.sql` creates dormant schema only. It does not create a Queue, R2 event notification, Container, route, provider adapter, or secret, and it remains unapplied to shared databases. Both Send flags remain disabled.
-- Scanner/provider selection, external dependencies, Cloudflare resource provisioning, non-production integration, deployment, and activation remain behind the existing Ask-first gate.
+- The user approved Cloudflare Containers plus ClamAV on 2026-07-21. The dormant adapter now streams private R2 objects through a per-job Container, denies general internet access, restricts FreshClam egress, discards raw detection output, and exposes only the normalized provider-neutral result contract. The Container never receives an R2 URL or credential.
+- The standalone scanner package has a lockfile; production and full dependency audits report no known vulnerabilities. Worker TypeScript passes, and the standard-library Go adapter passes unit tests, vet, and a Linux/amd64 cross-build with the checksum-verified official Go 1.25.12 toolchain.
+- The complete T1–T8 local matrix passes 151/151 tests across 22 files, including Queue redelivery, expired final leases, compatible and conflicting MIME evidence, Container state cleanup, R2 ETag binding, outbound deny rules, and the deployment preflight. Focused ESLint passes.
+- Migration 270, Cloudflare Queue/DLQ and R2 notification creation, the real Container image build, non-production integration, deployment, and activation remain gated. Docker was unavailable locally, so no image-build or runtime claim is made.
 
 ## 10. Implementation ledger
 
 | Task | Status | Evidence | Notes / blocker |
 |---|---|---|---|
-| T0 | COMPLETE | User approved the PRD as written on 2026-07-20 | Proposed defaults are now the implementation baseline |
+| T0 | COMPLETE | Original PRD approved 2026-07-20; private internal-v1 amendment and ADR-006 approved 2026-07-21 | The amendment supersedes guest, public, email, and scanner-launch requirements for v1 |
 | T1 | COMPLETE | 22 focused tests passed; changed-file ESLint passed; full typecheck baseline inspected on 2026-07-21 | Presign/confirm is actor- and entity-bound; unknown deletion prefixes deny; multipart task uploads derive actor from auth and caller-supplied metadata mode is explicitly retired. Stateless confirmation replay moves to T6; orphan cleanup moves to T13. No external DB/R2 integration was performed. |
 | T2 | COMPLETE | 8 contract tests; migration applied twice to approved disposable PostgreSQL 14; live constraint drills passed on 2026-07-21 | Migration `268_send_foundation.sql`; no shared database was accessed; forward-fix/rollback runbook recorded |
 | T3 | COMPLETE | 14 domain tests; focused ESLint; scoped TypeScript compile passed on 2026-07-21 | Strict contracts, explicit transition graphs, configuration-driven policy, 256-bit token hashing, and allowlist public mapping delivered |
 | T4 | COMPLETE | 10 focused tests; T1–T4 combined suite 55/55; focused ESLint and path-filtered typecheck clean on 2026-07-21 | Actor-scoped reads/writes, client assignments, optimistic transitions, state/event binding, and recursive redaction delivered |
 | T5 | COMPLETE | 50/50 focused tests; ESLint clean; no path-filtered type errors; isolated PostgreSQL and headless Chrome checks passed on 2026-07-21 | Strict create/list API, policy-aware draft service, and accessible feature-flagged agency UI delivered; no navigation change while the layout has unrelated edits |
 | T6 | COMPLETE | 83/83 focused tests; focused ESLint clean; no path-filtered type errors; approved live CORS read-back and real-Chrome/R2 preflight, PUT, HEAD, console, and cleanup evidence on 2026-07-21 | Single-part application and live browser-storage path complete; both Send flags remain disabled. Disposable PostgreSQL recheck remains pending host IPC capacity but T2's prior apply-twice evidence and current static contracts are green. |
-| T7 | COMPLETE | 120/120 focused tests; focused ESLint and cache-free production build pass; real Chrome/R2 interruption-resume, HEAD, console, and cleanup evidence on 2026-07-21 | Repository-wide typecheck remains red on unrelated existing debt; multipart identities stay server-owned; migration 269 remains unapplied to shared databases; both Send flags remain disabled |
-| T8 | FOUNDATION COMPLETE / ADAPTER AWAITING APPROVAL | Provider-neutral contract, canonical job repository, queue boundary, quarantine transition, migration 270, and focused tests | Scanner provider/dependency selection, infrastructure provisioning, integration, deployment, and activation remain Ask-first; no provider runtime has been added |
-| T9 | NOT STARTED | — | — |
-| T10 | NOT STARTED | — | — |
-| T11 | NOT STARTED | — | Archive behavior follows T0 decision |
-| T12 | NOT STARTED | — | — |
-| T13 | NOT STARTED | — | Reconcile abandoned PUTs, partial DB/object mutations, and other orphan/missing-object drift; lifecycle config is Ask-first |
-| T14 | NOT STARTED | — | Checkpoint B approval required |
-| T15 | NOT STARTED | — | — |
-| T16 | NOT STARTED | — | Public limit changes are Ask-first |
-| T17 | NOT STARTED | — | — |
-| T18 | NOT STARTED | — | No real email without approval |
-| T19 | NOT STARTED | — | — |
-| T20 | NOT STARTED | — | End-to-end product-flow evidence |
-| T21 | NOT STARTED | — | Security and dependency-failure drills |
-| T22 | NOT STARTED | — | Release quality and deployment-readiness gate |
-| T23 | NOT STARTED | — | Operational and incident runbooks |
-| T24 | NOT STARTED | — | Marketing timing is Ask-first |
-| T25 | NOT STARTED | — | Deployment/enablement is Ask-first |
+| T7 | COMPLETE | 120/120 slice tests plus the final 185/185 release matrix; focused ESLint and production build pass; prior interruption/resume test plus live 101 MiB production lifecycle evidence on 2026-07-21 | Multipart identities stay server-owned; migrations 268–271 and private Send flags are live; the six-test workerd adapter suite covers signed control-plane requests and bounded pagination |
+| T8 | DORMANT / DEFERRED FOR PRIVATE V1 | Provider-neutral contract, canonical repository, Queue boundary, Cloudflare Container/ClamAV adapter, migration 270, 151/151 local tests, Worker typecheck, Go test/vet/cross-build, clean dependency audits, and a failing-closed deployment preflight | No image build, resource provisioning, deployment, or activation is required for private v1; reconsider before any external sharing; both Send flags are false |
+| T9 | COMPLETE | Stable-object publication service/API, migration 271, focused lifecycle and contract tests | Single PUT waits for its short sealing window; multipart may publish immediately; no public token, recipient, email, or scanner job |
+| T10 | COMPLETE | Authenticated allowlist-only detail API and transfer-manifest UI | No object key, token/hash, policy internals, or signed URL is returned |
+| T11 | COMPLETE | One-minute attachment-only download capability, no-store/no-referrer route, idempotent event/count handling | Archive download remains intentionally omitted |
+| T12 | COMPLETE | Revocation plus policy-bounded expiry extension API/UI; ownership, bounds, replay, terminal-state and production smoke evidence; 197/197 release matrix | Extension is creation-anchored, forward-only, idempotent, audited, and cannot reactivate terminal content |
+| T13 | COMPLETE | Protected cleanup cron plus bounded report-only reconciliation; live production scan found zero object drift; lifecycle read-back, 210/210 tests, and the disposable concurrent partial-delete/retry drill passed | Cleanup remains intentionally limited to private Send data and the protected scheduled path |
+| T14 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires PRD, threat-model, cost, and product approval |
+| T15 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires new approval |
+| T16 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires new approval |
+| T17 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires new approval |
+| T18 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Requires new approval; no real email |
+| T19 | DEFERRED — EXTERNAL/PUBLIC SCOPE | — | Public-specific operations are not a v1 gate |
+| T20 | COMPLETE FOR PRIVATE V1 | Authenticated single-part and 101 MiB multipart production create/upload/publish/download/revoke smokes completed on 2026-07-21 | Public and external-recipient flows remain deferred |
+| T21 | PARTIAL | Authorisation, transition, signed-capability, active-content, revocation, expiry-extension, scanner-boundary, cleanup retry/concurrency, reconciliation, multipart control-plane tests, and the disposable expiry/partial-delete drill passed in the 210-test matrix | A broader production outage drill remains optional follow-up work |
+| T22 | COMPLETE FOR PRIVATE V1 | Latest deployment `09703d23` succeeded; custom and immutable Send routes returned 200; 37 files/210 focused tests and both root/isolated production builds passed | Repository-wide typecheck debt remains separately recorded; no global green claim |
+| T23 | PARTIAL — RUNBOOK COMPLETE | Consolidated private operations runbook covers ownership, configuration, kill switch, retention, reconciliation, incident response, rollback, safe triage, and the now-passed disposable drill | Clean-room second-operator review remains open |
+| T24 | DEFERRED — NO PUBLIC MARKETING | — | Private v1 requires no public promotion |
+| T25 | COMPLETE FOR PRIVATE V1 | Explicit approvals consumed; migrations 268–271, Pages, pages-cron, and private flags released on 2026-07-21 | New public/scanner scope still requires approval |
 | L1 | OPTIONAL / DEFERRED | — | Requires PRD amendment or explicit approval |
 
 ## 11. Current goal-loop handoff
 
-T0–T7, Checkpoint A, and the provider-neutral T8 foundation are complete. The current action is the **T8 scanner adapter Ask-first gate**. Before provider-specific implementation resumes, the loop should:
+The private internal v1 is deployed and enabled. Migrations 268–271, Pages, and the
+`pages-cron` Worker are live; the authenticated create/upload/publish/download/revoke
+production smokes passed for both the single-part and 101 MiB multipart paths, and the
+focused release matrix is 210/210. The production database confirms the multipart
+transfer completed, published, downloaded once, and finished revoked. Policy-bounded
+expiry extension is also live and was verified through the UI and database audit trail.
+Bounded report-only storage reconciliation is live and found no production object drift.
 
-1. present a current, source-backed scanner/queue recommendation with cost, privacy, file-size, latency, and Cloudflare integration trade-offs;
-2. obtain explicit approval before selecting or adding a scanner provider/dependency;
-3. after approval, write failing adapter/integration tests against the existing provider-neutral orchestration contract;
-4. keep publication fail-closed and preserve the single-part capability-expiry/re-read rule;
-5. use only non-sensitive malware test fixtures and do not send real files to an external provider without separate approval;
-6. preserve both disabled Send flags, the unapplied shared-database migration gate, and unrelated worktree changes.
+The remaining work is optional operational polish rather than a launch blocker:
+
+1. have a second operator perform the clean-room runbook review for T23;
+2. optionally repeat the interruption/resume variant in production; the uninterrupted
+   101 MiB multipart lifecycle is already production-verified and interruption/resume
+   remains covered by the prior real-browser/R2 test;
+3. do not deploy T8 infrastructure or start T14–T19/T24/L1 without a new approved PRD
+   amendment.
