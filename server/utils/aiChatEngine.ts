@@ -454,6 +454,8 @@ export async function processUserMessage(
                   ctx: {
                     userId,
                     userRole: effectiveUserRole,
+                    permissionGroups: assistantContext.permissionGroups,
+                    assistantReadOnly: assistantContext.isReadOnly,
                     conversationId,
                     event,
                     assistantScope: {
@@ -516,6 +518,8 @@ export async function processUserMessage(
           ctx: {
             userId,
             userRole: effectiveUserRole,
+            permissionGroups: assistantContext.permissionGroups,
+            assistantReadOnly: assistantContext.isReadOnly,
             conversationId,
             event,
             assistantScope: {

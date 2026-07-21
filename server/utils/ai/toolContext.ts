@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import type { PermissionGroup } from '~~/server/utils/permissions'
 
 /**
  * Runtime context the tool layer injects into every handler. `userId`/`userRole` are always set by
@@ -10,6 +11,10 @@ import type { H3Event } from 'h3'
 export type ToolContext = {
   userId: string
   userRole: string
+  /** Current resolved groups; when present these supersede legacy role-derived groups. */
+  permissionGroups?: PermissionGroup[]
+  /** Current custom/system role write policy. */
+  assistantReadOnly?: boolean
   /** Optional — only set on client-scoped surfaces (portal); undefined in the agency staff chat. */
   clientScope?: string
   /** Set by the loop; required for write tools that persist a proposal (create_task). */

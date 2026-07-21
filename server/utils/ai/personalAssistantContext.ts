@@ -1,7 +1,6 @@
 import type { H3Event } from 'h3'
 import { queryOne as realQueryOne, queryRows as realQueryRows } from '~~/server/utils/db'
 import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS, type PermissionGroup } from '~~/server/utils/permissions'
-import { resolveUserPermissions } from '~~/server/utils/roleResolver'
 import {
   composeGovernedCatalog,
   loadCatalogControlRows,
@@ -117,19 +116,32 @@ const defaultDb: PersonalAssistantContextDb = {
   queryOne: realQueryOne as PersonalAssistantContextDb['queryOne'],
   queryRows: realQueryRows as PersonalAssistantContextDb['queryRows'],
   async resolvePermissions(input) {
-    if (!input.event) {
+    if (!input.customRoleId) {
       return {
         groups: SYSTEM_ROLE_PERMISSIONS[input.role] ?? [],
         isReadOnly: input.role === 'viewer' || input.role === 'guest'
       }
     }
-    const resolved = await resolveUserPermissions(
-      input.event,
-      input.userId,
-      input.role,
-      input.customRoleId
+    // Admission deliberately bypasses the general five-minute permission cache: a custom-role
+    // change must narrow the next assistant turn immediately even if cache invalidation was missed.
+    const role = await realQueryOne<{ is_read_only: boolean, permission_groups: string[] }>(
+      `SELECT custom_role.is_read_only,
+              COALESCE(
+                array_agg(permission.permission_group)
+                  FILTER (WHERE permission.permission_group IS NOT NULL),
+                '{}'
+              ) AS permission_groups
+         FROM custom_roles custom_role
+         LEFT JOIN role_permission_groups permission ON permission.role_id = custom_role.id
+        WHERE custom_role.id = $1
+        GROUP BY custom_role.id`,
+      [input.customRoleId]
     )
-    return { groups: resolved.groups, isReadOnly: resolved.isReadOnly }
+    if (!role) return { groups: [], isReadOnly: true }
+    return {
+      groups: role.permission_groups.filter((group): group is PermissionGroup => PERMISSION_GROUP_SET.has(group)),
+      isReadOnly: role.is_read_only
+    }
   }
 }
 
@@ -229,7 +241,9 @@ export async function resolvePersonalAssistantContext(
     customRoleId: identity.custom_role_id,
     event: input.event
   })
-  const permissionGroups = permissions.groups.filter(group => PERMISSION_GROUP_SET.has(group))
+  const permissionGroups = [...new Set(
+    permissions.groups.filter(group => PERMISSION_GROUP_SET.has(group))
+  )]
   const companyWideDepartments = identity.role === 'owner' || identity.role === 'admin'
 
   const departmentRows = await db.queryRows<DepartmentRow>(

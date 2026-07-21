@@ -130,7 +130,12 @@ export async function runToolLoop(opts: {
   const persona = opts.persona ?? DEFAULT_PERSONA
 
   const composition = composeEffectiveAssistantTools({
-    rbacFilteredTools: filterToolsForUser(registry, opts.ctx.userRole),
+    rbacFilteredTools: filterToolsForUser(
+      registry,
+      opts.ctx.userRole,
+      opts.permissionGroups,
+      opts.ctx.assistantReadOnly
+    ),
     catalogRows: opts.catalogRows ?? [],
     grantedPermissionGroups: opts.permissionGroups ?? [],
     personaToolAllowlist: persona.toolAllowlist,
