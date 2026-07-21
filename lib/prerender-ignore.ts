@@ -7,6 +7,7 @@ export const PRERENDER_PUBLIC_EXACT_ROUTES = [
   '/landing',
   '/creativity',
   '/ai-training',
+  '/ai-assistants',
   '/voice-ai',
   '/sign-in'
 ] as const
