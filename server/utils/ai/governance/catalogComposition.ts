@@ -11,6 +11,8 @@ export interface ActiveCatalogRow {
   releaseId: string
   departmentId: string
   packVersionId: string | null
+  packVersion?: number | null
+  packLabel?: string | null
   packKey: string | null
   instructionsPreamble: string
   packModelFeatureKey: string | null
@@ -40,6 +42,8 @@ interface ActiveCatalogDbRow {
   release_id: string
   department_id: string
   pack_version_id: string | null
+  pack_version?: number | string | null
+  pack_label?: string | null
   pack_key: string | null
   instructions_preamble: string | null
   pack_model_feature_key: string | null
@@ -79,6 +83,8 @@ function mapCatalogRow(row: ActiveCatalogDbRow): ActiveCatalogRow {
     releaseId: row.release_id,
     departmentId: row.department_id,
     packVersionId: row.pack_version_id,
+    packVersion: boundedNumber(row.pack_version ?? null),
+    packLabel: row.pack_label ?? null,
     packKey: row.pack_key,
     instructionsPreamble: row.instructions_preamble ?? '',
     packModelFeatureKey: row.pack_model_feature_key,
@@ -124,6 +130,8 @@ export async function loadCatalogControlRows(
          pack_release.id AS release_id,
          pack_release.department_id,
          pack_version.id AS pack_version_id,
+         pack_version.version AS pack_version,
+         pack_version.label AS pack_label,
          pack.pack_key,
          pack_version.instructions_preamble,
          pack_version.model_feature_key AS pack_model_feature_key,
@@ -164,6 +172,8 @@ export async function loadCatalogControlRows(
          capability_release.id AS release_id,
          capability_release.department_id,
          NULL::uuid AS pack_version_id,
+         NULL::integer AS pack_version,
+         NULL::text AS pack_label,
          NULL::text AS pack_key,
          ''::text AS instructions_preamble,
          NULL::text AS pack_model_feature_key,

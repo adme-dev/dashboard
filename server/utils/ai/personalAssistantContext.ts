@@ -76,6 +76,8 @@ export interface PersonalAssistantContext {
     departmentId: string
     packVersionId: string
     packKey: string
+    version: number
+    label: string
   }>
   catalogInstructionsPreamble: string
   /** Internal governance material used to narrow the runtime tool registry. Never send to clients. */
@@ -313,12 +315,21 @@ export async function resolvePersonalAssistantContext(
 
   const activePackMap = new Map<string, PersonalAssistantContext['activePacks'][number]>()
   for (const row of catalogRows) {
-    if (row.sourceType !== 'pack' || row.releaseState !== 'active' || !row.packVersionId || !row.packKey) continue
+    if (
+      row.sourceType !== 'pack'
+      || row.releaseState !== 'active'
+      || !row.packVersionId
+      || !row.packKey
+      || !row.packVersion
+      || !row.packLabel
+    ) continue
     activePackMap.set(row.releaseId, {
       releaseId: row.releaseId,
       departmentId: row.departmentId,
       packVersionId: row.packVersionId,
-      packKey: row.packKey
+      packKey: row.packKey,
+      version: row.packVersion,
+      label: row.packLabel
     })
   }
   const activePacks = [...activePackMap.values()]

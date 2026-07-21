@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { AI_PERSONA_OPTIONS } from '~~/app/utils/aiPersonas'
+import type { MyAssistantView } from '~~/shared/types/aiAssistant'
 
 definePageMeta({ layout: 'agency' })
 
 interface MyConfig { personaKey: string | null, disabledTools: string[], memoryEnabled: boolean }
-interface ToolInfo { name: string, description: string, mutates: boolean }
 interface MemoryView { id: string, content: string, memType: string, scope: string, source: string, salience: number, createdAt: string }
 
 const toast = useToast()
@@ -13,8 +13,7 @@ const apiFetch = $fetch as <T = unknown>(
   request: string,
   options?: { method?: string; body?: unknown }
 ) => Promise<T>
-const config = ref<MyConfig | null>(null)
-const toolsData = ref<{ tools: ToolInfo[] } | null>(null)
+const config = ref<MyAssistantView | null>(null)
 const memData = ref<{ observed: MemoryView[], shared: MemoryView[] } | null>(null)
 
 async function refreshMemories() {
@@ -22,13 +21,11 @@ async function refreshMemories() {
 }
 
 async function refreshSettings() {
-  const [nextConfig, nextTools] = await Promise.all([
-    apiFetch<MyConfig>('/api/agency/ai/my-assistant'),
-    apiFetch<{ tools: ToolInfo[] }>('/api/agency/ai/my-assistant/tools'),
+  const [nextConfig] = await Promise.all([
+    apiFetch<MyAssistantView>('/api/agency/ai/my-assistant'),
     refreshMemories(),
   ])
   config.value = nextConfig
-  toolsData.value = nextTools
 }
 
 await refreshSettings()
@@ -69,9 +66,21 @@ const disabled = ref<Set<string>>(new Set(config.value?.disabledTools ?? []))
 
 const personaItems = AI_PERSONA_OPTIONS.map(o => ({ label: o.label, value: o.key }))
 const personaDescription = computed(() => AI_PERSONA_OPTIONS.find(o => o.key === personaKey.value)?.description)
-const tools = computed(() => toolsData.value?.tools ?? [])
+const authority = computed(() => config.value?.authority ?? null)
+const tools = computed(() => config.value?.tools ?? [])
+const restrictions = computed(() => config.value?.restrictions ?? [])
 
 const prettyTool = (t: string) => t.replace(/^(propose_|get_)/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+const prettyKey = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+const roleLabel = computed(() => authority.value ? prettyKey(authority.value.currentRole) : '')
+const clientScopeLabel = computed(() => authority.value?.clientScope.mode === 'all_active'
+  ? 'All active clients'
+  : `${authority.value?.clientScope.assignments.length ?? 0} assigned client${authority.value?.clientScope.assignments.length === 1 ? '' : 's'}`)
+const accessReasonLabel = (reason: 'membership' | 'manager' | 'company_policy') => ({
+  membership: 'Department member',
+  manager: 'Department manager',
+  company_policy: 'Company-wide role'
+})[reason]
 const isEnabled = (name: string) => !disabled.value.has(name)
 function toggleTool(name: string, on: boolean) {
   const next = new Set(disabled.value)
@@ -92,6 +101,7 @@ async function save() {
     personaKey.value = saved.personaKey ?? 'general'
     memoryEnabled.value = saved.memoryEnabled
     disabled.value = new Set(saved.disabledTools)
+    config.value = await apiFetch<MyAssistantView>('/api/agency/ai/my-assistant')
     toast.add({ title: 'Saved', description: 'Your assistant settings are updated.', color: 'success' })
   } catch (e: any) {
     toast.add({ title: 'Couldn’t save', description: e?.data?.statusMessage || 'Try again.', color: 'error' })
@@ -102,7 +112,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
+  <div class="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
     <header class="flex items-start justify-between gap-4">
       <div>
         <h1 class="text-xl font-semibold text-highlighted">
@@ -116,6 +126,134 @@ async function save() {
         Save changes
       </UButton>
     </header>
+
+    <UCard>
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-semibold text-highlighted">
+              Your access
+            </h2>
+            <p class="mt-0.5 text-xs text-muted">
+              This is resolved from your current role, departments, client assignments, and evaluated releases each time the assistant runs.
+            </p>
+          </div>
+          <UBadge :color="authority?.readOnly ? 'warning' : 'success'" variant="soft">
+            {{ authority?.readOnly ? 'Read only' : 'Read and propose' }}
+          </UBadge>
+        </div>
+      </template>
+
+      <div aria-live="polite" class="grid gap-4 md:grid-cols-3">
+        <section class="rounded-lg border border-default p-4">
+          <p class="text-xs font-medium uppercase tracking-wide text-muted">
+            Current role
+          </p>
+          <p class="mt-1 text-sm font-semibold text-highlighted">
+            {{ roleLabel }}
+          </p>
+          <div class="mt-3 flex flex-wrap gap-1.5">
+            <UBadge v-for="group in authority?.permissionGroups" :key="group" color="neutral" variant="soft" size="sm">
+              {{ prettyKey(group) }}
+            </UBadge>
+            <span v-if="!authority?.permissionGroups.length" class="text-xs text-muted">No specialist permission areas</span>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-default p-4">
+          <p class="text-xs font-medium uppercase tracking-wide text-muted">
+            Client scope
+          </p>
+          <p class="mt-1 text-sm font-semibold text-highlighted">
+            {{ clientScopeLabel }}
+          </p>
+          <ul v-if="authority?.clientScope.mode === 'assigned' && authority.clientScope.assignments.length" class="mt-2 space-y-1">
+            <li v-for="client in authority.clientScope.assignments" :key="`${client.name}:${client.role}`" class="text-xs text-muted">
+              {{ client.name }} · {{ prettyKey(client.role) }}
+            </li>
+          </ul>
+          <p v-else-if="authority?.clientScope.mode === 'assigned'" class="mt-2 text-xs text-muted">
+            No active client assignments. Client-specific work will be unavailable.
+          </p>
+        </section>
+
+        <section class="rounded-lg border border-default p-4">
+          <p class="text-xs font-medium uppercase tracking-wide text-muted">
+            Capability policy
+          </p>
+          <p class="mt-1 text-sm font-semibold text-highlighted">
+            {{ authority?.catalogMode === 'governed' ? 'Governed catalog' : 'Core role-based tools' }}
+          </p>
+          <p class="mt-2 text-xs text-muted">
+            {{ authority?.catalogMode === 'governed'
+              ? 'Only tools in active, evaluated releases are available.'
+              : 'No governed pack release is active for this scope yet.' }}
+          </p>
+        </section>
+      </div>
+    </UCard>
+
+    <div class="grid gap-6 lg:grid-cols-2">
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold text-highlighted">
+              Department scope
+            </h2>
+            <span class="text-xs text-muted">{{ authority?.departments.length ?? 0 }} active</span>
+          </div>
+        </template>
+        <div v-if="!authority?.departments.length" class="py-5 text-sm text-muted">
+          No active department scope. Ask an administrator to review your department membership.
+        </div>
+        <ul v-else class="divide-y divide-default">
+          <li v-for="department in authority.departments" :key="department.name" class="py-3 first:pt-0 last:pb-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="text-sm font-medium text-highlighted">
+                {{ department.name }}
+              </p>
+              <UBadge v-if="department.primary" color="primary" variant="soft" size="sm">Primary</UBadge>
+              <UBadge v-if="department.manager" color="info" variant="soft" size="sm">Manager</UBadge>
+            </div>
+            <p class="mt-1 text-xs text-muted">
+              {{ accessReasonLabel(department.accessReason) }}<template v-if="department.membershipRole"> · {{ prettyKey(department.membershipRole) }}</template>
+            </p>
+            <p v-if="department.escalationManagerName" class="mt-1 text-xs text-muted">
+              Escalation: {{ department.escalationManagerName }}
+            </p>
+          </li>
+        </ul>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold text-highlighted">
+              Active capability packs
+            </h2>
+            <span class="text-xs text-muted">{{ authority?.activePacks.length ?? 0 }} active</span>
+          </div>
+        </template>
+        <div v-if="!authority?.activePacks.length" class="py-5 text-sm text-muted">
+          No evaluated departmental pack is active for you yet. Your existing role-based assistant remains available.
+        </div>
+        <ul v-else class="divide-y divide-default">
+          <li v-for="pack in authority.activePacks" :key="`${pack.key}:${pack.version}:${pack.departmentName}`" class="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+            <div>
+              <p class="text-sm font-medium text-highlighted">
+                {{ pack.label }}
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                {{ pack.departmentName }}
+              </p>
+            </div>
+            <UBadge color="success" variant="soft" size="sm">
+              v{{ pack.version }}
+            </UBadge>
+          </li>
+        </ul>
+      </UCard>
+    </div>
 
     <!-- Default focus -->
     <UCard>
@@ -255,8 +393,39 @@ async function save() {
             <p class="mt-0.5 line-clamp-2 text-xs text-muted">
               {{ t.description }}
             </p>
+            <p v-if="!t.availableInCurrentFocus && t.currentFocusReason === 'persona_narrowed'" class="mt-1 text-xs text-warning">
+              Not used by your current focus.
+            </p>
           </div>
-          <USwitch :model-value="isEnabled(t.name)" class="mt-0.5 shrink-0" @update:model-value="(v: boolean) => toggleTool(t.name, v)" />
+          <USwitch
+            :model-value="isEnabled(t.name)"
+            class="mt-0.5 shrink-0"
+            :aria-label="`${isEnabled(t.name) ? 'Disable' : 'Enable'} ${prettyTool(t.name)}`"
+            @update:model-value="(v: boolean) => toggleTool(t.name, v)"
+          />
+        </li>
+      </ul>
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <h2 class="text-sm font-semibold text-highlighted">
+          Why something may be unavailable
+        </h2>
+      </template>
+      <p class="mb-3 text-xs text-muted">
+        Access is the intersection of company policy, your current permissions and scope, active evaluated releases, your focus, and the controls above. Tools not listed are outside your current role or permission scope.
+      </p>
+      <div v-if="!restrictions.length" class="rounded-lg bg-elevated p-3 text-sm text-muted">
+        No additional tool restrictions apply to your current focus.
+      </div>
+      <ul v-else class="space-y-2">
+        <li v-for="restriction in restrictions" :key="`${restriction.toolName}:${restriction.reason}`" class="flex items-start gap-2 rounded-lg bg-elevated p-3">
+          <UIcon name="i-lucide-info" class="mt-0.5 size-4 shrink-0 text-muted" />
+          <p class="text-xs text-muted">
+            <span class="font-medium text-default">{{ prettyTool(restriction.toolName) }}:</span>
+            {{ restriction.message }}
+          </p>
         </li>
       </ul>
     </UCard>
