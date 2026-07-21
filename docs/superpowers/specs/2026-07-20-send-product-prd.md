@@ -714,6 +714,9 @@ Released on 2026-07-21 for authenticated internal Dashboard users:
   traversal-like key normalization, multipart abort recovery during an R2 outage, and
   automatic publication refresh after single-upload sealing; the reviewed source is
   recorded in commits `b00ef135`, `51332e4d`, and `fd348e5c`;
+- production deployment `c9e0bb46` released reviewed source `a0a3d74b`; after edge
+  propagation the supported custom Send route returned 200 and the unauthenticated
+  cleanup route returned 401;
 - the reviewed focused release matrix passed 210 tests across 37 files, focused ESLint
   passed, and both the root and isolated production builds completed successfully.
 
