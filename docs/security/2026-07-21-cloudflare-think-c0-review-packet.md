@@ -48,7 +48,7 @@ The reviewer should reject C0 if any invariant is false.
 9. Recovery/tool errors are stable codes and counters. Upstream error bodies, prompts, partial assistant text, terminal messages, and raw tool exceptions are not persisted.
 10. Model Ops records correlation, run/request links, model, token counts, cached input, latency, cost, tool failures, finish state, and recovery state without conversational content.
 11. Late recovery replays derive a one-way event key and are atomically deduplicated before a second run or invocation can be written.
-12. Both `PLATFORM_AGENT_THINK_TURNS_ENABLED` and Worker `THINK_TURNS_ENABLED` remain false until a staged activation is separately approved.
+12. Staged activation requires separate approval and both kill switches; approval was granted on 2026-07-21 after fail-closed production smoke checks, and either `PLATFORM_AGENT_THINK_TURNS_ENABLED` or Worker `THINK_TURNS_ENABLED` can disable turns immediately.
 
 ## Primary review surfaces
 
@@ -96,7 +96,7 @@ Additional passing gates:
 - `pnpm --dir workers/platform-agents run typecheck`
 - Scoped ESLint for all new/changed server telemetry and admission modules
 - `git diff --check`
-- Wrangler 4.110.0 `deploy --dry-run`; all four Durable Objects and Workers AI bind, and `THINK_TURNS_ENABLED` remains false
+- Wrangler 4.110.0 `deploy --dry-run`; all four Durable Objects and Workers AI bind. The Worker was first deployed with `THINK_TURNS_ENABLED=false` and verified fail-closed before coordinated activation.
 - A cache-free `npm run build`; Nuxt client/server compilation, prerendering, Cloudflare Pages Nitro packaging, and the final wrapped Worker output all complete successfully
 
 ## Open repository gates

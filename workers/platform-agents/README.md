@@ -91,13 +91,16 @@ pnpm --dir workers/platform-agents exec wrangler secret put INTERNAL_API_KEY
 pnpm --dir workers/platform-agents exec wrangler secret put PLATFORM_AGENT_SCOPE_SIGNING_SECRET
 ```
 
-Keep both coordinated gates off during deployment:
+Keep both coordinated gates off during the initial deployment:
 
 - Worker: `THINK_TURNS_ENABLED = "false"` in `wrangler.toml`.
 - Pages: `PLATFORM_AGENT_THINK_TURNS_ENABLED=false`.
 
-After Cloudflare Access, evaluation, and rollout approval, enable both in a
-staged release. Turning either one off is the immediate transport rollback.
+Production activation was approved on 2026-07-21 after evaluation, database
+readiness, secret installation, and fail-closed smoke checks. The public turn
+transport is authenticated with a separate, short-lived, agent-bound HMAC scope
+assertion; the generic Agents SDK transport remains unavailable. Enable both in
+a staged release. Turning either one off is the immediate transport rollback.
 
 Pages flags still control runtime availability:
 
