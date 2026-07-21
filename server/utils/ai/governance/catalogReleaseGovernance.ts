@@ -11,6 +11,7 @@ export interface CatalogReleaseRecord {
   versionId: string
   departmentId: string
   state: CatalogReleaseState
+  rolloutScope: 'pilot' | 'department'
   evaluationRunId: string | null
   evaluationGatePassed: boolean | null
   evaluationRunStatus: 'completed' | null
@@ -42,6 +43,8 @@ export interface CatalogReleaseAudit {
     releaseId: string
     previousReleaseState: CatalogReleaseState
     nextReleaseState: CatalogReleaseTargetState
+    previousRolloutScope: 'pilot' | 'department'
+    nextRolloutScope: 'pilot' | 'department'
   }
 }
 
@@ -173,6 +176,11 @@ export async function transitionCatalogRelease(
       let evaluationRunId = current.evaluationRunId
       let evaluationGatePassed = current.evaluationGatePassed
       let evaluationRunStatus = current.evaluationRunStatus
+      const rolloutScope = request.targetState === 'pilot'
+        ? 'pilot'
+        : request.targetState === 'active'
+          ? 'department'
+          : current.rolloutScope
 
       if (request.targetState === 'pilot' || request.targetState === 'active') {
         const evidence = await tx.getEvaluationEvidence(request.evaluationRunId as string)
@@ -185,6 +193,7 @@ export async function transitionCatalogRelease(
       const next = await tx.updateRelease({
         ...current,
         state: request.targetState,
+        rolloutScope,
         evaluationRunId,
         evaluationGatePassed,
         evaluationRunStatus,
@@ -206,7 +215,9 @@ export async function transitionCatalogRelease(
         details: {
           releaseId: current.id,
           previousReleaseState: current.state,
-          nextReleaseState: request.targetState
+          nextReleaseState: request.targetState,
+          previousRolloutScope: current.rolloutScope,
+          nextRolloutScope: rolloutScope
         }
       })
 
@@ -231,6 +242,7 @@ type DbReleaseRow = {
   version_id: string
   department_id: string
   release_state: CatalogReleaseState
+  rollout_scope: 'pilot' | 'department'
   evaluation_run_id: string | null
   evaluation_gate_passed: boolean | null
   evaluation_run_status: 'completed' | null
@@ -269,6 +281,7 @@ function mapRelease(row: DbReleaseRow, kind: CatalogReleaseKind): CatalogRelease
     versionId: row.version_id,
     departmentId: row.department_id,
     state: row.release_state,
+    rolloutScope: row.rollout_scope,
     evaluationRunId: row.evaluation_run_id,
     evaluationGatePassed: row.evaluation_gate_passed,
     evaluationRunStatus: row.evaluation_run_status,
@@ -288,7 +301,7 @@ export function createPostgresCatalogReleaseTransaction(db: CatalogSqlClient): C
       const config = RELEASE_TABLES[kind]
       const result = await db.query(
         `SELECT id, ${config.entityColumn} AS entity_id, ${config.versionColumn} AS version_id,
-                department_id, release_state, evaluation_run_id, evaluation_gate_passed,
+                department_id, release_state, rollout_scope, evaluation_run_id, evaluation_gate_passed,
                 evaluation_run_status, change_reason, changed_by, updated_at
            FROM ${config.table}
           WHERE id = $1
@@ -322,19 +335,21 @@ export function createPostgresCatalogReleaseTransaction(db: CatalogSqlClient): C
       const result = await db.query(
         `UPDATE ${config.table}
             SET release_state = $2,
-                evaluation_run_id = $3,
-                evaluation_gate_passed = $4,
-                evaluation_run_status = $5,
-                change_reason = $6,
-                changed_by = $7,
+                rollout_scope = $3,
+                evaluation_run_id = $4,
+                evaluation_gate_passed = $5,
+                evaluation_run_status = $6,
+                change_reason = $7,
+                changed_by = $8,
                 updated_at = NOW()
           WHERE id = $1
         RETURNING id, ${config.entityColumn} AS entity_id, ${config.versionColumn} AS version_id,
-                  department_id, release_state, evaluation_run_id, evaluation_gate_passed,
+                  department_id, release_state, rollout_scope, evaluation_run_id, evaluation_gate_passed,
                   evaluation_run_status, change_reason, changed_by, updated_at`,
         [
           next.id,
           next.state,
+          next.rolloutScope,
           next.evaluationRunId,
           next.evaluationGatePassed,
           next.evaluationRunStatus,

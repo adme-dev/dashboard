@@ -130,9 +130,15 @@ describe('resolvePersonalAssistantContext', () => {
       packVersionId: '30000000-0000-4000-8000-000000000001',
       packKey: 'creative_studio',
       version: 3,
-      label: 'Creative Studio'
+      label: 'Creative Studio',
+      releaseState: 'active'
     }])
     expect(context.catalogRows).toHaveLength(1)
+
+    const catalogCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) =>
+      sql.includes('WITH active_pack_rows')
+    )
+    expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID])
 
     const rendered = renderPersonalAssistantContext(context)
     expect(rendered).toContain('Governed personal assistant scope')

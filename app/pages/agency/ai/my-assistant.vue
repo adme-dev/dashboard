@@ -186,7 +186,7 @@ async function save() {
           </p>
           <p class="mt-2 text-xs text-muted">
             {{ authority?.catalogMode === 'governed'
-              ? 'Only tools in active, evaluated releases are available.'
+              ? 'Only tools in active or assigned-pilot evaluated releases are available.'
               : 'No governed pack release is active for this scope yet.' }}
           </p>
         </section>
@@ -229,13 +229,13 @@ async function save() {
         <template #header>
           <div class="flex items-center justify-between gap-3">
             <h2 class="text-sm font-semibold text-highlighted">
-              Active capability packs
+              Capability packs
             </h2>
-            <span class="text-xs text-muted">{{ authority?.activePacks.length ?? 0 }} active</span>
+            <span class="text-xs text-muted">{{ authority?.activePacks.length ?? 0 }} available</span>
           </div>
         </template>
         <div v-if="!authority?.activePacks.length" class="py-5 text-sm text-muted">
-          No evaluated departmental pack is active for you yet. Your existing role-based assistant remains available.
+          No evaluated departmental pack is active or assigned to you as a pilot yet. Your existing role-based assistant remains available.
         </div>
         <ul v-else class="divide-y divide-default">
           <li v-for="pack in authority.activePacks" :key="`${pack.key}:${pack.version}:${pack.departmentName}`" class="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
@@ -247,8 +247,8 @@ async function save() {
                 {{ pack.departmentName }}
               </p>
             </div>
-            <UBadge color="success" variant="soft" size="sm">
-              v{{ pack.version }}
+            <UBadge :color="pack.releaseState === 'pilot' ? 'warning' : 'success'" variant="soft" size="sm">
+              {{ pack.releaseState === 'pilot' ? 'Pilot · ' : '' }}v{{ pack.version }}
             </UBadge>
           </li>
         </ul>
