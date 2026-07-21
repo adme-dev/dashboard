@@ -39,6 +39,30 @@ describe('AI Assistants public launch surface', () => {
     }
   })
 
+  it('keeps the established AI platform journey alongside governed assistants', () => {
+    const navigation = read('app/components/MarketingNav.vue')
+    const homepage = read('app/pages/index.vue')
+    const aiPlatform = read('app/pages/platform/ai.vue')
+    const assistants = read('app/pages/ai-assistants.vue')
+
+    expect(navigation).toContain('title: \'AI Assistant\'')
+    expect(navigation).toContain('to: \'/platform/ai\'')
+    expect(navigation).toContain('title: \'Governed AI Assistants\'')
+    expect(navigation).toContain('to: \'/ai-assistants\'')
+
+    expect(homepage).toContain('AI-Powered Insights')
+    expect(homepage).toContain('Groq-powered chat with @entity mentions, anomaly detection across 8 analyzers, semantic search, and proactive recommendations.')
+    expect(homepage).toMatch(/<NuxtLink to="\/platform\/ai"[^>]*>\s*Learn more/)
+    expect(homepage).toContain('{ title: \'AI Insights\'')
+    expect(homepage).toContain('to: \'/platform/ai\'')
+    expect(homepage).toContain('{ title: \'AI Assistants\'')
+
+    expect(aiPlatform).toContain('Meet governed assistants')
+    expect(aiPlatform).toContain('to="/ai-assistants"')
+    expect(assistants).toContain('Explore the full AI platform')
+    expect(assistants).toContain('to="/platform/ai"')
+  })
+
   it('prerenders the canonical AI Assistants route', () => {
     const config = read('nuxt.config.ts')
     const authMiddleware = read('app/middleware/auth.global.ts')

@@ -27,6 +27,12 @@
               <UIcon name="i-lucide-arrow-right" class="size-4" />
             </NuxtLink>
             <NuxtLink
+              to="/platform/ai"
+              class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-7 py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-white/[0.09]"
+            >
+              Explore the full AI platform
+            </NuxtLink>
+            <NuxtLink
               to="/features/ai-connectors"
               class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-7 py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-white/[0.09]"
             >
