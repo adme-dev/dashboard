@@ -3,9 +3,14 @@ import { resolvePlatformAgentScope } from '~~/server/utils/ai/platformAgentScope
 import {
   beginPlatformAgentThinkTurn,
   completePlatformAgentThinkTurn,
+  denyPlatformAgentThinkTurn,
   failPlatformAgentThinkTurn,
   type PlatformAgentThinkTelemetry
 } from '~~/server/utils/ai/platformAgentThinkTelemetry'
+import {
+  consumePlatformAgentTurnBudget,
+  platformAgentTurnBudgetLimitsFromEnv
+} from '~~/server/utils/ai/platformAgentTurnBudget'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import {
   PLATFORM_AGENT_KEYS,
@@ -193,6 +198,18 @@ export default defineEventHandler(async (event) => {
     clientId: scope.client.kind === 'single' ? scope.client.clientId : null,
     tenantId: scope.tenantId
   })
+  const budget = await consumePlatformAgentTurnBudget({
+    userId: scope.actor.id,
+    limits: platformAgentTurnBudgetLimitsFromEnv()
+  })
+  if (!budget.allowed) {
+    await Promise.allSettled([denyPlatformAgentThinkTurn(run, budget)])
+    setHeader(event, 'retry-after', String(budget.retryAfterSeconds))
+    if (budget.code === 'budget_unavailable') {
+      throw createError({ statusCode: 503, statusMessage: 'Platform agent budget is unavailable' })
+    }
+    throw createError({ statusCode: 429, statusMessage: 'Platform agent daily turn limit reached' })
+  }
 
   let response: Response
   try {

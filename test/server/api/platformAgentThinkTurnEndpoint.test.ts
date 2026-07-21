@@ -7,6 +7,8 @@ const mockResolvePlatformAgentScope = vi.fn()
 const mockBeginPlatformAgentThinkTurn = vi.fn()
 const mockCompletePlatformAgentThinkTurn = vi.fn()
 const mockFailPlatformAgentThinkTurn = vi.fn()
+const mockDenyPlatformAgentThinkTurn = vi.fn()
+const mockConsumePlatformAgentTurnBudget = vi.fn()
 
 vi.mock('~~/server/utils/ai/platformAgentAuthority', () => ({
   resolveUserPlatformAgentAuthority: (...args: unknown[]) => mockResolveUserPlatformAgentAuthority(...args)
@@ -23,7 +25,17 @@ vi.mock('~~/server/utils/ai/platformAgentScope', async (importOriginal) => {
 vi.mock('~~/server/utils/ai/platformAgentThinkTelemetry', () => ({
   beginPlatformAgentThinkTurn: (...args: unknown[]) => mockBeginPlatformAgentThinkTurn(...args),
   completePlatformAgentThinkTurn: (...args: unknown[]) => mockCompletePlatformAgentThinkTurn(...args),
-  failPlatformAgentThinkTurn: (...args: unknown[]) => mockFailPlatformAgentThinkTurn(...args)
+  failPlatformAgentThinkTurn: (...args: unknown[]) => mockFailPlatformAgentThinkTurn(...args),
+  denyPlatformAgentThinkTurn: (...args: unknown[]) => mockDenyPlatformAgentThinkTurn(...args)
+}))
+
+vi.mock('~~/server/utils/ai/platformAgentTurnBudget', () => ({
+  consumePlatformAgentTurnBudget: (...args: unknown[]) => mockConsumePlatformAgentTurnBudget(...args),
+  platformAgentTurnBudgetLimitsFromEnv: () => ({
+    maxTurnsPerUser: 10,
+    maxTurnsGlobal: 50,
+    windowSeconds: 86_400
+  })
 }))
 
 ;(globalThis as any).defineEventHandler = (fn: any) => fn
@@ -52,6 +64,8 @@ describe('POST /api/agency/agents/think/turn', () => {
     mockBeginPlatformAgentThinkTurn.mockReset()
     mockCompletePlatformAgentThinkTurn.mockReset()
     mockFailPlatformAgentThinkTurn.mockReset()
+    mockDenyPlatformAgentThinkTurn.mockReset()
+    mockConsumePlatformAgentTurnBudget.mockReset()
     mockBeginPlatformAgentThinkTurn.mockResolvedValue({
       runId: '11111111-1111-4111-8111-111111111111',
       startedAtMs: 100,
@@ -64,6 +78,13 @@ describe('POST /api/agency/agents/think/turn', () => {
     })
     mockCompletePlatformAgentThinkTurn.mockResolvedValue(undefined)
     mockFailPlatformAgentThinkTurn.mockResolvedValue(undefined)
+    mockDenyPlatformAgentThinkTurn.mockResolvedValue(undefined)
+    mockConsumePlatformAgentTurnBudget.mockResolvedValue({
+      allowed: true,
+      userRemaining: 9,
+      globalRemaining: 49,
+      resetAt: '2026-07-23T00:00:00.000Z'
+    })
     mockResolveUserPlatformAgentAuthority.mockResolvedValue({
       actor: { type: 'user', id: 'user-123' },
       tenantId: null,
@@ -297,6 +318,67 @@ describe('POST /api/agency/agents/think/turn', () => {
       expect.objectContaining({ code: 'worker_invalid_response' })
     )
     expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops before the Worker and records an admission denial when a daily turn ceiling is reached', async () => {
+    mockConsumePlatformAgentTurnBudget.mockResolvedValue({
+      allowed: false,
+      code: 'user_daily_turn_limit',
+      retryAfterSeconds: 3_600,
+      resetAt: '2026-07-22T01:00:00.000Z'
+    })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const event = { body: { agent: 'spend-controller', prompt: 'Review.' } } as any
+    const handler = (await import('~~/server/api/agency/agents/think/turn.post')).default
+
+    await expect(handler(event)).rejects.toMatchObject({
+      statusCode: 429,
+      statusMessage: 'Platform agent daily turn limit reached'
+    })
+    expect(event.responseHeaders['retry-after']).toBe('3600')
+    expect(mockDenyPlatformAgentThinkTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'correlation-123' }),
+      expect.objectContaining({
+        code: 'user_daily_turn_limit',
+        retryAfterSeconds: 3_600,
+        resetAt: '2026-07-22T01:00:00.000Z'
+      })
+    )
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('fails closed before the Worker when the daily budget store is unavailable', async () => {
+    mockConsumePlatformAgentTurnBudget.mockResolvedValue({
+      allowed: false,
+      code: 'budget_unavailable',
+      retryAfterSeconds: 60
+    })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const handler = (await import('~~/server/api/agency/agents/think/turn.post')).default
+
+    await expect(handler({ body: { agent: 'spend-controller', prompt: 'Review.' } } as any)).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Platform agent budget is unavailable'
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('preserves the admission response when denial telemetry is unavailable', async () => {
+    mockConsumePlatformAgentTurnBudget.mockResolvedValue({
+      allowed: false,
+      code: 'global_daily_turn_limit',
+      retryAfterSeconds: 1_800,
+      resetAt: '2026-07-22T00:30:00.000Z'
+    })
+    mockDenyPlatformAgentThinkTurn.mockRejectedValue(new Error('audit unavailable'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const handler = (await import('~~/server/api/agency/agents/think/turn.post')).default
+
+    await expect(handler({ body: { agent: 'spend-controller', prompt: 'Review.' } } as any)).rejects.toMatchObject({
+      statusCode: 429,
+      statusMessage: 'Platform agent daily turn limit reached'
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('turns recovery exhaustion into a stable ledger event and a generic client error', async () => {

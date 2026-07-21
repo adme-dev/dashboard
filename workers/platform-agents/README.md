@@ -34,6 +34,15 @@ Workspace tools are excluded. Terminal logs contain only correlation ID, agent,
 request ID, status, step/tool counts, and latency—never prompts, assertions,
 user IDs, tenant IDs, or client IDs.
 
+Pages also admits at most 10 turns per user and 50 turns company-wide in a
+rolling 24-hour window by default. The limits are atomic, count admitted
+attempts even when the upstream model later fails, and fail closed when the
+database counter is unavailable. Configure them on Pages with
+`PLATFORM_AGENT_MAX_TURNS_PER_USER_DAY` and `PLATFORM_AGENT_MAX_TURNS_PER_DAY`;
+invalid or missing values use the conservative defaults. These are consumption
+ceilings rather than guaranteed USD caps because token usage varies by turn.
+Turning either coordinated Think gate off remains the immediate rollback.
+
 Durable chat recovery is bounded to two attempts, one OOM retry, a 60-second
 no-progress window, and 64 recovery work units. On exhaustion, the Worker sends
 one best-effort event to the internal Pages recovery endpoint. Pages requires
@@ -72,7 +81,7 @@ key and is atomically deduplicated in the existing agent-run ledger.
 
 ```sh
 pnpm exec tsc -p workers/platform-agents/tsconfig.json --noEmit
-pnpm vitest run test/workers/platform-agents/worker.test.ts test/ai/platformAgentScopeAssertion.test.ts test/ai/platformAgentBridgeAssertion.test.ts test/server/api/platformAgentThinkTurnEndpoint.test.ts test/server/api/platformAgentThinkRecoveryEventEndpoint.test.ts
+pnpm vitest run test/workers/platform-agents/worker.test.ts test/ai/platformAgentScopeAssertion.test.ts test/ai/platformAgentBridgeAssertion.test.ts test/server/utils/platformAgentTurnBudget.test.ts test/server/utils/platformAgentThinkTelemetry.test.ts test/server/api/platformAgentThinkTurnEndpoint.test.ts test/server/api/platformAgentThinkRecoveryEventEndpoint.test.ts
 ```
 
 ## Deploy

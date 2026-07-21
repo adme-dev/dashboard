@@ -18,7 +18,8 @@ vi.mock('~~/server/utils/ai/invocationLedger', () => ({
 const {
   beginPlatformAgentThinkTurn,
   completePlatformAgentThinkTurn,
-  failPlatformAgentThinkTurn
+  failPlatformAgentThinkTurn,
+  denyPlatformAgentThinkTurn
 } = await import('~~/server/utils/ai/platformAgentThinkTelemetry')
 
 describe('platform agent Think telemetry reconciliation', () => {
@@ -137,5 +138,36 @@ describe('platform agent Think telemetry reconciliation', () => {
     }))
     expect(JSON.stringify(mockFailPlatformAgentRun.mock.calls)).not.toContain('upstream')
     expect(JSON.stringify(mockRecordAiInvocation.mock.calls)).not.toContain('upstream')
+  })
+
+  it('audits admission denial without creating a model invocation', async () => {
+    const run = await beginPlatformAgentThinkTurn({
+      agent: 'traffic-controller',
+      correlationId: 'correlation-denied',
+      userId: 'user-denied',
+      clientId: null,
+      tenantId: null
+    })
+
+    await denyPlatformAgentThinkTurn(run, {
+      code: 'user_daily_turn_limit',
+      retryAfterSeconds: 3_600,
+      resetAt: '2026-07-23T00:00:00.000Z'
+    })
+
+    expect(mockFailPlatformAgentRun).toHaveBeenCalledWith(expect.objectContaining({
+      runId: '11111111-1111-4111-8111-111111111111',
+      error: 'user_daily_turn_limit',
+      summary: {
+        transport: 'cloudflare_think',
+        correlationId: 'correlation-denied',
+        failureStage: 'admission',
+        admissionCode: 'user_daily_turn_limit',
+        retryAfterSeconds: 3_600,
+        resetAt: '2026-07-23T00:00:00.000Z',
+        modelInvoked: false
+      }
+    }))
+    expect(mockRecordAiInvocation).not.toHaveBeenCalled()
   })
 })
