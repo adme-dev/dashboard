@@ -286,4 +286,34 @@ describe('Send scan orchestration', () => {
       evidence: expect.objectContaining({ reasonCode: 'CONTENT_TYPE_MISMATCH' })
     }))
   })
+
+  it.each([
+    ['generic binary declaration', 'application/octet-stream', 'application/pdf'],
+    [
+      'ZIP-based Office document',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/zip'
+    ],
+    ['plain-text CSV', 'text/csv', 'text/plain'],
+    ['legacy Office container', 'application/msword', 'application/x-ole-storage']
+  ])('accepts compatible magic-byte evidence for %s', async (_label, expectedMimeType, detectedMimeType) => {
+    const deps = dependencies({
+      claimJob: vi.fn(async () => ({
+        status: 'claimed' as const,
+        job: job({ expectedMimeType })
+      })),
+      getObjectMetadata: vi.fn(async () => metadata({ contentType: expectedMimeType })),
+      scanObject: vi.fn(async () => providerResult({ detectedMimeType }))
+    })
+    const orchestrator = createSendScanOrchestrator(deps)
+
+    await expect(orchestrator.process({ jobId: JOB_ID, now: NOW })).resolves.toEqual({
+      action: 'ack',
+      outcome: 'clean'
+    })
+    expect(deps.completeJob).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'clean',
+      evidence: expect.objectContaining({ detectedMimeType })
+    }))
+  })
 })

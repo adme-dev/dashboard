@@ -36,7 +36,11 @@ CREATE TABLE IF NOT EXISTS send_scan_jobs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   FOREIGN KEY (transfer_id, file_id)
     REFERENCES send_files(transfer_id, id) ON DELETE CASCADE,
-  CHECK ((status = 'running') = (lease_expires_at IS NOT NULL) OR status IN ('pending', 'clean', 'detected', 'error', 'timeout')),
+  CHECK (
+    (status = 'running' AND lease_expires_at IS NOT NULL)
+    OR (status <> 'running' AND lease_expires_at IS NULL)
+  ),
+  CHECK (attempt_count <= max_attempts),
   CHECK ((status IN ('clean', 'detected', 'error', 'timeout')) = (completed_at IS NOT NULL)),
   CHECK (completed_at IS NULL OR claimed_at IS NOT NULL)
 );

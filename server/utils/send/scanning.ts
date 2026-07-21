@@ -78,6 +78,39 @@ function normalizedMimeType(value: string): string {
   return value.trim().toLowerCase()
 }
 
+const ZIP_CONTAINER_MIME_TYPES = new Set([
+  'application/epub+zip',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+])
+
+const OLE_CONTAINER_MIME_TYPES = new Set([
+  'application/msword',
+  'application/vnd.ms-excel',
+  'application/vnd.ms-powerpoint'
+])
+
+function mimeTypesCompatible(expectedValue: string, detectedValue: string): boolean {
+  const expected = normalizedMimeType(expectedValue)
+  const detected = normalizedMimeType(detectedValue)
+  if (expected === detected || expected === 'application/octet-stream') return true
+  if (detected === 'application/octet-stream') return true
+  if (detected === 'application/zip') {
+    return expected === 'application/zip'
+      || expected.endsWith('+zip')
+      || ZIP_CONTAINER_MIME_TYPES.has(expected)
+      || expected.startsWith('application/vnd.oasis.opendocument.')
+  }
+  if (detected === 'application/x-ole-storage') return OLE_CONTAINER_MIME_TYPES.has(expected)
+  if (detected === 'text/plain') {
+    return expected.startsWith('text/')
+      || ['application/json', 'application/javascript', 'application/xml'].includes(expected)
+  }
+  return (expected === 'application/gzip' && detected === 'application/x-gzip')
+    || (expected === 'application/x-gzip' && detected === 'application/gzip')
+}
+
 function metadataMatchesJob(job: SendScanJob, object: SendScanObjectMetadata): boolean {
   return object.key === job.objectKey
     && object.size === job.expectedSizeBytes
@@ -150,8 +183,7 @@ async function completeProviderResult(
   objectEtag: string,
   result: SendScanResult
 ): Promise<'clean' | 'detected' | 'error' | 'timeout'> {
-  const mimeMismatch = normalizedMimeType(result.detectedMimeType)
-    !== normalizedMimeType(job.expectedMimeType)
+  const mimeMismatch = !mimeTypesCompatible(job.expectedMimeType, result.detectedMimeType)
   if (result.verdict === 'detected' || mimeMismatch) {
     await deps.completeJob({
       jobId: job.id,

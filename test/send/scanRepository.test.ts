@@ -97,6 +97,31 @@ describe('Postgres Send scan repository', () => {
     expect(complete.db.query).toHaveBeenCalledOnce()
   })
 
+  it('fails closed instead of issuing another claim after the final lease expires', async () => {
+    const queries: string[] = []
+    const expiredLease = new Date('2026-07-21T00:59:00.000Z')
+    const { repository } = repositoryWithDb(async (sql) => {
+      queries.push(sql)
+      return {
+        rows: /FOR UPDATE/.test(sql)
+          ? [row({ status: 'running', attempt_count: 3, max_attempts: 3, lease_expires_at: expiredLease })]
+          : []
+      }
+    })
+
+    await expect(repository.claimJob(JOB_ID, NOW)).resolves.toEqual({
+      status: 'complete',
+      outcome: 'timeout'
+    })
+    expect(queries).toEqual([
+      expect.stringMatching(/FOR UPDATE OF j, f/),
+      expect.stringMatching(/status = 'timeout'/),
+      expect.stringMatching(/scan_status = 'error'/),
+      expect.stringMatching(/INSERT INTO send_events/)
+    ])
+    expect(queries.some(sql => /attempt_count = attempt_count \+ 1/.test(sql))).toBe(false)
+  })
+
   it('releases a retryable failure without storing provider output', async () => {
     const { db, repository } = repositoryWithDb(async () => ({ rows: [] }))
     const retryAt = new Date('2026-07-21T01:00:30.000Z')

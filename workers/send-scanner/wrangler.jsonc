@@ -1,0 +1,71 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "dashboard-send-scanner",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "limits": {
+    "cpu_ms": 300000
+  },
+  "containers": [
+    {
+      "class_name": "ClamAvContainer",
+      "image": "./container/Dockerfile",
+      "max_instances": 2,
+      "instance_type": "standard-2"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SCAN_CONTAINER",
+        "class_name": "ClamAvContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ClamAvContainer"]
+    }
+  ],
+  "queues": {
+    "consumers": [
+      {
+        "queue": "send-scan-events",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "send-scan-dlq",
+        "max_concurrency": 2
+      }
+    ]
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "900b4b74ec41462cbbabebd0aa8775aa"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "agency-files"
+    }
+  ],
+  "vars": {
+    "EXPECTED_R2_ACCOUNT_ID": "CONFIGURE_BEFORE_DEPLOY",
+    "EXPECTED_R2_BUCKET": "agency-files"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.1
+    }
+  }
+}

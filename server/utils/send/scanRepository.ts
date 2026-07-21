@@ -119,6 +119,59 @@ export function createPostgresSendScanRepository(deps: PostgresSendScanRepositor
             retryAfterSeconds: secondsUntil(locked.lease_expires_at, now)
           }
         }
+        if (Number(locked.attempt_count) >= Number(locked.max_attempts)) {
+          const scannedAt = now.toISOString()
+          const reasonCode = 'SCAN_ATTEMPTS_EXHAUSTED'
+          const evidence = JSON.stringify({
+            provider: 'orchestrator',
+            engineVersion: 'send-scan-v1',
+            signatureVersion: 'not-scanned',
+            reasonCode,
+            detectedMimeType: 'application/octet-stream',
+            activeContent: false,
+            contentDisposition: 'attachment',
+            scannedAt
+          })
+          await database.query(
+            `UPDATE send_scan_jobs
+                SET status = 'timeout',
+                    provider = 'orchestrator',
+                    engine_version = 'send-scan-v1',
+                    signature_version = 'not-scanned',
+                    result_code = $2,
+                    evidence = $3::jsonb,
+                    completed_at = $4,
+                    lease_expires_at = NULL,
+                    updated_at = NOW()
+              WHERE id = $1 AND status IN ('pending', 'running')`,
+            [jobId, reasonCode, evidence, scannedAt]
+          )
+          await database.query(
+            `UPDATE send_files
+                SET scan_status = 'error',
+                    scan_provider = 'orchestrator',
+                    scan_version = 'send-scan-v1:not-scanned',
+                    scan_evidence = $3::jsonb,
+                    scanned_at = $4,
+                    updated_at = NOW()
+              WHERE transfer_id = $1 AND id = $2 AND state = 'quarantined'`,
+            [locked.transfer_id, locked.file_id, evidence, scannedAt]
+          )
+          await database.query(
+            `INSERT INTO send_events (
+               transfer_id, file_id, actor_class, actor_id, event_type,
+               idempotency_key, metadata
+             ) VALUES ($1, $2, 'system', 'send-scanner', 'scan_completed', $3, $4::jsonb)
+             ON CONFLICT (transfer_id, idempotency_key) DO NOTHING`,
+            [
+              locked.transfer_id,
+              locked.file_id,
+              `scan-completed:${jobId}`,
+              JSON.stringify({ fileId: locked.file_id, verdict: 'timeout', reasonCode })
+            ]
+          )
+          return { status: 'complete', outcome: 'timeout' }
+        }
         const leaseExpiresAt = new Date(now.getTime() + 10 * 60 * 1000)
         const claimed = (await database.query(
           `UPDATE send_scan_jobs
