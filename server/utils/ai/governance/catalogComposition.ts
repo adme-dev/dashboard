@@ -236,7 +236,11 @@ export async function loadAssistantDepartmentScope(
          ON membership.department_id = department.id
         AND membership.team_member_id = $1
       WHERE department.is_active = TRUE
-        AND ($2::boolean OR membership.team_member_id IS NOT NULL OR department.manager_id = $1)
+        AND (
+          (department.department_kind = 'organizational' AND $2::boolean)
+          OR membership.team_member_id IS NOT NULL
+          OR department.manager_id = $1
+        )
       ORDER BY department.id
       LIMIT 101`,
     [userId, companyWide]

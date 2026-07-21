@@ -266,7 +266,11 @@ export async function resolvePersonalAssistantContext(
          ON manager.id = department.manager_id
         AND manager.is_active = TRUE
       WHERE department.is_active = TRUE
-        AND ($2::boolean OR membership.team_member_id IS NOT NULL OR department.manager_id = $1)
+        AND (
+          (department.department_kind = 'organizational' AND $2::boolean)
+          OR membership.team_member_id IS NOT NULL
+          OR department.manager_id = $1
+        )
       ORDER BY membership.is_primary DESC NULLS LAST, department.name, department.id
       LIMIT 101`,
     [identity.id, companyWideDepartments]

@@ -261,6 +261,9 @@ describe('loadAssistantDepartmentScope', () => {
 
     await loadAssistantDepartmentScope('50000000-0000-4000-8000-000000000001', 'admin', db)
     expect(queryRows.mock.calls[0]![1]).toEqual(['50000000-0000-4000-8000-000000000001', true])
+    expect(queryRows.mock.calls[0]![0]).toContain(
+      "department.department_kind = 'organizational' AND $2::boolean"
+    )
 
     queryRows.mockResolvedValueOnce(Array.from({ length: 101 }, (_, index) => ({
       id: `10000000-0000-4000-8000-${index.toString().padStart(12, '0')}`
