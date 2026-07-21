@@ -20,7 +20,7 @@ beforeAll(() => {
 
 afterAll(() => {
   for (const k of ENV_KEYS) {
-    if (saved[k] === undefined) delete process.env[k]
+    if (saved[k] === undefined) Reflect.deleteProperty(process.env, k)
     else process.env[k] = saved[k]
   }
 })
@@ -31,7 +31,9 @@ describe('uploadFile native R2 binding', () => {
     const { uploadFile } = await import('~~/server/utils/storage')
 
     const stored = new Map<string, Uint8Array>()
-    const put = vi.fn(async (key: string, value: Uint8Array) => { stored.set(key, value) })
+    const put = vi.fn(async (key: string, value: Uint8Array) => {
+      stored.set(key, value)
+    })
     const head = vi.fn(async (key: string) => {
       const v = stored.get(key)
       return v ? { size: v.byteLength } : null
@@ -45,7 +47,6 @@ describe('uploadFile native R2 binding', () => {
     expect(put.mock.calls[0]![2]).toEqual({ httpMetadata: { contentType: 'image/png' }, customMetadata: { source: 'test' } })
     expect(head).toHaveBeenCalledWith('media-image/test.png')
     expect(result).toEqual({ key: 'media-image/test.png', url: 'https://files.example.com/media-image/test.png', size: 8 })
-
   })
 
   it('throws loudly when the native put does not persist', async () => {
@@ -62,6 +63,30 @@ describe('uploadFile native R2 binding', () => {
 
     await expect(uploadFile(Buffer.from('x'), 'media-image/gone.png', 'image/png'))
       .rejects.toThrow(/R2 write failed/)
+  })
 
+  it('reads canonical confirmation metadata through the native binding', async () => {
+    const { setCfBindings } = await import('~~/server/utils/email')
+    const { getFileMetadata } = await import('~~/server/utils/storage')
+    const uploaded = new Date('2026-07-21T00:00:00.000Z')
+    const head = vi.fn(async () => ({
+      key: 'send/transfer/file',
+      size: 2048,
+      etag: 'etag-1',
+      httpEtag: '"etag-1"',
+      uploaded,
+      httpMetadata: { contentType: 'application/pdf' },
+      customMetadata: { source: 'send' }
+    }))
+    setCfBindings({ MEDIA_BUCKET: { put: vi.fn(), head, delete: vi.fn() } })
+
+    await expect(getFileMetadata('send/transfer/file')).resolves.toEqual({
+      size: 2048,
+      contentType: 'application/pdf',
+      etag: 'etag-1',
+      lastModified: uploaded,
+      metadata: { source: 'send' }
+    })
+    expect(head).toHaveBeenCalledWith('send/transfer/file')
   })
 })

@@ -97,13 +97,52 @@ export const WorkspaceTransferListQuerySchema = z.object({
 export const FileDeclarationSchema = z.object({
   fileName: z.string().trim().min(1).max(255),
   fileSize: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  contentType: z.string().trim().min(1).max(255)
+  contentType: z.string()
+    .trim()
+    .min(1)
+    .max(255)
+    .regex(/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/, 'Invalid MIME type')
+}).strict()
+
+export const WorkspaceUploadIntentRequestSchema = FileDeclarationSchema.extend({
+  idempotencyKey: z.string().trim().min(16).max(255)
+}).strict()
+
+const UploadCapabilitySchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/)
+
+export const WorkspaceUploadCompleteSchema = z.object({
+  capability: UploadCapabilitySchema
+}).strict()
+
+export const WorkspaceUploadAbortSchema = z.object({
+  capability: UploadCapabilitySchema
 }).strict()
 
 export type WorkspaceTransferDraft = z.infer<typeof WorkspaceTransferDraftSchema>
 export type PublicTransferDraft = z.infer<typeof PublicTransferDraftSchema>
 export type WorkspaceTransferListQuery = z.infer<typeof WorkspaceTransferListQuerySchema>
 export type FileDeclaration = z.infer<typeof FileDeclarationSchema>
+export type WorkspaceUploadIntentRequest = z.infer<typeof WorkspaceUploadIntentRequestSchema>
+export type WorkspaceUploadComplete = z.infer<typeof WorkspaceUploadCompleteSchema>
+
+export interface WorkspaceUploadIntentResponse {
+  fileId: string
+  intentId: string
+  uploadUrl: string
+  capability: string
+  requiredHeaders: { 'Content-Type': string }
+  expiresAt: string
+}
+
+export interface WorkspaceUploadedFile {
+  id: string
+  fileName: string
+  state: FileStatus
+  size: number
+  contentType: string
+  etag: string | null
+  uploadedAt: string | null
+}
 
 export interface WorkspaceTransferSummary {
   id: string

@@ -154,6 +154,7 @@ export type SendEventType
     | 'sender_verified'
     | 'upload_intent_created'
     | 'upload_completed'
+    | 'upload_aborted'
     | 'scan_completed'
     | 'published'
     | 'notification_queued'

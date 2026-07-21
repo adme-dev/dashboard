@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS send_upload_intents (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (file_id, idempotency_key),
+  UNIQUE (transfer_id, uploader_class, uploader_id, idempotency_key),
   FOREIGN KEY (
     transfer_id,
     file_id,
@@ -243,6 +244,7 @@ CREATE TABLE IF NOT EXISTS send_events (
     'sender_verified',
     'upload_intent_created',
     'upload_completed',
+    'upload_aborted',
     'scan_completed',
     'published',
     'notification_queued',

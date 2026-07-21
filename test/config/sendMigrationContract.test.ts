@@ -87,7 +87,9 @@ describe('Send foundation migration 268', () => {
     expect(migration).toContain(`object_key LIKE ('send/' || transfer_id::TEXT || '/%')`)
     expect(migration).toMatch(/FOREIGN KEY \([\s\S]*object_key,[\s\S]*expected_size_bytes,[\s\S]*expected_mime_type,[\s\S]*upload_method[\s\S]*REFERENCES send_files/)
     expect(migration).toContain('UNIQUE (transfer_id, idempotency_key)')
+    expect(migration).toContain("'upload_aborted'")
     expect(migration).toContain('UNIQUE (file_id, idempotency_key)')
+    expect(migration).toContain('UNIQUE (transfer_id, uploader_class, uploader_id, idempotency_key)')
     expect(migration).toContain('CHECK (completed_at IS NULL OR completed_at <= expires_at)')
   })
 

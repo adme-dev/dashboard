@@ -88,6 +88,11 @@ describe('Send external contracts', () => {
       contentType: 'application/zip',
       objectKey: 'caller/selected/key'
     }).success).toBe(false)
+    expect(FileDeclarationSchema.safeParse({
+      fileName: 'campaign.zip',
+      fileSize: 1024,
+      contentType: 'application/zip\r\nx-injected: true'
+    }).success).toBe(false)
   })
 })
 

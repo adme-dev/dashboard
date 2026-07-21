@@ -193,6 +193,7 @@ Live Send requires a separate technical spike and product decision. It must not 
 ### FR-4 Large and resumable upload
 
 - Small files may use a presigned single `PUT`.
+- A single-part presigned `PUT` remains reusable until its signature expires; API completion does not revoke it. Such files remain quarantined and cannot become `clean` until the write capability has expired and the scanner has re-read canonical object metadata, unless a future integrity-bound upload contract proves equivalent immutability.
 - Files at or above the configured threshold use multipart upload.
 - Multipart state records the R2 upload ID, completed parts, checksums/ETags, and expiry.
 - Retrying create, part-complete, final-complete, or abort operations is idempotent.
@@ -248,7 +249,7 @@ Live Send requires a separate technical spike and product decision. It must not 
 
 ### FR-11 Audit and analytics
 
-- Append-only events cover draft creation, verification, upload intent, upload completion, scan result, publication, notification, unlock, view, download, revocation, expiry, deletion, report, and operator action.
+- Append-only events cover draft creation, verification, upload intent, upload completion or abort, scan result, publication, notification, unlock, view, download, revocation, expiry, deletion, report, and operator action.
 - Audit events include actor class, transfer, timestamp, safe request correlation, and redacted metadata.
 - Product metrics separate workspace and public traffic.
 - Raw share tokens, passwords, signed URLs, object credentials, and full IP addresses are never logged.

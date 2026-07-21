@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkspaceSendUploader from './WorkspaceSendUploader.vue'
 import {
   TRANSFER_STATUSES,
   type TransferStatus,
@@ -23,6 +24,7 @@ const page = ref(1)
 const hasMore = ref(false)
 const policy = ref<WorkspaceSendPolicySummary | null>(null)
 const status = ref<'all' | TransferStatus>('all')
+const selectedTransferId = ref<string | null>(null)
 
 function defaultExpiry(retentionDays = 7): string {
   const date = new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000)
@@ -130,7 +132,7 @@ async function createDraft() {
   }
   creating.value = true
   try {
-    await apiFetch<{ transfer: WorkspaceTransferSummary }>('/api/agency/send', {
+    const result = await apiFetch<{ transfer: WorkspaceTransferSummary }>('/api/agency/send', {
       method: 'POST',
       body: {
         title: form.value.title,
@@ -145,6 +147,7 @@ async function createDraft() {
       }
     })
     toast.add({ title: 'Transfer draft created', color: 'success' })
+    selectedTransferId.value = result.transfer.id
     form.value = {
       title: '',
       message: '',
@@ -377,25 +380,47 @@ void Promise.all([loadTransfers(), loadClients()])
         </div>
 
         <ul v-else class="divide-y divide-default" data-testid="send-list">
-          <li v-for="transfer in transfers" :key="transfer.id" class="flex flex-wrap items-center justify-between gap-3 py-4">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <p class="truncate font-medium text-highlighted">
-                  {{ transfer.title }}
+          <li v-for="transfer in transfers" :key="transfer.id" class="py-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <p class="truncate font-medium text-highlighted">
+                    {{ transfer.title }}
+                  </p>
+                  <UBadge :color="statusColor(transfer.status)" variant="subtle">
+                    {{ transfer.status.replaceAll('_', ' ') }}
+                  </UBadge>
+                </div>
+                <p class="mt-1 text-sm text-muted">
+                  {{ transfer.fileCount }} files · {{ transfer.recipientCount }} recipients · expires {{ new Date(transfer.expiresAt).toLocaleDateString() }}
                 </p>
-                <UBadge :color="statusColor(transfer.status)" variant="subtle">
-                  {{ transfer.status.replaceAll('_', ' ') }}
-                </UBadge>
               </div>
-              <p class="mt-1 text-sm text-muted">
-                {{ transfer.fileCount }} files · {{ transfer.recipientCount }} recipients · expires {{ new Date(transfer.expiresAt).toLocaleDateString() }}
-              </p>
+              <div class="flex items-center gap-2">
+                <UIcon
+                  v-if="transfer.passwordProtected"
+                  name="i-lucide-lock-keyhole"
+                  aria-label="Password protected"
+                  class="size-4 text-muted"
+                />
+                <UButton
+                  v-if="policy && ['draft', 'uploading'].includes(transfer.status)"
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
+                  data-testid="toggle-send-uploader"
+                  @click="selectedTransferId = selectedTransferId === transfer.id ? null : transfer.id"
+                >
+                  {{ selectedTransferId === transfer.id ? 'Close files' : 'Add files' }}
+                </UButton>
+              </div>
             </div>
-            <UIcon
-              v-if="transfer.passwordProtected"
-              name="i-lucide-lock-keyhole"
-              aria-label="Password protected"
-              class="size-4 text-muted"
+            <WorkspaceSendUploader
+              v-if="policy && selectedTransferId === transfer.id"
+              :transfer-id="transfer.id"
+              :existing-file-count="transfer.fileCount"
+              :existing-total-bytes="transfer.totalBytes"
+              :policy="policy"
+              @uploaded="loadTransfers"
             />
           </li>
         </ul>

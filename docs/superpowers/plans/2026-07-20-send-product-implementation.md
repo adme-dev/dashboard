@@ -228,15 +228,15 @@ The goal is complete only when all required tasks through T25 are done, required
 
 **Acceptance criteria:**
 
-- [ ] The server generates a transfer-scoped key and expiring capability.
-- [ ] Completion proves intent ownership, key equality, expected size/type policy, object existence, and single-use/idempotent behavior.
-- [ ] UI shows per-file progress, retry, cancellation, and actionable failure.
+- [x] The server generates a transfer-scoped key and expiring capability.
+- [x] Completion proves intent ownership, key equality, expected size/type policy, object existence, and single-use/idempotent behavior.
+- [x] UI shows per-file progress, retry, cancellation, and actionable failure.
 
 **Verification:**
 
-- [ ] Tests cover key substitution, expired intent, wrong size/type, replay, cross-tenant actor, and success.
+- [x] Tests cover key substitution, expired intent, wrong size/type, replay, cross-tenant actor, and success.
 - [ ] Browser/local R2 test uploads one file and confirms canonical `uploaded`/`quarantined` state.
-- [ ] R2 CORS is read and verified before any proposed change is applied.
+- [x] R2 CORS is read and verified before any proposed change is applied.
 
 **Dependencies:** T1, T5
 **Files likely touched:** upload-intent service, init/complete routes, one upload composable or component, one focused test file
@@ -269,6 +269,7 @@ The goal is complete only when all required tasks through T25 are done, required
 **Acceptance criteria:**
 
 - [ ] Every completed upload enters quarantine and produces idempotent scan work.
+- [ ] Single-part scan work cannot mark a file clean before its reusable presigned write capability expires; the scanner re-reads canonical size, type, ETag/checksum evidence after that boundary.
 - [ ] Only verified clean results transition a file to `clean`; detected/error/timeout states remain inaccessible.
 - [ ] Scanner evidence is redacted, versioned, and attributable without storing unsafe response bodies.
 
@@ -776,6 +777,16 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 - The final focused matrix passes 50/50 tests across ten files, focused ESLint is clean, and the path-filtered full typecheck reports no Send-related diagnostics. Headless Chrome verified the enabled page heading, eight labelled controls, empty state, creation-denial state, screenshot layout, and a clean Send-surface console; the browser check caught and drove a Nuxt component-resolution fix.
 - `pnpm audit --audit-level high` reports three pre-existing high advisories through `@rocicorp/zero`, `promptfoo`, and `concurrently`; this slice added no dependency and none of those paths are introduced or invoked by Send T5.
 
+### T6 implementation evidence and CORS hold
+
+- The feature-flagged control plane now creates server-keyed single-part intents, persists only SHA-256 capability hashes, scopes every read/write to the authenticated workspace actor and transfer, rotates pending retry capabilities, verifies canonical R2 `HEAD` metadata, completes once without double-counting, and records explicit completion/abort events. Callers cannot submit an object key.
+- The browser uploader performs a direct R2 `PUT`; application Workers receive only small JSON control requests. It exposes per-file progress, retry, cancellation, local policy failures, and server failures without rendering or logging the presigned URL. Cancellation aborts the browser request and consumes the durable server intent.
+- The focused T1–T6 matrix passes 83/83 tests across 14 files. All T6/shared-storage changed files pass focused ESLint, and a full Nuxt typecheck remains red on unrelated repository debt while its path-filtered output contains no Send/storage diagnostics.
+- Current R2 binding behavior was checked against `@cloudflare/workers-types@5.20260719.1`; confirmation uses native `R2Bucket.head()` metadata in Cloudflare and the existing S3-compatible HEAD fallback elsewhere.
+- A read-only live audit on 2026-07-21 found both `agency-files` CORS rules allow only `GET, HEAD`. Browser `PUT` therefore remains intentionally blocked. No bucket configuration was changed; enabling `PUT` on the existing origin-restricted rules is an Ask-first action.
+- A fresh migration-268 recheck was attempted without touching any shared database, but the host exhausted its System V IPC segment pool before disposable PostgreSQL could bootstrap. Static migration contracts remain green and T2's earlier approved disposable PostgreSQL apply-twice/live-constraint evidence still stands; the new workspace intent uniqueness constraint must be re-run when the host IPC pool is available.
+- Cloudflare documents that presigned URLs are reusable until expiry. T8 now explicitly gates clean state until the single-part write capability has expired and canonical metadata is re-read, preventing post-scan overwrite through a still-valid upload URL.
+
 ## 10. Implementation ledger
 
 | Task | Status | Evidence | Notes / blocker |
@@ -786,7 +797,7 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 | T3 | COMPLETE | 14 domain tests; focused ESLint; scoped TypeScript compile passed on 2026-07-21 | Strict contracts, explicit transition graphs, configuration-driven policy, 256-bit token hashing, and allowlist public mapping delivered |
 | T4 | COMPLETE | 10 focused tests; T1–T4 combined suite 55/55; focused ESLint and path-filtered typecheck clean on 2026-07-21 | Actor-scoped reads/writes, client assignments, optimistic transitions, state/event binding, and recursive redaction delivered |
 | T5 | COMPLETE | 50/50 focused tests; ESLint clean; no path-filtered type errors; isolated PostgreSQL and headless Chrome checks passed on 2026-07-21 | Strict create/list API, policy-aware draft service, and accessible feature-flagged agency UI delivered; no navigation change while the layout has unrelated edits |
-| T6 | NEXT | Checkpoint A approval permits workspace upload work | Replace T1's stateless capability with durable, single-use/idempotent upload intents and replay protection; inspect live R2 CORS before proposing any change |
+| T6 | AWAITING APPROVAL | 83/83 focused tests; focused ESLint clean; no path-filtered type errors; live CORS inspected read-only on 2026-07-21 | Application slice is implemented and dormant. `agency-files` allows only `GET, HEAD`; approval is required to add browser `PUT`, then run a real browser/R2 upload and finish T6. Disposable PostgreSQL recheck is also pending host IPC capacity. |
 | T7 | NOT STARTED | — | — |
 | T8 | NOT STARTED | — | Scanner selection is Ask-first |
 | T9 | NOT STARTED | — | — |
@@ -810,11 +821,11 @@ This read-only audit was completed on 2026-07-20 while T0 remained pending. It d
 
 ## 11. Current goal-loop handoff
 
-T0–T5 and Checkpoint A are complete. The current action is **T6 server-bound single-part upload intents**. The loop should:
+T0–T5 and Checkpoint A are complete. T6's application slice is implemented and dormant; the current action is the **T6 R2 CORS approval hold**. The loop should:
 
-1. inspect the current R2 binding, T1 storage boundary, and live bucket CORS read-only before proposing any configuration change;
-2. write failing service/API/UI tests for server-generated keys, actor and transfer scope, expiry, actual object metadata confirmation, single-use/idempotent completion, substitution, replay, and cancellation;
-3. preserve all unrelated worktree changes;
-4. implement the smallest feature-flagged single-part upload vertical slice without enabling multipart or changing CORS implicitly;
-5. verify against a non-production R2 path only when credentials/bindings are available and approval covers the operation;
-6. record focused evidence and stop at any named Ask-first boundary rather than silently broadening authority.
+1. obtain explicit approval before changing `agency-files` CORS;
+2. if approved, preserve the current origin allowlist and add only the `PUT` method required by the signed single-part upload contract;
+3. immediately re-read CORS state, then run one non-sensitive browser/R2 upload through intent creation, direct PUT, metadata confirmation, and cancellation/retry where practical;
+4. re-run migration 268's apply-twice and workspace-idempotency drill when the host IPC pool permits a disposable PostgreSQL instance;
+5. keep both Send feature flags disabled and do not deploy or expose navigation as part of T6 verification;
+6. mark T6 complete only after the real browser/R2 evidence is recorded, then begin T7.

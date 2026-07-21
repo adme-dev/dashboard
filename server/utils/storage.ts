@@ -52,7 +52,15 @@ interface R2BucketBinding {
     httpMetadata?: { contentType?: string }
     customMetadata?: Record<string, string>
   }) => Promise<unknown>
-  head: (key: string) => Promise<{ size: number } | null>
+  head: (key: string) => Promise<{
+    key: string
+    size: number
+    etag: string
+    httpEtag: string
+    uploaded: Date
+    httpMetadata?: { contentType?: string }
+    customMetadata?: Record<string, string>
+  } | null>
   delete: (key: string) => Promise<void>
 }
 
@@ -73,8 +81,8 @@ export type FileCategory = 'avatars' | 'attachments' | 'expenses' | 'briefs' | '
 
 // Allowed MIME types per category
 const ALLOWED_TYPES: Record<FileCategory, string[]> = {
-  avatars: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-  attachments: [
+  'avatars': ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+  'attachments': [
     'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
     'application/pdf',
     'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -83,14 +91,14 @@ const ALLOWED_TYPES: Record<FileCategory, string[]> = {
     'text/plain', 'text/csv', 'application/json',
     'application/zip', 'application/x-rar-compressed'
   ],
-  expenses: ['image/jpeg', 'image/png', 'application/pdf'],
-  briefs: [
+  'expenses': ['image/jpeg', 'image/png', 'application/pdf'],
+  'briefs': [
     'image/jpeg', 'image/png', 'image/gif', 'image/webp',
     'application/pdf',
     'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ],
-  invoices: ['application/pdf', 'image/jpeg', 'image/png'],
-  general: ['*'], // Allow all types
+  'invoices': ['application/pdf', 'image/jpeg', 'image/png'],
+  'general': ['*'], // Allow all types
   // Video Studio AV-project media uploads
   'media-video': ['video/mp4', 'video/webm', 'video/quicktime'],
   'media-image': ['image/jpeg', 'image/png', 'image/webp']
@@ -98,12 +106,12 @@ const ALLOWED_TYPES: Record<FileCategory, string[]> = {
 
 // Max file sizes per category (in bytes)
 const MAX_FILE_SIZES: Record<FileCategory, number> = {
-  avatars: 2 * 1024 * 1024, // 2MB
-  attachments: 50 * 1024 * 1024, // 50MB
-  expenses: 10 * 1024 * 1024, // 10MB
-  briefs: 25 * 1024 * 1024, // 25MB
-  invoices: 10 * 1024 * 1024, // 10MB
-  general: 100 * 1024 * 1024, // 100MB
+  'avatars': 2 * 1024 * 1024, // 2MB
+  'attachments': 50 * 1024 * 1024, // 50MB
+  'expenses': 10 * 1024 * 1024, // 10MB
+  'briefs': 25 * 1024 * 1024, // 25MB
+  'invoices': 10 * 1024 * 1024, // 10MB
+  'general': 100 * 1024 * 1024, // 100MB
   'media-video': 500 * 1024 * 1024, // 500MB
   'media-image': 50 * 1024 * 1024 // 50MB
 }
@@ -213,8 +221,12 @@ export async function uploadFile(
     try {
       const head = await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }))
       if (!head.ContentLength) throw new Error('zero-length')
-    } catch (e: any) {
-      throw new Error(`R2 write failed for ${key}: object not persisted after PutObject (${e?.message || e})`)
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        `R2 write failed for ${key}: object not persisted after PutObject (${detail})`,
+        { cause: error }
+      )
     }
   }
 
@@ -294,6 +306,9 @@ export async function downloadFileBuffer(key: string): Promise<Buffer> {
  * Check if a file exists
  */
 export async function fileExists(key: string): Promise<boolean> {
+  const bucket = getNativeBucket()
+  if (bucket) return !!await bucket.head(key)
+
   const client = getR2Client()
 
   try {
@@ -349,9 +364,23 @@ export async function getPresignedDownloadUrl(
 export async function getFileMetadata(key: string): Promise<{
   size: number
   contentType: string
+  etag: string | null
   lastModified: Date | undefined
   metadata: Record<string, string> | undefined
 } | null> {
+  const bucket = getNativeBucket()
+  if (bucket) {
+    const object = await bucket.head(key)
+    if (!object) return null
+    return {
+      size: object.size,
+      contentType: object.httpMetadata?.contentType || 'application/octet-stream',
+      etag: object.etag || object.httpEtag || null,
+      lastModified: object.uploaded,
+      metadata: object.customMetadata
+    }
+  }
+
   const client = getR2Client()
 
   try {
@@ -363,6 +392,7 @@ export async function getFileMetadata(key: string): Promise<{
     return {
       size: response.ContentLength || 0,
       contentType: response.ContentType || 'application/octet-stream',
+      etag: response.ETag?.replace(/^"|"$/g, '') || null,
       lastModified: response.LastModified,
       metadata: response.Metadata
     }

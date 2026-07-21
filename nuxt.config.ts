@@ -149,6 +149,7 @@ export default defineNuxtConfig({
     sendWorkspaceMaxRetentionDays: Number(process.env.SEND_WORKSPACE_MAX_RETENTION_DAYS || 30),
     sendWorkspaceMaxRecipients: Number(process.env.SEND_WORKSPACE_MAX_RECIPIENTS || 20),
     sendWorkspaceMaxDownloads: Number(process.env.SEND_WORKSPACE_MAX_DOWNLOADS || 100),
+    sendWorkspaceUploadIntentTtlSeconds: Number(process.env.SEND_WORKSPACE_UPLOAD_INTENT_TTL_SECONDS || 900),
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 
