@@ -6,7 +6,7 @@ import { updateGoogleCampaignDailyBudget, getCampaignSpendById } from '~~/server
 beforeEach(() => ofetchMock.mockReset())
 
 describe('updateGoogleCampaignDailyBudget', () => {
-  it('mutates amount_micros and sends MCC header', async () => {
+  it('mutates amountMicros using REST JSON field names and sends MCC header', async () => {
     ofetchMock
       .mockResolvedValueOnce([{ results: [{ campaignBudget: { resourceName: 'customers/123/campaignBudgets/9', amountMicros: '0' } }] }]) // searchStream resolve
       .mockResolvedValueOnce({ results: [{ resourceName: 'customers/123/campaignBudgets/9' }] }) // mutate
@@ -18,8 +18,15 @@ describe('updateGoogleCampaignDailyBudget', () => {
     expect(r.readBackDailyMajor).toBe(120)
     const mutateCall = ofetchMock.mock.calls[1]
     expect(mutateCall[1].headers['login-customer-id']).toBe('5250473322')
-    expect(JSON.stringify(mutateCall[1].body)).toContain('amount_micros')
-    expect(JSON.stringify(mutateCall[1].body)).toContain('120000000')
+    expect(mutateCall[1].body).toEqual({
+      operations: [{
+        updateMask: 'amountMicros',
+        update: {
+          resourceName: 'customers/123/campaignBudgets/9',
+          amountMicros: '120000000',
+        },
+      }],
+    })
   })
 
   it('retries WITHOUT the manager header when a manager context 403s (directly-owned account)', async () => {
