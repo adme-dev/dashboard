@@ -742,7 +742,7 @@ export async function updateGoogleCampaignDailyBudget(opts: {
 
     await ofetch(`${GOOGLE_ADS_BASE}/customers/${cid}/campaignBudgets:mutate`, {
       method: 'POST', headers,
-      body: { operations: [{ updateMask: 'amount_micros', update: { resourceName, amount_micros: amountMicros } }] },
+      body: { operations: [{ updateMask: 'amountMicros', update: { resourceName, amountMicros } }] },
     })
 
     const back = await ofetch<any[]>(`${GOOGLE_ADS_BASE}/customers/${cid}/googleAds:searchStream`, {
