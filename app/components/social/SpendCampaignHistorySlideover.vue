@@ -624,7 +624,7 @@ function summarizeValue(value: Record<string, unknown>) {
             <p class="mt-0.5 font-semibold tabular-nums">{{ formatCurrency(item.projectedMonthEnd) }}</p>
           </div>
           <div class="bg-elevated/30 px-4 py-3">
-            <p class="text-[11px] uppercase text-muted font-medium">New/day</p>
+            <p class="text-[11px] uppercase text-muted font-medium">{{ dailyBudgetActionSupported ? 'New/day' : 'Pace needed/day' }}</p>
             <p class="mt-0.5 font-semibold tabular-nums">{{ formatCurrency(item.recommendedDailyBudget) }}</p>
           </div>
         </div>
