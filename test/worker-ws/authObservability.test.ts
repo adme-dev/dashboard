@@ -16,6 +16,18 @@ const env = {
   JWT_SECRET: 'test-secret'
 }
 
+function connectedEnv() {
+  return {
+    ...env,
+    BANNER_ROOMS: {
+      idFromName: vi.fn(() => ({ id: 'room-1' })),
+      get: vi.fn(() => ({
+        fetch: vi.fn(async () => new Response('connected'))
+      }))
+    } as unknown as DurableObjectNamespace
+  }
+}
+
 function request(cookie?: string) {
   return new Request('https://app.xeroflow.io/api/agency/banner-studio/project-1/connect', {
     headers: {
@@ -69,6 +81,40 @@ describe('realtime WebSocket auth observability', () => {
       jwtSecretConfigured: true
     })
     expect(JSON.stringify(warn.mock.calls)).not.toContain('invalid.token')
+  })
+
+  it('accepts a valid client token after a stale primary cookie', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockSql.mockResolvedValueOnce([{ id: 'user-1', name: 'User', avatar_url: null }])
+    const token = await createToken({ userId: 'user-1', exp: Date.now() + 60_000 })
+
+    const response = await handleBannerConnect(
+      request(`auth_token=invalid.token; auth_token_client=${token}`),
+      connectedEnv(),
+      'project-1'
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe('connected')
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('bounds signature work when duplicate cookie names are supplied', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const token = await createToken({ userId: 'user-1', exp: Date.now() + 60_000 })
+    const cookie = [
+      'auth_token=invalid-one.token',
+      'auth_token=invalid-two.token',
+      'auth_token_client=invalid-three.token',
+      'auth_token_client=invalid-four.token',
+      `auth_token_client=${token}`
+    ].join('; ')
+
+    const response = await handleBannerConnect(request(cookie), env, 'project-1')
+
+    expect(response.status).toBe(401)
+    expect(mockSql).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 
   it('reports an inactive or missing user without logging identity', async () => {
