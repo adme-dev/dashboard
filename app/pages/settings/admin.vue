@@ -8,6 +8,67 @@
     <!-- Tabs -->
     <UTabs v-model="activeTab" :items="tabs" />
 
+    <!-- Notifications Tab -->
+    <div v-if="activeTab === 'notifications'" class="space-y-4">
+      <div>
+        <h3 class="font-medium">
+          Member notification delivery
+        </h3>
+        <p class="text-sm text-muted">
+          Authoritative delivery state for internal users and members.
+        </p>
+      </div>
+
+      <UAlert
+        v-if="notificationDeliveryError"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        title="Delivery state unavailable"
+        description="The server could not confirm whether member notifications are paused."
+      />
+
+      <UPageCard v-else variant="subtle">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <UIcon
+                :name="notificationDeliveryStatus?.disabled ? 'i-lucide-bell-off' : 'i-lucide-bell-ring'"
+                class="size-5"
+                :class="notificationDeliveryStatus?.disabled ? 'text-warning' : 'text-success'"
+              />
+              <p class="font-semibold">
+                {{ notificationDeliveryStatus?.disabled ? 'Globally paused' : 'Delivery enabled' }}
+              </p>
+            </div>
+            <p class="text-sm text-muted">
+              {{ notificationDeliveryStatus?.reason }}
+            </p>
+          </div>
+          <UBadge :color="notificationDeliveryStatus?.disabled ? 'warning' : 'success'" variant="subtle">
+            {{ notificationDeliveryStatus?.disabled ? 'OFF' : 'ON' }}
+          </UBadge>
+        </div>
+
+        <div class="mt-5 grid gap-3 sm:grid-cols-3">
+          <div v-for="channel in notificationChannels" :key="channel.key" class="rounded-lg border border-default p-3">
+            <p class="text-sm font-medium">
+              {{ channel.label }}
+            </p>
+            <p class="mt-1 text-xs text-muted capitalize">
+              {{ channel.state }}
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-5 flex justify-end">
+          <UButton to="/settings/notifications" variant="outline" icon="i-lucide-user-cog">
+            View personal settings
+          </UButton>
+        </div>
+      </UPageCard>
+    </div>
+
     <!-- Departments Tab -->
     <div v-if="activeTab === 'departments'" class="space-y-4">
       <div class="flex items-center justify-between">
@@ -426,6 +487,7 @@ const toast = useToast()
 const activeTab = ref('departments')
 
 const tabs = [
+  { label: 'Notifications', value: 'notifications' },
   { label: 'Departments', value: 'departments' },
   { label: 'Statuses', value: 'statuses' },
   { label: 'Tags', value: 'tags' },
@@ -497,6 +559,17 @@ interface ExpenseCategory {
   expenseCount: number
 }
 
+interface NotificationDeliveryStatus {
+  disabled: boolean
+  scope: 'user_members'
+  channels: {
+    inApp: 'paused' | 'enabled'
+    email: 'paused' | 'enabled'
+    push: 'paused' | 'enabled'
+  }
+  reason: string
+}
+
 const apiFetch = $fetch as <T = unknown>(
   request: string,
   options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
@@ -533,7 +606,27 @@ const { data: tags, pending: tagsPending, refresh: refreshTags } = createListSta
 
 const { data: expenseCategories, pending: expenseCategoriesPending, refresh: refreshExpenseCategories } = createListState<ExpenseCategory>('/api/agency/expense-categories', { active: 'false', hierarchy: 'true' })
 
+const notificationDeliveryStatus = ref<NotificationDeliveryStatus | null>(null)
+const notificationDeliveryError = ref<unknown>(null)
+
+async function refreshNotificationDeliveryStatus() {
+  try {
+    notificationDeliveryStatus.value = await apiFetch<NotificationDeliveryStatus>('/api/notifications/delivery-status')
+    notificationDeliveryError.value = null
+  } catch (error) {
+    notificationDeliveryStatus.value = null
+    notificationDeliveryError.value = error
+  }
+}
+
+const notificationChannels = computed(() => [
+  { key: 'inApp', label: 'In-app alerts', state: notificationDeliveryStatus.value?.channels.inApp || 'unknown' },
+  { key: 'push', label: 'Browser push', state: notificationDeliveryStatus.value?.channels.push || 'unknown' },
+  { key: 'email', label: 'Notification email', state: notificationDeliveryStatus.value?.channels.email || 'unknown' }
+])
+
 await Promise.all([
+  refreshNotificationDeliveryStatus(),
   refreshDepartments(),
   refreshStatuses(),
   refreshTags(),

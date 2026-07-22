@@ -6,6 +6,21 @@ const toast = useToast()
 const loading = ref(true)
 const saving = ref(false)
 
+interface NotificationDeliveryStatus {
+  disabled: boolean
+  scope: 'user_members'
+  channels: {
+    inApp: 'paused' | 'enabled'
+    email: 'paused' | 'enabled'
+    push: 'paused' | 'enabled'
+  }
+  reason: string
+}
+
+const deliveryStatus = ref<NotificationDeliveryStatus | null>(null)
+const deliveryStatusError = ref(false)
+const notificationsGloballyDisabled = computed(() => deliveryStatus.value?.disabled === true)
+
 const apiFetch = $fetch as <T = unknown>(
   request: string,
   options?: { method?: string, body?: unknown }
@@ -164,16 +179,24 @@ function saveQuietHours() {
 // Fetch preferences on mount
 onMounted(async () => {
   try {
-    const { preferences, autoSubscribeOnParticipation: aso, quietHours: qh, autoAckAssignments: aak } = await apiFetch<{
+    const preferenceResponse = await apiFetch<{
       preferences: Record<string, boolean>
       autoSubscribeOnParticipation?: boolean
       quietHours?: QuietHours | null
       autoAckAssignments?: boolean
     }>('/api/notifications/preferences')
+    const { preferences, autoSubscribeOnParticipation: aso, quietHours: qh, autoAckAssignments: aak } = preferenceResponse
     Object.assign(state, preferences)
     if (typeof aso === 'boolean') autoSubscribeOnParticipation.value = aso
     if (typeof aak === 'boolean') autoAckAssignments.value = aak
     if (qh) quietHours.value = { ...defaultQuietHours(), ...qh }
+
+    try {
+      deliveryStatus.value = await apiFetch<NotificationDeliveryStatus>('/api/notifications/delivery-status')
+    } catch (error) {
+      deliveryStatusError.value = true
+      console.error('Failed to load global notification delivery status:', error)
+    }
   } catch (error) {
     console.error('Failed to load notification preferences:', error)
     toast.add({
@@ -328,6 +351,24 @@ async function onChange(field: string, value: boolean) {
       <XfLoader size="sm" />
     </div>
 
+    <UAlert
+      v-if="!loading && notificationsGloballyDisabled"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-bell-off"
+      title="Notifications are paused by an administrator"
+      description="In-app alerts, browser push, and internal notification emails are blocked for every user and member. Your saved choices are retained but cannot deliver while this pause is active."
+    />
+
+    <UAlert
+      v-else-if="!loading && deliveryStatusError"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-triangle-alert"
+      title="Global delivery state unavailable"
+      description="Your preferences loaded, but the server could not confirm whether member notification delivery is paused."
+    />
+
     <!-- Browser Push (special-cased — talks to the browser, not the prefs API) -->
     <div v-if="!loading">
       <UPageCard
@@ -352,7 +393,7 @@ async function onChange(field: string, value: boolean) {
         >
           <USwitch
             :model-value="push.isSubscribed.value"
-            :disabled="!push.isSupported.value || push.isBusy.value || push.permission.value === 'denied'"
+            :disabled="notificationsGloballyDisabled || !push.isSupported.value || push.isBusy.value || push.permission.value === 'denied'"
             @update:model-value="(val: boolean) => togglePush(val)"
           />
         </UFormField>
@@ -392,6 +433,7 @@ async function onChange(field: string, value: boolean) {
         >
           <USwitch
             :model-value="autoSubscribeOnParticipation"
+            :disabled="notificationsGloballyDisabled"
             @update:model-value="(val: boolean) => { autoSubscribeOnParticipation = val; onAutoSubscribeChange(val) }"
           />
         </UFormField>
@@ -403,6 +445,7 @@ async function onChange(field: string, value: boolean) {
         >
           <USwitch
             :model-value="autoAckAssignments"
+            :disabled="notificationsGloballyDisabled"
             @update:model-value="(val: boolean) => { autoAckAssignments = val; onAutoAckChange(val) }"
           />
         </UFormField>
@@ -426,6 +469,7 @@ async function onChange(field: string, value: boolean) {
         >
           <USwitch
             v-model="quietHours.enabled"
+            :disabled="notificationsGloballyDisabled"
             @update:model-value="saveQuietHours"
           />
         </UFormField>
@@ -435,6 +479,7 @@ async function onChange(field: string, value: boolean) {
             <UFormField name="quiet_start" label="From" class="flex-1">
               <UInput
                 v-model="quietStart"
+                :disabled="notificationsGloballyDisabled"
                 type="time"
                 size="sm"
                 @change="saveQuietHours"
@@ -443,6 +488,7 @@ async function onChange(field: string, value: boolean) {
             <UFormField name="quiet_end" label="Until" class="flex-1">
               <UInput
                 v-model="quietEnd"
+                :disabled="notificationsGloballyDisabled"
                 type="time"
                 size="sm"
                 @change="saveQuietHours"
@@ -462,6 +508,7 @@ async function onChange(field: string, value: boolean) {
                 :label="d.label"
                 :variant="quietHours.daysOfWeek.includes(d.value) ? 'solid' : 'soft'"
                 :color="quietHours.daysOfWeek.includes(d.value) ? 'primary' : 'neutral'"
+                :disabled="notificationsGloballyDisabled"
                 size="xs"
                 class="w-9 justify-center"
                 @click="toggleDay(d.value)"
@@ -493,7 +540,7 @@ async function onChange(field: string, value: boolean) {
         >
           <USwitch
             v-model="state[field.name]"
-            :disabled="saving"
+            :disabled="notificationsGloballyDisabled || saving"
             @update:model-value="(val) => onChange(field.name, val)"
           />
         </UFormField>

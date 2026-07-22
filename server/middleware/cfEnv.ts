@@ -9,9 +9,9 @@
  * them across requests in the same isolate is safe.
  */
 
-import { setCfBindings } from '~~/server/utils/email'
+import { setCachedCfBindings } from '~~/server/utils/cfBindings'
 
 export default defineEventHandler((event) => {
   const env = (event.context as any).cloudflare?.env
-  if (env) setCfBindings(env)
+  if (env) setCachedCfBindings(env)
 })

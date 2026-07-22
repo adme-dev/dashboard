@@ -31,10 +31,14 @@ const { default: getPreferences } = await import(
 const { default: updatePreferences } = await import(
   '../../../server/api/notifications/preferences.put'
 )
+const { default: getDeliveryStatus } = await import(
+  '../../../server/api/notifications/delivery-status.get'
+)
 
 describe('notification preferences API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete process.env.USER_MEMBER_NOTIFICATIONS_DISABLED
     mockRequireAuth.mockResolvedValue({ id: 'user-1' })
     mockQueryOne.mockResolvedValue({
       notification_preferences: {},
@@ -98,5 +102,18 @@ describe('notification preferences API', () => {
 
     expect(mockQueryOne).toHaveBeenCalledTimes(1)
     expect(mockQueryOne.mock.calls[0]?.[0]).not.toContain('notification_preferences =')
+  })
+
+  it('returns the authenticated global member delivery state', async () => {
+    process.env.USER_MEMBER_NOTIFICATIONS_DISABLED = 'true'
+
+    const result = await getDeliveryStatus({} as never)
+
+    expect(mockRequireAuth).toHaveBeenCalledOnce()
+    expect(result).toMatchObject({
+      disabled: true,
+      scope: 'user_members',
+      channels: { inApp: 'paused', email: 'paused', push: 'paused' }
+    })
   })
 })

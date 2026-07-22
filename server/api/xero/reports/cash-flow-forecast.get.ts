@@ -5,12 +5,9 @@ import { cachedFetch } from '../../../utils/kv'
 import {
   ensureDateString,
   addDays,
-  extractCurrentCash,
-  fetchBankSummary,
-  fetchReceivables,
-  fetchPayables,
-  fetchRecentPaidExpenses
+  extractCurrentCash
 } from '../../../utils/xeroDataFetcher'
+import { fetchCashFlowInputs } from '../../../utils/xeroCashFlowInputs'
 
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
@@ -28,13 +25,10 @@ export default eventHandler(async (event) => {
     const today = new Date()
     const accessToken = token.access_token!
 
-    // Fetch all data via shared fetcher (deduped + rate-limited)
-    const [bankReportBody, receivablesBody, payablesBody, expensesBody] = await Promise.all([
-      fetchBankSummary(accessToken, tenantId),
-      fetchReceivables(accessToken, tenantId),
-      fetchPayables(accessToken, tenantId),
-      fetchRecentPaidExpenses(accessToken, tenantId)
-    ])
+    const [bankReportBody, receivablesBody, payablesBody, expensesBody] = await fetchCashFlowInputs(
+      accessToken,
+      tenantId
+    )
 
     const currentCash = extractCurrentCash(bankReportBody)
 

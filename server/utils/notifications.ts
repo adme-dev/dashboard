@@ -9,6 +9,7 @@ import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, send
 import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 import { isWithinQuietHours } from '~~/server/utils/quietHours'
 import { computeImportance } from '~~/server/utils/notificationImportance'
+import { isUserMemberNotificationDeliveryDisabled } from '~~/server/utils/notificationDelivery'
 import { isNotificationPreferenceEnabled, type NotificationPreferenceKey } from '~~/shared/utils/notificationPreferences'
 
 export type NotificationType = 'task_assigned' | 'task_mentioned' | 'task_comment' | 'task_status_changed' | 'task_due_soon' | 'task_overdue' | 'monday_inactive' | 'monday_blocked' | 'approval_requested' | 'approval_completed' | 'approval_response' | 'team_update' | 'system' | 'ai_digest' | 'chat_mention' | 'chat_dm' | 'brief_status_changed' | 'brief_commented' | 'brief_assigned' | 'brief_submitted' | 'brief_converted' | 'brief_completion_proposed' | 'board_member_added' | 'anomaly_critical' | 'lead' | 'social_assigned' | 'social_sla_breach' | 'brief_actioned' | 'hr_review_assigned' | 'hr_role_assigned' | 'hr_review_reminder' | 'hr_review_overdue' | 'hr_review_cancel' | 'hr_review_reopen' | 'hr_review_extension' | 'hr_review_reschedule' | 'hr_review_interview' | 'hr_review_interview_cancelled' | 'hr_review_interview_completed' | 'hr_interview_scheduled' | 'hr_scorecard_published' | 'hr_finding_response_requested' | 'hr_finding_participant_response' | 'hr_finding_published' | 'hr_follow_up_assigned' | 'hr_follow_up_due'
@@ -104,6 +105,11 @@ const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, NotificationPreferenc
  * inapp toggle silently turned off push for the same type, with no UI hint.
  */
 export async function createNotification(params: CreateNotificationParams) {
+  if (isUserMemberNotificationDeliveryDisabled()) {
+    console.info('[NotificationDelivery] Suppressed in-app and push notification', { type: params.type })
+    return null
+  }
+
   try {
     // 1. Web Push fan-out — independent of in-app prefs.
     //    Awaited inline so it joins the parent's await/waitUntil chain on

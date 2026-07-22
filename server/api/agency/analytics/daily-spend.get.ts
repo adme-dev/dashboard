@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
   try {
     const rows = await queryRows(`
       SELECT
-        ds.spend_date as date,
+        TO_CHAR(ds.spend_date, 'YYYY-MM-DD') as date,
         SUM(ds.spend) as spend,
         SUM(ds.impressions) as impressions,
         SUM(ds.clicks) as clicks,

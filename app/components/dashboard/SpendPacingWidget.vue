@@ -21,7 +21,7 @@ async function refreshSpendPacing() {
   const [summaryResult, dailyResult] = await Promise.allSettled([
     apiFetch('/api/agency/social/spend/summary'),
     apiFetch<any[]>('/api/agency/analytics/daily-spend', {
-      query: { from: monthStart, to: today },
+      query: { startDate: monthStart, endDate: today },
     }),
   ])
 

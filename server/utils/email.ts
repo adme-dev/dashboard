@@ -5,6 +5,14 @@
 import type { H3Event } from 'h3'
 import { Resend } from 'resend'
 import { getAppUrl } from '~~/server/utils/appUrl'
+import { getCachedCfBinding } from '~~/server/utils/cfBindings'
+import { suppressMemberNotificationEmail } from '~~/server/utils/notificationDelivery'
+
+export {
+  getCachedCfBinding as getCachedBinding,
+  getCachedCfObjectBinding as getCachedObjectBinding,
+  setCachedCfBindings as setCfBindings
+} from '~~/server/utils/cfBindings'
 
 /**
  * Escape HTML special characters to prevent XSS in email templates.
@@ -22,35 +30,6 @@ let resend: Resend | null = null
 let cachedApiKey: string | null = null
 
 /**
- * Module-level cache of CF Pages bindings. On Cloudflare Pages, secrets are
- * only exposed via `event.context.cloudflare.env` — they are NOT in
- * `process.env` at runtime. This cache lets event-less call sites
- * (notification utilities, AI agent runner, automation engine) still read
- * bindings, as long as a per-request middleware has populated it on a prior
- * request in the same isolate. Bindings are deploy-time stable, so cross-
- * request reuse is safe.
- */
-let cachedCfBindings: Record<string, any> | null = null
-
-export function setCfBindings(env: Record<string, any> | null | undefined): void {
-  if (env && typeof env === 'object') cachedCfBindings = env
-}
-
-export function getCachedBinding(key: string): string | undefined {
-  const v = cachedCfBindings?.[key]
-  return typeof v === 'string' ? v : undefined
-}
-
-/**
- * Like getCachedBinding but for non-string bindings (R2 buckets, queues, DOs),
- * which are objects rather than secret strings.
- */
-export function getCachedObjectBinding<T = unknown>(key: string): T | undefined {
-  const v = cachedCfBindings?.[key]
-  return v && typeof v === 'object' ? v as T : undefined
-}
-
-/**
  * Read a Cloudflare Pages binding. Order:
  *   1. Per-request event.context.cloudflare.env (most reliable)
  *   2. Module-cached bindings (set by the cf-env middleware on every request)
@@ -64,7 +43,7 @@ function getCfBinding(event: H3Event | undefined, key: string): string | undefin
       // fall through
     }
   }
-  return getCachedBinding(key)
+  return getCachedCfBinding(key)
 }
 
 /**
@@ -388,6 +367,7 @@ export async function sendTaskAssignedEmail(data: {
   dueDate?: Date
   taskUrl: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('task_assigned')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Task assigned email (no client) for', data.to)
@@ -438,6 +418,7 @@ export async function sendMentionEmail(data: {
   commentSnippet: string
   taskUrl: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('task_mentioned')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Mention email (no client) for', data.to)
@@ -479,6 +460,7 @@ export async function sendApprovalRequestEmail(data: {
   stepName?: string
   taskUrl: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('approval_requested')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Approval request email (no client) for', data.to)
@@ -526,6 +508,7 @@ export async function sendDueReminderEmail(data: {
   daysRemaining: number
   taskUrl: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('task_due')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Due reminder email (no client) for', data.to)
@@ -1137,6 +1120,7 @@ export async function sendBoardChangeEmail(data: {
   boardUrl: string
   itemUrl?: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('board_change')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Board change email (no client) for', data.to)
@@ -1269,6 +1253,7 @@ export async function sendHrReviewAssignmentEmail(data: {
   assignmentUrl: string
   calendarInvite: string
 }, event?: H3Event): Promise<boolean> {
+  if (suppressMemberNotificationEmail('hr_review_assigned')) return false
   const client = getResendClient(event)
   if (!client) {
     console.log('[Email] HR review assignment email (no client) for', data.to)
@@ -1317,6 +1302,7 @@ export async function sendHrReviewLifecycleEmail(data: {
   calendarInvite?: string
   calendarMethod?: 'REQUEST' | 'CANCEL'
 }, event?: H3Event): Promise<boolean> {
+  if (suppressMemberNotificationEmail(`hr_review_${data.action}`)) return false
   const client = getResendClient(event)
   if (!client) return false
   const labels = {
@@ -1352,6 +1338,7 @@ export async function sendBoardMemberAddedEmail(data: {
   adderName: string
   boardUrl: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('board_member_added')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Board member added email (no client) for', data.to)
@@ -1394,6 +1381,7 @@ export async function sendAiDigestEmail(data: {
   findingsCount: number
   reportUrl: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('ai_digest')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] AI digest email (no client) for', data.to)
@@ -1444,6 +1432,7 @@ export async function sendBriefStatusEmail(data: {
   newStatus: string
   briefUrl: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('brief_status')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Brief status email (no client) for', data.to)
@@ -1492,6 +1481,7 @@ export async function sendBriefCommentEmail(data: {
   isInternal: boolean
   briefUrl: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('brief_comment')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Brief comment email (no client) for', data.to)
@@ -1535,6 +1525,7 @@ export async function sendBriefAssignedEmail(data: {
   assignerName: string
   briefUrl: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('brief_assigned')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Brief assigned email (no client) for', data.to)
@@ -1579,6 +1570,7 @@ export async function sendAnomalyAlertEmail(data: {
   recommendation?: string
   url: string
 }): Promise<void> {
+  if (suppressMemberNotificationEmail('anomaly_critical')) return
   const client = getResendClient()
   if (!client) {
     console.log('[Email] Anomaly alert email (no client) for', data.to)

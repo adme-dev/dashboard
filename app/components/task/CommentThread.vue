@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { useTaskComments, type CreateCommentData } from '~/composables/useTaskComments'
+import { useTaskComments, type Comment } from '~/composables/useTaskComments'
 
 interface Props {
   taskId: string
@@ -82,9 +82,16 @@ const onCreateComment = async (content: string, isInternal: boolean) => {
 }
 
 // Reply to comment
-const onReply = async (parentComment: any) => {
-  // The reply input is shown by CommentItem
-  // When submitted, it will call createComment with parentId
+const onReply = async (parentComment: Comment, content: string, isInternal: boolean) => {
+  try {
+    await createComment({
+      content,
+      isInternal,
+      parentId: parentComment.id
+    })
+  } catch {
+    // Error handled in composable
+  }
 }
 
 // Edit comment

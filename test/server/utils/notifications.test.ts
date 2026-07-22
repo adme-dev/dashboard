@@ -59,6 +59,7 @@ import {
 
 describe('notifications utility', () => {
   beforeEach(() => {
+    delete process.env.USER_MEMBER_NOTIFICATIONS_DISABLED
     vi.clearAllMocks()
     mockQueryOne.mockReset()
     mockQueryRows.mockReset()
@@ -75,6 +76,20 @@ describe('notifications utility', () => {
   })
 
   describe('createNotification', () => {
+    it('does not query, insert, or fan out when member notifications are globally paused', async () => {
+      process.env.USER_MEMBER_NOTIFICATIONS_DISABLED = 'true'
+
+      const result = await createNotification({
+        userId: 'user-123',
+        type: 'system',
+        title: 'Test',
+        message: 'Must not be delivered'
+      })
+
+      expect(result).toBeNull()
+      expect(mockQueryOne).not.toHaveBeenCalled()
+    })
+
     it('should create notification with all required fields', async () => {
       const params = {
         userId: 'user-123',

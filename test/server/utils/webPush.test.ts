@@ -37,6 +37,7 @@ const validPrivateJwk = JSON.stringify({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  delete process.env.USER_MEMBER_NOTIFICATIONS_DISABLED
   process.env.VAPID_PUBLIC_KEY = validPublicKey
   process.env.VAPID_PRIVATE_KEY = validPrivateJwk
   process.env.VAPID_SUBJECT = 'mailto:test@example.com'
@@ -69,6 +70,15 @@ describe('getVapidPublicKeyForBrowser', () => {
 })
 
 describe('sendWebPushToUser', () => {
+  it('does not load subscriptions when member notifications are globally paused', async () => {
+    process.env.USER_MEMBER_NOTIFICATIONS_DISABLED = 'true'
+
+    const result = await sendWebPushToUser('user-1', { title: 'hi', body: 'there' })
+
+    expect(result).toEqual({ sent: 0, failed: 0, purged: 0 })
+    expect(mockQueryRows).not.toHaveBeenCalled()
+  })
+
   it('returns zero counts when env is unset', async () => {
     delete process.env.VAPID_PRIVATE_KEY
     const result = await sendWebPushToUser('user-1', { title: 'hi', body: 'there' })

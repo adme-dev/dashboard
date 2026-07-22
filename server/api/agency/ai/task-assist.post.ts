@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
              AND t.completed_at IS NULL),
           0
         )::int AS active_task_count
-      FROM users u
+      FROM team_members u
       WHERE u.is_active = true
       ORDER BY u.name
     `),
@@ -63,7 +63,7 @@ export default defineEventHandler(async (event) => {
             p.name AS project_name
           FROM tasks t
           LEFT JOIN task_statuses ts ON ts.id = t.status_id
-          LEFT JOIN users u ON u.id = t.assignee_id
+          LEFT JOIN team_members u ON u.id = t.assignee_id
           LEFT JOIN projects p ON p.id = t.project_id
           WHERE t.id = $1
         `, [body.taskId])

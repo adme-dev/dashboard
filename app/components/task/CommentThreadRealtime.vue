@@ -94,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { useTaskComments, type CreateCommentData } from '~/composables/useTaskComments'
+import { useTaskComments, type Comment } from '~/composables/useTaskComments'
 import { useTaskWebSocket, type WebSocketMessage } from '~/composables/useTaskWebSocket'
 
 interface Props {
@@ -268,9 +268,20 @@ const onLike = async (comment: any) => {
 }
 
 // Reply to comment
-const onReply = (parentComment: any) => {
-  // Show reply input (handled by CommentItem)
-  // When submitted, it will call onCreateComment with parentId
+const onReply = async (parentComment: Comment, content: string, isInternal: boolean) => {
+  if (isConnected.value) {
+    sendComment(content, parentComment.id)
+  }
+
+  try {
+    await httpCreateComment({
+      content,
+      isInternal,
+      parentId: parentComment.id
+    })
+  } catch (err) {
+    console.error('Failed to create reply:', err)
+  }
 }
 
 // Reconnect
