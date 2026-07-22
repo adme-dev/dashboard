@@ -11,6 +11,7 @@ const { createDepartmentDraftPackSeedPostHandler } = await import(
 
 describe('POST /api/admin/ai/governance/draft-packs', () => {
   const requirePermission = vi.fn()
+  const requireWriteAccess = vi.fn()
   const readBody = vi.fn()
   const setResponseHeader = vi.fn()
   const setResponseStatus = vi.fn()
@@ -19,6 +20,7 @@ describe('POST /api/admin/ai/governance/draft-packs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     requirePermission.mockResolvedValue({ id: ACTOR_ID, role: 'admin' })
+    requireWriteAccess.mockResolvedValue({ id: ACTOR_ID, role: 'admin' })
     readBody.mockResolvedValue({
       blueprintKey: 'creative',
       departmentId: DEPARTMENT_ID,
@@ -32,6 +34,7 @@ describe('POST /api/admin/ai/governance/draft-packs', () => {
   function handler() {
     return createDepartmentDraftPackSeedPostHandler({
       requirePermission,
+      requireWriteAccess,
       readBody,
       setResponseHeader,
       setResponseStatus,
@@ -44,6 +47,7 @@ describe('POST /api/admin/ai/governance/draft-packs', () => {
     const result = await handler()(event)
 
     expect(requirePermission).toHaveBeenCalledWith(event, 'ADMIN')
+    expect(requireWriteAccess).toHaveBeenCalledWith(event)
     expect(seedDraftPack).toHaveBeenCalledWith({
       blueprintKey: 'creative',
       departmentId: DEPARTMENT_ID,
@@ -75,6 +79,29 @@ describe('POST /api/admin/ai/governance/draft-packs', () => {
     requirePermission.mockRejectedValue(Object.assign(new Error('Forbidden'), { statusCode: 403 }))
 
     await expect(handler()({ context: {} } as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(requireWriteAccess).not.toHaveBeenCalled()
+    expect(readBody).not.toHaveBeenCalled()
+    expect(seedDraftPack).not.toHaveBeenCalled()
+  })
+
+  it('does not parse or mutate when the governance actor has read-only access', async () => {
+    requireWriteAccess.mockRejectedValue(Object.assign(new Error('Read-only'), { statusCode: 403 }))
+
+    await expect(handler()({ context: {} } as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(readBody).not.toHaveBeenCalled()
+    expect(seedDraftPack).not.toHaveBeenCalled()
+  })
+
+  it('fails closed if the authenticated identity changes between permission checks', async () => {
+    requireWriteAccess.mockResolvedValue({
+      id: '40000000-0000-4000-8000-000000000001',
+      role: 'admin'
+    })
+
+    await expect(handler()({ context: {} } as never)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'Forbidden - Session identity changed'
+    })
     expect(readBody).not.toHaveBeenCalled()
     expect(seedDraftPack).not.toHaveBeenCalled()
   })
