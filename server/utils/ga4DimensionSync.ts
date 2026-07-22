@@ -65,6 +65,12 @@ interface EvtRow {
   event_value: number
 }
 
+export function deduplicateRowsByKey<T>(rows: T[], keyOf: (row: T) => string): T[] {
+  const unique = new Map<string, T>()
+  for (const row of rows) unique.set(keyOf(row), row)
+  return [...unique.values()]
+}
+
 /** Load the `limit` properties whose dimension data is stalest (never-synced first). */
 async function loadStaleDimensionMaps(clientId: string | undefined, limit: number): Promise<MapRow[]> {
   const params: unknown[] = []
@@ -93,9 +99,16 @@ async function loadStaleDimensionMaps(clientId: string | undefined, limit: numbe
 
 /** Chunked multi-row upsert into ga4_daily_dimension. */
 async function flushDimensionRows(rows: DimRow[]): Promise<number> {
+  const uniqueRows = deduplicateRowsByKey(rows, row => JSON.stringify([
+    row.connection_id,
+    row.property_id,
+    row.date,
+    row.dimension_type,
+    row.dimension_value
+  ]))
   let upserted = 0
-  for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
-    const chunk = rows.slice(i, i + UPSERT_CHUNK)
+  for (let i = 0; i < uniqueRows.length; i += UPSERT_CHUNK) {
+    const chunk = uniqueRows.slice(i, i + UPSERT_CHUNK)
     const params: unknown[] = []
     const tuples = chunk.map((r) => {
       const b = params.length
@@ -132,9 +145,15 @@ async function flushDimensionRows(rows: DimRow[]): Promise<number> {
 
 /** Chunked multi-row upsert into ga4_daily_event. */
 async function flushEventRows(rows: EvtRow[]): Promise<number> {
+  const uniqueRows = deduplicateRowsByKey(rows, row => JSON.stringify([
+    row.connection_id,
+    row.property_id,
+    row.date,
+    row.event_name
+  ]))
   let upserted = 0
-  for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
-    const chunk = rows.slice(i, i + UPSERT_CHUNK)
+  for (let i = 0; i < uniqueRows.length; i += UPSERT_CHUNK) {
+    const chunk = uniqueRows.slice(i, i + UPSERT_CHUNK)
     const params: unknown[] = []
     const tuples = chunk.map((r) => {
       const b = params.length
