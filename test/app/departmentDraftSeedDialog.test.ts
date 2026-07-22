@@ -124,4 +124,21 @@ describe('DepartmentDraftSeedDialog', () => {
     app.unmount()
     host.remove()
   })
+
+  it('does not expose an unstructured internal error message', async () => {
+    const onSeed = vi.fn(async () => {
+      throw new Error('database connection detail')
+    })
+    const { app, host } = mountDialog(onSeed)
+    input(host.querySelector<HTMLTextAreaElement>('[data-testid="seed-draft-reason"]')!, 'Approved owner for a bounded draft review.')
+    input(host.querySelector<HTMLInputElement>('[data-testid="seed-draft-confirmation"]')!, 'SEED_DRAFT')
+    await flushUi()
+    host.querySelector<HTMLButtonElement>('[data-testid="seed-draft-submit"]')!.click()
+    await flushUi()
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('The draft pack could not be seeded.')
+    expect(host.textContent).not.toContain('database connection detail')
+    app.unmount()
+    host.remove()
+  })
 })

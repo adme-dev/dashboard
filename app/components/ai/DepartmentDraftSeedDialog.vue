@@ -41,8 +41,8 @@ watch(
 )
 
 function errorMessage(caught: unknown) {
-  const value = caught as { data?: { statusMessage?: string }, message?: string } | null
-  return value?.data?.statusMessage || value?.message || 'The draft pack could not be seeded.'
+  const value = caught as { data?: { statusMessage?: string } } | null
+  return value?.data?.statusMessage || 'The draft pack could not be seeded.'
 }
 
 async function seed() {
