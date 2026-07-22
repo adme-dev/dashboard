@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { buildCampaignAlerts } from '~/utils/campaignAlerts'
+
 // Fetch campaigns from all 8 platforms using the new analytics endpoint
 const now = new Date()
-const sevenDaysAgo = new Date(now)
-sevenDaysAgo.setDate(now.getDate() - 7)
-const startDate = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysAgo.getDate()).padStart(2, '0')}`
+const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
 const apiFetch = $fetch as <T = unknown>(
@@ -72,8 +72,6 @@ const campaigns = computed(() => {
     return analyticsResult.campaigns.map((c: any) => ({
       ...c,
       name: c.campaignName,
-      dailySpend: c.spend,
-      dailyBudget: c.budget,
     }))
   }
 
@@ -84,28 +82,7 @@ const campaigns = computed(() => {
 })
 
 const alerts = computed(() => {
-  const result: any[] = []
-
-  for (const c of campaigns.value) {
-    const dailyBudget = c.dailyBudget || c.budget || 0
-    const dailySpend = c.dailySpend || c.spend || 0
-    const zeroDays = c.zeroDays || 0
-
-    if (dailyBudget > 0) {
-      const ratio = dailySpend / dailyBudget
-      if (ratio > 1.2) {
-        result.push({ ...c, alertType: 'overspend', severity: 'error', message: `${((ratio - 1) * 100).toFixed(0)}% over daily budget` })
-      } else if (ratio < 0.7 && dailySpend > 0) {
-        result.push({ ...c, alertType: 'underspend', severity: 'warning', message: `${((1 - ratio) * 100).toFixed(0)}% under daily budget` })
-      }
-    }
-
-    if (zeroDays >= 2) {
-      result.push({ ...c, alertType: 'inactive', severity: 'error', message: `$0 spend for ${zeroDays} days` })
-    }
-  }
-
-  return result.slice(0, 8)
+  return buildCampaignAlerts(campaigns.value, { now, windowStart: startDate, windowEnd: endDate }).slice(0, 8)
 })
 
 type UiColor = 'error' | 'info' | 'success' | 'primary' | 'secondary' | 'warning' | 'neutral'
@@ -169,8 +146,13 @@ const formatCurrency = (v: number) =>
             <UIcon v-if="alert.platform" :name="platformIcons[alert.platform?.toLowerCase()] || 'i-lucide-globe'" class="w-3 h-3 text-[var(--ui-text-muted)] shrink-0" />
           </div>
           <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">{{ alert.message }}</p>
-          <div v-if="alert.dailySpend !== undefined && alert.dailyBudget" class="text-xs text-[var(--ui-text-muted)] mt-0.5">
-            {{ formatCurrency(alert.dailySpend) }} / {{ formatCurrency(alert.dailyBudget) }} daily
+          <div v-if="alert.spendAmount !== undefined && alert.budgetAmount" class="text-xs text-[var(--ui-text-muted)] mt-0.5">
+            <template v-if="alert.budgetScope === 'campaign_total'">
+              {{ formatCurrency(alert.spendAmount) }} MTD of {{ formatCurrency(alert.budgetAmount) }} campaign total
+            </template>
+            <template v-else>
+              {{ formatCurrency(alert.spendAmount) }} avg/day · {{ formatCurrency(alert.budgetAmount) }} pacing target
+            </template>
           </div>
         </div>
         <UBadge :color="severityColors[alert.severity] || 'neutral'" variant="subtle" size="xs">
