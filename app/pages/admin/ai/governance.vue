@@ -24,6 +24,8 @@ await refresh()
 const cards = computed(() => [
   { label: 'Required packs', value: data.value?.summary.total ?? 0, icon: 'i-lucide-layers-3' },
   { label: 'Owner confirmation', value: data.value?.summary.readyForOwnerConfirmation ?? 0, icon: 'i-lucide-user-check' },
+  { label: 'Seeded drafts', value: data.value?.summary.draftSeeded ?? 0, icon: 'i-lucide-file-check-2' },
+  { label: 'Released', value: data.value?.summary.released ?? 0, icon: 'i-lucide-rocket' },
   { label: 'Blocked', value: data.value?.summary.blocked ?? 0, icon: 'i-lucide-shield-alert' },
   { label: 'Missing departments', value: data.value?.summary.missingDepartments ?? 0, icon: 'i-lucide-building-2' }
 ])
@@ -45,7 +47,7 @@ function errorDescription() {
           Department pack readiness
         </h1>
         <p class="mt-1 max-w-3xl text-sm text-muted">
-          Review department matches, eligible owner candidates, capability coverage, and evaluation fixtures before any pack is seeded.
+          Review department matches, eligible owners, capability coverage, draft seeding, and governed release state.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -73,7 +75,7 @@ function errorDescription() {
       color="info"
       variant="soft"
       icon="i-lucide-shield-check"
-      title="Draft-only control plane"
+      title="Read-only control plane"
       description="This page is read-only. It does not seed, activate, assign pilots, grant permissions, or send notifications. Owner confirmation and evaluation evidence remain mandatory."
     />
 
@@ -112,7 +114,7 @@ function errorDescription() {
         <h2 id="readiness-summary-title" class="sr-only">
           Readiness summary
         </h2>
-        <div class="grid grid-cols-2 gap-3 lg:grid-cols-4" role="status" aria-live="polite">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6" role="status" aria-live="polite">
           <UCard v-for="card in cards" :key="card.label" :ui="{ body: 'p-4' }">
             <div class="flex items-center gap-2 text-muted">
               <UIcon :name="card.icon" class="size-4" />

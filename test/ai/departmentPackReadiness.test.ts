@@ -32,7 +32,9 @@ describe('department assistant pack readiness', () => {
       department(5, { name: 'Operations', slug: 'operations' }),
       department(6, { name: 'Ops', slug: 'ops' })
     ]
-    const queryRows = vi.fn().mockResolvedValue(rows)
+    const queryRows = vi.fn()
+      .mockResolvedValueOnce(rows)
+      .mockResolvedValueOnce([])
     const db: DepartmentPackReadinessDb = { queryRows }
 
     const result = await getDepartmentPackReadiness(db, DEPARTMENT_PACK_BLUEPRINTS, toolMetadata)
@@ -41,7 +43,9 @@ describe('department assistant pack readiness', () => {
       total: 12,
       readyForOwnerConfirmation: 1,
       blocked: 11,
-      missingDepartments: 7
+      missingDepartments: 7,
+      draftSeeded: 0,
+      released: 0
     })
     expect(result.items.find(item => item.key === 'creative')).toMatchObject({
       status: 'ready_for_owner_confirmation',
@@ -60,6 +64,45 @@ describe('department assistant pack readiness', () => {
     expect(sql).toContain('department.is_active = TRUE')
     expect(sql).toContain('department_members')
     expect(sql).toContain('LIMIT 101')
+  })
+
+  it('reports an existing draft from catalog authority instead of claiming it is unseeded', async () => {
+    const queryRows = vi.fn()
+      .mockResolvedValueOnce([
+        department(1, { name: 'Creative', slug: 'creative', manager_id: '20000000-0000-4000-8000-000000000009', manager_name: 'Different Manager', manager_is_active: true, manager_is_member: true })
+      ])
+      .mockResolvedValueOnce([{
+        department_id: '10000000-0000-4000-8000-000000000001',
+        pack_key: 'creative_read_draft',
+        pack_id: '30000000-0000-4000-8000-000000000001',
+        pack_version_id: '30000000-0000-4000-8000-000000000002',
+        pack_release_id: '30000000-0000-4000-8000-000000000003',
+        owner_user_id: '20000000-0000-4000-8000-000000000001',
+        owner_name: 'Confirmed Pack Owner',
+        owner_is_active: true,
+        owner_is_department_member: true,
+        version: 1,
+        release_state: 'draft'
+      }])
+
+    const result = await getDepartmentPackReadiness(
+      { queryRows },
+      DEPARTMENT_PACK_BLUEPRINTS,
+      toolMetadata
+    )
+
+    expect(result.items.find(item => item.key === 'creative')).toMatchObject({
+      status: 'draft_seeded',
+      releaseState: 'draft',
+      ownerCandidate: {
+        id: '20000000-0000-4000-8000-000000000001',
+        name: 'Confirmed Pack Owner',
+        source: 'catalog_owner'
+      }
+    })
+    expect(result.summary).toMatchObject({ draftSeeded: 1, released: 0 })
+    expect(queryRows.mock.calls[1]?.[0]).toContain('ai_capability_packs')
+    expect(queryRows.mock.calls[1]?.[1]).toEqual([DEPARTMENT_PACK_BLUEPRINTS.map(item => item.packKey)])
   })
 
   it('fails closed when the checked-in blueprint manifest is invalid', async () => {
@@ -85,5 +128,31 @@ describe('department assistant pack readiness', () => {
       DEPARTMENT_PACK_BLUEPRINTS,
       toolMetadata
     )).rejects.toMatchObject({ code: 'invalid_department_record', statusCode: 500 })
+  })
+
+  it('rejects malformed catalog authority rows before exposing readiness', async () => {
+    const queryRows = vi.fn()
+      .mockResolvedValueOnce([
+        department(1, { name: 'Creative', slug: 'creative' })
+      ])
+      .mockResolvedValueOnce([{
+        department_id: '10000000-0000-4000-8000-000000000001',
+        pack_key: 'creative_read_draft',
+        pack_id: 'not-a-uuid',
+        pack_version_id: '30000000-0000-4000-8000-000000000002',
+        pack_release_id: '30000000-0000-4000-8000-000000000003',
+        owner_user_id: '20000000-0000-4000-8000-000000000001',
+        owner_name: 'Confirmed Pack Owner',
+        owner_is_active: true,
+        owner_is_department_member: true,
+        version: 1,
+        release_state: 'draft'
+      }])
+
+    await expect(getDepartmentPackReadiness(
+      { queryRows },
+      DEPARTMENT_PACK_BLUEPRINTS,
+      toolMetadata
+    )).rejects.toMatchObject({ code: 'invalid_catalog_record', statusCode: 500 })
   })
 })

@@ -15,7 +15,14 @@ describe('GET /api/admin/ai/governance/readiness', () => {
     vi.clearAllMocks()
     requirePermission.mockResolvedValue({ id: ACTOR_ID, role: 'admin' })
     getReadiness.mockResolvedValue({
-      summary: { total: 12, readyForOwnerConfirmation: 1, blocked: 11, missingDepartments: 7 },
+      summary: {
+        total: 12,
+        readyForOwnerConfirmation: 1,
+        blocked: 11,
+        missingDepartments: 7,
+        draftSeeded: 0,
+        released: 0
+      },
       items: [],
       unmappedDepartments: []
     })

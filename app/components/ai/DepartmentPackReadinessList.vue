@@ -5,11 +5,19 @@ defineProps<{ items: AiDepartmentReadinessItem[] }>()
 
 const statusMeta: Record<AiDepartmentReadinessStatus, { label: string, color: 'info' | 'warning' | 'error' | 'neutral', icon: string }> = {
   ready_for_owner_confirmation: { label: 'Owner confirmation required', color: 'info', icon: 'i-lucide-user-check' },
+  draft_seeded: { label: 'Draft seeded', color: 'info', icon: 'i-lucide-file-check-2' },
+  released: { label: 'Governed release exists', color: 'neutral', icon: 'i-lucide-rocket' },
   missing_department: { label: 'Department missing', color: 'error', icon: 'i-lucide-building-2' },
   ambiguous_department: { label: 'Department match ambiguous', color: 'warning', icon: 'i-lucide-git-compare-arrows' },
   missing_owner: { label: 'Owner missing', color: 'warning', icon: 'i-lucide-user-x' },
   owner_inactive: { label: 'Owner inactive', color: 'error', icon: 'i-lucide-user-x' },
   owner_not_member: { label: 'Owner not a member', color: 'error', icon: 'i-lucide-user-round-x' }
+}
+
+function formatReleaseState(state: AiDepartmentReadinessItem['releaseState']) {
+  return state === 'not_seeded'
+    ? 'Not seeded'
+    : state.replace(/_/g, ' ').replace(/^\w/, character => character.toUpperCase())
 }
 </script>
 
@@ -33,7 +41,7 @@ const statusMeta: Record<AiDepartmentReadinessStatus, { label: string, color: 'i
                 {{ item.name }}
               </h3>
               <UBadge color="neutral" variant="soft">
-                Not seeded
+                {{ formatReleaseState(item.releaseState) }}
               </UBadge>
             </div>
             <p class="mt-1 text-sm text-muted">
