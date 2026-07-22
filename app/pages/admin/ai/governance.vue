@@ -8,6 +8,11 @@ import type {
 
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
+const apiFetch = $fetch as <T>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
 const data = ref<AiDepartmentReadinessResponse | null>(null)
 const pending = ref(false)
 const error = ref<unknown>(null)
@@ -18,7 +23,7 @@ async function refresh() {
   pending.value = true
   error.value = null
   try {
-    data.value = await $fetch<AiDepartmentReadinessResponse>('/api/admin/ai/governance/readiness')
+    data.value = await apiFetch<AiDepartmentReadinessResponse>('/api/admin/ai/governance/readiness')
   } catch (caught) {
     error.value = caught
   } finally {
@@ -49,7 +54,7 @@ function openSeedDialog(item: AiDepartmentReadinessItem) {
 }
 
 async function seedDraft(input: AiDepartmentDraftSeedInput) {
-  const result = await $fetch<AiDepartmentDraftSeedResult>('/api/admin/ai/governance/draft-packs', {
+  const result = await apiFetch<AiDepartmentDraftSeedResult>('/api/admin/ai/governance/draft-packs', {
     method: 'POST',
     body: { ...input, confirmation: 'SEED_DRAFT' }
   })
