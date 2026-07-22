@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assertDepartmentDraftPackSeedBlueprintIntegrity,
   DepartmentDraftPackSeedError,
   seedDepartmentDraftPack,
   type DepartmentDraftPackSeedRepository,
   type DepartmentDraftPackSeedTransaction,
   type ExistingDepartmentDraftPack
 } from '~~/server/utils/ai/governance/departmentDraftPackSeeder'
+import { DEPARTMENT_PACK_BLUEPRINTS } from '~~/server/utils/ai/governance/departmentPackBlueprints'
+import { registry } from '~~/server/utils/ai/tools'
 
 const DEPARTMENT_ID = '10000000-0000-4000-8000-000000000001'
 const OWNER_ID = '20000000-0000-4000-8000-000000000001'
@@ -99,6 +102,19 @@ function request() {
 }
 
 describe('department draft pack seeder', () => {
+  it('fails closed when the checked-in seed manifest would bind an unsafe tool', () => {
+    const invalid = structuredClone(DEPARTMENT_PACK_BLUEPRINTS)
+    invalid[0]!.capabilities[0]!.toolBindings[0]!.toolName = 'unsafe_mutation'
+
+    expect(() => assertDepartmentDraftPackSeedBlueprintIntegrity(invalid, [
+      ...registry.map(tool => ({ name: tool.name, mutates: tool.mutates === true })),
+      { name: 'unsafe_mutation', mutates: true }
+    ])).toThrowError(expect.objectContaining({
+      code: 'blueprint_integrity_error',
+      statusCode: 500
+    }))
+  })
+
   it('atomically creates immutable evaluation material and draft-only releases', async () => {
     const repository = new FakeRepository()
 

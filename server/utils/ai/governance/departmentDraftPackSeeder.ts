@@ -3,11 +3,13 @@ import {
   DEPARTMENT_PACK_BLUEPRINTS,
   REQUIRED_DEPARTMENT_PACK_KEYS,
   normalizeDepartmentLabel,
+  validateDepartmentPackBlueprints,
   type DepartmentCapabilityBlueprint,
   type DepartmentPackBlueprint,
   type RequiredDepartmentPackKey
 } from './departmentPackBlueprints'
 import type { EvaluationCase } from './contracts'
+import { registry } from '../tools'
 
 const UUID = z.string().uuid()
 const SeedRequestSchema = z.object({
@@ -179,6 +181,22 @@ export class DepartmentDraftPackSeedError extends Error {
   }
 }
 
+const seedToolMetadata = registry.map(tool => ({ name: tool.name, mutates: tool.mutates === true }))
+
+export function assertDepartmentDraftPackSeedBlueprintIntegrity(
+  blueprints: DepartmentPackBlueprint[] = DEPARTMENT_PACK_BLUEPRINTS,
+  tools: Array<{ name: string, mutates: boolean }> = seedToolMetadata
+): void {
+  const validation = validateDepartmentPackBlueprints(blueprints, tools)
+  if (!validation.valid) {
+    throw new DepartmentDraftPackSeedError(
+      'blueprint_integrity_error',
+      500,
+      `Department pack blueprint validation failed (${validation.issues[0]?.code ?? 'unknown'}).`
+    )
+  }
+}
+
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
   if (value && typeof value === 'object') {
@@ -252,6 +270,7 @@ export async function seedDepartmentDraftPack(
   input: DepartmentDraftPackSeedRequest,
   repository: DepartmentDraftPackSeedRepository
 ): Promise<DepartmentDraftPackSeedResult> {
+  assertDepartmentDraftPackSeedBlueprintIntegrity()
   const parsed = SeedRequestSchema.safeParse(input)
   if (!parsed.success) {
     throw new DepartmentDraftPackSeedError('invalid_seed_request', 422, 'Invalid department draft-pack seed request.')
