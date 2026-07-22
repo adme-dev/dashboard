@@ -8,6 +8,15 @@ export type AiDepartmentReadinessStatus
     | 'owner_inactive'
     | 'owner_not_member'
 
+export interface AiDepartmentOwnerCandidate {
+  id: string
+  name: string
+  source: 'department_member' | 'primary_department_assignment'
+  membershipRole: 'lead' | 'senior' | 'member' | 'junior' | null
+  isManager: boolean
+  eligible: boolean
+}
+
 export interface AiDepartmentReadinessItem {
   key: string
   packKey: string
@@ -18,7 +27,8 @@ export interface AiDepartmentReadinessItem {
   blockers: string[]
   department: { id: string, name: string, slug: string } | null
   departmentMatches: Array<{ id: string, name: string, slug: string }>
-  ownerCandidate: { id: string, name: string, source: 'department_manager' | 'catalog_owner' } | null
+  ownerCandidate: { id: string, name: string, source: 'department_manager' | 'catalog_owner' | 'department_member' } | null
+  ownerCandidates: AiDepartmentOwnerCandidate[]
   coverage: { capabilities: number, tools: number, evaluationCases: number }
   knownGaps: string[]
 }

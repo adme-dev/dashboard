@@ -18,8 +18,16 @@ const pending = ref(false)
 const result = ref<AiDepartmentDraftSeedResult | null>(null)
 const error = ref<string | null>(null)
 
+const OWNER_RESOLUTION_STATUSES = new Set<AiDepartmentReadinessItem['status']>([
+  'ready_for_owner_confirmation',
+  'missing_owner',
+  'owner_inactive',
+  'owner_not_member'
+])
+
 const canSeed = computed(() => Boolean(
-  props.item?.status === 'ready_for_owner_confirmation'
+  props.item
+  && OWNER_RESOLUTION_STATUSES.has(props.item.status)
   && props.item.department
   && props.item.ownerCandidate
   && reason.value.trim().length >= 10
@@ -95,7 +103,7 @@ async function seed() {
           </div>
           <div class="rounded-lg bg-elevated p-3">
             <dt class="text-xs font-medium text-muted">
-              Confirmed owner
+              Selected owner
             </dt>
             <dd class="mt-1 text-default">
               {{ item.ownerCandidate?.name ?? 'Unavailable' }}

@@ -35,6 +35,7 @@ describe('department assistant pack readiness', () => {
     const queryRows = vi.fn()
       .mockResolvedValueOnce(rows)
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
     const db: DepartmentPackReadinessDb = { queryRows }
 
     const result = await getDepartmentPackReadiness(db, DEPARTMENT_PACK_BLUEPRINTS, toolMetadata)
@@ -66,6 +67,71 @@ describe('department assistant pack readiness', () => {
     expect(sql).toContain('LIMIT 101')
   })
 
+  it('surfaces bounded owner candidates without treating primary assignment as catalog eligibility', async () => {
+    const queryRows = vi.fn()
+      .mockResolvedValueOnce([
+        department(1, { name: 'Marketing', slug: 'marketing' })
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          department_id: '10000000-0000-4000-8000-000000000001',
+          user_id: '20000000-0000-4000-8000-000000000001',
+          user_name: 'Morgan Lead',
+          membership_role: 'lead',
+          is_explicit_member: true,
+          is_primary_assignment: true,
+          is_department_manager: false
+        },
+        {
+          department_id: '10000000-0000-4000-8000-000000000001',
+          user_id: '20000000-0000-4000-8000-000000000002',
+          user_name: 'Taylor Assigned',
+          membership_role: null,
+          is_explicit_member: false,
+          is_primary_assignment: true,
+          is_department_manager: false
+        }
+      ])
+
+    const result = await getDepartmentPackReadiness(
+      { queryRows },
+      DEPARTMENT_PACK_BLUEPRINTS,
+      toolMetadata
+    )
+
+    expect(result.items.find(item => item.key === 'marketing')).toMatchObject({
+      status: 'missing_owner',
+      ownerCandidate: null,
+      ownerCandidates: [
+        {
+          id: '20000000-0000-4000-8000-000000000001',
+          name: 'Morgan Lead',
+          source: 'department_member',
+          membershipRole: 'lead',
+          isManager: false,
+          eligible: true
+        },
+        {
+          id: '20000000-0000-4000-8000-000000000002',
+          name: 'Taylor Assigned',
+          source: 'primary_department_assignment',
+          membershipRole: null,
+          isManager: false,
+          eligible: false
+        }
+      ]
+    })
+    expect(result.summary).toMatchObject({ readyForOwnerConfirmation: 0, blocked: 12 })
+
+    const [candidateSql, candidateParams] = queryRows.mock.calls[2]!
+    expect(candidateParams).toEqual([])
+    expect(candidateSql).toContain('department_members')
+    expect(candidateSql).toContain('member.department_id')
+    expect(candidateSql).toContain('LIMIT 1001')
+    expect(candidateSql).not.toContain('member.email')
+  })
+
   it('reports an existing draft from catalog authority instead of claiming it is unseeded', async () => {
     const queryRows = vi.fn()
       .mockResolvedValueOnce([
@@ -84,6 +150,7 @@ describe('department assistant pack readiness', () => {
         version: 1,
         release_state: 'draft'
       }])
+      .mockResolvedValueOnce([])
 
     const result = await getDepartmentPackReadiness(
       { queryRows },
@@ -130,6 +197,46 @@ describe('department assistant pack readiness', () => {
     )).rejects.toMatchObject({ code: 'invalid_department_record', statusCode: 500 })
   })
 
+  it('bounds and validates owner candidate records before exposing them', async () => {
+    const tooManyCandidates = vi.fn()
+      .mockResolvedValueOnce([department(1, { name: 'Marketing', slug: 'marketing' })])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(Array.from({ length: 1001 }, (_, index) => ({
+        department_id: '10000000-0000-4000-8000-000000000001',
+        user_id: `20000000-0000-4000-8000-${(index + 1).toString().padStart(12, '0')}`,
+        user_name: `Candidate ${index + 1}`,
+        membership_role: 'member',
+        is_explicit_member: true,
+        is_primary_assignment: false,
+        is_department_manager: false
+      })))
+
+    await expect(getDepartmentPackReadiness(
+      { queryRows: tooManyCandidates },
+      DEPARTMENT_PACK_BLUEPRINTS,
+      toolMetadata
+    )).rejects.toMatchObject({ code: 'owner_candidate_limit_exceeded', statusCode: 500 })
+
+    const malformedCandidate = vi.fn()
+      .mockResolvedValueOnce([department(1, { name: 'Marketing', slug: 'marketing' })])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        department_id: '10000000-0000-4000-8000-000000000001',
+        user_id: 'not-a-uuid',
+        user_name: 'Invalid Candidate',
+        membership_role: 'owner',
+        is_explicit_member: true,
+        is_primary_assignment: false,
+        is_department_manager: false
+      }])
+
+    await expect(getDepartmentPackReadiness(
+      { queryRows: malformedCandidate },
+      DEPARTMENT_PACK_BLUEPRINTS,
+      toolMetadata
+    )).rejects.toMatchObject({ code: 'invalid_owner_candidate_record', statusCode: 500 })
+  })
+
   it('rejects malformed catalog authority rows before exposing readiness', async () => {
     const queryRows = vi.fn()
       .mockResolvedValueOnce([
@@ -148,6 +255,7 @@ describe('department assistant pack readiness', () => {
         version: 1,
         release_state: 'draft'
       }])
+      .mockResolvedValueOnce([])
 
     await expect(getDepartmentPackReadiness(
       { queryRows },
