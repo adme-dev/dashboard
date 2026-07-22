@@ -440,7 +440,7 @@ async function processGoogleConnection(
            budget_type = COALESCE($14, media_spend.budget_type),
            synced_at = NOW(), updated_at = NOW()
          WHERE id = $9`,
-        [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, 'daily']
+        [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, campaign.budgetType || null]
       )
     } else {
       // Check for rolling budget from previous month
@@ -455,7 +455,7 @@ async function processGoogleConnection(
            impressions, clicks, conversions, campaign_type, campaign_status, budget_rolling, revenue, end_date, bid_strategy, budget_type, synced_at
          ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, $15, $16, $17, $18, NOW())
          RETURNING id`,
-        [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, 'daily']
+        [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, campaign.budgetType || null]
       )
     }
 

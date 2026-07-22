@@ -93,6 +93,22 @@ describe('updateGoogleCampaignDailyBudget', () => {
     expect((thrown as Error).message).toBe('Google Ads budget update rejected: FIELD_NOT_FOUND at operations[0].updateMask — The field mask is invalid.')
     expect((thrown as Error).message).not.toContain('secret')
   })
+
+  it('refuses daily-budget writes for custom-period campaign budgets before mutation', async () => {
+    ofetchMock.mockResolvedValueOnce([{ results: [{
+      campaignBudget: {
+        resourceName: 'customers/123/campaignBudgets/9',
+        period: 'CUSTOM_PERIOD',
+        totalAmountMicros: '1000000000',
+      },
+    }] }])
+
+    await expect(updateGoogleCampaignDailyBudget({
+      customerId: '123', campaignId: '555', dailyMajor: 98.3,
+      token: 'tok', developerToken: 'dev', loginCustomerId: '5250473322',
+    })).rejects.toThrow('custom-period total budget')
+    expect(ofetchMock).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('getCampaignSpendById', () => {

@@ -29,6 +29,7 @@ export default eventHandler(async (event) => {
     connection_id: string | null
     account_id: string | null
     period: string | null
+    budget_type: string | null
     synced_at: string | null
   }>(
     `SELECT ms.id::text,
@@ -39,6 +40,7 @@ export default eventHandler(async (event) => {
             ms.connection_id::text,
             sc.account_id,
             ms.period,
+            ms.budget_type,
             ms.synced_at::text
      FROM media_spend ms
      LEFT JOIN social_connections sc ON sc.id = ms.connection_id
@@ -47,6 +49,12 @@ export default eventHandler(async (event) => {
   )
   if (!spend) {
     throw createError({ statusCode: 404, statusMessage: 'Spend record not found' })
+  }
+  if (spend.budget_type === 'lifetime') {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Campaign uses a lifetime or custom-period total budget; daily-budget actions are not supported',
+    })
   }
 
   const budgetIdentity = buildCampaignBudgetIdentity({
