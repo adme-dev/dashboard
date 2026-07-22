@@ -1,5 +1,7 @@
 # PRD: XeroFlow Multi-Tenancy
 
+> **Superseded (2026-07-22):** The product strategy and deployment model in this document — shared single deployment, database-per-tenant as sufficient isolation, small-file-count conversion, self-service signup — are superseded by the [XeroFlow Enterprise Platform PRD](prd/xeroflow-enterprise-platform-prd.md) (v0.2) where they conflict. This document remains valuable as an implementation inventory of tenant-coupling points (request-scoped DB routing, cache contamination, R2/KV/Queue/DO/Vectorize isolation, OAuth/webhook routing, hard-coded ADME behavior, seed classification). Do not implement from this document's plan.
+
 ## Product Vision
 
 Transform XeroFlow from a single-agency internal tool into a multi-tenant SaaS platform where any digital marketing agency can sign up, provision their own workspace, and operate with complete data isolation.
