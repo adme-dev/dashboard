@@ -254,7 +254,7 @@
             </div>
             <h3 class="text-[22px] font-[450] text-white tracking-[-0.02em] mb-3">Launch your next campaign</h3>
             <p class="text-[15px] text-white/60 mb-6 max-w-[400px] mx-auto">Design in Banner Studio, launch in Bulk Ad Launch. Your entire creative-to-live workflow in one platform.</p>
-            <NuxtLink to="/auth/login" class="inline-flex items-center gap-2 px-6 py-2.5 bg-white text-[#121317] text-[15px] font-medium rounded-full hover:bg-white/90 transition-colors">
+            <NuxtLink to="/contact" class="inline-flex items-center gap-2 px-6 py-2.5 bg-white text-[#121317] text-[15px] font-medium rounded-full hover:bg-white/90 transition-colors">
               Get Started
             </NuxtLink>
           </div>

@@ -23,7 +23,7 @@
 
         <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
           <NuxtLink
-            to="/auth/login"
+            to="/contact"
             class="inline-flex items-center gap-2.5 px-7 py-3.5 bg-white text-[#121317] text-[17px] font-medium rounded-full hover:bg-white/90 transition-colors"
           >
             Get Started Free
@@ -327,7 +327,7 @@
               Join agencies that ship faster, collaborate better, and spend less time on operations.
             </p>
             <NuxtLink
-              to="/auth/login"
+              to="/contact"
               class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-white/90 transition-colors"
             >
               Get Started Free
