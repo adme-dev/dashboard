@@ -45,6 +45,25 @@ interface CatalogPackReadinessRow {
   release_state: 'draft' | 'pilot' | 'active' | 'suspended' | 'retired'
 }
 
+interface OwnerCandidateRow {
+  department_id: string
+  user_id: string
+  user_name: string
+  membership_role: 'lead' | 'senior' | 'member' | 'junior' | null
+  is_explicit_member: boolean
+  is_primary_assignment: boolean
+  is_department_manager: boolean
+}
+
+export interface DepartmentPackOwnerCandidate {
+  id: string
+  name: string
+  source: 'department_member' | 'primary_department_assignment'
+  membershipRole: OwnerCandidateRow['membership_role']
+  isManager: boolean
+  eligible: boolean
+}
+
 export interface DepartmentPackReadinessItem {
   key: DepartmentPackBlueprint['key']
   packKey: string
@@ -56,6 +75,7 @@ export interface DepartmentPackReadinessItem {
   department: { id: string, name: string, slug: string } | null
   departmentMatches: Array<{ id: string, name: string, slug: string }>
   ownerCandidate: { id: string, name: string, source: 'department_manager' | 'catalog_owner' } | null
+  ownerCandidates: DepartmentPackOwnerCandidate[]
   coverage: { capabilities: number, tools: number, evaluationCases: number }
   knownGaps: string[]
 }
@@ -139,6 +159,66 @@ WHERE pack.pack_key = ANY($1::text[])
   AND department.is_active = TRUE
 ORDER BY pack.pack_key, pack.department_id
 LIMIT 101
+`
+
+const OWNER_CANDIDATES_SQL = `
+WITH candidate_links AS (
+  SELECT
+    membership.department_id,
+    membership.team_member_id,
+    membership.role AS membership_role,
+    TRUE AS is_explicit_member,
+    membership.is_primary AS is_primary_assignment
+  FROM department_members membership
+
+  UNION ALL
+
+  SELECT
+    member.department_id,
+    member.id AS team_member_id,
+    NULL::text AS membership_role,
+    FALSE AS is_explicit_member,
+    TRUE AS is_primary_assignment
+  FROM team_members member
+  WHERE member.department_id IS NOT NULL
+), candidate_members AS (
+  SELECT
+    link.department_id,
+    link.team_member_id,
+    MAX(link.membership_role) FILTER (WHERE link.is_explicit_member) AS membership_role,
+    BOOL_OR(link.is_explicit_member) AS is_explicit_member,
+    BOOL_OR(link.is_primary_assignment) AS is_primary_assignment
+  FROM candidate_links link
+  GROUP BY link.department_id, link.team_member_id
+)
+SELECT
+  department.id AS department_id,
+  member.id AS user_id,
+  member.name AS user_name,
+  candidate.membership_role,
+  candidate.is_explicit_member,
+  candidate.is_primary_assignment,
+  (department.manager_id = member.id) AS is_department_manager
+FROM candidate_members candidate
+JOIN departments department ON department.id = candidate.department_id
+JOIN team_members member ON member.id = candidate.team_member_id
+WHERE department.department_kind = 'organizational'
+  AND department.is_active = TRUE
+  AND member.is_active = TRUE
+ORDER BY
+  department.id,
+  (department.manager_id = member.id) DESC,
+  candidate.is_explicit_member DESC,
+  CASE candidate.membership_role
+    WHEN 'lead' THEN 0
+    WHEN 'senior' THEN 1
+    WHEN 'member' THEN 2
+    WHEN 'junior' THEN 3
+    ELSE 4
+  END,
+  member.name,
+  member.id
+LIMIT 1001
 `
 
 function matchesBlueprint(row: DepartmentReadinessRow, blueprint: DepartmentPackBlueprint): boolean {
@@ -281,6 +361,29 @@ export async function getDepartmentPackReadiness(
       throw new DepartmentPackReadinessError('invalid_catalog_record', 500, 'Invalid governed pack readiness record.')
     }
   }
+  const ownerCandidateRows = await db.queryRows<OwnerCandidateRow>(OWNER_CANDIDATES_SQL, [])
+  if (ownerCandidateRows.length > 1000) {
+    throw new DepartmentPackReadinessError('owner_candidate_limit_exceeded', 500, 'Department readiness supports at most 1000 owner candidates.')
+  }
+  const candidateKeys = new Set<string>()
+  const membershipRoles = new Set<NonNullable<OwnerCandidateRow['membership_role']>>(['lead', 'senior', 'member', 'junior'])
+  for (const row of ownerCandidateRows) {
+    const candidateKey = `${row.department_id}:${row.user_id}`
+    if (
+      !UUID_PATTERN.test(row.department_id)
+      || !seenIds.has(row.department_id)
+      || !UUID_PATTERN.test(row.user_id)
+      || !row.user_name?.trim()
+      || (row.membership_role !== null && !membershipRoles.has(row.membership_role))
+      || typeof row.is_explicit_member !== 'boolean'
+      || typeof row.is_primary_assignment !== 'boolean'
+      || typeof row.is_department_manager !== 'boolean'
+      || candidateKeys.has(candidateKey)
+    ) {
+      throw new DepartmentPackReadinessError('invalid_owner_candidate_record', 500, 'Invalid department owner candidate record.')
+    }
+    candidateKeys.add(candidateKey)
+  }
 
   const matchedDepartmentIds = new Set<string>()
   const items = blueprints.map((blueprint): DepartmentPackReadinessItem => {
@@ -296,6 +399,18 @@ export async function getDepartmentPackReadiness(
     }
     const readiness = seeded ? seededStatus(seeded) : statusFor(matches)
     const departmentMatches = matches.map(row => ({ id: row.id, name: row.name, slug: row.slug }))
+    const ownerCandidates = matches.length === 1
+      ? ownerCandidateRows
+          .filter(row => row.department_id === matches[0]!.id)
+          .map((row): DepartmentPackOwnerCandidate => ({
+            id: row.user_id,
+            name: row.user_name.trim(),
+            source: row.is_explicit_member ? 'department_member' : 'primary_department_assignment',
+            membershipRole: row.membership_role,
+            isManager: row.is_department_manager,
+            eligible: row.is_explicit_member
+          }))
+      : []
     const boundTools = new Set(blueprint.capabilities.flatMap(item => item.toolBindings.map(binding => binding.toolName)))
     return {
       key: blueprint.key,
@@ -308,6 +423,7 @@ export async function getDepartmentPackReadiness(
       department: matches.length === 1 ? departmentMatches[0]! : null,
       departmentMatches,
       ownerCandidate: readiness.ownerCandidate,
+      ownerCandidates,
       coverage: {
         capabilities: blueprint.capabilities.length,
         tools: boundTools.size,
