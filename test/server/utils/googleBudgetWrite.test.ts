@@ -59,6 +59,40 @@ describe('updateGoogleCampaignDailyBudget', () => {
     })).rejects.toThrow()
     expect(ofetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('surfaces structured Google mutation diagnostics without request credentials', async () => {
+    const invalidArgument: any = new Error('400 Bad Request')
+    invalidArgument.status = 400
+    invalidArgument.data = {
+      error: {
+        message: 'Request contains an invalid argument.',
+        details: [{
+          errors: [{
+            errorCode: { fieldMaskError: 'FIELD_NOT_FOUND' },
+            message: 'The field mask is invalid.',
+            location: { fieldPathElements: [{ fieldName: 'operations', index: 0 }, { fieldName: 'updateMask' }] },
+          }],
+        }],
+      },
+    }
+    ofetchMock
+      .mockResolvedValueOnce([{ results: [{ campaignBudget: { resourceName: 'customers/123/campaignBudgets/9' } }] }])
+      .mockRejectedValueOnce(invalidArgument)
+
+    let thrown: unknown
+    try {
+      await updateGoogleCampaignDailyBudget({
+        customerId: '123', campaignId: '555', dailyMajor: 90,
+        token: 'secret-access-token', developerToken: 'secret-developer-token', loginCustomerId: '5250473322',
+      })
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(Error)
+    expect((thrown as Error).message).toBe('Google Ads budget update rejected: FIELD_NOT_FOUND at operations[0].updateMask — The field mask is invalid.')
+    expect((thrown as Error).message).not.toContain('secret')
+  })
 })
 
 describe('getCampaignSpendById', () => {
