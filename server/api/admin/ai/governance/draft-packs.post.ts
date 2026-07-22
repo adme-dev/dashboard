@@ -7,7 +7,7 @@ import {
   type H3Event
 } from 'h3'
 import { z } from 'zod'
-import { requirePermission, type User } from '~~/server/utils/auth'
+import { requirePermission, requireWriteAccess, type User } from '~~/server/utils/auth'
 import {
   REQUIRED_DEPARTMENT_PACK_KEYS
 } from '~~/server/utils/ai/governance/departmentPackBlueprints'
@@ -29,6 +29,7 @@ const BodySchema = z.object({
 
 interface DepartmentDraftPackSeedPostDependencies {
   requirePermission(event: H3Event, permission: 'ADMIN'): Promise<User>
+  requireWriteAccess(event: H3Event): Promise<User>
   readBody(event: H3Event): Promise<unknown>
   setResponseHeader(event: H3Event, name: string, value: string): void
   setResponseStatus(event: H3Event, statusCode: number): void
@@ -37,6 +38,7 @@ interface DepartmentDraftPackSeedPostDependencies {
 
 const defaultDependencies: DepartmentDraftPackSeedPostDependencies = {
   requirePermission,
+  requireWriteAccess,
   readBody,
   setResponseHeader,
   setResponseStatus,
@@ -48,6 +50,10 @@ export function createDepartmentDraftPackSeedPostHandler(
 ) {
   return async (event: H3Event) => {
     const actor = await dependencies.requirePermission(event, 'ADMIN')
+    const writableActor = await dependencies.requireWriteAccess(event)
+    if (actor.id !== writableActor.id) {
+      throw createError({ statusCode: 403, statusMessage: 'Forbidden - Session identity changed' })
+    }
     const parsed = BodySchema.safeParse(await dependencies.readBody(event))
     if (!parsed.success) {
       throw createError({

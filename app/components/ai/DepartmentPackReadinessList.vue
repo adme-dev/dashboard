@@ -2,6 +2,7 @@
 import type { AiDepartmentReadinessItem, AiDepartmentReadinessStatus } from '~/types/aiGovernance'
 
 defineProps<{ items: AiDepartmentReadinessItem[] }>()
+const emit = defineEmits<{ seed: [item: AiDepartmentReadinessItem] }>()
 
 const statusMeta: Record<AiDepartmentReadinessStatus, { label: string, color: 'info' | 'warning' | 'error' | 'neutral', icon: string }> = {
   ready_for_owner_confirmation: { label: 'Owner confirmation required', color: 'info', icon: 'i-lucide-user-check' },
@@ -100,6 +101,18 @@ function formatReleaseState(state: AiDepartmentReadinessItem['releaseState']) {
             </li>
           </ul>
         </details>
+
+        <div v-if="item.status === 'ready_for_owner_confirmation' && item.department && item.ownerCandidate" class="flex justify-end border-t border-default pt-4">
+          <UButton
+            icon="i-lucide-user-check"
+            color="warning"
+            variant="soft"
+            :data-testid="`open-seed-${item.key}`"
+            @click="emit('seed', item)"
+          >
+            Confirm owner and seed draft
+          </UButton>
+        </div>
       </div>
     </UCard>
   </section>

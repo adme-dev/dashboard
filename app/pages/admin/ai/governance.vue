@@ -1,17 +1,29 @@
 <script setup lang="ts">
-import type { AiDepartmentReadinessResponse } from '~/types/aiGovernance'
+import type {
+  AiDepartmentDraftSeedInput,
+  AiDepartmentDraftSeedResult,
+  AiDepartmentReadinessItem,
+  AiDepartmentReadinessResponse
+} from '~/types/aiGovernance'
 
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+
+const apiFetch = $fetch as <T>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
 
 const data = ref<AiDepartmentReadinessResponse | null>(null)
 const pending = ref(false)
 const error = ref<unknown>(null)
+const seedOpen = ref(false)
+const selectedSeedItem = ref<AiDepartmentReadinessItem | null>(null)
 
 async function refresh() {
   pending.value = true
   error.value = null
   try {
-    data.value = await $fetch<AiDepartmentReadinessResponse>('/api/admin/ai/governance/readiness')
+    data.value = await apiFetch<AiDepartmentReadinessResponse>('/api/admin/ai/governance/readiness')
   } catch (caught) {
     error.value = caught
   } finally {
@@ -33,6 +45,21 @@ const cards = computed(() => [
 function errorDescription() {
   const value = error.value as { data?: { statusMessage?: string } } | null
   return value?.data?.statusMessage ?? 'The governance readiness service could not be loaded.'
+}
+
+function openSeedDialog(item: AiDepartmentReadinessItem) {
+  if (item.status !== 'ready_for_owner_confirmation' || !item.department || !item.ownerCandidate) return
+  selectedSeedItem.value = item
+  seedOpen.value = true
+}
+
+async function seedDraft(input: AiDepartmentDraftSeedInput) {
+  const result = await apiFetch<AiDepartmentDraftSeedResult>('/api/admin/ai/governance/draft-packs', {
+    method: 'POST',
+    body: { ...input, confirmation: 'SEED_DRAFT' }
+  })
+  await refresh()
+  return result
 }
 </script>
 
@@ -75,8 +102,8 @@ function errorDescription() {
       color="info"
       variant="soft"
       icon="i-lucide-shield-check"
-      title="Read-only control plane"
-      description="This page is read-only. It does not seed, activate, assign pilots, grant permissions, or send notifications. Owner confirmation and evaluation evidence remain mandatory."
+      title="Guarded draft control plane"
+      description="Readiness is read-only by default. A confirmed admin may seed one dormant draft at a time; activation, pilot assignment, AI execution, permission changes, and notifications remain unavailable here."
     />
 
     <div
@@ -136,7 +163,13 @@ function errorDescription() {
         :description="data.unmappedDepartments.map(item => item.name).join(', ')"
       />
 
-      <AiDepartmentPackReadinessList :items="data.items" />
+      <AiDepartmentPackReadinessList :items="data.items" @seed="openSeedDialog" />
     </template>
+
+    <AiDepartmentDraftSeedDialog
+      v-model:open="seedOpen"
+      :item="selectedSeedItem"
+      :on-seed="seedDraft"
+    />
   </div>
 </template>

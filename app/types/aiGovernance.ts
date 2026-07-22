@@ -35,3 +35,17 @@ export interface AiDepartmentReadinessResponse {
   items: AiDepartmentReadinessItem[]
   unmappedDepartments: Array<{ id: string, name: string, slug: string }>
 }
+
+export interface AiDepartmentDraftSeedInput {
+  blueprintKey: string
+  departmentId: string
+  ownerUserId: string
+  reason: string
+}
+
+export interface AiDepartmentDraftSeedResult {
+  outcome: 'created' | 'already_exists'
+  releaseState: 'draft'
+  capabilityCount?: number
+  evaluationCaseCount?: number
+}
