@@ -43,6 +43,7 @@ const item: AiDepartmentReadinessItem = {
   department: { id: '10000000-0000-4000-8000-000000000001', name: 'Creative', slug: 'creative' },
   departmentMatches: [],
   ownerCandidate: { id: '20000000-0000-4000-8000-000000000001', name: 'Casey Owner', source: 'department_manager' },
+  ownerCandidates: [],
   coverage: { capabilities: 3, tools: 4, evaluationCases: 3 },
   knownGaps: []
 }
@@ -71,6 +72,40 @@ function mountDialog(onSeed = vi.fn(async () => ({ outcome: 'created' as const, 
 }
 
 describe('DepartmentDraftSeedDialog', () => {
+  it('accepts an explicitly selected active department member for a missing-manager pack', async () => {
+    const selectedMemberItem: AiDepartmentReadinessItem = {
+      ...item,
+      status: 'missing_owner',
+      ownerCandidate: {
+        id: '20000000-0000-4000-8000-000000000002',
+        name: 'Morgan Member',
+        source: 'department_member'
+      }
+    }
+    const onSeed = vi.fn(async () => ({ outcome: 'created' as const, releaseState: 'draft' as const }))
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp({
+      render: () => h(DepartmentDraftSeedDialog, { open: true, item: selectedMemberItem, onSeed })
+    })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    app.mount(host)
+
+    input(host.querySelector<HTMLTextAreaElement>('[data-testid="seed-draft-reason"]')!, 'Explicitly approved active department member.')
+    input(host.querySelector<HTMLInputElement>('[data-testid="seed-draft-confirmation"]')!, 'SEED_DRAFT')
+    await flushUi()
+
+    expect(host.querySelector<HTMLButtonElement>('[data-testid="seed-draft-submit"]')?.disabled).toBe(false)
+    host.querySelector<HTMLButtonElement>('[data-testid="seed-draft-submit"]')!.click()
+    await flushUi()
+    expect(onSeed).toHaveBeenCalledWith(expect.objectContaining({
+      ownerUserId: '20000000-0000-4000-8000-000000000002'
+    }))
+
+    app.unmount()
+    host.remove()
+  })
+
   it('requires a reason and the exact typed confirmation before enabling the write', async () => {
     const { app, host, onSeed } = mountDialog()
     const submit = host.querySelector<HTMLButtonElement>('[data-testid="seed-draft-submit"]')!

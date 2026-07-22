@@ -1,8 +1,21 @@
 <script setup lang="ts">
-import type { AiDepartmentReadinessItem, AiDepartmentReadinessStatus } from '~/types/aiGovernance'
+import type {
+  AiDepartmentOwnerCandidate,
+  AiDepartmentReadinessItem,
+  AiDepartmentReadinessStatus
+} from '~/types/aiGovernance'
 
 defineProps<{ items: AiDepartmentReadinessItem[] }>()
-const emit = defineEmits<{ seed: [item: AiDepartmentReadinessItem] }>()
+const emit = defineEmits<{
+  seed: [item: AiDepartmentReadinessItem, candidate?: AiDepartmentOwnerCandidate]
+}>()
+
+const OWNER_RESOLUTION_STATUSES = new Set<AiDepartmentReadinessStatus>([
+  'ready_for_owner_confirmation',
+  'missing_owner',
+  'owner_inactive',
+  'owner_not_member'
+])
 
 const statusMeta: Record<AiDepartmentReadinessStatus, { label: string, color: 'info' | 'warning' | 'error' | 'neutral', icon: string }> = {
   ready_for_owner_confirmation: { label: 'Owner confirmation required', color: 'info', icon: 'i-lucide-user-check' },
@@ -19,6 +32,24 @@ function formatReleaseState(state: AiDepartmentReadinessItem['releaseState']) {
   return state === 'not_seeded'
     ? 'Not seeded'
     : state.replace(/_/g, ' ').replace(/^\w/, character => character.toUpperCase())
+}
+
+function canNominate(item: AiDepartmentReadinessItem) {
+  return item.releaseState === 'not_seeded'
+    && Boolean(item.department)
+    && OWNER_RESOLUTION_STATUSES.has(item.status)
+}
+
+function candidateRole(candidate: AiDepartmentOwnerCandidate) {
+  if (candidate.isManager) return 'Department manager'
+  if (candidate.membershipRole) {
+    return candidate.membershipRole.replace(/^\w/, character => character.toUpperCase())
+  }
+  return 'Primary assignment only'
+}
+
+function candidateIsEligible(candidate: AiDepartmentOwnerCandidate) {
+  return candidate.eligible && candidate.source === 'department_member'
 }
 </script>
 
@@ -66,10 +97,10 @@ function formatReleaseState(state: AiDepartmentReadinessItem['releaseState']) {
           </div>
           <div class="rounded-lg bg-elevated p-3">
             <dt class="text-xs font-medium text-muted">
-              Owner candidate
+              Proposed owner
             </dt>
             <dd class="mt-1 text-default">
-              {{ item.ownerCandidate?.name ?? 'Not eligible yet' }}
+              {{ item.ownerCandidate?.name ?? (item.ownerCandidates.some(candidateIsEligible) ? 'Choose below' : 'Not eligible yet') }}
             </dd>
           </div>
         </dl>
@@ -91,6 +122,54 @@ function formatReleaseState(state: AiDepartmentReadinessItem['releaseState']) {
             <UIcon name="i-lucide-shield-alert" class="mt-0.5 size-4 shrink-0" /><span>{{ blocker }}</span>
           </li>
         </ul>
+
+        <div
+          v-if="item.releaseState === 'not_seeded' && item.ownerCandidates.length"
+          class="space-y-2 rounded-lg border border-default p-3"
+        >
+          <div>
+            <p class="text-xs font-medium text-default">
+              Active department-linked people
+            </p>
+            <p class="mt-0.5 text-xs text-muted">
+              Choosing a person opens the existing confirmation step; it does not assign or notify them by itself.
+            </p>
+          </div>
+          <ul class="divide-y divide-default" aria-label="Eligible department owner candidates">
+            <li
+              v-for="candidate in item.ownerCandidates"
+              :key="candidate.id"
+              class="flex flex-col gap-2 py-2 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div class="min-w-0">
+                <p class="truncate text-sm font-medium text-default">
+                  {{ candidate.name }}
+                </p>
+                <p class="text-xs text-muted">
+                  {{ candidateRole(candidate) }}
+                </p>
+              </div>
+              <UButton
+                v-if="candidateIsEligible(candidate) && canNominate(item) && candidate.id !== item.ownerCandidate?.id"
+                size="xs"
+                color="warning"
+                variant="soft"
+                icon="i-lucide-user-check"
+                :data-testid="`choose-owner-${item.key}-${candidate.id}`"
+                :aria-label="`Use ${candidate.name} as owner for ${item.name}`"
+                @click="emit('seed', item, candidate)"
+              >
+                Use as owner
+              </UButton>
+              <UBadge v-else-if="!candidateIsEligible(candidate)" color="warning" variant="outline">
+                Membership required
+              </UBadge>
+              <UBadge v-else color="neutral" variant="outline">
+                Proposed owner
+              </UBadge>
+            </li>
+          </ul>
+        </div>
         <details v-if="item.knownGaps.length" class="text-sm">
           <summary class="cursor-pointer font-medium text-muted">
             Known gaps

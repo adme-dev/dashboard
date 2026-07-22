@@ -2,6 +2,7 @@
 import type {
   AiDepartmentDraftSeedInput,
   AiDepartmentDraftSeedResult,
+  AiDepartmentOwnerCandidate,
   AiDepartmentReadinessItem,
   AiDepartmentReadinessResponse
 } from '~/types/aiGovernance'
@@ -47,9 +48,14 @@ function errorDescription() {
   return value?.data?.statusMessage ?? 'The governance readiness service could not be loaded.'
 }
 
-function openSeedDialog(item: AiDepartmentReadinessItem) {
-  if (item.status !== 'ready_for_owner_confirmation' || !item.department || !item.ownerCandidate) return
-  selectedSeedItem.value = item
+function openSeedDialog(item: AiDepartmentReadinessItem, candidate?: AiDepartmentOwnerCandidate) {
+  if (!item.department) return
+  if (candidate && (!candidate.eligible || candidate.source !== 'department_member')) return
+  const ownerCandidate = candidate
+    ? { id: candidate.id, name: candidate.name, source: 'department_member' as const }
+    : item.ownerCandidate
+  if (!ownerCandidate || (!candidate && item.status !== 'ready_for_owner_confirmation')) return
+  selectedSeedItem.value = { ...item, ownerCandidate }
   seedOpen.value = true
 }
 
