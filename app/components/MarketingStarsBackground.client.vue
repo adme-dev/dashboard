@@ -1,15 +1,20 @@
 <template>
-  <div ref="containerRef" class="absolute inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true" />
+  <div
+    ref="containerRef"
+    :class="fullscreen ? 'fixed' : 'absolute'"
+    class="inset-0 z-0 overflow-hidden pointer-events-none"
+    aria-hidden="true"
+  />
 </template>
 
 <script setup lang="ts">
 // Stars-only variant of AiTrainingScene.client.vue: the drifting particle
 // field without the shader cone, constellation lines or scroll choreography.
-// Scoped to its container (not the viewport) so it can sit inside a dark
-// hero section on pages that are light further down.
+// Container-scoped by default (dark hero on an otherwise light page); pass
+// `fullscreen` on always-dark pages to pin it behind the whole viewport.
 import * as THREE from 'three'
 
-const props = withDefaults(defineProps<{ count?: number }>(), { count: 1400 })
+const props = withDefaults(defineProps<{ count?: number, fullscreen?: boolean }>(), { count: 1400, fullscreen: false })
 
 const containerRef = ref<HTMLDivElement>()
 
@@ -22,6 +27,18 @@ let resizeObserver: ResizeObserver | null = null
 let reduceMotion = false
 
 const mouse = { x: 0, y: 0 }
+
+// Scroll-driven camera dolly: scrolling the page flies the camera forward
+// through the field so near stars sweep past faster than far ones.
+const CAMERA_BASE_Z = 5
+const DOLLY_RANGE = 3.5
+let scrollTarget = 0
+let scrollCurrent = 0
+
+function onScroll() {
+  const max = document.documentElement.scrollHeight - window.innerHeight
+  scrollTarget = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0
+}
 
 function createStarTexture(): THREE.Texture {
   const canvas = document.createElement('canvas')
@@ -143,6 +160,14 @@ function createParticles() {
 function animate(timestamp: number) {
   if (!renderer || !scene || !camera) return
 
+  if (!reduceMotion) {
+    scrollCurrent += (scrollTarget - scrollCurrent) * 0.06
+    camera.position.z = CAMERA_BASE_Z - scrollCurrent * DOLLY_RANGE
+    camera.position.x = Math.sin(scrollCurrent * Math.PI) * 0.4
+    camera.position.y = scrollCurrent * -0.3
+    camera.lookAt(0, 0, 0)
+  }
+
   if (particleSystem && !reduceMotion) {
     const positions = particleSystem.geometry.attributes.position.array as Float32Array
     const velocities = particleSystem.geometry.attributes.velocity.array as Float32Array
@@ -205,12 +230,15 @@ onMounted(async () => {
   resizeObserver = new ResizeObserver(onResize)
   if (containerRef.value) resizeObserver.observe(containerRef.value)
   window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('scroll', onScroll, { passive: true })
+  onScroll()
 })
 
 onUnmounted(() => {
   if (animationId) cancelAnimationFrame(animationId)
   resizeObserver?.disconnect()
   window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('scroll', onScroll)
 
   if (renderer) {
     renderer.dispose()
