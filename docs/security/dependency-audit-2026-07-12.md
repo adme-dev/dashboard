@@ -1,5 +1,20 @@
 # Dependency audit review — 2026-07-12
 
+## Re-review — 2026-07-22
+
+The governed-assistant release re-ran the production audit after new upstream advisories were published. The lockfile now pins compatible patched releases for the high-severity paths used by Cloudflare Think and the Nuxt build:
+
+- `fast-uri` `3.1.4` and `4.1.1`;
+- `fast-xml-parser` `5.10.1`;
+- `svgo` `4.0.2`;
+- `@anthropic-ai/sdk` `0.91.1`.
+
+The review also removed blanket `@opentelemetry/core` and `@opentelemetry/sdk-node` overrides from `pnpm-workspace.yaml`. Those ranges would force incompatible major versions beneath the legacy Zero client and contradicted the compatibility-migration decision documented below.
+
+`pnpm audit --prod` now reports zero critical findings and two unique high findings. Both high findings are confined to the existing `@rocicorp/zero` server/telemetry path: `@opentelemetry/sdk-node` and `@opentelemetry/propagator-jaeger`. The reachability analysis, private-network requirement, and 2026-08-12 review deadline below apply to both. This exception does not authorize exposing `zero-cache` to untrusted traffic.
+
+Three unique moderate findings remain. The `@hono/node-server` finding is reached through Cloudflare Think's MCP SDK, but the affected Node server adapter is not started by the Cloudflare Pages/Workers release. The MCP SDK currently requires the `1.x` adapter while the advisory's published patch is `2.0.5`; forcing that major transitively was rejected. `@opentelemetry/core` is covered by the Zero exception, and `insane` is reached through the email editor rather than the assistant runtime. All three remain tracked for compatible parent upgrades.
+
 ## Release result
 
 - Critical findings reduced from 5 to 0.
