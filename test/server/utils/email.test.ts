@@ -22,20 +22,32 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 })
 
 import { getAppUrl } from '../../../server/utils/appUrl'
-import { setCfBindings, getCachedBinding, isEmailConfigured } from '../../../server/utils/email'
+import {
+  getCachedBinding,
+  isEmailConfigured,
+  sendTaskAssignedEmail,
+  setCfBindings
+} from '../../../server/utils/email'
 
 const ORIGINAL_RESEND = process.env.RESEND_API_KEY
 const ORIGINAL_APP_URL = process.env.APP_URL
+const ORIGINAL_NOTIFICATION_PAUSE = process.env.USER_MEMBER_NOTIFICATIONS_DISABLED
 
 beforeEach(() => {
   delete process.env.RESEND_API_KEY
   delete process.env.APP_URL
+  delete process.env.USER_MEMBER_NOTIFICATIONS_DISABLED
   setCfBindings({})  // clear cache
 })
 
 afterEach(() => {
   if (ORIGINAL_RESEND) process.env.RESEND_API_KEY = ORIGINAL_RESEND
   if (ORIGINAL_APP_URL) process.env.APP_URL = ORIGINAL_APP_URL
+  if (ORIGINAL_NOTIFICATION_PAUSE) {
+    process.env.USER_MEMBER_NOTIFICATIONS_DISABLED = ORIGINAL_NOTIFICATION_PAUSE
+  } else {
+    delete process.env.USER_MEMBER_NOTIFICATIONS_DISABLED
+  }
 })
 
 describe('email binding resolution', () => {
@@ -86,6 +98,20 @@ describe('email binding resolution', () => {
   it('non-string binding values are ignored (would-be type coercion bugs)', () => {
     setCfBindings({ RESEND_API_KEY: 42 as any })
     expect(getCachedBinding('RESEND_API_KEY')).toBeUndefined()
+    expect(isEmailConfigured()).toBe(false)
+  })
+
+  it('suppresses internal member notification email before resolving Resend', async () => {
+    process.env.USER_MEMBER_NOTIFICATIONS_DISABLED = 'true'
+
+    await expect(sendTaskAssignedEmail({
+      to: 'member@example.com',
+      name: 'Member',
+      taskTitle: 'Private task',
+      assignerName: 'Manager',
+      taskUrl: 'https://app.xeroflow.io/agency/tasks/1'
+    })).resolves.toBeUndefined()
+
     expect(isEmailConfigured()).toBe(false)
   })
 })

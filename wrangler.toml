@@ -122,6 +122,11 @@ service = "agency-workflows"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 EMAIL_FROM = "notification@adme.net.au"
+# Emergency operational pause for all internal user/member notification
+# delivery. This supersedes personal preferences and blocks in-app rows,
+# browser push, and notification-template email while leaving authentication
+# and deliberate client transactional email operational.
+USER_MEMBER_NOTIFICATIONS_DISABLED = "true"
 # Cloudflare AI Gateway root for server-side Groq SDK calls. The app normalizes
 # Groq requests to /groq and falls back to direct Groq if Gateway auth rejects.
 AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f9357b17/default"

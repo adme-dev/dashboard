@@ -19,6 +19,7 @@
 
 import { buildPushHTTPRequest } from '@pushforge/builder'
 import { queryRows, execute } from '~~/server/utils/db'
+import { isUserMemberNotificationDeliveryDisabled } from '~~/server/utils/notificationDelivery'
 
 interface PushPayload {
   title: string
@@ -71,6 +72,10 @@ export async function sendWebPushToUser(
   userId: string,
   payload: PushPayload
 ): Promise<{ sent: number; failed: number; purged: number }> {
+  if (isUserMemberNotificationDeliveryDisabled()) {
+    return { sent: 0, failed: 0, purged: 0 }
+  }
+
   const env = getEnv()
   if (!env) {
     return { sent: 0, failed: 0, purged: 0 }

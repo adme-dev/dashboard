@@ -72,7 +72,7 @@
           <button
             v-if="!isReply"
             class="text-sm text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200 transition-colors"
-            @click="$emit('reply', comment)"
+            @click="showReplyInput = true"
           >
             Reply
             <span v-if="comment.reply_count > 0" class="ml-1">
@@ -151,7 +151,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  reply: [comment: Comment]
+  reply: [comment: Comment, content: string, isInternal: boolean]
   edit: [comment: Comment]
   delete: [comment: Comment]
   like: [comment: Comment]
@@ -258,9 +258,8 @@ const cancelEdit = () => {
 }
 
 const onReplySubmit = (content: string, isInternal: boolean) => {
-  // Parent component handles the actual submission
   showReplyInput.value = false
-  emit('reply', props.comment)
+  emit('reply', props.comment, content, isInternal)
 }
 
 // Expose
