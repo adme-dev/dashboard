@@ -16,13 +16,13 @@ export default eventHandler(async (event) => {
   const row = await queryOne<CampaignActionRow>(
     `UPDATE campaign_action_log
      SET action_status = 'cancelled',
-         cancelled_by = $3,
+         cancelled_by = $3::uuid,
          cancelled_at = NOW(),
          metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
-           'cancelledBy', $3::text,
+           'cancelledBy', ($3::uuid)::text,
            'cancelledAt', NOW()::text,
            'proposalDecision', 'rejected',
-           'proposalDecidedBy', $3::text,
+           'proposalDecidedBy', ($3::uuid)::text,
            'proposalDecidedAt', NOW()::text
          )
      WHERE media_spend_id = $1
