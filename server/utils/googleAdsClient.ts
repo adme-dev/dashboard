@@ -709,6 +709,23 @@ function getMonthRange(month: number, year: number): { since: string; until: str
  * login-customer-id header (dashes stripped) so client accounts under a manager
  * don't 403 — the same header the spend reads require.
  */
+function googleAdsMutationDiagnostic(error: any): string | null {
+  const providerError = error?.data?.error
+  const first = providerError?.details
+    ?.flatMap((detail: any) => Array.isArray(detail?.errors) ? detail.errors : [])
+    ?.[0]
+  if (!first) return null
+
+  const code = Object.values(first.errorCode || {}).find(value => typeof value === 'string')
+  const path = first.location?.fieldPathElements
+    ?.map((part: any) => `${part.fieldName || 'field'}${Number.isInteger(part.index) ? `[${part.index}]` : ''}`)
+    .join('.')
+  const message = typeof first.message === 'string' ? first.message : providerError?.message
+  if (!code || !message) return null
+
+  return `Google Ads budget update rejected: ${code}${path ? ` at ${path}` : ''} — ${message}`.slice(0, 1000)
+}
+
 export async function updateGoogleCampaignDailyBudget(opts: {
   customerId: string
   campaignId: string
@@ -740,10 +757,16 @@ export async function updateGoogleCampaignDailyBudget(opts: {
     const resourceName: string | undefined = search?.[0]?.results?.[0]?.campaignBudget?.resourceName
     if (!resourceName) throw new Error('Google: campaign budget resource not found')
 
-    await ofetch(`${GOOGLE_ADS_BASE}/customers/${cid}/campaignBudgets:mutate`, {
-      method: 'POST', headers,
-      body: { operations: [{ updateMask: 'amountMicros', update: { resourceName, amountMicros } }] },
-    })
+    try {
+      await ofetch(`${GOOGLE_ADS_BASE}/customers/${cid}/campaignBudgets:mutate`, {
+        method: 'POST', headers,
+        body: { operations: [{ updateMask: 'amountMicros', update: { resourceName, amountMicros } }] },
+      })
+    } catch (error: any) {
+      const diagnostic = googleAdsMutationDiagnostic(error)
+      if (diagnostic) throw new Error(diagnostic)
+      throw error
+    }
 
     const back = await ofetch<any[]>(`${GOOGLE_ADS_BASE}/customers/${cid}/googleAds:searchStream`, {
       method: 'POST', headers,
