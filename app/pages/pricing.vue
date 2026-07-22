@@ -8,103 +8,57 @@
       <div class="relative max-w-[1200px] mx-auto px-6 pt-32 pb-12 md:pt-44 md:pb-20 text-center">
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] mb-8">
           <div class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-          <span class="text-[13px] text-white/60 font-medium">Simple, transparent pricing</span>
+          <span class="text-[13px] text-white/60 font-medium">Enterprise &middot; Annual partnership</span>
         </div>
         <h1 class="text-[clamp(36px,6vw,64px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
-          Choose the plan that<br class="hidden sm:block">fits your agency
+          Priced to how<br class="hidden sm:block"> your agency runs
         </h1>
-        <p class="text-lg md:text-xl text-white/50 max-w-[600px] mx-auto leading-relaxed">
-          Start free for 14 days. No credit card required. Scale as your team grows.
+        <p class="text-lg md:text-xl text-white/50 max-w-[620px] mx-auto leading-relaxed">
+          XeroFlow is deployed for your agency with guided onboarding — not a self-serve checkout. Tell us how you work and we'll shape the engagement to fit.
         </p>
       </div>
     </section>
 
-    <!-- Pricing Tiers -->
-    <section class="pb-20 md:pb-32">
+    <!-- Engagement panel -->
+    <section class="pb-16 md:pb-24 pt-16 md:pt-20">
       <div class="max-w-[1200px] mx-auto px-6">
-        <div class="grid md:grid-cols-3 gap-6 items-start">
-          <!-- Starter Plan -->
-          <div class="rounded-3xl border border-[#121317]/10 dark:border-white/[0.06] p-8 md:p-10 flex flex-col h-full">
-            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[12px] font-medium tracking-wide w-fit mb-6">
-              Free forever
-            </div>
-            <h3 class="text-[28px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-2">Starter</h3>
-            <div class="flex items-baseline gap-1 mb-2">
-              <span class="text-[48px] font-[450] text-[#121317] dark:text-white tracking-[-0.03em]">$0</span>
-              <span class="text-[16px] text-[#45474D] dark:text-white/60">/month</span>
-            </div>
-            <p class="text-[15px] text-[#45474D] dark:text-white/60 mb-8 leading-relaxed">For freelancers and small teams getting started.</p>
-
-            <NuxtLink
-              to="/auth/login"
-              class="inline-flex items-center justify-center gap-2 px-6 py-3 border border-[#121317]/15 dark:border-white/15 text-[#121317] dark:text-white text-[15px] font-medium rounded-full hover:bg-[#121317]/[0.04] dark:hover:bg-white/[0.06] transition-colors mb-8"
-            >
-              Get Started
-            </NuxtLink>
-
-            <div class="flex flex-col gap-3">
-              <div v-for="feature in starterFeatures" :key="feature" class="flex items-center gap-3">
-                <div class="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-check" class="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <span class="text-[14px] text-[#121317] dark:text-white">{{ feature }}</span>
-              </div>
+        <div class="rounded-[2rem] border border-[#121317]/10 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-8 md:p-14 grid md:grid-cols-[1.1fr_1fr] gap-10 md:gap-16">
+          <div>
+            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40 font-medium tracking-wide uppercase mb-4">
+              XeroFlow Enterprise
+            </p>
+            <h2 class="text-[clamp(28px,4vw,44px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] leading-[1.15] mb-5">
+              One engagement.<br>The whole platform.
+            </h2>
+            <p class="text-[16px] text-[#45474D] dark:text-white/60 leading-relaxed mb-8 max-w-[440px]">
+              Every XeroFlow agreement is an annual partnership covering your entire team and the modules you need — boards, finance, ad spend, client portal and AI. No per-seat tiers, and no feature gates you discover later.
+            </p>
+            <div class="flex flex-wrap items-center gap-3">
+              <NuxtLink
+                to="/contact"
+                class="inline-flex items-center gap-2 px-7 py-3.5 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[15px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors"
+              >
+                Talk to us
+                <UIcon name="i-lucide-arrow-right" class="w-4 h-4" />
+              </NuxtLink>
+              <NuxtLink
+                to="/features"
+                class="inline-flex items-center gap-2 px-7 py-3.5 border border-[#121317]/15 dark:border-white/15 text-[#121317] dark:text-white text-[15px] font-medium rounded-full hover:bg-[#121317]/[0.04] dark:hover:bg-white/[0.06] transition-colors"
+              >
+                Explore the platform
+              </NuxtLink>
             </div>
           </div>
-
-          <!-- Agency Plan (Highlighted) -->
-          <div class="rounded-3xl border-2 border-[#121317] dark:border-white/20 p-8 md:p-10 flex flex-col h-full md:scale-[1.02] shadow-xl dark:shadow-white/[0.03] relative">
-            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[12px] font-medium tracking-wide w-fit mb-6">
-              Most Popular
-            </div>
-            <h3 class="text-[28px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-2">Agency</h3>
-            <div class="flex items-baseline gap-1 mb-2">
-              <span class="text-[48px] font-[450] text-[#121317] dark:text-white tracking-[-0.03em]">$29</span>
-              <span class="text-[16px] text-[#45474D] dark:text-white/60">/user/month</span>
-            </div>
-            <p class="text-[15px] text-[#45474D] dark:text-white/60 mb-8 leading-relaxed">Everything your agency needs to run at full speed.</p>
-
-            <NuxtLink
-              to="/auth/login"
-              class="inline-flex items-center justify-center gap-2 w-full px-6 py-3 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[15px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors mb-8"
-            >
-              Start Free Trial
-            </NuxtLink>
-
-            <div class="flex flex-col gap-3">
-              <div v-for="feature in agencyFeatures" :key="feature" class="flex items-center gap-3">
-                <div class="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+          <div class="md:border-l md:border-[#121317]/[0.08] md:dark:border-white/[0.06] md:pl-16">
+            <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-5">
+              Included in every engagement
+            </p>
+            <div class="flex flex-col gap-4">
+              <div v-for="item in included" :key="item" class="flex items-start gap-3">
+                <div class="w-5 h-5 mt-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
                   <UIcon name="i-lucide-check" class="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <span class="text-[14px] text-[#121317] dark:text-white">{{ feature }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Enterprise Plan -->
-          <div class="rounded-3xl border border-[#121317]/10 dark:border-white/[0.06] p-8 md:p-10 flex flex-col h-full">
-            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#b7bfd9]/10 dark:bg-white/[0.06] text-[#45474D] dark:text-white/60 text-[12px] font-medium tracking-wide w-fit mb-6">
-              Custom
-            </div>
-            <h3 class="text-[28px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-2">Enterprise</h3>
-            <div class="flex items-baseline gap-1 mb-2">
-              <span class="text-[48px] font-[450] text-[#121317] dark:text-white tracking-[-0.03em]">Custom</span>
-            </div>
-            <p class="text-[15px] text-[#45474D] dark:text-white/60 mb-8 leading-relaxed">For agencies with 50+ seats needing dedicated support.</p>
-
-            <a
-              href="mailto:sales@xeroflow.agency"
-              class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#b7bfd9]/10 dark:bg-white/[0.06] text-[#121317] dark:text-white text-[15px] font-medium rounded-full hover:bg-[#b7bfd9]/20 dark:hover:bg-white/10 transition-colors mb-8"
-            >
-              Contact Sales
-            </a>
-
-            <div class="flex flex-col gap-3">
-              <div v-for="feature in enterpriseFeatures" :key="feature" class="flex items-center gap-3">
-                <div class="w-5 h-5 rounded-full bg-[#b7bfd9]/10 dark:bg-white/[0.06] flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-check" class="w-3 h-3 text-[#45474D] dark:text-white/40" />
-                </div>
-                <span class="text-[14px] text-[#121317] dark:text-white">{{ feature }}</span>
+                <span class="text-[15px] text-[#121317] dark:text-white leading-snug">{{ item }}</span>
               </div>
             </div>
           </div>
@@ -112,84 +66,78 @@
       </div>
     </section>
 
-    <!-- Feature Comparison Table -->
-    <section class="py-20 md:py-32 bg-[#f4f5f7] dark:bg-[#121317]">
+    <!-- How pricing works -->
+    <section class="pb-20 md:pb-28">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="grid md:grid-cols-3 md:divide-x divide-[#121317]/[0.08] dark:divide-white/[0.06] border-y border-[#121317]/[0.08] dark:border-white/[0.06]">
+          <div v-for="part in pricingParts" :key="part.title" class="py-10 md:px-10 first:md:pl-0 last:md:pr-0">
+            <h3 class="text-[17px] font-medium text-[#121317] dark:text-white mb-2.5">
+              {{ part.title }}
+            </h3>
+            <p class="text-[14.5px] text-[#45474D] dark:text-white/55 leading-relaxed">
+              {{ part.body }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Modules -->
+    <section class="py-20 md:py-28 bg-[#f4f5f7] dark:bg-[#121317]">
       <div class="max-w-[1200px] mx-auto px-6">
         <h2 class="text-[clamp(28px,4vw,40px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4 text-center">
-          Compare plans in detail
+          Everything an agency runs on
         </h2>
-        <p class="text-[16px] text-[#45474D] dark:text-white/60 text-center mb-12 max-w-[500px] mx-auto">
-          Every feature, side by side. Find exactly what your agency needs.
+        <p class="text-[16px] text-[#45474D] dark:text-white/60 text-center mb-14 max-w-[520px] mx-auto">
+          Your engagement is scoped to the modules you'll actually use — and can grow as you do.
         </p>
-
-        <div class="overflow-x-auto rounded-2xl border border-[#121317]/10 dark:border-white/[0.06] bg-white dark:bg-white/[0.03]">
-          <table class="comparison-table w-full text-left min-w-[700px]">
-            <thead>
-              <tr class="border-b border-[#121317]/10 dark:border-white/[0.06]">
-                <th class="px-6 py-4 text-[14px] font-medium text-[#45474D] dark:text-white/60 w-[40%] bg-white dark:bg-transparent">Feature</th>
-                <th class="px-6 py-4 text-[14px] font-medium text-[#45474D] dark:text-white/60 text-center w-[20%] bg-white dark:bg-transparent">Starter</th>
-                <th class="px-6 py-4 text-[14px] font-medium text-[#121317] dark:text-white text-center w-[20%] bg-[#121317]/[0.02] dark:bg-white/[0.03]">
-                  <div class="flex flex-col items-center gap-1">
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[10px] font-medium">Popular</span>
-                    <span>Agency</span>
-                  </div>
-                </th>
-                <th class="px-6 py-4 text-[14px] font-medium text-[#45474D] dark:text-white/60 text-center w-[20%] bg-white dark:bg-transparent">Enterprise</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template v-for="category in comparisonData" :key="category.name">
-                <!-- Category Header -->
-                <tr>
-                  <td colspan="4" class="px-6 py-3 bg-[#121317] dark:bg-white/10 text-white text-[13px] font-medium tracking-wide">
-                    {{ category.name }}
-                  </td>
-                </tr>
-                <!-- Feature Rows -->
-                <tr
-                  v-for="(row, rowIndex) in category.features"
-                  :key="row.name"
-                  :class="rowIndex % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-[#f4f5f7]/50 dark:bg-white/[0.02]'"
-                  class="border-b border-[#121317]/[0.04] dark:border-white/[0.04] last:border-b-0"
-                >
-                  <td class="px-6 py-3.5 text-[14px] text-[#121317] dark:text-white" :class="rowIndex % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-[#f4f5f7]/50 dark:bg-white/[0.02]'">{{ row.name }}</td>
-                  <td class="px-6 py-3.5 text-center" :class="rowIndex % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-[#f4f5f7]/50 dark:bg-white/[0.02]'">
-                    <span v-if="row.starter === true" class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-500/10"><UIcon name="i-lucide-check" class="w-3 h-3 text-emerald-600 dark:text-emerald-400" /></span>
-                    <span v-else-if="row.starter === false" class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#121317]/[0.04] dark:bg-white/[0.06]"><UIcon name="i-lucide-minus" class="w-3 h-3 text-[#45474D]/40 dark:text-white/20" /></span>
-                    <span v-else class="text-[13px] text-[#121317] dark:text-white font-medium">{{ row.starter }}</span>
-                  </td>
-                  <td class="px-6 py-3.5 text-center" :class="rowIndex % 2 === 0 ? 'bg-[#121317]/[0.02] dark:bg-white/[0.03]' : 'bg-[#121317]/[0.04] dark:bg-white/[0.05]'">
-                    <span v-if="row.agency === true" class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-500/10"><UIcon name="i-lucide-check" class="w-3 h-3 text-emerald-600 dark:text-emerald-400" /></span>
-                    <span v-else-if="row.agency === false" class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#121317]/[0.04] dark:bg-white/[0.06]"><UIcon name="i-lucide-minus" class="w-3 h-3 text-[#45474D]/40 dark:text-white/20" /></span>
-                    <span v-else class="text-[13px] text-[#121317] dark:text-white font-medium">{{ row.agency }}</span>
-                  </td>
-                  <td class="px-6 py-3.5 text-center" :class="rowIndex % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-[#f4f5f7]/50 dark:bg-white/[0.02]'">
-                    <span v-if="row.enterprise === true" class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-500/10"><UIcon name="i-lucide-check" class="w-3 h-3 text-emerald-600 dark:text-emerald-400" /></span>
-                    <span v-else-if="row.enterprise === false" class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#121317]/[0.04] dark:bg-white/[0.06]"><UIcon name="i-lucide-minus" class="w-3 h-3 text-[#45474D]/40 dark:text-white/20" /></span>
-                    <span v-else class="text-[13px] text-[#121317] dark:text-white font-medium">{{ row.enterprise }}</span>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div
+            v-for="mod in modules"
+            :key="mod.name"
+            class="rounded-2xl bg-white dark:bg-white/[0.03] border border-[#121317]/[0.05] dark:border-white/[0.05] p-6"
+          >
+            <div class="w-9 h-9 rounded-xl bg-[#121317]/[0.04] dark:bg-white/[0.06] flex items-center justify-center mb-4">
+              <UIcon :name="mod.icon" class="w-4.5 h-4.5 text-[#121317] dark:text-white/80" />
+            </div>
+            <h3 class="text-[15.5px] font-medium text-[#121317] dark:text-white mb-1.5">
+              {{ mod.name }}
+            </h3>
+            <p class="text-[14px] text-[#45474D] dark:text-white/55 leading-relaxed">
+              {{ mod.blurb }}
+            </p>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- Trusted By Section -->
-    <section class="py-16 md:py-20">
-      <div class="max-w-[1200px] mx-auto px-6 text-center">
-        <p class="text-[13px] text-[#45474D]/60 dark:text-white/40 font-medium tracking-wide uppercase mb-8">Trusted by agencies worldwide</p>
-        <div class="flex flex-wrap items-center justify-center gap-x-12 gap-y-6">
-          <span v-for="agency in trustedAgencies" :key="agency" class="text-[18px] font-[450] text-[#121317]/20 dark:text-white/20 tracking-[-0.01em] select-none">
-            {{ agency }}
-          </span>
+    <!-- Onboarding sequence -->
+    <section class="py-20 md:py-28">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <h2 class="text-[clamp(28px,4vw,40px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4 text-center">
+          From first call to fully running
+        </h2>
+        <p class="text-[16px] text-[#45474D] dark:text-white/60 text-center mb-14 max-w-[480px] mx-auto">
+          Four steps, no pressure. Most agencies know whether XeroFlow fits by step two.
+        </p>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div v-for="(step, i) in onboardingSteps" :key="step.title">
+            <p class="text-[13px] font-medium text-[#45474D]/60 dark:text-white/30 tracking-wide mb-3">
+              {{ String(i + 1).padStart(2, '0') }}
+            </p>
+            <h3 class="text-[16px] font-medium text-[#121317] dark:text-white mb-2">
+              {{ step.title }}
+            </h3>
+            <p class="text-[14px] text-[#45474D] dark:text-white/55 leading-relaxed">
+              {{ step.body }}
+            </p>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- FAQ -->
-    <section class="py-20 md:py-32 bg-[#f4f5f7] dark:bg-[#121317]">
+    <section class="py-20 md:py-28 bg-[#f4f5f7] dark:bg-[#121317]">
       <div class="max-w-[700px] mx-auto px-6">
         <h2 class="text-[clamp(28px,4vw,40px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-12 text-center">
           Frequently asked
@@ -198,23 +146,31 @@
           <div
             v-for="faq in faqs"
             :key="faq.q"
-            class="rounded-2xl bg-white dark:bg-white/[0.03] p-6 cursor-pointer group"
-            @click="faq.open = !faq.open"
+            class="rounded-2xl bg-white dark:bg-white/[0.03]"
           >
-            <div class="flex items-center justify-between gap-4">
-              <h3 class="text-[16px] font-medium text-[#121317] dark:text-white">{{ faq.q }}</h3>
+            <button
+              type="button"
+              class="w-full flex items-center justify-between gap-4 p-6 text-left cursor-pointer"
+              :aria-expanded="faq.open"
+              @click="faq.open = !faq.open"
+            >
+              <h3 class="text-[16px] font-medium text-[#121317] dark:text-white">
+                {{ faq.q }}
+              </h3>
               <UIcon
                 :name="faq.open ? 'i-lucide-minus' : 'i-lucide-plus'"
-                class="w-4 h-4 text-[#45474D] dark:text-white/40 flex-shrink-0 transition-transform"
+                class="w-4 h-4 text-[#45474D] dark:text-white/40 flex-shrink-0"
               />
-            </div>
-            <p v-if="faq.open" class="mt-3 text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">{{ faq.a }}</p>
+            </button>
+            <p v-if="faq.open" class="px-6 pb-6 -mt-2 text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">
+              {{ faq.a }}
+            </p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Dark CTA Section -->
+    <!-- Dark CTA -->
     <section class="py-10 md:py-16">
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="rounded-[2rem] bg-[#0a0b0e] py-20 md:py-28 text-center px-6">
@@ -222,11 +178,14 @@
             <span class="text-white text-xs font-semibold">XF</span>
           </div>
           <h2 class="text-[clamp(24px,4vw,40px)] font-[450] text-white tracking-[-0.02em] mb-4">
-            Start your 14-day free trial
+            Tell us how your agency runs
           </h2>
-          <p class="text-[16px] text-white/50 mb-8 max-w-[440px] mx-auto">No credit card required. Full Agency features. Your whole team can join.</p>
-          <NuxtLink to="/auth/login" class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-[#121317] text-[16px] font-medium rounded-full hover:bg-white/90 transition-colors">
-            Get Started Free
+          <p class="text-[16px] text-white/50 mb-8 max-w-[440px] mx-auto">
+            A short conversation is the fastest way to see whether XeroFlow fits. A real person replies within one business day.
+          </p>
+          <NuxtLink to="/contact" class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-[#121317] text-[16px] font-medium rounded-full hover:bg-white/90 transition-colors">
+            Talk to us
+            <UIcon name="i-lucide-arrow-right" class="w-4 h-4" />
           </NuxtLink>
         </div>
       </div>
@@ -245,172 +204,68 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Pricing — XeroFlow',
-  description: 'Simple, transparent pricing for your agency. Start free, scale to Agency or Enterprise. Boards, chat, Xero integration, AI insights, and client portal.',
+  description: 'XeroFlow is priced per agency: one annual platform fee plus scoped implementation. Sales-assisted onboarding for the whole platform — boards, finance, ad spend, client portal and AI.',
   ogTitle: 'Pricing — XeroFlow',
-  ogDescription: 'Simple, transparent pricing for your agency. Start free, scale to Agency or Enterprise. Boards, chat, Xero integration, AI insights, and client portal.',
+  ogDescription: 'XeroFlow is priced per agency: one annual platform fee plus scoped implementation. Sales-assisted onboarding for the whole platform — boards, finance, ad spend, client portal and AI.'
 })
 
-// ---- Plan features ----
+// ---- Engagement panel ----
 
-const starterFeatures = [
-  'Up to 3 boards',
-  '5 team members',
-  'Basic column types',
-  'Table & Kanban views',
-  '1GB file storage',
-  'Community support',
+const included = [
+  'Full platform access for your whole team',
+  'Guided onboarding, data imports and training',
+  'Unlimited client portal users',
+  'Direct support from the team that builds XeroFlow',
+  'A named contact — not a ticket queue'
 ]
 
-const agencyFeatures = [
-  'Unlimited boards & views',
-  '20+ column types',
-  'All 5 view types',
-  'Real-time chat & channels',
-  'Xero integration',
-  'Meta & Google Ads tracking',
-  'EOM invoice generation',
-  'Client portal (unlimited clients)',
-  'AI chat & anomaly detection',
-  'Semantic search',
-  'Time tracking & timesheets',
-  'Email automations',
-  '50GB R2 file storage',
-  'Priority email support',
+const pricingParts = [
+  {
+    title: 'Annual platform fee',
+    body: 'One agreed annual figure for your whole team. No per-seat arithmetic and no surprise overages.'
+  },
+  {
+    title: 'Implementation & onboarding',
+    body: 'A scoped, one-time fee covering workspace setup, data imports and training your team.'
+  },
+  {
+    title: 'Modules that fit',
+    body: 'Start with the modules you\'ll actually run. Add more as your operation grows — the engagement grows with you.'
+  }
 ]
 
-const enterpriseFeatures = [
-  'Everything in Agency',
-  'SSO / SAML authentication',
-  'Dedicated account manager',
-  'Custom SLAs (99.9% uptime)',
-  'Priority phone support',
-  'Custom integrations',
-  'Advanced audit logging',
-  'On-boarding & training',
-  'Unlimited file storage',
-  'Custom branding',
+// ---- Modules ----
+
+const modules = [
+  { name: 'Work management', icon: 'i-lucide-kanban', blurb: 'Boards with 20+ column types, Kanban, timeline, calendar and workload views.' },
+  { name: 'Finance operations', icon: 'i-lucide-receipt', blurb: 'Live Xero sync, P&L, cashflow forecasting and end-of-month invoice generation.' },
+  { name: 'Ad spend tracking', icon: 'i-lucide-trending-up', blurb: 'Meta and Google Ads connections with daily spend, budgets and pacing alerts.' },
+  { name: 'Lead capture & routing', icon: 'i-lucide-inbox', blurb: 'Webhooks, form routing and a real-time lead inbox with rules and hand-offs.' },
+  { name: 'Client portal', icon: 'i-lucide-users', blurb: 'Client logins for approvals, proofs, invoices and creative galleries.' },
+  { name: 'AI assistant', icon: 'i-lucide-sparkles', blurb: 'Chat over your agency\'s live data, anomaly detection and recommendations.' },
+  { name: 'Time & capacity', icon: 'i-lucide-clock', blurb: 'Time tracking, weekly timesheets and manager approvals.' },
+  { name: 'Email & campaigns', icon: 'i-lucide-mail', blurb: 'Campaign builder, templates, automations and transactional email.' },
+  { name: 'Team chat', icon: 'i-lucide-message-circle', blurb: 'Real-time channels and threads, linked to the boards where work happens.' }
 ]
 
-// ---- Comparison table data ----
+// ---- Onboarding steps ----
 
-interface ComparisonRow {
-  name: string
-  starter: string | boolean
-  agency: string | boolean
-  enterprise: string | boolean
-}
-
-interface ComparisonCategory {
-  name: string
-  features: ComparisonRow[]
-}
-
-const comparisonData: ComparisonCategory[] = [
-  {
-    name: 'Work Management',
-    features: [
-      { name: 'Boards', starter: '3', agency: 'Unlimited', enterprise: 'Unlimited' },
-      { name: 'Column types', starter: 'Basic (5)', agency: 'All 20+', enterprise: 'All 20+ + Custom' },
-      { name: 'Views', starter: 'Table, Kanban', agency: 'All 5', enterprise: 'All 5' },
-      { name: 'Groups & subtasks', starter: true, agency: true, enterprise: true },
-      { name: 'Templates', starter: false, agency: true, enterprise: 'Custom templates' },
-      { name: 'Real-time collaboration', starter: false, agency: true, enterprise: true },
-    ],
-  },
-  {
-    name: 'Financial Operations',
-    features: [
-      { name: 'Xero integration', starter: false, agency: true, enterprise: true },
-      { name: 'EOM invoice engine', starter: false, agency: true, enterprise: true },
-      { name: 'Meta Ads tracking', starter: false, agency: true, enterprise: true },
-      { name: 'Google Ads tracking', starter: false, agency: true, enterprise: true },
-      { name: 'P&L dashboards', starter: false, agency: true, enterprise: true },
-      { name: 'Budget management', starter: false, agency: true, enterprise: 'Advanced' },
-    ],
-  },
-  {
-    name: 'Communication',
-    features: [
-      { name: 'Real-time chat', starter: false, agency: true, enterprise: true },
-      { name: 'Channels & threads', starter: false, agency: true, enterprise: true },
-      { name: 'File sharing', starter: 'Basic', agency: 'Full', enterprise: 'Full' },
-      { name: 'Email automations', starter: false, agency: true, enterprise: true },
-      { name: 'Board-linked channels', starter: false, agency: true, enterprise: true },
-    ],
-  },
-  {
-    name: 'AI & Intelligence',
-    features: [
-      { name: 'AI chat assistant', starter: false, agency: true, enterprise: true },
-      { name: 'Anomaly detection', starter: false, agency: '8 analyzers', enterprise: '8 analyzers + custom' },
-      { name: 'Semantic search', starter: false, agency: true, enterprise: true },
-      { name: 'Intent classification', starter: false, agency: true, enterprise: true },
-      { name: 'LoRA adapters', starter: false, agency: false, enterprise: true },
-    ],
-  },
-  {
-    name: 'Client Portal',
-    features: [
-      { name: 'Client access', starter: false, agency: 'Unlimited', enterprise: 'Unlimited' },
-      { name: 'Approvals', starter: false, agency: true, enterprise: true },
-      { name: 'Invoice viewing', starter: false, agency: true, enterprise: true },
-      { name: 'Creative gallery', starter: false, agency: true, enterprise: '+ custom branding' },
-    ],
-  },
-  {
-    name: 'Time & Capacity',
-    features: [
-      { name: 'Time tracking', starter: 'Basic', agency: 'Full', enterprise: 'Full' },
-      { name: 'Weekly timesheets', starter: false, agency: true, enterprise: true },
-      { name: 'Manager approvals', starter: false, agency: true, enterprise: true },
-      { name: 'Utilization reports', starter: false, agency: false, enterprise: true },
-    ],
-  },
-  {
-    name: 'Support & Security',
-    features: [
-      { name: 'Support', starter: 'Community', agency: 'Priority email', enterprise: 'Dedicated manager' },
-      { name: 'SSO / SAML', starter: false, agency: false, enterprise: true },
-      { name: 'Audit logging', starter: 'Basic', agency: 'Standard', enterprise: 'Advanced' },
-      { name: 'Data encryption', starter: true, agency: true, enterprise: true },
-      { name: 'SLA', starter: false, agency: false, enterprise: '99.9% uptime' },
-      { name: 'File storage', starter: '1GB', agency: '50GB', enterprise: 'Unlimited' },
-    ],
-  },
-]
-
-// ---- Trusted agencies ----
-
-const trustedAgencies = [
-  'Catalyst Digital',
-  'Bloom Agency',
-  'Pixel & Co',
-  'Ember Media',
-  'Northline Creative',
-  'Blue Heron Studios',
+const onboardingSteps = [
+  { title: 'Conversation', body: 'A short call about how your agency runs — clients, billing, channels and team.' },
+  { title: 'Walkthrough', body: 'A live tour of XeroFlow scoped to the modules you\'d actually use.' },
+  { title: 'Proposal', body: 'A written engagement: platform fee, implementation scope and timeline.' },
+  { title: 'Guided onboarding', body: 'We set up your workspace, import your data and train your team.' }
 ]
 
 // ---- FAQ ----
 
 const faqs = reactive([
-  { q: 'Is there a free trial?', a: 'Yes -- every new account gets 14 days of full Agency plan access. No credit card required. Your entire team can join.', open: false },
-  { q: 'What happens after my trial ends?', a: 'Your workspace stays active with Starter plan features. No data is lost. Upgrade anytime to restore full access.', open: false },
-  { q: 'Can I switch plans mid-cycle?', a: 'Yes. Upgrades take effect immediately with prorated billing. Downgrades apply at the next billing cycle.', open: false },
-  { q: 'Is there a discount for annual billing?', a: 'Yes -- save 20% with annual billing. Contact us for annual Enterprise pricing.', open: false },
-  { q: 'What\'s included in the free trial?', a: 'Full Agency plan features for 14 days. No credit card required. Your entire team can join.', open: false },
-  { q: 'What payment methods do you accept?', a: 'We accept all major credit cards. Enterprise plans can pay via invoice.', open: false },
-  { q: 'Is my data secure?', a: 'XeroFlow runs on Cloudflare\'s global network with encryption at rest and in transit. We never sell your data.', open: false },
-  { q: 'Do clients count as seats?', a: 'No. Client portal users are free and unlimited. Only agency staff members count toward your seat total.', open: false },
-  { q: 'Can I import from Monday.com?', a: 'Yes -- we support board imports from Monday.com including columns, groups, and item data.', open: false },
-  { q: 'How do I cancel?', a: 'You can cancel anytime from your billing settings. Your workspace reverts to the Starter plan at the end of the billing cycle -- no data is deleted.', open: false },
+  { q: 'How is pricing structured?', a: 'An annual platform fee for your whole team, plus a one-time implementation fee scoped to your onboarding. Both are put in writing after a walkthrough — no metered seats, no usage surprises.', open: false },
+  { q: 'Is there a free trial?', a: 'No self-serve trial. Instead we run a live walkthrough scoped to your agency, and structure onboarding so you see the platform working with your own data early. It\'s a better test than an empty trial workspace.', open: false },
+  { q: 'Do clients count as users?', a: 'No. Client portal access is included — pricing is based on your team, not how many clients you serve.', open: false },
+  { q: 'Can we start with just a few modules?', a: 'Yes. Most agencies start with work management and finance operations, then add ad spend, the client portal and AI when ready. The engagement is scoped to what you\'ll actually run.', open: false },
+  { q: 'Can you import from Monday.com?', a: 'Yes — boards, groups, columns and items migrate over, and Xero connects directly. We handle imports with you during onboarding.', open: false },
+  { q: 'Where does our data live?', a: 'XeroFlow runs on Cloudflare\'s global network, encrypted in transit and at rest. Your data is never used to train models for other customers, and it is never sold.', open: false },
+  { q: 'How do we get started?', a: 'Send us a note through the contact page. A real person replies within one business day.', open: false }
 ])
 </script>
-
-<style scoped>
-.comparison-table th:first-child,
-.comparison-table td:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-}
-</style>

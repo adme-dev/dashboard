@@ -51,10 +51,10 @@
 
         <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
           <NuxtLink
-            to="/auth/login"
+            to="/contact"
             class="inline-flex items-center gap-2.5 px-6 py-3 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors"
           >
-            Get Started
+            Talk to us
           </NuxtLink>
           <button
             class="inline-flex items-center gap-2 px-6 py-3 bg-[#b7bfd9]/10 dark:bg-white/[0.06] text-[#121317] dark:text-white text-[17.5px] font-medium rounded-full hover:bg-[#b7bfd9]/20 dark:hover:bg-white/[0.1] transition-colors"
@@ -1107,10 +1107,10 @@
               Ready to streamline<br class="hidden sm:block"> your agency?
             </h2>
             <NuxtLink
-              to="/auth/login"
+              to="/contact"
               class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-white/90 transition-colors"
             >
-              Get Started
+              Talk to us
             </NuxtLink>
           </div>
         </div>
