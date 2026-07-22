@@ -46,6 +46,7 @@ describe('buildPacingReview', () => {
       mediaSpendId: 'over',
       platform: 'meta',
       severity: 'critical',
+      dailyBudgetActionSupported: true,
       recommendedDailyBudget: 66.67
     })
     expect(review.items[1]).toMatchObject({
@@ -54,6 +55,27 @@ describe('buildPacingReview', () => {
       severity: 'warning'
     })
     expect(review.items[1].recommendedAction).toContain('increase delivery')
+  })
+
+  it('treats a custom-period Google daily figure as a pacing benchmark, not an actionable budget', () => {
+    const review = buildPacingReview([
+      row({
+        media_spend_id: 'cp-ford',
+        platform: 'google_ads',
+        actual_spend: '19.86',
+        budget_allocated: '1000',
+        budget_type: 'lifetime',
+        end_date: '2026-06-30'
+      })
+    ], { now, period: '2026-06' })
+
+    const underpacing = review.items.find(item => item.issueType === 'underpacing')
+    expect(underpacing).toMatchObject({
+      mediaSpendId: 'cp-ford',
+      dailyBudgetActionSupported: false,
+      performance: { budgetType: 'lifetime' }
+    })
+    expect(underpacing?.recommendedAction).toContain('campaign-total budget')
   })
 
   it('includes performance metrics that explain pacing pressure', () => {

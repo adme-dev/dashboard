@@ -54,6 +54,7 @@ interface PacingReviewItem {
   }
   syncedAt: string | null
   recommendedAction: string
+  dailyBudgetActionSupported: boolean
 }
 
 const props = defineProps<{

@@ -10,6 +10,7 @@ import {
 } from '~/utils/socialSpendHistory'
 import { useAuth } from '~/composables/useAuth'
 import type { AnalysisResponse } from '~~/server/utils/spendAiAnalysis'
+import { isDailyBudgetActionSupported as budgetTypeSupportsDailyAction } from '~~/shared/utils/campaignBudgetType'
 
 interface PacingReviewItem {
   mediaSpendId: string
@@ -44,6 +45,7 @@ interface PacingReviewItem {
   }
   syncedAt: string | null
   recommendedAction: string
+  dailyBudgetActionSupported?: boolean
 }
 
 interface BudgetAuditEntry {
@@ -105,6 +107,11 @@ const { isAdmin } = useAuth()
 
 // Live budget writes are restricted to admin/owner (PERMISSIONS.ADMIN).
 const canApplyLive = computed(() => isAdmin.value)
+const dailyBudgetActionSupported = computed(() => {
+  if (!props.item) return false
+  return props.item.dailyBudgetActionSupported
+    ?? budgetTypeSupportsDailyAction(props.item.performance.budgetType)
+})
 
 const history = ref<BudgetAuditEntry[]>([])
 const platformActions = ref<CampaignActionEntry[]>([])
@@ -264,7 +271,7 @@ async function loadHistory(spendId: string, force = false) {
 }
 
 async function planCurrentRecommendation() {
-  if (!props.item || planning.value || matchingPlannedAction.value) return
+  if (!props.item || !dailyBudgetActionSupported.value || planning.value || matchingPlannedAction.value) return
   planning.value = true
   try {
     await apiFetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/plan`, {
@@ -310,7 +317,7 @@ async function loadGoogleRecs(spendId: string) {
 
 async function applyGoogleRec(rec: any) {
   const spendId = props.item?.mediaSpendId
-  if (!spendId || rec?.recommendedDailyMajor == null || applyingRec.value) return
+  if (!spendId || !dailyBudgetActionSupported.value || rec?.recommendedDailyMajor == null || applyingRec.value) return
   applyingRec.value = rec.resourceName
   try {
     const planned = await apiFetch(`/api/agency/social/spend/${spendId}/actions/plan`, {
@@ -384,7 +391,7 @@ function actionDisplayTime(action: CampaignActionEntry) {
 }
 
 async function approvePlannedAction(action: CampaignActionEntry) {
-  if (!props.item || action.actionStatus !== 'planned' || approvingActionId.value) return
+  if (!props.item || !dailyBudgetActionSupported.value || action.actionStatus !== 'planned' || approvingActionId.value) return
   approvingActionId.value = action.id
   try {
     await apiFetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${action.id}/approve`, {
@@ -408,7 +415,7 @@ async function approvePlannedAction(action: CampaignActionEntry) {
 }
 
 async function applyApprovedAction(action: CampaignActionEntry) {
-  if (!props.item || action.actionStatus !== 'approved' || applyingActionId.value) return
+  if (!props.item || !dailyBudgetActionSupported.value || action.actionStatus !== 'approved' || applyingActionId.value) return
   applyingActionId.value = action.id
   try {
     const res = await apiFetch<{
@@ -469,7 +476,7 @@ function freshnessLabel(syncedAt: string | null) {
 }
 
 async function analyzeWithAi() {
-  if (!props.item || analyzing.value) return
+  if (!props.item || !dailyBudgetActionSupported.value || analyzing.value) return
   analyzing.value = true
   try {
     const res = await apiFetch<AnalysisResponse>(`/api/agency/social/spend/${props.item.mediaSpendId}/ai-analysis`, {
@@ -489,7 +496,7 @@ async function analyzeWithAi() {
 }
 
 async function approveAdjustment() {
-  if (!props.item || approvingAdjustment.value || !aiAnalysis.value) return
+  if (!props.item || !dailyBudgetActionSupported.value || approvingAdjustment.value || !aiAnalysis.value) return
   approvingAdjustment.value = true
   try {
     const chosen = chosenDailyBudget.value
@@ -617,7 +624,7 @@ function summarizeValue(value: Record<string, unknown>) {
             <p class="mt-0.5 font-semibold tabular-nums">{{ formatCurrency(item.projectedMonthEnd) }}</p>
           </div>
           <div class="bg-elevated/30 px-4 py-3">
-            <p class="text-[11px] uppercase text-muted font-medium">New/day</p>
+            <p class="text-[11px] uppercase text-muted font-medium">{{ dailyBudgetActionSupported ? 'New/day' : 'Pace needed/day' }}</p>
             <p class="mt-0.5 font-semibold tabular-nums">{{ formatCurrency(item.recommendedDailyBudget) }}</p>
           </div>
         </div>
@@ -700,6 +707,7 @@ function summarizeValue(value: Record<string, unknown>) {
                 <h4 class="text-sm font-semibold">Current recommendation</h4>
               </div>
               <UButton
+                v-if="dailyBudgetActionSupported"
                 size="xs"
                 variant="soft"
                 color="primary"
@@ -710,10 +718,16 @@ function summarizeValue(value: Record<string, unknown>) {
               >
                 {{ matchingPlannedAction ? matchingActionLabel : 'Save as planned action' }}
               </UButton>
+              <UBadge v-else color="neutral" variant="soft" size="sm">
+                Campaign-total budget · daily write unavailable
+              </UBadge>
             </div>
             <p class="text-sm text-default">{{ item.recommendedAction }}</p>
+            <p v-if="!dailyBudgetActionSupported" class="mt-2 text-xs text-warning">
+              The daily figure is a pacing benchmark only. Review feed coverage, assets, bidding, targeting, final URLs and conversion tracking instead of applying it as a Google budget.
+            </p>
 
-          <div class="mt-3">
+          <div v-if="dailyBudgetActionSupported" class="mt-3">
             <UButton
               size="xs"
               variant="soft"
@@ -727,13 +741,14 @@ function summarizeValue(value: Record<string, unknown>) {
           </div>
 
           <UCheckbox
+            v-if="dailyBudgetActionSupported"
             v-model="refreshFromPlatform"
             label="Refresh from platform first"
             size="xs"
             class="mt-2"
           />
 
-          <div v-if="aiAnalysis" class="mt-3 rounded-lg border border-default p-3">
+          <div v-if="dailyBudgetActionSupported && aiAnalysis" class="mt-3 rounded-lg border border-default p-3">
             <p class="mb-2 text-[11px] uppercase text-muted font-medium">
               Recommended daily budget · {{ freshnessLabel(aiAnalysis.dataFreshness.syncedAt) }}
             </p>
@@ -799,7 +814,7 @@ function summarizeValue(value: Record<string, unknown>) {
               :optimization-score="googleRecs.optimizationScore"
               :recommendations="googleRecs.recommendations"
               :campaign-id="googleRecs.campaignId"
-              :armed="canApplyLive"
+              :armed="canApplyLive && dailyBudgetActionSupported"
               :applying="applyingRec"
               @apply="applyGoogleRec"
             />
@@ -879,7 +894,7 @@ function summarizeValue(value: Record<string, unknown>) {
                       {{ platformLabel(action.platform) }}
                     </UBadge>
                     <UButton
-                      v-if="action.actionStatus === 'planned'"
+                      v-if="dailyBudgetActionSupported && action.actionStatus === 'planned'"
                       size="xs"
                       variant="soft"
                       color="primary"
@@ -890,7 +905,7 @@ function summarizeValue(value: Record<string, unknown>) {
                       Approve
                     </UButton>
                     <UButton
-                      v-if="canApplyLive && action.actionStatus === 'approved'"
+                      v-if="canApplyLive && dailyBudgetActionSupported && action.actionStatus === 'approved'"
                       size="xs"
                       variant="solid"
                       color="warning"

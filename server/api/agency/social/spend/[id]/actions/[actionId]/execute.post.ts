@@ -13,6 +13,7 @@ import { executeAdSetSplitWrites } from '~~/server/utils/budgetSplitExecutor'
 import { kvDelete } from '~~/server/utils/kv'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 import { isSpendSyncStale } from '~~/server/utils/spendSyncFreshness'
+import { isCampaignTotalBudgetType } from '~~/shared/utils/campaignBudgetType'
 import {
   GOOGLE_CREDENTIAL_PROFILE_JOIN,
   GOOGLE_CREDENTIAL_PROFILE_SELECT,
@@ -43,6 +44,7 @@ export default eventHandler(async (event) => {
     recommended_daily: string
     budget_allocated: string
     actual_spend: string
+    budget_type: string | null
     period: string | null
     synced_at: string | null
     applied_today: boolean
@@ -59,6 +61,7 @@ export default eventHandler(async (event) => {
             COALESCE((cal.new_value->>'dailyBudget')::numeric, 0)::text       AS recommended_daily,
             COALESCE(ms.budget_allocated, 0)::text AS budget_allocated,
             COALESCE(ms.actual_spend, 0)::text     AS actual_spend,
+            ms.budget_type,
             ms.period,
             ms.synced_at::text AS synced_at,
             EXISTS (
@@ -89,6 +92,10 @@ export default eventHandler(async (event) => {
       return { status: 'blocked', reason: 'already_applied', clampReasons: [] }
     }
     throw createError({ statusCode: 404, statusMessage: 'Approved action not found' })
+  }
+
+  if (isCampaignTotalBudgetType(row.budget_type)) {
+    return { status: 'blocked', reason: 'custom_period_budget', clampReasons: [] }
   }
 
   if (isSpendSyncStale(row.synced_at)) {

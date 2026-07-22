@@ -43,6 +43,7 @@ function buildAiPrompt(review: PacingReviewResult): string {
     expectedToDate: item.expectedToDate,
     projectedMonthEnd: item.projectedMonthEnd,
     recommendedDailyBudget: item.recommendedDailyBudget,
+    dailyBudgetActionSupported: item.dailyBudgetActionSupported,
     action: item.recommendedAction
   }))
   return JSON.stringify({ period: review.period, summary: review.summary, items }, null, 2)

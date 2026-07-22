@@ -32,6 +32,7 @@ interface PacingReviewItem {
   }
   syncedAt: string | null
   recommendedAction: string
+  dailyBudgetActionSupported: boolean
 }
 
 interface PacingReviewSummary {
@@ -262,7 +263,7 @@ function openHistory(item: PacingReviewItem) {
               <p class="text-sm font-semibold tabular-nums">{{ formatCurrency(item.projectedMonthEnd) }}</p>
             </div>
             <div>
-              <p class="text-[11px] uppercase text-muted font-medium">New/day</p>
+              <p class="text-[11px] uppercase text-muted font-medium">{{ item.dailyBudgetActionSupported ? 'New/day' : 'Pace needed/day' }}</p>
               <p class="text-sm font-semibold tabular-nums">{{ formatCurrency(item.recommendedDailyBudget) }}</p>
             </div>
           </div>
