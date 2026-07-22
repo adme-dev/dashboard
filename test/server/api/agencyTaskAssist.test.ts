@@ -131,6 +131,8 @@ describe('POST /api/agency/ai/task-assist', () => {
 
     expect(result.insights).toBe('The task needs review.')
     expect(mockQueryRows.mock.calls[0]?.[0]).toContain('FROM team_members')
+    expect(mockQueryRows.mock.calls[1]?.[0]).toContain('LEFT JOIN agency_clients')
+    expect(mockQueryRows.mock.calls[1]?.[0]).not.toContain('LEFT JOIN clients')
     expect(mockQueryOne.mock.calls[0]?.[0]).toContain('LEFT JOIN team_members')
     expect(mockGenerateGroqInsight).toHaveBeenCalledWith(expect.stringContaining('Review campaign'), expect.objectContaining({
       featureKey: 'agency_task_assist_analysis',
