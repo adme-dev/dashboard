@@ -191,7 +191,7 @@
             Stop typing, start talking. XeroFlow Voice AI turns every conversation into a natural dialogue.
           </p>
           <NuxtLink
-            to="/auth/login"
+            to="/contact"
             class="inline-flex items-center gap-2.5 px-8 py-4 bg-white text-[#0a0a0a] text-[17px] font-medium rounded-full hover:bg-white/90 transition-colors"
           >
             Get Started

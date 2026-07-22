@@ -35,7 +35,7 @@
             </p>
             <div class="flex flex-wrap gap-3">
               <NuxtLink
-                to="/auth/login"
+                to="/contact"
                 class="inline-flex items-center gap-2 px-6 py-3 bg-white text-[#121317] text-[15px] font-medium rounded-full hover:bg-white/90 transition-colors"
               >
                 Get Started
@@ -236,7 +236,7 @@
             Stop manually editing HTML for each platform. Let XeroFlow handle the specs.
           </p>
           <NuxtLink
-            to="/auth/login"
+            to="/contact"
             class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-white/90 transition-colors"
           >
             Get Started

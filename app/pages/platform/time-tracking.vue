@@ -189,7 +189,7 @@
               Built into your boards, connected to your invoicing. Every hour accounted for.
             </p>
             <NuxtLink
-              to="/auth/login"
+              to="/contact"
               class="inline-flex items-center gap-2 px-6 py-3 bg-white text-[#121317] text-[15px] font-medium rounded-full hover:bg-white/90 transition-colors"
             >
               Get Started
