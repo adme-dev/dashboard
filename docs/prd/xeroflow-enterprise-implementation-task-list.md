@@ -2,7 +2,7 @@
 
 **Status:** Proposed — requires engineering and product approval before implementation  
 **Date:** 22 July 2026  
-**Revision:** v0.2 — added ENT-0008/ENT-0009 (hosting-runtime decision, design-partner commitment) and ENT-1018 (Pages→Workers migration); re-baselined the calendar on current single-operator capacity; marked SCIM, SIEM streaming and legal hold as partner-negotiable pilot scope; recorded existing identity assets in Phase 3. Task count is now 70.  
+**Revision:** v0.3 — added §8 "Working Alongside Ongoing Platform Work" (one-trunk rule, new-code rules, touch-it-convert-it, BAU priority rules, cohort-train upgrades). v0.2 added ENT-0008/ENT-0009 (hosting-runtime decision, design-partner commitment) and ENT-1018 (Pages→Workers migration); re-baselined the calendar on current single-operator capacity; marked SCIM, SIEM streaming and legal hold as partner-negotiable pilot scope; recorded existing identity assets in Phase 3. Task count is 70.  
 **Source PRD:** [XeroFlow Enterprise Platform PRD](./xeroflow-enterprise-platform-prd.md) (v0.2)  
 **Primary delivery target:** One non-ADME enterprise design partner in an isolated production cell  
 **Secondary delivery target:** Repeatable, supportable enterprise general availability (GA)
@@ -1309,7 +1309,45 @@ Parallelism begins only after ENT-0003 contracts are stable.
 
 Database migrations, canonical contracts, provisioning state transitions and production cutovers remain sequentially controlled.
 
-## 8. Programme Risk Register
+## 8. Working Alongside Ongoing Platform Work
+
+The enterprise conversion and business-as-usual fixes and upgrades share one trunk and one release train. The platform is never forked into an "enterprise version": these rules keep everyday work from creating new conversion debt while the conversion catches up.
+
+### 8.1 One trunk, no enterprise branch
+
+- All enterprise work merges to `main` continuously, dormant behind flags — the same pattern used for every dormant feature already in production.
+- No long-lived enterprise integration branch. Divergence between a months-old branch and a moving trunk costs more than flag discipline does.
+- BAU fixes and enterprise commits interleave on `main`; a release always contains both.
+
+### 8.2 New-code rules (in force once ENT-0003 lands)
+
+Every improvement — regardless of which stream it belongs to — follows three rules that cost minutes now and save weeks later:
+
+- [ ] New tables carry explicit `organization_id` ownership from creation, even while only one organisation exists. Retrofitting ownership is the expensive part of this programme; carrying it from birth is nearly free.
+- [ ] New caches, queue messages, realtime rooms and object keys use the canonical tenant-key builders as soon as they exist (ENT-1008, ENT-1009, ENT-1010) — never a bare global key.
+- [ ] No new newest/first/default-record tenant lookups — the exact anti-pattern the ENT-0002 inventory exists to eliminate. ENT-0007 CI gates enforce these rules mechanically (lint/grep checks) where possible.
+
+### 8.3 Touch-it, convert-it (in force once ENT-1004 proves the pattern)
+
+- A bugfix or upgrade that touches an unconverted route converts that route to the tenant pattern in the same pull request when the lift is small.
+- When the lift is large, fix minimally and record the domain in the ENT-0002 inventory instead — the inventory is a living ledger, updated by every improvement PR, not a one-time audit.
+- Restating the programme guardrail because it binds BAU work too: any change touching an isolation boundary ships with a negative cross-tenant test in the same PR.
+- This is how launch-domain conversion (ENT-1005) rides on energy already being spent rather than competing with it.
+
+### 8.4 Priority rules under constrained capacity
+
+- Production incidents and revenue-facing fixes always preempt enterprise tasks.
+- Otherwise the enterprise/BAU split is an explicit per-sprint timebox, recorded in the weekly report (§12) — scope drift in either direction becomes a visible decision, not an accident.
+- Milestone checkpoints are where the balance is renegotiated; that is part of their purpose.
+
+### 8.5 After cells exist (M2 onward)
+
+- A fix or upgrade is built once into one signed artifact and promotes through internal → canary → customer cohorts (ENT-2008). Every cell — ADME's included — receives it through the same pipeline.
+- Hotfix urgency changes the speed of the train, never the route. There is no "patch one customer's copy" path.
+- Schema changes follow expand/migrate/contract (ENT-1014) so a mixed-version fleet mid-rollout stays healthy; a failed canary health gate halts promotion before a bad fix reaches a customer.
+- Customer-specific requests are satisfied with configuration or entitlements, never a branch. The moment one cell runs bespoke code, the shared upgrade model collapses — this restates guardrail one because sales pressure will test it.
+
+## 9. Programme Risk Register
 
 | Risk | Probability | Impact | Early indicator | Mitigation / owner |
 |---|---|---|---|---|
@@ -1328,7 +1366,7 @@ Database migrations, canonical contracts, provisioning state transitions and pro
 | Operational burden exceeds team capacity | Medium | High | Excess alerts/manual fixes in pilot | Automation budget, actionable alerts and launch capacity gate / SRE lead |
 | Shared-database tenancy is introduced prematurely | Low | Critical | Pressure to lower costs before boundaries mature | Separate PRD/ADR and explicit non-goal / Architecture lead |
 
-## 9. Decisions Required Before Sprint Commitment
+## 10. Decisions Required Before Sprint Commitment
 
 - [ ] Confirm the first design partner's required module set through a signed LOI (ENT-0009); do not assume the whole current product is launch-critical, and do not begin Phase 1 without the LOI.
 - [ ] Choose the Workers runtime that replaces Cloudflare Pages (static assets versus Workers for Platforms) and approve the Pages exit plan (ENT-0008).
@@ -1345,7 +1383,7 @@ Database migrations, canonical contracts, provisioning state transitions and pro
 - [ ] Agree pilot success metrics, minimum duration and GA evidence threshold.
 - [ ] Confirm budget and named owners for SRE, security and customer implementation work.
 
-## 10. Recommended First Six Delivery Sprints
+## 11. Recommended First Six Delivery Sprints
 
 This is an initial sequencing proposal, assuming two-week sprints and the recommended team. It must be recalibrated after ENT-0002.
 
@@ -1386,7 +1424,7 @@ This is an initial sequencing proposal, assuming two-week sprints and the recomm
 - Continue inventory-driven launch-domain conversion under ENT-1005.
 - Re-estimate M1–M5 using measured migration velocity and discovered module scope, and restate the delivery scenario (§2.1).
 
-## 11. Progress Reporting Template
+## 12. Progress Reporting Template
 
 Use this weekly so enterprise progress is visible without equating activity with readiness:
 
@@ -1395,6 +1433,7 @@ Use this weekly so enterprise progress is visible without equating activity with
 
 - Current milestone:
 - Overall confidence: Green / Amber / Red
+- Enterprise vs BAU split this week (planned / actual):
 - Completed task IDs:
 - In-progress task IDs:
 - Gate evidence produced:
@@ -1405,6 +1444,6 @@ Use this weekly so enterprise progress is visible without equating activity with
 - Next checkpoint date:
 ```
 
-## 12. Final Programme Acceptance
+## 13. Final Programme Acceptance
 
 The enterprise programme is not complete merely because tenant identifiers, SSO and an admin screen exist. It is complete for GA only when XeroFlow can repeatedly provision, operate, upgrade, restore, audit, suspend and decommission isolated enterprise cells using shared artifacts—and can demonstrate those controls to a customer security team without relying on undocumented manual intervention.
