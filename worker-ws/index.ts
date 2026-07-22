@@ -33,6 +33,7 @@ interface AuthedUser {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const MAX_AUTH_COOKIE_CANDIDATES = 4
 
 export async function handleBoardConnect(
   request: Request,
@@ -82,13 +83,20 @@ export async function handleBannerConnect(
 }
 
 async function authenticate(request: Request, env: Env): Promise<AuthedUser | null> {
-  const token = getCookie(request, 'auth_token') || getCookie(request, 'auth_token_client')
-  if (!token) {
+  const tokens = getCookieCandidates(request, ['auth_token', 'auth_token_client'])
+  if (tokens.length === 0) {
     logAuthDenied(request, 'missing_auth_cookie')
     return null
   }
 
-  const payload = await verifyJwt(token, env.JWT_SECRET)
+  let payload: JwtPayload | null = null
+  for (const token of tokens) {
+    const candidate = await verifyJwt(token, env.JWT_SECRET)
+    if (candidate?.userId) {
+      payload = candidate
+      break
+    }
+  }
   if (!payload?.userId) {
     logAuthDenied(request, 'invalid_session_token', {
       jwtSecretConfigured: Boolean(env.JWT_SECRET)
@@ -172,17 +180,23 @@ function unauthorized(): Response {
   })
 }
 
-function getCookie(request: Request, name: string): string | null {
+function getCookieCandidates(request: Request, names: readonly string[]): string[] {
   const header = request.headers.get('cookie')
-  if (!header) return null
+  if (!header) return []
+  const allowedNames = new Set(names)
+  const seen = new Set<string>()
+  const candidates: string[] = []
   for (const part of header.split(';')) {
+    if (candidates.length >= MAX_AUTH_COOKIE_CANDIDATES) break
     const eq = part.indexOf('=')
     if (eq === -1) continue
-    if (part.slice(0, eq).trim() === name) {
-      return part.slice(eq + 1).trim()
-    }
+    const name = part.slice(0, eq).trim()
+    const value = part.slice(eq + 1).trim()
+    if (!allowedNames.has(name) || !value || seen.has(value)) continue
+    seen.add(value)
+    candidates.push(value)
   }
-  return null
+  return candidates
 }
 
 async function verifyJwt(token: string, secret: string): Promise<JwtPayload | null> {
