@@ -46,6 +46,7 @@ export interface GoogleAdsCampaignSpend {
   channelType: string
   endDate?: string | null
   bidStrategy?: string | null
+  budgetType?: 'daily' | 'lifetime' | null
 }
 
 export interface GoogleTokenResponse {
@@ -333,6 +334,12 @@ export function normalizeGoogleEndDate(value: string | null | undefined): string
   return d
 }
 
+export function googleBudgetTypeFromPeriod(period: string | null | undefined): 'daily' | 'lifetime' | null {
+  if (period === 'CUSTOM_PERIOD') return 'lifetime'
+  if (period === 'DAILY') return 'daily'
+  return null
+}
+
 /**
  * Get monthly spend aggregated by campaign
  * Google Ads amounts are in cost_micros — divide by 1,000,000 for dollars
@@ -355,6 +362,7 @@ export async function getMonthlySpend(
       campaign.advertising_channel_type,
       campaign.end_date_time,
       campaign.bidding_strategy_type,
+      campaign_budget.period,
       metrics.cost_micros,
       metrics.impressions,
       metrics.clicks,
@@ -380,7 +388,8 @@ export async function getMonthlySpend(
       status: r.campaign.status || 'UNKNOWN',
       channelType: r.campaign.advertisingChannelType || 'UNKNOWN',
       endDate: normalizeGoogleEndDate(r.campaign.endDateTime),
-      bidStrategy: r.campaign.biddingStrategyType || null
+      bidStrategy: r.campaign.biddingStrategyType || null,
+      budgetType: googleBudgetTypeFromPeriod(r.campaignBudget?.period)
     }
   })
 }
@@ -752,10 +761,14 @@ export async function updateGoogleCampaignDailyBudget(opts: {
     // Resolve the campaign's budget resource name.
     const search = await ofetch<any[]>(`${GOOGLE_ADS_BASE}/customers/${cid}/googleAds:searchStream`, {
       method: 'POST', headers,
-      body: { query: `SELECT campaign_budget.resource_name FROM campaign WHERE campaign.id = ${cleanCampaignId}` },
+      body: { query: `SELECT campaign_budget.resource_name, campaign_budget.period, campaign_budget.total_amount_micros FROM campaign WHERE campaign.id = ${cleanCampaignId}` },
     })
-    const resourceName: string | undefined = search?.[0]?.results?.[0]?.campaignBudget?.resourceName
+    const campaignBudget = search?.[0]?.results?.[0]?.campaignBudget
+    const resourceName: string | undefined = campaignBudget?.resourceName
     if (!resourceName) throw new Error('Google: campaign budget resource not found')
+    if (campaignBudget?.period === 'CUSTOM_PERIOD') {
+      throw new Error('Google: campaign uses a custom-period total budget; daily-budget updates are not supported')
+    }
 
     try {
       await ofetch(`${GOOGLE_ADS_BASE}/customers/${cid}/campaignBudgets:mutate`, {

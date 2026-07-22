@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeGoogleEndDate } from '~~/server/utils/googleAdsClient'
+import { googleBudgetTypeFromPeriod, normalizeGoogleEndDate } from '~~/server/utils/googleAdsClient'
 
 describe('normalizeGoogleEndDate', () => {
   it('passes through a real end date', () => {
@@ -16,5 +16,13 @@ describe('normalizeGoogleEndDate', () => {
     expect(normalizeGoogleEndDate('')).toBeNull()
     expect(normalizeGoogleEndDate(undefined)).toBeNull()
     expect(normalizeGoogleEndDate(null)).toBeNull()
+  })
+})
+
+describe('googleBudgetTypeFromPeriod', () => {
+  it('maps Google custom-period budgets to lifetime and daily budgets to daily', () => {
+    expect(googleBudgetTypeFromPeriod('CUSTOM_PERIOD')).toBe('lifetime')
+    expect(googleBudgetTypeFromPeriod('DAILY')).toBe('daily')
+    expect(googleBudgetTypeFromPeriod(undefined)).toBeNull()
   })
 })

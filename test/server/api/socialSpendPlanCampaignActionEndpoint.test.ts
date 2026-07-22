@@ -112,6 +112,29 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
     })
   })
 
+  it('rejects daily-budget actions for lifetime or custom-period campaigns', async () => {
+    mockQueryOne.mockReset()
+    mockQueryOne.mockResolvedValueOnce({
+      id: 'spend-1',
+      platform: 'google_ads',
+      campaign_name: 'PMax Inventory',
+      client_id: 'client-1',
+      campaign_id: 'campaign-1',
+      connection_id: 'connection-1',
+      account_id: '123',
+      period: '2026-06',
+      budget_type: 'lifetime',
+      synced_at: freshSyncedAt(),
+    })
+    const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/plan.post')).default
+
+    await expect(handler({ params: { id: 'spend-1' } } as any)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'Campaign uses a lifetime or custom-period total budget; daily-budget actions are not supported',
+    })
+    expect(mockRecordCampaignAction).not.toHaveBeenCalled()
+  })
+
   it('records a provided source and recommendation resource name while deduping by budget key', async () => {
     mockBody = { currentDailyBudget: 120, recommendedDailyBudget: 95, source: 'google_recommendation', recommendationResourceName: 'customers/9/recommendations/abc' }
     const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/plan.post')).default
