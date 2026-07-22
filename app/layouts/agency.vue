@@ -406,6 +406,7 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Notifications', to: '/settings/notifications', onSelect: close },
       { label: 'Watching', to: '/agency/notifications/watching', onSelect: close },
       { label: 'Security', to: '/settings/security', onSelect: close },
+      ...(canAccessAdmin.value ? [{ label: 'AI Governance', icon: 'i-lucide-shield-check', to: '/admin/ai/governance', onSelect: close }] : []),
       ...(canAccessAdmin.value ? [{ label: 'AI Model Ops', icon: 'i-lucide-brain-circuit', to: '/admin/ai/model-ops', onSelect: close }] : []),
       ...(canAccessAdmin.value ? [{ label: 'Admin', to: '/settings/admin', onSelect: close }] : []),
       { label: 'Integrations', to: '/settings/integrations/monday', onSelect: close }

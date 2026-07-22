@@ -1,0 +1,106 @@
+<script setup lang="ts">
+import type { AiDepartmentReadinessItem, AiDepartmentReadinessStatus } from '~/types/aiGovernance'
+
+defineProps<{ items: AiDepartmentReadinessItem[] }>()
+
+const statusMeta: Record<AiDepartmentReadinessStatus, { label: string, color: 'info' | 'warning' | 'error' | 'neutral', icon: string }> = {
+  ready_for_owner_confirmation: { label: 'Owner confirmation required', color: 'info', icon: 'i-lucide-user-check' },
+  draft_seeded: { label: 'Draft seeded', color: 'info', icon: 'i-lucide-file-check-2' },
+  released: { label: 'Governed release exists', color: 'neutral', icon: 'i-lucide-rocket' },
+  missing_department: { label: 'Department missing', color: 'error', icon: 'i-lucide-building-2' },
+  ambiguous_department: { label: 'Department match ambiguous', color: 'warning', icon: 'i-lucide-git-compare-arrows' },
+  missing_owner: { label: 'Owner missing', color: 'warning', icon: 'i-lucide-user-x' },
+  owner_inactive: { label: 'Owner inactive', color: 'error', icon: 'i-lucide-user-x' },
+  owner_not_member: { label: 'Owner not a member', color: 'error', icon: 'i-lucide-user-round-x' }
+}
+
+function formatReleaseState(state: AiDepartmentReadinessItem['releaseState']) {
+  return state === 'not_seeded'
+    ? 'Not seeded'
+    : state.replace(/_/g, ' ').replace(/^\w/, character => character.toUpperCase())
+}
+</script>
+
+<template>
+  <section class="space-y-3" aria-labelledby="pack-readiness-title">
+    <div>
+      <h2 id="pack-readiness-title" class="text-sm font-semibold text-highlighted">
+        Required department packs
+      </h2>
+      <p class="text-xs text-muted">
+        Every pack includes authenticated staff basics, bounded budgets, and three starter safety evaluations.
+      </p>
+    </div>
+
+    <UCard v-for="item in items" :key="item.key" :ui="{ body: 'p-4 sm:p-5' }">
+      <div class="flex flex-col gap-4">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="font-semibold text-highlighted">
+                {{ item.name }}
+              </h3>
+              <UBadge color="neutral" variant="soft">
+                {{ formatReleaseState(item.releaseState) }}
+              </UBadge>
+            </div>
+            <p class="mt-1 text-sm text-muted">
+              {{ item.description }}
+            </p>
+          </div>
+          <UBadge :color="statusMeta[item.status].color" variant="soft" class="shrink-0">
+            <UIcon :name="statusMeta[item.status].icon" class="mr-1 size-3.5" />
+            {{ statusMeta[item.status].label }}
+          </UBadge>
+        </div>
+
+        <dl class="grid gap-3 text-sm sm:grid-cols-2">
+          <div class="rounded-lg bg-elevated p-3">
+            <dt class="text-xs font-medium text-muted">
+              Organizational department
+            </dt>
+            <dd class="mt-1 text-default">
+              {{ item.department?.name ?? (item.departmentMatches.length ? `${item.departmentMatches.length} matches` : 'Not mapped') }}
+            </dd>
+          </div>
+          <div class="rounded-lg bg-elevated p-3">
+            <dt class="text-xs font-medium text-muted">
+              Owner candidate
+            </dt>
+            <dd class="mt-1 text-default">
+              {{ item.ownerCandidate?.name ?? 'Not eligible yet' }}
+            </dd>
+          </div>
+        </dl>
+
+        <div class="flex flex-wrap gap-2" aria-label="Pack coverage">
+          <UBadge color="neutral" variant="outline">
+            {{ item.coverage.capabilities }} capabilities
+          </UBadge>
+          <UBadge color="neutral" variant="outline">
+            {{ item.coverage.tools }} tools
+          </UBadge>
+          <UBadge color="neutral" variant="outline">
+            {{ item.coverage.evaluationCases }} evaluation cases
+          </UBadge>
+        </div>
+
+        <ul v-if="item.blockers.length" class="space-y-1.5 text-sm" aria-label="Activation blockers">
+          <li v-for="blocker in item.blockers" :key="blocker" class="flex items-start gap-2 text-warning">
+            <UIcon name="i-lucide-shield-alert" class="mt-0.5 size-4 shrink-0" /><span>{{ blocker }}</span>
+          </li>
+        </ul>
+        <details v-if="item.knownGaps.length" class="text-sm">
+          <summary class="cursor-pointer font-medium text-muted">
+            Known gaps
+          </summary>
+          <ul class="mt-2 list-disc space-y-1 pl-5 text-muted">
+            <li v-for="gap in item.knownGaps" :key="gap">
+              {{ gap }}
+            </li>
+          </ul>
+        </details>
+      </div>
+    </UCard>
+  </section>
+</template>
