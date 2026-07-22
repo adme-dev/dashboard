@@ -91,6 +91,7 @@ const approvedActionRow = (overrides: Record<string, unknown> = {}) => ({
   recommended_daily: '120',
   budget_allocated: '1000',
   actual_spend: '200',
+  budget_type: 'daily',
   period: '2026-06',
   synced_at: freshSyncedAt(),
   applied_today: false,
@@ -193,6 +194,19 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/execute', () => {
     expect(result).toEqual({ status: 'blocked', reason: 'stale_sync', clampReasons: [] })
     expect(mockClaimApprovedAction).not.toHaveBeenCalled()
     expect(mockReleaseActionClaim).not.toHaveBeenCalled()
+    expect(mockResolveGoogleWriteAuth).not.toHaveBeenCalled()
+    expect(mockUpdateGoogleCampaignDailyBudget).not.toHaveBeenCalled()
+  })
+
+  it('blocks legacy approved daily-budget actions for custom-period Google campaigns before claiming or writing', async () => {
+    mockQueryOne.mockResolvedValueOnce(approvedActionRow({ budget_type: 'lifetime' }))
+
+    const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/[actionId]/execute.post')).default
+
+    const result = await handler({ params: { id: 'spend-1', actionId: 'action-1' } } as any)
+
+    expect(result).toEqual({ status: 'blocked', reason: 'custom_period_budget', clampReasons: [] })
+    expect(mockClaimApprovedAction).not.toHaveBeenCalled()
     expect(mockResolveGoogleWriteAuth).not.toHaveBeenCalled()
     expect(mockUpdateGoogleCampaignDailyBudget).not.toHaveBeenCalled()
   })

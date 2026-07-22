@@ -4,6 +4,7 @@ import { recordCampaignAction } from '~~/server/utils/campaignActionLog'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { buildCampaignBudgetIdentity } from '~~/server/utils/campaignBudgetIdentity'
 import { isSpendSyncStale } from '~~/server/utils/spendSyncFreshness'
+import { isCampaignTotalBudgetType } from '~~/shared/utils/campaignBudgetType'
 
 export default eventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -50,7 +51,7 @@ export default eventHandler(async (event) => {
   if (!spend) {
     throw createError({ statusCode: 404, statusMessage: 'Spend record not found' })
   }
-  if (spend.budget_type === 'lifetime') {
+  if (isCampaignTotalBudgetType(spend.budget_type)) {
     throw createError({
       statusCode: 409,
       statusMessage: 'Campaign uses a lifetime or custom-period total budget; daily-budget actions are not supported',

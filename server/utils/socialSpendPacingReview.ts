@@ -4,6 +4,7 @@ import {
   parseSocialCampaignFeedbackSummary,
   type SocialCampaignFeedbackSummary
 } from '~~/server/utils/socialInbox/campaignFeedback'
+import { isDailyBudgetActionSupported } from '~~/shared/utils/campaignBudgetType'
 
 export type PacingReviewPlatform = 'meta' | 'google'
 export type PacingReviewIssueType
@@ -111,6 +112,7 @@ export interface PacingReviewItem {
   performance: PacingReviewPerformance
   syncedAt: string | null
   recommendedAction: string
+  dailyBudgetActionSupported: boolean
   canApplyAutomatically: false
   socialFeedback?: SocialCampaignFeedbackSummary
 }
@@ -254,6 +256,7 @@ function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severi
     performance: performanceFromRow(row, spend),
     syncedAt: row.synced_at,
     recommendedAction: '',
+    dailyBudgetActionSupported: isDailyBudgetActionSupported(row.budget_type),
     canApplyAutomatically: false,
     ...(socialFeedback ? { socialFeedback } : {})
   }
@@ -269,7 +272,10 @@ function withAction(item: PacingReviewItem): PacingReviewItem {
     zero_conversion: 'Check conversion tracking and campaign objective before allowing more budget to run.',
     negative_social_feedback: 'Review recent social comments or reviews before scaling budget, creative, or audience delivery.'
   }
-  return { ...item, recommendedAction: actionByIssue[item.issueType] }
+  const campaignTotalGuidance = item.dailyBudgetActionSupported
+    ? ''
+    : ' This campaign uses a campaign-total budget, so the daily figure is a pacing benchmark only; review delivery constraints instead of applying a daily-budget change.'
+  return { ...item, recommendedAction: `${actionByIssue[item.issueType]}${campaignTotalGuidance}` }
 }
 
 export function summarizePacingReview(items: PacingReviewItem[]): PacingReviewSummary {
