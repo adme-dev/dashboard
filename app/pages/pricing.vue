@@ -4,7 +4,7 @@
 
     <!-- Hero -->
     <section class="relative bg-[#0a0b0e] pt-[52px]">
-      <MarketingHeroBackground theme="pricing" />
+      <MarketingStarsBackground />
       <div class="relative max-w-[1200px] mx-auto px-6 pt-32 pb-12 md:pt-44 md:pb-20 text-center">
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] mb-8">
           <div class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
