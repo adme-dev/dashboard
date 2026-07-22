@@ -12,7 +12,7 @@ const UUID = z.uuid()
 const MACHINE_KEY = z.string().min(2).max(120).regex(/^[a-z][a-z0-9_:-]*$/)
 const TOOL_NAME = z.string().min(2).max(120).regex(/^[a-z][a-z0-9_]*$/)
 
-const RunnerBudgetSchema = z.object({
+export const EvaluationRunnerBudgetSchema = z.object({
   maxCases: z.number().int().min(1).max(500),
   maxInputTokensPerCase: z.number().int().positive().max(1_000_000),
   maxOutputTokensPerCase: z.number().int().positive().max(1_000_000),
@@ -42,7 +42,7 @@ export interface EvaluationRunnerCase {
   definition: EvaluationCase
 }
 
-export type EvaluationRunnerBudget = z.infer<typeof RunnerBudgetSchema>
+export type EvaluationRunnerBudget = z.infer<typeof EvaluationRunnerBudgetSchema>
 
 export interface EvaluationRunnerRequest {
   runId: string
@@ -279,7 +279,7 @@ function scoreObservation(
 function validateRequest(request: EvaluationRunnerRequest): EvaluationRunnerRequest {
   UUID.parse(request.runId)
   const materialIdentity = EvaluationMaterialIdentitySchema.parse(request.materialIdentity)
-  const budget = RunnerBudgetSchema.parse(request.budget)
+  const budget = EvaluationRunnerBudgetSchema.parse(request.budget)
   if (request.cases.length < 1 || request.cases.length > budget.maxCases) {
     throw new Error(`Evaluation cases must contain between 1 and maxCases (${budget.maxCases}) items`)
   }
