@@ -198,7 +198,7 @@ SELECT
   candidate.membership_role,
   candidate.is_explicit_member,
   candidate.is_primary_assignment,
-  (department.manager_id = member.id) AS is_department_manager
+  COALESCE(department.manager_id = member.id, FALSE) AS is_department_manager
 FROM candidate_members candidate
 JOIN departments department ON department.id = candidate.department_id
 JOIN team_members member ON member.id = candidate.team_member_id
@@ -207,7 +207,7 @@ WHERE department.department_kind = 'organizational'
   AND member.is_active = TRUE
 ORDER BY
   department.id,
-  (department.manager_id = member.id) DESC,
+  COALESCE(department.manager_id = member.id, FALSE) DESC,
   candidate.is_explicit_member DESC,
   CASE candidate.membership_role
     WHEN 'lead' THEN 0

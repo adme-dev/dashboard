@@ -128,6 +128,8 @@ describe('department assistant pack readiness', () => {
     expect(candidateParams).toEqual([])
     expect(candidateSql).toContain('department_members')
     expect(candidateSql).toContain('member.department_id')
+    expect(candidateSql).toContain('COALESCE(department.manager_id = member.id, FALSE) AS is_department_manager')
+    expect(candidateSql).toContain('COALESCE(department.manager_id = member.id, FALSE) DESC')
     expect(candidateSql).toContain('LIMIT 1001')
     expect(candidateSql).not.toContain('member.email')
   })
