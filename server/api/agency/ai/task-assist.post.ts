@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
     queryRows(`
       SELECT p.id, p.name, c.name AS client_name
       FROM projects p
-      LEFT JOIN clients c ON c.id = p.client_id
+      LEFT JOIN agency_clients c ON c.id = p.client_id
       WHERE p.status = 'active'
       ORDER BY p.name
     `),
