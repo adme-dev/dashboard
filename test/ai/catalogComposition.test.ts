@@ -81,6 +81,22 @@ describe('composeGovernedCatalog', () => {
     expect(composed.instructionsPreamble).toBe('')
   })
 
+  it('allows an authenticated ceiling only for tools already admitted by RBAC', () => {
+    const rbacFilteredTools = [{ name: 'search_knowledge' }]
+    const composed = composeGovernedCatalog(rbacFilteredTools, [row({
+      requiredPermissionGroup: 'AUTHENTICATED',
+      toolName: 'search_knowledge',
+      accessMode: 'read'
+    })], [])
+
+    expect(composed.tools).toEqual(rbacFilteredTools)
+    expect(composeGovernedCatalog([], [row({
+      requiredPermissionGroup: 'AUTHENTICATED',
+      toolName: 'search_knowledge',
+      accessMode: 'read'
+    })], []).tools).toEqual([])
+  })
+
   it('enforces binding access mode against the registry mutation annotation', () => {
     const composed = composeGovernedCatalog(tools, [
       row({ toolName: 'propose_budget_change', accessMode: 'read' }),

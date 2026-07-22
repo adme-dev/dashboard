@@ -4,6 +4,7 @@ import { PERMISSION_GROUPS, type PermissionGroup } from '~~/server/utils/permiss
 export type CatalogSourceType = 'pack' | 'capability'
 export type CatalogAccessMode = 'read' | 'draft' | 'propose'
 export type CatalogControlReleaseState = 'pilot' | 'active' | 'suspended' | 'retired'
+export type CatalogPermissionCeiling = PermissionGroup | 'AUTHENTICATED'
 
 export interface ActiveCatalogRow {
   sourceType: CatalogSourceType
@@ -22,7 +23,7 @@ export interface ActiveCatalogRow {
   packMaxLatencyMs: number | null
   capabilityVersionId: string | null
   capabilityKey: string | null
-  requiredPermissionGroup: PermissionGroup | null
+  requiredPermissionGroup: CatalogPermissionCeiling | null
   capabilityModelFeatureKey: string | null
   capabilityMaxInputTokens: number | null
   capabilityMaxOutputTokens: number | null
@@ -65,7 +66,7 @@ interface ActiveCatalogDbRow {
 
 const defaultDb: CatalogCompositionDb = { queryRows: realQueryRows as CatalogCompositionDb['queryRows'] }
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const PERMISSION_GROUP_SET = new Set<string>(PERMISSION_GROUPS)
+const PERMISSION_CEILING_SET = new Set<string>([...PERMISSION_GROUPS, 'AUTHENTICATED'])
 const ACCESS_MODE_SET = new Set<string>(['read', 'draft', 'propose'])
 
 function boundedNumber(value: number | string | null): number | null {
@@ -96,8 +97,8 @@ function mapCatalogRow(row: ActiveCatalogDbRow): ActiveCatalogRow {
     packMaxLatencyMs: boundedNumber(row.pack_max_latency_ms),
     capabilityVersionId: row.capability_version_id,
     capabilityKey: row.capability_key,
-    requiredPermissionGroup: PERMISSION_GROUP_SET.has(row.required_permission_group ?? '')
-      ? row.required_permission_group as PermissionGroup
+    requiredPermissionGroup: PERMISSION_CEILING_SET.has(row.required_permission_group ?? '')
+      ? row.required_permission_group as CatalogPermissionCeiling
       : null,
     capabilityModelFeatureKey: row.capability_model_feature_key,
     capabilityMaxInputTokens: boundedNumber(row.capability_max_input_tokens),
@@ -359,6 +360,8 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
   }
 
   const granted = new Set<PermissionGroup>(grantedPermissionGroups)
+  const permissionAllows = (ceiling: CatalogPermissionCeiling | null) =>
+    ceiling === 'AUTHENTICATED' || (ceiling != null && granted.has(ceiling))
   const capabilityControlState = new Map<string, 'suspended' | 'retired'>()
   for (const row of catalogRows) {
     if (
@@ -375,8 +378,7 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
     (row.releaseState === 'active' || row.releaseState === 'pilot')
     && row.capabilityVersionId
     && !capabilityControlState.has(row.capabilityVersionId)
-    && row.requiredPermissionGroup
-    && granted.has(row.requiredPermissionGroup)
+    && permissionAllows(row.requiredPermissionGroup)
   )
   const accessModesByTool = new Map<string, Set<CatalogAccessMode>>()
   for (const row of authorizedRows) {
@@ -413,8 +415,7 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
       else reason = 'not_in_active_catalog'
     } else if (!activeRows.some(row =>
       row.capabilityVersionId
-      && row.requiredPermissionGroup
-      && granted.has(row.requiredPermissionGroup)
+      && permissionAllows(row.requiredPermissionGroup)
     )) {
       reason = 'capability_permission_missing'
     } else {

@@ -41,6 +41,30 @@ describe('governed AI capability contracts', () => {
     expect(parsed.toolBindings[0]?.accessMode).toBe('propose')
   })
 
+  it('accepts an authenticated-staff ceiling without inventing a privileged permission', () => {
+    const parsed = CapabilityVersionSchema.parse({
+      capabilityId: UUIDS.capability,
+      departmentId: UUIDS.department,
+      version: 1,
+      description: 'Search published company knowledge within the caller\'s existing authority.',
+      requiredPermissionGroup: 'AUTHENTICATED',
+      riskClass: 'low',
+      dataClass: 'internal',
+      approvalMode: 'none',
+      modelFeatureKey: 'assistant_default',
+      evaluationSuiteId: UUIDS.suite,
+      budget: {
+        maxInputTokens: 4000,
+        maxOutputTokens: 600,
+        maxCostUsdMicros: 20_000,
+        maxLatencyMs: 12_000
+      },
+      toolBindings: [{ toolName: 'search_knowledge', accessMode: 'read' }]
+    })
+
+    expect(parsed.requiredPermissionGroup).toBe('AUTHENTICATED')
+  })
+
   it('rejects invented permissions and direct execution authority', () => {
     const base = {
       capabilityId: UUIDS.capability,

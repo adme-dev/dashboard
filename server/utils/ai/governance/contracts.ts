@@ -11,6 +11,10 @@ export const AiCapabilityAccessModeSchema = z.enum(['read', 'draft', 'propose'])
 export const AiRiskClassSchema = z.enum(['low', 'medium', 'high', 'critical'])
 export const AiDataClassSchema = z.enum(['public', 'internal', 'confidential', 'restricted'])
 export const AiApprovalModeSchema = z.enum(['none', 'confirm', 'rich_confirm', 'company_governed'])
+export const AiCapabilityPermissionCeilingSchema = z.union([
+  z.enum(PERMISSION_GROUPS),
+  z.literal('AUTHENTICATED')
+])
 
 export const AiModelBudgetSchema = z.object({
   maxInputTokens: z.number().int().positive().max(1_000_000),
@@ -33,7 +37,7 @@ export const CapabilityVersionSchema = z.object({
   departmentId: UUID,
   version: z.number().int().positive(),
   description: z.string().trim().min(1).max(4_000),
-  requiredPermissionGroup: z.enum(PERMISSION_GROUPS),
+  requiredPermissionGroup: AiCapabilityPermissionCeilingSchema,
   riskClass: AiRiskClassSchema,
   dataClass: AiDataClassSchema,
   approvalMode: AiApprovalModeSchema,
