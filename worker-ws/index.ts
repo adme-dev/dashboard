@@ -83,10 +83,18 @@ export async function handleBannerConnect(
 
 async function authenticate(request: Request, env: Env): Promise<AuthedUser | null> {
   const token = getCookie(request, 'auth_token') || getCookie(request, 'auth_token_client')
-  if (!token) return null
+  if (!token) {
+    logAuthDenied(request, 'missing_auth_cookie')
+    return null
+  }
 
   const payload = await verifyJwt(token, env.JWT_SECRET)
-  if (!payload?.userId) return null
+  if (!payload?.userId) {
+    logAuthDenied(request, 'invalid_session_token', {
+      jwtSecretConfigured: Boolean(env.JWT_SECRET)
+    })
+    return null
+  }
 
   try {
     const sql = neon(env.DATABASE_URL)
@@ -96,10 +104,41 @@ async function authenticate(request: Request, env: Env): Promise<AuthedUser | nu
       WHERE id = ${payload.userId} AND is_active = true
       LIMIT 1
     ` as Array<AuthedUser>
-    return rows[0] ?? null
-  } catch {
+    if (!rows[0]) {
+      logAuthDenied(request, 'inactive_or_missing_user')
+      return null
+    }
+    return rows[0]
+  } catch (error) {
+    const errorRecord = error && typeof error === 'object'
+      ? error as { name?: unknown, code?: unknown }
+      : null
+    logAuthDenied(request, 'user_lookup_failed', {
+      databaseUrlConfigured: Boolean(env.DATABASE_URL),
+      errorName: typeof errorRecord?.name === 'string' ? errorRecord.name : 'UnknownError',
+      errorCode: typeof errorRecord?.code === 'string' ? errorRecord.code : null
+    }, 'error')
     return null
   }
+}
+
+type AuthDeniedReason
+  = | 'missing_auth_cookie'
+    | 'invalid_session_token'
+    | 'inactive_or_missing_user'
+    | 'user_lookup_failed'
+
+function logAuthDenied(
+  request: Request,
+  reason: AuthDeniedReason,
+  details: Record<string, unknown> = {},
+  level: 'warn' | 'error' = 'warn'
+): void {
+  console[level]('realtime.auth.denied', {
+    reason,
+    path: new URL(request.url).pathname,
+    ...details
+  })
 }
 
 function forwardToDO(
