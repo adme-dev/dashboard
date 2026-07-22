@@ -23,10 +23,10 @@
           </p>
           <div class="flex flex-col sm:flex-row items-start gap-4 hero-entrance hero-delay-3">
             <NuxtLink
-              to="/auth/login"
+              to="/contact"
               class="inline-flex items-center gap-3 px-8 py-4 bg-white text-[#0a0a0a] text-lg font-medium rounded-full hover:bg-white/90 transition-colors"
             >
-              Get Started Free
+              Talk to us
               <UIcon name="i-lucide-arrow-right" class="w-5 h-5" />
             </NuxtLink>
             <button
@@ -386,10 +386,10 @@
             <div class="reveal">
               <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 mb-6">
                 <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span class="text-[12px] text-emerald-400 font-medium">Limited offer</span>
+                <span class="text-[12px] text-emerald-400 font-medium">Founding intake &middot; limited spots</span>
               </div>
               <h2 class="font-display text-[clamp(2.5rem,7vw,5rem)] leading-[1.05] mb-6 font-bold text-white tracking-[-0.02em] uppercase">
-                3 Months<br>On Us.
+                Now<br>Onboarding.
               </h2>
               <p class="text-[clamp(1rem,1.5vw,1.2rem)] text-white/60 font-light leading-relaxed mb-8">
                 We're onboarding a handful of agencies this quarter. If you're running 5+ people and drowning in tabs, we'd love to chat. No demos that could've been an email — just a straight conversation.
@@ -405,15 +405,19 @@
                 </div>
                 <div class="flex items-center gap-3">
                   <UIcon name="i-lucide-check-circle" class="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span class="text-[14px] text-white/70">Cancel anytime — no lock-in, no awkwardness</span>
+                  <span class="text-[14px] text-white/70">A written proposal — platform fee and scope, upfront</span>
                 </div>
               </div>
             </div>
 
             <!-- Right — form -->
             <div class="rounded-2xl border border-white/[0.1] bg-white/[0.04] backdrop-blur-xl p-8 reveal reveal-d1">
-              <h3 class="text-[20px] font-medium text-white mb-1">Register your interest</h3>
-              <p class="text-[13px] text-white/40 mb-6">We'll reach out within 24 hours. No spam, pinky promise.</p>
+              <h3 class="text-[20px] font-medium text-white mb-1">
+                Request a walkthrough
+              </h3>
+              <p class="text-[13px] text-white/40 mb-6">
+                A real person replies within one business day. No spam, pinky promise.
+              </p>
 
               <form @submit.prevent="submitInterest" class="flex flex-col gap-4">
                 <div>
@@ -466,8 +470,11 @@
                   :disabled="interestSubmitting"
                   class="mt-2 w-full py-3.5 rounded-xl bg-white text-[#0a0a0a] text-[15px] font-semibold hover:bg-white/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {{ interestSubmitting ? 'Sending...' : interestSubmitted ? 'We\'ll be in touch!' : 'Claim Your Free Trial' }}
+                  {{ interestSubmitting ? 'Sending...' : interestSubmitted ? 'We\'ll be in touch!' : 'Request a walkthrough' }}
                 </button>
+                <p v-if="interestError" class="text-[13px] text-red-400 text-center">
+                  Something went wrong — please try again, or use the <NuxtLink to="/contact" class="underline">contact page</NuxtLink>.
+                </p>
               </form>
 
               <p class="text-[11px] text-white/25 mt-4 text-center">
@@ -516,19 +523,25 @@ const interestForm = reactive({
 })
 const interestSubmitting = ref(false)
 const interestSubmitted = ref(false)
+const interestError = ref(false)
 
 async function submitInterest() {
   if (interestSubmitted.value) return
   interestSubmitting.value = true
+  interestError.value = false
   try {
-    await $fetch('/api/public/interest', {
+    await $fetch('/api/public/contact', {
       method: 'POST',
-      body: interestForm,
+      body: {
+        name: interestForm.name,
+        email: interestForm.email,
+        company: interestForm.agency || undefined,
+        teamSize: interestForm.teamSize || undefined
+      }
     })
     interestSubmitted.value = true
   } catch {
-    // Silently succeed for now — backend endpoint can be wired up later
-    interestSubmitted.value = true
+    interestError.value = true
   } finally {
     interestSubmitting.value = false
   }

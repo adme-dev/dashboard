@@ -64,7 +64,10 @@ const publicRoutes = [
   '/api/export/',
   // Public token-gated render redirect — for social platforms fetching media_urls
   // at publish time (incl. scheduled posts days later). Auth is the HMAC token itself.
-  '/api/public/renders/'
+  '/api/public/renders/',
+  // Marketing contact form — anonymous visitors by definition. Gated inside the
+  // handler by zod validation, a honeypot field and a per-IP throttle.
+  '/api/public/contact'
 ]
 
 // Paths that an authenticated cron can read with X-Internal-Cron-Secret.

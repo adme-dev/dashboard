@@ -43,6 +43,16 @@
           >
             Resources
           </button>
+          <NuxtLink
+            to="/contact"
+            class="px-4 py-1.5 text-[14.5px] rounded-full transition-colors"
+            :class="active === 'contact'
+              ? 'text-white font-medium bg-white/[0.1]'
+              : 'text-white/70 hover:text-white'"
+            @mouseenter="openDropdown = null"
+          >
+            Contact
+          </NuxtLink>
         </div>
 
         <!-- Right Side Actions -->
@@ -464,6 +474,15 @@
                   Pricing
                 </NuxtLink>
 
+                <!-- Contact Link -->
+                <NuxtLink
+                  to="/contact"
+                  class="flex items-center py-4 text-[16px] font-medium text-white border-b border-white/[0.06]"
+                  @click="mobileOpen = false"
+                >
+                  Contact
+                </NuxtLink>
+
                 <!-- Resources Accordion -->
                 <div class="border-b border-white/[0.06]">
                   <button
@@ -537,7 +556,7 @@
 
 <script setup lang="ts">
 defineProps<{
-  active?: 'features' | 'pricing' | 'resources' | ''
+  active?: 'features' | 'pricing' | 'resources' | 'contact' | ''
 }>()
 
 const colorMode = useColorMode()

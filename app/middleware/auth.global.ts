@@ -18,6 +18,7 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
     '/landing',
     '/features',
     '/pricing',
+    '/contact',
     '/resources',
     '/platform',
     '/privacy',

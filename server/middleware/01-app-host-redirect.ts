@@ -7,6 +7,7 @@ const PUBLIC_MARKETING_PATHS = [
   '/landing',
   '/features',
   '/pricing',
+  '/contact',
   '/resources',
   '/about',
   '/support',

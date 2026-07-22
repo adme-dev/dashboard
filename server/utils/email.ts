@@ -88,7 +88,7 @@ export function getResendClient(event?: H3Event): Resend | null {
   return resend
 }
 
-function getEmailConfig(event?: H3Event) {
+export function getEmailConfig(event?: H3Event) {
   const config = useRuntimeConfig()
   return {
     appName: getCfBinding(event, 'APP_NAME') || config.public?.appName || process.env.APP_NAME || 'XeroFlow Agency',
