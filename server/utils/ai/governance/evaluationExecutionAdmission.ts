@@ -132,7 +132,9 @@ const defaultDependencies: EvaluationAdmissionDependencies = {
   isTrustedApproval: () => false,
   isTrustedRateCard: () => false
 }
-const TOKENS_PER_MILLION = 1_000_000n
+const BIGINT_ZERO = BigInt(0)
+const BIGINT_ONE = BigInt(1)
+const TOKENS_PER_MILLION = BigInt(1_000_000)
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize)
@@ -149,7 +151,9 @@ function digest(value: unknown): string {
 }
 
 function ceilDivide(value: bigint, divisor: bigint): bigint {
-  return value === 0n ? 0n : ((value - 1n) / divisor) + 1n
+  return value === BIGINT_ZERO
+    ? BIGINT_ZERO
+    : ((value - BIGINT_ONE) / divisor) + BIGINT_ONE
 }
 
 function estimatedCostMicros(
