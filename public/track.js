@@ -35,6 +35,7 @@
   var _gtmReady = false
   var _pendingDataLayerPushes = []
   var _scriptOrigin = ''
+  var _initialized = false
 
   // Events that should push to dataLayer (ad platform value)
   var DATALAYER_EVENTS = {
@@ -1092,7 +1093,17 @@
 
     // Write key may arrive via the auto-init boot config (read from data-key in
     // the footer, where document.currentScript is reliable) or a manual init().
+    var hadWriteKey = !!WRITE_KEY
     if (config.writeKey) WRITE_KEY = config.writeKey
+
+    // GTM and SPA runtimes can execute the same Custom HTML bootstrap more than
+    // once. Always accept a late write key, but never install duplicate DOM
+    // listeners, history wrappers, timers, or initial page views.
+    if (_initialized) {
+      if (!hadWriteKey && WRITE_KEY) trackPageView()
+      return
+    }
+    _initialized = true
 
     // Apply config overrides to module-level defaults
     var c = config.constants || {}

@@ -138,6 +138,11 @@ describe('public/track.js transport', () => {
     expect(requests).toHaveLength(1)
     expect(requests[0].url).toContain('/api/public/track?k=TESTKEY')
 
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+
+    expect(addListener.mock.calls.filter(([name]) => name === 'blur')).toHaveLength(1)
+    expect(requests).toHaveLength(1)
+
     currentScript.mockRestore()
     addListener.mockRestore()
   })
