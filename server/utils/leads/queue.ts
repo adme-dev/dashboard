@@ -4,8 +4,8 @@
 // Worker is the queue consumer; this file never consumes.
 
 export interface QueueMessage {
-  type: 'rules.evaluate' | 'delivery.dispatch'
-  payload: { lead_id?: string; delivery_id?: string }
+  type: 'rules.evaluate' | 'delivery.dispatch' | 'crm.promote'
+  payload: { lead_id?: string; delivery_id?: string },
   attempt?: number
   delaySeconds?: number
 }

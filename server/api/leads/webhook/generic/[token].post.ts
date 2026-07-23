@@ -13,7 +13,9 @@
 //     "form_id": "...",                             (optional)
 //     "form_name": "...",                           (optional)
 //     "source": "webhook"|"meta"|"manual"|"csv",   (optional, default 'webhook')
-//     "fields": { "full_name": "...", ... },       (required, snake_case keys)
+//     "customer": { "full_name": "...", "email": "...", "mobile": "..." },
+//     "vehicle": { "stock_number": "...", "make": "...", "model": "..." },
+//     "fields": { "preferred_contact_time": "..." }, (optional extension fields)
 //     "attribution": { "utm_source": "...", ... }, (optional)
 //     "submitted_at": "2026-05-01T12:34:56Z"       (optional)
 //   }
@@ -29,38 +31,56 @@ import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { allowRequest } from '~~/server/utils/leads/rateLimit'
 import { enqueueLeadJob } from '~~/server/utils/leads/queue'
 import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
+import {
+  DealerLeadWebhookBodySchema,
+  normalizeDealerLeadWebhookBody
+} from '~~/server/utils/leads/dealerLeadAdapter'
 import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
 import { timingSafeEqual, randomUUID } from 'node:crypto'
-import { z } from 'zod'
 import type { LeadSource } from '~~/app/types'
-
-const FieldMap = z.record(
-  z.string().trim().min(1).max(128),
-  z.union([z.string().max(4096), z.number(), z.boolean()])
-).refine(fields => Object.keys(fields).length <= 100, 'too_many_fields')
-
-const AttributionMap = z.record(
-  z.string().trim().min(1).max(128),
-  z.string().max(512)
-).refine(attribution => Object.keys(attribution).length <= 30, 'too_many_attribution_fields')
-
-const Body = z.object({
-  key: z.string().min(1).max(512),
-  lead_id: z.string().min(1).max(255).optional(),
-  form_id: z.string().max(255).optional(),
-  form_name: z.string().max(500).optional(),
-  source: z.enum(['webhook', 'meta', 'manual', 'csv', 'google']).default('webhook'),
-  fields: FieldMap,
-  attribution: AttributionMap.optional(),
-  consent_decision: z.enum(['granted', 'denied', 'unknown']).default('unknown'),
-  submitted_at: z.string().datetime({ offset: true }).optional(),
-  is_test: z.boolean().default(false)
-})
 
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a), bb = Buffer.from(b)
   if (ab.length !== bb.length) return false
   return timingSafeEqual(ab, bb)
+}
+
+function ingestionDiagnostic(rawBody: unknown): Record<string, unknown> {
+  if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+    return { payload_type: rawBody === null ? 'null' : typeof rawBody }
+  }
+  const body = rawBody as Record<string, unknown>
+  const provider = typeof body.provider === 'string'
+    && /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(body.provider)
+    ? body.provider.slice(0, 100)
+    : undefined
+  return {
+    payload_type: 'object',
+    schema_version: typeof body.schema_version === 'number' ? body.schema_version : undefined,
+    provider,
+    has_customer: Boolean(body.customer),
+    has_vehicle: Boolean(body.vehicle),
+    has_fields: Boolean(body.fields)
+  }
+}
+
+function ingestionDiagnosticHeaders(event: Parameters<typeof getRequestHeaders>[0]): Record<string, string> {
+  const headers = getRequestHeaders(event)
+  const result: Record<string, string> = {}
+  for (const key of ['content-type', 'user-agent', 'cf-ray']) {
+    const value = headers[key]
+    if (typeof value === 'string') result[key] = value.slice(0, 512)
+  }
+  return result
+}
+
+function formMetadataFields(fieldData: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {}
+  const sensitiveKey = /(^|_)(name|email|phone|mobile|address|postcode)(_|$)/
+  for (const [key, value] of Object.entries(fieldData)) {
+    result[key] = sensitiveKey.test(key) ? '[redacted]' : value
+  }
+  return result
 }
 
 export default defineEventHandler(async (event) => {
@@ -88,15 +108,20 @@ export default defineEventHandler(async (event) => {
   if (!ep) throw createError({ statusCode: 404, statusMessage: 'unknown_token' })
 
   const rawBody: unknown = await readBody(event).catch(() => null)
-  const parsed = Body.safeParse(rawBody)
+  const parsed = DealerLeadWebhookBodySchema.safeParse(rawBody)
   if (!parsed.success) {
-    await logIngestionError('webhook', rawBody, getRequestHeaders(event), 'invalid_body')
+    await logIngestionError(
+      'webhook',
+      ingestionDiagnostic(rawBody),
+      ingestionDiagnosticHeaders(event),
+      'invalid_body'
+    )
     return { ok: true } // always-200
   }
-  const input = parsed.data
-  const trustedSource: LeadSource = ep.source === 'webhook' ? 'webhook' : input.source
+  const input = normalizeDealerLeadWebhookBody(parsed.data)
+  const trustedSource: LeadSource = ep.source === 'webhook' ? 'webhook' : input.requestedSource
 
-  const submittedKey = input.key
+  const submittedKey = input.submittedKey
   const matchPrimary = safeEqual(submittedKey, ep.secret_key)
   const inGrace = Boolean(
     ep.secret_key_previous
@@ -108,22 +133,21 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'invalid_key' })
   }
 
-  // Stringify field values — schema admits primitive types but the lead schema
-  // stores strings.
-  const fieldData: Record<string, string> = {}
-  for (const [k, v] of Object.entries(input.fields)) {
-    if (v == null || v === '') continue
-    fieldData[k.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')] = String(v)
-  }
+  const fieldData = input.fieldData
 
-  if (!Object.keys(fieldData).length) {
-    await logIngestionError('webhook', rawBody, getRequestHeaders(event), 'empty_fields')
+  if (!Object.keys(fieldData).some(key => key !== 'lead_provider')) {
+    await logIngestionError(
+      'webhook',
+      ingestionDiagnostic(rawBody),
+      ingestionDiagnosticHeaders(event),
+      'empty_fields'
+    )
     return { ok: true }
   }
 
   try {
-    const sourceLeadId = input.lead_id || `webhook-${randomUUID()}`
-    const submittedAt = input.submitted_at ? new Date(input.submitted_at).toISOString() : new Date().toISOString()
+    const sourceLeadId = input.sourceLeadId || `webhook-${randomUUID()}`
+    const submittedAt = input.submittedAt ? new Date(input.submittedAt).toISOString() : new Date().toISOString()
     const assignedTo = await resolveAssignedAm(ep.client_id)
 
     const intake = await leadIntakeService.ingest({
@@ -131,23 +155,28 @@ export default defineEventHandler(async (event) => {
         client_id: ep.client_id,
         source: trustedSource,
         source_lead_id: sourceLeadId,
-        form_id: input.form_id ?? null,
-        form_name: input.form_name ?? null,
+        form_id: input.formId,
+        form_name: input.formName,
         ad_id: null, ad_name: null,
         campaign_id: null, campaign_name: null,
         page_id: null,
         submitted_at: submittedAt,
         field_data: fieldData,
-        attribution: input.attribution ?? null,
+        attribution: input.attribution,
         assigned_to: assignedTo,
         created_by: null,
-        is_test: input.is_test
+        is_test: input.isTest
       },
-      consentDecision: input.consent_decision
+      consentDecision: input.consentDecision
     })
 
-    if (input.form_id) {
-      await upsertFormMetadata(trustedSource, input.form_id, input.form_name ?? null, fieldData)
+    if (input.formId) {
+      await upsertFormMetadata(
+        trustedSource,
+        input.formId,
+        input.formName,
+        formMetadataFields(fieldData)
+      )
     }
     if (intake.status === 'duplicate') return { ok: true, skipped: true }
     const leadId = intake.leadId
@@ -169,13 +198,21 @@ export default defineEventHandler(async (event) => {
     }
 
     await enqueueLeadJob({ type: 'rules.evaluate', payload: { lead_id: leadId } })
+    if (process.env.CRM_LEAD_PROMOTION_ENABLED === 'true' && input.promoteToCrm) {
+      await enqueueLeadJob({ type: 'crm.promote', payload: { lead_id: leadId } })
+    }
     const fresh = await loadLead(leadId)
     if (fresh) await notifyOnNewLead(fresh)
 
     return { ok: true, lead_id: leadId }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
-    await logIngestionError('webhook', rawBody, getRequestHeaders(event), message)
+    await logIngestionError(
+      'webhook',
+      ingestionDiagnostic(rawBody),
+      ingestionDiagnosticHeaders(event),
+      message
+    )
     return { ok: true }
   }
 })

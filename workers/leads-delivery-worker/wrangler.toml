@@ -11,6 +11,8 @@ compatibility_flags = ["nodejs_compat"]
 [alias]
 "~~/server/utils/db" = "./src/db.ts"
 "~~/server/utils/notifications" = "./src/notifications.ts"
+"~~/server/utils/googleCredentialProfiles" = "../../server/utils/googleCredentialProfiles.ts"
+"~~/server/utils/tokenCrypto" = "../../server/utils/tokenCrypto.ts"
 "~~/app/types" = "../../app/types/index.ts"
 
 [[hyperdrive]]
