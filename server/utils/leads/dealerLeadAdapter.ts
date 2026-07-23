@@ -1,0 +1,158 @@
+import { z } from 'zod'
+
+const PrimitiveField = z.union([
+  z.string().max(4096),
+  z.number().finite(),
+  z.boolean()
+])
+
+const FieldMap = z.record(
+  z.string().trim().min(1).max(128),
+  PrimitiveField
+).refine(fields => Object.keys(fields).length <= 100, 'too_many_fields')
+
+const AttributionMap = z.record(
+  z.string().trim().min(1).max(128),
+  z.string().max(512)
+).refine(attribution => Object.keys(attribution).length <= 30, 'too_many_attribution_fields')
+
+const Customer = z.object({
+  first_name: z.string().trim().min(1).max(200).optional(),
+  last_name: z.string().trim().min(1).max(200).optional(),
+  full_name: z.string().trim().min(1).max(500).optional(),
+  email: z.string().trim().email().max(320).optional(),
+  phone: z.string().trim().min(3).max(64).optional(),
+  mobile: z.string().trim().min(3).max(64).optional()
+}).optional()
+
+const Vehicle = z.object({
+  stock_number: z.string().trim().min(1).max(128).optional(),
+  vin: z.string().trim().min(1).max(64).optional(),
+  year: z.union([z.string().trim().max(8), z.number().int().min(1886).max(2200)]).optional(),
+  make: z.string().trim().min(1).max(128).optional(),
+  model: z.string().trim().min(1).max(128).optional(),
+  variant: z.string().trim().min(1).max(256).optional(),
+  condition: z.string().trim().min(1).max(64).optional(),
+  price: z.union([z.string().trim().max(64), z.number().finite().nonnegative()]).optional(),
+  url: z.string().trim().url().max(2048).optional()
+}).optional()
+
+/**
+ * Versioned, provider-neutral envelope accepted by the authenticated website
+ * webhook. Existing fields-only callers remain valid; new integrations should
+ * prefer the first-class customer and vehicle objects.
+ */
+export const DealerLeadWebhookBodySchema = z.object({
+  key: z.string().min(1).max(512),
+  schema_version: z.literal(1).default(1),
+  provider: z.string().trim().min(1).max(100)
+    .regex(/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/)
+    .default('generic'),
+  lead_id: z.string().trim().min(1).max(255).optional(),
+  form_id: z.string().trim().max(255).optional(),
+  form_name: z.string().trim().max(500).optional(),
+  source: z.enum(['webhook', 'meta', 'manual', 'csv', 'google']).default('webhook'),
+  customer: Customer,
+  vehicle: Vehicle,
+  fields: FieldMap.default({}),
+  attribution: AttributionMap.optional(),
+  consent_decision: z.enum(['granted', 'denied', 'unknown']).default('unknown'),
+  submitted_at: z.string().datetime({ offset: true }).optional(),
+  is_test: z.boolean().default(false),
+  promote_to_crm: z.boolean().default(true)
+})
+
+export type DealerLeadWebhookBody = z.infer<typeof DealerLeadWebhookBodySchema>
+
+function canonicalKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+}
+
+function assignField(target: Record<string, string>, key: string, value: unknown): void {
+  if (value === undefined || value === null || value === '') return
+  target[key] = String(value).trim()
+}
+
+function splitFullName(fullName: string): { firstName: string, lastName?: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  return {
+    firstName: parts[0] ?? fullName.trim(),
+    lastName: parts.length > 1 ? parts.slice(1).join(' ') : undefined
+  }
+}
+
+export interface NormalizedDealerLeadWebhookBody {
+  provider: string
+  sourceLeadId?: string
+  formId: string | null
+  formName: string | null
+  fieldData: Record<string, string>
+  attribution: Record<string, string> | null
+  consentDecision: 'granted' | 'denied' | 'unknown'
+  submittedAt?: string
+  isTest: boolean
+  promoteToCrm: boolean
+  submittedKey: string
+  requestedSource: DealerLeadWebhookBody['source']
+}
+
+export function normalizeDealerLeadWebhookBody(
+  input: DealerLeadWebhookBody
+): NormalizedDealerLeadWebhookBody {
+  const fieldData: Record<string, string> = {}
+  for (const [key, value] of Object.entries(input.fields)) {
+    const normalizedKey = canonicalKey(key)
+    if (normalizedKey) assignField(fieldData, normalizedKey, value)
+  }
+
+  const customer = input.customer
+  if (customer) {
+    let firstName = customer.first_name
+    let lastName = customer.last_name
+    if (customer.full_name && !firstName) {
+      const split = splitFullName(customer.full_name)
+      firstName = split.firstName
+      lastName = lastName ?? split.lastName
+    }
+    assignField(fieldData, 'first_name', firstName)
+    assignField(fieldData, 'last_name', lastName)
+    assignField(
+      fieldData,
+      'full_name',
+      customer.full_name ?? [firstName, lastName].filter(Boolean).join(' ')
+    )
+    assignField(fieldData, 'email', customer.email)
+    assignField(fieldData, 'phone_number', customer.mobile ?? customer.phone)
+  }
+
+  const vehicle = input.vehicle
+  if (vehicle) {
+    assignField(fieldData, 'vehicle_stock_number', vehicle.stock_number)
+    assignField(fieldData, 'vehicle_vin', vehicle.vin)
+    assignField(fieldData, 'vehicle_year', vehicle.year)
+    assignField(fieldData, 'vehicle_make', vehicle.make)
+    assignField(fieldData, 'vehicle_model', vehicle.model)
+    assignField(fieldData, 'vehicle_variant', vehicle.variant)
+    assignField(fieldData, 'vehicle_condition', vehicle.condition)
+    assignField(fieldData, 'vehicle_price', vehicle.price)
+    assignField(fieldData, 'vehicle_url', vehicle.url)
+  }
+
+  // Provider is server-validated metadata, so it wins over an arbitrary field.
+  fieldData.lead_provider = input.provider
+
+  return {
+    provider: input.provider,
+    sourceLeadId: input.lead_id,
+    formId: input.form_id ?? null,
+    formName: input.form_name ?? null,
+    fieldData,
+    attribution: input.attribution ?? null,
+    consentDecision: input.consent_decision,
+    submittedAt: input.submitted_at,
+    isTest: input.is_test,
+    promoteToCrm: input.promote_to_crm,
+    submittedKey: input.key,
+    requestedSource: input.source
+  }
+}

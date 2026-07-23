@@ -8,6 +8,7 @@ import {
 } from './db'
 import { evaluateLead } from './rulesEngine'
 import { getAdapter } from './destinations'
+import { crmLeadPromotionService } from './crmPromotion'
 import { queryOne } from '~~/server/utils/db'
 import type { LeadDelivery, LeadRuleDestination, LeadSource } from '~~/app/types'
 import type { QueueMessage } from './queue'
@@ -16,6 +17,17 @@ const WORKER_ID = `inline-${Math.random().toString(36).slice(2, 10)}`
 const BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000]
 
 export async function handleQueueMessage(msg: QueueMessage): Promise<void> {
+  if (msg.type === 'crm.promote' && msg.payload.lead_id) {
+    const result = await crmLeadPromotionService.promote(msg.payload.lead_id)
+    console.info({
+      event: 'crm_lead_promotion_completed',
+      leadId: msg.payload.lead_id,
+      status: result.status,
+      ...('personId' in result ? { personId: result.personId } : {}),
+      ...('opportunityId' in result ? { opportunityId: result.opportunityId } : {})
+    })
+    return
+  }
   if (msg.type === 'rules.evaluate' && msg.payload.lead_id) {
     const result = await evaluateLead(msg.payload.lead_id)
     // Each insertDelivery already wrote a row; chain a delivery.dispatch per planned id.
