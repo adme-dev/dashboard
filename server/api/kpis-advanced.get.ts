@@ -11,6 +11,13 @@ function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
 }
 
+const aggregateXeroOptions = {
+  maxRetries: 1,
+  baseDelayMs: 500,
+  callTimeoutMs: 5_000,
+  totalTimeoutMs: 7_000,
+}
+
 function addDays(date: Date, days: number) {
   const result = new Date(date)
   result.setDate(result.getDate() + days)
@@ -72,30 +79,48 @@ export default eventHandler(async (event) => {
     overdueInvoicesResponse,
     balanceSheetResponse
   ] = await settleTasksWithConcurrency([
-    () => dedupedXeroCall(`kpi-bank-summary:${tenantId}`, 'kpi-bank-summary', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: `Reports/BankSummary?fromDate=${ensureDateString(addDays(today, -30))}&toDate=${ensureDateString(today)}` })
+    () => dedupedXeroCall(
+      `kpi-bank-summary:${tenantId}`,
+      'kpi-bank-summary',
+      () => xeroFetch<any>({ accessToken, tenantId, path: `Reports/BankSummary?fromDate=${ensureDateString(addDays(today, -30))}&toDate=${ensureDateString(today)}` }),
+      aggregateXeroOptions,
     ),
 
-    () => dedupedXeroCall(`kpi-pnl-current:${tenantId}:${basis}`, 'kpi-pnl-current', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: pnlPath(monthStart, today) })
+    () => dedupedXeroCall(
+      `kpi-pnl-current:${tenantId}:${basis}`,
+      'kpi-pnl-current',
+      () => xeroFetch<any>({ accessToken, tenantId, path: pnlPath(monthStart, today) }),
+      aggregateXeroOptions,
     ),
 
-    () => dedupedXeroCall(`kpi-pnl-last:${tenantId}:${basis}`, 'kpi-pnl-last', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: pnlPath(lastMonth, lastMonthEnd) })
+    () => dedupedXeroCall(
+      `kpi-pnl-last:${tenantId}:${basis}`,
+      'kpi-pnl-last',
+      () => xeroFetch<any>({ accessToken, tenantId, path: pnlPath(lastMonth, lastMonthEnd) }),
+      aggregateXeroOptions,
     ),
 
-    () => dedupedXeroCall(`kpi-outstanding:${tenantId}`, 'kpi-outstanding', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC', 200) })
+    () => dedupedXeroCall(
+      `kpi-outstanding:${tenantId}`,
+      'kpi-outstanding',
+      () => xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC', 200) }),
+      aggregateXeroOptions,
     ),
 
-    () => dedupedXeroCall(`kpi-overdue:${tenantId}`, 'kpi-overdue', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCREC"&&Status=="AUTHORISED"&&DueDate<${dtExpr(today)}`, 'DueDate ASC', 200) })
+    () => dedupedXeroCall(
+      `kpi-overdue:${tenantId}`,
+      'kpi-overdue',
+      () => xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCREC"&&Status=="AUTHORISED"&&DueDate<${dtExpr(today)}`, 'DueDate ASC', 200) }),
+      aggregateXeroOptions,
     ),
 
-    () => dedupedXeroCall(`kpi-balance-sheet:${tenantId}`, 'kpi-balance-sheet', () =>
-      xeroFetch<any>({ accessToken, tenantId, path: `Reports/BalanceSheet?date=${ensureDateString(today)}` })
+    () => dedupedXeroCall(
+      `kpi-balance-sheet:${tenantId}`,
+      'kpi-balance-sheet',
+      () => xeroFetch<any>({ accessToken, tenantId, path: `Reports/BalanceSheet?date=${ensureDateString(today)}` }),
+      aggregateXeroOptions,
     )
-  ], 2)
+  ], 3)
 
   // Helper function to safely extract data from settled promises
   function extractData<T>(result: PromiseSettledResult<T>): T | null {

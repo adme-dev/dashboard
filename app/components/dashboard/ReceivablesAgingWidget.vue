@@ -1,24 +1,37 @@
 <script setup lang="ts">
-const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
-const data = ref<any | null>(null)
-const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const props = withDefaults(defineProps<{
+  data?: any | null
+  loading?: boolean
+  managed?: boolean
+}>(), {
+  data: null,
+  loading: false,
+  managed: false,
+})
+
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { retry?: number }) => Promise<T>
+const localData = ref<any | null>(null)
+const localStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
 async function refreshReceivablesAging() {
-  status.value = 'pending'
+  localStatus.value = 'pending'
   try {
-    data.value = await apiFetch('/api/xero/reports/aging')
-    status.value = 'success'
+    localData.value = await apiFetch('/api/xero/reports/aging', { retry: 0 })
+    localStatus.value = 'success'
   } catch (error) {
     console.error('Failed to load receivables aging', error)
-    status.value = 'error'
+    localStatus.value = 'error'
   }
 }
 
 onMounted(() => {
-  refreshReceivablesAging()
+  if (!props.managed) refreshReceivablesAging()
 })
 
-const agingData = computed(() => data.value as any)
+const status = computed(() => props.managed
+  ? (props.loading ? 'pending' : props.data ? 'success' : 'error')
+  : localStatus.value)
+const agingData = computed(() => (props.managed ? props.data : localData.value) as any)
 const totalOutstanding = computed(() => agingData.value?.totalOutstanding || 0)
 const agingSummary = computed(() => agingData.value?.agingSummary || [])
 const topContacts = computed(() => (agingData.value?.topContacts || []).slice(0, 3))
