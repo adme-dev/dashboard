@@ -35,6 +35,11 @@ import {
   DealerLeadWebhookBodySchema,
   normalizeDealerLeadWebhookBody
 } from '~~/server/utils/leads/dealerLeadAdapter'
+import {
+  isWebsiteOriginAllowed,
+  normaliseWebsiteOrigin,
+  setWebsiteCorsHeaders
+} from '~~/server/utils/leads/websiteCors'
 import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
 import { timingSafeEqual, randomUUID } from 'node:crypto'
 import type { LeadSource } from '~~/app/types'
@@ -100,12 +105,31 @@ export default defineEventHandler(async (event) => {
     secret_key: string
     secret_key_previous: string | null
     secret_key_grace_until: string | null
+    allowed_origins: string[]
   }>(
-    `SELECT id, client_id, source, secret_key, secret_key_previous, secret_key_grace_until
-       FROM lead_webhook_endpoints WHERE url_token = $1`,
+    `SELECT ep.id, ep.client_id, ep.source, ep.secret_key,
+            ep.secret_key_previous, ep.secret_key_grace_until,
+            ARRAY(
+              SELECT DISTINCT approved_origin
+                FROM tracking_sites ts
+                CROSS JOIN LATERAL UNNEST(ts.allowed_origins) AS approved_origin
+               WHERE ts.client_id = ep.client_id
+                 AND ts.is_active = TRUE
+            ) AS allowed_origins
+       FROM lead_webhook_endpoints ep
+      WHERE ep.url_token = $1`,
     [token]
   )
   if (!ep) throw createError({ statusCode: 404, statusMessage: 'unknown_token' })
+
+  const requestOriginHeader = getHeader(event, 'origin')
+  if (requestOriginHeader) {
+    const requestOrigin = normaliseWebsiteOrigin(requestOriginHeader)
+    if (!isWebsiteOriginAllowed(ep.allowed_origins, requestOrigin)) {
+      throw createError({ statusCode: 403, statusMessage: 'origin_not_allowed' })
+    }
+    setWebsiteCorsHeaders(event, requestOrigin)
+  }
 
   const rawBody: unknown = await readBody(event).catch(() => null)
   const parsed = DealerLeadWebhookBodySchema.safeParse(rawBody)

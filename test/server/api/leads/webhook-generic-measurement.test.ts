@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 ;(globalThis as any).getRouterParam = (event: any, key: string) => event.context.params[key]
 ;(globalThis as any).readBody = async (event: any) => event.body
 ;(globalThis as any).getRequestHeaders = () => ({})
+;(globalThis as any).getHeader = (event: any, key: string) => event.headers?.[key.toLowerCase()]
 ;(globalThis as any).setResponseHeader = () => {}
+;(globalThis as any).setResponseHeaders = (event: any, headers: Record<string, string>) => {
+  event.responseHeaders = { ...(event.responseHeaders || {}), ...headers }
+}
 
 vi.mock('~~/server/utils/db', () => ({
   queryOne: vi.fn(async () => ({
@@ -14,7 +18,8 @@ vi.mock('~~/server/utils/db', () => ({
     secret_key: 'secret',
     source: 'webhook',
     secret_key_previous: null,
-    secret_key_grace_until: null
+    secret_key_grace_until: null,
+    allowed_origins: ['https://www.southmorangmotorgroup.com.au']
   }))
 }))
 
@@ -124,6 +129,38 @@ describe('generic lead webhook measurement handoff', () => {
     expect(ingest).toHaveBeenCalledWith(expect.objectContaining({
       lead: expect.objectContaining({ source: 'webhook' })
     }))
+  })
+
+  it('echoes CORS only for a configured website origin', async () => {
+    const event = {
+      context: { params: { token: 'token-1' } },
+      headers: { origin: 'https://www.southmorangmotorgroup.com.au' },
+      responseHeaders: {},
+      body: {
+        key: 'secret',
+        fields: { email: 'pilot@example.com' }
+      }
+    }
+
+    await handler(event as any)
+
+    expect(event.responseHeaders).toMatchObject({
+      'Access-Control-Allow-Origin': 'https://www.southmorangmotorgroup.com.au',
+      'Vary': 'Origin'
+    })
+  })
+
+  it('rejects a browser POST from an unconfigured origin before ingesting PII', async () => {
+    await expect(handler({
+      context: { params: { token: 'token-1' } },
+      headers: { origin: 'https://attacker.example' },
+      body: {
+        key: 'secret',
+        customer: { email: 'private@example.com' }
+      }
+    } as any)).rejects.toMatchObject({ statusCode: 403 })
+
+    expect(ingest).not.toHaveBeenCalled()
   })
 
   it('normalizes canonical customer and vehicle data without putting credentials into lead fields', async () => {
