@@ -726,7 +726,10 @@
         return { provider: 'xtime', host: host }
       }
       if (marker.indexOf('podium') !== -1 || host === 'connect.podium.com') {
-        return { provider: 'podium', host: host || 'connect.podium.com' }
+        return {
+          provider: 'podium',
+          host: host === 'connect.podium.com' ? host : 'connect.podium.com',
+        }
       }
       return null
     }

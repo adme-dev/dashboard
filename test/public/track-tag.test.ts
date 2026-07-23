@@ -101,7 +101,8 @@ describe('public/track.js transport', () => {
     expect(podiumEvent.event_data).toEqual(expect.objectContaining({
       provider: 'podium',
       interaction_type: 'iframe_focus',
-      attribution_confidence: 'interaction_observed'
+      attribution_confidence: 'interaction_observed',
+      provider_host: 'connect.podium.com'
     }))
   })
 
