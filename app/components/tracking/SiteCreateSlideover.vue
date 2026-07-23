@@ -3,15 +3,34 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ (e: 'created'): void }>()
 
 const toast = useToast()
-const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
+interface ClientOption {
+  id: string
+  name: string
+  isActive?: boolean
+}
+
+type ClientsResponse = ClientOption[] | { clients?: ClientOption[] }
+
+function requestErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return 'Unknown error'
+  const data = (error as Error & { data?: { statusMessage?: string } }).data
+  return data?.statusMessage || error.message || 'Unknown error'
+}
 
 // Client picker — never empty-string values (use the client id).
-const clientsData = ref<any>(await apiFetch<any>('/api/agency/clients').catch(() => []))
+const clientsData = ref<ClientsResponse>(
+  await apiFetch<ClientsResponse>('/api/agency/clients').catch(() => [])
+)
 const clientItems = computed(() => {
   const list = Array.isArray(clientsData.value) ? clientsData.value : (clientsData.value?.clients ?? [])
   return list
-    .filter((c: any) => c.isActive !== false)
-    .map((c: any) => ({ label: c.name, value: c.id }))
+    .filter(c => c.isActive !== false)
+    .map(c => ({ label: c.name, value: c.id }))
 })
 
 const CONSENT_MODES = [
@@ -27,7 +46,11 @@ const form = reactive({
   spa: false,
   consentMode: 'off',
   retentionDays: 395,
-  enforceOrigin: false
+  enforceOrigin: false,
+  podiumInteractions: true,
+  podiumConfirmedLeads: false,
+  xtimeInteractions: true,
+  xtimeConfirmedLeads: false
 })
 
 const submitting = ref(false)
@@ -40,6 +63,10 @@ function reset() {
   form.consentMode = 'off'
   form.retentionDays = 395
   form.enforceOrigin = false
+  form.podiumInteractions = true
+  form.podiumConfirmedLeads = false
+  form.xtimeInteractions = true
+  form.xtimeConfirmedLeads = false
 }
 
 const canSubmit = computed(() => !!form.clientId && form.name.trim().length > 0)
@@ -61,17 +88,27 @@ async function submit() {
         spa: form.spa,
         consentMode: form.consentMode,
         retentionDays: Number(form.retentionDays) || 395,
-        enforceOrigin: form.enforceOrigin
+        enforceOrigin: form.enforceOrigin,
+        providerTracking: {
+          podium: {
+            interactions: form.podiumInteractions,
+            confirmedLeads: form.podiumConfirmedLeads
+          },
+          xtime: {
+            interactions: form.xtimeInteractions,
+            confirmedLeads: form.xtimeConfirmedLeads
+          }
+        }
       }
     })
     toast.add({ title: 'Tracking site created', color: 'success' })
     reset()
     open.value = false
     emit('created')
-  } catch (err: any) {
+  } catch (error: unknown) {
     toast.add({
       title: 'Could not create site',
-      description: err?.data?.statusMessage || err?.message || 'Unknown error',
+      description: requestErrorMessage(error),
       color: 'error'
     })
   } finally {
@@ -137,6 +174,33 @@ async function submit() {
         <UFormField label="Enforce allowed origins" help="Hard-block (403) beacons from origins not listed above. No effect until origins are set.">
           <UCheckbox v-model="form.enforceOrigin" label="Reject unlisted origins" />
         </UFormField>
+
+        <div class="border border-default rounded-lg p-4 space-y-4">
+          <div>
+            <p class="text-sm font-medium">
+              Provider tracking
+            </p>
+            <p class="text-xs text-muted mt-1">
+              Use the same universal tag and enable only the providers installed on this dealer website.
+            </p>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="space-y-2">
+              <p class="text-sm font-medium">
+                Podium
+              </p>
+              <UCheckbox v-model="form.podiumInteractions" label="Track widget interactions" />
+              <UCheckbox v-model="form.podiumConfirmedLeads" label="Accept confirmed leads" />
+            </div>
+            <div class="space-y-2">
+              <p class="text-sm font-medium">
+                Xtime
+              </p>
+              <UCheckbox v-model="form.xtimeInteractions" label="Track scheduler interactions" />
+              <UCheckbox v-model="form.xtimeConfirmedLeads" label="Accept confirmed appointments" />
+            </div>
+          </div>
+        </div>
       </div>
     </template>
 

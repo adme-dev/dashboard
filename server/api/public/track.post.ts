@@ -15,6 +15,7 @@ import { buildEventRows } from '~~/server/utils/tracking/event-insert'
 import { trackingEventPersistence } from '~~/server/utils/tracking/eventPersistence'
 import { rateCheck } from '~~/server/utils/tracking/rate-limit'
 import { resolveClientIp } from '~~/server/utils/tracking/client-ip'
+import { filterProviderInteractionEvents } from '~~/server/utils/tracking/provider-settings'
 
 async function sha256Hex(value: string): Promise<string> {
   try {
@@ -122,7 +123,15 @@ export default defineEventHandler(async (event) => {
     // canonical server-delivery outbox; a savepoint keeps tracking durable if
     // the governed promotion path is temporarily unavailable.
     const receivedAt = new Date().toISOString()
-    const rows = buildEventRows(site, parsed.payload, ctx)
+    const enabledEvents = filterProviderInteractionEvents(
+      parsed.payload.events,
+      site.providerTracking
+    )
+    if (!enabledEvents.length) {
+      setResponseStatus(event, 200)
+      return { ok: true, received: 0 }
+    }
+    const rows = buildEventRows(site, { ...parsed.payload, events: enabledEvents }, ctx)
     await trackingEventPersistence.persist({
       rows,
       marketingConsent: consent.marketing,
