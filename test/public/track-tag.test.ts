@@ -147,6 +147,29 @@ describe('public/track.js transport', () => {
     addListener.mockRestore()
   })
 
+  it('posts to the tracker origin when GTM calls init from an inline bootstrap', () => {
+    const trackerScript = document.createElement('script')
+    Object.defineProperty(trackerScript, 'src', {
+      value: 'https://app.xeroflow.io/track.js?v=gtm-cache-bust'
+    })
+    const querySelector = vi.spyOn(document, 'querySelector').mockImplementation((selector: string) => {
+      return selector === 'script[src*="track.js"]' ? trackerScript : null
+    })
+
+    const inlineBootstrap = document.createElement('script')
+    document.head.appendChild(inlineBootstrap)
+    const currentScript = vi.spyOn(document, 'currentScript', 'get').mockReturnValue(inlineBootstrap)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0].url).toBe('https://app.xeroflow.io/api/public/track?k=TESTKEY')
+
+    currentScript.mockRestore()
+    querySelector.mockRestore()
+  })
+
   it('posts a schema-valid batch to /api/public/track?k=KEY with a generated event_id', () => {
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })

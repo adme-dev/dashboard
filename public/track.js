@@ -1127,7 +1127,14 @@
     // Resolve script origin so the beacon posts cross-origin to OUR origin.
     // document.currentScript is null inside a DOMContentLoaded callback, so fall
     // back to locating our own tag by src (this file ships as track.js).
-    var scriptEl = document.currentScript || document.querySelector('script[src*="track.js"]')
+    // A GTM readiness poll calls init() from its own inline <script>, so
+    // document.currentScript can be truthy while having no tracker src. Only
+    // trust currentScript when it is this file; otherwise locate the external
+    // tracker element that GTM inserted.
+    var scriptEl = document.currentScript
+    if (!scriptEl || !scriptEl.src || scriptEl.src.indexOf('track.js') === -1) {
+      scriptEl = document.querySelector('script[src*="track.js"]')
+    }
     if (scriptEl && scriptEl.src) {
       try {
         _scriptOrigin = new URL(scriptEl.src).origin
