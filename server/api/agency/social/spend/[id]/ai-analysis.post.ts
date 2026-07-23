@@ -17,9 +17,9 @@ export default eventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id is required' })
 
-  // The operator clicked Review on a specific issue; analyze that one. A campaign
-  // can surface multiple pacing issues, so match the requested type rather than
-  // taking whichever item sorted first.
+  // The operator clicked Review on a specific campaign assessment. Flagged
+  // campaigns can surface multiple issues, while healthy campaigns use the
+  // neutral record from `campaigns` so they can still request insight.
   const body = await readBody(event).catch(() => ({})) as { issueType?: string, refresh?: boolean }
   const requestedIssue = typeof body?.issueType === 'string' ? body.issueType : null
 
@@ -45,8 +45,11 @@ export default eventHandler(async (event) => {
 
   const now = new Date()
   const review = buildPacingReview([row], { now, period: row.period })
-  const item = (requestedIssue && review.items.find(i => i.issueType === requestedIssue)) || review.items[0]
-  if (!item) throw createError({ statusCode: 422, statusMessage: 'Campaign is not currently flagged for pacing review' })
+  const item = (requestedIssue && review.items.find(i => i.issueType === requestedIssue))
+    || (requestedIssue && review.campaigns.find(i => i.issueType === requestedIssue))
+    || review.items[0]
+    || review.campaigns[0]
+  if (!item) throw createError({ statusCode: 422, statusMessage: 'Campaign review data is unavailable' })
 
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const daysRemaining = Math.max(1, lastDay - now.getDate() + 1)

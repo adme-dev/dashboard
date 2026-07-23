@@ -64,6 +64,7 @@ export interface SpendControllerProposedAction {
 }
 
 const ISSUE_LABELS: Record<PacingReviewIssueType, string> = {
+  on_track: 'on track',
   overpacing: 'overpacing',
   underpacing: 'underpacing',
   no_spend: 'not spending',

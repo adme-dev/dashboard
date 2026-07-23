@@ -552,6 +552,7 @@ function formatSignedCurrency(value: number) {
 }
 
 function issueLabel(issue: string) {
+  if (issue === 'on_track') return 'No pacing issue'
   return issue.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
 }
 
@@ -783,8 +784,15 @@ function summarizeValue(value: Record<string, unknown>) {
             </div>
 
             <p v-if="aiAnalysis.ai" class="mt-2 text-xs text-muted">{{ aiAnalysis.ai.rationale }}</p>
-            <div v-if="aiAnalysis.ai && aiAnalysis.ai.riskFlags.length" class="mt-2 flex flex-wrap gap-1">
-              <UBadge v-for="flag in aiAnalysis.ai.riskFlags" :key="flag" color="warning" variant="subtle" size="xs">
+            <div v-if="aiAnalysis.ai && aiAnalysis.ai.riskFlags.length" class="mt-3 flex flex-wrap gap-2">
+              <UBadge
+                v-for="flag in aiAnalysis.ai.riskFlags"
+                :key="flag"
+                color="warning"
+                variant="subtle"
+                size="sm"
+                class="whitespace-normal text-left text-xs leading-5 font-medium"
+              >
                 {{ flag }}
               </UBadge>
             </div>

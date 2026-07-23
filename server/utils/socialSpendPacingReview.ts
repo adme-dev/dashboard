@@ -8,7 +8,8 @@ import { isDailyBudgetActionSupported } from '~~/shared/utils/campaignBudgetType
 
 export type PacingReviewPlatform = 'meta' | 'google'
 export type PacingReviewIssueType
-  = | 'overpacing'
+  = | 'on_track'
+    | 'overpacing'
     | 'underpacing'
     | 'no_spend'
     | 'paused_with_budget'
@@ -129,6 +130,9 @@ export interface PacingReviewSummary {
 export interface PacingReviewResult {
   period: string
   generatedAt: string
+  /** One primary review record per synced campaign, including healthy campaigns. */
+  campaigns: PacingReviewItem[]
+  /** Exception-only records used for notices, counts, and the AI pacing summary. */
   items: PacingReviewItem[]
   summary: PacingReviewSummary
 }
@@ -264,6 +268,7 @@ function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severi
 
 function withAction(item: PacingReviewItem): PacingReviewItem {
   const actionByIssue: Record<PacingReviewIssueType, string> = {
+    on_track: 'No pacing issue detected. Review performance, tracking, and platform insights before making an adjustment.',
     overpacing: 'Review delivery and reduce daily budget or cap spend to land on the monthly budget.',
     underpacing: 'Review delivery constraints and increase delivery, broaden targeting, or reallocate budget before month-end.',
     no_spend: 'Check campaign setup, billing, policy status, and tracking because budget is allocated but no spend is recorded.',
@@ -357,9 +362,27 @@ export function buildPacingReview(rows: PacingReviewRow[], opts: { now?: Date, p
       || a.clientName.localeCompare(b.clientName)
   })
 
+  const primaryIssueByCampaign = new Map<string, PacingReviewItem>()
+  for (const item of items) {
+    if (!primaryIssueByCampaign.has(item.mediaSpendId)) {
+      primaryIssueByCampaign.set(item.mediaSpendId, item)
+    }
+  }
+
+  const seenCampaigns = new Set<string>()
+  const campaigns = rows.flatMap((row) => {
+    if (!normalizePlatform(row.platform) || row.period !== opts.period || seenCampaigns.has(row.media_spend_id)) return []
+    seenCampaigns.add(row.media_spend_id)
+    const primaryIssue = primaryIssueByCampaign.get(row.media_spend_id)
+    if (primaryIssue) return [primaryIssue]
+    const onTrack = baseItem(row, 'on_track', 'info', now)
+    return onTrack ? [withAction(onTrack)] : []
+  }).sort((a, b) => a.clientName.localeCompare(b.clientName) || a.campaignName.localeCompare(b.campaignName))
+
   return {
     period: opts.period,
     generatedAt: now.toISOString(),
+    campaigns,
     items,
     summary: summarizePacingReview(items)
   }

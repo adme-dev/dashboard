@@ -74,6 +74,18 @@ export function pacingItemsForSpendRow<T extends SpendPacingReviewItem>(
     .sort((a, b) => pacingSeverityRank(a.severity) - pacingSeverityRank(b.severity))
 }
 
+/**
+ * Matches the complete campaign-review collection to a grouped spend row.
+ * Kept separate from pacingItemsForSpendRow so callers do not accidentally use
+ * healthy campaigns as pacing exceptions in health and alert calculations.
+ */
+export function campaignReviewItemsForSpendRow<T extends SpendPacingReviewItem>(
+  row: SpendPacingRow,
+  items: readonly T[]
+): T[] {
+  return pacingItemsForSpendRow(row, items)
+}
+
 export function pacingSummaryForSpendRow(row: SpendPacingRow, items: readonly SpendPacingReviewItem[]) {
   const matches = pacingItemsForSpendRow(row, items)
   if (!matches.length) return null

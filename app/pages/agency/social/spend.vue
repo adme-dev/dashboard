@@ -410,6 +410,7 @@ const hasBankData = computed(() => {
 const showPacingReview = computed(() => ['all', 'meta', 'google'].includes(selectedPlatform.value))
 const liveBudgetChangesEnabled = computed(() => Boolean(budgetControlSettings.value.liveBudgetChangesEnabled))
 const pacingReviewItems = computed(() => pacingReview.value?.items ?? [])
+const campaignReviewItems = computed(() => pacingReview.value?.campaigns ?? pacingReview.value?.items ?? [])
 const pacingReviewSummary = computed(() => pacingReview.value?.summary ?? null)
 
 /** Combined: Xero bank/CC + Meta billing (for platforms not matched in Xero) */
@@ -712,9 +713,10 @@ const bankDiscrepancy = computed(() => {
           :totals="spendData.totals"
           :search="searchQuery"
           :month-progress="monthProgress"
-        :pacing-review-items="pacingReviewItems"
-        :latest-sync-jobs="latestSyncJobs"
-        :budget-control-settings="budgetControlSettings"
+          :pacing-review-items="pacingReviewItems"
+          :campaign-review-items="campaignReviewItems"
+          :latest-sync-jobs="latestSyncJobs"
+          :budget-control-settings="budgetControlSettings"
           :bank-charges="bankCharges"
           @budget-updated="loadSpend"
         />

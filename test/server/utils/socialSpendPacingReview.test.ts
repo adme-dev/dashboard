@@ -35,6 +35,38 @@ function row(overrides: Partial<PacingReviewRow> = {}): PacingReviewRow {
 }
 
 describe('buildPacingReview', () => {
+  it('keeps every synced campaign available for review when no pacing notice exists', () => {
+    const review = buildPacingReview([
+      row({ media_spend_id: 'healthy', actual_spend: '1200' })
+    ], { now, period: '2026-06' })
+
+    expect(review.items).toEqual([])
+    expect(review.campaigns).toHaveLength(1)
+    expect(review.campaigns[0]).toMatchObject({
+      mediaSpendId: 'healthy',
+      campaignName: 'Lead Gen',
+      issueType: 'on_track',
+      severity: 'info',
+      recommendedAction: 'No pacing issue detected. Review performance, tracking, and platform insights before making an adjustment.'
+    })
+  })
+
+  it('returns one primary review record per campaign without changing exception counts', () => {
+    const review = buildPacingReview([
+      row({ media_spend_id: 'multi-issue', actual_spend: '1800', conversions: '0' })
+    ], { now, period: '2026-06' })
+
+    expect(review.items.map(item => item.issueType)).toEqual(['overpacing', 'zero_conversion'])
+    expect(review.campaigns).toHaveLength(1)
+    expect(review.campaigns[0]).toMatchObject({
+      mediaSpendId: 'multi-issue',
+      issueType: 'overpacing',
+      severity: 'critical'
+    })
+    expect(review.summary.criticalCount).toBe(1)
+    expect(review.summary.warningCount).toBe(1)
+  })
+
   it('emits overpacing and underpacing recommendations with daily budget guidance', () => {
     const review = buildPacingReview([
       row({ media_spend_id: 'over', actual_spend: '1800' }),

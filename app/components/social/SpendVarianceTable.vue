@@ -12,6 +12,7 @@ import {
 } from '~/utils/socialSpendColumnVisibility'
 import {
   budgetControlForSpendRow,
+  campaignReviewItemsForSpendRow,
   healthForSpendRow,
   lastActionForSpendRow,
   pacingItemsForSpendRow,
@@ -25,9 +26,9 @@ interface PacingReviewItem {
   mediaSpendId: string
   clientName: string
   platform: 'meta' | 'google'
-    campaignName: string
-    campaignStatus: string | null
-    issueType: string
+  campaignName: string
+  campaignStatus: string | null
+  issueType: string
   severity: 'critical' | 'warning' | 'info'
   budget: number
   mtdSpend: number
@@ -82,6 +83,7 @@ const props = defineProps<{
   search?: string
   monthProgress?: number
   pacingReviewItems?: PacingReviewItem[]
+  campaignReviewItems?: PacingReviewItem[]
   latestSyncJobs?: Array<{
     platform: string
     status: 'running' | 'completed' | 'failed'
@@ -124,7 +126,8 @@ const historyOpen = ref(false)
 const selectedHistoryItemId = ref<string | null>(null)
 const selectedHistoryItem = computed(() => {
   if (!selectedHistoryItemId.value) return null
-  return (props.pacingReviewItems ?? []).find(item => item.mediaSpendId === selectedHistoryItemId.value) ?? null
+  return (props.campaignReviewItems ?? props.pacingReviewItems ?? [])
+    .find(item => item.mediaSpendId === selectedHistoryItemId.value) ?? null
 })
 
 function openBudgetModal(item: typeof props.items[0]) {
@@ -147,6 +150,10 @@ function openBudgetModal(item: typeof props.items[0]) {
 
 function pacingRecommendationsForItem(item: typeof props.items[0]) {
   return pacingItemsForSpendRow(item, props.pacingReviewItems ?? [])
+}
+
+function campaignReviewsForItem(item: typeof props.items[0]) {
+  return campaignReviewItemsForSpendRow(item, props.campaignReviewItems ?? props.pacingReviewItems ?? [])
 }
 
 function healthForItem(item: typeof props.items[0]) {
@@ -186,6 +193,14 @@ function severityColor(severity: string) {
   if (severity === 'critical') return 'error'
   if (severity === 'warning') return 'warning'
   return 'info'
+}
+
+function reviewStatusLabel(item: PacingReviewItem) {
+  return item.issueType === 'on_track' ? 'No pacing issue' : issueLabel(item.issueType)
+}
+
+function reviewStatusColor(item: PacingReviewItem) {
+  return item.issueType === 'on_track' ? 'success' : severityColor(item.severity)
 }
 
 const hasBankData = computed(() => {
@@ -646,16 +661,16 @@ const totalColSpan = computed(() => socialSpendColumnCount({
           </td>
           <!-- AI pacing recommendation cell -->
           <td v-if="isColumnVisible('aiPacing')" class="py-2 px-3 min-w-48">
-            <template v-if="pacingRecommendationsForItem(item).length">
+            <template v-if="campaignReviewsForItem(item).length">
               <div class="flex flex-col gap-1.5">
                 <div
-                  v-for="recommendation in pacingRecommendationsForItem(item).slice(0, 2)"
+                  v-for="recommendation in campaignReviewsForItem(item).slice(0, 2)"
                   :key="recommendation.mediaSpendId"
                   class="flex items-center justify-between gap-2"
                 >
                   <div class="min-w-0">
-                    <UBadge :color="severityColor(recommendation.severity) as any" variant="soft" size="sm" :class="READABLE_BADGE_CLASS">
-                      {{ issueLabel(recommendation.issueType) }}
+                    <UBadge :color="reviewStatusColor(recommendation) as any" variant="soft" size="sm" :class="READABLE_BADGE_CLASS">
+                      {{ reviewStatusLabel(recommendation) }}
                     </UBadge>
                     <p v-if="recommendation.campaignName" class="text-[11px] text-muted truncate mt-0.5">
                       {{ recommendation.campaignName }}
@@ -672,12 +687,12 @@ const totalColSpan = computed(() => socialSpendColumnCount({
                     Review
                   </UButton>
                 </div>
-                <p v-if="pacingRecommendationsForItem(item).length > 2" class="text-[11px] text-muted">
-                  +{{ pacingRecommendationsForItem(item).length - 2 }} more recommendation{{ pacingRecommendationsForItem(item).length - 2 === 1 ? '' : 's' }}
+                <p v-if="campaignReviewsForItem(item).length > 2" class="text-[11px] text-muted">
+                  +{{ campaignReviewsForItem(item).length - 2 }} more campaign{{ campaignReviewsForItem(item).length - 2 === 1 ? '' : 's' }}
                 </p>
               </div>
             </template>
-            <span v-else class="text-muted">-</span>
+            <span v-else class="text-xs text-muted">No campaign review data</span>
           </td>
           <!-- Pacing cell -->
           <td v-if="isColumnVisible('pacing')" class="py-2 px-3">

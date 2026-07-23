@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   budgetControlForSpendRow,
+  campaignReviewItemsForSpendRow,
   healthForSpendRow,
   lastActionForSpendRow,
   pacingItemsForSpendRow,
@@ -47,6 +48,26 @@ const reviewItems = [
 ] as const
 
 describe('socialSpendPacingTable', () => {
+  it('matches campaign review records independently of pacing notices', () => {
+    const matches = campaignReviewItemsForSpendRow({
+      platform: 'google_ads',
+      clientName: 'Acme',
+      spendIds: ['spend-healthy']
+    }, [{
+      mediaSpendId: 'spend-healthy',
+      clientName: 'Acme',
+      platform: 'google',
+      campaignName: 'Healthy Performance Max',
+      issueType: 'on_track',
+      severity: 'info',
+      budget: 1000,
+      projectedMonthEnd: 1000,
+      recommendedAction: 'Review insights.'
+    }])
+
+    expect(matches.map(item => item.campaignName)).toEqual(['Healthy Performance Max'])
+  })
+
   it('matches pacing items to aggregated spend rows by media spend ids', () => {
     const matches = pacingItemsForSpendRow({
       platform: 'google',
