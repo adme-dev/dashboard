@@ -149,6 +149,11 @@ describe('Podium lead webhook', () => {
       ok: true,
       lead_id: '22222222-2222-4222-8222-222222222222'
     })
+    expect(queryOne).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(/organizationUid[\s\S]*locationUids/),
+      [ENDPOINT.client_id, 'https://www.southmorangmotorgroup.com.au', 'org-1', 'location-1']
+    )
   })
 
   it('queues CRM promotion for confirmed webchat leads when rollout is enabled', async () => {
@@ -171,6 +176,21 @@ describe('Podium lead webhook', () => {
       skipped: true,
       reason: 'provider_disabled'
     })
+    expect(ingest).not.toHaveBeenCalled()
+  })
+
+  it('does not ingest a signed event from an organization or location outside the site allowlist', async () => {
+    queryOne.mockReset()
+    queryOne.mockResolvedValueOnce(ENDPOINT).mockResolvedValueOnce(null)
+
+    const result = await handler(signedEvent(eventBody()) as any)
+
+    expect(result).toEqual({ ok: true, skipped: true, reason: 'provider_disabled' })
+    expect(queryOne).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      [ENDPOINT.client_id, 'https://www.southmorangmotorgroup.com.au', 'org-1', 'location-1']
+    )
     expect(ingest).not.toHaveBeenCalled()
   })
 

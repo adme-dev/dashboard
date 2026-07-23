@@ -125,6 +125,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const webchatOrigin = new URL(normalized.lead.webchatUrl).origin
+  if (!normalized.lead.organizationUid || !normalized.lead.locationUid) {
+    return { ok: true, skipped: true, reason: 'provider_disabled' }
+  }
   const enabledSite = await queryOne<{ id: string }>(
     `SELECT id
        FROM tracking_sites
@@ -132,8 +135,15 @@ export default defineEventHandler(async (event) => {
         AND is_active = TRUE
         AND $2 = ANY(allowed_origins)
         AND COALESCE((provider_tracking->'podium'->>'confirmedLeads')::boolean, FALSE) = TRUE
+        AND provider_tracking->'podium'->>'organizationUid' = $3
+        AND provider_tracking->'podium'->'locationUids' @> to_jsonb(ARRAY[$4]::text[])
       LIMIT 1`,
-    [endpoint.client_id, webchatOrigin]
+    [
+      endpoint.client_id,
+      webchatOrigin,
+      normalized.lead.organizationUid,
+      normalized.lead.locationUid
+    ]
   )
   if (!enabledSite) {
     return { ok: true, skipped: true, reason: 'provider_disabled' }

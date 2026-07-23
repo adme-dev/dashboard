@@ -125,6 +125,8 @@ export interface NormalizedPodiumLead {
   formName: string
   submittedAt: string
   webchatUrl: string
+  organizationUid: string | null
+  locationUid: string | null
   fieldData: Record<string, string>
   attribution: Record<string, string> | null
 }
@@ -180,6 +182,8 @@ export function normalizePodiumWebhookEvent(
       formName: 'Podium Webchat',
       submittedAt: event.data.createdAt ?? new Date().toISOString(),
       webchatUrl: event.data.webchatUrl,
+      organizationUid: event.data.location?.organizationUid ?? null,
+      locationUid: event.data.location?.uid ?? null,
       fieldData: fields,
       attribution: attributionFromUrl(event.data.webchatUrl)
     }

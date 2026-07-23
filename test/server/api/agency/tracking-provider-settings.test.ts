@@ -31,7 +31,12 @@ const createHandler = (await import('../../../../../server/api/agency/tracking/i
 const patchHandler = (await import('../../../../../server/api/agency/tracking/[id].patch')).default
 
 const SETTINGS = {
-  podium: { interactions: false, confirmedLeads: true },
+  podium: {
+    interactions: false,
+    confirmedLeads: true,
+    organizationUid: '019621ff-3586-7ed2-a838-9450286d17ff',
+    locationUids: ['019621ff-36c0-7999-8c07-b3a9b0cb4e12']
+  },
   xtime: { interactions: true, confirmedLeads: false }
 }
 
