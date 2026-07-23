@@ -12,6 +12,10 @@
  * NEVER throws — returns null on any DB error so the public endpoint stays a beacon.
  */
 import { queryOne } from '~~/server/utils/db'
+import {
+  normalizeProviderTrackingSettings,
+  type ProviderTrackingSettings
+} from '~~/server/utils/tracking/provider-settings'
 
 export interface TrackingSite {
   id: string
@@ -25,6 +29,22 @@ export interface TrackingSite {
   leadSelectors: string[]
   retentionDays: number
   isActive: boolean
+  providerTracking: ProviderTrackingSettings
+}
+
+interface TrackingSiteRow {
+  id: string
+  client_id: string
+  name: string
+  write_key: string
+  allowed_origins: string[] | null
+  enforce_origin: boolean | null
+  spa: boolean
+  consent_mode: string
+  lead_selectors: string[] | null
+  retention_days: number
+  is_active: boolean
+  provider_tracking: unknown
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -51,14 +71,14 @@ export function isOriginAllowed(site: Pick<TrackingSite, 'allowedOrigins'>, orig
 export function shouldBlockOrigin(
   site: Pick<TrackingSite, 'allowedOrigins' | 'enforceOrigin'>,
   origin: string | null,
-  globalMode: string | undefined,
+  globalMode: string | undefined
 ): boolean {
   if (globalMode === 'soft') return false
   if (!site.enforceOrigin) return false
   return !isOriginAllowed(site, origin)
 }
 
-function mapRow(row: any): TrackingSite {
+function mapRow(row: TrackingSiteRow): TrackingSite {
   return {
     id: row.id,
     clientId: row.client_id,
@@ -70,7 +90,8 @@ function mapRow(row: any): TrackingSite {
     consentMode: row.consent_mode,
     leadSelectors: row.lead_selectors ?? [],
     retentionDays: row.retention_days,
-    isActive: row.is_active
+    isActive: row.is_active,
+    providerTracking: normalizeProviderTrackingSettings(row.provider_tracking)
   }
 }
 
@@ -88,9 +109,9 @@ export async function resolveSiteByWriteKey(
     return cached.site
   }
   try {
-    const row = await queryOne(
+    const row = await queryOne<TrackingSiteRow>(
       `SELECT id, client_id, name, write_key, allowed_origins, enforce_origin, spa, consent_mode,
-              lead_selectors, retention_days, is_active
+              lead_selectors, retention_days, is_active, provider_tracking
          FROM tracking_sites
         WHERE write_key = $1 AND is_active = TRUE`,
       [writeKey]

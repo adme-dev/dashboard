@@ -2,6 +2,10 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireClientTrackingAccess } from '~~/server/utils/tracking/analytics-access'
 import { generateWriteKey } from '~~/server/utils/tracking/write-key'
+import {
+  DEFAULT_PROVIDER_TRACKING_SETTINGS,
+  ProviderTrackingSettingsSchema
+} from '~~/server/utils/tracking/provider-settings'
 
 interface Body {
   clientId: string
@@ -12,6 +16,7 @@ interface Body {
   leadSelectors?: string[]
   retentionDays?: number
   enforceOrigin?: boolean
+  providerTracking?: unknown
 }
 
 export default defineEventHandler(async (event) => {
@@ -21,13 +26,20 @@ export default defineEventHandler(async (event) => {
   if (!body?.name?.trim()) {
     throw createError({ statusCode: 400, statusMessage: 'name is required' })
   }
+  const providerTracking = ProviderTrackingSettingsSchema.safeParse(
+    body.providerTracking ?? DEFAULT_PROVIDER_TRACKING_SETTINGS
+  )
+  if (!providerTracking.success) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid provider tracking settings' })
+  }
   const row = await queryOne(
-    `INSERT INTO tracking_sites (client_id, name, write_key, allowed_origins, spa, consent_mode, lead_selectors, retention_days, enforce_origin)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    `INSERT INTO tracking_sites (client_id, name, write_key, allowed_origins, spa, consent_mode, lead_selectors, retention_days, enforce_origin, provider_tracking)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb) RETURNING *`,
     [
       body.clientId, body.name.trim(), generateWriteKey(),
       body.allowedOrigins ?? [], body.spa ?? false, body.consentMode ?? 'off',
-      body.leadSelectors ?? [], body.retentionDays ?? 395, body.enforceOrigin ?? false
+      body.leadSelectors ?? [], body.retentionDays ?? 395, body.enforceOrigin ?? false,
+      JSON.stringify(providerTracking.data)
     ]
   )
   return { site: row }
