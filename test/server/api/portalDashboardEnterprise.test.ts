@@ -52,6 +52,21 @@ describe('portal dashboard enterprise summary', () => {
     mockQueryOne.mockResolvedValue({})
   })
 
+  it('reads team contact data from the canonical production schema', async () => {
+    await dashboardHandler({})
+
+    const teamQuery = mockQueryRows.mock.calls
+      .map(call => String(call[0]))
+      .find(sql => sql.includes('FROM team_members tm'))
+
+    expect(teamQuery).toBeDefined()
+    expect(teamQuery).toContain('LEFT JOIN departments d ON d.id = tm.department_id')
+    expect(teamQuery).toContain('NULL::text AS phone')
+    expect(teamQuery).toContain('d.name AS department')
+    expect(teamQuery).not.toMatch(/\btm\.phone\b/)
+    expect(teamQuery).not.toMatch(/\btm\.department\b/)
+  })
+
   it('returns enterprise jobs, billing, campaign, and access health from existing platform tables', async () => {
     mockQueryOne
       .mockResolvedValueOnce({ id: 'client-1', name: 'Client Co' })

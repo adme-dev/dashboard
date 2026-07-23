@@ -222,9 +222,16 @@ export default defineEventHandler(async (event) => {
     // Team members (project managers on active projects)
     const teamMembers = await queryRows(`
       SELECT DISTINCT ON (tm.id)
-        tm.id, tm.name, tm.email, tm.phone, tm.avatar_url, tm.role, tm.department
+        tm.id,
+        tm.name,
+        tm.email,
+        NULL::text AS phone,
+        tm.avatar_url,
+        tm.role,
+        d.name AS department
       FROM team_members tm
       JOIN projects p ON p.project_manager_id = tm.id
+      LEFT JOIN departments d ON d.id = tm.department_id
       WHERE p.client_id = $1 AND p.status = 'active'
       ORDER BY tm.id
       LIMIT 5

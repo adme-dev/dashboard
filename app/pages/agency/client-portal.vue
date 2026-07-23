@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
+import { navigateToPortalDocument } from '~/utils/portalAgencyAccessNavigation'
 
 definePageMeta({
   title: 'Client Portal',
@@ -869,8 +870,7 @@ const openClientPortal = async (clientId?: string | null, path = '/portal') => {
       method: 'POST',
       body: { clientId: targetClientId }
     })
-    refreshActivity()
-    await navigateTo(path)
+    navigateToPortalDocument(path)
   } catch (err: unknown) {
     toast.add({
       title: 'Failed to open portal',
