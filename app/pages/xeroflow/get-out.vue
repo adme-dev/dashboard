@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { createSingleFlight, runTasksSequentially } from '~/utils/asyncControl'
+
 definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const { data, pending, error, lastUpdated, isLive, refresh } = useGetOutRealtime()
@@ -234,6 +236,26 @@ const getOutStates = [
   categoryDataState,
 ]
 
+const supportingDataPending = ref(false)
+
+async function refreshSupportingData() {
+  supportingDataPending.value = true
+  try {
+    await runTasksSequentially(getOutStates.map(state => state.refresh))
+  } finally {
+    supportingDataPending.value = false
+  }
+}
+
+const refreshPage = createSingleFlight(async () => {
+  // Xero allows only five concurrent requests per tenant. Load the primary
+  // position first, then hydrate the supporting panels without a request burst.
+  await refresh()
+  await refreshSupportingData()
+})
+
+const pagePending = computed(() => pending.value || supportingDataPending.value)
+
 function severityIconOps(s: string) {
   if (s === 'critical') return 'i-lucide-alert-octagon'
   if (s === 'high') return 'i-lucide-alert-triangle'
@@ -267,12 +289,13 @@ function mixBandColor(b: string): string {
 // ── Settings modal — gear button in the header opens it ──
 const showConfigModal = ref(false)
 async function onConfigSaved() {
-  // Bust both the page payload and the pacing/history charts since target changes everywhere
-  await Promise.allSettled([refresh?.(), refreshNuxtData(), ...getOutStates.map(state => state.refresh())])
+  // Bust Nuxt payloads, then use the same guarded refresh path as the page.
+  await refreshNuxtData()
+  await refreshPage()
 }
 
 onMounted(() => {
-  void Promise.allSettled(getOutStates.map(state => state.refresh()))
+  void refreshPage()
 })
 
 // 12-month performance chart scale. Old version capped bars at 100%, which
@@ -343,8 +366,8 @@ function fmtMonthLabel(label: string): string {
               color="neutral"
               variant="ghost"
               size="sm"
-              :loading="pending"
-              @click="refresh()"
+              :loading="pagePending"
+              @click="refreshPage()"
             />
           </div>
         </template>

@@ -10,6 +10,8 @@
  *   const { data, pending, lastUpdated, isLive, refresh } = useGetOutRealtime()
  */
 
+import { createSingleFlight } from '~/utils/asyncControl'
+
 export interface GetOutData {
   period: {
     year: number
@@ -63,8 +65,7 @@ export function useGetOutRealtime() {
   const POLL_INTERVAL = 30000 // 30 seconds
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
-  async function refresh() {
-    if (pending.value) return
+  const refresh = createSingleFlight(async () => {
     pending.value = true
     error.value = null
     try {
@@ -77,7 +78,7 @@ export function useGetOutRealtime() {
     } finally {
       pending.value = false
     }
-  }
+  })
 
   function startPolling() {
     stopPolling()
