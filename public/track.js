@@ -697,6 +697,59 @@
     })
   }
 
+  // Cross-origin provider forms do not bubble clicks or submits into the dealer
+  // page. A click inside one does, however, move focus to its iframe. Record that
+  // as an observed interaction only; it is deliberately not a lead/conversion.
+  // Provider webhooks are responsible for confirmed outcomes.
+  function setupProviderInteractionTracking() {
+    var recorded = {}
+
+    function providerFrame(frame) {
+      if (!frame || frame.tagName !== 'IFRAME') return null
+
+      var marker = [
+        frame.id || '',
+        frame.className || '',
+        frame.title || '',
+        frame.getAttribute('name') || '',
+        frame.getAttribute('data-cy') || '',
+      ].join(' ').toLowerCase()
+      var src = frame.getAttribute('src') || frame.src || ''
+      var host = ''
+      try {
+        host = new URL(src, window.location.href).hostname.toLowerCase()
+      } catch (e) {
+        host = ''
+      }
+
+      if (host === 'consumer.xtime.net.au' || host.slice(-13) === '.xtime.net.au') {
+        return { provider: 'xtime', host: host }
+      }
+      if (marker.indexOf('podium') !== -1 || host === 'connect.podium.com') {
+        return {
+          provider: 'podium',
+          host: host === 'connect.podium.com' ? host : 'connect.podium.com',
+        }
+      }
+      return null
+    }
+
+    window.addEventListener('blur', function () {
+      // Browsers update document.activeElement after dispatching blur.
+      setTimeout(function () {
+        var provider = providerFrame(document.activeElement)
+        if (!provider || recorded[provider.provider]) return
+        recorded[provider.provider] = true
+        track('provider_interaction', {
+          provider: provider.provider,
+          interaction_type: 'iframe_focus',
+          attribution_confidence: 'interaction_observed',
+          provider_host: provider.host,
+        })
+      }, 0)
+    })
+  }
+
   // Track scroll depth
   function setupScrollTracking() {
     var depths = SCROLL_DEPTHS
@@ -1092,6 +1145,9 @@
     }
     if (config.forms !== false) {
       setupFormTracking()
+    }
+    if (config.providerInteractions !== false) {
+      setupProviderInteractionTracking()
     }
 
     // Track phone number clicks (tel: links)

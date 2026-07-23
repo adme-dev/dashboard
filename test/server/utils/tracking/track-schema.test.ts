@@ -83,5 +83,6 @@ describe('parseTrackPayload', () => {
   it('exposes the reserved event-name set for forward-compat (Slice 4 signals)', () => {
     expect(TRACK_EVENT_NAMES).toContain('vehicle_view')
     expect(TRACK_EVENT_NAMES).toContain('form_submit')
+    expect(TRACK_EVENT_NAMES).toContain('provider_interaction')
   })
 })
