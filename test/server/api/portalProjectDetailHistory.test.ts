@@ -108,10 +108,16 @@ describe('portal project detail job history', () => {
 
     const upcomingSql = String(mockQueryRows.mock.calls[0]?.[0])
     const completedSql = String(mockQueryRows.mock.calls[1]?.[0])
+    const teamSql = mockQueryRows.mock.calls
+      .map(call => String(call[0]))
+      .find(sql => sql.includes('FROM team_members tm'))
 
     expect(upcomingSql).toContain('AND t.status_is_final = false')
     expect(upcomingSql).toContain('ORDER BY t.due_date ASC NULLS LAST')
     expect(completedSql).toContain('AND t.status_is_final = true')
     expect(completedSql).toContain('ORDER BY t.completed_at DESC NULLS LAST')
+    expect(teamSql).toContain('LEFT JOIN departments d ON d.id = tm.department_id')
+    expect(teamSql).toContain('d.name AS department')
+    expect(teamSql).not.toMatch(/\btm\.department\b/)
   })
 })

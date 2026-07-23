@@ -138,9 +138,10 @@ export default defineEventHandler(async (event) => {
     if (settings?.show_team_members !== false) {
       teamMembers = await queryRows(`
         SELECT DISTINCT ON (tm.id)
-          tm.id, tm.name, tm.email, tm.avatar_url, tm.role, tm.department
+          tm.id, tm.name, tm.email, tm.avatar_url, tm.role, d.name AS department
         FROM team_members tm
         JOIN tasks t ON t.assignee_id = tm.id
+        LEFT JOIN departments d ON d.id = tm.department_id
         WHERE t.project_id = $1
         ORDER BY tm.id
         LIMIT 10
