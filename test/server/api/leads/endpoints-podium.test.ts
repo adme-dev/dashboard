@@ -4,13 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 ;(globalThis as any).createError = (opts: Record<string, unknown>) => Object.assign(new Error(String(opts.statusMessage)), opts)
 ;(globalThis as any).readBody = async (event: any) => event.body
 
-const { queryOne, requireRole, requireWriteAccess } = vi.hoisted(() => ({
+const { queryOne, requireRole, requireWriteAccess, requireClientTrackingAccess } = vi.hoisted(() => ({
   queryOne: vi.fn(),
   requireRole: vi.fn(async () => ({ id: 'actor-1' })),
-  requireWriteAccess: vi.fn()
+  requireWriteAccess: vi.fn(),
+  requireClientTrackingAccess: vi.fn()
 }))
 vi.mock('~~/server/utils/db', () => ({ queryOne }))
 vi.mock('~~/server/utils/auth', () => ({ requireRole, requireWriteAccess }))
+vi.mock('~~/server/utils/tracking/analytics-access', () => ({ requireClientTrackingAccess }))
 vi.mock('~~/server/utils/permissions', () => ({
   PERMISSIONS: { MEDIA_BUYING: ['admin'] }
 }))
@@ -37,6 +39,10 @@ describe('Podium endpoint provisioning', () => {
     expect(queryOne).toHaveBeenCalledWith(
       expect.stringMatching(/'podium'/),
       expect.arrayContaining(['11111111-1111-4111-8111-111111111111'])
+    )
+    expect(requireClientTrackingAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      '11111111-1111-4111-8111-111111111111'
     )
     expect(result).toEqual({
       created: true,

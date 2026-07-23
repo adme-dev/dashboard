@@ -73,10 +73,34 @@ describe('tracking provider settings API', () => {
     } as any)
 
     expect(queryOne).toHaveBeenCalledWith(
-      expect.stringMatching(/provider_tracking = \$1::jsonb/),
+      expect.stringMatching(/provider_tracking = \$1::jsonb[\s\S]*EXISTS[\s\S]*source = 'podium'/),
       [JSON.stringify(SETTINGS), 'site-1']
     )
     expect(invalidateSiteCache).toHaveBeenCalledWith('trk_live')
+  })
+
+  it('refuses activation when the client has no Podium endpoint', async () => {
+    queryOne.mockResolvedValueOnce(null)
+
+    await expect(patchHandler({
+      context: { params: { id: 'site-1' } },
+      body: { providerTracking: SETTINGS }
+    } as any)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'Connect the Podium webhook before enabling confirmed leads'
+    })
+  })
+
+  it('applies the endpoint guard to snake-case provider settings too', async () => {
+    queryOne.mockResolvedValueOnce(null)
+
+    await expect(patchHandler({
+      context: { params: { id: 'site-1' } },
+      body: { provider_tracking: SETTINGS }
+    } as any)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'Connect the Podium webhook before enabling confirmed leads'
+    })
   })
 
   it('rejects partial or unknown settings before writing', async () => {

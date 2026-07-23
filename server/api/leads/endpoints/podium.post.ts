@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { queryOne } from '~~/server/utils/db'
 import { requireRole, requireWriteAccess } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
+import { requireClientTrackingAccess } from '~~/server/utils/tracking/analytics-access'
 
 const Body = z.strictObject({
   client_id: z.string().uuid(),
@@ -34,6 +35,7 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   }
+  await requireClientTrackingAccess(event, parsed.data.client_id)
 
   const urlToken = randomBytes(18).toString('hex')
   const webhookSecret = randomBytes(32).toString('hex')

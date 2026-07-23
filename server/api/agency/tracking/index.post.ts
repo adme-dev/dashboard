@@ -34,7 +34,14 @@ export default defineEventHandler(async (event) => {
   }
   const row = await queryOne(
     `INSERT INTO tracking_sites (client_id, name, write_key, allowed_origins, spa, consent_mode, lead_selectors, retention_days, enforce_origin, provider_tracking)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb) RETURNING *`,
+     SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb
+      WHERE COALESCE(($10::jsonb->'podium'->>'confirmedLeads')::boolean, FALSE) = FALSE
+         OR EXISTS (
+           SELECT 1 FROM lead_webhook_endpoints endpoint
+            WHERE endpoint.client_id = $1
+              AND endpoint.source = 'podium'
+         )
+     RETURNING *`,
     [
       body.clientId, body.name.trim(), generateWriteKey(),
       body.allowedOrigins ?? [], body.spa ?? false, body.consentMode ?? 'off',
@@ -42,5 +49,11 @@ export default defineEventHandler(async (event) => {
       JSON.stringify(providerTracking.data)
     ]
   )
+  if (!row && providerTracking.data.podium.confirmedLeads) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Connect the Podium webhook before enabling confirmed leads'
+    })
+  }
   return { site: row }
 })
