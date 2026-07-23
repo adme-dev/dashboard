@@ -10,6 +10,10 @@
  */
 
 import { queryOne, execute } from './db'
+import {
+  sanitizeSpendSyncFailureReason,
+  sanitizeSpendSyncFailures,
+} from './spendSyncFailureSanitizer'
 
 /**
  * Fail loud when a sync job finishes with 0 synced across N accounts. That is
@@ -76,6 +80,7 @@ export async function createSpendSyncJob(
 
 /** Mark a job completed with its result. Safe to call from inside a waitUntil promise. */
 export async function completeSpendSyncJob(jobId: string, result: SyncJobResult): Promise<void> {
+  const failures = sanitizeSpendSyncFailures(result.failures)
   const row = await queryOne<{ platform: string, total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
        SET status = CASE WHEN $2 = 0 AND jsonb_array_length($4::jsonb) > 0
@@ -89,7 +94,7 @@ export async function completeSpendSyncJob(jobId: string, result: SyncJobResult)
            finished_at = NOW()
      WHERE id = $1
      RETURNING platform, total_accounts`,
-    [jobId, result.synced, result.totalSpend, JSON.stringify(result.failures || [])]
+    [jobId, result.synced, result.totalSpend, JSON.stringify(failures)]
   )
   if (row && Number(result.synced) === 0 && Number(row.total_accounts) > 0) {
     await alertEmptySpendSync(row.platform, jobId, Number(row.total_accounts))
@@ -111,6 +116,7 @@ export async function setSyncJobTotalAccounts(jobId: string, total: number): Pro
  * UPDATE that reaches total_accounts.
  */
 export async function recordSyncJobAccountResult(jobId: string, result: SyncJobResult): Promise<void> {
+  const failures = sanitizeSpendSyncFailures(result.failures)
   const row = await queryOne<{ platform: string, status: string, synced_count: number, total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
        SET processed_accounts = processed_accounts + 1,
@@ -133,7 +139,7 @@ export async function recordSyncJobAccountResult(jobId: string, result: SyncJobR
                               THEN NOW() ELSE finished_at END
      WHERE id = $1
      RETURNING platform, status, synced_count, total_accounts`,
-    [jobId, result.synced, result.totalSpend, JSON.stringify(result.failures || [])]
+    [jobId, result.synced, result.totalSpend, JSON.stringify(failures)]
   )
   // Fail loud (+ Slack alert when configured): a job that completes with 0 synced
   // across N accounts is almost never a genuine $0 — see alertEmptySpendSync.
@@ -148,6 +154,6 @@ export async function failSpendSyncJob(jobId: string, error: string): Promise<vo
     `UPDATE spend_sync_jobs
        SET status = 'failed', error = $2, finished_at = NOW()
      WHERE id = $1`,
-    [jobId, (error || 'Unknown error').slice(0, 1000)]
+    [jobId, sanitizeSpendSyncFailureReason(error)]
   )
 }

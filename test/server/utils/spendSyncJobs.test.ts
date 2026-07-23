@@ -55,4 +55,21 @@ describe('spendSyncJobs', () => {
       JSON.stringify([{ account: 'A', reason: 'Token refresh failed' }])
     ])
   })
+
+  it('redacts provider credentials before persisting a failed account result', async () => {
+    const { recordSyncJobAccountResult } = await import('~~/server/utils/spendSyncJobs')
+
+    await recordSyncJobAccountResult('job-1', {
+      synced: 0,
+      totalSpend: 0,
+      failures: [{
+        account: 'A',
+        reason: 'https://graph.facebook.com/insights?access_token=provider-secret&limit=500',
+      }],
+    })
+
+    const persisted = String(mockQueryOne.mock.calls[0]![1][3])
+    expect(persisted).toContain('access_token=[redacted]')
+    expect(persisted).not.toContain('provider-secret')
+  })
 })

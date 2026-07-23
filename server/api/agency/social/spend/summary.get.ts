@@ -3,6 +3,7 @@ import { queryRows } from '~~/server/utils/db'
 import { cachedFetch } from '~~/server/utils/kv'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { buildSpendSummaryItems, buildSpendSummaryTotals, type SpendSummaryRow } from '~~/server/utils/socialSpendSummary'
+import { sanitizeSpendSyncFailureReason, sanitizeSpendSyncFailures } from '~~/server/utils/spendSyncFailureSanitizer'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -103,8 +104,8 @@ export default eventHandler(async (event) => {
         status: job.status,
         syncedCount: Number(job.synced_count) || 0,
         totalSpend: Number(job.total_spend) || 0,
-        failures: job.failures || [],
-        error: job.error,
+        failures: sanitizeSpendSyncFailures(job.failures),
+        error: job.error ? sanitizeSpendSyncFailureReason(job.error) : null,
         startedAt: job.started_at,
         finishedAt: job.finished_at,
         totalAccounts: job.total_accounts,

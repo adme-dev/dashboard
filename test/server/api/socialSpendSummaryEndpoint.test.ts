@@ -105,4 +105,32 @@ describe('GET /api/agency/social/spend/summary', () => {
     })
     expect(result.lastSyncedAt).toBe('2026-06-25T00:00:00.000Z')
   })
+
+  it('redacts credentials from historical sync failures before returning them', async () => {
+    mockQueryRows.mockReset()
+    mockQueryRows
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        platform: 'meta',
+        status: 'failed',
+        synced_count: 0,
+        total_spend: '0',
+        failures: [{
+          account: 'A',
+          reason: 'https://graph.facebook.com/insights?access_token=provider-secret&limit=500',
+        }],
+        error: 'Bearer provider-secret',
+        started_at: '2026-06-25T00:00:00.000Z',
+        finished_at: '2026-06-25T00:01:00.000Z',
+        total_accounts: 1,
+        processed_accounts: 1,
+      }])
+
+    const handler = (await import('~~/server/api/agency/social/spend/summary.get')).default
+    const result = await handler({} as any)
+    const serialized = JSON.stringify(result.latestSyncJobs)
+
+    expect(serialized).toContain('[redacted]')
+    expect(serialized).not.toContain('provider-secret')
+  })
 })
