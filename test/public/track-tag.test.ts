@@ -23,6 +23,9 @@ describe('public/track.js transport', () => {
   let fetchSpy: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+    window.history.replaceState({}, '', '/')
     beacons = []
     requests = []
     // happy-dom may not implement sendBeacon — define a capturing stub.
@@ -48,6 +51,58 @@ describe('public/track.js transport', () => {
     })
     vi.stubGlobal('fetch', fetchSpy)
     document.cookie = ''
+  })
+
+  it('records campaign-attributed provider iframe interactions without treating them as leads', async () => {
+    window.history.pushState({}, '', '/service?utm_source=meta&utm_medium=paid_social&utm_campaign=service-july')
+    // A focusable frame-shaped element avoids happy-dom making a real network
+    // request when an iframe with an external src is attached.
+    const xtime = document.createElement('button') as any
+    Object.defineProperty(xtime, 'tagName', { value: 'IFRAME' })
+    Object.defineProperty(xtime, 'src', {
+      value: 'https://consumer.xtime.net.au/xt/scheduling/?webKey=dealer-key'
+    })
+    document.body.appendChild(xtime)
+    const podium = document.createElement('iframe')
+    podium.id = 'podium-bubble'
+    podium.dataset.cy = 'podium-website-widget-iframe'
+    document.body.appendChild(podium)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    xtime.focus()
+    window.dispatchEvent(new Event('blur'))
+    await vi.waitFor(() => expect(requests).toHaveLength(1))
+
+    const xtimeEvent = JSON.parse(requests[0].body).events[0]
+    expect(xtimeEvent.event_name).toBe('provider_interaction')
+    expect(xtimeEvent.event_data).toEqual(expect.objectContaining({
+      provider: 'xtime',
+      interaction_type: 'iframe_focus',
+      attribution_confidence: 'interaction_observed',
+      provider_host: 'consumer.xtime.net.au'
+    }))
+    expect(xtimeEvent.attribution).toEqual(expect.objectContaining({
+      utm_source: 'meta',
+      utm_campaign: 'service-july'
+    }))
+
+    podium.focus()
+    window.dispatchEvent(new Event('blur'))
+    await vi.waitFor(() => expect(requests).toHaveLength(2))
+    window.dispatchEvent(new Event('blur'))
+    await new Promise(resolve => setTimeout(resolve, 1))
+
+    expect(requests).toHaveLength(2)
+    const podiumEvent = JSON.parse(requests[1].body).events[0]
+    expect(podiumEvent.event_name).toBe('provider_interaction')
+    expect(podiumEvent.event_data).toEqual(expect.objectContaining({
+      provider: 'podium',
+      interaction_type: 'iframe_focus',
+      attribution_confidence: 'interaction_observed'
+    }))
   })
 
   it('exposes window.xf (not engagrTrack)', () => {
@@ -244,4 +299,5 @@ describe('public/track.js transport', () => {
     // and the server schema accepts it
     expect(parseTrackPayload(payload).ok).toBe(true)
   })
+
 })
