@@ -95,6 +95,12 @@ export default defineEventHandler(async (event) => {
 
           // Simple hash to detect changes
           const hash = `${currentMonthInvoicedTotal}-${invoices.length}`
+          if (!lastHash) {
+            // The first successful poll establishes a baseline. Emitting here
+            // would force a redundant full Get Out request on every opened tab.
+            lastHash = hash
+            return
+          }
           if (hash !== lastHash) {
             lastHash = hash
             // Send a refresh signal — client fetches full data from /api/xero/get-out

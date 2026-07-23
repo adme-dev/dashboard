@@ -59,7 +59,10 @@ export function useGetOutRealtime() {
   const lastUpdated = ref<Date | null>(null)
   const isLive = ref(false)
   const eventSource = ref<EventSource | null>(null)
-  const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { retry?: number },
+  ) => Promise<T>
 
   // Polling config
   const POLL_INTERVAL = 30000 // 30 seconds
@@ -69,7 +72,8 @@ export function useGetOutRealtime() {
     pending.value = true
     error.value = null
     try {
-      const result = await apiFetch<GetOutData>('/api/xero/get-out')
+      // The server already performs bounded Xero retries with backoff.
+      const result = await apiFetch<GetOutData>('/api/xero/get-out', { retry: 0 })
       data.value = result
       lastUpdated.value = new Date()
     } catch (e: any) {

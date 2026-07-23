@@ -2,6 +2,7 @@
 definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 import { defineAsyncComponent } from 'vue'
+import { createSingleFlight, runTasksSequentially } from '~/utils/asyncControl'
 
 // Async components for better performance
 const AsyncKPICards = defineAsyncComponent(() => import('~/components/dashboard/KPICards.vue'))
@@ -24,16 +25,26 @@ const kpiBasis = useLocalStorage<'accrual' | 'cash'>('kpi-basis', 'accrual')
 const { data: kpiData, pending: kpiPending, error: kpiError, refresh: refreshKPI } = useFetch('/api/kpis-advanced', {
   query: { basis: kpiBasis },
   immediate: false,
+  retry: 0,
   default: () => null
+})
+const liveDataErrorDescription = computed(() => {
+  const status = (kpiError.value as any)?.statusCode
+  if (status === 429 || status === 502 || status === 504) {
+    return 'Xero is connected, but live data is temporarily rate-limited. The dashboard will retry safely.'
+  }
+  return 'Xero is connected, but live data is temporarily unavailable. Please try again shortly.'
 })
 
 const { data: cashFlowData, pending: cashFlowPending, refresh: refreshCashFlow } = useFetch('/api/xero/reports/cash-flow-forecast?days=90', {
   immediate: false,
+  retry: 0,
   default: () => null
 })
 
 const { data: pipelineData, pending: pipelinePending, refresh: refreshPipeline } = useFetch('/api/xero/invoice-pipeline?days=90', {
   immediate: false,
+  retry: 0,
   default: () => null
 })
 
@@ -46,17 +57,24 @@ const { data: anomalyData, pending: anomalyPending, refresh: refreshAnomalies } 
 // Budget variance data
 const { data: budgetData, pending: budgetPending, refresh: refreshBudget } = useFetch('/api/xero/reports/budget-variance', {
   immediate: false,
+  retry: 0,
   default: () => null
+})
+
+const refreshDashboard = createSingleFlight(async () => {
+  await runTasksSequentially([
+    refreshKPI,
+    refreshCashFlow,
+    refreshPipeline,
+    refreshAnomalies,
+    refreshBudget,
+  ])
 })
 
 // Only fetch data when Xero is connected
 watch(isConnected, (connected) => {
   if (connected) {
-    refreshKPI()
-    refreshCashFlow()
-    refreshPipeline()
-    refreshAnomalies()
-    refreshBudget()
+    void refreshDashboard()
   }
 }, { immediate: true })
 
@@ -68,17 +86,21 @@ const manualRefreshing = ref(false)
 async function refreshAll() {
   manualRefreshing.value = true
   try {
-    const [kpis, cash, pipe, budget] = await Promise.all([
-      $fetch(`/api/kpis-advanced?bust=1&basis=${kpiBasis.value}`).catch(() => kpiData.value),
-      $fetch('/api/xero/reports/cash-flow-forecast?days=90&bust=1').catch(() => cashFlowData.value),
-      $fetch('/api/xero/invoice-pipeline?days=90&bust=1').catch(() => pipelineData.value),
-      $fetch('/api/xero/reports/budget-variance?bust=1').catch(() => budgetData.value),
+    await runTasksSequentially([
+      async () => {
+        kpiData.value = await $fetch(`/api/kpis-advanced?bust=1&basis=${kpiBasis.value}`, { retry: 0 }).catch(() => kpiData.value) as any
+      },
+      async () => {
+        cashFlowData.value = await $fetch('/api/xero/reports/cash-flow-forecast?days=90&bust=1', { retry: 0 }).catch(() => cashFlowData.value) as any
+      },
+      async () => {
+        pipelineData.value = await $fetch('/api/xero/invoice-pipeline?days=90&bust=1', { retry: 0 }).catch(() => pipelineData.value) as any
+      },
+      async () => {
+        budgetData.value = await $fetch('/api/xero/reports/budget-variance?bust=1', { retry: 0 }).catch(() => budgetData.value) as any
+      },
+      refreshAnomalies,
     ])
-    kpiData.value = kpis as any
-    cashFlowData.value = cash as any
-    pipelineData.value = pipe as any
-    budgetData.value = budget as any
-    await refreshAnomalies()
   } finally {
     manualRefreshing.value = false
   }
@@ -91,7 +113,7 @@ let refreshTimer: NodeJS.Timeout
 onMounted(() => {
   refreshTimer = setInterval(() => {
     if (isConnected.value) {
-      Promise.all([refreshKPI(), refreshCashFlow(), refreshPipeline(), refreshAnomalies(), refreshBudget()])
+      void refreshDashboard()
     }
   }, refreshInterval)
 })
@@ -274,9 +296,9 @@ const quickActions = [
       <div v-if="kpiError && isConnected" class="mb-6">
         <UAlert
           icon="i-lucide-wifi-off"
-          color="error"
-          title="Connection Error"
-          description="Unable to fetch live data from Xero. Please check your connection."
+          color="warning"
+          title="Live Data Delayed"
+          :description="liveDataErrorDescription"
         />
       </div>
 

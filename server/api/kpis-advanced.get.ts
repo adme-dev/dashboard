@@ -5,6 +5,7 @@ import { getSelectedTenant } from '../utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 import { extractPnlTotals } from '~~/server/utils/xeroPnlParse'
+import { settleTasksWithConcurrency } from '~~/server/utils/settleTasksWithConcurrency'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -61,7 +62,8 @@ export default eventHandler(async (event) => {
   const pnlPath = (from: Date, to: Date) =>
     `Reports/ProfitAndLoss?fromDate=${ensureDateString(from)}&toDate=${ensureDateString(to)}&standardLayout=false${basisSuffix}`
 
-  // Parallel data fetching — dedupedXeroCall queue limits to 3 concurrent
+  // Keep this request below Xero's five-call tenant limit. Other open tabs or
+  // an SSE poll can still consume capacity, so retain headroom here.
   const [
     currentCashResponse,
     currentPnlResponse,
@@ -69,31 +71,31 @@ export default eventHandler(async (event) => {
     outstandingInvoicesResponse,
     overdueInvoicesResponse,
     balanceSheetResponse
-  ] = await Promise.allSettled([
-    dedupedXeroCall(`kpi-bank-summary:${tenantId}`, 'kpi-bank-summary', () =>
+  ] = await settleTasksWithConcurrency([
+    () => dedupedXeroCall(`kpi-bank-summary:${tenantId}`, 'kpi-bank-summary', () =>
       xeroFetch<any>({ accessToken, tenantId, path: `Reports/BankSummary?fromDate=${ensureDateString(addDays(today, -30))}&toDate=${ensureDateString(today)}` })
     ),
 
-    dedupedXeroCall(`kpi-pnl-current:${tenantId}:${basis}`, 'kpi-pnl-current', () =>
+    () => dedupedXeroCall(`kpi-pnl-current:${tenantId}:${basis}`, 'kpi-pnl-current', () =>
       xeroFetch<any>({ accessToken, tenantId, path: pnlPath(monthStart, today) })
     ),
 
-    dedupedXeroCall(`kpi-pnl-last:${tenantId}:${basis}`, 'kpi-pnl-last', () =>
+    () => dedupedXeroCall(`kpi-pnl-last:${tenantId}:${basis}`, 'kpi-pnl-last', () =>
       xeroFetch<any>({ accessToken, tenantId, path: pnlPath(lastMonth, lastMonthEnd) })
     ),
 
-    dedupedXeroCall(`kpi-outstanding:${tenantId}`, 'kpi-outstanding', () =>
+    () => dedupedXeroCall(`kpi-outstanding:${tenantId}`, 'kpi-outstanding', () =>
       xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC', 200) })
     ),
 
-    dedupedXeroCall(`kpi-overdue:${tenantId}`, 'kpi-overdue', () =>
+    () => dedupedXeroCall(`kpi-overdue:${tenantId}`, 'kpi-overdue', () =>
       xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCREC"&&Status=="AUTHORISED"&&DueDate<${dtExpr(today)}`, 'DueDate ASC', 200) })
     ),
 
-    dedupedXeroCall(`kpi-balance-sheet:${tenantId}`, 'kpi-balance-sheet', () =>
+    () => dedupedXeroCall(`kpi-balance-sheet:${tenantId}`, 'kpi-balance-sheet', () =>
       xeroFetch<any>({ accessToken, tenantId, path: `Reports/BalanceSheet?date=${ensureDateString(today)}` })
     )
-  ])
+  ], 2)
 
   // Helper function to safely extract data from settled promises
   function extractData<T>(result: PromiseSettledResult<T>): T | null {

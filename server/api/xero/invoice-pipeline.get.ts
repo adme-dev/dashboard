@@ -4,6 +4,7 @@ import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '../../utils/kv'
 import { dedupedXeroCall } from '../../utils/xeroRateLimit'
+import { settleTasksWithConcurrency } from '../../utils/settleTasksWithConcurrency'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -47,7 +48,7 @@ export default eventHandler(async (event) => {
   const invoiceStatuses = ['DRAFT', 'SUBMITTED', 'AUTHORISED', 'PAID', 'VOIDED']
 
   const dateKey = ensureDateString(startDate)
-  const invoicePromises = invoiceStatuses.map(async (status) => {
+  const invoiceTasks = invoiceStatuses.map(status => async () => {
     try {
       const params = new URLSearchParams({
         where: `Type=="ACCREC"&&Status=="${status}"&&Date>=${dtExpr(startDate)}`,
@@ -77,7 +78,10 @@ export default eventHandler(async (event) => {
     }
   })
 
-  const invoiceResults = await Promise.all(invoicePromises)
+  const settledInvoiceResults = await settleTasksWithConcurrency(invoiceTasks, 2)
+  const invoiceResults = settledInvoiceResults.flatMap(result =>
+    result.status === 'fulfilled' ? [result.value] : []
+  )
   const allInvoices = invoiceResults.flatMap(result => 
     result.invoices.map((inv: any) => ({ ...inv, status: result.status }))
   )
