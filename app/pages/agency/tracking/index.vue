@@ -20,6 +20,8 @@ interface TrackingSiteRow {
     podium: {
       interactions: boolean
       confirmedLeads: boolean
+      organizationUid?: string | null
+      locationUids?: string[]
     }
     xtime: {
       interactions: boolean
@@ -34,12 +36,6 @@ interface ClientOption {
 }
 
 type ClientsResponse = ClientOption[] | { clients?: ClientOption[] }
-
-function requestErrorMessage(error: unknown): string | undefined {
-  if (!(error instanceof Error)) return undefined
-  const data = (error as Error & { data?: { statusMessage?: string } }).data
-  return data?.statusMessage || error.message
-}
 
 // Client filter — drives the ?clientId= query reactively.
 const selectedClient = ref<string>('all')
@@ -82,13 +78,6 @@ const showInstall = ref(false)
 const installSiteId = ref<string | null>(null)
 const showProviders = ref(false)
 const providerSite = ref<TrackingSiteRow | null>(null)
-const savingProviders = ref(false)
-const providerForm = reactive({
-  podiumInteractions: true,
-  podiumConfirmedLeads: false,
-  xtimeInteractions: true,
-  xtimeConfirmedLeads: false
-})
 
 const toast = useToast()
 
@@ -102,46 +91,8 @@ function openInstall(id: string) {
 }
 
 function openProviders(site: TrackingSiteRow) {
-  const settings = site.provider_tracking
   providerSite.value = site
-  providerForm.podiumInteractions = settings?.podium.interactions ?? true
-  providerForm.podiumConfirmedLeads = settings?.podium.confirmedLeads ?? false
-  providerForm.xtimeInteractions = settings?.xtime.interactions ?? true
-  providerForm.xtimeConfirmedLeads = settings?.xtime.confirmedLeads ?? false
   showProviders.value = true
-}
-
-async function saveProviders() {
-  if (!providerSite.value || savingProviders.value) return
-  savingProviders.value = true
-  try {
-    await $fetch(`/api/agency/tracking/${providerSite.value.id}`, {
-      method: 'PATCH',
-      body: {
-        providerTracking: {
-          podium: {
-            interactions: providerForm.podiumInteractions,
-            confirmedLeads: providerForm.podiumConfirmedLeads
-          },
-          xtime: {
-            interactions: providerForm.xtimeInteractions,
-            confirmedLeads: providerForm.xtimeConfirmedLeads
-          }
-        }
-      }
-    })
-    toast.add({ title: 'Provider settings saved', color: 'success' })
-    showProviders.value = false
-    await refresh()
-  } catch (error: unknown) {
-    toast.add({
-      title: 'Could not save provider settings',
-      description: requestErrorMessage(error),
-      color: 'error'
-    })
-  } finally {
-    savingProviders.value = false
-  }
 }
 
 async function copyKey(key: string) {
@@ -316,46 +267,10 @@ const columns = [
       </template>
     </UModal>
 
-    <UModal v-model:open="showProviders" :title="`Provider tracking — ${providerSite?.name || ''}`">
-      <template #body>
-        <div class="space-y-5">
-          <p class="text-sm text-muted">
-            Interaction tracking uses the universal Zero Flow tag. Confirmed leads also require that dealer's signed provider webhook or appointment feed.
-          </p>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <div class="border border-default rounded-lg p-4 space-y-3">
-              <p class="font-medium">
-                Podium
-              </p>
-              <UCheckbox v-model="providerForm.podiumInteractions" label="Track widget interactions" />
-              <UCheckbox v-model="providerForm.podiumConfirmedLeads" label="Accept confirmed webchat leads" />
-            </div>
-            <div class="border border-default rounded-lg p-4 space-y-3">
-              <p class="font-medium">
-                Xtime
-              </p>
-              <UCheckbox v-model="providerForm.xtimeInteractions" label="Track scheduler interactions" />
-              <UCheckbox v-model="providerForm.xtimeConfirmedLeads" label="Accept confirmed appointments" />
-            </div>
-          </div>
-        </div>
-      </template>
-      <template #footer="{ close }">
-        <div class="flex justify-end gap-2 w-full">
-          <UButton
-            color="neutral"
-            variant="ghost"
-            label="Cancel"
-            @click="close"
-          />
-          <UButton
-            color="primary"
-            label="Save settings"
-            :loading="savingProviders"
-            @click="saveProviders"
-          />
-        </div>
-      </template>
-    </UModal>
+    <TrackingProviderSettingsModal
+      v-model:open="showProviders"
+      :site="providerSite"
+      @saved="refresh"
+    />
   </div>
 </template>
