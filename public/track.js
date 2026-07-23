@@ -1258,9 +1258,14 @@
     || document.querySelector('script[src*="track.js"]')
   if (script) {
     var autoInit = script.getAttribute('data-auto') !== 'false'
-    if (autoInit) {
+    var bootWriteKey = script.getAttribute('data-key') || ''
+    // GTM Custom HTML rewrites external scripts and may strip custom data
+    // attributes from the executable element. Do not initialize an inert
+    // tracker in that state: the GTM loader can call xf.init({ writeKey }) once
+    // the script is available, without duplicating every automatic listener.
+    if (autoInit && bootWriteKey) {
       var bootCfg = {
-        writeKey: script.getAttribute('data-key') || '',
+        writeKey: bootWriteKey,
         spa: script.getAttribute('data-spa') === 'true',
       }
       if (document.readyState === 'loading') {
