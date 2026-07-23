@@ -15,6 +15,7 @@ import {
   type GoogleCredentialRow,
 } from '~~/server/utils/googleCredentialProfiles'
 import type { H3Event } from 'h3'
+import { sanitizeSpendSyncFailureReason } from '~~/server/utils/spendSyncFailureSanitizer'
 
 // ─── Meta Spend Sync ────────────────────────────────────────────
 
@@ -53,12 +54,15 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
   try {
     campaigns = await getCampaignInsights(actId, conn.access_token, month, year)
   } catch (err: any) {
-    console.error(`[MetaSync] Failed to fetch insights for ${conn.account_name}:`, err.message)
+    console.error(
+      `[MetaSync] Failed to fetch insights for ${conn.account_name}:`,
+      sanitizeSpendSyncFailureReason(err?.message)
+    )
     const gErr = err?.data?.error
     const reason = gErr
       ? `${gErr.message || 'Graph error'}${gErr.code ? ` (#${gErr.code})` : ''}`
       : (err?.message || 'Unknown error')
-    failures.push({ account: conn.account_name, reason })
+    failures.push({ account: conn.account_name, reason: sanitizeSpendSyncFailureReason(reason) })
     return { synced: 0, totalSpend: 0, failures }
   }
 
@@ -86,7 +90,10 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
     const campObjs = await getCampaigns(actId, conn.access_token)
     for (const c of campObjs) campaignMetaById.set(c.id, mapMetaCampaignMeta(c))
   } catch (err: any) {
-    console.warn(`[MetaSync] Campaign metadata fetch failed for ${conn.account_name}:`, err.message)
+    console.warn(
+      `[MetaSync] Campaign metadata fetch failed for ${conn.account_name}:`,
+      sanitizeSpendSyncFailureReason(err?.message)
+    )
   }
 
   for (const campaign of campaigns) {
@@ -183,7 +190,10 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
       }
     }
   } catch (err: any) {
-    console.error(`[MetaSync] Daily spend failed for ${conn.account_name}:`, err.message)
+    console.error(
+      `[MetaSync] Daily spend failed for ${conn.account_name}:`,
+      sanitizeSpendSyncFailureReason(err?.message)
+    )
   }
 
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }

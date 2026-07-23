@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { sanitizeSpendSyncFailureReason, sanitizeSpendSyncFailures } from '~~/server/utils/spendSyncFailureSanitizer'
 
 /**
  * GET /api/agency/social/spend/sync-status?jobId=<uuid>
@@ -48,8 +49,8 @@ export default eventHandler(async (event) => {
     status: row.status, // running | completed | failed
     syncedCount: row.synced_count,
     totalSpend: Number(row.total_spend) || 0,
-    failures: row.failures || [],
-    error: row.error,
+    failures: sanitizeSpendSyncFailures(row.failures),
+    error: row.error ? sanitizeSpendSyncFailureReason(row.error) : null,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
     totalAccounts: row.total_accounts,
