@@ -61,14 +61,38 @@ const { data: budgetData, pending: budgetPending, refresh: refreshBudget } = use
   default: () => null
 })
 
+const { data: agingData, pending: agingPending, refresh: refreshAging } = useFetch('/api/xero/reports/aging', {
+  immediate: false,
+  retry: 0,
+  default: () => null
+})
+
+const dashboardNow = new Date()
+const dashboardMonth = dashboardNow.getMonth() + 1
+const dashboardYear = dashboardNow.getFullYear()
+const { data: overheadData, pending: overheadPending, refresh: refreshOverheads } = useFetch('/api/xero/overheads', {
+  query: { month: dashboardMonth, year: dashboardYear },
+  immediate: false,
+  retry: 0,
+  default: () => null
+})
+
+const dashboardRefreshing = ref(false)
 const refreshDashboard = createSingleFlight(async () => {
-  await runTasksSequentially([
-    refreshKPI,
-    refreshCashFlow,
-    refreshPipeline,
-    refreshAnomalies,
-    refreshBudget,
-  ])
+  dashboardRefreshing.value = true
+  try {
+    await runTasksSequentially([
+      refreshKPI,
+      refreshCashFlow,
+      refreshPipeline,
+      refreshAnomalies,
+      refreshBudget,
+      refreshAging,
+      refreshOverheads,
+    ])
+  } finally {
+    dashboardRefreshing.value = false
+  }
 })
 
 // Only fetch data when Xero is connected
@@ -98,6 +122,12 @@ async function refreshAll() {
       },
       async () => {
         budgetData.value = await $fetch('/api/xero/reports/budget-variance?bust=1', { retry: 0 }).catch(() => budgetData.value) as any
+      },
+      async () => {
+        agingData.value = await $fetch('/api/xero/reports/aging?bust=1', { retry: 0 }).catch(() => agingData.value) as any
+      },
+      async () => {
+        overheadData.value = await $fetch(`/api/xero/overheads?month=${dashboardMonth}&year=${dashboardYear}&bust=1`, { retry: 0 }).catch(() => overheadData.value) as any
       },
       refreshAnomalies,
     ])
@@ -350,14 +380,23 @@ const quickActions = [
         <!-- Financial Health Row: Receivables Aging + Overhead Burn -->
         <div v-if="isConnected" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <ClientOnly>
-            <AsyncReceivablesAging />
+            <AsyncReceivablesAging
+              managed
+              :data="agingData as any"
+              :loading="agingPending || (dashboardRefreshing && !agingData)"
+            />
             <template #fallback>
               <USkeleton class="h-64" />
             </template>
           </ClientOnly>
 
           <ClientOnly>
-            <AsyncOverheadBurn />
+            <AsyncOverheadBurn
+              managed
+              :data="overheadData as any"
+              :loading="overheadPending || (dashboardRefreshing && !overheadData)"
+              @refresh="refreshOverheads"
+            />
             <template #fallback>
               <USkeleton class="h-64" />
             </template>

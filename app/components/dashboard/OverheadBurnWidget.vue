@@ -1,33 +1,52 @@
 <script setup lang="ts">
+const props = withDefaults(defineProps<{
+  data?: any | null
+  loading?: boolean
+  managed?: boolean
+}>(), {
+  data: null,
+  loading: false,
+  managed: false,
+})
+const emit = defineEmits<{ refresh: [] }>()
+
 const now = new Date()
 const month = now.getMonth() + 1
 const year = now.getFullYear()
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { query?: Record<string, unknown> }
+  options?: { query?: Record<string, unknown>; retry?: number }
 ) => Promise<T>
-const data = ref<any | null>(null)
-const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const localData = ref<any | null>(null)
+const localStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
 async function refresh() {
-  status.value = 'pending'
+  if (props.managed) {
+    emit('refresh')
+    return
+  }
+  localStatus.value = 'pending'
   try {
-    data.value = await apiFetch('/api/xero/overheads', {
+    localData.value = await apiFetch('/api/xero/overheads', {
       query: { month, year },
+      retry: 0,
     })
-    status.value = 'success'
+    localStatus.value = 'success'
   } catch (error) {
     console.error('Failed to load overheads', error)
-    status.value = 'error'
+    localStatus.value = 'error'
   }
 }
 
 onMounted(() => {
-  refresh()
+  if (!props.managed) refresh()
 })
 
-const overheads = computed(() => data.value as any)
+const status = computed(() => props.managed
+  ? (props.loading ? 'pending' : props.data ? 'success' : 'error')
+  : localStatus.value)
+const overheads = computed(() => (props.managed ? props.data : localData.value) as any)
 const totalFixed = computed(() => overheads.value?.totalFixed || 0)
 const totalVariable = computed(() => overheads.value?.totalVariable || 0)
 const overheadRatio = computed(() => overheads.value?.overheadRatio || 0)

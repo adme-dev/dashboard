@@ -30,14 +30,21 @@ function is429(err: any): boolean {
   return status === 429
 }
 
-function withTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
+export interface XeroRateLimitOptions {
+  maxRetries?: number
+  baseDelayMs?: number
+  callTimeoutMs?: number
+  totalTimeoutMs?: number
+}
+
+function withTimeout<T>(label: string, fn: () => Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      const err: any = new Error(`[xero-rate-limit] "${label}" timed out after ${CALL_TIMEOUT_MS}ms`)
+      const err: any = new Error(`[xero-rate-limit] "${label}" timed out after ${timeoutMs}ms`)
       err.statusCode = 504
       err.__xeroTimeout = true
       reject(err)
-    }, CALL_TIMEOUT_MS)
+    }, timeoutMs)
     fn().then(
       (value) => { clearTimeout(timer); resolve(value) },
       (error) => { clearTimeout(timer); reject(error) },
@@ -45,20 +52,24 @@ function withTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
   })
 }
 
-async function executeWithRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
-  const deadline = Date.now() + TOTAL_TIMEOUT_MS
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+async function executeWithRetry<T>(label: string, fn: () => Promise<T>, options: XeroRateLimitOptions = {}): Promise<T> {
+  const maxRetries = Math.max(0, Math.floor(options.maxRetries ?? MAX_RETRIES))
+  const baseDelayMs = Math.max(0, options.baseDelayMs ?? BASE_DELAY_MS)
+  const callTimeoutMs = Math.max(1, options.callTimeoutMs ?? CALL_TIMEOUT_MS)
+  const totalTimeoutMs = Math.max(1, options.totalTimeoutMs ?? TOTAL_TIMEOUT_MS)
+  const deadline = Date.now() + totalTimeoutMs
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (Date.now() >= deadline) {
       const err: any = new Error(`[xero-rate-limit] "${label}" total deadline exceeded`)
       err.statusCode = 504
       throw err
     }
     try {
-      return await withTimeout(label, fn)
+      return await withTimeout(label, fn, callTimeoutMs)
     } catch (err: any) {
-      if (is429(err) && attempt < MAX_RETRIES && Date.now() < deadline) {
-        const delay = jitter(BASE_DELAY_MS * Math.pow(2, attempt))
-        console.warn(`[xero-rate-limit] 429 on "${label}" — retry ${attempt + 1}/${MAX_RETRIES} in ${Math.round(delay)}ms`)
+      if (is429(err) && attempt < maxRetries && Date.now() < deadline) {
+        const delay = jitter(baseDelayMs * Math.pow(2, attempt))
+        console.warn(`[xero-rate-limit] 429 on "${label}" — retry ${attempt + 1}/${maxRetries} in ${Math.round(delay)}ms`)
         await new Promise((r) => setTimeout(r, delay))
         continue
       }
@@ -74,6 +85,11 @@ async function executeWithRetry<T>(label: string, fn: () => Promise<T>): Promise
  * The `key` argument is kept for callsite compatibility but no longer
  * deduplicates across requests — see module header.
  */
-export async function dedupedXeroCall<T>(_key: string, label: string, fn: () => Promise<T>): Promise<T> {
-  return executeWithRetry(label, fn)
+export async function dedupedXeroCall<T>(
+  _key: string,
+  label: string,
+  fn: () => Promise<T>,
+  options?: XeroRateLimitOptions,
+): Promise<T> {
+  return executeWithRetry(label, fn, options)
 }

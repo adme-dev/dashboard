@@ -10,6 +10,13 @@ function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
 }
 
+const aggregateXeroOptions = {
+  maxRetries: 1,
+  baseDelayMs: 500,
+  callTimeoutMs: 5_000,
+  totalTimeoutMs: 7_000,
+}
+
 function addDays(date: Date, days: number) {
   const result = new Date(date)
   result.setDate(result.getDate() + days)
@@ -63,7 +70,8 @@ export default eventHandler(async (event) => {
           accessToken: token.access_token!,
           tenantId,
           path: `Invoices?${params.toString()}`,
-        })
+        }),
+        aggregateXeroOptions,
       )
       return {
         status,
@@ -78,7 +86,7 @@ export default eventHandler(async (event) => {
     }
   })
 
-  const settledInvoiceResults = await settleTasksWithConcurrency(invoiceTasks, 2)
+  const settledInvoiceResults = await settleTasksWithConcurrency(invoiceTasks, 3)
   const invoiceResults = settledInvoiceResults.flatMap(result =>
     result.status === 'fulfilled' ? [result.value] : []
   )
