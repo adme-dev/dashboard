@@ -91,6 +91,8 @@ describe('Podium webhook adapter', () => {
         formName: 'Podium Webchat',
         submittedAt: '2026-07-23T10:00:00.000Z',
         webchatUrl: expect.stringContaining('southmorangmotorgroup.com.au'),
+        organizationUid: 'organization-1',
+        locationUid: 'location-1',
         fieldData: expect.objectContaining({
           full_name: 'Jane Citizen',
           first_name: 'Jane',

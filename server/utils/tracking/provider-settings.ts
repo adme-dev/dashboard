@@ -5,15 +5,30 @@ const ProviderSettingSchema = z.strictObject({
   confirmedLeads: z.boolean()
 })
 
+const PodiumProviderSettingSchema = ProviderSettingSchema.extend({
+  organizationUid: z.string().uuid().nullable().default(null),
+  locationUids: z.array(z.string().uuid()).max(50).default([])
+}).refine(
+  value => !value.confirmedLeads || (
+    value.organizationUid !== null && value.locationUids.length > 0
+  ),
+  { message: 'Podium identity is required before confirmed leads can be enabled' }
+)
+
 export const ProviderTrackingSettingsSchema = z.strictObject({
-  podium: ProviderSettingSchema,
+  podium: PodiumProviderSettingSchema,
   xtime: ProviderSettingSchema
 })
 
 export type ProviderTrackingSettings = z.infer<typeof ProviderTrackingSettingsSchema>
 
 export const DEFAULT_PROVIDER_TRACKING_SETTINGS: ProviderTrackingSettings = {
-  podium: { interactions: true, confirmedLeads: false },
+  podium: {
+    interactions: true,
+    confirmedLeads: false,
+    organizationUid: null,
+    locationUids: []
+  },
   xtime: { interactions: true, confirmedLeads: false }
 }
 
