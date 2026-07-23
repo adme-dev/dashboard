@@ -7,7 +7,7 @@ const { data, pending, error, lastUpdated, isLive, refresh } = useGetOutRealtime
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { query?: Record<string, unknown> }
+  options?: { query?: Record<string, unknown>; retry?: number }
 ) => Promise<T>
 
 function createGetOutState<T>(request: string, query?: () => Record<string, unknown>) {
@@ -15,7 +15,10 @@ function createGetOutState<T>(request: string, query?: () => Record<string, unkn
 
   async function refresh() {
     try {
-      data.value = await apiFetch<T>(request, query ? { query: query() } : undefined)
+      data.value = await apiFetch<T>(request, {
+        ...(query ? { query: query() } : {}),
+        retry: 0,
+      })
     } catch {
       data.value = null
     }
