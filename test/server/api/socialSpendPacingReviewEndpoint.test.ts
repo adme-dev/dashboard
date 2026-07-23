@@ -10,6 +10,10 @@ interface TestEvent {
 
 interface PacingReviewEndpointResult {
   aiSummary: string | null
+  campaigns: Array<{
+    mediaSpendId: string
+    issueType: string
+  }>
   items: Array<{
     issueType?: string
     socialFeedback?: {
@@ -100,6 +104,11 @@ describe('GET /api/agency/social/spend/pacing-review', () => {
         bidStrategy: 'LOWEST_COST_WITHOUT_CAP',
         budgetType: 'daily'
       }
+    })
+    expect(result.campaigns).toHaveLength(1)
+    expect(result.campaigns[0]).toMatchObject({
+      mediaSpendId: 'spend-1',
+      issueType: 'overpacing'
     })
     vi.useRealTimers()
   })
