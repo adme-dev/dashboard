@@ -120,6 +120,28 @@ describe('public/track.js transport', () => {
     expect(beacons.length).toBe(0)
   })
 
+  it('waits for manual init when GTM strips the script write key', () => {
+    const script = document.createElement('script')
+    document.head.appendChild(script)
+    Object.defineProperty(script, 'src', { value: 'https://app.xeroflow.io/track.js' })
+    const currentScript = vi.spyOn(document, 'currentScript', 'get').mockReturnValue(script)
+    const addListener = vi.spyOn(window, 'addEventListener')
+
+    loadTag()
+
+    expect(addListener.mock.calls.filter(([name]) => name === 'blur')).toHaveLength(0)
+    expect(requests).toHaveLength(0)
+
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+
+    expect(addListener.mock.calls.filter(([name]) => name === 'blur')).toHaveLength(1)
+    expect(requests).toHaveLength(1)
+    expect(requests[0].url).toContain('/api/public/track?k=TESTKEY')
+
+    currentScript.mockRestore()
+    addListener.mockRestore()
+  })
+
   it('posts a schema-valid batch to /api/public/track?k=KEY with a generated event_id', () => {
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })
