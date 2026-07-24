@@ -5,6 +5,7 @@ import { queryRows } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { normalizeSocialNewsClientProfile } from '~~/server/utils/socialNewsProfile'
 import { scoreNewsForClient } from '~~/server/utils/socialNews'
+import { projectSocialNewsEvidence } from '~~/server/utils/socialNewsEvidence'
 
 interface SocialNewsRow {
   id: string
@@ -65,12 +66,30 @@ export default defineEventHandler(async (event) => {
   return rows
     .map((row) => {
       const relevance = clientId ? scoreNewsForClient(row, profile) : { score: 0, reasons: [], excluded: false }
-      const topics: string[] = Array.isArray(row.raw?.topics) ? row.raw.topics.filter((value): value is string => typeof value === 'string') : []
+      const evidence = projectSocialNewsEvidence(row)
       return {
         ...row,
-        topics,
-        make: typeof row.raw?.make === 'string' ? row.raw.make : null,
-        image_url: typeof row.raw?.image === 'string' ? row.raw.image : null,
+        topics: evidence.topics,
+        make: evidence.make,
+        model: evidence.model,
+        entities: evidence.entities,
+        geography: evidence.geography,
+        image_url: evidence.image,
+        image_credit: evidence.imageCredit,
+        source_type: evidence.sourceType,
+        original_source_url: evidence.originalSourceUrl,
+        coverage_count: evidence.coverageCount,
+        outlets: evidence.outlets,
+        summary_bullets: evidence.summaryBullets,
+        dealer_note: evidence.dealerNote,
+        strategic_angle: evidence.strategicAngle,
+        is_ai_derivative: evidence.isAiDerivative,
+        attribution_required: evidence.attributionRequired,
+        raw_checksum: evidence.rawChecksum,
+        connector_version: evidence.connectorVersion,
+        evidence_schema_version: evidence.evidenceSchemaVersion,
+        projection_warnings: evidence.projectionWarnings,
+        evidence,
         relevance_score: relevance.score,
         relevance_reasons: relevance.reasons,
         excluded: relevance.excluded,
