@@ -41,7 +41,7 @@ describe('GET /api/public/track', () => {
       'X-Frame-Options': 'DENY',
       'X-Robots-Tag': 'noindex, nofollow, noarchive'
     })
-    expect(html).toContain('Zero Flow Tracking Endpoint')
+    expect(html).toContain('XeroFlow Tracking Endpoint')
     expect(html).toContain('receives website interaction events')
     expect(html).toContain('Privacy Policy')
     expect(html).not.toContain('xf_')

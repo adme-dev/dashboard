@@ -21,7 +21,7 @@ export default defineEventHandler((event) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Zero Flow Tracking Endpoint</title>
+  <title>XeroFlow Tracking Endpoint</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     * { box-sizing: border-box; }
@@ -39,10 +39,10 @@ export default defineEventHandler((event) => {
 <body>
   <main>
     <div class="status">Endpoint operational</div>
-    <h1>Zero Flow Tracking Endpoint</h1>
+    <h1>XeroFlow Tracking Endpoint</h1>
     <p>This machine endpoint receives website interaction events from authorised websites. It is not a form or a page intended to accept information directly.</p>
     <p>Opening this address in a browser does not submit an event or display any tracking key, account details, or collected data.</p>
-    <p class="notice">Data handling is governed by the website owner's consent configuration and the <a href="/privacy">Zero Flow Privacy Policy</a>. If you arrived here unexpectedly, you can safely close this page.</p>
+    <p class="notice">Data handling is governed by the website owner's consent configuration and the <a href="/privacy">XeroFlow Privacy Policy</a>. If you arrived here unexpectedly, you can safely close this page.</p>
   </main>
 </body>
 </html>`
