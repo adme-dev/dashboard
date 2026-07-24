@@ -24,13 +24,11 @@
 
 import { queryOne } from '~~/server/utils/db'
 import {
-  upsertFormMetadata, logIngestionError, loadLead
+  upsertFormMetadata, logIngestionError
 } from '~~/server/utils/leads/db'
-import { leadIntakeService } from '~~/server/utils/leads/intake'
+import { acceptLead } from '~~/server/utils/leads/acceptance'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { allowRequest } from '~~/server/utils/leads/rateLimit'
-import { enqueueLeadJob } from '~~/server/utils/leads/queue'
-import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 import {
   DealerLeadWebhookBodySchema,
   normalizeDealerLeadWebhookBody
@@ -40,7 +38,6 @@ import {
   normaliseWebsiteOrigin,
   setWebsiteCorsHeaders
 } from '~~/server/utils/leads/websiteCors'
-import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
 import { timingSafeEqual, randomUUID } from 'node:crypto'
 import type { LeadSource } from '~~/app/types'
 
@@ -88,6 +85,17 @@ function formMetadataFields(fieldData: Record<string, string>): Record<string, s
   return result
 }
 
+function optionalAttribution(
+  attribution: Record<string, string> | null,
+  ...keys: string[]
+): string | null {
+  for (const key of keys) {
+    const value = attribution?.[key]?.trim()
+    if (value) return value
+  }
+  return null
+}
+
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token')
   if (!token) throw createError({ statusCode: 400, statusMessage: 'token_required' })
@@ -106,18 +114,21 @@ export default defineEventHandler(async (event) => {
     secret_key_previous: string | null
     secret_key_grace_until: string | null
     allowed_origins: string[]
+    lead_capture_mode: 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm' | null
   }>(
-    `SELECT ep.id, ep.client_id, ep.source, ep.secret_key,
-            ep.secret_key_previous, ep.secret_key_grace_until,
+    `SELECT endpoint.id, endpoint.client_id, endpoint.source, endpoint.secret_key,
+            endpoint.secret_key_previous, endpoint.secret_key_grace_until,
+            client.lead_capture_mode,
             ARRAY(
               SELECT DISTINCT approved_origin
-                FROM tracking_sites ts
-                CROSS JOIN LATERAL UNNEST(ts.allowed_origins) AS approved_origin
-               WHERE ts.client_id = ep.client_id
-                 AND ts.is_active = TRUE
+                FROM tracking_sites site
+                CROSS JOIN LATERAL UNNEST(site.allowed_origins) AS approved_origin
+               WHERE site.client_id = endpoint.client_id
+                 AND site.is_active = TRUE
             ) AS allowed_origins
-       FROM lead_webhook_endpoints ep
-      WHERE ep.url_token = $1`,
+       FROM lead_webhook_endpoints endpoint
+       JOIN agency_clients client ON client.id = endpoint.client_id
+      WHERE endpoint.url_token = $1`,
     [token]
   )
   if (!ep) throw createError({ statusCode: 404, statusMessage: 'unknown_token' })
@@ -157,6 +168,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'invalid_key' })
   }
 
+  if (ep.lead_capture_mode === 'analytics_only') {
+    return { ok: true, skipped: true, reason: 'analytics_only' }
+  }
+
   const fieldData = input.fieldData
 
   if (!Object.keys(fieldData).some(key => key !== 'lead_provider')) {
@@ -174,16 +189,18 @@ export default defineEventHandler(async (event) => {
     const submittedAt = input.submittedAt ? new Date(input.submittedAt).toISOString() : new Date().toISOString()
     const assignedTo = await resolveAssignedAm(ep.client_id)
 
-    const intake = await leadIntakeService.ingest({
+    const intake = await acceptLead(event, {
       lead: {
         client_id: ep.client_id,
         source: trustedSource,
         source_lead_id: sourceLeadId,
         form_id: input.formId,
         form_name: input.formName,
-        ad_id: null, ad_name: null,
-        campaign_id: null, campaign_name: null,
-        page_id: null,
+        ad_id: optionalAttribution(input.attribution, 'ad_id'),
+        ad_name: optionalAttribution(input.attribution, 'ad_name'),
+        campaign_id: optionalAttribution(input.attribution, 'campaign_id', 'utm_id'),
+        campaign_name: optionalAttribution(input.attribution, 'campaign_name', 'utm_campaign'),
+        page_id: optionalAttribution(input.attribution, 'page_id'),
         submitted_at: submittedAt,
         field_data: fieldData,
         attribution: input.attribution,
@@ -191,7 +208,8 @@ export default defineEventHandler(async (event) => {
         created_by: null,
         is_test: input.isTest
       },
-      consentDecision: input.consentDecision
+      consentDecision: input.consentDecision,
+      leadCaptureMode: ep.lead_capture_mode ?? 'capture_only'
     })
 
     if (input.formId) {
@@ -202,33 +220,11 @@ export default defineEventHandler(async (event) => {
         formMetadataFields(fieldData)
       )
     }
-    if (intake.status === 'duplicate') return { ok: true, skipped: true }
-    const leadId = intake.leadId
-
-    if (
-      intake.outbox.status !== 'profile_not_found'
-      && intake.outbox.event.outboxStatus === 'pending'
-    ) {
-      try {
-        await conversionOutboxPublisher.publishEvent(event, intake.outbox.event.eventId)
-      } catch (error) {
-        console.warn({
-          event: 'measurement_outbox_post_commit_publish_failed',
-          clientId: ep.client_id,
-          eventId: intake.outbox.event.eventId,
-          errorClass: error instanceof Error ? error.name : 'unknown'
-        })
-      }
+    if (intake.status !== 'created') {
+      return { ok: true, skipped: true, reason: intake.status }
     }
 
-    await enqueueLeadJob({ type: 'rules.evaluate', payload: { lead_id: leadId } })
-    if (process.env.CRM_LEAD_PROMOTION_ENABLED === 'true' && input.promoteToCrm) {
-      await enqueueLeadJob({ type: 'crm.promote', payload: { lead_id: leadId } })
-    }
-    const fresh = await loadLead(leadId)
-    if (fresh) await notifyOnNewLead(fresh)
-
-    return { ok: true, lead_id: leadId }
+    return { ok: true, lead_id: intake.leadId }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     await logIngestionError(

@@ -15,5 +15,10 @@ export default defineEventHandler(async (event) => {
       WHERE e.site_id = s.id
         AND e.received_at < NOW() - MAKE_INTERVAL(days => s.retention_days)`
   )
-  return { ok: true, deleted }
+  const deletedIntents = await execute(
+    `DELETE FROM lead_submission_intents
+      WHERE expires_at < NOW()
+         OR (matched_at IS NOT NULL AND matched_at < NOW() - INTERVAL '30 days')`
+  )
+  return { ok: true, deleted, deletedIntents }
 })

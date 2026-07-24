@@ -14,13 +14,15 @@
 
 import { queryRows, execute } from '~~/server/utils/db'
 import {
-  insertLeadWithDedup, upsertFormMetadata, loadLead,
+  upsertFormMetadata,
 } from '~~/server/utils/leads/db'
+import {
+  acceptLead,
+  type LeadCaptureMode
+} from '~~/server/utils/leads/acceptance'
 import { normalizeMetaPayload } from '~~/server/utils/leads/normalizer'
 import { getMetaLeadgen } from '~~/server/utils/metaClient'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
-import { enqueueLeadJob } from '~~/server/utils/leads/queue'
-import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 
 interface ArchiveRow {
   id: string
@@ -31,6 +33,7 @@ interface ArchiveRow {
 interface TokenRow {
   client_id: string | null
   access_token: string | null
+  lead_capture_mode: LeadCaptureMode | null
 }
 
 interface BackfillResult {
@@ -76,8 +79,12 @@ export default defineEventHandler(async (event) => {
   if (!archives.length) return result
 
   const allTokens = await queryRows<TokenRow>(
-    `SELECT client_id, access_token FROM social_connections
-       WHERE platform = 'meta' AND status = 'active' AND access_token IS NOT NULL`,
+    `SELECT connection.client_id, connection.access_token, client.lead_capture_mode
+       FROM social_connections connection
+       LEFT JOIN agency_clients client ON client.id = connection.client_id
+      WHERE connection.platform = 'meta'
+        AND connection.status = 'active'
+        AND connection.access_token IS NOT NULL`,
   )
   // Dedupe — same OAuth grant replicated across many ad accounts.
   const tokens = Array.from(
@@ -157,18 +164,23 @@ export default defineEventHandler(async (event) => {
     )
 
     try {
-      if (clientId) norm.assigned_to = await resolveAssignedAm(clientId)
-      const leadId = await insertLeadWithDedup(norm)
+      if (!clientId) {
+        result.errors++
+        continue
+      }
+      norm.assigned_to = await resolveAssignedAm(clientId)
+      const accepted = await acceptLead(event, {
+        lead: { ...norm, client_id: clientId },
+        leadCaptureMode: workingToken?.lead_capture_mode ?? 'capture_only',
+        consentDecision: 'unknown'
+      })
       if (norm.form_id && Object.keys(norm.field_data).length) {
         await upsertFormMetadata('meta', norm.form_id, norm.form_name, norm.field_data)
       }
-      if (!leadId) {
+      if (accepted.status !== 'created') {
         result.duplicates++
       } else {
         result.ingested++
-        await enqueueLeadJob({ type: 'rules.evaluate', payload: { lead_id: leadId } })
-        const fresh = await loadLead(leadId)
-        if (fresh) await notifyOnNewLead(fresh)
       }
       // Always remove the archive row on a successful fetch — even duplicates
       // (the live data is already in our system).

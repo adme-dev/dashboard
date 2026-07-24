@@ -20,6 +20,7 @@ export interface ServerClientUser {
   clientId: string
   clientName: string
   clientLogo: string | null
+  leadCaptureMode: 'analytics_only' | 'capture_only' | 'full_crm'
   notificationPreferences: Record<string, boolean>
   timezone: string
   permissions: {
@@ -106,7 +107,8 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       cu.status,
       c.id as client_id,
       c.name as client_name,
-      c.logo_url as client_logo
+      c.logo_url as client_logo,
+      c.lead_capture_mode
     FROM client_users cu
     JOIN agency_clients c ON cu.client_id = c.id
     WHERE cu.id = $1 AND cu.status = 'active'
@@ -132,6 +134,7 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
     clientId: user.client_id,
     clientName: user.client_name,
     clientLogo: user.client_logo,
+    leadCaptureMode: user.lead_capture_mode || 'capture_only',
     notificationPreferences: user.notification_preferences || {},
     timezone: user.timezone || 'UTC',
     permissions: {

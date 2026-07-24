@@ -14,7 +14,7 @@ const FieldMap = z.record(
 const AttributionMap = z.record(
   z.string().trim().min(1).max(128),
   z.string().max(512)
-).refine(attribution => Object.keys(attribution).length <= 30, 'too_many_attribution_fields')
+).refine(attribution => Object.keys(attribution).length <= 80, 'too_many_attribution_fields')
 
 const Customer = z.object({
   first_name: z.string().trim().min(1).max(200).optional(),
@@ -66,6 +66,112 @@ export type DealerLeadWebhookBody = z.infer<typeof DealerLeadWebhookBodySchema>
 
 function canonicalKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+}
+
+const CAMPAIGN_QUERY_KEYS = [
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'utm_id',
+  'gclid',
+  'gbraid',
+  'wbraid',
+  'fbclid',
+  'msclkid',
+  'ttclid',
+  'li_fat_id',
+  'campaign_id',
+  'adgroup_id',
+  'ad_group_id',
+  'asset_group_id',
+  'adset_id',
+  'ad_set_id',
+  'ad_id',
+  'creative_id'
+] as const
+
+const TOUCH_KEYS = [
+  ...CAMPAIGN_QUERY_KEYS,
+  'landing_page',
+  'referrer'
+] as const
+
+function enrichAttribution(
+  input: Record<string, string> | undefined,
+  fieldData: Record<string, string>
+): Record<string, string> | null {
+  const result: Record<string, string> = { ...(input ?? {}) }
+  const browserEventId = result.browserEventId
+    || fieldData.zeroflow_browser_event_id
+    || fieldData.browser_event_id
+    || fieldData.event_id
+  if (browserEventId) result.browserEventId = browserEventId
+  const anonId = result.anonId || fieldData.zeroflow_anon_id || fieldData.anon_id
+  const sessionId = result.sessionId || fieldData.zeroflow_session_id || fieldData.session_id
+  if (anonId) result.anonId = anonId.slice(0, 512)
+  if (sessionId) result.sessionId = sessionId.slice(0, 512)
+
+  for (const touch of ['first', 'last'] as const) {
+    for (const key of TOUCH_KEYS) {
+      const value = fieldData[`zeroflow_${touch}_${key}`]?.trim()
+      if (value && !result[`${touch}_${key}`]) {
+        result[`${touch}_${key}`] = value.slice(0, 512)
+      }
+    }
+  }
+
+  const urlCandidates = [
+    result.landing_page,
+    fieldData.landing_page,
+    fieldData.zeroflow_landing_page,
+    fieldData.page_url,
+    fieldData.vehicle_url,
+    result.first_referrer,
+    fieldData.zeroflow_first_referrer
+  ].filter((value): value is string => Boolean(value))
+
+  for (const value of urlCandidates) {
+    try {
+      const url = new URL(value)
+      for (const key of CAMPAIGN_QUERY_KEYS) {
+        const candidate = url.searchParams.get(key)?.trim()
+        if (candidate && !result[key]) result[key] = candidate.slice(0, 512)
+      }
+    } catch {
+      // Optional provider metadata must never reject an otherwise valid lead.
+    }
+  }
+
+  for (const key of CAMPAIGN_QUERY_KEYS) {
+    const candidate = fieldData[key]?.trim() || fieldData[`zeroflow_${key}`]?.trim()
+    if (candidate && !result[key]) result[key] = candidate.slice(0, 512)
+  }
+
+  if (!result.landing_page && fieldData.zeroflow_landing_page) {
+    result.landing_page = fieldData.zeroflow_landing_page.slice(0, 512)
+  }
+  if (!result.first_referrer && fieldData.zeroflow_first_referrer) {
+    result.first_referrer = fieldData.zeroflow_first_referrer.slice(0, 512)
+  }
+  if (!result.first_landing_page && result.landing_page) {
+    result.first_landing_page = result.landing_page
+  }
+  if (!result.last_landing_page && result.landing_page) {
+    result.last_landing_page = result.landing_page
+  }
+  if (!result.last_referrer && fieldData.zeroflow_last_referrer) {
+    result.last_referrer = fieldData.zeroflow_last_referrer.slice(0, 512)
+  }
+
+  for (const key of CAMPAIGN_QUERY_KEYS) {
+    const lastValue = result[`last_${key}`]
+    const firstValue = result[`first_${key}`]
+    if (!result[key] && (lastValue || firstValue)) result[key] = lastValue || firstValue
+  }
+
+  return Object.keys(result).length ? result : null
 }
 
 function assignField(target: Record<string, string>, key: string, value: unknown): void {
@@ -140,6 +246,7 @@ export function normalizeDealerLeadWebhookBody(
 
   // Provider is server-validated metadata, so it wins over an arbitrary field.
   fieldData.lead_provider = input.provider
+  const attribution = enrichAttribution(input.attribution, fieldData)
 
   return {
     provider: input.provider,
@@ -147,7 +254,7 @@ export function normalizeDealerLeadWebhookBody(
     formId: input.form_id ?? null,
     formName: input.form_name ?? null,
     fieldData,
-    attribution: input.attribution ?? null,
+    attribution,
     consentDecision: input.consent_decision,
     submittedAt: input.submitted_at,
     isTest: input.is_test,

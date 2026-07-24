@@ -42,7 +42,8 @@ export default defineEventHandler(async (event) => {
         cu.timezone,
         c.id as client_id,
         c.name as client_name,
-        c.logo_url as client_logo
+        c.logo_url as client_logo,
+        c.lead_capture_mode
       FROM client_users cu
       JOIN agency_clients c ON cu.client_id = c.id
       WHERE cu.email = $1
@@ -105,10 +106,12 @@ export default defineEventHandler(async (event) => {
       `, [user.id, user.client_id, ipAddress, userAgent])
     })
 
+    const requestUrl = getRequestURL(event)
+
     // Set httpOnly cookie
     setCookie(event, 'client_session_token', sessionToken, {
       httpOnly: true,
-      secure: true,
+      secure: requestUrl.protocol === 'https:',
       sameSite: 'lax',
       maxAge: 30 * 24 * 60 * 60,
       path: '/'
@@ -151,6 +154,7 @@ export default defineEventHandler(async (event) => {
         clientId: user.client_id,
         clientName: user.client_name,
         clientLogo: user.client_logo,
+        leadCaptureMode: user.lead_capture_mode || 'capture_only',
         permissions: {
           canViewProjects: user.can_view_projects,
           canViewInvoices: user.can_view_invoices,

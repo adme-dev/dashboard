@@ -45,7 +45,11 @@ describe('first-party lead intake', () => {
     const service = createLeadIntakeService({
       transaction: async callback => callback(db),
       insertLead,
-      appendOutbox: appendOutbox as never
+      appendOutbox: appendOutbox as never,
+      appendBrowserConfirmation: vi.fn(async () => true),
+      completeIntentMatch: vi.fn(),
+      linkIdentity: vi.fn(),
+      captureProductInterest: vi.fn()
     })
 
     const result = await service.ingest(input())
@@ -78,7 +82,11 @@ describe('first-party lead intake', () => {
     const service = createLeadIntakeService({
       transaction: async callback => callback(db),
       insertLead: vi.fn(async () => null),
-      appendOutbox: appendOutbox as never
+      appendOutbox: appendOutbox as never,
+      appendBrowserConfirmation: vi.fn(async () => false),
+      completeIntentMatch: vi.fn(),
+      linkIdentity: vi.fn(),
+      captureProductInterest: vi.fn()
     })
 
     await expect(service.ingest(input())).resolves.toEqual({ status: 'duplicate' })
@@ -90,7 +98,11 @@ describe('first-party lead intake', () => {
     const service = createLeadIntakeService({
       transaction: async callback => callback(db),
       insertLead: vi.fn(async () => LEAD_ID),
-      appendOutbox: appendOutbox as never
+      appendOutbox: appendOutbox as never,
+      appendBrowserConfirmation: vi.fn(async () => false),
+      completeIntentMatch: vi.fn(),
+      linkIdentity: vi.fn(),
+      captureProductInterest: vi.fn()
     })
     const metaInput = input()
     metaInput.lead.source = 'meta'

@@ -42,7 +42,7 @@
     page_view: 'page_view',
     lead: 'generate_lead',
     generate_lead: 'generate_lead',
-    form_submit: 'generate_lead',
+    form_submit: 'form_submit',
     test_drive: 'test_drive_booking',
     purchase: 'purchase',
     vehicle_view: 'view_item',
@@ -433,6 +433,74 @@
     return params
   }
 
+  var FIRST_TOUCH_STORAGE_KEY = '_xf_first_touch_v1'
+  var LAST_TOUCH_STORAGE_KEY = '_xf_last_touch_v1'
+  var TOUCH_ATTRIBUTION_KEYS = [
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+    'utm_id', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'msclkid', 'ttclid',
+    'li_fat_id', 'email_click_id', 'campaign_id', 'adgroup_id', 'ad_group_id', 'asset_group_id',
+    'adset_id', 'ad_set_id', 'ad_id', 'creative_id'
+  ]
+  var _memoryFirstTouch = null
+  var _memoryLastTouch = null
+
+  function currentTouch() {
+    var params = getUtmParams()
+    var touch = {
+      landing_page: window.location.href,
+      referrer: document.referrer || '',
+      captured_at: new Date().toISOString(),
+    }
+    for (var i = 0; i < TOUCH_ATTRIBUTION_KEYS.length; i++) {
+      var key = TOUCH_ATTRIBUTION_KEYS[i]
+      if (params[key]) touch[key] = params[key]
+    }
+    return touch
+  }
+
+  function hasCampaignTouch(touch) {
+    for (var i = 0; i < TOUCH_ATTRIBUTION_KEYS.length; i++) {
+      if (touch[TOUCH_ATTRIBUTION_KEYS[i]]) return true
+    }
+    return false
+  }
+
+  function readTouch(storage, key, fallback) {
+    try {
+      var raw = storage.getItem(key)
+      return raw ? JSON.parse(raw) : fallback
+    } catch (e) {
+      return fallback
+    }
+  }
+
+  function writeTouch(storage, key, value) {
+    try {
+      storage.setItem(key, JSON.stringify(value))
+    } catch (e) {
+      // Storage can be unavailable in privacy-restricted browser contexts.
+    }
+  }
+
+  function getAttributionTouches() {
+    var current = currentTouch()
+    var first = readTouch(localStorage, FIRST_TOUCH_STORAGE_KEY, _memoryFirstTouch)
+    if (!first) {
+      first = current
+      _memoryFirstTouch = first
+      writeTouch(localStorage, FIRST_TOUCH_STORAGE_KEY, first)
+    }
+
+    var last = readTouch(sessionStorage, LAST_TOUCH_STORAGE_KEY, _memoryLastTouch)
+    if (!last || hasCampaignTouch(current)) {
+      last = current
+      _memoryLastTouch = last
+      writeTouch(sessionStorage, LAST_TOUCH_STORAGE_KEY, last)
+    }
+
+    return { first: first, last: last }
+  }
+
   // Get Facebook cookies
   function getFbCookies() {
     return {
@@ -445,7 +513,8 @@
   function track(eventName, eventData, options) {
     var clientId = getClientId()
     var sessionId = getSessionId()
-    var utmParams = getUtmParams()
+    var touches = getAttributionTouches()
+    var utmParams = touches.last || getUtmParams()
     var fbCookies = getFbCookies()
 
     var payload = {
@@ -685,16 +754,205 @@
   }
 
   // Track form submissions
+  function setTrackingFormField(form, name, value) {
+    if (!value || !form) return
+    var existing = form.elements && form.elements.namedItem
+      ? form.elements.namedItem(name)
+      : null
+    if (existing && typeof existing.value !== 'undefined') {
+      existing.value = value
+      return
+    }
+    var input = document.createElement('input')
+    input.type = 'hidden'
+    input.name = name
+    input.value = value
+    input.setAttribute('data-zeroflow-attribution', 'true')
+    form.appendChild(input)
+  }
+
+  function attachFormAttribution(form, eventId) {
+    var touches = getAttributionTouches()
+    setTrackingFormField(form, 'zeroflow_browser_event_id', eventId)
+    setTrackingFormField(form, 'zeroflow_anon_id', getClientId())
+    setTrackingFormField(form, 'zeroflow_session_id', getSessionId())
+    setTrackingFormField(form, 'zeroflow_landing_page', touches.last.landing_page)
+    setTrackingFormField(form, 'zeroflow_first_referrer', touches.first.referrer)
+
+    for (var touchIndex = 0; touchIndex < 2; touchIndex++) {
+      var touchName = touchIndex === 0 ? 'first' : 'last'
+      var touch = touches[touchName]
+      setTrackingFormField(form, 'zeroflow_' + touchName + '_landing_page', touch.landing_page)
+      setTrackingFormField(form, 'zeroflow_' + touchName + '_referrer', touch.referrer)
+      for (var keyIndex = 0; keyIndex < TOUCH_ATTRIBUTION_KEYS.length; keyIndex++) {
+        var key = TOUCH_ATTRIBUTION_KEYS[keyIndex]
+        if (touch[key]) {
+          setTrackingFormField(form, 'zeroflow_' + touchName + '_' + key, touch[key])
+          if (touchName === 'last') setTrackingFormField(form, 'zeroflow_' + key, touch[key])
+        }
+      }
+    }
+  }
+
+  function leadIntentField(form, kind) {
+    if (!form) return ''
+    var fields = form.querySelectorAll
+      ? form.querySelectorAll('input, select, textarea')
+      : form.elements
+    for (var i = 0; i < fields.length; i++) {
+      var field = fields[i]
+      if (!field || field.disabled || !field.value) continue
+      var type = String(field.type || '').toLowerCase()
+      if (type === 'password' || type === 'file') continue
+      var identity = [
+        field.name || '',
+        field.id || '',
+        field.autocomplete || '',
+        type
+      ].join(' ').toLowerCase()
+      if (kind === 'email' && (type === 'email' || /(^|[^a-z])(e-?mail)([^a-z]|$)/.test(identity))) {
+        return String(field.value).trim().slice(0, 320)
+      }
+      if (kind === 'phone' && (type === 'tel' || /(phone|mobile|telephone|cell)/.test(identity))) {
+        return String(field.value).trim().slice(0, 64)
+      }
+      if (kind === 'vehicle' && /(stock[_ -]?(number|no)?|vehicle[_ -]?id|vin)/.test(identity)) {
+        return String(field.value).trim().slice(0, 128)
+      }
+    }
+    return ''
+  }
+
+  function leadSubmissionIdentity(form) {
+    return {
+      email: leadIntentField(form, 'email'),
+      phone: leadIntentField(form, 'phone'),
+    }
+  }
+
+  function isLeadSubmissionForm(form, identity) {
+    if (!form || !identity || (!identity.email && !identity.phone)) return false
+
+    var explicit = String(form.getAttribute('data-zeroflow-lead') || '').toLowerCase()
+    if (explicit === 'false' || form.hasAttribute('data-zeroflow-ignore')) return false
+    if (explicit === 'true') return true
+
+    if (String(form.getAttribute('role') || '').toLowerCase() === 'search') return false
+    if (form.querySelector && form.querySelector('input[type="password"]')) return false
+
+    var descriptor = [
+      form.id || '',
+      form.name || '',
+      form.action || '',
+      form.className || '',
+      form.getAttribute('aria-label') || '',
+    ].join(' ').toLowerCase()
+    if (/(^|[^a-z])(search|filter|sort|login|log-in|sign-in|signin|password|newsletter|subscribe|unsubscribe|checkout|payment)([^a-z]|$)/.test(descriptor)) {
+      return false
+    }
+
+    var method = String(form.method || 'get').toLowerCase()
+    if (
+      method === 'get'
+      && form.querySelector
+      && form.querySelector('input[type="search"], input[name*="search" i], input[name="q" i], input[name="query" i]')
+    ) {
+      return false
+    }
+
+    return true
+  }
+
+  function intentAttribution(touches) {
+    var result = {}
+    for (var touchIndex = 0; touchIndex < 2; touchIndex++) {
+      var touchName = touchIndex === 0 ? 'first' : 'last'
+      var touch = touches[touchName] || {}
+      if (touch.landing_page) result[touchName + '_landing_page'] = touch.landing_page
+      if (touch.referrer) result[touchName + '_referrer'] = touch.referrer
+      for (var keyIndex = 0; keyIndex < TOUCH_ATTRIBUTION_KEYS.length; keyIndex++) {
+        var key = TOUCH_ATTRIBUTION_KEYS[keyIndex]
+        if (touch[key]) result[touchName + '_' + key] = touch[key]
+      }
+    }
+    var last = touches.last || {}
+    for (var i = 0; i < TOUCH_ATTRIBUTION_KEYS.length; i++) {
+      var attributionKey = TOUCH_ATTRIBUTION_KEYS[i]
+      if (last[attributionKey]) result[attributionKey] = last[attributionKey]
+    }
+    if (last.landing_page) result.landing_page = last.landing_page
+    return result
+  }
+
+  function sendLeadSubmissionIntent(form, eventId, identity) {
+    if (!WRITE_KEY) return
+    var consent = getConsent()
+    if (consent && consent.updatedAt !== null && consent.updatedAt !== undefined && !consent.tracking) return
+    var email = identity && identity.email ? identity.email : ''
+    var phone = identity && identity.phone ? identity.phone : ''
+    if (!email && !phone) return
+
+    var payload = {
+      browser_event_id: eventId,
+      occurred_at: Date.now(),
+      form_id: form.id || form.name || null,
+      page_url: window.location.href,
+      vehicle_reference: leadIntentField(form, 'vehicle') || null,
+      identity: {
+        email: email || undefined,
+        phone: phone || undefined,
+      },
+      attribution: intentAttribution(getAttributionTouches()),
+      consent: getCookie(CONSENT_COOKIE_NAME) || null,
+    }
+    var url = (_scriptOrigin || '') + '/api/public/lead-intent?k=' + encodeURIComponent(WRITE_KEY)
+    var body = JSON.stringify(payload)
+
+    function beaconFallback() {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))
+      }
+    }
+
+    if (typeof fetch === 'function') {
+      try {
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body,
+          keepalive: true,
+          mode: 'cors',
+        }).catch(beaconFallback)
+      } catch (e) {
+        beaconFallback()
+      }
+    } else {
+      beaconFallback()
+    }
+  }
+
   function setupFormTracking() {
-    document.addEventListener('submit', function (e) {
+    function onTrackedFormSubmit(e) {
       var form = e.target
       if (form.tagName !== 'FORM') return
+      var eventId = resolveEventId()
+      var identity = leadSubmissionIdentity(form)
+      var leadEligible = isLeadSubmissionForm(form, identity)
+      if (leadEligible) {
+        attachFormAttribution(form, eventId)
+        sendLeadSubmissionIntent(form, eventId, identity)
+      }
 
       track('form_submit', {
         form_id: form.id || null,
         form_name: form.name || null,
         form_action: form.action || null,
-      })
+        lead_eligible: leadEligible,
+      }, { eventId: eventId, event_id: eventId })
+    }
+    document.addEventListener('submit', onTrackedFormSubmit, true)
+    _behavioralCleanups.push(function () {
+      document.removeEventListener('submit', onTrackedFormSubmit, true)
     })
   }
 

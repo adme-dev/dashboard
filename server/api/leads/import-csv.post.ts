@@ -17,11 +17,12 @@
 // Returns: { imported, skipped, errors }
 
 import { z } from 'zod'
-import { queryOne } from '~~/server/utils/db'
-import { insertLeadWithDedup, upsertFormMetadata, loadLead } from '~~/server/utils/leads/db'
+import { upsertFormMetadata } from '~~/server/utils/leads/db'
+import {
+  acceptLead,
+  resolveLeadCaptureMode
+} from '~~/server/utils/leads/acceptance'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
-import { enqueueLeadJob } from '~~/server/utils/leads/queue'
-import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 import { randomUUID } from 'node:crypto'
 
 const Body = z.object({
@@ -157,6 +158,10 @@ export default defineEventHandler(async (event) => {
   const idxCreated = headers.findIndex((h) => /^(created_time|submission_date|submitted_at)$/i.test(h.trim()))
 
   const assignedAm = await resolveAssignedAm(input.client_id)
+  const leadCaptureMode = await resolveLeadCaptureMode(input.client_id)
+  if (leadCaptureMode === 'analytics_only') {
+    throw createError({ statusCode: 409, statusMessage: 'Lead capture is disabled for this client' })
+  }
   const aggregated: Record<string, string> = {}  // accumulate sample for form metadata
 
   const result: ImportResult = { imported: 0, skipped_duplicate: 0, errors: [] }
@@ -187,7 +192,8 @@ export default defineEventHandler(async (event) => {
         : new Date().toISOString()
 
     try {
-      const leadId = await insertLeadWithDedup({
+      const accepted = await acceptLead(event, {
+        lead: {
         client_id: input.client_id,
         source: input.source,
         source_lead_id: sourceLeadId,
@@ -201,16 +207,14 @@ export default defineEventHandler(async (event) => {
         attribution: null,
         assigned_to: assignedAm,
         created_by: user.id,
-        is_test: false,
+        is_test: false
+        },
+        leadCaptureMode,
+        consentDecision: 'unknown',
+        runRules: input.run_rules
       })
-      if (!leadId) { result.skipped_duplicate++; continue }
+      if (accepted.status !== 'created') { result.skipped_duplicate++; continue }
       result.imported++
-
-      if (input.run_rules) {
-        await enqueueLeadJob({ type: 'rules.evaluate', payload: { lead_id: leadId } })
-      }
-      const fresh = await loadLead(leadId)
-      if (fresh) await notifyOnNewLead(fresh)
     } catch (e: any) {
       result.errors.push({ row: r + 2, message: e?.message ?? 'insert_failed' }) // r+2 = 1-indexed + header
     }

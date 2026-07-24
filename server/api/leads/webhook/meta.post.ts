@@ -17,12 +17,11 @@
 
 import { queryRows } from '~~/server/utils/db'
 import {
-  insertLeadWithDedup, upsertFormMetadata, logIngestionError, loadLead,
+  upsertFormMetadata, logIngestionError,
 } from '~~/server/utils/leads/db'
+import { acceptLead, type LeadCaptureMode } from '~~/server/utils/leads/acceptance'
 import { normalizeMetaPayload } from '~~/server/utils/leads/normalizer'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
-import { enqueueLeadJob } from '~~/server/utils/leads/queue'
-import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 import { getMetaLeadgen, verifyMetaSignature } from '~~/server/utils/metaClient'
 
 interface MetaLeadgenChange {
@@ -51,6 +50,7 @@ interface PageTokenRow {
   id: string
   client_id: string | null
   access_token: string | null
+  lead_capture_mode: LeadCaptureMode | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -89,9 +89,13 @@ export default defineEventHandler(async (event) => {
   // ad-account connections share one OAuth grant per user, so deduping
   // collapses 100+ rows down to typically 1-3 unique tokens.
   const allTokens = await queryRows<PageTokenRow>(
-    `SELECT id, client_id, access_token
-       FROM social_connections
-      WHERE platform = 'meta' AND status = 'active' AND access_token IS NOT NULL`,
+    `SELECT connection.id, connection.client_id, connection.access_token,
+            client.lead_capture_mode
+       FROM social_connections connection
+       LEFT JOIN agency_clients client ON client.id = connection.client_id
+      WHERE connection.platform = 'meta'
+        AND connection.status = 'active'
+        AND connection.access_token IS NOT NULL`,
   )
   const uniqueTokens = Array.from(
     new Map(
@@ -178,15 +182,23 @@ export default defineEventHandler(async (event) => {
       )
 
       try {
-        if (clientId) norm.assigned_to = await resolveAssignedAm(clientId)
-        const leadId = await insertLeadWithDedup(norm)
+        if (!clientId) {
+          await logIngestionError('meta', {
+            page_id: pageId,
+            leadgen_id: leadgenId
+          }, headers, 'client_not_mapped').catch(() => {})
+          continue
+        }
+        norm.assigned_to = await resolveAssignedAm(clientId)
+        const accepted = await acceptLead(event, {
+          lead: { ...norm, client_id: clientId },
+          leadCaptureMode: workingToken?.lead_capture_mode ?? 'capture_only',
+          consentDecision: 'unknown'
+        })
         if (norm.form_id && Object.keys(norm.field_data).length) {
           await upsertFormMetadata('meta', norm.form_id, norm.form_name, norm.field_data)
         }
-        if (!leadId) continue // duplicate — silent
-        await enqueueLeadJob({ type: 'rules.evaluate', payload: { lead_id: leadId } })
-        const fresh = await loadLead(leadId)
-        if (fresh) await notifyOnNewLead(fresh)
+        if (accepted.status !== 'created') continue
       } catch (e: any) {
         await logIngestionError('meta', body, headers, `insert_failed: ${e?.message ?? 'unknown'}`)
           .catch(() => {})

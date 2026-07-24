@@ -31,6 +31,17 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const leadCaptureModes = new Set(['analytics_only', 'capture_only', 'full_crm'])
+  if (
+    body.leadCaptureMode !== undefined
+    && (typeof body.leadCaptureMode !== 'string' || !leadCaptureModes.has(body.leadCaptureMode))
+  ) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid lead capture mode'
+    })
+  }
+
   // Build dynamic update query — camelCase (request) → snake_case (column).
   // This mapping is also the allowlist: only these fields can be updated.
   const fieldMapping: Record<string, string> = {
@@ -46,7 +57,8 @@ export default defineEventHandler(async (event) => {
     contactPhone: 'contact_phone',
     address: 'address',
     isActive: 'is_active',
-    reportingTimezone: 'reporting_timezone'
+    reportingTimezone: 'reporting_timezone',
+    leadCaptureMode: 'lead_capture_mode'
   }
 
   const updates: string[] = []
@@ -108,6 +120,7 @@ export default defineEventHandler(async (event) => {
         contactPhone: client.contact_phone,
         address: client.address,
         reportingTimezone: client.reporting_timezone,
+        leadCaptureMode: client.lead_capture_mode || 'capture_only',
         createdAt: client.created_at,
         updatedAt: client.updated_at
       }

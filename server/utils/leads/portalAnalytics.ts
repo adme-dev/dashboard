@@ -1,10 +1,22 @@
-export const PORTAL_VISIBLE_LEADS_EXISTS = `EXISTS (
-  SELECT 1 FROM lead_form_rules r
-  JOIN lead_rule_destinations d ON d.rule_id = r.id
-  WHERE r.source = l.source AND r.form_id = l.form_id
-    AND r.client_id = l.client_id
-    AND r.enabled = TRUE
-    AND d.destination_type = 'portal' AND d.enabled = TRUE
+export const PORTAL_VISIBLE_LEADS_EXISTS = `l.is_test = FALSE
+AND (
+  EXISTS (
+    SELECT 1 FROM lead_form_rules r
+    JOIN lead_rule_destinations d ON d.rule_id = r.id
+    WHERE r.source = l.source AND r.form_id = l.form_id
+      AND r.client_id = l.client_id
+      AND r.enabled = TRUE
+      AND d.destination_type = 'portal' AND d.enabled = TRUE
+  )
+  OR NOT EXISTS (
+    SELECT 1 FROM lead_form_rules portal_rule
+    JOIN lead_rule_destinations portal_destination
+      ON portal_destination.rule_id = portal_rule.id
+    WHERE portal_rule.client_id = l.client_id
+      AND portal_rule.enabled = TRUE
+      AND portal_destination.destination_type = 'portal'
+      AND portal_destination.enabled = TRUE
+  )
 )`
 
 export const PORTAL_LEAD_STATUS_SELECT = `

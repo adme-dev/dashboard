@@ -123,6 +123,7 @@ export default defineEventHandler(async (event) => {
         contactPhone: client.contact_phone,
         address: client.address,
         reportingTimezone: client.reporting_timezone,
+        leadCaptureMode: client.lead_capture_mode || 'capture_only',
         createdAt: client.created_at,
         updatedAt: client.updated_at
       },
