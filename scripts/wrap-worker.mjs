@@ -10,7 +10,8 @@
  */
 
 import { build } from 'esbuild'
-import { fileURLToPath } from 'node:url'
+import { gzipSync } from 'node:zlib'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -22,6 +23,7 @@ const nitroJs = path.join(distDir, '_nitro.js')
 const nitroJsMap = path.join(distDir, '_nitro.js.map')
 const wsJs = path.join(distDir, '_ws.js')
 const wsSrc = path.join(projectRoot, 'worker-ws', 'index.ts')
+const precomputedManifest = path.join(distDir, 'chunks', 'build', 'client.precomputed.mjs')
 
 async function exists(p) {
   try { await fs.access(p); return true } catch { return false }
@@ -69,6 +71,7 @@ await build({
   entryPoints: [wsSrc],
   outfile: wsJs,
   bundle: true,
+  minify: true,
   format: 'esm',
   target: 'esnext',
   platform: 'neutral',
@@ -78,6 +81,38 @@ await build({
   logLevel: 'warning',
 })
 console.log('[wrap-worker] bundled worker-ws → _ws.js')
+
+// Nuxt's production SSR renderer precomputes the complete client dependency
+// graph into a JavaScript module. In this application that module is highly
+// repetitive and pushes the Pages Function over Cloudflare's 25 MB raw-size
+// limit. Keep the same async module contract while storing the graph as gzip;
+// it is inflated once and cached when an isolate first renders SSR.
+if (await exists(precomputedManifest)) {
+  const source = await fs.readFile(precomputedManifest, 'utf8')
+  if (!source.includes('XEROFLOW_COMPACT_PRECOMPUTED')) {
+    const manifestModule = await import(
+      `${pathToFileURL(precomputedManifest).href}?compact=${Date.now()}`
+    )
+    const manifest = typeof manifestModule.default === 'function'
+      ? await manifestModule.default()
+      : manifestModule.default
+    const compressed = gzipSync(Buffer.from(JSON.stringify(manifest)), { level: 9 })
+    const compactSource = `const XEROFLOW_COMPACT_PRECOMPUTED='${compressed.toString('base64')}'
+let cache
+export default async function loadPrecomputedManifest() {
+  if (cache) return cache
+  const bytes = Uint8Array.from(atob(XEROFLOW_COMPACT_PRECOMPUTED), char => char.charCodeAt(0))
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+  cache = JSON.parse(await new Response(stream).text())
+  return cache
+}
+`
+    await fs.writeFile(precomputedManifest, compactSource, 'utf8')
+    console.log(
+      `[wrap-worker] compacted Nuxt client manifest ${source.length} → ${compactSource.length} bytes`,
+    )
+  }
+}
 
 // Write the dispatcher entry. Routes WebSocket upgrades on the three known
 // paths to the WS handler; everything else delegates to Nitro unchanged.
