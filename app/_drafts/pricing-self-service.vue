@@ -93,7 +93,7 @@
             <p class="text-[15px] text-[#45474D] dark:text-white/60 mb-8 leading-relaxed">For agencies with 50+ seats needing dedicated support.</p>
 
             <a
-              href="mailto:sales@xeroflow.agency"
+              href="mailto:sales@xeroflow.io"
               class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#b7bfd9]/10 dark:bg-white/[0.06] text-[#121317] dark:text-white text-[15px] font-medium rounded-full hover:bg-[#b7bfd9]/20 dark:hover:bg-white/10 transition-colors mb-8"
             >
               Contact Sales

@@ -196,7 +196,7 @@
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Withdraw consent</strong> &mdash; where processing is based on consent, withdraw it at any time without affecting the lawfulness of prior processing.</li>
             </ul>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mt-3">
-              To exercise any of these rights, contact us at <a href="mailto:privacy@xeroflow.agency" class="text-[#121317] dark:text-white underline underline-offset-2">privacy@xeroflow.agency</a>. We will respond within 30 days (or within the timeframe required by your applicable law). If you are unsatisfied with our response, you have the right to lodge a complaint with a supervisory authority &mdash; in Australia, the <a href="https://www.oaic.gov.au/" target="_blank" rel="noopener noreferrer" class="text-[#121317] dark:text-white underline underline-offset-2">Office of the Australian Information Commissioner (OAIC)</a>; in the EEA or UK, your local data protection authority.
+              To exercise any of these rights, contact us at <a href="mailto:privacy@xeroflow.io" class="text-[#121317] dark:text-white underline underline-offset-2">privacy@xeroflow.io</a>. We will respond within 30 days (or within the timeframe required by your applicable law). If you are unsatisfied with our response, you have the right to lodge a complaint with a supervisory authority &mdash; in Australia, the <a href="https://www.oaic.gov.au/" target="_blank" rel="noopener noreferrer" class="text-[#121317] dark:text-white underline underline-offset-2">Office of the Australian Information Commissioner (OAIC)</a>; in the EEA or UK, your local data protection authority.
             </p>
           </section>
 
@@ -243,7 +243,7 @@
               <p class="mt-1">ABN 46 613 333 592</p>
               <p class="mt-1">Privacy Officer</p>
               <p class="mt-1">
-                Email: <a href="mailto:privacy@xeroflow.agency" class="text-[#121317] dark:text-white underline underline-offset-2">privacy@xeroflow.agency</a>
+                Email: <a href="mailto:privacy@xeroflow.io" class="text-[#121317] dark:text-white underline underline-offset-2">privacy@xeroflow.io</a>
               </p>
             </div>
           </section>

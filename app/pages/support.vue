@@ -74,7 +74,7 @@ const contactOptions = [
   {
     title: 'Email Support',
     description: 'Send us a message and we\'ll get back to you within 24 hours on business days.',
-    action: 'support@xeroflow.agency',
+    action: 'support@xeroflow.io',
     icon: 'i-lucide-mail',
     bg: 'bg-blue-50 dark:bg-blue-500/10',
     color: 'text-blue-600 dark:text-blue-400'
