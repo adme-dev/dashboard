@@ -5,7 +5,6 @@
  */
 
 import {
-  createSchema,
   definePermissions,
   type ExpressionBuilder,
   NOBODY_CAN,
@@ -671,8 +670,124 @@ const taskApprovalResponsesSchema = {
 // Create Schema
 // ============================================
 
-export const schema = (createSchema as any)({
+type LegacyColumn = {
+  readonly type: 'string' | 'number' | 'boolean' | 'null' | 'json'
+  readonly optional?: boolean
+}
+
+type LegacyTableDefinition = {
+  readonly tableName: string
+  readonly columns: Readonly<Record<string, LegacyColumn>>
+  readonly primaryKey: string | readonly [string, ...string[]]
+  readonly relationships?: Readonly<
+    Record<
+      string,
+      {
+        readonly sourceField: string
+        readonly destSchema: () => LegacyTableDefinition
+        readonly destField: string
+      }
+    >
+  >
+}
+
+type NormalizedLegacySchema<TTables extends Readonly<Record<string, LegacyTableDefinition>>> = {
+  readonly tables: {
+    readonly [K in keyof TTables]: {
+      readonly name: K & string
+      readonly serverName: TTables[K]['tableName']
+      readonly columns: TTables[K]['columns']
+      readonly primaryKey: TTables[K]['primaryKey'] extends string
+        ? readonly [TTables[K]['primaryKey']]
+        : TTables[K]['primaryKey']
+    }
+  }
+  readonly relationships: Readonly<
+    Record<
+      string,
+      Readonly<
+        Record<
+          string,
+          readonly [
+            {
+              readonly sourceField: readonly [string]
+              readonly destField: readonly [string]
+              readonly destSchema: string
+              readonly cardinality: 'one'
+            },
+          ]
+        >
+      >
+    >
+  >
+  readonly enableLegacyQueries: true
+  readonly enableLegacyMutators: true
+}
+
+function normalizeLegacySchema<
+  const TTables extends Readonly<Record<string, LegacyTableDefinition>>,
+>(definition: {
+  readonly tables: TTables
+  readonly enableLegacyQueries: true
+  readonly enableLegacyMutators: true
+}): NormalizedLegacySchema<TTables> {
+  const tableNames = new Map<LegacyTableDefinition, string>(
+    Object.entries(definition.tables).map(([name, table]) => [table, name])
+  )
+
+  const tables = Object.fromEntries(
+    Object.entries(definition.tables).map(([name, table]) => [
+      name,
+      {
+        name,
+        serverName: table.tableName,
+        columns: table.columns,
+        primaryKey: typeof table.primaryKey === 'string' ? [table.primaryKey] : table.primaryKey,
+      },
+    ])
+  )
+
+  const relationships = Object.fromEntries(
+    Object.entries(definition.tables)
+      .filter(([, table]) => table.relationships)
+      .map(([tableName, table]) => [
+        tableName,
+        Object.fromEntries(
+          Object.entries(table.relationships ?? {}).map(([name, relationship]) => {
+            const destSchema = tableNames.get(relationship.destSchema())
+            if (!destSchema) {
+              throw new Error(`Unknown destination schema for ${tableName}.${name}`)
+            }
+
+            return [
+              name,
+              [
+                {
+                  sourceField: [relationship.sourceField],
+                  destField: [relationship.destField],
+                  destSchema,
+                  cardinality: 'one',
+                },
+              ],
+            ]
+          })
+        ),
+      ])
+  )
+
+  return {
+    tables,
+    relationships,
+    enableLegacyQueries: true,
+    enableLegacyMutators: true,
+  } as unknown as NormalizedLegacySchema<TTables>
+}
+
+const schemaDefinition = {
   version: 2, // Bumped version for workflow tables
+  // Keep the existing table query and CRUD mutation APIs during the Zero 1.x migration.
+  enableLegacyQueries: true,
+  enableLegacyMutators: true,
   tables: {
     // Original agency tables
     chartOfAccounts: chartOfAccountsSchema,
@@ -701,7 +816,9 @@ export const schema = (createSchema as any)({
     taskApprovals: taskApprovalsSchema,
     taskApprovalResponses: taskApprovalResponsesSchema,
   },
-})
+} as const
+
+export const schema = normalizeLegacySchema(schemaDefinition)
 
 // ============================================
 // Permissions

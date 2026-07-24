@@ -6,7 +6,6 @@
  * npx @rocicorp/zero-cache serve --config zero.config.ts
  */
 
-import type { ZeroConfig } from '@rocicorp/zero'
 import { schema, permissions } from './app/zero/schema'
 
 export default {
@@ -70,4 +69,4 @@ export default {
   log: {
     level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   },
-} satisfies ZeroConfig
+}

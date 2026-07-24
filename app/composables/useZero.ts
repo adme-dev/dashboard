@@ -18,14 +18,9 @@ export function useZero() {
     const zeroServerUrl = config.public.zeroServerUrl || 'http://localhost:4848'
 
     zeroInstance = new Zero({
-      userID: 'anonymous', // Will be set after auth
-      auth: async () => {
-        // Return JWT token for authentication
-        // For now, return empty string (anonymous access)
-        // In production, integrate with your auth system
-        return ''
-      },
-      server: zeroServerUrl,
+      // Logged-out clients must not share an authenticated user's local storage.
+      userID: undefined,
+      cacheURL: zeroServerUrl,
       schema,
       // Enable offline support
       kvStore: 'idb', // IndexedDB for persistence
