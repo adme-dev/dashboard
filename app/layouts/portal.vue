@@ -95,6 +95,11 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
               label: 'Website + Funnel',
               to: '/portal/analytics/website',
               onSelect: close
+            },
+            {
+              label: 'Personas & Audiences',
+              to: '/portal/analytics/audiences',
+              onSelect: close
             }
           ]
         }
