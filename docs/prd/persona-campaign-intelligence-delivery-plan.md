@@ -21,11 +21,16 @@ Connect website behaviour, confirmed leads, CRM identities, catalog products and
 
 ### Slice 2: Identity and product connection
 
-- [ ] Link anonymous and session hashes to existing CRM identity profiles only after deterministic lead confirmation.
-- [ ] Detect conflicting profile links and fail closed.
-- [ ] Backfill historical anonymous signals after a safe identity match.
-- [ ] Resolve VIN, stock ID, SKU, source product ID and product URL against the existing CRM catalog.
-- [ ] Preserve separate opportunities for distinct product enquiries.
+- [x] Link anonymous and session hashes to existing CRM identity profiles only after deterministic lead confirmation.
+- [x] Detect conflicting profile links and fail closed.
+- [x] Backfill historical anonymous signals after a safe identity match.
+- [x] Resolve VIN, stock ID, SKU, source product ID and product URL against the existing CRM catalog.
+- [x] Preserve separate opportunities for distinct product enquiries.
+- [x] Add tenant-scoped conflict, merge, split and link-review cases.
+- [x] Require a different owner or admin to approve a proposed identity resolution.
+- [x] Record immutable resolution versions, mappings and audit evidence.
+- [x] Support rollback through a new projection version without rewriting raw history.
+- [x] Surface identity coverage and governed cases in the client portal.
 
 ### Slice 3: Persona rules and cohort previews
 

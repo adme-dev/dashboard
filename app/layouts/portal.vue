@@ -100,6 +100,11 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
               label: 'Personas & Audiences',
               to: '/portal/analytics/audiences',
               onSelect: close
+            },
+            {
+              label: 'Identity Reconciliation',
+              to: '/portal/analytics/identity',
+              onSelect: close
             }
           ]
         }
