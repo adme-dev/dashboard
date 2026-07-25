@@ -6,15 +6,29 @@
  * values for paid traffic.
  */
 
-/** media_spend.platform → GA4 channel group, or null if not a paid channel we map. */
+/** media_spend.platform → GA4 channel group, or null if not mapped. */
 export function adPlatformToChannel(platform: string): string | null {
+  if (!platform) return null
+
   switch (platform) {
-    case 'google_ads':
     case 'google':
+    case 'google_ads':
       return 'Paid Search'
+    case 'microsoft_ads':
+      return 'Paid Search'
+    case 'linkedin':
+    case 'pinterest':
+    case 'snapchat':
+    case 'twitter':
+    case 'tiktok':
+      return 'Paid Social'
     case 'meta':
     case 'meta_ads':
       return 'Paid Social'
+    case 'programmatic':
+      return 'Display'
+    case 'traditional':
+      return 'Traditional'
     default:
       return null
   }
@@ -22,11 +36,15 @@ export function adPlatformToChannel(platform: string): string | null {
 
 /** leads.source → GA4 channel group, or null if not attributable to a paid channel. */
 export function leadSourceToChannel(source: string): string | null {
+  if (!source) return null
+
   switch (source) {
     case 'google':
       return 'Paid Search'
     case 'meta':
       return 'Paid Social'
+    case 'manual':
+      return 'Direct'
     default:
       return null
   }

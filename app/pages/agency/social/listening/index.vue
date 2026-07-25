@@ -23,6 +23,7 @@ const sourceFilterOptions = [
   { label: 'Reddit', value: 'reddit' }, { label: 'News', value: 'news' }, { label: 'YouTube', value: 'youtube' },
   { label: 'Bluesky', value: 'bluesky' }, { label: 'Mastodon', value: 'mastodon' },
   { label: 'Hacker News', value: 'hackernews' }, { label: 'Lemmy', value: 'lemmy' },
+  { label: 'Facebook Ads Library', value: 'facebook_ads_library' },
 ]
 const sentimentFilterOptions = [
   { label: 'All sentiment', value: 'all' }, { label: 'Positive', value: 'positive' },

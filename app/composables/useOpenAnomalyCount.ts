@@ -1,4 +1,5 @@
 // app/composables/useOpenAnomalyCount.ts
+import { useAuthenticatedFetch } from './useAuthenticatedFetch'
 
 /**
  * Count of open critical anomalies for the current tenant.
@@ -19,7 +20,7 @@ let visListenerInstalled = false
 
 export function useOpenAnomalyCount() {
   const count = useState<number>('open-anomaly-count', () => 0)
-  const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+  const { fetch: apiFetch } = useAuthenticatedFetch()
 
   async function refresh() {
     if (!import.meta.client) return

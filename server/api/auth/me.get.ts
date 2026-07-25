@@ -1,9 +1,13 @@
 import { validateSession, TransientAuthError } from '../../utils/auth'
 import { resolveUserPermissions } from '../../utils/roleResolver'
+import { getHeader } from 'h3'
 
 export default defineEventHandler(async (event) => {
-  // Get token from cookie (httpOnly primary, client-visible fallback)
-  const token = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
+  // Get token from Authorization header or cookie (httpOnly primary, client-visible fallback)
+  const cookieToken = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
+  const authHeader = getHeader(event, 'authorization')
+  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const token = cookieToken || headerToken
 
   if (!token) {
     throw createError({

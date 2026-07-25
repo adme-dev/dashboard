@@ -576,6 +576,7 @@ export interface Brief {
     color: string
   }
   fieldValues?: BriefFieldValue[]
+  budgetReconciliation?: GoogleCampaignBudgetReconciliation | null
   attachments?: BriefAttachment[]
   commentCount?: number
   attachmentCount?: number
@@ -601,6 +602,31 @@ export interface Brief {
     dueDate?: string | null
     completedAt?: string | null
   }>
+}
+
+export interface GoogleCampaignBudgetReconciliation {
+  status: 'ready' | 'legacy_ambiguous' | 'invalid'
+  launchBlocked: boolean
+  code: string | null
+  remediation: string | null
+  calculationTimezone: string
+  accountValidation: 'pending'
+  legacyDailyBudget: number | null
+  displayCurrency: string | null
+  contract: {
+    currency: string
+    period: 'CUSTOM_PERIOD'
+    startDate: string
+    endDate: string
+    campaignDays: number
+    allocatedTotal: number
+    dailyBudget: null
+    calculatedDailyPace: number
+    provider: {
+      totalAmountMicros: string
+      amountMicros: null
+    }
+  } | null
 }
 
 export interface BriefFieldValue {
@@ -1357,6 +1383,7 @@ export interface ClientUser {
   clientId: string
   clientName: string
   clientLogo?: string
+  leadCaptureMode: 'analytics_only' | 'capture_only' | 'full_crm'
   permissions: ClientPermissions
   notificationPreferences: Record<string, boolean>
   timezone: string

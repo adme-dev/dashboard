@@ -1,19 +1,18 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
 import { navigateToPortalDocument } from '~/utils/portalAgencyAccessNavigation'
+import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
 definePageMeta({
   title: 'Client Portal',
+  layout: 'agency',
   middleware: ['role-client-portal-access']
 })
 
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
-const apiFetch = $fetch as <T = unknown>(
-  request: string,
-  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
-) => Promise<T>
+const { fetch: apiFetch } = useAuthenticatedFetch()
 
 interface PortalClient {
   id: string
@@ -857,6 +856,15 @@ watch(clients, (items) => {
 }, { immediate: true })
 
 const openingPortal = ref(false)
+
+const withPortalClientContext = (path: string, clientId: string) => {
+  const [pathname, queryString] = path.split('?')
+  const query = new URLSearchParams(queryString || '')
+  query.set('portalClientId', clientId)
+  const nextQuery = query.toString()
+  return `${pathname}${nextQuery ? `?${nextQuery}` : ''}`
+}
+
 const openClientPortal = async (clientId?: string | null, path = '/portal') => {
   const targetClientId = clientId || selectedAccessClientId.value
   if (!targetClientId) {
@@ -870,6 +878,7 @@ const openClientPortal = async (clientId?: string | null, path = '/portal') => {
       method: 'POST',
       body: { clientId: targetClientId }
     })
+    refreshActivity()
     navigateToPortalDocument(path)
   } catch (err: unknown) {
     toast.add({

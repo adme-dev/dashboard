@@ -2,6 +2,7 @@
  * Notifications Composable
  * Manages in-app notifications state and actions
  */
+import { useAuthenticatedFetch } from './useAuthenticatedFetch'
 
 interface NotificationActor {
   id: string
@@ -44,6 +45,7 @@ export function useNotifications() {
   const hasMore = useState<boolean>('notifications-has-more', () => false)
   const isConnected = useState<boolean>('notifications-connected', () => false)
   const eventSource = useState<EventSource | null>('notifications-eventsource', () => null)
+  const { fetch: authFetch } = useAuthenticatedFetch()
 
   /**
    * Fetch notifications from API
@@ -57,7 +59,7 @@ export function useNotifications() {
       if (offset) params.set('offset', String(offset))
       if (options?.sort) params.set('sort', options.sort)
 
-      const data = await $fetch(`/api/notifications?${params}`) as NotificationsResponse
+      const data = await authFetch(`/api/notifications?${params}`) as NotificationsResponse
 
       if (options?.append) {
         notifications.value = [...notifications.value, ...data.notifications]
@@ -81,7 +83,7 @@ export function useNotifications() {
    */
   async function markAsRead(notificationId: string) {
     try {
-      await $fetch(`/api/notifications/${notificationId}/read`, { method: 'PATCH' })
+      await authFetch(`/api/notifications/${notificationId}/read`, { method: 'PATCH' })
 
       // Update local state
       const notification = notifications.value.find(n => n.id === notificationId)
@@ -101,7 +103,7 @@ export function useNotifications() {
    */
   async function markAllAsRead() {
     try {
-      await $fetch('/api/notifications/read-all', { method: 'PATCH' })
+      await authFetch('/api/notifications/read-all', { method: 'PATCH' })
 
       // Update local state
       notifications.value.forEach(n => {
@@ -122,7 +124,7 @@ export function useNotifications() {
    */
   async function deleteNotification(notificationId: string) {
     try {
-      await $fetch(`/api/notifications/${notificationId}`, { method: 'DELETE' })
+      await authFetch(`/api/notifications/${notificationId}`, { method: 'DELETE' })
 
       // Update local state
       const index = notifications.value.findIndex(n => n.id === notificationId)
@@ -214,7 +216,7 @@ export function useNotifications() {
     if (eventSource.value) return
 
     try {
-      const es = new EventSource('/api/notifications/stream')
+      const es = new EventSource('/api/notifications/stream', { withCredentials: true })
 
       es.addEventListener('connected', () => {
         isConnected.value = true

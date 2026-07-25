@@ -2,6 +2,7 @@
 import type { Sentiment } from '~~/app/utils/socialListeningMatch'
 
 export type MentionSource = 'reddit' | 'news' | 'youtube' | 'bluesky' | 'mastodon' | 'hackernews' | 'lemmy' | 'owned'
+  | 'facebook_ads_library'
 
 /** A normalized hit, pre-persist. Adapters (4b) and the owned projection both emit this. */
 export interface RawMention {

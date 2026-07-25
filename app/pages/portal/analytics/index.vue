@@ -14,6 +14,7 @@ interface AnalyticsOverview {
 
 interface TrendResponse {
   dataPoints: AnalyticsTrendPoint[]
+  resolution?: 'day' | 'week' | 'month'
 }
 
 interface AnalyticsTotals {
@@ -105,10 +106,17 @@ const selectedPlatforms = ref<string[]>(
     ? String(queryString(route.query.platform)).split(',').map(platform => platform.trim()).filter(Boolean)
     : []
 )
+function parseBooleanQuery(value: unknown): boolean {
+  const queryValue = queryString(value)
+  const normalized = typeof queryValue === 'string' ? queryValue.toLowerCase() : queryValue
+  return normalized === '1' || normalized === 'true' || normalized === true
+}
+const runningOnly = ref(parseBooleanQuery(queryString(route.query.runningOnly)))
 
 const apiQuery = computed(() => {
   const q: Record<string, string> = { startDate: startDate.value, endDate: endDate.value }
   if (selectedPlatforms.value.length) q.platform = selectedPlatforms.value.join(',')
+  if (runningOnly.value) q.runningOnly = 'true'
   return q
 })
 
@@ -181,6 +189,7 @@ async function refreshTrend() {
 }
 
 const trendPoints = computed(() => trendData.value?.dataPoints || [])
+const trendResolution = computed(() => trendData.value?.resolution || (trendPoints.value.length > 0 && trendPoints.value.every((p) => p.date.length === 7) ? 'month' : undefined))
 
 function pctChange(current: number | null, prev: number | null): number | null {
   if (current == null || prev == null || prev === 0) return null
@@ -230,13 +239,19 @@ watch(trendQuery, () => {
   refreshTrend()
 })
 
-watch([startDate, endDate, selectedPlatforms, trendMetric], () => {
+watch([startDate, endDate, selectedPlatforms, runningOnly], () => {
+  const preservedQuery: Record<string, string> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (typeof value === 'string') preservedQuery[key] = value
+  }
+
   const query: Record<string, string> = {
+    ...preservedQuery,
     startDate: startDate.value,
     endDate: endDate.value
   }
   if (selectedPlatforms.value.length) query.platform = selectedPlatforms.value.join(',')
-  if (trendMetric.value !== 'spend') query.metric = trendMetric.value
+  if (runningOnly.value) query.runningOnly = 'true'
 
   const current = new URLSearchParams(route.query as Record<string, string>).toString()
   const next = new URLSearchParams(query).toString()
@@ -246,7 +261,7 @@ watch([startDate, endDate, selectedPlatforms, trendMetric], () => {
 }, { deep: true })
 
 watch(
-  () => [route.query.startDate, route.query.endDate, route.query.platform, route.query.metric],
+  () => [route.query.startDate, route.query.endDate, route.query.platform, route.query.runningOnly],
   () => {
     startDate.value = validDateString(queryString(route.query.startDate), formatDateISO(thirtyDaysAgo))
     endDate.value = validDateString(queryString(route.query.endDate), formatDateISO(now))
@@ -254,9 +269,18 @@ watch(
     selectedPlatforms.value = typeof platform === 'string'
       ? platform.split(',').map(item => item.trim()).filter(Boolean)
       : []
+    runningOnly.value = parseBooleanQuery(route.query.runningOnly)
+  },
+  { deep: true }
+)
+
+watch(
+  () => route.query.metric,
+  () => {
     const metric = queryString(route.query.metric)
     trendMetric.value = typeof metric === 'string' && allowedTrendMetrics.has(metric) ? metric : 'spend'
-  }
+  },
+  { deep: true }
 )
 
 const leadFunnel = computed(() => {
@@ -302,7 +326,7 @@ await Promise.all([refreshOverview(), refreshTrend()])
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-[1400px] mx-auto">
+  <div class="p-6 space-y-6 w-full">
     <!-- Header -->
     <div>
       <h1 class="text-2xl font-bold text-default">
@@ -365,6 +389,10 @@ await Promise.all([refreshOverview(), refreshTrend()])
         color="neutral"
         class="ml-auto"
       />
+      <UCheckbox
+        v-model="runningOnly"
+        label="Running only"
+      />
     </div>
 
     <!-- KPI Cards — top row -->
@@ -425,12 +453,19 @@ await Promise.all([refreshOverview(), refreshTrend()])
               class="w-32"
             />
           </div>
-          <AnalyticsTrendChart
-            :data="trendPoints"
-            :metric="trendMetric"
-            :loading="trendStatus === 'pending'"
-          />
+            <AnalyticsTrendChart
+              :data="trendPoints"
+              :metric="trendMetric"
+              :resolution="trendResolution"
+              :loading="trendStatus === 'pending'"
+            />
         </div>
+
+        <AnalyticsCampaignDataFreshness
+          :start-date="startDate"
+          :end-date="endDate"
+          :platforms="selectedPlatforms"
+        />
 
         <!-- Campaign Table (with expand for breakdowns, creatives, AI) -->
         <AnalyticsCampaignTable
@@ -442,6 +477,7 @@ await Promise.all([refreshOverview(), refreshTrend()])
           columns-storage-key="analytics:campaign-cols:portal"
           show-lead-columns
           lead-link-base="/portal/leads"
+          :running-only="runningOnly"
         />
       </div>
 
@@ -687,5 +723,12 @@ await Promise.all([refreshOverview(), refreshTrend()])
       :end-date="endDate"
       class="mt-6"
     />
+
+    <UCard class="mt-6">
+      <PortalTrackingAnalyticsSection
+        :start-date="startDate"
+        :end-date="endDate"
+      />
+    </UCard>
   </div>
 </template>

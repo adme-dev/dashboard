@@ -28,6 +28,7 @@ export function isReadOnlyRole(role: string): boolean {
  * server/utils/ai/toolRegistry.ts). Denying a custom-role user a tool is safe; granting wrongly is not.
  */
 export function roleHasPermission(role: string, group: PermissionGroup): boolean {
+  if (role === 'super_admin') return true
   return (PERMISSIONS[group] as readonly string[]).includes(role)
 }
 

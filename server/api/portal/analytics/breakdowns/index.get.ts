@@ -7,6 +7,7 @@
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { computeMetrics, toNum, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import { requestCampaignDetailRefresh } from '~~/server/utils/campaignDetailCache'
 
 // Only platforms with breakdown sync support (see onDemandSync.ts)
 const SUPPORTED_PLATFORMS = ['meta', 'google_ads']
@@ -42,6 +43,9 @@ export default defineEventHandler(async (event) => {
     }
 
     const hasBreakdowns = SUPPORTED_PLATFORMS.includes(spend.platform)
+    const cache = hasBreakdowns
+      ? await requestCampaignDetailRefresh(event, campaignId, 'breakdowns')
+      : null
 
     // Try fetching extra metric columns (graceful if migration 041 not yet applied)
     let extraMetrics: Record<string, any> = {
@@ -110,6 +114,7 @@ export default defineEventHandler(async (event) => {
         breakdowns: { age: [], gender: [], device: [], geo: [], placement: [], hourly: [], city: [], region: [], device_model: [], story_type: [] },
         hasBreakdowns: false,
         extraMetrics,
+        cache,
       }
     }
 
@@ -171,6 +176,7 @@ export default defineEventHandler(async (event) => {
       breakdowns,
       hasBreakdowns: true,
       extraMetrics,
+      cache,
     }
   } catch (error: any) {
     if (error.statusCode) throw error

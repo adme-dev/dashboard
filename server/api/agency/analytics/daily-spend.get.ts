@@ -13,8 +13,13 @@ export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const q = getQuery(event)
 
-  const startDate = q.startDate as string
-  const endDate = q.endDate as string
+  const toSingle = (value: unknown) => {
+    if (Array.isArray(value)) return String(value[0] ?? '')
+    return typeof value === 'string' ? value : ''
+  }
+
+  const startDate = toSingle(q.startDate) || toSingle(q.from)
+  const endDate = toSingle(q.endDate) || toSingle(q.to)
   if (!startDate || !endDate) {
     throw createError({ statusCode: 400, statusMessage: 'startDate and endDate are required' })
   }

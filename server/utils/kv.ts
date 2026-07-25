@@ -12,6 +12,20 @@ interface KV {
   }>
 }
 
+interface MemoryCacheValue {
+  raw: string
+  exp: number
+}
+
+// In-memory fallback for environments without KV (eg local dev). This keeps
+// SWR behavior functional during idle periods and short deploy cold starts.
+const memoryCache = new Map<string, MemoryCacheValue>()
+const MEMORY_CACHE_DEFAULT_TTL_SECONDS = 3600
+
+function toNumericTTLSeconds(ttlSeconds: number) {
+  return Math.max(60, Math.floor(ttlSeconds))
+}
+
 /**
  * Get the Cloudflare KV namespace from the event context.
  * Returns null when KV is unavailable (local dev without wrangler).
@@ -31,12 +45,21 @@ export function getKV(event: H3Event): KV | null {
 export async function kvGet<T>(event: H3Event, key: string): Promise<T | null> {
   try {
     const kv = getKV(event)
-    if (!kv) return null
-    const raw = await kv.get(key, 'text')
-    if (!raw) return null
-    return JSON.parse(raw) as T
+    if (kv) {
+      const raw = await kv.get(key, 'text')
+      if (!raw) {
+        const cached = memoryGet<T>(key)
+        return cached
+      }
+      const parsed = JSON.parse(raw) as T
+      // Keep memory warm from KV for ultra-fast same-instance reads.
+      const ttlSeconds = MEMORY_CACHE_DEFAULT_TTL_SECONDS
+      memorySet(key, parsed, ttlSeconds)
+      return parsed
+    }
+    return memoryGet<T>(key)
   } catch {
-    return null
+    return memoryGet<T>(key)
   }
 }
 
@@ -46,8 +69,13 @@ export async function kvGet<T>(event: H3Event, key: string): Promise<T | null> {
 export async function kvPut<T>(event: H3Event, key: string, data: T, ttlSeconds: number): Promise<void> {
   try {
     const kv = getKV(event)
-    if (!kv) return
-    await kv.put(key, JSON.stringify(data), { expirationTtl: ttlSeconds })
+    const ttl = toNumericTTLSeconds(ttlSeconds)
+    const serialized = JSON.stringify(data)
+    if (kv) {
+      await kv.put(key, serialized, { expirationTtl: ttl })
+    }
+    // Always write to process-local cache so dev/staging without KV stays usable.
+    memorySet(key, data, ttl)
   } catch {
     // Silently fail — KV is a performance optimization, not critical
   }
@@ -59,8 +87,10 @@ export async function kvPut<T>(event: H3Event, key: string, data: T, ttlSeconds:
 export async function kvDelete(event: H3Event, key: string): Promise<void> {
   try {
     const kv = getKV(event)
-    if (!kv) return
-    await kv.delete(key)
+    if (kv) {
+      await kv.delete(key)
+    }
+    memoryDelete(key)
   } catch {
     // Silently fail
   }
@@ -75,7 +105,10 @@ export async function kvDelete(event: H3Event, key: string): Promise<void> {
 export async function kvDeleteByPrefix(event: H3Event, prefix: string): Promise<number> {
   try {
     const kv = getKV(event)
-    if (!kv) return 0
+    if (!kv) {
+      const deleted = memoryDeleteByPrefix(prefix)
+      return deleted
+    }
     let deleted = 0
     let cursor: string | undefined
     for (let page = 0; page < 10; page++) {
@@ -85,11 +118,53 @@ export async function kvDeleteByPrefix(event: H3Event, prefix: string): Promise<
       if (res.list_complete || !res.cursor) break
       cursor = res.cursor
     }
+    deleted += memoryDeleteByPrefix(prefix)
     return deleted
   } catch {
     // Silently fail — cache invalidation is best-effort.
     return 0
   }
+}
+
+function memoryGet<T>(key: string): T | null {
+  const item = memoryCache.get(key)
+  if (!item) return null
+  if (item.exp <= Date.now()) {
+    memoryCache.delete(key)
+    return null
+  }
+  try {
+    return JSON.parse(item.raw) as T
+  } catch {
+    memoryCache.delete(key)
+    return null
+  }
+}
+
+function memorySet<T>(key: string, data: T, ttlSeconds: number): void {
+  try {
+    memoryCache.set(key, {
+      raw: JSON.stringify(data),
+      exp: Date.now() + toNumericTTLSeconds(ttlSeconds) * 1000,
+    })
+  } catch {
+    // Ignore failures for the same reason as KV failures.
+  }
+}
+
+function memoryDelete(key: string): void {
+  memoryCache.delete(key)
+}
+
+function memoryDeleteByPrefix(prefix: string): number {
+  let deleted = 0
+  for (const key of memoryCache.keys()) {
+    if (key.startsWith(prefix)) {
+      memoryCache.delete(key)
+      deleted++
+    }
+  }
+  return deleted
 }
 
 /**
@@ -101,6 +176,30 @@ export async function kvDeleteByPrefix(event: H3Event, prefix: string): Promise<
 interface CacheEntry<T> {
   v: T
   exp: number
+}
+
+type CachedValue<T> = CacheEntry<T> | T | null | undefined
+
+function extractCachedValue<T>(value: CachedValue<T>): T | null {
+  if (!value) return null
+  if (isCacheEntry(value)) return value.v
+  return value as T
+}
+
+function isTransientCacheError(err: any): boolean {
+  const status = err?.response?.statusCode
+    ?? err?.response?.status
+    ?? err?.statusCode
+    ?? err?.status
+
+  if (status === 429) return true
+  if (Number.isFinite(Number(status)) && Number(status) >= 500) return true
+
+  // No status but request/IO error (network, timeout, abort, DNS, parser, etc.)
+  // should still degrade to stale data where available.
+  if (!status) return true
+
+  return false
 }
 
 function isCacheEntry(value: any): value is CacheEntry<any> {
@@ -130,13 +229,15 @@ function scheduleRefresh<T>(
   const cf = (event.context as any).cloudflare
   const kv = cf?.env?.CACHE as KV | undefined
   const ctx = cf?.ctx
-  if (!kv) return // No KV binding — SWR is a no-op in dev.
 
   const task = (async () => {
     try {
       const data = await fetcher()
       const entry: CacheEntry<T> = { v: data, exp: Date.now() + ttlSeconds * 1000 }
-      await kv.put(key, JSON.stringify(entry), { expirationTtl: Math.max(60, ttlSeconds * 4) })
+      if (kv) {
+        await kv.put(key, JSON.stringify(entry), { expirationTtl: Math.max(60, ttlSeconds * 4) })
+      }
+      memorySet(key, entry, Math.max(60, ttlSeconds * 4))
     } catch (err) {
       console.warn(`[cachedFetch] background refresh failed for "${key}":`, (err as any)?.message ?? err)
     } finally {
@@ -190,9 +291,10 @@ export async function cachedFetch<T>(
       // endpoints at once — post-deploy cold storms made every card error
       // simultaneously.
       const cached = await kvGet<CacheEntry<T> | T>(event, key)
-      if (isCacheEntry(cached)) {
+      const fallback = extractCachedValue(cached)
+      if (fallback !== null && isTransientCacheError(err)) {
         console.warn(`[cachedFetch] bust fetch failed for "${key}" — serving stale:`, (err as any)?.message ?? err)
-        return (cached as CacheEntry<T>).v
+        return fallback
       }
       throw err
     }
@@ -221,9 +323,21 @@ export async function cachedFetch<T>(
   }
 
   // Cold cache — synchronously fetch.
-  const data = await fetcher()
-  const entry: CacheEntry<T> = { v: data, exp: now + ttlMs }
-  // KV TTL > logical TTL so expired-but-usable data sticks around.
-  kvPut(event, key, entry, Math.max(60, ttlSeconds * 4))
-  return data
+  try {
+    const data = await fetcher()
+    const entry: CacheEntry<T> = { v: data, exp: now + ttlMs }
+    // KV TTL > logical TTL so expired-but-usable data sticks around.
+    kvPut(event, key, entry, Math.max(60, ttlSeconds * 4))
+    return data
+  } catch (err) {
+    // No usable in-memory value, but a different request may have populated a
+    // cache entry very recently. Re-check KV to avoid a hard error cascade.
+    const latestCached = await kvGet<CacheEntry<T> | T>(event, key)
+    const fallback = extractCachedValue(latestCached)
+    if (fallback !== null && isTransientCacheError(err)) {
+      console.warn(`[cachedFetch] fetch failed for "${key}" — serving stale value:`, (err as any)?.message ?? err)
+      return fallback
+    }
+    throw err
+  }
 }

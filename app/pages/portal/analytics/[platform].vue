@@ -4,7 +4,33 @@ definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformLabel, getPlatformIcon } = useAnalytics()
 
 const route = useRoute()
-const platform = computed(() => route.params.platform as string)
+const router = useRouter()
+function canonicalizePlatform(raw: string | null | undefined): string {
+  const value = String(raw ?? '').trim().toLowerCase()
+  if (value === 'google' || value === 'google_ads') {
+    return 'google_ads'
+  }
+  if (value === 'meta' || value === 'meta_ads' || value === 'facebook' || value === 'instagram' || value === 'fb') {
+    return 'meta'
+  }
+  return value
+}
+const platform = computed(() => canonicalizePlatform(route.params.platform as string))
+const now = new Date()
+const thirtyDaysAgo = new Date(now)
+thirtyDaysAgo.setDate(now.getDate() - 30)
+
+function formatDateISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function queryString(value: unknown) {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function validDateString(value: unknown, fallback: string) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback
+}
 
 interface AnalyticsOverview {
   totals: AnalyticsTotals
@@ -12,6 +38,7 @@ interface AnalyticsOverview {
 
 interface TrendResponse {
   dataPoints: AnalyticsTrendPoint[]
+  resolution?: 'day' | 'week' | 'month'
 }
 
 interface AnalyticsTotals {
@@ -35,17 +62,8 @@ interface AnalyticsTrendPoint {
   value: number
   byPlatform: Record<string, number>
 }
-
-const now = new Date()
-const thirtyDaysAgo = new Date(now)
-thirtyDaysAgo.setDate(now.getDate() - 30)
-
-function formatDateISO(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-const startDate = ref(formatDateISO(thirtyDaysAgo))
-const endDate = ref(formatDateISO(now))
+const startDate = ref(validDateString(queryString(route.query.startDate), formatDateISO(thirtyDaysAgo)))
+const endDate = ref(validDateString(queryString(route.query.endDate), formatDateISO(now)))
 
 const apiQuery = computed(() => ({
   startDate: startDate.value,
@@ -90,7 +108,9 @@ const overview = computed(() => overviewData.value)
 const totals = computed(() => overview.value?.totals || null)
 
 // Trend
-const trendMetric = ref('spend')
+const allowedTrendMetrics = new Set(['spend', 'impressions', 'clicks', 'leads', 'cpc', 'ctr', 'costPerLead'])
+const initialMetric = queryString(route.query.metric)
+const trendMetric = ref(typeof initialMetric === 'string' && allowedTrendMetrics.has(initialMetric) ? initialMetric : 'spend')
 const trendQuery = computed(() => ({
   ...apiQuery.value,
   metric: trendMetric.value,
@@ -117,6 +137,7 @@ async function refreshTrend() {
 }
 
 const trendPoints = computed(() => trendData.value?.dataPoints || [])
+const trendResolution = computed(() => trendData.value?.resolution || (trendPoints.value.length > 0 && trendPoints.value.every((p) => p.date.length === 7) ? 'month' : undefined))
 
 watch(apiQuery, () => {
   refreshOverview()
@@ -125,6 +146,45 @@ watch(apiQuery, () => {
 watch(trendQuery, () => {
   refreshTrend()
 })
+
+watch([startDate, endDate, trendMetric], () => {
+  const preservedQuery: Record<string, string> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (typeof value === 'string') preservedQuery[key] = value
+  }
+  preservedQuery.platform = platform.value
+  preservedQuery.startDate = startDate.value
+  preservedQuery.endDate = endDate.value
+  preservedQuery.metric = trendMetric.value
+
+  const current = new URLSearchParams(route.query as Record<string, string>).toString()
+  const next = new URLSearchParams(preservedQuery).toString()
+  if (current !== next) {
+    router.replace({ query: preservedQuery })
+  }
+}, { deep: true })
+
+watch(
+  () => route.query.metric,
+  () => {
+    const metric = queryString(route.query.metric)
+    if (typeof metric === 'string' && allowedTrendMetrics.has(metric)) {
+      trendMetric.value = metric
+    } else if (route.query.metric) {
+      trendMetric.value = 'spend'
+    }
+  },
+  { deep: true }
+)
+
+watch(
+  () => route.query,
+  () => {
+    startDate.value = validDateString(queryString(route.query.startDate), formatDateISO(thirtyDaysAgo))
+    endDate.value = validDateString(queryString(route.query.endDate), formatDateISO(now))
+  },
+  { deep: true }
+)
 
 const metricOptions = [
   { label: 'Spend', value: 'spend' },
@@ -142,7 +202,7 @@ await Promise.all([refreshOverview(), refreshTrend()])
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-[1200px] mx-auto">
+  <div class="p-6 space-y-6 w-full">
     <!-- Header -->
     <div class="flex items-center gap-3">
       <UButton
@@ -234,6 +294,7 @@ await Promise.all([refreshOverview(), refreshTrend()])
       <AnalyticsTrendChart
         :data="trendPoints"
         :metric="trendMetric"
+        :resolution="trendResolution"
         :loading="trendStatus === 'pending'"
       />
     </div>

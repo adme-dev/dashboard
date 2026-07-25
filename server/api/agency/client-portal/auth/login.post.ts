@@ -7,7 +7,7 @@
  * - password: User password
  */
 
-import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { queryOne, transaction } from '~~/server/utils/db'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
@@ -109,6 +109,16 @@ export default defineEventHandler(async (event) => {
         INSERT INTO client_activity_log (client_user_id, client_id, action, ip_address, user_agent)
         VALUES ($1, $2, 'login', $3, $4)
       `, [user.id, user.client_id, ipAddress, userAgent])
+    })
+
+    const requestUrl = getRequestURL(event)
+
+    setCookie(event, 'client_session_token', sessionToken, {
+      httpOnly: true,
+      secure: requestUrl.protocol === 'https:',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60,
+      path: '/'
     })
 
     // Get pending approvals count

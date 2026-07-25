@@ -9,6 +9,17 @@ import { buildFunnel, buildComparison, previousWindow } from '~~/server/utils/ga
 import type { FunnelInput } from '~~/server/utils/ga4Funnel'
 import { adPlatformToChannel, leadSourceToChannel } from '~~/server/utils/channelMap'
 
+type Ga4Row = {
+  channel: string
+  sessions: string
+  engaged: string
+  key_events: string
+  total_users: string
+  new_users: string
+  engagement_weighted: string
+  duration_weighted: string
+}
+
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const q = getQuery(event)
@@ -30,10 +41,7 @@ export default defineEventHandler(async (event) => {
        GROUP BY ms.platform`,
       [clientId, start, end]
     )
-    const ga4Rows = await queryRows<{
-      channel: string; sessions: string; engaged: string; key_events: string
-      total_users: string; new_users: string; engagement_weighted: string; duration_weighted: string
-    }>(
+    const ga4Rows = await queryRows<Ga4Row>(
       `SELECT channel_group AS channel,
               COALESCE(SUM(sessions),0) AS sessions,
               COALESCE(SUM(engaged_sessions),0) AS engaged,

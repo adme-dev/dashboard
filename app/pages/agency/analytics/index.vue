@@ -9,6 +9,7 @@ if (import.meta.client) {
 }
 
 const route = useRoute()
+const router = useRouter()
 const { filters, apiQuery } = useAnalytics()
 
 const activeTab = ref<'overview' | 'insights'>('overview')
@@ -68,6 +69,66 @@ interface AnalyticsClientRow {
   campaignCount: number
   cpc: number | null
   ctr: number | null
+}
+
+interface CampaignResponse {
+  filters: {
+    startDate: string
+    endDate: string
+    platforms: string[]
+    clientId?: string | null
+  }
+  campaign: {
+    activeCampaignCount: number
+    rawCampaignCount: number
+    campaignsByPlatform: { platform: string; campaignCount: number }[]
+  }
+  connections: {
+    active: number
+    total: number
+    activePlatforms: string[]
+    inactive: number
+    inactivePlatforms: string[]
+  }
+  sync: {
+    lastSyncedAt: string | null
+    hasRecentSync: boolean
+    syncAgeMinutes: number | null
+    rawRowsInWindow: number
+  }
+  mapping: {
+    directClientCampaignRows: boolean
+    socialClientLinks: boolean
+    campaignAccountMappings: boolean
+  }
+  ga4: {
+    hasPropertyMap: boolean
+    rowsInWindow: number
+  }
+  issues: {
+    severity: 'error' | 'warning' | 'info'
+    code: string
+    message: string
+  }[]
+}
+
+// Backward-compatible route normalisation:
+// old bookmarks/shared links often use ?clientId=... on /agency/analytics.
+// Move those to /agency/analytics/client/:clientId so each client has a dedicated canonical route.
+if (import.meta.client && typeof route.query.clientId === 'string' && route.query.clientId.trim().length > 0) {
+  const clientId = route.query.clientId.trim()
+  const nextQuery: Record<string, string | undefined> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (typeof value === 'string') {
+      if (key === 'clientId') continue
+      nextQuery[key] = value
+    }
+  }
+
+  void router.replace({
+    path: `/agency/analytics/client/${clientId}`,
+    query: nextQuery
+  })
 }
 
 // Sync clientId with URL — clear it if not in current query params
@@ -173,6 +234,7 @@ async function syncAll() {
     // Refresh dashboard data after sync
     await refreshOverview()
     await refreshTrends()
+    await refreshCampaignDiagnostics()
 
     // Check if any platforms had errors
     const errors = Object.entries(res.results || {}).filter(([, v]) => 'error' in v)
@@ -200,6 +262,89 @@ async function syncAll() {
     syncing.value = false
   }
 }
+
+// ─── Campaign health diagnostics (source-of-truth root cause probe) ─────────────────────────
+const campaignDiagnosticQuery = computed(() => ({
+  ...apiQuery.value
+}))
+
+const campaignDiagnosticsStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const campaignDiagnosticsError = ref<string | null>(null)
+const campaignHealth = ref<CampaignResponse | null>(null)
+
+const hasCampaignData = computed(() => (campaignHealth.value?.campaign.activeCampaignCount ?? 0) > 0)
+const campaignDiagnosticsTitle = computed(() => {
+  if (campaignDiagnosticsStatus.value === 'error') {
+    return 'Campaign load failed'
+  }
+  if (!hasCampaignData.value) {
+    const clientHint = filters.value.clientId ? 'for the selected client' : 'for the selected filters'
+    return `No active campaign rows ${clientHint}`
+  }
+  return `Active campaign rows found: ${campaignHealth.value?.campaign.activeCampaignCount ?? 0}`
+})
+
+const campaignDiagnosticsDescription = computed(() => {
+  if (campaignDiagnosticsStatus.value === 'error') {
+    return campaignDiagnosticsError.value || 'Could not load campaign-level data.'
+  }
+  if (!hasCampaignData.value) {
+    const causes = campaignHealth.value?.issues?.map((issue) => `• ${issue.message}`) ?? []
+    if (causes.length === 0) {
+      return [
+        'No campaign rows for this filter set.',
+        'Try widening the date range and clicking Sync All Platforms.'
+      ].join('\n')
+    }
+    return [
+      'Likely causes:',
+      ...causes,
+      '',
+      'Try widening the date range and clicking Sync All Platforms.'
+    ].join('\n')
+  }
+  const campaignCount = campaignHealth.value?.campaign.activeCampaignCount ?? 0
+  if (campaignCount === 0) {
+    return 'Campaign rows are not yet available for this filter set.'
+  }
+  return 'Campaign rows are present for this query window.'
+})
+
+const campaignDiagnosticsColor = computed(() => {
+  if (campaignDiagnosticsStatus.value === 'error') {
+    return 'error'
+  }
+  if (campaignDiagnosticsStatus.value === 'pending' || campaignDiagnosticsStatus.value === 'idle') {
+    return 'neutral'
+  }
+  if (!hasCampaignData.value) {
+    return campaignHealth.value?.issues?.some((item) => item.severity === 'error') ? 'error' : 'warning'
+  }
+  return 'success'
+})
+
+async function refreshCampaignDiagnostics() {
+  campaignDiagnosticsStatus.value = 'pending'
+  campaignDiagnosticsError.value = null
+  try {
+    const res = await apiFetch<CampaignResponse>('/api/agency/analytics/health', {
+      query: campaignDiagnosticQuery.value
+    })
+    campaignHealth.value = res
+    campaignDiagnosticsStatus.value = 'success'
+  } catch (err: unknown) {
+    campaignDiagnosticsStatus.value = 'error'
+    if (err instanceof Error) {
+      campaignDiagnosticsError.value = err.message
+    } else {
+      campaignDiagnosticsError.value = 'Failed to load campaign diagnostics.'
+    }
+  }
+}
+
+watch(campaignDiagnosticQuery, () => {
+  void refreshCampaignDiagnostics()
+}, { immediate: true })
 </script>
 
 <template>
@@ -236,6 +381,14 @@ async function syncAll() {
 
     <!-- Filter Bar -->
     <AnalyticsFilterBar />
+
+    <UAlert
+      icon="i-lucide-search-check"
+      :color="campaignDiagnosticsColor"
+      variant="subtle"
+      :title="campaignDiagnosticsTitle"
+      :description="campaignDiagnosticsDescription"
+    />
 
     <!-- Tabs (filter bar above stays shared across both) -->
     <div

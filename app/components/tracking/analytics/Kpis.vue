@@ -6,7 +6,11 @@ const CARDS = [
   { key: 'pageViews', label: 'Page views' },
   { key: 'avgEngagementSeconds', label: 'Avg engagement (s)' },
   { key: 'callClicks', label: 'Call clicks' },
-  { key: 'formSubmits', label: 'Form submits' }
+  { key: 'formSubmits', label: 'Form submits' },
+  { key: 'generateLeads', label: 'Generate leads' },
+  { key: 'testDriveBookings', label: 'Test drive bookings' },
+  { key: 'interactionLeads', label: 'Interaction leads' },
+  { key: 'vehicleViews', label: 'Vehicle views' }
 ]
 </script>
 

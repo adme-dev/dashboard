@@ -2,12 +2,13 @@
 import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from '@nuxt/ui'
 import { socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
+import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
 const route = useRoute()
 const open = ref(false)
 const selectedWorkspace = ref<string | null>(null)
 const isClientAnalyticsRoute = computed(() => route.path.startsWith('/agency/analytics/client/'))
-const layoutFetch = $fetch as <T>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
+const { fetch: layoutFetch } = useAuthenticatedFetch()
 
 // The Activity Hub floating bubble is hidden on the full-screen Chat surface —
 // it duplicates chat and overlaps the bottom-anchored message composer.

@@ -1,4 +1,5 @@
 import type { User } from '~/types'
+import { useAuthenticatedFetch } from './useAuthenticatedFetch'
 
 export interface AuthState {
   user: User | null
@@ -10,7 +11,7 @@ export const useAuth = () => {
   const user = useState<User | null>('auth-user', () => null)
   const isLoading = useState('auth-loading', () => false)
   const router = useRouter()
-  const apiFetch = $fetch as <T>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
+  const { fetch: apiFetch } = useAuthenticatedFetch()
   
   const isAuthenticated = computed(() => !!user.value)
   
@@ -18,6 +19,7 @@ export const useAuth = () => {
   
   const hasRole = (roles: readonly string[]) => {
     if (!user.value) return false
+    if (user.value.role === 'super_admin') return true
     // Legacy: direct role name match
     if (roles.includes(user.value.role)) return true
     // Dynamic: check if roles correspond to any permission group the user has.
@@ -56,16 +58,21 @@ export const useAuth = () => {
     try {
       isLoading.value = true
       const data = await apiFetch<any>('/api/auth/me').catch((err: any) => {
-        // 503 = transient error (DB down) — don't clear user state
-        if (err?.statusCode === 503 || err?.status === 503) {
-          console.warn('[useAuth] Service temporarily unavailable, keeping session')
-          return null // keep existing user state
+      // 503 = transient error (DB down) — don't clear user state
+      if (err?.statusCode === 503 || err?.status === 503) {
+        console.warn('[useAuth] Service temporarily unavailable, keeping session')
+        return null // keep existing user state
+      }
+      // 401 = session expired — clear user
+      if (err?.statusCode === 401 || err?.status === 401) {
+        if (import.meta.client) {
+          localStorage.removeItem('auth_token_backup')
+          localStorage.removeItem('auth_fallback')
+          localStorage.removeItem('auth_status')
         }
-        // 401 = session expired — clear user
-        if (err?.statusCode === 401 || err?.status === 401) {
-          user.value = null
-          return null
-        }
+        user.value = null
+        return null
+      }
         // Other errors — log but keep session
         console.error('Auth check failed:', err)
         return null

@@ -12,14 +12,13 @@ import { queryOne, queryRows } from '~~/server/utils/db'
 import bcrypt from 'bcryptjs'
 
 async function getClientUserFromSession(event: any) {
-  const headers = getHeaders(event)
-  const authHeader = headers.authorization
+  const authHeader = getHeaders(event).authorization
+  const cookieToken = getCookie(event, 'client_session_token')
+  const sessionToken = cookieToken || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null)
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  if (!sessionToken) {
     return null
   }
-
-  const sessionToken = authHeader.slice(7)
 
   // Get all active sessions and check the token
   // In production, use a more efficient token lookup

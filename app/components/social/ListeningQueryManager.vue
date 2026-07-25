@@ -26,6 +26,7 @@ const sourceOptions = [
   { label: 'Mastodon', value: 'mastodon' },
   { label: 'Hacker News', value: 'hackernews' },
   { label: 'Lemmy', value: 'lemmy' },
+  { label: 'Facebook Ads Library', value: 'facebook_ads_library' },
 ]
 
 type Mode = 'list' | 'edit'
@@ -89,7 +90,7 @@ watch(() => [props.open, props.clientId], ([isOpen]) => { if (isOpen) { backToLi
           color="neutral"
           variant="subtle"
           title="External sources activate later"
-          description="Queries are saved now. Off-property sources (Reddit, News, YouTube, Bluesky, Mastodon, Hacker News, Lemmy) start collecting once an operator enables them; owned mentions from your inbox show immediately."
+          description="Queries are saved now. Off-property sources (Reddit, News, YouTube, Bluesky, Mastodon, Hacker News, Lemmy, Facebook Ads Library) start collecting once an operator enables them; owned mentions from your inbox show immediately."
         />
 
         <template v-if="mode === 'list'">

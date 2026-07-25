@@ -167,6 +167,7 @@ export async function verifyJwt(token: string): Promise<any | null> {
 // Role-based access control — checks legacy role name + dynamic permission groups
 export function hasRole(user: User, allowedRoles: readonly string[]): boolean {
   // Legacy: direct role name match
+  if (user.role === 'super_admin') return true
   if (allowedRoles.includes(user.role)) return true
   // Dynamic: check if allowedRoles correspond to any permission group the user has.
   // Multiple groups can share the same role array (e.g. MANAGEMENT, TIME_APPROVALS, AUTOMATION
@@ -199,10 +200,15 @@ export async function requireAuth(event: any): Promise<User> {
     return event.context.user as User
   }
 
+  // Prefer HttpOnly/session cookies over fallback Authorization headers.
+  // Using cookie-first prevents stale `auth_token_backup` values from forcing
+  // false 401s after logout or token rotation.
+  const cookieToken = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
   const authHeader = getHeader(event, 'authorization')
-  const token = authHeader?.startsWith('Bearer ')
+  const headerToken = authHeader?.startsWith('Bearer ')
     ? authHeader.slice(7)
-    : getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
+    : null
+  const token = cookieToken || headerToken
 
   if (!token) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized - No token' })

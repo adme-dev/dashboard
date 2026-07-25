@@ -22,6 +22,18 @@ function getDefaultRange() {
   return { from: ensureDateString(from), to: ensureDateString(to) }
 }
 
+function isTransientXeroError(err: any): boolean {
+  const status = err?.response?.statusCode
+    ?? err?.response?.status
+    ?? err?.statusCode
+    ?? err?.status
+
+  if (status === 429) return true
+  if (Number.isFinite(Number(status)) && Number(status) >= 500) return true
+  if (!status) return true
+  return false
+}
+
 export default eventHandler(async (event) => {
   let token
   try {
@@ -59,59 +71,79 @@ export default eventHandler(async (event) => {
 
   const cacheKey = `xero-report:${tenantId}:pnl:${from}:${to}:${validPeriods || 0}:${validTimeframe || ''}:${basis}`
 
-  return cachedFetch(event, cacheKey, 900, async () => {
-  const report = await dedupedXeroCall(
-    `pnl:${tenantId}:${from}:${to}:${validPeriods || 0}:${validTimeframe || ''}:${basis}`,
-    'pnl',
-    () => xeroFetch<any>({
-      accessToken: token.access_token!,
-      tenantId,
-      path: `Reports/ProfitAndLoss?fromDate=${from}&toDate=${to}&standardLayout=false${multiPeriodSuffix}${basisSuffix}`,
+  try {
+    return await cachedFetch(event, cacheKey, 1800, async () => {
+      const report = await dedupedXeroCall(
+        `pnl:${tenantId}:${from}:${to}:${validPeriods || 0}:${validTimeframe || ''}:${basis}`,
+        'pnl',
+        () => xeroFetch<any>({
+          accessToken: token.access_token!,
+          tenantId,
+          path: `Reports/ProfitAndLoss?fromDate=${from}&toDate=${to}&standardLayout=false${multiPeriodSuffix}${basisSuffix}`,
+        }),
+      )
+
+      const reportTable = report?.reports?.[0] ?? report?.Reports?.[0]
+      const tableRows: XeroRow[] = reportTable ? reportTable.rows ?? reportTable.Rows ?? [] : []
+      const periodLabels = getPeriodLabels(tableRows)
+      const columnCount = periodLabels.length
+
+      const revenueByPeriod = findRowValues(tableRows, /total\s+revenue|total\s+income/i, columnCount)
+      const expensesByPeriod = findRowValues(tableRows, /total\s+expense/i, columnCount)
+      const netProfitByPeriod = findRowValues(tableRows, /net\s+profit|profit\s+for\s+the\s+period|net\s+income|net\s+loss/i, columnCount)
+
+      const latestIndex = columnCount > 0 ? columnCount - 1 : 0
+      const revenueTotal = revenueByPeriod[latestIndex] ?? 0
+      const expensesTotal = expensesByPeriod[latestIndex] ?? 0
+      const netProfit = netProfitByPeriod[latestIndex] ?? 0
+      const profitMargin = revenueTotal !== 0 ? (netProfit / revenueTotal) : 0
+
+      const periods = periodLabels.map((label, index) => {
+        const revenue = revenueByPeriod[index] ?? 0
+        const expenses = expensesByPeriod[index] ?? 0
+        const net = netProfitByPeriod[index] ?? 0
+        const margin = revenue !== 0 ? net / revenue : 0
+
+        return {
+          label,
+          revenue,
+          expenses,
+          netProfit: net,
+          profitMargin: margin,
+        }
+      })
+
+      const expensesByCategory = extractExpenseBreakdown(tableRows, latestIndex)
+
+      return {
+        fromDate: from,
+        toDate: to,
+        basis,
+        revenueTotal,
+        expensesTotal,
+        netProfit,
+        profitMargin,
+        periods,
+        expensesByCategory,
+      }
     })
-  )
-
-  const reportTable = report?.reports?.[0] ?? report?.Reports?.[0]
-  const tableRows: XeroRow[] = reportTable ? reportTable.rows ?? reportTable.Rows ?? [] : []
-  const periodLabels = getPeriodLabels(tableRows)
-  const columnCount = periodLabels.length
-
-  const revenueByPeriod = findRowValues(tableRows, /total\s+revenue|total\s+income/i, columnCount)
-  const expensesByPeriod = findRowValues(tableRows, /total\s+expense/i, columnCount)
-  const netProfitByPeriod = findRowValues(tableRows, /net\s+profit|profit\s+for\s+the\s+period|net\s+income|net\s+loss/i, columnCount)
-
-  const latestIndex = columnCount > 0 ? columnCount - 1 : 0
-  const revenueTotal = revenueByPeriod[latestIndex] ?? 0
-  const expensesTotal = expensesByPeriod[latestIndex] ?? 0
-  const netProfit = netProfitByPeriod[latestIndex] ?? 0
-  const profitMargin = revenueTotal !== 0 ? (netProfit / revenueTotal) : 0
-
-  const periods = periodLabels.map((label, index) => {
-    const revenue = revenueByPeriod[index] ?? 0
-    const expenses = expensesByPeriod[index] ?? 0
-    const net = netProfitByPeriod[index] ?? 0
-    const margin = revenue !== 0 ? net / revenue : 0
-
-    return {
-      label,
-      revenue,
-      expenses,
-      netProfit: net,
-      profitMargin: margin
+  } catch (error: any) {
+    if (isTransientXeroError(error)) {
+      console.warn('[pnl] returning degraded fallback due Xero limit/network:', error)
+      return {
+        fromDate: from,
+        toDate: to,
+        basis,
+        revenueTotal: 0,
+        expensesTotal: 0,
+        netProfit: 0,
+        profitMargin: 0,
+        periods: [],
+        expensesByCategory: [],
+        source: 'degraded_fallback',
+        message: error?.message || 'Temporary data source issue',
+      }
     }
-  })
-
-  const expensesByCategory = extractExpenseBreakdown(tableRows, latestIndex)
-
-  return {
-    fromDate: from,
-    toDate: to,
-    basis,
-    revenueTotal,
-    expensesTotal,
-    netProfit,
-    profitMargin,
-    periods,
-    expensesByCategory
+    throw error
   }
-  }) // end cachedFetch
 })

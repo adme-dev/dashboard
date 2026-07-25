@@ -78,26 +78,45 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <UFormField label="Title" :error="errors.title" required>
-      <UInput v-model="form.title" placeholder="Call back about renewal" autofocus />
-    </UFormField>
-
-    <div class="grid grid-cols-2 gap-4">
-      <UFormField label="Type">
-        <USelectMenu v-model="form.task_type" :items="typeItems" value-key="value" />
+  <form class="space-y-5" @submit.prevent="submit">
+    <div class="space-y-3">
+      <h3 class="text-base font-semibold">
+        {{ task ? 'Update task' : 'Create new task' }}
+      </h3>
+      <UFormField label="Title" :error="errors.title" required>
+        <UInput v-model="form.title" class="w-full" placeholder="Call back about renewal" autofocus />
       </UFormField>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <UFormField label="Type">
+        <USelectMenu
+          v-model="form.task_type"
+          :items="typeItems"
+          value-key="value"
+          class="w-full"
+          size="sm"
+        />
+    </UFormField>
       <UFormField label="Priority">
-        <USelectMenu v-model="form.priority" :items="priorityItems" value-key="value" />
+        <USelectMenu
+          v-model="form.priority"
+          :items="priorityItems"
+          value-key="value"
+          class="w-full"
+          size="sm"
+        />
       </UFormField>
 
       <UFormField label="Due date">
-        <UPopover>
+        <UPopover :content="{ align: 'start', side: 'bottom' }">
           <UButton color="neutral" variant="outline" class="w-full justify-start" icon="i-lucide-calendar">
             {{ form.due_date ? formatDate(form.due_date) : 'No due date' }}
           </UButton>
           <template #content>
-            <UCalendar v-model="dueDateModel" class="p-2" />
+            <div class="p-2">
+              <UCalendar v-model="dueDateModel" />
+            </div>
             <div class="flex justify-end p-2 pt-0">
               <UButton size="xs" variant="ghost" color="neutral" @click="form.due_date = ''">Clear</UButton>
             </div>
@@ -106,12 +125,14 @@ function submit() {
       </UFormField>
 
       <UFormField label="Reminder">
-        <UPopover>
+        <UPopover :content="{ align: 'start', side: 'bottom' }">
           <UButton color="neutral" variant="outline" class="w-full justify-start" icon="i-lucide-bell">
             {{ form.reminder_date ? formatDate(form.reminder_date) : 'No reminder' }}
           </UButton>
           <template #content>
-            <UCalendar v-model="reminderDateModel" class="p-2" />
+            <div class="p-2">
+              <UCalendar v-model="reminderDateModel" />
+            </div>
             <div class="flex justify-end p-2 pt-0">
               <UButton size="xs" variant="ghost" color="neutral" @click="form.reminder_date = ''">Clear</UButton>
             </div>
@@ -121,7 +142,7 @@ function submit() {
     </div>
 
     <UFormField label="Notes">
-      <UTextarea v-model="form.description" :rows="3" class="w-full" placeholder="Context, talking points…" />
+      <UTextarea v-model="form.description" :rows="4" class="w-full" placeholder="Context, talking points…" />
     </UFormField>
 
     <div class="flex justify-end gap-2 pt-2">

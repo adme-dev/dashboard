@@ -6,52 +6,54 @@
  * - Authorization: Bearer <sessionToken>
  */
 
-import { queryOne } from '~~/server/utils/db'
+import { execute, queryRows } from '~~/server/utils/db'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
   const headers = getHeaders(event)
   const authHeader = headers.authorization
+  const cookieToken = getCookie(event, 'client_session_token')
+  const sessionToken = cookieToken || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null)
 
-  if (!authHeader?.startsWith('Bearer ')) {
-    throw createError({
-      statusCode: 401,
-      statusMessage: 'No session token provided'
-    })
+  if (!sessionToken) {
+    deleteCookie(event, 'client_session_token', { path: '/' })
+    return {
+      success: true,
+      message: 'Logged out'
+    }
   }
 
-  const sessionToken = authHeader.slice(7)
-
   try {
-    // Find all sessions for this token (we need to check each hash)
-    // In production, store the token hash directly for O(1) lookup
-    const sessions = await queryOne(`
-      SELECT id, token_hash, client_user_id
+    const sessions = await queryRows(`
+      SELECT id, token_hash
       FROM client_sessions
       WHERE expires_at > NOW()
       ORDER BY created_at DESC
       LIMIT 100
     `)
 
-    // For simplicity, just delete all sessions for the user based on the token
-    // A more efficient approach would be to store the token hash directly
-
-    // Delete the session (mark as expired)
-    await queryOne(`
-      DELETE FROM client_sessions
-      WHERE id = $1
-    `, [sessions?.id])
-
-    return {
-      success: true,
-      message: 'Logged out successfully'
+    for (const session of sessions) {
+      try {
+        const valid = await bcrypt.compare(sessionToken, session.token_hash)
+        if (valid) {
+          await execute(`
+            DELETE FROM client_sessions
+            WHERE id = $1
+          `, [session.id])
+          break
+        }
+      } catch {
+        continue
+      }
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Logout failed:', error)
-    // Always return success for logout to avoid leaking information
-    return {
-      success: true,
-      message: 'Logged out'
-    }
+  } finally {
+    deleteCookie(event, 'client_session_token', { path: '/' })
+  }
+
+  return {
+    success: true,
+    message: 'Logged out successfully'
   }
 })

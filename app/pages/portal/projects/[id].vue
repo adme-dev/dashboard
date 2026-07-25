@@ -160,7 +160,7 @@ async function submitComment() {
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-5xl mx-auto">
+  <div class="p-6 space-y-6 w-full">
     <div v-if="pending" class="space-y-4">
       <div class="h-8 w-64 bg-elevated animate-pulse rounded" />
       <div class="h-32 bg-elevated animate-pulse rounded-lg" />

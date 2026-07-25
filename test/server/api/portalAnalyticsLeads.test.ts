@@ -228,16 +228,13 @@ describe('portal analytics lead metrics', () => {
       }
     })
 
-    expect(result).toMatchObject({
-      metric: 'leads',
-      dataPoints: [
-        {
-          date: '2026-05-01',
-          value: 6,
-          byPlatform: { google_ads: 6 }
-        }
-      ]
+    expect(result).toMatchObject({ metric: 'leads' })
+    expect(result.dataPoints[0]).toEqual({
+      date: '2026-05-01',
+      value: 6,
+      byPlatform: { google_ads: 6 }
     })
+    expect(result.dataPoints).toHaveLength(27)
     const leadSql = String(mockQueryRows.mock.calls[1]?.[0])
     expect(leadSql).toContain('COUNT(*)::int as leads')
     expect(leadSql).toContain('d.destination_type = \'portal\'')

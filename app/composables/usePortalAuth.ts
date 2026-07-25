@@ -27,6 +27,7 @@ interface PortalAuthMeResponse {
     id: string
     name: string
     logo?: string | null
+    leadCaptureMode: 'analytics_only' | 'capture_only' | 'full_crm'
   }
   stats: PortalStats
 }
@@ -81,6 +82,7 @@ export function usePortalAuth() {
         clientId: data.client.id,
         clientName: data.client.name,
         clientLogo: data.client.logo,
+        leadCaptureMode: data.client.leadCaptureMode,
         permissions: data.user.permissions,
         notificationPreferences: data.user.notificationPreferences || {},
         timezone: data.user.timezone || 'UTC'

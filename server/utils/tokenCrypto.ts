@@ -35,7 +35,10 @@ async function getKey(): Promise<CryptoKey> {
 
   const keyB64 = process.env.REPO_TOKEN_ENCRYPTION_KEY
   if (!keyB64) {
-    throw new Error('REPO_TOKEN_ENCRYPTION_KEY is not set')
+    throw new Error(
+      'REPO_TOKEN_ENCRYPTION_KEY is not set. '
+      + 'Generate one with `node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"`',
+    )
   }
 
   const keyBytes = base64ToBytes(keyB64)

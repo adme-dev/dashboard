@@ -120,7 +120,7 @@ const priorityColors: Record<string, string> = {
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-5xl mx-auto">
+  <div class="p-6 space-y-6 w-full">
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-bold">
         Briefs

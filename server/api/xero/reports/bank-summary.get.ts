@@ -22,13 +22,14 @@ export default eventHandler(async (event) => {
 
     // Try Bank Summary first
     try {
+      const dateKey = date
       const toDate = new Date(date)
       const fromDate = new Date(toDate)
       fromDate.setDate(fromDate.getDate() - 30)
 
       const report = await dedupedXeroCall(
-        `bankSummaryDirect:${tenantId}:${date}`,
-        'bank-summary-direct',
+        `bankSummary:${tenantId}:${dateKey}`,
+        'bank-summary',
         () => xeroFetch<any>({
           accessToken,
           tenantId,

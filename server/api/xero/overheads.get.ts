@@ -26,6 +26,18 @@ function toAmount(value: unknown) {
   return 0
 }
 
+function isTransientXeroError(err: any): boolean {
+  const status = err?.response?.statusCode
+    ?? err?.response?.status
+    ?? err?.statusCode
+    ?? err?.status
+
+  if (status === 429) return true
+  if (Number.isFinite(Number(status)) && Number(status) >= 500) return true
+  if (!status) return true
+  return false
+}
+
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -69,7 +81,7 @@ async function fetchAllInvoices(
       where: whereExpr,
       order: 'Date DESC',
       page: String(page),
-      pageSize: '100',
+      pageSize: '200',
     })
     const body = await dedupedXeroCall(
       `${dedupPrefix}:${tenantId}:p${page}`,
@@ -83,7 +95,7 @@ async function fetchAllInvoices(
     const list = body?.invoices || []
     if (!list.length) break
     results.push(...list)
-    if (list.length < 100) break
+    if (list.length < 200) break
     page += 1
     if (page > 50) break
   }
@@ -138,6 +150,22 @@ function monthRange(year: number, month: number) {
 function prevMonth(year: number, month: number) {
   if (month === 1) return { year: year - 1, month: 12 }
   return { year, month: month - 1 }
+}
+
+function buildDegradedOverheads(year: number, month: number, message?: string) {
+  return {
+    period: `${MONTH_NAMES[month - 1]} ${year}`,
+    totalFixed: 0,
+    totalVariable: 0,
+    overheadRatio: 0,
+    byCategory: [],
+    byDepartment: [],
+    subscriptions: [],
+    trend: [],
+    previousMonth: { total: 0, change: 0 },
+    source: 'degraded_fallback',
+    message: message || 'Temporary data source issue',
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -296,13 +324,16 @@ export default eventHandler(async (event) => {
 
   const cacheKey = `xero:overheads:${tenantId}:${year}:${month}`
 
-  return cachedFetch(event, cacheKey, 300, async () => {
+  try {
+    return await cachedFetch(event, cacheKey, 1800, async () => {
     const accessToken = token.access_token!
 
     // Fetch chart of accounts for classification
     const accountsMap = await fetchAccountsMap(accessToken, tenantId)
 
-    // Build date ranges for trend (current month + 5 previous)
+    // Build date ranges for trend (current month + 5 previous).
+    // Fetch in newest-first order so current month gets first priority when Xero
+    // is under throttle pressure; UI still receives oldest-first trend below.
     const trendMonths: { year: number; month: number }[] = []
     let ty = year
     let tm = month
@@ -312,30 +343,42 @@ export default eventHandler(async (event) => {
       ty = prev.year
       tm = prev.month
     }
-    // Reverse so oldest is first
-    trendMonths.reverse()
 
     // Fetch invoices for each month sequentially to respect rate limits
     const monthInvoices: Map<string, any[]> = new Map()
+    let hitTransientThrottle = false
+
     for (const m of trendMonths) {
       const { from, to } = monthRange(m.year, m.month)
       const key = `${m.year}-${m.month}`
-      const whereAuth = `Type=="ACCPAY"&&Status=="AUTHORISED"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(to)}`
-      const wherePaid = `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(to)}`
+      if (hitTransientThrottle) {
+        monthInvoices.set(key, [])
+        continue
+      }
 
+      const whereAuthorizedOrPaid = `Type=="ACCPAY"&&(Status=="AUTHORISED"||Status=="PAID")&&Date>=${dtExpr(from)}&&Date<=${dtExpr(to)}`
+      const whereAny = `Type=="ACCPAY"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(to)}`
       let invoices: any[] = []
       try {
-        const authList = await fetchAllInvoices(accessToken, tenantId, whereAuth, `overheads-auth-${key}`)
-        const paidList = await fetchAllInvoices(accessToken, tenantId, wherePaid, `overheads-paid-${key}`)
-        invoices = ([] as any[]).concat(authList, paidList)
+        // One combined status filter is more efficient than making two queries
+        // and has proven to be stable across the overheads report data.
+        invoices = await fetchAllInvoices(accessToken, tenantId, whereAuthorizedOrPaid, `overheads-combined-${key}`)
       } catch (err) {
-        // If a specific month fails, try without status filter
-        try {
-          const whereAny = `Type=="ACCPAY"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(to)}`
-          invoices = await fetchAllInvoices(accessToken, tenantId, whereAny, `overheads-any-${key}`)
-        } catch {
-          // Skip this month in the trend if it fails entirely
-          console.warn(`[overheads] Failed to fetch invoices for ${key}`)
+        if (isTransientXeroError(err)) {
+          // Avoid a second call on transient failures; this doubles the
+          // rate-limit pressure with minimal upside while trending is already
+          // best-effort.
+          console.warn(`[overheads] Temporary error for ${key} — skipping fallback`, err)
+          hitTransientThrottle = true
+        } else {
+          // If combined status filter fails for a non-transient reason, fall back
+          // to all AP invoices so we still show data rather than failing the card.
+          try {
+            invoices = await fetchAllInvoices(accessToken, tenantId, whereAny, `overheads-any-${key}`)
+          } catch {
+            // Skip this month in the trend if it fails entirely.
+            console.warn(`[overheads] Failed to fetch invoices for ${key}`)
+          }
         }
       }
       monthInvoices.set(key, invoices)
@@ -358,7 +401,7 @@ export default eventHandler(async (event) => {
       .sort((a, b) => b.total - a.total)
 
     // Build trend
-    const trend = trendMonths.map((m) => {
+    const trend = trendMonths.slice().reverse().map((m) => {
       const key = `${m.year}-${m.month}`
       const invoices = monthInvoices.get(key) || []
       const result = processInvoices(invoices, accountsMap)
@@ -386,12 +429,12 @@ export default eventHandler(async (event) => {
       ? Math.round((current.fixed / totalAll) * 10000) / 100
       : 0
 
-    return {
-      period: `${MONTH_NAMES[month - 1]} ${year}`,
-      totalFixed: current.fixed,
-      totalVariable: current.variable,
-      overheadRatio,
-      byCategory: current.byCategory,
+      return {
+        period: `${MONTH_NAMES[month - 1]} ${year}`,
+        totalFixed: current.fixed,
+        totalVariable: current.variable,
+        overheadRatio,
+        byCategory: current.byCategory,
       byDepartment,
       subscriptions: current.subscriptions.map((s) => ({
         ...s,
@@ -399,9 +442,16 @@ export default eventHandler(async (event) => {
       })),
       trend,
       previousMonth: {
-        total: Math.round(prevTotal * 100) / 100,
-        change,
-      },
+          total: Math.round(prevTotal * 100) / 100,
+          change,
+        },
+      }
+    }) // end cachedFetch
+  } catch (error: any) {
+    if (isTransientXeroError(error)) {
+      console.warn('[overheads] returning degraded fallback due Xero limit/network:', error)
+      return buildDegradedOverheads(year, month, error?.message || 'Temporary data source issue')
     }
-  }) // end cachedFetch
+    throw error
+  }
 })

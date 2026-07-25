@@ -2,7 +2,7 @@
  * Portal Analytics Campaigns — client-scoped
  * GET /api/portal/analytics/campaigns
  *
- * Query params: startDate, endDate, platform?, sortBy, sortDir, limit, offset, search?
+ * Query params: startDate, endDate, platform?, sortBy, sortDir, limit, offset, search?, runningOnly?
  */
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
@@ -40,20 +40,60 @@ export default defineEventHandler(async (event) => {
   const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200)
   const offset = Math.max(Number(q.offset) || 0, 0)
   const search = q.search as string | undefined
+  const runningOnly = String(q.runningOnly || '').toLowerCase() === '1'
+    || String(q.runningOnly || '').toLowerCase() === 'true'
+  const explicitPlatforms = platforms && platforms.length > 0
+
+  let effectivePlatforms = explicitPlatforms ? [...platforms!] : null
+  if (runningOnly && !explicitPlatforms) {
+    const hasMetaCampaigns = await queryOne<{ hasMetaCampaigns: boolean }>(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM media_spend ms
+        WHERE ms.platform = 'meta'
+          AND ms.period >= $1
+          AND ms.period <= $2
+          AND ${buildClientCondition(3)}
+      ) AS "hasMetaCampaigns"
+    `, [startDate.slice(0, 7), endDate.slice(0, 7), clientId])
+
+    effectivePlatforms = ['google_ads']
+    if (hasMetaCampaigns?.hasMetaCampaigns) {
+      effectivePlatforms.push('meta')
+    }
+  }
+
+  if (runningOnly && effectivePlatforms && effectivePlatforms.length > 0) {
+    const normalized = effectivePlatforms.map((p) => p.trim()).filter(Boolean)
+    if (normalized.length > 0) {
+      effectivePlatforms.splice(0, effectivePlatforms.length, ...normalized)
+    }
+  }
 
   const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2', buildClientCondition(3)]
   const params: unknown[] = [startDate.slice(0, 7), endDate.slice(0, 7), clientId]
   let idx = 4
 
-  if (platforms && platforms.length > 0) {
+  if (effectivePlatforms && effectivePlatforms.length > 0) {
     conditions.push(`ms.platform = ANY($${idx})`)
-    params.push(platforms)
+    params.push(effectivePlatforms)
     idx++
   }
   if (search) {
     const escaped = String(search).replace(/%/g, '\\%').replace(/_/g, '\\_')
     conditions.push(`ms.campaign_name ILIKE $${idx}`)
     params.push(`%${escaped}%`)
+    idx++
+  }
+  if (runningOnly) {
+    params.push(['ACTIVE', 'ENABLED', 'DELIVERING', 'RUNNING'].map(s => s.toUpperCase()))
+    conditions.push(`(
+      (ms.end_date IS NULL OR ms.end_date >= CURRENT_DATE)
+      AND (
+        ms.campaign_status IS NULL
+        OR UPPER(ms.campaign_status) = ANY($${idx}::text[])
+      )
+    )`)
     idx++
   }
 

@@ -136,10 +136,9 @@ export default defineEventHandler(async (event) => {
   // Get token from cookie or Authorization header
   // Falls back to auth_token_client (non-httpOnly) for environments where
   // httpOnly cookies aren't reliably sent (e.g. after XHR-based login flows)
+  const cookieToken = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
   const authHeader = getHeader(event, 'authorization')
-  const token = authHeader?.startsWith('Bearer ')
-    ? authHeader.slice(7)
-    : getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
+  const token = cookieToken || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null)
 
   if (!token) {
     throw createError({

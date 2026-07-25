@@ -1060,9 +1060,35 @@ export interface Brief {
     color: string
   }
   fieldValues?: BriefFieldValue[]
+  budgetReconciliation?: GoogleCampaignBudgetReconciliation | null
   attachments?: BriefAttachment[]
   commentCount?: number
   attachmentCount?: number
+}
+
+export interface GoogleCampaignBudgetReconciliation {
+  status: 'ready' | 'legacy_ambiguous' | 'invalid'
+  launchBlocked: boolean
+  code: string | null
+  remediation: string | null
+  calculationTimezone: string
+  accountValidation: 'pending'
+  legacyDailyBudget: number | null
+  displayCurrency: string | null
+  contract: {
+    currency: string
+    period: 'CUSTOM_PERIOD'
+    startDate: string
+    endDate: string
+    campaignDays: number
+    allocatedTotal: number
+    dailyBudget: null
+    calculatedDailyPace: number
+    provider: {
+      totalAmountMicros: string
+      amountMicros: null
+    }
+  } | null
 }
 
 // Brief Field Value

@@ -5,11 +5,14 @@
  */
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryOne } from '~~/server/utils/db'
-import { syncCampaignCreatives } from '~~/server/utils/onDemandSync'
 import { buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import { requestCampaignDetailRefresh } from '~~/server/utils/campaignDetailCache'
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
+  if (!clientUser.permissions.canViewAnalytics) {
+    throw createError({ statusCode: 403, statusMessage: 'Analytics access not enabled' })
+  }
   const body = await readBody(event)
   if (!body?.campaignId) throw createError({ statusCode: 400, statusMessage: 'campaignId is required' })
 
@@ -20,5 +23,7 @@ export default defineEventHandler(async (event) => {
   )
   if (!campaign) throw createError({ statusCode: 404, statusMessage: 'Campaign not found' })
 
-  return await syncCampaignCreatives(body.campaignId)
+  const cache = await requestCampaignDetailRefresh(event, body.campaignId, 'creatives', { force: true })
+  setResponseStatus(event, 202)
+  return { status: cache.refreshing ? 'started' : cache.status, cache }
 })

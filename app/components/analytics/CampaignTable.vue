@@ -11,12 +11,14 @@ const props = withDefaults(defineProps<{
   showLeadColumns?: boolean
   leadLinkBase?: string
   columnsStorageKey?: string
+  runningOnly?: boolean
 }>(), {
   apiBase: '/api/agency/analytics',
   hideColumns: () => [],
   showLeadColumns: false,
   leadLinkBase: '',
-  columnsStorageKey: 'analytics:campaign-cols'
+  columnsStorageKey: 'analytics:campaign-cols',
+  runningOnly: false
 })
 
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon, getPlatformLabel } = useAnalytics()
@@ -124,6 +126,7 @@ const apiQuery = computed(() => {
   if (props.platforms?.length) q.platform = props.platforms.join(',')
   if (props.clientId) q.clientId = props.clientId
   if (search.value.trim()) q.search = search.value.trim()
+  if (props.runningOnly) q.runningOnly = 'true'
   return q
 })
 

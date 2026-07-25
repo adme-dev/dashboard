@@ -2,10 +2,10 @@
  * Portal Analytics Overview — client-scoped
  * GET /api/portal/analytics/overview
  *
- * Query params: startDate, endDate, platform? (comma-separated)
+ * Query params: startDate, endDate, platform?, runningOnly
  * Strips commission/budget data (clients shouldn't see those).
  */
-import { queryRows } from '~~/server/utils/db'
+import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import {
@@ -13,6 +13,26 @@ import {
   PORTAL_VISIBLE_LEADS_EXISTS,
   leadPlatformForSourceSql
 } from '~~/server/utils/leads/portalAnalytics'
+
+function normalizePlatform(raw: string): string {
+  const value = raw.trim().toLowerCase()
+  if (value === 'google') {
+    return 'google_ads'
+  }
+  if (value === 'meta_ads' || value === 'facebook' || value === 'instagram' || value === 'fb') {
+    return 'meta'
+  }
+  return value
+}
+
+function normalizePlatformList(values: string[] | null): string[] | null {
+  if (!values || values.length === 0) return null
+  const normalized = values
+    .map((value) => normalizePlatform(value))
+    .map((value) => value.trim())
+    .filter(Boolean)
+  return normalized.length > 0 ? normalized : null
+}
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -26,20 +46,66 @@ export default defineEventHandler(async (event) => {
 
   const startDate = q.startDate as string
   const endDate = q.endDate as string
+  const runningOnly = String(q.runningOnly || '').toLowerCase() === '1'
+    || String(q.runningOnly || '').toLowerCase() === 'true'
   if (!startDate || !endDate) {
     throw createError({ statusCode: 400, statusMessage: 'startDate and endDate are required' })
   }
 
-  const platforms = q.platform ? String(q.platform).split(',').map(p => p.trim()).filter(Boolean) : null
+  const platforms = normalizePlatformList(
+    q.platform ? String(q.platform).split(',').map((p) => p.trim()).filter(Boolean) : null
+  )
+  const explicitPlatforms = platforms && platforms.length > 0
+
+  let effectivePlatforms = explicitPlatforms ? [...platforms] : null
+  if (runningOnly && !explicitPlatforms) {
+    const hasMetaCampaigns = await queryOne<{ hasMetaCampaigns: boolean }>(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM media_spend ms
+        WHERE ms.platform = 'meta'
+          AND ms.period >= $1
+          AND ms.period <= $2
+          AND ${buildClientCondition(3)}
+      ) AS "hasMetaCampaigns"
+    `, [startDate.slice(0, 7), endDate.slice(0, 7), clientId])
+
+    effectivePlatforms = ['google_ads']
+    if (hasMetaCampaigns?.hasMetaCampaigns) {
+      effectivePlatforms.push('meta')
+    }
+  }
+  if (runningOnly && effectivePlatforms && effectivePlatforms.length > 0) {
+    const normalized = effectivePlatforms.map((p) => p.trim()).filter(Boolean)
+    if (normalized.length > 0) {
+      effectivePlatforms.splice(0, effectivePlatforms.length, ...normalized)
+    }
+  }
+
+  const leadPlatforms = effectivePlatforms
+    ?.map((p) => (p === 'google_ads' ? 'google' : p === 'meta' ? 'meta' : null))
+    .filter((p): boolean => Boolean(p))
+    .map((p) => p as string)
 
   // Build WHERE — match via direct client_id, social_connections.client_id, or ad_account_client_map
   const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2', buildClientCondition(3)]
   const params: unknown[] = [startDate.slice(0, 7), endDate.slice(0, 7), clientId]
   let idx = 4
 
-  if (platforms && platforms.length > 0) {
+  if (effectivePlatforms && effectivePlatforms.length > 0) {
     conditions.push(`ms.platform = ANY($${idx})`)
-    params.push(platforms)
+    params.push(effectivePlatforms)
+    idx++
+  }
+  if (runningOnly && effectivePlatforms && effectivePlatforms.length > 0) {
+    params.push(['ACTIVE', 'ENABLED', 'DELIVERING', 'RUNNING'].map((s) => s.toUpperCase()))
+    conditions.push(`(
+      (ms.end_date IS NULL OR ms.end_date >= CURRENT_DATE)
+      AND (
+        ms.campaign_status IS NULL
+        OR UPPER(ms.campaign_status) = ANY($${idx}::text[])
+      )
+    )`)
     idx++
   }
 
@@ -73,9 +139,20 @@ export default defineEventHandler(async (event) => {
     const prevConditions: string[] = ['ms.period >= $1', 'ms.period <= $2', buildClientCondition(3)]
     const prevParams: unknown[] = [prevStart.toISOString().slice(0, 7), prevEnd.toISOString().slice(0, 7), clientId]
     let prevIdx = 4
-    if (platforms && platforms.length > 0) {
+    if (effectivePlatforms && effectivePlatforms.length > 0) {
       prevConditions.push(`ms.platform = ANY($${prevIdx})`)
-      prevParams.push(platforms)
+      prevParams.push(effectivePlatforms)
+      prevIdx++
+    }
+    if (runningOnly && effectivePlatforms && effectivePlatforms.length > 0) {
+      prevParams.push(['ACTIVE', 'ENABLED', 'DELIVERING', 'RUNNING'].map((s) => s.toUpperCase()))
+      prevConditions.push(`(
+        (ms.end_date IS NULL OR ms.end_date >= CURRENT_DATE)
+        AND (
+          ms.campaign_status IS NULL
+          OR UPPER(ms.campaign_status) = ANY($${prevIdx}::text[])
+        )
+      )`)
       prevIdx++
     }
 
@@ -98,9 +175,12 @@ export default defineEventHandler(async (event) => {
       PORTAL_VISIBLE_LEADS_EXISTS
     ]
     const leadParams: unknown[] = [clientId, startDate, endDate]
-    if (platforms && platforms.length > 0) {
+    if (effectivePlatforms && effectivePlatforms.length > 0) {
       leadConditions.push(`${leadPlatformForSourceSql('l')} = ANY($4)`)
-      leadParams.push(platforms)
+      leadParams.push(effectivePlatforms)
+    } else if (runningOnly && leadPlatforms && leadPlatforms.length > 0) {
+      leadConditions.push('l.source = ANY($5)')
+      leadParams.push(leadPlatforms)
     }
 
     const leadRows = await queryRows(`
@@ -143,9 +223,12 @@ export default defineEventHandler(async (event) => {
       prevStart.toISOString().slice(0, 10),
       prevEnd.toISOString().slice(0, 10)
     ]
-    if (platforms && platforms.length > 0) {
+    if (effectivePlatforms && effectivePlatforms.length > 0) {
       prevLeadConditions.push(`${leadPlatformForSourceSql('l')} = ANY($4)`)
-      prevLeadParams.push(platforms)
+      prevLeadParams.push(effectivePlatforms)
+    } else if (runningOnly && leadPlatforms && leadPlatforms.length > 0) {
+      prevLeadConditions.push('l.source = ANY($5)')
+      prevLeadParams.push(leadPlatforms)
     }
 
     const prevLeadRows = await queryRows(`

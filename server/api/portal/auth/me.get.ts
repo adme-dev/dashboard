@@ -52,7 +52,8 @@ export default defineEventHandler(async (event) => {
       client: {
         id: clientUser.clientId,
         name: clientUser.clientName,
-        logo: clientUser.clientLogo
+        logo: clientUser.clientLogo,
+        leadCaptureMode: clientUser.leadCaptureMode
       },
       stats: {
         pendingApprovals: Number(pendingApprovals?.count || 0),

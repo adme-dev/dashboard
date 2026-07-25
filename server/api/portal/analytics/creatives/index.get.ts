@@ -8,6 +8,7 @@ import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
+import { requestCampaignDetailRefresh } from '~~/server/utils/campaignDetailCache'
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -31,6 +32,10 @@ export default defineEventHandler(async (event) => {
     if (!spend) {
       throw createError({ statusCode: 404, statusMessage: 'Campaign not found' })
     }
+    const supportsCreatives = ['meta', 'google_ads'].includes(spend.platform)
+    const cache = supportsCreatives
+      ? await requestCampaignDetailRefresh(event, campaignId, 'creatives')
+      : null
 
     const rows = await queryRows<{
       id: string
@@ -60,6 +65,7 @@ export default defineEventHandler(async (event) => {
     return {
       creatives,
       hasCreatives: creatives.length > 0,
+      cache,
     }
   } catch (error: any) {
     if (error.statusCode) throw error

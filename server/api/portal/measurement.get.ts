@@ -1,11 +1,76 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
+import { MeasurementError } from '~~/server/utils/measurement/errors'
 import { buildPortalMeasurementHealth, type PortalMeasurementAggregateRow } from '~~/server/utils/measurement/portalHealth'
 import {
   createMeasurementDestinationRuntime,
   createMeasurementProfileRuntime,
   createMeasurementReadRuntime
 } from '~~/server/utils/measurement/runtime'
+
+const FALLBACK_PROFILE_ID = '00000000-0000-0000-0000-000000000000'
+
+function isMeasurementNotFound(error: unknown): error is MeasurementError {
+  return (
+    error instanceof Error
+    && (error as { code?: string }).code === 'MEASUREMENT_NOT_FOUND'
+  )
+}
+
+function onboardingProfileFallback() {
+  return {
+    enabled: false,
+    environment: 'test' as const,
+    collectionTier: 'cloudflare_owned' as const,
+    consentMode: 'off' as const,
+    outcomeAuthority: 'zero_native' as const
+  }
+}
+
+function onboardingReadinessFallback(
+  clientId: string,
+  profile: {
+    id?: string | null
+    enabled?: boolean
+    environment?: 'test' | 'live' | 'paused'
+    cacheStatus?: 'not_published' | 'fresh' | 'stale' | 'error'
+    outcomeAuthority?: 'zero_native' | 'client_webhook' | 'connector_sync' | 'manual_import'
+  }
+) {
+  return {
+    clientId,
+    profileId: profile.id ?? FALLBACK_PROFILE_ID,
+    configVersion: 1,
+    status: 'onboarding' as const,
+    liveEligible: false,
+    approvals: { privacy: false, live: false },
+    profile: {
+      enabled: profile.enabled ?? false,
+      environment: profile.environment ?? 'test',
+      cacheStatus: profile.cacheStatus ?? 'not_published',
+      outcomeAuthority: profile.outcomeAuthority ?? 'zero_native'
+    },
+    counts: {
+      destinations: 0,
+      readyDestinations: 0,
+      degradedDestinations: 0,
+      blockedDestinations: 0,
+      capabilities: 0,
+      readyCapabilities: 0,
+      degradedCapabilities: 0,
+      blockedCapabilities: 0,
+      activeMappings: 0,
+      outcomeEndpoints: 0,
+      readyOutcomeEndpoints: 0
+    },
+    blockers: [{
+      code: 'no_destinations' as const,
+      message: 'Measurement profile has not finished onboarding.'
+    }],
+    lastValidatedAt: null,
+    lastSuccessAt: null
+  }
+}
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -15,9 +80,15 @@ export default defineEventHandler(async (event) => {
   const readService = createMeasurementReadRuntime()
   const destinationService = createMeasurementDestinationRuntime(event)
 
-  const [profile, readiness, destinationResult, aggregate] = await Promise.all([
-    profileService.get(clientId),
-    readService.getReadiness(clientId),
+  const [profileResult, readinessResult, destinationResult, aggregate] = await Promise.all([
+    profileService.get(clientId).catch((error: unknown) => {
+      if (isMeasurementNotFound(error)) return null
+      throw error
+    }),
+    readService.getReadiness(clientId).catch((error: unknown) => {
+      if (isMeasurementNotFound(error)) return null
+      throw error
+    }),
     destinationService.list({ clientId, page: 1, pageSize: 100 }),
     queryOne<PortalMeasurementAggregateRow>(
       `WITH delivery AS (
@@ -57,6 +128,15 @@ export default defineEventHandler(async (event) => {
       [clientId]
     )
   ])
+
+  const profile = profileResult ?? onboardingProfileFallback()
+  const readiness = readinessResult ?? onboardingReadinessFallback(clientId, profileResult ? {
+    id: profileResult.id,
+    enabled: profileResult.enabled,
+    environment: profileResult.environment,
+    cacheStatus: profileResult.cacheStatus,
+    outcomeAuthority: profileResult.outcomeAuthority
+  } : {})
 
   return buildPortalMeasurementHealth({
     profile,

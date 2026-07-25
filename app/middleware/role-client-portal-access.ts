@@ -13,7 +13,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo({ path: '/auth/login', query: { redirect: to.fullPath } })
   }
 
-  if (!hasRole(PERMISSIONS.CLIENTS) && !hasRole(PERMISSIONS.MEDIA_BUYING)) {
+  if (
+    user.value.role !== 'super_admin' &&
+    !hasRole(PERMISSIONS.ADMIN) &&
+    !hasRole(PERMISSIONS.CLIENTS) &&
+    !hasRole(PERMISSIONS.MEDIA_BUYING)
+  ) {
     return navigateTo({ path: '/agency', query: { error: 'no-client-portal-access' } })
   }
 })

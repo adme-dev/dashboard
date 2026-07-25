@@ -22,14 +22,36 @@ export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
   const clientId = clientUser.clientId
 
+  const safeQuery = async <T>(label: string, fallback: T, fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn()
+    } catch (error) {
+      console.warn(`[portal-dashboard] ${label} failed`, error)
+      return fallback
+    }
+  }
+
   try {
-    const client = await queryOne(`
+    const client = await safeQuery('client', {
+      id: null,
+      name: null,
+      logo_url: null,
+      is_active: false,
+      billing_type: null,
+      retainer_amount: null,
+      created_at: null
+    }, async () => queryOne(`
       SELECT id, name, logo_url, is_active, billing_type, retainer_amount, created_at
       FROM agency_clients
       WHERE id = $1
-    `, [clientId])
+    `, [clientId]))
 
-    const projectStats = await queryOne(`
+    const projectStats = await safeQuery('projectStats', {
+      total: 0,
+      active: 0,
+      completed: 0,
+      on_hold: 0
+    }, async () => queryOne(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
@@ -37,9 +59,9 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status = 'on_hold' THEN 1 END) as on_hold
       FROM projects
       WHERE client_id = $1
-    `, [clientId])
+    `, [clientId]))
 
-    const activeProjects = await queryRows(`
+    const activeProjects = await safeQuery('activeProjects', [], async () => queryRows(`
       SELECT
         p.id,
         p.name,
@@ -62,9 +84,9 @@ export default defineEventHandler(async (event) => {
       WHERE p.client_id = $1 AND p.status = 'active'
       ORDER BY p.due_date ASC NULLS LAST
       LIMIT 10
-    `, [clientId])
+    `, [clientId]))
 
-    const upcomingJobs = await queryRows(`
+    const upcomingJobs = await safeQuery('upcomingJobs', [], async () => queryRows(`
       SELECT
         p.id,
         p.name,
@@ -90,9 +112,9 @@ export default defineEventHandler(async (event) => {
         p.start_date ASC NULLS LAST,
         p.created_at DESC
       LIMIT 6
-    `, [clientId])
+    `, [clientId]))
 
-    const completedJobs = await queryRows(`
+    const completedJobs = await safeQuery('completedJobs', [], async () => queryRows(`
       SELECT
         p.id,
         p.name,
@@ -118,9 +140,9 @@ export default defineEventHandler(async (event) => {
         p.updated_at DESC,
         p.created_at DESC
       LIMIT 6
-    `, [clientId])
+    `, [clientId]))
 
-    const pendingApprovals = await queryRows(`
+    const pendingApprovals = await safeQuery('pendingApprovals', [], async () => queryRows(`
       SELECT
         ca.id,
         ca.approval_type,
@@ -135,9 +157,9 @@ export default defineEventHandler(async (event) => {
       WHERE p.client_id = $1 AND ca.status = 'pending'
       ORDER BY ca.due_date ASC NULLS LAST, ca.requested_at DESC
       LIMIT 5
-    `, [clientId])
+    `, [clientId]))
 
-    const recentDeliverables = await queryRows(`
+    const recentDeliverables = await safeQuery('recentDeliverables', [], async () => queryRows(`
       SELECT
         cd.id,
         cd.title,
@@ -151,9 +173,15 @@ export default defineEventHandler(async (event) => {
       WHERE cd.client_id = $1 AND cd.is_visible_to_client = true
       ORDER BY cd.published_at DESC NULLS LAST, cd.created_at DESC
       LIMIT 8
-    `, [clientId])
+    `, [clientId]))
 
-    const invoiceStats = await queryOne(`
+    const invoiceStats = await safeQuery('invoiceStats', {
+      total: 0,
+      paid: 0,
+      outstanding: 0,
+      total_paid: 0,
+      total_outstanding: 0
+    }, async () => queryOne(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid,
@@ -162,17 +190,17 @@ export default defineEventHandler(async (event) => {
         COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) as total_outstanding
       FROM invoices
       WHERE client_id = $1
-    `, [clientId])
+    `, [clientId]))
 
-    const outstandingInvoices = await queryRows(`
+    const outstandingInvoices = await safeQuery('outstandingInvoices', [], async () => queryRows(`
       SELECT id, invoice_number, total_amount, amount_paid, due_date, status
       FROM invoices
       WHERE client_id = $1 AND status IN ('sent', 'overdue')
       ORDER BY due_date ASC
       LIMIT 5
-    `, [clientId])
+    `, [clientId]))
 
-    const recentActivity = await queryRows(`
+    const recentActivity = await safeQuery('recentActivity', [], async () => queryRows(`
       SELECT
         cal.id,
         cal.action,
@@ -186,10 +214,17 @@ export default defineEventHandler(async (event) => {
       WHERE cal.client_id = $1
       ORDER BY cal.created_at DESC
       LIMIT 10
-    `, [clientId])
+    `, [clientId]))
 
     // Open client requests
-    const requestStats = await queryOne(`
+    const requestStats = await safeQuery('requestStats', {
+      total: 0,
+      submitted: 0,
+      needs_review: 0,
+      in_progress: 0,
+      open: 0,
+      resolved: 0
+    }, async () => queryOne(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'submitted' THEN 1 END) as submitted,
@@ -199,9 +234,9 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status IN ('completed', 'closed') THEN 1 END) as resolved
       FROM client_requests
       WHERE client_id = $1
-    `, [clientId])
+    `, [clientId]))
 
-    const recentRequests = await queryRows(`
+    const recentRequests = await safeQuery('recentRequests', [], async () => queryRows(`
       SELECT
         cr.id,
         cr.request_type,
@@ -217,10 +252,10 @@ export default defineEventHandler(async (event) => {
         CASE cr.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
         cr.created_at DESC
       LIMIT 5
-    `, [clientId])
+    `, [clientId]))
 
     // Team members (project managers on active projects)
-    const teamMembers = await queryRows(`
+    const teamMembers = await safeQuery('teamMembers', [], async () => queryRows(`
       SELECT DISTINCT ON (tm.id)
         tm.id,
         tm.name,
@@ -235,59 +270,61 @@ export default defineEventHandler(async (event) => {
       WHERE p.client_id = $1 AND p.status = 'active'
       ORDER BY tm.id
       LIMIT 5
-    `, [clientId])
+    `, [clientId]))
 
-    await ensureOfficeMeetingArtifactsTables()
-    await ensureOfficeRecordingsTables()
+    const meetings = await safeQuery('meetings', [], async () => {
+      await ensureOfficeMeetingArtifactsTables()
+      await ensureOfficeRecordingsTables()
 
-    const meetings = await queryRows(`
-      SELECT
-        oms.id,
-        oms.office_id,
-        o.name AS office_name,
-        oms.title,
-        oms.status,
-        oms.source,
-        oms.started_at,
-        oms.ended_at,
-        oms.created_at,
-        oms.consent #>> '{setup,scheduled_start_at}' AS scheduled_start_at,
-        oms.consent #>> '{setup,duration_minutes}' AS duration_minutes,
-        oz.name AS zone_name,
-        oz.slug AS zone_slug,
-        COALESCE(recording_summary.ready_recording_count, 0)::int AS ready_recording_count,
-        recording_summary.latest_recording_token
-      FROM office_members om
-      JOIN offices o ON o.id = om.office_id
-      JOIN office_meeting_sessions oms ON oms.office_id = om.office_id
-      LEFT JOIN office_zones oz ON oz.id = oms.zone_id
-      LEFT JOIN LATERAL (
+      return queryRows(`
         SELECT
-          COUNT(*) FILTER (WHERE status = 'ready')::int AS ready_recording_count,
-          (ARRAY_AGG(share_token ORDER BY created_at DESC) FILTER (WHERE status = 'ready' AND share_token IS NOT NULL))[1] AS latest_recording_token
-        FROM office_recordings
-        WHERE meeting_session_id = oms.id
-          AND status <> 'archived'
-      ) recording_summary ON TRUE
-      WHERE om.client_user_id = $1
-        AND oms.status <> 'cancelled'
-      ORDER BY
-        CASE
-          WHEN oms.status = 'live' THEN 0
-          WHEN oms.status = 'planned' THEN 1
-          ELSE 2
-        END ASC,
-        CASE
-          WHEN oms.status IN ('live', 'planned')
-           AND (oms.consent #>> '{setup,scheduled_start_at}') ~ '^\\d{4}-\\d{2}-\\d{2}T'
-          THEN (oms.consent #>> '{setup,scheduled_start_at}')::timestamptz
-          ELSE NULL
-        END ASC NULLS LAST,
-        oms.created_at DESC
-      LIMIT 6
-    `, [clientUser.id])
+          oms.id,
+          oms.office_id,
+          o.name AS office_name,
+          oms.title,
+          oms.status,
+          oms.source,
+          oms.started_at,
+          oms.ended_at,
+          oms.created_at,
+          oms.consent #>> '{setup,scheduled_start_at}' AS scheduled_start_at,
+          oms.consent #>> '{setup,duration_minutes}' AS duration_minutes,
+          oz.name AS zone_name,
+          oz.slug AS zone_slug,
+          COALESCE(recording_summary.ready_recording_count, 0)::int AS ready_recording_count,
+          recording_summary.latest_recording_token
+        FROM office_members om
+        JOIN offices o ON o.id = om.office_id
+        JOIN office_meeting_sessions oms ON oms.office_id = om.office_id
+        LEFT JOIN office_zones oz ON oz.id = oms.zone_id
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*) FILTER (WHERE status = 'ready')::int AS ready_recording_count,
+            (ARRAY_AGG(share_token ORDER BY created_at DESC) FILTER (WHERE status = 'ready' AND share_token IS NOT NULL))[1] AS latest_recording_token
+          FROM office_recordings
+          WHERE meeting_session_id = oms.id
+            AND status <> 'archived'
+        ) recording_summary ON TRUE
+        WHERE om.client_user_id = $1
+          AND oms.status <> 'cancelled'
+        ORDER BY
+          CASE
+            WHEN oms.status = 'live' THEN 0
+            WHEN oms.status = 'planned' THEN 1
+            ELSE 2
+          END ASC,
+          CASE
+            WHEN oms.status IN ('live', 'planned')
+             AND (oms.consent #>> '{setup,scheduled_start_at}') ~ '^\\d{4}-\\d{2}-\\d{2}T'
+            THEN (oms.consent #>> '{setup,scheduled_start_at}')::timestamptz
+            ELSE NULL
+          END ASC NULLS LAST,
+          oms.created_at DESC
+        LIMIT 6
+      `, [clientUser.id])
+    })
 
-    const upcomingDeadlines = await queryRows(`
+    const upcomingDeadlines = await safeQuery('upcomingDeadlines', [], async () => queryRows(`
       SELECT
         t.id,
         t.title,
@@ -304,9 +341,15 @@ export default defineEventHandler(async (event) => {
         AND t.status_is_final = false
       ORDER BY t.due_date ASC
       LIMIT 10
-    `, [clientId])
+    `, [clientId]))
 
-    const bookedJobHealth = await queryOne(`
+    const bookedJobHealth = await safeQuery('bookedJobHealth', {
+      active_jobs: 0,
+      overdue_jobs: 0,
+      due_soon_jobs: 0,
+      completed_last_30: 0,
+      next_due_date: null
+    }, async () => queryOne(`
       SELECT
         COUNT(*) FILTER (WHERE p.status = 'active') AS active_jobs,
         COUNT(*) FILTER (
@@ -329,29 +372,46 @@ export default defineEventHandler(async (event) => {
         ) AS next_due_date
       FROM projects p
       WHERE p.client_id = $1
-    `, [clientId])
+    `, [clientId]))
 
     const billingHealth = clientUser.permissions.canViewInvoices
-      ? await queryOne(`
-        SELECT
-          COUNT(*) FILTER (WHERE status IN ('sent', 'overdue')) AS outstanding_count,
-          COUNT(*) FILTER (
-            WHERE status = 'overdue'
-              OR (status = 'sent' AND due_date < CURRENT_DATE)
-          ) AS overdue_count,
-          COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) AS outstanding_amount,
-          COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN total_amount - amount_paid ELSE 0 END), 0) AS aged_60_amount,
-          COUNT(*) FILTER (WHERE status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days') AS aged_60_count,
-          COALESCE(SUM(CASE WHEN status = 'paid' AND paid_date >= CURRENT_DATE - INTERVAL '90 days' THEN total_amount ELSE 0 END), 0) AS paid_last_90,
-          MAX(paid_date) FILTER (WHERE status = 'paid') AS last_paid_at,
-          MIN(due_date) FILTER (WHERE status IN ('sent', 'overdue')) AS next_due_date
-        FROM invoices
-        WHERE client_id = $1
-      `, [clientId])
+      ? await safeQuery('billingHealth', {
+          outstanding_count: 0,
+          overdue_count: 0,
+          outstanding_amount: 0,
+          aged_60_amount: 0,
+          aged_60_count: 0,
+          paid_last_90: 0,
+          last_paid_at: null,
+          next_due_date: null
+        }, async () => queryOne(`
+          SELECT
+            COUNT(*) FILTER (WHERE status IN ('sent', 'overdue')) AS outstanding_count,
+            COUNT(*) FILTER (
+              WHERE status = 'overdue'
+                OR (status = 'sent' AND due_date < CURRENT_DATE)
+            ) AS overdue_count,
+            COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) AS outstanding_amount,
+            COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN total_amount - amount_paid ELSE 0 END), 0) AS aged_60_amount,
+            COUNT(*) FILTER (WHERE status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days') AS aged_60_count,
+            COALESCE(SUM(CASE WHEN status = 'paid' AND paid_date >= CURRENT_DATE - INTERVAL '90 days' THEN total_amount ELSE 0 END), 0) AS paid_last_90,
+            MAX(paid_date) FILTER (WHERE status = 'paid') AS last_paid_at,
+            MIN(due_date) FILTER (WHERE status IN ('sent', 'overdue')) AS next_due_date
+          FROM invoices
+          WHERE client_id = $1
+        `, [clientId]))
       : null
 
     const campaignHealth = clientUser.permissions.canViewAnalytics
-      ? await queryOne(`
+      ? await safeQuery('campaignHealth', {
+          campaigns: 0,
+          platforms: 0,
+          spend: 0,
+          impressions: 0,
+          clicks: 0,
+          conversions: 0,
+          last_synced_at: null
+        }, async () => queryOne(`
         SELECT
           COUNT(DISTINCT COALESCE(NULLIF(ms.campaign_id, ''), ms.id::text)) AS campaigns,
           COUNT(DISTINCT ms.platform) AS platforms,
@@ -362,12 +422,19 @@ export default defineEventHandler(async (event) => {
           MAX(ms.synced_at) AS last_synced_at
         FROM media_spend ms
         WHERE ${buildClientCondition(1)}
-          AND ms.period >= TO_CHAR(CURRENT_DATE - INTERVAL '90 days', 'YYYY-MM')
-      `, [clientId])
+          AND ms.period::text >= TO_CHAR(CURRENT_DATE - INTERVAL '90 days', 'YYYY-MM')
+      `, [clientId]))
       : null
 
     const leadHealth = clientUser.permissions.canViewAnalytics
-      ? await queryOne(`
+      ? await safeQuery('leadHealth', {
+          visible_leads: 0,
+          leads_last_30: 0,
+          contacted_leads_last_30: 0,
+          uncontacted_leads_last_30: 0,
+          won_leads: 0,
+          avg_response_minutes_last_30: null
+        }, async () => queryOne(`
         SELECT
           COUNT(*) AS visible_leads,
           COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days') AS leads_last_30,
@@ -384,10 +451,15 @@ export default defineEventHandler(async (event) => {
         WHERE l.client_id = $1
           AND l.deleted_at IS NULL
           AND ${PORTAL_VISIBLE_LEADS_EXISTS}
-      `, [clientId])
+      `, [clientId]))
       : null
 
-    const portalAccessHealth = await queryOne(`
+    const portalAccessHealth = await safeQuery('portalAccessHealth', {
+      total_users: 0,
+      active_users: 0,
+      pending_users: 0,
+      last_login_at: null
+    }, async () => queryOne(`
       SELECT
         COUNT(*) AS total_users,
         COUNT(*) FILTER (WHERE status = 'active') AS active_users,
@@ -397,21 +469,38 @@ export default defineEventHandler(async (event) => {
       WHERE client_id = $1
         AND email NOT LIKE '%@portal-access.local'
         AND COALESCE(title, '') <> 'Agency portal access'
-    `, [clientId])
+    `, [clientId]))
 
-    const leadStats = await queryOne(`
+    const leadStats = await safeQuery('leadStats', {
+      total: 0,
+      new: 0,
+      contacted: 0,
+      won: 0
+    }, async () => queryOne(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'new' THEN 1 END) as new,
         COUNT(CASE WHEN status = 'contacted' THEN 1 END) as contacted,
         COUNT(CASE WHEN status = 'won' THEN 1 END) as won
-      FROM leads l
-      WHERE l.client_id = $1
-        AND l.deleted_at IS NULL
-        AND ${PORTAL_VISIBLE_LEADS_EXISTS}
-    `, [clientId])
+        FROM leads l
+        WHERE l.client_id = $1
+          AND l.deleted_at IS NULL
+          AND ${PORTAL_VISIBLE_LEADS_EXISTS}
+    `, [clientId]))
 
-    const contentHealth = await queryOne(`
+    const contentHealth = await safeQuery('contentHealth', {
+      briefs_total: 0,
+      briefs_open: 0,
+      briefs_needs_info: 0,
+      briefs_urgent: 0,
+      briefs_overdue: 0,
+      briefs_submitted_30d: 0,
+      deliverables_visible: 0,
+      deliverables_approved: 0,
+      deliverables_final: 0,
+      deliverables_recent_30d: 0,
+      last_published_at: null
+    }, async () => queryOne(`
       SELECT
         COALESCE(br.briefs_total, 0) AS briefs_total,
         COALESCE(br.briefs_open, 0) AS briefs_open,
@@ -460,9 +549,9 @@ export default defineEventHandler(async (event) => {
         WHERE client_id = $1
         GROUP BY client_id
       ) dl ON dl.client_id = c.client_id
-    `, [clientId])
+    `, [clientId]))
 
-    const recentLeads = await queryRows(`
+    const recentLeads = await safeQuery('recentLeads', [], async () => queryRows(`
       SELECT
         l.id,
         l.source,
@@ -477,7 +566,7 @@ export default defineEventHandler(async (event) => {
         AND ${PORTAL_VISIBLE_LEADS_EXISTS}
       ORDER BY l.submitted_at DESC
       LIMIT 5
-    `, [clientId])
+    `, [clientId]))
 
     return {
       client: {

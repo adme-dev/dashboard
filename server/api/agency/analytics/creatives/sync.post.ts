@@ -5,11 +5,16 @@
  */
 import { requireAuth } from '~~/server/utils/auth'
 import { syncCampaignCreatives } from '~~/server/utils/onDemandSync'
+import { rethrowSyncConfigError } from '~~/server/utils/syncEnvGuards'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const body = await readBody(event)
   if (!body?.campaignId) throw createError({ statusCode: 400, statusMessage: 'campaignId is required' })
 
-  return await syncCampaignCreatives(body.campaignId)
+  try {
+    return await syncCampaignCreatives(body.campaignId)
+  } catch (error: any) {
+    return rethrowSyncConfigError(error, 'Creative sync')
+  }
 })

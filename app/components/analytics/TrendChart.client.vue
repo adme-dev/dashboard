@@ -7,6 +7,7 @@ const props = defineProps<{
   }>
   metric: string
   loading?: boolean
+  resolution?: 'day' | 'week' | 'month'
 }>()
 
 const { getPlatformColor, getPlatformLabel, fmtMetric } = useAnalytics()
@@ -49,6 +50,18 @@ const vbW = marginLeft + chartWidth + marginRight
 const vbH = marginTop + chartHeight + marginBottom
 
 const dayCount = computed(() => (props.data || []).length)
+const chartResolution = computed(() => {
+  if (props.resolution === 'day' || props.resolution === 'week' || props.resolution === 'month') {
+    return props.resolution
+  }
+
+  const data = props.data || []
+  if (!data.length) return 'day'
+  const allMonth = data.every((d) => d.date.length === 7)
+  return allMonth ? 'month' : 'day'
+})
+
+const showResolutionNotice = computed(() => !props.loading && (props.data || []).length <= 1)
 
 // Max value from visible platforms
 const maxValue = computed(() => {
@@ -149,6 +162,9 @@ const hoveredPoint = computed(() => {
       No trend data for selected period
     </div>
     <template v-else>
+      <div v-if="showResolutionNotice" class="text-xs text-muted">
+        Limited trend points in this window (resolution: {{ chartResolution }}). If this window uses monthly data only, connect GA/campaign ingest for day-level trend.
+      </div>
       <svg :viewBox="`0 0 ${vbW} ${vbH}`" class="w-full" preserveAspectRatio="xMidYMid meet">
         <!-- Grid lines -->
         <line

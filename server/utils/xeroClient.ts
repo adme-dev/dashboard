@@ -282,10 +282,38 @@ export async function xeroFetch<T = any>(options: {
 
     if (!response.ok) {
       const text = await response.text().catch(() => '')
-      throw createError({
+      const retryAfter = response.headers.get('Retry-After')
+      let retryAfterMs: number | null = null
+      if (retryAfter) {
+        const trimmed = retryAfter.trim()
+        if (trimmed) {
+          const numeric = Number(trimmed)
+          if (Number.isFinite(numeric) && numeric >= 0) {
+            retryAfterMs = Math.max(Math.round(numeric * 1000), 1_000)
+          } else {
+            const parsed = Date.parse(trimmed)
+            if (Number.isFinite(parsed)) {
+              retryAfterMs = Math.max(parsed - Date.now(), 1_000)
+            }
+          }
+        }
+      }
+      const err = createError({
         statusCode: response.status === 401 ? 401 : response.status === 429 ? 429 : 502,
         statusMessage: `Xero ${method} ${path} failed: ${response.status} ${text.slice(0, 200)}`
       })
+      if (response.status === 429 && retryAfter) {
+        const errData = err.data ?? (err.data = {})
+        if (typeof errData === 'object' && errData) {
+          // Keep retry hint as both raw and normalized value so rate-limit
+          // handlers can schedule a smarter backoff.
+          ;(errData as Record<string, unknown>).retryAfter = retryAfter
+          if (retryAfterMs !== null) {
+            ;(errData as Record<string, unknown>).retryAfterMs = retryAfterMs
+          }
+        }
+      }
+      throw err
     }
 
     const json = await response.json()
