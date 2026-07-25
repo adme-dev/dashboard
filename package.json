@@ -6,7 +6,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "build": "NODE_OPTIONS='--max-old-space-size=16384' nuxt build && node scripts/wrap-worker.mjs",
+    "build": "NODE_OPTIONS='--max-old-space-size=16384' nuxt build && node scripts/wrap-worker.mjs && node scripts/check-worker-size.mjs",
     "dev": "NODE_OPTIONS='--max-old-space-size=16384' nuxt dev",
     "graphify:rebuild": "sh scripts/regenerate-graphify.sh",
     "graphify:upload": "node --env-file=.env scripts/upload-graphify.mjs graphify-out",
@@ -21,6 +21,8 @@
     "deploy:preview": "node scripts/deploy-pages.mjs preview",
     "deploy:production": "node scripts/deploy-pages.mjs main",
     "deploy:check": "node scripts/deploy-pages.mjs main --check-only",
+    "deploy:worker:staging": "node scripts/deploy-worker-staging.mjs",
+    "deploy:worker:staging:check": "node scripts/deploy-worker-staging.mjs --check-only",
     "deploy:workflows": "pnpm --dir workers/agency-workflows run deploy",
     "deploy:workflows:dry-run": "pnpm --dir workers/agency-workflows run deploy:dry-run",
     "deploy:workers": "node scripts/deploy-workers.mjs",
