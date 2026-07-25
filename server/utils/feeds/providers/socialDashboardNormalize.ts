@@ -64,6 +64,7 @@ function num(...vals: unknown[]): number | null {
 
 export function normalizeVehicle(raw: unknown): VehicleSummary {
   const value = asRecord(raw)
+  const vin = firstString(value.vin) || firstString(value.vehicle_vin)
   const image = safeHttpUrl(firstString(value.images)
     || firstString(value.photos)
     || firstString(value.photo_urls)
@@ -74,6 +75,7 @@ export function normalizeVehicle(raw: unknown): VehicleSummary {
     || null)
   return {
     id: String(value.id ?? ''),
+    ...(vin ? { vin } : {}),
     make: String(value.make ?? ''),
     model: String(value.model ?? ''),
     year: num(value.build_year, value.year),

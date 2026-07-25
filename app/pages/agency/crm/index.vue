@@ -27,6 +27,7 @@ const tabItems = [
   { label: 'Tasks', value: 'tasks', icon: 'i-lucide-list-checks' },
   { label: 'Insights', value: 'insights', icon: 'i-lucide-chart-no-axes-column' },
   { label: 'Duplicates', value: 'duplicates', icon: 'i-lucide-copy' },
+  { label: 'Data Sources', value: 'data-sources', icon: 'i-lucide-database-zap' },
   { label: 'Settings', value: 'settings', icon: 'i-lucide-shield' },
 ]
 
@@ -128,6 +129,7 @@ function onSearchSelect(r: { type: string }) {
       <CrmTaskList v-else-if="tab === 'tasks'" :client-id="clientId" show-filters class="max-w-3xl" />
       <CrmInsights v-else-if="tab === 'insights'" :client-id="clientId" />
       <CrmDuplicatesManager v-else-if="tab === 'duplicates'" :client-id="clientId" />
+      <CrmDataSources v-else-if="tab === 'data-sources'" :client-id="clientId" />
       <CrmGovernanceSettings v-else-if="tab === 'settings'" :client-id="clientId" />
       <template v-else-if="tab === 'designer'">
         <div class="space-y-5">

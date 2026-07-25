@@ -22,7 +22,7 @@ const SNAPSHOT_FIELDS = [
   'product_url', 'vehicle_url', 'page_url', 'lead_provider'
 ]
 
-function normalize(type: ProductIdentifierType, value: string): string {
+export function normalizeProductIdentifier(type: ProductIdentifierType, value: string): string {
   const trimmed = value.trim()
   if (type === 'product_url') {
     try {
@@ -40,7 +40,7 @@ export function extractProductInterest(fieldData: Record<string, string>): Extra
   const identifiers: ProductIdentifier[] = []
   for (const [type, aliases] of ALIASES) {
     const value = aliases.map(alias => fieldData[alias]?.trim()).find(Boolean)
-    if (value) identifiers.push({ type, value: normalize(type, value) })
+    if (value) identifiers.push({ type, value: normalizeProductIdentifier(type, value) })
   }
   if (!identifiers.length) return null
   const snapshot: Record<string, string> = {}

@@ -24,6 +24,7 @@ export interface FeedDetail extends FeedSummary {
 
 export interface VehicleSummary {
   id: string
+  vin?: string | null
   make: string
   model: string
   year: number | null
