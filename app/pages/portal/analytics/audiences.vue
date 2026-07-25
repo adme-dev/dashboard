@@ -334,6 +334,8 @@ async function saveAuthorization(action: 'accept' | 'withdraw', provider?: Provi
         </UCard>
       </section>
 
+      <AudienceConsentControl />
+
       <section>
         <div class="mb-3">
           <h2 class="text-lg font-semibold text-default">
