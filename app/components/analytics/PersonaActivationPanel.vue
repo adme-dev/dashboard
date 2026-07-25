@@ -12,6 +12,22 @@ interface ActivationItem {
   liveApprovedBy: string | null
 }
 
+interface ProviderReadiness {
+  provider: 'google_ads' | 'meta'
+  identityEntitlement: string
+  audienceEntitlement: string
+  clientAuthorization: string
+  connectionReady: boolean
+  providerConfigured: boolean
+  termsAccepted: boolean
+  emergencyStopped: boolean
+  globalWritesEnabled: boolean
+  validatedAt: string | null
+  lastError: string | null
+  requestReady: boolean
+  dispatchReady: boolean
+}
+
 const props = defineProps<{
   clientId: string
   startDate: string
@@ -40,8 +56,12 @@ const data = ref<{
       errorMessage: string | null
     }>
   }
+  providerReadiness: ProviderReadiness[]
 } | null>(null)
 const status = ref<'pending' | 'success' | 'error'>('pending')
+const selectedReadiness = computed(() =>
+  data.value?.providerReadiness.find(item => item.provider === provider.value)
+)
 const apiFetch = $fetch as <T = unknown>(
   request: string,
   options?: {
@@ -143,6 +163,10 @@ function statusColor(statusValue: string) {
 function latestExport(requestId: string) {
   return data.value?.providerState?.exports.find(item => item.requestId === requestId)
 }
+
+function readinessColor(ready: boolean) {
+  return ready ? 'success' : 'neutral'
+}
 </script>
 
 <template>
@@ -155,6 +179,51 @@ function latestExport(requestId: string) {
         </p>
       </div>
     </template>
+
+    <div v-if="data?.providerReadiness.length" class="mb-4 grid gap-3 lg:grid-cols-2">
+      <div
+        v-for="item in data.providerReadiness"
+        :key="item.provider"
+        class="rounded-lg border border-default bg-elevated/30 p-3"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-sm font-medium">
+              {{ item.provider === 'google_ads' ? 'Google Ads readiness' : 'Meta readiness' }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              {{ item.dispatchReady ? 'Ready for governed provider dispatch.' : 'Activation prerequisites remain.' }}
+            </p>
+          </div>
+          <UBadge :color="item.dispatchReady ? 'success' : 'warning'" variant="subtle">
+            {{ item.dispatchReady ? 'Dispatch ready' : 'Not ready' }}
+          </UBadge>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-1.5">
+          <UBadge :color="readinessColor(item.identityEntitlement === 'active' || item.identityEntitlement === 'trial' || item.identityEntitlement === 'grace')" variant="subtle" size="xs">
+            Identity {{ item.identityEntitlement }}
+          </UBadge>
+          <UBadge :color="readinessColor(item.audienceEntitlement === 'active' || item.audienceEntitlement === 'trial' || item.audienceEntitlement === 'grace')" variant="subtle" size="xs">
+            Audience {{ item.audienceEntitlement }}
+          </UBadge>
+          <UBadge :color="readinessColor(item.clientAuthorization === 'accepted')" variant="subtle" size="xs">
+            Client {{ item.clientAuthorization }}
+          </UBadge>
+          <UBadge :color="readinessColor(item.connectionReady)" variant="subtle" size="xs">
+            Connection {{ item.connectionReady ? 'ready' : 'required' }}
+          </UBadge>
+          <UBadge :color="readinessColor(item.providerConfigured && item.termsAccepted)" variant="subtle" size="xs">
+            Provider {{ item.providerConfigured && item.termsAccepted ? 'configured' : 'setup required' }}
+          </UBadge>
+          <UBadge :color="readinessColor(item.globalWritesEnabled && !item.emergencyStopped)" variant="subtle" size="xs">
+            Safety {{ item.emergencyStopped ? 'stopped' : item.globalWritesEnabled ? 'enabled' : 'globally paused' }}
+          </UBadge>
+        </div>
+        <p v-if="item.lastError" class="mt-2 text-xs text-error">
+          {{ item.lastError }}
+        </p>
+      </div>
+    </div>
 
     <div class="grid gap-3 md:grid-cols-[160px_minmax(220px,1fr)_auto]">
       <USelect
@@ -170,12 +239,15 @@ function latestExport(requestId: string) {
       <UButton
         icon="i-lucide-shield-check"
         :loading="busy"
-        :disabled="name.trim().length < 3"
+        :disabled="name.trim().length < 3 || !selectedReadiness?.requestReady"
         @click="createRequest"
       >
         Request review
       </UButton>
     </div>
+    <p v-if="selectedReadiness && !selectedReadiness.requestReady" class="mt-2 text-xs text-warning">
+      Persona Identity and the selected provider audience entitlement must be active before review can begin.
+    </p>
 
     <UAlert
       v-if="actionError"
