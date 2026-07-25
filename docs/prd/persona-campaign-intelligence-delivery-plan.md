@@ -59,6 +59,10 @@ Connect website behaviour, confirmed leads, CRM identities, catalog products and
 - [x] Add an immutable, idempotent and payload-minimised usage ledger.
 - [x] Enforce Persona Identity and destination entitlements before audience activation.
 - [x] Expose the effective tenant-scoped entitlement snapshot to the client portal.
+- [x] Add dormant Twilio/Telnyx provider-reference and per-channel routing controls.
+- [x] Add an independently gated receptionist profile with industry, knowledge, evaluation, budget and handoff prerequisites.
+- [x] Add tenant-scoped external MCP client registration using token hashes and append-only audit.
+- [x] Expose fail-closed communications, receptionist and MCP readiness to agency and client portal contexts.
 
 ### Slice 5: Campaign optimisation
 
