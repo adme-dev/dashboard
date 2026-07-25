@@ -334,6 +334,8 @@ async function saveAuthorization(action: 'accept' | 'withdraw', provider?: Provi
         </UCard>
       </section>
 
+      <AudienceExportOperations />
+
       <IdentityHealthPanel />
 
       <AudienceConsentControl />

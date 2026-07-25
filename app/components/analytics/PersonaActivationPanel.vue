@@ -352,5 +352,7 @@ function readinessColor(ready: boolean) {
       CRM do-not-contact settings and manual deactivation are propagated as provider removals.
     </p>
   </UCard>
+  <PersonaExportOperationsPanel />
+
   <PersonaProviderConfiguration />
 </template>
