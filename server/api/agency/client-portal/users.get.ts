@@ -56,6 +56,9 @@ export default defineEventHandler(async (event) => {
         cu.can_view_budgets,
         cu.can_view_analytics,
         cu.can_submit_requests,
+        cu.can_view_crm,
+        cu.can_edit_crm,
+        cu.can_admin_crm,
         cu.last_login_at,
         cu.created_at,
         c.id as client_id,
@@ -96,7 +99,10 @@ export default defineEventHandler(async (event) => {
           canViewTimeEntries: u.can_view_time_entries,
           canViewBudgets: u.can_view_budgets,
           canViewAnalytics: u.can_view_analytics ?? true,
-          canSubmitRequests: u.can_submit_requests ?? true
+          canSubmitRequests: u.can_submit_requests ?? true,
+          canViewCrm: Boolean(u.can_view_crm),
+          canEditCrm: Boolean(u.can_edit_crm),
+          canAdminCrm: Boolean(u.can_admin_crm)
         },
         lastLoginAt: u.last_login_at,
         createdAt: u.created_at,

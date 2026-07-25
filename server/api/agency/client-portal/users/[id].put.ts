@@ -24,6 +24,9 @@ interface UpdateClientUserBody {
     canInviteUsers?: boolean
     canViewAnalytics?: boolean
     canSubmitRequests?: boolean
+    canViewCrm?: boolean
+    canEditCrm?: boolean
+    canAdminCrm?: boolean
   }
   status?: 'active' | 'suspended' | 'deactivated'
   emailNotifications?: boolean
@@ -176,6 +179,21 @@ export default defineEventHandler(async (event) => {
         values.push(p.canSubmitRequests)
         idx++
       }
+      if (p.canViewCrm !== undefined) {
+        fields.push(`can_view_crm = $${idx}`)
+        values.push(p.canViewCrm)
+        idx++
+      }
+      if (p.canEditCrm !== undefined) {
+        fields.push(`can_edit_crm = $${idx}`)
+        values.push(p.canEditCrm)
+        idx++
+      }
+      if (p.canAdminCrm !== undefined) {
+        fields.push(`can_admin_crm = $${idx}`)
+        values.push(p.canAdminCrm)
+        idx++
+      }
     }
 
     if (fields.length === 0) {
@@ -216,7 +234,10 @@ export default defineEventHandler(async (event) => {
           canUploadFiles: user.can_upload_files,
           canInviteUsers: user.can_invite_users,
           canViewAnalytics: user.can_view_analytics ?? true,
-          canSubmitRequests: user.can_submit_requests ?? true
+          canSubmitRequests: user.can_submit_requests ?? true,
+          canViewCrm: Boolean(user.can_view_crm),
+          canEditCrm: Boolean(user.can_edit_crm),
+          canAdminCrm: Boolean(user.can_admin_crm)
         },
         updatedAt: user.updated_at
       }

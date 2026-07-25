@@ -88,6 +88,9 @@ interface PortalUser {
     canViewTimeEntries?: boolean
     canViewAnalytics?: boolean
     canSubmitRequests?: boolean
+    canViewCrm?: boolean
+    canEditCrm?: boolean
+    canAdminCrm?: boolean
   }
   lastLoginAt?: string | null
   status: string
@@ -1257,7 +1260,8 @@ const portalUserModules = (user: PortalUser) => [
   { label: 'Billing', enabled: Boolean(user.permissions?.canViewInvoices) },
   { label: 'Analytics', enabled: Boolean(user.permissions?.canViewAnalytics) },
   { label: 'Approvals', enabled: Boolean(user.permissions?.canApproveWork) },
-  { label: 'Requests', enabled: Boolean(user.permissions?.canSubmitRequests) }
+  { label: 'Requests', enabled: Boolean(user.permissions?.canSubmitRequests) },
+  { label: 'CRM', enabled: Boolean(user.permissions?.canViewCrm) }
 ]
 
 const inviteClientUser = (clientId?: string | null) => {
@@ -1276,7 +1280,10 @@ const accessForm = ref({
     canViewTimeEntries: false,
     canViewBudgets: false,
     canViewAnalytics: true,
-    canSubmitRequests: true
+    canSubmitRequests: true,
+    canViewCrm: true,
+    canEditCrm: false,
+    canAdminCrm: false
   }
 })
 
@@ -1291,7 +1298,10 @@ const editPortalUserAccess = (user: PortalUser) => {
       canViewTimeEntries: Boolean(user.permissions?.canViewTimeEntries),
       canViewBudgets: Boolean(user.permissions?.canViewBudgets),
       canViewAnalytics: user.permissions?.canViewAnalytics !== false,
-      canSubmitRequests: user.permissions?.canSubmitRequests !== false
+      canSubmitRequests: user.permissions?.canSubmitRequests !== false,
+      canViewCrm: Boolean(user.permissions?.canViewCrm),
+      canEditCrm: Boolean(user.permissions?.canEditCrm),
+      canAdminCrm: Boolean(user.permissions?.canAdminCrm)
     }
   }
   showAccessModal.value = true
@@ -1493,7 +1503,10 @@ const inviteForm = ref({
     canViewTimeEntries: false,
     canViewBudgets: false,
     canViewAnalytics: true,
-    canSubmitRequests: true
+    canSubmitRequests: true,
+    canViewCrm: true,
+    canEditCrm: false,
+    canAdminCrm: false
   }
 })
 const invitePermissionPresets = [
@@ -1508,7 +1521,10 @@ const invitePermissionPresets = [
       canViewTimeEntries: false,
       canViewBudgets: true,
       canViewAnalytics: true,
-      canSubmitRequests: true
+      canSubmitRequests: true,
+      canViewCrm: true,
+      canEditCrm: false,
+      canAdminCrm: false
     }
   },
   {
@@ -1522,7 +1538,10 @@ const invitePermissionPresets = [
       canViewTimeEntries: false,
       canViewBudgets: false,
       canViewAnalytics: true,
-      canSubmitRequests: true
+      canSubmitRequests: true,
+      canViewCrm: true,
+      canEditCrm: true,
+      canAdminCrm: false
     }
   },
   {
@@ -1536,7 +1555,10 @@ const invitePermissionPresets = [
       canViewTimeEntries: false,
       canViewBudgets: true,
       canViewAnalytics: false,
-      canSubmitRequests: false
+      canSubmitRequests: false,
+      canViewCrm: false,
+      canEditCrm: false,
+      canAdminCrm: false
     }
   }
 ]
@@ -1730,7 +1752,10 @@ const resetInviteForm = () => {
       canViewTimeEntries: false,
       canViewBudgets: false,
       canViewAnalytics: true,
-      canSubmitRequests: true
+      canSubmitRequests: true,
+      canViewCrm: true,
+      canEditCrm: false,
+      canAdminCrm: false
     }
   }
 }
@@ -3925,6 +3950,30 @@ const enterpriseRollout = [
                   <p class="text-[12px] text-[var(--ui-text-muted)]">Create briefs and portal requests.</p>
                 </div>
               </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canViewCrm" />
+                <div>
+                  <span class="text-[13px] font-medium">View CRM</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">View contacts, opportunities, activities, and pipeline data.</p>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canEditCrm" />
+                <div>
+                  <span class="text-[13px] font-medium">Edit CRM</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">Create and update CRM records.</p>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canAdminCrm" />
+                <div>
+                  <span class="text-[13px] font-medium">Administer CRM</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">Delete, import, export, configure fields, and manage integrations.</p>
+                </div>
+              </label>
             </div>
           </fieldset>
         </form>
@@ -4075,6 +4124,30 @@ const enterpriseRollout = [
               <div>
                 <span class="text-[13px] font-medium">Requests</span>
                 <p class="text-[12px] text-[var(--ui-text-muted)]">Submit job requests, briefs, and support tickets.</p>
+              </div>
+            </label>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canViewCrm" />
+              <div>
+                <span class="text-[13px] font-medium">View CRM</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">View contacts, opportunities, activities, and pipeline data.</p>
+              </div>
+            </label>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canEditCrm" />
+              <div>
+                <span class="text-[13px] font-medium">Edit CRM</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">Create and update CRM records.</p>
+              </div>
+            </label>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canAdminCrm" />
+              <div>
+                <span class="text-[13px] font-medium">Administer CRM</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">Delete, bulk change, import, export, and configure CRM.</p>
               </div>
             </label>
           </fieldset>

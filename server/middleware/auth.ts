@@ -20,6 +20,9 @@ const publicRoutes = [
   // run for these, or portal users (who never get an auth_token) get 401'd.
   // rbac.ts already exempts the same prefix for the read-only-role gate.
   '/api/portal/',
+  // Client CRM has the same client-session boundary. Every route under this
+  // prefix is additionally gated by 04-client-crm-access.ts.
+  '/api/client-portal/crm/',
   '/api/office/_internal/',
   '/api/public/office-lobby',
   // Public email-marketing surfaces (Phase 4) — unsubscribe / subscribe /

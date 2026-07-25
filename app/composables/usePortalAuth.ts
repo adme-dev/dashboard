@@ -27,7 +27,7 @@ interface PortalAuthMeResponse {
     id: string
     name: string
     logo?: string | null
-    leadCaptureMode: 'analytics_only' | 'capture_only' | 'full_crm'
+    leadCaptureMode: 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm'
   }
   stats: PortalStats
 }

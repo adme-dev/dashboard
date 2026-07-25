@@ -20,7 +20,7 @@ export interface ServerClientUser {
   clientId: string
   clientName: string
   clientLogo: string | null
-  leadCaptureMode: 'analytics_only' | 'capture_only' | 'full_crm'
+  leadCaptureMode: 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm'
   notificationPreferences: Record<string, boolean>
   timezone: string
   permissions: {
@@ -34,10 +34,16 @@ export interface ServerClientUser {
     canInviteUsers: boolean
     canViewAnalytics: boolean
     canSubmitRequests: boolean
+    canViewCrm: boolean
+    canEditCrm: boolean
+    canAdminCrm: boolean
   }
 }
 
 export async function requireClientAuth(event: H3Event): Promise<ServerClientUser> {
+  const cached = (event.context as { clientPortalUser?: ServerClientUser }).clientPortalUser
+  if (cached) return cached
+
   const sessionToken = getCookie(event, 'client_session_token')
 
   if (!sessionToken) {
@@ -102,6 +108,9 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       cu.can_invite_users,
       cu.can_view_analytics,
       cu.can_submit_requests,
+      cu.can_view_crm,
+      cu.can_edit_crm,
+      cu.can_admin_crm,
       cu.notification_preferences,
       cu.timezone,
       cu.status,
@@ -121,7 +130,7 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
     })
   }
 
-  return {
+  const authenticatedUser: ServerClientUser = {
     id: user.id,
     email: user.email,
     name: user.name,
@@ -147,7 +156,12 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       canUploadFiles: user.can_upload_files,
       canInviteUsers: user.can_invite_users,
       canViewAnalytics: user.can_view_analytics ?? true,
-      canSubmitRequests: user.can_submit_requests ?? true
+      canSubmitRequests: user.can_submit_requests ?? true,
+      canViewCrm: Boolean(user.can_view_crm),
+      canEditCrm: Boolean(user.can_edit_crm),
+      canAdminCrm: Boolean(user.can_admin_crm)
     }
   }
+  ;(event.context as { clientPortalUser?: ServerClientUser }).clientPortalUser = authenticatedUser
+  return authenticatedUser
 }

@@ -28,6 +28,9 @@ const analyticsMenuOpen = computed(() =>
   route.path === '/portal/analytics' || route.path.startsWith('/portal/analytics/')
 )
 const leadCaptureMode = computed(() => user.value?.leadCaptureMode || 'capture_only')
+const canViewCrm = computed(() =>
+  Boolean(user.value?.isPrimaryContact || user.value?.permissions?.canViewCrm)
+)
 
 const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/portal', exact: true, onSelect: close },
@@ -44,7 +47,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   ...(leadCaptureMode.value !== 'analytics_only'
     ? [{ label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close }]
     : []),
-  ...(leadCaptureMode.value === 'full_crm'
+  ...(['lightweight_crm', 'full_crm'].includes(leadCaptureMode.value) && canViewCrm.value
     ? [{ label: 'CRM', icon: 'i-lucide-contact', to: '/portal/crm', onSelect: close }]
     : []),
   { label: 'Measurement', icon: 'i-lucide-activity', to: '/portal/measurement', onSelect: close },

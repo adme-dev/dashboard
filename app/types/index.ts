@@ -1383,7 +1383,7 @@ export interface ClientUser {
   clientId: string
   clientName: string
   clientLogo?: string
-  leadCaptureMode: 'analytics_only' | 'capture_only' | 'full_crm'
+  leadCaptureMode: 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm'
   permissions: ClientPermissions
   notificationPreferences: Record<string, boolean>
   timezone: string
@@ -1400,6 +1400,9 @@ export interface ClientPermissions {
   canInviteUsers: boolean
   canViewAnalytics: boolean
   canSubmitRequests: boolean
+  canViewCrm: boolean
+  canEditCrm: boolean
+  canAdminCrm: boolean
 }
 
 // ============================================
