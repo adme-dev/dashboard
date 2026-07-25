@@ -160,9 +160,9 @@ export default defineEventHandler(async event => {
        AND settings.provider = request.provider
       LEFT JOIN LATERAL (
         SELECT status, successful_additions, successful_removals, completed_at, error_message
-        FROM crm_persona_audience_exports
-        WHERE request_id = request.id
-        ORDER BY created_at DESC
+        FROM crm_persona_audience_exports export
+        WHERE export.request_id = request.id
+        ORDER BY export.queued_at DESC
         LIMIT 1
       ) latest_export ON true
       WHERE request.client_id = $1

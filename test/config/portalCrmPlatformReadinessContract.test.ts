@@ -42,4 +42,12 @@ describe('portal CRM enterprise readiness surface', () => {
       expect(platform).toContain(`key: '${feature}'`)
     }
   })
+
+  it('keeps the portal audience export lookup unambiguous', () => {
+    const endpoint = source('server/api/portal/analytics/audiences.get.ts')
+
+    expect(endpoint).toContain('FROM crm_persona_audience_exports export')
+    expect(endpoint).toContain('ORDER BY export.queued_at DESC')
+    expect(endpoint).not.toContain('ORDER BY created_at DESC')
+  })
 })
