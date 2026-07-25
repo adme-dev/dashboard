@@ -49,7 +49,8 @@ describe('first-party lead intake', () => {
       appendBrowserConfirmation: vi.fn(async () => true),
       completeIntentMatch: vi.fn(),
       linkIdentity: vi.fn(),
-      captureProductInterest: vi.fn()
+      captureProductInterest: vi.fn(),
+      recordPersonaEvidence: vi.fn()
     })
 
     const result = await service.ingest(input())
@@ -86,7 +87,8 @@ describe('first-party lead intake', () => {
       appendBrowserConfirmation: vi.fn(async () => false),
       completeIntentMatch: vi.fn(),
       linkIdentity: vi.fn(),
-      captureProductInterest: vi.fn()
+      captureProductInterest: vi.fn(),
+      recordPersonaEvidence: vi.fn()
     })
 
     await expect(service.ingest(input())).resolves.toEqual({ status: 'duplicate' })
@@ -102,7 +104,8 @@ describe('first-party lead intake', () => {
       appendBrowserConfirmation: vi.fn(async () => false),
       completeIntentMatch: vi.fn(),
       linkIdentity: vi.fn(),
-      captureProductInterest: vi.fn()
+      captureProductInterest: vi.fn(),
+      recordPersonaEvidence: vi.fn()
     })
     const metaInput = input()
     metaInput.lead.source = 'meta'

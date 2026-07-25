@@ -55,7 +55,10 @@ function fingerprintKey(): string {
     .digest('hex')
 }
 
-function fingerprint(kind: 'email' | 'phone', value: string): string {
+export function fingerprintLeadIdentityKey(
+  kind: 'email' | 'phone' | 'browser' | 'provider',
+  value: string
+): string {
   return createHmac('sha256', fingerprintKey())
     .update(`${kind}:${value}`)
     .digest('hex')
@@ -72,8 +75,8 @@ export function fingerprintLeadIdentity(input: {
     ? normalizePhoneE164(input.phone)
     : ''
   return {
-    emailFingerprint: email ? fingerprint('email', email) : null,
-    phoneFingerprint: phone ? fingerprint('phone', phone) : null
+    emailFingerprint: email ? fingerprintLeadIdentityKey('email', email) : null,
+    phoneFingerprint: phone ? fingerprintLeadIdentityKey('phone', phone) : null
   }
 }
 

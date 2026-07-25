@@ -17,6 +17,10 @@ const tabItems = [
   { label: 'Tasks', value: 'tasks', icon: 'i-lucide-list-checks' },
   { label: 'Data Sources', value: 'data-sources', icon: 'i-lucide-database-zap' },
 ]
+const { data: personaData } = useFetch<{ enabled: boolean }>(
+  '/api/client-portal/crm/personas/status',
+  { key: 'portal-crm-personas-status' }
+)
 const canManageDataSources = computed(() =>
   Boolean(user.value?.isPrimaryContact || user.value?.permissions?.canInviteUsers)
 )
@@ -25,6 +29,9 @@ const canManageDataSources = computed(() =>
 const { objects } = useCrmObjectDefs(clientId)
 const allTabs = computed(() => [
   ...tabItems,
+  ...(personaData.value?.enabled
+    ? [{ label: 'Personas', value: 'personas', icon: 'i-lucide-contact-round' }]
+    : []),
   ...objects.value.map(o => ({ label: o.label_plural, value: `obj:${o.key}`, icon: o.icon || 'i-lucide-box' })),
 ])
 const activeObject = computed<CrmObjectDef | null>(() =>
@@ -52,6 +59,7 @@ const activeObject = computed<CrmObjectDef | null>(() =>
         api-base="/api/client-portal/crm/data-sources"
         :can-manage="canManageDataSources"
       />
+      <CrmPersonas v-else-if="tab === 'personas'" :client-id="clientId" />
       <template v-else-if="activeObject">
         <CrmEnginePipelineBoard v-if="activeObject.has_pipeline" :client-id="clientId" :object-key="activeObject.key" />
         <CrmEngineRecordsTable v-else :client-id="clientId" :object-key="activeObject.key" />

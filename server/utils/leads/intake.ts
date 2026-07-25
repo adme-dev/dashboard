@@ -20,6 +20,7 @@ import {
 } from '~~/server/utils/leads/submissionIntent'
 import { linkLeadIdentity as defaultLinkLeadIdentity } from '~~/server/utils/leads/leadIdentity'
 import { captureLeadProductInterest as defaultCaptureProductInterest } from '~~/server/utils/leads/leadProductInterest'
+import { recordLeadPersonaEvidence as defaultRecordPersonaEvidence } from '~~/server/utils/persona/identity'
 
 type Transaction = <T>(
   callback: (db: LeadTransactionClient) => Promise<T>
@@ -38,6 +39,7 @@ export interface LeadIntakeServiceDeps {
   completeIntentMatch: typeof defaultCompleteIntentMatch
   linkIdentity: typeof defaultLinkLeadIdentity
   captureProductInterest: typeof defaultCaptureProductInterest
+  recordPersonaEvidence: typeof defaultRecordPersonaEvidence
 }
 
 export interface IngestLeadInput {
@@ -65,7 +67,8 @@ const defaultDeps: LeadIntakeServiceDeps = {
   appendBrowserConfirmation: appendConfirmedBrowserLeadEvent,
   completeIntentMatch: defaultCompleteIntentMatch,
   linkIdentity: defaultLinkLeadIdentity,
-  captureProductInterest: defaultCaptureProductInterest
+  captureProductInterest: defaultCaptureProductInterest,
+  recordPersonaEvidence: defaultRecordPersonaEvidence
 }
 
 function optionalAttribution(
@@ -207,6 +210,16 @@ export function createLeadIntakeService(
             clientId: input.lead.client_id,
             leadId,
             fieldData: input.lead.field_data
+          })],
+          ['persona_identity', () => deps.recordPersonaEvidence(db, {
+            clientId: input.lead.client_id,
+            leadId,
+            source: input.lead.source,
+            providerLeadId: input.lead.source_lead_id,
+            fieldData: input.lead.field_data,
+            attribution: input.lead.attribution,
+            consentDecision: input.consentDecision,
+            occurredAt: input.lead.submitted_at
           })]
         ] as const) {
           try {
