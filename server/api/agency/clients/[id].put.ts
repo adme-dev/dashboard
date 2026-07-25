@@ -31,7 +31,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const leadCaptureModes = new Set(['analytics_only', 'capture_only', 'full_crm'])
+  const leadCaptureModes = new Set([
+    'analytics_only',
+    'capture_only',
+    'lightweight_crm',
+    'full_crm',
+    'external_crm'
+  ])
   if (
     body.leadCaptureMode !== undefined
     && (typeof body.leadCaptureMode !== 'string' || !leadCaptureModes.has(body.leadCaptureMode))

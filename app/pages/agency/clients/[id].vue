@@ -17,8 +17,21 @@ const apiFetch = $fetch as <T = unknown>(
   options?: { method?: string; body?: unknown }
 ) => Promise<T>
 
+type LeadCaptureMode = 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm'
+type EntitlementStatus = 'trial' | 'active' | 'grace' | 'capped' | 'overdue' | 'suspended' | 'cancelled'
+interface CrmSettings {
+  leadCaptureMode: LeadCaptureMode
+  crmCoreStatus: EntitlementStatus
+  crmExternalStatus: EntitlementStatus
+}
+
 // Fetch client data
 const clientData = ref<any>(null)
+const crmSettingsData = ref<CrmSettings>({
+  leadCaptureMode: 'capture_only',
+  crmCoreStatus: 'suspended',
+  crmExternalStatus: 'suspended'
+})
 const pending = ref(false)
 const error = ref<any>(null)
 
@@ -26,7 +39,12 @@ async function refresh() {
   pending.value = true
   error.value = null
   try {
-    clientData.value = await apiFetch(`/api/agency/clients/${clientId}`)
+    const [clientResponse, crmResponse] = await Promise.all([
+      apiFetch(`/api/agency/clients/${clientId}`),
+      apiFetch<CrmSettings>(`/api/agency/clients/${clientId}/crm-settings`).catch(() => null)
+    ])
+    clientData.value = clientResponse
+    if (crmResponse) crmSettingsData.value = crmResponse
   } catch (err) {
     clientData.value = null
     error.value = err
@@ -120,7 +138,10 @@ const editForm = ref({
   contactPhone: '',
   address: '',
   notes: '',
-  isActive: true
+  isActive: true,
+  leadCaptureMode: 'capture_only' as LeadCaptureMode,
+  crmCoreStatus: 'suspended' as EntitlementStatus,
+  crmExternalStatus: 'suspended' as EntitlementStatus
 })
 
 const openEditModal = () => {
@@ -137,7 +158,10 @@ const openEditModal = () => {
       contactPhone: client.value.contactPhone || '',
       address: client.value.address || '',
       notes: client.value.notes || '',
-      isActive: client.value.isActive
+      isActive: client.value.isActive,
+      leadCaptureMode: crmSettingsData.value.leadCaptureMode,
+      crmCoreStatus: crmSettingsData.value.crmCoreStatus,
+      crmExternalStatus: crmSettingsData.value.crmExternalStatus
     }
     showEditModal.value = true
   }
@@ -147,13 +171,28 @@ const saving = ref(false)
 const saveClient = async () => {
   saving.value = true
   try {
-    await apiFetch(`/api/agency/clients/${clientId}`, {
-      method: 'PUT',
-      body: editForm.value
-    })
+    const {
+      leadCaptureMode,
+      crmCoreStatus,
+      crmExternalStatus,
+      ...clientPayload
+    } = editForm.value
+    const requests: Array<Promise<unknown>> = [
+      apiFetch(`/api/agency/clients/${clientId}`, {
+        method: 'PUT',
+        body: clientPayload
+      })
+    ]
+    if (isManager.value) {
+      requests.push(apiFetch(`/api/agency/clients/${clientId}/crm-settings`, {
+        method: 'PUT',
+        body: { leadCaptureMode, crmCoreStatus, crmExternalStatus }
+      }))
+    }
+    await Promise.all(requests)
     toast.add({ title: 'Client updated', color: 'success' })
     showEditModal.value = false
-    refresh()
+    await refresh()
   } catch (err: any) {
     toast.add({ title: 'Failed to update client', description: err.data?.message || err.message, color: 'error' })
   } finally {
@@ -181,6 +220,32 @@ const billingTypeOptions = [
   { label: 'Commission', value: 'commission' },
   { label: 'Project-Based', value: 'project' },
   { label: 'Hybrid', value: 'hybrid' }
+]
+
+const crmModeOptions = [
+  { label: 'Analytics only', value: 'analytics_only' },
+  { label: 'Capture leads', value: 'capture_only' },
+  { label: 'Lightweight CRM', value: 'lightweight_crm' },
+  { label: 'Full CRM', value: 'full_crm' },
+  { label: 'External CRM', value: 'external_crm' }
+]
+
+const crmModeDescriptions: Record<LeadCaptureMode, string> = {
+  analytics_only: 'Measure website and campaign activity without creating canonical lead records.',
+  capture_only: 'Capture, reconcile and attribute leads without creating CRM opportunities.',
+  lightweight_crm: 'Create contacts and opportunities in the streamlined XeroFlow CRM workspace.',
+  full_crm: 'Enable the complete XeroFlow CRM lifecycle, automation and future AI features.',
+  external_crm: 'Capture leads in XeroFlow and deliver them to the client’s connected CRM.'
+}
+
+const entitlementStatusOptions = [
+  { label: 'Trial', value: 'trial' },
+  { label: 'Active', value: 'active' },
+  { label: 'Grace period', value: 'grace' },
+  { label: 'Usage capped', value: 'capped' },
+  { label: 'Overdue', value: 'overdue' },
+  { label: 'Suspended', value: 'suspended' },
+  { label: 'Cancelled', value: 'cancelled' }
 ]
 
 // Project columns
@@ -935,6 +1000,75 @@ async function saveKpiTargets() {
                 </UInput>
               </UFormField>
             </div>
+          </fieldset>
+
+          <fieldset class="space-y-5 pb-6 border-b border-default">
+            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
+              Lead capture & CRM
+            </legend>
+
+            <UFormField label="Operating mode">
+              <USelectMenu
+                v-model="editForm.leadCaptureMode"
+                :items="crmModeOptions"
+                value-key="value"
+                size="xl"
+                class="w-full"
+                :disabled="!isManager"
+              />
+              <template #hint>
+                <span class="text-xs text-muted">
+                  {{ crmModeDescriptions[editForm.leadCaptureMode] }}
+                </span>
+              </template>
+            </UFormField>
+
+            <UFormField
+              v-if="['lightweight_crm', 'full_crm'].includes(editForm.leadCaptureMode)"
+              label="XeroFlow CRM access"
+            >
+              <USelectMenu
+                v-model="editForm.crmCoreStatus"
+                :items="entitlementStatusOptions"
+                value-key="value"
+                size="xl"
+                class="w-full"
+                :disabled="!isManager"
+              />
+              <template #hint>
+                <span class="text-xs text-muted">
+                  Trial, active and grace-period access can promote captured leads into CRM.
+                </span>
+              </template>
+            </UFormField>
+
+            <UFormField
+              v-if="editForm.leadCaptureMode === 'external_crm'"
+              label="External CRM delivery"
+            >
+              <USelectMenu
+                v-model="editForm.crmExternalStatus"
+                :items="entitlementStatusOptions"
+                value-key="value"
+                size="xl"
+                class="w-full"
+                :disabled="!isManager"
+              />
+              <template #hint>
+                <span class="text-xs text-muted">
+                  Suspending delivery never stops canonical lead capture or attribution.
+                </span>
+              </template>
+            </UFormField>
+
+            <UAlert
+              v-if="!isManager"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-lock"
+              title="Management access required"
+              description="Only management users can change lead capture and CRM entitlement settings."
+            />
           </fieldset>
 
           <!-- Section: Contact -->
