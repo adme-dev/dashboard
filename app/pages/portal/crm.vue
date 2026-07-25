@@ -15,7 +15,11 @@ const tabItems = [
   { label: 'Companies', value: 'companies', icon: 'i-lucide-building-2' },
   { label: 'Pipeline', value: 'pipeline', icon: 'i-lucide-trello' },
   { label: 'Tasks', value: 'tasks', icon: 'i-lucide-list-checks' },
+  { label: 'Data Sources', value: 'data-sources', icon: 'i-lucide-database-zap' },
 ]
+const canManageDataSources = computed(() =>
+  Boolean(user.value?.isPrimaryContact || user.value?.permissions?.canInviteUsers)
+)
 
 // Config objects defined for this client (read-only in portal — no designer tab).
 const { objects } = useCrmObjectDefs(clientId)
@@ -42,6 +46,12 @@ const activeObject = computed<CrmObjectDef | null>(() =>
       <CrmCompaniesTable v-else-if="tab === 'companies'" :client-id="clientId" />
       <CrmPipelineBoard v-else-if="tab === 'pipeline'" :client-id="clientId" />
       <CrmTaskList v-else-if="tab === 'tasks'" :client-id="clientId" show-filters class="max-w-3xl" />
+      <CrmDataSources
+        v-else-if="tab === 'data-sources'"
+        :client-id="clientId"
+        api-base="/api/client-portal/crm/data-sources"
+        :can-manage="canManageDataSources"
+      />
       <template v-else-if="activeObject">
         <CrmEnginePipelineBoard v-if="activeObject.has_pipeline" :client-id="clientId" :object-key="activeObject.key" />
         <CrmEngineRecordsTable v-else :client-id="clientId" :object-key="activeObject.key" />

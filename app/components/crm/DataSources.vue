@@ -1,5 +1,12 @@
 <script setup lang="ts">
-const props = defineProps<{ clientId: string }>()
+const props = withDefaults(defineProps<{
+  clientId: string
+  apiBase?: string
+  canManage?: boolean
+}>(), {
+  apiBase: '/api/crm/data-sources',
+  canManage: true
+})
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(
   request: string,
@@ -51,7 +58,7 @@ const sourceIcons: Record<string, string> = {
 async function refresh() {
   loading.value = true
   try {
-    data.value = await apiFetch('/api/crm/data-sources', { query: { client_id: props.clientId } })
+    data.value = await apiFetch(props.apiBase, { query: { client_id: props.clientId } })
   } finally {
     loading.value = false
   }
@@ -62,7 +69,7 @@ watch(() => props.clientId, () => void refresh(), { immediate: true })
 async function connectDealerFeed() {
   saving.value = true
   try {
-    const result = await apiFetch<{ source: Source }>('/api/crm/data-sources', {
+    const result = await apiFetch<{ source: Source }>(props.apiBase, {
       method: 'POST',
       body: { client_id: props.clientId, connector_type: 'dealer_feed', display_name: 'Dealer Feed' }
     })
@@ -79,7 +86,7 @@ async function connectDealerFeed() {
 async function saveConnector() {
   saving.value = true
   try {
-    await apiFetch('/api/crm/data-sources', {
+    await apiFetch(props.apiBase, {
       method: 'POST',
       body: connector.value === 'supabase'
         ? {
@@ -114,7 +121,7 @@ async function saveConnector() {
 async function sync(sourceId: string) {
   syncingId.value = sourceId
   try {
-    const result = await apiFetch<{ upserted: number, removed: number }>(`/api/crm/data-sources/${sourceId}/sync`, {
+    const result = await apiFetch<{ upserted: number, removed: number }>(`${props.apiBase}/${sourceId}/sync`, {
       method: 'POST',
       body: { client_id: props.clientId }
     })
@@ -142,12 +149,21 @@ async function sync(sourceId: string) {
           Connect inventory and product systems once. CRM enquiries then match against VIN, stock ID, SKU, provider ID and listing URL.
         </p>
       </div>
-      <UButton icon="i-lucide-plus" @click="showForm = !showForm">
+      <UButton v-if="canManage" icon="i-lucide-plus" @click="showForm = !showForm">
         Add data source
       </UButton>
     </div>
 
-    <div v-if="showForm" class="rounded-xl border border-default bg-elevated/30 p-5">
+    <UAlert
+      v-if="!canManage"
+      color="neutral"
+      variant="subtle"
+      icon="i-lucide-lock-keyhole"
+      title="Connection management is restricted"
+      description="A primary contact or client administrator can connect and synchronize inventory sources."
+    />
+
+    <div v-if="showForm && canManage" class="rounded-xl border border-default bg-elevated/30 p-5">
       <div class="mb-5 flex gap-2">
         <UButton
           label="JSON / CSV feed"
@@ -218,7 +234,7 @@ async function sync(sourceId: string) {
           Reuses the existing seller-scoped inventory connection used by Google and Meta campaign feeds.
         </p>
         <UButton
-          v-if="data.dealerFeed.connected && !data.dealerFeed.catalogSourceId"
+          v-if="canManage && data.dealerFeed.connected && !data.dealerFeed.catalogSourceId"
           class="mt-4 w-full justify-center"
           label="Use in CRM"
           icon="i-lucide-link"
@@ -226,7 +242,7 @@ async function sync(sourceId: string) {
           @click="connectDealerFeed"
         />
         <UButton
-          v-else-if="data.dealerFeed.catalogSourceId"
+          v-else-if="canManage && data.dealerFeed.catalogSourceId"
           class="mt-4 w-full justify-center"
           label="Sync inventory"
           icon="i-lucide-refresh-cw"
@@ -269,6 +285,7 @@ async function sync(sourceId: string) {
           {{ source.last_sync_error }}
         </p>
         <UButton
+          v-if="canManage"
           class="mt-4 w-full justify-center"
           label="Sync now"
           icon="i-lucide-refresh-cw"
