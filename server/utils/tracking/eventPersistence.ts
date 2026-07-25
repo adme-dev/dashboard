@@ -5,6 +5,7 @@ import {
 } from '~~/server/utils/measurement/outbox'
 import { buildBrowserCanonicalConversion } from '~~/server/utils/tracking/browserCanonicalConversion'
 import type { TrackingEventRow } from '~~/server/utils/tracking/event-insert'
+import { appendTrackingSignals as defaultAppendSignals } from '~~/server/utils/persona/signalLedger'
 
 interface TransactionClient {
   query(sql: string, params?: unknown[]): Promise<{ rows?: unknown[] }>
@@ -19,12 +20,14 @@ type AppendOutbox = (
 interface TrackingEventPersistenceDeps {
   transaction: Transaction
   appendOutbox: AppendOutbox
+  appendSignals?: typeof defaultAppendSignals
   onPromotionError: (error: unknown, context: { clientId: string, eventId: string }) => void
 }
 
 const defaultDeps: TrackingEventPersistenceDeps = {
   transaction: defaultTransaction as unknown as Transaction,
   appendOutbox: defaultAppendOutbox,
+  appendSignals: defaultAppendSignals,
   onPromotionError: (_error, context) => {
     console.error('[track] browser conversion promotion failed', context)
   }
@@ -65,11 +68,13 @@ export function createTrackingEventPersistence(deps: TrackingEventPersistenceDep
         let stored = 0
         let promoted = 0
         let promotionFailures = 0
+        const storedRows: TrackingEventRow[] = []
 
         for (const row of input.rows) {
           const inserted = await db.query(INSERT_TRACKING_EVENT_SQL, insertParams(row))
           if (!inserted.rows?.length) continue
           stored += 1
+          storedRows.push(row)
 
           const conversion = buildBrowserCanonicalConversion({
             row,
@@ -88,6 +93,22 @@ export function createTrackingEventPersistence(deps: TrackingEventPersistenceDep
             await db.query('ROLLBACK TO SAVEPOINT browser_conversion_promotion')
             await db.query('RELEASE SAVEPOINT browser_conversion_promotion')
             deps.onPromotionError(error, { clientId: row.client_id, eventId: row.event_id })
+          }
+        }
+
+        if (storedRows.length && deps.appendSignals) {
+          const firstStoredRow = storedRows[0]!
+          await db.query('SAVEPOINT persona_signal_persistence')
+          try {
+            await deps.appendSignals(db, storedRows, input.receivedAt)
+            await db.query('RELEASE SAVEPOINT persona_signal_persistence')
+          } catch (error) {
+            await db.query('ROLLBACK TO SAVEPOINT persona_signal_persistence')
+            await db.query('RELEASE SAVEPOINT persona_signal_persistence')
+            deps.onPromotionError(error, {
+              clientId: firstStoredRow.client_id,
+              eventId: firstStoredRow.event_id
+            })
           }
         }
 

@@ -1,0 +1,68 @@
+# Persona Campaign Intelligence Delivery Plan
+
+## Objective
+
+Connect website behaviour, confirmed leads, CRM identities, catalog products and campaign attribution into a tenant-scoped intelligence layer. All cross-client reporting remains aggregate-only. Advertising-platform audience writes remain disabled until a separately approved activation release.
+
+## Delivery slices
+
+### Slice 1: Signal and privacy foundation
+
+- [ ] Add normalized customer signals keyed by tenant and pseudonymous subject hash.
+- [ ] Persist consent changes separately from behavioural events.
+- [ ] Strip query strings, arbitrary free text and PII-like fields from persona context.
+- [ ] Preserve source-event lineage and deterministic idempotency.
+- [ ] Keep tracking and lead ingestion durable when enrichment is unavailable.
+
+### Slice 2: Identity and product connection
+
+- [ ] Link anonymous and session hashes to existing CRM identity profiles only after deterministic lead confirmation.
+- [ ] Detect conflicting profile links and fail closed.
+- [ ] Backfill historical anonymous signals after a safe identity match.
+- [ ] Resolve VIN, stock ID, SKU, source product ID and product URL against the existing CRM catalog.
+- [ ] Preserve separate opportunities for distinct product enquiries.
+
+### Slice 3: Persona rules and cohort previews
+
+- [ ] Add versioned system and client persona definitions.
+- [ ] Record positive signals, negative signals, minimum confidence and permitted channels.
+- [ ] Calculate aggregate cohort size, consent-eligible size, suppression and known-profile coverage.
+- [ ] Enforce a minimum audience threshold.
+- [ ] Cache aggregate previews for 15 minutes.
+- [ ] Expose client CRM and agency read-only APIs.
+- [ ] Add a client CRM audience-intelligence panel.
+
+### Slice 4: Reconciliation and operational health
+
+- [ ] Monitor tracking-to-ledger write failures.
+- [ ] Monitor identity conflicts and unlinked confirmed leads.
+- [ ] Monitor catalog freshness and unmatched product references.
+- [ ] Monitor consent coverage and audience suppression.
+- [ ] Require current queue, DLQ, policy, approval and alert evidence before activation.
+
+### Slice 5: Campaign optimisation
+
+- [ ] Add persona-by-campaign, creative, landing page, device and product reporting.
+- [ ] Add cohort overlap and suppression analysis.
+- [ ] Add cost per qualified persona, opportunity and sale.
+- [ ] Feed won, lost and sold outcomes into campaign recommendations.
+- [ ] Keep recommendation generation separate from provider mutations.
+
+### Slice 6: Provider activation
+
+- [ ] Create provider-specific payload adapters.
+- [ ] Add dry-run payload inspection and size reconciliation.
+- [ ] Require privacy approval and live-delivery approval from different users.
+- [ ] Dispatch through an idempotent outbox with retries and DLQ.
+- [ ] Add provider receipt reconciliation and deletion propagation.
+- [ ] Roll out one client and one provider at a time.
+
+## Release gates
+
+- Migration is additive and transactionally verified.
+- Existing tracking, lead intake, CRM and catalog tests remain green.
+- New signal sanitation and cohort-scoring tests pass.
+- Production build passes with Node 24.
+- Staging pages return 200 and APIs reject unauthenticated requests.
+- No provider audience write is possible from this release.
+- Production promotion occurs only after CI, deployment and smoke checks pass.

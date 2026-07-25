@@ -21,6 +21,7 @@ import {
 import { linkLeadIdentity as defaultLinkLeadIdentity } from '~~/server/utils/leads/leadIdentity'
 import { captureLeadProductInterest as defaultCaptureProductInterest } from '~~/server/utils/leads/leadProductInterest'
 import { recordLeadPersonaEvidence as defaultRecordPersonaEvidence } from '~~/server/utils/persona/identity'
+import { connectLeadSignalContext as defaultConnectLeadSignalContext } from '~~/server/utils/persona/signalLedger'
 
 type Transaction = <T>(
   callback: (db: LeadTransactionClient) => Promise<T>
@@ -40,6 +41,7 @@ export interface LeadIntakeServiceDeps {
   linkIdentity: typeof defaultLinkLeadIdentity
   captureProductInterest: typeof defaultCaptureProductInterest
   recordPersonaEvidence: typeof defaultRecordPersonaEvidence
+  connectLeadSignalContext?: typeof defaultConnectLeadSignalContext
 }
 
 export interface IngestLeadInput {
@@ -68,7 +70,8 @@ const defaultDeps: LeadIntakeServiceDeps = {
   completeIntentMatch: defaultCompleteIntentMatch,
   linkIdentity: defaultLinkLeadIdentity,
   captureProductInterest: defaultCaptureProductInterest,
-  recordPersonaEvidence: defaultRecordPersonaEvidence
+  recordPersonaEvidence: defaultRecordPersonaEvidence,
+  connectLeadSignalContext: defaultConnectLeadSignalContext
 }
 
 function optionalAttribution(
@@ -216,6 +219,16 @@ export function createLeadIntakeService(
             leadId,
             source: input.lead.source,
             providerLeadId: input.lead.source_lead_id,
+            fieldData: input.lead.field_data,
+            attribution: input.lead.attribution,
+            consentDecision: input.consentDecision,
+            occurredAt: input.lead.submitted_at
+          })],
+          ['signal_ledger', () => deps.connectLeadSignalContext?.(db, {
+            clientId: input.lead.client_id,
+            leadId,
+            source: input.lead.source,
+            browserEventId: optionalAttribution(input.lead.attribution, 'browserEventId', 128),
             fieldData: input.lead.field_data,
             attribution: input.lead.attribution,
             consentDecision: input.consentDecision,

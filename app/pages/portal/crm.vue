@@ -30,7 +30,10 @@ const { objects } = useCrmObjectDefs(clientId)
 const allTabs = computed(() => [
   ...tabItems,
   ...(personaData.value?.enabled
-    ? [{ label: 'Personas', value: 'personas', icon: 'i-lucide-contact-round' }]
+    ? [
+        { label: 'Personas', value: 'personas', icon: 'i-lucide-contact-round' },
+        { label: 'Audiences', value: 'audiences', icon: 'i-lucide-users-round' },
+      ]
     : []),
   ...objects.value.map(o => ({ label: o.label_plural, value: `obj:${o.key}`, icon: o.icon || 'i-lucide-box' })),
 ])
@@ -60,6 +63,7 @@ const activeObject = computed<CrmObjectDef | null>(() =>
         :can-manage="canManageDataSources"
       />
       <CrmPersonas v-else-if="tab === 'personas'" :client-id="clientId" />
+      <CrmAudienceCohorts v-else-if="tab === 'audiences'" :client-id="clientId" />
       <template v-else-if="activeObject">
         <CrmEnginePipelineBoard v-if="activeObject.has_pipeline" :client-id="clientId" :object-key="activeObject.key" />
         <CrmEngineRecordsTable v-else :client-id="clientId" :object-key="activeObject.key" />
