@@ -161,8 +161,8 @@ AI phone receptionist rollout:
 | COMMS-012 | P2 | TODO | Add call recording, transcription and voicemail policy. |
 | COMMS-013 | P2 | TODO | Add human transfer and escalation. |
 | COMMS-014 | P0 | TODO | Implement a provider-neutral voice, messaging and number contract. |
-| COMMS-015 | P0 | TODO | Add Twilio and Telnyx provider account records and encrypted credentials. |
-| COMMS-016 | P0 | TODO | Add explicit provider routing by client, channel, number and region. |
+| COMMS-015 | P0 | IN_PROGRESS | Add Twilio and Telnyx provider account records and encrypted credentials. |
+| COMMS-016 | P0 | IN_PROGRESS | Add explicit provider routing by client, channel, number and region. |
 | COMMS-017 | P0 | TODO | Normalize Twilio and Telnyx webhook events into canonical communication events. |
 | COMMS-018 | P0 | TODO | Normalize provider cost and usage into the shared usage ledger. |
 | COMMS-019 | P1 | TODO | Implement Twilio ConversationRelay and Media Streams evaluation adapters. |
@@ -211,12 +211,12 @@ AI phone receptionist rollout:
 
 | ID | Priority | Status | Requirement |
 |---|---:|---|---|
-| PHONE-001 | P0 | TODO | Create a separate client-scoped AI phone receptionist feature flag. |
+| PHONE-001 | P0 | DONE | Create a separate client-scoped AI phone receptionist feature flag. |
 | PHONE-002 | P0 | TODO | Keep inbound and outbound AI call permissions separate. |
 | PHONE-003 | P0 | TODO | Provision a dedicated non-production test number. |
-| PHONE-004 | P0 | TODO | Define human transfer, voicemail and provider-failure fallback. |
-| PHONE-005 | P0 | TODO | Add agency and client emergency kill switches. |
-| PHONE-006 | P0 | TODO | Add per-call, concurrent-call and monthly spending limits. |
+| PHONE-004 | P0 | IN_PROGRESS | Define human transfer, voicemail and provider-failure fallback. |
+| PHONE-005 | P0 | IN_PROGRESS | Add agency and client emergency kill switches. |
+| PHONE-006 | P0 | IN_PROGRESS | Add per-call, concurrent-call and monthly spending limits. |
 | PHONE-007 | P0 | BLOCKED | Complete Australian AI, call-recording and disclosure policy review. |
 | PHONE-008 | P0 | TODO | Define transcript, recording and retention policy. |
 | PHONE-009 | P0 | TODO | Add Twilio and Telnyx receptionist evaluation deployments. |
@@ -241,12 +241,12 @@ AI phone receptionist rollout:
 
 | ID | Priority | Status | Requirement |
 |---|---:|---|---|
-| PAY-001 | P0 | TODO | Define plans, features and entitlement records. |
-| PAY-002 | P0 | TODO | Add client entitlement overrides. |
-| PAY-003 | P0 | TODO | Add trial, active, grace, capped, overdue, suspended and cancelled states. |
-| PAY-004 | P0 | TODO | Enforce entitlements on server mutations and paid actions. |
-| PAY-005 | P0 | TODO | Preserve lead capture during billing restrictions. |
-| PAY-006 | P1 | TODO | Add portal navigation and UI gating from entitlements. |
+| PAY-001 | P0 | DONE | Define plans, features and entitlement records. |
+| PAY-002 | P0 | DONE | Add client entitlement overrides. |
+| PAY-003 | P0 | DONE | Add trial, active, grace, capped, overdue, suspended and cancelled states. |
+| PAY-004 | P0 | IN_PROGRESS | Enforce entitlements on server mutations and paid actions. |
+| PAY-005 | P0 | DONE | Preserve lead capture during billing restrictions. |
+| PAY-006 | P1 | IN_PROGRESS | Add portal navigation and UI gating from entitlements. |
 | PAY-007 | P1 | TODO | Add clear upgrade and entitlement-denied UX. |
 | PAY-008 | P0 | BLOCKED | Select the subscription billing provider. |
 | PAY-009 | P1 | BLOCKED | Decide self-service versus agency-approved upgrades. |
@@ -256,13 +256,13 @@ AI phone receptionist rollout:
 
 | ID | Priority | Status | Requirement |
 |---|---:|---|---|
-| MCP-001 | P0 | TODO | Define the XeroFlow protected remote MCP server boundary. |
+| MCP-001 | P0 | IN_PROGRESS | Define the XeroFlow protected remote MCP server boundary. |
 | MCP-002 | P0 | TODO | Implement MCP OAuth protected-resource metadata and authorization discovery. |
 | MCP-003 | P0 | TODO | Require OAuth authorization code flow with PKCE for user connections. |
 | MCP-004 | P0 | TODO | Validate token audience, expiry, scopes, user and client binding. |
 | MCP-005 | P0 | TODO | Prohibit inbound token passthrough to downstream services. |
-| MCP-006 | P0 | TODO | Define read, write, communications, analytics and administrative scopes. |
-| MCP-007 | P0 | TODO | Define per-client and per-user MCP tool policies. |
+| MCP-006 | P0 | IN_PROGRESS | Define read, write, communications, analytics and administrative scopes. |
+| MCP-007 | P0 | IN_PROGRESS | Define per-client and per-user MCP tool policies. |
 | MCP-008 | P0 | TODO | Implement read-only contact, opportunity, pipeline, task and product tools. |
 | MCP-009 | P1 | TODO | Implement create-note and create-task mutation tools. |
 | MCP-010 | P1 | TODO | Implement assignment and pipeline-stage mutation tools. |
@@ -271,30 +271,30 @@ AI phone receptionist rollout:
 | MCP-013 | P0 | TODO | Require configurable approval for write and high-impact tools. |
 | MCP-014 | P0 | TODO | Return minimum necessary data from every tool. |
 | MCP-015 | P0 | TODO | Add tool-call idempotency and correlation IDs. |
-| MCP-016 | P0 | TODO | Audit harness, user, client, tool, policy decision and outcome. |
-| MCP-017 | P0 | TODO | Add connection, grant and token revocation. |
+| MCP-016 | P0 | IN_PROGRESS | Audit harness, user, client, tool, policy decision and outcome. |
+| MCP-017 | P0 | IN_PROGRESS | Add connection, grant and token revocation. |
 | MCP-018 | P0 | TODO | Add rate limits, anomaly controls and abuse alerts. |
 | MCP-019 | P0 | TODO | Add prompt-injection and data-egress protections. |
 | MCP-020 | P1 | TODO | Add client administrator connection and tool-policy UI. |
-| MCP-021 | P1 | TODO | Add MCP entitlement and usage meter. |
+| MCP-021 | P1 | IN_PROGRESS | Add MCP entitlement and usage meter. |
 | MCP-022 | P1 | TODO | Distinguish customer-paid LLM inference from XeroFlow-proxied inference. |
 | MCP-023 | P1 | TODO | Validate ChatGPT remote MCP compatibility and plan limitations. |
 | MCP-024 | P1 | TODO | Validate Claude MCP compatibility. |
 | MCP-025 | P1 | TODO | Validate Groq remote MCP compatibility and beta limitations. |
 | MCP-026 | P1 | TODO | Publish safe connection instructions and supported tool catalog. |
-| MCP-027 | P0 | TODO | Add tenant-isolation, authorization, approval and revocation acceptance tests. |
+| MCP-027 | P0 | IN_PROGRESS | Add tenant-isolation, authorization, approval and revocation acceptance tests. |
 
 ## K. Usage metering and cost control
 
 | ID | Priority | Status | Requirement |
 |---|---:|---|---|
-| USAGE-001 | P0 | TODO | Create immutable usage meter and ledger records. |
-| USAGE-002 | P0 | TODO | Record provider cost, customer price, markup and margin. |
-| USAGE-003 | P0 | TODO | Add globally unique usage idempotency keys. |
+| USAGE-001 | P0 | DONE | Create immutable usage meter and ledger records. |
+| USAGE-002 | P0 | IN_PROGRESS | Record provider cost, customer price, markup and margin. |
+| USAGE-003 | P0 | DONE | Add globally unique usage idempotency keys. |
 | USAGE-004 | P0 | TODO | Implement estimated usage reservations before paid actions. |
 | USAGE-005 | P0 | TODO | Reconcile reservations with actual provider usage. |
-| USAGE-006 | P0 | TODO | Add monthly soft and hard spending limits. |
-| USAGE-007 | P0 | TODO | Add agency emergency stop. |
+| USAGE-006 | P0 | IN_PROGRESS | Add monthly soft and hard spending limits. |
+| USAGE-007 | P0 | IN_PROGRESS | Add agency emergency stop. |
 | USAGE-008 | P1 | TODO | Meter AI input and output tokens. |
 | USAGE-009 | P1 | TODO | Meter SMS segments. |
 | USAGE-010 | P1 | TODO | Meter email sends. |
@@ -316,9 +316,9 @@ AI phone receptionist rollout:
 | INT-004 | P1 | TODO | Define inbound external CRM webhook contract. |
 | INT-005 | P1 | TODO | Define outbound canonical lead delivery contract. |
 | INT-006 | P1 | TODO | Store external contact, opportunity and delivery identifiers. |
-| INT-007 | P1 | TODO | Synchronize contacted, qualified, won and lost outcomes. |
-| INT-008 | P1 | TODO | Add retry and dead-letter processing for delivery failures. |
-| INT-009 | P1 | TODO | Add integration health and credential alerts. |
+| INT-007 | P1 | IN_PROGRESS | Synchronize contacted, qualified, won and lost outcomes. |
+| INT-008 | P1 | DONE | Add retry and dead-letter processing for delivery failures. |
+| INT-009 | P1 | IN_PROGRESS | Add integration health and credential alerts. |
 
 ## M. Analytics and reporting
 
