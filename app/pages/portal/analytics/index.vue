@@ -730,5 +730,10 @@ await Promise.all([refreshOverview(), refreshTrend()])
         :end-date="endDate"
       />
     </UCard>
+
+    <PortalPersonaInsights
+      :start-date="startDate"
+      :end-date="endDate"
+    />
   </div>
 </template>

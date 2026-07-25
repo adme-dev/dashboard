@@ -550,3 +550,39 @@ The central platform separates:
 The lake stores opaque Persona and namespace references and remains pseudonymous by default. PII and raw private content remain in governed vaults. Identity decisions are made by the control plane and published into the lake as versioned mappings; the lake never independently merges people.
 
 Detailed lake zones, application ownership, Cloudflare storage options, contracts, and rollout are maintained in `docs/prd/crm-360-persona-lakehouse-architecture.md`.
+
+## Portal Persona metrics rollout
+
+### Completed pilot slice
+
+- A tenant-scoped aggregate contract derives Persona metrics from the operational identity projection.
+- The API returns counts, rates, source mix, and CRM lifecycle mix only; it never returns names, contact details, raw identifiers, or evidence metadata.
+- Persona audience signals are visible on the dealer portal home, advertising analytics overview, website and funnel analytics, and individual channel analytics routes.
+- Metrics respect each analytics page's date range.
+- The panel refreshes every five minutes while its browser tab is visible and reads only the local database projection. It does not trigger advertising, analytics, CRM, or product-provider synchronization.
+- The detailed identity timeline remains restricted to the CRM Personas view.
+- The release remains controlled by the existing `persona.identity` entitlement and `full_crm` client mode.
+
+### Metric definitions
+
+- `Known personas`: distinct tenant-scoped profiles linked to confirmed leads in the selected period.
+- `Returning personas`: profiles with multiple confirmed leads or matched website submissions.
+- `Confirmed leads`: canonical lead records linked to an identity profile.
+- `Website match rate`: confirmed leads joined to a tracked submission intent.
+- `CRM match rate`: known personas linked to a CRM person.
+- `Attribution coverage`: confirmed leads carrying campaign, UTM, or advertising click evidence.
+- `Product intent`: personas linked to a product or vehicle enquiry.
+- `Identity conflicts`: profiles with unresolved deterministic evidence conflicts.
+- `Source mix` and `CRM lifecycle`: aggregate cohort distributions with no raw identity data.
+
+### Next controlled expansion
+
+- The same aggregate service is available to authenticated agency client analytics and campaign detail views.
+- Platform, campaign, ad group/ad set, ad, creative, landing-page, and device filters are supported by the projection contract.
+- Campaign Persona projections are stored in tenant-scoped daily snapshots with short freshness for current windows and longer freshness for historical windows.
+- Existing CRM lifecycle mappings and the governed Measurement outbox remain the only path for Google and Meta conversion feedback; Persona analytics does not introduce a parallel publisher.
+- Audience activation requests use a server-calculated cohort size, a configurable privacy threshold, expiry, separate privacy/live approvals by different staff members, and immutable audit records.
+- Audience approval does not perform a provider write. Export adapters must revalidate individual consent and suppression eligibility before Google Customer Match or Meta Custom Audience dispatch is enabled.
+- Add geography, vehicle, and deeper page cohort projections only when minimum cohort thresholds and suppression rules are enforced.
+- Publish versioned daily snapshots to the analytical lake so historical dashboard comparisons do not query mutable operational identity tables.
+- Implement destination adapters only after credential readiness, consent eligibility, provider-specific minimums, removals, reconciliation, and failure recovery are operational.

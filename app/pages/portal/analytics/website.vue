@@ -76,6 +76,11 @@ watch([startDate, endDate], () => {
       </div>
     </header>
 
+    <PortalPersonaInsights
+      :start-date="startDate"
+      :end-date="endDate"
+    />
+
     <PortalFunnelChart
       :start-date="startDate"
       :end-date="endDate"

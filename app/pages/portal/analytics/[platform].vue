@@ -299,6 +299,12 @@ await Promise.all([refreshOverview(), refreshTrend()])
       />
     </div>
 
+    <PortalPersonaInsights
+      :start-date="startDate"
+      :end-date="endDate"
+      :platform="platform"
+    />
+
     <!-- Campaign Table -->
     <AnalyticsCampaignTable
       :start-date="startDate"

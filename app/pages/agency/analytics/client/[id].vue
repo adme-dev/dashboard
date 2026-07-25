@@ -219,6 +219,21 @@ const loading = computed(() => overviewStatus.value === 'pending')
       />
     </div>
 
+    <PortalPersonaInsights
+      api-base="/api/agency/analytics"
+      :client-id="clientId"
+      :start-date="filters.startDate"
+      :end-date="filters.endDate"
+      :platform="filters.platforms.length === 1 ? filters.platforms[0] : undefined"
+    />
+
+    <AnalyticsPersonaActivationPanel
+      :client-id="clientId"
+      :start-date="filters.startDate"
+      :end-date="filters.endDate"
+      :platform="filters.platforms.length === 1 ? filters.platforms[0] : undefined"
+    />
+
     <!-- Campaign Table -->
     <AnalyticsCampaignTable
       :start-date="filters.startDate"

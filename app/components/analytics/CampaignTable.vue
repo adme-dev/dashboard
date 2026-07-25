@@ -612,6 +612,18 @@ watch(search, () => {
                   class="mb-4"
                 />
 
+                <PortalPersonaInsights
+                  v-if="row.campaignId && (apiBase.startsWith('/api/portal') || row.clientId || clientId)"
+                  class="mb-4"
+                  :api-base="apiBase"
+                  :client-id="row.clientId || clientId"
+                  :start-date="startDate"
+                  :end-date="endDate"
+                  :platform="row.platform"
+                  :campaign-id="row.campaignId"
+                  :spend="row.spend"
+                />
+
                 <!-- Breakdowns section -->
                 <div v-if="row.mediaSpendId" class="mb-4">
                   <AnalyticsBreakdownSection

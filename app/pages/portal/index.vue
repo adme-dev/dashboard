@@ -1669,5 +1669,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
         </UCard>
       </div>
     </div>
+
+    <PortalPersonaInsights />
   </div>
 </template>
