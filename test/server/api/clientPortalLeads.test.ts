@@ -27,6 +27,8 @@ const mockQueryRows = vi.fn()
 const mockQueryCount = vi.fn()
 const mockQueryOne = vi.fn()
 const mockExecute = vi.fn()
+const mockMoveLeadStatus = vi.fn()
+const mockPublishConversion = vi.fn()
 
 vi.mock('~~/server/utils/clientAuth', () => ({
   requireClientAuth: (...args: unknown[]) => mockRequireClientAuth(...args)
@@ -37,6 +39,18 @@ vi.mock('~~/server/utils/db', () => ({
   queryCount: (...args: unknown[]) => mockQueryCount(...args),
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
   execute: (...args: unknown[]) => mockExecute(...args)
+}))
+
+vi.mock('~~/server/utils/leads/statusTransition', () => ({
+  leadStatusTransitionService: {
+    move: (...args: unknown[]) => mockMoveLeadStatus(...args)
+  }
+}))
+
+vi.mock('~~/server/utils/measurement/publisher', () => ({
+  conversionOutboxPublisher: {
+    publishEvent: (...args: unknown[]) => mockPublishConversion(...args)
+  }
 }))
 
 const { default: listHandler } = await import(
@@ -55,11 +69,17 @@ const { default: exportHandler } = await import(
 describe('client portal leads API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRequireClientAuth.mockResolvedValue({ clientId: 'client-1' })
+    mockRequireClientAuth.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      clientId: '22222222-2222-4222-8222-222222222222',
+      canManageLeadOutcomes: true
+    })
     mockQueryRows.mockResolvedValue([])
     mockQueryCount.mockResolvedValue(0)
     mockQueryOne.mockResolvedValue(null)
     mockExecute.mockResolvedValue(0)
+    mockMoveLeadStatus.mockResolvedValue({ status: 'moved', outbox: null })
+    mockPublishConversion.mockResolvedValue({ status: 'published' })
   })
 
   it('lists only client-owned portal-visible leads and supports source/search filters', async () => {
@@ -88,7 +108,7 @@ describe('client portal leads API', () => {
     expect(sql).toContain('r.enabled = TRUE')
     expect(sql).toContain('l.source = $2')
     expect(sql).toContain('l.field_data::text ILIKE $3')
-    expect(params).toEqual(['client-1', 'webhook', '%Jane%'])
+    expect(params).toEqual(['22222222-2222-4222-8222-222222222222', 'webhook', '%Jane%'])
   })
 
   it('filters client-visible leads by campaign and submitted date range', async () => {
@@ -115,7 +135,7 @@ describe('client portal leads API', () => {
     expect(sql).toContain('l.submitted_at < ($4::date + INTERVAL \'1 day\')')
     expect(sql).toContain('l.campaign_id = $5')
     expect(sql).toContain('l.campaign_name = $6')
-    expect(params).toEqual(['client-1', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
+    expect(params).toEqual(['22222222-2222-4222-8222-222222222222', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
   })
 
   it('scopes status summary counts to the current non-status filters', async () => {
@@ -153,10 +173,10 @@ describe('client portal leads API', () => {
     expect(sourceStatsSql).not.toContain('l.status =')
     expect(responseSummarySql).toContain('avg_response_minutes')
     expect(responseSummarySql).not.toContain('AND l.status =')
-    expect(listParams).toEqual(['client-1', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search', 'new'])
-    expect(statsParams).toEqual(['client-1', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
-    expect(sourceStatsParams).toEqual(['client-1', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
-    expect(responseSummaryParams).toEqual(['client-1', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
+    expect(listParams).toEqual(['22222222-2222-4222-8222-222222222222', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search', 'new'])
+    expect(statsParams).toEqual(['22222222-2222-4222-8222-222222222222', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
+    expect(sourceStatsParams).toEqual(['22222222-2222-4222-8222-222222222222', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
+    expect(responseSummaryParams).toEqual(['22222222-2222-4222-8222-222222222222', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
   })
 
   it('uses the same portal visibility rule for detail reads', async () => {
@@ -168,20 +188,23 @@ describe('client portal leads API', () => {
     const sql = String(mockQueryOne.mock.calls[0]?.[0])
     expect(sql).toContain('l.id = $1 AND l.client_id = $2')
     expect(sql).toContain('d.destination_type = \'portal\'')
-    expect(mockQueryOne.mock.calls[0]?.[1]).toEqual(['lead-1', 'client-1'])
+    expect(mockQueryOne.mock.calls[0]?.[1]).toEqual(['lead-1', '22222222-2222-4222-8222-222222222222'])
   })
 
   it('requires portal visibility before marking a lead contacted', async () => {
-    mockExecute.mockResolvedValueOnce(1)
-
     const result = await contactedHandler({ params: { id: 'lead-1' } })
 
     expect(result).toEqual({ ok: true })
-    const sql = String(mockExecute.mock.calls[0]?.[0])
-    expect(sql).toContain('UPDATE leads l SET status = \'contacted\'')
-    expect(sql).toContain('status = \'new\'')
-    expect(sql).toContain('d.destination_type = \'portal\'')
-    expect(mockExecute.mock.calls[0]?.[1]).toEqual(['lead-1', 'client-1'])
+    expect(mockMoveLeadStatus).toHaveBeenCalledWith(expect.objectContaining({
+      clientId: '22222222-2222-4222-8222-222222222222',
+      leadId: 'lead-1',
+      toStatus: 'contacted',
+      portalVisibleOnly: true,
+      actor: {
+        type: 'client_user',
+        id: '11111111-1111-4111-8111-111111111111'
+      }
+    }))
   })
 
   it('exports only portal-visible leads', async () => {
@@ -217,6 +240,6 @@ describe('client portal leads API', () => {
     expect(sql).toContain('l.campaign_id = $5')
     expect(sql).toContain('l.campaign_name = $6')
     expect(sql).toContain('d.destination_type = \'portal\'')
-    expect(params).toEqual(['client-1', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
+    expect(params).toEqual(['22222222-2222-4222-8222-222222222222', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
   })
 })

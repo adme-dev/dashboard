@@ -261,6 +261,21 @@ export function createOpportunityStageTransitionService(
         }
 
         const sourceEventId = `crm-stage-history:${history.id}`
+        let authorityDecision: 'accepted' | 'proposed' | 'duplicate'
+          = authority === 'zero_native' ? 'accepted' : 'proposed'
+        if (canonicalEventName && linkedLead) {
+          const duplicateResult = await db.query(
+            `SELECT id
+               FROM lead_status_events
+              WHERE client_id = $1
+                AND lead_id = $2
+                AND canonical_event_name = $3
+                AND authority_decision = 'accepted'
+              LIMIT 1`,
+            [command.clientId, linkedLead.lead_id, canonicalEventName]
+          )
+          if ((duplicateResult.rows?.length ?? 0) > 0) authorityDecision = 'duplicate'
+        }
         await db.query(
           `INSERT INTO lead_status_events (
              client_id, lead_id, opportunity_id, from_status, to_status,
@@ -268,8 +283,8 @@ export function createOpportunityStageTransitionService(
              source_system, source_event_id, occurred_at, actor_type,
              actor_id, reason, decision_metadata
            ) VALUES (
-             $1, $2, $3, $4, $5, $6, $7, 'accepted', 'zero_crm', $8,
-             $9::timestamptz, $10, $11, $12, $13::jsonb
+             $1, $2, $3, $4, $5, $6, $7, $8, 'zero_crm', $9,
+             $10::timestamptz, $11, $12, $13, $14::jsonb
            )`,
           [
             command.clientId,
@@ -279,6 +294,7 @@ export function createOpportunityStageTransitionService(
             stage.code,
             canonicalEventName,
             authority,
+            authorityDecision,
             sourceEventId,
             command.occurredAt,
             command.actor.type,
@@ -289,7 +305,7 @@ export function createOpportunityStageTransitionService(
         )
 
         let outbox: AppendCanonicalConversionEventResult | null = null
-        if (canonicalEventName) {
+        if (canonicalEventName && authorityDecision === 'accepted') {
           outbox = await deps.appendOutbox(db, {
             clientId: command.clientId,
             eventName: canonicalEventName,

@@ -68,6 +68,7 @@ describe('opportunity stage transition service', () => {
             attribution: { browserEventId: 'browser-event-1', gclid: 'gclid-1' }
           }] }
         }
+        if (/SELECT id[\s\S]*FROM lead_status_events/.test(sql)) return { rows: [] }
         return { rows: [] }
       })
     }
@@ -114,6 +115,7 @@ describe('opportunity stage transition service', () => {
       expect.stringMatching(/INSERT INTO crm_opportunity_stage_history/),
       expect.stringMatching(/measurement_lifecycle_mappings/),
       expect.stringMatching(/FROM lead_crm_links/),
+      expect.stringMatching(/FROM lead_status_events/),
       expect.stringMatching(/INSERT INTO lead_status_events/),
       expect.stringMatching(/UPDATE leads/)
     ])
@@ -220,5 +222,48 @@ describe('opportunity stage transition service', () => {
 
     await expect(service.move(command())).rejects.toThrow('outbox unavailable')
     expect(transaction).toHaveBeenCalledOnce()
+  })
+
+  it('records but does not redeliver a lifecycle outcome already accepted for the linked lead', async () => {
+    const inserts: Array<unknown[]> = []
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        if (/FROM crm_stages/.test(sql)) return { rows: [stage()] }
+        if (/FOR UPDATE/.test(sql)) return { rows: [opportunity()] }
+        if (/UPDATE crm_opportunities/.test(sql)) return { rows: [{ ...opportunity(), stage_id: TO_STAGE_ID }] }
+        if (/INSERT INTO crm_opportunity_stage_history/.test(sql)) {
+          return { rows: [{ id: HISTORY_ID, changed_at: new Date(command().occurredAt) }] }
+        }
+        if (/measurement_lifecycle_mappings/.test(sql)) {
+          return { rows: [{ outcome_authority: 'zero_native', canonical_event_name: 'lead_qualified' }] }
+        }
+        if (/FROM lead_crm_links/.test(sql)) {
+          return { rows: [{
+            lead_id: LEAD_ID,
+            source: 'google',
+            source_lead_id: 'google-lead-1',
+            attribution: { gclid: 'gclid-1' }
+          }] }
+        }
+        if (/SELECT id[\s\S]*FROM lead_status_events/.test(sql)) return { rows: [{ id: 'existing' }] }
+        if (/INSERT INTO lead_status_events/.test(sql)) inserts.push(params)
+        return { rows: [] }
+      })
+    }
+    const appendOutbox = vi.fn()
+    const service = createOpportunityStageTransitionService({
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => callback(db)) as never,
+      appendOutbox: appendOutbox as never
+    })
+
+    const result = await service.move(command())
+
+    expect(result).toMatchObject({
+      status: 'moved',
+      canonicalEventName: 'lead_qualified',
+      outbox: null
+    })
+    expect(inserts[0]?.[7]).toBe('duplicate')
+    expect(appendOutbox).not.toHaveBeenCalled()
   })
 })

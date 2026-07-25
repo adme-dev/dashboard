@@ -1,27 +1,38 @@
 import { requireClientAuth } from '~~/server/utils/clientAuth'
-import { execute } from '~~/server/utils/db'
-
-const PORTAL_VISIBLE_EXISTS = `EXISTS (
-  SELECT 1 FROM lead_form_rules r
-  JOIN lead_rule_destinations d ON d.rule_id = r.id
-  WHERE r.source = l.source AND r.form_id = l.form_id
-    AND r.client_id = l.client_id
-    AND r.enabled = TRUE
-    AND d.destination_type = 'portal' AND d.enabled = TRUE
-)`
+import { leadStatusTransitionService } from '~~/server/utils/leads/statusTransition'
+import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
 
 export default defineEventHandler(async (event) => {
   const client = await requireClientAuth(event)
+  if (!client.canManageLeadOutcomes) {
+    throw createError({ statusCode: 403, statusMessage: 'Lead outcome permission required' })
+  }
   const id = getRouterParam(event, 'id')!
-  const n = await execute(
-    `UPDATE leads l SET status = 'contacted', contacted_at = NOW()
-     WHERE id = $1
-       AND client_id = $2
-       AND deleted_at IS NULL
-       AND status = 'new'
-       AND ${PORTAL_VISIBLE_EXISTS}`,
-    [id, client.clientId]
-  )
-  if (!n) throw createError({ statusCode: 404, statusMessage: 'not_updatable' })
+  const result = await leadStatusTransitionService.move({
+    clientId: client.clientId,
+    leadId: id,
+    toStatus: 'contacted',
+    transitionId: crypto.randomUUID(),
+    actor: { type: 'client_user', id: client.id },
+    occurredAt: new Date().toISOString(),
+    consentDecision: 'unknown',
+    reason: 'Client portal lead marked contacted',
+    portalVisibleOnly: true
+  })
+  if (result.status === 'lead_not_found') {
+    throw createError({ statusCode: 404, statusMessage: 'not_updatable' })
+  }
+  if (result.status === 'moved' && result.outbox?.event.outboxStatus === 'pending') {
+    try {
+      await conversionOutboxPublisher.publishEvent(event, result.outbox.event.eventId)
+    } catch (error) {
+      console.warn({
+        event: 'measurement_outbox_post_commit_publish_failed',
+        clientId: client.clientId,
+        eventId: result.outbox.event.eventId,
+        errorClass: error instanceof Error ? error.name : 'unknown'
+      })
+    }
+  }
   return { ok: true }
 })
