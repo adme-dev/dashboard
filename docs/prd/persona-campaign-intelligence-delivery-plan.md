@@ -55,6 +55,10 @@ Connect website behaviour, confirmed leads, CRM identities, catalog products and
 - [x] Record payload-free background-job execution attempts with stable job identity.
 - [x] Fail unknown queue job types into retry and DLQ handling.
 - [x] Expose admin-only queue success-rate, duration, lag and stale-execution SLOs.
+- [x] Add provider-neutral plans, subscriptions and client entitlement overrides.
+- [x] Add an immutable, idempotent and payload-minimised usage ledger.
+- [x] Enforce Persona Identity and destination entitlements before audience activation.
+- [x] Expose the effective tenant-scoped entitlement snapshot to the client portal.
 
 ### Slice 5: Campaign optimisation
 

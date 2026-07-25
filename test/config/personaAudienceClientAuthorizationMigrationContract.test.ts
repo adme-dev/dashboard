@@ -16,7 +16,7 @@ describe('persona audience client authorization migration', () => {
 
   it('blocks additions without blocking removal propagation', () => {
     expect(migration).toContain("IF NEW.operation = 'sync'")
-    expect(migration).toContain("authorization.status = 'accepted'")
+    expect(migration).toContain("client_auth.status = 'accepted'")
     expect(migration).not.toContain("IF NEW.operation = 'remove'")
   })
 })

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { requirePersonaAdminAccess } from '~~/server/utils/persona/access'
 import { createPersonaActivationRequest } from '~~/server/utils/persona/activation'
+import { requireClientEntitlement } from '~~/server/utils/billing/entitlements'
 
 const Body = z.strictObject({
   clientId: z.string().uuid(),
@@ -27,6 +28,11 @@ export default defineEventHandler(async event => {
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   }
+  await requireClientEntitlement(parsed.data.clientId, 'persona.identity')
+  await requireClientEntitlement(
+    parsed.data.clientId,
+    parsed.data.provider === 'google_ads' ? 'audience.google' : 'audience.meta'
+  )
   return createPersonaActivationRequest({
     ...parsed.data,
     actorId: user.id
