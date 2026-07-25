@@ -97,7 +97,7 @@ export async function processJob(job: QueueJob): Promise<void> {
         break
 
       default:
-        console.warn(`[QueueConsumer] Unknown job type: ${(job as any).type}`)
+        throw new Error(`Unknown queue job type: ${(job as any).type}`)
     }
 
     const duration = Date.now() - startTime

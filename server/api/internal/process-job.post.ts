@@ -24,6 +24,7 @@
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { processJob } from '~~/server/utils/queueConsumer'
 import type { QueueJob } from '~~/server/utils/queue'
+import { startJobExecution, finishJobExecution } from '~~/server/utils/jobExecutionLedger'
 
 export default defineEventHandler(async (event) => {
   const cronSecret = getHeader(event, 'x-cron-secret')
@@ -31,14 +32,28 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const job = await readBody<QueueJob>(event).catch(() => null)
+  const rawJob = await readBody<Partial<QueueJob>>(event).catch(() => null)
+  const job = rawJob
+    ? {
+        ...rawJob,
+        jobId: typeof rawJob.jobId === 'string' && /^[0-9a-f-]{36}$/i.test(rawJob.jobId)
+          ? rawJob.jobId
+          : globalThis.crypto.randomUUID()
+      } as QueueJob
+    : null
   if (!job || typeof job.type !== 'string' || typeof job.payload !== 'object' || job.payload === null) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid job body' })
   }
 
-  // processJob throws on failure — let it propagate so the Worker retries the
-  // message instead of acking a job that never ran.
-  await processJob(job)
+  const startedAt = Date.now()
+  const executionId = await startJobExecution(job)
+  try {
+    await processJob(job)
+    await finishJobExecution(executionId, 'succeeded', startedAt)
+  } catch (error) {
+    await finishJobExecution(executionId, 'failed', startedAt, error)
+    throw error
+  }
 
-  return { ok: true, type: job.type }
+  return { ok: true, type: job.type, jobId: job.jobId }
 })

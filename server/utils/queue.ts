@@ -27,6 +27,7 @@ export type JobType =
   | 'embed.financial.cash'
 
 export interface QueueJob {
+  jobId?: string
   type: JobType
   payload: Record<string, any>
   /** ISO timestamp when the job was enqueued */
@@ -66,6 +67,7 @@ export async function enqueue(
   if (queue) {
     try {
       const job: QueueJob = {
+        jobId: globalThis.crypto.randomUUID(),
         type,
         payload,
         enqueuedAt: new Date().toISOString(),

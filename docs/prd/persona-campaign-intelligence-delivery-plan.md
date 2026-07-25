@@ -52,6 +52,9 @@ Connect website behaviour, confirmed leads, CRM identities, catalog products and
 - [ ] Monitor catalog freshness and unmatched product references.
 - [ ] Monitor consent coverage and audience suppression.
 - [ ] Require current queue, DLQ, policy, approval and alert evidence before activation.
+- [x] Record payload-free background-job execution attempts with stable job identity.
+- [x] Fail unknown queue job types into retry and DLQ handling.
+- [x] Expose admin-only queue success-rate, duration, lag and stale-execution SLOs.
 
 ### Slice 5: Campaign optimisation
 
