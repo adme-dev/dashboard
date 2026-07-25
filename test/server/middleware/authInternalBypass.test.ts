@@ -69,6 +69,11 @@ describe('auth middleware internal bearer endpoints', () => {
     expect(validateSession).not.toHaveBeenCalled()
   })
 
+  it('lets public lead intent reach its site-key guard', async () => {
+    await expect(handler(fakeEvent('/api/public/lead-intent'))).resolves.toBeUndefined()
+    expect(validateSession).not.toHaveBeenCalled()
+  })
+
   it('still requires a session for normal API routes', async () => {
     await expect(handler(fakeEvent('/api/agency/social/spend'))).rejects.toMatchObject({
       statusCode: 401,
