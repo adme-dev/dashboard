@@ -327,11 +327,34 @@
     }
   }
 
+  // First-party consent API for a client banner or preference centre.
+  // Client authorization in the XeroFlow portal is separate from this
+  // person-level decision and never overrides it.
+  function setConsent(preferences) {
+    preferences = preferences || {}
+    var snapshot = {
+      tracking: preferences.tracking === true,
+      analytics: preferences.analytics === true,
+      marketing: preferences.marketing === true,
+      updatedAt: new Date().toISOString(),
+      policyVersion: String(preferences.policyVersion || 'client-default-v1').slice(0, 100),
+      noticeUrl: preferences.noticeUrl ? String(preferences.noticeUrl).slice(0, 2048) : null,
+      decisionMethod: String(preferences.decisionMethod || 'preference_center').slice(0, 80),
+    }
+    setCookie(CONSENT_COOKIE_NAME, JSON.stringify(snapshot), 365)
+    track('consent_update', { consent_updated: true })
+    return snapshot
+  }
+
+  window.XeroFlowConsent = window.XeroFlowConsent || {}
+  window.XeroFlowConsent.get = getConsent
+  window.XeroFlowConsent.set = setConsent
+
   // Gate an event against the current consent state.
   // Category lists MUST mirror shouldAllowEvent() in server/api/tracking/collect.post.ts.
   function isEventAllowed(eventName, consent) {
     // Essential events always fire regardless of consent state
-    var essentialEvents = ['page_view', 'session_start', 'session_end']
+    var essentialEvents = ['page_view', 'session_start', 'session_end', 'consent_update']
     for (var e = 0; e < essentialEvents.length; e++) {
       if (essentialEvents[e] === eventName) return true
     }

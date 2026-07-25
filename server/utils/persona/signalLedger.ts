@@ -194,7 +194,10 @@ function consentSnapshot(value: unknown) {
     analytics: consentValue(source.analytics),
     marketing: consentValue(source.marketing),
     source: text(source.source, 80) ?? 'unknown',
-    region: text(source.region, 16)
+    region: text(source.region, 16),
+    policyVersion: text(source.policyVersion, 100) ?? 'legacy-v1',
+    noticeUrl: text(source.noticeUrl, 2048),
+    decisionMethod: text(source.decisionMethod, 80) ?? 'snapshot'
   }
 }
 
@@ -239,7 +242,7 @@ export async function appendTrackingSignals(
   const firstRow = rows[0]
   if (!firstRow) return 0
   const clientId = firstRow.client_id
-  if (!await isPersonaIdentityEnabled(clientId)) return 0
+  const personaEnabled = await isPersonaIdentityEnabled(clientId)
   let inserted = 0
   const profileCache = new Map<string, string | null>()
   const consentSubjects = new Map<string, {
@@ -256,37 +259,41 @@ export async function appendTrackingSignals(
       : null
     const hashes = [anonHash, sessionHash].filter((value): value is string => Boolean(value))
     const profileCacheKey = hashes.join(':')
-    const cachedProfile = profileCache.get(profileCacheKey)
-    const profileId = cachedProfile !== undefined
-      ? cachedProfile
-      : await profileForHashes(db, clientId, hashes)
-    if (cachedProfile === undefined) profileCache.set(profileCacheKey, profileId)
+    const cachedProfile = personaEnabled ? profileCache.get(profileCacheKey) : null
+    const profileId = !personaEnabled
+      ? null
+      : cachedProfile !== undefined
+        ? cachedProfile
+        : await profileForHashes(db, clientId, hashes)
+    if (personaEnabled && cachedProfile === undefined) profileCache.set(profileCacheKey, profileId)
     const consent = consentSnapshot(row.consent)
-    const productId = await resolveProductId(db, clientId, row)
-    const result = await db.query(
-      `INSERT INTO crm_customer_signals (
-         client_id, profile_id, subject_hash, source_type, source_id,
-         signal_class, signal_key, product_id, confidence,
-         consent_marketing, context, occurred_at
-       ) VALUES (
-         $1, $2, $3, 'tracking', $4, $5, $6, $7, 1, $8, $9::jsonb, $10::timestamptz
-       )
-       ON CONFLICT (client_id, source_type, source_id, signal_key) DO NOTHING
-       RETURNING id`,
-      [
-        clientId,
-        profileId,
-        anonHash,
-        row.event_id,
-        classifyCustomerSignal(row.event_name),
-        row.event_name,
-        productId,
-        consent.marketing,
-        JSON.stringify(sanitizeTrackingSignalContext(row)),
-        row.occurred_at ?? receivedAt
-      ]
-    )
-    if (result.rows?.length) inserted++
+    if (personaEnabled) {
+      const productId = await resolveProductId(db, clientId, row)
+      const result = await db.query(
+        `INSERT INTO crm_customer_signals (
+           client_id, profile_id, subject_hash, source_type, source_id,
+           signal_class, signal_key, product_id, confidence,
+           consent_marketing, context, occurred_at
+         ) VALUES (
+           $1, $2, $3, 'tracking', $4, $5, $6, $7, 1, $8, $9::jsonb, $10::timestamptz
+         )
+         ON CONFLICT (client_id, source_type, source_id, signal_key) DO NOTHING
+         RETURNING id`,
+        [
+          clientId,
+          profileId,
+          anonHash,
+          row.event_id,
+          classifyCustomerSignal(row.event_name),
+          row.event_name,
+          productId,
+          consent.marketing,
+          JSON.stringify(sanitizeTrackingSignalContext(row)),
+          row.occurred_at ?? receivedAt
+        ]
+      )
+      if (result.rows?.length) inserted++
+    }
     consentSubjects.set(anonHash, { profileId, row, snapshot: consent })
   }
 
@@ -296,9 +303,11 @@ export async function appendTrackingSignals(
       `INSERT INTO crm_consent_history (
          client_id, profile_id, subject_hash, snapshot_hash,
          tracking, analytics, marketing, consent_source, region,
-         source_event_id, occurred_at
+         source_event_id, occurred_at, policy_version, notice_url,
+         decision_method, evidence
        )
-       SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::timestamptz
+       SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::timestamptz,
+              $12, $13, $14, $15::jsonb
        WHERE COALESCE((
          SELECT history.snapshot_hash
            FROM crm_consent_history history
@@ -319,7 +328,13 @@ export async function appendTrackingSignals(
         item.snapshot.source,
         item.snapshot.region,
         item.row.event_id,
-        item.row.occurred_at ?? receivedAt
+        item.row.occurred_at ?? receivedAt,
+        item.snapshot.policyVersion,
+        item.snapshot.noticeUrl,
+        item.snapshot.decisionMethod,
+        JSON.stringify({
+          cookieUpdatedAt: text((item.row.consent as Record<string, unknown> | null)?.cookieUpdatedAt, 64)
+        })
       ]
     )
   }

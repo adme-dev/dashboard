@@ -17,10 +17,32 @@ describe('snapshotConsent', () => {
   })
 
   it('explicit cookie wins regardless of region', () => {
-    const cookie = JSON.stringify({ tracking: true, analytics: true, marketing: true, updatedAt: '2026-05-31T00:00:00Z' })
+    const cookie = JSON.stringify({
+      tracking: true,
+      analytics: true,
+      marketing: true,
+      updatedAt: '2026-05-31T00:00:00Z',
+      policyVersion: 'privacy-2026-07',
+      noticeUrl: 'https://dealer.example/privacy',
+      decisionMethod: 'banner'
+    })
     const s = snapshotConsent({ consentCookieValue: cookie, cfIpCountry: 'DE' })
     expect(s.source).toBe('explicit_cookie')
     expect(s.marketing).toBe('granted')
+    expect(s.policyVersion).toBe('privacy-2026-07')
+    expect(s.noticeUrl).toBe('https://dealer.example/privacy')
+    expect(s.decisionMethod).toBe('banner')
+  })
+
+  it('drops unsafe notice URLs from consent evidence', () => {
+    const cookie = JSON.stringify({
+      tracking: true,
+      analytics: true,
+      marketing: true,
+      updatedAt: '2026-07-25T00:00:00Z',
+      noticeUrl: 'javascript:alert(1)'
+    })
+    expect(snapshotConsent({ consentCookieValue: cookie, cfIpCountry: 'AU' }).noticeUrl).toBeNull()
   })
 
   it('no region + no cookie → safest deny', () => {

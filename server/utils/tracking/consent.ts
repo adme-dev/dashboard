@@ -72,6 +72,26 @@ export interface ConsentSnapshot {
   source: 'explicit_cookie' | 'eu_implicit_deny' | 'au_implicit_essential' | 'no_signal'
   region: string | null
   cookieUpdatedAt: string | null
+  policyVersion: string | null
+  noticeUrl: string | null
+  decisionMethod: string | null
+}
+
+function optionalText(value: unknown, max: number): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  return normalized ? normalized.slice(0, max) : null
+}
+
+function optionalHttpsUrl(value: unknown): string | null {
+  const candidate = optionalText(value, 2048)
+  if (!candidate) return null
+  try {
+    const url = new URL(candidate)
+    return url.protocol === 'https:' ? url.toString() : null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -80,7 +100,15 @@ export interface ConsentSnapshot {
  */
 export function parseConsentCookie(
   cookieValue: string | null | undefined
-): { tracking: boolean, analytics: boolean, marketing: boolean, updatedAt: string | null } | null {
+): {
+    tracking: boolean
+    analytics: boolean
+    marketing: boolean
+    updatedAt: string | null
+    policyVersion: string | null
+    noticeUrl: string | null
+    decisionMethod: string | null
+  } | null {
   if (!cookieValue) return null
   try {
     const parsed = JSON.parse(cookieValue)
@@ -88,7 +116,10 @@ export function parseConsentCookie(
       tracking: parsed.tracking ?? false,
       analytics: parsed.analytics ?? false,
       marketing: parsed.marketing ?? false,
-      updatedAt: parsed.updatedAt ?? null
+      updatedAt: optionalText(parsed.updatedAt, 64),
+      policyVersion: optionalText(parsed.policyVersion, 100),
+      noticeUrl: optionalHttpsUrl(parsed.noticeUrl),
+      decisionMethod: optionalText(parsed.decisionMethod, 80)
     }
   } catch {
     return null
@@ -127,7 +158,10 @@ export function snapshotConsent(opts: {
       marketing: cookie.marketing ? 'granted' : 'denied',
       source: 'explicit_cookie',
       region,
-      cookieUpdatedAt: cookie.updatedAt
+      cookieUpdatedAt: cookie.updatedAt,
+      policyVersion: cookie.policyVersion,
+      noticeUrl: cookie.noticeUrl,
+      decisionMethod: cookie.decisionMethod
     }
   }
 
@@ -139,7 +173,10 @@ export function snapshotConsent(opts: {
       marketing: 'denied',
       source: 'eu_implicit_deny',
       region,
-      cookieUpdatedAt: null
+      cookieUpdatedAt: null,
+      policyVersion: null,
+      noticeUrl: null,
+      decisionMethod: 'regional_default'
     }
   }
 
@@ -151,7 +188,10 @@ export function snapshotConsent(opts: {
       marketing: 'denied',
       source: 'au_implicit_essential',
       region,
-      cookieUpdatedAt: null
+      cookieUpdatedAt: null,
+      policyVersion: null,
+      noticeUrl: null,
+      decisionMethod: 'regional_default'
     }
   }
 
@@ -162,7 +202,10 @@ export function snapshotConsent(opts: {
     marketing: 'denied',
     source: 'no_signal',
     region: null,
-    cookieUpdatedAt: null
+    cookieUpdatedAt: null,
+    policyVersion: null,
+    noticeUrl: null,
+    decisionMethod: 'fail_closed'
   }
 }
 

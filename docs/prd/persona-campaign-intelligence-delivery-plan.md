@@ -8,11 +8,16 @@ Connect website behaviour, confirmed leads, CRM identities, catalog products and
 
 ### Slice 1: Signal and privacy foundation
 
-- [ ] Add normalized customer signals keyed by tenant and pseudonymous subject hash.
-- [ ] Persist consent changes separately from behavioural events.
-- [ ] Strip query strings, arbitrary free text and PII-like fields from persona context.
-- [ ] Preserve source-event lineage and deterministic idempotency.
-- [ ] Keep tracking and lead ingestion durable when enrichment is unavailable.
+- [x] Add normalized customer signals keyed by tenant and pseudonymous subject hash.
+- [x] Persist consent changes separately from behavioural events.
+- [x] Strip query strings, arbitrary free text and PII-like fields from persona context.
+- [x] Preserve source-event lineage and deterministic idempotency.
+- [x] Keep tracking and lead ingestion durable when enrichment is unavailable.
+- [x] Capture consent policy version, privacy notice and decision method.
+- [x] Expose a first-party consent API for client banners and preference centres.
+- [x] Keep client portal authorization separate from person-level consent.
+- [x] Add append-only purpose, channel and destination suppression events.
+- [x] Enforce current marketing consent and suppression before provider sync staging.
 
 ### Slice 2: Identity and product connection
 
