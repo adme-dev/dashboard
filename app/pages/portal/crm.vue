@@ -16,6 +16,7 @@ const tabItems = [
   { label: 'Pipeline', value: 'pipeline', icon: 'i-lucide-trello' },
   { label: 'Tasks', value: 'tasks', icon: 'i-lucide-list-checks' },
   { label: 'Data Sources', value: 'data-sources', icon: 'i-lucide-database-zap' },
+  { label: 'Platform', value: 'platform', icon: 'i-lucide-shield-check' },
 ]
 const { data: personaData } = useFetch<{ enabled: boolean }>(
   '/api/client-portal/crm/personas/status',
@@ -62,6 +63,7 @@ const activeObject = computed<CrmObjectDef | null>(() =>
         api-base="/api/client-portal/crm/data-sources"
         :can-manage="canManageDataSources"
       />
+      <CrmPlatformReadiness v-else-if="tab === 'platform'" />
       <CrmPersonas v-else-if="tab === 'personas'" :client-id="clientId" />
       <CrmAudienceCohorts v-else-if="tab === 'audiences'" :client-id="clientId" />
       <template v-else-if="activeObject">
