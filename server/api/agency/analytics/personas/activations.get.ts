@@ -1,5 +1,9 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { listPersonaActivationRequests } from '~~/server/utils/persona/activation'
+import {
+  listPersonaAudienceProviderState,
+  personaProviderWritesEnabled
+} from '~~/server/utils/persona/audienceSync'
 
 export default defineEventHandler(async event => {
   await requireAuth(event)
@@ -9,6 +13,7 @@ export default defineEventHandler(async event => {
   }
   return {
     items: await listPersonaActivationRequests(clientId),
-    providerDispatchEnabled: false
+    providerDispatchEnabled: personaProviderWritesEnabled(),
+    providerState: await listPersonaAudienceProviderState(clientId)
   }
 })

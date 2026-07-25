@@ -29,6 +29,17 @@ const actionError = ref('')
 const data = ref<{
   items: ActivationItem[]
   providerDispatchEnabled: boolean
+  providerState?: {
+    exports: Array<{
+      requestId: string
+      status: string
+      attemptedAdditions: number
+      attemptedRemovals: number
+      successfulAdditions: number
+      successfulRemovals: number
+      errorMessage: string | null
+    }>
+  }
 } | null>(null)
 const status = ref<'pending' | 'success' | 'error'>('pending')
 const apiFetch = $fetch as <T = unknown>(
@@ -90,7 +101,10 @@ async function createRequest() {
   }
 }
 
-async function transition(item: ActivationItem, action: 'approve_privacy' | 'approve_live' | 'cancel') {
+async function transition(
+  item: ActivationItem,
+  action: 'approve_privacy' | 'approve_live' | 'cancel' | 'retry' | 'deactivate'
+) {
   busy.value = true
   actionError.value = ''
   try {
@@ -99,11 +113,16 @@ async function transition(item: ActivationItem, action: 'approve_privacy' | 'app
       body: {
         clientId: props.clientId,
         action,
+        acceptProviderTerms: action === 'approve_live' ? true : undefined,
         reason: action === 'approve_privacy'
           ? 'Privacy and consent controls reviewed'
           : action === 'approve_live'
             ? 'Live provider export approved'
-            : 'Activation request cancelled'
+            : action === 'retry'
+              ? 'Provider audience reconciliation requested'
+              : action === 'deactivate'
+                ? 'Provider audience removal requested'
+                : 'Activation request cancelled'
       }
     })
     await refresh()
@@ -120,6 +139,10 @@ function statusColor(statusValue: string) {
   if (statusValue === 'privacy_approved') return 'warning'
   return 'neutral'
 }
+
+function latestExport(requestId: string) {
+  return data.value?.providerState?.exports.find(item => item.requestId === requestId)
+}
 </script>
 
 <template>
@@ -128,7 +151,7 @@ function statusColor(statusValue: string) {
       <div>
         <h2 class="font-semibold">Audience activation controls</h2>
         <p class="mt-1 text-xs text-muted">
-          Create an aggregate cohort request. Provider export requires two-person approval and remains disabled by default.
+          Create a consented cohort, complete two-person approval, then sync it to the mapped provider account.
         </p>
       </div>
     </template>
@@ -186,6 +209,14 @@ function statusColor(statusValue: string) {
             {{ item.estimatedSize }} estimated personas · minimum {{ item.minimumSize }}
             <span v-if="item.blockedReason">· {{ item.blockedReason }}</span>
           </p>
+          <p v-if="latestExport(item.id)" class="mt-1 text-xs text-muted">
+            Provider {{ latestExport(item.id)?.status }}
+            · {{ latestExport(item.id)?.successfulAdditions || 0 }} added
+            · {{ latestExport(item.id)?.successfulRemovals || 0 }} removed
+            <span v-if="latestExport(item.id)?.errorMessage">
+              · {{ latestExport(item.id)?.errorMessage }}
+            </span>
+          </p>
         </div>
         <UButton
           v-if="item.status === 'pending_privacy'"
@@ -208,7 +239,27 @@ function statusColor(statusValue: string) {
           Live approve
         </UButton>
         <UButton
-          v-if="['pending_privacy', 'privacy_approved', 'approved'].includes(item.status)"
+          v-if="item.status === 'approved'"
+          size="xs"
+          color="neutral"
+          variant="outline"
+          :loading="busy"
+          @click="transition(item, 'retry')"
+        >
+          Sync now
+        </UButton>
+        <UButton
+          v-if="item.status === 'approved'"
+          size="xs"
+          color="error"
+          variant="soft"
+          :loading="busy"
+          @click="transition(item, 'deactivate')"
+        >
+          Remove from provider
+        </UButton>
+        <UButton
+          v-if="['pending_privacy', 'privacy_approved'].includes(item.status)"
           size="xs"
           color="neutral"
           variant="ghost"
@@ -224,7 +275,9 @@ function statusColor(statusValue: string) {
     </p>
 
     <p class="mt-4 border-t border-default pt-3 text-xs text-muted">
-      Approved requests are export-ready records only. Google Customer Match and Meta Custom Audience dispatch remain off until destination credentials, individual consent eligibility, suppression, and provider reconciliation are configured.
+      Provider dispatch is <strong>{{ data?.providerDispatchEnabled ? 'enabled' : 'paused' }}</strong>.
+      Only people with current marketing consent and a matchable email or phone are uploaded. Consent withdrawals,
+      CRM do-not-contact settings and manual deactivation are propagated as provider removals.
     </p>
   </UCard>
 </template>

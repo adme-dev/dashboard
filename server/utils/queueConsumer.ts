@@ -48,6 +48,10 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processTikTokSpendSync(job.payload)
         break
 
+      case 'persona.audience.sync':
+        await processPersonaAudienceSync(job.payload)
+        break
+
       case 'embed.task':
         await processEmbedTask(job.payload)
         break
@@ -168,6 +172,11 @@ async function processTikTokSpendSync(payload: Record<string, any>): Promise<voi
   await syncTikTokSpend(payload.month, payload.year)
 }
 
+async function processPersonaAudienceSync(payload: Record<string, any>): Promise<void> {
+  const { runPersonaAudienceSync } = await import('~~/server/utils/persona/audienceSync')
+  await runPersonaAudienceSync(payload.exportId)
+}
+
 async function processEmbedTask(payload: Record<string, any>): Promise<void> {
   const { embedTask } = await import('~~/server/utils/aiEntityEmbedder')
   await embedTask(payload._event as any, payload.taskId)
@@ -215,4 +224,3 @@ async function processFinancialEmbed(payload: Record<string, any>, type: string)
     case 'cash': await mod.embedCashPosition(event); break
   }
 }
-

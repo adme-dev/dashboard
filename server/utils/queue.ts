@@ -13,6 +13,7 @@ export type JobType =
   | 'spend.sync.google'
   | 'spend.sync.google.account'
   | 'spend.sync.tiktok'
+  | 'persona.audience.sync'
   | 'embed.task'
   | 'embed.brief'
   | 'embed.client'

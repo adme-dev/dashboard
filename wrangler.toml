@@ -122,6 +122,11 @@ service = "agency-workflows"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 EMAIL_FROM = "notification@adme.net.au"
+# Provider audience writes remain additionally gated by client mapping,
+# current marketing consent, minimum cohort size and two-person approval.
+PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED = "true"
+PERSONA_META_AUDIENCE_WRITES_ENABLED = "true"
+PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED = "true"
 # Emergency operational pause for all internal user/member notification
 # delivery. This supersedes personal preferences and blocks in-app rows,
 # browser push, and notification-template email while leaving authentication
