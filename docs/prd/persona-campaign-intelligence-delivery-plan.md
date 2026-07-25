@@ -31,6 +31,9 @@ Connect website behaviour, confirmed leads, CRM identities, catalog products and
 - [x] Record immutable resolution versions, mappings and audit evidence.
 - [x] Support rollback through a new projection version without rewriting raw history.
 - [x] Surface identity coverage and governed cases in the client portal.
+- [x] Require dynamic Media Buying permission for agency persona and cohort reads.
+- [x] Require dynamic Admin permission for activation and reconciliation operations.
+- [x] Keep sensitive agency activation and reconciliation responses out of shared caches.
 
 ### Slice 3: Persona rules and cohort previews
 

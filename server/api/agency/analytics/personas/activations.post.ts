@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { requireAuth } from '~~/server/utils/auth'
+import { requirePersonaAdminAccess } from '~~/server/utils/persona/access'
 import { createPersonaActivationRequest } from '~~/server/utils/persona/activation'
 
 const Body = z.strictObject({
@@ -22,10 +22,7 @@ const Body = z.strictObject({
 })
 
 export default defineEventHandler(async event => {
-  const user = await requireAuth(event)
-  if (!['owner', 'admin'].includes(user.role)) {
-    throw createError({ statusCode: 403, statusMessage: 'Owner or admin access required' })
-  }
+  const user = await requirePersonaAdminAccess(event)
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: parsed.error.message })

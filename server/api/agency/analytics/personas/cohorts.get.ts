@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { requireAuth } from '~~/server/utils/auth'
+import { requirePersonaReadAccess } from '~~/server/utils/persona/access'
 import { getAudienceCohortPreview } from '~~/server/utils/persona/cohorts'
 
 const Query = z.object({
@@ -10,7 +10,8 @@ const Query = z.object({
 })
 
 export default defineEventHandler(async event => {
-  await requireAuth(event)
+  await requirePersonaReadAccess(event)
+  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   const parsed = Query.safeParse(getQuery(event))
   if (!parsed.success) {
     throw createError({ statusCode: 422, statusMessage: 'Invalid cohort filters' })
