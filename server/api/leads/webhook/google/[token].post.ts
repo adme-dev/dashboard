@@ -15,6 +15,35 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb)
 }
 
+// Structural summary only — never the raw body. The raw body carries the
+// client's webhook secret (google_key) and lead PII (user_column_data), both
+// of which must not land in lead_ingestion_errors.
+function ingestionDiagnostic(rawBody: unknown): Record<string, unknown> {
+  if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+    return { payload_type: rawBody === null ? 'null' : typeof rawBody }
+  }
+  const body = rawBody as Record<string, unknown>
+  return {
+    payload_type: 'object',
+    lead_id: typeof body.lead_id === 'string' ? body.lead_id.slice(0, 200) : undefined,
+    form_id: typeof body.form_id === 'string' ? body.form_id.slice(0, 200) : undefined,
+    campaign_id: typeof body.campaign_id === 'string' ? body.campaign_id.slice(0, 200) : undefined,
+    is_test: typeof body.is_test === 'boolean' ? body.is_test : undefined,
+    has_user_column_data: Array.isArray(body.user_column_data),
+    user_column_count: Array.isArray(body.user_column_data) ? body.user_column_data.length : undefined
+  }
+}
+
+function ingestionDiagnosticHeaders(event: Parameters<typeof getRequestHeaders>[0]): Record<string, string> {
+  const headers = getRequestHeaders(event)
+  const result: Record<string, string> = {}
+  for (const key of ['content-type', 'user-agent', 'cf-ray']) {
+    const value = headers[key]
+    if (typeof value === 'string') result[key] = value.slice(0, 512)
+  }
+  return result
+}
+
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token')
   if (!token) throw createError({ statusCode: 400, statusMessage: 'token_required' })
@@ -46,7 +75,7 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event).catch(() => null) as any
   if (!body || typeof body !== 'object') {
-    await logIngestionError('google', body, getRequestHeaders(event), 'invalid_body')
+    await logIngestionError('google', ingestionDiagnostic(body), ingestionDiagnosticHeaders(event), 'invalid_body')
     return { ok: true } // always-200
   }
 
@@ -76,7 +105,7 @@ export default defineEventHandler(async (event) => {
     }
     return { ok: true, lead_id: accepted.leadId }
   } catch (e: any) {
-    await logIngestionError('google', body, getRequestHeaders(event), e?.message ?? String(e))
+    await logIngestionError('google', ingestionDiagnostic(body), ingestionDiagnosticHeaders(event), e?.message ?? String(e))
     return { ok: true }
   }
 })

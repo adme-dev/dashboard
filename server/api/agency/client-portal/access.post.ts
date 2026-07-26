@@ -151,11 +151,9 @@ export default defineEventHandler(async (event) => {
       return user
     })
 
-    const requestUrl = getRequestURL(event)
-
     setCookie(event, 'client_session_token', sessionToken, {
       httpOnly: true,
-      secure: requestUrl.protocol === 'https:',
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 8 * 60 * 60,
       path: '/'

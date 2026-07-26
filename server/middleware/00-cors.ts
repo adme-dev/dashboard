@@ -28,15 +28,6 @@ function isProduction() {
   return process.env.NODE_ENV === 'production'
 }
 
-function isLocalhost(origin: string) {
-  try {
-    const parsed = new URL(origin)
-    return ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
-  } catch {
-    return false
-  }
-}
-
 export default defineEventHandler((event) => {
   const { pathname } = getRequestURL(event)
   if (!pathname.startsWith('/api/')) return
@@ -44,15 +35,30 @@ export default defineEventHandler((event) => {
   const origin = getHeader(event, 'origin')
   if (!origin || origin === 'null') return
 
-  const origins = allowedOrigins()
+  // Public beacons (write-key/token authenticated, not cookie authenticated) are
+  // meant to be called cross-origin from arbitrary client websites — allow any
+  // origin, but never pair that with allow-credentials.
   const isPublicTrackingEndpoint = pathname === '/api/public/track'
     || pathname === '/api/public/lead-intent'
-  const isAllowed = isPublicTrackingEndpoint || !isProduction()
-    ? true
-    : isProduction()
-    ? origins.has(origin) || isLocalhost(origin)
-    : true
+  if (isPublicTrackingEndpoint) {
+    setHeader(event, 'access-control-allow-origin', origin)
+    setHeader(event, 'vary', 'Origin')
+    setHeader(event, 'access-control-allow-methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
+    setHeader(
+      event,
+      'access-control-allow-headers',
+      getHeader(event, 'access-control-request-headers') || 'authorization,content-type'
+    )
+    if (event.method === 'OPTIONS') {
+      setHeader(event, 'access-control-max-age', '86400')
+      setResponseStatus(event, 204)
+      return ''
+    }
+    return
+  }
 
+  // All other API routes: strict allowlist in production, permissive in dev/staging.
+  const isAllowed = !isProduction() || allowedOrigins().has(origin)
   if (!isAllowed) return
 
   setHeader(event, 'access-control-allow-origin', origin)
