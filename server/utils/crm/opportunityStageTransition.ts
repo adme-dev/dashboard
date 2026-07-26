@@ -307,7 +307,8 @@ export function createOpportunityStageTransitionService(
         let outbox: AppendCanonicalConversionEventResult | null = null
         if (canonicalEventName && authorityDecision === 'accepted') {
           const amount = Number(updated.amount)
-          const value = canonicalEventName === 'lead_won' && Number.isFinite(amount) && amount > 0
+          const value = canonicalEventName === 'lead_won'
+            && Number.isFinite(amount) && amount > 0 && amount <= 9_999_999.99
             ? Number(amount.toFixed(2))
             : null
           outbox = await deps.appendOutbox(db, {

@@ -342,6 +342,43 @@ describe('opportunity stage transition service', () => {
     }))
   })
 
+  it('omits a conversion value when the won opportunity amount exceeds the business-sanity ceiling', async () => {
+    const db = {
+      query: vi.fn(async (sql: string) => {
+        if (/FROM crm_stages/.test(sql)) return { rows: [{ ...stage(), code: 'won', is_won: true }] }
+        if (/FROM crm_opportunities[\s\S]*FOR UPDATE/.test(sql)) return { rows: [opportunity()] }
+        if (/UPDATE crm_opportunities/.test(sql)) {
+          return { rows: [{ ...opportunity(), stage_id: TO_STAGE_ID, status: 'won', amount: '12000000.00' }] }
+        }
+        if (/INSERT INTO crm_opportunity_stage_history/.test(sql)) {
+          return { rows: [{ id: HISTORY_ID, changed_at: new Date(command().occurredAt) }] }
+        }
+        if (/measurement_lifecycle_mappings/.test(sql)) {
+          return { rows: [{ canonical_event_name: 'lead_won' }] }
+        }
+        if (/FROM lead_crm_links/.test(sql)) return { rows: [] }
+        if (/SELECT id[\s\S]*FROM lead_status_events/.test(sql)) return { rows: [] }
+        return { rows: [] }
+      })
+    }
+    const appendOutbox = vi.fn(async () => ({
+      status: 'created' as const,
+      event: { eventId: '88888888-8888-4888-8888-888888888888', outboxStatus: 'pending' },
+      deliveryCount: 1
+    }))
+    const service = createOpportunityStageTransitionService({
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => callback(db)) as never,
+      appendOutbox: appendOutbox as never
+    })
+
+    await service.move(command())
+
+    expect(appendOutbox).toHaveBeenCalledWith(db, expect.objectContaining({
+      eventName: 'lead_won',
+      value: null
+    }))
+  })
+
   it('never attaches a conversion value to a non-won transition even when the opportunity has a set amount', async () => {
     const db = {
       query: vi.fn(async (sql: string) => {

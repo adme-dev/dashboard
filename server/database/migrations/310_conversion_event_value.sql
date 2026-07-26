@@ -11,16 +11,17 @@ ALTER TABLE conversion_events
   ADD COLUMN value NUMERIC(14,2) NULL,
   ADD COLUMN currency_code TEXT NULL;
 
--- NOT VALID + a separate VALIDATE CONSTRAINT avoids an ACCESS EXCLUSIVE
--- lock for the full validation scan, matching the pattern this codebase
--- already uses for constraints added to existing tables (migrations 225,
--- 257, 258, 273).
+-- NOT VALID defers the constraint's validation scan so this transaction's
+-- ACCESS EXCLUSIVE lock is brief. The VALIDATE CONSTRAINT below runs in its
+-- own transaction (after this COMMIT) so its scan only needs the lighter
+-- SHARE UPDATE EXCLUSIVE lock, which doesn't block reads/writes on the
+-- table. Matches the pattern in migrations 225 and 273.
 ALTER TABLE conversion_events
   ADD CONSTRAINT conversion_events_value_currency_pair
   CHECK ((value IS NULL) = (currency_code IS NULL))
   NOT VALID;
 
+COMMIT;
+
 ALTER TABLE conversion_events
   VALIDATE CONSTRAINT conversion_events_value_currency_pair;
-
-COMMIT;

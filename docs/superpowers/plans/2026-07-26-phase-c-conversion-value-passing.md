@@ -18,6 +18,7 @@
 - The plain leads-status path (`server/utils/leads/statusTransition.ts`) is never touched — it has no value source and must keep behaving exactly as it does today.
 - No backfill of historically-delivered `lead_won` events. Forward-only.
 - **Do not run the new migration against `DATABASE_URL` without asking the user for explicit go-ahead first** — this project's established session pattern (see `docs/superpowers/handoffs/2026-07-26-phase-b-shipped-phase-c-next.md`) is author-then-ask, not auto-run, despite the general project default. Ask before running Task 1's migration step.
+- **Migration 310 MUST be applied to the database before the application/worker code from this feature is deployed** — not after, not concurrently. There is no auto-migration runner in this repo (nothing in `server/` or `scripts/` reads `server/database/migrations/` at runtime), and the code assumes the `value`/`currency_code` columns already exist. Deploying code before the migration runs breaks every `appendCanonicalConversionEvent` caller (lead intake, lead status transitions, CRM opportunity stage moves, browser-conversion promotion) plus the measurement-delivery worker's claim query.
 - Full design rationale: `docs/superpowers/specs/2026-07-26-phase-c-conversion-value-passing-design.md`.
 
 ---

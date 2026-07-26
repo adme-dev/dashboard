@@ -33,13 +33,25 @@ This is item 1 of 4 candidate Phase C (ad-spend efficiency) items identified in 
 New migration (e.g. `288_conversion_event_value.sql`):
 
 ```sql
+BEGIN;
+
 ALTER TABLE conversion_events
   ADD COLUMN value NUMERIC(14,2) NULL,
   ADD COLUMN currency_code TEXT NULL;
 
+-- NOT VALID defers the constraint's validation scan so this transaction's
+-- ACCESS EXCLUSIVE lock is brief. VALIDATE CONSTRAINT runs in its own
+-- transaction (after this COMMIT) so its scan only needs the lighter
+-- SHARE UPDATE EXCLUSIVE lock, which doesn't block reads/writes.
 ALTER TABLE conversion_events
   ADD CONSTRAINT conversion_events_value_currency_pair
-  CHECK ((value IS NULL) = (currency_code IS NULL));
+  CHECK ((value IS NULL) = (currency_code IS NULL))
+  NOT VALID;
+
+COMMIT;
+
+ALTER TABLE conversion_events
+  VALIDATE CONSTRAINT conversion_events_value_currency_pair;
 ```
 
 Purely additive: nullable columns, all existing rows already satisfy `NULL = NULL`, no backfill or table rewrite. The paired CHECK constraint makes "value without currency" or "currency without value" impossible at the DB level, even though every code path already treats them as a pair.
@@ -129,7 +141,7 @@ Both providers already handle "field absent" correctly today (that's every event
 - `outbox.ts` tests: `value` persists on the inserted `conversion_events` row; `currency_code` is `'AUD'` exactly when `value` is non-null, `null` otherwise.
 - `providers.test.ts`: Meta CRM payload includes `custom_data.value`/`.currency` when `delivery.value` is present, omits both when `null`; Google payload includes root-level `conversionValue`/`currency` when present, omits when `null`.
 - `repository.test.ts`: `claimNext`'s SELECT correctly maps `value`/`currency_code` onto the returned claim.
-- A migration contract test (matching the existing `test/config/*Migration.test.ts` pattern) verifying the paired CHECK constraint rejects `value` without `currency_code` and vice versa.
+- A migration contract test (matching the existing `test/config/*Migration.test.ts` pattern) verifying the migration's SQL text includes the CHECK constraint pairing `value` and `currency_code` — this codebase has no test database, so migration tests assert static SQL content rather than exercising live DB rejection.
 
 ## Non-goals (deferred to later Phase C items or future work)
 
