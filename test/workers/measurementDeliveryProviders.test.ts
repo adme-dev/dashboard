@@ -15,6 +15,8 @@ const baseDelivery = {
   operatingAccountId: '9876543210',
   loginAccountId: '9876543210',
   metaDeliveryMode: 'crm' as const,
+  value: null,
+  currency: null,
   attribution: {
     browserEventId: null,
     metaLeadId: '123456789012345',
@@ -334,6 +336,50 @@ describe('measurement delivery provider adapters', () => {
       status: 400,
       retryable: false,
       message: 'Google OAuth refresh failed'
+    })
+  })
+
+  it('includes value and currency in the Meta CRM payload when a conversion value is present', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      events_received: 1,
+      fbtrace_id: 'meta-trace-value'
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    await deliverMetaConversionEvent({
+      delivery: { ...baseDelivery, eventName: 'lead_won', value: 15000.5, currency: 'AUD' },
+      accessToken: 'meta-access-token',
+      graphApiVersion: 'v25.0',
+      fetch
+    })
+
+    const [, request] = fetch.mock.calls[0]!
+    expect(JSON.parse(request.body as string).data[0].custom_data).toEqual({
+      lead_event_source: 'XeroFlow',
+      event_source: 'crm',
+      value: 15000.5,
+      currency: 'AUD'
+    })
+  })
+
+  it('sends a Google Data Manager event with a root-level conversion value and currency', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      requestId: 'google-request-value'
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    await deliverGoogleDataManagerEvent({
+      delivery: { ...baseDelivery, eventName: 'lead_won', value: 15000.5, currency: 'AUD' },
+      accessToken: 'google-access-token',
+      fetch
+    })
+
+    const [, request] = fetch.mock.calls[0]!
+    expect(JSON.parse(request.body as string).events[0]).toEqual({
+      adIdentifiers: { gclid: 'gclid-1' },
+      eventTimestamp: '2026-07-17T06:00:00.000Z',
+      transactionId: 'v1:canonical-event-key',
+      eventSource: 'WEB',
+      conversionValue: 15000.5,
+      currency: 'AUD'
     })
   })
 })
