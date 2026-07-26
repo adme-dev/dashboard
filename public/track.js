@@ -26,6 +26,8 @@
   var IDLE_TIMEOUT_MS = 60000
   var IDLE_EXTENDED_THRESHOLDS = [120, 300]
   var IDLE_ACTIVITY_DEBOUNCE_MS = 500
+  var RETURN_TO_VEHICLE_MIN_DAYS = 0
+  var _funnelSignalsEnabled = true
 
   // =====================================================
   // sGTM BRIDGE (optional — loads GTM when dealer has it enabled)
@@ -58,6 +60,10 @@
     return_to_vehicle: 'return_to_vehicle',
     competitive_referrer: 'competitive_referrer',
     vdp_scroll_depth: 'vdp_scroll_depth',
+    vehicle_comparison: 'vehicle_comparison',
+    exit_intent: 'exit_intent',
+    add_to_wishlist: 'add_to_wishlist',
+    cta_visible: 'cta_visible',
   }
 
   // Events with thresholds (only push above certain values)
@@ -369,6 +375,14 @@
       noticeUrl: preferences.noticeUrl ? String(preferences.noticeUrl).slice(0, 2048) : null,
       decisionMethod: String(preferences.decisionMethod || 'preference_center').slice(0, 80),
     }
+    if (!snapshot.analytics) {
+      try {
+        localStorage.removeItem(VEHICLE_VISITS_STORAGE_KEY)
+        sessionStorage.removeItem(SESSION_VEHICLES_STORAGE_KEY)
+      } catch (e) {
+        /* storage unavailable — ignore */
+      }
+    }
     setCookie(CONSENT_COOKIE_NAME, JSON.stringify(snapshot), 365)
     pushConsentToDataLayer('update', snapshot)
     track('consent_update', { consent_updated: true })
@@ -412,6 +426,7 @@
     // Analytics events require analytics consent
     var analyticsEvents = [
       'vehicle_view',
+      'return_to_vehicle',
       'vehicle_list_view',
       'search',
       'filter_change',
@@ -424,6 +439,8 @@
       'idle_extended',
       'form_field_focus',
       'form_abandonment',
+      'exit_intent',
+      'cta_visible',
     ]
     for (var a = 0; a < analyticsEvents.length; a++) {
       if (analyticsEvents[a] === eventName) return !!consent.analytics
@@ -763,6 +780,208 @@
     return Object.keys(ctx).length > 0 ? ctx : null
   }
 
+  var VEHICLE_VISITS_STORAGE_KEY = '_xf_vehicle_visits_v1'
+  var VEHICLE_VISITS_MAX_ENTRIES = 50
+
+  function vehicleKey(ctx) {
+    if (!ctx) return null
+    return ctx.vehicle_stock_number || ctx.vehicle_slug || null
+  }
+
+  function readVehicleVisits() {
+    try {
+      var raw = localStorage.getItem(VEHICLE_VISITS_STORAGE_KEY)
+      return raw ? JSON.parse(raw) : {}
+    } catch (e) {
+      return {}
+    }
+  }
+
+  function writeVehicleVisits(visits) {
+    try {
+      var cutoff = Date.now() - 90 * 86400000
+      var keys = Object.keys(visits)
+      for (var k = 0; k < keys.length; k++) {
+        if (visits[keys[k]] < cutoff) delete visits[keys[k]]
+      }
+      keys = Object.keys(visits)
+      if (keys.length > VEHICLE_VISITS_MAX_ENTRIES) {
+        keys.sort(function (a, b) { return visits[a] - visits[b] })
+        var toRemove = keys.slice(0, keys.length - VEHICLE_VISITS_MAX_ENTRIES)
+        for (var i = 0; i < toRemove.length; i++) delete visits[toRemove[i]]
+      }
+      localStorage.setItem(VEHICLE_VISITS_STORAGE_KEY, JSON.stringify(visits))
+    } catch (e) {
+      /* storage unavailable or full — ignore */
+    }
+  }
+
+  // Fires return_to_vehicle when the same vehicle (by stock number/slug) was
+  // last seen in an earlier session — the strongest single purchase-intent
+  // signal in automotive retargeting. Always records the visit regardless of
+  // whether the event fires, so the *next* visit's gap is measured correctly.
+  function trackReturnToVehicle(vehicleCtx) {
+    var key = vehicleKey(vehicleCtx)
+    if (!key) return
+    var visits = readVehicleVisits()
+    var lastSeen = visits[key]
+    if (lastSeen) {
+      var elapsedMs = Date.now() - lastSeen
+      var isNewSession = elapsedMs > SESSION_MINUTES * 60 * 1000
+      var daysSince = Math.floor(elapsedMs / 86400000)
+      if (isNewSession && daysSince >= RETURN_TO_VEHICLE_MIN_DAYS) {
+        track('return_to_vehicle', { vehicle_key: key, days_since_last_visit: daysSince })
+      }
+    }
+    visits[key] = Date.now()
+    writeVehicleVisits(visits)
+  }
+
+  var SESSION_VEHICLES_STORAGE_KEY = '_xf_session_vehicles_v1'
+  var SESSION_VEHICLES_MAX_ENTRIES = 20
+  var COMPARISON_THRESHOLDS = [2, 3, 5]
+
+  function readSessionVehicles() {
+    try {
+      var raw = sessionStorage.getItem(SESSION_VEHICLES_STORAGE_KEY)
+      return raw ? JSON.parse(raw) : []
+    } catch (e) {
+      return []
+    }
+  }
+
+  // Fires vehicle_comparison when the count of distinct vehicles viewed this
+  // session crosses a configured threshold — "viewed 3+ mid-size SUVs" is a
+  // materially better retargeting signal than "visited the site."
+  function trackCrossShop(vehicleCtx) {
+    var key = vehicleKey(vehicleCtx)
+    if (!key) return
+    var vehicles = readSessionVehicles()
+    if (vehicles.indexOf(key) !== -1) return
+    vehicles.push(key)
+    if (vehicles.length > SESSION_VEHICLES_MAX_ENTRIES) vehicles.shift()
+    try {
+      sessionStorage.setItem(SESSION_VEHICLES_STORAGE_KEY, JSON.stringify(vehicles))
+    } catch (e) {
+      /* storage unavailable or full — ignore */
+    }
+    if (COMPARISON_THRESHOLDS.indexOf(vehicles.length) !== -1) {
+      track('vehicle_comparison', {
+        distinct_vehicles_viewed: vehicles.length,
+        vehicle_keys: vehicles.slice(-10)
+      })
+    }
+  }
+
+  var EXIT_INTENT_SESSION_KEY = '_xf_exit_intent_fired_v1'
+
+  // Desktop-only (mouse trajectory has no reliable mobile equivalent).
+  // Debounced to once per session via a sessionStorage flag, not the
+  // comparison-set list, since it's unrelated to which vehicles were viewed.
+  function setupExitIntentDetection() {
+    function onMouseOut(e) {
+      if (e.clientY > 0 || e.relatedTarget !== null) return
+      if (!isEventAllowed('exit_intent', getConsent())) return
+      try {
+        if (sessionStorage.getItem(EXIT_INTENT_SESSION_KEY)) return
+        sessionStorage.setItem(EXIT_INTENT_SESSION_KEY, '1')
+      } catch (err) {
+        /* storage unavailable — fall through, worst case a duplicate fire */
+      }
+      var vehicleCtx = getVehicleContext()
+      track('exit_intent', {
+        path: window.location.pathname,
+        is_vehicle_page: !!vehicleCtx,
+        vehicle_key: vehicleKey(vehicleCtx)
+      })
+    }
+
+    document.addEventListener('mouseout', onMouseOut)
+    _behavioralCleanups.push(function () {
+      document.removeEventListener('mouseout', onMouseOut)
+    })
+  }
+
+  var WISHLIST_SELECTORS = ['[data-wishlist]', '.wishlist', '.favourite', '.save-vehicle']
+  var WISHLIST_LABEL_RE = /wishlist|favou?rite/i
+
+  function isWishlistElement(el) {
+    for (var i = 0; i < WISHLIST_SELECTORS.length; i++) {
+      if (el.matches && el.matches(WISHLIST_SELECTORS[i])) return true
+    }
+    var label = el.getAttribute ? (el.getAttribute('aria-label') || '') : ''
+    return WISHLIST_LABEL_RE.test(label)
+  }
+
+  // Heuristic detector for save/heart icons near vehicle cards — no dealer
+  // CMS convention exists across sites, so this matches a selector list plus
+  // aria-label keywords, mirroring the CTA-keyword heuristic in
+  // pushToDataLayer(). Walks up to 5 ancestors, matching the phone_click
+  // delegation pattern.
+  function setupWishlistTracking() {
+    function onWishlistClick(e) {
+      var target = e.target
+      for (var i = 0; i < 5; i++) {
+        if (!target) break
+        if (isWishlistElement(target)) {
+          var vehicleCtx = getVehicleContext()
+          var data = {}
+          if (vehicleCtx) {
+            for (var key in vehicleCtx) {
+              if (vehicleCtx.hasOwnProperty(key)) data[key] = vehicleCtx[key]
+            }
+          }
+          track('add_to_wishlist', data)
+          return
+        }
+        target = target.parentElement
+      }
+    }
+
+    document.addEventListener('click', onWishlistClick)
+    _behavioralCleanups.push(function () {
+      document.removeEventListener('click', onWishlistClick)
+    })
+  }
+
+  var CTA_VISIBILITY_SELECTORS = CTA_CLICK_SELECTORS.concat(['[data-price]', '.price', '.vehicle-price'])
+  var CTA_VISIBILITY_THRESHOLD = 0.5
+  var CTA_VISIBILITY_MAX_ELEMENTS = 20
+
+  function matchedCtaSelector(el) {
+    for (var i = 0; i < CTA_VISIBILITY_SELECTORS.length; i++) {
+      if (el.matches && el.matches(CTA_VISIBILITY_SELECTORS[i])) return CTA_VISIBILITY_SELECTORS[i]
+    }
+    return null
+  }
+
+  // "Did they actually see the price/CTA" via real visibility, not "did they
+  // scroll past the pixel row it's in." Only observes elements present at
+  // setup time — dynamically-rendered CTAs on client-side-routed dealer
+  // sites are a known limitation, not handled by this pass.
+  function setupCtaVisibilityTracking(threshold) {
+    if (typeof window.IntersectionObserver === 'undefined') return
+    var observer = new window.IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i]
+        if (!entry.isIntersecting) continue
+        observer.unobserve(entry.target)
+        track('cta_visible', {
+          selector: matchedCtaSelector(entry.target),
+          text: (entry.target.textContent || '').substring(0, 100)
+        })
+      }
+    }, { threshold: threshold })
+    _behavioralCleanups.push(function () {
+      observer.disconnect()
+    })
+    var vehicleCtx = getVehicleContext()
+    var selectors = vehicleCtx ? CTA_VISIBILITY_SELECTORS : CTA_CLICK_SELECTORS
+    var elements = document.querySelectorAll(selectors.join(','))
+    var max = CTA_VISIBILITY_MAX_ELEMENTS
+    for (var j = 0; j < elements.length && j < max; j++) observer.observe(elements[j])
+  }
+
   // Auto-track page views
   function trackPageView() {
     var data = {
@@ -785,6 +1004,10 @@
     // Fire separate vehicle_view for dynamic remarketing (maps to view_item in dataLayer)
     if (vehicleCtx) {
       track('vehicle_view', vehicleCtx)
+      if (_funnelSignalsEnabled) {
+        trackReturnToVehicle(vehicleCtx)
+        trackCrossShop(vehicleCtx)
+      }
     }
   }
 
@@ -1165,7 +1388,19 @@
         var interval = intervals[i]
         if (elapsed >= interval && !tracked[interval]) {
           tracked[interval] = true
-          track('engagement', { duration: interval })
+          var data = { duration: interval }
+          // VDP dwell time: distinct from generic engagement only in that it
+          // carries vehicle context, letting downstream queries filter for
+          // "time actually spent on a vehicle detail page."
+          if (_funnelSignalsEnabled) {
+            var vehicleCtx = getVehicleContext()
+            if (vehicleCtx) {
+              for (var key in vehicleCtx) {
+                if (vehicleCtx.hasOwnProperty(key)) data[key] = vehicleCtx[key]
+              }
+            }
+          }
+          track('engagement', data)
         }
       }
     }, ENGAGEMENT_CHECK_MS)
@@ -1501,6 +1736,10 @@
     if (c.idleTimeoutMs) IDLE_TIMEOUT_MS = c.idleTimeoutMs
     if (c.idleExtendedThresholds) IDLE_EXTENDED_THRESHOLDS = c.idleExtendedThresholds
     if (c.idleActivityDebounceMs) IDLE_ACTIVITY_DEBOUNCE_MS = c.idleActivityDebounceMs
+    if (c.returnToVehicleMinDays !== undefined) RETURN_TO_VEHICLE_MIN_DAYS = c.returnToVehicleMinDays
+    if (c.comparisonThresholds) COMPARISON_THRESHOLDS = c.comparisonThresholds
+    if (c.ctaVisibilityThreshold !== undefined) CTA_VISIBILITY_THRESHOLD = c.ctaVisibilityThreshold
+    if (config.funnelSignals === false) _funnelSignalsEnabled = false
 
     // Per-site vehicle-detail-page URL patterns, additive to the generic
     // built-in list — set via the install snippet's data-vehicle-patterns
@@ -1626,6 +1865,16 @@
       setupIdleDetection()
       setupFormFieldTracking()
     }
+
+    // Phase B funnel & intent signals — cross-shop, return-to-vehicle, and
+    // VDP dwell hook directly into trackPageView()/setupEngagementTracking()
+    // and are gated by _funnelSignalsEnabled instead of a setup call here.
+    // On by default. Opt out with data-funnel-signals="false".
+    if (_funnelSignalsEnabled) {
+      setupExitIntentDetection()
+      setupWishlistTracking()
+      setupCtaVisibilityTracking(CTA_VISIBILITY_THRESHOLD)
+    }
   }
 
   // Destroy and cleanup all listeners
@@ -1671,6 +1920,7 @@
         writeKey: bootWriteKey,
         spa: script.getAttribute('data-spa') === 'true',
         behavioral: script.getAttribute('data-behavioral') !== 'false',
+        funnelSignals: script.getAttribute('data-funnel-signals') !== 'false',
       }
       var bootVehiclePatterns = script.getAttribute('data-vehicle-patterns')
       if (bootVehiclePatterns) {

@@ -70,6 +70,16 @@ describe('parseTrackPayload', () => {
     expect(r.ok).toBe(false)
   })
 
+  it('accepts the Phase B funnel-signal event names', () => {
+    const names = ['vehicle_comparison', 'exit_intent', 'cta_visible']
+    for (const name of names) {
+      const r = parseTrackPayload({
+        events: [{ ...valid.events[0], event_name: name }]
+      })
+      expect(r.ok).toBe(true)
+    }
+  })
+
   it('rejects a non-object / null body without throwing', () => {
     expect(parseTrackPayload(null).ok).toBe(false)
     expect(parseTrackPayload('nope').ok).toBe(false)

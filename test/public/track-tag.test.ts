@@ -18,6 +18,8 @@ function loadTag() {
   new Function('window', 'document', 'navigator', TAG_SRC)(window, document, navigator)
 }
 
+const NATIVE_PUSH_STATE = window.history.pushState
+
 describe('public/track.js transport', () => {
   let beacons: { url: string, body: string }[]
   let requests: { url: string, body: string }[]
@@ -346,7 +348,7 @@ describe('public/track.js transport', () => {
 
   it('forwards the raw _xf_consent cookie value in the batch (cross-origin relay)', () => {
     const cookie = JSON.stringify({ tracking: true, analytics: true, marketing: false, updatedAt: '2026-05-31T00:00:00Z' })
-    document.cookie = '_xf_consent=' + encodeURIComponent(cookie)
+    document.cookie = '_xf_consent=' + encodeURIComponent(cookie) + '; path=/'
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })
     requests = []
@@ -394,5 +396,522 @@ describe('public/track.js transport', () => {
     expect(payload.vehicle_reference).toBe('S1234')
     expect(payload.browser_event_id).toBe(JSON.parse(tracking!.body).events[0].event_id)
     expect(intent!.body).not.toContain('Private free-text message')
+  })
+})
+
+describe('Phase B funnel & intent signals', () => {
+  let beacons: { url: string, body: string }[]
+  let requests: { url: string, body: string }[]
+  let fetchSpy: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    window.history.pushState = NATIVE_PUSH_STATE
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+    window.history.replaceState({}, '', '/')
+    beacons = []
+    requests = []
+    ;(navigator as any).sendBeacon = vi.fn((url: string, blob: any) => {
+      beacons.push({ url, body: blob?._body ?? '' })
+      return true
+    })
+    const RealBlob = globalThis.Blob
+    ;(globalThis as any).Blob = class extends RealBlob {
+      _body: string
+      constructor(parts: any[], opts: any) {
+        super(parts, opts)
+        this._body = String(parts?.[0] ?? '')
+      }
+    }
+    fetchSpy = vi.fn((url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') {
+        requests.push({ url: String(url), body: String(options.body ?? '') })
+      }
+      return Promise.resolve({ ok: true })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    document.cookie = '_xf_consent=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  function eventsFrom(reqs: { body: string }[]) {
+    return reqs.flatMap(r => JSON.parse(r.body).events)
+  }
+
+  it('does not fire return_to_vehicle on a vehicle\'s first-ever visit', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+
+    const events = eventsFrom(requests)
+    expect(events.find((e: any) => e.event_name === 'return_to_vehicle')).toBeUndefined()
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    expect(visits['20544']).toBeTruthy()
+  })
+
+  it('fires return_to_vehicle when the same vehicle is revisited outside the session window', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true, constants: { sessionMinutes: 30 } })
+
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    visits['20544'] = Date.now() - 31 * 60 * 1000
+    localStorage.setItem('_xf_vehicle_visits_v1', JSON.stringify(visits))
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+
+    const returnEvent = eventsFrom(requests).find((e: any) => e.event_name === 'return_to_vehicle')
+    expect(returnEvent).toBeTruthy()
+    expect(returnEvent.event_data.vehicle_key).toBe('20544')
+    expect(returnEvent.event_data.days_since_last_visit).toBe(0)
+  })
+
+  it('does not fire return_to_vehicle when the same vehicle is revisited within the session window', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true, constants: { sessionMinutes: 30 } })
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'return_to_vehicle')).toBeUndefined()
+  })
+
+  it('respects returnToVehicleMinDays before firing return_to_vehicle', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({
+      writeKey: 'TESTKEY',
+      spa: true,
+      constants: { sessionMinutes: 30, returnToVehicleMinDays: 2 }
+    })
+
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    visits['20544'] = Date.now() - 31 * 60 * 1000 // new session, but < 2 days
+    localStorage.setItem('_xf_vehicle_visits_v1', JSON.stringify(visits))
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'return_to_vehicle')).toBeUndefined()
+  })
+
+  it('data-funnel-signals="false" suppresses return_to_vehicle', () => {
+    const script = document.createElement('script')
+    document.head.appendChild(script)
+    Object.defineProperty(script, 'src', { value: 'https://app.xeroflow.io/track.js' })
+    script.setAttribute('data-key', 'TESTKEY')
+    script.setAttribute('data-funnel-signals', 'false')
+    const currentScript = vi.spyOn(document, 'currentScript', 'get').mockReturnValue(script)
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    expect(visits).toEqual({})
+
+    currentScript.mockRestore()
+  })
+
+  it('fires vehicle_comparison when the distinct-vehicle count crosses a threshold', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-white-2019-toyota-kluger-s20825')
+
+    const comparisonEvent = eventsFrom(requests).find((e: any) => e.event_name === 'vehicle_comparison')
+    expect(comparisonEvent).toBeTruthy()
+    expect(comparisonEvent.event_data.distinct_vehicles_viewed).toBe(2)
+    expect(comparisonEvent.event_data.vehicle_keys).toEqual(['20544', '20825'])
+  })
+
+  it('does not re-fire vehicle_comparison for a vehicle already seen this session', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'vehicle_comparison')).toBeUndefined()
+  })
+
+  it('respects a comparisonThresholds override', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', constants: { comparisonThresholds: [1] } })
+
+    const comparisonEvent = eventsFrom(requests).find((e: any) => e.event_name === 'vehicle_comparison')
+    expect(comparisonEvent).toBeTruthy()
+    expect(comparisonEvent.event_data.distinct_vehicles_viewed).toBe(1)
+  })
+
+  it('does not send vehicle_comparison when analytics consent is declined', () => {
+    document.cookie = '_xf_consent=' + encodeURIComponent(JSON.stringify({
+      tracking: true, analytics: false, marketing: false, updatedAt: '2026-07-24T00:00:00Z'
+    })) + '; path=/'
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-white-2019-toyota-kluger-s20825')
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'vehicle_comparison')).toBeUndefined()
+  })
+
+  it('merges vehicle context into the engagement event on a vehicle page', async () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({
+      writeKey: 'TESTKEY',
+      constants: { engagementIntervals: [0], engagementCheckMs: 10 }
+    })
+    requests = []
+
+    await vi.waitFor(() => {
+      expect(eventsFrom(requests).some((e: any) => e.event_name === 'engagement')).toBe(true)
+    })
+
+    const engagementEvent = eventsFrom(requests).find((e: any) => e.event_name === 'engagement')
+    expect(engagementEvent.event_data.vehicle_stock_number).toBe('20544')
+    expect(engagementEvent.event_data.duration).toBe(0)
+  })
+
+  it('does not merge vehicle context into engagement off a vehicle page', async () => {
+    window.history.pushState({}, '', '/about-us')
+    loadTag()
+    ;(window as any).xf.init({
+      writeKey: 'TESTKEY',
+      constants: { engagementIntervals: [0], engagementCheckMs: 10 }
+    })
+    requests = []
+
+    await vi.waitFor(() => {
+      expect(eventsFrom(requests).some((e: any) => e.event_name === 'engagement')).toBe(true)
+    })
+
+    const engagementEvent = eventsFrom(requests).find((e: any) => e.event_name === 'engagement')
+    expect(engagementEvent.event_data.vehicle_stock_number).toBeUndefined()
+  })
+
+  it('fires exit_intent once on an upward mouseout past the top of the viewport', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+
+    const exitEvents = eventsFrom(requests).filter((e: any) => e.event_name === 'exit_intent')
+    expect(exitEvents).toHaveLength(1)
+    expect(exitEvents[0].event_data.is_vehicle_page).toBe(true)
+    expect(exitEvents[0].event_data.vehicle_key).toBe('20544')
+    expect(exitEvents[0].event_data.path).toBe('/cars/used-black-2021-mercedes-benz-v-class-s20544')
+  })
+
+  it('does not fire exit_intent for a mouseout that stays inside the viewport', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    const child = document.createElement('div')
+    document.body.appendChild(child)
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: 50, relatedTarget: child }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'exit_intent')).toBeUndefined()
+  })
+
+  it('data-funnel-signals="false" suppresses exit_intent', () => {
+    // Create a script without data-key to prevent auto-init
+    const script = document.createElement('script')
+    document.head.appendChild(script)
+    Object.defineProperty(script, 'src', { value: 'https://app.xeroflow.io/track.js' })
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', funnelSignals: false })
+    requests = []
+
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'exit_intent')).toBeUndefined()
+  })
+
+  function withMarketingConsent() {
+    document.cookie = '_xf_consent=' + encodeURIComponent(JSON.stringify({
+      tracking: true, analytics: true, marketing: true, updatedAt: '2026-07-24T00:00:00Z'
+    })) + '; path=/'
+  }
+
+  it('fires add_to_wishlist when a wishlist-classed element is clicked', () => {
+    withMarketingConsent()
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    const button = document.createElement('button')
+    button.className = 'wishlist'
+    document.body.appendChild(button)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    const wishlistEvent = eventsFrom(requests).find((e: any) => e.event_name === 'add_to_wishlist')
+    expect(wishlistEvent).toBeTruthy()
+    expect(wishlistEvent.event_data.vehicle_stock_number).toBe('20544')
+  })
+
+  it('fires add_to_wishlist for an aria-label match on a nested icon click', () => {
+    withMarketingConsent()
+    const wrapper = document.createElement('button')
+    wrapper.setAttribute('aria-label', 'Save to Favourites')
+    const icon = document.createElement('span')
+    icon.className = 'icon-heart'
+    wrapper.appendChild(icon)
+    document.body.appendChild(wrapper)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    icon.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'add_to_wishlist')).toBeTruthy()
+  })
+
+  it('does not fire add_to_wishlist for an unrelated click', () => {
+    withMarketingConsent()
+    const button = document.createElement('button')
+    button.textContent = 'Contact us'
+    document.body.appendChild(button)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'add_to_wishlist')).toBeUndefined()
+  })
+
+  it('data-funnel-signals="false" suppresses add_to_wishlist', () => {
+    withMarketingConsent()
+    const script = document.createElement('script')
+    document.head.appendChild(script)
+    Object.defineProperty(script, 'src', { value: 'https://app.xeroflow.io/track.js' })
+    script.setAttribute('data-key', 'TESTKEY')
+    script.setAttribute('data-funnel-signals', 'false')
+    const currentScript = vi.spyOn(document, 'currentScript', 'get').mockReturnValue(script)
+
+    const button = document.createElement('button')
+    button.className = 'wishlist'
+    document.body.appendChild(button)
+
+    loadTag()
+    requests = []
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'add_to_wishlist')).toBeUndefined()
+
+    currentScript.mockRestore()
+  })
+
+  it('fires cta_visible when an observed CTA element intersects, and unobserves it after firing', () => {
+    const observeSpy = vi.fn()
+    const unobserveSpy = vi.fn()
+    let capturedCallback: any
+    class FakeIntersectionObserver {
+      constructor(cb: any) { capturedCallback = cb }
+      observe = observeSpy
+      unobserve = unobserveSpy
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+
+    const button = document.createElement('button')
+    button.setAttribute('data-cta', 'true')
+    button.textContent = 'Get a quote'
+    document.body.appendChild(button)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    expect(observeSpy).toHaveBeenCalledWith(button)
+
+    capturedCallback([{ target: button, isIntersecting: true }])
+
+    expect(unobserveSpy).toHaveBeenCalledWith(button)
+    const visibleEvent = eventsFrom(requests).find((e: any) => e.event_name === 'cta_visible')
+    expect(visibleEvent).toBeTruthy()
+    expect(visibleEvent.event_data.text).toBe('Get a quote')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('does not fire cta_visible for a non-intersecting entry', () => {
+    let capturedCallback: any
+    class FakeIntersectionObserver {
+      constructor(cb: any) { capturedCallback = cb }
+      observe = vi.fn()
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+
+    const button = document.createElement('button')
+    button.setAttribute('data-cta', 'true')
+    document.body.appendChild(button)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    capturedCallback([{ target: button, isIntersecting: false }])
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'cta_visible')).toBeUndefined()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('does not throw when IntersectionObserver is unavailable', () => {
+    vi.stubGlobal('IntersectionObserver', undefined)
+    loadTag()
+    expect(() => (window as any).xf.init({ writeKey: 'TESTKEY' })).not.toThrow()
+    vi.unstubAllGlobals()
+  })
+
+  it('passes a ctaVisibilityThreshold override to the IntersectionObserver', () => {
+    const ctorSpy = vi.fn(function (this: any, cb: any) {
+      this.observe = vi.fn()
+      this.unobserve = vi.fn()
+      this.disconnect = vi.fn()
+    })
+    vi.stubGlobal('IntersectionObserver', ctorSpy)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', constants: { ctaVisibilityThreshold: 0.75 } })
+
+    expect(ctorSpy).toHaveBeenCalledWith(expect.any(Function), { threshold: 0.75 })
+
+    vi.unstubAllGlobals()
+  })
+
+  it('the funnel-signals flag disables all six signals together, but generic tracking still works', () => {
+    // Uses init({ funnelSignals: false }) directly rather than the
+    // data-funnel-signals="false" attribute — that attribute-parsing path
+    // is already covered per-signal above (return_to_vehicle, add_to_wishlist).
+    withMarketingConsent()
+    const observeSpy = vi.fn()
+    class FakeIntersectionObserver {
+      constructor(_cb: any) {}
+      observe = observeSpy
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+
+    // Prime a prior visit so return-to-vehicle *would* fire if the flag were on.
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    visits['20544'] = Date.now() - 31 * 60 * 1000
+    localStorage.setItem('_xf_vehicle_visits_v1', JSON.stringify(visits))
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    const wishlistBtn = document.createElement('button')
+    wishlistBtn.className = 'wishlist'
+    document.body.appendChild(wishlistBtn)
+    const ctaBtn = document.createElement('button')
+    ctaBtn.setAttribute('data-cta', 'true')
+    document.body.appendChild(ctaBtn)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true, funnelSignals: false })
+    const initEvents = eventsFrom(requests)
+    requests = []
+
+    // Cross-shop trigger: a second distinct vehicle in the same session.
+    window.history.pushState({}, '', '/cars/used-white-2019-toyota-kluger-s20825')
+    // Return-to-vehicle trigger: navigate back to the primed vehicle, inside
+    // the observed window (unlike the init-time visit, which landed in the
+    // discarded initEvents above).
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    wishlistBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+
+    const postActionEvents = eventsFrom(requests)
+    const allEvents = [...initEvents, ...postActionEvents]
+    expect(postActionEvents.find((e: any) => e.event_name === 'add_to_wishlist')).toBeUndefined()
+    expect(postActionEvents.find((e: any) => e.event_name === 'exit_intent')).toBeUndefined()
+    expect(postActionEvents.find((e: any) => e.event_name === 'return_to_vehicle')).toBeUndefined()
+    expect(postActionEvents.find((e: any) => e.event_name === 'vehicle_comparison')).toBeUndefined()
+    expect(postActionEvents.find((e: any) => e.event_name === 'cta_visible')).toBeUndefined()
+    // setupCtaVisibilityTracking() never even ran — the observer was never constructed/used.
+    expect(observeSpy).not.toHaveBeenCalled()
+    // vehicle_view (Phase A, unrelated flag) still fires — the tag isn't fully disabled.
+    expect(allEvents.find((e: any) => e.event_name === 'vehicle_view')).toBeTruthy()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('all six signals fire when funnel-signals is on (default) and their triggers occur', async () => {
+    withMarketingConsent()
+    let capturedCallback: any
+    const observeSpy = vi.fn()
+    class FakeIntersectionObserver {
+      constructor(cb: any) { capturedCallback = cb }
+      observe = observeSpy
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    const wishlistBtn = document.createElement('button')
+    wishlistBtn.className = 'wishlist'
+    document.body.appendChild(wishlistBtn)
+    const ctaBtn = document.createElement('button')
+    ctaBtn.setAttribute('data-cta', 'true')
+    ctaBtn.textContent = 'Get a quote'
+    document.body.appendChild(ctaBtn)
+
+    loadTag()
+    ;(window as any).xf.init({
+      writeKey: 'TESTKEY',
+      spa: true,
+      constants: { engagementIntervals: [0], engagementCheckMs: 10 }
+    })
+
+    // Prime return-to-vehicle by back-dating a prior visit outside the session window.
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    visits['20544'] = Date.now() - 31 * 60 * 1000
+    localStorage.setItem('_xf_vehicle_visits_v1', JSON.stringify(visits))
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-white-2019-toyota-kluger-s20825') // cross-shop #1
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544') // return + comparison #2
+    wishlistBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+    expect(observeSpy).toHaveBeenCalledWith(ctaBtn)
+    capturedCallback([{ target: ctaBtn, isIntersecting: true }])
+
+    await vi.waitFor(() => {
+      expect(eventsFrom(requests).some((e: any) => e.event_name === 'engagement')).toBe(true)
+    })
+
+    const events = eventsFrom(requests)
+    const names = events.map((e: any) => e.event_name)
+    expect(names).toContain('vehicle_comparison')
+    expect(names).toContain('return_to_vehicle')
+    expect(names).toContain('exit_intent')
+    expect(names).toContain('add_to_wishlist')
+    expect(names).toContain('cta_visible')
+    const engagementEvent = events.find((e: any) => e.event_name === 'engagement')
+    expect(engagementEvent.event_data.vehicle_stock_number).toBe('20544')
+
+    vi.unstubAllGlobals()
   })
 })
