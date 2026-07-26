@@ -152,6 +152,7 @@ export async function activeTierDefinitions(clientId: string): Promise<PersonaDe
       WHERE status = 'active'
         AND vertical IN ('universal', 'automotive')
         AND tier_rank IS NOT NULL
+        AND is_exclusion = FALSE
         AND (client_id IS NULL OR client_id = $1)
       ORDER BY persona_key, (client_id IS NOT NULL) DESC, version DESC`,
     [clientId]
@@ -169,6 +170,7 @@ export async function activeExclusionDefinitions(clientId: string): Promise<Pers
       WHERE status = 'active'
         AND vertical IN ('universal', 'automotive')
         AND is_exclusion = TRUE
+        AND tier_rank IS NULL
         AND (client_id IS NULL OR client_id = $1)
       ORDER BY persona_key, (client_id IS NOT NULL) DESC, version DESC`,
     [clientId]

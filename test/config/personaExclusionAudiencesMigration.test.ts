@@ -17,6 +17,7 @@ describe('Persona exclusion audiences migration 312', () => {
     expect(migration).toContain('crm_persona_exclusion_memberships_profile_fk')
     expect(migration).toContain("'automotive', 'negative_signal_exclusion'")
     expect(migration).toContain('"competitive_referrer","exit_intent"')
+    expect(migration).toContain('WHERE NOT EXISTS (')
     expect(migration).toContain('COMMIT;')
   })
 })
