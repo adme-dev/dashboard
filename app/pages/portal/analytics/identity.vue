@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'portal' })
+definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 interface IdentityCase {
   id: string
