@@ -167,7 +167,6 @@ export async function verifyJwt(token: string): Promise<any | null> {
 // Role-based access control — checks legacy role name + dynamic permission groups
 export function hasRole(user: User, allowedRoles: readonly string[]): boolean {
   // Legacy: direct role name match
-  if (user.role === 'super_admin') return true
   if (allowedRoles.includes(user.role)) return true
   // Dynamic: check if allowedRoles correspond to any permission group the user has.
   // Multiple groups can share the same role array (e.g. MANAGEMENT, TIME_APPROVALS, AUTOMATION

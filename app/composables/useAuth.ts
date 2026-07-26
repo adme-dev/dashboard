@@ -19,7 +19,6 @@ export const useAuth = () => {
   
   const hasRole = (roles: readonly string[]) => {
     if (!user.value) return false
-    if (user.value.role === 'super_admin') return true
     // Legacy: direct role name match
     if (roles.includes(user.value.role)) return true
     // Dynamic: check if roles correspond to any permission group the user has.
