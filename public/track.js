@@ -62,6 +62,8 @@
     vdp_scroll_depth: 'vdp_scroll_depth',
     vehicle_comparison: 'vehicle_comparison',
     exit_intent: 'exit_intent',
+    add_to_wishlist: 'add_to_wishlist',
+    cta_visible: 'cta_visible',
   }
 
   // Events with thresholds (only push above certain values)
@@ -429,6 +431,7 @@
       'form_field_focus',
       'form_abandonment',
       'exit_intent',
+      'cta_visible',
     ]
     for (var a = 0; a < analyticsEvents.length; a++) {
       if (analyticsEvents[a] === eventName) return !!consent.analytics
@@ -924,6 +927,37 @@
     _behavioralCleanups.push(function () {
       document.removeEventListener('click', onWishlistClick)
     })
+  }
+
+  var CTA_VISIBILITY_SELECTORS = CTA_CLICK_SELECTORS.concat(['[data-price]', '.price', '.vehicle-price'])
+  var CTA_VISIBILITY_THRESHOLD = 0.5
+
+  function matchedCtaSelector(el) {
+    for (var i = 0; i < CTA_VISIBILITY_SELECTORS.length; i++) {
+      if (el.matches && el.matches(CTA_VISIBILITY_SELECTORS[i])) return CTA_VISIBILITY_SELECTORS[i]
+    }
+    return null
+  }
+
+  // "Did they actually see the price/CTA" via real visibility, not "did they
+  // scroll past the pixel row it's in." Only observes elements present at
+  // setup time — dynamically-rendered CTAs on client-side-routed dealer
+  // sites are a known limitation, not handled by this pass.
+  function setupCtaVisibilityTracking(threshold) {
+    if (typeof window.IntersectionObserver === 'undefined') return
+    var observer = new window.IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i]
+        if (!entry.isIntersecting) continue
+        observer.unobserve(entry.target)
+        track('cta_visible', {
+          selector: matchedCtaSelector(entry.target),
+          text: (entry.target.textContent || '').substring(0, 100)
+        })
+      }
+    }, { threshold: threshold })
+    var elements = document.querySelectorAll(CTA_VISIBILITY_SELECTORS.join(','))
+    for (var j = 0; j < elements.length; j++) observer.observe(elements[j])
   }
 
   // Auto-track page views
@@ -1682,6 +1716,7 @@
     if (c.idleActivityDebounceMs) IDLE_ACTIVITY_DEBOUNCE_MS = c.idleActivityDebounceMs
     if (c.returnToVehicleMinDays !== undefined) RETURN_TO_VEHICLE_MIN_DAYS = c.returnToVehicleMinDays
     if (c.comparisonThresholds) COMPARISON_THRESHOLDS = c.comparisonThresholds
+    if (c.ctaVisibilityThreshold !== undefined) CTA_VISIBILITY_THRESHOLD = c.ctaVisibilityThreshold
     if (config.funnelSignals === false) _funnelSignalsEnabled = false
 
     // Per-site vehicle-detail-page URL patterns, additive to the generic
@@ -1816,6 +1851,7 @@
     if (_funnelSignalsEnabled) {
       setupExitIntentDetection()
       setupWishlistTracking()
+      setupCtaVisibilityTracking(CTA_VISIBILITY_THRESHOLD)
     }
   }
 

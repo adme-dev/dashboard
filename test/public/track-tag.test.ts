@@ -719,4 +719,87 @@ describe('Phase B funnel & intent signals', () => {
 
     currentScript.mockRestore()
   })
+
+  describe('Phase B funnel & intent signals', () => {
+    it('fires cta_visible when an observed CTA element intersects, and unobserves it after firing', () => {
+      const observeSpy = vi.fn()
+      const unobserveSpy = vi.fn()
+      let capturedCallback: any
+      class FakeIntersectionObserver {
+        constructor(cb: any) { capturedCallback = cb }
+        observe = observeSpy
+        unobserve = unobserveSpy
+        disconnect = vi.fn()
+      }
+      vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+
+      const button = document.createElement('button')
+      button.setAttribute('data-cta', 'true')
+      button.textContent = 'Get a quote'
+      document.body.appendChild(button)
+
+      loadTag()
+      ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+      requests = []
+
+      expect(observeSpy).toHaveBeenCalledWith(button)
+
+      capturedCallback([{ target: button, isIntersecting: true }])
+
+      expect(unobserveSpy).toHaveBeenCalledWith(button)
+      const visibleEvent = eventsFrom(requests).find((e: any) => e.event_name === 'cta_visible')
+      expect(visibleEvent).toBeTruthy()
+      expect(visibleEvent.event_data.text).toBe('Get a quote')
+
+      vi.unstubAllGlobals()
+    })
+
+    it('does not fire cta_visible for a non-intersecting entry', () => {
+      let capturedCallback: any
+      class FakeIntersectionObserver {
+        constructor(cb: any) { capturedCallback = cb }
+        observe = vi.fn()
+        unobserve = vi.fn()
+        disconnect = vi.fn()
+      }
+      vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+
+      const button = document.createElement('button')
+      button.setAttribute('data-cta', 'true')
+      document.body.appendChild(button)
+
+      loadTag()
+      ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+      requests = []
+
+      capturedCallback([{ target: button, isIntersecting: false }])
+
+      expect(eventsFrom(requests).find((e: any) => e.event_name === 'cta_visible')).toBeUndefined()
+
+      vi.unstubAllGlobals()
+    })
+
+    it('does not throw when IntersectionObserver is unavailable', () => {
+      vi.stubGlobal('IntersectionObserver', undefined)
+      loadTag()
+      expect(() => (window as any).xf.init({ writeKey: 'TESTKEY' })).not.toThrow()
+      vi.unstubAllGlobals()
+    })
+
+    it('passes a ctaVisibilityThreshold override to the IntersectionObserver', () => {
+      const ctorSpy = vi.fn(function (this: any, cb: any) {
+        this.observe = vi.fn()
+        this.unobserve = vi.fn()
+        this.disconnect = vi.fn()
+      })
+      vi.stubGlobal('IntersectionObserver', ctorSpy)
+
+      loadTag()
+      ;(window as any).xf.init({ writeKey: 'TESTKEY', constants: { ctaVisibilityThreshold: 0.75 } })
+
+      expect(ctorSpy).toHaveBeenCalledWith(expect.any(Function), { threshold: 0.75 })
+
+      vi.unstubAllGlobals()
+    })
+  })
 })
