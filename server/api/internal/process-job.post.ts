@@ -21,6 +21,7 @@
  * Returns 200 on success. Throws (non-2xx) on failure so the Worker re-queues the
  * message for retry, then dead-letters per the consumer config.
  */
+import crypto from 'node:crypto'
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { processJob } from '~~/server/utils/queueConsumer'
 import type { QueueJob } from '~~/server/utils/queue'
@@ -31,9 +32,17 @@ function positiveHeader(value: string | undefined, fallback: number) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function isValidCronSecret(supplied: string | undefined): boolean {
+  const expected = process.env.CRON_SECRET
+  if (!expected || !supplied) return false
+  const a = Buffer.from(supplied)
+  const b = Buffer.from(expected)
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
 export default defineEventHandler(async (event) => {
   const cronSecret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && cronSecret !== process.env.CRON_SECRET) {
+  if (!import.meta.dev && !isValidCronSecret(cronSecret)) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
