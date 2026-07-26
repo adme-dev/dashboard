@@ -373,11 +373,14 @@ function signalFilterSql(filters: Record<string, string>, params: unknown[]): st
 
 async function loadEligibleMembers(context: ExportContext): Promise<HashedAudienceMember[]> {
   const params: unknown[] = [context.client_id]
+  const candidatesFilterSql = signalFilterSql(context.filters || {}, params)
+  params.push(context.provider)
+  const destinationParamIndex = params.length
   const rows = await queryRows<SourceMember>(
     `WITH candidates AS (
        SELECT DISTINCT signal.profile_id
          FROM crm_customer_signals signal
-        WHERE ${signalFilterSql(context.filters || {}, params)}
+        WHERE ${candidatesFilterSql}
      ),
      latest_consent AS (
        SELECT DISTINCT ON (history.profile_id) history.profile_id, history.marketing
@@ -432,7 +435,15 @@ async function loadEligibleMembers(context: ExportContext): Promise<HashedAudien
       WHERE COALESCE(person.do_not_contact, FALSE) = FALSE
         AND COALESCE(person.do_not_email, FALSE) = FALSE
         AND (COALESCE(person.email, lead.email) IS NOT NULL
-          OR COALESCE(person.phone, lead.phone) IS NOT NULL)`,
+          OR COALESCE(person.phone, lead.phone) IS NOT NULL)
+        AND NOT EXISTS (
+          SELECT 1 FROM crm_persona_current_suppressions suppression
+           WHERE suppression.client_id = $1
+             AND suppression.profile_id = candidate.profile_id
+             AND suppression.purpose IN ('marketing', 'all')
+             AND suppression.channel IN ('ads', 'all')
+             AND suppression.destination IN ($${destinationParamIndex}, 'all')
+        )`,
     params
   )
   const members = await Promise.all(rows.map(row => hashAudienceMember({
