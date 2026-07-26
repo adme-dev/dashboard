@@ -597,4 +597,47 @@ describe('Phase B funnel & intent signals', () => {
     const engagementEvent = eventsFrom(requests).find((e: any) => e.event_name === 'engagement')
     expect(engagementEvent.event_data.vehicle_stock_number).toBeUndefined()
   })
+
+  it('fires exit_intent once on an upward mouseout past the top of the viewport', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+
+    const exitEvents = eventsFrom(requests).filter((e: any) => e.event_name === 'exit_intent')
+    expect(exitEvents).toHaveLength(1)
+    expect(exitEvents[0].event_data.is_vehicle_page).toBe(true)
+    expect(exitEvents[0].event_data.vehicle_key).toBe('20544')
+    expect(exitEvents[0].event_data.path).toBe('/cars/used-black-2021-mercedes-benz-v-class-s20544')
+  })
+
+  it('does not fire exit_intent for a mouseout that stays inside the viewport', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    const child = document.createElement('div')
+    document.body.appendChild(child)
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: 50, relatedTarget: child }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'exit_intent')).toBeUndefined()
+  })
+
+  it('data-funnel-signals="false" suppresses exit_intent', () => {
+    // Create a script without data-key to prevent auto-init
+    const script = document.createElement('script')
+    document.head.appendChild(script)
+    Object.defineProperty(script, 'src', { value: 'https://app.xeroflow.io/track.js' })
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', funnelSignals: false })
+    requests = []
+
+    document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'exit_intent')).toBeUndefined()
+  })
 })

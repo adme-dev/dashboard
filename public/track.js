@@ -61,6 +61,7 @@
     competitive_referrer: 'competitive_referrer',
     vdp_scroll_depth: 'vdp_scroll_depth',
     vehicle_comparison: 'vehicle_comparison',
+    exit_intent: 'exit_intent',
   }
 
   // Events with thresholds (only push above certain values)
@@ -427,6 +428,7 @@
       'idle_extended',
       'form_field_focus',
       'form_abandonment',
+      'exit_intent',
     ]
     for (var a = 0; a < analyticsEvents.length; a++) {
       if (analyticsEvents[a] === eventName) return !!consent.analytics
@@ -852,6 +854,34 @@
         vehicle_keys: vehicles.slice(-10)
       })
     }
+  }
+
+  var EXIT_INTENT_SESSION_KEY = '_xf_exit_intent_fired_v1'
+
+  // Desktop-only (mouse trajectory has no reliable mobile equivalent).
+  // Debounced to once per session via a sessionStorage flag, not the
+  // comparison-set list, since it's unrelated to which vehicles were viewed.
+  function setupExitIntentDetection() {
+    function onMouseOut(e) {
+      if (e.clientY > 0 || e.relatedTarget !== null) return
+      try {
+        if (sessionStorage.getItem(EXIT_INTENT_SESSION_KEY)) return
+        sessionStorage.setItem(EXIT_INTENT_SESSION_KEY, '1')
+      } catch (err) {
+        /* storage unavailable — fall through, worst case a duplicate fire */
+      }
+      var vehicleCtx = getVehicleContext()
+      track('exit_intent', {
+        path: window.location.pathname,
+        is_vehicle_page: !!vehicleCtx,
+        vehicle_key: vehicleKey(vehicleCtx)
+      })
+    }
+
+    document.addEventListener('mouseout', onMouseOut)
+    _behavioralCleanups.push(function () {
+      document.removeEventListener('mouseout', onMouseOut)
+    })
   }
 
   // Auto-track page views
@@ -1742,6 +1772,7 @@
     // and are gated by _funnelSignalsEnabled instead of a setup call here.
     // On by default. Opt out with data-funnel-signals="false".
     if (_funnelSignalsEnabled) {
+      setupExitIntentDetection()
     }
   }
 
