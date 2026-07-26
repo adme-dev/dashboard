@@ -128,7 +128,8 @@ async function activeDefinitions(clientId: string): Promise<PersonaDefinition[]>
     `SELECT DISTINCT ON (persona_key)
             id, persona_key, version, label, description,
             positive_signals, negative_signals, min_confidence,
-            allowed_channels, targeting_allowed, reporting_allowed, tier_rank
+            allowed_channels, targeting_allowed, reporting_allowed, tier_rank,
+            is_exclusion
        FROM crm_persona_definitions
       WHERE status = 'active'
         AND vertical IN ('universal', 'automotive')
@@ -145,7 +146,8 @@ export async function activeTierDefinitions(clientId: string): Promise<PersonaDe
     `SELECT DISTINCT ON (persona_key)
             id, persona_key, version, label, description,
             positive_signals, negative_signals, min_confidence,
-            allowed_channels, targeting_allowed, reporting_allowed, tier_rank
+            allowed_channels, targeting_allowed, reporting_allowed, tier_rank,
+            is_exclusion
        FROM crm_persona_definitions
       WHERE status = 'active'
         AND vertical IN ('universal', 'automotive')
@@ -161,7 +163,8 @@ export async function activeExclusionDefinitions(clientId: string): Promise<Pers
     `SELECT DISTINCT ON (persona_key)
             id, persona_key, version, label, description,
             positive_signals, negative_signals, min_confidence,
-            allowed_channels, targeting_allowed, reporting_allowed, tier_rank
+            allowed_channels, targeting_allowed, reporting_allowed, tier_rank,
+            is_exclusion
        FROM crm_persona_definitions
       WHERE status = 'active'
         AND vertical IN ('universal', 'automotive')
