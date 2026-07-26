@@ -1,8 +1,19 @@
 <script setup lang="ts">
 const props = defineProps<{ siteId: string }>()
 
-interface Snippet { name: string | null, spa: boolean, writeKey: string, raw: string, gtm: string }
+interface Snippet { name: string | null, spa: boolean, writeKey: string, raw: string, gtm: string, vehiclePagePatterns: string[] }
 interface Status { installed: boolean, total: number, last24h: number, lastEventAt: string | null }
+interface UrlTestResult {
+  url: string
+  pathname: string
+  wouldDetectAsVehiclePage: boolean
+  matchedUrlPattern: string | null
+  stockNumber: string | null
+  vehicleJsonLd: Record<string, unknown> | null
+  ogTags: Record<string, string>
+  fetchError: string | null
+  recommendation: string | null
+}
 
 const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 const data = ref<Snippet | null>(null)
@@ -41,6 +52,31 @@ watch(() => props.siteId, () => {
 const toast = useToast()
 const copied = ref<string | null>(null)
 let resetTimer: ReturnType<typeof setTimeout> | null = null
+
+// Vehicle-page detection test — lets staff confirm a real dealer URL will be
+// recognized before install, rather than finding out after 3 days of zero
+// vehicle_view events.
+const testUrl = ref('')
+const testResult = ref<UrlTestResult | null>(null)
+const testState = ref<'idle' | 'pending' | 'error'>('idle')
+
+async function runUrlTest() {
+  const url = testUrl.value.trim()
+  if (!url) return
+  testState.value = 'pending'
+  testResult.value = null
+  try {
+    testResult.value = await $fetch<UrlTestResult>(`/api/agency/tracking/${props.siteId}/test-url`, {
+      method: 'POST',
+      body: { url }
+    })
+    testState.value = 'idle'
+  } catch (err: unknown) {
+    testState.value = 'error'
+    const description = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Could not test that URL.'
+    toast.add({ title: 'Test failed', description, color: 'error' })
+  }
+}
 
 async function copy(which: string, value: string) {
   try {
@@ -202,6 +238,76 @@ const guideItems = [
         <p class="text-xs text-muted">
           Paste once, just before the closing <code class="text-[0.7rem]">&lt;/head&gt;</code> tag, on every page.
           <span v-if="data.spa">This site is in SPA mode — it also tracks client-side route changes.</span>
+        </p>
+      </div>
+
+      <!-- Vehicle-page detection test -->
+      <div class="space-y-2 rounded-lg border border-default p-3">
+        <p class="text-sm font-medium flex items-center gap-1.5">
+          <UIcon name="i-lucide-car" class="size-3.5 text-primary" />
+          Test a vehicle page
+        </p>
+        <p class="text-xs text-muted">
+          Paste a real vehicle detail page from this site to confirm it'll be recognized before you install anything.
+        </p>
+        <UFormField label="Vehicle page URL">
+          <div class="flex items-center gap-2">
+            <UInput
+              v-model="testUrl"
+              placeholder="https://example.com.au/cars/used-2021-toyota-corolla-s12345"
+              class="flex-1"
+              @keydown.enter="runUrlTest()"
+            />
+            <UButton
+              color="neutral"
+              variant="soft"
+              label="Test"
+              :loading="testState === 'pending'"
+              :disabled="!testUrl.trim()"
+              @click="runUrlTest()"
+            />
+          </div>
+        </UFormField>
+
+        <div v-if="testResult" class="space-y-2 pt-1">
+          <div
+            class="flex items-center gap-2 rounded-lg border p-2.5 text-sm"
+            :class="testResult.wouldDetectAsVehiclePage
+              ? 'border-success/30 bg-success/5 text-success'
+              : 'border-warning/30 bg-warning/5 text-warning'"
+          >
+            <UIcon :name="testResult.wouldDetectAsVehiclePage ? 'i-lucide-check-circle-2' : 'i-lucide-alert-triangle'" class="size-4 shrink-0" />
+            <span class="font-medium">
+              {{ testResult.wouldDetectAsVehiclePage ? 'Would be detected as a vehicle page' : 'Would NOT be detected as a vehicle page' }}
+            </span>
+          </div>
+
+          <p v-if="testResult.fetchError" class="text-xs text-error">
+            Couldn't fetch that page: {{ testResult.fetchError }}
+          </p>
+          <template v-else>
+            <ul class="text-xs text-muted space-y-1">
+              <li v-if="testResult.matchedUrlPattern">
+                Matched URL pattern: <code class="text-[0.7rem] text-default">/{{ testResult.matchedUrlPattern }}/</code>
+              </li>
+              <li v-if="testResult.stockNumber">
+                Stock number in URL: <code class="text-[0.7rem] text-default">{{ testResult.stockNumber }}</code>
+              </li>
+              <li v-if="testResult.vehicleJsonLd">
+                Vehicle/Car/Product JSON-LD found on the page ✓
+              </li>
+              <li v-if="!testResult.vehicleJsonLd">
+                No Vehicle/Car/Product JSON-LD on the page.
+              </li>
+            </ul>
+            <p v-if="testResult.recommendation" class="text-xs text-muted">
+              {{ testResult.recommendation }}
+            </p>
+          </template>
+        </div>
+
+        <p v-if="data.vehiclePagePatterns.length" class="text-xs text-muted">
+          Custom patterns configured for this site: <code class="text-[0.7rem]">{{ data.vehiclePagePatterns.join(', ') }}</code>
         </p>
       </div>
 
