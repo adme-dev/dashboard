@@ -801,5 +801,71 @@ describe('Phase B funnel & intent signals', () => {
 
       vi.unstubAllGlobals()
     })
+
+    it('data-funnel-signals="false" disables all six signals together, but generic tracking still works', () => {
+      withMarketingConsent()
+      window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+      const wishlistBtn = document.createElement('button')
+      wishlistBtn.className = 'wishlist'
+      document.body.appendChild(wishlistBtn)
+      const ctaBtn = document.createElement('button')
+      ctaBtn.setAttribute('data-cta', 'true')
+      document.body.appendChild(ctaBtn)
+
+      loadTag()
+      ;(window as any).xf.init({ writeKey: 'TESTKEY', funnelSignals: false })
+      const initEvents = eventsFrom(requests)
+      requests = []
+
+      wishlistBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+
+      const postActionEvents = eventsFrom(requests)
+      const allEvents = [...initEvents, ...postActionEvents]
+      expect(postActionEvents.find((e: any) => e.event_name === 'add_to_wishlist')).toBeUndefined()
+      expect(postActionEvents.find((e: any) => e.event_name === 'exit_intent')).toBeUndefined()
+      expect(postActionEvents.find((e: any) => e.event_name === 'return_to_vehicle')).toBeUndefined()
+      expect(postActionEvents.find((e: any) => e.event_name === 'vehicle_comparison')).toBeUndefined()
+      expect(postActionEvents.find((e: any) => e.event_name === 'cta_visible')).toBeUndefined()
+      // vehicle_view (Phase A, unrelated flag) still fires — the tag isn't fully disabled.
+      expect(allEvents.find((e: any) => e.event_name === 'vehicle_view')).toBeTruthy()
+    })
+
+    it('all six signals fire when funnel-signals is on (default) and their triggers occur', async () => {
+      withMarketingConsent()
+      window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+      const wishlistBtn = document.createElement('button')
+      wishlistBtn.className = 'wishlist'
+      document.body.appendChild(wishlistBtn)
+
+      loadTag()
+      ;(window as any).xf.init({
+        writeKey: 'TESTKEY',
+        spa: true,
+        constants: { engagementIntervals: [0], engagementCheckMs: 10 }
+      })
+
+      // Prime return-to-vehicle by back-dating a prior visit outside the session window.
+      const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+      visits['20544'] = Date.now() - 31 * 60 * 1000
+      localStorage.setItem('_xf_vehicle_visits_v1', JSON.stringify(visits))
+      requests = []
+
+      window.history.pushState({}, '', '/cars/used-white-2019-toyota-kluger-s20825') // cross-shop #1
+      window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544') // return + comparison #2
+      wishlistBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+
+      await vi.waitFor(() => {
+        expect(eventsFrom(requests).some((e: any) => e.event_name === 'engagement')).toBe(true)
+      })
+
+      const names = eventsFrom(requests).map((e: any) => e.event_name)
+      expect(names).toContain('vehicle_comparison')
+      expect(names).toContain('return_to_vehicle')
+      expect(names).toContain('exit_intent')
+      expect(names).toContain('add_to_wishlist')
+      expect(names).toContain('engagement')
+    })
   })
 })
