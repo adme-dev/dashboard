@@ -29,7 +29,10 @@ export const TRACK_EVENT_NAMES = [
   'vehicle_view', 'vehicle_list_view', 'search', 'filter_change',
   'finance_calculator_interact', 'trade_in_start', 'trade_in_complete',
   'test_drive_booking', 'add_to_wishlist', 'video_play', 'video_progress',
-  'return_to_vehicle', 'competitive_referrer', 'generate_lead'
+  'return_to_vehicle', 'competitive_referrer', 'generate_lead',
+  // Phase B funnel & intent signals — fire only when the tag's opt-in
+  // `funnelSignals` mode is enabled (see public/track.js).
+  'vehicle_comparison', 'exit_intent', 'cta_visible'
 ] as const
 
 export const TrackEventNameSchema = z.enum(TRACK_EVENT_NAMES)
