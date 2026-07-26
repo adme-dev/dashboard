@@ -478,6 +478,9 @@ export async function loadEligibleMembers(context: ExportContext): Promise<Hashe
   return members.filter((member): member is HashedAudienceMember => member !== null)
 }
 
+// Upper-bound estimate only: applies just the attribution/consent-marketing gates from
+// signalFilterSql, not the additional latest-consent/do-not-contact/contactability/suppression
+// gates loadEligibleMembers applies at export time — the real deliverable audience is smaller.
 export async function countTierMembers(
   clientId: string,
   tierKey: string,

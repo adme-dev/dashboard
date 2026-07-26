@@ -9,9 +9,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
   const results = await recomputePersonaTiers()
+  const failures = results.filter(result => result.error)
   return {
     ok: true,
     clients: results.length,
-    tiered: results.reduce((sum, result) => sum + result.tiered, 0)
+    tiered: results.reduce((sum, result) => sum + result.tiered, 0),
+    failed: failures.length,
+    failures: failures.map(result => ({ clientId: result.clientId, error: result.error }))
   }
 })

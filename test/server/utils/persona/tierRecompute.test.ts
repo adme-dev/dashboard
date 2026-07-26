@@ -61,19 +61,41 @@ describe('recomputeClientTiers', () => {
     const result = await recomputeClientTiers(CLIENT_ID)
 
     expect(result).toEqual({ clientId: CLIENT_ID, tiered: 2 })
+    expect(mockTxQuery).toHaveBeenCalledTimes(2)
     expect(mockTxQuery).toHaveBeenCalledWith(
       'DELETE FROM crm_persona_tier_memberships WHERE client_id = $1',
       [CLIENT_ID]
     )
     expect(mockTxQuery).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO crm_persona_tier_memberships'),
-      [CLIENT_ID, 'profile-hot', 'hot', ['form_start']]
+      expect.stringContaining('jsonb_to_recordset'),
+      [CLIENT_ID, JSON.stringify([
+        { profile_id: 'profile-hot', tier_key: 'hot', matched_signals: ['form_start'] },
+        { profile_id: 'profile-warm', tier_key: 'warm', matched_signals: ['vehicle_comparison'] }
+      ])]
     )
+
+    const signalCall = mockQueryRows.mock.calls.find(call => /FROM crm_customer_signals/.test(call[0] as string))
+    expect(signalCall?.[0]).toContain("INTERVAL '30 days'")
+    expect(signalCall?.[0]).toContain('profile_id IS NOT NULL')
+  })
+
+  it('does not attempt a bulk insert when no profile qualifies for a tier', async () => {
+    mockQueryRows.mockImplementation(async (sql: string) => {
+      if (/FROM crm_persona_definitions/.test(sql)) return TIER_DEFINITIONS
+      if (/FROM crm_customer_signals/.test(sql)) {
+        return [{ profile_id: 'profile-none', signal_keys: ['search'] }]
+      }
+      return []
+    })
+
+    const result = await recomputeClientTiers(CLIENT_ID)
+
+    expect(result).toEqual({ clientId: CLIENT_ID, tiered: 0 })
+    expect(mockTxQuery).toHaveBeenCalledTimes(1)
     expect(mockTxQuery).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO crm_persona_tier_memberships'),
-      [CLIENT_ID, 'profile-warm', 'warm', ['vehicle_comparison']]
+      'DELETE FROM crm_persona_tier_memberships WHERE client_id = $1',
+      [CLIENT_ID]
     )
-    expect(mockTxQuery).not.toHaveBeenCalledWith(expect.anything(), expect.arrayContaining(['profile-none']))
   })
 
   it('skips a client with no active tier definitions without opening a transaction', async () => {
@@ -109,6 +131,7 @@ describe('recomputePersonaTiers', () => {
   })
 
   it('records a per-client error and continues to the next client when one client fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockQueryRows.mockImplementation(async (sql: string, params?: unknown[]) => {
       if (/FROM client_feature_entitlements/.test(sql)) {
         return [{ client_id: 'client-a' }, { client_id: 'client-b' }]
@@ -127,5 +150,7 @@ describe('recomputePersonaTiers', () => {
       { clientId: 'client-a', tiered: 0, error: 'db unavailable' },
       { clientId: 'client-b', tiered: 0 }
     ])
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('client-a'))
+    consoleErrorSpy.mockRestore()
   })
 })

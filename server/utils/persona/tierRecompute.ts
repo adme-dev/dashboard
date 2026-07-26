@@ -44,12 +44,20 @@ export async function recomputeClientTiers(clientId: string): Promise<ClientTier
       'DELETE FROM crm_persona_tier_memberships WHERE client_id = $1',
       [clientId]
     )
-    for (const assignment of assignments) {
+    if (assignments.length) {
       await db.query(
         `INSERT INTO crm_persona_tier_memberships (
            client_id, profile_id, tier_key, matched_signals, computed_at
-         ) VALUES ($1, $2, $3, $4, NOW())`,
-        [clientId, assignment.profileId, assignment.tierKey, assignment.matchedSignals]
+         )
+         SELECT $1, item.profile_id, item.tier_key, item.matched_signals, NOW()
+           FROM jsonb_to_recordset($2::jsonb) AS item(
+             profile_id uuid, tier_key text, matched_signals text[]
+           )`,
+        [clientId, JSON.stringify(assignments.map(assignment => ({
+          profile_id: assignment.profileId,
+          tier_key: assignment.tierKey,
+          matched_signals: assignment.matchedSignals
+        })))]
       )
     }
   })
@@ -64,11 +72,9 @@ export async function recomputePersonaTiers(): Promise<ClientTierRecomputeResult
     try {
       results.push(await recomputeClientTiers(clientId))
     } catch (error) {
-      results.push({
-        clientId,
-        tiered: 0,
-        error: error instanceof Error ? error.message : String(error)
-      })
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[persona-tier-recompute] client ${clientId} failed: ${message}`)
+      results.push({ clientId, tiered: 0, error: message })
     }
   }
   return results

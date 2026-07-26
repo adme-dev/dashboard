@@ -119,6 +119,7 @@ async function activeDefinitions(clientId: string): Promise<PersonaDefinition[]>
        FROM crm_persona_definitions
       WHERE status = 'active'
         AND vertical IN ('universal', 'automotive')
+        AND tier_rank IS NULL
         AND (client_id IS NULL OR client_id = $1)
       ORDER BY persona_key, (client_id IS NOT NULL) DESC, version DESC`,
     [clientId]

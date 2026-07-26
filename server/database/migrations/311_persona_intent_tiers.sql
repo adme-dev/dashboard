@@ -6,13 +6,13 @@ BEGIN;
 -- Warm=2, Cold=3); the other existing personas (active_vehicle_shopper,
 -- finance_ready, returning_high_intent) stay NULL, unaffected.
 ALTER TABLE crm_persona_definitions
-  ADD COLUMN tier_rank INTEGER NULL;
+  ADD COLUMN IF NOT EXISTS tier_rank INTEGER NULL;
 
 -- One row per profile: their current single highest-ranked tier, recomputed
 -- nightly from the last 30 days of crm_customer_signals. This is what makes
 -- a tier a real, joinable audience filter for loadEligibleMembers, not just
 -- a preview stat.
-CREATE TABLE crm_persona_tier_memberships (
+CREATE TABLE IF NOT EXISTS crm_persona_tier_memberships (
   client_id UUID NOT NULL REFERENCES agency_clients(id) ON DELETE CASCADE,
   profile_id UUID NOT NULL,
   tier_key TEXT NOT NULL CHECK (tier_key IN ('hot', 'warm', 'cold')),
@@ -25,7 +25,7 @@ CREATE TABLE crm_persona_tier_memberships (
     ON DELETE CASCADE
 );
 
-CREATE INDEX idx_crm_persona_tier_memberships_tier
+CREATE INDEX IF NOT EXISTS idx_crm_persona_tier_memberships_tier
   ON crm_persona_tier_memberships (client_id, tier_key);
 
 -- Seed the 3 ranked tier definitions, same idempotent pattern as migration
