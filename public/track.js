@@ -1260,7 +1260,19 @@
         var interval = intervals[i]
         if (elapsed >= interval && !tracked[interval]) {
           tracked[interval] = true
-          track('engagement', { duration: interval })
+          var data = { duration: interval }
+          // VDP dwell time: distinct from generic engagement only in that it
+          // carries vehicle context, letting downstream queries filter for
+          // "time actually spent on a vehicle detail page."
+          if (_funnelSignalsEnabled) {
+            var vehicleCtx = getVehicleContext()
+            if (vehicleCtx) {
+              for (var key in vehicleCtx) {
+                if (vehicleCtx.hasOwnProperty(key)) data[key] = vehicleCtx[key]
+              }
+            }
+          }
+          track('engagement', data)
         }
       }
     }, ENGAGEMENT_CHECK_MS)

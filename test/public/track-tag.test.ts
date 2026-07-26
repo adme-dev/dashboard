@@ -562,4 +562,39 @@ describe('Phase B funnel & intent signals', () => {
 
     expect(eventsFrom(requests).find((e: any) => e.event_name === 'vehicle_comparison')).toBeUndefined()
   })
+
+  it('merges vehicle context into the engagement event on a vehicle page', async () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({
+      writeKey: 'TESTKEY',
+      constants: { engagementIntervals: [0], engagementCheckMs: 10 }
+    })
+    requests = []
+
+    await vi.waitFor(() => {
+      expect(eventsFrom(requests).some((e: any) => e.event_name === 'engagement')).toBe(true)
+    })
+
+    const engagementEvent = eventsFrom(requests).find((e: any) => e.event_name === 'engagement')
+    expect(engagementEvent.event_data.vehicle_stock_number).toBe('20544')
+    expect(engagementEvent.event_data.duration).toBe(0)
+  })
+
+  it('does not merge vehicle context into engagement off a vehicle page', async () => {
+    window.history.pushState({}, '', '/about-us')
+    loadTag()
+    ;(window as any).xf.init({
+      writeKey: 'TESTKEY',
+      constants: { engagementIntervals: [0], engagementCheckMs: 10 }
+    })
+    requests = []
+
+    await vi.waitFor(() => {
+      expect(eventsFrom(requests).some((e: any) => e.event_name === 'engagement')).toBe(true)
+    })
+
+    const engagementEvent = eventsFrom(requests).find((e: any) => e.event_name === 'engagement')
+    expect(engagementEvent.event_data.vehicle_stock_number).toBeUndefined()
+  })
 })
