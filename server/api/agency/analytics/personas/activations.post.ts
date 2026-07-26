@@ -1,3 +1,4 @@
+import { createError, defineEventHandler, readBody } from 'h3'
 import { z } from 'zod'
 import { requirePersonaAdminAccess } from '~~/server/utils/persona/access'
 import { createPersonaActivationRequest } from '~~/server/utils/persona/activation'
@@ -17,7 +18,8 @@ const Body = z.strictObject({
     adId: z.string().max(512).optional(),
     creativeId: z.string().max(512).optional(),
     landingPage: z.string().max(2048).optional(),
-    device: z.string().max(40).optional()
+    device: z.string().max(40).optional(),
+    tierKey: z.enum(['hot', 'warm', 'cold']).optional()
   }),
   expiresAt: z.string().datetime({ offset: true })
 })

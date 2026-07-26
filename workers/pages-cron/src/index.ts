@@ -55,6 +55,10 @@ const ROUTES: Record<string, string[]> = {
   '35 3 * * *': ['/api/cron/office-retention'],
   // daily — purge tracking_events past each site's retention_days
   '45 3 * * *': ['/api/cron/tracking-retention'],
+  // daily — recompute hot/warm/cold intent-tier membership from the last 30
+  // days of customer signals, feeding tier-filtered Meta/Google audience
+  // exports. Full delete+reinsert per client inside one transaction.
+  '55 3 * * *': ['/api/cron/persona-tier-recompute'],
   // daily — create review-only Auto Feed drafts. The endpoint is a no-op until
   // DEALER_FEEDS_ENABLED is set and deduplicates every feed item per rule.
   '10 4 * * *': ['/api/cron/feed-post-rules'],

@@ -383,15 +383,27 @@ function signalFilterSql(filters: Record<string, string>, params: unknown[]): st
   return clauses.join('\n AND ')
 }
 
-async function loadEligibleMembers(context: ExportContext): Promise<HashedAudienceMember[]> {
+export async function loadEligibleMembers(context: ExportContext): Promise<HashedAudienceMember[]> {
+  const filters = context.filters || {}
   const params: unknown[] = [context.client_id]
-  const candidatesFilterSql = signalFilterSql(context.filters || {}, params)
+  const candidatesFilterSql = signalFilterSql(filters, params)
+  let tierJoinSql = ''
+  if (filters.tierKey) {
+    params.push(filters.tierKey)
+    tierJoinSql = `JOIN crm_persona_tier_memberships tier
+                      ON tier.client_id = signal.client_id
+                     AND tier.profile_id = signal.profile_id
+                     AND tier.tier_key = $${params.length}`
+  }
   params.push(context.provider)
   const destinationParamIndex = params.length
+  const candidatesFromSql = tierJoinSql
+    ? `FROM crm_customer_signals signal\n         ${tierJoinSql}`
+    : 'FROM crm_customer_signals signal'
   const rows = await queryRows<SourceMember>(
     `WITH candidates AS (
        SELECT DISTINCT signal.profile_id
-         FROM crm_customer_signals signal
+         ${candidatesFromSql}
         WHERE ${candidatesFilterSql}
      ),
      latest_consent AS (
@@ -464,6 +476,30 @@ async function loadEligibleMembers(context: ExportContext): Promise<HashedAudien
     phone: row.phone
   })))
   return members.filter((member): member is HashedAudienceMember => member !== null)
+}
+
+// Upper-bound estimate only: applies just the attribution/consent-marketing gates from
+// signalFilterSql, not the additional latest-consent/do-not-contact/contactability/suppression
+// gates loadEligibleMembers applies at export time — the real deliverable audience is smaller.
+export async function countTierMembers(
+  clientId: string,
+  tierKey: string,
+  filters: Record<string, string>
+): Promise<number> {
+  const params: unknown[] = [clientId]
+  const filterSql = signalFilterSql(filters, params)
+  params.push(tierKey)
+  const row = await queryOne<{ count: string }>(
+    `SELECT COUNT(DISTINCT signal.profile_id) AS count
+       FROM crm_customer_signals signal
+       JOIN crm_persona_tier_memberships tier
+         ON tier.client_id = signal.client_id
+        AND tier.profile_id = signal.profile_id
+        AND tier.tier_key = $${params.length}
+      WHERE ${filterSql}`,
+    params
+  )
+  return Number(row?.count ?? 0)
 }
 
 async function loadStoredMembers(context: ExportContext): Promise<StoredMember[]> {
