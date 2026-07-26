@@ -640,4 +640,83 @@ describe('Phase B funnel & intent signals', () => {
 
     expect(eventsFrom(requests).find((e: any) => e.event_name === 'exit_intent')).toBeUndefined()
   })
+
+  function withMarketingConsent() {
+    document.cookie = '_xf_consent=' + encodeURIComponent(JSON.stringify({
+      tracking: true, analytics: true, marketing: true, updatedAt: '2026-07-24T00:00:00Z'
+    })) + '; path=/'
+  }
+
+  it('fires add_to_wishlist when a wishlist-classed element is clicked', () => {
+    withMarketingConsent()
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    const button = document.createElement('button')
+    button.className = 'wishlist'
+    document.body.appendChild(button)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    const wishlistEvent = eventsFrom(requests).find((e: any) => e.event_name === 'add_to_wishlist')
+    expect(wishlistEvent).toBeTruthy()
+    expect(wishlistEvent.event_data.vehicle_stock_number).toBe('20544')
+  })
+
+  it('fires add_to_wishlist for an aria-label match on a nested icon click', () => {
+    withMarketingConsent()
+    const wrapper = document.createElement('button')
+    wrapper.setAttribute('aria-label', 'Save to Favourites')
+    const icon = document.createElement('span')
+    icon.className = 'icon-heart'
+    wrapper.appendChild(icon)
+    document.body.appendChild(wrapper)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    icon.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'add_to_wishlist')).toBeTruthy()
+  })
+
+  it('does not fire add_to_wishlist for an unrelated click', () => {
+    withMarketingConsent()
+    const button = document.createElement('button')
+    button.textContent = 'Contact us'
+    document.body.appendChild(button)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'add_to_wishlist')).toBeUndefined()
+  })
+
+  it('data-funnel-signals="false" suppresses add_to_wishlist', () => {
+    withMarketingConsent()
+    const script = document.createElement('script')
+    document.head.appendChild(script)
+    Object.defineProperty(script, 'src', { value: 'https://app.xeroflow.io/track.js' })
+    script.setAttribute('data-key', 'TESTKEY')
+    script.setAttribute('data-funnel-signals', 'false')
+    const currentScript = vi.spyOn(document, 'currentScript', 'get').mockReturnValue(script)
+
+    const button = document.createElement('button')
+    button.className = 'wishlist'
+    document.body.appendChild(button)
+
+    loadTag()
+    requests = []
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'add_to_wishlist')).toBeUndefined()
+
+    currentScript.mockRestore()
+  })
 })

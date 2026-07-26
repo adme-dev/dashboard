@@ -884,6 +884,48 @@
     })
   }
 
+  var WISHLIST_SELECTORS = ['[data-wishlist]', '.wishlist', '.favourite', '.save-vehicle']
+  var WISHLIST_LABEL_RE = /wishlist|favou?rite|save/i
+
+  function isWishlistElement(el) {
+    for (var i = 0; i < WISHLIST_SELECTORS.length; i++) {
+      if (el.matches && el.matches(WISHLIST_SELECTORS[i])) return true
+    }
+    var label = el.getAttribute ? (el.getAttribute('aria-label') || '') : ''
+    return WISHLIST_LABEL_RE.test(label)
+  }
+
+  // Heuristic detector for save/heart icons near vehicle cards — no dealer
+  // CMS convention exists across sites, so this matches a selector list plus
+  // aria-label keywords, mirroring the CTA-keyword heuristic in
+  // pushToDataLayer(). Walks up to 5 ancestors, matching the phone_click
+  // delegation pattern.
+  function setupWishlistTracking() {
+    function onWishlistClick(e) {
+      var target = e.target
+      for (var i = 0; i < 5; i++) {
+        if (!target) break
+        if (isWishlistElement(target)) {
+          var vehicleCtx = getVehicleContext()
+          var data = {}
+          if (vehicleCtx) {
+            for (var key in vehicleCtx) {
+              if (vehicleCtx.hasOwnProperty(key)) data[key] = vehicleCtx[key]
+            }
+          }
+          track('add_to_wishlist', data)
+          return
+        }
+        target = target.parentElement
+      }
+    }
+
+    document.addEventListener('click', onWishlistClick)
+    _behavioralCleanups.push(function () {
+      document.removeEventListener('click', onWishlistClick)
+    })
+  }
+
   // Auto-track page views
   function trackPageView() {
     var data = {
@@ -1773,6 +1815,7 @@
     // On by default. Opt out with data-funnel-signals="false".
     if (_funnelSignalsEnabled) {
       setupExitIntentDetection()
+      setupWishlistTracking()
     }
   }
 
