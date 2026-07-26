@@ -802,8 +802,25 @@ describe('Phase B funnel & intent signals', () => {
       vi.unstubAllGlobals()
     })
 
-    it('data-funnel-signals="false" disables all six signals together, but generic tracking still works', () => {
+    it('the funnel-signals flag disables all six signals together, but generic tracking still works', () => {
+      // Uses init({ funnelSignals: false }) directly rather than the
+      // data-funnel-signals="false" attribute — that attribute-parsing path
+      // is already covered per-signal above (return_to_vehicle, add_to_wishlist).
       withMarketingConsent()
+      const observeSpy = vi.fn()
+      class FakeIntersectionObserver {
+        constructor(_cb: any) {}
+        observe = observeSpy
+        unobserve = vi.fn()
+        disconnect = vi.fn()
+      }
+      vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+
+      // Prime a prior visit so return-to-vehicle *would* fire if the flag were on.
+      const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+      visits['20544'] = Date.now() - 31 * 60 * 1000
+      localStorage.setItem('_xf_vehicle_visits_v1', JSON.stringify(visits))
+
       window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
       const wishlistBtn = document.createElement('button')
       wishlistBtn.className = 'wishlist'
@@ -813,10 +830,12 @@ describe('Phase B funnel & intent signals', () => {
       document.body.appendChild(ctaBtn)
 
       loadTag()
-      ;(window as any).xf.init({ writeKey: 'TESTKEY', funnelSignals: false })
+      ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true, funnelSignals: false })
       const initEvents = eventsFrom(requests)
       requests = []
 
+      // Cross-shop trigger: a second distinct vehicle in the same session.
+      window.history.pushState({}, '', '/cars/used-white-2019-toyota-kluger-s20825')
       wishlistBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
 
@@ -827,16 +846,34 @@ describe('Phase B funnel & intent signals', () => {
       expect(postActionEvents.find((e: any) => e.event_name === 'return_to_vehicle')).toBeUndefined()
       expect(postActionEvents.find((e: any) => e.event_name === 'vehicle_comparison')).toBeUndefined()
       expect(postActionEvents.find((e: any) => e.event_name === 'cta_visible')).toBeUndefined()
+      // setupCtaVisibilityTracking() never even ran — the observer was never constructed/used.
+      expect(observeSpy).not.toHaveBeenCalled()
       // vehicle_view (Phase A, unrelated flag) still fires — the tag isn't fully disabled.
       expect(allEvents.find((e: any) => e.event_name === 'vehicle_view')).toBeTruthy()
+
+      vi.unstubAllGlobals()
     })
 
     it('all six signals fire when funnel-signals is on (default) and their triggers occur', async () => {
       withMarketingConsent()
+      let capturedCallback: any
+      const observeSpy = vi.fn()
+      class FakeIntersectionObserver {
+        constructor(cb: any) { capturedCallback = cb }
+        observe = observeSpy
+        unobserve = vi.fn()
+        disconnect = vi.fn()
+      }
+      vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+
       window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
       const wishlistBtn = document.createElement('button')
       wishlistBtn.className = 'wishlist'
       document.body.appendChild(wishlistBtn)
+      const ctaBtn = document.createElement('button')
+      ctaBtn.setAttribute('data-cta', 'true')
+      ctaBtn.textContent = 'Get a quote'
+      document.body.appendChild(ctaBtn)
 
       loadTag()
       ;(window as any).xf.init({
@@ -855,17 +892,24 @@ describe('Phase B funnel & intent signals', () => {
       window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544') // return + comparison #2
       wishlistBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
+      expect(observeSpy).toHaveBeenCalledWith(ctaBtn)
+      capturedCallback([{ target: ctaBtn, isIntersecting: true }])
 
       await vi.waitFor(() => {
         expect(eventsFrom(requests).some((e: any) => e.event_name === 'engagement')).toBe(true)
       })
 
-      const names = eventsFrom(requests).map((e: any) => e.event_name)
+      const events = eventsFrom(requests)
+      const names = events.map((e: any) => e.event_name)
       expect(names).toContain('vehicle_comparison')
       expect(names).toContain('return_to_vehicle')
       expect(names).toContain('exit_intent')
       expect(names).toContain('add_to_wishlist')
-      expect(names).toContain('engagement')
+      expect(names).toContain('cta_visible')
+      const engagementEvent = events.find((e: any) => e.event_name === 'engagement')
+      expect(engagementEvent.event_data.vehicle_stock_number).toBe('20544')
+
+      vi.unstubAllGlobals()
     })
   })
 })
