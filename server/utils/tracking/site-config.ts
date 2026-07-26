@@ -27,6 +27,7 @@ export interface TrackingSite {
   spa: boolean
   consentMode: string
   leadSelectors: string[]
+  vehiclePagePatterns: string[]
   retentionDays: number
   isActive: boolean
   providerTracking: ProviderTrackingSettings
@@ -42,6 +43,7 @@ interface TrackingSiteRow {
   spa: boolean
   consent_mode: string
   lead_selectors: string[] | null
+  vehicle_page_patterns: string[] | null
   retention_days: number
   is_active: boolean
   provider_tracking: unknown
@@ -89,6 +91,7 @@ function mapRow(row: TrackingSiteRow): TrackingSite {
     spa: row.spa,
     consentMode: row.consent_mode,
     leadSelectors: row.lead_selectors ?? [],
+    vehiclePagePatterns: row.vehicle_page_patterns ?? [],
     retentionDays: row.retention_days,
     isActive: row.is_active,
     providerTracking: normalizeProviderTrackingSettings(row.provider_tracking)
@@ -111,7 +114,7 @@ export async function resolveSiteByWriteKey(
   try {
     const row = await queryOne<TrackingSiteRow>(
       `SELECT id, client_id, name, write_key, allowed_origins, enforce_origin, spa, consent_mode,
-              lead_selectors, retention_days, is_active, provider_tracking
+              lead_selectors, vehicle_page_patterns, retention_days, is_active, provider_tracking
          FROM tracking_sites
         WHERE write_key = $1 AND is_active = TRUE`,
       [writeKey]
