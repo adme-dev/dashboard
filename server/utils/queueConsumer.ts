@@ -24,6 +24,10 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processBoardAutomate(job.payload)
         break
 
+      case 'lifecycle.evaluate':
+        await processLifecycleEvaluate(job.payload)
+        break
+
       case 'eom.generate':
         await processEomGenerate(job.payload)
         break
@@ -117,6 +121,11 @@ async function processBoardNotify(payload: Record<string, any>): Promise<void> {
 async function processBoardAutomate(payload: Record<string, any>): Promise<void> {
   const { evaluateAutomations } = await import('~~/server/utils/automationEngine')
   await evaluateAutomations(payload.boardId, payload as any)
+}
+
+async function processLifecycleEvaluate(payload: Record<string, any>): Promise<void> {
+  const { evaluateLifecycleTransition } = await import('~~/server/utils/automation/lifecycleGuard')
+  await evaluateLifecycleTransition(payload as any)
 }
 
 async function processEomGenerate(payload: Record<string, any>): Promise<void> {

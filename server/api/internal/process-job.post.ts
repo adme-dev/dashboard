@@ -26,6 +26,11 @@ import { processJob } from '~~/server/utils/queueConsumer'
 import type { QueueJob } from '~~/server/utils/queue'
 import { startJobExecution, finishJobExecution } from '~~/server/utils/jobExecutionLedger'
 
+function positiveHeader(value: string | undefined, fallback: number) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
 export default defineEventHandler(async (event) => {
   const cronSecret = getHeader(event, 'x-cron-secret')
   if (!import.meta.dev && cronSecret !== process.env.CRON_SECRET) {
@@ -46,12 +51,18 @@ export default defineEventHandler(async (event) => {
   }
 
   const startedAt = Date.now()
-  const executionId = await startJobExecution(job)
+  const execution = await startJobExecution(job, {
+    queueAttempt: positiveHeader(getHeader(event, 'x-queue-attempt'), 1),
+    maxAttempts: positiveHeader(getHeader(event, 'x-queue-max-attempts'), 4),
+    retryDelaySeconds: positiveHeader(getHeader(event, 'x-queue-retry-delay-seconds'), 15),
+    queueMessageId: getHeader(event, 'x-queue-message-id'),
+    dispatchMode: 'queue'
+  })
   try {
     await processJob(job)
-    await finishJobExecution(executionId, 'succeeded', startedAt)
+    await finishJobExecution(execution, 'succeeded', startedAt)
   } catch (error) {
-    await finishJobExecution(executionId, 'failed', startedAt, error)
+    await finishJobExecution(execution, 'failed', startedAt, error)
     throw error
   }
 

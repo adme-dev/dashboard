@@ -63,7 +63,10 @@ const activeObject = computed<CrmObjectDef | null>(() =>
         api-base="/api/client-portal/crm/data-sources"
         :can-manage="canManageDataSources"
       />
-      <CrmPlatformReadiness v-else-if="tab === 'platform'" />
+      <div v-else-if="tab === 'platform'" class="space-y-5">
+        <CrmPlatformReadiness />
+        <CrmSynchronizationHealth />
+      </div>
       <CrmPersonas v-else-if="tab === 'personas'" :client-id="clientId" />
       <CrmAudienceCohorts v-else-if="tab === 'audiences'" :client-id="clientId" />
       <template v-else-if="activeObject">

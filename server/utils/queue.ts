@@ -34,6 +34,34 @@ export interface QueueJob {
   enqueuedAt: string
 }
 
+async function recordQueued(job: QueueJob, dispatchMode: 'queue' | 'inline') {
+  const { recordJobQueued } = await import('~~/server/utils/jobExecutionLedger')
+  await recordJobQueued(job, dispatchMode)
+}
+
+async function recordDispatchFailure(job: QueueJob) {
+  const { markJobDispatchFailed } = await import('~~/server/utils/jobExecutionLedger')
+  await markJobDispatchFailed(job)
+}
+
+async function runInline(job: QueueJob, fallback: () => Promise<void>) {
+  const { startJobExecution, finishJobExecution } = await import('~~/server/utils/jobExecutionLedger')
+  const startedAt = Date.now()
+  const execution = await startJobExecution(job, {
+    queueAttempt: 1,
+    maxAttempts: 1,
+    retryDelaySeconds: 0,
+    dispatchMode: 'inline'
+  })
+  try {
+    await fallback()
+    await finishJobExecution(execution, 'succeeded', startedAt)
+  } catch (error) {
+    await finishJobExecution(execution, 'failed', startedAt, error, true)
+    console.error(`[Queue] Fallback for ${job.type} failed:`, error)
+  }
+}
+
 /** Minimal Queue interface matching Cloudflare Queue producer */
 interface QueueProducer {
   send(message: any, options?: { contentType?: string }): Promise<void>
@@ -63,28 +91,31 @@ export async function enqueue(
   fallback?: () => Promise<void>
 ): Promise<boolean> {
   const queue = getQueue(event)
+  const job: QueueJob = {
+    jobId: globalThis.crypto.randomUUID(),
+    type,
+    payload,
+    enqueuedAt: new Date().toISOString(),
+  }
 
   if (queue) {
     try {
-      const job: QueueJob = {
-        jobId: globalThis.crypto.randomUUID(),
-        type,
-        payload,
-        enqueuedAt: new Date().toISOString(),
-      }
+      await recordQueued(job, 'queue')
       await queue.send(job, { contentType: 'json' })
       return true
     } catch (err) {
       console.error(`[Queue] Failed to enqueue ${type}:`, err)
+      await recordDispatchFailure(job)
       // Fall through to fallback
     }
   }
 
   // Fallback: run inline (local dev or queue failure)
   if (fallback) {
-    fallback().catch(err =>
-      console.error(`[Queue] Fallback for ${type} failed:`, err)
-    )
+    await recordQueued(job, 'inline')
+    void runInline(job, fallback)
+  } else {
+    await recordDispatchFailure(job)
   }
   return false
 }

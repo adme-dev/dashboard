@@ -18,9 +18,17 @@ interface Env {
 }
 
 interface QueueJob {
+  jobId?: string
   type?: string
   payload?: unknown
   enqueuedAt?: string
+}
+
+const MAX_RETRIES = 3
+const MAX_ATTEMPTS = MAX_RETRIES + 1
+
+export function retryDelaySeconds(attempt: number): number {
+  return Math.min(300, 15 * (2 ** Math.max(0, attempt - 1)))
 }
 
 export default {
@@ -29,12 +37,17 @@ export default {
 
     await Promise.all(
       batch.messages.map(async (msg) => {
+        const retryDelay = retryDelaySeconds(msg.attempts)
         try {
           const resp = await fetch(url, {
             method: 'POST',
             headers: {
               'content-type': 'application/json',
               'x-cron-secret': env.CRON_SECRET,
+              'x-queue-attempt': String(msg.attempts),
+              'x-queue-max-attempts': String(MAX_ATTEMPTS),
+              'x-queue-retry-delay-seconds': String(retryDelay),
+              'x-queue-message-id': msg.id,
             },
             body: JSON.stringify(msg.body),
           })
@@ -48,13 +61,20 @@ export default {
           const text = await resp.text().catch(() => '')
           console.error('jobs-consumer.non-ok', {
             type: msg.body?.type,
+            jobId: msg.body?.jobId,
+            attempt: msg.attempts,
             status: resp.status,
             body: text.slice(0, 200),
           })
-          msg.retry()
+          msg.retry({ delaySeconds: retryDelay })
         } catch (err) {
-          console.error('jobs-consumer.error', { type: msg.body?.type, error: String(err) })
-          msg.retry()
+          console.error('jobs-consumer.error', {
+            type: msg.body?.type,
+            jobId: msg.body?.jobId,
+            attempt: msg.attempts,
+            error: String(err)
+          })
+          msg.retry({ delaySeconds: retryDelay })
         }
       }),
     )

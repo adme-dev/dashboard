@@ -26,4 +26,26 @@ describe('platform job observability contracts', () => {
     expect(endpoint).toContain('successRateTarget: 0.99')
     expect(endpoint).not.toContain('payload')
   })
+
+  it('tracks the canonical queue lifecycle without persisting arbitrary payloads', () => {
+    const migration = source('server/database/migrations/305_platform_job_lifecycle.sql')
+    expect(migration).toContain('platform_jobs')
+    expect(migration).toContain("'dead_lettered'")
+    expect(migration).toContain('replay_context')
+    expect(migration).not.toContain('payload JSONB')
+  })
+
+  it('propagates queue attempts and uses delayed retries before DLQ transfer', () => {
+    const worker = source('workers/jobs-consumer/src/index.ts')
+    const endpoint = source('server/api/internal/process-job.post.ts')
+    expect(worker).toContain('msg.attempts')
+    expect(worker).toContain('delaySeconds: retryDelay')
+    expect(endpoint).toContain("getHeader(event, 'x-queue-attempt')")
+  })
+
+  it('handles every declared workflow job needed by task status transitions', () => {
+    const consumer = source('server/utils/queueConsumer.ts')
+    expect(consumer).toContain("case 'lifecycle.evaluate':")
+    expect(consumer).toContain('evaluateLifecycleTransition')
+  })
 })

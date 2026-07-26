@@ -253,7 +253,7 @@ export async function queuePersonaAudienceOperation(input: {
   const queued = await enqueue(
     input.event,
     'persona.audience.sync',
-    { exportId: row.id },
+    { exportId: row.id, clientId: input.clientId },
     () => runPersonaAudienceSync(row.id)
   )
   return { id: row.id, status: 'queued', queued }
