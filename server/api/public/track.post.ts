@@ -10,7 +10,7 @@
  */
 import { parseTrackPayload } from '~~/server/utils/tracking/track-schema'
 import { resolveSiteByWriteKey, isOriginAllowed, shouldBlockOrigin } from '~~/server/utils/tracking/site-config'
-import { snapshotConsent } from '~~/server/utils/tracking/consent'
+import { snapshotConsent, applySiteConsentMode } from '~~/server/utils/tracking/consent'
 import { buildEventRows } from '~~/server/utils/tracking/event-insert'
 import { trackingEventPersistence } from '~~/server/utils/tracking/eventPersistence'
 import { rateCheck } from '~~/server/utils/tracking/rate-limit'

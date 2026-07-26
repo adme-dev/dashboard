@@ -101,14 +101,14 @@ function optionalHttpsUrl(value: unknown): string | null {
 export function parseConsentCookie(
   cookieValue: string | null | undefined
 ): {
-    tracking: boolean
-    analytics: boolean
-    marketing: boolean
-    updatedAt: string | null
-    policyVersion: string | null
-    noticeUrl: string | null
-    decisionMethod: string | null
-  } | null {
+  tracking: boolean
+  analytics: boolean
+  marketing: boolean
+  updatedAt: string | null
+  policyVersion: string | null
+  noticeUrl: string | null
+  decisionMethod: string | null
+} | null {
   if (!cookieValue) return null
   try {
     const parsed = JSON.parse(cookieValue)
@@ -222,4 +222,32 @@ export function shouldDestinationFire(
 ): boolean {
   if (destination === 'ga4') return snapshot.analytics === 'granted'
   return snapshot.marketing === 'granted'
+}
+
+/**
+ * Apply a per-site consent-mode override on top of the base regional
+ * snapshot. Only affects IMPLICIT snapshots (source !== 'explicit_cookie') —
+ * an explicit cookie choice always wins, per snapshotConsent()'s own
+ * priority order.
+ *
+ *   - 'off' (or anything else/unset): no override — regional default stands.
+ *   - 'consent_gated': implicit snapshots deny all three categories
+ *     regardless of region. For a site that requires an explicit opt-in
+ *     before anything is tracked, not just the EU/UK visitors.
+ *   - 'au_optout': implicit snapshots always grant `tracking` (matching the
+ *     AU opt-out default), even for EU/UK/unknown-region visitors — for a
+ *     site that wants uniform AU-style behavior regardless of GeoIP.
+ */
+export function applySiteConsentMode(
+  snapshot: ConsentSnapshot,
+  siteConsentMode: string | null | undefined
+): ConsentSnapshot {
+  if (snapshot.source === 'explicit_cookie') return snapshot
+  if (siteConsentMode === 'consent_gated') {
+    return { ...snapshot, tracking: 'denied', analytics: 'denied', marketing: 'denied' }
+  }
+  if (siteConsentMode === 'au_optout') {
+    return { ...snapshot, tracking: 'granted' }
+  }
+  return snapshot
 }
