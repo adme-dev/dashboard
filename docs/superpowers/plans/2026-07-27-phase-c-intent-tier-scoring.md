@@ -487,6 +487,7 @@ interface TransactionClient {
 export interface ClientTierRecomputeResult {
   clientId: string
   tiered: number
+  error?: string
 }
 
 export async function recomputeClientTiers(clientId: string): Promise<ClientTierRecomputeResult> {
@@ -533,7 +534,15 @@ export async function recomputePersonaTiers(): Promise<ClientTierRecomputeResult
   const clientIds = await listPersonaIdentityEnabledClientIds()
   const results: ClientTierRecomputeResult[] = []
   for (const clientId of clientIds) {
-    results.push(await recomputeClientTiers(clientId))
+    try {
+      results.push(await recomputeClientTiers(clientId))
+    } catch (error) {
+      results.push({
+        clientId,
+        tiered: 0,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
   return results
 }
@@ -727,16 +736,20 @@ export async function loadEligibleMembers(context: ExportContext): Promise<Hashe
   }
   params.push(context.provider)
   const destinationParamIndex = params.length
+  const candidatesFromSql = tierJoinSql
+    ? `FROM crm_customer_signals signal\n         ${tierJoinSql}`
+    : 'FROM crm_customer_signals signal'
   const rows = await queryRows<SourceMember>(
     `WITH candidates AS (
        SELECT DISTINCT signal.profile_id
-         FROM crm_customer_signals signal
-         ${tierJoinSql}
+         ${candidatesFromSql}
         WHERE ${candidatesFilterSql}
      ),
 ```
 
 (The rest of the function — `latest_consent`, `latest_person`, `latest_lead`, the final `SELECT`, and the return statement — is unchanged. Only the opening lines through the `candidates` CTE's `FROM`/join/`WHERE` clause change.)
+
+**Note:** `candidatesFromSql` is built conditionally rather than always interpolating `${tierJoinSql}` on its own line, specifically so the no-tier-filter query has no stray blank/whitespace-only line where the join would go — keeping the no-filter path truly byte-for-byte identical to the pre-existing query text, not just functionally equivalent (Postgres itself doesn't care about the whitespace, but the constraint is about textual identity, not just behavior).
 
 - [ ] **Step 4: Add `countTierMembers`**
 
