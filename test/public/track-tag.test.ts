@@ -836,6 +836,10 @@ describe('Phase B funnel & intent signals', () => {
 
       // Cross-shop trigger: a second distinct vehicle in the same session.
       window.history.pushState({}, '', '/cars/used-white-2019-toyota-kluger-s20825')
+      // Return-to-vehicle trigger: navigate back to the primed vehicle, inside
+      // the observed window (unlike the init-time visit, which landed in the
+      // discarded initEvents above).
+      window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
       wishlistBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       document.dispatchEvent(new MouseEvent('mouseout', { clientY: -1, relatedTarget: null }))
 
