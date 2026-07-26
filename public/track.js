@@ -375,6 +375,14 @@
       noticeUrl: preferences.noticeUrl ? String(preferences.noticeUrl).slice(0, 2048) : null,
       decisionMethod: String(preferences.decisionMethod || 'preference_center').slice(0, 80),
     }
+    if (!snapshot.analytics) {
+      try {
+        localStorage.removeItem(VEHICLE_VISITS_STORAGE_KEY)
+        sessionStorage.removeItem(SESSION_VEHICLES_STORAGE_KEY)
+      } catch (e) {
+        /* storage unavailable — ignore */
+      }
+    }
     setCookie(CONSENT_COOKIE_NAME, JSON.stringify(snapshot), 365)
     pushConsentToDataLayer('update', snapshot)
     track('consent_update', { consent_updated: true })
@@ -418,6 +426,7 @@
     // Analytics events require analytics consent
     var analyticsEvents = [
       'vehicle_view',
+      'return_to_vehicle',
       'vehicle_list_view',
       'search',
       'filter_change',
@@ -790,7 +799,12 @@
 
   function writeVehicleVisits(visits) {
     try {
+      var cutoff = Date.now() - 90 * 86400000
       var keys = Object.keys(visits)
+      for (var k = 0; k < keys.length; k++) {
+        if (visits[keys[k]] < cutoff) delete visits[keys[k]]
+      }
+      keys = Object.keys(visits)
       if (keys.length > VEHICLE_VISITS_MAX_ENTRIES) {
         keys.sort(function (a, b) { return visits[a] - visits[b] })
         var toRemove = keys.slice(0, keys.length - VEHICLE_VISITS_MAX_ENTRIES)
@@ -867,6 +881,7 @@
   function setupExitIntentDetection() {
     function onMouseOut(e) {
       if (e.clientY > 0 || e.relatedTarget !== null) return
+      if (!isEventAllowed('exit_intent', getConsent())) return
       try {
         if (sessionStorage.getItem(EXIT_INTENT_SESSION_KEY)) return
         sessionStorage.setItem(EXIT_INTENT_SESSION_KEY, '1')
@@ -888,7 +903,7 @@
   }
 
   var WISHLIST_SELECTORS = ['[data-wishlist]', '.wishlist', '.favourite', '.save-vehicle']
-  var WISHLIST_LABEL_RE = /wishlist|favou?rite|save/i
+  var WISHLIST_LABEL_RE = /wishlist|favou?rite/i
 
   function isWishlistElement(el) {
     for (var i = 0; i < WISHLIST_SELECTORS.length; i++) {
@@ -931,6 +946,7 @@
 
   var CTA_VISIBILITY_SELECTORS = CTA_CLICK_SELECTORS.concat(['[data-price]', '.price', '.vehicle-price'])
   var CTA_VISIBILITY_THRESHOLD = 0.5
+  var CTA_VISIBILITY_MAX_ELEMENTS = 20
 
   function matchedCtaSelector(el) {
     for (var i = 0; i < CTA_VISIBILITY_SELECTORS.length; i++) {
@@ -956,8 +972,14 @@
         })
       }
     }, { threshold: threshold })
-    var elements = document.querySelectorAll(CTA_VISIBILITY_SELECTORS.join(','))
-    for (var j = 0; j < elements.length; j++) observer.observe(elements[j])
+    _behavioralCleanups.push(function () {
+      observer.disconnect()
+    })
+    var vehicleCtx = getVehicleContext()
+    var selectors = vehicleCtx ? CTA_VISIBILITY_SELECTORS : CTA_CLICK_SELECTORS
+    var elements = document.querySelectorAll(selectors.join(','))
+    var max = CTA_VISIBILITY_MAX_ELEMENTS
+    for (var j = 0; j < elements.length && j < max; j++) observer.observe(elements[j])
   }
 
   // Auto-track page views
