@@ -737,7 +737,9 @@ export const CanonicalConversionEventSchema = z.strictObject({
   idempotencyKey: z.string().trim().min(1).max(512),
   configVersion: z.number().int().positive(),
   consentMode: ConsentModeSchema,
-  attribution: CanonicalAttributionSchema.default(EMPTY_CANONICAL_ATTRIBUTION)
+  attribution: CanonicalAttributionSchema.default(EMPTY_CANONICAL_ATTRIBUTION),
+  value: z.number().positive().max(9_999_999.99).nullable().default(null),
+  currencyCode: z.literal('AUD').nullable().default(null)
 })
 
 export const CanonicalConsentDecisionSchema = z.enum(['granted', 'denied', 'unknown'])
@@ -759,7 +761,8 @@ export const AppendCanonicalConversionEventSchema = z.strictObject({
   sourceEventId: z.string().trim().min(1).max(255),
   occurredAt: z.string().datetime({ offset: true }),
   consentDecision: CanonicalConsentDecisionSchema.default('unknown'),
-  attribution: CanonicalAttributionSchema.default(EMPTY_CANONICAL_ATTRIBUTION)
+  attribution: CanonicalAttributionSchema.default(EMPTY_CANONICAL_ATTRIBUTION),
+  value: z.number().positive().max(9_999_999.99).nullable().default(null)
 })
 
 export const CanonicalConversionOutboxEventSchema = CanonicalConversionEventSchema.extend({
