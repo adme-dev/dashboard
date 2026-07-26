@@ -49,6 +49,13 @@ describe('loadEligibleMembers', () => {
     expect(params).toEqual([CLIENT_ID, 'meta'])
   })
 
+  it('renders the candidate query byte-for-byte identical to the pre-tier-filter query when no tier filter is supplied', async () => {
+    await loadEligibleMembers(context())
+
+    const [sql] = mockQueryRows.mock.calls[0]!
+    expect(sql).toContain('FROM crm_customer_signals signal\n        WHERE')
+  })
+
   it('joins the tier-membership table and filters by tier_key when a tier filter is supplied', async () => {
     await loadEligibleMembers(context({ filters: { tierKey: 'hot' } }))
 

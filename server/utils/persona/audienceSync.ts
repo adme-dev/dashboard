@@ -397,11 +397,13 @@ export async function loadEligibleMembers(context: ExportContext): Promise<Hashe
   }
   params.push(context.provider)
   const destinationParamIndex = params.length
+  const candidatesFromSql = tierJoinSql
+    ? `FROM crm_customer_signals signal\n         ${tierJoinSql}`
+    : 'FROM crm_customer_signals signal'
   const rows = await queryRows<SourceMember>(
     `WITH candidates AS (
        SELECT DISTINCT signal.profile_id
-         FROM crm_customer_signals signal
-         ${tierJoinSql}
+         ${candidatesFromSql}
         WHERE ${candidatesFilterSql}
      ),
      latest_consent AS (
