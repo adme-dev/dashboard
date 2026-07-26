@@ -12,6 +12,7 @@ export interface PersonaMetricsFilters {
   creativeId?: string
   landingPage?: string
   device?: string
+  tierKey?: 'hot' | 'warm' | 'cold'
 }
 
 interface PersonaAggregateRow {
