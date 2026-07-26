@@ -14,6 +14,7 @@ export interface PersonaDefinition {
   targeting_allowed: boolean
   reporting_allowed: boolean
   tier_rank: number | null
+  is_exclusion: boolean
 }
 
 interface SubjectSignals {
@@ -71,6 +72,18 @@ export function resolveHighestTier(
   return null
 }
 
+export function resolveIsExcluded(
+  exclusionDefinitions: Array<Pick<PersonaDefinition, 'positive_signals' | 'negative_signals' | 'min_confidence'>>,
+  signalKeys: string[]
+): { excluded: boolean, matchedSignals: string[] } {
+  const matched = new Set<string>()
+  for (const definition of exclusionDefinitions) {
+    const score = scorePersonaDefinition(definition, signalKeys)
+    if (score.qualifies) score.matchedPositive.forEach(key => matched.add(key))
+  }
+  return { excluded: matched.size > 0, matchedSignals: [...matched] }
+}
+
 function isoDate(value: string | undefined, fallback: Date): string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(`${value}T00:00:00Z`))) {
     return fallback.toISOString().slice(0, 10)
@@ -120,6 +133,7 @@ async function activeDefinitions(clientId: string): Promise<PersonaDefinition[]>
       WHERE status = 'active'
         AND vertical IN ('universal', 'automotive')
         AND tier_rank IS NULL
+        AND is_exclusion = FALSE
         AND (client_id IS NULL OR client_id = $1)
       ORDER BY persona_key, (client_id IS NOT NULL) DESC, version DESC`,
     [clientId]
@@ -136,6 +150,22 @@ export async function activeTierDefinitions(clientId: string): Promise<PersonaDe
       WHERE status = 'active'
         AND vertical IN ('universal', 'automotive')
         AND tier_rank IS NOT NULL
+        AND (client_id IS NULL OR client_id = $1)
+      ORDER BY persona_key, (client_id IS NOT NULL) DESC, version DESC`,
+    [clientId]
+  )
+}
+
+export async function activeExclusionDefinitions(clientId: string): Promise<PersonaDefinition[]> {
+  return queryRows<PersonaDefinition>(
+    `SELECT DISTINCT ON (persona_key)
+            id, persona_key, version, label, description,
+            positive_signals, negative_signals, min_confidence,
+            allowed_channels, targeting_allowed, reporting_allowed, tier_rank
+       FROM crm_persona_definitions
+      WHERE status = 'active'
+        AND vertical IN ('universal', 'automotive')
+        AND is_exclusion = TRUE
         AND (client_id IS NULL OR client_id = $1)
       ORDER BY persona_key, (client_id IS NOT NULL) DESC, version DESC`,
     [clientId]
