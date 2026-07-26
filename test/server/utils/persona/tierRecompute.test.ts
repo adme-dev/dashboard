@@ -8,7 +8,7 @@ vi.mock('~~/server/utils/db', () => ({
   transaction: (...args: unknown[]) => mockTransaction(...args)
 }))
 
-import { recomputeClientTiers, recomputePersonaTiers } from '../../../../server/utils/persona/tierRecompute'
+import { recomputeClientPersonaMemberships, recomputePersonaMemberships } from '../../../../server/utils/persona/tierRecompute'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 
@@ -30,11 +30,41 @@ function tierDefinitionRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function exclusionDefinitionRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: '33333333-3333-4333-8333-333333333333',
+    persona_key: 'negative_signal_exclusion',
+    version: 1,
+    label: 'Negative Signal Exclusion',
+    description: 'Visitors who showed competitor-shopping or early-exit intent.',
+    positive_signals: ['competitive_referrer', 'exit_intent'],
+    negative_signals: [],
+    min_confidence: 0.01,
+    allowed_channels: ['google', 'meta'],
+    targeting_allowed: true,
+    reporting_allowed: true,
+    tier_rank: null,
+    ...overrides
+  }
+}
+
 const TIER_DEFINITIONS = [
   tierDefinitionRow(),
   tierDefinitionRow({ persona_key: 'warm', label: 'Warm', positive_signals: ['vehicle_comparison', 'return_to_vehicle'], tier_rank: 2 }),
   tierDefinitionRow({ persona_key: 'cold', label: 'Cold', positive_signals: ['vehicle_view', 'vehicle_list_view'], tier_rank: 3 })
 ]
+
+const EXCLUSION_DEFINITIONS = [exclusionDefinitionRow()]
+
+function mockDefinitionsQuery(options: { tiers?: unknown[], exclusions?: unknown[] } = {}) {
+  const tiers = options.tiers ?? TIER_DEFINITIONS
+  const exclusions = options.exclusions ?? EXCLUSION_DEFINITIONS
+  return async (sql: string) => {
+    if (/is_exclusion = TRUE/.test(sql)) return exclusions
+    if (/tier_rank IS NOT NULL/.test(sql)) return tiers
+    return []
+  }
+}
 
 beforeEach(() => {
   mockQueryRows.mockReset()
@@ -44,33 +74,44 @@ beforeEach(() => {
     callback({ query: mockTxQuery }))
 })
 
-describe('recomputeClientTiers', () => {
-  it('assigns each profile its highest-qualifying tier and replaces prior memberships in one transaction', async () => {
+describe('recomputeClientPersonaMemberships', () => {
+  it('assigns each profile its highest-qualifying tier and exclusion status, replacing prior memberships in one transaction', async () => {
     mockQueryRows.mockImplementation(async (sql: string) => {
-      if (/FROM crm_persona_definitions/.test(sql)) return TIER_DEFINITIONS
+      if (/FROM crm_persona_definitions/.test(sql)) return mockDefinitionsQuery()(sql)
       if (/FROM crm_customer_signals/.test(sql)) {
         return [
           { profile_id: 'profile-hot', signal_keys: ['vehicle_view', 'form_start'] },
           { profile_id: 'profile-warm', signal_keys: ['vehicle_comparison'] },
+          { profile_id: 'profile-excluded', signal_keys: ['competitive_referrer'] },
           { profile_id: 'profile-none', signal_keys: ['search'] }
         ]
       }
       return []
     })
 
-    const result = await recomputeClientTiers(CLIENT_ID)
+    const result = await recomputeClientPersonaMemberships(CLIENT_ID)
 
-    expect(result).toEqual({ clientId: CLIENT_ID, tiered: 2 })
-    expect(mockTxQuery).toHaveBeenCalledTimes(2)
+    expect(result).toEqual({ clientId: CLIENT_ID, tiered: 2, excluded: 1 })
+    expect(mockTxQuery).toHaveBeenCalledTimes(4)
     expect(mockTxQuery).toHaveBeenCalledWith(
       'DELETE FROM crm_persona_tier_memberships WHERE client_id = $1',
       [CLIENT_ID]
     )
     expect(mockTxQuery).toHaveBeenCalledWith(
-      expect.stringContaining('jsonb_to_recordset'),
+      expect.stringContaining('INSERT INTO crm_persona_tier_memberships'),
       [CLIENT_ID, JSON.stringify([
         { profile_id: 'profile-hot', tier_key: 'hot', matched_signals: ['form_start'] },
         { profile_id: 'profile-warm', tier_key: 'warm', matched_signals: ['vehicle_comparison'] }
+      ])]
+    )
+    expect(mockTxQuery).toHaveBeenCalledWith(
+      'DELETE FROM crm_persona_exclusion_memberships WHERE client_id = $1',
+      [CLIENT_ID]
+    )
+    expect(mockTxQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO crm_persona_exclusion_memberships'),
+      [CLIENT_ID, JSON.stringify([
+        { profile_id: 'profile-excluded', matched_signals: ['competitive_referrer'] }
       ])]
     )
 
@@ -79,54 +120,72 @@ describe('recomputeClientTiers', () => {
     expect(signalCall?.[0]).toContain('profile_id IS NOT NULL')
   })
 
-  it('does not attempt a bulk insert when no profile qualifies for a tier', async () => {
+  it('does not attempt a bulk insert for either table when no profile qualifies', async () => {
     mockQueryRows.mockImplementation(async (sql: string) => {
-      if (/FROM crm_persona_definitions/.test(sql)) return TIER_DEFINITIONS
+      if (/FROM crm_persona_definitions/.test(sql)) return mockDefinitionsQuery()(sql)
       if (/FROM crm_customer_signals/.test(sql)) {
         return [{ profile_id: 'profile-none', signal_keys: ['search'] }]
       }
       return []
     })
 
-    const result = await recomputeClientTiers(CLIENT_ID)
+    const result = await recomputeClientPersonaMemberships(CLIENT_ID)
 
-    expect(result).toEqual({ clientId: CLIENT_ID, tiered: 0 })
-    expect(mockTxQuery).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({ clientId: CLIENT_ID, tiered: 0, excluded: 0 })
+    expect(mockTxQuery).toHaveBeenCalledTimes(2)
     expect(mockTxQuery).toHaveBeenCalledWith(
       'DELETE FROM crm_persona_tier_memberships WHERE client_id = $1',
       [CLIENT_ID]
     )
+    expect(mockTxQuery).toHaveBeenCalledWith(
+      'DELETE FROM crm_persona_exclusion_memberships WHERE client_id = $1',
+      [CLIENT_ID]
+    )
   })
 
-  it('skips a client with no active tier definitions without opening a transaction', async () => {
+  it('still computes exclusion membership for a client with no active tier definitions', async () => {
+    mockQueryRows.mockImplementation(async (sql: string) => {
+      if (/FROM crm_persona_definitions/.test(sql)) return mockDefinitionsQuery({ tiers: [] })(sql)
+      if (/FROM crm_customer_signals/.test(sql)) {
+        return [{ profile_id: 'profile-excluded', signal_keys: ['exit_intent'] }]
+      }
+      return []
+    })
+
+    const result = await recomputeClientPersonaMemberships(CLIENT_ID)
+
+    expect(result).toEqual({ clientId: CLIENT_ID, tiered: 0, excluded: 1 })
+  })
+
+  it('skips a client with no active tier or exclusion definitions without opening a transaction', async () => {
     mockQueryRows.mockImplementation(async (sql: string) => {
       if (/FROM crm_persona_definitions/.test(sql)) return []
       return []
     })
 
-    const result = await recomputeClientTiers(CLIENT_ID)
+    const result = await recomputeClientPersonaMemberships(CLIENT_ID)
 
-    expect(result).toEqual({ clientId: CLIENT_ID, tiered: 0 })
+    expect(result).toEqual({ clientId: CLIENT_ID, tiered: 0, excluded: 0 })
     expect(mockTransaction).not.toHaveBeenCalled()
   })
 })
 
-describe('recomputePersonaTiers', () => {
-  it('recomputes tiers independently for every persona-identity-enabled client', async () => {
+describe('recomputePersonaMemberships', () => {
+  it('recomputes memberships independently for every persona-identity-enabled client', async () => {
     mockQueryRows.mockImplementation(async (sql: string) => {
       if (/FROM client_feature_entitlements/.test(sql)) {
         return [{ client_id: 'client-a' }, { client_id: 'client-b' }]
       }
-      if (/FROM crm_persona_definitions/.test(sql)) return TIER_DEFINITIONS
+      if (/FROM crm_persona_definitions/.test(sql)) return mockDefinitionsQuery({ exclusions: [] })(sql)
       if (/FROM crm_customer_signals/.test(sql)) return []
       return []
     })
 
-    const results = await recomputePersonaTiers()
+    const results = await recomputePersonaMemberships()
 
     expect(results).toEqual([
-      { clientId: 'client-a', tiered: 0 },
-      { clientId: 'client-b', tiered: 0 }
+      { clientId: 'client-a', tiered: 0, excluded: 0 },
+      { clientId: 'client-b', tiered: 0, excluded: 0 }
     ])
   })
 
@@ -138,17 +197,17 @@ describe('recomputePersonaTiers', () => {
       }
       if (/FROM crm_persona_definitions/.test(sql)) {
         if (params?.[0] === 'client-a') throw new Error('db unavailable')
-        return TIER_DEFINITIONS
+        return mockDefinitionsQuery({ exclusions: [] })(sql)
       }
       if (/FROM crm_customer_signals/.test(sql)) return []
       return []
     })
 
-    const results = await recomputePersonaTiers()
+    const results = await recomputePersonaMemberships()
 
     expect(results).toEqual([
-      { clientId: 'client-a', tiered: 0, error: 'db unavailable' },
-      { clientId: 'client-b', tiered: 0 }
+      { clientId: 'client-a', tiered: 0, excluded: 0, error: 'db unavailable' },
+      { clientId: 'client-b', tiered: 0, excluded: 0 }
     ])
     expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('client-a'))
     consoleErrorSpy.mockRestore()
