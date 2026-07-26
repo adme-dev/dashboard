@@ -143,12 +143,11 @@ export default defineEventHandler(async event => {
         settings.enabled AS provider_enabled,
         settings.emergency_stop,
         settings.last_synced_at,
-        settings.last_error,
         latest_export.status AS export_status,
         latest_export.successful_additions,
         latest_export.successful_removals,
         latest_export.completed_at AS export_completed_at,
-        latest_export.error_message AS export_error
+        latest_export.error_code AS export_error_code
       FROM crm_persona_audience_activation_requests request
       LEFT JOIN (
         SELECT request_id, COUNT(DISTINCT approved_by) AS approver_count
@@ -159,7 +158,7 @@ export default defineEventHandler(async event => {
         ON settings.client_id = request.client_id
        AND settings.provider = request.provider
       LEFT JOIN LATERAL (
-        SELECT status, successful_additions, successful_removals, completed_at, error_message
+        SELECT status, successful_additions, successful_removals, completed_at, error_code
         FROM crm_persona_audience_exports export
         WHERE export.request_id = request.id
         ORDER BY export.queued_at DESC
@@ -289,12 +288,11 @@ export default defineEventHandler(async event => {
       providerEnabled: Boolean(row.provider_enabled),
       emergencyStop: Boolean(row.emergency_stop),
       lastSyncedAt: row.last_synced_at,
-      lastError: row.last_error,
       exportStatus: row.export_status,
       successfulAdditions: numberValue(row.successful_additions),
       successfulRemovals: numberValue(row.successful_removals),
       exportCompletedAt: row.export_completed_at,
-      exportError: row.export_error,
+      exportErrorCode: row.export_error_code,
       updatedAt: row.updated_at
     })),
     warnings

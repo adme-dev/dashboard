@@ -65,12 +65,11 @@ interface AudienceIntelligence {
     providerEnabled: boolean
     emergencyStop: boolean
     lastSyncedAt: string | null
-    lastError: string | null
     exportStatus: string | null
     successfulAdditions: number
     successfulRemovals: number
     exportCompletedAt: string | null
-    exportError: string | null
+    exportErrorCode: string | null
   }>
   warnings: Array<{ code: string, message: string }>
 }
