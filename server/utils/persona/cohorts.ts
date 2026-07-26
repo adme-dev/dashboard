@@ -13,6 +13,7 @@ export interface PersonaDefinition {
   allowed_channels: string[]
   targeting_allowed: boolean
   reporting_allowed: boolean
+  tier_rank: number | null
 }
 
 interface SubjectSignals {
@@ -54,6 +55,20 @@ export function scorePersonaDefinition(
     matchedPositive: positive,
     matchedNegative: negative
   }
+}
+
+export function resolveHighestTier(
+  tierDefinitions: Array<Pick<PersonaDefinition, 'persona_key' | 'positive_signals' | 'negative_signals' | 'min_confidence' | 'tier_rank'>>,
+  signalKeys: string[]
+): { personaKey: string, matchedSignals: string[] } | null {
+  const ranked = [...tierDefinitions].sort((a, b) => Number(a.tier_rank) - Number(b.tier_rank))
+  for (const definition of ranked) {
+    const score = scorePersonaDefinition(definition, signalKeys)
+    if (score.qualifies) {
+      return { personaKey: definition.persona_key, matchedSignals: score.matchedPositive }
+    }
+  }
+  return null
 }
 
 function isoDate(value: string | undefined, fallback: Date): string {
@@ -100,10 +115,26 @@ async function activeDefinitions(clientId: string): Promise<PersonaDefinition[]>
     `SELECT DISTINCT ON (persona_key)
             id, persona_key, version, label, description,
             positive_signals, negative_signals, min_confidence,
-            allowed_channels, targeting_allowed, reporting_allowed
+            allowed_channels, targeting_allowed, reporting_allowed, tier_rank
        FROM crm_persona_definitions
       WHERE status = 'active'
         AND vertical IN ('universal', 'automotive')
+        AND (client_id IS NULL OR client_id = $1)
+      ORDER BY persona_key, (client_id IS NOT NULL) DESC, version DESC`,
+    [clientId]
+  )
+}
+
+export async function activeTierDefinitions(clientId: string): Promise<PersonaDefinition[]> {
+  return queryRows<PersonaDefinition>(
+    `SELECT DISTINCT ON (persona_key)
+            id, persona_key, version, label, description,
+            positive_signals, negative_signals, min_confidence,
+            allowed_channels, targeting_allowed, reporting_allowed, tier_rank
+       FROM crm_persona_definitions
+      WHERE status = 'active'
+        AND vertical IN ('universal', 'automotive')
+        AND tier_rank IS NOT NULL
         AND (client_id IS NULL OR client_id = $1)
       ORDER BY persona_key, (client_id IS NOT NULL) DESC, version DESC`,
     [clientId]
