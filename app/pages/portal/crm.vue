@@ -65,6 +65,7 @@ const activeObject = computed<CrmObjectDef | null>(() =>
       />
       <div v-else-if="tab === 'platform'" class="space-y-5">
         <CrmPlatformReadiness />
+        <CrmBillingAndUsage />
         <CrmSynchronizationHealth />
       </div>
       <CrmPersonas v-else-if="tab === 'personas'" :client-id="clientId" />

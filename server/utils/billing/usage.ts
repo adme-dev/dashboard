@@ -1,4 +1,6 @@
+import { createError } from 'h3'
 import { queryOne } from '~~/server/utils/db'
+import { resolveClientEntitlement } from '~~/server/utils/billing/entitlements'
 
 export interface UsageEventInput {
   clientId: string
@@ -70,4 +72,149 @@ export async function recordBillingUsage(input: UsageEventInput) {
     [input.clientId, input.idempotencyKey]
   )
   return { status: 'duplicate' as const, id: existing?.id ?? null }
+}
+
+interface MeterLimit {
+  included?: number
+  hardLimit?: number
+  period?: 'subscription' | 'monthly'
+}
+
+function meterLimit(limits: Record<string, unknown>, meterKey: string): MeterLimit | null {
+  const meters = limits.meters
+  if (!meters || typeof meters !== 'object' || Array.isArray(meters)) return null
+  const meter = (meters as Record<string, unknown>)[meterKey]
+  if (!meter || typeof meter !== 'object' || Array.isArray(meter)) return null
+  const candidate = meter as Record<string, unknown>
+  return {
+    included: typeof candidate.included === 'number' ? candidate.included : undefined,
+    hardLimit: typeof candidate.hardLimit === 'number' ? candidate.hardLimit : undefined,
+    period: candidate.period === 'monthly' ? 'monthly' : 'subscription'
+  }
+}
+
+export async function resolveBillingUsageCapacity(
+  clientId: string,
+  featureKey: string,
+  meterKey: string,
+  requestedQuantity = 0
+) {
+  const entitlement = await resolveClientEntitlement(clientId, featureKey)
+  const limit = meterLimit(entitlement.limits, meterKey)
+  if (!entitlement.enabled || limit?.hardLimit == null) {
+    return {
+      entitlement,
+      meterKey,
+      allowed: entitlement.enabled,
+      unlimited: entitlement.enabled && limit?.hardLimit == null,
+      used: 0,
+      requested: requestedQuantity,
+      included: limit?.included ?? null,
+      hardLimit: limit?.hardLimit ?? null,
+      remaining: null,
+      periodStartsAt: null,
+      periodEndsAt: null
+    }
+  }
+
+  const row = await queryOne<any>(
+    `WITH usage_window AS (
+       SELECT
+         CASE
+           WHEN $4 = 'monthly' THEN date_trunc('month', NOW())
+           ELSE COALESCE(
+             (
+               SELECT current_period_starts_at
+                 FROM client_subscriptions
+                WHERE client_id = $1
+                  AND status IN ('trial', 'active', 'grace')
+                ORDER BY updated_at DESC
+                LIMIT 1
+             ),
+             date_trunc('month', NOW())
+           )
+         END AS starts_at,
+         CASE
+           WHEN $4 = 'monthly' THEN date_trunc('month', NOW()) + INTERVAL '1 month'
+           ELSE COALESCE(
+             (
+               SELECT current_period_ends_at
+                 FROM client_subscriptions
+                WHERE client_id = $1
+                  AND status IN ('trial', 'active', 'grace')
+                ORDER BY updated_at DESC
+                LIMIT 1
+             ),
+             date_trunc('month', NOW()) + INTERVAL '1 month'
+           )
+         END AS ends_at
+     )
+     SELECT usage_window.starts_at,
+            usage_window.ends_at,
+            COALESCE(SUM(event.quantity), 0) AS used
+       FROM usage_window
+       LEFT JOIN billing_usage_events event
+         ON event.client_id = $1
+        AND event.feature_key = $2
+        AND event.meter_key = $3
+        AND event.occurred_at >= usage_window.starts_at
+        AND event.occurred_at < usage_window.ends_at
+      GROUP BY usage_window.starts_at, usage_window.ends_at`,
+    [clientId, featureKey, meterKey, limit.period]
+  )
+  const used = Number(row?.used ?? 0)
+  const remaining = Math.max(0, limit.hardLimit - used)
+  return {
+    entitlement,
+    meterKey,
+    allowed: used + requestedQuantity <= limit.hardLimit,
+    unlimited: false,
+    used,
+    requested: requestedQuantity,
+    included: limit.included ?? null,
+    hardLimit: limit.hardLimit,
+    remaining,
+    periodStartsAt: row?.starts_at ?? null,
+    periodEndsAt: row?.ends_at ?? null
+  }
+}
+
+export async function requireBillingUsageCapacity(
+  clientId: string,
+  featureKey: string,
+  meterKey: string,
+  requestedQuantity = 1
+) {
+  const capacity = await resolveBillingUsageCapacity(
+    clientId,
+    featureKey,
+    meterKey,
+    requestedQuantity
+  )
+  if (!capacity.entitlement.enabled) {
+    throw createError({
+      statusCode: 402,
+      statusMessage: `Feature entitlement required: ${featureKey}`,
+      data: {
+        code: 'feature_entitlement_required',
+        featureKey,
+        entitlementStatus: capacity.entitlement.status
+      }
+    })
+  }
+  if (!capacity.allowed) {
+    throw createError({
+      statusCode: 402,
+      statusMessage: `Usage limit reached: ${featureKey}.${meterKey}`,
+      data: {
+        code: 'usage_limit_reached',
+        featureKey,
+        meterKey,
+        hardLimit: capacity.hardLimit,
+        remaining: capacity.remaining,
+        periodEndsAt: capacity.periodEndsAt
+      }
+    })
+  }
+  return capacity
 }

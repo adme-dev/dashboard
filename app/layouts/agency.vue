@@ -174,7 +174,8 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   if (canAccessAdmin.value) {
     items.push(
       { type: 'label', label: 'Operations' },
-      { label: 'Job Operations', icon: 'i-lucide-server-cog', to: '/agency/operations/jobs', onSelect: close }
+      { label: 'Job Operations', icon: 'i-lucide-server-cog', to: '/agency/operations/jobs', onSelect: close },
+      { label: 'Client Billing', icon: 'i-lucide-credit-card', to: '/agency/operations/billing', onSelect: close }
     )
   }
 
