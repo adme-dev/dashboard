@@ -14,6 +14,7 @@ interface TransactionClient {
 export interface ClientTierRecomputeResult {
   clientId: string
   tiered: number
+  error?: string
 }
 
 export async function recomputeClientTiers(clientId: string): Promise<ClientTierRecomputeResult> {
@@ -60,7 +61,15 @@ export async function recomputePersonaTiers(): Promise<ClientTierRecomputeResult
   const clientIds = await listPersonaIdentityEnabledClientIds()
   const results: ClientTierRecomputeResult[] = []
   for (const clientId of clientIds) {
-    results.push(await recomputeClientTiers(clientId))
+    try {
+      results.push(await recomputeClientTiers(clientId))
+    } catch (error) {
+      results.push({
+        clientId,
+        tiered: 0,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
   return results
 }

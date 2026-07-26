@@ -107,4 +107,25 @@ describe('recomputePersonaTiers', () => {
       { clientId: 'client-b', tiered: 0 }
     ])
   })
+
+  it('records a per-client error and continues to the next client when one client fails', async () => {
+    mockQueryRows.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (/FROM client_feature_entitlements/.test(sql)) {
+        return [{ client_id: 'client-a' }, { client_id: 'client-b' }]
+      }
+      if (/FROM crm_persona_definitions/.test(sql)) {
+        if (params?.[0] === 'client-a') throw new Error('db unavailable')
+        return TIER_DEFINITIONS
+      }
+      if (/FROM crm_customer_signals/.test(sql)) return []
+      return []
+    })
+
+    const results = await recomputePersonaTiers()
+
+    expect(results).toEqual([
+      { clientId: 'client-a', tiered: 0, error: 'db unavailable' },
+      { clientId: 'client-b', tiered: 0 }
+    ])
+  })
 })
