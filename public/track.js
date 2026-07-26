@@ -60,6 +60,7 @@
     return_to_vehicle: 'return_to_vehicle',
     competitive_referrer: 'competitive_referrer',
     vdp_scroll_depth: 'vdp_scroll_depth',
+    vehicle_comparison: 'vehicle_comparison',
   }
 
   // Events with thresholds (only push above certain values)
@@ -817,6 +818,42 @@
     writeVehicleVisits(visits)
   }
 
+  var SESSION_VEHICLES_STORAGE_KEY = '_xf_session_vehicles_v1'
+  var SESSION_VEHICLES_MAX_ENTRIES = 20
+  var COMPARISON_THRESHOLDS = [2, 3, 5]
+
+  function readSessionVehicles() {
+    try {
+      var raw = sessionStorage.getItem(SESSION_VEHICLES_STORAGE_KEY)
+      return raw ? JSON.parse(raw) : []
+    } catch (e) {
+      return []
+    }
+  }
+
+  // Fires vehicle_comparison when the count of distinct vehicles viewed this
+  // session crosses a configured threshold — "viewed 3+ mid-size SUVs" is a
+  // materially better retargeting signal than "visited the site."
+  function trackCrossShop(vehicleCtx) {
+    var key = vehicleKey(vehicleCtx)
+    if (!key) return
+    var vehicles = readSessionVehicles()
+    if (vehicles.indexOf(key) !== -1) return
+    vehicles.push(key)
+    if (vehicles.length > SESSION_VEHICLES_MAX_ENTRIES) vehicles.shift()
+    try {
+      sessionStorage.setItem(SESSION_VEHICLES_STORAGE_KEY, JSON.stringify(vehicles))
+    } catch (e) {
+      /* storage unavailable or full — ignore */
+    }
+    if (COMPARISON_THRESHOLDS.indexOf(vehicles.length) !== -1) {
+      track('vehicle_comparison', {
+        distinct_vehicles_viewed: vehicles.length,
+        vehicle_keys: vehicles.slice(-10)
+      })
+    }
+  }
+
   // Auto-track page views
   function trackPageView() {
     var data = {
@@ -841,6 +878,7 @@
       track('vehicle_view', vehicleCtx)
       if (_funnelSignalsEnabled) {
         trackReturnToVehicle(vehicleCtx)
+        trackCrossShop(vehicleCtx)
       }
     }
   }
@@ -1559,6 +1597,7 @@
     if (c.idleExtendedThresholds) IDLE_EXTENDED_THRESHOLDS = c.idleExtendedThresholds
     if (c.idleActivityDebounceMs) IDLE_ACTIVITY_DEBOUNCE_MS = c.idleActivityDebounceMs
     if (c.returnToVehicleMinDays !== undefined) RETURN_TO_VEHICLE_MIN_DAYS = c.returnToVehicleMinDays
+    if (c.comparisonThresholds) COMPARISON_THRESHOLDS = c.comparisonThresholds
     if (config.funnelSignals === false) _funnelSignalsEnabled = false
 
     // Per-site vehicle-detail-page URL patterns, additive to the generic

@@ -513,4 +513,53 @@ describe('Phase B funnel & intent signals', () => {
 
     currentScript.mockRestore()
   })
+
+  it('fires vehicle_comparison when the distinct-vehicle count crosses a threshold', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-white-2019-toyota-kluger-s20825')
+
+    const comparisonEvent = eventsFrom(requests).find((e: any) => e.event_name === 'vehicle_comparison')
+    expect(comparisonEvent).toBeTruthy()
+    expect(comparisonEvent.event_data.distinct_vehicles_viewed).toBe(2)
+    expect(comparisonEvent.event_data.vehicle_keys).toEqual(['20544', '20825'])
+  })
+
+  it('does not re-fire vehicle_comparison for a vehicle already seen this session', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'vehicle_comparison')).toBeUndefined()
+  })
+
+  it('respects a comparisonThresholds override', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', constants: { comparisonThresholds: [1] } })
+
+    const comparisonEvent = eventsFrom(requests).find((e: any) => e.event_name === 'vehicle_comparison')
+    expect(comparisonEvent).toBeTruthy()
+    expect(comparisonEvent.event_data.distinct_vehicles_viewed).toBe(1)
+  })
+
+  it('does not send vehicle_comparison when analytics consent is declined', () => {
+    document.cookie = '_xf_consent=' + encodeURIComponent(JSON.stringify({
+      tracking: true, analytics: false, marketing: false, updatedAt: '2026-07-24T00:00:00Z'
+    })) + '; path=/'
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true })
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-white-2019-toyota-kluger-s20825')
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'vehicle_comparison')).toBeUndefined()
+  })
 })
