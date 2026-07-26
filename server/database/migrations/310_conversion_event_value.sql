@@ -11,8 +11,16 @@ ALTER TABLE conversion_events
   ADD COLUMN value NUMERIC(14,2) NULL,
   ADD COLUMN currency_code TEXT NULL;
 
+-- NOT VALID + a separate VALIDATE CONSTRAINT avoids an ACCESS EXCLUSIVE
+-- lock for the full validation scan, matching the pattern this codebase
+-- already uses for constraints added to existing tables (migrations 225,
+-- 257, 258, 273).
 ALTER TABLE conversion_events
   ADD CONSTRAINT conversion_events_value_currency_pair
-  CHECK ((value IS NULL) = (currency_code IS NULL));
+  CHECK ((value IS NULL) = (currency_code IS NULL))
+  NOT VALID;
+
+ALTER TABLE conversion_events
+  VALIDATE CONSTRAINT conversion_events_value_currency_pair;
 
 COMMIT;
