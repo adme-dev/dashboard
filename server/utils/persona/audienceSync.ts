@@ -42,6 +42,7 @@ interface ExportContext {
   status: string
   provider_request_ids: string[]
   request_name: string
+  request_status: string
   filters: Record<string, string>
   minimum_size: number
   connection_id: string
@@ -206,7 +207,17 @@ export async function queuePersonaAudienceOperation(input: {
     [input.requestId, input.clientId]
   )
   if (!request) throw createError({ statusCode: 404, statusMessage: 'Activation request not found' })
-  if (request.status !== 'approved') {
+  if (input.operation === 'remove') {
+    // Removal must always stay reachable, including for a cancelled request —
+    // provider members from a request that was later cancelled still need a way
+    // to be torn down; only a still-pending request has nothing to remove yet.
+    if (!['approved', 'cancelled'].includes(request.status)) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Removal is only available once a request has been approved or cancelled'
+      })
+    }
+  } else if (request.status !== 'approved') {
     throw createError({ statusCode: 409, statusMessage: 'Two-person approval is required before provider dispatch' })
   }
   if (input.operation === 'sync') {
@@ -306,7 +317,8 @@ async function loadExportContext(exportId: string): Promise<ExportContext | null
   return queryOne<ExportContext>(
     `SELECT export.id, export.client_id, export.request_id, export.provider,
             export.operation, export.status, export.provider_request_ids,
-            request.name AS request_name, request.filters, request.minimum_size,
+            request.name AS request_name, request.status AS request_status,
+            request.filters, request.minimum_size,
             setting.connection_id, setting.provider_audience_id,
             setting.enabled, setting.emergency_stop, setting.terms_accepted_at
        FROM crm_persona_audience_exports export
@@ -758,13 +770,23 @@ export async function runPersonaAudienceSync(exportId: string): Promise<void> {
   const context = await loadExportContext(exportId)
   if (!context) throw new Error('Persona audience export context is unavailable')
   try {
-    if (!personaProviderWritesEnabled(context.provider)) {
-      throw new Error(`${context.provider} audience writes are disabled by the global kill switch`)
+    // Removal is always permitted regardless of kill switches, emergency stop, terms
+    // acceptance, or the activation request having since been cancelled — those gates
+    // exist to control new PII flowing to a provider, and must never block pulling it
+    // back out (mirrors the "always permitting removal exports" DB-layer intent in
+    // migration 297's enforce_persona_audience_client_authorization trigger).
+    if (context.operation === 'sync') {
+      if (context.request_status !== 'approved') {
+        throw new Error(`Activation request is no longer approved (status: ${context.request_status})`)
+      }
+      if (!personaProviderWritesEnabled(context.provider)) {
+        throw new Error(`${context.provider} audience writes are disabled by the global kill switch`)
+      }
+      if (!context.enabled || context.emergency_stop) {
+        throw new Error('Provider audience writes are disabled for this client')
+      }
+      if (!context.terms_accepted_at) throw new Error('Provider Customer Match terms have not been accepted')
     }
-    if (!context.enabled || context.emergency_stop) {
-      throw new Error('Provider audience writes are disabled for this client')
-    }
-    if (!context.terms_accepted_at) throw new Error('Provider Customer Match terms have not been accepted')
     const connection = await loadProviderConnection(context)
     const accessToken = context.provider === 'google_ads'
       ? await usableGoogleCredential(connection)
@@ -801,17 +823,21 @@ export async function runPersonaAudienceSync(exportId: string): Promise<void> {
 
     const stored = await loadStoredMembers(context)
     const current = context.operation === 'remove' ? [] : await loadEligibleMembers(context)
-    if (context.operation === 'sync' && current.length < context.minimum_size) {
-      throw new Error(`Only ${current.length} consented, matchable members remain; ${context.minimum_size} are required`)
-    }
+    const belowKAnonymityFloor = context.operation === 'sync' && current.length < context.minimum_size
     const storedByProfile = new Map(stored.map(member => [member.profile_id, member]))
     const currentByProfile = new Map(current.map(member => [member.profileId, member]))
-    const additions = current.filter(member => {
-      const prior = storedByProfile.get(member.profileId)
-      return !prior || prior.member_fingerprint !== member.fingerprint
-    })
+    // The k-anonymity floor only protects *new* additions to a too-small segment — it
+    // must never block removing members who withdrew consent or became ineligible,
+    // otherwise a shrinking cohort permanently deadlocks its own consent teardown
+    // (the exact shape of the bug migration 307 already fixed one layer down).
+    const additions = belowKAnonymityFloor
+      ? []
+      : current.filter((member) => {
+          const prior = storedByProfile.get(member.profileId)
+          return !prior || prior.member_fingerprint !== member.fingerprint
+        })
     const removals = stored
-      .filter(member => {
+      .filter((member) => {
         const currentMember = currentByProfile.get(member.profile_id)
         return !currentMember || currentMember.fingerprint !== member.member_fingerprint
       })
@@ -833,6 +859,16 @@ export async function runPersonaAudienceSync(exportId: string): Promise<void> {
     const requestIds = await submitProviderChanges(
       context, connection, accessToken, audienceId, additions, removals
     )
+    if (context.provider === 'meta') {
+      // Meta's Graph API confirms membership synchronously in the HTTP response itself
+      // (unlike Google, there is no async request-status poll for this provider) — apply
+      // the membership ledger now, before any other bookkeeping, so a failure in the
+      // UPDATE below can never leave a provider-accepted member untracked in
+      // crm_persona_audience_member_state and therefore permanently un-removable.
+      // Safe to call again from finalizeSuccess() below — applySuccessfulMembers is
+      // idempotent (upsert + deterministic-WHERE update).
+      await applySuccessfulMembers(context)
+    }
     await execute(
       `UPDATE crm_persona_audience_exports
           SET provider_audience_id = $2,
