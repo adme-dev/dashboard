@@ -396,3 +396,118 @@ describe('public/track.js transport', () => {
     expect(intent!.body).not.toContain('Private free-text message')
   })
 })
+
+describe('Phase B funnel & intent signals', () => {
+  let beacons: { url: string, body: string }[]
+  let requests: { url: string, body: string }[]
+  let fetchSpy: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+    window.history.replaceState({}, '', '/')
+    beacons = []
+    requests = []
+    ;(navigator as any).sendBeacon = vi.fn((url: string, blob: any) => {
+      beacons.push({ url, body: blob?._body ?? '' })
+      return true
+    })
+    const RealBlob = globalThis.Blob
+    ;(globalThis as any).Blob = class extends RealBlob {
+      _body: string
+      constructor(parts: any[], opts: any) {
+        super(parts, opts)
+        this._body = String(parts?.[0] ?? '')
+      }
+    }
+    fetchSpy = vi.fn((url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') {
+        requests.push({ url: String(url), body: String(options.body ?? '') })
+      }
+      return Promise.resolve({ ok: true })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    document.cookie = '_xf_consent=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  function eventsFrom(reqs: { body: string }[]) {
+    return reqs.flatMap(r => JSON.parse(r.body).events)
+  }
+
+  it('does not fire return_to_vehicle on a vehicle\'s first-ever visit', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+
+    const events = eventsFrom(requests)
+    expect(events.find((e: any) => e.event_name === 'return_to_vehicle')).toBeUndefined()
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    expect(visits['20544']).toBeTruthy()
+  })
+
+  it('fires return_to_vehicle when the same vehicle is revisited outside the session window', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true, constants: { sessionMinutes: 30 } })
+
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    visits['20544'] = Date.now() - 31 * 60 * 1000
+    localStorage.setItem('_xf_vehicle_visits_v1', JSON.stringify(visits))
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+
+    const returnEvent = eventsFrom(requests).find((e: any) => e.event_name === 'return_to_vehicle')
+    expect(returnEvent).toBeTruthy()
+    expect(returnEvent.event_data.vehicle_key).toBe('20544')
+    expect(returnEvent.event_data.days_since_last_visit).toBe(0)
+  })
+
+  it('does not fire return_to_vehicle when the same vehicle is revisited within the session window', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', spa: true, constants: { sessionMinutes: 30 } })
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'return_to_vehicle')).toBeUndefined()
+  })
+
+  it('respects returnToVehicleMinDays before firing return_to_vehicle', () => {
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    ;(window as any).xf.init({
+      writeKey: 'TESTKEY',
+      spa: true,
+      constants: { sessionMinutes: 30, returnToVehicleMinDays: 2 }
+    })
+
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    visits['20544'] = Date.now() - 31 * 60 * 1000 // new session, but < 2 days
+    localStorage.setItem('_xf_vehicle_visits_v1', JSON.stringify(visits))
+    requests = []
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+
+    expect(eventsFrom(requests).find((e: any) => e.event_name === 'return_to_vehicle')).toBeUndefined()
+  })
+
+  it('data-funnel-signals="false" suppresses return_to_vehicle', () => {
+    const script = document.createElement('script')
+    document.head.appendChild(script)
+    Object.defineProperty(script, 'src', { value: 'https://app.xeroflow.io/track.js' })
+    script.setAttribute('data-key', 'TESTKEY')
+    script.setAttribute('data-funnel-signals', 'false')
+    const currentScript = vi.spyOn(document, 'currentScript', 'get').mockReturnValue(script)
+
+    window.history.pushState({}, '', '/cars/used-black-2021-mercedes-benz-v-class-s20544')
+    loadTag()
+    const visits = JSON.parse(localStorage.getItem('_xf_vehicle_visits_v1') || '{}')
+    expect(visits).toEqual({})
+
+    currentScript.mockRestore()
+  })
+})

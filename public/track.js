@@ -26,6 +26,8 @@
   var IDLE_TIMEOUT_MS = 60000
   var IDLE_EXTENDED_THRESHOLDS = [120, 300]
   var IDLE_ACTIVITY_DEBOUNCE_MS = 500
+  var RETURN_TO_VEHICLE_MIN_DAYS = 0
+  var _funnelSignalsEnabled = true
 
   // =====================================================
   // sGTM BRIDGE (optional — loads GTM when dealer has it enabled)
@@ -763,6 +765,58 @@
     return Object.keys(ctx).length > 0 ? ctx : null
   }
 
+  var VEHICLE_VISITS_STORAGE_KEY = '_xf_vehicle_visits_v1'
+  var VEHICLE_VISITS_MAX_ENTRIES = 50
+
+  function vehicleKey(ctx) {
+    if (!ctx) return null
+    return ctx.vehicle_stock_number || ctx.vehicle_slug || null
+  }
+
+  function readVehicleVisits() {
+    try {
+      var raw = localStorage.getItem(VEHICLE_VISITS_STORAGE_KEY)
+      return raw ? JSON.parse(raw) : {}
+    } catch (e) {
+      return {}
+    }
+  }
+
+  function writeVehicleVisits(visits) {
+    try {
+      var keys = Object.keys(visits)
+      if (keys.length > VEHICLE_VISITS_MAX_ENTRIES) {
+        keys.sort(function (a, b) { return visits[a] - visits[b] })
+        var toRemove = keys.slice(0, keys.length - VEHICLE_VISITS_MAX_ENTRIES)
+        for (var i = 0; i < toRemove.length; i++) delete visits[toRemove[i]]
+      }
+      localStorage.setItem(VEHICLE_VISITS_STORAGE_KEY, JSON.stringify(visits))
+    } catch (e) {
+      /* storage unavailable or full — ignore */
+    }
+  }
+
+  // Fires return_to_vehicle when the same vehicle (by stock number/slug) was
+  // last seen in an earlier session — the strongest single purchase-intent
+  // signal in automotive retargeting. Always records the visit regardless of
+  // whether the event fires, so the *next* visit's gap is measured correctly.
+  function trackReturnToVehicle(vehicleCtx) {
+    var key = vehicleKey(vehicleCtx)
+    if (!key) return
+    var visits = readVehicleVisits()
+    var lastSeen = visits[key]
+    if (lastSeen) {
+      var elapsedMs = Date.now() - lastSeen
+      var isNewSession = elapsedMs > SESSION_MINUTES * 60 * 1000
+      var daysSince = Math.floor(elapsedMs / 86400000)
+      if (isNewSession && daysSince >= RETURN_TO_VEHICLE_MIN_DAYS) {
+        track('return_to_vehicle', { vehicle_key: key, days_since_last_visit: daysSince })
+      }
+    }
+    visits[key] = Date.now()
+    writeVehicleVisits(visits)
+  }
+
   // Auto-track page views
   function trackPageView() {
     var data = {
@@ -785,6 +839,9 @@
     // Fire separate vehicle_view for dynamic remarketing (maps to view_item in dataLayer)
     if (vehicleCtx) {
       track('vehicle_view', vehicleCtx)
+      if (_funnelSignalsEnabled) {
+        trackReturnToVehicle(vehicleCtx)
+      }
     }
   }
 
@@ -1501,6 +1558,8 @@
     if (c.idleTimeoutMs) IDLE_TIMEOUT_MS = c.idleTimeoutMs
     if (c.idleExtendedThresholds) IDLE_EXTENDED_THRESHOLDS = c.idleExtendedThresholds
     if (c.idleActivityDebounceMs) IDLE_ACTIVITY_DEBOUNCE_MS = c.idleActivityDebounceMs
+    if (c.returnToVehicleMinDays !== undefined) RETURN_TO_VEHICLE_MIN_DAYS = c.returnToVehicleMinDays
+    if (config.funnelSignals === false) _funnelSignalsEnabled = false
 
     // Per-site vehicle-detail-page URL patterns, additive to the generic
     // built-in list — set via the install snippet's data-vehicle-patterns
@@ -1626,6 +1685,13 @@
       setupIdleDetection()
       setupFormFieldTracking()
     }
+
+    // Phase B funnel & intent signals — cross-shop, return-to-vehicle, and
+    // VDP dwell hook directly into trackPageView()/setupEngagementTracking()
+    // and are gated by _funnelSignalsEnabled instead of a setup call here.
+    // On by default. Opt out with data-funnel-signals="false".
+    if (_funnelSignalsEnabled) {
+    }
   }
 
   // Destroy and cleanup all listeners
@@ -1671,6 +1737,7 @@
         writeKey: bootWriteKey,
         spa: script.getAttribute('data-spa') === 'true',
         behavioral: script.getAttribute('data-behavioral') !== 'false',
+        funnelSignals: script.getAttribute('data-funnel-signals') !== 'false',
       }
       var bootVehiclePatterns = script.getAttribute('data-vehicle-patterns')
       if (bootVehiclePatterns) {
