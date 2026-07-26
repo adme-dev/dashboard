@@ -2,7 +2,7 @@ import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import type { PersonaMetricsFilters } from '~~/server/utils/persona/metrics'
 import { getCachedPersonaMetrics } from '~~/server/utils/persona/snapshots'
 import { isPersonaIdentityEnabled } from '~~/server/utils/persona/feature'
-import { countTierMembers } from '~~/server/utils/persona/audienceSync'
+import { countExclusionMembers, countTierMembers } from '~~/server/utils/persona/audienceSync'
 
 export type PersonaAudienceProvider = 'google_ads' | 'meta'
 export type PersonaActivationAction = 'approve_privacy' | 'approve_live' | 'reject' | 'cancel'
@@ -84,6 +84,11 @@ export async function createPersonaActivationRequest(input: {
       throw createError({ statusCode: 409, statusMessage: 'Persona Identity is not enabled for this client' })
     }
     estimatedSize = await countTierMembers(input.clientId, input.filters.tierKey, input.filters as Record<string, string>)
+  } else if (input.filters.excludeAudience === 'true') {
+    if (!await isPersonaIdentityEnabled(input.clientId)) {
+      throw createError({ statusCode: 409, statusMessage: 'Persona Identity is not enabled for this client' })
+    }
+    estimatedSize = await countExclusionMembers(input.clientId, input.filters as Record<string, string>)
   } else {
     const projection = await getCachedPersonaMetrics(input.clientId, input.filters)
     if (!projection.enabled || !projection.metrics) {
@@ -92,9 +97,11 @@ export async function createPersonaActivationRequest(input: {
     estimatedSize = projection.metrics.totalPersonas
   }
   const minimumSize = minimumAudienceSize()
-  const blockedReason = estimatedSize < minimumSize
-    ? `Cohort contains ${estimatedSize} personas; the privacy threshold is ${minimumSize}.`
-    : null
+  const blockedReason = input.filters.excludeAudience === 'true'
+    ? null
+    : (estimatedSize < minimumSize
+        ? `Cohort contains ${estimatedSize} personas; the privacy threshold is ${minimumSize}.`
+        : null)
   const status = blockedReason ? 'blocked' : 'pending_privacy'
   const row = await queryOne<{ id: string }>(
     `INSERT INTO crm_persona_audience_activation_requests (
