@@ -348,7 +348,7 @@ describe('public/track.js transport', () => {
 
   it('forwards the raw _xf_consent cookie value in the batch (cross-origin relay)', () => {
     const cookie = JSON.stringify({ tracking: true, analytics: true, marketing: false, updatedAt: '2026-05-31T00:00:00Z' })
-    document.cookie = '_xf_consent=' + encodeURIComponent(cookie)
+    document.cookie = '_xf_consent=' + encodeURIComponent(cookie) + '; path=/'
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })
     requests = []
