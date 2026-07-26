@@ -97,11 +97,9 @@ export async function createPersonaActivationRequest(input: {
     estimatedSize = projection.metrics.totalPersonas
   }
   const minimumSize = minimumAudienceSize()
-  const blockedReason = input.filters.excludeAudience === 'true'
-    ? null
-    : (estimatedSize < minimumSize
-        ? `Cohort contains ${estimatedSize} personas; the privacy threshold is ${minimumSize}.`
-        : null)
+  const blockedReason = estimatedSize < minimumSize
+    ? `Cohort contains ${estimatedSize} personas; the privacy threshold is ${minimumSize}.`
+    : null
   const status = blockedReason ? 'blocked' : 'pending_privacy'
   const row = await queryOne<{ id: string }>(
     `INSERT INTO crm_persona_audience_activation_requests (

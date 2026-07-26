@@ -72,7 +72,7 @@ describe('createPersonaActivationRequest', () => {
 
   it('uses the exclusion-member count for an exclusion-filtered request without calling getCachedPersonaMetrics', async () => {
     mockIsPersonaIdentityEnabled.mockResolvedValue(true)
-    mockCountExclusionMembers.mockResolvedValue(320)
+    mockCountExclusionMembers.mockResolvedValue(1500)
     mockQueryOne.mockResolvedValueOnce({ id: 'request-3' }).mockResolvedValueOnce({ id: 'audit-3' })
 
     const result = await createPersonaActivationRequest({
@@ -84,7 +84,7 @@ describe('createPersonaActivationRequest', () => {
       actorId: ACTOR_ID
     })
 
-    expect(result).toMatchObject({ id: 'request-3', estimatedSize: 320, status: 'pending_privacy' })
+    expect(result).toMatchObject({ id: 'request-3', estimatedSize: 1500, status: 'pending_privacy' })
     expect(mockCountExclusionMembers).toHaveBeenCalledWith(CLIENT_ID, { excludeAudience: 'true' })
     expect(mockGetCachedPersonaMetrics).not.toHaveBeenCalled()
     expect(mockCountTierMembers).not.toHaveBeenCalled()
