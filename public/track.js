@@ -314,6 +314,34 @@
   // Consent cookie name — MUST match the server (track.post.ts reads '_xf_consent').
   var CONSENT_COOKIE_NAME = '_xf_consent'
 
+  // Google Consent Mode v2 — maps our internal categories to the 4 required
+  // gtag parameter names. Mandatory for EEA/UK traffic since March 2024:
+  // without these, Google Ads/GA4 restrict remarketing and conversion
+  // modeling for gated regions rather than erroring loudly. Defaults to
+  // denied when no explicit cookie exists yet (safest universal default —
+  // the client can't see cf-ipcountry the way the server can, so this
+  // mirrors Google's own recommended default-deny-then-update pattern).
+  function consentModeParams(consent) {
+    var analyticsGranted = !!(consent && consent.analytics)
+    var marketingGranted = !!(consent && consent.marketing)
+    return {
+      ad_storage: marketingGranted ? 'granted' : 'denied',
+      analytics_storage: analyticsGranted ? 'granted' : 'denied',
+      ad_user_data: marketingGranted ? 'granted' : 'denied',
+      ad_personalization: marketingGranted ? 'granted' : 'denied',
+    }
+  }
+
+  // Equivalent to gtag('consent', command, params) — gtag.js is itself just
+  // `function gtag(){dataLayer.push(arguments)}`, so this works whether or
+  // not gtag.js/GTM has loaded yet, and independently of our own optional
+  // GTM event bridge (a dealer's separately-installed GTM container should
+  // still receive consent signals even if that bridge is off for this site).
+  function pushConsentToDataLayer(command, consent) {
+    window.dataLayer = window.dataLayer || []
+    window.dataLayer.push(['consent', command, consentModeParams(consent)])
+  }
+
   // Read and parse the consent cookie
   // Returns null if no cookie or parse failure
   function getConsent() {
@@ -342,6 +370,7 @@
       decisionMethod: String(preferences.decisionMethod || 'preference_center').slice(0, 80),
     }
     setCookie(CONSENT_COOKIE_NAME, JSON.stringify(snapshot), 365)
+    pushConsentToDataLayer('update', snapshot)
     track('consent_update', { consent_updated: true })
     return snapshot
   }
@@ -651,20 +680,53 @@
     return eventId
   }
 
+  // Built-in generic vehicle-detail-page URL segments. Dealer platforms vary
+  // a lot (e.g. one real client's actual URLs are /cars/used-black-2021-...,
+  // which none of the original three patterns matched, so that client got
+  // zero vehicle_view events). _customVehiclePatterns (below, populated from
+  // data-vehicle-patterns / init({ vehiclePatterns }) per site) covers
+  // anything this generic list still misses without needing a script change.
+  var VEHICLE_PAGE_PATTERNS = [
+    'vehicle-for-sale', 'vehicles', 'cars-for-sale', 'cars',
+    'inventory', 'vdp', 'stock', 'vehicle-details'
+  ]
+  var _customVehiclePatterns = []
+
+  // A trailing stock-number-shaped suffix (e.g. -s20544, -stock20544) on the
+  // last path segment is a strong, platform-agnostic signal of a vehicle
+  // detail page on its own, independent of which path segment precedes it.
+  var STOCK_NUMBER_RE = /-(?:s|stock)-?(\d{3,})$/i
+
   // Detect vehicle context from page URL and structured data
   function getVehicleContext() {
     var path = window.location.pathname
     var ctx = {}
+    var segments = path.split('/').filter(Boolean)
+    var allPatterns = VEHICLE_PAGE_PATTERNS.concat(_customVehiclePatterns)
 
     // Check URL patterns for vehicle detail pages
-    if (/\/(vehicle-for-sale|vehicles|cars-for-sale)\//.test(path)) {
-      ctx.is_vehicle_page = true
-
-      // Extract vehicle slug from URL path segments
-      var segments = path.split('/').filter(Boolean)
-      if (segments.length >= 2) {
-        ctx.vehicle_slug = segments.slice(1).join('/')
+    for (var p = 0; p < allPatterns.length; p++) {
+      var pattern = allPatterns[p]
+      if (!pattern) continue
+      if (path.indexOf('/' + pattern + '/') !== -1) {
+        ctx.is_vehicle_page = true
+        break
       }
+    }
+
+    // Bonus: a stock-number-shaped last segment, regardless of whether a
+    // named pattern matched above.
+    if (segments.length) {
+      var lastSegment = segments[segments.length - 1]
+      var stockMatch = STOCK_NUMBER_RE.exec(lastSegment)
+      if (stockMatch) {
+        ctx.is_vehicle_page = true
+        ctx.vehicle_stock_number = stockMatch[1]
+      }
+    }
+
+    if (ctx.is_vehicle_page && segments.length >= 2) {
+      ctx.vehicle_slug = segments.slice(1).join('/')
     }
 
     // Check JSON-LD structured data for vehicle info
@@ -727,6 +789,51 @@
   }
 
   // Track clicks on configured selectors (with dead click detection)
+  // Shared navigation tracking: installed exactly once so SPA page-view
+  // firing and dead-click detection never wrap/restore history.pushState
+  // against each other. Each tracked click previously installed its own
+  // temporary pushState wrapper and restored the ORIGINAL (not the previous
+  // wrapper) 500ms later — two tracked clicks within 500ms of each other
+  // would stomp on each other's wrapper, both under- and over-counting
+  // dead clicks. A single shared timestamp avoids the race entirely.
+  var _lastNavAt = 0
+  var _navTrackingInstalled = false
+
+  function setupNavigationTracking(fireSpaPageViews) {
+    if (_navTrackingInstalled) return
+    _navTrackingInstalled = true
+
+    function onRouteChange() {
+      _lastNavAt = Date.now()
+      if (fireSpaPageViews) trackPageView()
+    }
+    function onSubmit() {
+      _lastNavAt = Date.now()
+    }
+
+    var origPushState = history.pushState
+    history.pushState = function () {
+      var result = origPushState.apply(history, arguments)
+      onRouteChange()
+      return result
+    }
+    window.addEventListener('popstate', onRouteChange)
+    window.addEventListener('hashchange', onRouteChange)
+    document.addEventListener('submit', onSubmit)
+  }
+
+  // An element is "navigational" when a click on it is expected to change
+  // the page/route — real links and form-submit buttons. Dead-click
+  // detection only applies to these; a plain button/[data-track] element
+  // (accordion toggle, modal opener) is not expected to navigate, so
+  // checking it against _lastNavAt would misclassify every such click as
+  // dead by design, polluting what's meant to be a UX-frustration signal.
+  function isNavigational(el) {
+    if (el.tagName === 'A' && el.href) return true
+    if (el.tagName === 'BUTTON' && el.type === 'submit') return true
+    return false
+  }
+
   function setupClickTracking(selectors) {
     if (!selectors || !selectors.length) return
 
@@ -744,29 +851,17 @@
             }
             track('click', clickData)
 
-            // Dead click detection: if no navigation/submit within 500ms, record dead_click
-            var navigated = false
-            function onNav() {
-              navigated = true
+            // Dead click detection: if no navigation/submit within 500ms of
+            // this click, record dead_click. Only for elements expected to
+            // navigate in the first place.
+            if (isNavigational(target)) {
+              var clickedAt = Date.now()
+              setTimeout(function () {
+                if (_lastNavAt < clickedAt) {
+                  track('dead_click', clickData)
+                }
+              }, 500)
             }
-            window.addEventListener('popstate', onNav)
-            window.addEventListener('hashchange', onNav)
-            var origPush = history.pushState
-            history.pushState = function () {
-              navigated = true
-              return origPush.apply(history, arguments)
-            }
-            document.addEventListener('submit', onNav)
-
-            setTimeout(function () {
-              window.removeEventListener('popstate', onNav)
-              window.removeEventListener('hashchange', onNav)
-              history.pushState = origPush
-              document.removeEventListener('submit', onNav)
-              if (!navigated) {
-                track('dead_click', clickData)
-              }
-            }, 500)
 
             return
           }
@@ -1386,6 +1481,11 @@
     }
     _initialized = true
 
+    // Google Consent Mode v2 default — fire as early as possible, before any
+    // GTM tag on the page has a chance to run. Reflects whatever's already in
+    // the consent cookie (denied on every category if none exists yet).
+    pushConsentToDataLayer('default', getConsent())
+
     // Apply config overrides to module-level defaults
     var c = config.constants || {}
     if (c.cookieDays) COOKIE_DAYS = c.cookieDays
@@ -1401,6 +1501,13 @@
     if (c.idleTimeoutMs) IDLE_TIMEOUT_MS = c.idleTimeoutMs
     if (c.idleExtendedThresholds) IDLE_EXTENDED_THRESHOLDS = c.idleExtendedThresholds
     if (c.idleActivityDebounceMs) IDLE_ACTIVITY_DEBOUNCE_MS = c.idleActivityDebounceMs
+
+    // Per-site vehicle-detail-page URL patterns, additive to the generic
+    // built-in list — set via the install snippet's data-vehicle-patterns
+    // attribute (auto-boot) or init({ vehiclePatterns: [...] }) directly.
+    if (config.vehiclePatterns && config.vehiclePatterns.length) {
+      _customVehiclePatterns = config.vehiclePatterns
+    }
 
     // Accept linked sessions first
     acceptLinkedSession()
@@ -1434,6 +1541,11 @@
         injectGtmScript(configData, _scriptOrigin)
       })
     }
+
+    // Install shared navigation tracking before anything can click — SPA
+    // route changes re-fire trackPageView(); non-SPA sites still get
+    // _lastNavAt for dead-click detection.
+    setupNavigationTracking(!!config.spa)
 
     // Track page view
     trackPageView()
@@ -1505,22 +1617,14 @@
       setupEngagementTracking()
     }
 
-    // Behavioral signals (opt-in)
-    if (config.behavioral) {
+    // Behavioral signals (rage clicks, video engagement, idle/return, form
+    // field timing) — on by default, like every other auto-tracked category.
+    // Opt out with data-behavioral="false" on the script tag.
+    if (config.behavioral !== false) {
       setupRageClickDetection()
       setupVideoTracking()
       setupIdleDetection()
       setupFormFieldTracking()
-    }
-
-    // Handle SPA navigation
-    if (config.spa) {
-      var pushState = history.pushState
-      history.pushState = function () {
-        pushState.apply(history, arguments)
-        trackPageView()
-      }
-      window.addEventListener('popstate', trackPageView)
     }
   }
 
@@ -1566,6 +1670,15 @@
       var bootCfg = {
         writeKey: bootWriteKey,
         spa: script.getAttribute('data-spa') === 'true',
+        behavioral: script.getAttribute('data-behavioral') !== 'false',
+      }
+      var bootVehiclePatterns = script.getAttribute('data-vehicle-patterns')
+      if (bootVehiclePatterns) {
+        try {
+          bootCfg.vehiclePatterns = JSON.parse(bootVehiclePatterns)
+        } catch (e) {
+          /* ignore malformed attribute */
+        }
       }
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {

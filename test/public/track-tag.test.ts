@@ -256,8 +256,13 @@ describe('public/track.js transport', () => {
 
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY', gtmBridge: true })
+    // dataLayer is truthy as soon as init() pushes the Consent Mode v2
+    // 'default' signal, which happens synchronously and before the async GTM
+    // config fetch resolves — wait for GTM's own bootstrap marker instead so
+    // this doesn't race ahead of injectGtmScript() and leak a pending
+    // insertBefore call into a later test.
     await vi.waitFor(() => {
-      expect((window as any).dataLayer).toBeTruthy()
+      expect((window as any).dataLayer.some((entry: any) => entry && entry.event === 'gtm.js')).toBe(true)
     })
 
     requests = []
