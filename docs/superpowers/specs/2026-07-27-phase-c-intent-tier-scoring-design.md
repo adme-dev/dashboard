@@ -80,13 +80,13 @@ SELECT NULL, seed.vertical, seed.persona_key, 1, seed.label, seed.description,
        ARRAY['google', 'meta']::TEXT[], TRUE, TRUE, 'active'
 FROM (
   VALUES
-    ('automotive', 'tier_hot', 'Hot', 'Near-conversion intent.',
+    ('automotive', 'hot', 'Hot', 'Near-conversion intent.',
      '["form_start","add_to_wishlist","test_drive_booking","finance_calculator_interact","trade_in_start","generate_lead","lead_created"]',
      1),
-    ('automotive', 'tier_warm', 'Warm', 'Cross-shop depth and repeat consideration.',
+    ('automotive', 'warm', 'Warm', 'Cross-shop depth and repeat consideration.',
      '["vehicle_comparison","return_to_vehicle"]',
      2),
-    ('automotive', 'tier_cold', 'Cold', 'Baseline browsing.',
+    ('automotive', 'cold', 'Cold', 'Baseline browsing.',
      '["vehicle_view","vehicle_list_view","search","filter_change"]',
      3)
 ) AS seed(vertical, persona_key, label, description, positive_signals, tier_rank)
