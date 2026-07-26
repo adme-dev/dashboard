@@ -18,6 +18,8 @@ function loadTag() {
   new Function('window', 'document', 'navigator', TAG_SRC)(window, document, navigator)
 }
 
+const NATIVE_PUSH_STATE = window.history.pushState
+
 describe('public/track.js transport', () => {
   let beacons: { url: string, body: string }[]
   let requests: { url: string, body: string }[]
@@ -403,6 +405,7 @@ describe('Phase B funnel & intent signals', () => {
   let fetchSpy: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    window.history.pushState = NATIVE_PUSH_STATE
     document.head.innerHTML = ''
     document.body.innerHTML = ''
     window.history.replaceState({}, '', '/')
