@@ -194,4 +194,94 @@ describe('canonical conversion outbox', () => {
     })
     expect(db.query).toHaveBeenCalledOnce()
   })
+
+  it('persists a supplied conversion value with the derived AUD currency', async () => {
+    const statements: Array<{ sql: string, params: unknown[] }> = []
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        statements.push({ sql, params })
+        if (/FROM client_measurement_profiles/.test(sql)) return { rows: [profile()] }
+        if (/FROM conversion_destinations/.test(sql)) return { rows: [{ id: DESTINATION_ID }] }
+        if (/INSERT INTO conversion_events/.test(sql)) {
+          return { rows: [{
+            id: EVENT_ID,
+            client_id: CLIENT_ID,
+            profile_id: PROFILE_ID,
+            event_name: 'lead_won',
+            source_system: 'zero_crm',
+            source_entity_type: 'crm_opportunity',
+            source_entity_id: OPPORTUNITY_ID,
+            source_event_id: input().sourceEventId,
+            occurred_at: new Date(input().occurredAt),
+            idempotency_key: 'v1:test',
+            config_version: 4,
+            consent_mode: 'consent_gated',
+            attribution: input().attribution,
+            value: '15000.50',
+            currency_code: 'AUD',
+            outbox_status: 'pending',
+            last_error_class: null
+          }] }
+        }
+        return { rows: [] }
+      })
+    }
+
+    const result = await appendCanonicalConversionEvent(db, {
+      ...input(),
+      eventName: 'lead_won',
+      value: 15000.5
+    })
+
+    expect(result).toMatchObject({
+      status: 'created',
+      event: { eventId: EVENT_ID, value: 15000.5, currencyCode: 'AUD' }
+    })
+    const insertStatement = statements.find(statement => /INSERT INTO conversion_events/.test(statement.sql))
+    expect(insertStatement?.params?.[12]).toBe(15000.5)
+    expect(insertStatement?.params?.[13]).toBe('AUD')
+  })
+
+  it('derives a null currency when no conversion value is supplied', async () => {
+    const statements: Array<{ sql: string, params: unknown[] }> = []
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        statements.push({ sql, params })
+        if (/FROM client_measurement_profiles/.test(sql)) return { rows: [profile()] }
+        if (/FROM conversion_destinations/.test(sql)) return { rows: [{ id: DESTINATION_ID }] }
+        if (/INSERT INTO conversion_events/.test(sql)) {
+          return { rows: [{
+            id: EVENT_ID,
+            client_id: CLIENT_ID,
+            profile_id: PROFILE_ID,
+            event_name: 'lead_qualified',
+            source_system: 'zero_crm',
+            source_entity_type: 'crm_opportunity',
+            source_entity_id: OPPORTUNITY_ID,
+            source_event_id: input().sourceEventId,
+            occurred_at: new Date(input().occurredAt),
+            idempotency_key: 'v1:test',
+            config_version: 4,
+            consent_mode: 'consent_gated',
+            attribution: input().attribution,
+            value: null,
+            currency_code: null,
+            outbox_status: 'pending',
+            last_error_class: null
+          }] }
+        }
+        return { rows: [] }
+      })
+    }
+
+    const result = await appendCanonicalConversionEvent(db, input())
+
+    expect(result).toMatchObject({
+      status: 'created',
+      event: { value: null, currencyCode: null }
+    })
+    const insertStatement = statements.find(statement => /INSERT INTO conversion_events/.test(statement.sql))
+    expect(insertStatement?.params?.[12]).toBeNull()
+    expect(insertStatement?.params?.[13]).toBeNull()
+  })
 })

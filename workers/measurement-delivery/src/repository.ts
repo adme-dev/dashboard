@@ -42,6 +42,8 @@ interface DeliveryRow {
   scopes: unknown
   metadata: unknown
   attribution: unknown
+  value: number | string | null
+  currency_code: string | null
   capability_modes: unknown
   tracking_fbc: string | null
   tracking_fbp: string | null
@@ -132,6 +134,8 @@ function mapClaim(
     operatingAccountId: accountId,
     loginAccountId: loginAccountId.replace(/-/g, ''),
     metaDeliveryMode,
+    value: row.value !== null && row.value !== undefined ? Number(row.value) : null,
+    currency: row.currency_code ?? null,
     credentialRef: row.credential_ref,
     refreshToken: row.refresh_token,
     connectionScopes: scopes,
@@ -187,6 +191,8 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
                   e.occurred_at,
                   e.idempotency_key,
                   e.attribution,
+                  e.value,
+                  e.currency_code,
                   caps.capability_modes,
                   browser.fbc AS tracking_fbc,
                   browser.fbp AS tracking_fbp,

@@ -36,6 +36,8 @@ interface ConversionEventRow {
   config_version: number | string
   consent_mode: string
   attribution: unknown
+  value: number | string | null
+  currency_code: string | null
   outbox_status: string
   last_error_class: string | null
 }
@@ -63,6 +65,8 @@ function mapEvent(row: ConversionEventRow): CanonicalConversionOutboxEvent {
     configVersion: Number(row.config_version),
     consentMode: row.consent_mode,
     attribution: row.attribution,
+    value: row.value !== null && row.value !== undefined ? Number(row.value) : null,
+    currencyCode: row.currency_code ?? null,
     outboxStatus: row.outbox_status,
     policyReason: row.last_error_class
   })
@@ -117,7 +121,8 @@ function deliveryPolicy(
 const EVENT_COLUMNS = `
   id, client_id, profile_id, event_name, source_system, source_entity_type,
   source_entity_id, source_event_id, occurred_at, idempotency_key,
-  config_version, consent_mode, attribution, outbox_status, last_error_class
+  config_version, consent_mode, attribution, value, currency_code,
+  outbox_status, last_error_class
 `
 
 /**
@@ -170,13 +175,15 @@ export async function appendCanonicalConversionEvent(
     }
   }
 
+  const currencyCode = input.value !== null ? 'AUD' : null
   const insertedResult = await db.query(
     `INSERT INTO conversion_events (
        client_id, profile_id, event_name, source_system, source_entity_type,
        source_entity_id, source_event_id, occurred_at, idempotency_key,
-       config_version, consent_mode, attribution, outbox_status, last_error_class
+       config_version, consent_mode, attribution, value, currency_code,
+       outbox_status, last_error_class
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16
      )
      ON CONFLICT DO NOTHING
      RETURNING ${EVENT_COLUMNS}`,
@@ -193,6 +200,8 @@ export async function appendCanonicalConversionEvent(
       Number(profile.config_version),
       profile.consent_mode,
       JSON.stringify(input.attribution),
+      input.value,
+      currencyCode,
       policy.status,
       policy.reason
     ]

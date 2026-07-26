@@ -306,6 +306,11 @@ export function createOpportunityStageTransitionService(
 
         let outbox: AppendCanonicalConversionEventResult | null = null
         if (canonicalEventName && authorityDecision === 'accepted') {
+          const amount = Number(updated.amount)
+          const value = canonicalEventName === 'lead_won'
+            && Number.isFinite(amount) && amount > 0 && amount <= 9_999_999.99
+            ? Number(amount.toFixed(2))
+            : null
           outbox = await deps.appendOutbox(db, {
             clientId: command.clientId,
             eventName: canonicalEventName,
@@ -315,7 +320,8 @@ export function createOpportunityStageTransitionService(
             sourceEventId,
             occurredAt: command.occurredAt,
             consentDecision: command.consentDecision,
-            attribution: canonicalAttribution(linkedLead)
+            attribution: canonicalAttribution(linkedLead),
+            value
           })
           if (outbox.status === 'profile_not_found') {
             throw new Error('Lifecycle mapping references a missing Measurement profile')

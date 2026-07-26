@@ -8,6 +8,8 @@ export interface MeasurementProviderDelivery {
   operatingAccountId: string
   loginAccountId: string
   metaDeliveryMode: 'crm' | 'web'
+  value: number | null
+  currency: string | null
   attribution: {
     browserEventId: string | null
     metaLeadId: string | null
@@ -187,7 +189,12 @@ export async function deliverMetaConversionEvent(
                   // intentionally do not use this payload contract.
                   // https://developers.facebook.com/docs/marketing-api/conversions-api/conversion-leads-integration/crm-integration/3-implementing-the-crm-integration
                   lead_event_source: META_CRM_LEAD_EVENT_SOURCE,
-                  event_source: 'crm'
+                  event_source: 'crm',
+                  // Web-mode CAPI events never carry a value: the only valued event type
+                  // (lead_won) always resolves to CRM mode by design (see !isWeb above). A
+                  // future valued web-sourced event type would need this handled in the
+                  // isWeb branch too.
+                  ...(delivery.value != null ? { value: delivery.value, currency: delivery.currency } : {})
                 }
               }
             : {})
@@ -262,7 +269,8 @@ export async function deliverGoogleDataManagerEvent(
         // browser ID; server-only lifecycle events keep the canonical key.
         // Source: https://developers.google.com/data-manager/api/devguides/events/send-events
         transactionId: delivery.attribution.browserEventId ?? delivery.idempotencyKey,
-        eventSource: 'WEB'
+        eventSource: 'WEB',
+        ...(delivery.value != null ? { conversionValue: delivery.value, currency: delivery.currency } : {})
       }],
       validateOnly: input.validateOnly ?? false
     })

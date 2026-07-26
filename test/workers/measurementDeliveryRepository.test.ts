@@ -289,4 +289,49 @@ describe('measurement delivery repository', () => {
       false
     ]))
   })
+
+  it('maps a stored conversion value and currency onto the claimed delivery', async () => {
+    const row = { ...deliveryRow(), value: '15000.50', currency_code: 'AUD' }
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (/SELECT[\s\S]*FOR UPDATE OF d SKIP LOCKED/.test(sql)) return { rows: [row] }
+        if (/UPDATE conversion_deliveries/.test(sql)) return { rows: [{ attempt_count: 1 }] }
+        return { rows: [] }
+      })
+    }
+    const repository = createMeasurementDeliveryRepository({
+      transaction: (async (callback: (db: typeof client) => Promise<unknown>) => callback(client)) as never
+    })
+
+    const claim = await repository.claimNext({
+      schemaVersion: 1,
+      clientId: CLIENT_ID,
+      eventId: EVENT_ID,
+      enqueuedAt: NOW.toISOString()
+    }, 'measurement-worker:test', NOW)
+
+    expect(claim).toMatchObject({ value: 15000.5, currency: 'AUD' })
+  })
+
+  it('leaves value and currency null when the event carries no conversion value', async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (/SELECT[\s\S]*FOR UPDATE OF d SKIP LOCKED/.test(sql)) return { rows: [deliveryRow()] }
+        if (/UPDATE conversion_deliveries/.test(sql)) return { rows: [{ attempt_count: 1 }] }
+        return { rows: [] }
+      })
+    }
+    const repository = createMeasurementDeliveryRepository({
+      transaction: (async (callback: (db: typeof client) => Promise<unknown>) => callback(client)) as never
+    })
+
+    const claim = await repository.claimNext({
+      schemaVersion: 1,
+      clientId: CLIENT_ID,
+      eventId: EVENT_ID,
+      enqueuedAt: NOW.toISOString()
+    }, 'measurement-worker:test', NOW)
+
+    expect(claim).toMatchObject({ value: null, currency: null })
+  })
 })
