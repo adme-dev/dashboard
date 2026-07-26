@@ -8,6 +8,8 @@ export interface MeasurementProviderDelivery {
   operatingAccountId: string
   loginAccountId: string
   metaDeliveryMode: 'crm' | 'web'
+  value: number | null
+  currency: string | null
   attribution: {
     browserEventId: string | null
     metaLeadId: string | null
