@@ -353,10 +353,11 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
         )
 
         if (result.outcome !== 'policy_skipped') {
-          const successful = result.outcome === 'accepted' && claim.platform === 'meta'
+          const successful = result.outcome === 'accepted'
+            && (claim.platform === 'meta' || claim.platform === 'ga4')
           const failed = result.outcome === 'retryable' || result.outcome === 'permanent_failure'
           const blocked = result.outcome === 'permanent_failure'
-            && ['meta_credential_missing', 'google_credential_missing', 'google_oauth_reconsent_required']
+            && ['meta_credential_missing', 'google_credential_missing', 'google_oauth_reconsent_required', 'ga4_api_secret_ref_required', 'ga4_api_secret_unavailable']
               .includes(result.errorClass ?? '')
           await db.query(
             `UPDATE conversion_destinations
