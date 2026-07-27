@@ -443,7 +443,11 @@ export const RecordDestinationValidationEvidenceSchema = z.strictObject({
   expectedConfigVersion: z.number().int().positive(),
   observedAt: z.string().datetime({ offset: true }),
   actor: z.strictObject({
-    type: z.enum(['system', 'user']),
+    // Must stay within MeasurementActorSchema's vocabulary: the
+    // measurement_config_audit.actor_type CHECK constraint only permits
+    // team_member | client_user | system | import. 'system' marks evidence a
+    // provider call produced; 'team_member' marks evidence an operator asserted.
+    type: z.enum(['system', 'team_member']),
     id: z.string().trim().min(1).max(255)
   }),
   reason: z.string().trim().min(1).max(1000),

@@ -36,7 +36,7 @@ describe('measurement attestation service', () => {
     const { service, recordValidation } = harness()
     await service.attest(buildInput())
     expect(recordValidation).toHaveBeenCalledOnce()
-    expect(recordValidation.mock.calls[0][0].actor).toEqual({ type: 'user', id: ACTOR_ID })
+    expect(recordValidation.mock.calls[0][0].actor).toEqual({ type: 'team_member', id: ACTOR_ID })
   })
 
   it('rejects attesting a capability a provider test already covers', async () => {

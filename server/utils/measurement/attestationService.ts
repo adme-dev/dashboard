@@ -88,7 +88,7 @@ export function createMeasurementAttestationService(deps: MeasurementAttestation
         destinationId: input.destinationId,
         expectedConfigVersion: input.expectedConfigVersion,
         observedAt: deps.now().toISOString(),
-        actor: { type: 'user', id: input.actor.id },
+        actor: { type: 'team_member', id: input.actor.id },
         reason: input.reason,
         providerRequestId: null,
         errorClass: null,

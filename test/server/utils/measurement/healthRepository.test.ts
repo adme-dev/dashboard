@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createPostgresMeasurementHealthRepository
 } from '../../../../server/utils/measurement/healthRepository'
+import {
+  RecordDestinationValidationEvidenceSchema
+} from '../../../../server/utils/measurement/contracts'
 import type {
   RecordDestinationValidationEvidence
 } from '../../../../server/utils/measurement/contracts'
@@ -154,12 +157,27 @@ describe('Postgres measurement health repository', () => {
 
     await repository.recordValidation({
       ...input(),
-      actor: { type: 'user', id: 'user-1' },
+      actor: { type: 'team_member', id: 'actor-1' },
       capabilities: [{ mode: 'meta_pixel', status: 'ready', blockingReason: null }]
     })
 
     const audit = statements.at(-1)!
     expect(audit.sql).toContain('measurement_config_audit')
-    expect(audit.params).toContain('user')
+    // Positional, not membership: a membership check would still pass if
+    // actor_type and actor_id were swapped, which is the silent wrong-column
+    // failure this parameter insertion was most at risk of.
+    expect(audit.params[7]).toBe('team_member')
+    expect(audit.params[8]).toBe('actor-1')
+  })
+
+  it('rejects an actor type the audit CHECK constraint would refuse', () => {
+    // measurement_config_audit.actor_type permits only
+    // team_member | client_user | system | import. Anything else fails at the
+    // database, which unit tests with a mocked db would not otherwise catch.
+    const result = RecordDestinationValidationEvidenceSchema.safeParse({
+      ...input(),
+      actor: { type: 'user', id: 'actor-1' }
+    })
+    expect(result.success).toBe(false)
   })
 })
