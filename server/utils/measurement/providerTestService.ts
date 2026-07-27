@@ -1,5 +1,9 @@
 import { z } from 'zod'
 import { MeasurementError } from '~~/server/utils/measurement/errors'
+import {
+  coveredCapabilityModes,
+  directlyExercisedModes
+} from '~~/shared/utils/measurementPlatform'
 import type {
   Ga4ValidationInput,
   GoogleDeliveryInput,
@@ -157,6 +161,7 @@ interface ProviderTestServiceDeps {
   refreshGoogleAccessToken(input: Omit<RefreshGoogleAccessTokenInput, 'fetch'>): Promise<string>
   resolveProviderCredential(credentialRef: string): Promise<string | null>
   validateGa4(input: Omit<Ga4ValidationInput, 'fetch'>): Promise<ProviderDeliveryResult>
+  recordValidation(evidence: unknown): Promise<{ healthStatus: string }>
   graphApiVersion: string
   googleClientId: string
   googleClientSecret: string
@@ -225,6 +230,19 @@ function networkFailure(): ProviderDeliveryResult {
   }
 }
 
+type EvidenceStatus = 'ready' | 'degraded' | 'blocked'
+
+function evidenceStatusFor(result: ProviderDeliveryResult): EvidenceStatus {
+  if (result.outcome === 'accepted') return 'ready'
+  // A retryable outcome is a transport problem, not a proven misconfiguration.
+  return result.outcome === 'retryable' ? 'degraded' : 'blocked'
+}
+
+function blockingReasonFor(result: ProviderDeliveryResult, status: EvidenceStatus) {
+  if (status === 'ready') return null
+  return (result.redactedDiagnostic ?? result.errorClass ?? 'Provider validation failed').slice(0, 1000)
+}
+
 export function createMeasurementProviderTestService(deps: ProviderTestServiceDeps) {
   return {
     async run(rawInput: unknown) {
@@ -259,7 +277,12 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
         throw validationError('Approval reasons must not contain transient provider identifiers')
       }
       const reserved = await deps.repository.reserve(input)
-      if (reserved.status === 'existing') return sanitized(reserved.run)
+      if (reserved.status === 'existing') {
+        return {
+          ...sanitized(reserved.run),
+          validation: { recorded: false, skippedReason: 'already_run', healthStatus: null }
+        }
+      }
       if (reserved.status !== 'reserved') throw repositoryError(reserved.status)
 
       const { context } = reserved
@@ -383,15 +406,74 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
         redactedError: providerResult.redactedDiagnostic,
         completedAt
       })
-      return sanitized({
-        id: context.run.id,
-        mode: input.mode,
-        status,
-        providerRequestId: providerResult.providerRequestId,
-        errorClass: providerResult.errorClass,
-        redactedError: providerResult.redactedDiagnostic,
-        completedAt
-      })
+
+      const evidenceStatus = evidenceStatusFor(providerResult)
+      const blockingReason = blockingReasonFor(providerResult, evidenceStatus)
+      const deliveryMode = input.mode === 'meta_test_events' ? input.deliveryMode : null
+      const covered = coveredCapabilityModes(input.mode)
+      const directlyExercised = directlyExercisedModes(
+        input.mode,
+        deliveryMode,
+        input.canonicalEventName
+      )
+
+      let validation = {
+        recorded: false,
+        skippedReason: 'no_covered_capabilities' as string | null,
+        healthStatus: null as string | null
+      }
+      if (covered.length > 0) {
+        try {
+          const recorded = await deps.recordValidation({
+            clientId: input.clientId,
+            destinationId: input.destinationId,
+            expectedConfigVersion: input.expectedConfigVersion,
+            observedAt: completedAt,
+            actor: { type: 'system', id: input.actor.id },
+            reason: input.reason,
+            providerRequestId: providerResult.providerRequestId,
+            errorClass: providerResult.errorClass,
+            redactedError: providerResult.redactedDiagnostic,
+            capabilities: covered.map(mode => ({
+              mode,
+              status: evidenceStatus,
+              blockingReason
+            })),
+            directlyExercised,
+            inferred: covered.filter(mode => !directlyExercised.includes(mode))
+          })
+          validation = {
+            recorded: true,
+            skippedReason: null,
+            healthStatus: recorded.healthStatus
+          }
+        } catch (error) {
+          // A failure to record evidence must not fail the test itself, but it
+          // must be visible — a silent no-op is the bug class this work exists
+          // to fix.
+          const code = (error as { code?: string }).code
+          validation = {
+            recorded: false,
+            skippedReason: code === 'MEASUREMENT_VERSION_CONFLICT'
+              ? 'version_conflict'
+              : 'record_failed',
+            healthStatus: null
+          }
+        }
+      }
+
+      return {
+        ...sanitized({
+          id: context.run.id,
+          mode: input.mode,
+          status,
+          providerRequestId: providerResult.providerRequestId,
+          errorClass: providerResult.errorClass,
+          redactedError: providerResult.redactedDiagnostic,
+          completedAt
+        }),
+        validation
+      }
     }
   }
 }
