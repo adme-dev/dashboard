@@ -14,7 +14,7 @@ type BrowserConversionRow = Pick<
   | 'ga_client_id'
 >
 
-const PROMOTABLE_EVENT_NAMES = new Set([
+const PROMOTABLE_EVENT_NAMES = new Set<'generate_lead' | 'phone_click' | 'add_to_wishlist' | 'form_submit'>([
   'generate_lead',
   'phone_click',
   'add_to_wishlist',
