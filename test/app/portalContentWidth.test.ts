@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 const fullWidthRoots = [
   'app/pages/portal/index.vue',
+  'app/pages/portal/activity.vue',
   'app/pages/portal/features.vue',
   'app/pages/portal/invoices.vue',
   'app/pages/portal/meetings.vue',

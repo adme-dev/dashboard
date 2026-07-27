@@ -63,14 +63,18 @@ describe('portal dashboard section budgets', () => {
     expect(mockQueryOne.mock.calls.length + mockQueryRows.mock.calls.length).toBeLessThanOrEqual(8)
   })
 
-  it('keeps operations within seven SQL operations and uses canonical team columns', async () => {
+  it('keeps operations within six SQL operations and uses canonical team columns', async () => {
     await dashboardHandler({ query: { section: 'operations' } })
 
+    const allSql = [...mockQueryOne.mock.calls, ...mockQueryRows.mock.calls]
+      .map(call => String(call[0]))
+      .join('\n')
     const teamQuery = mockQueryRows.mock.calls
       .map(call => String(call[0]))
       .find(sql => sql.includes('FROM team_members tm'))
 
-    expect(mockQueryOne.mock.calls.length + mockQueryRows.mock.calls.length).toBeLessThanOrEqual(7)
+    expect(mockQueryOne.mock.calls.length + mockQueryRows.mock.calls.length).toBeLessThanOrEqual(6)
+    expect(allSql).not.toContain('FROM client_activity_log')
     expect(teamQuery).toContain('LEFT JOIN departments d ON d.id = tm.department_id')
     expect(teamQuery).toContain('NULL::text AS phone')
     expect(teamQuery).toContain('d.name AS department')
