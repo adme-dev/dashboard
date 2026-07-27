@@ -39,7 +39,7 @@ describe('portal comment writes', () => {
     mockRequireClientAuth.mockResolvedValue({
       id: 'client-user-1',
       clientId: 'client-1',
-      permissions: { canAddComments: true }
+      permissions: { canAddComments: true, canViewProjects: true, canApproveWork: true }
     })
   })
 
@@ -93,5 +93,29 @@ describe('portal comment writes', () => {
       null
     ])
     expect(mockQueryOne).toHaveBeenCalledTimes(2)
+  })
+
+  it('blocks project comment writes without project access', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      id: 'client-user-1',
+      clientId: 'client-1',
+      permissions: { canAddComments: true, canViewProjects: false, canApproveWork: true }
+    })
+    await expect(commentWriteHandler({
+      body: { content: 'Comment', projectId: 'project-1' }
+    })).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('blocks approval comment writes without approval access', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      id: 'client-user-1',
+      clientId: 'client-1',
+      permissions: { canAddComments: true, canViewProjects: true, canApproveWork: false }
+    })
+    await expect(commentWriteHandler({
+      body: { content: 'Comment', approvalId: 'approval-1' }
+    })).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockQueryOne).not.toHaveBeenCalled()
   })
 })

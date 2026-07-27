@@ -39,7 +39,7 @@ describe('portal project detail job history', () => {
     vi.clearAllMocks()
     mockRequireClientAuth.mockResolvedValue({
       clientId: 'client-1',
-      permissions: { canViewProjects: true, canViewBudgets: true }
+      permissions: { canViewProjects: true, canViewBudgets: true, canApproveWork: true }
     })
     mockQueryOne
       .mockResolvedValueOnce({
@@ -170,5 +170,24 @@ describe('portal project detail job history', () => {
     expect(result.completedTasks).toEqual([])
     expect(result.deliverables).toEqual([])
     expect(result.teamMembers).toEqual([])
+  })
+
+  it('does not query or return approvals without approval access', async () => {
+    vi.clearAllMocks()
+    mockRequireClientAuth.mockResolvedValueOnce({
+      clientId: 'client-1',
+      permissions: { canViewProjects: true, canViewBudgets: true, canApproveWork: false }
+    })
+    mockQueryOne
+      .mockResolvedValueOnce({ id: 'project-1', name: 'Restricted approvals' })
+      .mockResolvedValueOnce({ total: '0' })
+      .mockResolvedValueOnce({ show_team_members: false })
+    mockQueryRows.mockResolvedValue([])
+
+    const result = await projectDetailHandler({ params: { id: 'project-1' } })
+    const sql = mockQueryRows.mock.calls.map(call => String(call[0])).join('\n')
+
+    expect(sql).not.toContain('FROM client_approvals')
+    expect(result.approvals).toEqual([])
   })
 })

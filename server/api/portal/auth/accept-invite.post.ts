@@ -1,6 +1,6 @@
 /**
  * Accept Client Portal Invitation
- * POST /api/agency/client-portal/accept-invite
+ * POST /api/portal/auth/accept-invite
  *
  * Body:
  * - token: Invitation token
@@ -79,8 +79,6 @@ export default defineEventHandler(async (event) => {
     const passwordHash = await bcrypt.hash(password, 12)
 
     let user: any
-    let sessionToken = ''
-
     await transaction(async (client) => {
       // Find or create user
       const existingUser = await client.query(`
@@ -136,17 +134,6 @@ export default defineEventHandler(async (event) => {
         WHERE id = $2
       `, [user.id, invitation.id])
 
-      // Create session
-      sessionToken = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString('base64url')
-      const tokenHash = await bcrypt.hash(sessionToken, 10)
-      const expiresAt = new Date()
-      expiresAt.setDate(expiresAt.getDate() + 30) // 30 day session
-
-      await client.query(`
-        INSERT INTO client_sessions (client_user_id, token_hash, expires_at)
-        VALUES ($1, $2, $3)
-      `, [user.id, tokenHash, expiresAt.toISOString()])
-
       // Log activity
       await client.query(`
         INSERT INTO client_activity_log (client_user_id, client_id, action, details)
@@ -163,8 +150,7 @@ export default defineEventHandler(async (event) => {
         name: user.name,
         role: user.role,
         clientName: invitation.client_name
-      },
-      sessionToken // In production, set as httpOnly cookie instead
+      }
     }
   } catch (error: any) {
     if (error.statusCode) throw error

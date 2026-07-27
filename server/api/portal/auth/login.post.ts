@@ -3,7 +3,7 @@
  * POST /api/portal/auth/login
  */
 
-import { queryOneFresh, transaction } from '~~/server/utils/db'
+import { queryOneFresh, queryRowsFresh, transaction } from '~~/server/utils/db'
 import { checkAndConsume } from '~~/server/utils/rateLimit'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import bcrypt from 'bcryptjs'
@@ -56,7 +56,7 @@ export default defineEventHandler(async (event) => {
   await enforceLoginLimit(event, `portal-login:ip:${ipKey}`, 20, 15 * 60)
 
   try {
-    const user = await queryOneFresh(`
+    const candidates = await queryRowsFresh(`
       SELECT
         cu.id,
         cu.email,
@@ -85,15 +85,27 @@ export default defineEventHandler(async (event) => {
       FROM client_users cu
       JOIN agency_clients c ON cu.client_id = c.id
       WHERE cu.email = $1
+      ORDER BY cu.created_at ASC
     `, [email])
 
-    const valid = await bcrypt.compare(password, user?.password_hash || DUMMY_PASSWORD_HASH)
-    if (!user || !valid || !user.password_hash || user.status !== 'active') {
+    const passwordChecks = candidates.length
+      ? candidates.map(candidate => bcrypt.compare(password, candidate.password_hash || DUMMY_PASSWORD_HASH))
+      : [bcrypt.compare(password, DUMMY_PASSWORD_HASH)]
+    const matches = (await Promise.all(passwordChecks))
+      .map((valid, index) => ({ valid, candidate: candidates[index] }))
+      .filter(({ valid, candidate }) =>
+        valid && candidate?.password_hash && candidate.status === 'active'
+      )
+
+    // Email addresses are tenant-scoped. Refuse an ambiguous match rather than
+    // selecting an arbitrary client when credentials are reused across tenants.
+    if (matches.length !== 1) {
       throw createError({
         statusCode: 401,
         statusMessage: 'Invalid email or password'
       })
     }
+    const user = matches[0]!.candidate!
 
     // Create session
     const sessionToken = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString('base64url')

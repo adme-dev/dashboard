@@ -21,6 +21,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (projectId && !clientUser.permissions.canViewProjects) {
+    throw createError({ statusCode: 403, statusMessage: 'You do not have permission to view projects' })
+  }
+
+  if (approvalId && !clientUser.permissions.canApproveWork) {
+    throw createError({ statusCode: 403, statusMessage: 'You do not have permission to view approvals' })
+  }
+
   try {
     const conditions: string[] = ['cc.is_internal = false']
     const params: any[] = []

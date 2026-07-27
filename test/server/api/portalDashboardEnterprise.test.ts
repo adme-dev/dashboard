@@ -195,4 +195,25 @@ describe('portal dashboard section budgets', () => {
       lastLoginAt: null
     })
   })
+
+  it('does not query or return lead data without analytics permission', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      ...fullAccess(),
+      permissions: {
+        ...fullAccess().permissions,
+        canViewAnalytics: false
+      }
+    })
+
+    const result = await dashboardHandler({ query: { section: 'analytics' } })
+    const sql = [...mockQueryOne.mock.calls, ...mockQueryRows.mock.calls]
+      .map(call => String(call[0]))
+      .join('\n')
+
+    expect(sql).not.toContain('FROM leads')
+    expect(result.leads).toEqual({
+      stats: { total: 0, new: 0, contacted: 0, won: 0 },
+      recent: []
+    })
+  })
 })

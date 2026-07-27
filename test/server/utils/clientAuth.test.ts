@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import bcrypt from 'bcryptjs'
 import { digestPortalSessionToken } from '../../../server/utils/portalSession'
 
 const testGlobal = globalThis as typeof globalThis & {
@@ -14,13 +13,8 @@ testGlobal.getCookie = vi.fn(() => 'portal-session-token')
 testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
 
 const mockQueryOne = vi.fn()
-const mockQueryRows = vi.fn()
-const mockExecute = vi.fn()
-
 vi.mock('~~/server/utils/db', () => ({
-  queryOneFresh: (...args: unknown[]) => mockQueryOne(...args),
-  queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
-  execute: (...args: unknown[]) => mockExecute(...args)
+  queryOneFresh: (...args: unknown[]) => mockQueryOne(...args)
 }))
 
 const { requireClientAuth } = await import('../../../server/utils/clientAuth')
@@ -60,8 +54,6 @@ describe('portal client authentication', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockQueryOne.mockReset()
-    mockQueryRows.mockReset()
-    mockExecute.mockReset()
   })
 
   it('authenticates a digest session with one indexed lookup and no bcrypt scan', async () => {
@@ -75,30 +67,15 @@ describe('portal client authentication', () => {
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('cs.token_hash = $1')
     expect(mockQueryOne.mock.calls[0]?.[1]).toEqual([digest])
     expect(mockQueryOne).toHaveBeenCalledOnce()
-    expect(mockQueryRows).not.toHaveBeenCalled()
-    expect(mockExecute).not.toHaveBeenCalled()
   })
 
-  it('upgrades a matching legacy bcrypt session to the indexed digest', async () => {
-    const legacyHash = await bcrypt.hash('portal-session-token', 4)
-    mockQueryOne
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(activeUserRow)
-    mockQueryRows.mockResolvedValueOnce([{
-      id: 'legacy-session-1',
-      token_hash: legacyHash,
-      client_user_id: 'client-user-1'
-    }])
-    mockExecute.mockResolvedValueOnce(1)
+  it('rejects an unknown or legacy session after one indexed lookup', async () => {
+    mockQueryOne.mockResolvedValueOnce(null)
 
-    const user = await requireClientAuth({ context: {} } as never)
-    const digest = await digestPortalSessionToken('portal-session-token')
-
-    expect(user.id).toBe('client-user-1')
-    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain(`cs.token_hash LIKE '$2%'`)
-    expect(mockExecute).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE client_sessions'),
-      [digest, 'legacy-session-1']
-    )
+    await expect(requireClientAuth({ context: {} } as never)).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'Invalid or expired session'
+    })
+    expect(mockQueryOne).toHaveBeenCalledOnce()
   })
 })

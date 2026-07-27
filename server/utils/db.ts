@@ -54,6 +54,28 @@ function getHyperdriveCs(freshness: DatabaseFreshness = 'cached'): string | null
   }
 }
 
+export async function getOrCreateEventDatabaseClient<T>(
+  context: Record<string, any>,
+  freshness: DatabaseFreshness,
+  createClient: () => Promise<T>
+): Promise<T> {
+  const contextKey = freshness === 'fresh' ? '_pgClientFresh' : '_pgClient'
+  const promiseKey = freshness === 'fresh' ? '_pgClientFreshPromise' : '_pgClientPromise'
+
+  if (context[contextKey]) return context[contextKey] as T
+  if (context[promiseKey]) return await context[promiseKey] as T
+
+  const connecting = createClient()
+  context[promiseKey] = connecting
+  try {
+    const client = await connecting
+    context[contextKey] = client
+    return client
+  } finally {
+    if (context[promiseKey] === connecting) context[promiseKey] = null
+  }
+}
+
 // Per-request pg Client, cached on event.context to avoid reconnecting per query.
 // Hyperdrive manages the actual TCP connection pool — we just create a lightweight
 // Client wrapper per request.
@@ -62,21 +84,15 @@ async function getHyperdriveClient(
 ): Promise<pg.Client | null> {
   try {
     const event = useEvent()
-    const contextKey = freshness === 'fresh' ? '_pgClientFresh' : '_pgClient'
-
-    // Return cached client for this request
-    if (event.context[contextKey]) return event.context[contextKey] as pg.Client
-
     const env = (event.context as any).cloudflare?.env || {}
     const cs = resolveHyperdriveConnectionString(env, freshness)
     if (!cs) return null
 
-    const client = new pg.Client({ connectionString: cs })
-    await client.connect()
-
-    // Cache on event context — reused for all queries in this request
-    event.context[contextKey] = client
-    return client
+    return await getOrCreateEventDatabaseClient(event.context, freshness, async () => {
+      const client = new pg.Client({ connectionString: cs })
+      await client.connect()
+      return client
+    })
   } catch {
     return null
   }
@@ -86,11 +102,19 @@ async function getHyperdriveClient(
 function clearHyperdriveClient() {
   try {
     const event = useEvent()
-    for (const key of ['_pgClient', '_pgClientFresh']) {
+    for (const [key, promiseKey] of [
+      ['_pgClient', '_pgClientPromise'],
+      ['_pgClientFresh', '_pgClientFreshPromise']
+    ] as const) {
       const client = event.context[key] as pg.Client | undefined
+      const connecting = event.context[promiseKey] as Promise<pg.Client> | undefined
       if (client) {
         event.context[key] = null
         client.end().catch(() => {})
+      }
+      if (connecting) {
+        event.context[promiseKey] = null
+        connecting.then(pendingClient => pendingClient.end()).catch(() => {})
       }
     }
   } catch {}
@@ -101,12 +125,28 @@ export async function closeEventDatabaseClients(
 ): Promise<void> {
   const closing: Promise<unknown>[] = []
 
-  for (const key of ['_pgClient', '_pgClientFresh']) {
+  const clients = new Set<pg.Client>()
+
+  for (const [key, promiseKey] of [
+    ['_pgClient', '_pgClientPromise'],
+    ['_pgClientFresh', '_pgClientFreshPromise']
+  ] as const) {
     const client = event.context[key] as pg.Client | undefined
+    const connecting = event.context[promiseKey] as Promise<pg.Client> | undefined
     event.context[key] = null
-    if (client) closing.push(client.end())
+    event.context[promiseKey] = null
+    if (client) clients.add(client)
+    if (connecting) {
+      closing.push(connecting.then(pendingClient => {
+        if (!clients.has(pendingClient)) {
+          clients.add(pendingClient)
+          return pendingClient.end()
+        }
+      }))
+    }
   }
 
+  for (const client of clients) closing.push(client.end())
   await Promise.allSettled(closing)
 }
 

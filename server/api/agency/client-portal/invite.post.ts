@@ -153,7 +153,7 @@ export default defineEventHandler(async (event) => {
         name: invitation.name,
         token: invitation.token, // In production, this would be sent via email only
         expiresAt: invitation.expires_at,
-        inviteUrl: `/client-portal/accept-invite?token=${invitation.token}`
+        inviteUrl: `/portal/accept-invite?token=${invitation.token}`
       },
       user: {
         id: clientUser.id,

@@ -39,7 +39,7 @@ describe('portal projects job history views', () => {
     vi.clearAllMocks()
     mockRequireClientAuth.mockResolvedValue({
       clientId: 'client-1',
-      permissions: { canViewProjects: true, canViewBudgets: true }
+      permissions: { canViewProjects: true, canViewBudgets: true, canApproveWork: true }
     })
     mockQueryRows.mockResolvedValue([])
     mockQueryOne.mockResolvedValue({
@@ -134,6 +134,10 @@ describe('portal projects job history views', () => {
     expect(summarySql).toContain('SUM(CASE WHEN status IN (\'draft\', \'active\', \'on_hold\') THEN budget ELSE 0 END)')
     expect(summarySql).toContain('FROM client_deliverables cd')
     expect(summarySql).toContain('ca.status = \'pending\'')
+    expect(summarySql.indexOf(') as open_tasks')).toBeLessThan(
+      summarySql.indexOf('CASE WHEN $2::boolean')
+    )
+    expect(summarySql).toContain('CASE WHEN $2::boolean THEN (\n          SELECT COUNT(*)\n          FROM client_approvals')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client-1', 50, 'upcoming'])
   })
 
@@ -163,7 +167,7 @@ describe('portal projects job history views', () => {
   it('redacts project and summary budgets when budget access is disabled', async () => {
     mockRequireClientAuth.mockResolvedValueOnce({
       clientId: 'client-1',
-      permissions: { canViewProjects: true, canViewBudgets: false }
+      permissions: { canViewProjects: true, canViewBudgets: false, canApproveWork: true }
     })
     mockQueryRows.mockResolvedValueOnce([{
       id: 'job-1',
@@ -183,5 +187,25 @@ describe('portal projects job history views', () => {
     expect(result.projects[0]?.budget).toBeNull()
     expect(result.summary.totalBudget).toBeNull()
     expect(result.summary.bookedBudget).toBeNull()
+  })
+
+  it('does not query or expose approval counts without approval access', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      clientId: 'client-1',
+      permissions: { canViewProjects: true, canViewBudgets: true, canApproveWork: false }
+    })
+    mockQueryRows.mockResolvedValueOnce([{
+      id: 'job-1',
+      name: 'Restricted approvals',
+      total_tasks: '0',
+      completed_tasks: '0'
+    }])
+
+    const result = await projectsHandler({ query: {} })
+    const projectsSql = String(mockQueryRows.mock.calls[0]?.[0])
+
+    expect(projectsSql).not.toContain('FROM client_approvals ca')
+    expect(result.projects[0]?.pendingApprovals).toBeNull()
+    expect(result.summary.pendingApprovals).toBeNull()
   })
 })

@@ -23,6 +23,7 @@ export default defineEventHandler(async (event) => {
   const canViewBudgets = clientUser.permissions.canViewBudgets
   const canViewInvoices = clientUser.permissions.canViewInvoices
   const canApproveWork = clientUser.permissions.canApproveWork
+  const canViewAnalytics = clientUser.permissions.canViewAnalytics
   const section = String(getQuery(event).section || 'core')
   const allowedSections = new Set(['core', 'operations', 'enterprise', 'analytics'])
   if (!allowedSections.has(section)) {
@@ -524,7 +525,7 @@ export default defineEventHandler(async (event) => {
       contacted: 0,
       won: 0
     }
-    const leadStats = loadAnalytics
+    const leadStats = loadAnalytics && canViewAnalytics
       ? await safeQuery('leadStats', emptyLeadStats, async () => queryOne(`
       SELECT
         COUNT(*) as total,
@@ -604,7 +605,7 @@ export default defineEventHandler(async (event) => {
     `, [clientId]))
       : emptyContentHealth
 
-    const recentLeads = loadAnalytics
+    const recentLeads = loadAnalytics && canViewAnalytics
       ? await safeQuery<any[]>('recentLeads', [], async () => queryRows(`
       SELECT
         l.id,

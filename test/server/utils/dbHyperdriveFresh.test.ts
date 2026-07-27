@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   closeEventDatabaseClients,
+  getOrCreateEventDatabaseClient,
   resolveHyperdriveConnectionString
 } from '../../../server/utils/db'
 
@@ -40,5 +41,25 @@ describe('Hyperdrive freshness routing', () => {
     expect(fresh.end).toHaveBeenCalledOnce()
     expect(event.context._pgClient).toBeNull()
     expect(event.context._pgClientFresh).toBeNull()
+  })
+
+  it('single-flights concurrent fresh connections and closes the shared client', async () => {
+    let finishConnection: ((client: { end: ReturnType<typeof vi.fn> }) => void) | undefined
+    const client = { end: vi.fn().mockResolvedValue(undefined) }
+    const createClient = vi.fn(() => new Promise<typeof client>((resolve) => {
+      finishConnection = resolve
+    }))
+    const event = { context: {} as Record<string, any> }
+
+    const first = getOrCreateEventDatabaseClient(event.context, 'fresh', createClient)
+    const second = getOrCreateEventDatabaseClient(event.context, 'fresh', createClient)
+
+    expect(createClient).toHaveBeenCalledOnce()
+    finishConnection?.(client)
+    expect(await first).toBe(client)
+    expect(await second).toBe(client)
+
+    await closeEventDatabaseClients(event)
+    expect(client.end).toHaveBeenCalledOnce()
   })
 })

@@ -120,7 +120,7 @@ export default defineEventHandler(async (event) => {
     `, [projectId, clientUser.clientId])
 
     // Pending approvals
-    const approvals = await queryRows(`
+    const approvals = clientUser.permissions.canApproveWork ? await queryRows(`
       SELECT
         ca.id, ca.approval_type, ca.title, ca.status, ca.due_date, ca.requested_at,
         tm.name as requested_by_name
@@ -131,7 +131,7 @@ export default defineEventHandler(async (event) => {
         CASE ca.status WHEN 'pending' THEN 0 ELSE 1 END,
         ca.due_date ASC NULLS LAST
       LIMIT 20
-    `, [projectId])
+    `, [projectId]) : []
 
     // Project settings (visibility controls)
     const settings = await queryOne(`

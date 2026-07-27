@@ -35,7 +35,11 @@ const { default: commentsHandler } = await import(
 describe('portal comments tenant boundary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRequireClientAuth.mockResolvedValue({ id: 'client-user-1', clientId: 'client-1' })
+    mockRequireClientAuth.mockResolvedValue({
+      id: 'client-user-1',
+      clientId: 'client-1',
+      permissions: { canViewProjects: true, canApproveWork: true }
+    })
     mockQueryRows.mockResolvedValue([])
   })
 
@@ -76,5 +80,27 @@ describe('portal comments tenant boundary', () => {
     expect(sql).toContain('p.client_id = $2')
     expect(sql).toContain('show_comments')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['approval-1', 'client-1', 50])
+  })
+
+  it('blocks project comments without project access', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      id: 'client-user-1',
+      clientId: 'client-1',
+      permissions: { canViewProjects: false, canApproveWork: true }
+    })
+    await expect(commentsHandler({ query: { projectId: 'project-1' } }))
+      .rejects.toMatchObject({ statusCode: 403 })
+    expect(mockQueryRows).not.toHaveBeenCalled()
+  })
+
+  it('blocks approval comments without approval access', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      id: 'client-user-1',
+      clientId: 'client-1',
+      permissions: { canViewProjects: true, canApproveWork: false }
+    })
+    await expect(commentsHandler({ query: { approvalId: 'approval-1' } }))
+      .rejects.toMatchObject({ statusCode: 403 })
+    expect(mockQueryRows).not.toHaveBeenCalled()
   })
 })

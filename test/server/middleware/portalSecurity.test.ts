@@ -38,6 +38,18 @@ describe('portal response security middleware', () => {
     expect(testGlobal.setHeader).toHaveBeenCalledWith(event, 'Expires', '0')
   })
 
+  it('also protects client-portal APIs used by analytics and CRM pages', () => {
+    const event = { path: '/api/client-portal/analytics/personas' }
+    portalSecurityMiddleware(event as never)
+
+    expect(testGlobal.setHeader).toHaveBeenCalledWith(
+      event,
+      'Cache-Control',
+      'private, no-store, max-age=0'
+    )
+    expect(testGlobal.setHeader).toHaveBeenCalledWith(event, 'X-Frame-Options', 'DENY')
+  })
+
   it('adds browser hardening headers to portal documents and API responses', () => {
     const event = { path: '/portal/projects' }
     portalSecurityMiddleware(event as never)
