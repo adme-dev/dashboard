@@ -3,10 +3,12 @@ import {
   ActivateMeasurementProfileSchema,
   ApproveMeasurementActivationSchema,
   CanonicalConversionEventSchema,
+  CanonicalEventNameSchema,
   ClientMeasurementProfileCreateSchema,
   ConversionDestinationCreateSchema,
   ConversionDestinationReadModelSchema,
   CreateConversionDestinationConfigurationSchema,
+  MeasurementPlatformSchema,
   RecordDestinationValidationEvidenceSchema,
   UpdateConversionDestinationConfigurationSchema
 } from '../../../../server/utils/measurement/contracts'
@@ -173,6 +175,86 @@ describe('ConversionDestinationCreateSchema', () => {
     })
 
     expect(result.success).toBe(false)
+  })
+})
+
+describe('GA4 micro-conversion schema additions', () => {
+  it('accepts the three new canonical micro-conversion event names', () => {
+    expect(CanonicalEventNameSchema.safeParse('phone_click').success).toBe(true)
+    expect(CanonicalEventNameSchema.safeParse('add_to_wishlist').success).toBe(true)
+    expect(CanonicalEventNameSchema.safeParse('form_submit').success).toBe(true)
+  })
+
+  it('accepts ga4 as a measurement platform', () => {
+    expect(MeasurementPlatformSchema.safeParse('ga4').success).toBe(true)
+  })
+
+  it('accepts a ga4 destination with a ga4_measurement_protocol capability', () => {
+    const result = ConversionDestinationCreateSchema.safeParse({
+      profileId: PROFILE_ID,
+      platform: 'ga4',
+      externalDestinationId: 'G-ABCDEFG123',
+      capabilities: [
+        { mode: 'ga4_measurement_protocol', managementOrigin: 'zero', canZeroMutate: true }
+      ]
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('still rejects a capability mode that does not belong to the ga4 platform', () => {
+    const result = ConversionDestinationCreateSchema.safeParse({
+      profileId: PROFILE_ID,
+      platform: 'ga4',
+      externalDestinationId: 'G-ABCDEFG123',
+      capabilities: [
+        { mode: 'meta_crm_capi', managementOrigin: 'zero', canZeroMutate: true }
+      ]
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('still rejects a google_data_manager destination with a meta capability, and a meta destination with a google capability', () => {
+    const googleWithMeta = ConversionDestinationCreateSchema.safeParse({
+      profileId: PROFILE_ID,
+      platform: 'google_data_manager',
+      externalDestinationId: 'customers/4221552633',
+      capabilities: [{ mode: 'meta_crm_capi', managementOrigin: 'zero', canZeroMutate: true }]
+    })
+    const metaWithGoogle = ConversionDestinationCreateSchema.safeParse({
+      profileId: PROFILE_ID,
+      platform: 'meta',
+      externalDestinationId: '573284833843027',
+      capabilities: [{ mode: 'google_data_manager', managementOrigin: 'zero', canZeroMutate: true }]
+    })
+
+    expect(googleWithMeta.success).toBe(false)
+    expect(metaWithGoogle.success).toBe(false)
+  })
+
+  it('normalizes a missing GA4 client ID to null and accepts a present one', () => {
+    const { attribution: _attribution, ...eventWithoutAttribution } = {
+      eventId: '33333333-3333-4333-8333-333333333333',
+      clientId: CLIENT_ID,
+      eventName: 'phone_click' as const,
+      sourceSystem: 'browser' as const,
+      sourceEntityType: 'tracking_event' as const,
+      sourceEntityId: '44444444-4444-4444-8444-444444444444',
+      sourceEventId: 'tracking:55555555-5555-4555-8555-555555555555:44444444-4444-4444-8444-444444444444',
+      occurredAt: '2026-07-27T03:30:00.000Z',
+      idempotencyKey: 'client:tracking:phone_click',
+      configVersion: 1,
+      consentMode: 'consent_gated' as const
+    }
+    const withoutGaClientId = CanonicalConversionEventSchema.parse(eventWithoutAttribution)
+    expect(withoutGaClientId.attribution.gaClientId).toBeNull()
+
+    const withGaClientId = CanonicalConversionEventSchema.parse({
+      ...eventWithoutAttribution,
+      attribution: { gaClientId: '1234567890.1234567890' }
+    })
+    expect(withGaClientId.attribution.gaClientId).toBe('1234567890.1234567890')
   })
 })
 
@@ -603,7 +685,8 @@ describe('CanonicalConversionEventSchema', () => {
       metaLeadId: null,
       gclid: null,
       gbraid: null,
-      wbraid: null
+      wbraid: null,
+      gaClientId: null
     })
   })
 })
