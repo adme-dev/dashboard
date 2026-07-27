@@ -116,6 +116,10 @@ Exports:
 - `server/utils/measurement/providerTestService.ts` — add the GA4 schema to the discriminated union; call the
   health service after `repository.complete()`
 - `workers/measurement-delivery/src/providers.ts` — add `validateGa4MeasurementProtocolEvent`
+- `server/utils/measurement/providerTestRepository.ts` — `expectedPlatform()` (line 77) returns only
+  `'meta' | 'google_data_manager'`, and line 173 rejects any mismatch as `not_found`, so a GA4 test would be
+  refused before running; the `ProviderContextRow.platform` type (line 33) is binary for the same reason. Both need
+  `ga4`. The `social_connections` SQL `CASE` at line 142 already handles `ga4` and needs no change
 - `server/utils/measurement/runtime.ts` — add `createMeasurementAttestationRuntime`; inject health deps into the
   provider-test runtime
 - `server/utils/measurement/contracts.ts` — widen `actor.type`; derive the platform union from the shared module
@@ -192,14 +196,28 @@ GA4 returns a real verdict, which makes the GA4 test strictly more informative t
 
 ## Error handling and safety guards
 
-The core guard, per the decision that a test must never knock a live client offline:
+**A provider test structurally cannot reach a live destination.** `providerTestRepository.reserve()` returns
+`not_test_mode` unless the profile *and* the destination are both `enabled = false` and `environment = 'test'`
+(lines 166-172). Validation is therefore an onboarding-time activity by construction: configure → test → validate →
+activate → live. The intended guard against a test knocking a live client offline is **unreachable on the test
+path**, so it is not implemented there — writing an unreachable branch and a test that fakes an impossible state
+would assert a protection that nothing exercises.
 
-- When a destination is currently `enabled AND environment = 'live'`, a computed evidence status of `blocked` is
+The guard is implemented on the **attestation** path, which calls `recordValidation` directly and has no such
+precondition:
+
+- When a destination is currently `enabled AND environment = 'live'`, an attested status of `blocked` is
   **downgraded to `degraded`**. `degraded` still satisfies the outbox gate, so delivery continues while the problem
   is visible in health.
-- Driving a live destination to a true `blocked` requires the explicit attestation route with a reason. It is never
-  a side effect of running a test.
-- Non-live destinations record the true computed status, so onboarding surfaces genuine failures immediately.
+- Driving a live destination to a true `blocked` requires an explicit `force: true` on the attestation request
+  alongside the reason, so taking a live client's delivery down is always deliberate.
+- Non-live destinations record the true attested status.
+
+**Operational consequence worth recording:** because tests require a dormant profile, a live destination cannot be
+re-validated by a test without first being taken out of live mode. Combined with the absence of any expiry on
+attested evidence, a live destination's `health_status` is effectively frozen at whatever it was at activation.
+This is pre-existing behaviour that this design does not change, but it is the strongest argument for the
+re-validation mechanism listed under Out of Scope.
 
 Other cases:
 
@@ -217,7 +235,8 @@ Unit:
 - `TEST_COVERAGE` resolution per platform, including that a Meta test in **either** delivery mode resolves to all
   three CAPI capabilities, and that `meta_pixel` is never among them
 - the directly-exercised vs inferred split recorded in the Meta evidence audit payload
-- the live-destination `blocked` → `degraded` downgrade, and that non-live destinations are unaffected
+- the attestation path's live-destination `blocked` → `degraded` downgrade, that `force: true` overrides it, and
+  that non-live destinations are unaffected
 - GA4 `validationMessages` handling — empty array accepted, non-empty rejected with the message surfaced
 - evidence construction from a test result
 - attestation authorisation and the reason requirement
