@@ -193,7 +193,7 @@ export function createPostgresMeasurementHealthRepository(
              actor_type, actor_id, reason
            ) VALUES (
              $1, $2, 'destination', $3, 'validated', $4,
-             $5::jsonb, $6::jsonb, $7, 'system', $8, $9
+             $5::jsonb, $6::jsonb, $7, $8, $9, $10
            )`,
           [
             input.clientId,
@@ -210,6 +210,7 @@ export function createPostgresMeasurementHealthRepository(
               capabilities: evidence.capabilities
             }),
             ['health_status', 'capabilities', 'last_validated_at'],
+            input.actor.type,
             input.actor.id,
             input.reason
           ]
