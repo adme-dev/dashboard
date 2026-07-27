@@ -38,7 +38,8 @@ describe('browser canonical conversion bridge', () => {
         gbraid: null,
         wbraid: null,
         gaClientId: '1234567890.1234567890'
-      }
+      },
+      value: null
     })
     expect(JSON.stringify(result)).not.toContain('must-not-copy@example.com')
     expect(JSON.stringify(result)).not.toContain('FORD-123')

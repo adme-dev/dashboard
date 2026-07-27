@@ -14,19 +14,18 @@ type BrowserConversionRow = Pick<
   | 'ga_client_id'
 >
 
-const PROMOTABLE_EVENT_NAMES = new Set<'generate_lead' | 'phone_click' | 'add_to_wishlist' | 'form_submit'>([
-  'generate_lead',
-  'phone_click',
-  'add_to_wishlist',
-  'form_submit'
-])
+type PromotableEventName = 'generate_lead' | 'phone_click' | 'add_to_wishlist' | 'form_submit'
+
+function isPromotableEventName(name: string): name is PromotableEventName {
+  return name === 'generate_lead' || name === 'phone_click' || name === 'add_to_wishlist' || name === 'form_submit'
+}
 
 export function buildBrowserCanonicalConversion(input: {
   row: BrowserConversionRow
   marketingConsent: 'granted' | 'denied'
   receivedAt: string
 }): AppendCanonicalConversionEvent | null {
-  if (!PROMOTABLE_EVENT_NAMES.has(input.row.event_name) || input.marketingConsent !== 'granted') {
+  if (!isPromotableEventName(input.row.event_name) || input.marketingConsent !== 'granted') {
     return null
   }
 
@@ -46,6 +45,7 @@ export function buildBrowserCanonicalConversion(input: {
       gbraid: input.row.gbraid,
       wbraid: input.row.wbraid,
       gaClientId: input.row.ga_client_id
-    }
+    },
+    value: null
   }
 }
