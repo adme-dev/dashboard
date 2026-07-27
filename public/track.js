@@ -578,6 +578,19 @@
     }
   }
 
+  // Extract GA4's real client_id from the _ga cookie (format GA1.1.<part1>.<part2>
+  // or GA1.2.<part1>.<part2>) so server-side Measurement Protocol hits correlate
+  // with the visitor's actual GA4 session instead of creating a disconnected
+  // synthetic user. Null when GA4/gtag.js hasn't set the cookie yet, or isn't
+  // installed on this site.
+  function getGaClientId() {
+    var raw = getCookie('_ga')
+    if (!raw) return null
+    var parts = raw.split('.')
+    if (parts.length < 4) return null
+    return parts[2] + '.' + parts[3]
+  }
+
   // Send event to server
   function track(eventName, eventData, options) {
     var clientId = getClientId()
@@ -585,6 +598,7 @@
     var touches = getAttributionTouches()
     var utmParams = touches.last || getUtmParams()
     var fbCookies = getFbCookies()
+    var gaClientId = getGaClientId()
 
     var payload = {
       client_id: clientId,
@@ -602,6 +616,7 @@
       fbclid: utmParams.fbclid,
       fbc: fbCookies.fbc,
       fbp: fbCookies.fbp,
+      ga_client_id: gaClientId,
       ttclid: utmParams.ttclid,
       msclkid: utmParams.msclkid,
       gbraid: utmParams.gbraid,
@@ -649,6 +664,7 @@
           fbclid: payload.fbclid,
           fbc: payload.fbc,
           fbp: payload.fbp,
+          ga_client_id: payload.ga_client_id,
           ttclid: payload.ttclid,
           msclkid: payload.msclkid,
           li_fat_id: payload.li_fat_id,

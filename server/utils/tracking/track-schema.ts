@@ -52,6 +52,7 @@ const AttributionSchema = z.object({
   ttclid: z.string().max(512).nullable().optional(),
   msclkid: z.string().max(512).nullable().optional(),
   li_fat_id: z.string().max(512).nullable().optional(),
+  ga_client_id: z.string().max(512).nullable().optional(),
   email_click_id: z.string().max(128).nullable().optional()
 })
 
