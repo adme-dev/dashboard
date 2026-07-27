@@ -8,7 +8,7 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args)
 }))
 
-import { countTierMembers, loadEligibleMembers } from '../../../../server/utils/persona/audienceSync'
+import { countExclusionMembers, countTierMembers, loadEligibleMembers } from '../../../../server/utils/persona/audienceSync'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 
@@ -41,11 +41,12 @@ beforeEach(() => {
 })
 
 describe('loadEligibleMembers', () => {
-  it('builds the candidate query without a tier join when no tier filter is supplied', async () => {
+  it('builds the candidate query without any membership join when no tier or exclusion filter is supplied', async () => {
     await loadEligibleMembers(context())
 
     const [sql, params] = mockQueryRows.mock.calls[0]!
     expect(sql).not.toContain('crm_persona_tier_memberships')
+    expect(sql).not.toContain('crm_persona_exclusion_memberships')
     expect(params).toEqual([CLIENT_ID, 'meta'])
   })
 
@@ -72,6 +73,23 @@ describe('loadEligibleMembers', () => {
     expect(sql).toContain('crm_persona_tier_memberships')
     expect(params).toEqual([CLIENT_ID, 'google', 'warm', 'meta'])
   })
+
+  it('joins the exclusion-membership table when the exclusion filter is supplied, with no extra parameter', async () => {
+    await loadEligibleMembers(context({ filters: { excludeAudience: 'true' } }))
+
+    const [sql, params] = mockQueryRows.mock.calls[0]!
+    expect(sql).toContain('JOIN crm_persona_exclusion_memberships excl')
+    expect(sql).not.toContain('crm_persona_tier_memberships')
+    expect(params).toEqual([CLIENT_ID, 'meta'])
+  })
+
+  it('still applies attribution filters alongside the exclusion filter', async () => {
+    await loadEligibleMembers(context({ filters: { excludeAudience: 'true', platform: 'google' } }))
+
+    const [sql, params] = mockQueryRows.mock.calls[0]!
+    expect(sql).toContain('crm_persona_exclusion_memberships')
+    expect(params).toEqual([CLIENT_ID, 'google', 'meta'])
+  })
 })
 
 describe('countTierMembers', () => {
@@ -91,6 +109,28 @@ describe('countTierMembers', () => {
     mockQueryOne.mockResolvedValue(undefined)
 
     const result = await countTierMembers(CLIENT_ID, 'cold', {})
+
+    expect(result).toBe(0)
+  })
+})
+
+describe('countExclusionMembers', () => {
+  it('counts distinct profiles in the exclusion membership set and any attribution filters', async () => {
+    mockQueryOne.mockResolvedValue({ count: '7' })
+
+    const result = await countExclusionMembers(CLIENT_ID, { platform: 'meta' })
+
+    expect(result).toBe(7)
+    const [sql, params] = mockQueryOne.mock.calls[0]!
+    expect(sql).toContain('crm_persona_exclusion_memberships')
+    expect(sql).toContain('COUNT(DISTINCT signal.profile_id)')
+    expect(params).toEqual([CLIENT_ID, 'meta'])
+  })
+
+  it('returns 0 when no row is found', async () => {
+    mockQueryOne.mockResolvedValue(undefined)
+
+    const result = await countExclusionMembers(CLIENT_ID, {})
 
     expect(result).toBe(0)
   })

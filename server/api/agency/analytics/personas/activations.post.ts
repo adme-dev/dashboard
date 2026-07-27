@@ -19,10 +19,14 @@ const Body = z.strictObject({
     creativeId: z.string().max(512).optional(),
     landingPage: z.string().max(2048).optional(),
     device: z.string().max(40).optional(),
-    tierKey: z.enum(['hot', 'warm', 'cold']).optional()
+    tierKey: z.enum(['hot', 'warm', 'cold']).optional(),
+    excludeAudience: z.literal('true').optional()
   }),
   expiresAt: z.string().datetime({ offset: true })
-})
+}).refine(
+  data => !(data.filters.tierKey && data.filters.excludeAudience),
+  { message: 'A request cannot combine tierKey and excludeAudience filters', path: ['filters'] }
+)
 
 export default defineEventHandler(async event => {
   const user = await requirePersonaAdminAccess(event)

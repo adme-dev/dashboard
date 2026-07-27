@@ -1,15 +1,38 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mockQueryOne = vi.fn()
+const mockQueryRows = vi.fn()
+vi.mock('~~/server/utils/db', () => ({
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryRows: (...args: unknown[]) => mockQueryRows(...args)
+}))
+
+const mockIsPersonaIdentityEnabled = vi.fn()
+vi.mock('~~/server/utils/persona/feature', () => ({
+  isPersonaIdentityEnabled: (...args: unknown[]) => mockIsPersonaIdentityEnabled(...args)
+}))
+
 import {
+  getAudienceCohortPreview,
   normalizeCohortFilters,
   resolveHighestTier,
+  resolveIsExcluded,
   scorePersonaDefinition
 } from '../../../../server/utils/persona/cohorts'
+
+const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 
 const definition = {
   positive_signals: ['vehicle_view', 'return_to_vehicle', 'form_start'],
   negative_signals: ['form_abandonment'],
   min_confidence: 0.5
 }
+
+beforeEach(() => {
+  mockQueryOne.mockReset()
+  mockQueryRows.mockReset()
+  mockIsPersonaIdentityEnabled.mockReset()
+})
 
 describe('persona cohort scoring', () => {
   it('qualifies a subject when enough positive evidence exists', () => {
@@ -89,5 +112,59 @@ describe('resolveHighestTier', () => {
     const result = resolveHighestTier([cold, warm, hot], ['search'])
 
     expect(result).toBeNull()
+  })
+})
+
+describe('resolveIsExcluded', () => {
+  const exclusionDefinition = {
+    positive_signals: ['competitive_referrer', 'exit_intent'],
+    negative_signals: [],
+    min_confidence: 0.01
+  }
+
+  it('excludes a profile that matched a trigger signal', () => {
+    const result = resolveIsExcluded([exclusionDefinition], ['competitive_referrer', 'vehicle_view'])
+
+    expect(result).toEqual({ excluded: true, matchedSignals: ['competitive_referrer'] })
+  })
+
+  it('unions matched signals across multiple qualifying exclusion definitions', () => {
+    const secondDefinition = {
+      positive_signals: ['exit_intent'],
+      negative_signals: [],
+      min_confidence: 0.01
+    }
+
+    const result = resolveIsExcluded(
+      [exclusionDefinition, secondDefinition],
+      ['competitive_referrer', 'exit_intent']
+    )
+
+    expect(result.excluded).toBe(true)
+    expect(result.matchedSignals.sort()).toEqual(['competitive_referrer', 'exit_intent'])
+  })
+
+  it('does not exclude a profile with no matching trigger signal', () => {
+    const result = resolveIsExcluded([exclusionDefinition], ['vehicle_view', 'search'])
+
+    expect(result).toEqual({ excluded: false, matchedSignals: [] })
+  })
+})
+
+describe('getAudienceCohortPreview definitions query', () => {
+  it('excludes is_exclusion definitions from the client-facing preview, same as tier definitions', async () => {
+    mockIsPersonaIdentityEnabled.mockResolvedValue(true)
+    mockQueryOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'snapshot-1' })
+    mockQueryRows.mockImplementation(async (sql: string) => {
+      if (/FROM crm_persona_definitions/.test(sql)) return []
+      if (/FROM crm_customer_signals/.test(sql)) return []
+      return []
+    })
+
+    await getAudienceCohortPreview(CLIENT_ID, {})
+
+    const definitionsCall = mockQueryRows.mock.calls.find(call => /FROM crm_persona_definitions/.test(call[0] as string))
+    expect(definitionsCall?.[0]).toContain('tier_rank IS NULL')
+    expect(definitionsCall?.[0]).toContain('is_exclusion = FALSE')
   })
 })

@@ -387,18 +387,22 @@ export async function loadEligibleMembers(context: ExportContext): Promise<Hashe
   const filters = context.filters || {}
   const params: unknown[] = [context.client_id]
   const candidatesFilterSql = signalFilterSql(filters, params)
-  let tierJoinSql = ''
+  let candidateJoinSql = ''
   if (filters.tierKey) {
     params.push(filters.tierKey)
-    tierJoinSql = `JOIN crm_persona_tier_memberships tier
-                      ON tier.client_id = signal.client_id
-                     AND tier.profile_id = signal.profile_id
-                     AND tier.tier_key = $${params.length}`
+    candidateJoinSql = `JOIN crm_persona_tier_memberships tier
+                           ON tier.client_id = signal.client_id
+                          AND tier.profile_id = signal.profile_id
+                          AND tier.tier_key = $${params.length}`
+  } else if (filters.excludeAudience === 'true') {
+    candidateJoinSql = `JOIN crm_persona_exclusion_memberships excl
+                           ON excl.client_id = signal.client_id
+                          AND excl.profile_id = signal.profile_id`
   }
   params.push(context.provider)
   const destinationParamIndex = params.length
-  const candidatesFromSql = tierJoinSql
-    ? `FROM crm_customer_signals signal\n         ${tierJoinSql}`
+  const candidatesFromSql = candidateJoinSql
+    ? `FROM crm_customer_signals signal\n         ${candidateJoinSql}`
     : 'FROM crm_customer_signals signal'
   const rows = await queryRows<SourceMember>(
     `WITH candidates AS (
@@ -496,6 +500,27 @@ export async function countTierMembers(
          ON tier.client_id = signal.client_id
         AND tier.profile_id = signal.profile_id
         AND tier.tier_key = $${params.length}
+      WHERE ${filterSql}`,
+    params
+  )
+  return Number(row?.count ?? 0)
+}
+
+// Upper-bound estimate only: applies just the attribution/consent-marketing gates from
+// signalFilterSql, not the additional latest-consent/do-not-contact/contactability/suppression
+// gates loadEligibleMembers applies at export time — the real deliverable audience is smaller.
+export async function countExclusionMembers(
+  clientId: string,
+  filters: Record<string, string>
+): Promise<number> {
+  const params: unknown[] = [clientId]
+  const filterSql = signalFilterSql(filters, params)
+  const row = await queryOne<{ count: string }>(
+    `SELECT COUNT(DISTINCT signal.profile_id) AS count
+       FROM crm_customer_signals signal
+       JOIN crm_persona_exclusion_memberships excl
+         ON excl.client_id = signal.client_id
+        AND excl.profile_id = signal.profile_id
       WHERE ${filterSql}`,
     params
   )

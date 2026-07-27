@@ -13,6 +13,7 @@ export interface PersonaMetricsFilters {
   landingPage?: string
   device?: string
   tierKey?: 'hot' | 'warm' | 'cold'
+  excludeAudience?: 'true'
 }
 
 interface PersonaAggregateRow {

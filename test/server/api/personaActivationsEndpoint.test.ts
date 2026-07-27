@@ -96,4 +96,55 @@ describe('POST /agency/analytics/personas/activations', () => {
       filters: { platform: 'google' }
     }))
   })
+
+  it('accepts an excludeAudience filter', async () => {
+    mockBody = {
+      clientId: CLIENT_ID,
+      provider: 'meta',
+      name: 'Negative signal exclusion',
+      filters: { excludeAudience: 'true' },
+      expiresAt: '2026-08-01T00:00:00.000Z'
+    }
+    const handler = (await import(
+      '~~/server/api/agency/analytics/personas/activations.post'
+    )).default
+
+    await handler({ context: {} } as never)
+
+    expect(mockCreatePersonaActivationRequest).toHaveBeenCalledWith(expect.objectContaining({
+      filters: { excludeAudience: 'true' }
+    }))
+  })
+
+  it('rejects a request combining tierKey and excludeAudience', async () => {
+    mockBody = {
+      clientId: CLIENT_ID,
+      provider: 'meta',
+      name: 'Contradictory filters',
+      filters: { tierKey: 'hot', excludeAudience: 'true' },
+      expiresAt: '2026-08-01T00:00:00.000Z'
+    }
+    const handler = (await import(
+      '~~/server/api/agency/analytics/personas/activations.post'
+    )).default
+
+    await expect(handler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mockCreatePersonaActivationRequest).not.toHaveBeenCalled()
+  })
+
+  it('still rejects an invalid excludeAudience value', async () => {
+    mockBody = {
+      clientId: CLIENT_ID,
+      provider: 'meta',
+      name: 'Bogus exclusion audience',
+      filters: { excludeAudience: 'yes' },
+      expiresAt: '2026-08-01T00:00:00.000Z'
+    }
+    const handler = (await import(
+      '~~/server/api/agency/analytics/personas/activations.post'
+    )).default
+
+    await expect(handler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mockCreatePersonaActivationRequest).not.toHaveBeenCalled()
+  })
 })

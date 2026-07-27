@@ -14,7 +14,7 @@ crons = [
   "20 3 * * *",   # xero-invoice-lines-sync (AGI cache refresh)
   "35 3 * * *",   # office-retention
   "45 3 * * *",   # tracking-retention
-  "55 3 * * *",   # persona-tier-recompute (hot/warm/cold audience tiers)
+  "55 3 * * *",   # persona-tier-recompute (hot/warm/cold audience tiers + negative-signal exclusion audience)
   "10 4 * * *",   # feed-post-rules (flag-gated, review-only drafts)
   "0 6 * * *"      # sync-spend (Meta/Google/etc. ad-spend, non-blocking)
 ]
