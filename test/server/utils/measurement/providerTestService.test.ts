@@ -327,7 +327,8 @@ describe('measurement provider test service', () => {
           fbc: 'fb.1.1234567890123.approved-click',
           fbp: null,
           eventSourceUrl: 'https://www.biggaragesubaru.com.au/enquire',
-          clientUserAgent: 'Approved Pilot Browser'
+          clientUserAgent: 'Approved Pilot Browser',
+          gaClientId: null
         }
       })
     }))

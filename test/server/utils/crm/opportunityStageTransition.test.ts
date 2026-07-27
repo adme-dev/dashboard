@@ -106,7 +106,8 @@ describe('opportunity stage transition service', () => {
         metaLeadId: '1234567890123456',
         gclid: 'gclid-1',
         gbraid: null,
-        wbraid: null
+        wbraid: null,
+        gaClientId: null
       }
     }))
     expect(statements.map(statement => statement.sql)).toEqual([

@@ -71,7 +71,8 @@ describe('first-party lead intake', () => {
         metaLeadId: null,
         gclid: 'gclid-1',
         gbraid: null,
-        wbraid: null
+        wbraid: null,
+        gaClientId: null
       }
     })
     expect(JSON.stringify(appendOutbox.mock.calls)).not.toContain('pilot@example.com')
