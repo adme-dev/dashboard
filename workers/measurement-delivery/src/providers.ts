@@ -351,6 +351,75 @@ export async function deliverGa4MeasurementProtocolEvent(
   }
 }
 
+export interface Ga4ValidationInput {
+  delivery: MeasurementProviderDelivery
+  apiSecret: string
+  gaClientId: string
+  fetch: FetchLike
+}
+
+interface Ga4ValidationMessage {
+  description?: string
+  validationCode?: string
+}
+
+/**
+ * GA4's production /mp/collect returns 204 for essentially every request,
+ * including malformed ones, so it yields no validation signal. /debug/mp/collect
+ * returns a validationMessages array and is the only place GA4 gives a real
+ * verdict — which makes this strictly more informative than GA4 delivery.
+ */
+export async function validateGa4MeasurementProtocolEvent(
+  input: Ga4ValidationInput
+): Promise<ProviderDeliveryResult> {
+  const { delivery } = input
+  const response = await input.fetch(
+    `https://www.google-analytics.com/debug/mp/collect?measurement_id=${encodeURIComponent(delivery.externalDestinationId)}&api_secret=${encodeURIComponent(input.apiSecret)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_id: input.gaClientId,
+        events: [{
+          name: delivery.providerEventName,
+          params: {}
+        }]
+      })
+    }
+  )
+  if (!response.ok) return httpFailure('GA4 Measurement Protocol debug', response.status)
+
+  let messages: Ga4ValidationMessage[]
+  try {
+    const body = await response.json() as { validationMessages?: Ga4ValidationMessage[] }
+    messages = Array.isArray(body?.validationMessages) ? body.validationMessages : []
+  } catch {
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'ga4_validation_unreadable',
+      redactedDiagnostic: 'GA4 debug endpoint returned an unreadable response'
+    }
+  }
+
+  if (messages.length > 0) {
+    const first = messages[0]
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'ga4_validation_failed',
+      redactedDiagnostic: (first?.description ?? 'GA4 rejected the event payload').slice(0, 1000)
+    }
+  }
+
+  return {
+    outcome: 'accepted',
+    providerRequestId: null,
+    errorClass: null,
+    redactedDiagnostic: null
+  }
+}
+
 export async function refreshGoogleDataManagerAccessToken(
   input: RefreshGoogleAccessTokenInput
 ): Promise<string> {
