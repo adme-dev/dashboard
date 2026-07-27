@@ -1,8 +1,10 @@
 import type { H3Event } from 'h3'
 import { getKV } from '~~/server/utils/kv'
+import { queryOne } from '~~/server/utils/db'
 import { resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 import { createPostgresMeasurementActivationRepository } from '~~/server/utils/measurement/activationRepository'
 import { createMeasurementActivationService } from '~~/server/utils/measurement/activationService'
+import { createMeasurementAttestationService } from '~~/server/utils/measurement/attestationService'
 import { createPostgresMeasurementDestinationRepository } from '~~/server/utils/measurement/destinationRepository'
 import { createMeasurementDestinationService } from '~~/server/utils/measurement/destinationService'
 import { createPostgresMeasurementHealthRepository } from '~~/server/utils/measurement/healthRepository'
@@ -118,6 +120,24 @@ export function createMeasurementProviderTestRuntime(event: H3Event) {
     graphApiVersion: String(config.metaGraphApiVersion || 'v25.0'),
     googleClientId: googleConfig.googleClientId,
     googleClientSecret: googleConfig.googleClientSecret,
+    now: () => new Date()
+  })
+}
+
+export function createMeasurementAttestationRuntime(_event: H3Event) {
+  return createMeasurementAttestationService({
+    healthService: createMeasurementHealthService({
+      repository: createPostgresMeasurementHealthRepository()
+    }),
+    readDestination: async ({ clientId, destinationId }) => {
+      const row = await queryOne<{ enabled: boolean, environment: string }>(
+        `SELECT enabled, environment
+           FROM conversion_destinations
+          WHERE client_id = $1 AND id = $2`,
+        [clientId, destinationId]
+      )
+      return row ?? null
+    },
     now: () => new Date()
   })
 }
