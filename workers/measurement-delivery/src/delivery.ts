@@ -1,5 +1,6 @@
 import { GoogleOAuthRefreshError } from './providers'
 import type {
+  deliverGa4MeasurementProtocolEvent,
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
   MeasurementProviderDelivery,
@@ -21,7 +22,7 @@ export interface MeasurementDeliveryClaim extends MeasurementProviderDelivery {
   deliveryId: string
   destinationId: string
   attemptNumber: number
-  platform: 'meta' | 'google_data_manager'
+  platform: 'meta' | 'google_data_manager' | 'ga4'
   profileEnabled: boolean
   profileEnvironment: 'test' | 'live' | 'paused'
   profileCacheCurrent: boolean
@@ -55,6 +56,7 @@ interface DeliveryProcessorDeps {
   repository: DeliveryRepository
   deliverMeta: typeof deliverMetaConversionEvent
   deliverGoogle: typeof deliverGoogleDataManagerEvent
+  deliverGa4: typeof deliverGa4MeasurementProtocolEvent
   refreshGoogleAccessToken: typeof refreshGoogleDataManagerAccessToken
   resolveProviderCredential(credentialRef: string): Promise<string | null>
   workerId: () => string
@@ -209,6 +211,35 @@ export function createMeasurementDeliveryProcessor(deps: DeliveryProcessorDeps) 
                     redactedDiagnostic: 'Google OAuth grant is no longer valid'
                   }
                 : networkFailure()
+            }
+          }
+        }
+
+        if (!deliveryResult && claim.platform === 'ga4') {
+          if (!claim.credentialRef) {
+            deliveryResult = {
+              outcome: 'permanent_failure',
+              providerRequestId: null,
+              errorClass: 'ga4_api_secret_ref_required',
+              redactedDiagnostic: 'GA4 Measurement Protocol requires a purpose-scoped secret binding'
+            }
+          } else {
+            try {
+              const apiSecret = await deps.resolveProviderCredential(claim.credentialRef)
+              deliveryResult = apiSecret
+                ? await deps.deliverGa4({
+                    delivery: claim,
+                    apiSecret,
+                    fetch: deps.fetch
+                  })
+                : {
+                    outcome: 'permanent_failure',
+                    providerRequestId: null,
+                    errorClass: 'ga4_api_secret_unavailable',
+                    redactedDiagnostic: 'GA4 Measurement Protocol secret binding is unavailable'
+                  }
+            } catch {
+              deliveryResult = networkFailure()
             }
           }
         }

@@ -92,7 +92,8 @@ function canonicalAttribution(lead: InsertLeadInput) {
       : null,
     gclid: optionalAttribution(lead.attribution, 'gclid', 512),
     gbraid: optionalAttribution(lead.attribution, 'gbraid', 512),
-    wbraid: optionalAttribution(lead.attribution, 'wbraid', 512)
+    wbraid: optionalAttribution(lead.attribution, 'wbraid', 512),
+    gaClientId: null
   }
 }
 

@@ -78,7 +78,8 @@ describe('lead status transition service', () => {
         metaLeadId: null,
         gclid: 'gclid-1',
         gbraid: null,
-        wbraid: null
+        wbraid: null,
+        gaClientId: null
       }
     }))
     expect(statements.map(statement => statement.sql)).toEqual([

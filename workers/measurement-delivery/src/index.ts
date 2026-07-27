@@ -5,6 +5,7 @@ import { retrieveGoogleDataManagerRequestStatus } from './diagnostics'
 import { createMeasurementDiagnosticReconciler } from './diagnosticReconciler'
 import { createMeasurementDiagnosticRepository } from './diagnosticRepository'
 import {
+  deliverGa4MeasurementProtocolEvent,
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
   refreshGoogleDataManagerAccessToken
@@ -61,6 +62,7 @@ export default {
       repository,
       deliverMeta: deliverMetaConversionEvent,
       deliverGoogle: deliverGoogleDataManagerEvent,
+      deliverGa4: deliverGa4MeasurementProtocolEvent,
       refreshGoogleAccessToken: refreshGoogleDataManagerAccessToken,
       resolveProviderCredential: credentialRef => resolveMeasurementProviderCredential(
         env,

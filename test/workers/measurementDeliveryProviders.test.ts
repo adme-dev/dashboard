@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  deliverGa4MeasurementProtocolEvent,
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
   refreshGoogleDataManagerAccessToken
@@ -26,7 +27,8 @@ const baseDelivery = {
     fbc: null,
     fbp: null,
     eventSourceUrl: null,
-    clientUserAgent: null
+    clientUserAgent: null,
+    gaClientId: null
   }
 }
 
@@ -380,6 +382,84 @@ describe('measurement delivery provider adapters', () => {
       eventSource: 'WEB',
       conversionValue: 15000.5,
       currency: 'AUD'
+    })
+  })
+})
+
+describe('deliverGa4MeasurementProtocolEvent', () => {
+  it('posts to the GA4 Measurement Protocol collect endpoint with the real client_id', async () => {
+    const fetch = vi.fn(async () => new Response(null, { status: 204 }))
+
+    const result = await deliverGa4MeasurementProtocolEvent({
+      delivery: {
+        ...baseDelivery,
+        eventName: 'phone_click',
+        providerEventName: 'phone_click',
+        externalDestinationId: 'G-ABCDEFG123',
+        attribution: { ...baseDelivery.attribution, gaClientId: '1234567890.1234567890' }
+      },
+      apiSecret: 'ga4-api-secret',
+      fetch
+    })
+
+    expect(result).toEqual({
+      outcome: 'accepted',
+      providerRequestId: null,
+      errorClass: null,
+      redactedDiagnostic: null
+    })
+    const [url, request] = fetch.mock.calls[0]!
+    expect(url).toBe('https://www.google-analytics.com/mp/collect?measurement_id=G-ABCDEFG123&api_secret=ga4-api-secret')
+    expect(JSON.parse(request.body as string)).toEqual({
+      client_id: '1234567890.1234567890',
+      events: [{ name: 'phone_click', params: {} }]
+    })
+  })
+
+  it('fails closed without calling fetch when the GA4 client_id is missing', async () => {
+    const fetch = vi.fn()
+
+    const result = await deliverGa4MeasurementProtocolEvent({
+      delivery: {
+        ...baseDelivery,
+        eventName: 'phone_click',
+        providerEventName: 'phone_click',
+        externalDestinationId: 'G-ABCDEFG123',
+        attribution: { ...baseDelivery.attribution, gaClientId: null }
+      },
+      apiSecret: 'ga4-api-secret',
+      fetch
+    })
+
+    expect(result).toEqual({
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'missing_ga4_client_id',
+      redactedDiagnostic: 'GA4 delivery requires a GA4 client ID from the _ga cookie'
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('treats a non-2xx response as a provider HTTP failure', async () => {
+    const fetch = vi.fn(async () => new Response(null, { status: 500 }))
+
+    const result = await deliverGa4MeasurementProtocolEvent({
+      delivery: {
+        ...baseDelivery,
+        eventName: 'phone_click',
+        providerEventName: 'phone_click',
+        externalDestinationId: 'G-ABCDEFG123',
+        attribution: { ...baseDelivery.attribution, gaClientId: '1234567890.1234567890' }
+      },
+      apiSecret: 'ga4-api-secret',
+      fetch
+    })
+
+    expect(result).toEqual({
+      outcome: 'retryable',
+      providerRequestId: null,
+      errorClass: 'provider_http_500',
+      redactedDiagnostic: 'GA4 Measurement Protocol returned HTTP 500'
     })
   })
 })

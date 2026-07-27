@@ -20,6 +20,7 @@ export interface MeasurementProviderDelivery {
     fbp: string | null
     eventSourceUrl: string | null
     clientUserAgent: string | null
+    gaClientId: string | null
   }
 }
 
@@ -297,6 +298,54 @@ export async function deliverGoogleDataManagerEvent(
   return {
     outcome: 'accepted',
     providerRequestId: body.requestId.slice(0, 255),
+    errorClass: null,
+    redactedDiagnostic: null
+  }
+}
+
+export interface Ga4DeliveryInput {
+  delivery: MeasurementProviderDelivery
+  apiSecret: string
+  fetch: FetchLike
+}
+
+export async function deliverGa4MeasurementProtocolEvent(
+  input: Ga4DeliveryInput
+): Promise<ProviderDeliveryResult> {
+  const { delivery } = input
+  if (!delivery.attribution.gaClientId) {
+    return {
+      outcome: 'permanent_failure',
+      providerRequestId: null,
+      errorClass: 'missing_ga4_client_id',
+      redactedDiagnostic: 'GA4 delivery requires a GA4 client ID from the _ga cookie'
+    }
+  }
+
+  const response = await input.fetch(
+    `https://www.google-analytics.com/mp/collect?measurement_id=${encodeURIComponent(delivery.externalDestinationId)}&api_secret=${encodeURIComponent(input.apiSecret)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_id: delivery.attribution.gaClientId,
+        events: [{
+          name: delivery.providerEventName,
+          params: {}
+        }]
+      })
+    }
+  )
+  if (!response.ok) return httpFailure('GA4 Measurement Protocol', response.status)
+
+  // GA4 Measurement Protocol returns 204 No Content on essentially every
+  // request, including malformed ones — there is no reliable way to detect
+  // GA4-side rejection at delivery time. A 2xx here means "accepted the HTTP
+  // request," not "GA4 validated the event." See the design doc's Error
+  // Handling section — this is a documented API limitation, not a gap here.
+  return {
+    outcome: 'accepted',
+    providerRequestId: null,
     errorClass: null,
     redactedDiagnostic: null
   }

@@ -54,6 +54,10 @@ describe('public/track.js transport', () => {
     })
     vi.stubGlobal('fetch', fetchSpy)
     document.cookie = '_xf_consent=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+    // Expire any _ga cookie a prior test may have set — happy-dom's document
+    // persists cookies across tests in this file, and this cookie isn't
+    // otherwise cleared between runs.
+    document.cookie = '_ga=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
     localStorage.clear()
     sessionStorage.clear()
   })
@@ -359,6 +363,35 @@ describe('public/track.js transport', () => {
     expect(payload.consent).toBe(cookie)
     // and the server schema accepts it
     expect(parseTrackPayload(payload).ok).toBe(true)
+  })
+
+  it('parses the real GA4 client_id out of the _ga cookie and includes it in the batch attribution', () => {
+    document.cookie = '_ga=GA1.2.1234567890.1234567890; path=/'
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    ;(window as any).xf.track('page_view', {})
+
+    const parsed = parseTrackPayload(JSON.parse(requests[0]!.body))
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.payload.events[0]!.attribution?.ga_client_id).toBe('1234567890.1234567890')
+    }
+  })
+
+  it('sends a null GA4 client_id when the _ga cookie is absent', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    ;(window as any).xf.track('page_view', {})
+
+    const parsed = parseTrackPayload(JSON.parse(requests[0]!.body))
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.payload.events[0]!.attribution?.ga_client_id ?? null).toBeNull()
+    }
   })
 
   it('sends only submission identity and attribution to the reconciliation endpoint', () => {

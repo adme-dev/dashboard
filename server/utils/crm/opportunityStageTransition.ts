@@ -108,7 +108,8 @@ function canonicalAttribution(lead: LinkedLeadRow | undefined) {
     metaLeadId: lead?.source === 'meta' && /^\d{15,16}$/.test(sourceLeadId) ? sourceLeadId : null,
     gclid: optionalAttribution(lead?.attribution, 'gclid'),
     gbraid: optionalAttribution(lead?.attribution, 'gbraid'),
-    wbraid: optionalAttribution(lead?.attribution, 'wbraid')
+    wbraid: optionalAttribution(lead?.attribution, 'wbraid'),
+    gaClientId: null
   }
 }
 

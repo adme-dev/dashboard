@@ -270,6 +270,7 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
           wbraid: input.mode === 'google_validate_only' && input.clickIdentifier.type === 'wbraid'
             ? input.clickIdentifier.value
             : null,
+          gaClientId: null,
           fbc: isMetaWeb ? input.fbc : null,
           fbp: isMetaWeb ? input.fbp : null,
           eventSourceUrl: isMetaWeb ? input.eventSourceUrl : null,

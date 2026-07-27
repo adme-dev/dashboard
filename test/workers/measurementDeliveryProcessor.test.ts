@@ -44,7 +44,8 @@ function claim(overrides: Record<string, unknown> = {}) {
       fbc: null,
       fbp: null,
       eventSourceUrl: null,
-      clientUserAgent: null
+      clientUserAgent: null,
+      gaClientId: null
     },
     ...overrides
   }
@@ -66,12 +67,19 @@ function setup(claims: Array<ReturnType<typeof claim> | null>) {
     errorClass: null,
     redactedDiagnostic: null
   }))
+  const deliverGa4 = vi.fn(async () => ({
+    outcome: 'accepted' as const,
+    providerRequestId: null,
+    errorClass: null,
+    redactedDiagnostic: null
+  }))
   const refreshGoogleAccessToken = vi.fn(async () => 'fresh-google-token')
   const resolveProviderCredential = vi.fn(async () => 'meta-dataset-token')
   const processor = createMeasurementDeliveryProcessor({
     repository: { claimNext, complete },
     deliverMeta,
     deliverGoogle,
+    deliverGa4,
     refreshGoogleAccessToken,
     resolveProviderCredential,
     workerId: () => 'measurement-worker:test',
@@ -87,6 +95,7 @@ function setup(claims: Array<ReturnType<typeof claim> | null>) {
     complete,
     deliverMeta,
     deliverGoogle,
+    deliverGa4,
     refreshGoogleAccessToken,
     resolveProviderCredential
   }
@@ -226,5 +235,50 @@ describe('measurement delivery processor', () => {
       errorClass: 'google_oauth_reconsent_required',
       redactedDiagnostic: 'Google OAuth grant is no longer valid'
     }, expect.any(Date))
+  })
+
+  it('resolves a GA4 api_secret credential and delivers via Measurement Protocol', async () => {
+    const ga4 = claim({
+      platform: 'ga4',
+      externalDestinationId: 'G-ABCDEFG123',
+      credentialRef: 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE',
+      attribution: { ...claim().attribution, gaClientId: '1234567890.1234567890' }
+    })
+    const state = setup([ga4, null])
+    state.resolveProviderCredential.mockResolvedValueOnce('ga4-api-secret')
+
+    const result = await state.processor.process(MESSAGE)
+
+    expect(result).toEqual({ claimed: 1, accepted: 1, retryable: 0, permanentFailure: 0, policySkipped: 0 })
+    expect(state.resolveProviderCredential).toHaveBeenCalledWith('MEASUREMENT_PROVIDER_GA4_BIG_GARAGE')
+    expect(state.deliverGa4).toHaveBeenCalledWith(expect.objectContaining({ apiSecret: 'ga4-api-secret' }))
+  })
+
+  it('never sends GA4 delivery when the credential reference is absent', async () => {
+    const ga4 = claim({ platform: 'ga4', credentialRef: null })
+    const state = setup([ga4, null])
+
+    const result = await state.processor.process(MESSAGE)
+
+    expect(result).toMatchObject({ claimed: 1, permanentFailure: 1 })
+    expect(state.resolveProviderCredential).not.toHaveBeenCalled()
+    expect(state.deliverGa4).not.toHaveBeenCalled()
+    expect(state.complete).toHaveBeenCalledWith(ga4, expect.objectContaining({
+      errorClass: 'ga4_api_secret_ref_required'
+    }), expect.any(Date))
+  })
+
+  it('fails closed when the referenced GA4 api_secret binding is unavailable', async () => {
+    const ga4 = claim({ platform: 'ga4' })
+    const state = setup([ga4, null])
+    state.resolveProviderCredential.mockResolvedValueOnce(null)
+
+    const result = await state.processor.process(MESSAGE)
+
+    expect(result).toMatchObject({ claimed: 1, permanentFailure: 1 })
+    expect(state.deliverGa4).not.toHaveBeenCalled()
+    expect(state.complete).toHaveBeenCalledWith(ga4, expect.objectContaining({
+      errorClass: 'ga4_api_secret_unavailable'
+    }), expect.any(Date))
   })
 })

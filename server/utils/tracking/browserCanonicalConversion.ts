@@ -11,20 +11,27 @@ type BrowserConversionRow = Pick<
   | 'gclid'
   | 'gbraid'
   | 'wbraid'
+  | 'ga_client_id'
 >
+
+type PromotableEventName = 'generate_lead' | 'phone_click' | 'add_to_wishlist' | 'form_submit'
+
+function isPromotableEventName(name: string): name is PromotableEventName {
+  return name === 'generate_lead' || name === 'phone_click' || name === 'add_to_wishlist' || name === 'form_submit'
+}
 
 export function buildBrowserCanonicalConversion(input: {
   row: BrowserConversionRow
   marketingConsent: 'granted' | 'denied'
   receivedAt: string
 }): AppendCanonicalConversionEvent | null {
-  if (input.row.event_name !== 'generate_lead' || input.marketingConsent !== 'granted') {
+  if (!isPromotableEventName(input.row.event_name) || input.marketingConsent !== 'granted') {
     return null
   }
 
   return {
     clientId: input.row.client_id,
-    eventName: 'web_conversion',
+    eventName: input.row.event_name === 'generate_lead' ? 'web_conversion' : input.row.event_name,
     sourceSystem: 'browser',
     sourceEntityType: 'tracking_event',
     sourceEntityId: input.row.event_id,
@@ -36,7 +43,9 @@ export function buildBrowserCanonicalConversion(input: {
       metaLeadId: null,
       gclid: input.row.gclid,
       gbraid: input.row.gbraid,
-      wbraid: input.row.wbraid
-    }
+      wbraid: input.row.wbraid,
+      gaClientId: input.row.ga_client_id
+    },
+    value: null
   }
 }

@@ -20,7 +20,7 @@ interface DeliveryRow {
   delivery_id: string
   destination_id: string
   attempt_count: number | string
-  platform: 'meta' | 'google_data_manager'
+  platform: 'meta' | 'google_data_manager' | 'ga4'
   profile_enabled: boolean
   profile_environment: 'test' | 'live' | 'paused'
   profile_cache_status: string
@@ -52,6 +52,7 @@ interface DeliveryRow {
   tracking_gclid: string | null
   tracking_gbraid: string | null
   tracking_wbraid: string | null
+  tracking_ga_client_id: string | null
 }
 
 function iso(value: Date | string): string {
@@ -148,7 +149,8 @@ function mapClaim(
       fbc: optionalString(row.tracking_fbc),
       fbp: optionalString(row.tracking_fbp),
       eventSourceUrl: safeEventSourceUrl(row.tracking_page_url),
-      clientUserAgent: optionalString(row.tracking_ua, 1024)
+      clientUserAgent: optionalString(row.tracking_ua, 1024),
+      gaClientId: optionalString(attribution.gaClientId, 128) ?? optionalString(row.tracking_ga_client_id, 128)
     }
   }
 }
@@ -201,6 +203,7 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
                   browser.gclid AS tracking_gclid,
                   browser.gbraid AS tracking_gbraid,
                   browser.wbraid AS tracking_wbraid,
+                  browser.ga_client_id AS tracking_ga_client_id,
                   dest.external_destination_id,
                   dest.credential_ref,
                   sc.account_id,
@@ -231,7 +234,7 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
              ) caps ON TRUE
              LEFT JOIN LATERAL (
                SELECT te.fbc, te.fbp, te.page_url, te.ua,
-                      te.gclid, te.gbraid, te.wbraid
+                      te.gclid, te.gbraid, te.wbraid, te.ga_client_id
                  FROM tracking_events te
                 WHERE te.client_id = e.client_id
                   AND te.event_id = e.attribution->>'browserEventId'
@@ -350,10 +353,11 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
         )
 
         if (result.outcome !== 'policy_skipped') {
-          const successful = result.outcome === 'accepted' && claim.platform === 'meta'
+          const successful = result.outcome === 'accepted'
+            && (claim.platform === 'meta' || claim.platform === 'ga4')
           const failed = result.outcome === 'retryable' || result.outcome === 'permanent_failure'
           const blocked = result.outcome === 'permanent_failure'
-            && ['meta_credential_missing', 'google_credential_missing', 'google_oauth_reconsent_required']
+            && ['meta_credential_missing', 'google_credential_missing', 'google_oauth_reconsent_required', 'ga4_api_secret_ref_required', 'ga4_api_secret_unavailable']
               .includes(result.errorClass ?? '')
           await db.query(
             `UPDATE conversion_destinations

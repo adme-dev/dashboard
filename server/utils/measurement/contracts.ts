@@ -24,10 +24,13 @@ export const CanonicalEventNameSchema = z.enum([
   'lead_won',
   'lead_lost',
   'purchase',
-  'web_conversion'
+  'web_conversion',
+  'phone_click',
+  'add_to_wishlist',
+  'form_submit'
 ])
 
-export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager'])
+export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager', 'ga4'])
 export const CapabilityModeSchema = z.enum([
   'meta_pixel',
   'meta_web_capi',
@@ -35,7 +38,8 @@ export const CapabilityModeSchema = z.enum([
   'meta_conversion_leads',
   'google_tag_enhanced_conversions',
   'google_enhanced_conversions_for_leads',
-  'google_data_manager'
+  'google_data_manager',
+  'ga4_measurement_protocol'
 ])
 export const CapabilityStatusSchema = z.enum([
   'not_configured',
@@ -210,6 +214,12 @@ const MeasurementProviderCredentialRefSchema = z.string()
     message: 'Provider credentials must use a purpose-scoped measurement binding'
   })
 
+export const PLATFORM_MODE_PREFIX: Record<z.infer<typeof MeasurementPlatformSchema>, string> = {
+  meta: 'meta_',
+  google_data_manager: 'google_',
+  ga4: 'ga4_'
+}
+
 export const ConversionDestinationCreateSchema = z.strictObject({
   profileId: z.string().uuid(),
   platform: MeasurementPlatformSchema,
@@ -231,9 +241,7 @@ export const ConversionDestinationCreateSchema = z.strictObject({
     }
     seen.add(capability.mode)
 
-    const belongsToPlatform = destination.platform === 'meta'
-      ? capability.mode.startsWith('meta_')
-      : capability.mode.startsWith('google_')
+    const belongsToPlatform = capability.mode.startsWith(PLATFORM_MODE_PREFIX[destination.platform])
     if (!belongsToPlatform) {
       ctx.addIssue({
         code: 'custom',
@@ -309,9 +317,7 @@ const DestinationConfigurationInputSchema = z.strictObject({
     }
     capabilityModes.add(capability.mode)
 
-    const belongsToPlatform = destination.platform === 'meta'
-      ? capability.mode.startsWith('meta_')
-      : capability.mode.startsWith('google_')
+    const belongsToPlatform = capability.mode.startsWith(PLATFORM_MODE_PREFIX[destination.platform])
     if (!belongsToPlatform) {
       ctx.addIssue({
         code: 'custom',
@@ -714,7 +720,8 @@ const CanonicalAttributionSchema = z.strictObject({
   metaLeadId: z.string().regex(/^\d{15,16}$/, 'Meta lead ID must contain 15 or 16 digits').nullable().default(null),
   gclid: z.string().trim().min(1).max(512).nullable().default(null),
   gbraid: z.string().trim().min(1).max(512).nullable().default(null),
-  wbraid: z.string().trim().min(1).max(512).nullable().default(null)
+  wbraid: z.string().trim().min(1).max(512).nullable().default(null),
+  gaClientId: z.string().trim().min(1).max(128).nullable().default(null)
 })
 
 const EMPTY_CANONICAL_ATTRIBUTION = {
@@ -722,7 +729,8 @@ const EMPTY_CANONICAL_ATTRIBUTION = {
   metaLeadId: null,
   gclid: null,
   gbraid: null,
-  wbraid: null
+  wbraid: null,
+  gaClientId: null
 }
 
 export const CanonicalConversionEventSchema = z.strictObject({

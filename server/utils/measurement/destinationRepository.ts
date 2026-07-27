@@ -6,7 +6,8 @@ import {
 import {
   ConversionDestinationCapabilityStateSchema,
   ConversionDestinationReadModelSchema,
-  ConversionEventMappingStateSchema
+  ConversionEventMappingStateSchema,
+  PLATFORM_MODE_PREFIX
 } from '~~/server/utils/measurement/contracts'
 import type {
   CreateConversionDestinationConfiguration,
@@ -192,7 +193,9 @@ function aggregateHealth(input: CreateConversionDestinationConfiguration['destin
 }
 
 function connectionPlatform(platform: CreateConversionDestinationConfiguration['destination']['platform']) {
-  return platform === 'meta' ? 'meta' : 'google'
+  if (platform === 'meta') return 'meta'
+  if (platform === 'ga4') return 'ga4'
+  return 'google'
 }
 
 export interface DestinationPage {
@@ -552,9 +555,7 @@ export function createPostgresMeasurementDestinationRepository(
             : input.patch.credentialRef !== null
 
           const invalidPlatformMode = capabilities.some(capability => (
-            currentDestination.platform === 'meta'
-              ? !capability.mode.startsWith('meta_')
-              : !capability.mode.startsWith('google_')
+            !capability.mode.startsWith(PLATFORM_MODE_PREFIX[currentDestination.platform])
           ))
           const configuredZeroCapability = capabilities.some(capability => (
             capability.managementOrigin === 'zero' && capability.status === 'configured'

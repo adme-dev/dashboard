@@ -44,4 +44,24 @@ describe('buildEventRows', () => {
       email_click_id: 'click-1'
     })
   })
+
+  it('flattens the GA4 client ID alongside the other attribution identifiers', () => {
+    const rows = buildEventRows(site, {
+      events: [{
+        ...payload.events[0],
+        attribution: {
+          ...payload.events[0].attribution,
+          ga_client_id: '1234567890.1234567890'
+        }
+      }]
+    }, ctx)
+
+    expect(rows[0].ga_client_id).toBe('1234567890.1234567890')
+  })
+
+  it('defaults a missing GA4 client ID to null', () => {
+    const rows = buildEventRows(site, payload, ctx)
+
+    expect(rows[0].ga_client_id).toBeNull()
+  })
 })

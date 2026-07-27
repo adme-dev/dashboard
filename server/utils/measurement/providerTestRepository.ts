@@ -139,7 +139,7 @@ export function createPostgresMeasurementProviderTestRepository(
                ON sc.client_id = d.client_id
               AND sc.id = d.social_connection_id
                AND sc.status = 'active'
-               AND sc.platform = CASE WHEN d.platform = 'meta' THEN 'meta' ELSE 'google' END
+               AND sc.platform = CASE WHEN d.platform = 'meta' THEN 'meta' WHEN d.platform = 'ga4' THEN 'ga4' ELSE 'google' END
              ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
              LEFT JOIN tracking_sites ts
                ON ts.client_id = d.client_id
