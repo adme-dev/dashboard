@@ -106,6 +106,15 @@ export function createPostgresMeasurementProviderTestRepository(
         const existing = existingResult.rows?.[0] as TestRunRow | undefined
         if (existing) return { status: 'existing', run: runSummary(existing) }
 
+        const profileResult = await db.query(
+          `SELECT id
+             FROM client_measurement_profiles
+            WHERE client_id = $1
+            FOR UPDATE`,
+          [input.clientId]
+        )
+        if (!profileResult.rows?.[0]) return { status: 'not_found' }
+
         const contextResult = await db.query(
           `SELECT p.id AS profile_id,
                   p.enabled AS profile_enabled,

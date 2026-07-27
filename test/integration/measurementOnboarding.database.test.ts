@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createPostgresMeasurementHealthRepository } from '../../server/utils/measurement/healthRepository'
 import { createMeasurementHealthService } from '../../server/utils/measurement/healthService'
 import { createPostgresMeasurementProfileRepository } from '../../server/utils/measurement/profileRepository'
+import { createPostgresMeasurementProviderTestRepository } from '../../server/utils/measurement/providerTestRepository'
 
 const databaseUrl = process.env.MEASUREMENT_DATABASE_SMOKE_URL
 const runWithDatabase = databaseUrl ? it : it.skip
@@ -27,6 +28,16 @@ describe('measurement onboarding against PostgreSQL', () => {
       [clientId]
     )
     expect(residue.rows[0]?.count).toBe('0')
+    const auditResidue = await client.query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM measurement_config_audit WHERE client_id = $1',
+      [clientId]
+    )
+    expect(auditResidue.rows[0]?.count).toBe('0')
+    const providerRunResidue = await client.query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM measurement_provider_test_runs WHERE client_id = $1',
+      [clientId]
+    )
+    expect(providerRunResidue.rows[0]?.count).toBe('0')
     await client.end()
   })
 
@@ -68,13 +79,31 @@ describe('measurement onboarding against PostgreSQL', () => {
       configVersion: 1
     })
 
+    const connectionResult = await client.query<{ id: string }>(
+      `INSERT INTO social_connections (
+         platform, account_id, account_name, status, client_id
+       ) VALUES ('meta', $1, 'Measurement smoke connection', 'active', $2)
+       RETURNING id`,
+      [`smoke-${clientId}`, clientId]
+    )
+    const connectionId = connectionResult.rows[0]!.id
+
     const destinationResult = await client.query<{ id: string }>(
       `INSERT INTO conversion_destinations (
          client_id, profile_id, platform, external_destination_id,
-         credential_ref, enabled, environment, health_status, config_version
-       ) VALUES ($1, $2, 'meta', 'smoke-dataset', $3, false, 'test', 'configured', 1)
+         credential_ref, social_connection_id, enabled, environment,
+         health_status, config_version
+       ) VALUES (
+         $1, $2, 'meta', 'smoke-dataset', $3, $4,
+         false, 'test', 'configured', 1
+       )
        RETURNING id`,
-      [clientId, profile!.id, 'MEASUREMENT_PROVIDER_META_SMOKE']
+      [
+        clientId,
+        profile!.id,
+        'MEASUREMENT_PROVIDER_META_SMOKE',
+        connectionId
+      ]
     )
     const destinationId = destinationResult.rows[0]!.id
 
@@ -83,6 +112,16 @@ describe('measurement onboarding against PostgreSQL', () => {
          client_id, destination_id, platform, mode, status,
          management_origin, can_zero_mutate, config_version
        ) VALUES ($1, $2, 'meta', 'meta_crm_capi', 'configured', 'zero', true, 1)`,
+      [clientId, destinationId]
+    )
+
+    await client.query(
+      `INSERT INTO conversion_event_mappings (
+         client_id, destination_id, canonical_event_name,
+         provider_event_name, is_active, config_version
+       ) VALUES (
+         $1, $2, 'lead_qualified', 'QualifiedLead', true, 1
+       )`,
       [clientId, destinationId]
     )
 
@@ -120,6 +159,34 @@ describe('measurement onboarding against PostgreSQL', () => {
       profile_version: 2,
       destination_version: 1
     })
+
+    const providerRepository = createPostgresMeasurementProviderTestRepository(
+      transaction as never
+    )
+    const providerReservation = await providerRepository.reserve({
+      clientId,
+      destinationId,
+      expectedConfigVersion: 1,
+      canonicalEventName: 'lead_qualified',
+      occurredAt: new Date().toISOString(),
+      idempotencyKey: crypto.randomUUID(),
+      reason: 'Rollback-only divergent-version provider reservation smoke',
+      confirmed: true,
+      actor: { id: actorId },
+      mode: 'meta_test_events',
+      deliveryMode: 'crm',
+      testEventCode: 'ROLLBACK_ONLY',
+      metaLeadId: '1234567890123456',
+      browserEventId: null
+    })
+    expect(providerReservation).toMatchObject({ status: 'reserved' })
+    await expect(queryOne<{ config_version: number }>(
+      `SELECT config_version
+         FROM measurement_provider_test_runs
+        WHERE client_id = $1
+          AND destination_id = $2`,
+      [clientId, destinationId]
+    )).resolves.toEqual({ config_version: 1 })
 
     const healthService = createMeasurementHealthService({
       repository: createPostgresMeasurementHealthRepository({
@@ -162,5 +229,5 @@ describe('measurement onboarding against PostgreSQL', () => {
       actor_type: 'team_member',
       config_version: 1
     })
-  })
+  }, 15_000)
 })

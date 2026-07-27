@@ -31,6 +31,7 @@ describe('measurement provider test repository', () => {
   it('resolves Google credentials from an encrypted profile instead of legacy token columns', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         id: 'connection-1',
         profile_id: '77777777-7777-4777-8777-777777777777',
@@ -92,7 +93,7 @@ describe('measurement provider test repository', () => {
     expect(resolveCredential).toHaveBeenCalledWith(expect.objectContaining({
       google_credential_profile_id: 'profile-1'
     }))
-    const contextSql = query.mock.calls[1]![0] as string
+    const contextSql = query.mock.calls[2]![0] as string
     expect(contextSql).toContain('LEFT JOIN google_credential_profiles gcp')
     expect(contextSql).toContain('gcp.refresh_token_encrypted AS profile_refresh_token_encrypted')
     expect(contextSql).not.toContain('sc.access_token')
@@ -101,6 +102,7 @@ describe('measurement provider test repository', () => {
   it('reserves a dormant tenant-owned destination without persisting transient identifiers', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
@@ -139,14 +141,14 @@ describe('measurement provider test repository', () => {
       }
     })
 
-    const contextSql = query.mock.calls[1]![0] as string
+    const contextSql = query.mock.calls[2]![0] as string
     expect(contextSql).toContain('sc.client_id = d.client_id')
     expect(contextSql).toContain('d.credential_ref')
     expect(contextSql).not.toContain('sc.access_token')
     expect(contextSql).toContain('d.client_id = $1')
     expect(contextSql).toContain('conversion_destination_capabilities')
-    const insertSql = query.mock.calls[2]![0] as string
-    const insertParams = query.mock.calls[2]![1] as unknown[]
+    const insertSql = query.mock.calls[3]![0] as string
+    const insertParams = query.mock.calls[3]![1] as unknown[]
     expect(insertSql).not.toContain('test_event_code')
     expect(insertParams).not.toContain('TEST123456')
     expect(insertParams).not.toContain('1234567890123456')
@@ -155,6 +157,9 @@ describe('measurement provider test repository', () => {
   it('uses the destination version when the profile advanced independently', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '77777777-7777-4777-8777-777777777777'
+      }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
@@ -192,17 +197,21 @@ describe('measurement provider test repository', () => {
     await expect(repository.reserve(input)).resolves.toMatchObject({
       status: 'reserved'
     })
-    const contextSql = String(query.mock.calls[1]![0])
+    expect(String(query.mock.calls[1]![0])).toMatch(
+      /FROM client_measurement_profiles[\s\S]*FOR UPDATE/
+    )
+    const contextSql = String(query.mock.calls[2]![0])
     expect(contextSql).toContain(
       'd.config_version AS destination_config_version'
     )
     expect(contextSql).not.toContain('p.config_version AS profile_config_version')
-    expect((query.mock.calls[2]![1] as unknown[])[7]).toBe(3)
+    expect((query.mock.calls[3]![1] as unknown[])[7]).toBe(3)
   })
 
   it('derives Meta Web delivery from a configured Zero-owned capability', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
@@ -247,7 +256,7 @@ describe('measurement provider test repository', () => {
       context: { delivery: { metaDeliveryMode: 'web' } }
     })
 
-    const insertParams = query.mock.calls[2]![1] as unknown[]
+    const insertParams = query.mock.calls[3]![1] as unknown[]
     expect(insertParams).not.toContain('browser-event-1')
     expect(insertParams).not.toContain('fb.1.1234567890123.click')
     expect(insertParams).not.toContain('https://www.biggaragesubaru.com.au/enquire')
@@ -256,6 +265,7 @@ describe('measurement provider test repository', () => {
   it('rejects Meta Web traffic when the required Zero-owned capability is not configured', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
@@ -288,12 +298,13 @@ describe('measurement provider test repository', () => {
       clientUserAgent: 'Approved Pilot Browser'
     } as never)).resolves.toEqual({ status: 'capability_not_configured' })
 
-    expect(query).toHaveBeenCalledTimes(2)
+    expect(query).toHaveBeenCalledTimes(3)
   })
 
   it('rejects a client-selected CRM path when server-owned capabilities require Web delivery', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
@@ -323,6 +334,7 @@ describe('measurement provider test repository', () => {
   it('rejects a Web event source outside the tracking-site allowlist', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
