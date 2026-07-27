@@ -2,18 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import type { MeasurementDestination } from '~/types/measurement'
 import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEventIdentity'
-import type { MeasurementPlatform } from '~~/shared/utils/measurementPlatform'
 
 const props = defineProps<{
   clientId: string
   profileConfigVersion: number
-  // `MeasurementDestination['platform']` (app/types/measurement.ts) predates GA4 and is narrower
-  // than the shared platform source of truth. Overriding just this field here — rather than
-  // widening the shared type — avoids breaking the `Record<MeasurementDestination['platform'], ...>`
-  // exhaustiveness checks other components (e.g. ClientMeasurementPanel.vue) build on top of it.
-  destination: Omit<Pick<MeasurementDestination, 'id' | 'platform' | 'capabilities' | 'mappings'>, 'platform'> & {
-    platform: MeasurementPlatform
-  }
+  destination: Pick<MeasurementDestination, 'id' | 'platform' | 'capabilities' | 'mappings'>
 }>()
 
 const emit = defineEmits<{ close: [], completed: [] }>()

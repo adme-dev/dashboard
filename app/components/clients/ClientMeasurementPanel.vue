@@ -4,6 +4,7 @@ import ClientMeasurementActivationControls from '~/components/clients/ClientMeas
 import type {
   ClientMeasurementProfile,
   MeasurementAuditEntry,
+  MeasurementCapability,
   MeasurementCapabilityStatus,
   MeasurementDestination,
   MeasurementReadinessStatus,
@@ -11,6 +12,11 @@ import type {
   PaginatedMeasurementResponse
 } from '~/types/measurement'
 import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEventIdentity'
+import {
+  CAPABILITY_DEFINITIONS,
+  isAttestationOnly,
+  PLATFORM_LABELS
+} from '~~/shared/utils/measurementPlatform'
 
 const props = defineProps<{
   clientId: string
@@ -18,7 +24,19 @@ const props = defineProps<{
   canOwnerOverride?: boolean
 }>()
 
+type AttestationStatus = 'ready' | 'degraded' | 'blocked'
+
+interface AttestationResponse {
+  healthStatus: string
+  capabilities: Array<{ mode: string, status: AttestationStatus, blockingReason: string | null }>
+}
+
+const toast = useToast()
 const apiFetch = $fetch as <T>(request: string) => Promise<T>
+const apiPost = $fetch as <T>(
+  request: string,
+  options: { method: 'POST', body: Record<string, unknown> }
+) => Promise<T>
 const profile = ref<ClientMeasurementProfile | null>(null)
 const readiness = ref<MeasurementReadinessSummary | null>(null)
 const destinations = ref<MeasurementDestination[]>([])
@@ -67,26 +85,17 @@ const portalOutcomeLabels: Record<ClientMeasurementProfile['portalOutcomeMode'],
   authoritative: 'Client outcomes are authoritative'
 }
 
-const capabilityLabels: Record<string, string> = {
-  meta_pixel: 'Meta Pixel',
-  meta_web_capi: 'Meta Web CAPI',
-  meta_crm_capi: 'Meta CRM CAPI',
-  meta_conversion_leads: 'Meta Conversion Leads',
-  google_tag_enhanced_conversions: 'Google tag enhanced conversions',
-  google_enhanced_conversions_for_leads: 'Google enhanced conversions for leads',
-  google_data_manager: 'Google Data Manager'
-}
+const capabilityDefinitionByMode = new Map(
+  Object.values(CAPABILITY_DEFINITIONS)
+    .flat()
+    .map(definition => [definition.mode, definition] as const)
+)
 
 const originLabels: Record<string, string> = {
   zero: 'Managed by Zero',
   gtm: 'Managed in Google Tag Manager',
   partner: 'Partner managed',
   external: 'Externally managed'
-}
-
-const platformLabels: Record<MeasurementDestination['platform'], string> = {
-  meta: 'Meta',
-  google_data_manager: 'Google Data Manager'
 }
 
 const profileState = computed(() => {
@@ -117,6 +126,40 @@ function credentialSourceLabel(destination: MeasurementDestination) {
   return 'No credential source configured'
 }
 
+function capabilityLabel(mode: string) {
+  return capabilityDefinitionByMode.get(mode)?.label ?? titleCase(mode)
+}
+
+function capabilityDescription(mode: string) {
+  return capabilityDefinitionByMode.get(mode)?.description ?? ''
+}
+
+/**
+ * How a capability earns its ready status. A provider test can only prove what the
+ * provider itself observes, so browser tags are only ever proven by an operator.
+ */
+function capabilityAssurance(mode: string) {
+  return isAttestationOnly(mode)
+    ? { label: 'Requires operator attestation', icon: 'i-lucide-user-check' }
+    : { label: 'Verified by provider test', icon: 'i-lucide-flask-conical' }
+}
+
+function readyCapabilityCount(destination: MeasurementDestination) {
+  return destination.capabilities.filter(capability => capability.status === 'ready').length
+}
+
+function outstandingCapabilities(destination: MeasurementDestination) {
+  return destination.capabilities.filter(capability => capability.status !== 'ready')
+}
+
+function destinationIsLive(destination: MeasurementDestination) {
+  return destination.enabled && destination.environment === 'live'
+}
+
+function canAttestCapability(capability: MeasurementCapability) {
+  return isAttestationOnly(capability.mode) && capability.status !== 'ready'
+}
+
 function mappingIdentityLabel(
   destination: MeasurementDestination,
   canonicalEventName: string
@@ -127,17 +170,26 @@ function mappingIdentityLabel(
   ).label
 }
 
-function measurementErrorMessage(error: unknown) {
+function measurementErrorMessage(
+  error: unknown,
+  fallback = 'Measurement configuration could not be loaded'
+) {
   const candidate = error as {
-    data?: { statusMessage?: string }
+    data?: { statusMessage?: string, error?: { message?: string } }
     statusMessage?: string
     message?: string
   } | null
 
-  return candidate?.data?.statusMessage
+  return candidate?.data?.error?.message
+    || candidate?.data?.statusMessage
     || candidate?.statusMessage
     || candidate?.message
-    || 'Measurement configuration could not be loaded'
+    || fallback
+}
+
+function measurementErrorStatus(error: unknown) {
+  const candidate = error as { statusCode?: number, data?: { statusCode?: number } } | null
+  return candidate?.statusCode ?? candidate?.data?.statusCode ?? null
 }
 
 async function refreshMeasurement() {
@@ -226,6 +278,110 @@ function toggleProviderTest(destinationId: string) {
   testingDestinationId.value = testingDestinationId.value === destinationId
     ? null
     : destinationId
+}
+
+const attestTarget = ref<{
+  destination: MeasurementDestination
+  capability: MeasurementCapability
+} | null>(null)
+const attestOpen = ref(false)
+const attestStatus = ref<AttestationStatus>('ready')
+const attestBlockingReason = ref('')
+const attestReason = ref('')
+const attestConfirmed = ref(false)
+const attestForce = ref(false)
+const attestPending = ref(false)
+const attestError = ref<string | null>(null)
+
+const attestStatusOptions: Array<{ value: AttestationStatus, label: string }> = [
+  { value: 'ready', label: 'Ready — the tag is in place and sending' },
+  { value: 'degraded', label: 'Degraded — sending, but not completely' },
+  { value: 'blocked', label: 'Blocked — not sending at all' }
+]
+
+// Attesting `blocked` is the one path that can take a live destination down, so
+// the server keeps it behind an explicit force. Anything else is a safe record.
+const attestStopsLiveDelivery = computed(() => Boolean(
+  attestTarget.value
+  && destinationIsLive(attestTarget.value.destination)
+  && attestStatus.value === 'blocked'
+))
+
+const canSubmitAttestation = computed(() => Boolean(
+  attestTarget.value
+  && !attestPending.value
+  && attestReason.value.trim()
+  && attestConfirmed.value
+  && (attestStatus.value === 'ready' || attestBlockingReason.value.trim())
+))
+
+function openAttestation(destination: MeasurementDestination, capability: MeasurementCapability) {
+  attestTarget.value = { destination, capability }
+  attestStatus.value = 'ready'
+  attestBlockingReason.value = ''
+  attestReason.value = ''
+  attestConfirmed.value = false
+  attestForce.value = false
+  attestError.value = null
+  attestOpen.value = true
+}
+
+function setAttestOpen(open: boolean) {
+  if (open) return
+  attestOpen.value = false
+  attestTarget.value = null
+}
+
+async function submitAttestation() {
+  const target = attestTarget.value
+  if (!target || !canSubmitAttestation.value) return
+
+  const status = attestStatus.value
+  const force = attestStopsLiveDelivery.value && attestForce.value
+  attestPending.value = true
+  attestError.value = null
+
+  try {
+    const response = await apiPost<AttestationResponse>(
+      `/api/agency/measurement/clients/${props.clientId}/destinations/${target.destination.id}/attest`,
+      {
+        method: 'POST',
+        body: {
+          expectedConfigVersion: target.destination.configVersion,
+          capabilities: [{
+            mode: target.capability.mode,
+            status,
+            blockingReason: status === 'ready' ? null : attestBlockingReason.value.trim()
+          }],
+          reason: attestReason.value.trim(),
+          confirmed: true,
+          force
+        }
+      }
+    )
+
+    // The server silently downgrades an unforced `blocked` on a live destination.
+    // Report what was actually recorded, not what was asked for.
+    const recorded = response.capabilities?.[0]?.status ?? status
+    const label = capabilityLabel(target.capability.mode)
+    toast.add({
+      title: 'Attestation recorded',
+      description: recorded === status
+        ? `${label} is now ${recorded}. Destination health is ${titleCase(response.healthStatus)}.`
+        : `${label} was recorded as ${recorded}, not ${status}, because live delivery was not forced. Destination health is ${titleCase(response.healthStatus)}.`,
+      color: recorded === status ? 'success' : 'warning'
+    })
+    setAttestOpen(false)
+    await refreshMeasurement()
+  } catch (error) {
+    const message = measurementErrorStatus(error) === 409
+      ? 'The configuration changed while this was open. Reload the page and attest again.'
+      : measurementErrorMessage(error, 'Attestation could not be recorded')
+    attestError.value = message
+    toast.add({ title: 'Attestation not recorded', description: message, color: 'error' })
+  } finally {
+    attestPending.value = false
+  }
 }
 
 async function handleActivationCompleted(result: {
@@ -432,7 +588,7 @@ void refreshMeasurement()
               <div>
                 <div class="flex flex-wrap items-center gap-2">
                   <h4 class="font-semibold text-highlighted">
-                    {{ platformLabels[destination.platform] }}
+                    {{ PLATFORM_LABELS[destination.platform] }}
                   </h4>
                   <UBadge :color="statusColor(destination.healthStatus)" variant="subtle">
                     {{ titleCase(destination.healthStatus) }}
@@ -464,7 +620,7 @@ void refreshMeasurement()
                 <div class="flex items-start justify-between gap-3">
                   <div>
                     <p class="text-sm font-medium text-highlighted">
-                      {{ capabilityLabels[capability.mode] || titleCase(capability.mode) }}
+                      {{ capabilityLabel(capability.mode) }}
                     </p>
                     <p class="mt-1 text-xs text-muted">
                       {{ originLabels[capability.managementOrigin] }}
@@ -474,13 +630,67 @@ void refreshMeasurement()
                     {{ titleCase(capability.status) }}
                   </UBadge>
                 </div>
-                <p class="mt-3 text-xs text-muted">
+                <p v-if="capabilityDescription(capability.mode)" class="mt-2 text-xs leading-5 text-muted">
+                  {{ capabilityDescription(capability.mode) }}
+                </p>
+                <p
+                  class="mt-2 flex items-center gap-1.5 text-xs font-medium text-dimmed"
+                  :data-testid="`capability-assurance-${capability.mode}`"
+                >
+                  <UIcon :name="capabilityAssurance(capability.mode).icon" class="size-3.5 shrink-0" />
+                  {{ capabilityAssurance(capability.mode).label }}
+                </p>
+                <p class="mt-2 text-xs text-muted">
                   Evidence: {{ formatDateTime(capability.evidenceAt) }}
                 </p>
                 <p v-if="capability.blockingReason" class="mt-2 text-xs text-error">
                   {{ capability.blockingReason }}
                 </p>
+                <UButton
+                  v-if="canConfigure && canAttestCapability(capability)"
+                  class="mt-3"
+                  :data-testid="`attest-${capability.mode}`"
+                  :label="`Attest ${capabilityLabel(capability.mode)}`"
+                  icon="i-lucide-user-check"
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  @click="openAttestation(destination, capability)"
+                />
               </div>
+            </div>
+
+            <div
+              v-if="outstandingCapabilities(destination).length"
+              class="mt-4 rounded-lg border border-warning/25 bg-warning/5 p-4"
+              data-testid="destination-readiness-breakdown"
+            >
+              <p class="text-xs font-semibold uppercase tracking-wide text-warning">
+                Why this destination is not ready
+              </p>
+              <p class="mt-1 text-xs leading-5 text-muted">
+                {{ readyCapabilityCount(destination) }} of {{ destination.capabilities.length }}
+                capabilities are ready. Every capability has to be ready before the destination is.
+              </p>
+              <ul class="mt-3 space-y-2">
+                <li
+                  v-for="capability in outstandingCapabilities(destination)"
+                  :key="capability.id"
+                  class="flex items-start gap-2 text-xs leading-5"
+                >
+                  <UIcon
+                    :name="capabilityAssurance(capability.mode).icon"
+                    class="mt-0.5 size-3.5 shrink-0 text-dimmed"
+                  />
+                  <span class="text-muted">
+                    <span class="font-medium text-highlighted">{{ capabilityLabel(capability.mode) }}</span>
+                    is {{ titleCase(capability.status) }} —
+                    {{ isAttestationOnly(capability.mode)
+                      ? 'no provider test can prove this one, so an operator has to attest it'
+                      : 'run a provider test to record evidence for it' }}.
+                  </span>
+                </li>
+              </ul>
             </div>
 
             <div class="mt-4 border-t border-default pt-4">
@@ -647,5 +857,127 @@ void refreshMeasurement()
         </div>
       </aside>
     </div>
+
+    <UModal
+      :open="attestOpen"
+      :title="attestTarget ? `Attest ${capabilityLabel(attestTarget.capability.mode)}` : ''"
+      :description="attestTarget ? capabilityDescription(attestTarget.capability.mode) : ''"
+      :ui="{ content: 'max-w-xl' }"
+      @update:open="setAttestOpen"
+    >
+      <template #body>
+        <div v-if="attestTarget" class="space-y-5" data-testid="measurement-attestation-modal">
+          <div class="rounded-lg bg-elevated p-3">
+            <p class="text-xs font-medium uppercase tracking-wide text-dimmed">
+              {{ PLATFORM_LABELS[attestTarget.destination.platform] }}
+            </p>
+            <p class="mt-0.5 break-all font-mono text-xs text-highlighted">
+              {{ attestTarget.destination.externalDestinationId }}
+            </p>
+            <p class="mt-2 text-xs leading-5 text-muted">
+              Zero cannot observe this capability from the server, so its status comes from you.
+              Your name, your reason, and configuration version
+              {{ attestTarget.destination.configVersion }} are written to the audit trail.
+            </p>
+          </div>
+
+          <UAlert
+            v-if="attestError"
+            data-testid="attestation-error"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-circle-alert"
+            :description="attestError"
+          />
+
+          <UFormField label="Capability status" required>
+            <USelect
+              v-model="attestStatus"
+              data-testid="attestation-status"
+              :items="attestStatusOptions"
+              value-key="value"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField
+            v-if="attestStatus !== 'ready'"
+            label="What is limiting this capability"
+            help="Shown on the capability until it is ready again."
+            required
+          >
+            <UTextarea
+              v-model="attestBlockingReason"
+              data-testid="attestation-blocking-reason"
+              :rows="5"
+              :maxlength="1000"
+              placeholder="e.g. The pixel fires on the thank-you page but not on the enquiry form."
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField
+            label="Why you are recording this"
+            help="Kept in the measurement audit trail against your name."
+            required
+          >
+            <UTextarea
+              v-model="attestReason"
+              data-testid="attestation-reason"
+              :rows="5"
+              :maxlength="1000"
+              placeholder="e.g. Verified the pixel in Meta Events Manager after the GTM container publish."
+              class="w-full"
+            />
+          </UFormField>
+
+          <template v-if="attestStopsLiveDelivery">
+            <UAlert
+              data-testid="attestation-live-warning"
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-triangle-alert"
+              title="Blocking this stops live delivery"
+              description="This destination is live. Recording the capability as blocked takes it out of delivery immediately. Without the force option below, Zero records it as degraded instead and delivery continues."
+            />
+            <UFormField label="Force">
+              <UCheckbox
+                v-model="attestForce"
+                data-testid="attestation-force"
+                label="Stop live delivery and record this capability as blocked"
+              />
+            </UFormField>
+          </template>
+
+          <UFormField label="Confirmation" required>
+            <UCheckbox
+              v-model="attestConfirmed"
+              data-testid="attestation-confirmed"
+              label="I have checked this capability myself and stand behind the status above."
+            />
+          </UFormField>
+        </div>
+      </template>
+
+      <template #footer>
+        <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <UButton
+            label="Cancel"
+            color="neutral"
+            variant="ghost"
+            :disabled="attestPending"
+            @click="setAttestOpen(false)"
+          />
+          <UButton
+            data-testid="submit-attestation"
+            label="Record attestation"
+            icon="i-lucide-user-check"
+            :loading="attestPending"
+            :disabled="!canSubmitAttestation"
+            @click="submitAttestation"
+          />
+        </div>
+      </template>
+    </UModal>
   </section>
 </template>

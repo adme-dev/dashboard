@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import ClientMeasurementPanel from '~~/app/components/clients/ClientMeasurementPanel.vue'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
+const toastAdd = vi.fn()
 
 const stubs = {
   UBadge: {
@@ -25,13 +26,57 @@ const stubs = {
   UTextarea: {
     props: ['modelValue'],
     emits: ['update:modelValue'],
-    template: '<textarea />'
+    template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   },
   UCheckbox: {
     props: ['modelValue', 'label'],
     emits: ['update:modelValue'],
-    template: '<label>{{ label }}</label>'
+    template: `<label><input
+      type="checkbox"
+      :checked="modelValue"
+      @change="$emit('update:modelValue', $event.target.checked)"
+    >{{ label }}</label>`
+  },
+  UModal: {
+    props: ['open', 'title', 'description', 'ui'],
+    emits: ['update:open'],
+    template: `<div v-if="open" data-modal>
+      <h2>{{ title }}</h2>
+      <p>{{ description }}</p>
+      <slot name="body" />
+      <slot name="footer" />
+    </div>`
+  },
+  USelect: {
+    props: ['modelValue', 'items', 'valueKey'],
+    emits: ['update:modelValue'],
+    template: `<select :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
+      <option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option>
+    </select>`
+  },
+  UFormField: {
+    props: ['label', 'help', 'required'],
+    template: '<label><span>{{ label }}</span><slot /><span v-if="help">{{ help }}</span></label>'
+  },
+  UAlert: {
+    props: ['title', 'description', 'color', 'icon'],
+    template: '<div role="status" :data-color="color">{{ title }} {{ description }}</div>'
   }
+}
+
+function mountPanel(
+  fetchMock: ReturnType<typeof vi.fn>,
+  props: Record<string, unknown> = {}
+) {
+  Object.assign(globalThis, { $fetch: fetchMock, useToast: () => ({ add: toastAdd }) })
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const app = createApp({
+    render: () => h(ClientMeasurementPanel, { clientId: CLIENT_ID, ...props })
+  })
+  Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+  app.mount(host)
+  return { app, host }
 }
 
 async function flushUi() {
@@ -41,7 +86,25 @@ async function flushUi() {
   }
 }
 
-function responseFor(request: string) {
+function input(element: Element, value: string) {
+  const field = element as HTMLInputElement | HTMLTextAreaElement
+  field.value = value
+  field.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function check(element: Element) {
+  const box = element.querySelector('input') ?? element as HTMLInputElement
+  box.checked = true
+  box.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function select(element: Element, value: string) {
+  const field = element as HTMLSelectElement
+  field.value = value
+  field.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function responseFor(request: string, options: { live?: boolean } = {}) {
   if (request.endsWith(`/clients/${CLIENT_ID}`)) {
     return {
       profile: {
@@ -113,8 +176,8 @@ function responseFor(request: string) {
           socialConnectionId: '77777777-7777-4777-8777-777777777777',
           externalDestinationId: '573284833843027',
           credentialConfigured: false,
-          enabled: false,
-          environment: 'test',
+          enabled: options.live ?? false,
+          environment: options.live ? 'live' : 'test',
           healthStatus: 'ready',
           configVersion: 3,
           lastValidatedAt: '2026-07-17T01:00:00.000Z',
@@ -210,17 +273,13 @@ function responseFor(request: string) {
 }
 
 describe('ClientMeasurementPanel', () => {
+  beforeEach(() => {
+    toastAdd.mockClear()
+  })
+
   it('renders canonical dormant configuration and delivery evidence without exposing credentials', async () => {
     const fetchMock = vi.fn(async (request: string) => responseFor(request))
-    Object.assign(globalThis, { $fetch: fetchMock })
-
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    const app = createApp({
-      render: () => h(ClientMeasurementPanel, { clientId: CLIENT_ID })
-    })
-    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
-    app.mount(host)
+    const { app, host } = mountPanel(fetchMock)
     await flushUi()
 
     try {
@@ -266,14 +325,7 @@ describe('ClientMeasurementPanel', () => {
       if (request.endsWith('/audit')) throw new Error('Audit service unavailable')
       return responseFor(request)
     })
-    Object.assign(globalThis, { $fetch: fetchMock })
-
-    const host = document.createElement('div')
-    const app = createApp({
-      render: () => h(ClientMeasurementPanel, { clientId: CLIENT_ID })
-    })
-    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
-    app.mount(host)
+    const { app, host } = mountPanel(fetchMock)
     await flushUi()
 
     try {
@@ -288,7 +340,7 @@ describe('ClientMeasurementPanel', () => {
 
   it('keeps mutation warnings visible after refreshing canonical data', async () => {
     const fetchMock = vi.fn(async (request: string) => responseFor(request))
-    Object.assign(globalThis, { $fetch: fetchMock })
+    Object.assign(globalThis, { $fetch: fetchMock, useToast: () => ({ add: toastAdd }) })
 
     const host = document.createElement('div')
     const app = createApp({
@@ -309,6 +361,260 @@ describe('ClientMeasurementPanel', () => {
       host.querySelector<HTMLButtonElement>('[data-testid="emit-profile-warning"]')!.click()
       await flushUi()
       expect(host.textContent).toContain('Saved in Zero; edge publication needs attention')
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('explains how each capability reaches ready and what is still outstanding', async () => {
+    const fetchMock = vi.fn(async (request: string) => responseFor(request))
+    const { app, host } = mountPanel(fetchMock)
+    await flushUi()
+
+    try {
+      // meta_pixel is covered by no provider test; meta_crm_capi is covered by Meta Test Events.
+      expect(host.querySelector('[data-testid="capability-assurance-meta_pixel"]')!.textContent)
+        .toContain('Requires operator attestation')
+      expect(host.querySelector('[data-testid="capability-assurance-meta_crm_capi"]')!.textContent)
+        .toContain('Verified by provider test')
+
+      // The description comes from the shared capability definitions, not a local copy.
+      expect(host.textContent).toContain('Browser events, usually managed in GTM or the client website.')
+
+      const breakdowns = [...host.querySelectorAll('[data-testid="destination-readiness-breakdown"]')]
+      expect(breakdowns).toHaveLength(2)
+      expect(breakdowns[0]!.textContent).toContain('1 of 2')
+      expect(breakdowns[0]!.textContent).toContain('Meta Pixel')
+      expect(breakdowns[0]!.textContent).toContain('no provider test can prove this one')
+      expect(breakdowns[1]!.textContent).toContain('run a provider test to record evidence for it')
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('offers attestation only for capabilities no provider test covers', async () => {
+    const fetchMock = vi.fn(async (request: string) => responseFor(request))
+    const { app, host } = mountPanel(fetchMock, { canConfigure: true })
+    await flushUi()
+
+    try {
+      expect(host.querySelector('[data-testid="attest-meta_pixel"]')).not.toBeNull()
+      // Covered by a provider test, so the server would refuse the attestation.
+      expect(host.querySelector('[data-testid="attest-meta_crm_capi"]')).toBeNull()
+      expect(host.querySelector('[data-testid="attest-google_data_manager"]')).toBeNull()
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('hides the attestation control from operators who cannot configure', async () => {
+    const fetchMock = vi.fn(async (request: string) => responseFor(request))
+    const { app, host } = mountPanel(fetchMock)
+    await flushUi()
+
+    try {
+      expect(host.querySelector('[data-testid="attest-meta_pixel"]')).toBeNull()
+      // The readiness explanation is still visible — it is read-only.
+      expect(host.querySelector('[data-testid="destination-readiness-breakdown"]')).not.toBeNull()
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('posts an attestation without the fields the server injects, then refreshes', async () => {
+    const fetchMock = vi.fn(async (request: string, options?: { body?: unknown }) => {
+      if (options) {
+        return {
+          healthStatus: 'ready',
+          capabilities: [{ mode: 'meta_pixel', status: 'ready', blockingReason: null }]
+        }
+      }
+      return responseFor(request)
+    })
+    const { app, host } = mountPanel(fetchMock, { canConfigure: true })
+    await flushUi()
+
+    try {
+      host.querySelector<HTMLButtonElement>('[data-testid="attest-meta_pixel"]')!.click()
+      await flushUi()
+      expect(host.querySelector('[data-testid="measurement-attestation-modal"]')).not.toBeNull()
+      // Title and description go to the dialog itself so it is labelled for screen readers.
+      expect(host.querySelector('[data-modal] h2')!.textContent).toBe('Attest Meta Pixel')
+      expect(host.querySelector('[data-modal] p')!.textContent)
+        .toBe('Browser events, usually managed in GTM or the client website.')
+      // Status defaults to ready, so no blocking-reason field is asked for.
+      expect(host.querySelector('[data-testid="attestation-blocking-reason"]')).toBeNull()
+      expect(host.querySelector('[data-testid="attestation-live-warning"]')).toBeNull()
+
+      const submit = host.querySelector<HTMLButtonElement>('[data-testid="submit-attestation"]')!
+      expect(submit.disabled).toBe(true)
+
+      input(host.querySelector('[data-testid="attestation-reason"]')!, 'Confirmed the pixel in Events Manager')
+      check(host.querySelector('[data-testid="attestation-confirmed"]')!)
+      await flushUi()
+      expect(submit.disabled).toBe(false)
+
+      submit.click()
+      await flushUi()
+
+      const attestCall = fetchMock.mock.calls.find(call => String(call[0]).endsWith('/attest'))!
+      expect(attestCall[0]).toBe(
+        `/api/agency/measurement/clients/${CLIENT_ID}/destinations/33333333-3333-4333-8333-333333333333/attest`
+      )
+      expect(attestCall[1]).toEqual({
+        method: 'POST',
+        body: {
+          expectedConfigVersion: 3,
+          capabilities: [{ mode: 'meta_pixel', status: 'ready', blockingReason: null }],
+          reason: 'Confirmed the pixel in Events Manager',
+          confirmed: true,
+          force: false
+        }
+      })
+      expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Attestation recorded',
+        color: 'success'
+      }))
+      expect(host.querySelector('[data-testid="measurement-attestation-modal"]')).toBeNull()
+      // Four initial loads plus the attestation plus four refresh loads.
+      expect(fetchMock.mock.calls.filter(call => String(call[0]).endsWith('/destinations'))).toHaveLength(2)
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('sends the blocking reason and holds back force until the operator asks for it', async () => {
+    const fetchMock = vi.fn(async (request: string, options?: { body?: unknown }) => {
+      if (options) {
+        return {
+          healthStatus: 'blocked',
+          capabilities: [{ mode: 'meta_pixel', status: 'blocked', blockingReason: 'Container was rolled back' }]
+        }
+      }
+      return responseFor(request, { live: true })
+    })
+    const { app, host } = mountPanel(fetchMock, { canConfigure: true })
+    await flushUi()
+
+    try {
+      host.querySelector<HTMLButtonElement>('[data-testid="attest-meta_pixel"]')!.click()
+      await flushUi()
+
+      // Degraded needs a reason but never threatens live delivery.
+      select(host.querySelector('[data-testid="attestation-status"]')!, 'degraded')
+      await flushUi()
+      expect(host.querySelector('[data-testid="attestation-blocking-reason"]')).not.toBeNull()
+      expect(host.querySelector('[data-testid="attestation-live-warning"]')).toBeNull()
+
+      select(host.querySelector('[data-testid="attestation-status"]')!, 'blocked')
+      await flushUi()
+      const warning = host.querySelector('[data-testid="attestation-live-warning"]')
+      expect(warning).not.toBeNull()
+      expect(warning!.textContent).toContain('Blocking this stops live delivery')
+      expect(warning!.textContent).toContain('Zero records it as degraded instead')
+      expect(host.querySelector('[data-testid="attestation-force"]')).not.toBeNull()
+
+      const submit = host.querySelector<HTMLButtonElement>('[data-testid="submit-attestation"]')!
+      input(host.querySelector('[data-testid="attestation-reason"]')!, 'Tag removed during a site rollback')
+      check(host.querySelector('[data-testid="attestation-confirmed"]')!)
+      await flushUi()
+      // Blocked still needs the blocking reason before it can be recorded.
+      expect(submit.disabled).toBe(true)
+
+      input(host.querySelector('[data-testid="attestation-blocking-reason"]')!, 'Container was rolled back')
+      check(host.querySelector('[data-testid="attestation-force"]')!)
+      await flushUi()
+      expect(submit.disabled).toBe(false)
+
+      submit.click()
+      await flushUi()
+
+      const attestCall = fetchMock.mock.calls.find(call => String(call[0]).endsWith('/attest'))!
+      expect(attestCall[1]).toEqual({
+        method: 'POST',
+        body: {
+          expectedConfigVersion: 3,
+          capabilities: [{
+            mode: 'meta_pixel',
+            status: 'blocked',
+            blockingReason: 'Container was rolled back'
+          }],
+          reason: 'Tag removed during a site rollback',
+          confirmed: true,
+          force: true
+        }
+      })
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('reports the downgrade when a live block is recorded without force', async () => {
+    const fetchMock = vi.fn(async (request: string, options?: { body?: unknown }) => {
+      if (options) {
+        return {
+          healthStatus: 'degraded',
+          capabilities: [{ mode: 'meta_pixel', status: 'degraded', blockingReason: 'Tag missing' }]
+        }
+      }
+      return responseFor(request, { live: true })
+    })
+    const { app, host } = mountPanel(fetchMock, { canConfigure: true })
+    await flushUi()
+
+    try {
+      host.querySelector<HTMLButtonElement>('[data-testid="attest-meta_pixel"]')!.click()
+      await flushUi()
+      select(host.querySelector('[data-testid="attestation-status"]')!, 'blocked')
+      await flushUi()
+      input(host.querySelector('[data-testid="attestation-blocking-reason"]')!, 'Tag missing')
+      input(host.querySelector('[data-testid="attestation-reason"]')!, 'Checked the live site')
+      check(host.querySelector('[data-testid="attestation-confirmed"]')!)
+      await flushUi()
+      host.querySelector<HTMLButtonElement>('[data-testid="submit-attestation"]')!.click()
+      await flushUi()
+
+      const attestCall = fetchMock.mock.calls.find(call => String(call[0]).endsWith('/attest'))!
+      expect((attestCall[1] as { body: { force: boolean } }).body.force).toBe(false)
+      expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Attestation recorded',
+        color: 'warning',
+        description: expect.stringContaining('recorded as degraded, not blocked')
+      }))
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('keeps the modal open and explains a stale configuration version', async () => {
+    const fetchMock = vi.fn(async (request: string, options?: { body?: unknown }) => {
+      if (options) {
+        throw Object.assign(new Error('Conflict'), {
+          statusCode: 409,
+          data: { statusMessage: 'Measurement configuration changed; discard stale validation evidence' }
+        })
+      }
+      return responseFor(request)
+    })
+    const { app, host } = mountPanel(fetchMock, { canConfigure: true })
+    await flushUi()
+
+    try {
+      host.querySelector<HTMLButtonElement>('[data-testid="attest-meta_pixel"]')!.click()
+      await flushUi()
+      input(host.querySelector('[data-testid="attestation-reason"]')!, 'Verified the tag')
+      check(host.querySelector('[data-testid="attestation-confirmed"]')!)
+      await flushUi()
+      host.querySelector<HTMLButtonElement>('[data-testid="submit-attestation"]')!.click()
+      await flushUi()
+
+      expect(host.querySelector('[data-testid="measurement-attestation-modal"]')).not.toBeNull()
+      expect(host.querySelector('[data-testid="attestation-error"]')!.textContent)
+        .toContain('The configuration changed while this was open')
+      expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Attestation not recorded',
+        color: 'error'
+      }))
     } finally {
       app.unmount()
     }
