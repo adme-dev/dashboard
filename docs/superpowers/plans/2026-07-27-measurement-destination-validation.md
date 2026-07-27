@@ -324,22 +324,49 @@ it('still accepts a system actor on validation evidence', () => {
 
 Ensure `RecordDestinationValidationEvidenceSchema` is imported in that file; add it to the existing import list from `~~/server/utils/measurement/contracts` if absent.
 
-Add to `test/server/utils/measurement/healthRepository.test.ts`, following the existing fake-transaction pattern already used in that file:
+Add to `test/server/utils/measurement/healthRepository.test.ts`. That file has no harness helper — each test builds an inline `db` fake and a `statements` array, and `input()` (line 14) returns a complete `RecordDestinationValidationEvidence` that you spread and override. Follow that exact pattern:
 
 ```ts
 it('writes the supplied actor type to the audit row', async () => {
-  const { repository, queries } = createRepositoryHarness()
-  await repository.recordValidation(buildEvidence({
+  const statements: Array<{ sql: string, params: unknown[] }> = []
+  const db = {
+    query: vi.fn(async (sql: string, params: unknown[] = []) => {
+      statements.push({ sql, params })
+      if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) {
+        return { rows: [{ id: PROFILE_ID, config_version: 3 }] }
+      }
+      if (/conversion_destinations[\s\S]*FOR UPDATE/.test(sql)) {
+        return { rows: [{ platform: 'meta', config_version: 3, health_status: 'configured' }] }
+      }
+      if (/conversion_destination_capabilities[\s\S]*FOR UPDATE/.test(sql)) {
+        return { rows: [{ id: CAPABILITY_ID, mode: 'meta_pixel', status: 'configured' }] }
+      }
+      if (/SELECT CASE/.test(sql)) return { rows: [{ health_status: 'ready' }] }
+      if (/UPDATE conversion_destinations/.test(sql)) {
+        return { rows: [{ health_status: 'ready', last_validated_at: input().observedAt }] }
+      }
+      return { rows: [] }
+    })
+  }
+  const repository = createPostgresMeasurementHealthRepository({
+    transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+      callback(db)
+    )) as never
+  })
+
+  await repository.recordValidation({
+    ...input(),
     actor: { type: 'user', id: 'user-1' },
     capabilities: [{ mode: 'meta_pixel', status: 'ready', blockingReason: null }]
-  }))
-  const auditInsert = queries.find(query => query.text.includes('measurement_config_audit'))
-  expect(auditInsert).toBeDefined()
-  expect(auditInsert!.values).toContain('user')
+  })
+
+  const audit = statements.at(-1)!
+  expect(audit.sql).toContain('measurement_config_audit')
+  expect(audit.params).toContain('user')
 })
 ```
 
-`createRepositoryHarness` and `buildEvidence` are the helpers already defined in that test file — reuse them rather than writing new ones. If `buildEvidence` does not accept overrides, extend it to merge a partial.
+The existing test at line 30 asserts the exact ordered list of SQL statements and that the audit params contain `'request-redacted-123'`. Your parameter reordering must not disturb either — re-run that test specifically.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -641,48 +668,91 @@ it('maps each provider test mode to the platform it belongs to', () => {
 
 Export `expectedPlatform` from `providerTestRepository.ts` so the test can import it.
 
-Add to `test/server/utils/measurement/providerTestService.test.ts`, following the existing harness in that file:
+In `test/server/utils/measurement/providerTestService.test.ts`, first extend the two existing helpers.
+
+Widen `context()` (line 26) to accept the GA4 platform — its signature is currently `(platform: 'meta' | 'google_data_manager', metaDeliveryMode: 'crm' | 'web' = 'crm')`:
 
 ```ts
-it('runs a GA4 debug validation and reports acceptance', async () => {
-  const validateGa4 = vi.fn().mockResolvedValue({
-    outcome: 'accepted', providerRequestId: null, errorClass: null, redactedDiagnostic: null
-  })
-  const { service } = createServiceHarness({ validateGa4, platform: 'ga4' })
-  const result = await service.run(buildGa4Input())
-  expect(validateGa4).toHaveBeenCalledOnce()
-  expect(validateGa4.mock.calls[0][0].gaClientId).toBe('123.456')
-  expect(result.run.status).toBe('accepted')
-})
-
-it('rejects a GA4 test whose gaClientId is missing', async () => {
-  const { service } = createServiceHarness({ platform: 'ga4' })
-  await expect(service.run({ ...buildGa4Input(), gaClientId: undefined }))
-    .rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
-})
-```
-
-Add a `buildGa4Input()` helper to that test file alongside the existing input builders:
-
-```ts
-function buildGa4Input() {
+function context(
+  platform: 'meta' | 'google_data_manager' | 'ga4',
+  metaDeliveryMode: 'crm' | 'web' = 'crm'
+) {
+  const mode = platform === 'meta'
+    ? 'meta_test_events' as const
+    : platform === 'ga4'
+      ? 'ga4_debug_validation' as const
+      : 'google_validate_only' as const
   return {
-    mode: 'ga4_debug_validation',
-    clientId: '11111111-1111-4111-8111-111111111111',
-    destinationId: '22222222-2222-4222-8222-222222222222',
-    expectedConfigVersion: 1,
-    canonicalEventName: 'web_conversion',
-    occurredAt: new Date().toISOString(),
-    idempotencyKey: '33333333-3333-4333-8333-333333333333',
-    reason: 'Validating GA4 micro-conversion delivery',
-    confirmed: true,
-    actor: { id: '44444444-4444-4444-8444-444444444444' },
-    gaClientId: '123.456'
+    run: { id: ids.run, mode, status: 'requested' as const },
+    delivery: {
+      eventId: '66666666-6666-4666-8666-666666666666',
+      eventName: 'lead_qualified',
+      providerEventName: 'QualifiedLead',
+      occurredAt: '2026-07-17T08:00:00.000Z',
+      idempotencyKey: ids.idempotency,
+      externalDestinationId: platform === 'ga4' ? 'G-ABC123' : '573284833843027',
+      operatingAccountId: '4221552633',
+      loginAccountId: '4221552633',
+      metaDeliveryMode
+    },
+    credential: {
+      credentialRef: platform === 'meta'
+        ? 'MEASUREMENT_PROVIDER_META_BIG_GARAGE'
+        : platform === 'ga4' ? 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE' : null,
+      accessToken: platform === 'meta' ? 'meta-token' : null,
+      refreshToken: platform === 'google_data_manager' ? 'google-refresh' : null,
+      scopes: platform === 'google_data_manager'
+        ? ['https://www.googleapis.com/auth/datamanager']
+        : []
+    }
   }
 }
 ```
 
-Extend `createServiceHarness` to accept `validateGa4` and a `platform` override if it does not already.
+Add a `validateGa4` mock to `setup()` (line 58), pass it into `createMeasurementProviderTestService`, and include it in the returned object alongside `deliverMeta` and `deliverGoogle`:
+
+```ts
+  const validateGa4 = vi.fn(async () => ({
+    outcome: 'accepted' as const,
+    providerRequestId: null,
+    errorClass: null,
+    redactedDiagnostic: null
+  }))
+```
+
+Then add the tests, using the file's existing `baseInput()` and `setup()` conventions:
+
+```ts
+  it('runs a GA4 debug validation through the debug endpoint provider', async () => {
+    const test = setup(context('ga4'))
+
+    const result = await test.service.run({
+      ...baseInput(),
+      mode: 'ga4_debug_validation',
+      gaClientId: '123.456'
+    })
+
+    expect(test.validateGa4).toHaveBeenCalledWith(expect.objectContaining({
+      gaClientId: '123.456',
+      apiSecret: 'meta-dataset-token'
+    }))
+    expect(test.deliverGoogle).not.toHaveBeenCalled()
+    expect(result.run.status).toBe('accepted')
+  })
+
+  it('rejects a GA4 test with a malformed gaClientId before reserving provider traffic', async () => {
+    const test = setup(context('ga4'))
+
+    await expect(test.service.run({
+      ...baseInput(),
+      mode: 'ga4_debug_validation',
+      gaClientId: 'not-a-client-id'
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+  })
+```
+
+`resolveProviderCredential` in `setup()` returns `'meta-dataset-token'` for any ref, which is why the GA4 assertion expects that value as the API secret.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -819,94 +889,136 @@ The core fix. After this task a Meta, Google, or GA4 destination can reach `read
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `test/server/utils/measurement/providerTestService.test.ts`:
+First extend `setup()` in `test/server/utils/measurement/providerTestService.test.ts` with a `recordValidation` mock, pass it into `createMeasurementProviderTestService`, and return it alongside the other mocks:
 
 ```ts
-it('records validation evidence for the capabilities a successful test covers', async () => {
-  const recordValidation = vi.fn().mockResolvedValue({ healthStatus: 'ready' })
-  const { service } = createServiceHarness({ recordValidation })
-  const result = await service.run(buildMetaCrmInput())
-  expect(recordValidation).toHaveBeenCalledOnce()
-  const evidence = recordValidation.mock.calls[0][0]
-  expect(evidence.actor).toEqual({ type: 'system', id: '44444444-4444-4444-8444-444444444444' })
-  expect(evidence.capabilities.map((c: { mode: string }) => c.mode)).toEqual([
-    'meta_web_capi', 'meta_crm_capi', 'meta_conversion_leads'
-  ])
-  expect(evidence.capabilities.every((c: { status: string }) => c.status === 'ready')).toBe(true)
-  expect(result.validation.recorded).toBe(true)
-})
+  const recordValidation = vi.fn(async () => ({ healthStatus: 'ready' as const }))
+```
 
-it('never records evidence for meta_pixel', async () => {
-  const recordValidation = vi.fn().mockResolvedValue({ healthStatus: 'validating' })
-  const { service } = createServiceHarness({ recordValidation })
-  await service.run(buildMetaCrmInput())
-  const evidence = recordValidation.mock.calls[0][0]
-  expect(evidence.capabilities.map((c: { mode: string }) => c.mode)).not.toContain('meta_pixel')
-})
+Add a Meta CRM input helper next to `baseInput()`, matching the shape the existing tests construct inline:
 
-it('records blocked evidence with a reason when the provider rejects the event', async () => {
-  const recordValidation = vi.fn().mockResolvedValue({ healthStatus: 'blocked' })
-  const { service } = createServiceHarness({
-    recordValidation,
-    deliverMeta: vi.fn().mockResolvedValue({
-      outcome: 'permanent_failure',
+```ts
+function metaCrmInput() {
+  return {
+    ...baseInput(),
+    mode: 'meta_test_events' as const,
+    deliveryMode: 'crm' as const,
+    testEventCode: 'TEST123456',
+    metaLeadId: '1234567890123456',
+    browserEventId: null
+  }
+}
+```
+
+Then add the tests:
+
+```ts
+  it('records validation evidence for the capabilities a successful test covers', async () => {
+    const test = setup()
+
+    const result = await test.service.run(metaCrmInput())
+
+    expect(test.recordValidation).toHaveBeenCalledOnce()
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    expect(evidence.actor).toEqual({ type: 'system', id: ids.actor })
+    expect((evidence.capabilities as Array<{ mode: string }>).map(c => c.mode)).toEqual([
+      'meta_web_capi', 'meta_crm_capi', 'meta_conversion_leads'
+    ])
+    expect((evidence.capabilities as Array<{ status: string }>).every(c => c.status === 'ready')).toBe(true)
+    expect(result.validation.recorded).toBe(true)
+  })
+
+  it('never records evidence for meta_pixel', async () => {
+    const test = setup()
+
+    await test.service.run(metaCrmInput())
+
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    expect((evidence.capabilities as Array<{ mode: string }>).map(c => c.mode))
+      .not.toContain('meta_pixel')
+  })
+
+  it('records blocked evidence with a reason when the provider rejects the event', async () => {
+    const test = setup()
+    test.deliverMeta.mockResolvedValue({
+      outcome: 'permanent_failure' as const,
       providerRequestId: null,
       errorClass: 'meta_invalid_dataset',
       redactedDiagnostic: 'Dataset rejected the event'
     })
-  })
-  await service.run(buildMetaCrmInput())
-  const evidence = recordValidation.mock.calls[0][0]
-  expect(evidence.capabilities.every((c: { status: string }) => c.status === 'blocked')).toBe(true)
-  expect(evidence.capabilities.every((c: { blockingReason: string | null }) => c.blockingReason)).toBe(true)
-})
 
-it('marks a retryable provider failure as degraded rather than blocked', async () => {
-  const recordValidation = vi.fn().mockResolvedValue({ healthStatus: 'degraded' })
-  const { service } = createServiceHarness({
-    recordValidation,
-    deliverMeta: vi.fn().mockResolvedValue({
-      outcome: 'retryable',
+    await test.service.run(metaCrmInput())
+
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    const capabilities = evidence.capabilities as Array<{ status: string, blockingReason: string | null }>
+    expect(capabilities.every(c => c.status === 'blocked')).toBe(true)
+    expect(capabilities.every(c => Boolean(c.blockingReason))).toBe(true)
+  })
+
+  it('marks a retryable provider failure as degraded rather than blocked', async () => {
+    const test = setup()
+    test.deliverMeta.mockResolvedValue({
+      outcome: 'retryable' as const,
       providerRequestId: null,
       errorClass: 'provider_network_error',
       redactedDiagnostic: 'Provider validation failed before a response'
     })
+
+    await test.service.run(metaCrmInput())
+
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    expect((evidence.capabilities as Array<{ status: string }>).every(c => c.status === 'degraded'))
+      .toBe(true)
   })
-  await service.run(buildMetaCrmInput())
-  const evidence = recordValidation.mock.calls[0][0]
-  expect(evidence.capabilities.every((c: { status: string }) => c.status === 'degraded')).toBe(true)
-})
 
-it('records which capabilities were directly exercised versus inferred', async () => {
-  const recordValidation = vi.fn().mockResolvedValue({ healthStatus: 'ready' })
-  const { service } = createServiceHarness({ recordValidation })
-  await service.run(buildMetaCrmInput())
-  const evidence = recordValidation.mock.calls[0][0]
-  expect(evidence.directlyExercised).toEqual(['meta_crm_capi'])
-  expect(evidence.inferred).toEqual(['meta_web_capi', 'meta_conversion_leads'])
-})
+  it('records which capabilities were directly exercised versus inferred', async () => {
+    const test = setup()
 
-it('reports a version conflict without failing the test run', async () => {
-  const conflict = Object.assign(new Error('conflict'), { code: 'MEASUREMENT_VERSION_CONFLICT' })
-  const recordValidation = vi.fn().mockRejectedValue(conflict)
-  const { service } = createServiceHarness({ recordValidation })
-  const result = await service.run(buildMetaCrmInput())
-  expect(result.run.status).toBe('accepted')
-  expect(result.validation.recorded).toBe(false)
-  expect(result.validation.skippedReason).toBe('version_conflict')
-})
+    await test.service.run(metaCrmInput())
 
-it('does not re-record evidence for an idempotent replay of an existing run', async () => {
-  const recordValidation = vi.fn()
-  const { service } = createServiceHarness({ recordValidation, reserveStatus: 'existing' })
-  const result = await service.run(buildMetaCrmInput())
-  expect(recordValidation).not.toHaveBeenCalled()
-  expect(result.validation.recorded).toBe(false)
-  expect(result.validation.skippedReason).toBe('already_run')
-})
+    // baseInput() uses canonicalEventName 'lead_qualified', a downstream
+    // lifecycle outcome, so the crm call exercises both crm capabilities and
+    // only the web capability is inferred from the Meta collapse.
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    expect(evidence.directlyExercised).toEqual(['meta_crm_capi', 'meta_conversion_leads'])
+    expect(evidence.inferred).toEqual(['meta_web_capi'])
+  })
+
+  it('reports a version conflict without failing the test run', async () => {
+    const test = setup()
+    test.recordValidation.mockRejectedValue(
+      Object.assign(new Error('conflict'), { code: 'MEASUREMENT_VERSION_CONFLICT' })
+    )
+
+    const result = await test.service.run(metaCrmInput())
+
+    expect(result.run.status).toBe('accepted')
+    expect(result.validation.recorded).toBe(false)
+    expect(result.validation.skippedReason).toBe('version_conflict')
+  })
+
+  it('does not re-record evidence for an idempotent replay of an existing run', async () => {
+    const test = setup()
+    test.repository.reserve.mockResolvedValue({
+      status: 'existing' as const,
+      run: {
+        id: ids.run,
+        mode: 'meta_test_events' as const,
+        status: 'accepted' as const,
+        providerRequestId: 'meta-trace',
+        errorClass: null,
+        redactedError: null,
+        completedAt: '2026-07-17T08:00:01.000Z'
+      }
+    })
+
+    const result = await test.service.run(metaCrmInput())
+
+    expect(test.recordValidation).not.toHaveBeenCalled()
+    expect(result.validation.recorded).toBe(false)
+    expect(result.validation.skippedReason).toBe('already_run')
+  })
 ```
-
-Extend `createServiceHarness` to accept `recordValidation` and `reserveStatus`.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
