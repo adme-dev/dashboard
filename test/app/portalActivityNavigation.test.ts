@@ -26,4 +26,13 @@ describe('portal recent activity navigation', () => {
     expect(page).toContain('USkeleton')
     expect(page).toContain('UAlert')
   })
+
+  it('removes the duplicate Recent Activity card from the dashboard', () => {
+    const dashboard = readFileSync('app/pages/portal/index.vue', 'utf8')
+
+    expect(dashboard).not.toContain('<!-- Recent Activity -->')
+    expect(dashboard).not.toContain('dashboard.recentActivity')
+    expect(dashboard).not.toContain('function activityLabel')
+    expect(dashboard).not.toContain('function activityIcon')
+  })
 })

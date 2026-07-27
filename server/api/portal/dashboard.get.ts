@@ -233,24 +233,6 @@ export default defineEventHandler(async (event) => {
     `, [clientId]))
       : []
 
-    const recentActivity = loadOperations
-      ? await safeQuery<any[]>('recentActivity', [], async () => queryRows(`
-      SELECT
-        cal.id,
-        cal.action,
-        cal.entity_type,
-        cal.entity_id,
-        cal.details,
-        cal.created_at,
-        cu.name as user_name
-      FROM client_activity_log cal
-      LEFT JOIN client_users cu ON cal.client_user_id = cu.id
-      WHERE cal.client_id = $1
-      ORDER BY cal.created_at DESC
-      LIMIT 10
-    `, [clientId]))
-      : []
-
     // Open client requests
     const emptyRequestStats = {
       total: 0,
@@ -854,16 +836,7 @@ export default defineEventHandler(async (event) => {
           status: l.status,
           campaignName: l.campaign_name
         }))
-      },
-      recentActivity: recentActivity.map(a => ({
-        id: a.id,
-        action: a.action,
-        entityType: a.entity_type,
-        entityId: a.entity_id,
-        details: a.details,
-        createdAt: a.created_at,
-        userName: a.user_name
-      }))
+      }
     }
   } catch (error: unknown) {
     if (
