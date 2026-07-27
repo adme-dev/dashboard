@@ -21,7 +21,6 @@ export default defineEventHandler(async (event) => {
       ORDER BY day ASC`,
     [client.clientId, fromDate, toDate, timezone]
   )
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   return {
     timezone,
     points: rows.map(row => ({

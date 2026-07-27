@@ -1013,7 +1013,7 @@ export async function sendClientPortalInviteEmail(data: {
   }
 
   const recipientName = data.name || data.clientUserName || 'there'
-  const portalLink = data.portalUrl || (data.token ? `${appUrl}/client-portal/accept?token=${data.token}` : `${appUrl}/client-portal`)
+  const portalLink = data.portalUrl || (data.token ? `${appUrl}/portal/accept-invite?token=${data.token}` : `${appUrl}/portal`)
   const orgName = data.clientName || appName
 
   const { html, text } = renderEmailTemplate({

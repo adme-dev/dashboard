@@ -37,7 +37,6 @@ export default defineEventHandler(async (event) => {
   )
   const viewed = Number(row?.page_view) || 0
   const rate = (count: number) => viewed > 0 ? Math.round((count / viewed) * 1000) / 10 : 0
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   return {
     steps: FUNNEL_EVENTS.map(([step, eventName]) => {
       const sessions = Number(row?.[eventName]) || 0

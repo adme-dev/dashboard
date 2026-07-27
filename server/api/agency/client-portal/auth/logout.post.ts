@@ -6,8 +6,8 @@
  * - Authorization: Bearer <sessionToken>
  */
 
-import { execute, queryRows } from '~~/server/utils/db'
-import bcrypt from 'bcryptjs'
+import { execute } from '~~/server/utils/db'
+import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 
 export default defineEventHandler(async (event) => {
   const headers = getHeaders(event)
@@ -24,28 +24,11 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const sessions = await queryRows(`
-      SELECT id, token_hash
-      FROM client_sessions
-      WHERE expires_at > NOW()
-      ORDER BY created_at DESC
-      LIMIT 100
-    `)
-
-    for (const session of sessions) {
-      try {
-        const valid = await bcrypt.compare(sessionToken, session.token_hash)
-        if (valid) {
-          await execute(`
-            DELETE FROM client_sessions
-            WHERE id = $1
-          `, [session.id])
-          break
-        }
-      } catch {
-        continue
-      }
-    }
+    const sessionDigest = await digestPortalSessionToken(sessionToken)
+    await execute(`
+      DELETE FROM client_sessions
+      WHERE token_hash = $1
+    `, [sessionDigest])
   } catch (error) {
     console.error('Logout failed:', error)
   } finally {

@@ -62,7 +62,7 @@ describe('portal meeting artifacts API', () => {
   it('returns client-scoped meeting artifacts for shared meetings', async () => {
     const result = await artifactsHandler({ params: { id: 'meeting-1' } })
 
-    expect(mockEnsureArtifacts).toHaveBeenCalledOnce()
+    expect(mockEnsureArtifacts).not.toHaveBeenCalled()
     expect(mockQueryOne).toHaveBeenCalledWith(
       expect.stringContaining('om.client_user_id = $1'),
       ['client-user-1', 'meeting-1']

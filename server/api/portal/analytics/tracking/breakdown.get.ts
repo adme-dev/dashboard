@@ -40,7 +40,6 @@ export default defineEventHandler(async (event) => {
       LIMIT $5`,
     [client.clientId, fromDate, toDate, timezone, limit]
   )
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   return {
     dimension,
     rows: rows.map(row => ({ key: String(row.key), count: Number(row.count) || 0 }))

@@ -3,22 +3,60 @@
  * POST /api/portal/auth/login
  */
 
-import { queryOne, transaction } from '~~/server/utils/db'
+import { queryOneFresh, queryRowsFresh, transaction } from '~~/server/utils/db'
+import { checkAndConsume } from '~~/server/utils/rateLimit'
+import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import bcrypt from 'bcryptjs'
+import { z } from 'zod'
+
+const loginSchema = z.object({
+  email: z.string().trim().email().max(254),
+  password: z.string().min(1).max(256)
+})
+
+const DUMMY_PASSWORD_HASH = '$2b$10$YwwVw2nR6/13.oooNHUY8es3GrBoCAFSg8VpgyvWif3llDnQmZwUy'
+
+async function enforceLoginLimit(
+  event: Parameters<typeof getHeaders>[0],
+  key: string,
+  limit: number,
+  windowSeconds: number
+) {
+  const result = await checkAndConsume({ key, limit, windowSeconds })
+  if (result.allowed) return
+
+  const retryAfter = Math.max(1, Math.ceil((result.resetAt.getTime() - Date.now()) / 1000))
+  setHeader(event, 'Retry-After', retryAfter)
+  throw createError({
+    statusCode: 429,
+    statusMessage: 'Too many sign-in attempts. Try again later.'
+  })
+}
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-  const { email, password } = body
+  const parsed = loginSchema.safeParse(await readBody(event))
 
-  if (!email || !password) {
+  if (!parsed.success) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Email and password are required'
+      statusMessage: 'Invalid login request'
     })
   }
 
+  const email = parsed.data.email.toLowerCase()
+  const password = parsed.data.password
+  const headers = getHeaders(event)
+  const ipAddress = headers['x-forwarded-for']?.split(',')[0]?.trim()
+    || headers['x-real-ip']
+    || 'unknown'
+  const emailKey = await digestPortalSessionToken(email)
+  const ipKey = await digestPortalSessionToken(ipAddress)
+
+  await enforceLoginLimit(event, `portal-login:email:${emailKey}`, 5, 15 * 60)
+  await enforceLoginLimit(event, `portal-login:ip:${ipKey}`, 20, 15 * 60)
+
   try {
-    const user = await queryOne(`
+    const candidates = await queryRowsFresh(`
       SELECT
         cu.id,
         cu.email,
@@ -47,52 +85,41 @@ export default defineEventHandler(async (event) => {
       FROM client_users cu
       JOIN agency_clients c ON cu.client_id = c.id
       WHERE cu.email = $1
-    `, [email.toLowerCase()])
+      ORDER BY cu.created_at ASC
+    `, [email])
 
-    if (!user) {
+    const passwordChecks = candidates.length
+      ? candidates.map(candidate => bcrypt.compare(password, candidate.password_hash || DUMMY_PASSWORD_HASH))
+      : [bcrypt.compare(password, DUMMY_PASSWORD_HASH)]
+    const matches = (await Promise.all(passwordChecks))
+      .map((valid, index) => ({ valid, candidate: candidates[index] }))
+      .filter(({ valid, candidate }) =>
+        valid && candidate?.password_hash && candidate.status === 'active'
+      )
+
+    // Email addresses are tenant-scoped. Refuse an ambiguous match rather than
+    // selecting an arbitrary client when credentials are reused across tenants.
+    if (matches.length !== 1) {
       throw createError({
         statusCode: 401,
         statusMessage: 'Invalid email or password'
       })
     }
-
-    if (!user.password_hash) {
-      throw createError({
-        statusCode: 401,
-        statusMessage: 'Account not activated. Please use your invitation link.'
-      })
-    }
-
-    if (user.status !== 'active') {
-      throw createError({
-        statusCode: 403,
-        statusMessage: `Account is ${user.status}. Please contact support.`
-      })
-    }
-
-    const valid = await bcrypt.compare(password, user.password_hash)
-    if (!valid) {
-      throw createError({
-        statusCode: 401,
-        statusMessage: 'Invalid email or password'
-      })
-    }
+    const user = matches[0]!.candidate!
 
     // Create session
     const sessionToken = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString('base64url')
-    const tokenHash = await bcrypt.hash(sessionToken, 10)
+    const tokenHash = await digestPortalSessionToken(sessionToken)
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 30)
 
-    const headers = getHeaders(event)
-    const ipAddress = headers['x-forwarded-for']?.split(',')[0] || headers['x-real-ip'] || null
     const userAgent = headers['user-agent'] || null
 
     await transaction(async (client) => {
       await client.query(`
         INSERT INTO client_sessions (client_user_id, token_hash, ip_address, user_agent, expires_at)
         VALUES ($1, $2, $3, $4, $5)
-      `, [user.id, tokenHash, ipAddress, userAgent, expiresAt.toISOString()])
+      `, [user.id, tokenHash, ipAddress === 'unknown' ? null : ipAddress, userAgent, expiresAt.toISOString()])
 
       await client.query(`
         UPDATE client_users
@@ -103,7 +130,7 @@ export default defineEventHandler(async (event) => {
       await client.query(`
         INSERT INTO client_activity_log (client_user_id, client_id, action, ip_address, user_agent)
         VALUES ($1, $2, 'login', $3, $4)
-      `, [user.id, user.client_id, ipAddress, userAgent])
+      `, [user.id, user.client_id, ipAddress === 'unknown' ? null : ipAddress, userAgent])
     })
 
     // Set httpOnly cookie
@@ -115,31 +142,39 @@ export default defineEventHandler(async (event) => {
       path: '/'
     })
 
-    // Get stats
-    const pendingApprovals = await queryOne(`
-      SELECT COUNT(*) as count
-      FROM client_approvals ca
-      JOIN projects p ON ca.project_id = p.id
-      WHERE p.client_id = $1 AND ca.status = 'pending'
-    `, [user.client_id])
-
-    const unreadNotifications = await queryOne(`
-      SELECT COUNT(*) as count
-      FROM client_notifications
-      WHERE client_user_id = $1 AND is_read = false
-    `, [user.id])
-
-    const activeProjects = await queryOne(`
-      SELECT COUNT(*) as count
-      FROM projects
-      WHERE client_id = $1 AND status = 'active'
-    `, [user.client_id])
-
-    const openRequests = await queryOne(`
-      SELECT COUNT(*) as count
-      FROM client_requests
-      WHERE client_id = $1 AND status NOT IN ('completed', 'closed', 'cancelled')
-    `, [user.client_id])
+    const bootstrap = await queryOneFresh(`
+      SELECT
+        CASE WHEN $3::boolean THEN (
+          SELECT COUNT(*)
+          FROM client_approvals ca
+          JOIN projects p ON ca.project_id = p.id
+          WHERE p.client_id = $1 AND ca.status = 'pending'
+        ) ELSE 0 END AS pending_approvals,
+        (
+          SELECT COUNT(*)
+          FROM client_notifications
+          WHERE client_user_id = $2
+            AND is_read = false
+            AND is_archived = false
+        ) AS unread_notifications,
+        CASE WHEN $4::boolean THEN (
+          SELECT COUNT(*)
+          FROM projects
+          WHERE client_id = $1 AND status = 'active'
+        ) ELSE 0 END AS active_projects,
+        CASE WHEN $5::boolean THEN (
+          SELECT COUNT(*)
+          FROM client_requests
+          WHERE client_id = $1
+            AND status NOT IN ('completed', 'closed', 'cancelled')
+        ) ELSE 0 END AS open_requests
+    `, [
+      user.client_id,
+      user.id,
+      Boolean(user.can_approve_work),
+      Boolean(user.can_view_projects),
+      Boolean(user.can_submit_requests)
+    ])
 
     return {
       user: {
@@ -169,10 +204,10 @@ export default defineEventHandler(async (event) => {
         timezone: user.timezone
       },
       stats: {
-        pendingApprovals: Number(pendingApprovals?.count || 0),
-        unreadNotifications: Number(unreadNotifications?.count || 0),
-        activeProjects: Number(activeProjects?.count || 0),
-        openRequests: Number(openRequests?.count || 0)
+        pendingApprovals: Number(bootstrap?.pending_approvals || 0),
+        unreadNotifications: Number(bootstrap?.unread_notifications || 0),
+        activeProjects: Number(bootstrap?.active_projects || 0),
+        openRequests: Number(bootstrap?.open_requests || 0)
       }
     }
   } catch (error: unknown) {

@@ -8,7 +8,6 @@ export default defineEventHandler(async event => {
   }
 
   const snapshot = await getPersonaExportOperationsSnapshot(client.clientId)
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
 
   return {
     ...snapshot,
@@ -28,4 +27,3 @@ export default defineEventHandler(async event => {
     })),
   }
 })
-

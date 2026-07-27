@@ -40,7 +40,6 @@ export default defineEventHandler(async (event) => {
     [client.clientId, fromDate, toDate, timezone]
   )
   const value = (key: string) => Number(row?.[key]) || 0
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   return {
     visitors: value('visitors'),
     sessions: value('sessions'),

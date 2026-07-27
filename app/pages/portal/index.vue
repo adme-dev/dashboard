@@ -49,7 +49,7 @@ interface PortalDashboard {
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string, body?: unknown }
+  options?: { method?: string, body?: unknown, query?: Record<string, string> }
 ) => Promise<T>
 
 const dashboard = ref<PortalDashboard | null>(null)
@@ -61,7 +61,9 @@ async function refreshDashboard() {
   dashboardError.value = null
 
   try {
-    dashboard.value = await apiFetch<PortalDashboard>('/api/portal/dashboard')
+    dashboard.value = await apiFetch<PortalDashboard>('/api/portal/dashboard', {
+      query: { section: 'core' }
+    })
   } catch (error) {
     dashboardError.value = error
     throw error
@@ -71,6 +73,38 @@ async function refreshDashboard() {
 }
 
 await refreshDashboard()
+
+onMounted(async () => {
+  const [operationsResult, enterpriseResult, analyticsResult] = await Promise.allSettled([
+    apiFetch<PortalDashboard>('/api/portal/dashboard', { query: { section: 'operations' } }),
+    apiFetch<PortalDashboard>('/api/portal/dashboard', { query: { section: 'enterprise' } }),
+    apiFetch<PortalDashboard>('/api/portal/dashboard', { query: { section: 'analytics' } })
+  ])
+  const current = dashboard.value
+  if (!current) return
+
+  const operations = operationsResult.status === 'fulfilled' ? operationsResult.value : null
+  const enterprise = enterpriseResult.status === 'fulfilled' ? enterpriseResult.value : null
+  const analytics = analyticsResult.status === 'fulfilled' ? analyticsResult.value : null
+
+  dashboard.value = {
+    ...current,
+    gallery: operations?.gallery ?? current.gallery,
+    invoices: operations?.invoices ?? current.invoices,
+    team: operations?.team ?? current.team,
+    meetings: operations?.meetings ?? current.meetings,
+    upcomingDeadlines: operations?.upcomingDeadlines ?? current.upcomingDeadlines,
+    recentActivity: operations?.recentActivity ?? current.recentActivity,
+    leads: analytics?.leads ?? current.leads,
+    enterprise: {
+      jobs: enterprise?.enterprise.jobs ?? current.enterprise.jobs,
+      billing: enterprise?.enterprise.billing ?? current.enterprise.billing,
+      campaigns: analytics?.enterprise.campaigns ?? current.enterprise.campaigns,
+      access: enterprise?.enterprise.access ?? current.enterprise.access,
+      content: enterprise?.enterprise.content ?? current.enterprise.content
+    }
+  }
+})
 
 type PriorityColor = 'primary' | 'warning' | 'error' | 'success' | 'info' | 'neutral'
 
@@ -118,7 +152,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
 
   const items: AccountPriority[] = []
 
-  if (data.enterprise.jobs.overdue > 0) {
+  if (user.value?.permissions?.canViewProjects && data.enterprise.jobs.overdue > 0) {
     items.push({
       title: 'Review overdue job dates',
       detail: `${data.enterprise.jobs.overdue} job${data.enterprise.jobs.overdue === 1 ? '' : 's'} past the planned date`,
@@ -126,7 +160,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       color: 'error',
       to: '/portal/projects?view=upcoming'
     })
-  } else if (data.enterprise.jobs.dueSoon > 0) {
+  } else if (user.value?.permissions?.canViewProjects && data.enterprise.jobs.dueSoon > 0) {
     items.push({
       title: 'Check upcoming job dates',
       detail: `${data.enterprise.jobs.dueSoon} upcoming deadline${data.enterprise.jobs.dueSoon === 1 ? '' : 's'}`,
@@ -136,7 +170,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
     })
   }
 
-  if (data.approvals.pendingCount > 0) {
+  if (user.value?.permissions?.canApproveWork && data.approvals.pendingCount > 0) {
     items.push({
       title: 'Approve pending work',
       detail: `${data.approvals.pendingCount} item${data.approvals.pendingCount === 1 ? '' : 's'} waiting on your decision`,
@@ -251,7 +285,7 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
     ? '/portal/projects?status=active'
     : data.projects.stats.completed > 0 ? '/portal/projects?view=history' : '/portal/projects?view=upcoming'
 
-  return [
+  const items: AccountCoverage[] = [
     {
       label: 'Jobs',
       detail: `${data.projects.stats.active} active, ${data.projects.stats.completed} completed`,
@@ -315,6 +349,12 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
       status: data.meetings.stats.totalVisible > 0 ? 'Live' : 'Available'
     }
   ]
+
+  return items.filter((item) => {
+    if (item.label === 'Jobs') return Boolean(user.value?.permissions?.canViewProjects)
+    if (item.label === 'Approvals') return Boolean(user.value?.permissions?.canApproveWork)
+    return true
+  })
 })
 
 const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
@@ -323,8 +363,9 @@ const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
 
   const activeJobs = data.enterprise.jobs.active
   const deliveryOnTrack = percent(Math.max(activeJobs - data.enterprise.jobs.overdue, 0), activeJobs)
-  const metrics: EnterpriseScorecardMetric[] = [
-    {
+  const metrics: EnterpriseScorecardMetric[] = []
+  if (user.value?.permissions?.canViewProjects) {
+    metrics.push({
       label: 'Delivery confidence',
       value: deliveryOnTrack,
       detail: activeJobs > 0
@@ -333,8 +374,8 @@ const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
       icon: 'i-lucide-briefcase-business',
       color: scoreColor(deliveryOnTrack),
       to: data.enterprise.jobs.overdue > 0 ? '/portal/projects?view=upcoming' : '/portal/projects?status=active'
-    }
-  ]
+    })
+  }
 
   if (data.enterprise.campaigns) {
     const contacted = data.enterprise.campaigns.contactedLeadsLast30
@@ -366,16 +407,18 @@ const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
     })
   }
 
-  const portalUsers = data.enterprise.access.totalUsers
-  const adoptionScore = percent(data.enterprise.access.activeUsers, portalUsers)
-  metrics.push({
-    label: 'Portal adoption',
-    value: adoptionScore,
-    detail: `${data.enterprise.access.activeUsers} active, ${data.enterprise.access.pendingUsers} pending users`,
-    icon: 'i-lucide-users-round',
-    color: scoreColor(adoptionScore),
-    to: '/portal/settings'
-  })
+  if (user.value?.isPrimaryContact || user.value?.permissions?.canInviteUsers) {
+    const portalUsers = data.enterprise.access.totalUsers
+    const adoptionScore = percent(data.enterprise.access.activeUsers, portalUsers)
+    metrics.push({
+      label: 'Portal adoption',
+      value: adoptionScore,
+      detail: `${data.enterprise.access.activeUsers} active, ${data.enterprise.access.pendingUsers} pending users`,
+      icon: 'i-lucide-users-round',
+      color: scoreColor(adoptionScore),
+      to: '/portal/settings'
+    })
+  }
 
   const visibleDeliverables = data.enterprise.content.deliverablesVisible
   const contentScore = percent(data.enterprise.content.deliverablesFinal || data.enterprise.content.deliverablesApproved, visibleDeliverables)
@@ -593,7 +636,11 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
 
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
-            <NuxtLink to="/portal/projects?status=active" class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors">
+            <NuxtLink
+              v-if="user?.permissions?.canViewProjects"
+              to="/portal/projects?status=active"
+              class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors"
+            >
               <div class="flex items-center gap-2 text-sm text-muted">
                 <UIcon name="i-lucide-briefcase-business" class="size-4" />
                 Jobs booked
@@ -606,7 +653,11 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
               </p>
             </NuxtLink>
 
-            <NuxtLink to="/portal/approvals?status=pending" class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors">
+            <NuxtLink
+              v-if="user?.permissions?.canApproveWork"
+              to="/portal/approvals?status=pending"
+              class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors"
+            >
               <div class="flex items-center gap-2 text-sm text-muted">
                 <UIcon name="i-lucide-check-check" class="size-4" />
                 Awaiting approval
@@ -741,6 +792,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
 
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <NuxtLink
+          v-if="user?.permissions?.canViewProjects"
           :to="dashboard.enterprise.jobs.overdue > 0 || dashboard.enterprise.jobs.dueSoon > 0
             ? '/portal/projects?view=upcoming'
             : '/portal/projects?status=active'"
@@ -877,7 +929,11 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </p>
         </div>
 
-        <NuxtLink to="/portal/settings" class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors">
+        <NuxtLink
+          v-if="user?.isPrimaryContact || user?.permissions?.canInviteUsers"
+          to="/portal/settings"
+          class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors"
+        >
           <div class="flex items-start justify-between gap-3">
             <div>
               <p class="text-sm text-muted">
@@ -1111,7 +1167,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
         </div>
       </UCard>
 
-      <UCard>
+      <UCard v-if="user?.permissions?.canViewProjects">
         <template #header>
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center gap-2">
@@ -1222,7 +1278,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Active Jobs -->
-        <UCard>
+        <UCard v-if="user?.permissions?.canViewProjects">
           <template #header>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
@@ -1271,7 +1327,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
         </UCard>
 
         <!-- Pending Approvals -->
-        <UCard>
+        <UCard v-if="user?.permissions?.canApproveWork">
           <template #header>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">

@@ -6,8 +6,6 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { buildClientCondition, toNum } from '~~/server/utils/analyticsMetrics'
-import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
-import { ensureOfficeRecordingsTables } from '~~/server/utils/officeRecordings'
 
 const PORTAL_VISIBLE_LEADS_EXISTS = `EXISTS (
   SELECT 1 FROM lead_form_rules r
@@ -21,6 +19,20 @@ const PORTAL_VISIBLE_LEADS_EXISTS = `EXISTS (
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
   const clientId = clientUser.clientId
+  const canViewProjects = clientUser.permissions.canViewProjects
+  const canViewBudgets = clientUser.permissions.canViewBudgets
+  const canViewInvoices = clientUser.permissions.canViewInvoices
+  const canApproveWork = clientUser.permissions.canApproveWork
+  const canViewAnalytics = clientUser.permissions.canViewAnalytics
+  const section = String(getQuery(event).section || 'core')
+  const allowedSections = new Set(['core', 'operations', 'enterprise', 'analytics'])
+  if (!allowedSections.has(section)) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid dashboard section' })
+  }
+  const loadCore = section === 'core'
+  const loadOperations = section === 'operations'
+  const loadEnterprise = section === 'enterprise'
+  const loadAnalytics = section === 'analytics'
 
   const safeQuery = async <T>(label: string, fallback: T, fn: () => Promise<T>): Promise<T> => {
     try {
@@ -32,7 +44,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const client = await safeQuery('client', {
+    const emptyClient = {
       id: null,
       name: null,
       logo_url: null,
@@ -40,18 +52,23 @@ export default defineEventHandler(async (event) => {
       billing_type: null,
       retainer_amount: null,
       created_at: null
-    }, async () => queryOne(`
+    }
+    const client = loadCore
+      ? await safeQuery('client', emptyClient, async () => queryOne(`
       SELECT id, name, logo_url, is_active, billing_type, retainer_amount, created_at
       FROM agency_clients
       WHERE id = $1
     `, [clientId]))
+      : emptyClient
 
-    const projectStats = await safeQuery('projectStats', {
+    const emptyProjectStats = {
       total: 0,
       active: 0,
       completed: 0,
       on_hold: 0
-    }, async () => queryOne(`
+    }
+    const projectStats = loadCore && canViewProjects
+      ? await safeQuery('projectStats', emptyProjectStats, async () => queryOne(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
@@ -60,8 +77,10 @@ export default defineEventHandler(async (event) => {
       FROM projects
       WHERE client_id = $1
     `, [clientId]))
+      : emptyProjectStats
 
-    const activeProjects = await safeQuery('activeProjects', [], async () => queryRows(`
+    const activeProjects = loadCore && canViewProjects
+      ? await safeQuery<any[]>('activeProjects', [], async () => queryRows(`
       SELECT
         p.id,
         p.name,
@@ -85,8 +104,10 @@ export default defineEventHandler(async (event) => {
       ORDER BY p.due_date ASC NULLS LAST
       LIMIT 10
     `, [clientId]))
+      : []
 
-    const upcomingJobs = await safeQuery('upcomingJobs', [], async () => queryRows(`
+    const upcomingJobs = loadCore && canViewProjects
+      ? await safeQuery<any[]>('upcomingJobs', [], async () => queryRows(`
       SELECT
         p.id,
         p.name,
@@ -113,8 +134,10 @@ export default defineEventHandler(async (event) => {
         p.created_at DESC
       LIMIT 6
     `, [clientId]))
+      : []
 
-    const completedJobs = await safeQuery('completedJobs', [], async () => queryRows(`
+    const completedJobs = loadCore && canViewProjects
+      ? await safeQuery<any[]>('completedJobs', [], async () => queryRows(`
       SELECT
         p.id,
         p.name,
@@ -141,8 +164,10 @@ export default defineEventHandler(async (event) => {
         p.created_at DESC
       LIMIT 6
     `, [clientId]))
+      : []
 
-    const pendingApprovals = await safeQuery('pendingApprovals', [], async () => queryRows(`
+    const pendingApprovals = loadCore && canApproveWork
+      ? await safeQuery<any[]>('pendingApprovals', [], async () => queryRows(`
       SELECT
         ca.id,
         ca.approval_type,
@@ -158,8 +183,10 @@ export default defineEventHandler(async (event) => {
       ORDER BY ca.due_date ASC NULLS LAST, ca.requested_at DESC
       LIMIT 5
     `, [clientId]))
+      : []
 
-    const recentDeliverables = await safeQuery('recentDeliverables', [], async () => queryRows(`
+    const recentDeliverables = loadOperations
+      ? await safeQuery<any[]>('recentDeliverables', [], async () => queryRows(`
       SELECT
         cd.id,
         cd.title,
@@ -174,14 +201,17 @@ export default defineEventHandler(async (event) => {
       ORDER BY cd.published_at DESC NULLS LAST, cd.created_at DESC
       LIMIT 8
     `, [clientId]))
+      : []
 
-    const invoiceStats = await safeQuery('invoiceStats', {
+    const emptyInvoiceStats = {
       total: 0,
       paid: 0,
       outstanding: 0,
       total_paid: 0,
       total_outstanding: 0
-    }, async () => queryOne(`
+    }
+    const invoiceStats = loadOperations && canViewInvoices
+      ? await safeQuery('invoiceStats', emptyInvoiceStats, async () => queryOne(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid,
@@ -191,16 +221,20 @@ export default defineEventHandler(async (event) => {
       FROM invoices
       WHERE client_id = $1
     `, [clientId]))
+      : emptyInvoiceStats
 
-    const outstandingInvoices = await safeQuery('outstandingInvoices', [], async () => queryRows(`
+    const outstandingInvoices = loadOperations && canViewInvoices
+      ? await safeQuery<any[]>('outstandingInvoices', [], async () => queryRows(`
       SELECT id, invoice_number, total_amount, amount_paid, due_date, status
       FROM invoices
       WHERE client_id = $1 AND status IN ('sent', 'overdue')
       ORDER BY due_date ASC
       LIMIT 5
     `, [clientId]))
+      : []
 
-    const recentActivity = await safeQuery('recentActivity', [], async () => queryRows(`
+    const recentActivity = loadOperations
+      ? await safeQuery<any[]>('recentActivity', [], async () => queryRows(`
       SELECT
         cal.id,
         cal.action,
@@ -215,16 +249,19 @@ export default defineEventHandler(async (event) => {
       ORDER BY cal.created_at DESC
       LIMIT 10
     `, [clientId]))
+      : []
 
     // Open client requests
-    const requestStats = await safeQuery('requestStats', {
+    const emptyRequestStats = {
       total: 0,
       submitted: 0,
       needs_review: 0,
       in_progress: 0,
       open: 0,
       resolved: 0
-    }, async () => queryOne(`
+    }
+    const requestStats = loadCore
+      ? await safeQuery('requestStats', emptyRequestStats, async () => queryOne(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'submitted' THEN 1 END) as submitted,
@@ -235,8 +272,10 @@ export default defineEventHandler(async (event) => {
       FROM client_requests
       WHERE client_id = $1
     `, [clientId]))
+      : emptyRequestStats
 
-    const recentRequests = await safeQuery('recentRequests', [], async () => queryRows(`
+    const recentRequests = loadCore
+      ? await safeQuery<any[]>('recentRequests', [], async () => queryRows(`
       SELECT
         cr.id,
         cr.request_type,
@@ -253,9 +292,11 @@ export default defineEventHandler(async (event) => {
         cr.created_at DESC
       LIMIT 5
     `, [clientId]))
+      : []
 
     // Team members (project managers on active projects)
-    const teamMembers = await safeQuery('teamMembers', [], async () => queryRows(`
+    const teamMembers = loadOperations && canViewProjects
+      ? await safeQuery<any[]>('teamMembers', [], async () => queryRows(`
       SELECT DISTINCT ON (tm.id)
         tm.id,
         tm.name,
@@ -271,11 +312,9 @@ export default defineEventHandler(async (event) => {
       ORDER BY tm.id
       LIMIT 5
     `, [clientId]))
+      : []
 
-    const meetings = await safeQuery('meetings', [], async () => {
-      await ensureOfficeMeetingArtifactsTables()
-      await ensureOfficeRecordingsTables()
-
+    const meetings = loadOperations ? await safeQuery<any[]>('meetings', [], async () => {
       return queryRows(`
         SELECT
           oms.id,
@@ -322,9 +361,10 @@ export default defineEventHandler(async (event) => {
           oms.created_at DESC
         LIMIT 6
       `, [clientUser.id])
-    })
+    }) : []
 
-    const upcomingDeadlines = await safeQuery('upcomingDeadlines', [], async () => queryRows(`
+    const upcomingDeadlines = loadOperations && canViewProjects
+      ? await safeQuery<any[]>('upcomingDeadlines', [], async () => queryRows(`
       SELECT
         t.id,
         t.title,
@@ -342,14 +382,17 @@ export default defineEventHandler(async (event) => {
       ORDER BY t.due_date ASC
       LIMIT 10
     `, [clientId]))
+      : []
 
-    const bookedJobHealth = await safeQuery('bookedJobHealth', {
+    const emptyBookedJobHealth = {
       active_jobs: 0,
       overdue_jobs: 0,
       due_soon_jobs: 0,
       completed_last_30: 0,
       next_due_date: null
-    }, async () => queryOne(`
+    }
+    const bookedJobHealth = loadEnterprise && canViewProjects
+      ? await safeQuery('bookedJobHealth', emptyBookedJobHealth, async () => queryOne(`
       SELECT
         COUNT(*) FILTER (WHERE p.status = 'active') AS active_jobs,
         COUNT(*) FILTER (
@@ -373,8 +416,9 @@ export default defineEventHandler(async (event) => {
       FROM projects p
       WHERE p.client_id = $1
     `, [clientId]))
+      : emptyBookedJobHealth
 
-    const billingHealth = clientUser.permissions.canViewInvoices
+    const billingHealth = loadEnterprise && clientUser.permissions.canViewInvoices
       ? await safeQuery('billingHealth', {
           outstanding_count: 0,
           overdue_count: 0,
@@ -402,7 +446,7 @@ export default defineEventHandler(async (event) => {
         `, [clientId]))
       : null
 
-    const campaignHealth = clientUser.permissions.canViewAnalytics
+    const campaignHealth = loadAnalytics && clientUser.permissions.canViewAnalytics
       ? await safeQuery('campaignHealth', {
           campaigns: 0,
           platforms: 0,
@@ -426,7 +470,7 @@ export default defineEventHandler(async (event) => {
       `, [clientId]))
       : null
 
-    const leadHealth = clientUser.permissions.canViewAnalytics
+    const leadHealth = loadAnalytics && clientUser.permissions.canViewAnalytics
       ? await safeQuery('leadHealth', {
           visible_leads: 0,
           leads_last_30: 0,
@@ -454,12 +498,15 @@ export default defineEventHandler(async (event) => {
       `, [clientId]))
       : null
 
-    const portalAccessHealth = await safeQuery('portalAccessHealth', {
+    const emptyPortalAccessHealth = {
       total_users: 0,
       active_users: 0,
       pending_users: 0,
       last_login_at: null
-    }, async () => queryOne(`
+    }
+    const portalAccessHealth = loadEnterprise
+      && (clientUser.isPrimaryContact || clientUser.permissions.canInviteUsers)
+      ? await safeQuery('portalAccessHealth', emptyPortalAccessHealth, async () => queryOne(`
       SELECT
         COUNT(*) AS total_users,
         COUNT(*) FILTER (WHERE status = 'active') AS active_users,
@@ -470,13 +517,16 @@ export default defineEventHandler(async (event) => {
         AND email NOT LIKE '%@portal-access.local'
         AND COALESCE(title, '') <> 'Agency portal access'
     `, [clientId]))
+      : emptyPortalAccessHealth
 
-    const leadStats = await safeQuery('leadStats', {
+    const emptyLeadStats = {
       total: 0,
       new: 0,
       contacted: 0,
       won: 0
-    }, async () => queryOne(`
+    }
+    const leadStats = loadAnalytics && canViewAnalytics
+      ? await safeQuery('leadStats', emptyLeadStats, async () => queryOne(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'new' THEN 1 END) as new,
@@ -485,10 +535,11 @@ export default defineEventHandler(async (event) => {
         FROM leads l
         WHERE l.client_id = $1
           AND l.deleted_at IS NULL
-          AND ${PORTAL_VISIBLE_LEADS_EXISTS}
+           AND ${PORTAL_VISIBLE_LEADS_EXISTS}
     `, [clientId]))
+      : emptyLeadStats
 
-    const contentHealth = await safeQuery('contentHealth', {
+    const emptyContentHealth = {
       briefs_total: 0,
       briefs_open: 0,
       briefs_needs_info: 0,
@@ -500,7 +551,9 @@ export default defineEventHandler(async (event) => {
       deliverables_final: 0,
       deliverables_recent_30d: 0,
       last_published_at: null
-    }, async () => queryOne(`
+    }
+    const contentHealth = loadEnterprise
+      ? await safeQuery('contentHealth', emptyContentHealth, async () => queryOne(`
       SELECT
         COALESCE(br.briefs_total, 0) AS briefs_total,
         COALESCE(br.briefs_open, 0) AS briefs_open,
@@ -550,8 +603,10 @@ export default defineEventHandler(async (event) => {
         GROUP BY client_id
       ) dl ON dl.client_id = c.client_id
     `, [clientId]))
+      : emptyContentHealth
 
-    const recentLeads = await safeQuery('recentLeads', [], async () => queryRows(`
+    const recentLeads = loadAnalytics && canViewAnalytics
+      ? await safeQuery<any[]>('recentLeads', [], async () => queryRows(`
       SELECT
         l.id,
         l.source,
@@ -567,6 +622,7 @@ export default defineEventHandler(async (event) => {
       ORDER BY l.submitted_at DESC
       LIMIT 5
     `, [clientId]))
+      : []
 
     return {
       client: {
@@ -589,7 +645,7 @@ export default defineEventHandler(async (event) => {
           status: p.status,
           startDate: p.start_date,
           dueDate: p.due_date,
-          budget: Number(p.budget || 0),
+          budget: canViewBudgets ? Number(p.budget || 0) : null,
           progressPercent: Math.round(Number(p.progress_percent || 0)),
           totalTasks: Number(p.total_tasks || 0),
           completedTasks: Number(p.completed_tasks || 0)
@@ -600,7 +656,7 @@ export default defineEventHandler(async (event) => {
           status: p.status,
           startDate: p.start_date,
           dueDate: p.due_date,
-          budget: Number(p.budget || 0),
+          budget: canViewBudgets ? Number(p.budget || 0) : null,
           totalTasks: Number(p.total_tasks || 0),
           completedTasks: Number(p.completed_tasks || 0)
         })),
@@ -610,7 +666,7 @@ export default defineEventHandler(async (event) => {
           status: p.status,
           startDate: p.start_date,
           dueDate: p.due_date,
-          budget: Number(p.budget || 0),
+          budget: canViewBudgets ? Number(p.budget || 0) : null,
           completedAt: p.updated_at,
           totalTasks: Number(p.total_tasks || 0),
           completedTasks: Number(p.completed_tasks || 0)

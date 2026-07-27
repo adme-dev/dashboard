@@ -7,6 +7,7 @@ interface HyperdriveConfig {
 }
 
 const HYPERDRIVE_ID = '900b4b74ec41462cbbabebd0aa8775aa'
+const HYPERDRIVE_FRESH_ID = '90228af3e2cc461bbc09accc3b47bd9f'
 const HYPERDRIVE_WORKER_CONFIGS = [
   'workers/leads-delivery-worker/wrangler.toml',
   'workers/audio-jobs/wrangler.toml',
@@ -27,6 +28,10 @@ describe('Cloudflare Hyperdrive production binding', () => {
       binding: 'HYPERDRIVE',
       id: HYPERDRIVE_ID
     })
+    expect(config.hyperdrive).toContainEqual({
+      binding: 'HYPERDRIVE_FRESH',
+      id: HYPERDRIVE_FRESH_ID
+    })
   })
 
   it('keeps standalone DB-writing workers on the same Hyperdrive config', () => {
@@ -38,13 +43,15 @@ describe('Cloudflare Hyperdrive production binding', () => {
     }
   })
 
-  it('keeps the shared Pages DB utility on Hyperdrive before DATABASE_URL fallback', () => {
+  it('routes cached and consistency-sensitive Pages queries through separate bindings', () => {
     const dbUtil = readFileSync('server/utils/db.ts', 'utf8')
-    const queryHelper = dbUtil.slice(dbUtil.indexOf('export async function query'))
 
-    expect(dbUtil).toContain('cloudflare?.env?.HYPERDRIVE?.connectionString')
-    expect(queryHelper.indexOf('getHyperdriveClient()')).toBeLessThan(queryHelper.indexOf('getSql()'))
-    expect(dbUtil).toContain('fallback')
+    expect(dbUtil).toContain("freshness === 'fresh' ? env.HYPERDRIVE_FRESH : env.HYPERDRIVE")
+    expect(dbUtil).toContain("return queryWithFreshness<T>('cached', sql, params)")
+    expect(dbUtil).toContain("return queryWithFreshness<T>('fresh', sql, params)")
+    expect(dbUtil).toContain("getHyperdriveClient('fresh')")
+    expect(dbUtil).toContain("getHyperdriveCs('fresh')")
+    expect(dbUtil).toContain('const sqlFn = getSql()')
   })
 
   it('documents Hyperdrive as active production infrastructure, not pending setup', () => {

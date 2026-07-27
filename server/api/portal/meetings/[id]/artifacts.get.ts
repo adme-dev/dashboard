@@ -5,7 +5,6 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
-import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
 import type { OfficeMeetingArtifactRow } from '~~/app/types/office'
 
 export default defineEventHandler(async (event) => {
@@ -15,8 +14,6 @@ export default defineEventHandler(async (event) => {
   if (!meetingId) {
     throw createError({ statusCode: 400, statusMessage: 'Meeting ID is required' })
   }
-
-  await ensureOfficeMeetingArtifactsTables()
 
   try {
     const meeting = await queryOne<{ id: string }>(`

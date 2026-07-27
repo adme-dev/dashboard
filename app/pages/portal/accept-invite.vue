@@ -51,7 +51,7 @@ async function handleAccept() {
 
   loading.value = true
   try {
-    const data = await apiFetch<{ success: boolean, user: { email: string }, sessionToken: string }>('/api/agency/client-portal/accept-invite', {
+    const data = await apiFetch<{ success: boolean, user: { email: string } }>('/api/portal/auth/accept-invite', {
       method: 'POST',
       body: { token: token.value, password: password.value }
     })

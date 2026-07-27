@@ -5,24 +5,11 @@ import { portalSocialNavItems } from '~/utils/portalSocialNavigation'
 const { user, stats, logout } = usePortalAuth()
 const route = useRoute()
 const open = ref(false)
-const layoutFetch = $fetch as <T>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 
 const close = () => {
   open.value = false
 }
 
-// Notification count (fetched separately)
-const unreadCount = ref(0)
-onMounted(async () => {
-  try {
-    const data = await layoutFetch<{ unreadCount?: number }>('/api/portal/notifications', {
-      query: { unreadOnly: 'true', limit: 1 }
-    })
-    unreadCount.value = data.unreadCount || 0
-  } catch {
-    unreadCount.value = 0
-  }
-})
 const navBadge = (value?: number) => value && value > 0 ? value.toString() : undefined
 const analyticsMenuOpen = computed(() =>
   route.path === '/portal/analytics' || route.path.startsWith('/portal/analytics/')
@@ -32,16 +19,26 @@ const canViewCrm = computed(() =>
   Boolean(user.value?.isPrimaryContact || user.value?.permissions?.canViewCrm)
 )
 
-const mainNav = computed<NavigationMenuItem[]>(() => [
+const mainNav = computed(() => ([
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/portal', exact: true, onSelect: close },
-  {
-    label: 'Jobs',
-    icon: 'i-lucide-folder-kanban',
-    to: stats.value?.activeProjects ? '/portal/projects?status=active' : '/portal/projects?view=upcoming',
-    badge: navBadge(stats.value?.activeProjects),
-    onSelect: close
-  },
-  { label: 'Approvals', icon: 'i-lucide-check-circle', to: stats.value?.pendingApprovals ? '/portal/approvals?status=pending' : '/portal/approvals', badge: navBadge(stats.value?.pendingApprovals), onSelect: close },
+  ...(user.value?.permissions?.canViewProjects
+    ? ([{
+        label: 'Jobs',
+        icon: 'i-lucide-folder-kanban',
+        to: stats.value?.activeProjects ? '/portal/projects?status=active' : '/portal/projects?view=upcoming',
+        badge: navBadge(stats.value?.activeProjects),
+        onSelect: close
+      }] as NavigationMenuItem[])
+    : []),
+  ...(user.value?.permissions?.canApproveWork
+    ? ([{
+        label: 'Approvals',
+        icon: 'i-lucide-check-circle',
+        to: stats.value?.pendingApprovals ? '/portal/approvals?status=pending' : '/portal/approvals',
+        badge: navBadge(stats.value?.pendingApprovals),
+        onSelect: close
+      }] as NavigationMenuItem[])
+    : []),
   { label: 'Video reviews', icon: 'i-lucide-clapperboard', to: '/portal/video-reviews', onSelect: close },
   { label: 'Requests', icon: 'i-lucide-message-square-plus', to: stats.value?.openRequests ? '/portal/requests?view=open' : '/portal/requests?view=resolved', badge: navBadge(stats.value?.openRequests), onSelect: close },
   ...(leadCaptureMode.value !== 'analytics_only'
@@ -121,11 +118,11 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   {
     label: 'Notifications',
     icon: 'i-lucide-bell',
-    to: unreadCount.value || stats.value?.unreadNotifications ? '/portal/notifications?view=unread' : '/portal/notifications',
-    badge: navBadge(unreadCount.value || stats.value?.unreadNotifications),
+    to: stats.value?.unreadNotifications ? '/portal/notifications?view=unread' : '/portal/notifications',
+    badge: navBadge(stats.value?.unreadNotifications),
     onSelect: close
   }
-])
+] as NavigationMenuItem[]))
 
 const footerItems: NavigationMenuItem[] = [
   { label: 'Settings', icon: 'i-lucide-settings', to: '/portal/settings', onSelect: close }
@@ -199,7 +196,7 @@ async function handleLogout() {
       </template>
 
       <template #footer="{ collapsed }">
-        <UDropdownMenu :items="identityItems" :ui="{ base: 'w-full', content: 'w-full' }">
+        <UDropdownMenu :items="identityItems" :ui="{ content: 'w-full' }" class="w-full">
           <div class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-elevated rounded-md w-full">
             <UAvatar
               :src="user?.avatarUrl || undefined"

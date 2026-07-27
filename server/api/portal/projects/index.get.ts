@@ -8,12 +8,21 @@ import { requireClientAuth } from '~~/server/utils/clientAuth'
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
+
+  if (!clientUser.permissions.canViewProjects) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'You do not have permission to view projects'
+    })
+  }
+
   const query = getQuery(event)
   const clientId = clientUser.clientId
 
   const status = query.status as string | undefined
   const view = query.view as string | undefined
   const limit = Math.min(Number(query.limit) || 50, 100)
+  const canApproveWork = clientUser.permissions.canApproveWork
 
   try {
     const conditions: string[] = ['p.client_id = $1']
@@ -48,14 +57,14 @@ export default defineEventHandler(async (event) => {
         COALESCE(tasks.in_progress, 0) as in_progress_tasks,
         COALESCE(tasks.overdue, 0) as overdue_tasks,
         COALESCE(tasks.due_soon, 0) as due_soon_tasks,
-        COALESCE(approvals.pending, 0) as pending_approvals,
+        ${canApproveWork ? 'COALESCE(approvals.pending, 0)' : 'NULL'} as pending_approvals,
         COALESCE(deliverables.count, 0) as deliverable_count,
         pm.name as project_manager_name
       FROM projects p
       LEFT JOIN team_members pm ON p.project_manager_id = pm.id
       LEFT JOIN (
         SELECT
-          project_id,
+          t.project_id,
           COUNT(*) as total,
           COUNT(CASE WHEN t.status_is_final THEN 1 END) as completed,
           COUNT(CASE WHEN NOT t.status_is_final AND ts.name != 'Backlog' THEN 1 END) as in_progress,
@@ -68,18 +77,23 @@ export default defineEventHandler(async (event) => {
           END) as due_soon
         FROM tasks t
         JOIN task_statuses ts ON t.status_id = ts.id
-        GROUP BY project_id
+        JOIN projects scoped_projects ON scoped_projects.id = t.project_id
+        WHERE scoped_projects.client_id = $1
+        GROUP BY t.project_id
       ) tasks ON p.id = tasks.project_id
-      LEFT JOIN (
-        SELECT project_id, COUNT(*) as pending
-        FROM client_approvals
-        WHERE status = 'pending'
-        GROUP BY project_id
-      ) approvals ON p.id = approvals.project_id
+      ${canApproveWork ? `LEFT JOIN (
+        SELECT ca.project_id, COUNT(*) as pending
+        FROM client_approvals ca
+        JOIN projects scoped_projects ON scoped_projects.id = ca.project_id
+        WHERE ca.status = 'pending'
+          AND scoped_projects.client_id = $1
+        GROUP BY ca.project_id
+      ) approvals ON p.id = approvals.project_id` : ''}
       LEFT JOIN (
         SELECT project_id, COUNT(*) as count
         FROM client_deliverables
         WHERE is_visible_to_client = true
+          AND client_id = $1
         GROUP BY project_id
       ) deliverables ON p.id = deliverables.project_id
       WHERE ${conditions.join(' AND ')}
@@ -147,13 +161,13 @@ export default defineEventHandler(async (event) => {
             AND t.status_is_final = false
             AND t.due_date < CURRENT_DATE
         ) as overdue_tasks,
-        (
+        CASE WHEN $2::boolean THEN (
           SELECT COUNT(*)
           FROM client_approvals ca
           JOIN projects ap ON ap.id = ca.project_id
           WHERE ap.client_id = $1
             AND ca.status = 'pending'
-        ) as pending_approvals,
+        ) ELSE NULL END as pending_approvals,
         (
           SELECT COUNT(*)
           FROM client_deliverables cd
@@ -162,7 +176,7 @@ export default defineEventHandler(async (event) => {
         ) as visible_deliverables
       FROM projects
       WHERE client_id = $1
-    `, [clientId])
+    `, [clientId, canApproveWork])
 
     return {
       projects: projects.map(p => ({
@@ -172,7 +186,7 @@ export default defineEventHandler(async (event) => {
         status: p.status,
         startDate: p.start_date,
         dueDate: p.due_date,
-        budget: Number(p.budget || 0),
+        budget: clientUser.permissions.canViewBudgets ? Number(p.budget || 0) : null,
         createdAt: p.created_at,
         projectManagerName: p.project_manager_name,
         tasks: {
@@ -185,7 +199,7 @@ export default defineEventHandler(async (event) => {
         },
         overdueTasks: Number(p.overdue_tasks || 0),
         dueSoonTasks: Number(p.due_soon_tasks || 0),
-        pendingApprovals: Number(p.pending_approvals || 0),
+        pendingApprovals: canApproveWork ? Number(p.pending_approvals || 0) : null,
         deliverableCount: Number(p.deliverable_count || 0)
       })),
       summary: {
@@ -199,11 +213,15 @@ export default defineEventHandler(async (event) => {
         completedLast30: Number(summary?.completed_last_30 || 0),
         upcoming: Number(summary?.upcoming || 0),
         history: Number(summary?.history || 0),
-        totalBudget: Number(summary?.total_budget || 0),
-        bookedBudget: Number(summary?.booked_budget || 0),
+        totalBudget: clientUser.permissions.canViewBudgets
+          ? Number(summary?.total_budget || 0)
+          : null,
+        bookedBudget: clientUser.permissions.canViewBudgets
+          ? Number(summary?.booked_budget || 0)
+          : null,
         openTasks: Number(summary?.open_tasks || 0),
         overdueTasks: Number(summary?.overdue_tasks || 0),
-        pendingApprovals: Number(summary?.pending_approvals || 0),
+        pendingApprovals: canApproveWork ? Number(summary?.pending_approvals || 0) : null,
         visibleDeliverables: Number(summary?.visible_deliverables || 0)
       }
     }

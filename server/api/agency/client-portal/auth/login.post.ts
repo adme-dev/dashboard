@@ -8,6 +8,7 @@
  */
 
 import { queryOne, transaction } from '~~/server/utils/db'
+import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
@@ -81,7 +82,7 @@ export default defineEventHandler(async (event) => {
 
     // Create session
     const sessionToken = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString('base64url')
-    const tokenHash = await bcrypt.hash(sessionToken, 10)
+    const tokenHash = await digestPortalSessionToken(sessionToken)
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 30) // 30 day session
 

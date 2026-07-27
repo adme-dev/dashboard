@@ -17,7 +17,6 @@ const PORTAL_FEATURES = [
 
 export default defineEventHandler(async event => {
   const client = await requireClientAuth(event)
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   const entitlements = await Promise.all(
     PORTAL_FEATURES.map(featureKey => resolveClientEntitlement(client.clientId, featureKey))
   )

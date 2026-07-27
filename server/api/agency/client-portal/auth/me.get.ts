@@ -8,8 +8,8 @@
  * Returns current authenticated client user info
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
-import bcrypt from 'bcryptjs'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
+import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 
 async function getClientUserFromSession(event: any) {
   const authHeader = getHeaders(event).authorization
@@ -20,32 +20,16 @@ async function getClientUserFromSession(event: any) {
     return null
   }
 
-  // Get all active sessions and check the token
-  // In production, use a more efficient token lookup
-  const sessions = await queryRows(`
-    SELECT
-      cs.id,
-      cs.token_hash,
-      cs.client_user_id,
-      cs.expires_at
+  const sessionDigest = await digestPortalSessionToken(sessionToken)
+  const session = await queryOneFresh(`
+    SELECT cs.client_user_id
     FROM client_sessions cs
-    WHERE cs.expires_at > NOW()
-    ORDER BY cs.created_at DESC
-    LIMIT 100
-  `)
+    WHERE cs.token_hash = $1
+      AND cs.expires_at > NOW()
+    LIMIT 1
+  `, [sessionDigest])
 
-  for (const session of sessions) {
-    try {
-      const valid = await bcrypt.compare(sessionToken, session.token_hash)
-      if (valid) {
-        return session.client_user_id
-      }
-    } catch {
-      continue
-    }
-  }
-
-  return null
+  return session?.client_user_id || null
 }
 
 export default defineEventHandler(async (event) => {

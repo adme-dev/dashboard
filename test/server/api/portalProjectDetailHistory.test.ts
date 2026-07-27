@@ -37,7 +37,10 @@ const { default: projectDetailHandler } = await import(
 describe('portal project detail job history', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRequireClientAuth.mockResolvedValue({ clientId: 'client-1' })
+    mockRequireClientAuth.mockResolvedValue({
+      clientId: 'client-1',
+      permissions: { canViewProjects: true, canViewBudgets: true, canApproveWork: true }
+    })
     mockQueryOne
       .mockResolvedValueOnce({
         id: 'project-1',
@@ -119,5 +122,72 @@ describe('portal project detail job history', () => {
     expect(teamSql).toContain('LEFT JOIN departments d ON d.id = tm.department_id')
     expect(teamSql).toContain('d.name AS department')
     expect(teamSql).not.toMatch(/\btm\.department\b/)
+  })
+
+  it('rejects users without project access before reading the project', async () => {
+    vi.clearAllMocks()
+    mockRequireClientAuth.mockResolvedValueOnce({
+      clientId: 'client-1',
+      permissions: { canViewProjects: false, canViewBudgets: false }
+    })
+
+    await expect(projectDetailHandler({ params: { id: 'project-1' } })).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'You do not have permission to view projects'
+    })
+    expect(mockQueryOne).not.toHaveBeenCalled()
+    expect(mockQueryRows).not.toHaveBeenCalled()
+  })
+
+  it('redacts budget and task details when either visibility control denies them', async () => {
+    vi.clearAllMocks()
+    mockQueryOne.mockReset()
+    mockQueryRows.mockReset()
+    mockRequireClientAuth.mockResolvedValueOnce({
+      clientId: 'client-1',
+      permissions: { canViewProjects: true, canViewBudgets: false }
+    })
+    mockQueryOne
+      .mockResolvedValueOnce({ id: 'project-1', name: 'Restricted', budget: '5000' })
+      .mockResolvedValueOnce({ total: '3', completed: '1', in_progress: '2' })
+      .mockResolvedValueOnce({
+        show_budget: true,
+        show_task_details: false,
+        show_team_members: false,
+        show_files: false
+      })
+    mockQueryRows
+      .mockResolvedValueOnce([{ id: 'upcoming-1', title: 'Private task' }])
+      .mockResolvedValueOnce([{ id: 'completed-1', title: 'Private history' }])
+      .mockResolvedValueOnce([{ id: 'deliverable-1', title: 'Private file' }])
+      .mockResolvedValue([])
+
+    const result = await projectDetailHandler({ params: { id: 'project-1' } })
+
+    expect(result.project.budget).toBeNull()
+    expect(result.project.tasks).toBeNull()
+    expect(result.upcomingTasks).toEqual([])
+    expect(result.completedTasks).toEqual([])
+    expect(result.deliverables).toEqual([])
+    expect(result.teamMembers).toEqual([])
+  })
+
+  it('does not query or return approvals without approval access', async () => {
+    vi.clearAllMocks()
+    mockRequireClientAuth.mockResolvedValueOnce({
+      clientId: 'client-1',
+      permissions: { canViewProjects: true, canViewBudgets: true, canApproveWork: false }
+    })
+    mockQueryOne
+      .mockResolvedValueOnce({ id: 'project-1', name: 'Restricted approvals' })
+      .mockResolvedValueOnce({ total: '0' })
+      .mockResolvedValueOnce({ show_team_members: false })
+    mockQueryRows.mockResolvedValue([])
+
+    const result = await projectDetailHandler({ params: { id: 'project-1' } })
+    const sql = mockQueryRows.mock.calls.map(call => String(call[0])).join('\n')
+
+    expect(sql).not.toContain('FROM client_approvals')
+    expect(result.approvals).toEqual([])
   })
 })

@@ -4,8 +4,6 @@ import { getCachedPersonaMetrics } from '~~/server/utils/persona/snapshots'
 
 export default defineEventHandler(async event => {
   const client = await requireClientAuth(event)
-  setHeader(event, 'Cache-Control', 'private, max-age=60, stale-while-revalidate=300')
-
   if (client.leadCaptureMode !== 'full_crm') {
     return {
       enabled: false,

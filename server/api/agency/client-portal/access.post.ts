@@ -3,10 +3,10 @@
  * POST /api/agency/client-portal/access
  */
 
-import bcrypt from 'bcryptjs'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { requireRole } from '~~/server/utils/auth'
 import { queryOne, transaction } from '~~/server/utils/db'
+import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 
 interface AccessClientPortalBody {
   clientId?: string
@@ -56,7 +56,7 @@ export default defineEventHandler(async (event) => {
     const accessEmail = `agency-${agencyUser.id}-${client.id}@portal-access.local`.toLowerCase()
     const displayName = `${agencyUser.name || agencyUser.email} (Agency)`
     const sessionToken = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString('base64url')
-    const tokenHash = await bcrypt.hash(sessionToken, 10)
+    const tokenHash = await digestPortalSessionToken(sessionToken)
     const expiresAt = new Date()
     expiresAt.setHours(expiresAt.getHours() + 8)
 
@@ -113,6 +113,9 @@ export default defineEventHandler(async (event) => {
       `, [client.id, accessEmail, displayName, agencyUser.id])
 
       const user = upsertResult.rows[0]
+      if (!user) {
+        throw new Error('Failed to create agency portal user')
+      }
 
       await db.query(`
         INSERT INTO client_sessions (client_user_id, token_hash, ip_address, user_agent, expires_at)

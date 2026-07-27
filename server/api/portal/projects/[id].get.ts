@@ -17,6 +17,14 @@ interface TeamMemberRow {
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
+
+  if (!clientUser.permissions.canViewProjects) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'You do not have permission to view projects'
+    })
+  }
+
   const projectId = getRouterParam(event, 'id')
 
   if (!projectId) {
@@ -112,7 +120,7 @@ export default defineEventHandler(async (event) => {
     `, [projectId, clientUser.clientId])
 
     // Pending approvals
-    const approvals = await queryRows(`
+    const approvals = clientUser.permissions.canApproveWork ? await queryRows(`
       SELECT
         ca.id, ca.approval_type, ca.title, ca.status, ca.due_date, ca.requested_at,
         tm.name as requested_by_name
@@ -123,7 +131,7 @@ export default defineEventHandler(async (event) => {
         CASE ca.status WHEN 'pending' THEN 0 ELSE 1 END,
         ca.due_date ASC NULLS LAST
       LIMIT 20
-    `, [projectId])
+    `, [projectId]) : []
 
     // Project settings (visibility controls)
     const settings = await queryOne(`
@@ -150,6 +158,9 @@ export default defineEventHandler(async (event) => {
 
     const totalTasks = Number(taskStats?.total || 0)
     const completedTasks = Number(taskStats?.completed || 0)
+    const canViewBudget = clientUser.permissions.canViewBudgets
+      && settings?.show_budget !== false
+    const canViewTaskDetails = settings?.show_task_details !== false
 
     return {
       project: {
@@ -159,20 +170,22 @@ export default defineEventHandler(async (event) => {
         status: project.status,
         startDate: project.start_date,
         dueDate: project.due_date,
-        budget: Number(project.budget || 0),
+        budget: canViewBudget ? Number(project.budget || 0) : null,
         createdAt: project.created_at,
         projectManager: {
           name: project.project_manager_name,
           avatarUrl: project.project_manager_avatar
         },
-        tasks: {
-          total: totalTasks,
-          completed: completedTasks,
-          inProgress: Number(taskStats?.in_progress || 0),
-          progressPercent: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-        }
+        tasks: canViewTaskDetails
+          ? {
+              total: totalTasks,
+              completed: completedTasks,
+              inProgress: Number(taskStats?.in_progress || 0),
+              progressPercent: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+            }
+          : null
       },
-      upcomingTasks: upcomingTasks.map(t => ({
+      upcomingTasks: canViewTaskDetails ? upcomingTasks.map(t => ({
         id: t.id,
         title: t.title,
         startDate: t.start_date,
@@ -186,8 +199,8 @@ export default defineEventHandler(async (event) => {
               avatarUrl: t.assignee_avatar
             }
           : null
-      })),
-      completedTasks: completedTaskHistory.map(t => ({
+      })) : [],
+      completedTasks: canViewTaskDetails ? completedTaskHistory.map(t => ({
         id: t.id,
         title: t.title,
         dueDate: t.due_date,
@@ -201,8 +214,8 @@ export default defineEventHandler(async (event) => {
               avatarUrl: t.assignee_avatar
             }
           : null
-      })),
-      deliverables: deliverables.map(d => ({
+      })) : [],
+      deliverables: settings?.show_files !== false ? deliverables.map(d => ({
         id: d.id,
         title: d.title,
         type: d.deliverable_type,
@@ -210,7 +223,7 @@ export default defineEventHandler(async (event) => {
         status: d.status,
         isFeatured: d.is_featured,
         publishedAt: d.published_at
-      })),
+      })) : [],
       approvals: approvals.map(a => ({
         id: a.id,
         approvalType: a.approval_type,

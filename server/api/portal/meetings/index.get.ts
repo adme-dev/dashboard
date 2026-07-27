@@ -5,8 +5,6 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
-import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
-import { ensureOfficeRecordingsTables } from '~~/server/utils/officeRecordings'
 
 type PortalMeetingRow = {
   id: string
@@ -76,9 +74,6 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const view = query.view as string | undefined
   const limit = Math.min(Number(query.limit) || 50, 100)
-
-  await ensureOfficeMeetingArtifactsTables()
-  await ensureOfficeRecordingsTables()
 
   try {
     const conditions = ['om.client_user_id = $1', 'oms.status <> \'cancelled\'']
