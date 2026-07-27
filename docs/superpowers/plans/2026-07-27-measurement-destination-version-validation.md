@@ -547,7 +547,7 @@ Read every changed file end to end and verify:
 - destination version reaches request, reservation, evidence, and audit
 - profile-first lock ordering remains intact
 - version conflicts report the locked destination version
-- no server import uses ~/ instead of ~~/ 
+- no server import uses ~/ instead of ~~/
 - no raw secret, provider payload, or DATABASE_URL is logged
 - rollback smoke leaves no persistent client or append-only audit row
 - git diff --check passes
