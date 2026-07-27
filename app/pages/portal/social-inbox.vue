@@ -93,7 +93,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="h-[calc(100vh-4rem)] flex flex-col">
+  <div class="w-full h-[calc(100vh-4rem)] flex flex-col">
     <div class="flex items-center gap-3 px-6 py-4 border-b border-default">
       <div>
         <h1 class="text-xl font-semibold">

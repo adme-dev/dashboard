@@ -13,7 +13,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
+  <div class="w-full p-6 space-y-6">
     <div class="flex items-center gap-3 flex-wrap">
       <div>
         <h1 class="text-xl font-semibold">Social Listening</h1>
