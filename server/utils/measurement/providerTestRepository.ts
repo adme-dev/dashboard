@@ -28,9 +28,9 @@ interface ProviderContextRow extends GoogleRefreshCredentialRow {
   profile_id: string
   profile_enabled: boolean
   profile_environment: string
-  profile_config_version: number | string
   destination_enabled: boolean
   destination_environment: string
+  destination_config_version: number | string
   platform: MeasurementPlatform
   external_destination_id: string
   credential_ref: string | null
@@ -106,13 +106,22 @@ export function createPostgresMeasurementProviderTestRepository(
         const existing = existingResult.rows?.[0] as TestRunRow | undefined
         if (existing) return { status: 'existing', run: runSummary(existing) }
 
+        const profileResult = await db.query(
+          `SELECT id
+             FROM client_measurement_profiles
+            WHERE client_id = $1
+            FOR UPDATE`,
+          [input.clientId]
+        )
+        if (!profileResult.rows?.[0]) return { status: 'not_found' }
+
         const contextResult = await db.query(
           `SELECT p.id AS profile_id,
                   p.enabled AS profile_enabled,
                   p.environment AS profile_environment,
-                  p.config_version AS profile_config_version,
                   d.enabled AS destination_enabled,
                   d.environment AS destination_environment,
+                  d.config_version AS destination_config_version,
                   d.platform,
                   d.external_destination_id,
                   d.credential_ref,
@@ -162,7 +171,7 @@ export function createPostgresMeasurementProviderTestRepository(
         )
         const row = contextResult.rows?.[0] as ProviderContextRow | undefined
         if (!row) return { status: 'not_found' }
-        if (Number(row.profile_config_version) !== input.expectedConfigVersion) {
+        if (Number(row.destination_config_version) !== input.expectedConfigVersion) {
           return { status: 'version_conflict' }
         }
         if (

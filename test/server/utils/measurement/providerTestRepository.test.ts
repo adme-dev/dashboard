@@ -31,14 +31,15 @@ describe('measurement provider test repository', () => {
   it('resolves Google credentials from an encrypted profile instead of legacy token columns', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         id: 'connection-1',
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'google_data_manager',
         external_destination_id: '1234567890',
         credential_ref: null,
@@ -92,7 +93,7 @@ describe('measurement provider test repository', () => {
     expect(resolveCredential).toHaveBeenCalledWith(expect.objectContaining({
       google_credential_profile_id: 'profile-1'
     }))
-    const contextSql = query.mock.calls[1]![0] as string
+    const contextSql = query.mock.calls[2]![0] as string
     expect(contextSql).toContain('LEFT JOIN google_credential_profiles gcp')
     expect(contextSql).toContain('gcp.refresh_token_encrypted AS profile_refresh_token_encrypted')
     expect(contextSql).not.toContain('sc.access_token')
@@ -101,11 +102,11 @@ describe('measurement provider test repository', () => {
   it('reserves a dormant tenant-owned destination without persisting transient identifiers', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
         destination_config_version: 3,
@@ -140,29 +141,84 @@ describe('measurement provider test repository', () => {
       }
     })
 
-    const contextSql = query.mock.calls[1]![0] as string
+    const contextSql = query.mock.calls[2]![0] as string
     expect(contextSql).toContain('sc.client_id = d.client_id')
     expect(contextSql).toContain('d.credential_ref')
     expect(contextSql).not.toContain('sc.access_token')
     expect(contextSql).toContain('d.client_id = $1')
     expect(contextSql).toContain('conversion_destination_capabilities')
-    const insertSql = query.mock.calls[2]![0] as string
-    const insertParams = query.mock.calls[2]![1] as unknown[]
+    const insertSql = query.mock.calls[3]![0] as string
+    const insertParams = query.mock.calls[3]![1] as unknown[]
     expect(insertSql).not.toContain('test_event_code')
     expect(insertParams).not.toContain('TEST123456')
     expect(insertParams).not.toContain('1234567890123456')
   })
 
-  it('derives Meta Web delivery from a configured Zero-owned capability', async () => {
+  it('uses the destination version when the profile advanced independently', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '77777777-7777-4777-8777-777777777777'
+      }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
+        platform: 'meta',
+        external_destination_id: '573284833843027',
+        credential_ref: 'MEASUREMENT_PROVIDER_META_BIG_GARAGE',
+        provider_event_name: 'QualifiedLead',
+        account_id: '5717158431690024',
+        refresh_token: null,
+        google_credential_profile_id: null,
+        profile_refresh_token_encrypted: null,
+        profile_refresh_token_iv: null,
+        scopes: [],
+        metadata: {},
+        allowed_origins: [],
+        capability_modes: ['meta_crm_capi']
+      }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '33333333-3333-4333-8333-333333333333',
+        mode: 'meta_test_events',
+        status: 'requested',
+        provider_request_id: null,
+        error_class: null,
+        redacted_error: null,
+        completed_at: null
+      }] })
+    const repository = createPostgresMeasurementProviderTestRepository(
+      async callback => callback({ query })
+    )
+
+    await expect(repository.reserve(input)).resolves.toMatchObject({
+      status: 'reserved'
+    })
+    expect(String(query.mock.calls[1]![0])).toMatch(
+      /FROM client_measurement_profiles[\s\S]*FOR UPDATE/
+    )
+    const contextSql = String(query.mock.calls[2]![0])
+    expect(contextSql).toContain(
+      'd.config_version AS destination_config_version'
+    )
+    expect(contextSql).not.toContain('p.config_version AS profile_config_version')
+    expect((query.mock.calls[3]![1] as unknown[])[7]).toBe(3)
+  })
+
+  it('derives Meta Web delivery from a configured Zero-owned capability', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
+      .mockResolvedValueOnce({ rows: [{
+        profile_id: '77777777-7777-4777-8777-777777777777',
+        profile_enabled: false,
+        profile_environment: 'test',
+        destination_enabled: false,
+        destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'meta',
         external_destination_id: '573284833843027',
         provider_event_name: 'Lead',
@@ -200,7 +256,7 @@ describe('measurement provider test repository', () => {
       context: { delivery: { metaDeliveryMode: 'web' } }
     })
 
-    const insertParams = query.mock.calls[2]![1] as unknown[]
+    const insertParams = query.mock.calls[3]![1] as unknown[]
     expect(insertParams).not.toContain('browser-event-1')
     expect(insertParams).not.toContain('fb.1.1234567890123.click')
     expect(insertParams).not.toContain('https://www.biggaragesubaru.com.au/enquire')
@@ -209,13 +265,14 @@ describe('measurement provider test repository', () => {
   it('rejects Meta Web traffic when the required Zero-owned capability is not configured', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'meta',
         external_destination_id: '573284833843027',
         provider_event_name: 'Lead',
@@ -241,19 +298,20 @@ describe('measurement provider test repository', () => {
       clientUserAgent: 'Approved Pilot Browser'
     } as never)).resolves.toEqual({ status: 'capability_not_configured' })
 
-    expect(query).toHaveBeenCalledTimes(2)
+    expect(query).toHaveBeenCalledTimes(3)
   })
 
   it('rejects a client-selected CRM path when server-owned capabilities require Web delivery', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'meta',
         external_destination_id: '573284833843027',
         provider_event_name: 'Lead',
@@ -276,13 +334,14 @@ describe('measurement provider test repository', () => {
   it('rejects a Web event source outside the tracking-site allowlist', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '77777777-7777-4777-8777-777777777777' }] })
       .mockResolvedValueOnce({ rows: [{
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'meta',
         external_destination_id: '573284833843027',
         provider_event_name: 'Lead',

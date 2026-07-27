@@ -5,7 +5,7 @@ import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEve
 
 const props = defineProps<{
   clientId: string
-  profileConfigVersion: number
+  destinationConfigVersion: number
   destination: Pick<MeasurementDestination, 'id' | 'platform' | 'capabilities' | 'mappings'>
 }>()
 
@@ -296,7 +296,7 @@ async function runTest() {
 
   try {
     const requestBody: Record<string, unknown> = {
-      expectedConfigVersion: props.profileConfigVersion,
+      expectedConfigVersion: props.destinationConfigVersion,
       canonicalEventName: canonicalEventName.value,
       occurredAt: new Date().toISOString(),
       idempotencyKey: idempotencyKey.value,

@@ -36,7 +36,7 @@ describe('Postgres measurement health repository', () => {
       query: vi.fn(async (sql: string, params: unknown[] = []) => {
         statements.push({ sql, params })
         if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) {
-          return { rows: [{ id: PROFILE_ID, config_version: 3 }] }
+          return { rows: [{ id: PROFILE_ID }] }
         }
         if (/conversion_destinations[\s\S]*FOR UPDATE/.test(sql)) {
           return { rows: [{ platform: 'meta', config_version: 3, health_status: 'configured' }] }
@@ -79,6 +79,7 @@ describe('Postgres measurement health repository', () => {
       expect.stringMatching(/UPDATE conversion_destinations/),
       expect.stringMatching(/INSERT INTO measurement_config_audit/)
     ])
+    expect(statements[0]!.sql).not.toContain('config_version')
     const auditJson = statements.at(-1)!.params.filter(value => (
       typeof value === 'string' && value.startsWith('{')
     )) as string[]
@@ -87,9 +88,20 @@ describe('Postgres measurement health repository', () => {
     expect(auditJson.join(' ')).toContain('request-redacted-123')
   })
 
-  it('rejects stale evidence before locking a destination or mutating health', async () => {
+  it('rejects evidence when the destination itself changed', async () => {
     const db = {
-      query: vi.fn(async () => ({ rows: [{ id: PROFILE_ID, config_version: 4 }] }))
+      query: vi.fn(async (sql: string) => {
+        if (/client_measurement_profiles/.test(sql)) {
+          return { rows: [{ id: PROFILE_ID }] }
+        }
+        return {
+          rows: [{
+            platform: 'meta',
+            config_version: 4,
+            health_status: 'configured'
+          }]
+        }
+      })
     }
     const repository = createPostgresMeasurementHealthRepository({
       transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
@@ -101,14 +113,14 @@ describe('Postgres measurement health repository', () => {
       status: 'version_conflict',
       currentVersion: 4
     })
-    expect(db.query).toHaveBeenCalledOnce()
+    expect(db.query).toHaveBeenCalledTimes(2)
   })
 
   it('rejects evidence for a capability that is absent from the scoped destination', async () => {
     const db = {
       query: vi.fn(async (sql: string) => {
         if (/client_measurement_profiles/.test(sql)) {
-          return { rows: [{ id: PROFILE_ID, config_version: 3 }] }
+          return { rows: [{ id: PROFILE_ID }] }
         }
         if (/conversion_destinations/.test(sql)) {
           return { rows: [{ platform: 'meta', config_version: 3, health_status: 'configured' }] }
@@ -134,7 +146,7 @@ describe('Postgres measurement health repository', () => {
       query: vi.fn(async (sql: string, params: unknown[] = []) => {
         statements.push({ sql, params })
         if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) {
-          return { rows: [{ id: PROFILE_ID, config_version: 3 }] }
+          return { rows: [{ id: PROFILE_ID }] }
         }
         if (/conversion_destinations[\s\S]*FOR UPDATE/.test(sql)) {
           return { rows: [{ platform: 'meta', config_version: 3, health_status: 'configured' }] }
