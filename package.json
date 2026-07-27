@@ -27,6 +27,7 @@
     "deploy:workflows:dry-run": "pnpm --dir workers/agency-workflows run deploy:dry-run",
     "deploy:workers": "node scripts/deploy-workers.mjs",
     "test": "vitest",
+    "test:measurement-db-smoke": "vitest run test/integration/measurementOnboarding.database.test.ts",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:deployment-guards": "vitest run test/config/pagesDeployGuard.test.ts test/config/prerenderIgnore.test.ts",

@@ -34,7 +34,10 @@ export interface CachePublicationRecord {
 }
 
 export interface MeasurementProfileRepository {
-  getByClientId(clientId: string): Promise<MeasurementProfile | null>
+  getByClientId(
+    clientId: string,
+    options?: { createIfMissing?: boolean }
+  ): Promise<MeasurementProfile | null>
   update(input: PersistProfileUpdate): Promise<PersistProfileUpdateResult>
   recordCachePublication(input: CachePublicationRecord): Promise<boolean>
 }
@@ -119,7 +122,25 @@ export function createPostgresMeasurementProfileRepository(
   deps: PostgresMeasurementProfileRepositoryDeps = defaultDeps
 ): MeasurementProfileRepository {
   return {
-    async getByClientId(clientId) {
+    async getByClientId(clientId, options) {
+      if (options?.createIfMissing) {
+        await deps.execute(
+          `INSERT INTO client_measurement_profiles (client_id, vertical)
+           SELECT id, COALESCE(NULLIF(TRIM(industry), ''), 'general')
+             FROM agency_clients
+            WHERE id = $1
+           ON CONFLICT (client_id) DO NOTHING`,
+          [clientId]
+        )
+        const row = await deps.queryOne<MeasurementProfileRow>(
+          `SELECT ${PROFILE_COLUMNS}
+             FROM client_measurement_profiles
+            WHERE client_id = $1`,
+          [clientId]
+        )
+        return row ? mapMeasurementProfileRow(row) : null
+      }
+
       const row = await deps.queryOne<MeasurementProfileRow>(
         `SELECT ${PROFILE_COLUMNS}
            FROM client_measurement_profiles

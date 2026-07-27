@@ -135,7 +135,10 @@ export function createMeasurementProfileService(deps: MeasurementProfileServiceD
       const clientResult = UpdateClientMeasurementProfileSchema.shape.clientId.safeParse(clientId)
       if (!clientResult.success) throw validationError()
 
-      const profile = await deps.repository.getByClientId(clientResult.data)
+      const profile = await deps.repository.getByClientId(
+        clientResult.data,
+        { createIfMissing: true }
+      )
       if (!profile) throw notFoundError()
       return profile
     },

@@ -51,6 +51,36 @@ describe('Postgres measurement profile repository', () => {
     expect(queryOne).toHaveBeenCalledWith(expect.stringMatching(/WHERE client_id = \$1/), [CLIENT_ID])
   })
 
+  it('creates a dormant industry-derived profile on demand for a client without one', async () => {
+    const queryOne = vi.fn(async () => row())
+    const execute = vi.fn(async () => 1)
+    const repository = createPostgresMeasurementProfileRepository({
+      queryOne: queryOne as never,
+      execute: execute as never,
+      transaction: vi.fn() as never
+    })
+
+    const profile = await repository.getByClientId(CLIENT_ID, { createIfMissing: true })
+
+    expect(profile).toMatchObject({
+      clientId: CLIENT_ID,
+      enabled: false,
+      environment: 'test',
+      vertical: 'automotive',
+      configVersion: 1
+    })
+    expect(execute).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /INSERT INTO client_measurement_profiles[\s\S]*COALESCE\(NULLIF\(TRIM\(industry\), ''\), 'general'\)[\s\S]*FROM agency_clients[\s\S]*ON CONFLICT \(client_id\) DO NOTHING/
+      ),
+      [CLIENT_ID]
+    )
+    expect(queryOne).toHaveBeenCalledWith(
+      expect.stringMatching(/FROM client_measurement_profiles[\s\S]*WHERE client_id = \$1/),
+      [CLIENT_ID]
+    )
+  })
+
   it('updates and appends before/after audit evidence inside one transaction', async () => {
     const queries: Array<{ sql: string, params: unknown[] }> = []
     const db = {

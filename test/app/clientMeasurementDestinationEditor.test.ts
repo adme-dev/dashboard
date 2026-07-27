@@ -23,6 +23,15 @@ const stubs = {
         <option v-for="item in items" :key="item[valueKey || 'value']" :value="item[valueKey || 'value']">{{ item.label }}</option>
       </select>
     `
+  },
+  UFormField: {
+    props: ['label', 'help', 'required'],
+    template: '<label><span>{{ label }}</span><slot /><span v-if="help">{{ help }}</span></label>'
+  },
+  UInput: {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">'
   }
 }
 
@@ -97,6 +106,7 @@ describe('ClientMeasurementDestinationEditor', () => {
 
       select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, '33333333-3333-4333-8333-333333333333')
       input(host.querySelector<HTMLInputElement>('[data-testid="measurement-destination-id"]')!, '573284833843027')
+      input(host.querySelector<HTMLInputElement>('[data-testid="measurement-credential-ref"]')!, 'MEASUREMENT_PROVIDER_META_FERNTREE')
       check(host.querySelector<HTMLInputElement>('[data-testid="capability-meta_crm_capi"]')!)
       check(host.querySelector<HTMLInputElement>('[data-testid="mapping-lead_qualified"]')!)
       await nextTick()
@@ -118,6 +128,7 @@ describe('ClientMeasurementDestinationEditor', () => {
             platform: 'meta',
             socialConnectionId: '33333333-3333-4333-8333-333333333333',
             externalDestinationId: '573284833843027',
+            credentialRef: 'MEASUREMENT_PROVIDER_META_FERNTREE',
             capabilities: [{
               mode: 'meta_crm_capi',
               status: 'configured',
@@ -426,6 +437,7 @@ describe('ClientMeasurementDestinationEditor', () => {
 
       select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, ga4ConnectionId)
       input(destination, 'G-ABC1234XYZ')
+      input(host.querySelector<HTMLInputElement>('[data-testid="measurement-credential-ref"]')!, 'MEASUREMENT_PROVIDER_GA4_FERNTREE')
       check(host.querySelector<HTMLInputElement>('[data-testid="capability-ga4_measurement_protocol"]')!)
       check(host.querySelector<HTMLInputElement>('[data-testid="mapping-web_conversion"]')!)
       await nextTick()
@@ -447,6 +459,7 @@ describe('ClientMeasurementDestinationEditor', () => {
             platform: 'ga4',
             socialConnectionId: ga4ConnectionId,
             externalDestinationId: 'G-ABC1234XYZ',
+            credentialRef: 'MEASUREMENT_PROVIDER_GA4_FERNTREE',
             capabilities: [{
               mode: 'ga4_measurement_protocol',
               status: 'configured',
