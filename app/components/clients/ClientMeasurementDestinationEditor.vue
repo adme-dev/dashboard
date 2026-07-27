@@ -190,22 +190,37 @@ async function loadAccounts(targetPlatform: Platform = platform.value) {
   const requestId = ++accountRequestId
   accountsPending.value = true
   accountError.value = null
-  // GA4's credential source is a connected GA4 property (server/api/agency/social/ga4/properties),
-  // a per-property list shaped nothing like ConnectedAccount[]. There is no GA4 equivalent of the
-  // Meta/Google flat accounts endpoint yet, so leave the list empty rather than falling through to
-  // Google's endpoint and mislabelling Google Ads accounts as GA4 credential sources.
-  if (targetPlatform === 'ga4') {
-    if (requestId === accountRequestId) {
-      accountsPending.value = false
-    }
-    return
-  }
   try {
-    const endpoint = targetPlatform === 'meta'
-      ? '/api/agency/social/meta/accounts'
-      : '/api/agency/social/google/accounts'
-    const result = await apiFetch<ConnectedAccount[]>(endpoint)
-    accounts.value = { ...accounts.value, [targetPlatform]: result }
+    if (targetPlatform === 'ga4') {
+      // GA4 has no flat accounts endpoint like Meta/Google. Its real credential source is
+      // /api/agency/social/ga4/properties, which lists each active ga4 connection plus the
+      // GA4 properties visible to it. A connection can serve multiple properties - the
+      // operator still pins the exact one via the Measurement ID field below - so this list
+      // only needs to identify the connection itself. There is no GA4 equivalent of a single
+      // external account number the way Meta/Google have an ad-account ID, so accountId
+      // reuses the connection id (the only stable per-row identifier available) rather than
+      // arbitrarily picking one of the connection's properties.
+      const result = await apiFetch<{
+        connections: Array<{ connectionId: string, accountName: string }>
+      }>('/api/agency/social/ga4/properties')
+      accounts.value = {
+        ...accounts.value,
+        ga4: result.connections.map(connection => ({
+          id: connection.connectionId,
+          accountId: connection.connectionId,
+          accountName: connection.accountName,
+          // The endpoint's SQL already filters to platform='ga4' AND status='active', so every
+          // row returned has already passed the same status gate applied to Meta/Google accounts.
+          status: 'active'
+        }))
+      }
+    } else {
+      const endpoint = targetPlatform === 'meta'
+        ? '/api/agency/social/meta/accounts'
+        : '/api/agency/social/google/accounts'
+      const result = await apiFetch<ConnectedAccount[]>(endpoint)
+      accounts.value = { ...accounts.value, [targetPlatform]: result }
+    }
   } catch (error: unknown) {
     if (requestId === accountRequestId) {
       accountError.value = errorMessage(error, 'Connected accounts could not be loaded')

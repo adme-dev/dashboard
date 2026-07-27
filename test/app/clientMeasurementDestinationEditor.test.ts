@@ -370,4 +370,136 @@ describe('ClientMeasurementDestinationEditor', () => {
       host.remove()
     }
   })
+
+  it('sources GA4 credentials from the ga4 properties endpoint and saves a free-text Measurement ID destination', async () => {
+    const ga4ConnectionId = '77777777-7777-4777-8777-777777777777'
+    const fetchMock = vi.fn(async (request: string, options?: { method?: string, body?: unknown }) => {
+      if (request === '/api/agency/social/meta/accounts') return []
+      if (request === '/api/agency/social/ga4/properties') {
+        return {
+          connections: [{
+            connectionId: ga4ConnectionId,
+            accountName: 'Ferntree GA4',
+            properties: [{ accountName: 'Ferntree GA4', propertyId: '123456789', propertyDisplayName: 'Ferntree Gully site' }],
+            lastRunAt: null,
+            lastSuccessAt: null,
+            lastError: null
+          }],
+          maps: []
+        }
+      }
+      if (request.endsWith('/destinations') && options?.method === 'POST') {
+        return {
+          destination: { id: '88888888-8888-4888-8888-888888888888' },
+          profileConfigVersion: 6,
+          warnings: []
+        }
+      }
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    Object.assign(globalThis, { $fetch: fetchMock })
+
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementDestinationEditor, {
+        clientId: CLIENT_ID,
+        profileConfigVersion: 4
+      })
+    })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    app.mount(host)
+    await flushUi()
+
+    try {
+      select(host.querySelector<HTMLSelectElement>('select')!, 'ga4')
+      await flushUi()
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/agency/social/ga4/properties')
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/agency/social/google/accounts')
+      expect(host.textContent).toContain('Measurement ID')
+      expect(host.textContent).not.toContain('Dataset ID')
+      expect(host.textContent).not.toContain('Conversion Action ID')
+      expect(host.textContent).toContain('Ferntree GA4')
+
+      const destination = host.querySelector<HTMLInputElement>('[data-testid="measurement-destination-id"]')!
+      expect(destination.tagName).toBe('INPUT')
+
+      select(host.querySelector<HTMLSelectElement>('[data-testid="measurement-connection"]')!, ga4ConnectionId)
+      input(destination, 'G-ABC1234XYZ')
+      check(host.querySelector<HTMLInputElement>('[data-testid="capability-ga4_measurement_protocol"]')!)
+      check(host.querySelector<HTMLInputElement>('[data-testid="mapping-web_conversion"]')!)
+      await nextTick()
+      input(host.querySelector<HTMLInputElement>('[data-testid="provider-event-web_conversion"]')!, 'purchase')
+      input(host.querySelector<HTMLTextAreaElement>('[data-testid="measurement-destination-reason"]')!, 'Map the approved GA4 Measurement Protocol destination for test validation')
+      await nextTick()
+
+      const save = host.querySelector<HTMLButtonElement>('[data-testid="save-measurement-destination"]')!
+      expect(save.disabled).toBe(false)
+      save.click()
+      await flushUi()
+
+      expect(fetchMock).toHaveBeenCalledWith(`/api/agency/measurement/clients/${CLIENT_ID}/destinations`, {
+        method: 'POST',
+        body: {
+          expectedProfileVersion: 4,
+          reason: 'Map the approved GA4 Measurement Protocol destination for test validation',
+          destination: {
+            platform: 'ga4',
+            socialConnectionId: ga4ConnectionId,
+            externalDestinationId: 'G-ABC1234XYZ',
+            capabilities: [{
+              mode: 'ga4_measurement_protocol',
+              status: 'configured',
+              managementOrigin: 'zero',
+              canZeroMutate: true,
+              blockingReason: null
+            }],
+            mappings: [{
+              canonicalEventName: 'web_conversion',
+              providerEventName: 'purchase',
+              isActive: true
+            }]
+          }
+        }
+      })
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
+  it('surfaces an error when GA4 connections cannot be loaded, without falling back to the Google accounts endpoint', async () => {
+    const fetchMock = vi.fn(async (request: string) => {
+      if (request === '/api/agency/social/meta/accounts') return []
+      if (request === '/api/agency/social/ga4/properties') {
+        throw new Error('GA4 connections could not be loaded')
+      }
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    Object.assign(globalThis, { $fetch: fetchMock })
+
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementDestinationEditor, {
+        clientId: CLIENT_ID,
+        profileConfigVersion: 4
+      })
+    })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    app.mount(host)
+    await flushUi()
+
+    try {
+      select(host.querySelector<HTMLSelectElement>('select')!, 'ga4')
+      await flushUi()
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/agency/social/ga4/properties')
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/agency/social/google/accounts')
+      expect(host.textContent).toContain('GA4 connections could not be loaded')
+      expect(host.textContent).not.toContain('No connected account is available for this provider.')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
 })
