@@ -434,9 +434,13 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
             observedAt: completedAt,
             actor: { type: 'system', id: input.actor.id },
             reason: input.reason,
-            providerRequestId: providerResult.providerRequestId,
+            // `||`, not the raw value — an empty-string provider value (e.g. Meta's
+            // fbtrace_id or GA4's description) is not null, so it fails the schema's
+            // .trim().min(1) and silently drops the evidence. See blockingReasonFor
+            // above for the same pattern.
+            providerRequestId: providerResult.providerRequestId || null,
             errorClass: providerResult.errorClass,
-            redactedError: providerResult.redactedDiagnostic,
+            redactedError: providerResult.redactedDiagnostic || null,
             capabilities: covered.map(mode => ({
               mode,
               status: evidenceStatus,
@@ -455,6 +459,14 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
           // must be visible — a silent no-op is the bug class this work exists
           // to fix.
           const code = (error as { code?: string }).code
+          if (code !== 'MEASUREMENT_VERSION_CONFLICT') {
+            // Never log the evidence object itself — it can carry provider
+            // identifiers that this subsystem deliberately redacts.
+            console.error(
+              `[measurement] Failed to record validation evidence for destination ${input.destinationId}:`,
+              error
+            )
+          }
           validation = {
             recorded: false,
             skippedReason: code === 'MEASUREMENT_VERSION_CONFLICT'

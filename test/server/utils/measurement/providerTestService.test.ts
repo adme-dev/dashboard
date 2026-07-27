@@ -555,6 +555,27 @@ describe('measurement provider test service', () => {
     expect(capabilities.every(c => Boolean(c.blockingReason))).toBe(true)
   })
 
+  it('records evidence for an accepted result carrying an empty-string providerRequestId', async () => {
+    const test = setup()
+    // Meta can return an accepted test event with fbtrace_id: '' — a successful
+    // validation whose evidence must not be thrown away by the schema's
+    // .trim().min(1) on providerRequestId.
+    test.deliverMeta.mockResolvedValue({
+      outcome: 'accepted' as const,
+      providerRequestId: '',
+      errorClass: null,
+      redactedDiagnostic: ''
+    })
+
+    const result = await test.service.run(metaCrmInput())
+
+    expect(test.recordValidation).toHaveBeenCalledOnce()
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, unknown>
+    expect(evidence.providerRequestId).toBeNull()
+    expect(evidence.redactedError).toBeNull()
+    expect(result.validation.recorded).toBe(true)
+  })
+
   it('falls back to errorClass for the blocking reason when the diagnostic is an empty string', async () => {
     const test = setup()
     test.deliverMeta.mockResolvedValue({

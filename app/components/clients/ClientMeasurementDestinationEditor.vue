@@ -203,23 +203,27 @@ async function loadAccounts(targetPlatform: Platform = platform.value) {
       const result = await apiFetch<{
         connections: Array<{ connectionId: string, accountName: string }>
       }>('/api/agency/social/ga4/properties')
-      accounts.value = {
-        ...accounts.value,
-        ga4: result.connections.map(connection => ({
-          id: connection.connectionId,
-          accountId: connection.connectionId,
-          accountName: connection.accountName,
-          // The endpoint's SQL already filters to platform='ga4' AND status='active', so every
-          // row returned has already passed the same status gate applied to Meta/Google accounts.
-          status: 'active'
-        }))
+      if (requestId === accountRequestId) {
+        accounts.value = {
+          ...accounts.value,
+          ga4: result.connections.map(connection => ({
+            id: connection.connectionId,
+            accountId: connection.connectionId,
+            accountName: connection.accountName,
+            // The endpoint's SQL already filters to platform='ga4' AND status='active', so every
+            // row returned has already passed the same status gate applied to Meta/Google accounts.
+            status: 'active'
+          }))
+        }
       }
     } else {
       const endpoint = targetPlatform === 'meta'
         ? '/api/agency/social/meta/accounts'
         : '/api/agency/social/google/accounts'
       const result = await apiFetch<ConnectedAccount[]>(endpoint)
-      accounts.value = { ...accounts.value, [targetPlatform]: result }
+      if (requestId === accountRequestId) {
+        accounts.value = { ...accounts.value, [targetPlatform]: result }
+      }
     }
   } catch (error: unknown) {
     if (requestId === accountRequestId) {

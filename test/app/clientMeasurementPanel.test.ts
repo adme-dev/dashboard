@@ -407,6 +407,27 @@ describe('ClientMeasurementPanel', () => {
     }
   })
 
+  it('still offers attestation for a capability already ready, so a live tag loss can be reported', async () => {
+    const fetchMock = vi.fn(async (request: string) => {
+      const response = responseFor(request, { live: true })
+      if (request.endsWith('/destinations')) {
+        const body = response as { items: Array<{ capabilities: Array<{ mode: string, status: string }> }> }
+        // meta_pixel is attestation-only; ready is exactly the state an operator
+        // needs to be able to downgrade when e.g. the pixel is removed from GTM.
+        body.items[0]!.capabilities[0]!.status = 'ready'
+      }
+      return response
+    })
+    const { app, host } = mountPanel(fetchMock, { canConfigure: true })
+    await flushUi()
+
+    try {
+      expect(host.querySelector('[data-testid="attest-meta_pixel"]')).not.toBeNull()
+    } finally {
+      app.unmount()
+    }
+  })
+
   it('hides the attestation control from operators who cannot configure', async () => {
     const fetchMock = vi.fn(async (request: string) => responseFor(request))
     const { app, host } = mountPanel(fetchMock)

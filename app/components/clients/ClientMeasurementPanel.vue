@@ -157,7 +157,11 @@ function destinationIsLive(destination: MeasurementDestination) {
 }
 
 function canAttestCapability(capability: MeasurementCapability) {
-  return isAttestationOnly(capability.mode) && capability.status !== 'ready'
+  // Deliberately does not require `status !== 'ready'`: a ready capability still
+  // has to be attestable so an operator can report a tag going missing (e.g. a
+  // Meta Pixel removed from GTM) and downgrade a live destination. Server-side
+  // force/warning handling already exists for exactly this case.
+  return isAttestationOnly(capability.mode)
 }
 
 function mappingIdentityLabel(
