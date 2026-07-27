@@ -110,6 +110,21 @@ function harness(options: {
 }
 
 describe('Measurement profile service', () => {
+  it('requests on-demand profile creation when opening measurement for a client', async () => {
+    const test = harness()
+
+    await expect(test.service.get(CLIENT_ID)).resolves.toMatchObject({
+      clientId: CLIENT_ID,
+      enabled: false,
+      environment: 'test'
+    })
+
+    expect(test.repository.getByClientId).toHaveBeenCalledWith(
+      CLIENT_ID,
+      { createIfMissing: true }
+    )
+  })
+
   it('atomically versions and audits a tenant-scoped profile before publishing cache', async () => {
     const test = harness()
 

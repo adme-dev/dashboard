@@ -6,6 +6,7 @@ import {
   PLATFORM_LABELS,
   type MeasurementPlatform
 } from '~~/shared/utils/measurementPlatform'
+import { isMeasurementProviderCredentialRef } from '~~/shared/utils/measurementProviderCredential'
 
 const props = defineProps<{
   clientId: string
@@ -63,6 +64,7 @@ const platformOptions = MEASUREMENT_PLATFORMS.map(value => ({
 const platform = ref<Platform>('meta')
 const socialConnectionId = ref('')
 const externalDestinationId = ref('')
+const credentialRef = ref('')
 const selectedCapabilities = reactive<Record<string, boolean>>({})
 const capabilityOrigins = reactive<Record<string, ManagementOrigin>>({})
 const activeMappings = reactive<Record<string, boolean>>({})
@@ -128,12 +130,20 @@ const externalDestinationPlaceholder = computed(() => ({
   ga4: 'e.g. G-XXXXXXXXXX'
 }[platform.value]))
 const usesFreeTextDestinationId = computed(() => platform.value !== 'google_data_manager')
+const requiresProviderCredential = computed(() => (
+  platform.value === 'meta' || platform.value === 'ga4'
+))
+const credentialRefValid = computed(() => (
+  !requiresProviderCredential.value
+  || isMeasurementProviderCredentialRef(credentialRef.value.trim())
+))
 const canSave = computed(() => (
   externalDestinationId.value.trim().length > 0
   && selectedCapabilityRows.value.length > 0
   && (!requiresConnection.value || Boolean(socialConnectionId.value))
   && mappingsComplete.value
   && googleActionCompatible.value
+  && credentialRefValid.value
   && Boolean(reason.value.trim())
   && !saving.value
 ))
@@ -142,6 +152,7 @@ function resetPlatformState() {
   googleActionRequestId += 1
   socialConnectionId.value = ''
   externalDestinationId.value = ''
+  credentialRef.value = ''
   reason.value = ''
   saveError.value = null
   googleActions.value = []
@@ -278,6 +289,7 @@ async function saveDestination() {
           platform: platform.value,
           socialConnectionId: socialConnectionId.value || null,
           externalDestinationId: externalDestinationId.value.trim(),
+          credentialRef: credentialRef.value.trim() || null,
           capabilities: selectedCapabilityRows.value.map(definition => ({
             mode: definition.mode,
             status: 'configured',
@@ -391,6 +403,29 @@ void loadAccounts('meta')
           The selected action type does not match the capability owner. Zero-managed delivery requires an Offline click action; GTM-owned tag delivery requires a Website tag action.
         </span>
       </label>
+
+      <UFormField
+        v-if="requiresProviderCredential"
+        class="md:col-span-2"
+        label="Provider credential binding"
+        help="Enter the Cloudflare secret binding name, never the provider token itself. Binding names start with MEASUREMENT_PROVIDER_."
+        required
+      >
+        <UInput
+          v-model="credentialRef"
+          data-testid="measurement-credential-ref"
+          class="w-full font-mono"
+          autocomplete="off"
+          placeholder="MEASUREMENT_PROVIDER_META_CLIENT_NAME"
+        />
+        <p
+          v-if="credentialRef && !credentialRefValid"
+          role="alert"
+          class="mt-1 text-xs text-error"
+        >
+          Use an uppercase purpose-scoped binding such as MEASUREMENT_PROVIDER_META_CLIENT_NAME.
+        </p>
+      </UFormField>
     </div>
 
     <div class="mt-6 border-t border-default pt-5">
