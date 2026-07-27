@@ -214,7 +214,7 @@ const MeasurementProviderCredentialRefSchema = z.string()
     message: 'Provider credentials must use a purpose-scoped measurement binding'
   })
 
-const PLATFORM_MODE_PREFIX: Record<z.infer<typeof MeasurementPlatformSchema>, string> = {
+export const PLATFORM_MODE_PREFIX: Record<z.infer<typeof MeasurementPlatformSchema>, string> = {
   meta: 'meta_',
   google_data_manager: 'google_',
   ga4: 'ga4_'

@@ -1,4 +1,5 @@
 import { transaction as defaultTransaction } from '~~/server/utils/db'
+import { PLATFORM_MODE_PREFIX } from '~~/server/utils/measurement/contracts'
 import type {
   CapabilityStatusSchema,
   RecordDestinationValidationEvidence
@@ -103,9 +104,7 @@ export function createPostgresMeasurementHealthRepository(
         const capabilityRows = capabilityResult.rows as CapabilityIdentityRow[]
         const capabilityByMode = new Map(capabilityRows.map(row => [row.mode, row]))
         const invalidCapability = input.capabilities.some((capability) => {
-          const platformMatches = destination.platform === 'meta'
-            ? capability.mode.startsWith('meta_')
-            : capability.mode.startsWith('google_')
+          const platformMatches = capability.mode.startsWith(PLATFORM_MODE_PREFIX[destination.platform])
           return !platformMatches || !capabilityByMode.has(capability.mode)
         })
         if (invalidCapability) return { status: 'invalid_capability' as const }
