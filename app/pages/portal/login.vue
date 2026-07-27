@@ -44,58 +44,51 @@
             <UIcon name="i-lucide-alert-circle" class="w-4.5 h-4.5 text-red-500 flex-shrink-0 mt-0.5" />
             <div class="flex-1 flex items-center justify-between">
               <span class="text-[13px] text-red-700 dark:text-red-400">{{ error }}</span>
-              <button class="text-red-400 hover:text-red-600" @click="error = ''">
-                <UIcon name="i-lucide-x" class="w-3.5 h-3.5" />
-              </button>
+              <UButton
+                type="button"
+                icon="i-lucide-x"
+                color="error"
+                variant="ghost"
+                size="xs"
+                aria-label="Dismiss error"
+                @click="error = ''"
+              />
             </div>
           </div>
 
-          <div>
-            <label class="block text-[13px] font-medium text-[#121317] dark:text-white mb-2">Email</label>
-            <input
+          <UFormField label="Email" name="email">
+            <UInput
               v-model="email"
               type="email"
               placeholder="you@company.com"
-              class="w-full px-4 py-3 rounded-xl border border-[#121317]/10 dark:border-white/10 bg-white dark:bg-white/[0.04] text-[15px] text-[#121317] dark:text-white placeholder:text-[#45474D]/50 dark:placeholder:text-white/30 focus:outline-none focus:border-[#121317]/30 dark:focus:border-white/20 focus:ring-2 focus:ring-[#121317]/5 dark:focus:ring-white/10 transition-all"
+              size="xl"
+              class="w-full"
               :disabled="loading"
               autofocus
-            >
-          </div>
+            />
+          </UFormField>
 
-          <div>
-            <label class="block text-[13px] font-medium text-[#121317] dark:text-white mb-2">Password</label>
-            <input
+          <UFormField label="Password" name="password">
+            <UInput
               v-model="password"
               type="password"
               placeholder="Enter your password"
-              class="w-full px-4 py-3 rounded-xl border border-[#121317]/10 dark:border-white/10 bg-white dark:bg-white/[0.04] text-[15px] text-[#121317] dark:text-white placeholder:text-[#45474D]/50 dark:placeholder:text-white/30 focus:outline-none focus:border-[#121317]/30 dark:focus:border-white/20 focus:ring-2 focus:ring-[#121317]/5 dark:focus:ring-white/10 transition-all"
+              size="xl"
+              class="w-full"
               :disabled="loading"
-            >
-          </div>
+            />
+          </UFormField>
 
-          <button
+          <UButton
             type="submit"
-            class="w-full py-3 px-4 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[15px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            block
+            size="xl"
+            color="neutral"
+            :loading="loading"
             :disabled="loading"
           >
-            <svg
-              v-if="loading"
-              class="animate-spin w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="3"
-              />
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
             {{ loading ? 'Signing in...' : 'Sign in' }}
-          </button>
+          </UButton>
         </form>
 
         <!-- Divider -->
@@ -128,7 +121,10 @@
         <!-- Help -->
         <div class="mt-10 text-center">
           <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">
-            Need help? <a href="#" class="text-[#121317] dark:text-white hover:underline font-medium">Contact support</a>
+            Need help?
+            <NuxtLink to="/support" class="text-[#121317] dark:text-white hover:underline font-medium">
+              Contact support
+            </NuxtLink>
           </p>
         </div>
       </div>
