@@ -17,7 +17,8 @@ import { createMeasurementReadService } from '~~/server/utils/measurement/readSe
 import {
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
-  refreshGoogleDataManagerAccessToken
+  refreshGoogleDataManagerAccessToken,
+  validateGa4MeasurementProtocolEvent
 } from '~~/workers/measurement-delivery/src/providers'
 import { resolveMeasurementProviderCredential } from '~~/workers/measurement-delivery/src/credential'
 
@@ -92,6 +93,7 @@ export function createMeasurementProviderTestRuntime(event: H3Event) {
       ...input,
       fetch: providerFetch
     }),
+    validateGa4: input => validateGa4MeasurementProtocolEvent({ ...input, fetch: providerFetch }),
     resolveProviderCredential: credentialRef => resolveMeasurementProviderCredential(
       env,
       credentialRef

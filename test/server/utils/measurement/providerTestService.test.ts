@@ -24,28 +24,31 @@ function baseInput() {
 }
 
 function context(
-  platform: 'meta' | 'google_data_manager',
+  platform: 'meta' | 'google_data_manager' | 'ga4',
   metaDeliveryMode: 'crm' | 'web' = 'crm'
 ) {
+  const mode = platform === 'meta'
+    ? 'meta_test_events' as const
+    : platform === 'ga4'
+      ? 'ga4_debug_validation' as const
+      : 'google_validate_only' as const
   return {
-    run: {
-      id: ids.run,
-      mode: platform === 'meta' ? 'meta_test_events' as const : 'google_validate_only' as const,
-      status: 'requested' as const
-    },
+    run: { id: ids.run, mode, status: 'requested' as const },
     delivery: {
       eventId: '66666666-6666-4666-8666-666666666666',
       eventName: 'lead_qualified',
       providerEventName: 'QualifiedLead',
       occurredAt: '2026-07-17T08:00:00.000Z',
       idempotencyKey: ids.idempotency,
-      externalDestinationId: '573284833843027',
+      externalDestinationId: platform === 'ga4' ? 'G-ABC123' : '573284833843027',
       operatingAccountId: '4221552633',
       loginAccountId: '4221552633',
       metaDeliveryMode
     },
     credential: {
-      credentialRef: platform === 'meta' ? 'MEASUREMENT_PROVIDER_META_BIG_GARAGE' : null,
+      credentialRef: platform === 'meta'
+        ? 'MEASUREMENT_PROVIDER_META_BIG_GARAGE'
+        : platform === 'ga4' ? 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE' : null,
       accessToken: platform === 'meta' ? 'meta-token' : null,
       refreshToken: platform === 'google_data_manager' ? 'google-refresh' : null,
       scopes: platform === 'google_data_manager'
@@ -74,12 +77,19 @@ function setup(reserved = context('meta')) {
   }))
   const refreshGoogleAccessToken = vi.fn(async () => 'google-access')
   const resolveProviderCredential = vi.fn(async () => 'meta-dataset-token')
+  const validateGa4 = vi.fn(async () => ({
+    outcome: 'accepted' as const,
+    providerRequestId: null,
+    errorClass: null,
+    redactedDiagnostic: null
+  }))
   const service = createMeasurementProviderTestService({
     repository,
     deliverMeta,
     deliverGoogle,
     refreshGoogleAccessToken,
     resolveProviderCredential,
+    validateGa4,
     graphApiVersion: 'v25.0',
     googleClientId: 'google-client',
     googleClientSecret: 'google-secret',
@@ -91,7 +101,8 @@ function setup(reserved = context('meta')) {
     deliverMeta,
     deliverGoogle,
     refreshGoogleAccessToken,
-    resolveProviderCredential
+    resolveProviderCredential,
+    validateGa4
   }
 }
 
@@ -456,5 +467,33 @@ describe('measurement provider test service', () => {
 
     expect(test.repository.reserve).not.toHaveBeenCalled()
     expect(test.deliverMeta).not.toHaveBeenCalled()
+  })
+
+  it('runs a GA4 debug validation through the debug endpoint provider', async () => {
+    const test = setup(context('ga4'))
+
+    const result = await test.service.run({
+      ...baseInput(),
+      mode: 'ga4_debug_validation',
+      gaClientId: '123.456'
+    })
+
+    expect(test.validateGa4).toHaveBeenCalledWith(expect.objectContaining({
+      gaClientId: '123.456',
+      apiSecret: 'meta-dataset-token'
+    }))
+    expect(test.deliverGoogle).not.toHaveBeenCalled()
+    expect(result.run.status).toBe('accepted')
+  })
+
+  it('rejects a GA4 test with a malformed gaClientId before reserving provider traffic', async () => {
+    const test = setup(context('ga4'))
+
+    await expect(test.service.run({
+      ...baseInput(),
+      mode: 'ga4_debug_validation',
+      gaClientId: 'not-a-client-id'
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+    expect(test.repository.reserve).not.toHaveBeenCalled()
   })
 })

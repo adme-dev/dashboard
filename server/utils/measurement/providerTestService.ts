@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { MeasurementError } from '~~/server/utils/measurement/errors'
 import type {
+  Ga4ValidationInput,
   GoogleDeliveryInput,
   MetaDeliveryInput,
   ProviderDeliveryResult,
@@ -85,10 +86,16 @@ const GoogleProviderTestSchema = CommonProviderTestSchema.extend({
   })
 })
 
+const Ga4ProviderTestSchema = CommonProviderTestSchema.extend({
+  mode: z.literal('ga4_debug_validation'),
+  gaClientId: z.string().trim().min(1).max(255).regex(/^[0-9]+\.[0-9]+$/)
+})
+
 export const MeasurementProviderTestInputSchema = z.union([
   MetaCrmProviderTestSchema,
   MetaWebProviderTestSchema,
-  GoogleProviderTestSchema
+  GoogleProviderTestSchema,
+  Ga4ProviderTestSchema
 ])
 
 export type MeasurementProviderTestInput = z.infer<typeof MeasurementProviderTestInputSchema>
@@ -149,6 +156,7 @@ interface ProviderTestServiceDeps {
   deliverGoogle(input: Omit<GoogleDeliveryInput, 'fetch'>): Promise<ProviderDeliveryResult>
   refreshGoogleAccessToken(input: Omit<RefreshGoogleAccessTokenInput, 'fetch'>): Promise<string>
   resolveProviderCredential(credentialRef: string): Promise<string | null>
+  validateGa4(input: Omit<Ga4ValidationInput, 'fetch'>): Promise<ProviderDeliveryResult>
   graphApiVersion: string
   googleClientId: string
   googleClientSecret: string
@@ -241,7 +249,9 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
               input.clientUserAgent
             ]
           : [input.testEventCode, input.metaLeadId]
-        : [input.clickIdentifier.value]
+        : input.mode === 'ga4_debug_validation'
+          ? [input.gaClientId]
+          : [input.clickIdentifier.value]
       const normalizedReason = input.reason.toLocaleLowerCase()
       if (transientValues.some(value => (
         value && normalizedReason.includes(value.toLocaleLowerCase())
@@ -270,7 +280,7 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
           wbraid: input.mode === 'google_validate_only' && input.clickIdentifier.type === 'wbraid'
             ? input.clickIdentifier.value
             : null,
-          gaClientId: null,
+          gaClientId: input.mode === 'ga4_debug_validation' ? input.gaClientId : null,
           fbc: isMetaWeb ? input.fbc : null,
           fbp: isMetaWeb ? input.fbp : null,
           eventSourceUrl: isMetaWeb ? input.eventSourceUrl : null,
@@ -303,6 +313,29 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
                   providerRequestId: null,
                   errorClass: 'meta_capi_credential_unavailable',
                   redactedDiagnostic: 'Meta CAPI secret binding is unavailable'
+                }
+          }
+        } else if (input.mode === 'ga4_debug_validation') {
+          if (!context.credential.credentialRef) {
+            providerResult = {
+              outcome: 'permanent_failure',
+              providerRequestId: null,
+              errorClass: 'ga4_credential_ref_required',
+              redactedDiagnostic: 'GA4 Measurement Protocol requires a purpose-scoped API secret binding'
+            }
+          } else {
+            const apiSecret = await deps.resolveProviderCredential(context.credential.credentialRef)
+            providerResult = apiSecret
+              ? await deps.validateGa4({
+                  delivery: baseDelivery,
+                  apiSecret,
+                  gaClientId: input.gaClientId
+                })
+              : {
+                  outcome: 'permanent_failure',
+                  providerRequestId: null,
+                  errorClass: 'ga4_credential_unavailable',
+                  redactedDiagnostic: 'GA4 API secret binding is unavailable'
                 }
           }
         } else if (!context.credential.scopes.includes(GOOGLE_DATA_MANAGER_SCOPE)) {
