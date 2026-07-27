@@ -193,7 +193,9 @@ function aggregateHealth(input: CreateConversionDestinationConfiguration['destin
 }
 
 function connectionPlatform(platform: CreateConversionDestinationConfiguration['destination']['platform']) {
-  return platform === 'meta' ? 'meta' : 'google'
+  if (platform === 'meta') return 'meta'
+  if (platform === 'ga4') return 'ga4'
+  return 'google'
 }
 
 export interface DestinationPage {
