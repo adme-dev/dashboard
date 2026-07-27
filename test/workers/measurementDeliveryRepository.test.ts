@@ -41,7 +41,8 @@ function deliveryRow() {
     tracking_ua: null,
     tracking_gclid: null,
     tracking_gbraid: null,
-    tracking_wbraid: null
+    tracking_wbraid: null,
+    tracking_ga_client_id: null
   }
 }
 
@@ -333,5 +334,30 @@ describe('measurement delivery repository', () => {
     }, 'measurement-worker:test', NOW)
 
     expect(claim).toMatchObject({ value: null, currency: null })
+  })
+
+  it('maps the GA4 client ID from the tracking_events join into the claim attribution', async () => {
+    const row = { ...deliveryRow(), platform: 'ga4' as const, tracking_ga_client_id: '1234567890.1234567890' }
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (/SELECT[\s\S]*FOR UPDATE OF d SKIP LOCKED/.test(sql)) return { rows: [row] }
+        if (/UPDATE conversion_deliveries[\s\S]*attempt_count = attempt_count \+ 1/.test(sql)) {
+          return { rows: [{ attempt_count: 1 }] }
+        }
+        return { rows: [] }
+      })
+    }
+    const transaction = vi.fn(async (callback: (db: typeof client) => Promise<unknown>) => callback(client))
+    const repository = createMeasurementDeliveryRepository({ transaction: transaction as never })
+
+    const claim = await repository.claimNext({
+      schemaVersion: 1,
+      clientId: CLIENT_ID,
+      eventId: EVENT_ID,
+      enqueuedAt: '2026-07-17T06:00:00.000Z'
+    }, 'worker-1', NOW)
+
+    expect(claim?.platform).toBe('ga4')
+    expect(claim?.attribution.gaClientId).toBe('1234567890.1234567890')
   })
 })
