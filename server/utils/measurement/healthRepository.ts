@@ -13,7 +13,7 @@ interface ProfileVersionRow {
 }
 
 interface DestinationVersionRow {
-  platform: 'meta' | 'google_data_manager'
+  platform: 'meta' | 'google_data_manager' | 'ga4'
   config_version: number | string
   health_status: HealthStatus
 }

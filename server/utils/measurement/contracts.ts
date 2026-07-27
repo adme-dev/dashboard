@@ -214,7 +214,7 @@ const MeasurementProviderCredentialRefSchema = z.string()
     message: 'Provider credentials must use a purpose-scoped measurement binding'
   })
 
-const PLATFORM_MODE_PREFIX: Record<string, string> = {
+const PLATFORM_MODE_PREFIX: Record<z.infer<typeof MeasurementPlatformSchema>, string> = {
   meta: 'meta_',
   google_data_manager: 'google_',
   ga4: 'ga4_'
@@ -317,9 +317,7 @@ const DestinationConfigurationInputSchema = z.strictObject({
     }
     capabilityModes.add(capability.mode)
 
-    const belongsToPlatform = destination.platform === 'meta'
-      ? capability.mode.startsWith('meta_')
-      : capability.mode.startsWith('google_')
+    const belongsToPlatform = capability.mode.startsWith(PLATFORM_MODE_PREFIX[destination.platform])
     if (!belongsToPlatform) {
       ctx.addIssue({
         code: 'custom',

@@ -399,6 +399,54 @@ describe('CreateConversionDestinationConfigurationSchema', () => {
 
     expect(result.success).toBe(false)
   })
+
+  it('accepts a ga4 destination with a ga4_measurement_protocol capability (production destination-creation path)', () => {
+    const result = CreateConversionDestinationConfigurationSchema.parse({
+      clientId: CLIENT_ID,
+      expectedProfileVersion: 1,
+      reason: 'Configure GA4 Measurement Protocol outcome delivery in test mode',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      destination: {
+        platform: 'ga4',
+        externalDestinationId: 'G-ABCDEFG123',
+        credentialRef: 'MEASUREMENT_PROVIDER_GA4_FERNTREE',
+        capabilities: [{
+          mode: 'ga4_measurement_protocol',
+          status: 'configured',
+          managementOrigin: 'zero',
+          canZeroMutate: true
+        }],
+        mappings: []
+      }
+    })
+
+    expect(result.destination.platform).toBe('ga4')
+    expect(result.destination.capabilities).toHaveLength(1)
+    expect(result.destination.capabilities[0]?.mode).toBe('ga4_measurement_protocol')
+  })
+
+  it('rejects a ga4 destination with a capability mode that does not belong to ga4 (production destination-creation path)', () => {
+    const result = CreateConversionDestinationConfigurationSchema.safeParse({
+      clientId: CLIENT_ID,
+      expectedProfileVersion: 1,
+      reason: 'Invalid GA4 destination setup',
+      actor: { type: 'team_member', id: '33333333-3333-4333-8333-333333333333' },
+      destination: {
+        platform: 'ga4',
+        externalDestinationId: 'G-ABCDEFG123',
+        credentialRef: 'MEASUREMENT_PROVIDER_GA4_FERNTREE',
+        capabilities: [{
+          mode: 'meta_crm_capi',
+          status: 'configured',
+          managementOrigin: 'zero',
+          canZeroMutate: true
+        }],
+        mappings: []
+      }
+    })
+
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('ConversionDestinationReadModelSchema', () => {

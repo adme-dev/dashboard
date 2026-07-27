@@ -150,7 +150,7 @@ function mapClaim(
       fbp: optionalString(row.tracking_fbp),
       eventSourceUrl: safeEventSourceUrl(row.tracking_page_url),
       clientUserAgent: optionalString(row.tracking_ua, 1024),
-      gaClientId: optionalString(row.tracking_ga_client_id, 128)
+      gaClientId: optionalString(attribution.gaClientId, 128) ?? optionalString(row.tracking_ga_client_id, 128)
     }
   }
 }

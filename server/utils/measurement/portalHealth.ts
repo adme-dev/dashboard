@@ -44,7 +44,7 @@ export const PortalMeasurementHealthSchema = z.strictObject({
     label: z.string().min(1).max(100)
   })).max(20),
   destinations: z.array(z.strictObject({
-    platform: z.enum(['meta', 'google_data_manager']),
+    platform: z.enum(['meta', 'google_data_manager', 'ga4']),
     label: z.string().min(1).max(100),
     status: PortalCapabilityStatusSchema,
     deliveryState: z.enum(['dormant', 'test', 'live', 'paused']),
@@ -89,7 +89,7 @@ interface PortalCapabilityInput {
 }
 
 interface PortalDestinationInput {
-  platform: 'meta' | 'google_data_manager'
+  platform: 'meta' | 'google_data_manager' | 'ga4'
   enabled: boolean
   environment: 'test' | 'live' | 'paused'
   healthStatus: CapabilityStatus
@@ -124,7 +124,7 @@ const STATUS_PRIORITY: Record<CapabilityStatus, number> = {
 }
 
 const BROWSER_MODES = new Set(['meta_pixel', 'google_tag_enhanced_conversions'])
-const SERVER_MODES = new Set(['meta_web_capi', 'google_data_manager'])
+const SERVER_MODES = new Set(['meta_web_capi', 'google_data_manager', 'ga4_measurement_protocol'])
 const CRM_MODES = new Set([
   'meta_crm_capi',
   'meta_conversion_leads',
@@ -270,7 +270,11 @@ export function buildPortalMeasurementHealth(input: {
     eventIdentity: eventIdentity(relevantDestinations),
     destinations: input.destinations.map(destination => ({
       platform: destination.platform,
-      label: destination.platform === 'meta' ? 'Meta' : 'Google Data Manager',
+      label: destination.platform === 'meta'
+        ? 'Meta'
+        : destination.platform === 'ga4'
+          ? 'GA4'
+          : 'Google Data Manager',
       status: destination.healthStatus,
       deliveryState: destination.enabled ? destination.environment : 'dormant',
       lastSuccessAt: iso(destination.lastSuccessAt)
