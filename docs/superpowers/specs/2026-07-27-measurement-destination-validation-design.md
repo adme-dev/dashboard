@@ -145,9 +145,7 @@ One explicit table. Anything absent from it is attestation-only.
 
 | Test mode | Conditions | Capability modes proven |
 |---|---|---|
-| `meta_test_events` | `deliveryMode: 'web'` | `meta_web_capi` |
-| `meta_test_events` | `deliveryMode: 'crm'`, event `lead_created` / `purchase` | `meta_crm_capi` |
-| `meta_test_events` | `deliveryMode: 'crm'`, event `lead_qualified` / `lead_won` / `lead_contacted` / `lead_lost` | `meta_crm_capi`, `meta_conversion_leads` |
+| `meta_test_events` | either `deliveryMode` | `meta_web_capi`, `meta_crm_capi`, `meta_conversion_leads` |
 | `google_validate_only` | — | `google_data_manager` |
 | `ga4_debug_validation` | — | `ga4_measurement_protocol` |
 
@@ -158,9 +156,26 @@ in the client's tag manager or website and cannot be observed server-side; `zero
 The two exceptions are deliberate: `meta_web_capi` is `gtm`-origin but genuinely exercised by the Meta web test, and
 `google_enhanced_conversions_for_leads` is `zero`-origin but not exercised by the Data Manager validate-only call.
 
-**Consequence worth stating plainly:** a Meta destination with all four capabilities requires two tests (web and
-crm-with-a-lead-outcome) plus one attestation to reach `ready`. The UI must show remaining capabilities and how each
-is satisfied, rather than leaving the operator to guess why the destination is still amber.
+**Meta's three CAPI capabilities are deliberately collapsed onto a single test.** One successful Meta Test Events
+run — in either delivery mode — marks all three ready, so a Meta destination needs one test plus one `meta_pixel`
+attestation rather than two tests plus an attestation.
+
+This is a conscious trade of strictness for onboarding friction, and it has a cost worth recording: a `web`-mode
+test does not exercise the CRM path, and no single test can exercise both, because `META_WEB_TEST_EVENTS` restricts
+web mode to `lead_created` / `purchase` / `web_conversion` while `meta_conversion_leads` is about downstream
+outcomes like `lead_qualified`. So at least one of the three capabilities is always marked ready by inference
+rather than observation.
+
+To keep the audit trail honest without adding operator steps, the evidence written for a Meta test records which
+capabilities were **directly exercised** by the call and which were **inferred** from the collapse, in the
+`measurement_config_audit` `after_state` JSON. The capability rows themselves are all `ready`; the audit preserves
+what was actually observed. No schema change — `after_state` is already a JSON blob.
+
+**Note an asymmetry this introduces:** Meta's unexercised CAPI capabilities now become ready from a test, while
+Google's unexercised `google_enhanced_conversions_for_leads` still requires attestation. That is defensible —
+Meta's three CAPI modes share one transport and one credential, whereas Google's enhanced-conversions-for-leads is
+a separate Google Ads-side configuration — but it is an inconsistency, and aligning Google the same way is a small
+change if that is preferred later.
 
 ## GA4 test mode
 
@@ -199,8 +214,9 @@ Other cases:
 
 Unit:
 
-- `TEST_COVERAGE` resolution, including the `canonicalEventName` branch that distinguishes `meta_crm_capi` alone
-  from `meta_crm_capi` + `meta_conversion_leads`
+- `TEST_COVERAGE` resolution per platform, including that a Meta test in **either** delivery mode resolves to all
+  three CAPI capabilities, and that `meta_pixel` is never among them
+- the directly-exercised vs inferred split recorded in the Meta evidence audit payload
 - the live-destination `blocked` → `degraded` downgrade, and that non-live destinations are unaffected
 - GA4 `validationMessages` handling — empty array accepted, non-empty rejected with the message surfaced
 - evidence construction from a test result
