@@ -30,7 +30,7 @@ describe('measurement onboarding against PostgreSQL', () => {
     await client.end()
   })
 
-  runWithDatabase('creates a missing profile and records ready evidence within real constraints', async () => {
+  runWithDatabase('creates a profile and validates an older destination after the profile advances', async () => {
     if (!client) throw new Error('Database smoke client was not initialized')
 
     await client.query(
@@ -86,6 +86,41 @@ describe('measurement onboarding against PostgreSQL', () => {
       [clientId, destinationId]
     )
 
+    await client.query(
+      `UPDATE client_measurement_profiles
+          SET config_version = 2
+        WHERE client_id = $1`,
+      [clientId]
+    )
+
+    await client.query(
+      `INSERT INTO conversion_destinations (
+         client_id, profile_id, platform, external_destination_id,
+         enabled, environment, health_status, config_version
+       ) VALUES (
+         $1, $2, 'google_data_manager', 'smoke-customer-2',
+         false, 'test', 'configured', 2
+       )`,
+      [clientId, profile!.id]
+    )
+
+    await expect(queryOne<{
+      profile_version: number
+      destination_version: number
+    }>(
+      `SELECT p.config_version AS profile_version,
+              d.config_version AS destination_version
+         FROM client_measurement_profiles p
+         JOIN conversion_destinations d
+           ON d.client_id = p.client_id
+          AND d.id = $2
+        WHERE p.client_id = $1`,
+      [clientId, destinationId]
+    )).resolves.toEqual({
+      profile_version: 2,
+      destination_version: 1
+    })
+
     const healthService = createMeasurementHealthService({
       repository: createPostgresMeasurementHealthRepository({
         transaction: transaction as never
@@ -108,18 +143,24 @@ describe('measurement onboarding against PostgreSQL', () => {
       reason: 'Rollback-only measurement onboarding database smoke'
     })
 
-    expect(evidence.healthStatus).toBe('ready')
+    expect(evidence).toMatchObject({
+      configVersion: 1,
+      healthStatus: 'ready'
+    })
     await expect(queryOne<{ health_status: string }>(
       'SELECT health_status FROM conversion_destinations WHERE id = $1',
       [destinationId]
     )).resolves.toEqual({ health_status: 'ready' })
-    await expect(queryOne<{ actor_type: string }>(
-      `SELECT actor_type
+    await expect(queryOne<{ actor_type: string, config_version: number }>(
+      `SELECT actor_type, config_version
          FROM measurement_config_audit
         WHERE client_id = $1
         ORDER BY created_at DESC
         LIMIT 1`,
       [clientId]
-    )).resolves.toEqual({ actor_type: 'team_member' })
+    )).resolves.toEqual({
+      actor_type: 'team_member',
+      config_version: 1
+    })
   })
 })
