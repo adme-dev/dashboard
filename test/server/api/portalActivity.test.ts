@@ -47,6 +47,7 @@ describe('portal recent activity', () => {
 
     const sql = String(mockQueryRows.mock.calls[0]?.[0])
     expect(sql).toContain('WHERE cal.client_id = $1')
+    expect(sql).toContain('cu.client_id = cal.client_id')
     expect(sql).toContain('ORDER BY cal.created_at DESC')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client-1', 50])
   })
@@ -84,6 +85,30 @@ describe('portal recent activity', () => {
     expect(result.activity[0]).not.toHaveProperty('ipAddress')
     expect(result.activity[0]).not.toHaveProperty('userAgent')
     expect(result.activity[0]?.details).not.toHaveProperty('agencyUserEmail')
+  })
+
+  it('redacts the staff-derived actor name for agency portal access events', async () => {
+    mockQueryRows.mockResolvedValueOnce([{
+      id: 'activity-agency-preview',
+      action: 'agency_portal_access',
+      entity_type: 'client',
+      entity_id: 'client-1',
+      details: {
+        agencyUserId: 'agency-user-1',
+        agencyUserEmail: 'paul@example.com',
+        agencyUserRole: 'admin'
+      },
+      created_at: '2026-07-27T09:00:00.000Z',
+      user_name: 'Paul (Agency)'
+    }])
+
+    const result = await activityHandler({ query: {} })
+
+    expect(result.activity[0]).toMatchObject({
+      action: 'agency_portal_access',
+      details: {},
+      userName: null
+    })
   })
 
   it('normalizes database failures', async () => {

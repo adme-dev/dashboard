@@ -54,9 +54,14 @@ export default defineEventHandler(async (event) => {
         cal.entity_id,
         cal.details,
         cal.created_at,
-        cu.name AS user_name
+        CASE
+          WHEN cal.action = 'agency_portal_access' THEN NULL
+          ELSE cu.name
+        END AS user_name
       FROM client_activity_log cal
-      LEFT JOIN client_users cu ON cu.id = cal.client_user_id
+      LEFT JOIN client_users cu
+        ON cu.id = cal.client_user_id
+        AND cu.client_id = cal.client_id
       WHERE cal.client_id = $1
       ORDER BY cal.created_at DESC
       LIMIT $2
@@ -70,7 +75,7 @@ export default defineEventHandler(async (event) => {
         entityId: row.entity_id,
         details: safeDetails(row.details),
         createdAt: row.created_at,
-        userName: row.user_name
+        userName: row.action === 'agency_portal_access' ? null : row.user_name
       }))
     }
   } catch (error) {
