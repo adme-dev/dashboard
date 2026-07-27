@@ -5,6 +5,7 @@ import {
   type GoogleRefreshCredentialRow
 } from '~~/server/utils/googleCredentialProfiles'
 import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEventIdentity'
+import { TEST_PLATFORM, type MeasurementPlatform } from '~~/shared/utils/measurementPlatform'
 import type {
   MeasurementProviderTestInput,
   MeasurementProviderTestRepository,
@@ -30,7 +31,7 @@ interface ProviderContextRow extends GoogleRefreshCredentialRow {
   profile_config_version: number | string
   destination_enabled: boolean
   destination_environment: string
-  platform: 'meta' | 'google_data_manager'
+  platform: MeasurementPlatform
   external_destination_id: string
   credential_ref: string | null
   provider_event_name: string | null
@@ -74,8 +75,8 @@ function runSummary(row: TestRunRow): ProviderTestRunSummary {
   }
 }
 
-function expectedPlatform(mode: ProviderTestMode) {
-  return mode === 'meta_test_events' ? 'meta' : 'google_data_manager'
+export function expectedPlatform(mode: ProviderTestMode): MeasurementPlatform {
+  return TEST_PLATFORM[mode]
 }
 
 function normalizedOrigin(value: unknown): string | null {

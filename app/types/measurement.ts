@@ -1,3 +1,5 @@
+import type { MeasurementPlatform } from '~~/shared/utils/measurementPlatform'
+
 export type MeasurementEnvironment = 'test' | 'live' | 'paused'
 export type MeasurementReadinessStatus = 'onboarding' | 'paused' | 'blocked' | 'degraded' | 'ready'
 export type MeasurementCapabilityStatus
@@ -84,7 +86,8 @@ export interface MeasurementEventMapping {
 
 export interface MeasurementDestination {
   id: string
-  platform: 'meta' | 'google_data_manager'
+  /** Derived from the shared source of truth so a new platform can never go stale here. */
+  platform: MeasurementPlatform
   socialConnectionId?: string | null
   externalDestinationId: string
   credentialConfigured: boolean

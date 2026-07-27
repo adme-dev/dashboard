@@ -592,6 +592,48 @@ describe('RecordDestinationValidationEvidenceSchema', () => {
       providerResponse: { access_token: 'must-not-enter-health-state' }
     }).success).toBe(false)
   })
+
+  it('accepts a team_member actor on validation evidence', () => {
+    const result = RecordDestinationValidationEvidenceSchema.safeParse({
+      clientId: '11111111-1111-4111-8111-111111111111',
+      destinationId: '22222222-2222-4222-8222-222222222222',
+      expectedConfigVersion: 3,
+      observedAt: '2026-07-27T00:00:00.000Z',
+      actor: { type: 'team_member', id: 'actor-1' },
+      reason: 'Operator confirmed the pixel is live on the client site',
+      capabilities: [{ mode: 'meta_pixel', status: 'ready', blockingReason: null }]
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects an actor type outside the audit CHECK constraint vocabulary', () => {
+    // measurement_config_audit.actor_type permits only
+    // team_member | client_user | system | import. 'user' is NOT among them and
+    // previously reached the database, failing every attestation at runtime.
+    const result = RecordDestinationValidationEvidenceSchema.safeParse({
+      clientId: '11111111-1111-4111-8111-111111111111',
+      destinationId: '22222222-2222-4222-8222-222222222222',
+      expectedConfigVersion: 3,
+      observedAt: '2026-07-27T00:00:00.000Z',
+      actor: { type: 'user', id: 'actor-1' },
+      reason: 'Operator confirmed the pixel is live on the client site',
+      capabilities: [{ mode: 'meta_pixel', status: 'ready', blockingReason: null }]
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('still accepts a system actor on validation evidence', () => {
+    const result = RecordDestinationValidationEvidenceSchema.safeParse({
+      clientId: '11111111-1111-4111-8111-111111111111',
+      destinationId: '22222222-2222-4222-8222-222222222222',
+      expectedConfigVersion: 3,
+      observedAt: '2026-07-27T00:00:00.000Z',
+      actor: { type: 'system', id: 'user-1' },
+      reason: 'Meta test events run',
+      capabilities: [{ mode: 'meta_crm_capi', status: 'ready', blockingReason: null }]
+    })
+    expect(result.success).toBe(true)
+  })
 })
 
 describe('Measurement activation command schemas', () => {

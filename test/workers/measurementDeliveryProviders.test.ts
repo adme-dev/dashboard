@@ -3,7 +3,8 @@ import {
   deliverGa4MeasurementProtocolEvent,
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
-  refreshGoogleDataManagerAccessToken
+  refreshGoogleDataManagerAccessToken,
+  validateGa4MeasurementProtocolEvent
 } from '../../workers/measurement-delivery/src/providers'
 
 const baseDelivery = {
@@ -461,5 +462,84 @@ describe('deliverGa4MeasurementProtocolEvent', () => {
       errorClass: 'provider_http_500',
       redactedDiagnostic: 'GA4 Measurement Protocol returned HTTP 500'
     })
+  })
+})
+
+function buildDelivery() {
+  return {
+    eventId: 'evt-1',
+    eventName: 'phone_click',
+    providerEventName: 'phone_click',
+    occurredAt: '2026-07-27T00:00:00.000Z',
+    idempotencyKey: '33333333-3333-4333-8333-333333333333',
+    externalDestinationId: 'G-ABC123',
+    operatingAccountId: 'acct-1',
+    loginAccountId: 'acct-1',
+    metaDeliveryMode: 'crm' as const,
+    attribution: { gaClientId: null }
+  } as never
+}
+
+describe('validateGa4MeasurementProtocolEvent', () => {
+  it('accepts a payload GA4 reports no validation messages for', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ validationMessages: [] })
+    })
+    const result = await validateGa4MeasurementProtocolEvent({
+      delivery: buildDelivery(),
+      apiSecret: 'secret',
+      gaClientId: '123.456',
+      fetch: fetchMock as never
+    })
+    expect(result.outcome).toBe('accepted')
+    expect(fetchMock.mock.calls[0][0]).toContain('/debug/mp/collect')
+  })
+
+  it('rejects a payload GA4 returns validation messages for', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        validationMessages: [{ description: 'event name is invalid', validationCode: 'NAME_INVALID' }]
+      })
+    })
+    const result = await validateGa4MeasurementProtocolEvent({
+      delivery: buildDelivery(),
+      apiSecret: 'secret',
+      gaClientId: '123.456',
+      fetch: fetchMock as never
+    })
+    expect(result.outcome).toBe('permanent_failure')
+    expect(result.errorClass).toBe('ga4_validation_failed')
+    expect(result.redactedDiagnostic).toContain('event name is invalid')
+  })
+
+  it('reports a transport failure when GA4 returns a non-2xx', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({}) })
+    const result = await validateGa4MeasurementProtocolEvent({
+      delivery: buildDelivery(),
+      apiSecret: 'secret',
+      gaClientId: '123.456',
+      fetch: fetchMock as never
+    })
+    expect(result.outcome).not.toBe('accepted')
+  })
+
+  it('treats an unparseable body as a validation failure rather than success', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => { throw new Error('not json') }
+    })
+    const result = await validateGa4MeasurementProtocolEvent({
+      delivery: buildDelivery(),
+      apiSecret: 'secret',
+      gaClientId: '123.456',
+      fetch: fetchMock as never
+    })
+    expect(result.outcome).toBe('permanent_failure')
+    expect(result.errorClass).toBe('ga4_validation_unreadable')
   })
 })

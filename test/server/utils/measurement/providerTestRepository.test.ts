@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createPostgresMeasurementProviderTestRepository } from '~~/server/utils/measurement/providerTestRepository'
+import {
+  createPostgresMeasurementProviderTestRepository,
+  expectedPlatform
+} from '~~/server/utils/measurement/providerTestRepository'
 
 const input = {
   clientId: '11111111-1111-4111-8111-111111111111',
@@ -19,6 +22,12 @@ const input = {
 }
 
 describe('measurement provider test repository', () => {
+  it('maps each provider test mode to the platform it belongs to', () => {
+    expect(expectedPlatform('meta_test_events')).toBe('meta')
+    expect(expectedPlatform('google_validate_only')).toBe('google_data_manager')
+    expect(expectedPlatform('ga4_debug_validation')).toBe('ga4')
+  })
+
   it('resolves Google credentials from an encrypted profile instead of legacy token columns', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })

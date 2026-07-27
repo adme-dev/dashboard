@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { MeasurementError } from '~~/server/utils/measurement/errors'
+import {
+  coveredCapabilityModes,
+  directlyExercisedModes
+} from '~~/shared/utils/measurementPlatform'
 import type {
+  Ga4ValidationInput,
   GoogleDeliveryInput,
   MetaDeliveryInput,
   ProviderDeliveryResult,
@@ -85,10 +90,16 @@ const GoogleProviderTestSchema = CommonProviderTestSchema.extend({
   })
 })
 
+const Ga4ProviderTestSchema = CommonProviderTestSchema.extend({
+  mode: z.literal('ga4_debug_validation'),
+  gaClientId: z.string().trim().min(1).max(255).regex(/^[0-9]+\.[0-9]+$/)
+})
+
 export const MeasurementProviderTestInputSchema = z.union([
   MetaCrmProviderTestSchema,
   MetaWebProviderTestSchema,
-  GoogleProviderTestSchema
+  GoogleProviderTestSchema,
+  Ga4ProviderTestSchema
 ])
 
 export type MeasurementProviderTestInput = z.infer<typeof MeasurementProviderTestInputSchema>
@@ -149,6 +160,8 @@ interface ProviderTestServiceDeps {
   deliverGoogle(input: Omit<GoogleDeliveryInput, 'fetch'>): Promise<ProviderDeliveryResult>
   refreshGoogleAccessToken(input: Omit<RefreshGoogleAccessTokenInput, 'fetch'>): Promise<string>
   resolveProviderCredential(credentialRef: string): Promise<string | null>
+  validateGa4(input: Omit<Ga4ValidationInput, 'fetch'>): Promise<ProviderDeliveryResult>
+  recordValidation(evidence: unknown): Promise<{ healthStatus: string }>
   graphApiVersion: string
   googleClientId: string
   googleClientSecret: string
@@ -217,6 +230,22 @@ function networkFailure(): ProviderDeliveryResult {
   }
 }
 
+type EvidenceStatus = 'ready' | 'degraded' | 'blocked'
+
+function evidenceStatusFor(result: ProviderDeliveryResult): EvidenceStatus {
+  if (result.outcome === 'accepted') return 'ready'
+  // A retryable outcome is a transport problem, not a proven misconfiguration.
+  return result.outcome === 'retryable' ? 'degraded' : 'blocked'
+}
+
+function blockingReasonFor(result: ProviderDeliveryResult, status: EvidenceStatus) {
+  if (status === 'ready') return null
+  // `||`, not `??` — an empty-string diagnostic (e.g. a GA4 `description: ''`)
+  // must fall through to errorClass/the fallback, or the schema's
+  // .trim().min(1) rejects it and evidence recording silently fails.
+  return (result.redactedDiagnostic || result.errorClass || 'Provider validation failed').slice(0, 1000)
+}
+
 export function createMeasurementProviderTestService(deps: ProviderTestServiceDeps) {
   return {
     async run(rawInput: unknown) {
@@ -241,7 +270,9 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
               input.clientUserAgent
             ]
           : [input.testEventCode, input.metaLeadId]
-        : [input.clickIdentifier.value]
+        : input.mode === 'ga4_debug_validation'
+          ? [input.gaClientId]
+          : [input.clickIdentifier.value]
       const normalizedReason = input.reason.toLocaleLowerCase()
       if (transientValues.some(value => (
         value && normalizedReason.includes(value.toLocaleLowerCase())
@@ -249,7 +280,12 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
         throw validationError('Approval reasons must not contain transient provider identifiers')
       }
       const reserved = await deps.repository.reserve(input)
-      if (reserved.status === 'existing') return sanitized(reserved.run)
+      if (reserved.status === 'existing') {
+        return {
+          ...sanitized(reserved.run),
+          validation: { recorded: false, skippedReason: 'already_run', healthStatus: null }
+        }
+      }
       if (reserved.status !== 'reserved') throw repositoryError(reserved.status)
 
       const { context } = reserved
@@ -270,7 +306,7 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
           wbraid: input.mode === 'google_validate_only' && input.clickIdentifier.type === 'wbraid'
             ? input.clickIdentifier.value
             : null,
-          gaClientId: null,
+          gaClientId: input.mode === 'ga4_debug_validation' ? input.gaClientId : null,
           fbc: isMetaWeb ? input.fbc : null,
           fbp: isMetaWeb ? input.fbp : null,
           eventSourceUrl: isMetaWeb ? input.eventSourceUrl : null,
@@ -303,6 +339,29 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
                   providerRequestId: null,
                   errorClass: 'meta_capi_credential_unavailable',
                   redactedDiagnostic: 'Meta CAPI secret binding is unavailable'
+                }
+          }
+        } else if (input.mode === 'ga4_debug_validation') {
+          if (!context.credential.credentialRef) {
+            providerResult = {
+              outcome: 'permanent_failure',
+              providerRequestId: null,
+              errorClass: 'ga4_credential_ref_required',
+              redactedDiagnostic: 'GA4 Measurement Protocol requires a purpose-scoped API secret binding'
+            }
+          } else {
+            const apiSecret = await deps.resolveProviderCredential(context.credential.credentialRef)
+            providerResult = apiSecret
+              ? await deps.validateGa4({
+                  delivery: baseDelivery,
+                  apiSecret,
+                  gaClientId: input.gaClientId
+                })
+              : {
+                  outcome: 'permanent_failure',
+                  providerRequestId: null,
+                  errorClass: 'ga4_credential_unavailable',
+                  redactedDiagnostic: 'GA4 API secret binding is unavailable'
                 }
           }
         } else if (!context.credential.scopes.includes(GOOGLE_DATA_MANAGER_SCOPE)) {
@@ -350,15 +409,86 @@ export function createMeasurementProviderTestService(deps: ProviderTestServiceDe
         redactedError: providerResult.redactedDiagnostic,
         completedAt
       })
-      return sanitized({
-        id: context.run.id,
-        mode: input.mode,
-        status,
-        providerRequestId: providerResult.providerRequestId,
-        errorClass: providerResult.errorClass,
-        redactedError: providerResult.redactedDiagnostic,
-        completedAt
-      })
+
+      const evidenceStatus = evidenceStatusFor(providerResult)
+      const blockingReason = blockingReasonFor(providerResult, evidenceStatus)
+      const deliveryMode = input.mode === 'meta_test_events' ? input.deliveryMode : null
+      const covered = coveredCapabilityModes(input.mode)
+      const directlyExercised = directlyExercisedModes(
+        input.mode,
+        deliveryMode,
+        input.canonicalEventName
+      )
+
+      let validation = {
+        recorded: false,
+        skippedReason: 'no_covered_capabilities' as string | null,
+        healthStatus: null as string | null
+      }
+      if (covered.length > 0) {
+        try {
+          const recorded = await deps.recordValidation({
+            clientId: input.clientId,
+            destinationId: input.destinationId,
+            expectedConfigVersion: input.expectedConfigVersion,
+            observedAt: completedAt,
+            actor: { type: 'system', id: input.actor.id },
+            reason: input.reason,
+            // `||`, not the raw value — an empty-string provider value (e.g. Meta's
+            // fbtrace_id or GA4's description) is not null, so it fails the schema's
+            // .trim().min(1) and silently drops the evidence. See blockingReasonFor
+            // above for the same pattern.
+            providerRequestId: providerResult.providerRequestId || null,
+            errorClass: providerResult.errorClass,
+            redactedError: providerResult.redactedDiagnostic || null,
+            capabilities: covered.map(mode => ({
+              mode,
+              status: evidenceStatus,
+              blockingReason
+            })),
+            directlyExercised,
+            inferred: covered.filter(mode => !directlyExercised.includes(mode))
+          })
+          validation = {
+            recorded: true,
+            skippedReason: null,
+            healthStatus: recorded.healthStatus
+          }
+        } catch (error) {
+          // A failure to record evidence must not fail the test itself, but it
+          // must be visible — a silent no-op is the bug class this work exists
+          // to fix.
+          const code = (error as { code?: string }).code
+          if (code !== 'MEASUREMENT_VERSION_CONFLICT') {
+            // Never log the evidence object itself — it can carry provider
+            // identifiers that this subsystem deliberately redacts.
+            console.error(
+              `[measurement] Failed to record validation evidence for destination ${input.destinationId}:`,
+              error
+            )
+          }
+          validation = {
+            recorded: false,
+            skippedReason: code === 'MEASUREMENT_VERSION_CONFLICT'
+              ? 'version_conflict'
+              : 'record_failed',
+            healthStatus: null
+          }
+        }
+      }
+
+      return {
+        ...sanitized({
+          id: context.run.id,
+          mode: input.mode,
+          status,
+          providerRequestId: providerResult.providerRequestId,
+          errorClass: providerResult.errorClass,
+          redactedError: providerResult.redactedDiagnostic,
+          completedAt
+        }),
+        validation
+      }
     }
   }
 }

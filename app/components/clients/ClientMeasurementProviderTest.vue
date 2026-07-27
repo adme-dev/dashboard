@@ -35,6 +35,8 @@ const eventSourceUrl = ref('')
 const clientUserAgent = ref('')
 const clickType = ref<'gclid' | 'gbraid' | 'wbraid'>('gclid')
 const clickValue = ref('')
+const GA_CLIENT_ID_PATTERN = /^[0-9]+\.[0-9]+$/
+const gaClientId = ref('')
 const reason = ref('')
 const confirmed = ref(false)
 const idempotencyKey = ref(crypto.randomUUID())
@@ -49,6 +51,11 @@ const result = ref<{
 const resultContext = ref<{
   canonicalEventName: string
   deliveryLabel: string
+} | null>(null)
+const validation = ref<{
+  recorded: boolean
+  skippedReason: 'version_conflict' | 'record_failed' | 'already_run' | 'no_covered_capabilities' | null
+  healthStatus: string | null
 } | null>(null)
 let suppressPayloadInvalidation = false
 
@@ -105,6 +112,12 @@ const metaInputsReady = computed(() => (
     : metaLeadIdIsValid.value)
   && metaCapabilityReady.value
 ))
+const gaClientIdIsValid = computed(() => GA_CLIENT_ID_PATTERN.test(gaClientId.value.trim()))
+const showGaClientIdError = computed(() => (
+  props.destination.platform === 'ga4'
+  && Boolean(gaClientId.value)
+  && !gaClientIdIsValid.value
+))
 
 const canRun = computed(() => (
   Boolean(canonicalEventName.value)
@@ -112,9 +125,82 @@ const canRun = computed(() => (
   && confirmed.value
   && (props.destination.platform === 'meta'
     ? metaInputsReady.value
-    : Boolean(clickValue.value.trim()))
-  && !pending.value
+    : props.destination.platform === 'ga4'
+      ? gaClientIdIsValid.value
+      : Boolean(clickValue.value.trim()))
+    && !pending.value
 ))
+
+// Three-way lookups (not nested ternaries) so a new platform can't silently fall through to
+// whichever branch happened to be the `else` when there were only two platforms.
+const testModeLabel = computed(() => ({
+  meta: 'Meta Test Events',
+  google_data_manager: 'Google validate-only',
+  ga4: 'GA4 debug validation'
+}[props.destination.platform]))
+
+const testModeDescription = computed(() => {
+  if (props.destination.platform === 'meta') {
+    return isMetaWeb.value
+      ? 'Sends one website server event to the dataset Test Events stream using the shared browser event ID. Temporary browser context is never stored by Zero.'
+      : 'Sends one CRM event to the dataset Test Events stream. The temporary code and identifiers are never stored by Zero.'
+  }
+  if (props.destination.platform === 'ga4') {
+    return 'Sends one Measurement Protocol event to GA4\'s debug endpoint without recording a real hit. A test has no real visitor, so the client ID does not need to belong to one. The client ID is never stored by Zero.'
+  }
+  return 'Validates one request against the exact conversion action without executing a conversion. The click identifier is never stored by Zero.'
+})
+
+const submitLabel = computed(() => ({
+  meta: 'Send Meta test event',
+  google_data_manager: 'Validate Google request',
+  ga4: 'Validate GA4 event'
+}[props.destination.platform]))
+
+const validationAlert = computed(() => {
+  if (!validation.value) return null
+  if (validation.value.recorded) {
+    return {
+      color: 'success' as const,
+      icon: 'i-lucide-shield-check',
+      title: 'Destination health updated',
+      description: `Health status is now ${validation.value.healthStatus}.`
+    }
+  }
+  if (validation.value.skippedReason === 'version_conflict') {
+    return {
+      color: 'warning' as const,
+      icon: 'i-lucide-refresh-cw',
+      title: 'Configuration changed during the test',
+      description: 'Destination health was not updated. Reload this page and run the test again.'
+    }
+  }
+  if (validation.value.skippedReason === 'already_run') {
+    return {
+      color: 'info' as const,
+      icon: 'i-lucide-info',
+      title: 'Replayed an earlier test',
+      description: 'This was an idempotent replay of a previous run, so destination health was not re-recorded.'
+    }
+  }
+  if (validation.value.skippedReason === 'record_failed') {
+    return {
+      color: 'error' as const,
+      icon: 'i-lucide-alert-circle',
+      title: 'Destination health could not be updated',
+      description: 'The provider accepted the test, but recording the result failed. Retry the test.'
+    }
+  }
+  if (validation.value.skippedReason === 'no_covered_capabilities') {
+    return {
+      color: 'warning' as const,
+      icon: 'i-lucide-alert-triangle',
+      title: 'Nothing recordable',
+      description: 'This test does not cover any capability, so no destination health was recorded.'
+    }
+  }
+  return null
+})
 
 function errorMessage(value: unknown) {
   const candidate = value as {
@@ -139,12 +225,14 @@ function resetTransientApproval(preserveResult = false) {
   eventSourceUrl.value = ''
   clientUserAgent.value = ''
   clickValue.value = ''
+  gaClientId.value = ''
   reason.value = ''
   confirmed.value = false
   error.value = null
   if (!preserveResult) {
     result.value = null
     resultContext.value = null
+    validation.value = null
   }
   idempotencyKey.value = crypto.randomUUID()
   suppressPayloadInvalidation = false
@@ -156,6 +244,7 @@ function invalidatePayloadApproval() {
   error.value = null
   result.value = null
   resultContext.value = null
+  validation.value = null
   idempotencyKey.value = crypto.randomUUID()
 }
 
@@ -182,6 +271,7 @@ watch(
     clientUserAgent,
     clickType,
     clickValue,
+    gaClientId,
     reason
   ],
   invalidatePayloadApproval,
@@ -193,10 +283,15 @@ async function runTest() {
   pending.value = true
   error.value = null
   result.value = null
-  const isMeta = props.destination.platform === 'meta'
+  validation.value = null
+  const platform = props.destination.platform
   const submittedContext = {
     canonicalEventName: canonicalEventName.value,
-    deliveryLabel: isMeta ? (isMetaWeb.value ? 'Web CAPI' : 'CRM CAPI') : 'Google validate-only'
+    deliveryLabel: platform === 'meta'
+      ? (isMetaWeb.value ? 'Web CAPI' : 'CRM CAPI')
+      : platform === 'ga4'
+        ? 'GA4 debug validation'
+        : 'Google validate-only'
   }
 
   try {
@@ -207,7 +302,7 @@ async function runTest() {
       idempotencyKey: idempotencyKey.value,
       reason: reason.value.trim(),
       confirmed: true,
-      ...(isMeta
+      ...(platform === 'meta'
         ? isMetaWeb.value
           ? {
               mode: 'meta_test_events',
@@ -226,10 +321,15 @@ async function runTest() {
               metaLeadId: metaLeadId.value.trim(),
               browserEventId: null
             }
-        : {
-            mode: 'google_validate_only',
-            clickIdentifier: { type: clickType.value, value: clickValue.value.trim() }
-          })
+        : platform === 'ga4'
+          ? {
+              mode: 'ga4_debug_validation',
+              gaClientId: gaClientId.value.trim()
+            }
+          : {
+              mode: 'google_validate_only',
+              clickIdentifier: { type: clickType.value, value: clickValue.value.trim() }
+            })
     }
     const response = await $fetch(
       `/api/agency/measurement/clients/${props.clientId}/destinations/${props.destination.id}/test` as string,
@@ -237,8 +337,9 @@ async function runTest() {
         method: 'POST',
         body: requestBody
       }
-    ) as { run: typeof result.value }
+    ) as { run: typeof result.value, validation: typeof validation.value }
     result.value = response.run
+    validation.value = response.validation
     resultContext.value = submittedContext
     resetTransientApproval(true)
     emit('completed')
@@ -255,14 +356,10 @@ async function runTest() {
     <div class="flex items-start justify-between gap-4">
       <div>
         <h5 class="text-sm font-semibold text-highlighted">
-          {{ destination.platform === 'meta' ? 'Meta Test Events' : 'Google validate-only' }}
+          {{ testModeLabel }}
         </h5>
         <p class="mt-1 text-xs leading-5 text-muted">
-          {{ destination.platform === 'meta'
-            ? isMetaWeb
-              ? 'Sends one website server event to the dataset Test Events stream using the shared browser event ID. Temporary browser context is never stored by Zero.'
-              : 'Sends one CRM event to the dataset Test Events stream. The temporary code and identifiers are never stored by Zero.'
-            : 'Validates one request against the exact conversion action without executing a conversion. The click identifier is never stored by Zero.' }}
+          {{ testModeDescription }}
         </p>
       </div>
       <UButton
@@ -414,6 +511,23 @@ async function runTest() {
           </div>
         </template>
 
+        <template v-else-if="destination.platform === 'ga4'">
+          <UFormField
+            label="Test _ga client ID"
+            help="The _ga cookie value from a real visitor, formatted 123456789.1234567890. A test run has no real visitor, so any well-formed value works."
+            :error="showGaClientIdError ? 'Must be two dot-separated numbers, e.g. 123456789.1234567890.' : undefined"
+            required
+          >
+            <UInput
+              v-model="gaClientId"
+              data-testid="provider-test-ga-client-id"
+              autocomplete="off"
+              maxlength="255"
+              class="w-full font-mono"
+            />
+          </UFormField>
+        </template>
+
         <template v-else>
           <label class="space-y-1.5 text-sm">
             <span class="font-medium text-highlighted">Click identifier type</span>
@@ -487,12 +601,23 @@ async function runTest() {
       </div>
       <UButton
         data-testid="run-provider-test"
-        :label="destination.platform === 'meta' ? 'Send Meta test event' : 'Validate Google request'"
+        :label="submitLabel"
         icon="i-lucide-flask-conical"
         :loading="pending"
         :disabled="!canRun"
         @click="runTest"
       />
     </div>
+
+    <UAlert
+      v-if="validationAlert"
+      data-testid="provider-test-validation"
+      class="mt-3"
+      variant="subtle"
+      :color="validationAlert.color"
+      :icon="validationAlert.icon"
+      :title="validationAlert.title"
+      :description="validationAlert.description"
+    />
   </section>
 </template>

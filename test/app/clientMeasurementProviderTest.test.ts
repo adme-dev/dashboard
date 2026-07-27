@@ -27,6 +27,100 @@ function runnableCapability(mode: string) {
   }
 }
 
+function registerFormStubs(app: ReturnType<typeof createApp>) {
+  app.component('UButton', {
+    props: ['disabled', 'loading', 'label'],
+    emits: ['click'],
+    template: '<button type="button" :disabled="disabled" @click="$emit(\'click\')">{{ label }}</button>'
+  })
+  app.component('UFormField', {
+    props: ['label', 'help', 'error', 'required'],
+    template: `<label class="space-y-1.5 text-sm">
+      <span>{{ label }}</span>
+      <slot />
+      <span v-if="error" role="alert">{{ error }}</span>
+      <span v-else-if="help">{{ help }}</span>
+    </label>`
+  })
+  app.component('UInput', {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">'
+  })
+  app.component('UAlert', {
+    props: ['title', 'description', 'color', 'icon'],
+    template: '<div role="status" :data-color="color">{{ title }} — {{ description }}</div>'
+  })
+}
+
+function ga4Destination() {
+  return {
+    id: '22222222-2222-4222-8222-222222222222',
+    platform: 'ga4' as const,
+    capabilities: [runnableCapability('ga4_measurement_protocol')],
+    mappings: [{
+      id: '77777777-7777-4777-8777-777777777777',
+      canonicalEventName: 'lead_qualified',
+      providerEventName: 'qualified_lead',
+      isActive: true
+    }]
+  }
+}
+
+async function mountWithValidationResult(validation: {
+  recorded: boolean
+  skippedReason: string | null
+  healthStatus: string | null
+}) {
+  const fetchMock = vi.fn(async () => ({
+    run: {
+      id: '33333333-3333-4333-8333-333333333333',
+      mode: 'meta_test_events',
+      status: 'accepted',
+      providerRequestId: 'trace-1',
+      errorClass: null,
+      redactedError: null,
+      completedAt: '2026-07-17T08:00:01.000Z'
+    },
+    validation
+  }))
+  Object.assign(globalThis, { $fetch: fetchMock })
+  const destination = {
+    id: '22222222-2222-4222-8222-222222222222',
+    platform: 'meta' as const,
+    capabilities: [runnableCapability('meta_crm_capi')],
+    mappings: [{
+      id: '77777777-7777-4777-8777-777777777777',
+      canonicalEventName: 'lead_qualified',
+      providerEventName: 'QualifiedLead',
+      isActive: true
+    }]
+  }
+  const host = document.createElement('div')
+  const app = createApp({
+    render: () => h(ClientMeasurementProviderTest, {
+      clientId: '11111111-1111-4111-8111-111111111111',
+      profileConfigVersion: 3,
+      destination
+    })
+  })
+  registerFormStubs(app)
+  app.mount(host)
+
+  input(host.querySelector('[data-testid="provider-test-code"]')!, 'TEST123456')
+  input(host.querySelector('[data-testid="provider-test-meta-lead-id"]')!, '1234567890123456')
+  input(host.querySelector('[data-testid="provider-test-reason"]')!, 'Approved controlled pilot test')
+  const confirmation = host.querySelector<HTMLInputElement>('[data-testid="provider-test-confirmed"]')!
+  confirmation.checked = true
+  confirmation.dispatchEvent(new Event('change', { bubbles: true }))
+  await nextTick()
+
+  host.querySelector<HTMLButtonElement>('[data-testid="run-provider-test"]')!.click()
+  await flushUi()
+
+  return { host, app }
+}
+
 describe('ClientMeasurementProviderTest', () => {
   it('requires explicit confirmation and sends transient Meta evidence without retaining it in the result', async () => {
     const fetchMock = vi.fn(async () => ({
@@ -399,6 +493,163 @@ describe('ClientMeasurementProviderTest', () => {
         }
       })
       await flushUi()
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('sends a GA4 debug validation request and shows the recorded health status', async () => {
+    const fetchMock = vi.fn(async () => ({
+      run: {
+        id: '33333333-3333-4333-8333-333333333333',
+        mode: 'ga4_debug_validation',
+        status: 'accepted',
+        providerRequestId: null,
+        errorClass: null,
+        redactedError: null,
+        completedAt: '2026-07-17T08:00:01.000Z'
+      },
+      validation: { recorded: true, skippedReason: null, healthStatus: 'ready' }
+    }))
+    Object.assign(globalThis, { $fetch: fetchMock })
+    const destination = ga4Destination()
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementProviderTest, {
+        clientId: '11111111-1111-4111-8111-111111111111',
+        profileConfigVersion: 3,
+        destination
+      })
+    })
+    registerFormStubs(app)
+    app.mount(host)
+
+    try {
+      expect(host.textContent).toContain('GA4 debug validation')
+      // GA4 must not fall into either of the other two platforms' field sets.
+      expect(host.querySelector('[data-testid="provider-test-code"]')).toBeNull()
+      expect(host.querySelector('[data-testid="provider-test-click-id"]')).toBeNull()
+      // The Meta-only capability warning must not leak onto the GA4 branch.
+      expect(host.textContent).not.toContain('Zero does not own a runnable capability')
+
+      input(host.querySelector('[data-testid="provider-test-ga-client-id"]')!, '123456789.1234567890')
+      input(host.querySelector('[data-testid="provider-test-reason"]')!, 'Approved controlled pilot test')
+      const confirmation = host.querySelector<HTMLInputElement>('[data-testid="provider-test-confirmed"]')!
+      confirmation.checked = true
+      confirmation.dispatchEvent(new Event('change', { bubbles: true }))
+      await nextTick()
+
+      const runButton = host.querySelector<HTMLButtonElement>('[data-testid="run-provider-test"]')!
+      expect(runButton.textContent?.trim()).toContain('Validate GA4 event')
+      runButton.click()
+      await flushUi()
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/agency/measurement/clients/11111111-1111-4111-8111-111111111111/destinations/22222222-2222-4222-8222-222222222222/test',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            mode: 'ga4_debug_validation',
+            gaClientId: '123456789.1234567890',
+            expectedConfigVersion: 3,
+            canonicalEventName: 'lead_qualified',
+            confirmed: true
+          })
+        })
+      )
+      const body = fetchMock.mock.calls[0][1].body as Record<string, unknown>
+      expect(body.clickIdentifier).toBeUndefined()
+      expect(body.testEventCode).toBeUndefined()
+      expect(host.textContent).toContain('Destination health updated')
+      expect(host.textContent).toContain('Health status is now ready.')
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('rejects a malformed GA4 client ID before it can be submitted', async () => {
+    const fetchMock = vi.fn()
+    Object.assign(globalThis, { $fetch: fetchMock })
+    const destination = ga4Destination()
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(ClientMeasurementProviderTest, {
+        clientId: '11111111-1111-4111-8111-111111111111',
+        profileConfigVersion: 3,
+        destination
+      })
+    })
+    registerFormStubs(app)
+    app.mount(host)
+
+    try {
+      input(host.querySelector('[data-testid="provider-test-ga-client-id"]')!, 'not-a-client-id')
+      input(host.querySelector('[data-testid="provider-test-reason"]')!, 'Approved controlled pilot test')
+      const confirmation = host.querySelector<HTMLInputElement>('[data-testid="provider-test-confirmed"]')!
+      confirmation.checked = true
+      confirmation.dispatchEvent(new Event('change', { bubbles: true }))
+      await nextTick()
+
+      expect(host.textContent).toContain('Must be two dot-separated numbers')
+      expect(host.querySelector<HTMLButtonElement>('[data-testid="run-provider-test"]')?.disabled).toBe(true)
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('distinguishes a version-conflict skip from a recorded success', async () => {
+    const { host, app } = await mountWithValidationResult({
+      recorded: false,
+      skippedReason: 'version_conflict',
+      healthStatus: null
+    })
+    try {
+      expect(host.textContent).toContain('Configuration changed during the test')
+      expect(host.querySelector('[role="status"][data-color="warning"]')).not.toBeNull()
+      expect(host.textContent).not.toContain('Destination health updated')
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('distinguishes an idempotent replay from a recorded success', async () => {
+    const { host, app } = await mountWithValidationResult({
+      recorded: false,
+      skippedReason: 'already_run',
+      healthStatus: null
+    })
+    try {
+      expect(host.textContent).toContain('Replayed an earlier test')
+      expect(host.querySelector('[role="status"][data-color="info"]')).not.toBeNull()
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('distinguishes a failed health recording from a recorded success, as an error', async () => {
+    const { host, app } = await mountWithValidationResult({
+      recorded: false,
+      skippedReason: 'record_failed',
+      healthStatus: null
+    })
+    try {
+      expect(host.textContent).toContain('Destination health could not be updated')
+      expect(host.querySelector('[role="status"][data-color="error"]')).not.toBeNull()
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('surfaces a no-covered-capabilities skip distinctly from every other outcome', async () => {
+    const { host, app } = await mountWithValidationResult({
+      recorded: false,
+      skippedReason: 'no_covered_capabilities',
+      healthStatus: null
+    })
+    try {
+      expect(host.textContent).toContain('Nothing recordable')
+      expect(host.querySelector('[role="status"][data-color="warning"]')).not.toBeNull()
     } finally {
       app.unmount()
     }

@@ -23,29 +23,43 @@ function baseInput() {
   }
 }
 
+function metaCrmInput() {
+  return {
+    ...baseInput(),
+    mode: 'meta_test_events' as const,
+    deliveryMode: 'crm' as const,
+    testEventCode: 'TEST123456',
+    metaLeadId: '1234567890123456',
+    browserEventId: null
+  }
+}
+
 function context(
-  platform: 'meta' | 'google_data_manager',
+  platform: 'meta' | 'google_data_manager' | 'ga4',
   metaDeliveryMode: 'crm' | 'web' = 'crm'
 ) {
+  const mode = platform === 'meta'
+    ? 'meta_test_events' as const
+    : platform === 'ga4'
+      ? 'ga4_debug_validation' as const
+      : 'google_validate_only' as const
   return {
-    run: {
-      id: ids.run,
-      mode: platform === 'meta' ? 'meta_test_events' as const : 'google_validate_only' as const,
-      status: 'requested' as const
-    },
+    run: { id: ids.run, mode, status: 'requested' as const },
     delivery: {
       eventId: '66666666-6666-4666-8666-666666666666',
       eventName: 'lead_qualified',
       providerEventName: 'QualifiedLead',
       occurredAt: '2026-07-17T08:00:00.000Z',
       idempotencyKey: ids.idempotency,
-      externalDestinationId: '573284833843027',
+      externalDestinationId: platform === 'ga4' ? 'G-ABC123' : '573284833843027',
       operatingAccountId: '4221552633',
       loginAccountId: '4221552633',
       metaDeliveryMode
     },
     credential: {
-      credentialRef: platform === 'meta' ? 'MEASUREMENT_PROVIDER_META_BIG_GARAGE' : null,
+      credentialRef: platform === 'meta'
+        ? 'MEASUREMENT_PROVIDER_META_BIG_GARAGE'
+        : platform === 'ga4' ? 'MEASUREMENT_PROVIDER_GA4_BIG_GARAGE' : null,
       accessToken: platform === 'meta' ? 'meta-token' : null,
       refreshToken: platform === 'google_data_manager' ? 'google-refresh' : null,
       scopes: platform === 'google_data_manager'
@@ -74,12 +88,21 @@ function setup(reserved = context('meta')) {
   }))
   const refreshGoogleAccessToken = vi.fn(async () => 'google-access')
   const resolveProviderCredential = vi.fn(async () => 'meta-dataset-token')
+  const validateGa4 = vi.fn(async () => ({
+    outcome: 'accepted' as const,
+    providerRequestId: null,
+    errorClass: null,
+    redactedDiagnostic: null
+  }))
+  const recordValidation = vi.fn(async () => ({ healthStatus: 'ready' as const }))
   const service = createMeasurementProviderTestService({
     repository,
     deliverMeta,
     deliverGoogle,
     refreshGoogleAccessToken,
     resolveProviderCredential,
+    validateGa4,
+    recordValidation,
     graphApiVersion: 'v25.0',
     googleClientId: 'google-client',
     googleClientSecret: 'google-secret',
@@ -91,7 +114,9 @@ function setup(reserved = context('meta')) {
     deliverMeta,
     deliverGoogle,
     refreshGoogleAccessToken,
-    resolveProviderCredential
+    resolveProviderCredential,
+    validateGa4,
+    recordValidation
   }
 }
 
@@ -456,5 +481,179 @@ describe('measurement provider test service', () => {
 
     expect(test.repository.reserve).not.toHaveBeenCalled()
     expect(test.deliverMeta).not.toHaveBeenCalled()
+  })
+
+  it('runs a GA4 debug validation through the debug endpoint provider', async () => {
+    const test = setup(context('ga4'))
+
+    const result = await test.service.run({
+      ...baseInput(),
+      mode: 'ga4_debug_validation',
+      gaClientId: '123.456'
+    })
+
+    expect(test.validateGa4).toHaveBeenCalledWith(expect.objectContaining({
+      gaClientId: '123.456',
+      apiSecret: 'meta-dataset-token'
+    }))
+    expect(test.deliverGoogle).not.toHaveBeenCalled()
+    expect(result.run.status).toBe('accepted')
+  })
+
+  it('rejects a GA4 test with a malformed gaClientId before reserving provider traffic', async () => {
+    const test = setup(context('ga4'))
+
+    await expect(test.service.run({
+      ...baseInput(),
+      mode: 'ga4_debug_validation',
+      gaClientId: 'not-a-client-id'
+    })).rejects.toMatchObject({ code: 'MEASUREMENT_VALIDATION_ERROR' })
+    expect(test.repository.reserve).not.toHaveBeenCalled()
+  })
+
+  it('records validation evidence for the capabilities a successful test covers', async () => {
+    const test = setup()
+
+    const result = await test.service.run(metaCrmInput())
+
+    expect(test.recordValidation).toHaveBeenCalledOnce()
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    expect(evidence.actor).toEqual({ type: 'system', id: ids.actor })
+    expect((evidence.capabilities as Array<{ mode: string }>).map(c => c.mode)).toEqual([
+      'meta_web_capi', 'meta_crm_capi', 'meta_conversion_leads'
+    ])
+    expect((evidence.capabilities as Array<{ status: string }>).every(c => c.status === 'ready')).toBe(true)
+    expect(result.validation.recorded).toBe(true)
+    expect(result.validation.healthStatus).toBe('ready')
+  })
+
+  it('never records evidence for meta_pixel', async () => {
+    const test = setup()
+
+    await test.service.run(metaCrmInput())
+
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    expect((evidence.capabilities as Array<{ mode: string }>).map(c => c.mode))
+      .not.toContain('meta_pixel')
+  })
+
+  it('records blocked evidence with a reason when the provider rejects the event', async () => {
+    const test = setup()
+    test.deliverMeta.mockResolvedValue({
+      outcome: 'permanent_failure' as const,
+      providerRequestId: null,
+      errorClass: 'meta_invalid_dataset',
+      redactedDiagnostic: 'Dataset rejected the event'
+    })
+
+    await test.service.run(metaCrmInput())
+
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    const capabilities = evidence.capabilities as Array<{ status: string, blockingReason: string | null }>
+    expect(capabilities).toHaveLength(3)
+    expect(capabilities.every(c => c.status === 'blocked')).toBe(true)
+    expect(capabilities.every(c => Boolean(c.blockingReason))).toBe(true)
+  })
+
+  it('records evidence for an accepted result carrying an empty-string providerRequestId', async () => {
+    const test = setup()
+    // Meta can return an accepted test event with fbtrace_id: '' — a successful
+    // validation whose evidence must not be thrown away by the schema's
+    // .trim().min(1) on providerRequestId.
+    test.deliverMeta.mockResolvedValue({
+      outcome: 'accepted' as const,
+      providerRequestId: '',
+      errorClass: null,
+      redactedDiagnostic: ''
+    })
+
+    const result = await test.service.run(metaCrmInput())
+
+    expect(test.recordValidation).toHaveBeenCalledOnce()
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, unknown>
+    expect(evidence.providerRequestId).toBeNull()
+    expect(evidence.redactedError).toBeNull()
+    expect(result.validation.recorded).toBe(true)
+  })
+
+  it('falls back to errorClass for the blocking reason when the diagnostic is an empty string', async () => {
+    const test = setup()
+    test.deliverMeta.mockResolvedValue({
+      outcome: 'permanent_failure' as const,
+      providerRequestId: null,
+      errorClass: 'meta_invalid_dataset',
+      redactedDiagnostic: ''
+    })
+
+    await test.service.run(metaCrmInput())
+
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    const capabilities = evidence.capabilities as Array<{ blockingReason: string | null }>
+    expect(capabilities.every(c => c.blockingReason === 'meta_invalid_dataset')).toBe(true)
+  })
+
+  it('marks a retryable provider failure as degraded rather than blocked', async () => {
+    const test = setup()
+    test.deliverMeta.mockResolvedValue({
+      outcome: 'retryable' as const,
+      providerRequestId: null,
+      errorClass: 'provider_network_error',
+      redactedDiagnostic: 'Provider validation failed before a response'
+    })
+
+    await test.service.run(metaCrmInput())
+
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    const capabilities = evidence.capabilities as Array<{ status: string }>
+    expect(capabilities).toHaveLength(3)
+    expect(capabilities.every(c => c.status === 'degraded')).toBe(true)
+  })
+
+  it('records which capabilities were directly exercised versus inferred', async () => {
+    const test = setup()
+
+    await test.service.run(metaCrmInput())
+
+    // baseInput() uses canonicalEventName 'lead_qualified', a downstream
+    // lifecycle outcome, so the crm call exercises both crm capabilities and
+    // only the web capability is inferred from the Meta collapse.
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    expect(evidence.directlyExercised).toEqual(['meta_crm_capi', 'meta_conversion_leads'])
+    expect(evidence.inferred).toEqual(['meta_web_capi'])
+  })
+
+  it('reports a version conflict without failing the test run', async () => {
+    const test = setup()
+    test.recordValidation.mockRejectedValue(
+      Object.assign(new Error('conflict'), { code: 'MEASUREMENT_VERSION_CONFLICT' })
+    )
+
+    const result = await test.service.run(metaCrmInput())
+
+    expect(result.run.status).toBe('accepted')
+    expect(result.validation.recorded).toBe(false)
+    expect(result.validation.skippedReason).toBe('version_conflict')
+  })
+
+  it('does not re-record evidence for an idempotent replay of an existing run', async () => {
+    const test = setup()
+    test.repository.reserve.mockResolvedValue({
+      status: 'existing' as const,
+      run: {
+        id: ids.run,
+        mode: 'meta_test_events' as const,
+        status: 'accepted' as const,
+        providerRequestId: 'meta-trace',
+        errorClass: null,
+        redactedError: null,
+        completedAt: '2026-07-17T08:00:01.000Z'
+      }
+    })
+
+    const result = await test.service.run(metaCrmInput())
+
+    expect(test.recordValidation).not.toHaveBeenCalled()
+    expect(result.validation.recorded).toBe(false)
+    expect(result.validation.skippedReason).toBe('already_run')
   })
 })

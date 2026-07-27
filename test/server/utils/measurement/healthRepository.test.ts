@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createPostgresMeasurementHealthRepository
 } from '../../../../server/utils/measurement/healthRepository'
+import {
+  RecordDestinationValidationEvidenceSchema
+} from '../../../../server/utils/measurement/contracts'
 import type {
   RecordDestinationValidationEvidence
 } from '../../../../server/utils/measurement/contracts'
@@ -123,5 +126,58 @@ describe('Postgres measurement health repository', () => {
       status: 'invalid_capability'
     })
     expect(db.query).toHaveBeenCalledTimes(3)
+  })
+
+  it('writes the supplied actor type to the audit row', async () => {
+    const statements: Array<{ sql: string, params: unknown[] }> = []
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        statements.push({ sql, params })
+        if (/client_measurement_profiles[\s\S]*FOR UPDATE/.test(sql)) {
+          return { rows: [{ id: PROFILE_ID, config_version: 3 }] }
+        }
+        if (/conversion_destinations[\s\S]*FOR UPDATE/.test(sql)) {
+          return { rows: [{ platform: 'meta', config_version: 3, health_status: 'configured' }] }
+        }
+        if (/conversion_destination_capabilities[\s\S]*FOR UPDATE/.test(sql)) {
+          return { rows: [{ id: CAPABILITY_ID, mode: 'meta_pixel', status: 'configured' }] }
+        }
+        if (/SELECT CASE/.test(sql)) return { rows: [{ health_status: 'ready' }] }
+        if (/UPDATE conversion_destinations/.test(sql)) {
+          return { rows: [{ health_status: 'ready', last_validated_at: input().observedAt }] }
+        }
+        return { rows: [] }
+      })
+    }
+    const repository = createPostgresMeasurementHealthRepository({
+      transaction: (async (callback: (client: typeof db) => Promise<unknown>) => (
+        callback(db)
+      )) as never
+    })
+
+    await repository.recordValidation({
+      ...input(),
+      actor: { type: 'team_member', id: 'actor-1' },
+      capabilities: [{ mode: 'meta_pixel', status: 'ready', blockingReason: null }]
+    })
+
+    const audit = statements.at(-1)!
+    expect(audit.sql).toContain('measurement_config_audit')
+    // Positional, not membership: a membership check would still pass if
+    // actor_type and actor_id were swapped, which is the silent wrong-column
+    // failure this parameter insertion was most at risk of.
+    expect(audit.params[7]).toBe('team_member')
+    expect(audit.params[8]).toBe('actor-1')
+  })
+
+  it('rejects an actor type the audit CHECK constraint would refuse', () => {
+    // measurement_config_audit.actor_type permits only
+    // team_member | client_user | system | import. Anything else fails at the
+    // database, which unit tests with a mocked db would not otherwise catch.
+    const result = RecordDestinationValidationEvidenceSchema.safeParse({
+      ...input(),
+      actor: { type: 'user', id: 'actor-1' }
+    })
+    expect(result.success).toBe(false)
   })
 })

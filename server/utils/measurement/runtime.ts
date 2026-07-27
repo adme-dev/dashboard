@@ -1,10 +1,14 @@
 import type { H3Event } from 'h3'
 import { getKV } from '~~/server/utils/kv'
+import { queryOne } from '~~/server/utils/db'
 import { resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 import { createPostgresMeasurementActivationRepository } from '~~/server/utils/measurement/activationRepository'
 import { createMeasurementActivationService } from '~~/server/utils/measurement/activationService'
+import { createMeasurementAttestationService } from '~~/server/utils/measurement/attestationService'
 import { createPostgresMeasurementDestinationRepository } from '~~/server/utils/measurement/destinationRepository'
 import { createMeasurementDestinationService } from '~~/server/utils/measurement/destinationService'
+import { createPostgresMeasurementHealthRepository } from '~~/server/utils/measurement/healthRepository'
+import { createMeasurementHealthService } from '~~/server/utils/measurement/healthService'
 import { createPostgresMeasurementOutcomeEndpointRepository } from '~~/server/utils/measurement/outcomeEndpointRepository'
 import { createMeasurementOutcomeEndpointService } from '~~/server/utils/measurement/outcomeEndpointService'
 import { createMeasurementProfileCachePublisher } from '~~/server/utils/measurement/profileCache'
@@ -17,7 +21,8 @@ import { createMeasurementReadService } from '~~/server/utils/measurement/readSe
 import {
   deliverGoogleDataManagerEvent,
   deliverMetaConversionEvent,
-  refreshGoogleDataManagerAccessToken
+  refreshGoogleDataManagerAccessToken,
+  validateGa4MeasurementProtocolEvent
 } from '~~/workers/measurement-delivery/src/providers'
 import { resolveMeasurementProviderCredential } from '~~/workers/measurement-delivery/src/credential'
 
@@ -84,6 +89,9 @@ export function createMeasurementProviderTestRuntime(event: H3Event) {
   const providerFetch = globalThis.fetch.bind(globalThis)
   const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } })
     .cloudflare?.env ?? {}
+  const healthService = createMeasurementHealthService({
+    repository: createPostgresMeasurementHealthRepository()
+  })
   return createMeasurementProviderTestService({
     repository: createPostgresMeasurementProviderTestRepository(),
     deliverMeta: input => deliverMetaConversionEvent({ ...input, fetch: providerFetch }),
@@ -92,13 +100,44 @@ export function createMeasurementProviderTestRuntime(event: H3Event) {
       ...input,
       fetch: providerFetch
     }),
+    validateGa4: input => validateGa4MeasurementProtocolEvent({ ...input, fetch: providerFetch }),
     resolveProviderCredential: credentialRef => resolveMeasurementProviderCredential(
       env,
       credentialRef
     ),
+    recordValidation: async (evidence) => {
+      const { directlyExercised, inferred, ...rest } = evidence as Record<string, unknown>
+      const result = await healthService.recordValidation({
+        ...rest,
+        reason: [
+          String(rest.reason ?? ''),
+          `[directly exercised: ${(directlyExercised as string[] ?? []).join(', ') || 'none'}]`,
+          `[inferred: ${(inferred as string[] ?? []).join(', ') || 'none'}]`
+        ].join(' ').slice(0, 1000)
+      })
+      return { healthStatus: result.healthStatus }
+    },
     graphApiVersion: String(config.metaGraphApiVersion || 'v25.0'),
     googleClientId: googleConfig.googleClientId,
     googleClientSecret: googleConfig.googleClientSecret,
+    now: () => new Date()
+  })
+}
+
+export function createMeasurementAttestationRuntime(_event: H3Event) {
+  return createMeasurementAttestationService({
+    healthService: createMeasurementHealthService({
+      repository: createPostgresMeasurementHealthRepository()
+    }),
+    readDestination: async ({ clientId, destinationId }) => {
+      const row = await queryOne<{ enabled: boolean, environment: string }>(
+        `SELECT enabled, environment
+           FROM conversion_destinations
+          WHERE client_id = $1 AND id = $2`,
+        [clientId, destinationId]
+      )
+      return row ?? null
+    },
     now: () => new Date()
   })
 }
