@@ -10,7 +10,6 @@ type HealthStatus = z.infer<typeof CapabilityStatusSchema>
 
 interface ProfileVersionRow {
   id: string
-  config_version: number | string
 }
 
 interface DestinationVersionRow {
@@ -65,7 +64,7 @@ export function createPostgresMeasurementHealthRepository(
     async recordValidation(input) {
       return deps.transaction(async (db) => {
         const profileResult = await db.query(
-          `SELECT id, config_version
+          `SELECT id
              FROM client_measurement_profiles
             WHERE client_id = $1
             FOR UPDATE`,
@@ -73,11 +72,6 @@ export function createPostgresMeasurementHealthRepository(
         )
         const profile = profileResult.rows?.[0] as ProfileVersionRow | undefined
         if (!profile) return { status: 'not_found' as const }
-
-        const currentVersion = Number(profile.config_version)
-        if (currentVersion !== input.expectedConfigVersion) {
-          return { status: 'version_conflict' as const, currentVersion }
-        }
 
         const destinationResult = await db.query(
           `SELECT platform, config_version, health_status
@@ -89,8 +83,12 @@ export function createPostgresMeasurementHealthRepository(
         )
         const destination = destinationResult.rows?.[0] as DestinationVersionRow | undefined
         if (!destination) return { status: 'not_found' as const }
-        if (Number(destination.config_version) !== input.expectedConfigVersion) {
-          return { status: 'version_conflict' as const, currentVersion }
+        const destinationVersion = Number(destination.config_version)
+        if (destinationVersion !== input.expectedConfigVersion) {
+          return {
+            status: 'version_conflict' as const,
+            currentVersion: destinationVersion
+          }
         }
 
         const capabilityResult = await db.query(
@@ -179,7 +177,7 @@ export function createPostgresMeasurementHealthRepository(
         const evidence: DestinationValidationEvidenceState = {
           clientId: input.clientId,
           destinationId: input.destinationId,
-          configVersion: currentVersion,
+          configVersion: destinationVersion,
           healthStatus: updated.health_status,
           observedAt: iso(updated.last_validated_at),
           capabilities: input.capabilities
@@ -198,7 +196,7 @@ export function createPostgresMeasurementHealthRepository(
             input.clientId,
             profile.id,
             input.destinationId,
-            currentVersion,
+            destinationVersion,
             JSON.stringify({ healthStatus: destination.health_status }),
             JSON.stringify({
               healthStatus: evidence.healthStatus,
