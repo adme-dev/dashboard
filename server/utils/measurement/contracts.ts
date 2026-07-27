@@ -1,5 +1,9 @@
 import { z } from 'zod'
 import { isMeasurementProviderCredentialRef } from '~~/shared/utils/measurementProviderCredential'
+import {
+  MEASUREMENT_PLATFORMS,
+  PLATFORM_MODE_PREFIX as SHARED_PLATFORM_MODE_PREFIX
+} from '~~/shared/utils/measurementPlatform'
 
 export const MeasurementEnvironmentSchema = z.enum(['test', 'live', 'paused'])
 export const CollectionTierSchema = z.enum([
@@ -30,7 +34,7 @@ export const CanonicalEventNameSchema = z.enum([
   'form_submit'
 ])
 
-export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager', 'ga4'])
+export const MeasurementPlatformSchema = z.enum(MEASUREMENT_PLATFORMS)
 export const CapabilityModeSchema = z.enum([
   'meta_pixel',
   'meta_web_capi',
@@ -214,11 +218,7 @@ const MeasurementProviderCredentialRefSchema = z.string()
     message: 'Provider credentials must use a purpose-scoped measurement binding'
   })
 
-export const PLATFORM_MODE_PREFIX: Record<z.infer<typeof MeasurementPlatformSchema>, string> = {
-  meta: 'meta_',
-  google_data_manager: 'google_',
-  ga4: 'ga4_'
-}
+export const PLATFORM_MODE_PREFIX = SHARED_PLATFORM_MODE_PREFIX
 
 export const ConversionDestinationCreateSchema = z.strictObject({
   profileId: z.string().uuid(),
