@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import {
+  CAPABILITY_DEFINITIONS,
+  MEASUREMENT_PLATFORMS,
+  PLATFORM_LABELS,
+  type MeasurementPlatform
+} from '~~/shared/utils/measurementPlatform'
 
 const props = defineProps<{
   clientId: string
@@ -11,7 +17,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-type Platform = 'meta' | 'google_data_manager'
+type Platform = MeasurementPlatform
 type ManagementOrigin = 'zero' | 'gtm' | 'partner' | 'external'
 
 interface ConnectedAccount {
@@ -19,13 +25,6 @@ interface ConnectedAccount {
   accountId: string
   accountName: string
   status: string
-}
-
-interface CapabilityDefinition {
-  mode: string
-  label: string
-  description: string
-  defaultOrigin: ManagementOrigin
 }
 
 interface MappingDefinition {
@@ -44,19 +43,7 @@ interface GoogleConversionAction {
   deliveryMode: 'offline_click' | 'additional_data_source'
 }
 
-const capabilityDefinitions: Record<Platform, CapabilityDefinition[]> = {
-  meta: [
-    { mode: 'meta_pixel', label: 'Meta Pixel', description: 'Browser events, usually managed in GTM or the client website.', defaultOrigin: 'gtm' },
-    { mode: 'meta_web_capi', label: 'Meta Web CAPI', description: 'Server-side web events with browser-event deduplication.', defaultOrigin: 'gtm' },
-    { mode: 'meta_crm_capi', label: 'Meta CRM CAPI', description: 'Zero lead and CRM lifecycle outcomes sent server-side.', defaultOrigin: 'zero' },
-    { mode: 'meta_conversion_leads', label: 'Meta Conversion Leads', description: 'Qualified and downstream lead outcomes used for optimisation.', defaultOrigin: 'zero' }
-  ],
-  google_data_manager: [
-    { mode: 'google_tag_enhanced_conversions', label: 'Google tag enhanced conversions', description: 'Browser conversion tags enriched with consented first-party data.', defaultOrigin: 'gtm' },
-    { mode: 'google_enhanced_conversions_for_leads', label: 'Google enhanced conversions for leads', description: 'Qualified and downstream lead outcomes matched to ad clicks.', defaultOrigin: 'zero' },
-    { mode: 'google_data_manager', label: 'Google Data Manager', description: 'Server-side audience and conversion data delivery.', defaultOrigin: 'zero' }
-  ]
-}
+const capabilityDefinitions = CAPABILITY_DEFINITIONS
 
 const mappingDefinitions: MappingDefinition[] = [
   { name: 'lead_created', label: 'Lead created' },
@@ -68,6 +55,11 @@ const mappingDefinitions: MappingDefinition[] = [
   { name: 'web_conversion', label: 'Web conversion' }
 ]
 
+const platformOptions = MEASUREMENT_PLATFORMS.map(value => ({
+  value,
+  label: PLATFORM_LABELS[value]
+}))
+
 const platform = ref<Platform>('meta')
 const socialConnectionId = ref('')
 const externalDestinationId = ref('')
@@ -76,7 +68,11 @@ const capabilityOrigins = reactive<Record<string, ManagementOrigin>>({})
 const activeMappings = reactive<Record<string, boolean>>({})
 const providerEventNames = reactive<Record<string, string>>({})
 const reason = ref('')
-const accounts = ref<Record<Platform, ConnectedAccount[]>>({ meta: [], google_data_manager: [] })
+const accounts = ref<Record<Platform, ConnectedAccount[]>>({
+  meta: [],
+  google_data_manager: [],
+  ga4: []
+})
 const accountsPending = ref(true)
 const accountError = ref<string | null>(null)
 const googleActions = ref<GoogleConversionAction[]>([])
@@ -119,6 +115,19 @@ const googleActionCompatible = computed(() => {
   if (needsWebsiteAction.value) return selectedGoogleAction.value.type === 'WEBPAGE'
   return true
 })
+// Only Google Data Manager resolves the destination ID from a fetched conversion-action
+// list; Meta and GA4 are both typed in directly, just against different provider IDs.
+const externalDestinationLabel = computed(() => ({
+  meta: 'Dataset ID',
+  google_data_manager: 'Conversion Action ID',
+  ga4: 'Measurement ID'
+}[platform.value]))
+const externalDestinationPlaceholder = computed(() => ({
+  meta: 'e.g. 573284833843027',
+  google_data_manager: '',
+  ga4: 'e.g. G-XXXXXXXXXX'
+}[platform.value]))
+const usesFreeTextDestinationId = computed(() => platform.value !== 'google_data_manager')
 const canSave = computed(() => (
   externalDestinationId.value.trim().length > 0
   && selectedCapabilityRows.value.length > 0
@@ -181,6 +190,16 @@ async function loadAccounts(targetPlatform: Platform = platform.value) {
   const requestId = ++accountRequestId
   accountsPending.value = true
   accountError.value = null
+  // GA4's credential source is a connected GA4 property (server/api/agency/social/ga4/properties),
+  // a per-property list shaped nothing like ConnectedAccount[]. There is no GA4 equivalent of the
+  // Meta/Google flat accounts endpoint yet, so leave the list empty rather than falling through to
+  // Google's endpoint and mislabelling Google Ads accounts as GA4 credential sources.
+  if (targetPlatform === 'ga4') {
+    if (requestId === accountRequestId) {
+      accountsPending.value = false
+    }
+    return
+  }
   try {
     const endpoint = targetPlatform === 'meta'
       ? '/api/agency/social/meta/accounts'
@@ -289,10 +308,12 @@ void loadAccounts('meta')
     <div class="mt-5 grid gap-5 md:grid-cols-2">
       <label class="space-y-1.5 text-sm">
         <span class="font-medium text-highlighted">Provider</span>
-        <select v-model="platform" class="w-full rounded-md border border-default bg-default px-3 py-2 text-sm">
-          <option value="meta">Meta</option>
-          <option value="google_data_manager">Google Data Manager</option>
-        </select>
+        <USelect
+          v-model="platform"
+          :items="platformOptions"
+          value-key="value"
+          class="w-full"
+        />
       </label>
 
       <label class="space-y-1.5 text-sm">
@@ -318,14 +339,14 @@ void loadAccounts('meta')
       </label>
 
       <label class="space-y-1.5 text-sm md:col-span-2">
-        <span class="font-medium text-highlighted">{{ platform === 'meta' ? 'Dataset ID' : 'Conversion Action ID' }}</span>
+        <span class="font-medium text-highlighted">{{ externalDestinationLabel }}</span>
         <input
-          v-if="platform === 'meta'"
+          v-if="usesFreeTextDestinationId"
           v-model="externalDestinationId"
           data-testid="measurement-destination-id"
           type="text"
           maxlength="255"
-          placeholder="e.g. 573284833843027"
+          :placeholder="externalDestinationPlaceholder"
           class="w-full rounded-md border border-default bg-default px-3 py-2 font-mono text-sm"
         >
         <select

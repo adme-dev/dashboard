@@ -14,6 +14,15 @@ const stubs = {
   UIcon: {
     props: ['name'],
     template: '<i :data-icon="name" />'
+  },
+  USelect: {
+    props: ['modelValue', 'items', 'valueKey'],
+    emits: ['update:modelValue'],
+    template: `
+      <select :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
+        <option v-for="item in items" :key="item[valueKey || 'value']" :value="item[valueKey || 'value']">{{ item.label }}</option>
+      </select>
+    `
   }
 }
 
