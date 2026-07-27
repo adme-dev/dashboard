@@ -258,6 +258,7 @@ CREATE TABLE IF NOT EXISTS client_activity_log (
 
 CREATE INDEX IF NOT EXISTS idx_client_activity_user ON client_activity_log(client_user_id);
 CREATE INDEX IF NOT EXISTS idx_client_activity_client ON client_activity_log(client_id);
+CREATE INDEX IF NOT EXISTS idx_client_activity_client_created ON client_activity_log(client_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_client_activity_action ON client_activity_log(action);
 CREATE INDEX IF NOT EXISTS idx_client_activity_created ON client_activity_log(created_at DESC);
 
