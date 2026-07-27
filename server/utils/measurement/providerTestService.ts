@@ -240,7 +240,10 @@ function evidenceStatusFor(result: ProviderDeliveryResult): EvidenceStatus {
 
 function blockingReasonFor(result: ProviderDeliveryResult, status: EvidenceStatus) {
   if (status === 'ready') return null
-  return (result.redactedDiagnostic ?? result.errorClass ?? 'Provider validation failed').slice(0, 1000)
+  // `||`, not `??` — an empty-string diagnostic (e.g. a GA4 `description: ''`)
+  // must fall through to errorClass/the fallback, or the schema's
+  // .trim().min(1) rejects it and evidence recording silently fails.
+  return (result.redactedDiagnostic || result.errorClass || 'Provider validation failed').slice(0, 1000)
 }
 
 export function createMeasurementProviderTestService(deps: ProviderTestServiceDeps) {

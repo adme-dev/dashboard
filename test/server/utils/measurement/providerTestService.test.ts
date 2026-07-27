@@ -524,6 +524,7 @@ describe('measurement provider test service', () => {
     ])
     expect((evidence.capabilities as Array<{ status: string }>).every(c => c.status === 'ready')).toBe(true)
     expect(result.validation.recorded).toBe(true)
+    expect(result.validation.healthStatus).toBe('ready')
   })
 
   it('never records evidence for meta_pixel', async () => {
@@ -549,8 +550,25 @@ describe('measurement provider test service', () => {
 
     const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
     const capabilities = evidence.capabilities as Array<{ status: string, blockingReason: string | null }>
+    expect(capabilities).toHaveLength(3)
     expect(capabilities.every(c => c.status === 'blocked')).toBe(true)
     expect(capabilities.every(c => Boolean(c.blockingReason))).toBe(true)
+  })
+
+  it('falls back to errorClass for the blocking reason when the diagnostic is an empty string', async () => {
+    const test = setup()
+    test.deliverMeta.mockResolvedValue({
+      outcome: 'permanent_failure' as const,
+      providerRequestId: null,
+      errorClass: 'meta_invalid_dataset',
+      redactedDiagnostic: ''
+    })
+
+    await test.service.run(metaCrmInput())
+
+    const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
+    const capabilities = evidence.capabilities as Array<{ blockingReason: string | null }>
+    expect(capabilities.every(c => c.blockingReason === 'meta_invalid_dataset')).toBe(true)
   })
 
   it('marks a retryable provider failure as degraded rather than blocked', async () => {
@@ -565,8 +583,9 @@ describe('measurement provider test service', () => {
     await test.service.run(metaCrmInput())
 
     const evidence = test.recordValidation.mock.calls[0][0] as Record<string, never>
-    expect((evidence.capabilities as Array<{ status: string }>).every(c => c.status === 'degraded'))
-      .toBe(true)
+    const capabilities = evidence.capabilities as Array<{ status: string }>
+    expect(capabilities).toHaveLength(3)
+    expect(capabilities.every(c => c.status === 'degraded')).toBe(true)
   })
 
   it('records which capabilities were directly exercised versus inferred', async () => {
