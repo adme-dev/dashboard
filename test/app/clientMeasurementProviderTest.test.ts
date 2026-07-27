@@ -100,7 +100,7 @@ async function mountWithValidationResult(validation: {
   const app = createApp({
     render: () => h(ClientMeasurementProviderTest, {
       clientId: '11111111-1111-4111-8111-111111111111',
-      profileConfigVersion: 3,
+      destinationConfigVersion: 3,
       destination
     })
   })
@@ -151,7 +151,7 @@ describe('ClientMeasurementProviderTest', () => {
     const app = createApp({
       render: () => h(ClientMeasurementProviderTest, {
         clientId: '11111111-1111-4111-8111-111111111111',
-        profileConfigVersion: 3,
+        destinationConfigVersion: 3,
         destination
       })
     })
@@ -224,7 +224,7 @@ describe('ClientMeasurementProviderTest', () => {
     const app = createApp({
       render: () => h(ClientMeasurementProviderTest, {
         clientId: '11111111-1111-4111-8111-111111111111',
-        profileConfigVersion: 3,
+        destinationConfigVersion: 3,
         destination
       })
     })
@@ -281,7 +281,7 @@ describe('ClientMeasurementProviderTest', () => {
     const app = createApp({
       render: () => h(ClientMeasurementProviderTest, {
         clientId: '11111111-1111-4111-8111-111111111111',
-        profileConfigVersion: 3,
+        destinationConfigVersion: 3,
         destination
       })
     })
@@ -356,7 +356,7 @@ describe('ClientMeasurementProviderTest', () => {
     const app = createApp({
       render: () => h(ClientMeasurementProviderTest, {
         clientId: '11111111-1111-4111-8111-111111111111',
-        profileConfigVersion: 3,
+        destinationConfigVersion: 3,
         destination
       })
     })
@@ -392,7 +392,7 @@ describe('ClientMeasurementProviderTest', () => {
     const app = createApp({
       render: () => h(ClientMeasurementProviderTest, {
         clientId: '11111111-1111-4111-8111-111111111111',
-        profileConfigVersion: 3,
+        destinationConfigVersion: 3,
         destination
       })
     })
@@ -456,7 +456,7 @@ describe('ClientMeasurementProviderTest', () => {
     const app = createApp({
       render: () => h(ClientMeasurementProviderTest, {
         clientId: '11111111-1111-4111-8111-111111111111',
-        profileConfigVersion: 3,
+        destinationConfigVersion: 3,
         destination
       })
     })
@@ -517,7 +517,7 @@ describe('ClientMeasurementProviderTest', () => {
     const app = createApp({
       render: () => h(ClientMeasurementProviderTest, {
         clientId: '11111111-1111-4111-8111-111111111111',
-        profileConfigVersion: 3,
+        destinationConfigVersion: 3,
         destination
       })
     })
@@ -575,7 +575,7 @@ describe('ClientMeasurementProviderTest', () => {
     const app = createApp({
       render: () => h(ClientMeasurementProviderTest, {
         clientId: '11111111-1111-4111-8111-111111111111',
-        profileConfigVersion: 3,
+        destinationConfigVersion: 3,
         destination
       })
     })

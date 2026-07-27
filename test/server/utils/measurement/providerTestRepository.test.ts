@@ -36,9 +36,9 @@ describe('measurement provider test repository', () => {
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'google_data_manager',
         external_destination_id: '1234567890',
         credential_ref: null,
@@ -105,7 +105,6 @@ describe('measurement provider test repository', () => {
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
         destination_config_version: 3,
@@ -153,6 +152,54 @@ describe('measurement provider test repository', () => {
     expect(insertParams).not.toContain('1234567890123456')
   })
 
+  it('uses the destination version when the profile advanced independently', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        profile_id: '77777777-7777-4777-8777-777777777777',
+        profile_enabled: false,
+        profile_environment: 'test',
+        destination_enabled: false,
+        destination_environment: 'test',
+        destination_config_version: 3,
+        platform: 'meta',
+        external_destination_id: '573284833843027',
+        credential_ref: 'MEASUREMENT_PROVIDER_META_BIG_GARAGE',
+        provider_event_name: 'QualifiedLead',
+        account_id: '5717158431690024',
+        refresh_token: null,
+        google_credential_profile_id: null,
+        profile_refresh_token_encrypted: null,
+        profile_refresh_token_iv: null,
+        scopes: [],
+        metadata: {},
+        allowed_origins: [],
+        capability_modes: ['meta_crm_capi']
+      }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '33333333-3333-4333-8333-333333333333',
+        mode: 'meta_test_events',
+        status: 'requested',
+        provider_request_id: null,
+        error_class: null,
+        redacted_error: null,
+        completed_at: null
+      }] })
+    const repository = createPostgresMeasurementProviderTestRepository(
+      async callback => callback({ query })
+    )
+
+    await expect(repository.reserve(input)).resolves.toMatchObject({
+      status: 'reserved'
+    })
+    const contextSql = String(query.mock.calls[1]![0])
+    expect(contextSql).toContain(
+      'd.config_version AS destination_config_version'
+    )
+    expect(contextSql).not.toContain('p.config_version AS profile_config_version')
+    expect((query.mock.calls[2]![1] as unknown[])[7]).toBe(3)
+  })
+
   it('derives Meta Web delivery from a configured Zero-owned capability', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
@@ -160,9 +207,9 @@ describe('measurement provider test repository', () => {
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'meta',
         external_destination_id: '573284833843027',
         provider_event_name: 'Lead',
@@ -213,9 +260,9 @@ describe('measurement provider test repository', () => {
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'meta',
         external_destination_id: '573284833843027',
         provider_event_name: 'Lead',
@@ -251,9 +298,9 @@ describe('measurement provider test repository', () => {
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'meta',
         external_destination_id: '573284833843027',
         provider_event_name: 'Lead',
@@ -280,9 +327,9 @@ describe('measurement provider test repository', () => {
         profile_id: '77777777-7777-4777-8777-777777777777',
         profile_enabled: false,
         profile_environment: 'test',
-        profile_config_version: 3,
         destination_enabled: false,
         destination_environment: 'test',
+        destination_config_version: 3,
         platform: 'meta',
         external_destination_id: '573284833843027',
         provider_event_name: 'Lead',

@@ -23,6 +23,10 @@ const stubs = {
   ClientsClientMeasurementProfileForm: {
     template: '<div data-testid="measurement-profile-form" />'
   },
+  ClientsClientMeasurementProviderTest: {
+    props: ['destinationConfigVersion'],
+    template: '<div data-testid="measurement-provider-test" :data-destination-version="destinationConfigVersion" />'
+  },
   UTextarea: {
     props: ['modelValue'],
     emits: ['update:modelValue'],
@@ -387,6 +391,28 @@ describe('ClientMeasurementPanel', () => {
       expect(breakdowns[0]!.textContent).toContain('Meta Pixel')
       expect(breakdowns[0]!.textContent).toContain('no provider test can prove this one')
       expect(breakdowns[1]!.textContent).toContain('run a provider test to record evidence for it')
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('opens provider tests with the selected destination version', async () => {
+    const fetchMock = vi.fn(async (request: string) => responseFor(request))
+    const { app, host } = mountPanel(fetchMock, { canConfigure: true })
+    await flushUi()
+
+    try {
+      const runButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
+        .find(button => button.textContent?.includes('Run provider test'))
+      expect(runButton).toBeDefined()
+
+      runButton!.click()
+      await flushUi()
+
+      expect(
+        host.querySelector('[data-testid="measurement-provider-test"]')
+          ?.getAttribute('data-destination-version')
+      ).toBe('3')
     } finally {
       app.unmount()
     }

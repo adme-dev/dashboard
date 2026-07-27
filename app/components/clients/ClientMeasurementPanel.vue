@@ -730,7 +730,7 @@ void refreshMeasurement()
               <ClientsClientMeasurementProviderTest
                 v-if="testingDestinationId === destination.id"
                 :client-id="clientId"
-                :profile-config-version="profile.configVersion"
+                :destination-config-version="destination.configVersion"
                 :destination="destination"
                 @close="testingDestinationId = null"
                 @completed="handleProviderTestCompleted"
