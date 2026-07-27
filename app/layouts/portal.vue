@@ -21,6 +21,7 @@ const canViewCrm = computed(() =>
 
 const mainNav = computed(() => ([
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/portal', exact: true, onSelect: close },
+  { label: 'Recent Activity', icon: 'i-lucide-history', to: '/portal/activity', onSelect: close },
   ...(user.value?.permissions?.canViewProjects
     ? ([{
         label: 'Jobs',
