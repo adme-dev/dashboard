@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { queryOneFresh, queryRowsFresh, transaction } from '~~/server/utils/db'
 import { resolveClientEntitlement } from '~~/server/utils/billing/entitlements'
 
 export const BILLING_FEATURE_KEYS = [
@@ -40,7 +40,7 @@ function number(value: unknown) {
 }
 
 export async function getClientBillingOverview(clientId: string, includeAdmin = false) {
-  const client = await queryOne<{ id: string, name: string }>(
+  const client = await queryOneFresh<{ id: string, name: string }>(
     `SELECT id, name FROM agency_clients WHERE id = $1`,
     [clientId]
   )
@@ -48,7 +48,7 @@ export async function getClientBillingOverview(clientId: string, includeAdmin = 
     throw createError({ statusCode: 404, statusMessage: 'Client not found' })
   }
 
-  const subscription = await queryOne<any>(
+  const subscription = await queryOneFresh<any>(
     `SELECT subscription.id,
             subscription.status,
             subscription.billing_provider,
@@ -73,7 +73,7 @@ export async function getClientBillingOverview(clientId: string, includeAdmin = 
     [clientId]
   )
 
-  const discovered = await queryRows<{ feature_key: string }>(
+  const discovered = await queryRowsFresh<{ feature_key: string }>(
     `SELECT feature_key
        FROM client_feature_entitlements
       WHERE client_id = $1
@@ -97,7 +97,7 @@ export async function getClientBillingOverview(clientId: string, includeAdmin = 
     featureKeys.map(featureKey => resolveClientEntitlement(clientId, featureKey))
   )
 
-  const usage = await queryRows<any>(
+  const usage = await queryRowsFresh<any>(
     `WITH usage_window AS (
        SELECT
          COALESCE($2::timestamptz, date_trunc('month', NOW())) AS starts_at,
@@ -162,18 +162,18 @@ export async function getClientBillingOverview(clientId: string, includeAdmin = 
   if (!includeAdmin) return response
 
   const [plans, planFeatures, subscriptionAudit, entitlementAudit] = await Promise.all([
-    queryRows<any>(
+    queryRowsFresh<any>(
       `SELECT id, code, name, status, billing_period, currency, base_price_minor, version
          FROM billing_plans
         WHERE status IN ('active', 'retired')
         ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, name`
     ),
-    queryRows<any>(
+    queryRowsFresh<any>(
       `SELECT plan_id, feature_key, status, limits, metered
          FROM billing_plan_entitlements
         ORDER BY feature_key`
     ),
-    queryRows<any>(
+    queryRowsFresh<any>(
       `SELECT audit.*, previous_plan.code AS previous_plan_code,
               next_plan.code AS next_plan_code
          FROM billing_subscription_audit audit
@@ -184,7 +184,7 @@ export async function getClientBillingOverview(clientId: string, includeAdmin = 
         LIMIT 50`,
       [clientId]
     ),
-    queryRows<any>(
+    queryRowsFresh<any>(
       `SELECT id, feature_key, action, previous_status, next_status,
               actor_id, source, occurred_at, metadata
          FROM billing_entitlement_audit

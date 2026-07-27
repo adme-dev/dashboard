@@ -28,6 +28,13 @@ type PortalUserRow = {
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
 
+  if (!clientUser.isPrimaryContact && !clientUser.permissions.canInviteUsers) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'You do not have permission to view portal users'
+    })
+  }
+
   try {
     const users = await queryRows<PortalUserRow>(`
       SELECT

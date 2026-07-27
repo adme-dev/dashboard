@@ -91,8 +91,8 @@ describe('portal meetings API', () => {
   it('returns client-scoped meetings with recording and join metadata', async () => {
     const result = await meetingsHandler({ query: { view: 'upcoming', limit: '20' } })
 
-    expect(mockEnsureArtifacts).toHaveBeenCalledOnce()
-    expect(mockEnsureRecordings).toHaveBeenCalledOnce()
+    expect(mockEnsureArtifacts).not.toHaveBeenCalled()
+    expect(mockEnsureRecordings).not.toHaveBeenCalled()
     expect(result.stats).toEqual({
       totalVisible: 3,
       live: 1,

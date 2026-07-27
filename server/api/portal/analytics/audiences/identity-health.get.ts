@@ -59,7 +59,6 @@ export default defineEventHandler(async event => {
     })
   }
 
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
 
   return {
     generatedAt: snapshot.generatedAt,
@@ -91,4 +90,3 @@ export default defineEventHandler(async event => {
     },
   }
 })
-

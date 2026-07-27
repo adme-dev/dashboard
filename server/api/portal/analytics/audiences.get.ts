@@ -229,7 +229,6 @@ export default defineEventHandler(async event => {
     warnings.push({ code: 'meta_not_connected', message: 'No client-mapped Meta connection is available.' })
   }
 
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   return {
     generatedAt: new Date().toISOString(),
     client: {

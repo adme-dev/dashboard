@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
 
 export type FeatureEntitlementStatus
   = 'trial' | 'active' | 'grace' | 'capped' | 'overdue' | 'suspended' | 'cancelled' | 'missing'
@@ -20,7 +20,7 @@ export async function resolveClientEntitlement(
   clientId: string,
   featureKey: string
 ): Promise<FeatureEntitlement> {
-  const row = await queryOne<{
+  const row = await queryOneFresh<{
     status: FeatureEntitlementStatus
     source: FeatureEntitlement['source']
     limits: Record<string, unknown> | null

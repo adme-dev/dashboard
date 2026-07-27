@@ -27,7 +27,12 @@ const { default: usersHandler } = await import('../../../../server/api/portal/us
 describe('portal users API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRequireClientAuth.mockResolvedValue({ id: 'client-user-1', clientId: 'client-1' })
+    mockRequireClientAuth.mockResolvedValue({
+      id: 'client-user-1',
+      clientId: 'client-1',
+      isPrimaryContact: true,
+      permissions: { canInviteUsers: false }
+    })
     mockQueryRows.mockResolvedValue([
       {
         id: 'client-user-1',
@@ -116,5 +121,20 @@ describe('portal users API', () => {
         requests: 1
       }
     })
+  })
+
+  it('rejects non-primary users without invite permission before reading the directory', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      id: 'client-user-2',
+      clientId: 'client-1',
+      isPrimaryContact: false,
+      permissions: { canInviteUsers: false }
+    })
+
+    await expect(usersHandler({})).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'You do not have permission to view portal users'
+    })
+    expect(mockQueryRows).not.toHaveBeenCalled()
   })
 })

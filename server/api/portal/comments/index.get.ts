@@ -14,6 +14,13 @@ export default defineEventHandler(async (event) => {
   const approvalId = query.approvalId as string | undefined
   const limit = Math.min(Number(query.limit) || 50, 100)
 
+  if (Boolean(projectId) === Boolean(approvalId)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Exactly one comment scope is required'
+    })
+  }
+
   try {
     const conditions: string[] = ['cc.is_internal = false']
     const params: any[] = []
@@ -25,7 +32,14 @@ export default defineEventHandler(async (event) => {
       params.push(projectId)
       idx++
       // Verify project belongs to client
-      conditions.push(`EXISTS (SELECT 1 FROM projects WHERE id = cc.project_id AND client_id = $${idx})`)
+      conditions.push(`EXISTS (
+        SELECT 1
+        FROM projects p
+        LEFT JOIN client_project_settings cps ON cps.project_id = p.id
+        WHERE p.id = cc.project_id
+          AND p.client_id = $${idx}
+          AND COALESCE(cps.show_comments, true) = true
+      )`)
       params.push(clientUser.clientId)
       idx++
     }
@@ -33,6 +47,17 @@ export default defineEventHandler(async (event) => {
     if (approvalId) {
       conditions.push(`cc.approval_id = $${idx}`)
       params.push(approvalId)
+      idx++
+      conditions.push(`EXISTS (
+        SELECT 1
+        FROM client_approvals ca
+        JOIN projects p ON p.id = ca.project_id
+        LEFT JOIN client_project_settings cps ON cps.project_id = p.id
+        WHERE ca.id = cc.approval_id
+          AND p.client_id = $${idx}
+          AND COALESCE(cps.show_comments, true) = true
+      )`)
+      params.push(clientUser.clientId)
       idx++
     }
 

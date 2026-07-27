@@ -37,7 +37,10 @@ const { default: projectsHandler } = await import(
 describe('portal projects job history views', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRequireClientAuth.mockResolvedValue({ clientId: 'client-1' })
+    mockRequireClientAuth.mockResolvedValue({
+      clientId: 'client-1',
+      permissions: { canViewProjects: true, canViewBudgets: true }
+    })
     mockQueryRows.mockResolvedValue([])
     mockQueryOne.mockResolvedValue({
       total: '0',
@@ -122,6 +125,8 @@ describe('portal projects job history views', () => {
     expect(sql).toContain('COALESCE($3, \'\') <> \'history\'')
     expect(sql).toContain('t.due_date < CURRENT_DATE')
     expect(sql).toContain('t.due_date <= CURRENT_DATE + INTERVAL \'14 days\'')
+    expect(sql).toContain('JOIN projects scoped_projects ON scoped_projects.id = t.project_id')
+    expect(sql).toContain('scoped_projects.client_id = $1')
     const summarySql = String(mockQueryOne.mock.calls[0]?.[0])
     expect(summarySql).toContain('due_date <= CURRENT_DATE + INTERVAL \'14 days\'')
     expect(summarySql).toContain('MIN(CASE')
@@ -139,5 +144,44 @@ describe('portal projects job history views', () => {
     expect(sql).toContain('p.status IN (\'completed\', \'cancelled\')')
     expect(sql).toContain('CASE WHEN $3 = \'history\' THEN p.due_date END DESC NULLS LAST')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client-1', 25, 'history'])
+  })
+
+  it('rejects users without project access before reading project data', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      clientId: 'client-1',
+      permissions: { canViewProjects: false, canViewBudgets: false }
+    })
+
+    await expect(projectsHandler({ query: {} })).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'You do not have permission to view projects'
+    })
+    expect(mockQueryRows).not.toHaveBeenCalled()
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('redacts project and summary budgets when budget access is disabled', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      clientId: 'client-1',
+      permissions: { canViewProjects: true, canViewBudgets: false }
+    })
+    mockQueryRows.mockResolvedValueOnce([{
+      id: 'job-1',
+      name: 'Restricted job',
+      budget: '12000',
+      total_tasks: '0',
+      completed_tasks: '0'
+    }])
+    mockQueryOne.mockResolvedValueOnce({
+      total: '1',
+      total_budget: '12000',
+      booked_budget: '12000'
+    })
+
+    const result = await projectsHandler({ query: {} })
+
+    expect(result.projects[0]?.budget).toBeNull()
+    expect(result.summary.totalBudget).toBeNull()
+    expect(result.summary.bookedBudget).toBeNull()
   })
 })

@@ -108,6 +108,10 @@ binding = "BROWSER"
 binding = "HYPERDRIVE"
 id = "900b4b74ec41462cbbabebd0aa8775aa"
 
+[[hyperdrive]]
+binding = "HYPERDRIVE_FRESH"
+id = "90228af3e2cc461bbc09accc3b47bd9f"
+
 # Service binding — Pages-to-Worker bridge for Cloudflare Workflows.
 # The standalone Worker keeps Workflow control logic out of Pages; Pages starts
 # instances through this binding and cron remains the fallback until cutover.

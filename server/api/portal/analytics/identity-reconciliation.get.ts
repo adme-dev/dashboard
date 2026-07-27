@@ -16,7 +16,6 @@ export default defineEventHandler(async event => {
       recentConflicts: []
     }
   }
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   const snapshot = await getIdentityReconciliationSnapshot(client.clientId)
   return {
     enabled: true,

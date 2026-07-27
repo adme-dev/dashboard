@@ -10,7 +10,7 @@
  * (no need for KV/Redis bindings). For very high-throughput endpoints
  * we'd swap to KV; for the current usage this is plenty.
  */
-import { queryOne, execute } from '~~/server/utils/db'
+import { queryOneFresh, execute } from '~~/server/utils/db'
 
 export interface RateLimitOptions {
   /** Unique identifier — typically `${feature}:${userId}` */
@@ -39,7 +39,7 @@ export async function checkAndConsume(opts: RateLimitOptions): Promise<RateLimit
   const windowMs = opts.windowSeconds * 1000
 
   try {
-    const row = await queryOne(`
+    const row = await queryOneFresh(`
       INSERT INTO ratelimit_buckets (key, count, window_started_at)
       VALUES ($1, 1, NOW())
       ON CONFLICT (key) DO UPDATE

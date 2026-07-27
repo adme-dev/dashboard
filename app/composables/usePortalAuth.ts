@@ -30,6 +30,15 @@ interface PortalAuthMeResponse {
     leadCaptureMode: 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm'
   }
   stats: PortalStats
+  recentNotifications: Array<{
+    id: string
+    type: string
+    title: string
+    message: string
+    actionUrl?: string | null
+    isRead: boolean
+    createdAt: string
+  }>
 }
 
 interface PortalLoginResponse {

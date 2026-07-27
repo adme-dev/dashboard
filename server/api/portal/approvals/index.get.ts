@@ -8,6 +8,14 @@ import { requireClientAuth } from '~~/server/utils/clientAuth'
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
+
+  if (!clientUser.permissions.canApproveWork) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'You do not have permission to view approvals'
+    })
+  }
+
   const query = getQuery(event)
 
   const status = query.status as string | undefined

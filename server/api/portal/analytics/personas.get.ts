@@ -18,7 +18,6 @@ export default defineEventHandler(async event => {
       providerFeedback: { pending: 0, published: 0, failed: 0 }
     }
   }
-  setHeader(event, 'Cache-Control', 'private, max-age=60, stale-while-revalidate=300')
   return getCachedPersonaMetrics(
     client.clientId,
     parsePersonaMetricFilters(getQuery(event) as Record<string, unknown>)

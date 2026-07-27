@@ -3,7 +3,7 @@
  * POST /api/portal/comments
  */
 
-import { queryOne, execute } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 
 export default defineEventHandler(async (event) => {
@@ -20,15 +20,23 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Comment content is required' })
   }
 
-  if (!projectId && !approvalId) {
-    throw createError({ statusCode: 400, statusMessage: 'Either projectId or approvalId is required' })
+  if (Boolean(projectId) === Boolean(approvalId)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Exactly one comment scope is required'
+    })
   }
 
   try {
     // Verify the entity belongs to this client
     if (projectId) {
-      const project = await queryOne(`
-        SELECT id FROM projects WHERE id = $1 AND client_id = $2
+      const project = await queryOneFresh(`
+        SELECT p.id
+        FROM projects p
+        LEFT JOIN client_project_settings cps ON cps.project_id = p.id
+        WHERE p.id = $1
+          AND p.client_id = $2
+          AND COALESCE(cps.show_comments, true) = true
       `, [projectId, clientUser.clientId])
       if (!project) {
         throw createError({ statusCode: 404, statusMessage: 'Project not found' })
@@ -36,17 +44,38 @@ export default defineEventHandler(async (event) => {
     }
 
     if (approvalId) {
-      const approval = await queryOne(`
+      const approval = await queryOneFresh(`
         SELECT ca.id FROM client_approvals ca
         JOIN projects p ON ca.project_id = p.id
-        WHERE ca.id = $1 AND p.client_id = $2
+        LEFT JOIN client_project_settings cps ON cps.project_id = p.id
+        WHERE ca.id = $1
+          AND p.client_id = $2
+          AND COALESCE(cps.show_comments, true) = true
       `, [approvalId, clientUser.clientId])
       if (!approval) {
         throw createError({ statusCode: 404, statusMessage: 'Approval not found' })
       }
     }
 
-    const comment = await queryOne(`
+    if (parentCommentId) {
+      const parent = await queryOneFresh(`
+        SELECT id AS parent_comment_id
+        FROM client_comments
+        WHERE id = $1
+          AND is_internal = false
+          AND (
+            ($2 IS NOT NULL AND project_id = $2 AND approval_id IS NULL)
+            OR
+            ($3 IS NOT NULL AND approval_id = $3 AND project_id IS NULL)
+          )
+      `, [parentCommentId, projectId || null, approvalId || null])
+
+      if (!parent) {
+        throw createError({ statusCode: 404, statusMessage: 'Parent comment not found' })
+      }
+    }
+
+    const comment = await queryOneFresh(`
       INSERT INTO client_comments (
         client_user_id, project_id, approval_id, parent_comment_id,
         content, is_internal

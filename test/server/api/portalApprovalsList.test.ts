@@ -37,7 +37,11 @@ const { default: approvalsHandler } = await import(
 describe('portal approvals list API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRequireClientAuth.mockResolvedValue({ id: 'client-user-1', clientId: 'client-1' })
+    mockRequireClientAuth.mockResolvedValue({
+      id: 'client-user-1',
+      clientId: 'client-1',
+      permissions: { canApproveWork: true }
+    })
     mockQueryRows.mockResolvedValue([])
     mockQueryOne.mockResolvedValue({
       total: '8',
@@ -83,5 +87,20 @@ describe('portal approvals list API', () => {
     const sql = String(mockQueryRows.mock.calls[0]?.[0])
     expect(sql).toContain('ca.status = $2')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client-1', 'revision_requested', 25])
+  })
+
+  it('rejects users without approval access before reading approval data', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      id: 'client-user-1',
+      clientId: 'client-1',
+      permissions: { canApproveWork: false }
+    })
+
+    await expect(approvalsHandler({ query: {} })).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'You do not have permission to view approvals'
+    })
+    expect(mockQueryRows).not.toHaveBeenCalled()
+    expect(mockQueryOne).not.toHaveBeenCalled()
   })
 })

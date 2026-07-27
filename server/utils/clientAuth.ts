@@ -3,7 +3,8 @@
  * Cookie-based session auth for client-facing portal pages
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { execute, queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
+import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import bcrypt from 'bcryptjs'
 import type { H3Event } from 'h3'
 
@@ -53,41 +54,8 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
     })
   }
 
-  // Get active sessions
-  const sessions = await queryRows(`
-    SELECT
-      cs.id,
-      cs.token_hash,
-      cs.client_user_id,
-      cs.expires_at
-    FROM client_sessions cs
-    WHERE cs.expires_at > NOW()
-    ORDER BY cs.created_at DESC
-    LIMIT 100
-  `)
-
-  let matchedUserId: string | null = null
-
-  for (const session of sessions) {
-    try {
-      const valid = await bcrypt.compare(sessionToken, session.token_hash)
-      if (valid) {
-        matchedUserId = session.client_user_id
-        break
-      }
-    } catch {
-      continue
-    }
-  }
-
-  if (!matchedUserId) {
-    throw createError({
-      statusCode: 401,
-      statusMessage: 'Invalid or expired session'
-    })
-  }
-
-  const user = await queryOne(`
+  const sessionDigest = await digestPortalSessionToken(sessionToken)
+  let user = await queryOneFresh(`
     SELECT
       cu.id,
       cu.email,
@@ -113,15 +81,97 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       cu.can_admin_crm,
       cu.notification_preferences,
       cu.timezone,
-      cu.status,
       c.id as client_id,
       c.name as client_name,
       c.logo_url as client_logo,
       c.lead_capture_mode
-    FROM client_users cu
-    JOIN agency_clients c ON cu.client_id = c.id
-    WHERE cu.id = $1 AND cu.status = 'active'
-  `, [matchedUserId])
+    FROM client_sessions cs
+    JOIN client_users cu ON cu.id = cs.client_user_id
+    JOIN agency_clients c ON c.id = cu.client_id
+    WHERE cs.token_hash = $1
+      AND cs.expires_at > NOW()
+      AND cu.status = 'active'
+    LIMIT 1
+  `, [sessionDigest])
+
+  let matchedUserId: string | null = null
+
+  // Existing sessions used bcrypt. Upgrade a matching legacy row in place once;
+  // subsequent requests use the indexed digest path above.
+  if (!user) {
+    const legacySessions = await queryRowsFresh(`
+      SELECT
+        cs.id,
+        cs.token_hash,
+        cs.client_user_id
+      FROM client_sessions cs
+      WHERE cs.expires_at > NOW()
+        AND cs.token_hash LIKE '$2%'
+      ORDER BY cs.created_at DESC
+      LIMIT 100
+    `)
+
+    for (const session of legacySessions) {
+      try {
+        const valid = await bcrypt.compare(sessionToken, session.token_hash)
+        if (valid) {
+          matchedUserId = session.client_user_id
+          await execute(`
+            UPDATE client_sessions
+            SET token_hash = $1
+            WHERE id = $2
+          `, [sessionDigest, session.id])
+          break
+        }
+      } catch {
+        continue
+      }
+    }
+  }
+
+  if (!user && !matchedUserId) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Invalid or expired session'
+    })
+  }
+
+  if (!user && matchedUserId) {
+    user = await queryOneFresh(`
+      SELECT
+        cu.id,
+        cu.email,
+        cu.name,
+        cu.title,
+        cu.phone,
+        cu.avatar_url,
+        cu.role,
+        cu.is_primary_contact,
+        cu.can_manage_lead_outcomes,
+        cu.can_view_projects,
+        cu.can_view_invoices,
+        cu.can_approve_work,
+        cu.can_view_time_entries,
+        cu.can_view_budgets,
+        cu.can_add_comments,
+        cu.can_upload_files,
+        cu.can_invite_users,
+        cu.can_view_analytics,
+        cu.can_submit_requests,
+        cu.can_view_crm,
+        cu.can_edit_crm,
+        cu.can_admin_crm,
+        cu.notification_preferences,
+        cu.timezone,
+        c.id as client_id,
+        c.name as client_name,
+        c.logo_url as client_logo,
+        c.lead_capture_mode
+      FROM client_users cu
+      JOIN agency_clients c ON cu.client_id = c.id
+      WHERE cu.id = $1 AND cu.status = 'active'
+    `, [matchedUserId])
+  }
 
   if (!user) {
     throw createError({

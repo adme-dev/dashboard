@@ -101,7 +101,6 @@ export default defineEventHandler(async (event) => {
     loadDimension(client.clientId, fromDate, toDate, timezone, DIMENSIONS.devices),
     loadDimension(client.clientId, fromDate, toDate, timezone, DIMENSIONS.sources)
   ])
-  setHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   return {
     generatedAt: new Date().toISOString(),
     authority: {
