@@ -252,7 +252,7 @@ function serviceStatusColor(status: ServiceModule['status']) {
 </script>
 
 <template>
-  <div class="p-6 space-y-8 max-w-7xl mx-auto">
+  <div class="w-full p-6 space-y-8">
     <!-- Hero Header -->
     <div class="text-center space-y-2 py-4">
       <h1 class="text-3xl font-bold">

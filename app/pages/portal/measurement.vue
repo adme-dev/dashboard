@@ -135,7 +135,7 @@ void refreshHealth()
     </template>
 
     <template #body>
-      <div class="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
+      <div class="w-full space-y-6 p-4 sm:p-6 lg:p-8">
         <div v-if="pending" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true">
           <div v-for="index in 6" :key="index" class="h-36 animate-pulse rounded-xl bg-elevated" />
         </div>

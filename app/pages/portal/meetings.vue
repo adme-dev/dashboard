@@ -195,7 +195,7 @@ function formatCompactDate(date: string | null | undefined) {
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-6xl mx-auto">
+  <div class="w-full p-6 space-y-6">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 class="text-2xl font-bold">

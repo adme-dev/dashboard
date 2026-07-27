@@ -153,7 +153,7 @@ const agingColors: Record<string, string> = {
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-5xl mx-auto">
+  <div class="w-full p-6 space-y-6">
     <div v-if="!hasPermission('canViewInvoices')" class="text-center py-20">
       <UIcon name="i-lucide-lock" class="w-12 h-12 text-muted mx-auto mb-4" />
       <h2 class="text-xl font-semibold">

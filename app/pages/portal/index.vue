@@ -542,7 +542,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-7xl mx-auto">
+  <div class="w-full p-6 space-y-6">
     <!-- Welcome Header -->
     <div>
       <h1 class="text-2xl font-bold">

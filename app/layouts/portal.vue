@@ -217,7 +217,7 @@ async function handleLogout() {
       </template>
     </UDashboardSidebar>
 
-    <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-x-hidden overflow-y-auto">
+    <div class="flex-1 w-full min-w-0 min-h-0 flex flex-col overflow-x-hidden overflow-y-auto">
       <slot />
     </div>
     <!-- Docked customer co-pilot (flag-gated launcher; server endpoints are the real boundary). -->

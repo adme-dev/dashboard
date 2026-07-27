@@ -7,7 +7,7 @@ useHead({ title: 'Leads — Client Portal' })
 </script>
 
 <template>
-  <div class="h-[calc(100vh-4rem)] flex flex-col">
+  <div class="w-full h-[calc(100vh-4rem)] flex flex-col">
     <header class="px-6 py-4 border-b border-default bg-default">
       <div class="flex items-start justify-between gap-4">
         <div>

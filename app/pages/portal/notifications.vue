@@ -128,7 +128,7 @@ function getLink(n: PortalNotification) {
 </script>
 
 <template>
-  <div class="p-6 space-y-6 max-w-3xl mx-auto">
+  <div class="w-full p-6 space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-bold">
         Notifications

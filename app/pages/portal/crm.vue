@@ -44,7 +44,7 @@ const activeObject = computed<CrmObjectDef | null>(() =>
 </script>
 
 <template>
-  <div class="p-6 space-y-5">
+  <div class="w-full p-6 space-y-5">
     <div>
       <h1 class="text-2xl font-bold tracking-tight">CRM</h1>
       <p class="text-sm text-muted mt-0.5">Manage your contacts, companies and sales pipeline.</p>
@@ -56,7 +56,7 @@ const activeObject = computed<CrmObjectDef | null>(() =>
       <CrmPeopleTable v-if="tab === 'people'" :client-id="clientId" />
       <CrmCompaniesTable v-else-if="tab === 'companies'" :client-id="clientId" />
       <CrmPipelineBoard v-else-if="tab === 'pipeline'" :client-id="clientId" />
-      <CrmTaskList v-else-if="tab === 'tasks'" :client-id="clientId" show-filters class="max-w-3xl" />
+      <CrmTaskList v-else-if="tab === 'tasks'" :client-id="clientId" show-filters class="w-full" />
       <CrmDataSources
         v-else-if="tab === 'data-sources'"
         :client-id="clientId"
