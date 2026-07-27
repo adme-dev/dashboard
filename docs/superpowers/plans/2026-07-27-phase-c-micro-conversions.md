@@ -524,13 +524,43 @@ git commit -m "feat(tracking): thread ga_client_id through tracking_events row i
 
 **Files:**
 - Modify: `public/track.js`
+- Modify: `server/utils/tracking/track-schema.ts`
 - Test: `test/public/track-tag.test.ts`
 
 **Interfaces:**
-- Consumes: nothing from earlier tasks (client-side only).
+- Consumes: nothing from earlier tasks (client-side only), except that the batch payload must pass through `track-schema.ts`'s `AttributionSchema` validation before reaching `buildEventRows` (Task 3) — a required addition discovered during Task 3's review, not in the original design doc.
 - Produces: a `ga_client_id` key in the batch's per-event `attribution` object — must match `ATTR_KEYS`' `'ga_client_id'` entry from Task 3 exactly (same key name) for the server-side flattening in `buildEventRows` to pick it up.
 
-- [ ] **Step 1: Write the failing test**
+**Important — a real gap found during Task 3's review, fixed here:** `server/utils/tracking/track-schema.ts`'s `AttributionSchema` is a plain `z.object({...})` (Zod's default "strip unknown keys" mode, not `.passthrough()`). It lists `fbclid`, `fbc`, `fbp`, etc. explicitly but has no `ga_client_id` field. Without adding one, any `ga_client_id` sent by `track.js` would be silently stripped by `parseTrackPayload` before it ever reaches `buildEventRows` — the pipeline would look wired up but never actually deliver a value in real traffic, and this task's own test (which reads the value back via `parseTrackPayload`) would fail. Step 1 below adds the missing schema field before writing the track.js-emission test.
+
+- [ ] **Step 1: Add `ga_client_id` to `AttributionSchema`**
+
+In `server/utils/tracking/track-schema.ts`, add one field to the existing `AttributionSchema`, matching the pattern already used for its sibling identifiers (e.g. `fbc`, `fbp`):
+
+```ts
+const AttributionSchema = z.object({
+  utm_source: z.string().max(512).nullable().optional(),
+  utm_medium: z.string().max(512).nullable().optional(),
+  utm_campaign: z.string().max(512).nullable().optional(),
+  utm_content: z.string().max(512).nullable().optional(),
+  utm_term: z.string().max(512).nullable().optional(),
+  gclid: z.string().max(512).nullable().optional(),
+  gbraid: z.string().max(512).nullable().optional(),
+  wbraid: z.string().max(512).nullable().optional(),
+  fbclid: z.string().max(512).nullable().optional(),
+  fbc: z.string().max(512).nullable().optional(),
+  fbp: z.string().max(512).nullable().optional(),
+  ttclid: z.string().max(512).nullable().optional(),
+  msclkid: z.string().max(512).nullable().optional(),
+  li_fat_id: z.string().max(512).nullable().optional(),
+  ga_client_id: z.string().max(512).nullable().optional(),
+  email_click_id: z.string().max(128).nullable().optional()
+})
+```
+
+(Only this one field is added — every other line of `track-schema.ts` is unchanged.)
+
+- [ ] **Step 2: Write the failing test**
 
 Add this test to `test/public/track-tag.test.ts`, inside the existing `describe('public/track.js transport', ...)` block (after the `beforeEach`, alongside the other transport tests — find an existing `it('forwards the raw _xf_consent cookie...')` test nearby as your insertion point):
 
@@ -561,12 +591,12 @@ Add this test to `test/public/track-tag.test.ts`, inside the existing `describe(
 
 This mirrors the exact setup other tests in this file already use: `loadTag()`, then `xf.init({ writeKey: 'TESTKEY' })`, then reset `requests = []` before the action under test, then call `xf.track(...)` and read `requests[0].body`.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 3: Run the test to verify it fails**
 
 Run: `pnpm exec vitest run test/public/track-tag.test.ts`
-Expected: FAIL — `parsed.events[0].attribution.ga_client_id` is `undefined`, not the expected cookie-derived value.
+Expected: FAIL — `parsed.events[0].attribution.ga_client_id` is `undefined`, not the expected cookie-derived value (track.js doesn't emit it yet, even though the schema now accepts it from Step 1).
 
-- [ ] **Step 3: Implement the changes in `public/track.js`**
+- [ ] **Step 4: Implement the changes in `public/track.js`**
 
 Add a new function near `getFbCookies()`:
 
@@ -649,15 +679,15 @@ Add `ga_client_id: payload.ga_client_id` to the batch's per-event `attribution` 
         },
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm exec vitest run test/public/track-tag.test.ts`
 Expected: PASS (all tests, pre-existing and new)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add public/track.js test/public/track-tag.test.ts
+git add public/track.js server/utils/tracking/track-schema.ts test/public/track-tag.test.ts
 git commit -m "feat(tracking): capture the real GA4 _ga cookie client_id"
 ```
 
