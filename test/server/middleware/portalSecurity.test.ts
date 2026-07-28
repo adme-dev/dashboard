@@ -74,13 +74,19 @@ describe('portal response security middleware', () => {
     const event = { path: '/portal' }
     portalSecurityMiddleware(event as never)
 
-    expect(testGlobal.setHeader).toHaveBeenCalledWith(
-      event,
-      'Content-Security-Policy',
-      expect.stringContaining(
-        `script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com`
-      )
-    )
+    const csp = vi.mocked(testGlobal.setHeader).mock.calls
+      .find(([, name]) => name === 'Content-Security-Policy')?.[2]
+    const scriptSources = csp
+      ?.split('; ')
+      .find(directive => directive.startsWith('script-src '))
+      ?.split(' ')
+      .slice(1)
+
+    expect(scriptSources).toEqual([
+      `'self'`,
+      `'unsafe-inline'`,
+      'https://static.cloudflareinsights.com'
+    ])
   })
 
   it('does not apply portal cache policy to unrelated API routes', () => {
