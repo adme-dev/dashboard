@@ -429,6 +429,151 @@ describe('public/track.js transport', () => {
     expect(payload.vehicle_reference).toBe('S1234')
     expect(payload.browser_event_id).toBe(JSON.parse(tracking!.body).events[0].event_id)
     expect(intent!.body).not.toContain('Private free-text message')
+    expect((form.querySelector('[name="zeroflow_browser_event_id"]') as HTMLInputElement).value)
+      .toBe(payload.browser_event_id)
+    expect((form.querySelector('[name="zeroflow_last_landing_page"]') as HTMLInputElement).value)
+      .toContain(window.location.pathname)
+  })
+
+  it('creates a non-PII provider lead context and tracks one correlation candidate', () => {
+    document.cookie = '_xf_consent=' + encodeURIComponent(JSON.stringify({
+      tracking: true,
+      analytics: true,
+      marketing: true,
+      updatedAt: '2026-07-28T00:00:00Z',
+      noticeUrl: 'https://consent.example/policy?customer=person@example.com&token=url-secret',
+      policyVersion: 'private-policy-version',
+      decisionMethod: 'customer-specific-preference'
+    })) + '; path=/'
+    window.history.pushState(
+      {},
+      '',
+      '/unsubscribe/url-person@example.com/url-secret?utm_source=google&gclid=EAIaIQobChMI3PHq4Yz2hAMVWxSDAx1LqgAqEAAYASAAEgLXePD_BwE&fbclid=person@example.com&email_click_id=reset-token&campaign_id=person@example.com&email=url-person@example.com&reset_token=url-secret&utm_content=url-person@example.com&utm_term=url-secret'
+    )
+    document.body.innerHTML = `
+      <form>
+        <input type="email" value="person@example.com">
+        <input type="tel" value="0400123456">
+        <textarea>Private free-text message</textarea>
+      </form>
+    `
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+
+    const context = (window as any).xf.captureLeadContext({
+      eventId: '11111111-1111-4111-8111-111111111111',
+      formId: 'dealer-studio-enquiry',
+      formName: 'person@example.com',
+      vehicleReference: '0400123456'
+    })
+
+    expect(context.browserEventId).toBe('11111111-1111-4111-8111-111111111111')
+    expect(context.fields.zeroflow_browser_event_id).toBe('11111111-1111-4111-8111-111111111111')
+    expect(context.fields.zeroflow_first_utm_source).toBeUndefined()
+    expect(context.fields.zeroflow_last_gclid).toBe('EAIaIQobChMI3PHq4Yz2hAMVWxSDAx1LqgAqEAAYASAAEgLXePD_BwE')
+    expect(context.fields.zeroflow_last_fbclid).toBeUndefined()
+    expect(context.fields.zeroflow_last_email_click_id).toBeUndefined()
+    expect(context.fields.zeroflow_last_campaign_id).toBeUndefined()
+    expect(context.fields.zeroflow_landing_page).toBeUndefined()
+    expect(context.fields.zeroflow_last_utm_content).toBeUndefined()
+    expect(context.fields.zeroflow_last_utm_term).toBeUndefined()
+    expect(JSON.stringify(context)).not.toMatch(/person@example\.com|0400123456|Private free-text message|url-secret|reset-token/)
+    expect(requests).toHaveLength(1)
+
+    const bridgePayload = JSON.parse(requests[0].body)
+    const event = bridgePayload.events[0]
+    expect(event.event_name).toBe('form_submit')
+    expect(event.event_id).toBe('11111111-1111-4111-8111-111111111111')
+    expect(event.page_url).toBe('http://localhost:3000/')
+    expect(event.referrer).toBeNull()
+    expect(event.attribution).toEqual(expect.objectContaining({
+      gclid: 'EAIaIQobChMI3PHq4Yz2hAMVWxSDAx1LqgAqEAAYASAAEgLXePD_BwE',
+      fbc: null,
+      fbp: null
+    }))
+    expect(event.attribution).not.toHaveProperty('utm_content')
+    expect(event.attribution).not.toHaveProperty('utm_term')
+    expect(event.attribution).not.toHaveProperty('utm_source')
+    expect(event.attribution).not.toHaveProperty('fbclid')
+    expect(event.attribution).not.toHaveProperty('email_click_id')
+    expect(event.attribution).not.toHaveProperty('campaign_id')
+    expect(JSON.stringify(event)).not.toMatch(/person@example\.com|0400123456|Private free-text message|url-secret|reset-token/)
+    expect(event.event_data).toEqual(expect.objectContaining({
+      lead_eligible: true,
+      capture_source: 'explicit_provider_bridge'
+    }))
+    expect(event.event_data).not.toHaveProperty('form_id')
+    expect(event.event_data).not.toHaveProperty('form_name')
+    expect(event.event_data).not.toHaveProperty('vehicle_reference')
+    expect(bridgePayload.consent).not.toContain('person@example.com')
+    expect(bridgePayload.consent).not.toContain('url-secret')
+    expect(bridgePayload.consent).not.toContain('private-policy-version')
+    expect(bridgePayload.consent).not.toContain('customer-specific-preference')
+  })
+
+  it('does not create a provider lead context when tracking consent is denied', () => {
+    document.cookie = '_xf_consent=' + encodeURIComponent(JSON.stringify({
+      tracking: false,
+      analytics: false,
+      marketing: false,
+      updatedAt: '2026-07-28T00:00:00Z'
+    })) + '; path=/'
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+
+    expect((window as any).xf.captureLeadContext({ eventId: 'denied-provider-submission' })).toBeNull()
+    expect(requests).toHaveLength(0)
+  })
+
+  it('re-emits a provider candidate with the same ID when a provider retries', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+
+    const first = (window as any).xf.captureLeadContext({ eventId: '22222222-2222-4222-8222-222222222222' })
+    const second = (window as any).xf.captureLeadContext({ eventId: '22222222-2222-4222-8222-222222222222' })
+
+    expect(second).toBe(first)
+    expect(requests).toHaveLength(2)
+    expect(JSON.parse(requests[0].body).events[0].event_id).toBe(first.browserEventId)
+    expect(JSON.parse(requests[1].body).events[0].event_id).toBe(first.browserEventId)
+  })
+
+  it('replaces a prototype-shaped caller event ID without skipping the candidate', () => {
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+
+    const context = (window as any).xf.captureLeadContext({ eventId: 'constructor' })
+
+    expect(context.browserEventId).not.toBe('constructor')
+    expect(requests).toHaveLength(1)
+    expect(JSON.parse(requests[0].body).events[0].event_id).toBe(context.browserEventId)
+  })
+
+  it('replaces unsafe caller metadata instead of sending it through the provider bridge', () => {
+    document.cookie = '_engagr_id=0400-123-456; path=/'
+    document.cookie = '_engagr_session=sk_live_secret; path=/'
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY', forms: false })
+    requests = []
+
+    const context = (window as any).xf.captureLeadContext({
+      eventId: '0400-123-456',
+      formId: 'person@example.com',
+      formName: 'person@example.com',
+      vehicleReference: '0400123456'
+    })
+
+    const event = JSON.parse(requests[0].body).events[0]
+    expect(context.browserEventId).not.toBe('0400-123-456')
+    expect(event.event_id).toBe(context.browserEventId)
+    expect(event.event_data).not.toHaveProperty('form_id')
+    expect(event.anon_id).toBe(context.browserEventId)
+    expect(event.session_id).toBeNull()
+    expect(JSON.stringify({ context, event })).not.toMatch(/person@example\.com|0400123456|0400-123-456|sk_live_secret/)
   })
 })
 

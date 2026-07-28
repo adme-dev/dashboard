@@ -1,13 +1,14 @@
-# South Morang CRM–Funnel Reconciliation Design
+# Provider-neutral CRM–Funnel Reconciliation Design
 
 **Status:** approved for planning on 2026-07-28
 
 ## Problem
 
-South Morang Motor Group's website receives the XeroFlow tag through Google Tag
-Manager (GTM), and the established website webhook continues to create complete
-CRM leads. The CRM is the authoritative record for customer identity and form
-answers.
+South Morang Motor Group validates the initial integration, but the bridge is a
+provider-neutral XeroFlow capability. A website may use GTM, a custom CMS,
+Dealer Studio, TotalDealer, Podium, or a future provider while its established
+authenticated website webhook continues to create complete CRM leads. The CRM
+is the authoritative record for customer identity and form answers.
 
 The browser-to-CRM correlation is absent. Recent CRM leads contain customer
 email data but no `browserEventId`, campaign click IDs, or XeroFlow attribution
@@ -107,9 +108,9 @@ The XeroFlow tag will expose a documented, non-PII lead-context API for the
 website/GTM success integration. The API must:
 
 - generate one valid browser event ID per real enquiry;
-- record a `form_submit` correlation event with the supplied form identity;
-- return only the event ID, anonymous/session IDs, and first-/last-touch
-  attribution values;
+- record a `form_submit` correlation candidate without form identity or form
+  values;
+- return only the browser event ID and strictly validated opaque ad click IDs;
 - honour the existing tracking-consent gate;
 - never return email, phone, free text, form field values, or webhook secrets;
 - remain idempotent when the same success handler runs twice.
@@ -120,16 +121,16 @@ other non-lead flows.
 
 ### Website and GTM contract
 
-The South Morang website owner (or Dealer Studio/TotalDealer integration) must
-call the browser API at the real form-success boundary and forward the returned
-context in its server-side website webhook envelope. The forwarded keys are:
+Each website/provider connector must call the browser API at the real form
+success boundary and forward the returned context in its server-side website
+webhook envelope. The forwarded keys are:
 
 - `zeroflow_browser_event_id`
-- `zeroflow_anon_id`
-- `zeroflow_session_id`
-- `zeroflow_landing_page`
-- `zeroflow_first_*` and `zeroflow_last_*` click/UTM/referrer fields that are
-  present
+- vetted `zeroflow_*` opaque click IDs that are present (for example, GCLID,
+  GBRAID, WBRAID, FBCLID, MSCLKID, TTCLID, or LI_FAT_ID)
+
+The connector must send its stable, provider-owned `lead_id` on every retry of
+the same accepted lead. It must not generate a new request ID for a retry.
 
 GTM may use a named Custom Event for Google/Meta tags, but it must not contain
 raw PII. The final conversion event is confirmed by the XeroFlow CRM webhook,
@@ -138,8 +139,8 @@ not by the GTM trigger alone.
 ### XeroFlow webhook and CRM contract
 
 The existing generic website webhook adapter normalises the forwarded context
-into lead attribution. On CRM acceptance, the existing lead-intake path links
-the matching browser event and writes the confirmed `generate_lead` signal.
+into lead attribution. On CRM acceptance, the lead-intake path links the
+matching browser event and writes the confirmed `generate_lead` signal.
 Missing context leaves the CRM lead valid; it must be reported as an
 unattributed lead rather than rejected or silently converted.
 
@@ -149,7 +150,9 @@ unattributed lead rather than rejected or silently converted.
   from submitting.
 - Missing/invalid external correlation context produces a normal CRM lead plus
   a health signal for the unlinked lead; no PII goes into tracking tables.
-- A duplicate browser event or webhook delivery remains idempotent.
+- A duplicate browser event or webhook delivery remains idempotent. A bounded
+  daily reconciliation sweep repairs an accepted lead/candidate pair if a
+  transient post-persist confirmation write failed.
 - Portal health must show, for a selected period: CRM leads received,
   attributed CRM leads, unlinked CRM leads, reconciliation rate, latest
   successful linked lead, and the reason for any blocked conversion delivery.

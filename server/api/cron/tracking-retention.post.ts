@@ -2,7 +2,8 @@
  *  Wire in CF dashboard: POST with header x-cron-secret: $CRON_SECRET, daily.
  *  (/api/cron/ is already exempt from auth middleware; this verifies the secret
  *  inline so the route stays unauthenticated but protected.) */
-import { execute } from '~~/server/utils/db'
+import { db, execute } from '~~/server/utils/db'
+import { reconcileConfirmedBrowserLeadEvents } from '~~/server/utils/leads/browserConfirmation'
 
 export default defineEventHandler(async (event) => {
   const secret = getHeader(event, 'x-cron-secret')
@@ -20,5 +21,6 @@ export default defineEventHandler(async (event) => {
       WHERE expires_at < NOW()
          OR (matched_at IS NOT NULL AND matched_at < NOW() - INTERVAL '30 days')`
   )
-  return { ok: true, deleted, deletedIntents }
+  const repairedConfirmations = await reconcileConfirmedBrowserLeadEvents(db)
+  return { ok: true, deleted, deletedIntents, repairedConfirmations }
 })

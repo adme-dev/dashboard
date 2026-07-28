@@ -6,6 +6,9 @@ import {
 import { buildBrowserCanonicalConversion } from '~~/server/utils/tracking/browserCanonicalConversion'
 import type { TrackingEventRow } from '~~/server/utils/tracking/event-insert'
 import { appendTrackingSignals as defaultAppendSignals } from '~~/server/utils/persona/signalLedger'
+import {
+  appendConfirmedBrowserLeadEventForStoredFormSubmission as defaultAppendBrowserConfirmation
+} from '~~/server/utils/leads/browserConfirmation'
 
 interface TransactionClient {
   query(sql: string, params?: unknown[]): Promise<{ rows?: unknown[] }>
@@ -21,6 +24,7 @@ interface TrackingEventPersistenceDeps {
   transaction: Transaction
   appendOutbox: AppendOutbox
   appendSignals?: typeof defaultAppendSignals
+  appendBrowserConfirmation?: typeof defaultAppendBrowserConfirmation
   onPromotionError: (error: unknown, context: { clientId: string, eventId: string }) => void
 }
 
@@ -28,6 +32,7 @@ const defaultDeps: TrackingEventPersistenceDeps = {
   transaction: defaultTransaction as unknown as Transaction,
   appendOutbox: defaultAppendOutbox,
   appendSignals: defaultAppendSignals,
+  appendBrowserConfirmation: defaultAppendBrowserConfirmation,
   onPromotionError: (_error, context) => {
     console.error('[track] browser conversion promotion failed', context)
   }
@@ -70,11 +75,42 @@ export function createTrackingEventPersistence(deps: TrackingEventPersistenceDep
         let promotionFailures = 0
         const storedRows: TrackingEventRow[] = []
 
+        async function reconcileBrowserLead(row: TrackingEventRow): Promise<void> {
+          if (
+            row.event_name !== 'form_submit'
+            || row.event_data.lead_eligible !== true
+            || row.event_data.capture_source !== 'explicit_provider_bridge'
+          ) return
+          await db.query('SAVEPOINT browser_lead_confirmation')
+          try {
+            await deps.appendBrowserConfirmation?.(db, {
+              clientId: row.client_id,
+              browserEventId: row.event_id
+            })
+            await db.query('RELEASE SAVEPOINT browser_lead_confirmation')
+          } catch (error) {
+            await db.query('ROLLBACK TO SAVEPOINT browser_lead_confirmation')
+            await db.query('RELEASE SAVEPOINT browser_lead_confirmation')
+            deps.onPromotionError(error, { clientId: row.client_id, eventId: row.event_id })
+          }
+        }
+
         for (const row of input.rows) {
           const inserted = await db.query(INSERT_TRACKING_EVENT_SQL, insertParams(row))
-          if (!inserted.rows?.length) continue
+          if (!inserted.rows?.length) {
+            // A retry of a successfully stored candidate is also a recovery
+            // opportunity if its earlier confirmation query failed.
+            await reconcileBrowserLead(row)
+            continue
+          }
           stored += 1
           storedRows.push(row)
+
+          // A provider webhook may have committed the CRM lead before this
+          // browser event reached us. Reconcile that inverse arrival order in
+          // the same transaction; the helper shares a keyed advisory lock with
+          // lead intake to make concurrent arrivals deterministic.
+          await reconcileBrowserLead(row)
 
           const conversion = buildBrowserCanonicalConversion({
             row,
