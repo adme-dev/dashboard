@@ -1,5 +1,5 @@
 import { transaction as defaultTransaction } from '~~/server/utils/db'
-import { PLATFORM_MODE_PREFIX } from '~~/server/utils/measurement/contracts'
+import { PLATFORM_MODE_PREFIX } from '~~/shared/utils/measurementPlatform'
 import type {
   CapabilityStatusSchema,
   RecordDestinationValidationEvidence

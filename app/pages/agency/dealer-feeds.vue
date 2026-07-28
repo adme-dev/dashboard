@@ -2487,7 +2487,7 @@ watch(debouncedDraftPreviewSignature, () => {
                     class="mb-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-3"
                   >
                     <div class="mb-2 flex items-center gap-2">
-                      <UIcon name="i-lucide-list-warning" class="size-4 text-warning" />
+                      <UIcon name="i-lucide-list-x" class="size-4 text-warning" />
                       <p class="text-xs font-semibold uppercase text-warning">
                         First validation issues
                       </p>

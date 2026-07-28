@@ -31,7 +31,7 @@ function getFileIcon(type: string): string {
   if (type === 'application/pdf') return 'i-lucide-file-text'
   if (type.includes('word') || type.includes('document')) return 'i-lucide-file-text'
   if (type.includes('sheet') || type.includes('excel')) return 'i-lucide-file-spreadsheet'
-  if (type.includes('presentation') || type.includes('powerpoint')) return 'i-lucide-file-presentation' // NOTE: Not a real icon
+  if (type.includes('presentation') || type.includes('powerpoint')) return 'i-lucide-presentation'
   if (type === 'application/zip' || type.includes('rar')) return 'i-lucide-file-archive'
   if (type.startsWith('text/')) return 'i-lucide-file-code'
   return 'i-lucide-file'

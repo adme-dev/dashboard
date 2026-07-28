@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { isMeasurementProviderCredentialRef } from '~~/shared/utils/measurementProviderCredential'
 import {
   MEASUREMENT_PLATFORMS,
-  PLATFORM_MODE_PREFIX as SHARED_PLATFORM_MODE_PREFIX
+  PLATFORM_MODE_PREFIX
 } from '~~/shared/utils/measurementPlatform'
 
 export const MeasurementEnvironmentSchema = z.enum(['test', 'live', 'paused'])
@@ -217,8 +217,6 @@ const MeasurementProviderCredentialRefSchema = z.string()
   .refine(isMeasurementProviderCredentialRef, {
     message: 'Provider credentials must use a purpose-scoped measurement binding'
   })
-
-export const PLATFORM_MODE_PREFIX = SHARED_PLATFORM_MODE_PREFIX
 
 export const ConversionDestinationCreateSchema = z.strictObject({
   profileId: z.string().uuid(),

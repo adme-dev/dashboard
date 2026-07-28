@@ -61,7 +61,7 @@
               </div>
               <div class="flex items-center gap-1.5">
                 <div class="w-6 h-[2px] bg-emerald-400 rounded-full" />
-                <UIcon name="i-lucide-arrows-right-left" class="w-4 h-4 text-emerald-500" />
+                <UIcon name="i-lucide-arrow-left-right" class="w-4 h-4 text-emerald-500" />
                 <div class="w-6 h-[2px] bg-emerald-400 rounded-full" />
               </div>
               <div class="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#f4f5f7] dark:bg-white/[0.06]">

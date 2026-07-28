@@ -6,7 +6,7 @@
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
-import { computeMetrics, toNum, PLATFORM_LABELS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, ANALYTICS_PLATFORM_LABELS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import {
   PORTAL_LEAD_STATUS_SELECT,
   PORTAL_VISIBLE_LEADS_EXISTS,
@@ -129,7 +129,7 @@ export default defineEventHandler(async (event) => {
       const m = computeMetrics(spend, impressions, clicks, conversions, revenue)
 
       return [
-        PLATFORM_LABELS[r.platform] || r.platform,
+        ANALYTICS_PLATFORM_LABELS[r.platform] || r.platform,
         escapeCsv(r.campaign_name || ''),
         spend.toFixed(2),
         impressions,

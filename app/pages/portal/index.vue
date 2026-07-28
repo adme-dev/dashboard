@@ -154,7 +154,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
     items.push({
       title: 'Review overdue job dates',
       detail: `${data.enterprise.jobs.overdue} job${data.enterprise.jobs.overdue === 1 ? '' : 's'} past the planned date`,
-      icon: 'i-lucide-calendar-alert',
+      icon: 'i-lucide-calendar-x',
       color: 'error',
       to: '/portal/projects?view=upcoming'
     })

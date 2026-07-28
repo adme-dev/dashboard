@@ -8,7 +8,7 @@
  */
 
 import { queryRows } from '~~/server/utils/db'
-import { toNum, PLATFORM_LABELS } from '~~/server/utils/analyticsMetrics'
+import { toNum, ANALYTICS_PLATFORM_LABELS } from '~~/server/utils/analyticsMetrics'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -252,7 +252,7 @@ export async function getCrossSellRecommendations(options?: {
       // Build human-readable reason
       const reasons: string[] = []
       if (peerAdoptionRate > 0) {
-        reasons.push(`${Math.round(peerAdoptionRate * 100)}% of similar-spend clients use ${PLATFORM_LABELS[platform] || platform}`)
+        reasons.push(`${Math.round(peerAdoptionRate * 100)}% of similar-spend clients use ${ANALYTICS_PLATFORM_LABELS[platform] || platform}`)
       }
       if (efficiencyReason) {
         reasons.push(efficiencyReason)
@@ -265,7 +265,7 @@ export async function getCrossSellRecommendations(options?: {
         clientId: client.clientId,
         clientName: client.clientName,
         recommendedPlatform: platform,
-        displayName: PLATFORM_LABELS[platform] || platform,
+        displayName: ANALYTICS_PLATFORM_LABELS[platform] || platform,
         score: Math.round(score * 1000) / 1000, // 3 decimal places
         reason: reasons.join('. ') + '.',
         peerAdoptionRate: Math.round(peerAdoptionRate * 100) / 100,

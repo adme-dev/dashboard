@@ -4,6 +4,7 @@ import {
   coveredCapabilityModes,
   directlyExercisedModes
 } from '~~/shared/utils/measurementPlatform'
+import type { ProviderTestMode } from '~~/shared/utils/measurementPlatform'
 import type {
   Ga4ValidationInput,
   GoogleDeliveryInput,
@@ -103,7 +104,6 @@ export const MeasurementProviderTestInputSchema = z.union([
 ])
 
 export type MeasurementProviderTestInput = z.infer<typeof MeasurementProviderTestInputSchema>
-export type ProviderTestMode = MeasurementProviderTestInput['mode']
 export type ProviderTestStatus = 'requested' | 'accepted' | 'failed'
 
 export interface ProviderTestRunSummary {

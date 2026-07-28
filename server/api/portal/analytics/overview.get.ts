@@ -7,7 +7,7 @@
  */
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
-import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, ANALYTICS_PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import {
   PORTAL_LEAD_STATUS_SELECT,
   PORTAL_VISIBLE_LEADS_EXISTS,
@@ -268,7 +268,7 @@ export default defineEventHandler(async (event) => {
       const leadMetrics = leadsByPlatform.get(r.platform) || { leads: 0, leadWon: 0, leadContactedAt: 0, leadUncontacted: 0 }
       return {
         platform: r.platform,
-        displayName: PLATFORM_LABELS[r.platform] || r.platform,
+        displayName: ANALYTICS_PLATFORM_LABELS[r.platform] || r.platform,
         color: PLATFORM_COLORS[r.platform] || '#888888',
         spend,
         impressions,

@@ -6,9 +6,9 @@ import {
 import {
   ConversionDestinationCapabilityStateSchema,
   ConversionDestinationReadModelSchema,
-  ConversionEventMappingStateSchema,
-  PLATFORM_MODE_PREFIX
+  ConversionEventMappingStateSchema
 } from '~~/server/utils/measurement/contracts'
+import { PLATFORM_MODE_PREFIX } from '~~/shared/utils/measurementPlatform'
 import type {
   CreateConversionDestinationConfiguration,
   ConversionDestinationCapabilityState,
