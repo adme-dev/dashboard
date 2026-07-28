@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { formatDistanceToNow } from 'date-fns'
+import { runTaskWhen } from '~/utils/asyncControl'
+import { canViewPortalCrmAudit } from '~/utils/permissions'
 
 interface AuditEntry {
   id: string
@@ -18,21 +20,36 @@ const props = defineProps<{
 }>()
 
 const base = inject<string>('crmApiBase', '/api/crm')
+const { user } = usePortalAuth()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 const query = computed(() => ({ client_id: props.clientId, entity_type: props.entityType, entity_id: props.entityId }))
 const data = ref<{ items: AuditEntry[] }>({ items: [] })
 const pending = ref(false)
+const error = ref(false)
+const isPortalAudit = base.startsWith('/api/client-portal/crm')
+const canRequestAudit = computed(() =>
+  !isPortalAudit || canViewPortalCrmAudit(user.value),
+)
 
 async function refreshAudit() {
   pending.value = true
-  try {
-    data.value = await apiFetch<{ items: AuditEntry[] }>(`${base}/audit`, { query: query.value })
-  } finally {
-    pending.value = false
+  error.value = false
+
+  const result = await runTaskWhen(
+    canRequestAudit.value,
+    () => apiFetch<{ items: AuditEntry[] }>(`${base}/audit`, { query: query.value }),
+  )
+
+  if (result.status === 'fulfilled') {
+    data.value = result.value
+  } else if (result.status === 'rejected') {
+    error.value = true
   }
+
+  pending.value = false
 }
 
-watch(query, () => {
+watch([query, canRequestAudit], () => {
   refreshAudit()
 }, { immediate: true })
 const items = computed(() => data.value?.items ?? [])
@@ -50,7 +67,13 @@ function rel(at: string) {
 <template>
   <div class="space-y-3">
     <h3 class="text-sm font-medium text-muted">History</h3>
-    <div v-if="pending" class="text-xs text-muted">Loading…</div>
+    <p v-if="!canRequestAudit" class="text-xs text-muted">
+      History is available to portal CRM administrators.
+    </p>
+    <div v-else-if="pending" class="text-xs text-muted">Loading…</div>
+    <p v-else-if="error" class="text-xs text-muted">
+      History is temporarily unavailable.
+    </p>
     <ul v-else-if="items.length" class="space-y-2">
       <li v-for="e in items" :key="e.id" class="flex items-start gap-2.5">
         <UIcon name="i-lucide-history" class="size-4 mt-0.5 text-muted shrink-0" />

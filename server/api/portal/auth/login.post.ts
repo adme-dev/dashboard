@@ -76,6 +76,9 @@ export default defineEventHandler(async (event) => {
         cu.can_invite_users,
         cu.can_view_analytics,
         cu.can_submit_requests,
+        cu.can_view_crm,
+        cu.can_edit_crm,
+        cu.can_admin_crm,
         cu.notification_preferences,
         cu.timezone,
         c.id as client_id,
@@ -198,7 +201,10 @@ export default defineEventHandler(async (event) => {
           canUploadFiles: user.can_upload_files,
           canInviteUsers: user.can_invite_users,
           canViewAnalytics: user.can_view_analytics ?? true,
-          canSubmitRequests: user.can_submit_requests ?? true
+          canSubmitRequests: user.can_submit_requests ?? true,
+          canViewCrm: Boolean(user.can_view_crm),
+          canEditCrm: Boolean(user.can_edit_crm),
+          canAdminCrm: Boolean(user.can_admin_crm)
         },
         notificationPreferences: user.notification_preferences,
         timezone: user.timezone

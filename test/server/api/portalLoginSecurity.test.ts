@@ -68,6 +68,9 @@ function activeUser(passwordHash: string) {
     can_invite_users: true,
     can_view_analytics: true,
     can_submit_requests: true,
+    can_view_crm: true,
+    can_edit_crm: true,
+    can_admin_crm: true,
     notification_preferences: {},
     timezone: 'Australia/Melbourne'
   }
@@ -118,6 +121,23 @@ describe('portal login security boundary', () => {
       unreadNotifications: 3,
       activeProjects: 4,
       openRequests: 5
+    })
+  })
+
+  it('returns CRM permissions in the login bootstrap user', async () => {
+    const passwordHash = await bcrypt.hash('correct horse', 4)
+    mockQueryRows.mockResolvedValueOnce([activeUser(passwordHash)])
+    mockQueryOne.mockResolvedValueOnce({})
+
+    const result = await loginHandler({
+      body: { email: 'jane@example.com', password: 'correct horse' },
+      headers: { 'x-forwarded-for': '203.0.113.10' }
+    })
+
+    expect(result.user.permissions).toMatchObject({
+      canViewCrm: true,
+      canEditCrm: true,
+      canAdminCrm: true
     })
   })
 
