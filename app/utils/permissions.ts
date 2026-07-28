@@ -20,6 +20,32 @@ export function isReadOnlyRole(role: string): boolean {
   return role === 'viewer' || role === 'guest'
 }
 
+type PortalAuthorizationSubject = {
+  isPrimaryContact?: boolean
+  permissions?: {
+    canInviteUsers?: boolean
+    canAdminCrm?: boolean
+  }
+}
+
+export function canViewPortalTeamAccess(
+  subject: PortalAuthorizationSubject | null | undefined,
+): boolean {
+  return Boolean(
+    subject?.isPrimaryContact
+    || subject?.permissions?.canInviteUsers,
+  )
+}
+
+export function canViewPortalCrmAudit(
+  subject: PortalAuthorizationSubject | null | undefined,
+): boolean {
+  return Boolean(
+    subject?.isPrimaryContact
+    || subject?.permissions?.canAdminCrm,
+  )
+}
+
 // Permission groups for dynamic role resolution
 export const PERMISSION_GROUPS = [
   'ADMIN', 'HR_ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',

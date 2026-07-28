@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createSingleFlight, runTasksSequentially } from '../../app/utils/asyncControl'
+import {
+  createSingleFlight,
+  runTasksSequentially,
+  runTaskWhen,
+} from '../../app/utils/asyncControl'
 
 describe('async control', () => {
   it('runs tasks one at a time, preserves order, and continues after a rejection', async () => {
@@ -53,5 +57,23 @@ describe('async control', () => {
     await expect(first).resolves.toBe(1)
     await expect(run()).resolves.toBe(2)
     expect(task).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not start a task when its authorization gate is closed', async () => {
+    const task = vi.fn().mockResolvedValue('private data')
+
+    const result = await runTaskWhen(false, task)
+
+    expect(result).toEqual({ status: 'skipped' })
+    expect(task).not.toHaveBeenCalled()
+  })
+
+  it('captures an authorized task rejection instead of leaking it', async () => {
+    const failure = new Error('Forbidden')
+    const task = vi.fn().mockRejectedValue(failure)
+
+    const result = await runTaskWhen(true, task)
+
+    expect(result).toEqual({ status: 'rejected', reason: failure })
   })
 })

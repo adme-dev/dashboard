@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { runTaskWhen } from '~/utils/asyncControl'
+import { canViewPortalTeamAccess } from '~/utils/permissions'
+
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { user, fetchUser } = usePortalAuth()
@@ -33,22 +36,33 @@ interface PortalAccessUser {
 }
 
 const accessData = ref<{ users: PortalAccessUser[] } | null>(null)
-const accessPending = ref(true)
+const accessPending = ref(false)
 const accessError = ref<unknown>(null)
+const canViewTeamAccess = computed(() => canViewPortalTeamAccess(user.value))
 
 async function refreshAccessUsers() {
   accessPending.value = true
   accessError.value = null
 
-  try {
-    accessData.value = await apiFetch<{ users: PortalAccessUser[] }>('/api/portal/users')
-  } catch (error) {
-    accessError.value = error
-    throw error
-  } finally {
-    accessPending.value = false
+  const result = await runTaskWhen(
+    canViewTeamAccess.value,
+    () => apiFetch<{ users: PortalAccessUser[] }>('/api/portal/users'),
+  )
+
+  if (result.status === 'fulfilled') {
+    accessData.value = result.value
+  } else if (result.status === 'rejected') {
+    accessError.value = result.reason
   }
+
+  accessPending.value = false
 }
+
+watch(canViewTeamAccess, (allowed, wasAllowed) => {
+  if (allowed && !wasAllowed && !accessData.value && !accessPending.value) {
+    refreshAccessUsers()
+  }
+})
 
 const form = reactive({
   name: user.value?.name || '',
@@ -275,7 +289,7 @@ await refreshAccessUsers()
       </form>
     </UCard>
 
-    <UCard>
+    <UCard v-if="canViewTeamAccess">
       <template #header>
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-shield-check" class="text-primary" />
@@ -408,7 +422,7 @@ await refreshAccessUsers()
       </div>
     </UCard>
 
-    <UCard>
+    <UCard v-if="canViewTeamAccess">
       <template #header>
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -430,7 +444,17 @@ await refreshAccessUsers()
         </div>
       </template>
 
-      <div v-if="accessPending" class="space-y-3">
+      <UAlert
+        v-if="accessError"
+        color="error"
+        variant="soft"
+        icon="i-lucide-circle-alert"
+        title="Team access is temporarily unavailable"
+        description="Please try loading the portal users again."
+        :actions="[{ label: 'Retry', onClick: refreshAccessUsers }]"
+      />
+
+      <div v-else-if="accessPending" class="space-y-3">
         <div v-for="i in 3" :key="i" class="h-20 rounded-lg bg-elevated animate-pulse" />
       </div>
 
