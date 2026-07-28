@@ -8,7 +8,7 @@
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { computeMetrics, toNum, toDateOnly, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, toDateOnly, ANALYTICS_PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import { buildCampaignDeepLink } from '~~/server/utils/platformDeepLinks'
 import {
   PORTAL_LEAD_STATUS_SELECT,
@@ -268,7 +268,7 @@ export default defineEventHandler(async (event) => {
         campaignId: r.campaign_id,
         campaignName: r.campaign_name,
         platform: r.platform,
-        platformDisplayName: PLATFORM_LABELS[r.platform] || r.platform,
+        platformDisplayName: ANALYTICS_PLATFORM_LABELS[r.platform] || r.platform,
         platformColor: PLATFORM_COLORS[r.platform] || '#888888',
         campaignType: r.campaign_type,
         campaignStatus: r.campaign_status,

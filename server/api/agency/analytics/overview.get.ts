@@ -6,7 +6,7 @@
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition, dailySpendWindow } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, ANALYTICS_PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition, dailySpendWindow } from '~~/server/utils/analyticsMetrics'
 import { previousWindow } from '~~/server/utils/ga4Funnel'
 import { cachedAnalytics, analyticsCacheKey } from '~~/server/utils/analyticsCache'
 import {
@@ -242,7 +242,7 @@ export default defineEventHandler(async (event) => {
         const metrics = computeMetrics(spend, impressions, clicks, conversions, revenue)
         return {
           platform: r.platform,
-          displayName: PLATFORM_LABELS[r.platform] || r.platform,
+          displayName: ANALYTICS_PLATFORM_LABELS[r.platform] || r.platform,
           color: PLATFORM_COLORS[r.platform] || '#888888',
           spend,
           budget,

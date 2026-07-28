@@ -5,11 +5,14 @@ import {
   type GoogleRefreshCredentialRow
 } from '~~/server/utils/googleCredentialProfiles'
 import { classifyMeasurementEventIdentity } from '~~/shared/utils/measurementEventIdentity'
-import { TEST_PLATFORM, type MeasurementPlatform } from '~~/shared/utils/measurementPlatform'
+import {
+  TEST_PLATFORM,
+  type MeasurementPlatform,
+  type ProviderTestMode
+} from '~~/shared/utils/measurementPlatform'
 import type {
   MeasurementProviderTestInput,
   MeasurementProviderTestRepository,
-  ProviderTestMode,
   ProviderTestRunSummary,
   ReserveProviderTestResult
 } from '~~/server/utils/measurement/providerTestService'

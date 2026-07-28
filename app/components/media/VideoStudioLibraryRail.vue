@@ -60,7 +60,7 @@ const SOURCE_FILTERS = [
   { label: 'Uploads', value: 'upload', icon: 'i-lucide-upload' },
   { label: 'AI', value: 'generation', icon: 'i-lucide-sparkles' },
   { label: 'Renders', value: 'render', icon: 'i-lucide-clapperboard' },
-  { label: 'Audio Studio', value: 'audio', icon: 'i-lucide-waveform' },
+  { label: 'Audio Studio', value: 'audio', icon: 'i-lucide-audio-waveform' },
   { label: 'Banner Studio', value: 'banner', icon: 'i-lucide-panels-top-left' },
   { label: 'Derivatives', value: 'derivative', icon: 'i-lucide-layers' },
 ] satisfies Array<{ label: string, value: SourceFilter, icon: string }>

@@ -113,7 +113,7 @@
       </template>
 
       <div v-if="fetchingBoards" class="flex justify-center py-8">
-        <UIcon name="i-lucide-arrow-path" class="w-6 h-6 animate-spin text-gray-400" />
+        <UIcon name="i-lucide-rotate-cw" class="w-6 h-6 animate-spin text-gray-400" />
       </div>
 
       <div v-else-if="mondayBoards.length === 0" class="text-center py-8 text-gray-500">

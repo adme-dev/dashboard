@@ -104,7 +104,7 @@ function seenAtLabel(location: OfficePresenceSummary['locations'][number]) {
         @click="open = !open"
       >
         <span class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.06] ring-1 ring-white/[0.08]">
-          <UIcon name="i-lucide-broadcast" class="size-3.5 text-emerald-300" />
+          <UIcon name="i-lucide-radio-tower" class="size-3.5 text-emerald-300" />
         </span>
         <span class="min-w-0">
           <span class="block text-sm font-semibold">Live view</span>

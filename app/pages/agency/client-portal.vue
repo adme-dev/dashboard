@@ -2551,7 +2551,7 @@ const enterpriseRollout = [
                 <p class="text-sm text-[var(--ui-text-muted)]">
                   Pending invites
                 </p>
-                <UIcon name="i-lucide-mail-clock" class="size-4 text-[var(--ui-text-muted)]" />
+                <UIcon name="i-lucide-mail-question" class="size-4 text-[var(--ui-text-muted)]" />
               </div>
               <p class="text-xl font-bold mt-1">
                 {{ portalUserSummary.pending }}

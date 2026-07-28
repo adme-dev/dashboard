@@ -8,7 +8,7 @@
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { computeMetrics, toNum, PLATFORM_LABELS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, ANALYTICS_PLATFORM_LABELS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import {
   PORTAL_LEAD_STATUS_SELECT,
   leadSourceForPlatformSql
@@ -151,7 +151,7 @@ export default defineEventHandler(async (event) => {
       const m = computeMetrics(spend, impressions, clicks, conversions, revenue)
 
       return [
-        PLATFORM_LABELS[r.platform] || r.platform,
+        ANALYTICS_PLATFORM_LABELS[r.platform] || r.platform,
         escapeCsv(r.campaign_name || ''),
         escapeCsv(r.client_name || 'Unknown'),
         spend.toFixed(2),
@@ -212,7 +212,7 @@ export default defineEventHandler(async (event) => {
             const cpc = clicks > 0 ? spend / clicks : null
 
             sections.push([
-              PLATFORM_LABELS[campaign?.platform || ''] || campaign?.platform || '',
+              ANALYTICS_PLATFORM_LABELS[campaign?.platform || ''] || campaign?.platform || '',
               escapeCsv(campaign?.name || ''),
               b.dimension_type,
               escapeCsv(b.dimension_value),

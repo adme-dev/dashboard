@@ -94,7 +94,7 @@ export function computePacing(
 }
 
 /** Consistent platform display names */
-export const PLATFORM_LABELS: Record<string, string> = {
+export const ANALYTICS_PLATFORM_LABELS: Record<string, string> = {
   meta: 'Meta Ads',
   google_ads: 'Google Ads',
   tiktok: 'TikTok Ads',
