@@ -187,6 +187,7 @@ export default defineEventHandler(async (event) => {
         role: user.role,
         avatarUrl: user.avatar_url,
         isPrimaryContact: user.is_primary_contact,
+        agencyAccess: false,
         clientId: user.client_id,
         clientName: user.client_name,
         clientLogo: user.client_logo,

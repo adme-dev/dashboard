@@ -76,6 +76,7 @@ export default defineEventHandler(async (event) => {
         avatarUrl: clientUser.avatarUrl,
         role: clientUser.role,
         isPrimaryContact: clientUser.isPrimaryContact,
+        agencyAccess: clientUser.agencyAccess,
         notificationPreferences: clientUser.notificationPreferences,
         timezone: clientUser.timezone,
         permissions: clientUser.permissions

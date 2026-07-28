@@ -64,9 +64,21 @@ describe('portal client authentication', () => {
     const digest = await digestPortalSessionToken('portal-session-token')
 
     expect(user.id).toBe('client-user-1')
+    expect(user.agencyAccess).toBe(false)
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('cs.token_hash = $1')
     expect(mockQueryOne.mock.calls[0]?.[1]).toEqual([digest])
     expect(mockQueryOne).toHaveBeenCalledOnce()
+  })
+
+  it('identifies reserved agency proxy identities as agency access', async () => {
+    mockQueryOne.mockResolvedValueOnce({
+      ...activeUserRow,
+      email: 'agency-user-1-client-1@portal-access.local'
+    })
+
+    const user = await requireClientAuth({ context: {} } as never)
+
+    expect(user.agencyAccess).toBe(true)
   })
 
   it('rejects an unknown or legacy session after one indexed lookup', async () => {

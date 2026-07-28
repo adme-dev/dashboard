@@ -27,6 +27,14 @@ const cleanOptional = (value: unknown, maxLength: number) => {
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
+
+  if (clientUser.agencyAccess) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Agency preview profiles are read-only'
+    })
+  }
+
   const body = await readBody<UpdatePortalProfileBody>(event)
 
   const name = cleanOptional(body.name, MAX_NAME_LENGTH)
