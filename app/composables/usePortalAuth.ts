@@ -16,6 +16,7 @@ interface PortalAuthUserResponse {
   avatarUrl?: string | null
   role: string
   isPrimaryContact: boolean
+  agencyAccess: boolean
   permissions: ClientPermissions
   notificationPreferences?: Record<string, unknown>
   timezone?: string
@@ -88,6 +89,7 @@ export function usePortalAuth() {
         avatarUrl: data.user.avatarUrl,
         role: data.user.role,
         isPrimaryContact: data.user.isPrimaryContact,
+        agencyAccess: data.user.agencyAccess,
         clientId: data.client.id,
         clientName: data.client.name,
         clientLogo: data.client.logo,

@@ -16,6 +16,7 @@ export interface ServerClientUser {
   avatarUrl: string | null
   role: string
   isPrimaryContact: boolean
+  agencyAccess: boolean
   canManageLeadOutcomes: boolean
   clientId: string
   clientName: string
@@ -113,6 +114,7 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
     avatarUrl: user.avatar_url,
     role: user.role,
     isPrimaryContact: user.is_primary_contact,
+    agencyAccess: user.email.toLowerCase().endsWith('@portal-access.local'),
     canManageLeadOutcomes: user.can_manage_lead_outcomes ?? false,
     clientId: user.client_id,
     clientName: user.client_name,

@@ -37,7 +37,8 @@ describe('portal profile API', () => {
     vi.clearAllMocks()
     mockRequireClientAuth.mockResolvedValue({
       id: 'client-user-1',
-      clientId: 'client-1'
+      clientId: 'client-1',
+      agencyAccess: false
     })
     mockQueryOne.mockResolvedValue({
       id: 'client-user-1',
@@ -82,6 +83,25 @@ describe('portal profile API', () => {
     await expect(profileHandler({ body: { name: ' ' } })).rejects.toMatchObject({
       statusCode: 400,
       statusMessage: 'Name is required'
+    })
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('rejects profile changes from agency preview sessions', async () => {
+    mockRequireClientAuth.mockResolvedValueOnce({
+      id: 'agency-proxy-user-1',
+      clientId: 'client-1',
+      agencyAccess: true
+    })
+
+    await expect(profileHandler({
+      body: {
+        name: 'Agency User',
+        timezone: 'Australia/Melbourne'
+      }
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'Agency preview profiles are read-only'
     })
     expect(mockQueryOne).not.toHaveBeenCalled()
   })

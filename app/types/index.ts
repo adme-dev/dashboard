@@ -1380,6 +1380,7 @@ export interface ClientUser {
   avatarUrl?: string
   role: 'admin' | 'manager' | 'viewer' | 'guest'
   isPrimaryContact: boolean
+  agencyAccess: boolean
   clientId: string
   clientName: string
   clientLogo?: string

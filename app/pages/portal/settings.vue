@@ -244,50 +244,159 @@ await refreshAccessUsers()
       </UBadge>
     </div>
 
-    <!-- Profile -->
-    <UCard>
-      <template #header>
-        <h2 class="font-semibold">
-          Profile
-        </h2>
-      </template>
+    <UAlert
+      v-if="user?.agencyAccess"
+      color="primary"
+      variant="soft"
+      icon="i-lucide-eye"
+      title="Agency preview"
+      :description="`You are viewing ${user.clientName} with the portal access currently granted to agency staff. Profile editing is unavailable while previewing a client portal.`"
+    />
 
-      <form class="space-y-4" @submit.prevent="saveProfile">
-        <div class="space-y-2">
-          <label class="text-sm font-medium">Name</label>
-          <UInput v-model="form.name" />
-        </div>
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+      <!-- Profile -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="font-semibold">
+              {{ user?.agencyAccess ? 'Preview identity' : 'Profile' }}
+            </h2>
+            <UBadge v-if="user?.agencyAccess" color="neutral" variant="subtle">
+              Read-only preview
+            </UBadge>
+          </div>
+        </template>
 
-        <div class="space-y-2">
-          <label class="text-sm font-medium">Email</label>
-          <UInput :model-value="user?.email" disabled />
-          <p class="text-xs text-muted">
-            Contact support to change your email.
+        <!-- Agency preview identity -->
+        <div v-if="user?.agencyAccess" class="space-y-5">
+          <div class="flex items-center gap-4">
+            <UAvatar :src="user.avatarUrl" :alt="user.name" size="lg" />
+            <div class="min-w-0">
+              <p class="font-semibold truncate">
+                {{ user.name }}
+              </p>
+              <p class="text-sm text-muted">
+                Agency team member
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div class="rounded-lg border border-default bg-default p-4">
+              <p class="text-xs font-medium uppercase tracking-wide text-muted">
+                Viewing
+              </p>
+              <p class="mt-1 text-sm font-medium">
+                {{ user.clientName }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <p class="text-xs font-medium uppercase tracking-wide text-muted">
+                Session
+              </p>
+              <p class="mt-1 text-sm font-medium">
+                Agency-managed access
+              </p>
+            </div>
+          </div>
+
+          <p class="text-sm text-muted">
+            This temporary identity mirrors agency portal permissions and cannot be edited.
           </p>
         </div>
 
-        <div class="space-y-2">
-          <label class="text-sm font-medium">Title</label>
-          <UInput v-model="form.title" placeholder="e.g. Marketing Manager" />
-        </div>
+        <!-- Client profile form -->
+        <form v-else class="space-y-5" @submit.prevent="saveProfile">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <UFormField label="Name" required>
+              <UInput v-model="form.name" class="w-full" autocomplete="name" />
+            </UFormField>
 
-        <div class="space-y-2">
-          <label class="text-sm font-medium">Phone</label>
-          <UInput v-model="form.phone" type="tel" placeholder="+61 400 000 000" />
-        </div>
+            <UFormField label="Email" help="Contact support to change your email.">
+              <UInput :model-value="user?.email" class="w-full" disabled />
+            </UFormField>
 
-        <div class="space-y-2">
-          <label class="text-sm font-medium">Timezone</label>
-          <USelect v-model="form.timezone" :items="timezoneOptions" />
-        </div>
+            <UFormField label="Title">
+              <UInput
+                v-model="form.title"
+                class="w-full"
+                autocomplete="organization-title"
+                placeholder="e.g. Marketing Manager"
+              />
+            </UFormField>
 
-        <div class="flex justify-end">
-          <UButton type="submit" :loading="saving">
-            Save Changes
-          </UButton>
+            <UFormField label="Phone">
+              <UInput
+                v-model="form.phone"
+                class="w-full"
+                type="tel"
+                autocomplete="tel"
+                placeholder="+61 400 000 000"
+              />
+            </UFormField>
+
+            <UFormField label="Timezone">
+              <USelect v-model="form.timezone" class="w-full" :items="timezoneOptions" />
+            </UFormField>
+          </div>
+
+          <div class="flex justify-end border-t border-default pt-4">
+            <UButton type="submit" :loading="saving">
+              Save Changes
+            </UButton>
+          </div>
+        </form>
+      </UCard>
+
+      <!-- Account Info -->
+      <UCard>
+        <template #header>
+          <h2 class="font-semibold">
+            Account
+          </h2>
+        </template>
+
+        <div class="divide-y divide-default">
+          <div class="flex items-start justify-between gap-4 pb-4">
+            <div>
+              <p class="text-sm font-medium">
+                Access type
+              </p>
+              <p class="mt-1 text-sm text-muted">
+                {{ user?.agencyAccess ? 'Agency preview' : 'Client portal user' }}
+              </p>
+            </div>
+            <UBadge variant="subtle" :color="user?.agencyAccess ? 'primary' : 'neutral'">
+              {{ user?.agencyAccess ? 'Preview' : user?.role }}
+            </UBadge>
+          </div>
+
+          <div class="py-4">
+            <p class="text-sm font-medium">
+              Organization
+            </p>
+            <p class="mt-1 text-sm text-muted">
+              {{ user?.clientName }}
+            </p>
+          </div>
+
+          <div class="pt-4">
+            <p class="text-sm font-medium">
+              Timezone
+            </p>
+            <p class="mt-1 text-sm text-muted">
+              {{ user?.timezone || 'UTC' }}
+            </p>
+          </div>
+
+          <div v-if="user?.isPrimaryContact && !user?.agencyAccess" class="pt-4">
+            <UBadge color="primary" variant="subtle" size="xs">
+              Primary Contact
+            </UBadge>
+          </div>
         </div>
-      </form>
-    </UCard>
+      </UCard>
+    </div>
 
     <UCard v-if="canViewTeamAccess">
       <template #header>
@@ -529,46 +638,5 @@ await refreshAccessUsers()
       </div>
     </UCard>
 
-    <!-- Account Info -->
-    <UCard>
-      <template #header>
-        <h2 class="font-semibold">
-          Account
-        </h2>
-      </template>
-
-      <div class="space-y-3">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium">
-              Role
-            </p>
-            <p class="text-sm text-muted capitalize">
-              {{ user?.role }}
-            </p>
-          </div>
-          <UBadge variant="subtle" color="neutral">
-            {{ user?.role }}
-          </UBadge>
-        </div>
-
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium">
-              Organization
-            </p>
-            <p class="text-sm text-muted">
-              {{ user?.clientName }}
-            </p>
-          </div>
-        </div>
-
-        <div v-if="user?.isPrimaryContact" class="flex items-center gap-2">
-          <UBadge color="primary" variant="subtle" size="xs">
-            Primary Contact
-          </UBadge>
-        </div>
-      </div>
-    </UCard>
   </div>
 </template>

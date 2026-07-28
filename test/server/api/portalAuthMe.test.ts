@@ -37,6 +37,7 @@ describe('portal auth me API', () => {
       avatarUrl: null,
       role: 'client_admin',
       isPrimaryContact: true,
+      agencyAccess: true,
       clientId: 'client-1',
       clientName: 'Client Co',
       clientLogo: null,
@@ -84,6 +85,7 @@ describe('portal auth me API', () => {
       isRead: false,
       createdAt: '2026-07-27T08:00:00.000Z'
     }])
+    expect(result.user.agencyAccess).toBe(true)
     expect(mockQueryOne).toHaveBeenCalledTimes(1)
     expect(mockQueryOne.mock.calls[0][0]).toContain('FROM client_requests')
     expect(mockQueryOne.mock.calls[0][0]).toContain('FROM client_notifications')
