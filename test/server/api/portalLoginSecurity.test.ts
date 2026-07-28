@@ -139,6 +139,24 @@ describe('portal login security boundary', () => {
       canEditCrm: true,
       canAdminCrm: true
     })
+    expect(result.user.agencyAccess).toBe(false)
+  })
+
+  it('classifies a reserved proxy identity as agency access in the login bootstrap', async () => {
+    const passwordHash = await bcrypt.hash('correct horse', 4)
+    const proxyEmail = 'agency-user-1-client-1@portal-access.local'
+    mockQueryRows.mockResolvedValueOnce([{
+      ...activeUser(passwordHash),
+      email: proxyEmail
+    }])
+    mockQueryOne.mockResolvedValueOnce({})
+
+    const result = await loginHandler({
+      body: { email: proxyEmail, password: 'correct horse' },
+      headers: { 'x-forwarded-for': '203.0.113.10' }
+    })
+
+    expect(result.user.agencyAccess).toBe(true)
   })
 
   it('returns the same generic credential error for missing and inactive accounts', async () => {
