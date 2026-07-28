@@ -70,6 +70,25 @@ describe('portal response security middleware', () => {
     )
   })
 
+  it('permits the Cloudflare Web Analytics beacon on portal documents', () => {
+    const event = { path: '/portal' }
+    portalSecurityMiddleware(event as never)
+
+    const csp = vi.mocked(testGlobal.setHeader).mock.calls
+      .find(([, name]) => name === 'Content-Security-Policy')?.[2]
+    const scriptSources = csp
+      ?.split('; ')
+      .find(directive => directive.startsWith('script-src '))
+      ?.split(' ')
+      .slice(1)
+
+    expect(scriptSources).toEqual([
+      `'self'`,
+      `'unsafe-inline'`,
+      'https://static.cloudflareinsights.com'
+    ])
+  })
+
   it('does not apply portal cache policy to unrelated API routes', () => {
     portalSecurityMiddleware({ path: '/api/projects' } as never)
     expect(testGlobal.setHeader).not.toHaveBeenCalled()
