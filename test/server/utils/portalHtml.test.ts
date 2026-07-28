@@ -12,4 +12,19 @@ describe('portal HTML resource hints', () => {
       '<link rel="stylesheet" href="/_nuxt/entry.css">'
     ])
   })
+
+  it('retains critical tags when Nuxt groups them with prefetch hints', () => {
+    expect(filterPortalResourceHints([
+      [
+        '<link rel="stylesheet" href="/_nuxt/entry.css">',
+        '<script type="module" src="/_nuxt/entry.js"></script>',
+        '<link rel="prefetch" href="/_nuxt/projects.js" as="script">'
+      ].join('')
+    ])).toEqual([
+      [
+        '<link rel="stylesheet" href="/_nuxt/entry.css">',
+        '<script type="module" src="/_nuxt/entry.js"></script>'
+      ].join('')
+    ])
+  })
 })
