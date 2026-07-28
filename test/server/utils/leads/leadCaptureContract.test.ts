@@ -74,6 +74,46 @@ describe('lead capture contract', () => {
     })
   })
 
+  it('keeps CRM-owned contact fields alongside the provider browser context', () => {
+    const normalized = normalizeDealerLeadWebhookBody({
+      key: 'server-only-secret',
+      schema_version: 1,
+      provider: 'dealer_studio',
+      source: 'webhook',
+      customer: {
+        full_name: 'Example Customer',
+        email: 'customer@example.test'
+      },
+      fields: {
+        zeroflow_browser_event_id: 'provider-submission-1',
+        zeroflow_anon_id: 'anon-1',
+        zeroflow_session_id: 'session-1',
+        zeroflow_landing_page: 'https://dealer.example/cars/example?utm_source=google&gclid=click-1',
+        zeroflow_first_utm_source: 'google',
+        zeroflow_last_utm_source: 'google',
+        zeroflow_last_gclid: 'click-1'
+      },
+      consent_decision: 'granted',
+      is_test: false,
+      promote_to_crm: true
+    })
+
+    expect(normalized.fieldData).toMatchObject({
+      full_name: 'Example Customer',
+      email: 'customer@example.test',
+      zeroflow_browser_event_id: 'provider-submission-1'
+    })
+    expect(normalized.attribution).toMatchObject({
+      browserEventId: 'provider-submission-1',
+      anonId: 'anon-1',
+      sessionId: 'session-1',
+      first_utm_source: 'google',
+      last_utm_source: 'google',
+      utm_source: 'google',
+      gclid: 'click-1'
+    })
+  })
+
   it('keeps Google native lead-form identifiers without requiring a browser ID', () => {
     const normalized = normalizeGooglePayload({
       lead_id: 'google-lead-1',

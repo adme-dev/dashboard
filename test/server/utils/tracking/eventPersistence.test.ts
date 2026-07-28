@@ -90,6 +90,89 @@ describe('tracking event persistence', () => {
     expect(appendOutbox).not.toHaveBeenCalled()
   })
 
+  it('reconciles a previously accepted CRM lead when its eligible form event persists later', async () => {
+    const db = {
+      query: vi.fn(async (sql: string) => (
+        sql.includes('INSERT INTO tracking_events') ? { rows: [{ event_id: 'event-1' }] } : { rows: [] }
+      ))
+    }
+    const appendBrowserConfirmation = vi.fn(async () => true)
+    const persistence = createTrackingEventPersistence({
+      transaction: async callback => callback(db),
+      appendOutbox: vi.fn().mockResolvedValue({ status: 'created' }),
+      appendBrowserConfirmation,
+      onPromotionError: vi.fn()
+    })
+
+    await persistence.persist({
+      rows: [trackingRow({
+        event_id: 'provider-submission-1',
+        event_name: 'form_submit',
+        event_data: { lead_eligible: true, capture_source: 'explicit_provider_bridge' }
+      })],
+      marketingConsent: 'granted',
+      receivedAt: '2026-07-28T08:00:01.000Z'
+    })
+
+    expect(appendBrowserConfirmation).toHaveBeenCalledWith(db, {
+      clientId: 'ddd19405-5cbd-4e2f-8d9c-4f820ed75b32',
+      browserEventId: 'provider-submission-1'
+    })
+  })
+
+  it('does not confirm an ordinary native form submit', async () => {
+    const db = {
+      query: vi.fn(async (sql: string) => (
+        sql.includes('INSERT INTO tracking_events') ? { rows: [{ event_id: 'event-1' }] } : { rows: [] }
+      ))
+    }
+    const appendBrowserConfirmation = vi.fn(async () => true)
+    const persistence = createTrackingEventPersistence({
+      transaction: async callback => callback(db),
+      appendOutbox: vi.fn(),
+      appendBrowserConfirmation,
+      onPromotionError: vi.fn()
+    })
+
+    await persistence.persist({
+      rows: [trackingRow({
+        event_id: 'native-enquiry-1',
+        event_name: 'form_submit',
+        event_data: { lead_eligible: true, form_id: 'native-enquiry' }
+      })],
+      marketingConsent: 'granted',
+      receivedAt: '2026-07-28T08:00:01.000Z'
+    })
+
+    expect(appendBrowserConfirmation).not.toHaveBeenCalled()
+  })
+
+  it('retries browser-lead confirmation when an eligible form event is already stored', async () => {
+    const db = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+    const appendBrowserConfirmation = vi.fn(async () => true)
+    const persistence = createTrackingEventPersistence({
+      transaction: async callback => callback(db),
+      appendOutbox: vi.fn(),
+      appendBrowserConfirmation,
+      onPromotionError: vi.fn()
+    })
+
+    await persistence.persist({
+      rows: [trackingRow({
+        event_id: 'provider-submission-1',
+        event_name: 'form_submit',
+        event_data: { lead_eligible: true, capture_source: 'explicit_provider_bridge' }
+      })],
+      marketingConsent: 'granted',
+      receivedAt: '2026-07-28T08:00:01.000Z'
+    })
+
+    expect(appendBrowserConfirmation).toHaveBeenCalledWith(db, {
+      clientId: 'ddd19405-5cbd-4e2f-8d9c-4f820ed75b32',
+      browserEventId: 'provider-submission-1'
+    })
+  })
+
   it('stores analytics while refusing conversion promotion when marketing consent is denied', async () => {
     const db = {
       query: vi.fn(async (sql: string) => (

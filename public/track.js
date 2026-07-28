@@ -38,6 +38,11 @@
   var _pendingDataLayerPushes = []
   var _scriptOrigin = ''
   var _initialized = false
+  // Reuses provider context fields for the same caller-owned submission ID.
+  // Each retry still re-emits that ID so the server can recover a lost browser
+  // request with its unique (site_id, event_id) deduplication. This is only
+  // same-page state, not visitor identity storage.
+  var _leadContextByEventId = Object.create(null)
 
   // Events that should push to dataLayer (ad platform value)
   var DATALAYER_EVENTS = {
@@ -593,11 +598,18 @@
 
   // Send event to server
   function track(eventName, eventData, options) {
-    var clientId = getClientId()
-    var sessionId = getSessionId()
+    var hasAnonIdOverride = options && Object.prototype.hasOwnProperty.call(options, 'anonId')
+    var hasSessionIdOverride = options && Object.prototype.hasOwnProperty.call(options, 'sessionId')
+    var clientId = hasAnonIdOverride ? options.anonId : getClientId()
+    var sessionId = hasSessionIdOverride ? options.sessionId : getSessionId()
     var touches = getAttributionTouches()
-    var utmParams = touches.last || getUtmParams()
-    var fbCookies = getFbCookies()
+    var hasAttributionOverride = options && Object.prototype.hasOwnProperty.call(options, 'attribution')
+    var hasFbCookiesOverride = options && Object.prototype.hasOwnProperty.call(options, 'fbCookies')
+    var utmParams = hasAttributionOverride ? options.attribution : (touches.last || getUtmParams())
+    var fbCookies = hasFbCookiesOverride ? options.fbCookies : getFbCookies()
+    var hasPageUrlOverride = options && Object.prototype.hasOwnProperty.call(options, 'pageUrl')
+    var hasReferrerOverride = options && Object.prototype.hasOwnProperty.call(options, 'referrer')
+    var hasConsentOverride = options && Object.prototype.hasOwnProperty.call(options, 'consent')
     var gaClientId = getGaClientId()
 
     var payload = {
@@ -605,8 +617,8 @@
       session_id: sessionId,
       event_name: eventName,
       event_data: eventData || {},
-      page_url: window.location.href,
-      referrer: document.referrer || null,
+      page_url: hasPageUrlOverride ? options.pageUrl : window.location.href,
+      referrer: hasReferrerOverride ? options.referrer : (document.referrer || null),
       utm_source: utmParams.utm_source,
       utm_medium: utmParams.utm_medium,
       utm_campaign: utmParams.utm_campaign,
@@ -675,7 +687,7 @@
       // Forward the raw consent cookie value: it lives on the dealer domain, so
       // our cross-origin endpoint can't read it — relaying it here keeps the
       // server-stored consent snapshot accurate. null when not set.
-      consent: getCookie(CONSENT_COOKIE_NAME) || null,
+      consent: hasConsentOverride ? options.consent : (getCookie(CONSENT_COOKIE_NAME) || null),
     }
 
     // POST cross-origin to OUR origin with the write key on the query string.
@@ -1129,26 +1141,197 @@
   }
 
   function attachFormAttribution(form, eventId) {
+    var fields = leadContextFields(eventId)
+    for (var fieldName in fields) {
+      if (Object.prototype.hasOwnProperty.call(fields, fieldName)) {
+        setTrackingFormField(form, fieldName, fields[fieldName])
+      }
+    }
+  }
+
+  // Returns the non-PII fields a provider integration can carry through its
+  // existing server-side CRM webhook. Never read or add visitor form values
+  // here: the dealer CRM remains the system of record for that information.
+  function leadContextFields(eventId, options) {
+    var providerBridge = options && options.providerBridge === true
     var touches = getAttributionTouches()
-    setTrackingFormField(form, 'zeroflow_browser_event_id', eventId)
-    setTrackingFormField(form, 'zeroflow_anon_id', getClientId())
-    setTrackingFormField(form, 'zeroflow_session_id', getSessionId())
-    setTrackingFormField(form, 'zeroflow_landing_page', touches.last.landing_page)
-    setTrackingFormField(form, 'zeroflow_first_referrer', touches.first.referrer)
+    var fields = {}
+
+    function addField(name, value) {
+      if (value) fields[name] = String(value)
+    }
+
+    addField('zeroflow_browser_event_id', eventId)
+    if (!providerBridge) {
+      addField('zeroflow_anon_id', getClientId())
+      addField('zeroflow_session_id', getSessionId())
+      addField('zeroflow_landing_page', safeLeadContextUrl(touches.last.landing_page))
+      addField('zeroflow_first_referrer', safeLeadContextUrl(touches.first.referrer))
+    }
 
     for (var touchIndex = 0; touchIndex < 2; touchIndex++) {
       var touchName = touchIndex === 0 ? 'first' : 'last'
       var touch = touches[touchName]
-      setTrackingFormField(form, 'zeroflow_' + touchName + '_landing_page', touch.landing_page)
-      setTrackingFormField(form, 'zeroflow_' + touchName + '_referrer', touch.referrer)
+      if (!providerBridge) {
+        addField('zeroflow_' + touchName + '_landing_page', safeLeadContextUrl(touch.landing_page))
+        addField('zeroflow_' + touchName + '_referrer', safeLeadContextUrl(touch.referrer))
+      }
       for (var keyIndex = 0; keyIndex < TOUCH_ATTRIBUTION_KEYS.length; keyIndex++) {
         var key = TOUCH_ATTRIBUTION_KEYS[keyIndex]
-        if (touch[key]) {
-          setTrackingFormField(form, 'zeroflow_' + touchName + '_' + key, touch[key])
-          if (touchName === 'last') setTrackingFormField(form, 'zeroflow_' + key, touch[key])
+        var value = providerBridge
+          ? safeProviderAttributionValue(key, touch[key])
+          : touch[key]
+        if (value) {
+          addField('zeroflow_' + touchName + '_' + key, value)
+          if (touchName === 'last') addField('zeroflow_' + key, value)
         }
       }
     }
+
+    return fields
+  }
+
+  // Native form attribution may carry a page URL through a CRM integration.
+  // Keep only the origin/path and known attribution parameters so arbitrary
+  // URL query values, fragments, and credentials never cross that boundary.
+  function safeLeadContextUrl(value) {
+    if (typeof value !== 'string' || !value) return null
+    try {
+      var url = new URL(value, window.location.origin)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+      var parameters = new URLSearchParams()
+      for (var i = 0; i < TOUCH_ATTRIBUTION_KEYS.length; i++) {
+        var key = TOUCH_ATTRIBUTION_KEYS[i]
+        var parameter = url.searchParams.get(key)
+        if (parameter) parameters.set(key, parameter.slice(0, 512))
+      }
+      url.username = ''
+      url.password = ''
+      url.hash = ''
+      url.search = parameters.toString()
+      return url.toString()
+    } catch {
+      return null
+    }
+  }
+
+  // Provider bridges never need a route or referrer to reconcile a lead. URLs
+  // can contain customer IDs, one-time tokens, or other private path data, so
+  // only the public origin is sent with their correlation candidate.
+  function safeProviderContextOrigin(value) {
+    if (typeof value !== 'string' || !value) return null
+    try {
+      var url = new URL(value, window.location.origin)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+      return url.origin + '/'
+    } catch {
+      return null
+    }
+  }
+
+  function safeProviderAttributionValue(key, value) {
+    var minimumLengths = {
+      gclid: 20,
+      gbraid: 12,
+      wbraid: 12,
+      fbclid: 20,
+      msclkid: 16,
+      ttclid: 12,
+      li_fat_id: 12
+    }
+    var minimumLength = minimumLengths[key]
+    // All UTM/campaign labels and unrecognised identifiers are arbitrary
+    // caller-controlled text, so the provider bridge does not forward them.
+    // Recognised platform click IDs must match their opaque token shape.
+    if (!minimumLength || typeof value !== 'string') return null
+    if (value.length < minimumLength || value.length > 128) return null
+    if (!/^[a-z0-9_-]+$/i.test(value)) return null
+    return value
+  }
+
+  function safeProviderAttribution(touch) {
+    var result = {}
+    var source = touch || {}
+    for (var i = 0; i < TOUCH_ATTRIBUTION_KEYS.length; i++) {
+      var key = TOUCH_ATTRIBUTION_KEYS[i]
+      var value = safeProviderAttributionValue(key, source[key])
+      if (value) result[key] = value
+    }
+    return result
+  }
+
+  function safeProviderGeneratedEventId(value) {
+    if (typeof value !== 'string') return null
+    var trimmed = value.trim()
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+      return trimmed
+    }
+    // Fallback format emitted by generateEventId() for browsers without
+    // crypto.randomUUID. Do not accept arbitrary caller-provided identifiers.
+    return /^\d{13}-[a-z0-9]{9}$/i.test(trimmed) ? trimmed : null
+  }
+
+  function providerBridgeEventId(options) {
+    var supplied = options && typeof options.eventId === 'string'
+      ? safeProviderGeneratedEventId(options.eventId)
+      : null
+    return supplied || generateEventId()
+  }
+
+  // Keep the browser bridge's consent gate visible to the server without
+  // copying the cookie itself, which may contain policy URLs or other
+  // caller-controlled metadata. Only the consent decisions are needed there.
+  function providerBridgeConsent(consent) {
+    if (!consent || consent.updatedAt === null || consent.updatedAt === undefined) return null
+    return JSON.stringify({
+      tracking: consent.tracking === true,
+      analytics: consent.analytics === true,
+      marketing: consent.marketing === true,
+      updatedAt: new Date().toISOString()
+    })
+  }
+
+  function recordProviderLeadCandidate(eventId, consent) {
+    track('form_submit', {
+      lead_eligible: true,
+      capture_source: 'explicit_provider_bridge'
+    }, {
+      eventId: eventId,
+      anonId: eventId,
+      sessionId: null,
+      pageUrl: safeProviderContextOrigin(window.location.href),
+      referrer: null,
+      attribution: safeProviderAttribution(getAttributionTouches().last),
+      fbCookies: { fbc: null, fbp: null },
+      consent: providerBridgeConsent(consent)
+    })
+  }
+
+  // Public handoff for JavaScript-managed or third-party provider forms that
+  // do not dispatch a native submit event to the dealer page. The provider
+  // must forward result.fields unchanged to its existing authenticated CRM
+  // webhook; this function deliberately does not receive form PII or secrets.
+  function captureLeadContext(options) {
+    var opts = options || {}
+    var consent = getConsent()
+    if (!WRITE_KEY || !isEventAllowed('form_submit', consent)) return null
+
+    var eventId = providerBridgeEventId(opts)
+    var result = _leadContextByEventId[eventId]
+    if (!result) {
+      result = {
+        browserEventId: eventId,
+        fields: leadContextFields(eventId, { providerBridge: true })
+      }
+      _leadContextByEventId[eventId] = result
+    }
+
+    // Delivery is best-effort and has no acknowledgement. Re-emit the same
+    // event ID for a provider retry; the server's event uniqueness constraint
+    // makes this safe while repairing a lost initial browser request.
+    recordProviderLeadCandidate(eventId, consent)
+
+    return result
   }
 
   function leadIntentField(form, kind) {
@@ -1911,6 +2094,7 @@
     init: init,
     track: track,
     createEventId: generateEventId,
+    captureLeadContext: captureLeadContext,
     destroy: destroy,
     linkSession: linkSession,
     getClientId: getClientId,

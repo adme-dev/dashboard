@@ -96,6 +96,27 @@ describe('first-party lead intake', () => {
     expect(appendOutbox).not.toHaveBeenCalled()
   })
 
+  it('retries browser confirmation when a provider retries an already accepted lead', async () => {
+    const retryBrowserConfirmation = vi.fn(async () => true)
+    const service = createLeadIntakeService({
+      transaction: async callback => callback(db),
+      insertLead: vi.fn(async () => null),
+      appendOutbox: vi.fn() as never,
+      appendBrowserConfirmation: vi.fn(async () => false),
+      retryBrowserConfirmation,
+      completeIntentMatch: vi.fn(),
+      linkIdentity: vi.fn(),
+      captureProductInterest: vi.fn(),
+      recordPersonaEvidence: vi.fn()
+    })
+
+    await expect(service.ingest(input())).resolves.toEqual({ status: 'duplicate' })
+    expect(retryBrowserConfirmation).toHaveBeenCalledWith(db, {
+      clientId: CLIENT_ID,
+      browserEventId: 'browser-event-1'
+    })
+  })
+
   it('derives the CRM match key for a genuine Meta Lead Ads lead', async () => {
     const appendOutbox = vi.fn(async () => ({ status: 'profile_not_found' as const }))
     const service = createLeadIntakeService({
