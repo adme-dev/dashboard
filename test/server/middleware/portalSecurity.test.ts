@@ -70,6 +70,19 @@ describe('portal response security middleware', () => {
     )
   })
 
+  it('permits the Cloudflare Web Analytics beacon on portal documents', () => {
+    const event = { path: '/portal' }
+    portalSecurityMiddleware(event as never)
+
+    expect(testGlobal.setHeader).toHaveBeenCalledWith(
+      event,
+      'Content-Security-Policy',
+      expect.stringContaining(
+        `script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com`
+      )
+    )
+  })
+
   it('does not apply portal cache policy to unrelated API routes', () => {
     portalSecurityMiddleware({ path: '/api/projects' } as never)
     expect(testGlobal.setHeader).not.toHaveBeenCalled()
