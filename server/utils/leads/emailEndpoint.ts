@@ -370,6 +370,7 @@ export async function listEmailEndpointIngestions(
           WHEN 'attempts_exhausted' THEN 'Maximum recovery attempts reached'
           WHEN 'evidence_expired' THEN 'Retained evidence has expired'
           WHEN 'legacy_evidence' THEN 'Pre-sealed evidence requires manual review'
+          WHEN 'canonical_window_elapsed' THEN 'Recovery paused at the evidence safety window'
           WHEN 'canonical_transient' THEN 'Lead creation is temporarily unavailable'
           ELSE NULL
         END AS reason,

@@ -56,6 +56,7 @@ export type EmailRecoveryReason
     | 'attempts_exhausted'
     | 'evidence_expired'
     | 'legacy_evidence'
+    | 'canonical_window_elapsed'
     | 'canonical_transient'
     | 'lease_lost'
 
@@ -88,7 +89,11 @@ interface EmailRecoveryAuditEvent {
 
 export interface EmailRecoveryRepository {
   commitTransition?(input: {
-    kind: 'quarantine' | 'reschedule' | 'clear_terminal' | 'release_terminal'
+    kind:
+      | 'quarantine'
+      | 'reschedule'
+      | 'clear_terminal'
+      | 'release_terminal'
     ingestionId: string
     leaseToken: string
     reason?: EmailRecoveryReason
@@ -96,6 +101,13 @@ export interface EmailRecoveryRepository {
     clearObjectKey?: boolean
     audit: EmailRecoveryAuditEvent
   }): Promise<boolean>
+  releaseCanonicalWindow(input: {
+    ingestionId: string
+    leaseToken: string
+    actorId: string | null
+    actorType: 'cron' | 'team_member'
+    completionAction: 'recovery_completed' | 'manual_replay_completed'
+  }): Promise<'rescheduled' | 'quarantined' | null>
   quarantine(
     ingestionId: string,
     leaseToken: string,
@@ -514,36 +526,19 @@ export async function processEmailRecoveryClaim(
     return { status: result.status }
   }
   if (result.status === 'in_progress') {
-    const auditEvent: EmailRecoveryAuditEvent = {
+    const outcome = await dependencies.repository.releaseCanonicalWindow({
       ingestionId: claim.id,
-      endpointId: claim.endpoint_id,
-      clientId: claim.client_id,
+      leaseToken,
       actorId: dependencies.auditActor?.actorId ?? null,
       actorType: dependencies.auditActor?.actorType ?? 'cron',
-      action: 'recovery_rescheduled',
-      outcome: 'rescheduled',
-      reason: 'evidence_expired'
-    }
-    const updated = dependencies.repository.commitTransition
-      ? await dependencies.repository.commitTransition({
-          kind: 'reschedule',
-          ingestionId: claim.id,
-          leaseToken,
-          delaySeconds: 0,
-          reason: 'evidence_expired',
-          audit: auditEvent
-        })
-      : await dependencies.repository.reschedule(
-          claim.id,
-          leaseToken,
-          0,
-          'evidence_expired'
-        )
-    if (!updated) return { status: 'quarantined', reason: 'lease_lost' }
-    if (!dependencies.repository.commitTransition) {
-      await dependencies.repository.audit(auditEvent)
-    }
-    return { status: 'rescheduled' }
+      completionAction: dependencies.auditActor
+        ? 'manual_replay_completed'
+        : 'recovery_completed'
+    })
+    if (!outcome) return { status: 'quarantined', reason: 'lease_lost' }
+    return outcome === 'quarantined'
+      ? { status: 'quarantined', reason: 'attempts_exhausted' }
+      : { status: 'rescheduled' }
   }
   // Canonical terminalization owns the completion audit and clears the recovery
   // lease for quarantined outcomes. A second release audit would be misleading.
@@ -638,6 +633,52 @@ export async function cleanupTerminalEmailEvidence(input: {
 }
 
 const defaultRepository: EmailRecoveryRepository = {
+  async releaseCanonicalWindow(input) {
+    return transaction(async (db) => {
+      const transitioned = await db.query(`
+        UPDATE lead_email_ingestions
+        SET status = CASE
+              WHEN attempt_count >= 5 THEN 'quarantined'
+              ELSE 'failed'
+            END,
+          error_class = CASE
+              WHEN attempt_count >= 5 THEN 'attempts_exhausted'
+              ELSE 'canonical_window_elapsed'
+            END,
+          terminal_at = CASE WHEN attempt_count >= 5 THEN NOW() ELSE NULL END,
+          next_attempt_at = CASE WHEN attempt_count >= 5 THEN NULL ELSE NOW() END,
+          recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
+        WHERE id = $1 AND recovery_lease_token = $2::uuid
+          AND terminal_at IS NULL
+        RETURNING id, endpoint_id, client_id, status, error_class
+      `, [input.ingestionId, input.leaseToken])
+      const row = transitioned.rows?.[0] as {
+        id: string
+        endpoint_id: string
+        client_id: string
+        status: 'failed' | 'quarantined'
+        error_class: 'canonical_window_elapsed' | 'attempts_exhausted'
+      } | undefined
+      if (!row) return null
+      const exhausted = row.status === 'quarantined'
+      await db.query(`
+        INSERT INTO lead_email_ingestion_audits (
+          ingestion_id, endpoint_id, client_id, actor_id, actor_type,
+          action, outcome, reason
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        row.id,
+        row.endpoint_id,
+        row.client_id,
+        input.actorId,
+        input.actorType,
+        exhausted ? input.completionAction : 'recovery_rescheduled',
+        exhausted ? 'quarantined' : 'rescheduled',
+        row.error_class
+      ])
+      return exhausted ? 'quarantined' as const : 'rescheduled' as const
+    })
+  },
   async commitTransition(input) {
     return transaction(async (db) => {
       let result
@@ -658,8 +699,7 @@ const defaultRepository: EmailRecoveryRepository = {
             next_attempt_at = NOW() + MAKE_INTERVAL(secs => $3::int),
             recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
           WHERE id = $1 AND recovery_lease_token = $2::uuid
-            AND terminal_at IS NULL
-            AND (attempt_count < 5 OR $4 = 'evidence_expired')
+            AND terminal_at IS NULL AND attempt_count < 5
           RETURNING id
         `, [input.ingestionId, input.leaseToken, input.delaySeconds, input.reason])
       } else if (input.kind === 'clear_terminal') {
@@ -730,7 +770,7 @@ const defaultRepository: EmailRecoveryRepository = {
       WHERE id = $1
         AND recovery_lease_token = $2::uuid
         AND terminal_at IS NULL
-        AND (attempt_count < 5 OR $4 = 'evidence_expired')
+        AND attempt_count < 5
       RETURNING id
     `, [ingestionId, leaseToken, delaySeconds, reason])
     return Boolean(row)

@@ -74,6 +74,7 @@ function recoveryHarness(overrides: Record<string, unknown> = {}) {
     delete: vi.fn(async () => {})
   }
   const repository = {
+    releaseCanonicalWindow: vi.fn(async () => 'rescheduled' as const),
     quarantine: vi.fn(async () => true),
     reschedule: vi.fn(async () => true),
     clearTerminalObject: vi.fn(async () => true),
@@ -373,11 +374,11 @@ describe('email recovery processing', () => {
   })
 
   it('atomically releases an owned in-progress claim for immediate terminal reconciliation', async () => {
-    const commitTransition = vi.fn(async () => true)
+    const releaseCanonicalWindow = vi.fn(async () => 'rescheduled' as const)
     const harness = recoveryHarness({
       repository: {
         ...recoveryHarness().repository,
-        commitTransition
+        releaseCanonicalWindow
       }
     })
     harness.acceptEnvelope.mockResolvedValueOnce({ status: 'in_progress' })
@@ -389,27 +390,188 @@ describe('email recovery processing', () => {
       harness.dependencies
     )).resolves.toEqual({ status: 'rescheduled' })
 
-    expect(commitTransition).toHaveBeenCalledWith(expect.objectContaining({
-      kind: 'reschedule',
+    expect(releaseCanonicalWindow).toHaveBeenCalledWith(expect.objectContaining({
       ingestionId: INGESTION_ID,
       leaseToken: LEASE_TOKEN,
-      delaySeconds: 0,
-      reason: 'evidence_expired',
-      audit: expect.objectContaining({
-        action: 'recovery_rescheduled',
-        outcome: 'rescheduled',
-        reason: 'evidence_expired'
-      })
+      actorId: null,
+      actorType: 'cron',
+      completionAction: 'recovery_completed'
     }))
     expect(harness.bucket.delete).not.toHaveBeenCalled()
   })
 
-  it('cannot release an in-progress claim after ownership was lost', async () => {
-    const commitTransition = vi.fn(async () => false)
+  it('terminalizes an exhausted in-progress claim with one completion audit and retains R2', async () => {
+    const releaseCanonicalWindow = vi.fn(async () => 'quarantined' as const)
     const harness = recoveryHarness({
       repository: {
         ...recoveryHarness().repository,
-        commitTransition
+        releaseCanonicalWindow
+      }
+    })
+    harness.acceptEnvelope.mockResolvedValueOnce({ status: 'in_progress' })
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      { ...claimedRow, attempt_count: 4 },
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'quarantined', reason: 'attempts_exhausted' })
+
+    expect(releaseCanonicalWindow).toHaveBeenCalledWith(expect.objectContaining({
+      ingestionId: INGESTION_ID,
+      leaseToken: LEASE_TOKEN,
+      actorId: null,
+      actorType: 'cron',
+      completionAction: 'recovery_completed'
+    }))
+    expect(harness.bucket.delete).not.toHaveBeenCalled()
+  })
+
+  it('uses the manual completion action when a replay exhausts during its canonical window', async () => {
+    const releaseCanonicalWindow = vi.fn(async () => 'quarantined' as const)
+    const harness = recoveryHarness({
+      auditActor: {
+        actorId: '88888888-8888-4888-8888-888888888888',
+        actorType: 'team_member'
+      },
+      repository: {
+        ...recoveryHarness().repository,
+        releaseCanonicalWindow
+      }
+    })
+    harness.acceptEnvelope.mockResolvedValueOnce({ status: 'in_progress' })
+
+    await processEmailRecoveryClaim(
+      {} as never,
+      { ...claimedRow, attempt_count: 4 },
+      LEASE_TOKEN,
+      harness.dependencies
+    )
+
+    expect(releaseCanonicalWindow).toHaveBeenCalledWith(expect.objectContaining({
+      actorType: 'team_member',
+      completionAction: 'manual_replay_completed'
+    }))
+  })
+
+  it('uses lifecycle-valid terminal SQL when the database count reached five', async () => {
+    const harness = recoveryHarness()
+    harness.acceptEnvelope.mockResolvedValueOnce({ status: 'in_progress' })
+    const lifecycleQueries = vi.fn(async (sql: string) => ({
+      rows: sql.includes('UPDATE lead_email_ingestions')
+        ? [{
+            id: INGESTION_ID,
+            endpoint_id: ENDPOINT_ID,
+            client_id: CLIENT_ID,
+            status: 'quarantined',
+            error_class: 'attempts_exhausted'
+          }]
+        : []
+    }))
+    mocks.transaction.mockImplementationOnce(async callback => callback({
+      query: lifecycleQueries
+    }))
+    const terminalRepository = {
+      claimTerminalObject: vi.fn(async () => null),
+      clearTerminalObject: vi.fn(async () => false),
+      audit: vi.fn(async () => {})
+    }
+
+    await expect(recoverEmailIngestions(
+      {} as never,
+      { bucket: harness.bucket, encryptionSecret: SECRET, ai: null },
+      {
+        limit: 1,
+        claimTerminal: vi.fn(async () => null),
+        claimRecovery: vi.fn()
+          .mockResolvedValueOnce({ ...claimedRow, attempt_count: 4 })
+          .mockResolvedValueOnce(null),
+        acceptEnvelope: harness.acceptEnvelope,
+        terminalRepository,
+        randomUUID: () => LEASE_TOKEN,
+        nowMs: harness.dependencies.nowMs
+      }
+    )).resolves.toMatchObject({ quarantined: 1, failed: 0 })
+
+    expect(lifecycleQueries.mock.calls[0]?.[0]).toMatch(
+      /status = CASE[\s\S]*attempt_count >= 5 THEN 'quarantined'[\s\S]*terminal_at = CASE[\s\S]*next_attempt_at = CASE[\s\S]*recovery_lease_token = NULL/
+    )
+    expect(lifecycleQueries.mock.calls[0]?.[0]).toMatch(/attempt_count >= 5/)
+    expect(lifecycleQueries.mock.calls[1]?.[0]).toMatch(/lead_email_ingestion_audits/)
+    expect(lifecycleQueries.mock.calls[1]?.[1]).toEqual([
+      INGESTION_ID,
+      ENDPOINT_ID,
+      CLIENT_ID,
+      null,
+      'cron',
+      'recovery_completed',
+      'quarantined',
+      'attempts_exhausted'
+    ])
+    expect(harness.bucket.delete).not.toHaveBeenCalled()
+  })
+
+  it('atomically reschedules when notReady occurred before the database count reached five', async () => {
+    const harness = recoveryHarness()
+    harness.acceptEnvelope.mockResolvedValueOnce({ status: 'in_progress' })
+    const lifecycleQueries = vi.fn(async (sql: string) => ({
+      rows: sql.includes('UPDATE lead_email_ingestions')
+        ? [{
+            id: INGESTION_ID,
+            endpoint_id: ENDPOINT_ID,
+            client_id: CLIENT_ID,
+            status: 'failed',
+            error_class: 'canonical_window_elapsed'
+          }]
+        : []
+    }))
+    mocks.transaction.mockImplementationOnce(async callback => callback({
+      query: lifecycleQueries
+    }))
+    const terminalRepository = {
+      claimTerminalObject: vi.fn(async () => null),
+      clearTerminalObject: vi.fn(async () => false),
+      audit: vi.fn(async () => {})
+    }
+
+    await expect(recoverEmailIngestions(
+      {} as never,
+      { bucket: harness.bucket, encryptionSecret: SECRET, ai: null },
+      {
+        limit: 1,
+        claimTerminal: vi.fn(async () => null),
+        claimRecovery: vi.fn()
+          .mockResolvedValueOnce({ ...claimedRow, attempt_count: 4 })
+          .mockResolvedValueOnce(null),
+        acceptEnvelope: harness.acceptEnvelope,
+        terminalRepository,
+        randomUUID: () => LEASE_TOKEN,
+        nowMs: harness.dependencies.nowMs
+      }
+    )).resolves.toMatchObject({ rescheduled: 1, failed: 0 })
+
+    expect(lifecycleQueries.mock.calls[0]?.[0]).toMatch(
+      /error_class = CASE[\s\S]*canonical_window_elapsed[\s\S]*recovery_lease_token = NULL/
+    )
+    expect(lifecycleQueries.mock.calls[1]?.[1]).toEqual([
+      INGESTION_ID,
+      ENDPOINT_ID,
+      CLIENT_ID,
+      null,
+      'cron',
+      'recovery_rescheduled',
+      'rescheduled',
+      'canonical_window_elapsed'
+    ])
+    expect(harness.bucket.delete).not.toHaveBeenCalled()
+  })
+
+  it('cannot release an in-progress claim after ownership was lost', async () => {
+    const releaseCanonicalWindow = vi.fn(async () => null)
+    const harness = recoveryHarness({
+      repository: {
+        ...recoveryHarness().repository,
+        releaseCanonicalWindow
       }
     })
     harness.acceptEnvelope.mockResolvedValueOnce({ status: 'in_progress' })
@@ -421,7 +583,7 @@ describe('email recovery processing', () => {
       harness.dependencies
     )).resolves.toEqual({ status: 'quarantined', reason: 'lease_lost' })
 
-    expect(commitTransition).toHaveBeenCalledOnce()
+    expect(releaseCanonicalWindow).toHaveBeenCalledOnce()
     expect(harness.bucket.delete).not.toHaveBeenCalled()
   })
 
