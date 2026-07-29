@@ -60,6 +60,8 @@ function stageRequest(overrides: Record<string, unknown> = {}) {
     externalIdHash: HASH,
     messageIdHash: HASH,
     provider: 'carsales',
+    envelopeSenderDomain: 'notify.carsales.com.au',
+    headerFromDomain: 'carsales.com.au',
     receivedAt: RECEIVED_AT,
     rawSize: 1024,
     safeEvidence: safeEvidence(),
@@ -118,6 +120,18 @@ describe('email ingestion contracts', () => {
     })).success).toBe(true)
     expect(EmailIngestEnvelopeSchema.safeParse(ingestEnvelope({
       extraction: extraction({ externalIdHash: 'b'.repeat(64) })
+    })).success).toBe(false)
+  })
+
+  it('requires bounded stage sender evidence and normalizes it before policy enforcement', () => {
+    const parsed = EmailStageRequestSchema.parse(stageRequest({
+      envelopeSenderDomain: 'Notify.Carsales.COM.AU',
+      headerFromDomain: 'CARSALES.COM.AU'
+    }))
+    expect(parsed.envelopeSenderDomain).toBe('notify.carsales.com.au')
+    expect(parsed.headerFromDomain).toBe('carsales.com.au')
+    expect(EmailStageRequestSchema.safeParse(stageRequest({
+      envelopeSenderDomain: 'not a domain'
     })).success).toBe(false)
   })
 
@@ -322,6 +336,16 @@ describe('signed email ingestion boundary', () => {
     await expect(verifyEmailIngestSignature(request)).rejects.toMatchObject({ statusCode: 401 })
   })
 
+  it('rejects both same-length and malformed signatures through the closed verification path', async () => {
+    const sameLength = signed('{"recipientToken":"0123456789"}')
+    sameLength.headers['x-xeroflow-email-signature'] = `v1=${'0'.repeat(64)}`
+    await expect(verifyEmailIngestSignature(sameLength)).rejects.toMatchObject({ statusCode: 401 })
+
+    const malformed = signed('{"recipientToken":"0123456789"}')
+    malformed.headers['x-xeroflow-email-signature'] = 'v1=00'
+    await expect(verifyEmailIngestSignature(malformed)).rejects.toMatchObject({ statusCode: 401 })
+  })
+
   it('rejects stale, wrong-secret, reused, and incomplete signing attempts before any endpoint resolution', async () => {
     const body = '{"recipientToken":"0123456789"}'
     const stale = signed(body)
@@ -353,7 +377,16 @@ describe('signed email ingestion boundary', () => {
         fields: {
           full_name: extractedField('Jane Example'),
           phone: extractedField('0412 345 678'),
-          relay_email: extractedField('relay@carsales.test')
+          relay_email: extractedField('relay@carsales.test'),
+          lead_id: extractedField('provider-raw-123'),
+          provider_id: extractedField('provider-raw-456'),
+          message_id: extractedField('<raw-message@example.test>'),
+          subject: extractedField('Jane Example asked about a RAV4'),
+          body: extractedField('raw body content'),
+          html: extractedField('<p>raw html</p>'),
+          raw_mime: extractedField('raw MIME content'),
+          recipient_token: extractedField('0123456789'),
+          address_token: extractedField('abcdefghjk')
         },
         vehicle: { make: extractedField('Toyota'), model: extractedField('RAV4') },
         message: extractedField('Please call me')
@@ -367,6 +400,12 @@ describe('signed email ingestion boundary', () => {
       field_data: expect.objectContaining({ full_name: 'Jane Example', phone: '0412 345 678', message: 'Please call me', vehicle_make: 'Toyota' })
     })
     expect(lead.field_data).not.toHaveProperty('relay_email')
+    for (const forbidden of [
+      'lead_id', 'provider_id', 'message_id', 'subject', 'body', 'html',
+      'raw_mime', 'recipient_token', 'address_token'
+    ]) {
+      expect(lead.field_data).not.toHaveProperty(forbidden)
+    }
   })
 })
 

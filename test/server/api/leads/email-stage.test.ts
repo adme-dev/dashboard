@@ -23,6 +23,7 @@ function request() {
     schemaVersion: 1 as const, correlationId: '33333333-3333-4333-8333-333333333333',
     transport: 'cloudflare_email_routing' as const, recipientToken: '0123456789', externalIdHash: HASH,
     messageIdHash: HASH, provider: 'carsales', receivedAt: '2026-07-29T00:00:00.000Z', rawSize: 128,
+    envelopeSenderDomain: 'notify.carsales.com.au', headerFromDomain: 'carsales.com.au',
     safeEvidence: { hasText: true, hasHtml: false, hasAdf: false, fieldKeys: ['full_name'] },
     quarantineExpiresAt: '2099-08-05T00:00:00.000Z'
   }
@@ -57,4 +58,96 @@ describe('email stage reservation', () => {
       schemaVersion: 1, outcome: 'duplicate', ingestionId: '44444444-4444-4444-8444-444444444444', encryptedObjectKey: null
     })
   })
+
+  it('rechecks sender restrictions on the locked endpoint before reserving storage', async () => {
+    query.mockResolvedValueOnce({
+      rows: [{ ...endpoint, allowed_sender_domains: ['trusted.carsales.com.au'] }]
+    })
+
+    await expect(reserveEmailIngestionStage(request())).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'email_endpoint_policy_denied'
+    })
+    expect(query).toHaveBeenCalledOnce()
+  })
+
+  it('rejects a disabled endpoint between policy lookup and stage without inserting', async () => {
+    query.mockResolvedValueOnce({ rows: [] })
+    await expect(reserveEmailIngestionStage(request())).rejects.toMatchObject({ statusCode: 404 })
+    expect(query).toHaveBeenCalledOnce()
+  })
+
+  it('scopes the same external identity to different endpoint IDs', async () => {
+    const endpointTwo = { ...endpoint, id: '55555555-5555-4555-8555-555555555555', address_token: 'abcdefghjk' }
+    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '44444444-4444-4444-8444-444444444444' }] })
+      .mockResolvedValueOnce({ rows: [endpointTwo] }).mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '66666666-6666-4666-8666-666666666666' }] })
+
+    const first = await reserveEmailIngestionStage(request())
+    const second = await reserveEmailIngestionStage({ ...request(), recipientToken: 'abcdefghjk', correlationId: '77777777-7777-4777-8777-777777777777' })
+
+    expect(first.ingestionId).not.toBe(second.ingestionId)
+    expect(query.mock.calls[1]?.[1]).toEqual([endpoint.id, HASH])
+    expect(query.mock.calls[4]?.[1]).toEqual([endpointTwo.id, HASH])
+    expect(first.encryptedObjectKey).not.toBe(second.encryptedObjectKey)
+  })
+
+  it('resolves a rotated previous token to the same endpoint reservation identity', async () => {
+    const rotated = {
+      ...endpoint,
+      address_token: 'abcdefghjk',
+      previous_address_token: '0123456789',
+      previous_token_grace_until: '2099-01-01T00:00:00.000Z'
+    }
+    const existing = {
+      id: '44444444-4444-4444-8444-444444444444',
+      endpoint_id: endpoint.id,
+      external_id_hash: HASH,
+      terminal_at: null,
+      staged_object_key: 'email-ingestions/same-opaque-reservation'
+    }
+    query.mockResolvedValueOnce({ rows: [rotated] }).mockResolvedValueOnce({ rows: [existing] })
+
+    await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
+      schemaVersion: 1,
+      outcome: 'reserved',
+      ingestionId: existing.id,
+      encryptedObjectKey: existing.staged_object_key
+    })
+  })
+
+  it.each([
+    ['provider ID hash', 'b'.repeat(64)],
+    ['deterministic fingerprint fallback', 'c'.repeat(64)]
+  ])('uses the endpoint-scoped external hash for %s idempotency', async (_label, externalIdHash) => {
+    const retryRow = {
+      id: '44444444-4444-4444-8444-444444444444',
+      endpoint_id: endpoint.id,
+      external_id_hash: externalIdHash,
+      terminal_at: null,
+      staged_object_key: ''
+    }
+    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: '44444444-4444-4444-8444-444444444444' }] })
+      .mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [retryRow] })
+    const first = await reserveEmailIngestionStage({ ...request(), externalIdHash })
+    retryRow.staged_object_key = first.encryptedObjectKey!
+    const retry = await reserveEmailIngestionStage({ ...request(), externalIdHash })
+
+    expect(retry).toEqual(first)
+    expect(query.mock.calls[1]?.[1]).toEqual([endpoint.id, externalIdHash])
+    expect(query.mock.calls[4]?.[1]).toEqual([endpoint.id, externalIdHash])
+  })
+
+  it.each(['expired previous token', 'disabled endpoint', 'retired endpoint'])(
+    'fails closed for an unavailable %s resolution',
+    async () => {
+      query.mockResolvedValueOnce({ rows: [] })
+      await expect(reserveEmailIngestionStage(request())).rejects.toMatchObject({
+        statusCode: 404,
+        statusMessage: 'email_endpoint_unavailable'
+      })
+    }
+  )
 })

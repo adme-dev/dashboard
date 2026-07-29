@@ -176,6 +176,9 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
     const endpoint = await endpointForToken(db, input.recipientToken, true)
     if (!endpoint) failure(404, 'email_endpoint_unavailable')
     if (endpoint.expected_provider && endpoint.expected_provider !== input.provider) failure(409, 'email_endpoint_policy_denied')
+    if (!senderDomainsAllowed(endpoint, input.envelopeSenderDomain, input.headerFromDomain)) {
+      failure(409, 'email_endpoint_policy_denied')
+    }
     const existing = await db.query(`
       SELECT id, endpoint_id, client_id, correlation_id, external_id_hash, message_id_hash, status, terminal_at, next_attempt_at, attempt_count, staged_object_key
       FROM lead_email_ingestions
@@ -203,7 +206,13 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
   }) as Promise<EmailStageResponse>
 }
 
-const RELAY_FIELD_KEYS = new Set(['relay_email', 'provider_relay_email', 'sender_email', 'envelope_sender', 'header_from'])
+const CUSTOMER_FIELD_KEYS = new Set([
+  'full_name', 'first_name', 'last_name',
+  'email', 'email_address', 'work_email',
+  'phone', 'phone_number', 'mobile', 'mobile_number', 'telephone',
+  'address', 'address_line_1', 'address_line_2', 'suburb', 'state', 'postcode', 'country',
+  'request_date', 'campaign'
+])
 
 function clean(value: string): string | null {
   const trimmed = value.trim()
@@ -223,7 +232,7 @@ export function mapEmailExtractionToLeadInput(input: {
 }): InsertLeadInput & { client_id: string } {
   const fieldData: Record<string, string> = {}
   for (const [key, extracted] of Object.entries(input.extraction.fields)) {
-    if (!RELAY_FIELD_KEYS.has(key)) setIfPresent(fieldData, key, extracted.value)
+    if (CUSTOMER_FIELD_KEYS.has(key)) setIfPresent(fieldData, key, extracted.value)
   }
   if (fieldData.full_name && !fieldData.first_name) {
     const parts = fieldData.full_name.split(/\s+/)
@@ -262,11 +271,19 @@ function hasTruthfulContact(fields: Record<string, string>): boolean {
   return Boolean(phone && phone.replace(/\D/g, '').length >= 6)
 }
 
-function senderAllowed(endpoint: Endpoint, envelope: EmailIngestEnvelope): boolean {
+function senderDomainsAllowed(
+  endpoint: Endpoint,
+  envelopeSenderDomain: string | null,
+  headerFromDomain: string | null
+): boolean {
   const allowed = normalizeDomains(endpoint.allowed_sender_domains)
   if (!allowed.length) return true
-  const domains = [envelope.envelopeSenderDomain, envelope.headerFromDomain].filter((value): value is string => Boolean(value))
+  const domains = [envelopeSenderDomain, headerFromDomain].filter((value): value is string => Boolean(value))
   return domains.length > 0 && domains.every(domain => allowed.some(rule => domain === rule || domain.endsWith(`.${rule}`)))
+}
+
+function senderAllowed(endpoint: Endpoint, envelope: EmailIngestEnvelope): boolean {
+  return senderDomainsAllowed(endpoint, envelope.envelopeSenderDomain, envelope.headerFromDomain)
 }
 
 async function terminal(
@@ -302,12 +319,22 @@ async function claimEmailIngestion(ingestionId: string, envelope: EmailIngestEnv
     }
     if (ingestion.terminal_at) return { status: 'duplicate' as const }
     if (ingestion.next_attempt_at && new Date(ingestion.next_attempt_at).getTime() > Date.now() + 1_000) return { status: 'in_progress' as const }
+    const nextAttempt = ingestion.attempt_count + 1
+    if (nextAttempt >= MAX_ATTEMPTS) {
+      await db.query(`
+        UPDATE lead_email_ingestions
+        SET status = 'failed', attempt_count = $2, error_class = 'attempts_exhausted',
+          terminal_at = NOW(), next_attempt_at = NULL, updated_at = NOW()
+        WHERE id = $1 AND terminal_at IS NULL
+      `, [ingestion.id, nextAttempt])
+      return { status: 'quarantined' as const }
+    }
     await db.query(`
       UPDATE lead_email_ingestions
       SET attempt_count = attempt_count + 1, next_attempt_at = NOW() + MAKE_INTERVAL(secs => $2::int), updated_at = NOW()
       WHERE id = $1
     `, [ingestion.id, CLAIM_LEASE_SECONDS])
-    return { ingestion: { ...ingestion, attempt_count: ingestion.attempt_count + 1 }, endpoint }
+    return { ingestion: { ...ingestion, attempt_count: nextAttempt }, endpoint }
   }) as Promise<{ ingestion: Ingestion, endpoint: Endpoint } | EmailIngestResult>
 }
 

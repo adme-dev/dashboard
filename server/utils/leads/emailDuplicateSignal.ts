@@ -39,7 +39,7 @@ export async function findEmailLeadDuplicateSignal(
         AND ((identity_type = 'email' AND identity_hash = $3)
           OR (identity_type = 'phone' AND identity_hash = $4))
     )
-    SELECT candidate.lead_id,
+    SELECT candidate.lead_id, candidate_lead.client_id AS candidate_client_id,
       CASE
         WHEN $3::text IS NOT NULL AND EXISTS (
           SELECT 1 FROM crm_identity_keys ek
@@ -60,6 +60,7 @@ export async function findEmailLeadDuplicateSignal(
     FROM crm_lead_identity_links candidate
     JOIN leads candidate_lead ON candidate_lead.id = candidate.lead_id
     WHERE candidate.client_id = $1
+      AND candidate_lead.client_id = $1
       AND candidate.lead_id <> $2
       AND (SELECT COUNT(*) FROM matching_profiles) = 1
       AND candidate_lead.deleted_at IS NULL
@@ -74,8 +75,12 @@ export async function findEmailLeadDuplicateSignal(
     ORDER BY candidate_lead.submitted_at DESC, candidate.lead_id ASC
     LIMIT 1
   `, [input.clientId, input.leadId, identity.emailFingerprint, identity.phoneFingerprint, input.occurredAt])
-  const row = result.rows?.[0] as { lead_id?: string, match_method?: PossibleDuplicateSignal['matchBasis'] } | undefined
-  if (!row?.lead_id || !row.match_method) return null
+  const row = result.rows?.[0] as {
+    lead_id?: string
+    candidate_client_id?: string
+    match_method?: PossibleDuplicateSignal['matchBasis']
+  } | undefined
+  if (!row?.lead_id || row.candidate_client_id !== input.clientId || !row.match_method) return null
   return {
     possibleDuplicateOfLeadId: row.lead_id,
     matchBasis: row.match_method,

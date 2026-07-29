@@ -48,6 +48,7 @@ const SafeDomainSchema = z.string()
   .min(1)
   .max(253)
   .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/, 'Invalid domain')
+const NormalizedSafeDomainSchema = SafeDomainSchema.transform(value => value.toLowerCase())
 
 export const EmailParserKindSchema = z.enum(['adf', 'provider', 'generic', 'ai_fallback'])
 export const EmailIngestionStatusSchema = z.enum(['received', 'accepted', 'duplicate', 'quarantined', 'failed'])
@@ -110,6 +111,8 @@ export const EmailStageRequestSchema = z.object({
   externalIdHash: HashSchema,
   messageIdHash: HashSchema.nullable(),
   provider: ProviderAdapterIdSchema,
+  envelopeSenderDomain: NormalizedSafeDomainSchema.nullable(),
+  headerFromDomain: NormalizedSafeDomainSchema.nullable(),
   receivedAt: IsoTimestampSchema,
   rawSize: z.number().int().nonnegative().max(MAX_RAW_EMAIL_BYTES),
   safeEvidence: EmailSafeEvidenceSchema,
@@ -138,8 +141,8 @@ export const EmailIngestEnvelopeSchema = z.object({
   transport: EmailIngressTransportSchema,
   recipientToken: RecipientTokenSchema,
   recipientAddressHash: HashSchema,
-  envelopeSenderDomain: SafeDomainSchema.nullable(),
-  headerFromDomain: SafeDomainSchema.nullable(),
+  envelopeSenderDomain: NormalizedSafeDomainSchema.nullable(),
+  headerFromDomain: NormalizedSafeDomainSchema.nullable(),
   messageIdHash: HashSchema.nullable(),
   externalIdHash: HashSchema,
   receivedAt: IsoTimestampSchema,
