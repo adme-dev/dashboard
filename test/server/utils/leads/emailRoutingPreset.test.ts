@@ -10,7 +10,7 @@ const formId = 'email_endpoint:33333333-3333-4333-8333-333333333333'
 const result = (rows: unknown[] = []) => ({ rows })
 
 describe('email routing presets', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { query.mockReset(); transaction.mockClear() })
 
   it('does not create a rule when no preset was selected', async () => {
     const { applyEmailRoutingPreset } = await import('~~/server/utils/leads/emailRoutingPreset')
@@ -29,13 +29,12 @@ describe('email routing presets', () => {
     query.mockResolvedValueOnce(result([{ allowed: true }]))
       .mockResolvedValueOnce(result([{ id: actorId }]))
       .mockResolvedValueOnce(result([{ id: 'rule-1' }]))
-      .mockResolvedValueOnce(result())
       .mockResolvedValueOnce(result([{ id: 'destination-1' }]))
 
     await expect(applyEmailRoutingPreset({
       clientId, formId, formName: 'Carsales', preset: 'assign_user', assignedUserId: actorId
     }, actorId)).resolves.toEqual({ ruleId: 'rule-1', destinationIds: ['destination-1'] })
-    expect(query.mock.calls[4][1]).toEqual(['rule-1', 'assign_user', JSON.stringify({ user_id: actorId })])
+    expect(query.mock.calls[3][1]).toEqual(['rule-1', 'assign_user', JSON.stringify({ user_id: actorId }), `email_endpoint:assign_user:${JSON.stringify({ user_id: actorId })}`])
   })
 
   it('rejects assignment to a user outside the endpoint client', async () => {
@@ -55,6 +54,32 @@ describe('email routing presets', () => {
     await expect(applyEmailRoutingPreset({ clientId, formId, formName: 'Carsales', preset: 'portal' }, actorId))
       .resolves.toEqual({ ruleId: 'rule-1', destinationIds: ['portal-existing'] })
     expect(query.mock.calls).toHaveLength(3)
-    expect(String(query.mock.calls[2][0])).not.toContain('UPDATE lead_rule_destinations')
+    expect(String(query.mock.calls[2][0])).not.toMatch(/SET\s+(filter|delay_minutes|enabled|sort_order)\s*=/)
+  })
+
+  it('accepts an active agency owner assignment without a client assignment', async () => {
+    const { applyEmailRoutingPreset } = await import('~~/server/utils/leads/emailRoutingPreset')
+    query.mockResolvedValueOnce(result([{ allowed: true }]))
+      .mockResolvedValueOnce(result([{ id: actorId }]))
+      .mockResolvedValueOnce(result([{ id: 'rule-1' }]))
+      .mockResolvedValueOnce(result([{ id: 'destination-1' }]))
+
+    await expect(applyEmailRoutingPreset({
+      clientId, formId, formName: 'Carsales', preset: 'assign_user', assignedUserId: actorId
+    }, actorId)).resolves.toEqual({ ruleId: 'rule-1', destinationIds: ['destination-1'] })
+    expect(query.mock.calls[1][0]).toContain("tm.user_role IN ('owner', 'admin')")
+  })
+
+  it('uses a preset identity and conflict-safe insert without mutating custom routing fields', async () => {
+    const { applyEmailRoutingPreset } = await import('~~/server/utils/leads/emailRoutingPreset')
+    query.mockResolvedValueOnce(result([{ allowed: true }]))
+      .mockResolvedValueOnce(result([{ id: 'rule-1' }]))
+      .mockResolvedValueOnce(result([{ id: 'destination-1' }]))
+
+    await applyEmailRoutingPreset({ clientId, formId, formName: 'Carsales', preset: 'portal' }, actorId)
+    const statement = String(query.mock.calls[2][0])
+    expect(statement).toContain('preset_key')
+    expect(statement).toContain('ON CONFLICT (rule_id, preset_key)')
+    expect(statement).not.toMatch(/SET\s+(filter|delay_minutes|enabled|sort_order)\s*=/)
   })
 })

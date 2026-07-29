@@ -5,8 +5,10 @@ import { queryOne, transaction } from '~~/server/utils/db'
 import { applyEmailRoutingPreset, type EmailRoutingPreset } from '~~/server/utils/leads/emailRoutingPreset'
 
 const ADDRESS_DOMAIN = 'leads.xeroflow.io'
-const TOKEN_BYTES = 24
 const MAX_LOCAL_PART_LENGTH = 64
+const HISTORY_DEFAULT_LIMIT = 50
+const HISTORY_MAX_LIMIT = 100
+const CROCKFORD_BASE32 = '0123456789abcdefghjkmnpqrstvwxyz'
 
 type DbClient = Parameters<typeof transaction>[0] extends (client: infer Client) => Promise<unknown> ? Client : never
 
@@ -41,9 +43,15 @@ export interface UpdateEmailEndpointInput {
 }
 
 export function generateEmailEndpointToken(): string {
-  // This is deliberately the RecipientTokenSchema format used across the signed
-  // Worker/Nitro boundary: 192 bits of CSPRNG output, URL-safe and opaque.
-  return `lead_${randomBytes(TOKEN_BYTES).toString('base64url')}`
+  // Rejection sampling keeps every Crockford character equally likely.
+  const characters: string[] = []
+  while (characters.length < 10) {
+    for (const byte of randomBytes(16)) {
+      if (byte < 224) characters.push(CROCKFORD_BASE32[byte & 31]!)
+      if (characters.length === 10) break
+    }
+  }
+  return characters.join('')
 }
 
 export function normalizeEmailEndpointPrefix(value: string): string {
@@ -62,6 +70,50 @@ function addressFor(prefix: string, token: string) {
   const localPart = `${prefix}-${token}`
   if (localPart.length > MAX_LOCAL_PART_LENGTH) throw createError({ statusCode: 400, statusMessage: 'email_address_too_long' })
   return `${localPart}@${ADDRESS_DOMAIN}`
+}
+
+function normalizeFormName(value: string) {
+  const formName = value.trim()
+  if (!formName || formName.length > 255) throw createError({ statusCode: 400, statusMessage: 'invalid_form_name' })
+  return formName
+}
+
+type SafeEmailEndpoint = Omit<EmailLeadEndpoint, 'address_token' | 'previous_address_token'>
+
+export function toSafeEmailEndpoint(endpoint: EmailLeadEndpoint): SafeEmailEndpoint {
+  const { address_token: _addressToken, previous_address_token: _previousAddressToken, ...safe } = endpoint
+  return safe
+}
+
+function auditState(endpoint: EmailLeadEndpoint) {
+  return {
+    label: endpoint.label,
+    address_prefix: endpoint.address_prefix,
+    expected_provider: endpoint.expected_provider,
+    parser_mode: endpoint.parser_mode,
+    ai_extraction_mode: endpoint.ai_extraction_mode,
+    expected_max_silence_hours: endpoint.expected_max_silence_hours,
+    first_response_sla_minutes: endpoint.first_response_sla_minutes,
+    form_id: endpoint.form_id,
+    form_name: endpoint.form_name,
+    enabled: endpoint.enabled,
+    retired_at: endpoint.retired_at
+  }
+}
+
+async function writeEndpointAudit(
+  db: DbClient,
+  endpoint: EmailLeadEndpoint,
+  actorId: string,
+  action: 'created' | 'updated' | 'enabled' | 'disabled' | 'retired' | 'rotated',
+  beforeState: Record<string, unknown>,
+  afterState: Record<string, unknown>,
+) {
+  await db.query(`
+    INSERT INTO lead_email_endpoint_audits
+      (endpoint_id, client_id, actor_id, actor_type, action, before_state, after_state)
+    VALUES ($1, $2, $3, 'team_member', $4, $5::jsonb, $6::jsonb)
+  `, [endpoint.id, endpoint.client_id, actorId, action, JSON.stringify(beforeState), JSON.stringify(afterState)])
 }
 
 function normalizeDomains(domains: string[] | undefined) {
@@ -103,8 +155,7 @@ export async function createEmailEndpoint(input: CreateEmailEndpointInput, actor
   const emailAddress = addressFor(addressPrefix, token)
   const endpointId = randomUUID()
   const formId = `email_endpoint:${endpointId}`
-  const formName = input.formName.trim()
-  if (!formName || formName.length > 255) throw createError({ statusCode: 400, statusMessage: 'invalid_form_name' })
+  const formName = normalizeFormName(input.formName)
 
   try {
     return await transaction(async (db) => {
@@ -140,6 +191,7 @@ export async function createEmailEndpoint(input: CreateEmailEndpointInput, actor
           notificationEmail: input.notificationEmail, assignedUserId: input.assignedUserId
         }, actorId, db)
       }
+      await writeEndpointAudit(db, created, actorId, 'created', {}, auditState(created))
       return created
     })
   } catch (error: any) {
@@ -150,45 +202,71 @@ export async function createEmailEndpoint(input: CreateEmailEndpointInput, actor
 
 export async function updateEmailEndpoint(id: string, input: UpdateEmailEndpointInput, actorId: string): Promise<EmailLeadEndpoint> {
   validateBounds(input)
-  return transaction(async (db) => {
-    const current = await db.query<EmailLeadEndpoint>(`SELECT * FROM lead_email_endpoints WHERE id = $1 FOR UPDATE`, [id])
-    const endpoint = current.rows[0]
-    if (!endpoint) throw createError({ statusCode: 404, statusMessage: 'email_endpoint_not_found' })
-    await assertActorCanManageClient(db, endpoint.client_id, actorId)
-    if (endpoint.retired_at) throw createError({ statusCode: 409, statusMessage: 'email_endpoint_retired' })
-    const hasReceivedMail = Boolean((await db.query<{ received: boolean }>(`
-      SELECT EXISTS (SELECT 1 FROM lead_email_ingestions WHERE endpoint_id = $1) AS received
-    `, [id])).rows[0]?.received)
-    const label = input.label === undefined ? endpoint.label : normalizeEmailEndpointPrefix(input.label)
-    const addressPrefix = input.addressPrefix === undefined ? endpoint.address_prefix : normalizeEmailEndpointPrefix(input.addressPrefix)
-    if (hasReceivedMail && addressPrefix !== endpoint.address_prefix) {
-      throw createError({ statusCode: 409, statusMessage: 'used_email_address_immutable' })
-    }
-    const retiredAt = input.retire ? new Date().toISOString() : null
-    const updated = await db.query<EmailLeadEndpoint>(`
-      UPDATE lead_email_endpoints SET
-        label = $2, address_prefix = $3, expected_provider = $4, parser_mode = $5,
-        ai_extraction_mode = $6, allowed_sender_domains = $7::jsonb,
-        expected_max_silence_hours = $8, first_response_sla_minutes = $9,
-        form_name = $10, enabled = $11, retired_at = COALESCE($12::timestamptz, retired_at), updated_at = NOW()
-      WHERE id = $1 RETURNING *
-    `, [id, label, addressPrefix, input.expectedProvider === undefined ? endpoint.expected_provider : input.expectedProvider?.trim() || null,
-      input.parserMode ?? endpoint.parser_mode, input.aiExtractionMode ?? endpoint.ai_extraction_mode,
-      JSON.stringify(input.allowedSenderDomains === undefined ? endpoint.allowed_sender_domains : normalizeDomains(input.allowedSenderDomains)),
-      input.expectedMaxSilenceHours === undefined ? endpoint.expected_max_silence_hours : input.expectedMaxSilenceHours,
-      input.firstResponseSlaMinutes === undefined ? endpoint.first_response_sla_minutes : input.firstResponseSlaMinutes,
-      input.formName === undefined ? endpoint.form_name : input.formName.trim(), input.retire ? false : (input.enabled ?? endpoint.enabled), retiredAt])
-    return updated.rows[0]!
-  })
+  try {
+    return await transaction(async (db) => {
+      const current = await db.query<EmailLeadEndpoint>(`SELECT * FROM lead_email_endpoints WHERE id = $1 FOR UPDATE`, [id])
+      const endpoint = current.rows[0]
+      if (!endpoint) throw createError({ statusCode: 404, statusMessage: 'email_endpoint_not_found' })
+      await assertActorCanManageClient(db, endpoint.client_id, actorId)
+      if (endpoint.retired_at) throw createError({ statusCode: 409, statusMessage: 'email_endpoint_retired' })
+      const hasReceivedMail = Boolean((await db.query<{ received: boolean }>(`
+        SELECT EXISTS (SELECT 1 FROM lead_email_ingestions WHERE endpoint_id = $1) AS received
+      `, [id])).rows[0]?.received)
+      const label = input.label === undefined ? endpoint.label : normalizeEmailEndpointPrefix(input.label)
+      const addressPrefix = input.addressPrefix === undefined ? endpoint.address_prefix : normalizeEmailEndpointPrefix(input.addressPrefix)
+      if (hasReceivedMail && addressPrefix !== endpoint.address_prefix) {
+        throw createError({ statusCode: 409, statusMessage: 'used_email_address_immutable' })
+      }
+      const formName = input.formName === undefined ? endpoint.form_name : normalizeFormName(input.formName)
+      const retiredAt = input.retire ? new Date().toISOString() : null
+      const enabled = input.retire ? false : (input.enabled ?? endpoint.enabled)
+      const emailAddress = addressPrefix === endpoint.address_prefix
+        ? endpoint.email_address
+        : addressFor(addressPrefix, endpoint.address_token)
+      const updated = await db.query<EmailLeadEndpoint>(`
+        UPDATE lead_email_endpoints SET
+          label = $2, address_prefix = $3, email_address = $4, expected_provider = $5, parser_mode = $6,
+          ai_extraction_mode = $7, allowed_sender_domains = $8::jsonb,
+          expected_max_silence_hours = $9, first_response_sla_minutes = $10,
+          form_name = $11, enabled = $12, retired_at = COALESCE($13::timestamptz, retired_at), updated_at = NOW()
+        WHERE id = $1 RETURNING *
+      `, [id, label, addressPrefix, emailAddress,
+        input.expectedProvider === undefined ? endpoint.expected_provider : input.expectedProvider?.trim() || null,
+        input.parserMode ?? endpoint.parser_mode, input.aiExtractionMode ?? endpoint.ai_extraction_mode,
+        JSON.stringify(input.allowedSenderDomains === undefined ? endpoint.allowed_sender_domains : normalizeDomains(input.allowedSenderDomains)),
+        input.expectedMaxSilenceHours === undefined ? endpoint.expected_max_silence_hours : input.expectedMaxSilenceHours,
+        input.firstResponseSlaMinutes === undefined ? endpoint.first_response_sla_minutes : input.firstResponseSlaMinutes,
+        formName, enabled, retiredAt])
+      const saved = updated.rows[0]!
+      if (formName !== endpoint.form_name) {
+        await db.query(`
+          UPDATE lead_form_metadata SET form_name = $2
+          WHERE source = 'email' AND form_id = $1
+        `, [saved.form_id, formName])
+        await db.query(`
+          UPDATE lead_form_rules SET form_name = $2, updated_at = NOW()
+          WHERE source = 'email' AND form_id = $1 AND client_id = $3
+        `, [saved.form_id, formName, saved.client_id])
+      }
+      const action = input.retire ? 'retired' : endpoint.enabled !== saved.enabled ? (saved.enabled ? 'enabled' : 'disabled') : 'updated'
+      await writeEndpointAudit(db, saved, actorId, action, auditState(endpoint), auditState(saved))
+      return saved
+    })
+  } catch (error: any) {
+    if (error?.code === '23505') throw createError({ statusCode: 409, statusMessage: 'duplicate_email_address' })
+    throw error
+  }
 }
 
 export async function rotateEmailEndpoint(id: string, actorId: string): Promise<EmailLeadEndpoint> {
-  return transaction(async (db) => {
+  try {
+    return await transaction(async (db) => {
     const existing = await db.query<EmailLeadEndpoint>(`SELECT * FROM lead_email_endpoints WHERE id = $1 FOR UPDATE`, [id])
     const endpoint = existing.rows[0]
     if (!endpoint) throw createError({ statusCode: 404, statusMessage: 'email_endpoint_not_found' })
     await assertActorCanManageClient(db, endpoint.client_id, actorId)
     if (endpoint.retired_at) throw createError({ statusCode: 409, statusMessage: 'email_endpoint_retired' })
+    if (!endpoint.enabled) throw createError({ statusCode: 409, statusMessage: 'email_endpoint_disabled' })
     if (endpoint.previous_token_grace_until && new Date(endpoint.previous_token_grace_until).getTime() > Date.now()) {
       throw createError({ statusCode: 409, statusMessage: 'rotation_grace_active' })
     }
@@ -200,12 +278,18 @@ export async function rotateEmailEndpoint(id: string, actorId: string): Promise<
           address_token = $2, email_address = $3, updated_at = NOW()
       WHERE id = $1 RETURNING *
     `, [id, token, addressFor(endpoint.address_prefix, token)])
-    return rotated.rows[0]!
-  })
+    const saved = rotated.rows[0]!
+    await writeEndpointAudit(db, saved, actorId, 'rotated', auditState(endpoint), auditState(saved))
+    return saved
+    })
+  } catch (error: any) {
+    if (error?.code === '23505') throw createError({ statusCode: 409, statusMessage: 'duplicate_email_address' })
+    throw error
+  }
 }
 
 export async function resolveEmailEndpointToken(token: string): Promise<EmailLeadEndpoint | null> {
-  if (!/^lead_[A-Za-z0-9_-]{24,128}$/.test(token)) return null
+  if (!/^[0123456789abcdefghjkmnpqrstvwxyz]{10}$/.test(token)) return null
   return queryOne<EmailLeadEndpoint>(`
     SELECT * FROM lead_email_endpoints
     WHERE enabled = TRUE AND retired_at IS NULL
@@ -229,7 +313,48 @@ export async function listEmailEndpoints(clientId: string, actorId: string) {
   })
 }
 
-export async function listEmailEndpointIngestions(id: string, actorId: string) {
+const SAFE_ENDPOINT_COLUMNS = `
+  id, client_id, label, address_prefix, email_address, expected_provider, parser_mode,
+  ai_extraction_mode, allowed_sender_domains, expected_max_silence_hours, first_response_sla_minutes,
+  form_id, form_name, enabled, last_received_at, last_accepted_at, last_failure_at,
+  consecutive_failures, retired_at, created_at, updated_at
+`
+
+export async function getEmailEndpoint(id: string, actorId: string): Promise<SafeEmailEndpoint> {
+  return transaction(async (db) => {
+    const endpoint = await db.query<{ client_id: string }>(
+      `SELECT client_id FROM lead_email_endpoints WHERE id = $1`, [id]
+    )
+    if (!endpoint.rows[0]) throw createError({ statusCode: 404, statusMessage: 'email_endpoint_not_found' })
+    await assertActorCanManageClient(db, endpoint.rows[0].client_id, actorId)
+    const result = await db.query<SafeEmailEndpoint>(`
+      SELECT ${SAFE_ENDPOINT_COLUMNS}
+      FROM lead_email_endpoints WHERE id = $1 AND client_id = $2
+    `, [id, endpoint.rows[0].client_id])
+    if (!result.rows[0]) throw createError({ statusCode: 404, statusMessage: 'email_endpoint_not_found' })
+    return result.rows[0]
+  })
+}
+
+export interface EmailEndpointIngestionCursor {
+  createdAt: string
+  id: string
+}
+
+export interface ListEmailEndpointIngestionsOptions {
+  limit?: number
+  cursor?: EmailEndpointIngestionCursor | null
+}
+
+export async function listEmailEndpointIngestions(
+  id: string,
+  actorId: string,
+  options: ListEmailEndpointIngestionsOptions = {},
+) {
+  const limit = options.limit ?? HISTORY_DEFAULT_LIMIT
+  if (!Number.isInteger(limit) || limit < 1 || limit > HISTORY_MAX_LIMIT) {
+    throw createError({ statusCode: 400, statusMessage: 'invalid_history_limit' })
+  }
   return transaction(async (db) => {
     const endpoint = await db.query<{ client_id: string }>(`SELECT client_id FROM lead_email_endpoints WHERE id = $1`, [id])
     if (!endpoint.rows[0]) throw createError({ statusCode: 404, statusMessage: 'email_endpoint_not_found' })
@@ -238,8 +363,19 @@ export async function listEmailEndpointIngestions(id: string, actorId: string) {
       SELECT id, endpoint_id, client_id, lead_id, correlation_id, transport, provider, parser, status,
         confidence, sender_domain, safe_evidence, error_class, processing_ms, attempt_count,
         next_attempt_at, terminal_at, created_at, updated_at
-      FROM lead_email_ingestions WHERE endpoint_id = $1 AND client_id = $2 ORDER BY created_at DESC
-    `, [id, endpoint.rows[0].client_id])
-    return rows.rows
+      FROM lead_email_ingestions
+      WHERE endpoint_id = $1 AND client_id = $2
+        AND ($3::timestamptz IS NULL OR (created_at, id) < ($3::timestamptz, $4::uuid))
+      ORDER BY created_at DESC, id DESC
+      LIMIT $5
+    `, [id, endpoint.rows[0].client_id, options.cursor?.createdAt ?? null, options.cursor?.id ?? null, limit])
+    const items = rows.rows
+    const last = items.at(-1) as { id?: string, created_at?: string } | undefined
+    return {
+      items,
+      nextCursor: items.length === limit && last?.id && last.created_at
+        ? { createdAt: last.created_at, id: last.id }
+        : null
+    }
   })
 }

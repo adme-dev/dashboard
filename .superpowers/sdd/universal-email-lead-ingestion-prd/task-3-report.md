@@ -70,3 +70,46 @@ returned no Task 3 diagnostics. `git diff --check` passed.
   Postgres.
 - The repository-wide typecheck remains non-zero because of its existing error
   backlog, although no diagnostic names a Task 3 file.
+
+## Review correction evidence (2026-07-29)
+
+The Task 3 review findings were corrected in a forward-only change with
+`319_universal_email_endpoint_management_hardening.sql`.
+
+- Routing presets now claim only an exact existing destination or atomically
+  insert a preset-keyed destination. The partial unique `(rule_id, preset_key)`
+  index prevents concurrent duplicates, and the claim never changes filter,
+  delay, enabled state, or sort order.
+- Endpoint tokens now use exactly ten lowercase Crockford Base32 characters
+  from rejection-sampled cryptographic bytes. The shared recipient schema,
+  resolver, generators, fixtures, and address calculations use the same
+  authoritative contract.
+- Form names are trimmed/non-empty and update the endpoint, metadata, and any
+  matching form rule in one transaction. An unused prefix update recomputes the
+  full address with its existing token; a used prefix remains immutable and
+  duplicate addresses map to a conflict response.
+- Rotation rejects disabled endpoints. Creation, updates (including
+  enable/disable and retirement), and rotation append same-transaction audit
+  rows that contain only allowlisted operational metadata. The dedicated audit
+  table fixes `actor_type` to `team_member`, has an actor FK, and rejects token,
+  address, sender-domain, and raw-content keys in before/after JSON.
+- Detail and history are staff/client-authorized projections. The history API
+  validates a bounded page size and advances with stable `(created_at, id)`
+  ordering; create/update/rotate responses strip both raw token fields.
+
+### Verification
+
+- Node 24 focused suites: **45 passed, 2 skipped**. The two skips are isolated
+  Postgres suites because `EMAIL_INGESTION_TEST_DATABASE_URL` is not configured
+  in this workspace; the dedicated test uses a fresh schema, reapplies migration
+  319, exercises two concurrent DB sessions, proves one destination survives
+  unchanged, and proves the audit JSON safeguard when that test database is
+  supplied.
+- Migration 319 was applied and then reapplied to the configured database.
+  Catalog verification confirmed `lead_email_endpoint_audits`, the partial
+  preset index, the fixed actor-type constraint, actor FK, and JSON safeguards.
+- Full Node 24 suite: **20 failed / 1229 passed / 4 skipped; 39 failed / 7024
+  passed / 7 skipped; 3 errors** — identical 39-failure/3-error baseline with
+  new passing coverage.
+- Targeted `nuxt typecheck` diagnostics produced no Task 3 file matches;
+  `git diff --check` passed.

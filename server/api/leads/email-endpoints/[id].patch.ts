@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { updateEmailEndpoint } from '~~/server/utils/leads/emailEndpoint'
+import { toSafeEmailEndpoint, updateEmailEndpoint } from '~~/server/utils/leads/emailEndpoint'
 
 const Body = z.object({
   label: z.string().min(1).max(128).optional(),
@@ -30,5 +30,5 @@ export default defineEventHandler(async (event) => {
     firstResponseSlaMinutes: body.first_response_sla_minutes, formName: body.form_name,
     enabled: body.enabled, retire: body.retire
   }, actor.id)
-  return { endpoint }
+  return { endpoint: toSafeEmailEndpoint(endpoint) }
 })

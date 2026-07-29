@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { createEmailEndpoint } from '~~/server/utils/leads/emailEndpoint'
+import { createEmailEndpoint, toSafeEmailEndpoint } from '~~/server/utils/leads/emailEndpoint'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -32,5 +32,5 @@ export default defineEventHandler(async (event) => {
     routingPreset: body.routing_preset, notificationEmail: body.notification_email,
     assignedUserId: body.assigned_user_id
   }, actor.id)
-  return { endpoint }
+  return { endpoint: toSafeEmailEndpoint(endpoint) }
 })

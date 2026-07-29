@@ -16,8 +16,8 @@ function result(rows: unknown[] = []) { return { rows } }
 function endpoint(overrides: Record<string, unknown> = {}) {
   return {
     id: '33333333-3333-4333-8333-333333333333', client_id: clientId,
-    label: 'carsales', address_prefix: 'carsales', address_token: 'lead_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    email_address: 'carsales-lead_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@leads.xeroflow.io',
+    label: 'carsales', address_prefix: 'carsales', address_token: '0123456789',
+    email_address: 'carsales-0123456789@leads.xeroflow.io',
     expected_provider: null, parser_mode: 'auto', ai_extraction_mode: 'disabled', allowed_sender_domains: [],
     expected_max_silence_hours: null, first_response_sla_minutes: null,
     form_id: 'email_endpoint:33333333-3333-4333-8333-333333333333', form_name: 'Carsales', enabled: true,
@@ -28,7 +28,7 @@ function endpoint(overrides: Record<string, unknown> = {}) {
 }
 
 describe('email endpoint service', () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => { query.mockReset(); transaction.mockClear() })
 
   it('creates a client-authorized endpoint and immutable endpoint-scoped form metadata in one transaction', async () => {
     const { createEmailEndpoint } = await import('~~/server/utils/leads/emailEndpoint')
@@ -94,7 +94,72 @@ describe('email endpoint service', () => {
 
     const updated = await updateEmailEndpoint('33333333-3333-4333-8333-333333333333', { retire: true }, actorId)
     expect(updated.enabled).toBe(false)
-    expect(query.mock.calls[3][1][10]).toBe(false)
+    expect(query.mock.calls[3][1][11]).toBe(false)
     expect(query.mock.calls[3][0]).toContain('retired_at = COALESCE')
+  })
+
+  it('uses exactly ten lowercase Crockford Base32 characters for every recipient token', async () => {
+    const { generateEmailEndpointToken } = await import('~~/server/utils/leads/emailEndpoint')
+    const { EmailStageRequestSchema } = await import('../../../../../shared/leads/email/contracts')
+    const token = generateEmailEndpointToken()
+
+    expect(token).toMatch(/^[0123456789abcdefghjkmnpqrstvwxyz]{10}$/)
+    expect(token).not.toContain('lead_')
+    expect(EmailStageRequestSchema.shape.recipientToken.safeParse(token).success).toBe(true)
+  })
+
+  it('rejects a whitespace-only form name before opening a transaction', async () => {
+    const { createEmailEndpoint } = await import('~~/server/utils/leads/emailEndpoint')
+
+    await expect(createEmailEndpoint({ clientId, label: 'Carsales', formName: '   ' }, actorId))
+      .rejects.toMatchObject({ statusCode: 400, statusMessage: 'invalid_form_name' })
+    expect(transaction).not.toHaveBeenCalled()
+  })
+
+  it('atomically recomputes an unused address and synchronizes the form name everywhere', async () => {
+    const { updateEmailEndpoint } = await import('~~/server/utils/leads/emailEndpoint')
+    const old = endpoint()
+    const changed = endpoint({ address_prefix: 'website', email_address: 'website-0123456789@leads.xeroflow.io', form_name: 'Website leads' })
+    query.mockResolvedValueOnce(result([old]))
+      .mockResolvedValueOnce(result([{ allowed: true }]))
+      .mockResolvedValueOnce(result([{ received: false }]))
+      .mockResolvedValueOnce(result([changed]))
+      .mockResolvedValueOnce(result())
+      .mockResolvedValueOnce(result())
+      .mockResolvedValueOnce(result())
+
+    await expect(updateEmailEndpoint(old.id, { addressPrefix: 'Website', formName: '  Website leads  ' }, actorId))
+      .resolves.toMatchObject({ email_address: 'website-0123456789@leads.xeroflow.io', form_name: 'Website leads' })
+    expect(query.mock.calls[3][1][3]).toBe('website-0123456789@leads.xeroflow.io')
+    expect(query.mock.calls[4][0]).toContain('UPDATE lead_form_metadata SET form_name')
+    expect(query.mock.calls[5][0]).toContain('UPDATE lead_form_rules SET form_name')
+    expect(query.mock.calls[6][0]).toContain('lead_email_endpoint_audits')
+  })
+
+  it('does not rotate a disabled endpoint', async () => {
+    const { rotateEmailEndpoint } = await import('~~/server/utils/leads/emailEndpoint')
+    query.mockResolvedValueOnce(result([endpoint({ enabled: false })]))
+      .mockResolvedValueOnce(result([{ allowed: true }]))
+
+    await expect(rotateEmailEndpoint('33333333-3333-4333-8333-333333333333', actorId))
+      .rejects.toMatchObject({ statusCode: 409, statusMessage: 'email_endpoint_disabled' })
+    expect(query).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not allow an unbounded ingestion history query', async () => {
+    const { listEmailEndpointIngestions } = await import('~~/server/utils/leads/emailEndpoint')
+
+    await expect(listEmailEndpointIngestions('33333333-3333-4333-8333-333333333333', actorId, { limit: 101 }))
+      .rejects.toMatchObject({ statusCode: 400, statusMessage: 'invalid_history_limit' })
+    expect(transaction).not.toHaveBeenCalled()
+  })
+
+  it('removes both raw token fields from serialized endpoint responses', async () => {
+    const { toSafeEmailEndpoint } = await import('~~/server/utils/leads/emailEndpoint')
+
+    const safe = toSafeEmailEndpoint(endpoint())
+    expect(safe).not.toHaveProperty('address_token')
+    expect(safe).not.toHaveProperty('previous_address_token')
+    expect(safe.email_address).toContain('@leads.xeroflow.io')
   })
 })

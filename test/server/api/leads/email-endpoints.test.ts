@@ -8,6 +8,7 @@ describe('email endpoint service', () => {
     const second = generateEmailEndpointToken()
 
     expect(first).not.toBe(second)
+    expect(first).toMatch(/^[0123456789abcdefghjkmnpqrstvwxyz]{10}$/)
     expect(EmailStageRequestSchema.shape.recipientToken.safeParse(first).success).toBe(true)
   })
 })
