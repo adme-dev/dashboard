@@ -162,7 +162,54 @@ The passing-test total increased only with the new Task 2 regressions; no Task
 Postal-mime exposes attachment encoding plus header/nesting limits but no
 per-attachment streaming abort hook. Its attachment content is consequently
 decoded before the parser can apply the 256 KiB extraction cap. The strict 2
-MiB raw pre-parse limit is therefore the allocation ceiling; the parser then
+MiB raw pre-parse limit is therefore the raw-input ceiling; the parser then
 explicitly rejects decoded XML/ADF attachments over 256 KiB. A focused test
 documents and exercises that post-decode rejection. No ineffective guard was
 added.
+
+## Correction round 2 — parser hardening
+
+### RED → GREEN
+
+Added the regressions first. The RED run produced five failures: a nested active
+HTML tree leaked text, unbracketed Message-ID syntax did not canonicalize,
+header provenance was rejected by the shared contract, and direct-customer
+classification promoted insufficiently verified mailbox addresses.
+
+After remediation, this focused command passed under Node 24.18.0:
+
+```bash
+/Users/paulgiurin/.nvm/versions/node/v24.18.0/bin/node \
+  node_modules/vitest/vitest.mjs run \
+  test/workers/email-lead-mime.test.ts \
+  test/workers/email-lead-parser.test.ts \
+  test/workers/email-provider-conformance.test.ts \
+  test/server/utils/leads/emailIngestion.test.ts
+```
+
+```text
+Test Files  4 passed (4)
+Tests       54 passed | 1 skipped (55)
+```
+
+`git diff --check` and `tsc --noEmit --pretty false -p tsconfig.json` also
+completed successfully.
+
+### Fixes
+
+- Replaced single-tag HTML suppression with a nested active/resource stack.
+  It stays fail-closed for mismatched or unclosed nested tags and covers
+  encoded markup.
+- Accepted exactly one valid Message-ID addr-spec in either bracketed or
+  unbracketed form, retaining the normalized-domain identity hash and falling
+  back to a fingerprint for malformed or multiple values.
+- Added `header` field provenance to the shared schema and use it only when a
+  direct customer email is promoted from the aligned mail headers.
+- Tightened direct-customer promotion: exact header/envelope mailbox alignment
+  now also requires a personal (not role/automation) mailbox/domain, human
+  first-person prose, and no automation or multi-label-template signal.
+  Captured names are constrained to one or two capitalized tokens and stop
+  before conjunctions or intent prose.
+- Made adapter conformance temporarily replace `global.fetch` with a rejecting
+  mock and restore globals in `finally`, so any accidental network call fails
+  deterministically.

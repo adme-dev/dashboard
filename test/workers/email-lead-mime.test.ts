@@ -52,7 +52,23 @@ describe('bounded MIME parsing', () => {
     }
   })
 
-  it('rejects XML/ADF attachments after decode; the 2 MiB raw bound remains the allocation ceiling', async () => {
+  it('keeps nested active and resource markup suppressed until every active tag closes', () => {
+    for (const hostile of [
+      '<template><template>hidden</template>still-hidden</template>safe',
+      '<svg><template>hidden</template>still-hidden</svg>safe',
+      '&lt;svg&gt;&lt;template&gt;hidden&lt;/template&gt;still-hidden&lt;/svg&gt;safe',
+      '<video><template>hidden</template>still-hidden</video>safe'
+    ]) {
+      const text = htmlToText(hostile)
+      expect(text).toContain('safe')
+      expect(text).not.toMatch(/hidden|still-hidden/i)
+    }
+
+    const malformed = htmlToText('<svg><template>hidden</svg>still-hidden</template>safe')
+    expect(malformed).not.toMatch(/hidden|still-hidden/i)
+  })
+
+  it('rejects XML/ADF attachments after decode; the 2 MiB raw bound remains the raw-input ceiling', async () => {
     const oversized = 'x'.repeat((256 * 1024) + 1)
     const parsed = await parseMimeContent(raw([
       'Content-Type: multipart/mixed; boundary=x', '', '--x', 'Content-Type: text/plain', '', 'hello', '--x',

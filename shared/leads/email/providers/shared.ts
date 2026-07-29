@@ -29,7 +29,7 @@ export function emailBody(input: NormalizedInboundEmail): string {
   return source.replace(/\r\n?/g, '\n').replace(control, '').replace(/[ \t]+/g, ' ').trim()
 }
 
-function field(value: string, confidence: number, provenance: 'subject' | 'body' = 'body'): ExtractedEmailField {
+function field(value: string, confidence: number, provenance: 'subject' | 'body' | 'header' = 'body'): ExtractedEmailField {
   return { value: value.trim().replace(control, '').slice(0, 4_000), confidence, provenance }
 }
 
@@ -47,6 +47,29 @@ const labelPatterns: Array<[string, RegExp]> = [
   ['model', /(?:^|\n)\s*(?:vehicle\s*)?model\s*[:\-]\s*([^\n]+)/i],
   ['stock_number', /(?:^|\n)\s*(?:stock(?:\s*(?:number|no\.?))?|stock_number)\s*[:#\-]?\s*([^\n]+)/i]
 ]
+
+const roleOrAutomationMailbox = /(?:^|[._+-])(?:admin|accounts?|billing|bounce|contact|customers?|enquir(?:y|ies)|help|hello|info|lead|leads|mail(?:er)?(?:-daemon)?|marketing|no-?reply|notifications?|postmaster|relay|robot|bot|sales|service|support|team)(?:$|[._+-])/i
+const automationDomain = /(?:^|\.)(?:automated|mailchimp|mailgun|mailer|mandrill|notification|notifications|noreply|postmark|relay|sendgrid)(?:\.|$)/i
+const automationBodySignal = /\b(?:automated (?:message|notification)|delivery status|do not reply|lead notification|new lead notification|no[ -]?reply)\b/i
+const structuredLabelSignal = /(?:^|\n)\s*(?:name|full\s*name|first\s*name|last\s*name|e-?mail(?:\s+address)?|phone|mobile|telephone|message|comments?|enquiry|inquiry|lead\s*(?:id|reference|number)|campaign|(?:vehicle\s*)?(?:year|make|model)|stock(?:\s*(?:number|no\.?))?)\s*[:#\-]/gim
+
+function hasLabelledTemplate(body: string): boolean {
+  return (body.match(structuredLabelSignal) ?? []).length >= 2
+}
+
+function hasHumanFirstPersonIntent(body: string): boolean {
+  return /\b(?:i\s+(?:am|would|want|need|can|could|have)|i['’]m|my\s+name\s+is|please)\b/i.test(body)
+}
+
+function isPersonalMailbox(mailbox: string): boolean {
+  const [local, domain] = mailbox.split('@')
+  return Boolean(local && domain && !roleOrAutomationMailbox.test(local) && !automationDomain.test(domain))
+}
+
+function directCustomerName(body: string): string | null {
+  const match = body.match(/\b(?:my\s+name\s+is|[Ii]\s+am|[Ii]['’]m)\s+([A-Z][\p{L}'’-]*)(?:\s+([A-Z][\p{L}'’-]*))?(?=\s*(?:[.,;!?]|\b(?:and|but|for|to|about|because|i)\b|$))/u)
+  return match ? [match[1], match[2]].filter(Boolean).join(' ') : null
+}
 
 export function strippedMessage(value: string): string {
   return value.split(/\n(?:On .+ wrote:|From:.+|--\s*$|(?:Kind regards|Regards|Thanks|Thank you|Cheers|Sincerely)[,!]?\s*$)/im)[0]!.trim()
@@ -75,11 +98,16 @@ export function extractionFor(definition: ProviderDefinition, input: NormalizedI
   const body = strippedMessage(emailBody(input))
   const headerMailbox = parsedMailbox(input.headerFrom)
   const envelopeMailbox = parsedMailbox(input.envelopeSender)
-  const directCustomer = definition.id === 'generic' && headerMailbox && envelopeMailbox && headerMailbox === envelopeMailbox
+  const directCustomer = definition.id === 'generic'
+    && Boolean(headerMailbox && envelopeMailbox && headerMailbox === envelopeMailbox
+      && isPersonalMailbox(headerMailbox)
+      && hasHumanFirstPersonIntent(body)
+      && !hasLabelledTemplate(body)
+      && !automationBodySignal.test(body))
   if (directCustomer) {
-    if (!fields.email) fields.email = field(headerMailbox, 0.9)
+    if (!fields.email) fields.email = field(headerMailbox!, 0.9, 'header')
     if (!fields.full_name) {
-      const name = body.match(/\b(?:my\s+name\s+is|i\s+am)\s+([\p{L}][\p{L}'’-]*(?:\s+[\p{L}][\p{L}'’-]*){1,3})/iu)?.[1]
+      const name = directCustomerName(body)
       if (name) fields.full_name = field(name, 0.76)
     }
   }

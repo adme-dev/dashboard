@@ -58,7 +58,13 @@ describe('deterministic email lead parser', () => {
   it('canonicalizes a syntactically equivalent Message-ID and includes vehicle fields in fingerprint identity', () => {
     const canonical = parseEmailLead({ ...base, text: base.text, messageId: '<message-42@EXAMPLE.TEST>' }, policy)
     const spaced = parseEmailLead({ ...base, text: base.text, messageId: '< message-42@example.test >' }, policy)
+    const unbracketed = parseEmailLead({ ...base, text: base.text, messageId: 'message-42@example.test' }, policy)
     expect(canonical?.externalIdHash).toBe(spaced?.externalIdHash)
+    expect(canonical?.externalIdHash).toBe(unbracketed?.externalIdHash)
+    const fingerprint = parseEmailLead({ ...base, text: base.text, messageId: null }, policy)
+    for (const malformed of ['message-42@example.test other@example.test', '<message-42@example.test><other@example.test>', '<message-42@example.test', 'message-42@@example.test']) {
+      expect(parseEmailLead({ ...base, text: base.text, messageId: malformed }, policy)?.externalIdHash).toBe(fingerprint?.externalIdHash)
+    }
     const firstVehicle = parseEmailLead({ ...base, messageId: null, text: `${base.text}\nMake: Example` }, policy)
     const secondVehicle = parseEmailLead({ ...base, messageId: null, text: `${base.text}\nMake: Different` }, policy)
     expect(firstVehicle?.externalIdHash).not.toBe(secondVehicle?.externalIdHash)
@@ -68,10 +74,46 @@ describe('deterministic email lead parser', () => {
     const direct = parseEmailLead({ ...base, envelopeSender: 'alex@example.test', headerFrom: 'Alex Example <alex@example.test>', text: `${readFileSync('test/fixtures/email-leads/direct-customer.txt', 'utf8')}\nKind regards,\nAlex Example` }, { ...policy, expectedProvider: null })
     expect(direct?.provider).toBe('generic')
     expect(direct?.fields.email?.value).toBe('alex@example.test')
+    expect(direct?.fields.email?.provenance).toBe('header')
     expect(direct?.fields.full_name?.value).toBe('Alex Example')
     expect(direct?.message?.value).not.toMatch(/kind regards|signature/i)
     const relay = parseEmailLead({ ...base, envelopeSender: 'relay@carsales.example', headerFrom: 'Alex Example <alex@example.test>', text: readFileSync('test/fixtures/email-leads/relay-without-customer-contact.txt', 'utf8') }, { ...policy, expectedProvider: null })
     expect(relay?.fields.email).toBeUndefined()
+  })
+
+  it('requires human direct-customer evidence and never promotes relay or role mailboxes', () => {
+    const direct = parseEmailLead({
+      ...base,
+      envelopeSender: 'alex@example.test',
+      headerFrom: 'Alex Example <alex@example.test>',
+      text: 'Hello, I am Alex Example and I would like to inspect the vehicle.'
+    }, { ...policy, expectedProvider: null })
+    expect(direct?.fields.email).toMatchObject({ value: 'alex@example.test', provenance: 'header' })
+    expect(direct?.fields.full_name?.value).toBe('Alex Example')
+
+    const automatedRelay = parseEmailLead({
+      ...base,
+      envelopeSender: 'notifications@relay.example',
+      headerFrom: 'Notifications <notifications@relay.example>',
+      text: 'I am Alex Example and I would like to inspect the vehicle.'
+    }, { ...policy, expectedProvider: null })
+    expect(automatedRelay?.fields.email).toBeUndefined()
+
+    const roleMailbox = parseEmailLead({
+      ...base,
+      envelopeSender: 'sales@example.test',
+      headerFrom: 'Sales <sales@example.test>',
+      text: 'I am Alex Example and I would like to inspect the vehicle.'
+    }, { ...policy, expectedProvider: null })
+    expect(roleMailbox?.fields.email).toBeUndefined()
+
+    const labelledRelay = parseEmailLead({
+      ...base,
+      envelopeSender: 'alex@example.test',
+      headerFrom: 'Alex Example <alex@example.test>',
+      text: 'Name: Alex Example\nPhone: +61 400 123 456\nI am Alex Example and I would like to inspect the vehicle.'
+    }, { ...policy, expectedProvider: null })
+    expect(labelledRelay?.fields.email).toBeUndefined()
   })
 
   it.each([

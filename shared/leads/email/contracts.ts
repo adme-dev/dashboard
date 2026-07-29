@@ -63,7 +63,7 @@ export const EmailSafeEvidenceSchema = z.object({
 const EmailExtractedFieldSchema = z.object({
   value: SafeTextSchema,
   confidence: z.number().finite().min(0).max(1),
-  provenance: z.enum(['subject', 'body', 'adf', 'attachment', 'ai'])
+  provenance: z.enum(['subject', 'body', 'header', 'adf', 'attachment', 'ai'])
 }).strict()
 
 const EmailMessageFieldSchema = EmailExtractedFieldSchema.extend({

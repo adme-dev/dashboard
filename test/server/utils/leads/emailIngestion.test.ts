@@ -109,6 +109,9 @@ describe('email ingestion contracts', () => {
 
   it('requires an envelope extraction to use the staged external identity hash', () => {
     expect(EmailLeadExtractionSchema.safeParse(extraction()).success).toBe(true)
+    expect(EmailLeadExtractionSchema.safeParse(extraction({
+      fields: { email: { ...extractedField('jane@example.test'), provenance: 'header' } }
+    })).success).toBe(true)
     expect(EmailIngestEnvelopeSchema.safeParse(ingestEnvelope({
       extraction: extraction({ externalIdHash: 'b'.repeat(64) })
     })).success).toBe(false)

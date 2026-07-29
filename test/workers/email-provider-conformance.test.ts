@@ -20,11 +20,16 @@ describe('email provider adapter conformance', () => {
     expect(first).toEqual(second)
     const extraction = adapter.extract(email)
     expect(email).toEqual(before)
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-    adapter.matches(email, adapter.id)
-    adapter.extract(email)
-    expect(fetchSpy).not.toHaveBeenCalled()
-    fetchSpy.mockRestore()
+    const rejectedFetch = vi.fn(async () => { throw new Error('network access is forbidden') })
+    vi.stubGlobal('fetch', rejectedFetch)
+    try {
+      adapter.matches(email, adapter.id)
+      adapter.extract(email)
+      expect(rejectedFetch).not.toHaveBeenCalled()
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
     if (extraction) {
       expect(extraction.overallConfidence).toBeGreaterThanOrEqual(0)
       expect(extraction.overallConfidence).toBeLessThanOrEqual(1)

@@ -174,7 +174,12 @@ function fingerprint(input: NormalizedInboundEmail, extraction: EmailLeadExtract
 
 function canonicalMessageId(value: string | null): string | null {
   if (!value) return null
-  const match = value.trim().match(/^<\s*([^<>\s@]+)@([^<>\s@]+)\s*>$/)
+  const trimmed = value.trim()
+  const candidate = trimmed.startsWith('<') || trimmed.endsWith('>')
+    ? trimmed.match(/^<\s*([^<>\s]+)\s*>$/)?.[1]
+    : trimmed
+  if (!candidate) return null
+  const match = candidate.match(/^([^<>\s@,]+)@([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)$/)
   return match ? `${match[1]}@${match[2]!.toLowerCase()}` : null
 }
 
