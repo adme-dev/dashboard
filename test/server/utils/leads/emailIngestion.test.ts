@@ -197,16 +197,25 @@ describe('email ingestion contracts', () => {
     }
   })
 
-  it('rejects formatted phone PII in source labels while allowing small year and model numbers', () => {
+  it('rejects seven-digit numeric runs in source labels while accepting structured vehicle data', () => {
     for (const sourceName of [
       '0412 345 678',
       'Jane 0412 345 678',
       '555 0123',
       'Jane 555 0123',
+      '555 2025',
+      'Jane 555 2025',
       '٥٥٥ ٠١٢٣',
       'Jane ٥٥٥ ٠١٢٣',
+      '٥٥٥ ٢٠٢٥',
+      'Jane ٥٥٥ ٢٠٢٥',
       '５５５ ０１２３',
       'Jane ５５５ ０１２３',
+      '５５５ ２０２５',
+      'Jane ５５５ ２０２５',
+      'Peugeot 308 2025',
+      'BMW 320 2025',
+      'Mazda 323 2025',
       '+61 412 345 678',
       'Jane (03) 9123 4567',
       '+1 (415) 555-2671'
@@ -217,12 +226,18 @@ describe('email ingestion contracts', () => {
       'Carsales 2025',
       'Toyota GR86 2024',
       'Drive Model 3',
-      'Peugeot 308 2025',
-      'BMW 320 2025',
-      'Mazda 323 2025'
+      'BMW 320'
     ]) {
       expect(EmailLeadExtractionSchema.safeParse(extraction({ sourceName })).success).toBe(true)
     }
+    expect(EmailLeadExtractionSchema.safeParse(extraction({
+      sourceName: 'Peugeot',
+      vehicle: {
+        make: extractedField('Peugeot'),
+        model: extractedField('308'),
+        year: extractedField('2025')
+      }
+    })).success).toBe(true)
   })
 
   it('ties stage outcomes to the presence of an encrypted object key', () => {
