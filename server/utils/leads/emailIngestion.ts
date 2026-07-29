@@ -296,11 +296,12 @@ async function terminal(
     SET status = $2, lead_id = $3, parser = $4, confidence = $5, sender_domain = $6,
       possible_duplicate_of_lead_id = $7, duplicate_match_basis = $8,
       duplicate_confidence = $9, duplicate_window_hours = $10,
+      attempt_count = CASE
+        WHEN attempt_count = 4 AND error_class = 'final_attempt_leased' THEN 5
+        ELSE attempt_count
+      END,
       error_class = NULL, terminal_at = NOW(), next_attempt_at = NULL, updated_at = NOW()
-    WHERE id = $1 AND (
-      terminal_at IS NULL
-      OR (attempt_count = 5 AND status = 'failed' AND error_class = 'final_attempt_claimed')
-    )
+    WHERE id = $1 AND terminal_at IS NULL
     RETURNING id
   `, [ingestionId, status, values.leadId ?? null, values.parser ?? null, values.confidence ?? null, values.senderDomain ?? null,
     values.duplicate?.possibleDuplicateOfLeadId ?? null, values.duplicate?.matchBasis ?? null,
@@ -335,10 +336,10 @@ async function claimEmailIngestion(ingestionId: string, envelope: EmailIngestEnv
     if (nextAttempt === MAX_ATTEMPTS) {
       await db.query(`
         UPDATE lead_email_ingestions
-        SET status = 'failed', attempt_count = $2, error_class = 'final_attempt_claimed',
-          terminal_at = NOW(), next_attempt_at = NULL, updated_at = NOW()
-        WHERE id = $1 AND terminal_at IS NULL
-      `, [ingestion.id, nextAttempt])
+        SET status = 'failed', error_class = 'final_attempt_leased',
+          next_attempt_at = NOW() + MAKE_INTERVAL(secs => $2::int), updated_at = NOW()
+        WHERE id = $1 AND terminal_at IS NULL AND attempt_count = 4
+      `, [ingestion.id, CLAIM_LEASE_SECONDS])
       return { ingestion: { ...ingestion, attempt_count: nextAttempt }, endpoint }
     }
     await db.query(`
@@ -404,12 +405,14 @@ export async function acceptEmailEnvelope(event: H3Event, ingestionId: string, i
     const terminalFailure = ingestion.attempt_count >= MAX_ATTEMPTS
     await queryOne(`
       UPDATE lead_email_ingestions
-      SET status = 'failed', error_class = $2, terminal_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
+      SET status = 'failed',
+        attempt_count = CASE
+          WHEN attempt_count = 4 AND error_class = 'final_attempt_leased' THEN 5
+          ELSE attempt_count
+        END,
+        error_class = $2, terminal_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
         next_attempt_at = CASE WHEN $3 THEN NULL ELSE NOW() + INTERVAL '5 minutes' END, updated_at = NOW()
-      WHERE id = $1 AND (
-        terminal_at IS NULL
-        OR (attempt_count = 5 AND status = 'failed' AND error_class = 'final_attempt_claimed')
-      )
+      WHERE id = $1 AND terminal_at IS NULL
     `, [ingestionId, error instanceof Error ? error.name.slice(0, 120) : 'unknown', terminalFailure])
     await queryOne(`UPDATE lead_email_endpoints SET last_failure_at = NOW(), consecutive_failures = consecutive_failures + 1, updated_at = NOW() WHERE id = $1`, [endpoint.id])
     throw error

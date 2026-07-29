@@ -111,16 +111,84 @@ describe('email canonical ingress', () => {
     expect(mocks.acceptLead).toHaveBeenCalledOnce()
   })
 
-  it('promotes a successful fifth-attempt claim from terminal failed to accepted', async () => {
+  it('keeps a crash immediately after final lease claim recoverable', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [ingestion({ attempt_count: 4 })] })
+      .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+    mocks.resolveLeadCaptureMode.mockImplementationOnce(() => new Promise(() => {}))
+
+    void acceptEmailEnvelope({} as never, INGESTION_ID, envelope())
+    await vi.waitFor(() => expect(mocks.resolveLeadCaptureMode).toHaveBeenCalledOnce())
+
+    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/error_class = 'final_attempt_leased'/)
+    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/next_attempt_at = NOW\(\) \+ MAKE_INTERVAL/)
+    expect(mocks.query.mock.calls[2]?.[0]).not.toMatch(/attempt_count\s*=\s*\$2|terminal_at\s*=\s*NOW\(\)/)
+    expect(mocks.acceptLead).not.toHaveBeenCalled()
+  })
+
+  it('returns in progress to a concurrent caller during the live final lease', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        attempt_count: 4,
+        status: 'failed',
+        error_class: 'final_attempt_leased',
+        terminal_at: null,
+        next_attempt_at: '2099-01-01T00:00:00.000Z'
+      })]
+    })
+
+    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({ status: 'in_progress' })
+    expect(mocks.acceptLead).not.toHaveBeenCalled()
+  })
+
+  it('recovers the same fifth logical attempt after its lease expires', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        attempt_count: 4,
+        status: 'failed',
+        error_class: 'final_attempt_leased',
+        terminal_at: null,
+        next_attempt_at: '2026-07-28T00:00:00.000Z'
+      })]
+    }).mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+
+    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({
+      status: 'accepted', leadId: '55555555-5555-4555-8555-555555555555'
+    })
+    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/error_class = 'final_attempt_leased'/)
+    expect(mocks.query.mock.calls[2]?.[0]).not.toMatch(/attempt_count\s*=\s*\$2|terminal_at\s*=\s*NOW\(\)/)
+    expect(mocks.acceptLead).toHaveBeenCalledOnce()
+    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/attempt_count = CASE[\s\S]*THEN 5/)
+  })
+
+  it('promotes a successful fifth-attempt lease to accepted only after handoff', async () => {
     mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [ingestion({ attempt_count: 4 })] })
       .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
 
     await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({
       status: 'accepted', leadId: '55555555-5555-4555-8555-555555555555'
     })
-    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/status = 'failed'[\s\S]*attempt_count = \$2[\s\S]*terminal_at = NOW\(\)[\s\S]*next_attempt_at = NULL/)
-    expect(mocks.query.mock.calls[2]?.[1]).toEqual([INGESTION_ID, 5])
-    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/WHERE id = \$1[\s\S]*error_class = 'final_attempt_claimed'/)
+    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/error_class = 'final_attempt_leased'[\s\S]*next_attempt_at = NOW\(\) \+ MAKE_INTERVAL/)
+    expect(mocks.query.mock.calls[2]?.[0]).not.toMatch(/terminal_at\s*=\s*NOW\(\)/)
+    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/attempt_count = CASE[\s\S]*error_class = 'final_attempt_leased'[\s\S]*THEN 5/)
+  })
+
+  it('resolves a post-acceptance crash through canonical idempotency on final-lease recovery', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        attempt_count: 4,
+        status: 'failed',
+        error_class: 'final_attempt_leased',
+        terminal_at: null,
+        next_attempt_at: '2026-07-28T00:00:00.000Z'
+      })]
+    }).mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+    mocks.acceptLead.mockResolvedValueOnce({ status: 'duplicate', leadId: '55555555-5555-4555-8555-555555555555' })
+
+    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({ status: 'duplicate' })
+    expect(mocks.acceptLead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      lead: expect.objectContaining({ source_lead_id: `email:${ENDPOINT_ID}:${HASH}` })
+    }))
+    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/attempt_count = CASE[\s\S]*THEN 5/)
   })
 
   it('leaves a failed fifth canonical handoff terminally failed', async () => {
@@ -130,7 +198,7 @@ describe('email canonical ingress', () => {
 
     await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).rejects.toThrow('canonical handoff failed')
     expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(
-      /status = 'failed'[\s\S]*terminal_at = CASE WHEN \$3 THEN NOW\(\) ELSE NULL END[\s\S]*error_class = 'final_attempt_claimed'/
+      /status = 'failed'[\s\S]*attempt_count = CASE[\s\S]*error_class = 'final_attempt_leased'[\s\S]*THEN 5[\s\S]*terminal_at = CASE WHEN \$3 THEN NOW\(\) ELSE NULL END/
     )
     expect(mocks.queryOne.mock.calls[0]?.[1]).toEqual([INGESTION_ID, 'TypeError', true])
   })
