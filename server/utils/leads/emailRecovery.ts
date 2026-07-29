@@ -18,6 +18,7 @@ import {
 import { decryptStagedEmail } from '~~/shared/leads/email/quarantine'
 import type { NormalizedInboundEmail } from '~~/shared/leads/email/types'
 import { createNitroEmailAiRuntime } from '~~/server/utils/leads/emailAiRuntime'
+import { hasCurrentEmailAiPrivacyApproval } from '~~/server/utils/leads/emailEndpoint'
 import { getCachedObjectBinding } from '~~/server/utils/email'
 import { emitEmailIngestionEvent } from '~~/shared/leads/email/telemetry'
 
@@ -56,6 +57,9 @@ export interface EmailRecoveryClaim {
   expected_provider: string | null
   parser_mode: 'auto' | 'adf' | 'generic'
   ai_extraction_mode: 'disabled' | 'fallback'
+  ai_privacy_approval_version: number | null
+  ai_privacy_approved_at: string | null
+  ai_privacy_approved_by: string | null
   allowed_sender_domains: string[] | string
 }
 
@@ -220,7 +224,8 @@ export async function claimNextEmailRecovery(
         i.attempt_count, i.created_at,
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
-        e.ai_extraction_mode, e.allowed_sender_domains
+        e.ai_extraction_mode, e.ai_privacy_approval_version,
+        e.ai_privacy_approved_at, e.ai_privacy_approved_by, e.allowed_sender_domains
     `, [leaseToken, RECOVERY_LEASE_SECONDS, MIN_CANONICAL_WINDOW_SECONDS])
     const claim = result.rows[0] ?? null
     if (claim) {
@@ -281,7 +286,8 @@ export async function claimNextEmailTerminalReconciliation(
         i.attempt_count, i.created_at,
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
-        e.ai_extraction_mode, e.allowed_sender_domains
+        e.ai_extraction_mode, e.ai_privacy_approval_version,
+        e.ai_privacy_approved_at, e.ai_privacy_approved_by, e.allowed_sender_domains
     `, [leaseToken, RECOVERY_LEASE_SECONDS])
     const claim = result.rows[0] ?? null
     if (claim) {
@@ -317,11 +323,16 @@ function senderAllowed(domain: string | null, allowed: string[]): boolean {
   return Boolean(domain && allowed.some(rule => domain === rule || domain.endsWith(`.${rule}`)))
 }
 
-function policyFor(claim: EmailRecoveryClaim): EmailEndpointPolicy {
+function policyFor(
+  claim: EmailRecoveryClaim,
+  aiExtractionAvailable: boolean
+): EmailEndpointPolicy {
+  const aiFallbackAllowed = aiExtractionAvailable
+    && hasCurrentEmailAiPrivacyApproval(claim)
   return EmailEndpointPolicySchema.parse({
     schemaVersion: 1,
     parserMode: claim.parser_mode,
-    aiExtractionMode: claim.ai_extraction_mode,
+    aiExtractionMode: aiFallbackAllowed ? 'fallback' : 'disabled',
     expectedProvider: claim.expected_provider,
     allowedSenderDomains: normalizeDomains(claim.allowed_sender_domains),
     maxRawBytes: 2 * 1024 * 1024,
@@ -442,7 +453,7 @@ export async function processEmailRecoveryClaim(
     return quarantine(claim, leaseToken, dependencies, 'corrupt_evidence', false)
   }
 
-  const policy = policyFor(claim)
+  const policy = policyFor(claim, Boolean(dependencies.ai))
   const headerFromDomain = domainOf(parsed.headerFrom)
   if (
     !senderAllowed(claim.sender_domain, policy.allowedSenderDomains)
@@ -1126,7 +1137,8 @@ async function claimEmailReplay(
           + MAKE_INTERVAL(secs => $3::int) AS staged_ready,
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
-        e.ai_extraction_mode, e.allowed_sender_domains
+        e.ai_extraction_mode, e.ai_privacy_approval_version,
+        e.ai_privacy_approved_at, e.ai_privacy_approved_by, e.allowed_sender_domains
       FROM lead_email_ingestions i
       JOIN lead_email_endpoints e
         ON e.id = i.endpoint_id

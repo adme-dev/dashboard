@@ -15,7 +15,10 @@ import {
 import { queryOne, transaction } from '~~/server/utils/db'
 import type { InsertLeadInput, LeadIngestionTerminalStatus, LeadTransactionClient } from '~~/server/utils/leads/db'
 import { findEmailLeadDuplicateSignal, type PossibleDuplicateSignal } from '~~/server/utils/leads/emailDuplicateSignal'
-import { resolveEmailEndpointToken } from '~~/server/utils/leads/emailEndpoint'
+import {
+  hasCurrentEmailAiPrivacyApproval,
+  resolveEmailEndpointToken
+} from '~~/server/utils/leads/emailEndpoint'
 import { createOpaqueEmailObjectKey } from '~~/shared/leads/email/quarantine'
 import { emitEmailIngestionEvent } from '~~/shared/leads/email/telemetry'
 
@@ -41,6 +44,9 @@ type Endpoint = {
   expected_provider: string | null
   parser_mode: 'auto' | 'adf' | 'generic'
   ai_extraction_mode: 'disabled' | 'fallback'
+  ai_privacy_approval_version: number | null
+  ai_privacy_approved_at: string | null
+  ai_privacy_approved_by: string | null
   allowed_sender_domains: string[] | string
 }
 
@@ -147,11 +153,16 @@ function normalizeDomains(value: Endpoint['allowed_sender_domains']): string[] {
   } catch { return [] }
 }
 
-function asPolicy(endpoint: Endpoint): EmailEndpointPolicy {
+function asPolicy(
+  endpoint: Endpoint,
+  capabilities: { aiExtractionAvailable: boolean }
+): EmailEndpointPolicy {
+  const aiFallbackAllowed = capabilities.aiExtractionAvailable
+    && hasCurrentEmailAiPrivacyApproval(endpoint)
   const policy = {
     schemaVersion: 1,
     parserMode: endpoint.parser_mode,
-    aiExtractionMode: endpoint.ai_extraction_mode,
+    aiExtractionMode: aiFallbackAllowed ? 'fallback' : 'disabled',
     expectedProvider: endpoint.expected_provider,
     allowedSenderDomains: normalizeDomains(endpoint.allowed_sender_domains),
     maxRawBytes: 2 * 1024 * 1024,
@@ -173,11 +184,14 @@ async function endpointForToken(db: LeadTransactionClient, token: string, lock =
   return (result.rows?.[0] as Endpoint | undefined) ?? null
 }
 
-export async function resolveEmailEndpointPolicy(request: { recipientToken: string }): Promise<EmailEndpointPolicy> {
+export async function resolveEmailEndpointPolicy(
+  request: { recipientToken: string },
+  capabilities: { aiExtractionAvailable: boolean } = { aiExtractionAvailable: false }
+): Promise<EmailEndpointPolicy> {
   if (!TOKEN_PATTERN.test(request.recipientToken)) failure(404, 'email_endpoint_unavailable')
   const endpoint = await resolveEmailEndpointToken(request.recipientToken) as Endpoint | null
   if (!endpoint) failure(404, 'email_endpoint_unavailable')
-  return asPolicy(endpoint)
+  return asPolicy(endpoint, capabilities)
 }
 
 function parseStage(request: unknown): EmailStageRequest {

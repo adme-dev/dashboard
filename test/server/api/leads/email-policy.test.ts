@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { resolveToken } = vi.hoisted(() => ({ resolveToken: vi.fn() }))
-vi.mock('~~/server/utils/leads/emailEndpoint', () => ({ resolveEmailEndpointToken: resolveToken }))
+vi.mock('~~/server/utils/leads/emailEndpoint', () => ({
+  resolveEmailEndpointToken: resolveToken,
+  hasCurrentEmailAiPrivacyApproval(endpoint: Record<string, unknown>) {
+    return endpoint.ai_extraction_mode === 'fallback'
+      && endpoint.ai_privacy_approval_version === 1
+      && Boolean(endpoint.ai_privacy_approved_at)
+      && Boolean(endpoint.ai_privacy_approved_by)
+  }
+}))
 
 import { resolveEmailEndpointPolicy } from '../../../../server/utils/leads/emailIngestion'
 
@@ -16,6 +24,9 @@ const endpoint = {
   expected_provider: 'carsales',
   parser_mode: 'auto',
   ai_extraction_mode: 'disabled',
+  ai_privacy_approval_version: null,
+  ai_privacy_approved_at: null,
+  ai_privacy_approved_by: null,
   allowed_sender_domains: ['Notify.Carsales.com.au'],
   enabled: true,
   retired_at: null
@@ -45,6 +56,45 @@ describe('email endpoint policy boundary', () => {
     await expect(resolveEmailEndpointPolicy({ recipientToken: endpoint.previous_address_token }))
       .resolves.toMatchObject({ expectedProvider: 'carsales' })
     expect(resolveToken).toHaveBeenCalledWith('abcdefghjk')
+  })
+
+  it('returns AI fallback only when approval and runtime capability are both current', async () => {
+    resolveToken.mockResolvedValueOnce({
+      ...endpoint,
+      ai_extraction_mode: 'fallback',
+      ai_privacy_approval_version: 1,
+      ai_privacy_approved_at: '2026-07-29T00:00:00.000Z',
+      ai_privacy_approved_by: '33333333-3333-4333-8333-333333333333'
+    })
+
+    await expect(resolveEmailEndpointPolicy(
+      { recipientToken: endpoint.address_token },
+      { aiExtractionAvailable: true }
+    )).resolves.toMatchObject({ aiExtractionMode: 'fallback' })
+  })
+
+  it.each([
+    ['missing runtime capability', {
+      ai_privacy_approval_version: 1,
+      ai_privacy_approved_at: '2026-07-29T00:00:00.000Z',
+      ai_privacy_approved_by: '33333333-3333-4333-8333-333333333333'
+    }, false],
+    ['missing privacy approval', {
+      ai_privacy_approval_version: null,
+      ai_privacy_approved_at: null,
+      ai_privacy_approved_by: null
+    }, true]
+  ])('fails closed when AI fallback has %s', async (_reason, approval, aiExtractionAvailable) => {
+    resolveToken.mockResolvedValueOnce({
+      ...endpoint,
+      ai_extraction_mode: 'fallback',
+      ...approval
+    })
+
+    await expect(resolveEmailEndpointPolicy(
+      { recipientToken: endpoint.address_token },
+      { aiExtractionAvailable }
+    )).resolves.toMatchObject({ aiExtractionMode: 'disabled' })
   })
 
   it.each(['expired previous token', 'disabled endpoint', 'retired endpoint'])(

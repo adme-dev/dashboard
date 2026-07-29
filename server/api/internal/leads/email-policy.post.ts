@@ -28,7 +28,11 @@ export default defineEventHandler(async (event) => {
   const parsed = PolicyRequestSchema.safeParse(body)
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'invalid_email_policy_request' })
   // This policy is intentionally minimal: no endpoint, tenant, form, or token is returned.
-  const policy = await resolveEmailEndpointPolicy(parsed.data)
+  const policy = await resolveEmailEndpointPolicy(parsed.data, {
+    aiExtractionAvailable: Boolean(
+      (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env?.AI
+    )
+  })
   emitEmailIngestionEvent({ event: 'email_ingestion_policy', status: 'allowed' })
   return policy
 })

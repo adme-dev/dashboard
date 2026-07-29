@@ -69,6 +69,9 @@ const claimedRow = {
   expected_provider: 'carsales',
   parser_mode: 'auto',
   ai_extraction_mode: 'disabled',
+  ai_privacy_approval_version: null,
+  ai_privacy_approved_at: null,
+  ai_privacy_approved_by: null,
   allowed_sender_domains: ['carsales.com.au']
 }
 
@@ -705,6 +708,92 @@ describe('email recovery processing', () => {
       'endpoint_unavailable',
       false
     )
+  })
+
+  it('invokes AI recovery only with current privacy approval and a runtime binding', async () => {
+    const ai = {
+      run: vi.fn(async () => ({ response: '{}' }))
+    }
+    const harness = recoveryHarness({ ai })
+    const aiNeededRaw = new TextEncoder().encode([
+      'From: Carsales <relay@carsales.com.au>',
+      'Subject: New Carsales lead',
+      'Message-ID: <lead-42@example.test>',
+      '',
+      'Lead ID: provider-42',
+      'A customer submitted an enquiry.'
+    ].join('\r\n'))
+    const claim = {
+      ...claimedRow,
+      raw_content_hash: hashBytes(aiNeededRaw),
+      raw_size: aiNeededRaw.byteLength,
+      ai_extraction_mode: 'fallback' as const,
+      ai_privacy_approval_version: 1,
+      ai_privacy_approved_at: '2026-07-29T00:00:00.000Z',
+      ai_privacy_approved_by: '88888888-8888-4888-8888-888888888888'
+    }
+    harness.bucket.get.mockResolvedValueOnce({
+      arrayBuffer: async () => (
+        await encryptStagedEmail(
+          aiNeededRaw,
+          'relay@carsales.com.au',
+          SECRET,
+          manifestFor(claim)
+        )
+      ).buffer
+    })
+
+    await processEmailRecoveryClaim(
+      {} as never,
+      claim,
+      LEASE_TOKEN,
+      harness.dependencies
+    )
+
+    expect(ai.run).toHaveBeenCalledOnce()
+  })
+
+  it('fails closed during recovery when an AI privacy approval is missing', async () => {
+    const ai = {
+      run: vi.fn(async () => ({ response: '{}' }))
+    }
+    const harness = recoveryHarness({ ai })
+    const aiNeededRaw = new TextEncoder().encode([
+      'From: Carsales <relay@carsales.com.au>',
+      'Subject: New Carsales lead',
+      'Message-ID: <lead-42@example.test>',
+      '',
+      'Lead ID: provider-42',
+      'A customer submitted an enquiry.'
+    ].join('\r\n'))
+    const claim = {
+      ...claimedRow,
+      raw_content_hash: hashBytes(aiNeededRaw),
+      raw_size: aiNeededRaw.byteLength,
+      ai_extraction_mode: 'fallback' as const,
+      ai_privacy_approval_version: null,
+      ai_privacy_approved_at: null,
+      ai_privacy_approved_by: null
+    }
+    harness.bucket.get.mockResolvedValueOnce({
+      arrayBuffer: async () => (
+        await encryptStagedEmail(
+          aiNeededRaw,
+          'relay@carsales.com.au',
+          SECRET,
+          manifestFor(claim)
+        )
+      ).buffer
+    })
+
+    await processEmailRecoveryClaim(
+      {} as never,
+      claim,
+      LEASE_TOKEN,
+      harness.dependencies
+    )
+
+    expect(ai.run).not.toHaveBeenCalled()
   })
 
   it('fails closed when the canonical attempt limit is exhausted', async () => {

@@ -100,4 +100,28 @@ describe('signed email internal route body limits', () => {
 
     expect(mocks.verify).not.toHaveBeenCalled()
   })
+
+  it('passes the request-scoped Workers AI capability to policy resolution', async () => {
+    mocks.resolvePolicy.mockResolvedValueOnce({
+      schemaVersion: 1,
+      parserMode: 'auto',
+      aiExtractionMode: 'fallback',
+      expectedProvider: null,
+      allowedSenderDomains: [],
+      maxRawBytes: 2 * 1024 * 1024,
+      maxAdfAttachmentBytes: 256 * 1024
+    })
+    const event = eventFor(JSON.stringify({ recipientToken: '0123456789' }))
+    ;(event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare = {
+      env: { AI: { run: vi.fn() } }
+    }
+
+    await expect(policyHandler(event)).resolves.toMatchObject({
+      aiExtractionMode: 'fallback'
+    })
+    expect(mocks.resolvePolicy).toHaveBeenCalledWith(
+      { recipientToken: '0123456789' },
+      { aiExtractionAvailable: true }
+    )
+  })
 })
