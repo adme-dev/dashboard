@@ -12,6 +12,8 @@ export interface SafeEmailLeadEndpoint {
   expected_provider: string | null
   parser_mode: EmailEndpointParserMode
   ai_extraction_mode: EmailEndpointAiMode
+  ai_privacy_approval_version: number | null
+  ai_privacy_approved_at: string | null
   allowed_sender_domains: string[]
   expected_max_silence_hours: number | null
   first_response_sla_minutes: number | null
@@ -22,6 +24,12 @@ export interface SafeEmailLeadEndpoint {
   last_accepted_at: string | null
   last_failure_at: string | null
   consecutive_failures: number
+  oldest_nonterminal_at: string | null
+  non_terminal_count: number
+  recovery_attempt_count: number
+  exhausted_recovery_count: number
+  recovery_state: 'idle' | 'pending' | 'retrying' | 'exhausted'
+  address_prefix_locked: boolean
   retired_at: string | null
   created_at: string
   updated_at: string
@@ -57,6 +65,12 @@ export interface EmailEndpointTeamOption {
 export type EmailEndpointHealth = {
   label: 'Retired' | 'Disabled' | 'Needs attention' | 'Awaiting first message' | 'Overdue' | 'Healthy' | 'Active'
   color: 'neutral' | 'error' | 'warning' | 'success' | 'info'
+  description: string
+}
+
+export type EmailEndpointRecovery = {
+  label: 'Clear' | 'Pending' | 'Recovering' | 'Exhausted'
+  color: 'neutral' | 'error' | 'warning' | 'info'
   description: string
 }
 
@@ -158,14 +172,8 @@ export function classifyEmailEndpointHealth(
   if (!endpoint.expected_max_silence_hours) {
     return { label: 'Active', color: 'info', description: 'No delivery cadence is configured.' }
   }
-  if (!endpoint.last_received_at) {
-    return {
-      label: 'Awaiting first message',
-      color: 'info',
-      description: 'Health timing begins after the first message arrives.'
-    }
-  }
-  const deadline = new Date(endpoint.last_received_at).getTime()
+  const cadenceReference = endpoint.last_received_at ?? endpoint.created_at
+  const deadline = new Date(cadenceReference).getTime()
     + endpoint.expected_max_silence_hours * 60 * 60_000
   if (Number.isFinite(deadline) && nowMs >= deadline) {
     return {
@@ -174,5 +182,46 @@ export function classifyEmailEndpointHealth(
       description: `No message within the expected ${endpoint.expected_max_silence_hours}-hour window.`
     }
   }
+  if (!endpoint.last_received_at) {
+    return {
+      label: 'Awaiting first message',
+      color: 'info',
+      description: `Waiting for the first message within the expected ${endpoint.expected_max_silence_hours}-hour window.`
+    }
+  }
   return { label: 'Healthy', color: 'success', description: 'Messages are arriving within the expected cadence.' }
+}
+
+export function classifyEmailEndpointRecovery(
+  endpoint: SafeEmailLeadEndpoint
+): EmailEndpointRecovery {
+  if (endpoint.recovery_state === 'exhausted' || endpoint.exhausted_recovery_count > 0) {
+    const count = endpoint.exhausted_recovery_count
+    return {
+      label: 'Exhausted',
+      color: 'error',
+      description: `${count} message${count === 1 ? '' : 's'} exhausted automatic recovery.`
+    }
+  }
+  if (endpoint.recovery_state === 'retrying') {
+    const count = endpoint.non_terminal_count
+    return {
+      label: 'Recovering',
+      color: 'warning',
+      description: `${count} message${count === 1 ? '' : 's'} pending; highest attempt ${endpoint.recovery_attempt_count}.`
+    }
+  }
+  if (endpoint.recovery_state === 'pending' || endpoint.non_terminal_count > 0) {
+    const count = endpoint.non_terminal_count
+    return {
+      label: 'Pending',
+      color: 'info',
+      description: `${count} message${count === 1 ? '' : 's'} awaiting recovery.`
+    }
+  }
+  return {
+    label: 'Clear',
+    color: 'neutral',
+    description: 'No message is waiting for recovery.'
+  }
 }

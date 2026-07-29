@@ -7,6 +7,7 @@ import {
   buildCreateEmailEndpointBody,
   buildUpdateEmailEndpointBody,
   classifyEmailEndpointHealth,
+  classifyEmailEndpointRecovery,
   normalizeEmailEndpointPrefixInput,
   routingPresetPreview,
   type EmailEndpointDraft,
@@ -49,6 +50,8 @@ const endpoint: SafeEmailLeadEndpoint = {
   expected_provider: 'carsales',
   parser_mode: 'auto',
   ai_extraction_mode: 'disabled',
+  ai_privacy_approval_version: null,
+  ai_privacy_approved_at: null,
   allowed_sender_domains: ['carsales.com.au'],
   expected_max_silence_hours: 24,
   first_response_sla_minutes: 30,
@@ -59,6 +62,12 @@ const endpoint: SafeEmailLeadEndpoint = {
   last_accepted_at: '2026-07-28T10:00:01.000Z',
   last_failure_at: null,
   consecutive_failures: 0,
+  oldest_nonterminal_at: null,
+  non_terminal_count: 0,
+  recovery_attempt_count: 0,
+  exhausted_recovery_count: 0,
+  recovery_state: 'idle',
+  address_prefix_locked: true,
   retired_at: null,
   created_at: '2026-07-20T00:00:00.000Z',
   updated_at: '2026-07-28T10:00:01.000Z'
@@ -83,9 +92,9 @@ const draft: EmailEndpointDraft = {
 
 describe('agency leads email addresses composition', () => {
   it('adds Email addresses without replacing Inbox or Form rules', () => {
-    expect(pageSource).toContain("{ value: 'inbox', label: 'Inbox'")
-    expect(pageSource).toContain("{ value: 'rules', label: 'Form rules'")
-    expect(pageSource).toContain("{ value: 'email', label: 'Email addresses'")
+    expect(pageSource).toContain(`{ value: 'inbox', label: 'Inbox'`)
+    expect(pageSource).toContain(`{ value: 'rules', label: 'Form rules'`)
+    expect(pageSource).toContain(`{ value: 'email', label: 'Email addresses'`)
     expect(pageSource).toContain('<LeadsInbox')
     expect(pageSource).toContain('<LeadsFormRulesTab')
     expect(pageSource).toContain('<LeadsEmailEndpointsTab')
@@ -120,11 +129,17 @@ describe('agency leads email addresses composition', () => {
     ]) {
       expect(formSource).toContain(label)
     }
-    expect(formSource).toContain('AI fallback is unavailable until the platform capability is exposed')
+    expect(formSource).toContain('AI fallback can only be enabled by an owner or admin')
     expect(slideoverSource).toContain('Raw email is encrypted and retained for 7 days when quarantine is required.')
     expect(slideoverSource).toContain('Form ID')
     expect(formSource).toContain('Routing customisation state is not supplied by the safe endpoint API')
     expect(formSource).not.toMatch(/value:\s*['"]{2}/)
+  })
+
+  it('keeps the approved fallback value visible while always leaving the Off choice selectable', () => {
+    expect(policySource).toContain(`{ value: 'fallback', label: 'Platform-gated fallback', disabled: true }`)
+    expect(policySource).not.toContain(`:disabled="endpoint?.ai_extraction_mode === 'fallback'"`)
+    expect(policySource).toContain('Turning fallback off revokes its recorded privacy approval')
   })
 
   it('uses local Lucide icons and exposes all table states and agency actions', () => {
@@ -142,7 +157,10 @@ describe('agency leads email addresses composition', () => {
     ]) {
       expect(tableFeatureSource).toContain(content)
     }
-    expect(tableFeatureSource).toContain('Not supplied by endpoint list API')
+    expect(tableFeatureSource).not.toContain('Not supplied by endpoint list API')
+    expect(tableFeatureSource).toContain('Oldest pending')
+    expect(tableFeatureSource).toContain('recovery_attempt_count')
+    expect(tableFeatureSource).toContain('exhausted_recovery_count')
     expect(tableFeatureSource).toContain('navigator.clipboard.writeText')
     expect(tableFeatureSource).toContain('/api/leads/email-endpoints')
   })
@@ -287,10 +305,56 @@ describe('cadence-aware email endpoint health', () => {
       ...endpoint,
       last_received_at: '2026-07-29T09:30:00.000Z'
     }, now)).toMatchObject({ label: 'Healthy', color: 'success' })
+    expect(classifyEmailEndpointHealth({
+      ...endpoint,
+      last_received_at: null,
+      created_at: '2026-07-29T09:30:00.000Z'
+    }, now)).toMatchObject({
+      label: 'Awaiting first message',
+      color: 'info',
+      description: 'Waiting for the first message within the expected 24-hour window.'
+    })
     expect(classifyEmailEndpointHealth({ ...endpoint, last_received_at: null }, now))
-      .toMatchObject({ label: 'Awaiting first message', color: 'info' })
+      .toMatchObject({
+        label: 'Overdue',
+        color: 'warning',
+        description: 'No message within the expected 24-hour window.'
+      })
     expect(classifyEmailEndpointHealth({ ...endpoint, expected_max_silence_hours: null }, now))
       .toMatchObject({ label: 'Active', color: 'info' })
+  })
+})
+
+describe('email endpoint recovery overview', () => {
+  it('distinguishes clear, pending, retrying, and exhausted endpoint recovery states', () => {
+    expect(classifyEmailEndpointRecovery(endpoint))
+      .toMatchObject({ label: 'Clear', color: 'neutral' })
+    expect(classifyEmailEndpointRecovery({
+      ...endpoint,
+      recovery_state: 'pending',
+      non_terminal_count: 1,
+      oldest_nonterminal_at: '2026-07-29T08:00:00.000Z'
+    })).toMatchObject({ label: 'Pending', color: 'info' })
+    expect(classifyEmailEndpointRecovery({
+      ...endpoint,
+      recovery_state: 'retrying',
+      non_terminal_count: 2,
+      recovery_attempt_count: 3,
+      oldest_nonterminal_at: '2026-07-29T08:00:00.000Z'
+    })).toMatchObject({
+      label: 'Recovering',
+      color: 'warning',
+      description: '2 messages pending; highest attempt 3.'
+    })
+    expect(classifyEmailEndpointRecovery({
+      ...endpoint,
+      recovery_state: 'exhausted',
+      exhausted_recovery_count: 2
+    })).toMatchObject({
+      label: 'Exhausted',
+      color: 'error',
+      description: '2 messages exhausted automatic recovery.'
+    })
   })
 })
 
@@ -359,11 +423,13 @@ function mountEmailEndpoints(fetchMock: ReturnType<typeof vi.fn>) {
 
 function endpointFetch(items: SafeEmailLeadEndpoint[]) {
   return vi.fn(async (request: string) => {
-    if (request === '/api/agency/clients') {
-      return [{ id: endpoint.client_id, name: 'Northside Motors' }]
-    }
     if (request === '/api/agency/team-members') return { members: [] }
-    if (request === '/api/leads/email-endpoints') return { items }
+    if (request === '/api/leads/email-endpoints') {
+      return {
+        items,
+        clients: [{ id: endpoint.client_id, name: 'Northside Motors' }]
+      }
+    }
     throw new Error(`Unexpected request: ${request}`)
   })
 }
@@ -374,10 +440,8 @@ describe('email endpoint component DOM smoke', () => {
     const mounted = mountEmailEndpoints(fetchMock)
     expect(mounted.host.querySelectorAll('[data-skeleton]')).toHaveLength(6)
     await mounted.flush()
-    expect(fetchMock).toHaveBeenCalledWith('/api/leads/email-endpoints', {
-      method: 'GET',
-      query: { client_id: endpoint.client_id }
-    })
+    expect(fetchMock).toHaveBeenCalledWith('/api/leads/email-endpoints', { method: 'GET' })
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/agency/clients')
     expect(mounted.host.querySelector('[data-table]')?.getAttribute('data-count')).toBe('1')
     expect(mounted.consoleError).not.toHaveBeenCalled()
     expect(mounted.consoleWarn).not.toHaveBeenCalled()
@@ -415,9 +479,10 @@ function deferred<T>(): Deferred<T> {
 }
 
 function mountEmailEndpointsManager(fetchMock: ReturnType<typeof vi.fn>) {
+  const toastAdd = vi.fn()
   Object.assign(globalThis, {
     $fetch: fetchMock,
-    useToast: () => ({ add: vi.fn() })
+    useToast: () => ({ add: toastAdd })
   })
   let manager!: ReturnType<typeof useEmailEndpointsManager>
   const host = document.createElement('div')
@@ -430,6 +495,7 @@ function mountEmailEndpointsManager(fetchMock: ReturnType<typeof vi.fn>) {
   app.mount(host)
   return {
     manager,
+    toastAdd,
     cleanup: () => app.unmount()
   }
 }
@@ -451,33 +517,38 @@ const newerEndpoint: SafeEmailLeadEndpoint = {
 
 describe('email endpoint refresh ordering', () => {
   it('keeps a fast second success when the first success resolves later', async () => {
-    const firstClients = deferred<Array<{ id: string, name: string }>>()
+    const firstBatch = deferred<{
+      items: SafeEmailLeadEndpoint[]
+      clients: Array<{ id: string, name: string }>
+    }>()
     const firstTeam = deferred<{ members: Array<{ id: string, name: string }> }>()
-    let clientCalls = 0
+    let batchCalls = 0
     let teamCalls = 0
-    const fetchMock = vi.fn((request: string, options?: { query?: { client_id?: string } }) => {
-      if (request === '/api/agency/clients') {
-        clientCalls += 1
-        return clientCalls === 1
-          ? firstClients.promise
-          : Promise.resolve([{ id: newerEndpoint.client_id, name: 'New client' }])
-      }
+    const fetchMock = vi.fn((request: string) => {
       if (request === '/api/agency/team-members') {
         teamCalls += 1
         return teamCalls === 1
           ? firstTeam.promise
           : Promise.resolve({ members: [{ id: 'new-user', name: 'New user' }] })
       }
-      if (request === '/api/leads/email-endpoints' && options?.query?.client_id === newerEndpoint.client_id) {
-        return Promise.resolve({ items: [newerEndpoint] })
+      if (request === '/api/leads/email-endpoints') {
+        batchCalls += 1
+        return batchCalls === 1
+          ? firstBatch.promise
+          : Promise.resolve({
+              items: [newerEndpoint],
+              clients: [{ id: newerEndpoint.client_id, name: 'New client' }]
+            })
       }
-      if (request === '/api/leads/email-endpoints') return Promise.resolve({ items: [endpoint] })
       throw new Error(`Unexpected request: ${request}`)
     })
     const mounted = mountEmailEndpointsManager(fetchMock)
     const secondRefresh = mounted.manager.refresh()
     await secondRefresh
-    firstClients.resolve([{ id: endpoint.client_id, name: 'Old client' }])
+    firstBatch.resolve({
+      items: [endpoint],
+      clients: [{ id: endpoint.client_id, name: 'Old client' }]
+    })
     firstTeam.resolve({ members: [{ id: 'old-user', name: 'Old user' }] })
     await flushPromises()
 
@@ -488,22 +559,27 @@ describe('email endpoint refresh ordering', () => {
   })
 
   it('ignores an old 403 that arrives after a newer success', async () => {
-    const firstClients = deferred<Array<{ id: string, name: string }>>()
-    let clientCalls = 0
+    const firstBatch = deferred<{
+      items: SafeEmailLeadEndpoint[]
+      clients: Array<{ id: string, name: string }>
+    }>()
+    let batchCalls = 0
     const fetchMock = vi.fn((request: string) => {
-      if (request === '/api/agency/clients') {
-        clientCalls += 1
-        return clientCalls === 1
-          ? firstClients.promise
-          : Promise.resolve([{ id: newerEndpoint.client_id, name: 'New client' }])
-      }
       if (request === '/api/agency/team-members') return Promise.resolve({ members: [] })
-      if (request === '/api/leads/email-endpoints') return Promise.resolve({ items: [newerEndpoint] })
+      if (request === '/api/leads/email-endpoints') {
+        batchCalls += 1
+        return batchCalls === 1
+          ? firstBatch.promise
+          : Promise.resolve({
+              items: [newerEndpoint],
+              clients: [{ id: newerEndpoint.client_id, name: 'New client' }]
+            })
+      }
       throw new Error(`Unexpected request: ${request}`)
     })
     const mounted = mountEmailEndpointsManager(fetchMock)
     await mounted.manager.refresh()
-    firstClients.reject({ statusCode: 403 })
+    firstBatch.reject({ statusCode: 403 })
     await flushPromises()
 
     expect(mounted.manager.forbidden.value).toBe(false)
@@ -513,27 +589,32 @@ describe('email endpoint refresh ordering', () => {
   })
 
   it('keeps a newer error when an old success resolves afterwards', async () => {
-    const firstClients = deferred<Array<{ id: string, name: string }>>()
+    const firstBatch = deferred<{
+      items: SafeEmailLeadEndpoint[]
+      clients: Array<{ id: string, name: string }>
+    }>()
     const firstTeam = deferred<{ members: Array<{ id: string, name: string }> }>()
-    let clientCalls = 0
+    let batchCalls = 0
     let teamCalls = 0
     const fetchMock = vi.fn((request: string) => {
-      if (request === '/api/agency/clients') {
-        clientCalls += 1
-        return clientCalls === 1
-          ? firstClients.promise
-          : Promise.reject(new Error('new request failed'))
-      }
       if (request === '/api/agency/team-members') {
         teamCalls += 1
         return teamCalls === 1 ? firstTeam.promise : Promise.resolve({ members: [] })
       }
-      if (request === '/api/leads/email-endpoints') return Promise.resolve({ items: [endpoint] })
+      if (request === '/api/leads/email-endpoints') {
+        batchCalls += 1
+        return batchCalls === 1
+          ? firstBatch.promise
+          : Promise.reject(new Error('new request failed'))
+      }
       throw new Error(`Unexpected request: ${request}`)
     })
     const mounted = mountEmailEndpointsManager(fetchMock)
     await mounted.manager.refresh()
-    firstClients.resolve([{ id: endpoint.client_id, name: 'Old client' }])
+    firstBatch.resolve({
+      items: [endpoint],
+      clients: [{ id: endpoint.client_id, name: 'Old client' }]
+    })
     firstTeam.resolve({ members: [{ id: 'old-user', name: 'Old user' }] })
     await flushPromises()
 
@@ -545,27 +626,91 @@ describe('email endpoint refresh ordering', () => {
   })
 
   it('keeps pending tied to the current request when an older request finishes first', async () => {
-    const firstClients = deferred<Array<{ id: string, name: string }>>()
-    const secondClients = deferred<Array<{ id: string, name: string }>>()
-    let clientCalls = 0
+    const firstBatch = deferred<{
+      items: SafeEmailLeadEndpoint[]
+      clients: Array<{ id: string, name: string }>
+    }>()
+    const secondBatch = deferred<{
+      items: SafeEmailLeadEndpoint[]
+      clients: Array<{ id: string, name: string }>
+    }>()
+    let batchCalls = 0
     const fetchMock = vi.fn((request: string) => {
-      if (request === '/api/agency/clients') {
-        clientCalls += 1
-        return clientCalls === 1 ? firstClients.promise : secondClients.promise
-      }
       if (request === '/api/agency/team-members') return Promise.resolve({ members: [] })
-      if (request === '/api/leads/email-endpoints') return Promise.resolve({ items: [] })
+      if (request === '/api/leads/email-endpoints') {
+        batchCalls += 1
+        return batchCalls === 1 ? firstBatch.promise : secondBatch.promise
+      }
       throw new Error(`Unexpected request: ${request}`)
     })
     const mounted = mountEmailEndpointsManager(fetchMock)
     const secondRefresh = mounted.manager.refresh()
-    firstClients.resolve([{ id: endpoint.client_id, name: 'Old client' }])
+    firstBatch.resolve({
+      items: [endpoint],
+      clients: [{ id: endpoint.client_id, name: 'Old client' }]
+    })
     await flushPromises()
     expect(mounted.manager.pending.value).toBe(true)
 
-    secondClients.resolve([{ id: newerEndpoint.client_id, name: 'New client' }])
+    secondBatch.resolve({
+      items: [newerEndpoint],
+      clients: [{ id: newerEndpoint.client_id, name: 'New client' }]
+    })
     await secondRefresh
     expect(mounted.manager.pending.value).toBe(false)
+    mounted.cleanup()
+  })
+
+  it('keeps the last successful scoped batch visible when a refresh fails transiently', async () => {
+    let batchCalls = 0
+    const fetchMock = vi.fn((request: string) => {
+      if (request === '/api/agency/team-members') return Promise.resolve({ members: [] })
+      if (request === '/api/leads/email-endpoints') {
+        batchCalls += 1
+        return batchCalls === 1
+          ? Promise.resolve({
+              items: [endpoint],
+              clients: [{ id: endpoint.client_id, name: 'Northside Motors' }]
+            })
+          : Promise.reject(new Error('temporary endpoint read failure'))
+      }
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    const mounted = mountEmailEndpointsManager(fetchMock)
+    await flushPromises()
+    await mounted.manager.refresh()
+
+    expect(mounted.manager.filteredEndpoints.value).toEqual([endpoint])
+    expect(mounted.manager.loadError.value).toBe('temporary endpoint read failure')
+    mounted.cleanup()
+  })
+
+  it('keeps a successful scoped batch when ancillary team options fail', async () => {
+    const fetchMock = vi.fn((request: string) => {
+      if (request === '/api/agency/team-members') {
+        return Promise.reject(new Error('temporary team read failure'))
+      }
+      if (request === '/api/leads/email-endpoints') {
+        return Promise.resolve({
+          items: [endpoint],
+          clients: [{ id: endpoint.client_id, name: 'Northside Motors' }]
+        })
+      }
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    const mounted = mountEmailEndpointsManager(fetchMock)
+    await flushPromises()
+
+    expect(mounted.manager.filteredEndpoints.value).toEqual([endpoint])
+    expect(mounted.manager.clients.value).toEqual([
+      { id: endpoint.client_id, name: 'Northside Motors' }
+    ])
+    expect(mounted.manager.forbidden.value).toBe(false)
+    expect(mounted.manager.loadError.value).toBeNull()
+    expect(mounted.toastAdd).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Team options unavailable',
+      color: 'warning'
+    }))
     mounted.cleanup()
   })
 })

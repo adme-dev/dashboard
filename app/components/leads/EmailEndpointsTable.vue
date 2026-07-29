@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { formatDistanceToNowStrict } from 'date-fns'
-import type { SafeEmailLeadEndpoint } from '~/utils/emailEndpointUi'
+import {
+  classifyEmailEndpointRecovery,
+  type SafeEmailLeadEndpoint
+} from '~/utils/emailEndpointUi'
 
 const props = defineProps<{
   endpoints: SafeEmailLeadEndpoint[]
@@ -9,12 +12,12 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  copy: [endpoint: SafeEmailLeadEndpoint]
-  edit: [endpoint: SafeEmailLeadEndpoint]
-  toggle: [endpoint: SafeEmailLeadEndpoint]
-  rotate: [endpoint: SafeEmailLeadEndpoint]
+  'copy': [endpoint: SafeEmailLeadEndpoint]
+  'edit': [endpoint: SafeEmailLeadEndpoint]
+  'toggle': [endpoint: SafeEmailLeadEndpoint]
+  'rotate': [endpoint: SafeEmailLeadEndpoint]
   'open-rules': []
-  retire: [endpoint: SafeEmailLeadEndpoint]
+  'retire': [endpoint: SafeEmailLeadEndpoint]
 }>()
 
 const columns = [
@@ -32,6 +35,11 @@ const columns = [
 function lastMessageLabel(value: string | null) {
   if (!value) return 'Never'
   return formatDistanceToNowStrict(new Date(value), { addSuffix: true })
+}
+
+function oldestPendingLabel(value: string | null) {
+  if (!value) return null
+  return formatDistanceToNowStrict(new Date(value), { addSuffix: false })
 }
 
 function actionItems(endpoint: SafeEmailLeadEndpoint) {
@@ -115,12 +123,28 @@ function actionItems(endpoint: SafeEmailLeadEndpoint) {
       <template #health-cell="{ row }">
         <LeadsEmailIngestionStatusBadge :endpoint="row.original" />
       </template>
-      <template #recovery-cell>
-        <UTooltip text="Oldest non-terminal age and recovery state are not included in the safe list response.">
-          <span class="whitespace-nowrap text-xs text-muted">
-            Not supplied by endpoint list API
-          </span>
-        </UTooltip>
+      <template #recovery-cell="{ row }">
+        <div class="min-w-36">
+          <UBadge
+            :color="classifyEmailEndpointRecovery(row.original).color"
+            variant="subtle"
+            size="xs"
+          >
+            {{ classifyEmailEndpointRecovery(row.original).label }}
+          </UBadge>
+          <p class="mt-1 text-xs text-muted">
+            {{ classifyEmailEndpointRecovery(row.original).description }}
+          </p>
+          <p v-if="row.original.oldest_nonterminal_at" class="mt-1 text-xs text-muted">
+            Oldest pending {{ oldestPendingLabel(row.original.oldest_nonterminal_at) }}
+          </p>
+          <p v-if="row.original.recovery_attempt_count" class="mt-1 text-xs text-muted">
+            Highest attempt {{ row.original.recovery_attempt_count }}
+          </p>
+          <p v-if="row.original.exhausted_recovery_count" class="mt-1 text-xs text-error">
+            {{ row.original.exhausted_recovery_count }} exhausted
+          </p>
+        </div>
       </template>
       <template #actions-cell="{ row }">
         <UDropdownMenu :items="actionItems(row.original)">

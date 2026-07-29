@@ -47,14 +47,15 @@ const cadenceOptions = [
 
       <UFormField
         label="AI fallback"
-        help="AI fallback is unavailable until the platform capability is exposed."
+        :help="endpoint?.ai_extraction_mode === 'fallback'
+          ? 'Turning fallback off revokes its recorded privacy approval. An owner or admin must approve it again.'
+          : 'AI fallback can only be enabled by an owner or admin after the platform capability and current privacy policy are approved.'"
       >
         <USelectMenu
           v-model="draft.aiExtractionMode"
           :items="aiOptions"
           value-key="value"
           class="w-full"
-          :disabled="endpoint?.ai_extraction_mode === 'fallback'"
         />
       </UFormField>
 

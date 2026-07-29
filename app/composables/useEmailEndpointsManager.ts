@@ -47,7 +47,11 @@ export function useEmailEndpointsManager(onOpenRules: () => void) {
     if (selectedClient.value !== 'all' && endpoint.client_id !== selectedClient.value) return false
     if (selectedStatus.value === 'enabled') return endpoint.enabled && !endpoint.retired_at
     if (selectedStatus.value === 'disabled') return !endpoint.enabled && !endpoint.retired_at
-    if (selectedStatus.value === 'attention') return endpoint.consecutive_failures > 0
+    if (selectedStatus.value === 'attention') {
+      return endpoint.consecutive_failures > 0
+        || endpoint.non_terminal_count > 0
+        || endpoint.exhausted_recovery_count > 0
+    }
     if (selectedStatus.value === 'retired') return Boolean(endpoint.retired_at)
     return true
   }))
@@ -79,37 +83,35 @@ export function useEmailEndpointsManager(onOpenRules: () => void) {
     loadError.value = null
     forbidden.value = false
     try {
-      const [clientRows, teamRows] = await Promise.all([
-        apiFetch<EmailEndpointClientOption[]>('/api/agency/clients'),
+      const [endpointResult, teamResult] = await Promise.allSettled([
+        apiFetch<{
+          items: SafeEmailLeadEndpoint[]
+          clients: EmailEndpointClientOption[]
+        }>('/api/leads/email-endpoints', { method: 'GET' }),
         apiFetch<{ members: EmailEndpointTeamOption[] }>('/api/agency/team-members')
       ])
       if (epoch !== refreshEpoch) return
-      clients.value = clientRows
-      team.value = teamRows.members ?? []
-      const results = await Promise.allSettled(
-        clientRows.map(client =>
-          apiFetch<{ items: SafeEmailLeadEndpoint[] }>('/api/leads/email-endpoints', {
-            method: 'GET',
-            query: { client_id: client.id }
-          })
-        )
-      )
-      if (epoch !== refreshEpoch) return
-      const rejected = results.find(result => result.status === 'rejected') as PromiseRejectedResult | undefined
-      if (rejected) {
-        if (errorStatus(rejected.reason) === 403) forbidden.value = true
-        else loadError.value = errorMessage(rejected.reason)
-        endpoints.value = []
-        return
+      if (teamResult.status === 'fulfilled') {
+        team.value = teamResult.value.members ?? []
       }
-      endpoints.value = results.flatMap(result =>
-        result.status === 'fulfilled' ? result.value.items : []
-      )
-    } catch (error) {
-      if (epoch !== refreshEpoch) return
-      if (errorStatus(error) === 403) forbidden.value = true
-      else loadError.value = errorMessage(error)
-      endpoints.value = []
+      if (endpointResult.status === 'fulfilled') {
+        clients.value = endpointResult.value.clients
+        endpoints.value = endpointResult.value.items
+        if (teamResult.status === 'rejected') {
+          toast.add({
+            title: 'Team options unavailable',
+            description: `${errorMessage(teamResult.reason)} Existing endpoint data is still current.`,
+            color: 'warning'
+          })
+        }
+      } else if (errorStatus(endpointResult.reason) === 403) {
+        forbidden.value = true
+        clients.value = []
+        team.value = []
+        endpoints.value = []
+      } else {
+        loadError.value = errorMessage(endpointResult.reason)
+      }
     } finally {
       if (epoch === refreshEpoch) pending.value = false
     }

@@ -49,7 +49,12 @@ const {
           Agency-only inbound addresses, health, and routing entry points.
         </p>
       </div>
-      <UButton icon="i-lucide-plus" label="Create address" size="sm" @click="openCreate" />
+      <UButton
+        icon="i-lucide-plus"
+        label="Create address"
+        size="sm"
+        @click="openCreate"
+      />
     </div>
 
     <div class="grid grid-cols-1 gap-4 border-b border-default px-4 py-3 sm:grid-cols-2">
@@ -92,7 +97,7 @@ const {
         />
       </div>
 
-      <div v-else-if="loadError" class="flex h-full items-center justify-center p-6">
+      <div v-else-if="loadError && filteredEndpoints.length === 0" class="flex h-full items-center justify-center p-6">
         <div class="max-w-lg space-y-3 text-center">
           <UAlert
             color="error"
@@ -132,18 +137,29 @@ const {
         />
       </div>
 
-      <LeadsEmailEndpointsTable
-        v-else
-        :endpoints="filteredEndpoints"
-        :client-name-by-id="clientNameById"
-        :mutation-pending-id="mutationPendingId"
-        @copy="copyAddress"
-        @edit="openEdit"
-        @toggle="toggleEndpoint"
-        @rotate="requestRotation"
-        @open-rules="openRules"
-        @retire="requestRetirement"
-      />
+      <div v-else>
+        <UAlert
+          v-if="loadError"
+          class="m-4"
+          color="warning"
+          variant="soft"
+          icon="i-lucide-cloud-alert"
+          title="Showing the last loaded email addresses"
+          :description="`${loadError} Retry to refresh this view.`"
+          :actions="[{ label: 'Retry', color: 'neutral', variant: 'outline', onClick: refresh }]"
+        />
+        <LeadsEmailEndpointsTable
+          :endpoints="filteredEndpoints"
+          :client-name-by-id="clientNameById"
+          :mutation-pending-id="mutationPendingId"
+          @copy="copyAddress"
+          @edit="openEdit"
+          @toggle="toggleEndpoint"
+          @rotate="requestRotation"
+          @open-rules="openRules"
+          @retire="requestRetirement"
+        />
+      </div>
     </div>
 
     <LeadsEmailEndpointSlideover

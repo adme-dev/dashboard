@@ -1645,6 +1645,9 @@ export interface EmailLeadEndpoint {
   expected_provider: string | null
   parser_mode: 'auto' | 'adf' | 'generic'
   ai_extraction_mode: 'disabled' | 'fallback'
+  ai_privacy_approval_version: number | null
+  ai_privacy_approved_at: string | null
+  ai_privacy_approved_by: string | null
   allowed_sender_domains: string[]
   expected_max_silence_hours: number | null
   first_response_sla_minutes: number | null

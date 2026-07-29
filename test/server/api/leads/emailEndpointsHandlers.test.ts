@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { requireRole, listEmailEndpoints, createEmailEndpoint, updateEmailEndpoint, rotateEmailEndpoint, getEmailEndpoint, listEmailEndpointIngestions, toSafeEmailEndpoint } = vi.hoisted(() => ({
+const { requireRole, listEmailEndpoints, listEmailEndpointsForActor, createEmailEndpoint, updateEmailEndpoint, rotateEmailEndpoint, getEmailEndpoint, listEmailEndpointIngestions, toSafeEmailEndpoint } = vi.hoisted(() => ({
   requireRole: vi.fn(),
   listEmailEndpoints: vi.fn(),
+  listEmailEndpointsForActor: vi.fn(),
   createEmailEndpoint: vi.fn(),
   updateEmailEndpoint: vi.fn(),
   rotateEmailEndpoint: vi.fn(),
@@ -13,7 +14,9 @@ const { requireRole, listEmailEndpoints, createEmailEndpoint, updateEmailEndpoin
 
 vi.mock('~~/server/utils/auth', () => ({ requireRole: (...args: unknown[]) => requireRole(...args) }))
 vi.mock('~~/server/utils/leads/emailEndpoint', () => ({
+  EMAIL_AI_PRIVACY_APPROVAL_VERSION: 1,
   listEmailEndpoints: (...args: unknown[]) => listEmailEndpoints(...args),
+  listEmailEndpointsForActor: (...args: unknown[]) => listEmailEndpointsForActor(...args),
   createEmailEndpoint: (...args: unknown[]) => createEmailEndpoint(...args),
   updateEmailEndpoint: (...args: unknown[]) => updateEmailEndpoint(...args),
   rotateEmailEndpoint: (...args: unknown[]) => rotateEmailEndpoint(...args),
@@ -54,6 +57,7 @@ describe('email endpoint handlers', () => {
     vi.clearAllMocks()
     requireRole.mockResolvedValue({ id: actorId })
     listEmailEndpoints.mockResolvedValue([])
+    listEmailEndpointsForActor.mockResolvedValue({ items: [], clients: [] })
     createEmailEndpoint.mockResolvedValue(rawEndpoint)
     updateEmailEndpoint.mockResolvedValue(rawEndpoint)
     rotateEmailEndpoint.mockResolvedValue(rawEndpoint)
@@ -76,5 +80,44 @@ describe('email endpoint handlers', () => {
       expect(result.endpoint).not.toHaveProperty('address_token')
       expect(result.endpoint).not.toHaveProperty('previous_address_token')
     }
+  })
+
+  it('passes only a server-resolved AI capability into an explicit versioned fallback approval', async () => {
+    const handler = (await import('~~/server/api/leads/email-endpoints/index.post')).default
+    await handler({
+      context: { cloudflare: { env: { AI: { run: vi.fn() } } } },
+      body: {
+        client_id: clientId,
+        label: 'General',
+        form_name: 'General enquiries',
+        ai_extraction_mode: 'fallback',
+        ai_privacy_approval_version: 1
+      }
+    } as never)
+
+    expect(createEmailEndpoint).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiExtractionMode: 'fallback',
+        aiPrivacyApprovalVersion: 1
+      }),
+      actorId,
+      { aiExtractionAvailable: true }
+    )
+  })
+
+  it('keeps fallback disablement available when the AI runtime capability is absent', async () => {
+    const handler = (await import('~~/server/api/leads/email-endpoints/[id].patch')).default
+    await handler({
+      context: { cloudflare: { env: {} } },
+      params: { id: endpointId },
+      body: { ai_extraction_mode: 'disabled' }
+    } as never)
+
+    expect(updateEmailEndpoint).toHaveBeenCalledWith(
+      endpointId,
+      expect.objectContaining({ aiExtractionMode: 'disabled' }),
+      actorId,
+      { aiExtractionAvailable: false }
+    )
   })
 })

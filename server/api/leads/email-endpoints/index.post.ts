@@ -1,7 +1,11 @@
 import { z } from 'zod'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { createEmailEndpoint, toSafeEmailEndpoint } from '~~/server/utils/leads/emailEndpoint'
+import {
+  createEmailEndpoint,
+  EMAIL_AI_PRIVACY_APPROVAL_VERSION,
+  toSafeEmailEndpoint
+} from '~~/server/utils/leads/emailEndpoint'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -10,6 +14,7 @@ const Body = z.object({
   expected_provider: z.string().max(64).nullable().optional(),
   parser_mode: z.enum(['auto', 'adf', 'generic']).optional(),
   ai_extraction_mode: z.enum(['disabled', 'fallback']).optional(),
+  ai_privacy_approval_version: z.literal(EMAIL_AI_PRIVACY_APPROVAL_VERSION).optional(),
   allowed_sender_domains: z.array(z.string()).max(100).optional(),
   expected_max_silence_hours: z.number().int().nullable().optional(),
   first_response_sla_minutes: z.number().int().nullable().optional(),
@@ -26,11 +31,17 @@ export default defineEventHandler(async (event) => {
   const endpoint = await createEmailEndpoint({
     clientId: body.client_id, label: body.label, addressPrefix: body.address_prefix,
     expectedProvider: body.expected_provider, parserMode: body.parser_mode,
-    aiExtractionMode: body.ai_extraction_mode, allowedSenderDomains: body.allowed_sender_domains,
+    aiExtractionMode: body.ai_extraction_mode,
+    aiPrivacyApprovalVersion: body.ai_privacy_approval_version,
+    allowedSenderDomains: body.allowed_sender_domains,
     expectedMaxSilenceHours: body.expected_max_silence_hours,
     firstResponseSlaMinutes: body.first_response_sla_minutes, formName: body.form_name,
     routingPreset: body.routing_preset, notificationEmail: body.notification_email,
     assignedUserId: body.assigned_user_id
-  }, actor.id)
+  }, actor.id, {
+    aiExtractionAvailable: Boolean(
+      (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env?.AI
+    )
+  })
   return { endpoint: toSafeEmailEndpoint(endpoint) }
 })

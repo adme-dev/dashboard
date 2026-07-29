@@ -14,7 +14,7 @@ const props = defineProps<{
 
 const draft = defineModel<EmailEndpointDraft>({ required: true })
 const isEditing = computed(() => Boolean(props.endpoint))
-const addressPrefixLocked = computed(() => Boolean(props.endpoint?.last_received_at))
+const addressPrefixLocked = computed(() => Boolean(props.endpoint?.address_prefix_locked))
 const clientOptions = computed(() => [
   { value: 'none', label: 'Select a client', disabled: true },
   ...props.clients.map(client => ({ value: client.id, label: client.name }))
@@ -71,7 +71,7 @@ function updateAddressPrefix(value: string | number) {
 
       <UFormField
         label="Address prefix"
-        :help="addressPrefixLocked ? 'Locked after the first message is received.' : 'Optional lower-case ASCII prefix.'"
+        :help="addressPrefixLocked ? 'Locked after the first delivery is reserved.' : 'Optional lower-case ASCII prefix.'"
       >
         <UInput
           :model-value="draft.addressPrefix"

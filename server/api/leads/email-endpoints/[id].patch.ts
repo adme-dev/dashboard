@@ -1,7 +1,11 @@
 import { z } from 'zod'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { toSafeEmailEndpoint, updateEmailEndpoint } from '~~/server/utils/leads/emailEndpoint'
+import {
+  EMAIL_AI_PRIVACY_APPROVAL_VERSION,
+  toSafeEmailEndpoint,
+  updateEmailEndpoint
+} from '~~/server/utils/leads/emailEndpoint'
 
 const Body = z.object({
   label: z.string().min(1).max(128).optional(),
@@ -9,6 +13,7 @@ const Body = z.object({
   expected_provider: z.string().max(64).nullable().optional(),
   parser_mode: z.enum(['auto', 'adf', 'generic']).optional(),
   ai_extraction_mode: z.enum(['disabled', 'fallback']).optional(),
+  ai_privacy_approval_version: z.literal(EMAIL_AI_PRIVACY_APPROVAL_VERSION).optional(),
   allowed_sender_domains: z.array(z.string()).max(100).optional(),
   expected_max_silence_hours: z.number().int().nullable().optional(),
   first_response_sla_minutes: z.number().int().nullable().optional(),
@@ -25,10 +30,15 @@ export default defineEventHandler(async (event) => {
   const endpoint = await updateEmailEndpoint(id, {
     label: body.label, addressPrefix: body.address_prefix, expectedProvider: body.expected_provider,
     parserMode: body.parser_mode, aiExtractionMode: body.ai_extraction_mode,
+    aiPrivacyApprovalVersion: body.ai_privacy_approval_version,
     allowedSenderDomains: body.allowed_sender_domains,
     expectedMaxSilenceHours: body.expected_max_silence_hours,
     firstResponseSlaMinutes: body.first_response_sla_minutes, formName: body.form_name,
     enabled: body.enabled, retire: body.retire
-  }, actor.id)
+  }, actor.id, {
+    aiExtractionAvailable: Boolean(
+      (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env?.AI
+    )
+  })
   return { endpoint: toSafeEmailEndpoint(endpoint) }
 })
