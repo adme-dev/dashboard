@@ -6,14 +6,23 @@ export {
   encryptRawEmail,
   secretsAreEqual
 } from '../../../shared/leads/email/quarantine'
+import type { EmailStagedManifest } from '../../../shared/leads/email/contracts'
 
 export function encryptedRawEmailPutOptions(
   expiresAt: string,
-  correlationId: string
+  correlationId: string,
+  manifest: EmailStagedManifest
 ): R2PutOptions {
   return {
+    onlyIf: { etagDoesNotMatch: '*' },
     httpMetadata: { contentType: 'application/octet-stream' },
-    customMetadata: { schemaVersion: '1', expiresAt, correlationId }
+    customMetadata: {
+      schemaVersion: '2',
+      expiresAt,
+      correlationId,
+      rawContentHashVersion: String(manifest.rawContentHashVersion),
+      rawContentHash: manifest.rawContentHash
+    }
   }
 }
 

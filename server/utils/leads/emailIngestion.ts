@@ -49,8 +49,15 @@ type Ingestion = {
   endpoint_id: string
   client_id: string | null
   correlation_id: string
+  transport: 'cloudflare_email_routing'
   external_id_hash: string
   message_id_hash: string | null
+  raw_content_hash_version: number | null
+  raw_content_hash: string | null
+  provider: string
+  sender_domain: string | null
+  header_from_domain: string | null
+  raw_size: number | null
   status: 'received' | 'accepted' | 'duplicate' | 'quarantined' | 'failed'
   terminal_at: string | null
   next_attempt_at: string | null
@@ -188,20 +195,25 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
     if (!endpoint) {
       return { schemaVersion: 1, outcome: 'denied', code: 'email_endpoint_unavailable' }
     }
-    if (endpoint.expected_provider && endpoint.expected_provider !== input.provider) {
-      return { schemaVersion: 1, outcome: 'denied', code: 'email_endpoint_policy_denied' }
-    }
     if (!senderDomainsAllowed(endpoint, input.envelopeSenderDomain, input.headerFromDomain)) {
       return { schemaVersion: 1, outcome: 'denied', code: 'email_endpoint_policy_denied' }
     }
     const existing = await db.query(`
       SELECT id, endpoint_id, client_id, correlation_id, external_id_hash, message_id_hash,
+        transport, provider, sender_domain, header_from_domain, raw_size,
+        raw_content_hash_version, raw_content_hash,
         status, terminal_at, next_attempt_at, attempt_count, staged_object_key,
         staged_expires_at, (staged_expires_at IS NULL OR staged_expires_at <= NOW()) AS staged_expired
       FROM lead_email_ingestions
-      WHERE endpoint_id = $1 AND external_id_hash = $2
+      WHERE endpoint_id = $1
+        AND (
+          external_id_hash = $2
+          OR ($3::text IS NOT NULL AND external_id_hash = $3)
+        )
+      ORDER BY (external_id_hash = $2) DESC
+      LIMIT 1
       FOR UPDATE
-    `, [endpoint.id, input.externalIdHash])
+    `, [endpoint.id, input.externalIdHash, input.legacyExternalIdHash])
     const found = existing.rows?.[0] as (
       Ingestion & { staged_object_key?: string | null, staged_expired?: boolean }
     ) | undefined
@@ -215,6 +227,23 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
           cleanupObjectKey: ['accepted', 'duplicate'].includes(found.status)
             ? found.staged_object_key ?? null
             : null
+        }
+      }
+      const immutableIdentityMatches = (
+        found.message_id_hash === input.messageIdHash
+        && found.transport === input.transport
+        && found.provider === input.provider
+        && found.sender_domain === input.envelopeSenderDomain
+        && found.header_from_domain === input.headerFromDomain
+        && Number(found.raw_size) === input.rawSize
+        && found.raw_content_hash_version === input.rawContentHashVersion
+        && found.raw_content_hash === input.rawContentHash
+      )
+      if (!immutableIdentityMatches) {
+        return {
+          schemaVersion: 1,
+          outcome: 'denied',
+          code: 'email_stage_identity_conflict'
         }
       }
       if (found.staged_expired) {
@@ -247,12 +276,18 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
     const inserted = await db.query(`
       INSERT INTO lead_email_ingestions (
         endpoint_id, client_id, correlation_id, transport, external_id_hash, message_id_hash,
-        provider, sender_domain, status, safe_evidence, staged_object_key, staged_expires_at, next_attempt_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'received', $9::jsonb, $10, $11::timestamptz,
-        NOW() + MAKE_INTERVAL(secs => $12::int))
+        provider, sender_domain, header_from_domain, raw_size,
+        raw_content_hash_version, raw_content_hash,
+        status, safe_evidence, staged_object_key, staged_expires_at, next_attempt_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+        'received', $13::jsonb, $14, $15::timestamptz,
+        NOW() + MAKE_INTERVAL(secs => $16::int)
+      )
       RETURNING id, correlation_id
     `, [endpoint.id, endpoint.client_id, input.correlationId, input.transport, input.externalIdHash,
-      input.messageIdHash, input.provider, input.envelopeSenderDomain,
+      input.messageIdHash, input.provider, input.envelopeSenderDomain, input.headerFromDomain,
+      input.rawSize, input.rawContentHashVersion, input.rawContentHash,
       JSON.stringify(input.safeEvidence), key, input.quarantineExpiresAt, STAGING_GRACE_SECONDS])
     const row = inserted.rows?.[0] as { id?: string, correlation_id?: string } | undefined
     if (!row?.id || !row.correlation_id) failure(409, 'email_stage_reservation_conflict')
@@ -289,10 +324,18 @@ export async function confirmEmailIngestionStage(input: EmailStageConfirmation) 
     WHERE id = $1
       AND correlation_id = $2
       AND staged_object_key = $3
+      AND raw_content_hash_version = $4
+      AND raw_content_hash = $5
       AND terminal_at IS NULL
       AND staged_expires_at > NOW()
     RETURNING id
-  `, [confirmation.ingestionId, confirmation.correlationId, confirmation.encryptedObjectKey])
+  `, [
+    confirmation.ingestionId,
+    confirmation.correlationId,
+    confirmation.encryptedObjectKey,
+    confirmation.rawContentHashVersion,
+    confirmation.rawContentHash
+  ])
   if (!row) failure(409, 'email_stage_confirmation_mismatch')
   return { schemaVersion: 1 as const, status: 'confirmed' as const }
 }
@@ -453,7 +496,8 @@ async function claimEmailIngestion(
     const endpoint = await endpointForToken(db, envelope.recipientToken, true)
     if (!endpoint) failure(404, 'email_endpoint_unavailable')
     const result = await db.query(`
-      SELECT id, endpoint_id, client_id, correlation_id, external_id_hash, message_id_hash,
+      SELECT id, endpoint_id, client_id, correlation_id, transport,
+        external_id_hash, message_id_hash, raw_content_hash_version, raw_content_hash,
         status, terminal_at, next_attempt_at, attempt_count, recovery_lease_token,
         staged_expires_at,
         (staged_expires_at IS NULL OR staged_expires_at <= clock_timestamp()) AS staged_expired,
@@ -465,7 +509,15 @@ async function claimEmailIngestion(
       Ingestion & { staged_expired?: boolean, staged_ready?: boolean }
     ) | undefined
     if (!ingestion) failure(404, 'email_ingestion_unavailable')
-    if (ingestion.endpoint_id !== endpoint.id || ingestion.correlation_id !== envelope.correlationId || ingestion.external_id_hash !== envelope.externalIdHash || ingestion.message_id_hash !== envelope.messageIdHash) {
+    if (
+      ingestion.endpoint_id !== endpoint.id
+      || ingestion.correlation_id !== envelope.correlationId
+      || ingestion.transport !== envelope.transport
+      || ingestion.external_id_hash !== envelope.externalIdHash
+      || ingestion.message_id_hash !== envelope.messageIdHash
+      || ingestion.raw_content_hash_version !== envelope.rawContentHashVersion
+      || ingestion.raw_content_hash !== envelope.rawContentHash
+    ) {
       failure(409, 'email_ingestion_mismatch')
     }
     if (ingestion.terminal_at) return { status: 'duplicate' as const }

@@ -37,7 +37,8 @@ const ERROR_CLASSES = new Set([
   'evidence_expired', 'attempts_exhausted', 'missing_evidence',
   'corrupt_evidence', 'endpoint_unavailable', 'sender_policy_denied',
   'canonical_transient', 'canonical_window_elapsed', 'lease_lost',
-  'legacy_evidence'
+  'legacy_evidence', 'legacy_unbound_evidence', 'content_mismatch',
+  'identity_mismatch'
 ])
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 

@@ -81,6 +81,20 @@ describe('email ingestion privacy telemetry', () => {
     })).not.toThrow()
   })
 
+  it.each(['content_mismatch', 'identity_mismatch', 'legacy_unbound_evidence'])(
+    'preserves the bounded recovery error class %s',
+    (errorClass) => {
+      const write = vi.fn()
+      emitEmailIngestionEvent({
+        event: 'email_ingestion_recovery_outcome',
+        status: 'quarantined',
+        errorClass
+      }, write)
+
+      expect(write).toHaveBeenCalledWith(expect.objectContaining({ errorClass }))
+    }
+  )
+
   it('keeps a full Worker canary out of batched logs and operator-safe projections', async () => {
     const rawText = [
       `From: ${CANARIES[0]} <${CANARIES[8]}>`,

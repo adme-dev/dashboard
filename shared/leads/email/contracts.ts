@@ -110,7 +110,10 @@ export const EmailStageRequestSchema = z.object({
   transport: EmailIngressTransportSchema,
   recipientToken: RecipientTokenSchema,
   externalIdHash: HashSchema,
+  legacyExternalIdHash: HashSchema.nullable(),
   messageIdHash: HashSchema.nullable(),
+  rawContentHashVersion: z.literal(1),
+  rawContentHash: HashSchema,
   provider: ProviderAdapterIdSchema,
   envelopeSenderDomain: NormalizedSafeDomainSchema.nullable(),
   headerFromDomain: NormalizedSafeDomainSchema.nullable(),
@@ -138,7 +141,11 @@ export const EmailStageResponseSchema = z.discriminatedUnion('outcome', [
   z.object({
     schemaVersion: z.literal(1),
     outcome: z.literal('denied'),
-    code: z.enum(['email_endpoint_unavailable', 'email_endpoint_policy_denied'])
+    code: z.enum([
+      'email_endpoint_unavailable',
+      'email_endpoint_policy_denied',
+      'email_stage_identity_conflict'
+    ])
   }).strict()
 ])
 
@@ -146,7 +153,20 @@ export const EmailStageConfirmationSchema = z.object({
   schemaVersion: z.literal(1),
   ingestionId: UuidSchema,
   correlationId: UuidSchema,
-  encryptedObjectKey: EncryptedObjectKeySchema
+  encryptedObjectKey: EncryptedObjectKeySchema,
+  rawContentHashVersion: z.literal(1),
+  rawContentHash: HashSchema
+}).strict()
+
+export const EmailStagedManifestSchema = z.object({
+  schemaVersion: z.literal(1),
+  ingestionId: UuidSchema,
+  encryptedObjectKey: EncryptedObjectKeySchema,
+  provider: ProviderAdapterIdSchema,
+  externalIdHash: HashSchema,
+  messageIdHash: HashSchema.nullable(),
+  rawContentHashVersion: z.literal(1),
+  rawContentHash: HashSchema
 }).strict()
 
 export const EmailIngestEnvelopeSchema = z.object({
@@ -160,6 +180,8 @@ export const EmailIngestEnvelopeSchema = z.object({
   headerFromDomain: NormalizedSafeDomainSchema.nullable(),
   messageIdHash: HashSchema.nullable(),
   externalIdHash: HashSchema,
+  rawContentHashVersion: z.literal(1),
+  rawContentHash: HashSchema,
   receivedAt: IsoTimestampSchema,
   rawSize: z.number().int().nonnegative().max(MAX_RAW_EMAIL_BYTES),
   attachmentCount: z.number().int().nonnegative().max(100),
@@ -186,6 +208,7 @@ export type EmailIngressTransport = z.infer<typeof EmailIngressTransportSchema>
 export type EmailSafeEvidence = z.infer<typeof EmailSafeEvidenceSchema>
 export type EmailEndpointPolicy = z.infer<typeof EmailEndpointPolicySchema>
 export type EmailStageConfirmation = z.infer<typeof EmailStageConfirmationSchema>
+export type EmailStagedManifest = z.infer<typeof EmailStagedManifestSchema>
 export type ExtractedEmailField = z.infer<typeof EmailExtractedFieldSchema>
 export type EmailLeadExtraction = z.infer<typeof EmailLeadExtractionSchema>
 export type EmailIngestEnvelope = z.infer<typeof EmailIngestEnvelopeSchema>

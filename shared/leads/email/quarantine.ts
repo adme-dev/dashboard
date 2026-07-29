@@ -1,9 +1,15 @@
+import {
+  EmailStagedManifestSchema,
+  type EmailStagedManifest
+} from './contracts'
+
 const encoder = new TextEncoder()
 const MAGIC = new Uint8Array([0x58, 0x45, 0x4c, 0x31])
 const SALT_BYTES = 16
 const IV_BYTES = 12
 const HEADER_BYTES = MAGIC.byteLength + SALT_BYTES + IV_BYTES
-const STAGED_MAGIC = new Uint8Array([0x58, 0x45, 0x53, 0x31])
+const STAGED_MAGIC_V1 = new Uint8Array([0x58, 0x45, 0x53, 0x31])
+const STAGED_MAGIC_V2 = new Uint8Array([0x58, 0x45, 0x53, 0x32])
 
 async function deriveKey(secret: string, salt: Uint8Array): Promise<CryptoKey> {
   if (secret.length < 16 || secret.length > 4096) {
@@ -44,12 +50,16 @@ export function createOpaqueEmailObjectKey(): string {
   return `email-ingestions/${encoded}`
 }
 
-export async function encryptRawEmail(raw: Uint8Array, secret: string): Promise<Uint8Array> {
+async function encryptRawEmailWithAad(
+  raw: Uint8Array,
+  secret: string,
+  additionalData?: Uint8Array
+): Promise<Uint8Array> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES))
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES))
   const key = await deriveKey(secret, salt)
   const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv, ...(additionalData ? { additionalData } : {}) },
     key,
     new Uint8Array(raw)
   ))
@@ -61,22 +71,43 @@ export async function encryptRawEmail(raw: Uint8Array, secret: string): Promise<
   return encrypted
 }
 
+export async function encryptRawEmail(raw: Uint8Array, secret: string): Promise<Uint8Array> {
+  return encryptRawEmailWithAad(raw, secret)
+}
+
+function manifestBytes(manifest: EmailStagedManifest): Uint8Array {
+  return encoder.encode(JSON.stringify(EmailStagedManifestSchema.parse(manifest)))
+}
+
 export async function encryptStagedEmail(
   raw: Uint8Array,
   envelopeSender: string | null,
-  secret: string
+  secret: string,
+  inputManifest: EmailStagedManifest
 ): Promise<Uint8Array> {
+  const manifest = EmailStagedManifestSchema.parse(inputManifest)
+  const encodedManifest = manifestBytes(manifest)
   const sender = encoder.encode(envelopeSender ?? '')
   if (sender.byteLength > 4096) throw new Error('Envelope sender exceeds limit')
-  const plaintext = new Uint8Array(STAGED_MAGIC.byteLength + 4 + sender.byteLength + raw.byteLength)
-  plaintext.set(STAGED_MAGIC)
-  new DataView(plaintext.buffer).setUint32(STAGED_MAGIC.byteLength, sender.byteLength)
-  plaintext.set(sender, STAGED_MAGIC.byteLength + 4)
-  plaintext.set(raw, STAGED_MAGIC.byteLength + 4 + sender.byteLength)
-  return encryptRawEmail(plaintext, secret)
+  const manifestOffset = STAGED_MAGIC_V2.byteLength + 4
+  const senderLengthOffset = manifestOffset + encodedManifest.byteLength
+  const senderOffset = senderLengthOffset + 4
+  const plaintext = new Uint8Array(senderOffset + sender.byteLength + raw.byteLength)
+  plaintext.set(STAGED_MAGIC_V2)
+  const view = new DataView(plaintext.buffer)
+  view.setUint32(STAGED_MAGIC_V2.byteLength, encodedManifest.byteLength)
+  plaintext.set(encodedManifest, manifestOffset)
+  view.setUint32(senderLengthOffset, sender.byteLength)
+  plaintext.set(sender, senderOffset)
+  plaintext.set(raw, senderOffset + sender.byteLength)
+  return encryptRawEmailWithAad(plaintext, secret, encodedManifest)
 }
 
-export async function decryptRawEmail(encrypted: Uint8Array, secret: string): Promise<Uint8Array> {
+async function decryptRawEmailWithAad(
+  encrypted: Uint8Array,
+  secret: string,
+  additionalData?: Uint8Array
+): Promise<Uint8Array> {
   if (encrypted.byteLength <= HEADER_BYTES + 16) throw new Error('Invalid encrypted email')
   for (let index = 0; index < MAGIC.byteLength; index++) {
     if (encrypted[index] !== MAGIC[index]) throw new Error('Invalid encrypted email')
@@ -85,35 +116,80 @@ export async function decryptRawEmail(encrypted: Uint8Array, secret: string): Pr
   const iv = encrypted.slice(MAGIC.byteLength + SALT_BYTES, HEADER_BYTES)
   const key = await deriveKey(secret, salt)
   return new Uint8Array(await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv, ...(additionalData ? { additionalData } : {}) },
     key,
     encrypted.slice(HEADER_BYTES)
   ))
 }
 
+export async function decryptRawEmail(encrypted: Uint8Array, secret: string): Promise<Uint8Array> {
+  return decryptRawEmailWithAad(encrypted, secret)
+}
+
 export async function decryptStagedEmail(
   encrypted: Uint8Array,
-  secret: string
+  secret: string,
+  expectedManifest?: EmailStagedManifest
 ): Promise<{
   format: 'sealed' | 'legacy'
   raw: Uint8Array
   envelopeSender: string | null
+  manifest?: EmailStagedManifest
 }> {
-  const plaintext = await decryptRawEmail(encrypted, secret)
-  const isStaged = STAGED_MAGIC.every((byte, index) => plaintext[index] === byte)
-  if (!isStaged) return { format: 'legacy', raw: plaintext, envelopeSender: null }
-  if (plaintext.byteLength < STAGED_MAGIC.byteLength + 4) throw new Error('Invalid staged email')
+  const expected = expectedManifest
+    ? EmailStagedManifestSchema.parse(expectedManifest)
+    : undefined
+  let plaintext: Uint8Array
+  if (expected) {
+    try {
+      plaintext = await decryptRawEmailWithAad(encrypted, secret, manifestBytes(expected))
+    } catch {
+      plaintext = await decryptRawEmail(encrypted, secret)
+    }
+  } else {
+    plaintext = await decryptRawEmail(encrypted, secret)
+  }
+  const isCurrent = STAGED_MAGIC_V2.every((byte, index) => plaintext[index] === byte)
+  if (isCurrent) {
+    if (!expected || plaintext.byteLength < STAGED_MAGIC_V2.byteLength + 8) {
+      throw new Error('Invalid staged email manifest')
+    }
+    const view = new DataView(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength)
+    const encodedManifestBytes = view.getUint32(STAGED_MAGIC_V2.byteLength)
+    const manifestOffset = STAGED_MAGIC_V2.byteLength + 4
+    const senderLengthOffset = manifestOffset + encodedManifestBytes
+    if (senderLengthOffset + 4 > plaintext.byteLength) throw new Error('Invalid staged email manifest')
+    const embeddedManifest = EmailStagedManifestSchema.parse(JSON.parse(
+      new TextDecoder().decode(plaintext.slice(manifestOffset, senderLengthOffset))
+    ))
+    if (JSON.stringify(embeddedManifest) !== JSON.stringify(expected)) {
+      throw new Error('Staged email manifest mismatch')
+    }
+    const senderBytes = view.getUint32(senderLengthOffset)
+    const senderOffset = senderLengthOffset + 4
+    const rawOffset = senderOffset + senderBytes
+    if (rawOffset > plaintext.byteLength) throw new Error('Invalid staged email')
+    const sender = new TextDecoder().decode(plaintext.slice(senderOffset, rawOffset))
+    return {
+      format: 'sealed',
+      raw: plaintext.slice(rawOffset),
+      envelopeSender: sender || null,
+      manifest: embeddedManifest
+    }
+  }
+  const isLegacyStaged = STAGED_MAGIC_V1.every((byte, index) => plaintext[index] === byte)
+  if (!isLegacyStaged) return { format: 'legacy', raw: plaintext, envelopeSender: null }
+  if (plaintext.byteLength < STAGED_MAGIC_V1.byteLength + 4) throw new Error('Invalid staged email')
   const senderBytes = new DataView(
     plaintext.buffer,
-    plaintext.byteOffset + STAGED_MAGIC.byteLength,
+    plaintext.byteOffset + STAGED_MAGIC_V1.byteLength,
     4
   ).getUint32(0)
-  const rawOffset = STAGED_MAGIC.byteLength + 4 + senderBytes
+  const rawOffset = STAGED_MAGIC_V1.byteLength + 4 + senderBytes
   if (rawOffset > plaintext.byteLength) throw new Error('Invalid staged email')
-  const sender = new TextDecoder().decode(plaintext.slice(STAGED_MAGIC.byteLength + 4, rawOffset))
   return {
-    format: 'sealed',
+    format: 'legacy',
     raw: plaintext.slice(rawOffset),
-    envelopeSender: sender || null
+    envelopeSender: null
   }
 }

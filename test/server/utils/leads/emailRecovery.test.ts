@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 import {
   encryptRawEmail,
   encryptStagedEmail
@@ -28,6 +29,9 @@ const ENDPOINT_ID = '22222222-2222-4222-8222-222222222222'
 const CLIENT_ID = '33333333-3333-4333-8333-333333333333'
 const LEASE_TOKEN = '44444444-4444-4444-8444-444444444444'
 const SECRET = 'separate-email-quarantine-secret'
+const EXTERNAL_ID_HASH = 'dcb3450e3d753d1a0f98277376b9343c271610515ece8298d421e42b95a49371'
+const MESSAGE_ID_HASH = 'c554a336f571d0d9e9cdc3715c80e3544a9832bb2a1bcb755816387462ec5326'
+const RAW_CONTENT_HASH = '4df9cd872e8e2e9786cc585921e189631b5fbc31a9e0dfe3449666747edfbf17'
 const RAW = new TextEncoder().encode([
   'From: Carsales <relay@carsales.com.au>',
   'Subject: New Carsales lead',
@@ -44,10 +48,14 @@ const claimedRow = {
   client_id: CLIENT_ID,
   correlation_id: '55555555-5555-4555-8555-555555555555',
   transport: 'cloudflare_email_routing',
-  external_id_hash: 'a'.repeat(64),
-  message_id_hash: 'b'.repeat(64),
+  external_id_hash: EXTERNAL_ID_HASH,
+  message_id_hash: MESSAGE_ID_HASH,
+  raw_content_hash_version: 1,
+  raw_content_hash: RAW_CONTENT_HASH,
   provider: 'carsales',
   sender_domain: 'carsales.com.au',
+  header_from_domain: 'carsales.com.au',
+  raw_size: RAW.byteLength,
   safe_evidence: { hasText: true, hasHtml: false, hasAdf: false, fieldKeys: ['email'] },
   staged_object_key: 'email-ingestions/opaque-random-key',
   staged_expires_at: '2026-08-05T00:00:00.000Z',
@@ -64,11 +72,33 @@ const claimedRow = {
   allowed_sender_domains: ['carsales.com.au']
 }
 
+function hashBytes(raw: Uint8Array): string {
+  return createHash('sha256').update(raw).digest('hex')
+}
+
+function manifestFor(claim: typeof claimedRow) {
+  return {
+    schemaVersion: 1 as const,
+    ingestionId: claim.id,
+    encryptedObjectKey: claim.staged_object_key!,
+    provider: claim.provider,
+    externalIdHash: claim.external_id_hash,
+    messageIdHash: claim.message_id_hash,
+    rawContentHashVersion: 1 as const,
+    rawContentHash: claim.raw_content_hash
+  }
+}
+
 function recoveryHarness(overrides: Record<string, unknown> = {}) {
   const bucket = {
     get: vi.fn(async () => ({
       arrayBuffer: async () => (
-        await encryptStagedEmail(RAW, 'relay@carsales.com.au', SECRET)
+        await encryptStagedEmail(
+          RAW,
+          'relay@carsales.com.au',
+          SECRET,
+          manifestFor(claimedRow)
+        )
       ).buffer
     })),
     delete: vi.fn(async () => {})
@@ -289,26 +319,33 @@ describe('email recovery processing', () => {
       'Kind regards,',
       'Alex Example'
     ].join('\r\n'))
+    const directClaim = {
+      ...claimedRow,
+      provider: 'generic',
+      expected_provider: null,
+      sender_domain: 'example.test',
+      header_from_domain: 'example.test',
+      allowed_sender_domains: [],
+      external_id_hash: '6334c7c005476eb3167e3c14b2d299f53d060188b8b681a92767f7b0e28777e1',
+      message_id_hash: '6334c7c005476eb3167e3c14b2d299f53d060188b8b681a92767f7b0e28777e1',
+      raw_content_hash: '78f0f26a42ad8ce84828b8cbd6dd5eb4e1dc5d67909d4138f7d4f77b0e24412f',
+      raw_size: directRaw.byteLength
+    }
     const harness = recoveryHarness()
     harness.bucket.get.mockResolvedValueOnce({
       arrayBuffer: async () => (
         await encryptStagedEmail(
           directRaw,
           'alex@example.test',
-          SECRET
+          SECRET,
+          manifestFor(directClaim)
         )
       ).buffer
     })
 
     await processEmailRecoveryClaim(
       {} as never,
-      {
-        ...claimedRow,
-        provider: 'generic',
-        expected_provider: null,
-        sender_domain: 'example.test',
-        allowed_sender_domains: []
-      },
+      directClaim,
       LEASE_TOKEN,
       harness.dependencies
     )
@@ -720,20 +757,110 @@ describe('email recovery processing', () => {
     expect(harness.acceptEnvelope).not.toHaveBeenCalled()
   })
 
-  it('rechecks sender restrictions from decrypted MIME', async () => {
+  it('rejects evidence whose authenticated manifest does not match the reservation', async () => {
     const harness = recoveryHarness()
-    const deniedRaw = new TextEncoder().encode(
-      new TextDecoder().decode(RAW).replace('relay@carsales.com.au', 'relay@evil.example')
-    )
     harness.bucket.get.mockResolvedValueOnce({
       arrayBuffer: async () => (
-        await encryptStagedEmail(deniedRaw, 'relay@carsales.com.au', SECRET)
+        await encryptStagedEmail(
+          RAW,
+          'relay@carsales.com.au',
+          SECRET,
+          { ...manifestFor(claimedRow), provider: 'meta' }
+        )
       ).buffer
     })
 
     await expect(processEmailRecoveryClaim(
       {} as never,
       claimedRow,
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'quarantined', reason: 'corrupt_evidence' })
+
+    expect(harness.acceptEnvelope).not.toHaveBeenCalled()
+  })
+
+  it('rejects staged bytes that do not match the reserved raw-content digest', async () => {
+    const replacement = new TextEncoder().encode(
+      new TextDecoder().decode(RAW).replace('Alex Example', 'Jamie Example')
+    )
+    const harness = recoveryHarness()
+    harness.bucket.get.mockResolvedValueOnce({
+      arrayBuffer: async () => (
+        await encryptStagedEmail(
+          replacement,
+          'relay@carsales.com.au',
+          SECRET,
+          manifestFor(claimedRow)
+        )
+      ).buffer
+    })
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      claimedRow,
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'quarantined', reason: 'content_mismatch' })
+
+    expect(harness.acceptEnvelope).not.toHaveBeenCalled()
+  })
+
+  it('never overwrites a parsed replacement identity with the reserved identity', async () => {
+    const replacement = new TextEncoder().encode(
+      new TextDecoder().decode(RAW).replace('provider-42', 'provider-99')
+    )
+    const replacementClaim = {
+      ...claimedRow,
+      raw_content_hash: hashBytes(replacement),
+      raw_size: replacement.byteLength
+    }
+    const harness = recoveryHarness()
+    harness.bucket.get.mockResolvedValueOnce({
+      arrayBuffer: async () => (
+        await encryptStagedEmail(
+          replacement,
+          'relay@carsales.com.au',
+          SECRET,
+          manifestFor(replacementClaim)
+        )
+      ).buffer
+    })
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      replacementClaim,
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'quarantined', reason: 'identity_mismatch' })
+
+    expect(harness.acceptEnvelope).not.toHaveBeenCalled()
+  })
+
+  it('rechecks sender restrictions from decrypted MIME', async () => {
+    const harness = recoveryHarness()
+    const deniedRaw = new TextEncoder().encode(
+      new TextDecoder().decode(RAW).replace('relay@carsales.com.au', 'relay@evil.example')
+    )
+    const deniedClaim = {
+      ...claimedRow,
+      raw_content_hash: hashBytes(deniedRaw),
+      raw_size: deniedRaw.byteLength
+    }
+    harness.bucket.get.mockResolvedValueOnce({
+      arrayBuffer: async () => (
+        await encryptStagedEmail(
+          deniedRaw,
+          'relay@carsales.com.au',
+          SECRET,
+          manifestFor(deniedClaim)
+        )
+      ).buffer
+    })
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      deniedClaim,
       LEASE_TOKEN,
       harness.dependencies
     )).resolves.toEqual({ status: 'quarantined', reason: 'sender_policy_denied' })
@@ -1038,22 +1165,34 @@ describe('email recovery processing', () => {
     const deniedRaw = new TextEncoder().encode(
       new TextDecoder().decode(RAW).replace('relay@carsales.com.au', 'relay@evil.example')
     )
+    const deniedClaim = {
+      ...claimedRow,
+      raw_content_hash: hashBytes(deniedRaw),
+      raw_size: deniedRaw.byteLength
+    }
     harness.bucket.get.mockResolvedValueOnce({
       arrayBuffer: async () => (
-        await encryptStagedEmail(deniedRaw, 'relay@carsales.com.au', SECRET)
+        await encryptStagedEmail(
+          deniedRaw,
+          'relay@carsales.com.au',
+          SECRET,
+          manifestFor(deniedClaim)
+        )
       ).buffer
     })
-    const claimReplay = vi.fn(async () => ({
-      outcome: 'claimed' as const,
-      claim: claimedRow,
-      leaseToken: LEASE_TOKEN
-    }))
-
     await expect(replayEmailIngestion(
       {} as never,
       INGESTION_ID,
       '88888888-8888-4888-8888-888888888888',
-      { ...harness.dependencies, claimReplay, randomUUID: () => LEASE_TOKEN }
+      {
+        ...harness.dependencies,
+        claimReplay: vi.fn(async () => ({
+          outcome: 'claimed' as const,
+          claim: deniedClaim,
+          leaseToken: LEASE_TOKEN
+        })),
+        randomUUID: () => LEASE_TOKEN
+      }
     )).resolves.toEqual({
       status: 'quarantined',
       reason: 'sender_policy_denied'

@@ -182,7 +182,7 @@ function fingerprint(input: NormalizedInboundEmail, extraction: EmailLeadExtract
   return `${extraction.provider}\n${input.subject.trim().toLowerCase()}\n${entries.join('\n')}\n${vehicle.join('\n')}\n${extraction.message?.value.trim().toLowerCase() ?? ''}`
 }
 
-function canonicalMessageId(value: string | null): string | null {
+export function canonicalEmailMessageId(value: string | null): string | null {
   if (!value) return null
   const trimmed = value.trim()
   const candidate = trimmed.startsWith('<') || trimmed.endsWith('>')
@@ -193,9 +193,22 @@ function canonicalMessageId(value: string | null): string | null {
   return match ? `${match[1]}@${match[2]!.toLowerCase()}` : null
 }
 
+export function emailMessageIdHashes(value: string | null): {
+  current: string
+  legacy: string
+} | null {
+  const canonical = canonicalEmailMessageId(value)
+  return canonical
+    ? {
+        current: sha256Hex(`message-id:v1:${canonical}`),
+        legacy: sha256Hex(canonical)
+      }
+    : null
+}
+
 function withIdentity(input: NormalizedInboundEmail, extraction: EmailLeadExtraction, providerId: string | null): EmailLeadExtraction {
   const normalizedProviderId = providerId?.trim()
-  const normalizedMessageId = canonicalMessageId(input.messageId)
+  const normalizedMessageId = canonicalEmailMessageId(input.messageId)
   const rawIdentity = normalizedProviderId || normalizedMessageId || fingerprint(input, extraction)
   const typedIdentity = normalizedProviderId
     ? `provider-id:v1:${extraction.provider}:${normalizedProviderId}`

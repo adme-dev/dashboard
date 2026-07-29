@@ -15,6 +15,8 @@ import {
 } from '../../../../server/utils/leads/emailIngestion'
 
 const HASH = 'a'.repeat(64)
+const LEGACY_HASH = 'b'.repeat(64)
+const RAW_CONTENT_HASH = 'c'.repeat(64)
 const CORRELATION_ID = '33333333-3333-4333-8333-333333333333'
 const endpoint = {
   id: '11111111-1111-4111-8111-111111111111', client_id: '22222222-2222-4222-8222-222222222222',
@@ -27,10 +29,35 @@ function request() {
   return {
     schemaVersion: 1 as const, correlationId: CORRELATION_ID,
     transport: 'cloudflare_email_routing' as const, recipientToken: '0123456789', externalIdHash: HASH,
-    messageIdHash: HASH, provider: 'carsales', receivedAt: '2026-07-29T00:00:00.000Z', rawSize: 128,
+    legacyExternalIdHash: LEGACY_HASH, messageIdHash: HASH,
+    rawContentHashVersion: 1 as const, rawContentHash: RAW_CONTENT_HASH,
+    provider: 'carsales', receivedAt: '2026-07-29T00:00:00.000Z', rawSize: 128,
     envelopeSenderDomain: 'notify.carsales.com.au', headerFromDomain: 'carsales.com.au',
     safeEvidence: { hasText: true, hasHtml: false, hasAdf: false, fieldKeys: ['full_name'] },
     quarantineExpiresAt: '2099-08-05T00:00:00.000Z'
+  }
+}
+
+function liveReservation(overrides: Record<string, unknown> = {}) {
+  return {
+    id: '44444444-4444-4444-8444-444444444444',
+    endpoint_id: endpoint.id,
+    client_id: endpoint.client_id,
+    correlation_id: CORRELATION_ID,
+    transport: 'cloudflare_email_routing',
+    external_id_hash: HASH,
+    message_id_hash: HASH,
+    provider: 'carsales',
+    sender_domain: 'notify.carsales.com.au',
+    header_from_domain: 'carsales.com.au',
+    raw_size: 128,
+    raw_content_hash_version: 1,
+    raw_content_hash: RAW_CONTENT_HASH,
+    terminal_at: null,
+    staged_expires_at: '2099-08-05T00:00:00.000Z',
+    staged_expired: false,
+    staged_object_key: 'email-ingestions/existing-opaque-key',
+    ...overrides
   }
 }
 
@@ -56,15 +83,13 @@ describe('email stage reservation', () => {
     expect(first.encryptedObjectKey).toMatch(/^email-ingestions\/[a-f0-9]{64}$/)
     expect(JSON.stringify(query.mock.calls[2]?.[1])).not.toContain('Jane Example')
     expect(query.mock.calls[2]?.[0]).toContain('sender_domain')
-    expect(query.mock.calls[2]?.[0]).toMatch(/staged_expires_at, next_attempt_at[\s\S]*\$11::timestamptz,[\s\S]*MAKE_INTERVAL/)
+    expect(query.mock.calls[2]?.[0]).toMatch(/staged_expires_at, next_attempt_at[\s\S]*\$15::timestamptz,[\s\S]*MAKE_INTERVAL/)
     expect(query.mock.calls[2]?.[1]).toContain('notify.carsales.com.au')
 
-    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
+    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [liveReservation({
       id: first.ingestionId,
-      correlation_id: CORRELATION_ID,
-      terminal_at: null,
       staged_object_key: first.encryptedObjectKey
-    }] })
+    })] })
     await expect(reserveEmailIngestionStage(request())).resolves.toEqual(first)
   })
 
@@ -100,19 +125,12 @@ describe('email stage reservation', () => {
   })
 
   it('hands an expired reservation to audited recovery instead of terminalizing it unaudited', async () => {
-    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
-      id: '44444444-4444-4444-8444-444444444444',
-      endpoint_id: endpoint.id,
-      client_id: endpoint.client_id,
-      correlation_id: CORRELATION_ID,
-      external_id_hash: HASH,
-      message_id_hash: HASH,
+    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [liveReservation({
       status: 'received',
-      terminal_at: null,
       staged_expires_at: '2026-07-28T00:00:00.000Z',
       staged_expired: true,
       staged_object_key: 'email-ingestions/expired-reservation-key'
-    }] }).mockResolvedValueOnce({ rows: [{ id: '44444444-4444-4444-8444-444444444444' }] })
+    })] }).mockResolvedValueOnce({ rows: [{ id: '44444444-4444-4444-8444-444444444444' }] })
 
     await expect(reserveEmailIngestionStage(request())).resolves.toMatchObject({
       outcome: 'duplicate',
@@ -129,7 +147,9 @@ describe('email stage reservation', () => {
       schemaVersion: 1,
       ingestionId: '44444444-4444-4444-8444-444444444444',
       correlationId: CORRELATION_ID,
-      encryptedObjectKey: 'email-ingestions/opaque-key-123456'
+      encryptedObjectKey: 'email-ingestions/opaque-key-123456',
+      rawContentHashVersion: 1,
+      rawContentHash: RAW_CONTENT_HASH
     })).resolves.toEqual({ schemaVersion: 1, status: 'confirmed' })
     expect(queryOne.mock.calls[0]?.[0]).toMatch(/staged_uploaded_at = COALESCE\(staged_uploaded_at, NOW\(\)\)/)
     expect(queryOne.mock.calls[0]?.[0]).toMatch(/next_attempt_at = NOW\(\)/)
@@ -142,7 +162,9 @@ describe('email stage reservation', () => {
       schemaVersion: 1,
       ingestionId: '44444444-4444-4444-8444-444444444444',
       correlationId: CORRELATION_ID,
-      encryptedObjectKey: 'email-ingestions/opaque-key-123456'
+      encryptedObjectKey: 'email-ingestions/opaque-key-123456',
+      rawContentHashVersion: 1,
+      rawContentHash: RAW_CONTENT_HASH
     })).rejects.toMatchObject({ statusCode: 409 })
     expect(queryOne.mock.calls[0]?.[0]).toMatch(/staged_expires_at > NOW\(\)/)
   })
@@ -170,15 +192,42 @@ describe('email stage reservation', () => {
     expect(query).toHaveBeenCalledOnce()
   })
 
-  it('returns a bounded permanent denial when the expected provider changes before stage', async () => {
+  it('durably reserves a provider mismatch so canonical policy can quarantine its evidence', async () => {
     query.mockResolvedValueOnce({ rows: [{ ...endpoint, expected_provider: 'autotrader' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '44444444-4444-4444-8444-444444444444',
+        correlation_id: CORRELATION_ID
+      }] })
+
+    await expect(reserveEmailIngestionStage(request())).resolves.toMatchObject({
+      schemaVersion: 1,
+      outcome: 'reserved',
+      correlationId: CORRELATION_ID
+    })
+    expect(query).toHaveBeenCalledTimes(3)
+  })
+
+  it.each([
+    ['message identity', { message_id_hash: 'd'.repeat(64) }],
+    ['provider identity', { provider: 'meta' }],
+    ['raw content identity', { raw_content_hash: 'd'.repeat(64) }],
+    ['raw content hash version', { raw_content_hash_version: 2 }],
+    ['transport identity', { transport: 'postmark' }],
+    ['envelope sender identity', { sender_domain: 'other.example' }],
+    ['header sender identity', { header_from_domain: 'other.example' }],
+    ['raw size identity', { raw_size: 129 }]
+  ])('never reuses a live reservation with conflicting %s', async (_label, conflict) => {
+    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [liveReservation(conflict)]
+    })
 
     await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
       schemaVersion: 1,
       outcome: 'denied',
-      code: 'email_endpoint_policy_denied'
+      code: 'email_stage_identity_conflict'
     })
-    expect(query).toHaveBeenCalledOnce()
+    expect(query).toHaveBeenCalledTimes(2)
   })
 
   it('scopes the same external identity to different endpoint IDs', async () => {
@@ -198,8 +247,8 @@ describe('email stage reservation', () => {
     const second = await reserveEmailIngestionStage({ ...request(), recipientToken: 'abcdefghjk', correlationId: '77777777-7777-4777-8777-777777777777' })
 
     expect(first.ingestionId).not.toBe(second.ingestionId)
-    expect(query.mock.calls[1]?.[1]).toEqual([endpoint.id, HASH])
-    expect(query.mock.calls[4]?.[1]).toEqual([endpointTwo.id, HASH])
+    expect(query.mock.calls[1]?.[1]).toEqual([endpoint.id, HASH, LEGACY_HASH])
+    expect(query.mock.calls[4]?.[1]).toEqual([endpointTwo.id, HASH, LEGACY_HASH])
     expect(first.encryptedObjectKey).not.toBe(second.encryptedObjectKey)
   })
 
@@ -210,14 +259,9 @@ describe('email stage reservation', () => {
       previous_address_token: '0123456789',
       previous_token_grace_until: '2099-01-01T00:00:00.000Z'
     }
-    const existing = {
-      id: '44444444-4444-4444-8444-444444444444',
-      correlation_id: CORRELATION_ID,
-      endpoint_id: endpoint.id,
-      external_id_hash: HASH,
-      terminal_at: null,
+    const existing = liveReservation({
       staged_object_key: 'email-ingestions/same-opaque-reservation'
-    }
+    })
     query.mockResolvedValueOnce({ rows: [rotated] }).mockResolvedValueOnce({ rows: [existing] })
 
     await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
@@ -233,14 +277,10 @@ describe('email stage reservation', () => {
     ['provider ID hash', 'b'.repeat(64)],
     ['deterministic fingerprint fallback', 'c'.repeat(64)]
   ])('uses the endpoint-scoped external hash for %s idempotency', async (_label, externalIdHash) => {
-    const retryRow = {
-      id: '44444444-4444-4444-8444-444444444444',
-      correlation_id: CORRELATION_ID,
-      endpoint_id: endpoint.id,
+    const retryRow = liveReservation({
       external_id_hash: externalIdHash,
-      terminal_at: null,
       staged_object_key: ''
-    }
+    })
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{
         id: '44444444-4444-4444-8444-444444444444',
@@ -252,20 +292,16 @@ describe('email stage reservation', () => {
     const retry = await reserveEmailIngestionStage({ ...request(), externalIdHash })
 
     expect(retry).toEqual(first)
-    expect(query.mock.calls[1]?.[1]).toEqual([endpoint.id, externalIdHash])
-    expect(query.mock.calls[4]?.[1]).toEqual([endpoint.id, externalIdHash])
+    expect(query.mock.calls[1]?.[1]).toEqual([endpoint.id, externalIdHash, LEGACY_HASH])
+    expect(query.mock.calls[4]?.[1]).toEqual([endpoint.id, externalIdHash, LEGACY_HASH])
   })
 
   it('returns the persisted reservation correlation on a fresh redelivery', async () => {
     const storedCorrelation = '88888888-8888-4888-8888-888888888888'
-    const existing = {
-      id: '44444444-4444-4444-8444-444444444444',
+    const existing = liveReservation({
       correlation_id: storedCorrelation,
-      endpoint_id: endpoint.id,
-      external_id_hash: HASH,
-      terminal_at: null,
       staged_object_key: 'email-ingestions/reused-opaque-reservation'
-    }
+    })
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [existing] })
 
     await expect(reserveEmailIngestionStage({

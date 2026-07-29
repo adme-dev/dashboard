@@ -18,6 +18,9 @@ const CORRELATION_ID = '11111111-1111-4111-8111-111111111111'
 const STORED_CORRELATION_ID = '99999999-9999-4999-8999-999999999999'
 const INGESTION_ID = '22222222-2222-4222-8222-222222222222'
 const OBJECT_KEY = 'email-ingestions/abcdefghijklmnop'
+const EXTERNAL_ID_HASH = 'dcb3450e3d753d1a0f98277376b9343c271610515ece8298d421e42b95a49371'
+const MESSAGE_ID_HASH = 'c554a336f571d0d9e9cdc3715c80e3544a9832bb2a1bcb755816387462ec5326'
+const RAW_CONTENT_HASH = '9e1754126fd6a723f2a3ce4b3b06a124bcf6e9378c545cd86bed370923cdc5b7'
 const RAW_TEXT = [
   'From: Carsales <relay@carsales.example>',
   'Subject: New Carsales enquiry',
@@ -29,6 +32,16 @@ const RAW_TEXT = [
   'Phone: +61 400 123 456'
 ].join('\r\n')
 const RAW = encoder.encode(RAW_TEXT)
+const STAGED_MANIFEST = {
+  schemaVersion: 1 as const,
+  ingestionId: INGESTION_ID,
+  encryptedObjectKey: OBJECT_KEY,
+  provider: 'carsales',
+  externalIdHash: EXTERNAL_ID_HASH,
+  messageIdHash: MESSAGE_ID_HASH,
+  rawContentHashVersion: 1 as const,
+  rawContentHash: RAW_CONTENT_HASH
+}
 
 class MemoryBucket {
   readonly objects = new Map<string, Uint8Array>()
@@ -48,6 +61,13 @@ class MemoryBucket {
     this.puts.push(key)
     this.putAttempts.push({ key, value: new Uint8Array(value), options: structuredClone(options) })
     if (this.failuresRemaining-- > 0) throw new Error('R2 unavailable')
+    if (
+      this.objects.has(key)
+      && (options as { onlyIf?: { etagDoesNotMatch?: string } } | undefined)
+        ?.onlyIf?.etagDoesNotMatch === '*'
+    ) {
+      return null
+    }
     this.objects.set(key, new Uint8Array(value))
     return {}
   }
@@ -331,7 +351,12 @@ describe('email lead intake Worker', () => {
       provider: 'carsales'
     })
     expect(stage.externalIdHash).toMatch(/^[a-f0-9]{64}$/)
+    expect(stage.legacyExternalIdHash).toMatch(/^[a-f0-9]{64}$/)
     expect(stage.messageIdHash).toMatch(/^[a-f0-9]{64}$/)
+    expect(stage).toMatchObject({
+      rawContentHashVersion: 1,
+      rawContentHash: RAW_CONTENT_HASH
+    })
     expect(JSON.stringify(stage)).not.toContain('provider-42')
     expect(JSON.stringify(stage)).not.toContain('alex@example.test')
     expect(env.bucket.puts).toEqual([])
@@ -428,12 +453,15 @@ describe('email lead intake Worker', () => {
       schemaVersion: 1,
       ingestionId: INGESTION_ID,
       correlationId: CORRELATION_ID,
-      encryptedObjectKey: OBJECT_KEY
+      encryptedObjectKey: OBJECT_KEY,
+      rawContentHashVersion: 1,
+      rawContentHash: RAW_CONTENT_HASH
     })
     expect(env.bucket.puts).toEqual([OBJECT_KEY])
     const ingest = bodyOf(calls[3]?.[1])
     expect(ingest.correlationId).toBe(CORRELATION_ID)
     expect(ingest.externalIdHash).toBe(stage.externalIdHash)
+    expect(ingest.rawContentHash).toBe(stage.rawContentHash)
     expect(ingest).toMatchObject({
       schemaVersion: 1,
       ingestionId: INGESTION_ID,
@@ -556,6 +584,13 @@ describe('email lead intake Worker', () => {
     expect(bucket.putAttempts[2]?.value).toEqual(bucket.putAttempts[0]?.value)
     expect(bucket.putAttempts[1]?.options).toEqual(bucket.putAttempts[0]?.options)
     expect(bucket.putAttempts[2]?.options).toEqual(bucket.putAttempts[0]?.options)
+    expect(bucket.putAttempts[0]?.options).toMatchObject({
+      onlyIf: { etagDoesNotMatch: '*' },
+      customMetadata: {
+        rawContentHashVersion: '1',
+        rawContentHash: RAW_CONTENT_HASH
+      }
+    })
     expect(deps.sleep).toHaveBeenNthCalledWith(1, 100)
     expect(deps.sleep).toHaveBeenNthCalledWith(2, 200)
   })
@@ -795,14 +830,25 @@ describe('email lead intake Worker', () => {
     const encrypted = await encryptStagedEmail(
       RAW,
       'alex.customer@example.test',
-      'encryption-secret-that-is-separate'
+      'encryption-secret-that-is-separate',
+      STAGED_MANIFEST
     )
     expect(decoder.decode(encrypted)).not.toContain('alex.customer@example.test')
-    await expect(decryptStagedEmail(encrypted, 'encryption-secret-that-is-separate')).resolves.toEqual({
+    await expect(decryptStagedEmail(
+      encrypted,
+      'encryption-secret-that-is-separate',
+      STAGED_MANIFEST
+    )).resolves.toEqual({
       format: 'sealed',
       raw: RAW,
-      envelopeSender: 'alex.customer@example.test'
+      envelopeSender: 'alex.customer@example.test',
+      manifest: STAGED_MANIFEST
     })
+    await expect(decryptStagedEmail(
+      encrypted,
+      'encryption-secret-that-is-separate',
+      { ...STAGED_MANIFEST, provider: 'meta' }
+    )).rejects.toThrow()
     const legacy = await encryptRawEmail(RAW, 'encryption-secret-that-is-separate')
     await expect(decryptStagedEmail(legacy, 'encryption-secret-that-is-separate')).resolves.toEqual({
       format: 'legacy',

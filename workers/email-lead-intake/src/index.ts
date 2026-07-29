@@ -6,12 +6,17 @@ import {
   EmailStageConfirmationSchema,
   EmailStageRequestSchema,
   EmailStageResponseSchema,
+  EmailStagedManifestSchema,
   type EmailEndpointPolicy,
   type EmailIngestEnvelope,
   type EmailStageRequest
 } from '../../../shared/leads/email/contracts'
 import { extractEmailLeadWithAi, needsAiExtractionFallback } from '../../../shared/leads/email/ai'
-import { parseEmailLead, sha256Hex } from '../../../shared/leads/email/parser'
+import {
+  emailMessageIdHashes,
+  parseEmailLead,
+  sha256Hex
+} from '../../../shared/leads/email/parser'
 import {
   emitEmailIngestionEvent,
   type EmailIngestionTelemetryInput
@@ -380,10 +385,15 @@ export async function handleEmailMessage(
     parser: extraction?.parser ?? 'none',
     status: extraction ? 'parsed' : 'failed'
   })
-  const messageIdHash = normalized.messageId ? sha256Hex(normalized.messageId) : null
+  const rawContentHash = await sha256HexBytes(raw)
+  const messageIdentity = emailMessageIdHashes(normalized.messageId)
+  const messageIdHash = messageIdentity?.current ?? null
   const canonicalExternalIdHash = extraction?.externalIdHash
     ?? messageIdHash
-    ?? await sha256HexBytes(raw)
+    ?? sha256Hex(`raw-fallback:v1:${rawContentHash}`)
+  const legacyExternalIdHash = extraction?.legacyExternalIdHash
+    ?? messageIdentity?.legacy
+    ?? rawContentHash
   if (policy.aiExtractionMode === 'fallback' && needsAiExtractionFallback(extraction)) {
     extraction = await extractEmailLeadWithAi(
       {
@@ -413,7 +423,10 @@ export async function handleEmailMessage(
     transport: 'cloudflare_email_routing',
     recipientToken,
     externalIdHash,
+    legacyExternalIdHash,
     messageIdHash,
+    rawContentHashVersion: 1,
+    rawContentHash,
     provider: extraction?.provider ?? policy.expectedProvider ?? 'generic',
     envelopeSenderDomain,
     headerFromDomain,
@@ -477,12 +490,27 @@ export async function handleEmailMessage(
   })
   const objectKey = staged.data.encryptedObjectKey
   const canonicalExtraction = extraction?.needsReview ? null : extraction
+  const stagedManifest = EmailStagedManifestSchema.parse({
+    schemaVersion: 1,
+    ingestionId: staged.data.ingestionId,
+    encryptedObjectKey: objectKey,
+    provider: stage.provider,
+    externalIdHash,
+    messageIdHash,
+    rawContentHashVersion: 1,
+    rawContentHash
+  })
   const encrypted = await encryptStagedEmail(
     raw,
     normalized.envelopeSender,
-    env.EMAIL_QUARANTINE_ENCRYPTION_SECRET
+    env.EMAIL_QUARANTINE_ENCRYPTION_SECRET,
+    stagedManifest
   )
-  const putOptions = encryptedRawEmailPutOptions(expiresAt, authoritativeCorrelationId)
+  const putOptions = encryptedRawEmailPutOptions(
+    expiresAt,
+    authoritativeCorrelationId,
+    stagedManifest
+  )
   await putEncryptedRawEmailWithRetry(
     env.EMAIL_QUARANTINE_BUCKET,
     objectKey,
@@ -500,7 +528,9 @@ export async function handleEmailMessage(
     schemaVersion: 1,
     ingestionId: staged.data.ingestionId,
     correlationId: authoritativeCorrelationId,
-    encryptedObjectKey: objectKey
+    encryptedObjectKey: objectKey,
+    rawContentHashVersion: 1,
+    rawContentHash
   }))
   const confirmationResponse = await signedRequest(
     '/api/internal/leads/email-stage-confirm',
@@ -521,6 +551,8 @@ export async function handleEmailMessage(
     headerFromDomain,
     messageIdHash,
     externalIdHash,
+    rawContentHashVersion: 1,
+    rawContentHash,
     receivedAt,
     rawSize: normalized.rawSize,
     attachmentCount: normalized.attachments.length,

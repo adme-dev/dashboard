@@ -1,14 +1,20 @@
+import { createHash } from 'node:crypto'
 import { queryOne, transaction } from '~~/server/utils/db'
 import { createError, type H3Event } from 'h3'
 import {
   EmailIngestEnvelopeSchema,
   EmailEndpointPolicySchema,
+  EmailStagedManifestSchema,
   type EmailEndpointPolicy,
   type EmailIngestEnvelope
 } from '~~/shared/leads/email/contracts'
 import { extractEmailLeadWithAi, needsAiExtractionFallback } from '~~/shared/leads/email/ai'
 import { parseMimeContent } from '~~/shared/leads/email/mime'
-import { parseEmailLead, sha256Hex } from '~~/shared/leads/email/parser'
+import {
+  emailMessageIdHashes,
+  parseEmailLead,
+  sha256Hex
+} from '~~/shared/leads/email/parser'
 import { decryptStagedEmail } from '~~/shared/leads/email/quarantine'
 import type { NormalizedInboundEmail } from '~~/shared/leads/email/types'
 import { createNitroEmailAiRuntime } from '~~/server/utils/leads/emailAiRuntime'
@@ -26,8 +32,12 @@ export interface EmailRecoveryClaim {
   transport: 'cloudflare_email_routing'
   external_id_hash: string
   message_id_hash: string | null
+  raw_content_hash_version: 1
+  raw_content_hash: string
   provider: string
   sender_domain: string | null
+  header_from_domain: string | null
+  raw_size: number
   safe_evidence: {
     hasText: boolean
     hasHtml: boolean
@@ -52,6 +62,8 @@ export interface EmailRecoveryClaim {
 export type EmailRecoveryReason
   = | 'missing_evidence'
     | 'corrupt_evidence'
+    | 'content_mismatch'
+    | 'identity_mismatch'
     | 'endpoint_unavailable'
     | 'sender_policy_denied'
     | 'attempts_exhausted'
@@ -201,7 +213,8 @@ export async function claimNextEmailRecovery(
           + MAKE_INTERVAL(secs => $3::int)
       RETURNING
         i.id, i.endpoint_id, i.client_id, i.correlation_id, i.transport,
-        i.external_id_hash, i.message_id_hash, i.provider, i.sender_domain,
+        i.external_id_hash, i.message_id_hash, i.raw_content_hash_version,
+        i.raw_content_hash, i.provider, i.sender_domain, i.header_from_domain, i.raw_size,
         i.safe_evidence, i.staged_object_key, i.staged_expires_at, i.staged_uploaded_at,
         i.attempt_count, i.created_at,
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
@@ -261,7 +274,8 @@ export async function claimNextEmailTerminalReconciliation(
         AND e.client_id = i.client_id
       RETURNING
         i.id, i.endpoint_id, i.client_id, i.correlation_id, i.transport,
-        i.external_id_hash, i.message_id_hash, i.provider, i.sender_domain,
+        i.external_id_hash, i.message_id_hash, i.raw_content_hash_version,
+        i.raw_content_hash, i.provider, i.sender_domain, i.header_from_domain, i.raw_size,
         i.safe_evidence, i.staged_object_key, i.staged_expires_at, i.staged_uploaded_at,
         i.attempt_count, i.created_at,
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
@@ -396,15 +410,32 @@ export async function processEmailRecoveryClaim(
   let originalEnvelopeSender: string | null
   let parsed: Awaited<ReturnType<typeof parseMimeContent>>
   try {
+    const expectedManifest = EmailStagedManifestSchema.parse({
+      schemaVersion: 1,
+      ingestionId: claim.id,
+      encryptedObjectKey: claim.staged_object_key,
+      provider: claim.provider,
+      externalIdHash: claim.external_id_hash,
+      messageIdHash: claim.message_id_hash,
+      rawContentHashVersion: claim.raw_content_hash_version,
+      rawContentHash: claim.raw_content_hash
+    })
     const staged = await decryptStagedEmail(
       new Uint8Array(await object.arrayBuffer()),
-      dependencies.encryptionSecret
+      dependencies.encryptionSecret,
+      expectedManifest
     )
     if (staged.format === 'legacy') {
       return quarantine(claim, leaseToken, dependencies, 'legacy_evidence', false)
     }
     raw = staged.raw
     originalEnvelopeSender = staged.envelopeSender
+    if (
+      raw.byteLength !== Number(claim.raw_size)
+      || createHash('sha256').update(raw).digest('hex') !== claim.raw_content_hash
+    ) {
+      return quarantine(claim, leaseToken, dependencies, 'content_mismatch', false)
+    }
     parsed = await parseMimeContent(raw)
   } catch {
     return quarantine(claim, leaseToken, dependencies, 'corrupt_evidence', false)
@@ -443,7 +474,13 @@ export async function processEmailRecoveryClaim(
       createNitroEmailAiRuntime(dependencies.ai)
     )
   }
-  if (extraction) extraction = { ...extraction, externalIdHash: claim.external_id_hash }
+  const parsedMessageIdHash = emailMessageIdHashes(parsed.messageId)?.current ?? null
+  if (
+    parsedMessageIdHash !== claim.message_id_hash
+    || (extraction && extraction.externalIdHash !== claim.external_id_hash)
+  ) {
+    return quarantine(claim, leaseToken, dependencies, 'identity_mismatch', false)
+  }
   const canonicalExtraction = extraction?.needsReview ? null : extraction
   const envelope = EmailIngestEnvelopeSchema.parse({
     schemaVersion: 1,
@@ -456,6 +493,8 @@ export async function processEmailRecoveryClaim(
     headerFromDomain,
     messageIdHash: claim.message_id_hash,
     externalIdHash: claim.external_id_hash,
+    rawContentHashVersion: claim.raw_content_hash_version,
+    rawContentHash: claim.raw_content_hash,
     receivedAt: claim.created_at,
     rawSize: parsed.rawSize,
     attachmentCount: parsed.attachments.length,
@@ -1072,7 +1111,8 @@ async function claimEmailReplay(
     }>(`
       SELECT
         i.id, i.endpoint_id, i.client_id, i.correlation_id, i.transport,
-        i.external_id_hash, i.message_id_hash, i.provider, i.sender_domain,
+        i.external_id_hash, i.message_id_hash, i.raw_content_hash_version,
+        i.raw_content_hash, i.provider, i.sender_domain, i.header_from_domain, i.raw_size,
         i.safe_evidence, i.staged_object_key, i.staged_expires_at, i.staged_uploaded_at,
         i.attempt_count, i.created_at, i.status, i.terminal_at,
         i.recovery_lease_token, i.recovery_claimed_at,

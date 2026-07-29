@@ -58,7 +58,10 @@ function stageRequest(overrides: Record<string, unknown> = {}) {
     transport: 'cloudflare_email_routing' as const,
     recipientToken: '0123456789',
     externalIdHash: HASH,
+    legacyExternalIdHash: 'b'.repeat(64),
     messageIdHash: HASH,
+    rawContentHashVersion: 1,
+    rawContentHash: 'c'.repeat(64),
     provider: 'carsales',
     envelopeSenderDomain: 'notify.carsales.com.au',
     headerFromDomain: 'carsales.com.au',
@@ -82,6 +85,8 @@ function ingestEnvelope(overrides: Record<string, unknown> = {}) {
     headerFromDomain: 'carsales.com.au',
     messageIdHash: HASH,
     externalIdHash: HASH,
+    rawContentHashVersion: 1,
+    rawContentHash: 'c'.repeat(64),
     receivedAt: RECEIVED_AT,
     rawSize: 1024,
     attachmentCount: 0,
@@ -134,6 +139,16 @@ describe('email ingestion contracts', () => {
     expect(EmailStageRequestSchema.safeParse(stageRequest({
       envelopeSenderDomain: 'not a domain'
     })).success).toBe(false)
+  })
+
+  it('requires a versioned raw-content identity on stage and canonical envelopes', () => {
+    const { rawContentHash: _stageHash, ...stageWithoutHash } = stageRequest()
+    const { rawContentHashVersion: _stageVersion, ...stageWithoutVersion } = stageRequest()
+    const { rawContentHash: _envelopeHash, ...envelopeWithoutHash } = ingestEnvelope()
+
+    expect(EmailStageRequestSchema.safeParse(stageWithoutHash).success).toBe(false)
+    expect(EmailStageRequestSchema.safeParse(stageWithoutVersion).success).toBe(false)
+    expect(EmailIngestEnvelopeSchema.safeParse(envelopeWithoutHash).success).toBe(false)
   })
 
   it('rejects untrusted transport names and raw payloads beyond the worker limits', () => {
