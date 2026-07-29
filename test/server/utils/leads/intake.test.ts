@@ -96,6 +96,53 @@ describe('first-party lead intake', () => {
     expect(appendOutbox).not.toHaveBeenCalled()
   })
 
+  it('carries bounded email trace attribution into measurement without contact data', async () => {
+    const appendOutbox = vi.fn(async () => ({ status: 'profile_not_found' as const }))
+    const service = createLeadIntakeService({
+      transaction: async callback => callback(db),
+      insertLead: vi.fn(async () => LEAD_ID),
+      appendOutbox: appendOutbox as never,
+      appendBrowserConfirmation: vi.fn(async () => false),
+      completeIntentMatch: vi.fn(),
+      linkIdentity: vi.fn(),
+      captureProductInterest: vi.fn(),
+      recordPersonaEvidence: vi.fn()
+    })
+    const emailInput = {
+      ...input(),
+      lead: {
+        ...input().lead,
+        source: 'email' as const,
+        source_lead_id: 'email:22222222-2222-4222-8222-222222222222:hash',
+        attribution: {
+          utm_source: 'carsales',
+          utm_medium: 'classifieds',
+          provider: 'carsales',
+          email_endpoint_id: '22222222-2222-4222-8222-222222222222',
+          parser: 'provider',
+          confidence_band: 'high',
+          transport: 'email',
+          email: 'must-not-enter-measurement@example.com'
+        }
+      }
+    }
+
+    await service.ingest(emailInput)
+
+    expect(appendOutbox).toHaveBeenCalledWith(db, expect.objectContaining({
+      attribution: expect.objectContaining({
+        utm_source: 'carsales',
+        utm_medium: 'classifieds',
+        provider: 'carsales',
+        email_endpoint_id: '22222222-2222-4222-8222-222222222222',
+        parser: 'provider',
+        confidence_band: 'high',
+        transport: 'email'
+      })
+    }))
+    expect(JSON.stringify(appendOutbox.mock.calls)).not.toContain('must-not-enter-measurement')
+  })
+
   it('returns evidence expiry without outbox or enrichment when the guarded insert is fenced', async () => {
     const appendOutbox = vi.fn()
     const linkIdentity = vi.fn()

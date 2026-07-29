@@ -358,6 +358,12 @@ function setIfPresent(target: Record<string, string>, key: string, value: string
   if (normalized) target[key] = normalized.slice(0, max)
 }
 
+function confidenceBand(confidence: number): 'high' | 'medium' | 'low' {
+  if (confidence >= 0.85) return 'high'
+  if (confidence >= 0.65) return 'medium'
+  return 'low'
+}
+
 export function mapEmailExtractionToLeadInput(input: {
   endpoint: Pick<Endpoint, 'id' | 'client_id' | 'form_id' | 'form_name'>
   externalIdHash: string
@@ -392,7 +398,17 @@ export function mapEmailExtractionToLeadInput(input: {
     page_id: null,
     submitted_at: input.receivedAt,
     field_data: fieldData,
-    attribution: { provider: input.extraction.provider, medium: input.extraction.medium },
+    attribution: {
+      utm_source: input.extraction.provider,
+      utm_medium: input.extraction.medium,
+      provider: input.extraction.provider,
+      email_endpoint_id: input.endpoint.id,
+      parser: input.extraction.parser,
+      confidence_band: confidenceBand(input.extraction.overallConfidence),
+      transport: 'email',
+      // Retain the pre-launch alias for rules drafted against the original DTO.
+      medium: input.extraction.medium
+    },
     assigned_to: null,
     created_by: null
   }

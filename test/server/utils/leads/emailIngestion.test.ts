@@ -13,6 +13,7 @@ import {
   mapEmailExtractionToLeadInput,
   verifyEmailIngestSignature
 } from '../../../../server/utils/leads/emailIngestion'
+import { evaluateFilter } from '../../../../server/utils/leads/filterEval'
 
 const UUID = '11111111-1111-4111-8111-111111111111'
 const HASH = 'a'.repeat(64)
@@ -440,8 +441,25 @@ describe('signed email ingestion boundary', () => {
       source: 'email',
       source_lead_id: `email:22222222-2222-4222-8222-222222222222:${HASH}`,
       form_id: 'email_endpoint:22222222-2222-4222-8222-222222222222',
-      field_data: expect.objectContaining({ full_name: 'Jane Example', phone: '0412 345 678', message: 'Please call me', vehicle_make: 'Toyota' })
+      field_data: expect.objectContaining({ full_name: 'Jane Example', phone: '0412 345 678', message: 'Please call me', vehicle_make: 'Toyota' }),
+      attribution: {
+        utm_source: 'carsales',
+        utm_medium: 'classifieds',
+        provider: 'carsales',
+        email_endpoint_id: '22222222-2222-4222-8222-222222222222',
+        parser: 'provider',
+        confidence_band: 'high',
+        transport: 'email'
+      }
     })
+    expect(evaluateFilter(
+      lead as never,
+      { field: 'attribution.email_endpoint_id', op: 'eq', value: '22222222-2222-4222-8222-222222222222' }
+    )).toBe(true)
+    expect(evaluateFilter(
+      lead as never,
+      { field: 'attribution.utm_medium', op: 'eq', value: 'classifieds' }
+    )).toBe(true)
     expect(lead.field_data).not.toHaveProperty('relay_email')
     for (const forbidden of [
       'lead_id', 'provider_id', 'message_id', 'subject', 'body', 'html',
@@ -449,6 +467,61 @@ describe('signed email ingestion boundary', () => {
     ]) {
       expect(lead.field_data).not.toHaveProperty(forbidden)
     }
+  })
+
+  it.each([
+    ['autotrader', 'classifieds'],
+    ['carsales', 'classifieds'],
+    ['carsguide', 'classifieds'],
+    ['drive', 'classifieds'],
+    ['gumtree', 'classifieds'],
+    ['meta', 'paid-social'],
+    ['instagram', 'paid-social'],
+    ['tiktok', 'paid-social'],
+    ['google', 'cpc'],
+    ['generic', 'lead_ingest']
+  ] as const)('maps %s email leads to the canonical %s medium', (provider, medium) => {
+    const lead = mapEmailExtractionToLeadInput({
+      endpoint: {
+        id: '22222222-2222-4222-8222-222222222222',
+        client_id: UUID,
+        form_id: 'email_endpoint:22222222-2222-4222-8222-222222222222',
+        form_name: 'Email leads'
+      },
+      externalIdHash: HASH,
+      receivedAt: RECEIVED_AT,
+      extraction: extraction({ provider, medium })
+    })
+
+    expect(lead.attribution).toMatchObject({
+      utm_source: provider,
+      utm_medium: medium,
+      provider,
+      transport: 'email'
+    })
+  })
+
+  it.each([
+    [0.95, 'high'],
+    [0.85, 'high'],
+    [0.84, 'medium'],
+    [0.65, 'medium'],
+    [0.64, 'low'],
+    [0, 'low']
+  ] as const)('maps confidence %s to the bounded %s band', (overallConfidence, band) => {
+    const lead = mapEmailExtractionToLeadInput({
+      endpoint: {
+        id: '22222222-2222-4222-8222-222222222222',
+        client_id: UUID,
+        form_id: 'email_endpoint:22222222-2222-4222-8222-222222222222',
+        form_name: 'Email leads'
+      },
+      externalIdHash: HASH,
+      receivedAt: RECEIVED_AT,
+      extraction: extraction({ overallConfidence })
+    })
+
+    expect(lead.attribution?.confidence_band).toBe(band)
   })
 })
 

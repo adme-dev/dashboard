@@ -723,7 +723,14 @@ const CanonicalAttributionSchema = z.strictObject({
   gclid: z.string().trim().min(1).max(512).nullable().default(null),
   gbraid: z.string().trim().min(1).max(512).nullable().default(null),
   wbraid: z.string().trim().min(1).max(512).nullable().default(null),
-  gaClientId: z.string().trim().min(1).max(128).nullable().default(null)
+  gaClientId: z.string().trim().min(1).max(128).nullable().default(null),
+  utm_source: z.string().regex(/^[a-z][a-z0-9_-]*$/).max(64).optional(),
+  utm_medium: z.enum(['classifieds', 'paid-social', 'cpc', 'lead_ingest']).optional(),
+  provider: z.string().regex(/^[a-z][a-z0-9_-]*$/).max(64).optional(),
+  email_endpoint_id: z.string().uuid().optional(),
+  parser: z.enum(['adf', 'provider', 'generic', 'ai_fallback']).optional(),
+  confidence_band: z.enum(['high', 'medium', 'low']).optional(),
+  transport: z.literal('email').optional()
 })
 
 const EMPTY_CANONICAL_ATTRIBUTION = {

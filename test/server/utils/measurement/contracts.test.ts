@@ -757,6 +757,32 @@ describe('CanonicalConversionEventSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('accepts bounded content-free email lead attribution', () => {
+    const result = CanonicalConversionEventSchema.parse({
+      ...qualifiedEvent,
+      attribution: {
+        ...qualifiedEvent.attribution,
+        utm_source: 'carsales',
+        utm_medium: 'classifieds',
+        provider: 'carsales',
+        email_endpoint_id: '22222222-2222-4222-8222-222222222222',
+        parser: 'provider',
+        confidence_band: 'high',
+        transport: 'email'
+      }
+    })
+
+    expect(result.attribution).toMatchObject({
+      utm_source: 'carsales',
+      utm_medium: 'classifieds',
+      provider: 'carsales',
+      email_endpoint_id: '22222222-2222-4222-8222-222222222222',
+      parser: 'provider',
+      confidence_band: 'high',
+      transport: 'email'
+    })
+  })
+
   it('requires a positive configuration version for deterministic replay', () => {
     const result = CanonicalConversionEventSchema.safeParse({
       ...qualifiedEvent,
