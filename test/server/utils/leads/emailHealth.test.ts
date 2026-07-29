@@ -96,6 +96,26 @@ describe('email endpoint alert policy', () => {
     }
   })
 
+  it('exhausts Cloudflare allowlist aliases before process aliases', () => {
+    process.env.EMAIL_INGESTION_NOTIFY_ALLOWLIST = 'process-email@example.test'
+    process.env.ANOMALY_NOTIFY_ALLOWLIST = 'process-anomaly@example.test'
+    try {
+      const config = resolveEmailHealthRuntimeConfig({
+        context: {
+          cloudflare: {
+            env: {
+              ANOMALY_NOTIFY_ALLOWLIST: 'runtime-anomaly@example.test'
+            }
+          }
+        }
+      } as never)
+      expect(config.notificationAllowlist).toBe('runtime-anomaly@example.test')
+    } finally {
+      delete process.env.EMAIL_INGESTION_NOTIFY_ALLOWLIST
+      delete process.env.ANOMALY_NOTIFY_ALLOWLIST
+    }
+  })
+
   it('alerts at five failures only after a previously healthy transition', () => {
     expect(deriveEmailEndpointAlertCodes({
       consecutiveFailures: 5,

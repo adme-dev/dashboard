@@ -44,11 +44,15 @@ type EmailHealthEnvKey
     | 'EMAIL_INGESTION_R2_FAILURE_THRESHOLD'
     | 'EMAIL_INGESTION_AI_REJECTION_THRESHOLD'
 
-function runtimeValue(event: H3Event, name: EmailHealthEnvKey): string | undefined {
+function runtimeBindingValue(event: H3Event, name: EmailHealthEnvKey): string | undefined {
   const value = (event.context as {
     cloudflare?: { env?: Record<string, unknown> }
   }).cloudflare?.env?.[name]
-  return typeof value === 'string' ? value : process.env[name]
+  return typeof value === 'string' ? value : undefined
+}
+
+function runtimeValue(event: H3Event, name: EmailHealthEnvKey): string | undefined {
+  return runtimeBindingValue(event, name) ?? process.env[name]
 }
 
 function configuredThreshold(value: string | undefined): number | null {
@@ -58,8 +62,10 @@ function configuredThreshold(value: string | undefined): number | null {
 
 export function resolveEmailHealthRuntimeConfig(event: H3Event): EmailHealthRuntimeConfig {
   return {
-    notificationAllowlist: runtimeValue(event, 'EMAIL_INGESTION_NOTIFY_ALLOWLIST')
-      ?? runtimeValue(event, 'ANOMALY_NOTIFY_ALLOWLIST')
+    notificationAllowlist: runtimeBindingValue(event, 'EMAIL_INGESTION_NOTIFY_ALLOWLIST')
+      ?? runtimeBindingValue(event, 'ANOMALY_NOTIFY_ALLOWLIST')
+      ?? process.env.EMAIL_INGESTION_NOTIFY_ALLOWLIST
+      ?? process.env.ANOMALY_NOTIFY_ALLOWLIST
       ?? null,
     unknownRecipientThreshold: configuredThreshold(
       runtimeValue(event, 'EMAIL_INGESTION_UNKNOWN_RECIPIENT_THRESHOLD')
