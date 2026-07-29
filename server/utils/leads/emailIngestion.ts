@@ -22,6 +22,7 @@ const TIMESTAMP_TOLERANCE_MS = 5 * 60_000
 const NONCE_TTL_SECONDS = 10 * 60
 const CLAIM_LEASE_SECONDS = 5 * 60
 const STAGING_GRACE_SECONDS = 5 * 60
+const MIN_CANONICAL_WINDOW_SECONDS = 30
 const MAX_ATTEMPTS = 5
 const TOKEN_PATTERN = /^[0123456789abcdefghjkmnpqrstvwxyz]{10}$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -218,8 +219,8 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
       if (found.staged_expired) {
         await db.query(`
           UPDATE lead_email_ingestions
-          SET status = 'quarantined', error_class = 'evidence_expired',
-            terminal_at = NOW(), next_attempt_at = NULL, updated_at = NOW()
+          SET status = 'failed', error_class = 'evidence_expired',
+            terminal_at = NULL, next_attempt_at = NOW(), updated_at = NOW()
           WHERE id = $1 AND terminal_at IS NULL
             AND (staged_expires_at IS NULL OR staged_expires_at <= NOW())
           RETURNING id
@@ -431,6 +432,7 @@ async function claimEmailIngestion(
 ): Promise<
   | { ingestion: Ingestion, endpoint: Endpoint, ownershipToken: string }
   | { expired: true, endpoint: Endpoint, ownershipToken: string }
+  | { notReady: true }
   | EmailIngestResult
 > {
   const ownershipToken = recoveryLeaseToken ?? crypto.randomUUID()
@@ -440,10 +442,15 @@ async function claimEmailIngestion(
     const result = await db.query(`
       SELECT id, endpoint_id, client_id, correlation_id, external_id_hash, message_id_hash,
         status, terminal_at, next_attempt_at, attempt_count, recovery_lease_token,
-        staged_expires_at, (staged_expires_at IS NULL OR staged_expires_at <= NOW()) AS staged_expired
+        staged_expires_at,
+        (staged_expires_at IS NULL OR staged_expires_at <= clock_timestamp()) AS staged_expired,
+        staged_expires_at > clock_timestamp()
+          + MAKE_INTERVAL(secs => $2::int) AS staged_ready
       FROM lead_email_ingestions WHERE id = $1 FOR UPDATE
-    `, [ingestionId])
-    const ingestion = result.rows?.[0] as (Ingestion & { staged_expired?: boolean }) | undefined
+    `, [ingestionId, MIN_CANONICAL_WINDOW_SECONDS])
+    const ingestion = result.rows?.[0] as (
+      Ingestion & { staged_expired?: boolean, staged_ready?: boolean }
+    ) | undefined
     if (!ingestion) failure(404, 'email_ingestion_unavailable')
     if (ingestion.endpoint_id !== endpoint.id || ingestion.correlation_id !== envelope.correlationId || ingestion.external_id_hash !== envelope.externalIdHash || ingestion.message_id_hash !== envelope.messageIdHash) {
       failure(409, 'email_ingestion_mismatch')
@@ -461,6 +468,7 @@ async function claimEmailIngestion(
     if (ingestion.staged_expired) {
       return { expired: true as const, endpoint, ownershipToken }
     }
+    if (!ingestion.staged_ready) return { notReady: true as const }
     if (
       !recoveryLeaseToken
       && ingestion.next_attempt_at
@@ -539,8 +547,74 @@ async function claimEmailIngestion(
   }) as Promise<
     | { ingestion: Ingestion, endpoint: Endpoint, ownershipToken: string }
     | { expired: true, endpoint: Endpoint, ownershipToken: string }
+    | { notReady: true }
     | EmailIngestResult
   >
+}
+
+type RecoveryCompletionAudit = {
+  endpointId: string
+  clientId: string
+  actorId: string | null
+  actorType: 'cron' | 'team_member'
+  action: 'recovery_completed' | 'manual_replay_completed'
+}
+
+async function transitionExpiredEmailIngestion(input: {
+  ingestionId: string
+  ownershipToken: string
+  ownsLease: boolean
+  recoveryAudit?: RecoveryCompletionAudit
+}): Promise<EmailIngestResult> {
+  const ownershipCondition = input.ownsLease
+    ? 'AND recovery_lease_token = $2::uuid'
+    : 'AND recovery_lease_token IS NULL'
+  if (!input.recoveryAudit) {
+    await queryOne<{ id: string }>(`
+      UPDATE lead_email_ingestions
+      SET status = 'failed', error_class = 'evidence_expired',
+        terminal_at = NULL, next_attempt_at = NOW(),
+        recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
+      WHERE id = $1 AND terminal_at IS NULL
+        AND (staged_expires_at IS NULL OR staged_expires_at <= clock_timestamp())
+        ${ownershipCondition}
+      RETURNING id
+    `, [
+      input.ingestionId,
+      ...(input.ownsLease ? [input.ownershipToken] : [])
+    ])
+    return { status: 'in_progress' }
+  }
+  const recoveryAudit = input.recoveryAudit
+  try {
+    const owned = await transaction(async (db) => {
+      const expired = await db.query(`
+        UPDATE lead_email_ingestions
+        SET status = 'quarantined', error_class = 'evidence_expired',
+          terminal_at = NOW(), next_attempt_at = NULL,
+          recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
+        WHERE id = $1 AND terminal_at IS NULL
+          AND (staged_expires_at IS NULL OR staged_expires_at <= clock_timestamp())
+          AND recovery_lease_token = $2::uuid
+        RETURNING id
+      `, [input.ingestionId, input.ownershipToken])
+      if (!expired.rows?.[0]) return false
+      await db.query(`
+        INSERT INTO lead_email_ingestion_audits (
+          ingestion_id, endpoint_id, client_id, actor_id, actor_type,
+          action, outcome, reason
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'quarantined', 'evidence_expired')
+      `, [
+        input.ingestionId, recoveryAudit.endpointId, recoveryAudit.clientId,
+        recoveryAudit.actorId, recoveryAudit.actorType,
+        recoveryAudit.action
+      ])
+      return true
+    }) as boolean
+    return owned ? { status: 'quarantined' } : { status: 'in_progress' }
+  } catch (error) {
+    throw new EmailTerminalTransitionError(error)
+  }
 }
 
 export async function acceptEmailEnvelope(
@@ -562,50 +636,18 @@ export async function acceptEmailEnvelope(
   const envelope = parsed.data
   const claim = await claimEmailIngestion(ingestionId, envelope, options.recoveryLeaseToken)
   if ('status' in claim) return claim
+  if ('notReady' in claim) return { status: 'in_progress' }
   const { endpoint, ownershipToken } = claim
   const recoveryAudit = options.recoveryAudit
     ? { ...options.recoveryAudit, endpointId: endpoint.id, clientId: endpoint.client_id }
     : undefined
   if ('expired' in claim) {
-    const expiryOwnershipCondition = options.recoveryLeaseToken
-      ? 'AND recovery_lease_token = $2::uuid'
-      : 'AND recovery_lease_token IS NULL'
-    const expirySql = `
-      UPDATE lead_email_ingestions
-      SET status = 'quarantined', error_class = 'evidence_expired',
-        terminal_at = NOW(), next_attempt_at = NULL,
-        recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
-      WHERE id = $1 AND terminal_at IS NULL
-        AND (staged_expires_at IS NULL OR staged_expires_at <= NOW())
-        ${expiryOwnershipCondition}
-      RETURNING id
-    `
-    if (recoveryAudit) {
-      try {
-        const owned = await transaction(async (db) => {
-          const expired = await db.query(expirySql, [ingestionId, ownershipToken])
-          if (!expired.rows?.[0]) return false
-          await db.query(`
-            INSERT INTO lead_email_ingestion_audits (
-              ingestion_id, endpoint_id, client_id, actor_id, actor_type,
-              action, outcome, reason
-            ) VALUES ($1, $2, $3, $4, $5, $6, 'quarantined', 'evidence_expired')
-          `, [
-            ingestionId, endpoint.id, endpoint.client_id, recoveryAudit.actorId,
-            recoveryAudit.actorType, recoveryAudit.action
-          ])
-          return true
-        }) as boolean
-        return owned ? { status: 'quarantined' } : { status: 'in_progress' }
-      } catch (error) {
-        throw new EmailTerminalTransitionError(error)
-      }
-    }
-    const expired = await queryOne<{ id: string }>(
-      expirySql,
-      [ingestionId, ...(options.recoveryLeaseToken ? [ownershipToken] : [])]
-    )
-    return expired ? { status: 'quarantined' } : { status: 'in_progress' }
+    return transitionExpiredEmailIngestion({
+      ingestionId,
+      ownershipToken,
+      ownsLease: Boolean(options.recoveryLeaseToken),
+      recoveryAudit
+    })
   }
   const { ingestion } = claim
   if (!senderAllowed(endpoint, envelope)) {
@@ -632,8 +674,33 @@ export async function acceptEmailEnvelope(
     // until a reservation has been successfully claimed.
     const { acceptLead, resolveLeadCaptureMode } = await import('~~/server/utils/leads/acceptance')
     const leadCaptureMode = await resolveLeadCaptureMode(endpoint.client_id)
-    accepted = await acceptLead(event, { lead, leadCaptureMode, consentDecision: 'unknown' })
+    const evidenceCurrent = await queryOne<{ id: string }>(`
+      SELECT id
+      FROM lead_email_ingestions
+      WHERE id = $1
+        AND recovery_lease_token = $2::uuid
+        AND terminal_at IS NULL
+        AND staged_expires_at > clock_timestamp()
+    `, [ingestionId, ownershipToken])
+    if (!evidenceCurrent) {
+      return await transitionExpiredEmailIngestion({
+        ingestionId,
+        ownershipToken,
+        ownsLease: true,
+        recoveryAudit
+      })
+    }
+    accepted = await acceptLead(event, {
+      lead,
+      leadCaptureMode,
+      consentDecision: 'unknown',
+      emailEvidenceGuard: {
+        ingestionId,
+        leaseToken: ownershipToken
+      }
+    })
   } catch (error) {
+    if (error instanceof Error && error.name === 'EmailTerminalTransitionError') throw error
     const terminalFailure = ingestion.attempt_count >= MAX_ATTEMPTS
     if (terminalFailure) {
       const failureSql = `
@@ -696,6 +763,14 @@ export async function acceptEmailEnvelope(
       await queryOne(`UPDATE lead_email_endpoints SET last_failure_at = NOW(), consecutive_failures = consecutive_failures + 1, updated_at = NOW() WHERE id = $1`, [endpoint.id])
     }
     throw error
+  }
+  if (accepted.status === 'evidence_expired') {
+    return transitionExpiredEmailIngestion({
+      ingestionId,
+      ownershipToken,
+      ownsLease: true,
+      recoveryAudit
+    })
   }
   if (accepted.status !== 'created') {
     const owned = await terminal(ingestionId, 'duplicate', { parser: envelope.extraction.parser, confidence: envelope.extraction.overallConfidence, senderDomain: envelope.envelopeSenderDomain }, ownershipToken, recoveryAudit)

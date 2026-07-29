@@ -194,7 +194,9 @@ describe('email recovery claims', () => {
 
     const [sql, params] = mocks.query.mock.calls[0]!
     expect(sql).toMatch(/status IN \('accepted', 'duplicate'\)/)
-    expect(sql).toMatch(/status IN \('quarantined', 'failed'\)[\s\S]*staged_expires_at <= NOW\(\)/)
+    expect(sql).toMatch(
+      /status IN \('quarantined', 'failed'\)[\s\S]*staged_expires_at IS NULL[\s\S]*staged_expires_at <= NOW\(\)/
+    )
     expect(sql).toMatch(/recovery_claimed_at <= NOW\(\) - MAKE_INTERVAL/)
     expect(sql).toMatch(/FOR UPDATE SKIP LOCKED/)
     expect(params).toEqual([LEASE_TOKEN, 300])
@@ -569,6 +571,43 @@ describe('email recovery processing', () => {
     })).resolves.toEqual({ cleaned: 1 })
 
     expect(harness.bucket.delete).toHaveBeenCalledTimes(2)
+  })
+
+  it('deletes NULL-expiry terminal evidence and atomically clears its key with one audit', async () => {
+    const harness = recoveryHarness()
+    mocks.query.mockResolvedValueOnce({
+      rows: [{
+        id: INGESTION_ID,
+        staged_object_key: claimedRow.staged_object_key
+      }]
+    }).mockResolvedValueOnce({
+      rows: [{
+        id: INGESTION_ID,
+        endpoint_id: ENDPOINT_ID,
+        client_id: CLIENT_ID
+      }]
+    }).mockResolvedValueOnce({ rows: [] })
+
+    await expect(recoverEmailIngestions(
+      {} as never,
+      { bucket: harness.bucket, encryptionSecret: SECRET, ai: null },
+      {
+        limit: 1,
+        claimTerminal: vi.fn(async () => null),
+        claimRecovery: vi.fn(async () => null),
+        randomUUID: () => LEASE_TOKEN,
+        nowMs: harness.dependencies.nowMs
+      }
+    )).resolves.toMatchObject({ cleaned: 1, failed: 0 })
+
+    expect(harness.bucket.delete).toHaveBeenCalledWith(claimedRow.staged_object_key)
+    expect(mocks.query.mock.calls[0]?.[0]).toMatch(
+      /status IN \('quarantined', 'failed'\)[\s\S]*staged_expires_at IS NULL/
+    )
+    expect(mocks.query.mock.calls[1]?.[0]).toMatch(
+      /staged_object_key = NULL[\s\S]*staged_expires_at IS NULL/
+    )
+    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/terminal_cleanup/)
   })
 
   it('audits the actor and reuses the same endpoint/client/identity for manual replay', async () => {

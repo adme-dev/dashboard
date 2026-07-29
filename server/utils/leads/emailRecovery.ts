@@ -535,8 +535,7 @@ export async function claimNextTerminalEmailObject(
             status IN ('accepted', 'duplicate')
             OR (
               status IN ('quarantined', 'failed')
-              AND staged_expires_at IS NOT NULL
-              AND staged_expires_at <= NOW()
+              AND (staged_expires_at IS NULL OR staged_expires_at <= NOW())
             )
           )
           AND staged_object_key IS NOT NULL
@@ -638,7 +637,10 @@ const defaultRepository: EmailRecoveryRepository = {
             AND terminal_at IS NOT NULL
             AND (
               status IN ('accepted', 'duplicate')
-              OR (status IN ('quarantined', 'failed') AND staged_expires_at <= NOW())
+              OR (
+                status IN ('quarantined', 'failed')
+                AND (staged_expires_at IS NULL OR staged_expires_at <= NOW())
+              )
             )
           RETURNING id
         `, [input.ingestionId, input.leaseToken])
@@ -713,8 +715,7 @@ const defaultRepository: EmailRecoveryRepository = {
           status IN ('accepted', 'duplicate')
           OR (
             status IN ('quarantined', 'failed')
-            AND staged_expires_at IS NOT NULL
-            AND staged_expires_at <= NOW()
+            AND (staged_expires_at IS NULL OR staged_expires_at <= NOW())
           )
         )
       RETURNING id
@@ -771,7 +772,10 @@ const defaultTerminalCleanupRepository: TerminalCleanupRepository = {
           AND terminal_at IS NOT NULL
           AND (
             status IN ('accepted', 'duplicate')
-            OR (status IN ('quarantined', 'failed') AND staged_expires_at <= NOW())
+            OR (
+              status IN ('quarantined', 'failed')
+              AND (staged_expires_at IS NULL OR staged_expires_at <= NOW())
+            )
           )
         RETURNING id, endpoint_id, client_id
       `, [ingestionId, leaseToken])

@@ -43,6 +43,7 @@ function ingestion(overrides: Record<string, unknown> = {}) {
     correlation_id: CORRELATION_ID, external_id_hash: HASH, message_id_hash: HASH,
     status: 'received', terminal_at: null, next_attempt_at: null, attempt_count: 0,
     staged_expires_at: '2099-08-05T00:00:00.000Z',
+    staged_ready: true,
     recovery_lease_token: null,
     ...overrides
   }
@@ -64,6 +65,12 @@ function envelope(overrides: Record<string, unknown> = {}) {
     safeEvidence: { hasText: true, hasHtml: false, hasAdf: false, fieldKeys: ['email'] },
     ...overrides
   }
+}
+
+function queryOneSql(pattern: RegExp): string | undefined {
+  return mocks.queryOne.mock.calls
+    .map(([sql]) => sql as string)
+    .find(sql => pattern.test(sql))
 }
 
 describe('email canonical ingress', () => {
@@ -177,7 +184,7 @@ describe('email canonical ingress', () => {
     expect(mocks.query.mock.calls[2]?.[0]).toMatch(/error_class = 'final_attempt_leased'/)
     expect(mocks.query.mock.calls[2]?.[0]).not.toMatch(/attempt_count\s*=\s*\$2|terminal_at\s*=\s*NOW\(\)/)
     expect(mocks.acceptLead).toHaveBeenCalledOnce()
-    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/attempt_count = CASE[\s\S]*THEN 5/)
+    expect(queryOneSql(/attempt_count = CASE/)).toMatch(/attempt_count = CASE[\s\S]*THEN 5/)
   })
 
   it('promotes a successful fifth-attempt lease to accepted only after handoff', async () => {
@@ -189,7 +196,7 @@ describe('email canonical ingress', () => {
     })
     expect(mocks.query.mock.calls[2]?.[0]).toMatch(/error_class = 'final_attempt_leased'[\s\S]*next_attempt_at = NOW\(\) \+ MAKE_INTERVAL/)
     expect(mocks.query.mock.calls[2]?.[0]).not.toMatch(/terminal_at\s*=\s*NOW\(\)/)
-    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/attempt_count = CASE[\s\S]*error_class = 'final_attempt_leased'[\s\S]*THEN 5/)
+    expect(queryOneSql(/attempt_count = CASE/)).toMatch(/attempt_count = CASE[\s\S]*error_class = 'final_attempt_leased'[\s\S]*THEN 5/)
   })
 
   it('resolves a post-acceptance crash through canonical idempotency on final-lease recovery', async () => {
@@ -208,7 +215,7 @@ describe('email canonical ingress', () => {
     expect(mocks.acceptLead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       lead: expect.objectContaining({ source_lead_id: `email:${ENDPOINT_ID}:${HASH}` })
     }))
-    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/attempt_count = CASE[\s\S]*THEN 5/)
+    expect(queryOneSql(/attempt_count = CASE/)).toMatch(/attempt_count = CASE[\s\S]*THEN 5/)
   })
 
   it('terminally quarantines the exact fifth canonical failure without a sixth attempt', async () => {
@@ -218,7 +225,7 @@ describe('email canonical ingress', () => {
 
     await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope()))
       .resolves.toEqual({ status: 'quarantined' })
-    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(
+    expect(queryOneSql(/status = 'quarantined'/)).toMatch(
       /status = 'quarantined'[\s\S]*attempt_count = 5[\s\S]*error_class = 'attempts_exhausted'[\s\S]*terminal_at = NOW\(\)/
     )
   })
@@ -284,6 +291,10 @@ describe('email canonical ingress', () => {
     expect(mocks.acceptLead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       leadCaptureMode: 'full_crm',
       consentDecision: 'unknown',
+      emailEvidenceGuard: {
+        ingestionId: INGESTION_ID,
+        leaseToken: expect.any(String)
+      },
       lead: expect.objectContaining({
         client_id: CLIENT_ID, source: 'email',
         source_lead_id: `email:${ENDPOINT_ID}:${HASH}`,
@@ -337,7 +348,7 @@ describe('email canonical ingress', () => {
       expect.any(Number),
       recoveryLeaseToken
     ])
-    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/recovery_lease_token = \$11::uuid/)
+    expect(queryOneSql(/recovery_lease_token = \$11::uuid/)).toMatch(/recovery_lease_token = \$11::uuid/)
   })
 
   it('requires the matching recovery owner when reserving the fifth attempt', async () => {
@@ -390,7 +401,7 @@ describe('email canonical ingress', () => {
     mocks.query.mockResolvedValueOnce({ rows: [endpoint] })
       .mockResolvedValueOnce({ rows: [ingestion()] })
       .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
-    mocks.queryOne.mockResolvedValueOnce(null)
+    mocks.queryOne.mockResolvedValueOnce({ id: INGESTION_ID }).mockResolvedValueOnce(null)
 
     await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope()))
       .resolves.toEqual({ status: 'in_progress' })
@@ -439,7 +450,8 @@ describe('email canonical ingress', () => {
       }
     )).rejects.toThrow('audit unavailable')
     expect(persistedStatus).toBe('received')
-    expect(mocks.queryOne).not.toHaveBeenCalled()
+    expect(mocks.queryOne).toHaveBeenCalledOnce()
+    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/SELECT id[\s\S]*staged_expires_at > clock_timestamp\(\)/)
   })
 
   it('expires a late canonical claim before lead acceptance in the same recovery audit transaction', async () => {
@@ -476,7 +488,7 @@ describe('email canonical ingress', () => {
     expect(expiryQueries.mock.calls[1]?.[0]).toMatch(/lead_email_ingestion_audits/)
   })
 
-  it('expires a late normal-transport claim without crossing a recovery lease', async () => {
+  it('hands a late normal-transport claim to audited recovery without terminalizing it', async () => {
     mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
       rows: [ingestion({
         staged_expires_at: null,
@@ -488,12 +500,70 @@ describe('email canonical ingress', () => {
       {} as never,
       INGESTION_ID,
       envelope()
-    )).resolves.toEqual({ status: 'quarantined' })
+    )).resolves.toEqual({ status: 'in_progress' })
 
     expect(mocks.acceptLead).not.toHaveBeenCalled()
     expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(
-      /staged_expires_at IS NULL[\s\S]*recovery_lease_token IS NULL/
+      /status = 'failed'[\s\S]*terminal_at = NULL[\s\S]*next_attempt_at = NOW\(\)[\s\S]*staged_expires_at IS NULL[\s\S]*recovery_lease_token IS NULL/
     )
     expect(mocks.queryOne.mock.calls[0]?.[1]).toEqual([INGESTION_ID])
+  })
+
+  it('does not start canonical work without the conservative evidence window', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        staged_expired: false,
+        staged_ready: false
+      })]
+    })
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope()
+    )).resolves.toEqual({ status: 'in_progress' })
+
+    expect(mocks.acceptLead).not.toHaveBeenCalled()
+    expect(mocks.query.mock.calls[1]?.[0]).toMatch(
+      /staged_expires_at > clock_timestamp\(\)[\s\S]*MAKE_INTERVAL\(secs => \$2::int\) AS staged_ready/
+    )
+  })
+
+  it('stops before canonical acceptance when evidence expires during async mode resolution', async () => {
+    const recoveryLeaseToken = '66666666-6666-4666-8666-666666666666'
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] })
+      .mockResolvedValueOnce({ rows: [ingestion({
+        recovery_lease_token: recoveryLeaseToken,
+        staged_expires_at: '2026-07-29T00:05:00.000Z',
+        staged_expired: false,
+        staged_ready: true
+      })] })
+      .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+    mocks.resolveLeadCaptureMode.mockResolvedValueOnce('full_crm')
+    mocks.queryOne.mockResolvedValueOnce(null)
+    const expiryQueries = vi.fn(async (sql: string) => ({
+      rows: sql.includes('UPDATE lead_email_ingestions') ? [{ id: INGESTION_ID }] : []
+    }))
+    mocks.transaction
+      .mockImplementationOnce(async callback => callback({ query: mocks.query }))
+      .mockImplementationOnce(async callback => callback({ query: expiryQueries }))
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope(),
+      {
+        recoveryLeaseToken,
+        recoveryAudit: {
+          actorId: null,
+          actorType: 'cron',
+          action: 'recovery_completed'
+        }
+      }
+    )).resolves.toEqual({ status: 'quarantined' })
+
+    expect(mocks.acceptLead).not.toHaveBeenCalled()
+    expect(expiryQueries.mock.calls[0]?.[0]).toMatch(/evidence_expired/)
+    expect(expiryQueries.mock.calls[1]?.[0]).toMatch(/lead_email_ingestion_audits/)
   })
 })

@@ -3,6 +3,8 @@ import {
   insertLeadWithDedup as defaultInsertLead
 } from '~~/server/utils/leads/db'
 import type {
+  EmailEvidenceGuard,
+  GuardedLeadInsertResult,
   InsertLeadInput,
   LeadTransactionClient
 } from '~~/server/utils/leads/db'
@@ -33,8 +35,9 @@ type Transaction = <T>(
 
 type InsertLead = (
   input: InsertLeadInput,
-  db: LeadTransactionClient
-) => Promise<string | null>
+  db: LeadTransactionClient,
+  emailEvidenceGuard?: EmailEvidenceGuard
+) => Promise<string | null | GuardedLeadInsertResult>
 
 export interface LeadIntakeServiceDeps {
   transaction: Transaction
@@ -56,10 +59,12 @@ export interface IngestLeadInput {
     intentId: string
     reservationToken: string
   }
+  emailEvidenceGuard?: EmailEvidenceGuard
 }
 
 export type IngestLeadResult
   = { status: 'duplicate' }
+    | { status: 'evidence_expired' }
     | {
       status: 'created'
       leadId: string
@@ -69,7 +74,9 @@ export type IngestLeadResult
 
 const defaultDeps: LeadIntakeServiceDeps = {
   transaction: defaultTransaction as unknown as Transaction,
-  insertLead: defaultInsertLead,
+  insertLead: (input, db, emailEvidenceGuard) => emailEvidenceGuard
+    ? defaultInsertLead(input, db, emailEvidenceGuard)
+    : defaultInsertLead(input, db),
   appendOutbox: defaultAppendOutbox,
   appendBrowserConfirmation: appendConfirmedBrowserLeadEvent,
   retryBrowserConfirmation: appendConfirmedBrowserLeadEventForStoredFormSubmission,
@@ -128,7 +135,18 @@ export function createLeadIntakeService(
   return {
     async ingest(input: IngestLeadInput): Promise<IngestLeadResult> {
       return deps.transaction(async (db) => {
-        const leadId = await deps.insertLead(input.lead, db)
+        const inserted = input.emailEvidenceGuard
+          ? await deps.insertLead(input.lead, db, input.emailEvidenceGuard)
+          : await deps.insertLead(input.lead, db)
+        if (
+          typeof inserted === 'object'
+          && inserted?.status === 'evidence_expired'
+        ) {
+          return { status: 'evidence_expired' as const }
+        }
+        const leadId = typeof inserted === 'object'
+          ? inserted?.status === 'created' ? inserted.leadId : null
+          : inserted
         if (!leadId) {
           const browserEventId = optionalAttribution(input.lead.attribution, 'browserEventId', 128)
           if (browserEventId) {

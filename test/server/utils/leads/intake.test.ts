@@ -96,6 +96,40 @@ describe('first-party lead intake', () => {
     expect(appendOutbox).not.toHaveBeenCalled()
   })
 
+  it('returns evidence expiry without outbox or enrichment when the guarded insert is fenced', async () => {
+    const appendOutbox = vi.fn()
+    const linkIdentity = vi.fn()
+    const appendBrowserConfirmation = vi.fn(async () => false)
+    const completeIntentMatch = vi.fn()
+    const captureProductInterest = vi.fn()
+    const recordPersonaEvidence = vi.fn()
+    const service = createLeadIntakeService({
+      transaction: async callback => callback(db),
+      insertLead: vi.fn(async () => ({ status: 'evidence_expired' as const })),
+      appendOutbox: appendOutbox as never,
+      appendBrowserConfirmation,
+      completeIntentMatch,
+      linkIdentity,
+      captureProductInterest,
+      recordPersonaEvidence
+    })
+    const guarded = {
+      ...input(),
+      emailEvidenceGuard: {
+        ingestionId: '33333333-3333-4333-8333-333333333333',
+        leaseToken: '44444444-4444-4444-8444-444444444444'
+      }
+    }
+
+    await expect(service.ingest(guarded)).resolves.toEqual({ status: 'evidence_expired' })
+    expect(appendOutbox).not.toHaveBeenCalled()
+    expect(appendBrowserConfirmation).not.toHaveBeenCalled()
+    expect(completeIntentMatch).not.toHaveBeenCalled()
+    expect(linkIdentity).not.toHaveBeenCalled()
+    expect(captureProductInterest).not.toHaveBeenCalled()
+    expect(recordPersonaEvidence).not.toHaveBeenCalled()
+  })
+
   it('retries browser confirmation when a provider retries an already accepted lead', async () => {
     const retryBrowserConfirmation = vi.fn(async () => true)
     const service = createLeadIntakeService({

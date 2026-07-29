@@ -99,7 +99,7 @@ describe('email stage reservation', () => {
     })
   })
 
-  it('terminalizes an expired reservation instead of allowing late redelivery to reupload it', async () => {
+  it('hands an expired reservation to audited recovery instead of terminalizing it unaudited', async () => {
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
       id: '44444444-4444-4444-8444-444444444444',
       endpoint_id: endpoint.id,
@@ -119,7 +119,7 @@ describe('email stage reservation', () => {
       cleanupObjectKey: null
     })
     expect(query.mock.calls[2]?.[0]).toMatch(
-      /status = 'quarantined'[\s\S]*error_class = 'evidence_expired'[\s\S]*terminal_at = NOW\(\)/
+      /status = 'failed'[\s\S]*error_class = 'evidence_expired'[\s\S]*terminal_at = NULL[\s\S]*next_attempt_at = NOW\(\)/
     )
   })
 
