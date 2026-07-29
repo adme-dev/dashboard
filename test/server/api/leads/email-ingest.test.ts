@@ -95,12 +95,57 @@ describe('email canonical ingress', () => {
     await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({ status: 'duplicate' })
   })
 
-  it('terminally exhausts the fifth claim without violating the lifecycle constraint', async () => {
+  it.each([
+    [1, 0],
+    [2, 1],
+    [3, 2],
+    [4, 3],
+    [5, 4]
+  ])('allows canonical handoff attempt %i', async (_attempt, priorAttempts) => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [ingestion({ attempt_count: priorAttempts })] })
+      .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+
+    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({
+      status: 'accepted', leadId: '55555555-5555-4555-8555-555555555555'
+    })
+    expect(mocks.acceptLead).toHaveBeenCalledOnce()
+  })
+
+  it('promotes a successful fifth-attempt claim from terminal failed to accepted', async () => {
     mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [ingestion({ attempt_count: 4 })] })
       .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
-    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({ status: 'quarantined' })
-    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/status = 'failed'[\s\S]*terminal_at = NOW\(\)[\s\S]*next_attempt_at = NULL/)
+
+    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({
+      status: 'accepted', leadId: '55555555-5555-4555-8555-555555555555'
+    })
+    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/status = 'failed'[\s\S]*attempt_count = \$2[\s\S]*terminal_at = NOW\(\)[\s\S]*next_attempt_at = NULL/)
     expect(mocks.query.mock.calls[2]?.[1]).toEqual([INGESTION_ID, 5])
+    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/WHERE id = \$1[\s\S]*error_class = 'final_attempt_claimed'/)
+  })
+
+  it('leaves a failed fifth canonical handoff terminally failed', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [ingestion({ attempt_count: 4 })] })
+      .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+    mocks.acceptLead.mockRejectedValueOnce(new TypeError('canonical handoff failed'))
+
+    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).rejects.toThrow('canonical handoff failed')
+    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(
+      /status = 'failed'[\s\S]*terminal_at = CASE WHEN \$3 THEN NOW\(\) ELSE NULL END[\s\S]*error_class = 'final_attempt_claimed'/
+    )
+    expect(mocks.queryOne.mock.calls[0]?.[1]).toEqual([INGESTION_ID, 'TypeError', true])
+  })
+
+  it('does not start a sixth canonical handoff after the fifth claim is terminal', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        attempt_count: 5,
+        status: 'failed',
+        terminal_at: '2026-07-29T00:01:00.000Z',
+        next_attempt_at: null
+      })]
+    })
+
+    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({ status: 'duplicate' })
     expect(mocks.acceptLead).not.toHaveBeenCalled()
   })
 
