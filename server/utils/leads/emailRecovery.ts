@@ -13,6 +13,7 @@ import { decryptStagedEmail } from '~~/shared/leads/email/quarantine'
 import type { NormalizedInboundEmail } from '~~/shared/leads/email/types'
 import { createNitroEmailAiRuntime } from '~~/server/utils/leads/emailAiRuntime'
 import { getCachedObjectBinding } from '~~/server/utils/email'
+import { emitEmailIngestionEvent } from '~~/shared/leads/email/telemetry'
 
 const RECOVERY_LEASE_SECONDS = 5 * 60
 const MIN_CANONICAL_WINDOW_SECONDS = 30
@@ -548,6 +549,7 @@ export async function processEmailRecoveryClaim(
 interface TerminalCleanupCandidate {
   id: string
   staged_object_key: string
+  correlation_id?: string
 }
 
 export async function claimNextTerminalEmailObject(
@@ -581,7 +583,7 @@ export async function claimNextTerminalEmailObject(
         updated_at = NOW()
       FROM candidate c
       WHERE i.id = c.id
-      RETURNING i.id, i.staged_object_key
+      RETURNING i.id, i.staged_object_key, i.correlation_id
     `, [leaseToken, RECOVERY_LEASE_SECONDS])
     return result.rows[0] ?? null
   })
@@ -614,7 +616,25 @@ export async function cleanupTerminalEmailEvidence(input: {
     const leaseToken = input.randomUUID()
     const candidate = await input.repository.claimTerminalObject(leaseToken)
     if (!candidate) break
-    await input.bucket.delete(candidate.staged_object_key)
+    try {
+      await input.bucket.delete(candidate.staged_object_key)
+    } catch (error) {
+      if (candidate.correlation_id) {
+        try {
+          const { recordEmailTransportEventBatch } = await import('~~/server/utils/leads/emailHealth')
+          await recordEmailTransportEventBatch({
+            batchId: input.randomUUID(),
+            events: [{
+              eventClass: 'r2_delete_failure',
+              correlationId: candidate.correlation_id
+            }]
+          })
+        } catch {
+          // Preserve the R2 failure; durable telemetry is retried by later cleanup.
+        }
+      }
+      throw error
+    }
     const cleared = input.repository.clearTerminalObjectWithAudit
       ? await input.repository.clearTerminalObjectWithAudit(candidate.id, leaseToken)
       : await input.repository.clearTerminalObject(candidate.id, leaseToken)
@@ -880,6 +900,17 @@ const defaultTerminalCleanupRepository: TerminalCleanupRepository = {
   }
 }
 
+export async function cleanupTerminalEmailEvidenceWithDefaultRepository(input: {
+  bucket: EmailRecoveryBucket
+  randomUUID(): string
+  limit?: number
+}): Promise<{ cleaned: number }> {
+  return cleanupTerminalEmailEvidence({
+    ...input,
+    repository: defaultTerminalCleanupRepository
+  })
+}
+
 export interface EmailRecoveryRuntime {
   bucket: EmailRecoveryBucket
   encryptionSecret: string
@@ -949,6 +980,15 @@ export async function recoverEmailIngestions(
       const leaseToken = randomUUID()
       const claim = await claimNext(leaseToken)
       if (!claim) break
+      emitEmailIngestionEvent({
+        event: 'email_ingestion_recovery_claim',
+        correlationId: claim.correlation_id,
+        endpointId: claim.endpoint_id,
+        clientId: claim.client_id,
+        provider: claim.provider,
+        status: 'claimed',
+        attemptCount: claim.attempt_count
+      })
       try {
         const outcome = await processEmailRecoveryClaim(event, claim, leaseToken, {
           bucket: runtime.bucket,
@@ -961,10 +1001,29 @@ export async function recoverEmailIngestions(
         if (outcome.status === 'accepted' || outcome.status === 'duplicate') result.recovered++
         else if (outcome.status === 'rescheduled') result.rescheduled++
         else result.quarantined++
+        emitEmailIngestionEvent({
+          event: 'email_ingestion_recovery_outcome',
+          correlationId: claim.correlation_id,
+          endpointId: claim.endpoint_id,
+          clientId: claim.client_id,
+          provider: claim.provider,
+          status: outcome.status,
+          attemptCount: claim.attempt_count
+        })
       } catch {
         // Keep processing other independent claims. The lease expires naturally
         // and makes this row eligible for a later recovery pass.
         result.failed++
+        emitEmailIngestionEvent({
+          event: 'email_ingestion_failure',
+          correlationId: claim.correlation_id,
+          endpointId: claim.endpoint_id,
+          clientId: claim.client_id,
+          provider: claim.provider,
+          status: 'failed',
+          errorClass: 'unexpected',
+          attemptCount: claim.attempt_count
+        })
       }
     }
   }
@@ -984,6 +1043,11 @@ export async function recoverEmailIngestions(
     result.cleaned = cleanup.cleaned
   } catch {
     result.failed++
+    emitEmailIngestionEvent({
+      event: 'email_ingestion_failure',
+      status: 'failed',
+      errorClass: 'r2_delete_failed'
+    })
   }
 
   return result
@@ -1122,7 +1186,16 @@ export async function replayEmailIngestion(
     throw createError({ statusCode: 409, statusMessage })
   }
   const { acceptEmailEnvelope } = await import('~~/server/utils/leads/emailIngestion')
-  return processEmailRecoveryClaim(event, claimed.claim, claimed.leaseToken, {
+  emitEmailIngestionEvent({
+    event: 'email_ingestion_replay',
+    correlationId: claimed.claim.correlation_id,
+    endpointId: claimed.claim.endpoint_id,
+    clientId: claimed.claim.client_id,
+    provider: claimed.claim.provider,
+    status: 'claimed',
+    attemptCount: claimed.claim.attempt_count
+  })
+  const result = await processEmailRecoveryClaim(event, claimed.claim, claimed.leaseToken, {
     bucket: input.bucket,
     encryptionSecret: input.encryptionSecret,
     ai: input.ai,
@@ -1131,4 +1204,14 @@ export async function replayEmailIngestion(
     nowMs: input.nowMs ?? (() => Date.now()),
     auditActor: input.auditActor ?? { actorId, actorType: 'team_member' }
   })
+  emitEmailIngestionEvent({
+    event: 'email_ingestion_replay',
+    correlationId: claimed.claim.correlation_id,
+    endpointId: claimed.claim.endpoint_id,
+    clientId: claimed.claim.client_id,
+    provider: claimed.claim.provider,
+    status: result.status,
+    attemptCount: claimed.claim.attempt_count
+  })
+  return result
 }

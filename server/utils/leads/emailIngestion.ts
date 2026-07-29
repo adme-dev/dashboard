@@ -17,6 +17,7 @@ import type { InsertLeadInput, LeadIngestionTerminalStatus, LeadTransactionClien
 import { findEmailLeadDuplicateSignal, type PossibleDuplicateSignal } from '~~/server/utils/leads/emailDuplicateSignal'
 import { resolveEmailEndpointToken } from '~~/server/utils/leads/emailEndpoint'
 import { createOpaqueEmailObjectKey } from '~~/shared/leads/email/quarantine'
+import { emitEmailIngestionEvent } from '~~/shared/leads/email/telemetry'
 
 const TIMESTAMP_TOLERANCE_MS = 5 * 60_000
 const NONCE_TTL_SECONDS = 10 * 60
@@ -263,6 +264,18 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
       encryptedObjectKey: key
     }
   }) as Promise<EmailStageResponse>
+}
+
+export async function markEmailEndpointReceipt(ingestionId: string): Promise<void> {
+  await queryOne(`
+    UPDATE lead_email_endpoints endpoint
+    SET last_received_at = NOW(), updated_at = NOW()
+    FROM lead_email_ingestions ingestion
+    WHERE ingestion.id = $1
+      AND endpoint.id = ingestion.endpoint_id
+      AND endpoint.client_id = ingestion.client_id
+    RETURNING endpoint.id
+  `, [ingestionId])
 }
 
 /** Marks the exact reserved object recoverable only after R2 put() completed. */
@@ -774,6 +787,17 @@ export async function acceptEmailEnvelope(
   }
   if (accepted.status !== 'created') {
     const owned = await terminal(ingestionId, 'duplicate', { parser: envelope.extraction.parser, confidence: envelope.extraction.overallConfidence, senderDomain: envelope.envelopeSenderDomain }, ownershipToken, recoveryAudit)
+    if (owned) {
+      emitEmailIngestionEvent({
+        event: 'email_ingestion_transport_duplicate',
+        correlationId: envelope.correlationId,
+        endpointId: endpoint.id,
+        clientId: endpoint.client_id,
+        provider: envelope.extraction.provider,
+        parser: envelope.extraction.parser,
+        status: 'duplicate'
+      })
+    }
     return owned ? { status: 'duplicate' } : { status: 'in_progress' }
   }
   let duplicate: PossibleDuplicateSignal | null = null
@@ -789,6 +813,26 @@ export async function acceptEmailEnvelope(
     confidence: envelope.extraction.overallConfidence, senderDomain: envelope.envelopeSenderDomain
   }, ownershipToken, recoveryAudit)
   if (!owned) return { status: 'in_progress' }
+  emitEmailIngestionEvent({
+    event: 'email_ingestion_canonical',
+    correlationId: envelope.correlationId,
+    endpointId: endpoint.id,
+    clientId: endpoint.client_id,
+    provider: envelope.extraction.provider,
+    parser: envelope.extraction.parser,
+    status: 'accepted'
+  })
+  if (duplicate) {
+    emitEmailIngestionEvent({
+      event: 'email_ingestion_possible_duplicate',
+      correlationId: envelope.correlationId,
+      endpointId: endpoint.id,
+      clientId: endpoint.client_id,
+      provider: envelope.extraction.provider,
+      parser: envelope.extraction.parser,
+      status: 'possible_duplicate'
+    })
+  }
   await queryOne(`UPDATE lead_email_endpoints SET last_received_at = NOW(), last_accepted_at = NOW(), consecutive_failures = 0, updated_at = NOW() WHERE id = $1`, [endpoint.id])
   return { status: 'accepted', leadId: accepted.leadId }
 }

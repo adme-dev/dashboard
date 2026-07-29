@@ -9,7 +9,12 @@ globals.getHeader = event => event.authorization
 
 const mocks = vi.hoisted(() => ({
   recover: vi.fn(),
-  runtime: vi.fn()
+  runtime: vi.fn(),
+  health: vi.fn()
+}))
+
+vi.mock('~~/server/utils/leads/emailHealth', () => ({
+  processEmailIngestionHealthAlerts: mocks.health
 }))
 
 vi.mock('~~/server/utils/leads/emailRecovery', () => ({
@@ -26,6 +31,7 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
     vi.clearAllMocks()
     process.env.INTERNAL_CRON_TOKEN = 'fixed-length-internal-cron-token'
     mocks.runtime.mockReturnValue({ bucket: {}, encryptionSecret: 'secret' })
+    mocks.health.mockResolvedValue({ endpoints: 1, active: 0, notified: 0 })
     mocks.recover.mockResolvedValue({
       recovered: 2,
       rescheduled: 1,
@@ -51,6 +57,7 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
     })
 
     expect(mocks.recover).toHaveBeenCalledWith(event, expect.anything())
+    expect(mocks.health).toHaveBeenCalledOnce()
   })
 
   it('rejects a wrong token without invoking recovery', async () => {
@@ -63,5 +70,6 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
     })
 
     expect(mocks.recover).not.toHaveBeenCalled()
+    expect(mocks.health).not.toHaveBeenCalled()
   })
 })

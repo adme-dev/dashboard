@@ -12,6 +12,10 @@ import {
 } from '../../../shared/leads/email/contracts'
 import { extractEmailLeadWithAi, needsAiExtractionFallback } from '../../../shared/leads/email/ai'
 import { parseEmailLead, sha256Hex } from '../../../shared/leads/email/parser'
+import {
+  emitEmailIngestionEvent,
+  type EmailIngestionTelemetryInput
+} from '../../../shared/leads/email/telemetry'
 import { createWorkerEmailAiRuntime } from './aiRuntime'
 import {
   deleteEncryptedRawEmail,
@@ -32,7 +36,7 @@ import {
 const RETRY_DELAYS_MS = [100, 200] as const
 const RESPONSE_LIMIT_BYTES = 64 * 1024
 const QUARANTINE_RETENTION_MS = 7 * 24 * 60 * 60_000
-const encoder = new TextEncoder()
+const MAX_TELEMETRY_EVENTS = 20
 
 const IngestResponseSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('accepted'), leadId: z.string().uuid() }).strict(),
@@ -46,11 +50,12 @@ export interface EmailIntakeDependencies {
   nowMs(): number
   randomUUID(): string
   sleep(milliseconds: number): Promise<void>
+  emit?(event: Record<string, unknown>): void
 }
 
-export type EmailIntakeOutcome =
-  | { status: 'accepted' | 'duplicate' | 'quarantined' | 'failed' | 'in_progress', correlationId: string }
-  | { status: 'rejected' }
+export type EmailIntakeOutcome
+  = | { status: 'accepted' | 'duplicate' | 'quarantined' | 'failed' | 'in_progress', correlationId: string }
+    | { status: 'rejected' }
 
 export class RetryableEmailIntakeError extends Error {
   override readonly name = 'RetryableEmailIntakeError'
@@ -68,6 +73,59 @@ const defaultDependencies: EmailIntakeDependencies = {
   nowMs: () => Date.now(),
   randomUUID: () => crypto.randomUUID(),
   sleep: milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+}
+
+function emit(
+  dependencies: EmailIntakeDependencies,
+  input: EmailIngestionTelemetryInput
+): void {
+  if (dependencies.emit) emitEmailIngestionEvent(input, dependencies.emit)
+}
+
+function authoritativeTelemetry(
+  events: Record<string, unknown>[],
+  correlationId: string | undefined
+): Record<string, unknown>[] {
+  if (!correlationId) return events.slice(0, MAX_TELEMETRY_EVENTS)
+  return events.slice(0, MAX_TELEMETRY_EVENTS).map(event => (
+    'correlationId' in event ? { ...event, correlationId } : event
+  ))
+}
+
+function transportEventClasses(event: Record<string, unknown>): string[] {
+  const classes: string[] = []
+  if (event.event === 'email_ingestion_receipt') classes.push('pre_policy')
+  if (event.errorClass === 'unknown_recipient') classes.push('unknown_recipient')
+  if (event.errorClass === 'policy_denied') classes.push('policy_denied')
+  if (event.errorClass === 'r2_write_failed') classes.push('r2_write_failure')
+  if (event.errorClass === 'r2_delete_failed') classes.push('r2_delete_failure')
+  if (event.errorClass === 'ai_schema_rejected') classes.push('ai_schema_rejection')
+  return classes
+}
+
+async function persistTransportTelemetry(
+  events: Record<string, unknown>[],
+  env: Env,
+  dependencies: EmailIntakeDependencies
+): Promise<void> {
+  const transportEvents = events.flatMap(event =>
+    transportEventClasses(event).map(eventClass => ({
+      eventClass,
+      correlationId: typeof event.correlationId === 'string' ? event.correlationId : null
+    }))
+  ).slice(0, 32)
+  if (!transportEvents.length) return
+  try {
+    const body = JSON.stringify({
+      schemaVersion: 1,
+      batchId: dependencies.randomUUID(),
+      events: transportEvents
+    })
+    await signedRequest('/api/internal/leads/email-telemetry', body, env, dependencies)
+  } catch {
+    // Durable telemetry is best-effort at the ingestion boundary and must not
+    // change mail acceptance. Missing batches are visible as a telemetry gap.
+  }
 }
 
 function applicationOrigin(value: string): string {
@@ -111,8 +169,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
       }
       chunks.push(value)
     }
-  }
-  finally {
+  } finally {
     reader.releaseLock()
   }
   const body = new Uint8Array(size)
@@ -143,8 +200,7 @@ async function signedRequest(
         body
       })
       if (response.ok || !isRetryableStatus(response.status)) return response
-    }
-    catch {
+    } catch {
       if (attempt === RETRY_DELAYS_MS.length) return null
     }
     if (attempt < RETRY_DELAYS_MS.length) await dependencies.sleep(RETRY_DELAYS_MS[attempt]!)
@@ -168,9 +224,17 @@ async function putEncryptedRawEmailWithRetry(
     try {
       await putEncryptedRawEmail(bucket, objectKey, encrypted, options)
       return
-    }
-    catch (error) {
-      if (attempt === RETRY_DELAYS_MS.length) retryable(correlationId, error)
+    } catch (error) {
+      if (attempt === RETRY_DELAYS_MS.length) {
+        emit(dependencies, {
+          event: 'email_ingestion_failure',
+          correlationId,
+          status: 'failed',
+          errorClass: 'r2_write_failed',
+          attemptCount: attempt + 1
+        })
+        retryable(correlationId, error)
+      }
     }
     await dependencies.sleep(RETRY_DELAYS_MS[attempt]!)
   }
@@ -186,9 +250,17 @@ async function deleteEncryptedRawEmailWithRetry(
     try {
       await deleteEncryptedRawEmail(bucket, objectKey)
       return
-    }
-    catch {
-      if (attempt === RETRY_DELAYS_MS.length) retryable(correlationId)
+    } catch {
+      if (attempt === RETRY_DELAYS_MS.length) {
+        emit(dependencies, {
+          event: 'email_ingestion_failure',
+          correlationId,
+          status: 'failed',
+          errorClass: 'r2_delete_failed',
+          attemptCount: attempt + 1
+        })
+        retryable(correlationId)
+      }
     }
     await dependencies.sleep(RETRY_DELAYS_MS[attempt]!)
   }
@@ -221,12 +293,32 @@ export async function handleEmailMessage(
   dependencies: EmailIntakeDependencies = defaultDependencies
 ): Promise<EmailIntakeOutcome> {
   const recipientToken = extractRecipientToken(message.to)
-  if (!recipientToken) return reject(message, 'Unknown lead intake recipient')
+  if (!recipientToken) {
+    emit(dependencies, {
+      event: 'email_ingestion_receipt',
+      status: 'rejected',
+      errorClass: 'unknown_recipient'
+    })
+    return reject(message, 'Unknown lead intake recipient')
+  }
   if (await secretsAreEqual(env.EMAIL_INGEST_HMAC_SECRET, env.EMAIL_QUARANTINE_ENCRYPTION_SECRET)) {
-    return { status: 'failed', correlationId: dependencies.randomUUID() }
+    const correlationId = dependencies.randomUUID()
+    emit(dependencies, {
+      event: 'email_ingestion_failure',
+      correlationId,
+      status: 'failed',
+      errorClass: 'unexpected'
+    })
+    return { status: 'failed', correlationId }
   }
 
   const correlationId = dependencies.randomUUID()
+  const startedAt = dependencies.nowMs()
+  emit(dependencies, {
+    event: 'email_ingestion_receipt',
+    correlationId,
+    status: 'received'
+  })
   const receivedAt = new Date(dependencies.nowMs()).toISOString()
   const policyBody = JSON.stringify({ recipientToken })
   const policyResponse = await signedRequest(
@@ -238,6 +330,12 @@ export async function handleEmailMessage(
   if (!policyResponse) retryable(correlationId)
   if (!policyResponse.ok) {
     if (policyResponse.status === 404 || policyResponse.status === 409) {
+      emit(dependencies, {
+        event: 'email_ingestion_policy',
+        correlationId,
+        status: 'denied',
+        errorClass: 'policy_denied'
+      })
       return reject(message, 'Lead intake policy denied')
     }
     retryable(correlationId)
@@ -245,13 +343,17 @@ export async function handleEmailMessage(
   let policyPayload: unknown
   try {
     policyPayload = await readBoundedJson(policyResponse)
-  }
-  catch (error) {
+  } catch (error) {
     retryable(correlationId, error)
   }
   const policyParsed = EmailEndpointPolicySchema.safeParse(policyPayload)
   if (!policyParsed.success) retryable(correlationId, policyParsed.error)
   const policy = policyParsed.data
+  emit(dependencies, {
+    event: 'email_ingestion_policy',
+    correlationId,
+    status: 'allowed'
+  })
 
   const envelopeSenderDomain = mailboxDomain(message.from)
   if (!senderAllowed(envelopeSenderDomain, policy)) return reject(message, 'Lead intake sender denied')
@@ -260,19 +362,24 @@ export async function handleEmailMessage(
   let raw: Uint8Array
   try {
     raw = await readBoundedRawEmail(message.raw, message.rawSize, policy.maxRawBytes)
-  }
-  catch {
+  } catch {
     return reject(message, 'Lead intake message is invalid')
   }
 
   let normalized
   try {
     normalized = await normalizeCloudflareEmail(message, raw, receivedAt)
-  }
-  catch {
+  } catch {
     return reject(message, 'Lead intake message is invalid')
   }
   let extraction = parseEmailLead(normalized, policy)
+  emit(dependencies, {
+    event: 'email_ingestion_parse',
+    correlationId,
+    provider: extraction?.provider ?? policy.expectedProvider ?? 'generic',
+    parser: extraction?.parser ?? 'none',
+    status: extraction ? 'parsed' : 'failed'
+  })
   const messageIdHash = normalized.messageId ? sha256Hex(normalized.messageId) : null
   const canonicalExternalIdHash = extraction?.externalIdHash
     ?? messageIdHash
@@ -286,6 +393,14 @@ export async function handleEmailMessage(
       extraction,
       createWorkerEmailAiRuntime(env.AI)
     )
+    emit(dependencies, {
+      event: 'email_ingestion_ai',
+      correlationId,
+      provider: extraction?.provider ?? 'generic',
+      parser: extraction?.parser ?? 'none',
+      status: extraction ? 'parsed' : 'failed',
+      errorClass: extraction ? 'none' : 'ai_schema_rejected'
+    })
   }
   const externalIdHash = canonicalExternalIdHash
   const headerFromDomain = mailboxDomain(normalized.headerFrom)
@@ -318,16 +433,26 @@ export async function handleEmailMessage(
   let stagePayload: unknown
   try {
     stagePayload = await readBoundedJson(stageResponse)
-  }
-  catch (error) {
+  } catch (error) {
     retryable(correlationId, error)
   }
   const staged = EmailStageResponseSchema.safeParse(stagePayload)
   if (!staged.success) retryable(correlationId, staged.error)
   if (staged.data.outcome === 'denied') {
+    emit(dependencies, {
+      event: 'email_ingestion_stage_reservation',
+      correlationId,
+      status: 'denied',
+      errorClass: 'policy_denied'
+    })
     return reject(message, 'Lead intake stage denied')
   }
   if (staged.data.outcome === 'duplicate') {
+    emit(dependencies, {
+      event: 'email_ingestion_transport_duplicate',
+      correlationId: staged.data.correlationId,
+      status: 'duplicate'
+    })
     if (staged.data.cleanupObjectKey) {
       await deleteEncryptedRawEmailWithRetry(
         env.EMAIL_QUARANTINE_BUCKET,
@@ -335,11 +460,21 @@ export async function handleEmailMessage(
         staged.data.correlationId,
         dependencies
       )
+      emit(dependencies, {
+        event: 'email_ingestion_r2_delete',
+        correlationId: staged.data.correlationId,
+        status: 'deleted'
+      })
     }
     return { status: 'duplicate', correlationId: staged.data.correlationId }
   }
 
   const authoritativeCorrelationId = staged.data.correlationId
+  emit(dependencies, {
+    event: 'email_ingestion_stage_reservation',
+    correlationId: authoritativeCorrelationId,
+    status: 'reserved'
+  })
   const objectKey = staged.data.encryptedObjectKey
   const canonicalExtraction = extraction?.needsReview ? null : extraction
   const encrypted = await encryptStagedEmail(
@@ -356,6 +491,11 @@ export async function handleEmailMessage(
     authoritativeCorrelationId,
     dependencies
   )
+  emit(dependencies, {
+    event: 'email_ingestion_r2_write',
+    correlationId: authoritativeCorrelationId,
+    status: 'written'
+  })
   const confirmationBody = JSON.stringify(EmailStageConfirmationSchema.parse({
     schemaVersion: 1,
     ingestionId: staged.data.ingestionId,
@@ -386,11 +526,13 @@ export async function handleEmailMessage(
     attachmentCount: normalized.attachments.length,
     extraction: canonicalExtraction,
     safeEvidence: evidence,
-    quarantine: canonicalExtraction ? undefined : {
-      reason: 'Extraction requires review',
-      encryptedObjectKey: objectKey,
-      expiresAt
-    }
+    quarantine: canonicalExtraction
+      ? undefined
+      : {
+          reason: 'Extraction requires review',
+          encryptedObjectKey: objectKey,
+          expiresAt
+        }
   })
   const ingestBody = JSON.stringify(envelope)
   const ingestResponse = await signedRequest(
@@ -409,28 +551,66 @@ export async function handleEmailMessage(
       authoritativeCorrelationId,
       dependencies
     )
+    emit(dependencies, {
+      event: 'email_ingestion_r2_delete',
+      correlationId: authoritativeCorrelationId,
+      status: 'deleted'
+    })
   }
+  emit(dependencies, {
+    event: ingested.data.status === 'quarantined'
+      ? 'email_ingestion_quarantine'
+      : 'email_ingestion_canonical',
+    correlationId: authoritativeCorrelationId,
+    provider: extraction?.provider ?? policy.expectedProvider ?? 'generic',
+    parser: extraction?.parser ?? 'none',
+    status: ingested.data.status,
+    durationMs: dependencies.nowMs() - startedAt
+  })
   return { status: ingested.data.status, correlationId: authoritativeCorrelationId }
 }
 
 export default {
-  async email(message: ForwardableEmailMessage, env: Env, _ctx: ExecutionContext): Promise<void> {
+  async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
+    const events: Record<string, unknown>[] = []
+    const dependencies: EmailIntakeDependencies = {
+      ...defaultDependencies,
+      emit: (event) => {
+        if (events.length < MAX_TELEMETRY_EVENTS) events.push(event)
+      }
+    }
     try {
-      const outcome = await handleEmailMessage(message, env)
-      console.log(JSON.stringify({
-        event: 'email_lead_intake_outcome',
+      const outcome = await handleEmailMessage(message, env, dependencies)
+      emitEmailIngestionEvent({
+        event: outcome.status === 'quarantined'
+          ? 'email_ingestion_quarantine'
+          : 'email_ingestion_canonical',
         status: outcome.status,
         correlationId: 'correlationId' in outcome ? outcome.correlationId : undefined
-      }))
-    }
-    catch (error) {
-      console.log(JSON.stringify({
-        event: 'email_lead_intake_outcome',
+      }, event => events.push(event))
+      const correlationId = 'correlationId' in outcome ? outcome.correlationId : undefined
+      const batch = authoritativeTelemetry(events, correlationId)
+      console.log(JSON.stringify({ events: batch }))
+      if (typeof ctx.waitUntil === 'function') {
+        ctx.waitUntil(persistTransportTelemetry(batch, env, dependencies))
+      }
+    } catch (error) {
+      emitEmailIngestionEvent({
+        event: 'email_ingestion_failure',
         status: error instanceof RetryableEmailIntakeError ? 'retryable_error' : 'error',
         correlationId: error instanceof RetryableEmailIntakeError
           ? error.correlationId
-          : crypto.randomUUID()
-      }))
+          : crypto.randomUUID(),
+        errorClass: 'unexpected'
+      }, event => events.push(event))
+      const correlationId = error instanceof RetryableEmailIntakeError
+        ? error.correlationId
+        : undefined
+      const batch = authoritativeTelemetry(events, correlationId)
+      console.log(JSON.stringify({ events: batch }))
+      if (typeof ctx.waitUntil === 'function') {
+        ctx.waitUntil(persistTransportTelemetry(batch, env, dependencies))
+      }
       throw error
     }
   }
