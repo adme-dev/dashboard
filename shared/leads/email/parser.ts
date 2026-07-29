@@ -40,7 +40,17 @@ export function sha256Hex(value: string): string {
       const a = words[index - 15]!; const b = words[index - 2]!
       words[index] = (rightRotate(a, 7) ^ rightRotate(a, 18) ^ (a >>> 3)) + words[index - 16]! + (rightRotate(b, 17) ^ rightRotate(b, 19) ^ (b >>> 10)) + words[index - 7]!
     }
-    let [a, b, c, d, e, f, g, h] = state
+    // SHA-256 state is exactly eight words. Explicit indexed reads retain the
+    // byte-for-byte algorithm while proving that invariant to strict callers
+    // with noUncheckedIndexedAccess enabled.
+    let a = state[0]!
+    let b = state[1]!
+    let c = state[2]!
+    let d = state[3]!
+    let e = state[4]!
+    let f = state[5]!
+    let g = state[6]!
+    let h = state[7]!
     for (let index = 0; index < 64; index++) {
       const choice = (e & f) ^ (~e & g)
       const majority = (a & b) ^ (a & c) ^ (b & c)
