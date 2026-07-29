@@ -20,6 +20,20 @@ function failureBucketId(request: EmailSignatureRequest): string {
 
 let scheduledFailureBucket: string | null = null
 
+function withRuntimeSigningSecret(
+  event: H3Event,
+  request: EmailSignatureRequest
+): EmailSignatureRequest {
+  if (request.secret !== undefined) return request
+  const runtimeSecret = (event.context as {
+    cloudflare?: { env?: Record<string, unknown> }
+  }).cloudflare?.env?.EMAIL_INGEST_HMAC_SECRET
+  const secret = typeof runtimeSecret === 'string'
+    ? runtimeSecret
+    : process.env.EMAIL_INGEST_HMAC_SECRET
+  return secret === undefined ? request : { ...request, secret }
+}
+
 async function shouldScheduleFailure(event: H3Event, batchId: string): Promise<boolean> {
   const limiter = (event.context as {
     cloudflare?: { env?: { RATE_LIMITER?: RateLimiterNamespace } }
@@ -54,7 +68,7 @@ export async function verifyEmailIngestSignatureWithTelemetry(
   request: EmailSignatureRequest
 ): Promise<void> {
   try {
-    await verifyEmailIngestSignature(request)
+    await verifyEmailIngestSignature(withRuntimeSigningSecret(event, request))
   } catch (error) {
     const statusCode = (error as { statusCode?: number }).statusCode
     if (statusCode === 401 || statusCode === 409) {

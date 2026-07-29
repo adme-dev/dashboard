@@ -34,8 +34,62 @@ const request = {
 describe('email signature telemetry gate', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete process.env.EMAIL_INGEST_HMAC_SECRET
     mocks.verify.mockRejectedValue(authError)
     mocks.record.mockResolvedValue(1)
+  })
+
+  it('uses the Cloudflare runtime signing secret when process.env is unavailable', async () => {
+    mocks.verify.mockResolvedValue(undefined)
+    const event = {
+      context: {
+        cloudflare: {
+          env: { EMAIL_INGEST_HMAC_SECRET: 'runtime-email-ingest-secret' }
+        }
+      }
+    }
+
+    await expect(verifyEmailIngestSignatureWithTelemetry(event as never, request))
+      .resolves.toBeUndefined()
+
+    expect(mocks.verify).toHaveBeenCalledWith({
+      ...request,
+      secret: 'runtime-email-ingest-secret'
+    })
+  })
+
+  it('falls back to the local process signing secret outside Cloudflare', async () => {
+    process.env.EMAIL_INGEST_HMAC_SECRET = 'local-email-ingest-secret'
+    mocks.verify.mockResolvedValue(undefined)
+
+    await expect(verifyEmailIngestSignatureWithTelemetry({ context: {} } as never, request))
+      .resolves.toBeUndefined()
+
+    expect(mocks.verify).toHaveBeenCalledWith({
+      ...request,
+      secret: 'local-email-ingest-secret'
+    })
+  })
+
+  it('preserves an explicitly supplied signing secret over the Cloudflare binding', async () => {
+    mocks.verify.mockResolvedValue(undefined)
+    const event = {
+      context: {
+        cloudflare: {
+          env: { EMAIL_INGEST_HMAC_SECRET: 'runtime-email-ingest-secret' }
+        }
+      }
+    }
+
+    await expect(verifyEmailIngestSignatureWithTelemetry(event as never, {
+      ...request,
+      secret: 'explicit-test-secret'
+    })).resolves.toBeUndefined()
+
+    expect(mocks.verify).toHaveBeenCalledWith({
+      ...request,
+      secret: 'explicit-test-secret'
+    })
   })
 
   it('uses the shared Durable Object before scheduling Neon telemetry', async () => {
