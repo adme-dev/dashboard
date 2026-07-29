@@ -131,7 +131,7 @@ export async function parseMimeContent(raw: Uint8Array): Promise<ParsedMimeConte
   const html = parsed.html ? cleanText(parsed.html) : null
   return {
     subject: cleanText(parsed.subject ?? ''),
-    headerFrom: parsed.from && 'address' in parsed.from ? parsed.from.address : null,
+    headerFrom: parsed.from && 'address' in parsed.from ? parsed.from.address ?? null : null,
     messageId: parsed.messageId ? cleanText(parsed.messageId) : null,
     text,
     html,

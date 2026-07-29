@@ -30,7 +30,7 @@ export function registerProviderAdapters(adapters: EmailProviderAdapter[]): Emai
   const ordered = Object.freeze([...adapters].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id)))
   return Object.freeze({
     adapters: ordered,
-    match(input, expectedProvider) {
+    match(input: NormalizedInboundEmail, expectedProvider: string | null) {
       const candidates = ordered.map(adapter => ({ adapter, match: adapter.matches(input, expectedProvider) }))
         .filter(candidate => candidate.match.matched)
         .sort((a, b) => evidenceStrength(b.match.evidence) - evidenceStrength(a.match.evidence) || isExpected(b.match.evidence) - isExpected(a.match.evidence) || a.adapter.priority - b.adapter.priority || a.adapter.id.localeCompare(b.adapter.id))
