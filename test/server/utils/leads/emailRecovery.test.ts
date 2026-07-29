@@ -806,6 +806,59 @@ describe('email recovery processing', () => {
     expect(harness.acceptEnvelope).not.toHaveBeenCalled()
   })
 
+  it('terminally quarantines deterministic parser failures during recovery', async () => {
+    const malformed = new TextEncoder().encode([
+      'From: Carsales <relay@carsales.com.au>',
+      'Subject: New Carsales lead',
+      'Message-ID: <malformed-recovery@example.test>',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      '<adf><prospect>&prohibited;</prospect></adf>'
+    ].join('\r\n'))
+    const malformedMessageIdHash = createHash('sha256')
+      .update('message-id:v1:malformed-recovery@example.test')
+      .digest('hex')
+    const malformedClaim = {
+      ...claimedRow,
+      external_id_hash: malformedMessageIdHash,
+      message_id_hash: malformedMessageIdHash,
+      raw_content_hash: hashBytes(malformed),
+      raw_size: malformed.byteLength,
+      safe_evidence: {
+        hasText: true,
+        hasHtml: false,
+        hasAdf: true,
+        fieldKeys: []
+      }
+    }
+    const harness = recoveryHarness()
+    harness.bucket.get.mockResolvedValueOnce({
+      arrayBuffer: async () => (
+        await encryptStagedEmail(
+          malformed,
+          'relay@carsales.com.au',
+          SECRET,
+          manifestFor(malformedClaim)
+        )
+      ).buffer
+    })
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      malformedClaim,
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'quarantined', reason: 'parse_failed' })
+
+    expect(harness.acceptEnvelope).not.toHaveBeenCalled()
+    expect(harness.repository.quarantine).toHaveBeenCalledWith(
+      INGESTION_ID,
+      LEASE_TOKEN,
+      'parse_failed',
+      false
+    )
+  })
+
   it('never overwrites a parsed replacement identity with the reserved identity', async () => {
     const replacement = new TextEncoder().encode(
       new TextDecoder().decode(RAW).replace('provider-42', 'provider-99')

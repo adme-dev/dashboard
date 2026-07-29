@@ -64,6 +64,7 @@ export type EmailRecoveryReason
     | 'corrupt_evidence'
     | 'content_mismatch'
     | 'identity_mismatch'
+    | 'parse_failed'
     | 'endpoint_unavailable'
     | 'sender_policy_denied'
     | 'attempts_exhausted'
@@ -462,7 +463,12 @@ export async function processEmailRecoveryClaim(
     receivedAt: claim.created_at,
     rawSize: parsed.rawSize
   }
-  let extraction = parseEmailLead(normalized, policy)
+  let extraction: ReturnType<typeof parseEmailLead>
+  try {
+    extraction = parseEmailLead(normalized, policy)
+  } catch {
+    return quarantine(claim, leaseToken, dependencies, 'parse_failed', false)
+  }
   if (
     policy.aiExtractionMode === 'fallback'
     && dependencies.ai

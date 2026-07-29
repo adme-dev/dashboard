@@ -107,6 +107,19 @@ function message(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function messageWithRaw(rawText: string) {
+  const raw = encoder.encode(rawText)
+  return message({
+    raw: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(raw)
+        controller.close()
+      }
+    }),
+    rawSize: raw.byteLength
+  })
+}
+
 function environment(bucket = new MemoryBucket()) {
   return {
     APPLICATION_ORIGIN: 'https://app.example.test',
@@ -209,6 +222,52 @@ describe('email lead intake Worker', () => {
     expect(incoming.rejected()).toMatch(/recipient/i)
     expect(deps.fetchImpl).not.toHaveBeenCalled()
     expect(env.bucket.puts).toEqual([])
+  })
+
+  it.each([
+    ['missing HMAC secret', { EMAIL_INGEST_HMAC_SECRET: undefined }],
+    ['short HMAC secret', { EMAIL_INGEST_HMAC_SECRET: 'too-short' }],
+    ['missing encryption secret', { EMAIL_QUARANTINE_ENCRYPTION_SECRET: undefined }],
+    ['short encryption secret', { EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'too-short' }],
+    ['shared secret material', {
+      EMAIL_INGEST_HMAC_SECRET: 'same-secret-material-that-is-at-least-32-bytes',
+      EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'same-secret-material-that-is-at-least-32-bytes'
+    }],
+    ['insecure application origin', { APPLICATION_ORIGIN: 'http://app.example.test' }],
+    ['missing quarantine bucket', { EMAIL_QUARANTINE_BUCKET: undefined }]
+  ])('keeps mail retryable when Worker configuration has %s', async (_label, override) => {
+    const incoming = message()
+    const configured = environment()
+    const env = { ...configured, ...override } as unknown as Env
+    const deps = dependencies()
+
+    await expect(handleEmailMessage(incoming.value, env, deps)).rejects.toMatchObject({
+      name: 'RetryableEmailIntakeError',
+      correlationId: CORRELATION_ID
+    })
+
+    expect(deps.fetchImpl).not.toHaveBeenCalled()
+    expect(incoming.pulls()).toBe(0)
+    expect(incoming.rejected()).toBeNull()
+    expect(configured.bucket.puts).toEqual([])
+  })
+
+  it('rethrows invalid Worker configuration from the module handler', async () => {
+    const incoming = message()
+    const env = environment()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await expect(worker.email(incoming.value, {
+      ...env,
+      EMAIL_QUARANTINE_ENCRYPTION_SECRET: env.EMAIL_INGEST_HMAC_SECRET
+    }, {} as ExecutionContext)).rejects.toMatchObject({
+      name: 'RetryableEmailIntakeError'
+    })
+
+    expect(incoming.pulls()).toBe(0)
+    expect(incoming.rejected()).toBeNull()
+    expect(env.bucket.puts).toEqual([])
+    expect(String(log.mock.calls[0]?.[0])).toContain('retryable_error')
   })
 
   it('performs a freshly signed minimal policy lookup before reading raw MIME', async () => {
@@ -433,6 +492,79 @@ describe('email lead intake Worker', () => {
     expect(incoming.rejected()).toBeNull()
     expect(env.bucket.puts).toEqual([])
     expect(fetchImpl).toHaveBeenCalledTimes(4)
+  })
+
+  it.each([
+    ['malformed ADF body', [
+      'From: Carsales <relay@carsales.example>',
+      'Subject: New Carsales enquiry',
+      'Message-ID: <malformed-body@example.test>',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      '<adf><prospect><customer><email>alex@example.test</email></customer>&prohibited;</prospect></adf>'
+    ].join('\r\n')],
+    ['malformed XML attachment', [
+      'From: Carsales <relay@carsales.example>',
+      'Subject: New Carsales enquiry',
+      'Message-ID: <malformed-attachment@example.test>',
+      'Content-Type: multipart/mixed; boundary=\"adf-boundary\"',
+      '',
+      '--adf-boundary',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      'Attached lead.',
+      '--adf-boundary',
+      'Content-Type: application/xml',
+      'Content-Disposition: attachment; filename=\"lead.xml\"',
+      '',
+      '<!DOCTYPE adf SYSTEM \"https://evil.example/adf.dtd\"><adf></adf>',
+      '--adf-boundary--'
+    ].join('\r\n')]
+  ])('durably quarantines %s instead of retrying forever', async (_label, rawText) => {
+    const incoming = messageWithRaw(rawText)
+    const env = environment()
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = []
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push([input, init])
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      if (path.endsWith('/email-stage')) {
+        return responseJson({
+          schemaVersion: 1,
+          outcome: 'reserved',
+          correlationId: CORRELATION_ID,
+          ingestionId: INGESTION_ID,
+          encryptedObjectKey: OBJECT_KEY
+        })
+      }
+      if (path.endsWith('/email-stage-confirm')) return responseJson({ status: 'confirmed' })
+      return responseJson({ status: 'quarantined' })
+    })
+    const emitted = vi.fn()
+    const deps = { ...dependencies(fetchImpl), emit: emitted }
+
+    await expect(handleEmailMessage(incoming.value, env, deps)).resolves.toEqual({
+      status: 'quarantined',
+      correlationId: CORRELATION_ID
+    })
+
+    expect(calls).toHaveLength(4)
+    const stage = bodyOf(calls[1]?.[1])
+    expect(stage).toMatchObject({
+      provider: 'carsales',
+      rawContentHashVersion: 1
+    })
+    expect(stage.externalIdHash).toBe(stage.messageIdHash)
+    const ingest = bodyOf(calls[3]?.[1])
+    expect(ingest.extraction).toBeNull()
+    expect(ingest.quarantine).toMatchObject({ reason: 'Parser rejected message' })
+    expect(env.bucket.objects.has(OBJECT_KEY)).toBe(true)
+    expect(incoming.rejected()).toBeNull()
+    expect(emitted).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'email_ingestion_parse',
+      status: 'failed',
+      errorClass: 'parse_failed'
+    }))
   })
 
   it('encrypts after reservation, awaits canonical ingestion, deletes on acceptance, and preserves correlation', async () => {

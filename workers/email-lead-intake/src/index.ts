@@ -42,6 +42,8 @@ const RETRY_DELAYS_MS = [100, 200] as const
 const RESPONSE_LIMIT_BYTES = 64 * 1024
 const QUARANTINE_RETENTION_MS = 7 * 24 * 60 * 60_000
 const MAX_TELEMETRY_EVENTS = 20
+const MIN_CONFIG_SECRET_LENGTH = 16
+const MAX_CONFIG_SECRET_LENGTH = 4096
 
 const IngestResponseSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('accepted'), leadId: z.string().uuid() }).strict(),
@@ -217,6 +219,40 @@ function retryable(correlationId: string, cause?: unknown): never {
   throw new RetryableEmailIntakeError(correlationId, cause)
 }
 
+function configuredSecret(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length >= MIN_CONFIG_SECRET_LENGTH
+    && value.length <= MAX_CONFIG_SECRET_LENGTH
+}
+
+function configuredBucket(value: unknown): value is R2Bucket {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<R2Bucket>
+  return typeof candidate.put === 'function' && typeof candidate.delete === 'function'
+}
+
+async function validateEmailIntakeConfiguration(
+  env: Env,
+  correlationId: string
+): Promise<void> {
+  try {
+    applicationOrigin(env.APPLICATION_ORIGIN)
+    if (
+      !configuredSecret(env.EMAIL_INGEST_HMAC_SECRET)
+      || !configuredSecret(env.EMAIL_QUARANTINE_ENCRYPTION_SECRET)
+      || !configuredBucket(env.EMAIL_QUARANTINE_BUCKET)
+      || await secretsAreEqual(
+        env.EMAIL_INGEST_HMAC_SECRET,
+        env.EMAIL_QUARANTINE_ENCRYPTION_SECRET
+      )
+    ) {
+      throw new Error('Email intake configuration is unavailable')
+    }
+  } catch (error) {
+    retryable(correlationId, error)
+  }
+}
+
 async function putEncryptedRawEmailWithRetry(
   bucket: R2Bucket,
   objectKey: string,
@@ -297,27 +333,19 @@ export async function handleEmailMessage(
   env: Env,
   dependencies: EmailIntakeDependencies = defaultDependencies
 ): Promise<EmailIntakeOutcome> {
+  const correlationId = dependencies.randomUUID()
+  await validateEmailIntakeConfiguration(env, correlationId)
   const recipientToken = extractRecipientToken(message.to)
   if (!recipientToken) {
     emit(dependencies, {
       event: 'email_ingestion_receipt',
+      correlationId,
       status: 'rejected',
       errorClass: 'unknown_recipient'
     })
     return reject(message, 'Unknown lead intake recipient')
   }
-  if (await secretsAreEqual(env.EMAIL_INGEST_HMAC_SECRET, env.EMAIL_QUARANTINE_ENCRYPTION_SECRET)) {
-    const correlationId = dependencies.randomUUID()
-    emit(dependencies, {
-      event: 'email_ingestion_failure',
-      correlationId,
-      status: 'failed',
-      errorClass: 'unexpected'
-    })
-    return { status: 'failed', correlationId }
-  }
 
-  const correlationId = dependencies.randomUUID()
   const startedAt = dependencies.nowMs()
   emit(dependencies, {
     event: 'email_ingestion_receipt',
@@ -377,13 +405,20 @@ export async function handleEmailMessage(
   } catch {
     return reject(message, 'Lead intake message is invalid')
   }
-  let extraction = parseEmailLead(normalized, policy)
+  let extraction: ReturnType<typeof parseEmailLead> = null
+  let parserFailed = false
+  try {
+    extraction = parseEmailLead(normalized, policy)
+  } catch {
+    parserFailed = true
+  }
   emit(dependencies, {
     event: 'email_ingestion_parse',
     correlationId,
     provider: extraction?.provider ?? policy.expectedProvider ?? 'generic',
     parser: extraction?.parser ?? 'none',
-    status: extraction ? 'parsed' : 'failed'
+    status: extraction ? 'parsed' : 'failed',
+    errorClass: parserFailed ? 'parse_failed' : undefined
   })
   const rawContentHash = await sha256HexBytes(raw)
   const messageIdentity = emailMessageIdHashes(normalized.messageId)
@@ -394,7 +429,11 @@ export async function handleEmailMessage(
   const legacyExternalIdHash = extraction?.legacyExternalIdHash
     ?? messageIdentity?.legacy
     ?? rawContentHash
-  if (policy.aiExtractionMode === 'fallback' && needsAiExtractionFallback(extraction)) {
+  if (
+    !parserFailed
+    && policy.aiExtractionMode === 'fallback'
+    && needsAiExtractionFallback(extraction)
+  ) {
     extraction = await extractEmailLeadWithAi(
       {
         email: normalized,
@@ -561,7 +600,7 @@ export async function handleEmailMessage(
     quarantine: canonicalExtraction
       ? undefined
       : {
-          reason: 'Extraction requires review',
+          reason: parserFailed ? 'Parser rejected message' : 'Extraction requires review',
           encryptedObjectKey: objectKey,
           expiresAt
         }
