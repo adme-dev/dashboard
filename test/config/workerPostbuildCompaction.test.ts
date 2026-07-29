@@ -2,6 +2,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping'
+import { transform } from 'esbuild'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
@@ -55,5 +57,62 @@ ${repeatedRuntimeSteps}
       afterBytes: Buffer.byteLength(compacted)
     })
     await expect(readFile(modulePath, 'utf8')).resolves.toBe(compacted)
+  })
+
+  it('rebuilds a mapped generated module with a traceable and idempotent external source map', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-compaction-map-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'nitro.mjs')
+    const mapPath = `${modulePath}.map`
+    const repeatedRuntimeSteps = Array.from(
+      { length: 30 },
+      () => '  deliberatelyVerboseIntermediateValue += 0'
+    ).join('\n')
+    const originalSource = `export function stableRuntimeHandler(inputValue: number) {
+  let deliberatelyVerboseIntermediateValue = inputValue
+${repeatedRuntimeSteps}
+  deliberatelyVerboseIntermediateValue += 1
+  return deliberatelyVerboseIntermediateValue
+}
+`
+    const generated = await transform(originalSource, {
+      sourcefile: 'runtime-source.ts',
+      loader: 'ts',
+      format: 'esm',
+      sourcemap: 'external'
+    })
+    await writeFile(modulePath, generated.code, 'utf8')
+    await writeFile(mapPath, generated.map, 'utf8')
+
+    const first = await compactWorkerModule(modulePath)
+    const compacted = await readFile(modulePath, 'utf8')
+    const compactedMap = await readFile(mapPath, 'utf8')
+    const traceMap = new TraceMap(compactedMap)
+    const exportedLocalName = compacted.match(
+      /\b([\w$]+)\s+as\s+stableRuntimeHandler\b/
+    )?.[1]
+    expect(exportedLocalName).toBeTruthy()
+    const declarationOffset = compacted.indexOf(`function ${exportedLocalName}`)
+      + 'function '.length
+    const declarationPrefix = compacted.slice(0, declarationOffset)
+    const originalPosition = originalPositionFor(traceMap, {
+      line: declarationPrefix.split('\n').length,
+      column: declarationPrefix.length - declarationPrefix.lastIndexOf('\n') - 1
+    })
+
+    expect(first.changed).toBe(true)
+    expect(compacted).toMatch(/\/\/# sourceMappingURL=nitro\.mjs\.map\n$/)
+    expect(originalPosition).toMatchObject({
+      source: 'runtime-source.ts',
+      line: 1
+    })
+
+    await expect(compactWorkerModule(modulePath)).resolves.toEqual({
+      changed: false,
+      beforeBytes: Buffer.byteLength(compacted),
+      afterBytes: Buffer.byteLength(compacted)
+    })
+    await expect(readFile(modulePath, 'utf8')).resolves.toBe(compacted)
+    await expect(readFile(mapPath, 'utf8')).resolves.toBe(compactedMap)
   })
 })
