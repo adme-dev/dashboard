@@ -1,6 +1,15 @@
+import {
+  createError,
+  defineEventHandler,
+  getRequestHeaders
+} from 'h3'
 import { z } from 'zod'
 
 import { recordEmailTransportEventBatch } from '~~/server/utils/leads/emailHealth'
+import {
+  EMAIL_INTERNAL_JSON_LIMITS,
+  readBoundedEmailInternalJson
+} from '~~/server/utils/leads/emailInternalBody'
 import { verifyEmailIngestSignatureWithTelemetry } from '~~/server/utils/leads/emailSignatureTelemetry'
 
 const EventSchema = z.object({
@@ -23,10 +32,11 @@ const BatchSchema = z.object({
 }).strict()
 
 export default defineEventHandler(async (event) => {
-  const rawBody = await readRawBody(event, false)
-  if (typeof rawBody !== 'string') {
-    throw createError({ statusCode: 400, statusMessage: 'invalid_email_telemetry_batch' })
-  }
+  const rawBody = await readBoundedEmailInternalJson(
+    event,
+    EMAIL_INTERNAL_JSON_LIMITS.telemetry,
+    'invalid_email_telemetry_batch'
+  )
   await verifyEmailIngestSignatureWithTelemetry(event, { rawBody, headers: getRequestHeaders(event) })
   let body: unknown
   try {

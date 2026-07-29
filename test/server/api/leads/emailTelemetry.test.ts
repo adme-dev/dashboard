@@ -1,15 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-const globals = globalThis as typeof globalThis & {
-  defineEventHandler: <T>(handler: T) => T
-  readRawBody: (event: { rawBody?: string }) => Promise<string | undefined>
-  getRequestHeaders: () => Record<string, string>
-  createError: (input: { statusCode: number, statusMessage: string }) => Error
-}
-globals.defineEventHandler = handler => handler
-globals.readRawBody = async event => event.rawBody
-globals.getRequestHeaders = () => ({})
-globals.createError = input => Object.assign(new Error(input.statusMessage), input)
+import { Readable } from 'node:stream'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createEvent } from 'h3'
 
 const mocks = vi.hoisted(() => ({
   verify: vi.fn(),
@@ -27,6 +19,25 @@ const { default: handler } = await import(
   '../../../../server/api/internal/leads/email-telemetry.post'
 )
 
+function eventFor(rawBody: string, chunks = 1) {
+  const bytes = Buffer.from(rawBody)
+  const chunkSize = Math.max(1, Math.ceil(bytes.byteLength / chunks))
+  const request = Readable.from(
+    Array.from(
+      { length: Math.ceil(bytes.byteLength / chunkSize) },
+      (_, index) => bytes.subarray(index * chunkSize, (index + 1) * chunkSize)
+    )
+  ) as unknown as IncomingMessage
+  request.method = 'POST'
+  request.url = '/api/internal/leads/email-telemetry'
+  request.headers = { 'content-type': 'application/json' }
+  const response = {
+    writableEnded: false,
+    headersSent: false
+  } as ServerResponse
+  return createEvent(request, response)
+}
+
 describe('signed email transport telemetry boundary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -34,7 +45,7 @@ describe('signed email transport telemetry boundary', () => {
   })
 
   it('returns 400 for authenticated malformed JSON without persisting', async () => {
-    await expect(handler({ rawBody: '{malformed', context: {} } as never))
+    await expect(handler(eventFor('{malformed')))
       .rejects.toMatchObject({
         statusCode: 400,
         statusMessage: 'invalid_email_telemetry_batch'
@@ -53,7 +64,7 @@ describe('signed email transport telemetry boundary', () => {
         clientId: '10000000-0000-4000-8000-000000000004'
       }]
     })
-    await expect(handler({ rawBody, context: {} } as never))
+    await expect(handler(eventFor(rawBody)))
       .rejects.toMatchObject({ statusCode: 400 })
     expect(mocks.record).not.toHaveBeenCalled()
   })
@@ -67,7 +78,7 @@ describe('signed email transport telemetry boundary', () => {
         correlationId: '10000000-0000-4000-8000-000000000002'
       }]
     })
-    await expect(handler({ rawBody, context: {} } as never)).resolves.toEqual({
+    await expect(handler(eventFor(rawBody, 3))).resolves.toEqual({
       schemaVersion: 1,
       status: 'recorded',
       inserted: 1
@@ -79,5 +90,9 @@ describe('signed email transport telemetry boundary', () => {
         correlationId: '10000000-0000-4000-8000-000000000002'
       }]
     })
+    expect(mocks.verify).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ rawBody })
+    )
   })
 })

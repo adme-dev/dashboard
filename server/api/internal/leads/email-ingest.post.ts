@@ -1,12 +1,19 @@
-import { createError, defineEventHandler, getRequestHeaders, readRawBody } from 'h3'
+import { createError, defineEventHandler, getRequestHeaders } from 'h3'
 import { EmailIngestEnvelopeSchema } from '~~/shared/leads/email/contracts'
 import { acceptEmailEnvelope } from '~~/server/utils/leads/emailIngestion'
+import {
+  EMAIL_INTERNAL_JSON_LIMITS,
+  readBoundedEmailInternalJson
+} from '~~/server/utils/leads/emailInternalBody'
 import { verifyEmailIngestSignatureWithTelemetry } from '~~/server/utils/leads/emailSignatureTelemetry'
 import { emitEmailIngestionEvent } from '~~/shared/leads/email/telemetry'
 
 export default defineEventHandler(async (event) => {
-  const rawBody = await readRawBody(event, 'utf8')
-  if (typeof rawBody !== 'string') throw createError({ statusCode: 400, statusMessage: 'invalid_email_ingest_envelope' })
+  const rawBody = await readBoundedEmailInternalJson(
+    event,
+    EMAIL_INTERNAL_JSON_LIMITS.ingest,
+    'invalid_email_ingest_envelope'
+  )
   await verifyEmailIngestSignatureWithTelemetry(event, { rawBody, headers: getRequestHeaders(event) })
   let body: unknown
   try {
