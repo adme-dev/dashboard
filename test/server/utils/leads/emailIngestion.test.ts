@@ -299,15 +299,34 @@ describe('email ingestion contracts', () => {
     expect(EmailStageResponseSchema.safeParse({
       schemaVersion: 1,
       outcome: 'duplicate',
+      correlationId: UUID,
       ingestionId: UUID,
       encryptedObjectKey: OPAQUE_OBJECT_KEY
     }).success).toBe(false)
     expect(EmailStageResponseSchema.safeParse({
       schemaVersion: 1,
       outcome: 'duplicate',
+      correlationId: UUID,
       ingestionId: UUID,
-      encryptedObjectKey: null
+      cleanupObjectKey: OPAQUE_OBJECT_KEY
     }).success).toBe(true)
+    expect(EmailStageResponseSchema.safeParse({
+      schemaVersion: 1,
+      outcome: 'duplicate',
+      correlationId: UUID,
+      ingestionId: UUID,
+      cleanupObjectKey: null
+    }).success).toBe(true)
+    expect(EmailStageResponseSchema.safeParse({
+      schemaVersion: 1,
+      outcome: 'denied',
+      code: 'email_endpoint_policy_denied'
+    }).success).toBe(true)
+    expect(EmailStageResponseSchema.safeParse({
+      schemaVersion: 1,
+      outcome: 'denied',
+      code: 'email_stage_reservation_invalid'
+    }).success).toBe(false)
   })
 })
 

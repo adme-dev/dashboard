@@ -63,10 +63,17 @@ describe('email stage reservation', () => {
 
   it('returns a terminal duplicate without issuing another raw-object key', async () => {
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
-      id: '44444444-4444-4444-8444-444444444444', terminal_at: '2026-07-29T01:00:00.000Z', staged_object_key: 'email-ingestions/previous-reservation-key'
+      id: '44444444-4444-4444-8444-444444444444',
+      correlation_id: CORRELATION_ID,
+      terminal_at: '2026-07-29T01:00:00.000Z',
+      staged_object_key: 'email-ingestions/previous-reservation-key'
     }] })
     await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
-      schemaVersion: 1, outcome: 'duplicate', ingestionId: '44444444-4444-4444-8444-444444444444', encryptedObjectKey: null
+      schemaVersion: 1,
+      outcome: 'duplicate',
+      correlationId: CORRELATION_ID,
+      ingestionId: '44444444-4444-4444-8444-444444444444',
+      cleanupObjectKey: 'email-ingestions/previous-reservation-key'
     })
   })
 
@@ -75,16 +82,32 @@ describe('email stage reservation', () => {
       rows: [{ ...endpoint, allowed_sender_domains: ['trusted.carsales.com.au'] }]
     })
 
-    await expect(reserveEmailIngestionStage(request())).rejects.toMatchObject({
-      statusCode: 409,
-      statusMessage: 'email_endpoint_policy_denied'
+    await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
+      schemaVersion: 1,
+      outcome: 'denied',
+      code: 'email_endpoint_policy_denied'
     })
     expect(query).toHaveBeenCalledOnce()
   })
 
   it('rejects a disabled endpoint between policy lookup and stage without inserting', async () => {
     query.mockResolvedValueOnce({ rows: [] })
-    await expect(reserveEmailIngestionStage(request())).rejects.toMatchObject({ statusCode: 404 })
+    await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
+      schemaVersion: 1,
+      outcome: 'denied',
+      code: 'email_endpoint_unavailable'
+    })
+    expect(query).toHaveBeenCalledOnce()
+  })
+
+  it('returns a bounded permanent denial when the expected provider changes before stage', async () => {
+    query.mockResolvedValueOnce({ rows: [{ ...endpoint, expected_provider: 'autotrader' }] })
+
+    await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
+      schemaVersion: 1,
+      outcome: 'denied',
+      code: 'email_endpoint_policy_denied'
+    })
     expect(query).toHaveBeenCalledOnce()
   })
 
@@ -193,9 +216,10 @@ describe('email stage reservation', () => {
     'fails closed for an unavailable %s resolution',
     async () => {
       query.mockResolvedValueOnce({ rows: [] })
-      await expect(reserveEmailIngestionStage(request())).rejects.toMatchObject({
-        statusCode: 404,
-        statusMessage: 'email_endpoint_unavailable'
+      await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
+        schemaVersion: 1,
+        outcome: 'denied',
+        code: 'email_endpoint_unavailable'
       })
     }
   )

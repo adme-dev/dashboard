@@ -130,8 +130,14 @@ export const EmailStageResponseSchema = z.discriminatedUnion('outcome', [
   z.object({
     schemaVersion: z.literal(1),
     outcome: z.literal('duplicate'),
+    correlationId: UuidSchema,
     ingestionId: UuidSchema,
-    encryptedObjectKey: z.null()
+    cleanupObjectKey: EncryptedObjectKeySchema.nullable()
+  }).strict(),
+  z.object({
+    schemaVersion: z.literal(1),
+    outcome: z.literal('denied'),
+    code: z.enum(['email_endpoint_unavailable', 'email_endpoint_policy_denied'])
   }).strict()
 ])
 

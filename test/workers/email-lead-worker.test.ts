@@ -29,10 +29,13 @@ class MemoryBucket {
   readonly puts: string[] = []
   readonly putAttempts: Array<{ key: string, value: Uint8Array, options: unknown }> = []
   readonly deletes: string[] = []
+  readonly deleteAttempts: string[] = []
   private failuresRemaining: number
+  private deleteFailuresRemaining: number
 
-  constructor(failures = 0) {
+  constructor(failures = 0, deleteFailures = 0) {
     this.failuresRemaining = failures
+    this.deleteFailuresRemaining = deleteFailures
   }
 
   async put(key: string, value: Uint8Array, options?: unknown) {
@@ -44,6 +47,8 @@ class MemoryBucket {
   }
 
   async delete(key: string) {
+    this.deleteAttempts.push(key)
+    if (this.deleteFailuresRemaining-- > 0) throw new Error('R2 delete unavailable')
     this.deletes.push(key)
     this.objects.delete(key)
   }
@@ -294,7 +299,13 @@ describe('email lead intake Worker', () => {
       calls.push([input, init])
       const path = new URL(String(input)).pathname
       if (path.endsWith('/email-policy')) return responseJson(policy)
-      return responseJson({ schemaVersion: 1, outcome: 'duplicate', ingestionId: INGESTION_ID, encryptedObjectKey: null })
+      return responseJson({
+        schemaVersion: 1,
+        outcome: 'duplicate',
+        correlationId: CORRELATION_ID,
+        ingestionId: INGESTION_ID,
+        cleanupObjectKey: null
+      })
     })
     const env = environment()
 
@@ -318,6 +329,79 @@ describe('email lead intake Worker', () => {
     expect(JSON.stringify(stage)).not.toContain('provider-42')
     expect(JSON.stringify(stage)).not.toContain('alex@example.test')
     expect(env.bucket.puts).toEqual([])
+  })
+
+  it('permanently rejects an endpoint disabled between policy and stage', async () => {
+    const incoming = message()
+    const env = environment()
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      return responseJson({
+        schemaVersion: 1,
+        outcome: 'denied',
+        code: 'email_endpoint_unavailable'
+      })
+    })
+
+    await expect(handleEmailMessage(incoming.value, env, dependencies(fetchImpl))).resolves.toEqual({
+      status: 'rejected'
+    })
+    expect(incoming.rejected()).toMatch(/stage/i)
+    expect(env.bucket.puts).toEqual([])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('permanently rejects a parsed header-domain denial returned by the signed stage boundary', async () => {
+    const headerDeniedRaw = encoder.encode(RAW_TEXT.replace(
+      'From: Carsales <relay@carsales.example>',
+      'From: Impostor <relay@evil.example>'
+    ))
+    const incoming = message({
+      raw: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(headerDeniedRaw)
+          controller.close()
+        }
+      }),
+      rawSize: headerDeniedRaw.byteLength
+    })
+    const env = environment()
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      expect(bodyOf(init).headerFromDomain).toBe('evil.example')
+      return responseJson({
+        schemaVersion: 1,
+        outcome: 'denied',
+        code: 'email_endpoint_policy_denied'
+      })
+    })
+
+    await expect(handleEmailMessage(incoming.value, env, dependencies(fetchImpl))).resolves.toEqual({
+      status: 'rejected'
+    })
+    expect(incoming.rejected()).toMatch(/stage/i)
+    expect(env.bucket.puts).toEqual([])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps transient stage failure retryable and never converts it to permanent SMTP rejection', async () => {
+    const incoming = message()
+    const env = environment()
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      return responseJson({ error: 'temporary' }, 503)
+    })
+
+    await expect(handleEmailMessage(incoming.value, env, dependencies(fetchImpl))).rejects.toMatchObject({
+      name: 'RetryableEmailIntakeError',
+      correlationId: CORRELATION_ID
+    })
+    expect(incoming.rejected()).toBeNull()
+    expect(env.bucket.puts).toEqual([])
+    expect(fetchImpl).toHaveBeenCalledTimes(4)
   })
 
   it('encrypts after reservation, awaits canonical ingestion, deletes on acceptance, and preserves correlation', async () => {
@@ -477,6 +561,178 @@ describe('email lead intake Worker', () => {
     expect(bucket.objects.has(OBJECT_KEY)).toBe(false)
     expect(incoming.rejected()).toBeNull()
     expect(deps.fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['accepted', 'duplicate'] as const)(
+    'retries transient R2 deletion after canonical %s',
+    async (canonicalStatus) => {
+      const bucket = new MemoryBucket(0, 2)
+      const env = environment(bucket)
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+        const path = new URL(String(input)).pathname
+        if (path.endsWith('/email-policy')) return responseJson(policy)
+        if (path.endsWith('/email-stage')) {
+          return responseJson({
+            schemaVersion: 1,
+            outcome: 'reserved',
+            correlationId: CORRELATION_ID,
+            ingestionId: INGESTION_ID,
+            encryptedObjectKey: OBJECT_KEY
+          })
+        }
+        return canonicalStatus === 'accepted'
+          ? responseJson({ status: 'accepted', leadId: '33333333-3333-4333-8333-333333333333' })
+          : responseJson({ status: 'duplicate' })
+      })
+      const deps = dependencies(fetchImpl)
+
+      await expect(handleEmailMessage(message().value, env, deps)).resolves.toEqual({
+        status: canonicalStatus,
+        correlationId: CORRELATION_ID
+      })
+      expect(bucket.deleteAttempts).toEqual([OBJECT_KEY, OBJECT_KEY, OBJECT_KEY])
+      expect(bucket.deletes).toEqual([OBJECT_KEY])
+      expect(deps.sleep).toHaveBeenNthCalledWith(1, 100)
+      expect(deps.sleep).toHaveBeenNthCalledWith(2, 200)
+    }
+  )
+
+  it('throws an authoritative retryable error when accepted-object deletion is exhausted without leaking the key', async () => {
+    const bucket = new MemoryBucket(0, 3)
+    const env = environment(bucket)
+    const incoming = message()
+
+    let thrown: unknown
+    try {
+      await handleEmailMessage(incoming.value, env, dependencies())
+    }
+    catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toMatchObject({
+      name: 'RetryableEmailIntakeError',
+      correlationId: CORRELATION_ID
+    })
+    expect(JSON.stringify(thrown)).not.toContain(OBJECT_KEY)
+    expect(thrown instanceof Error ? thrown.message : '').not.toContain(OBJECT_KEY)
+    expect(bucket.deleteAttempts).toEqual([OBJECT_KEY, OBJECT_KEY, OBJECT_KEY])
+    expect(incoming.rejected()).toBeNull()
+  })
+
+  it('cleans a terminal duplicate without R2 put or canonical ingestion', async () => {
+    const env = environment()
+    const incoming = message()
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      return responseJson({
+        schemaVersion: 1,
+        outcome: 'duplicate',
+        correlationId: STORED_CORRELATION_ID,
+        ingestionId: INGESTION_ID,
+        cleanupObjectKey: OBJECT_KEY
+      })
+    })
+
+    await expect(handleEmailMessage(incoming.value, env, dependencies(fetchImpl))).resolves.toEqual({
+      status: 'duplicate',
+      correlationId: STORED_CORRELATION_ID
+    })
+    expect(env.bucket.puts).toEqual([])
+    expect(env.bucket.deleteAttempts).toEqual([OBJECT_KEY])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(incoming.rejected()).toBeNull()
+  })
+
+  it('keeps exhausted terminal cleanup retryable with authoritative correlation and no key leak', async () => {
+    const bucket = new MemoryBucket(0, 3)
+    const env = environment(bucket)
+    const incoming = message()
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      return responseJson({
+        schemaVersion: 1,
+        outcome: 'duplicate',
+        correlationId: STORED_CORRELATION_ID,
+        ingestionId: INGESTION_ID,
+        cleanupObjectKey: OBJECT_KEY
+      })
+    })
+
+    let thrown: unknown
+    try {
+      await handleEmailMessage(incoming.value, env, dependencies(fetchImpl))
+    }
+    catch (error) {
+      thrown = error
+    }
+    expect(thrown).toMatchObject({
+      name: 'RetryableEmailIntakeError',
+      correlationId: STORED_CORRELATION_ID
+    })
+    expect(JSON.stringify(thrown)).not.toContain(OBJECT_KEY)
+    expect(bucket.puts).toEqual([])
+    expect(bucket.deleteAttempts).toEqual([OBJECT_KEY, OBJECT_KEY, OBJECT_KEY])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(incoming.rejected()).toBeNull()
+  })
+
+  it('logs terminal cleanup exhaustion with authoritative correlation and no object key', async () => {
+    const bucket = new MemoryBucket(0, 3)
+    const env = environment(bucket)
+    const incoming = message()
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      return responseJson({
+        schemaVersion: 1,
+        outcome: 'duplicate',
+        correlationId: STORED_CORRELATION_ID,
+        ingestionId: INGESTION_ID,
+        cleanupObjectKey: OBJECT_KEY
+      })
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.stubGlobal('fetch', fetchImpl)
+    try {
+      await expect(worker.email(incoming.value, env, {} as ExecutionContext)).rejects.toMatchObject({
+        name: 'RetryableEmailIntakeError',
+        correlationId: STORED_CORRELATION_ID
+      })
+      const serializedLog = String(log.mock.calls[0]?.[0])
+      expect(serializedLog).toContain('retryable_error')
+      expect(serializedLog).toContain(STORED_CORRELATION_ID)
+      expect(serializedLog).not.toContain(OBJECT_KEY)
+      expect(incoming.rejected()).toBeNull()
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('treats a terminal duplicate without cleanup key as an authoritative no-op', async () => {
+    const env = environment()
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      return responseJson({
+        schemaVersion: 1,
+        outcome: 'duplicate',
+        correlationId: STORED_CORRELATION_ID,
+        ingestionId: INGESTION_ID,
+        cleanupObjectKey: null
+      })
+    })
+
+    await expect(handleEmailMessage(message().value, env, dependencies(fetchImpl))).resolves.toEqual({
+      status: 'duplicate',
+      correlationId: STORED_CORRELATION_ID
+    })
+    expect(env.bucket.puts).toEqual([])
+    expect(env.bucket.deleteAttempts).toEqual([])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
   it('uses authenticated encryption with separate secret material', async () => {

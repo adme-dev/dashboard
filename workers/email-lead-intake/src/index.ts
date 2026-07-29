@@ -173,6 +173,24 @@ async function putEncryptedRawEmailWithRetry(
   }
 }
 
+async function deleteEncryptedRawEmailWithRetry(
+  bucket: R2Bucket,
+  objectKey: string,
+  correlationId: string,
+  dependencies: EmailIntakeDependencies
+): Promise<void> {
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      await deleteEncryptedRawEmail(bucket, objectKey)
+      return
+    }
+    catch {
+      if (attempt === RETRY_DELAYS_MS.length) retryable(correlationId)
+    }
+    await dependencies.sleep(RETRY_DELAYS_MS[attempt]!)
+  }
+}
+
 function safeEvidence(input: {
   text: string | null
   html: string | null
@@ -290,7 +308,20 @@ export async function handleEmailMessage(
   }
   const staged = EmailStageResponseSchema.safeParse(stagePayload)
   if (!staged.success) retryable(correlationId, staged.error)
-  if (staged.data.outcome === 'duplicate') return { status: 'duplicate', correlationId }
+  if (staged.data.outcome === 'denied') {
+    return reject(message, 'Lead intake stage denied')
+  }
+  if (staged.data.outcome === 'duplicate') {
+    if (staged.data.cleanupObjectKey) {
+      await deleteEncryptedRawEmailWithRetry(
+        env.EMAIL_QUARANTINE_BUCKET,
+        staged.data.cleanupObjectKey,
+        staged.data.correlationId,
+        dependencies
+      )
+    }
+    return { status: 'duplicate', correlationId: staged.data.correlationId }
+  }
 
   const authoritativeCorrelationId = staged.data.correlationId
   const objectKey = staged.data.encryptedObjectKey
@@ -338,7 +369,12 @@ export async function handleEmailMessage(
   const ingested = IngestResponseSchema.safeParse(await readBoundedJson(ingestResponse))
   if (!ingested.success) return { status: 'failed', correlationId: authoritativeCorrelationId }
   if (ingested.data.status === 'accepted' || ingested.data.status === 'duplicate') {
-    await deleteEncryptedRawEmail(env.EMAIL_QUARANTINE_BUCKET, objectKey)
+    await deleteEncryptedRawEmailWithRetry(
+      env.EMAIL_QUARANTINE_BUCKET,
+      objectKey,
+      authoritativeCorrelationId,
+      dependencies
+    )
   }
   return { status: ingested.data.status, correlationId: authoritativeCorrelationId }
 }

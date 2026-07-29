@@ -174,10 +174,14 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
   const input = parseStage(request)
   return transaction(async (db) => {
     const endpoint = await endpointForToken(db, input.recipientToken, true)
-    if (!endpoint) failure(404, 'email_endpoint_unavailable')
-    if (endpoint.expected_provider && endpoint.expected_provider !== input.provider) failure(409, 'email_endpoint_policy_denied')
+    if (!endpoint) {
+      return { schemaVersion: 1, outcome: 'denied', code: 'email_endpoint_unavailable' }
+    }
+    if (endpoint.expected_provider && endpoint.expected_provider !== input.provider) {
+      return { schemaVersion: 1, outcome: 'denied', code: 'email_endpoint_policy_denied' }
+    }
     if (!senderDomainsAllowed(endpoint, input.envelopeSenderDomain, input.headerFromDomain)) {
-      failure(409, 'email_endpoint_policy_denied')
+      return { schemaVersion: 1, outcome: 'denied', code: 'email_endpoint_policy_denied' }
     }
     const existing = await db.query(`
       SELECT id, endpoint_id, client_id, correlation_id, external_id_hash, message_id_hash, status, terminal_at, next_attempt_at, attempt_count, staged_object_key
@@ -187,7 +191,15 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
     `, [endpoint.id, input.externalIdHash])
     const found = existing.rows?.[0] as (Ingestion & { staged_object_key?: string | null }) | undefined
     if (found) {
-      if (found.terminal_at) return { schemaVersion: 1, outcome: 'duplicate', ingestionId: found.id, encryptedObjectKey: null }
+      if (found.terminal_at) {
+        return {
+          schemaVersion: 1,
+          outcome: 'duplicate',
+          correlationId: found.correlation_id,
+          ingestionId: found.id,
+          cleanupObjectKey: found.staged_object_key ?? null
+        }
+      }
       if (!found.staged_object_key) failure(409, 'email_stage_reservation_invalid')
       return {
         schemaVersion: 1,
