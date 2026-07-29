@@ -15,6 +15,7 @@ import { createNitroEmailAiRuntime } from '~~/server/utils/leads/emailAiRuntime'
 import { getCachedObjectBinding } from '~~/server/utils/email'
 
 const RECOVERY_LEASE_SECONDS = 5 * 60
+const MIN_CANONICAL_WINDOW_SECONDS = 30
 
 export interface EmailRecoveryClaim {
   id: string
@@ -164,7 +165,8 @@ export async function claimNextEmailRecovery(
           AND i.status IN ('received', 'failed')
           AND i.next_attempt_at <= NOW()
           AND i.attempt_count < 5
-          AND i.staged_expires_at > NOW()
+          AND i.staged_expires_at > clock_timestamp()
+            + MAKE_INTERVAL(secs => $3::int)
           AND i.client_id = e.client_id
           AND (
             i.recovery_lease_token IS NULL
@@ -182,6 +184,8 @@ export async function claimNextEmailRecovery(
       FROM candidate c, lead_email_endpoints e
       WHERE i.id = c.id
         AND e.id = i.endpoint_id
+        AND i.staged_expires_at > clock_timestamp()
+          + MAKE_INTERVAL(secs => $3::int)
       RETURNING
         i.id, i.endpoint_id, i.client_id, i.correlation_id, i.transport,
         i.external_id_hash, i.message_id_hash, i.provider, i.sender_domain,
@@ -190,7 +194,7 @@ export async function claimNextEmailRecovery(
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
         e.ai_extraction_mode, e.allowed_sender_domains
-    `, [leaseToken, RECOVERY_LEASE_SECONDS])
+    `, [leaseToken, RECOVERY_LEASE_SECONDS, MIN_CANONICAL_WINDOW_SECONDS])
     const claim = result.rows[0] ?? null
     if (claim) {
       await db.query(`
@@ -510,7 +514,36 @@ export async function processEmailRecoveryClaim(
     return { status: result.status }
   }
   if (result.status === 'in_progress') {
-    return { status: 'quarantined', reason: 'lease_lost' }
+    const auditEvent: EmailRecoveryAuditEvent = {
+      ingestionId: claim.id,
+      endpointId: claim.endpoint_id,
+      clientId: claim.client_id,
+      actorId: dependencies.auditActor?.actorId ?? null,
+      actorType: dependencies.auditActor?.actorType ?? 'cron',
+      action: 'recovery_rescheduled',
+      outcome: 'rescheduled',
+      reason: 'evidence_expired'
+    }
+    const updated = dependencies.repository.commitTransition
+      ? await dependencies.repository.commitTransition({
+          kind: 'reschedule',
+          ingestionId: claim.id,
+          leaseToken,
+          delaySeconds: 0,
+          reason: 'evidence_expired',
+          audit: auditEvent
+        })
+      : await dependencies.repository.reschedule(
+          claim.id,
+          leaseToken,
+          0,
+          'evidence_expired'
+        )
+    if (!updated) return { status: 'quarantined', reason: 'lease_lost' }
+    if (!dependencies.repository.commitTransition) {
+      await dependencies.repository.audit(auditEvent)
+    }
+    return { status: 'rescheduled' }
   }
   // Canonical terminalization owns the completion audit and clears the recovery
   // lease for quarantined outcomes. A second release audit would be misleading.
@@ -625,7 +658,8 @@ const defaultRepository: EmailRecoveryRepository = {
             next_attempt_at = NOW() + MAKE_INTERVAL(secs => $3::int),
             recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
           WHERE id = $1 AND recovery_lease_token = $2::uuid
-            AND terminal_at IS NULL AND attempt_count < 5
+            AND terminal_at IS NULL
+            AND (attempt_count < 5 OR $4 = 'evidence_expired')
           RETURNING id
         `, [input.ingestionId, input.leaseToken, input.delaySeconds, input.reason])
       } else if (input.kind === 'clear_terminal') {
@@ -696,7 +730,7 @@ const defaultRepository: EmailRecoveryRepository = {
       WHERE id = $1
         AND recovery_lease_token = $2::uuid
         AND terminal_at IS NULL
-        AND attempt_count < 5
+        AND (attempt_count < 5 OR $4 = 'evidence_expired')
       RETURNING id
     `, [ingestionId, leaseToken, delaySeconds, reason])
     return Boolean(row)
@@ -930,6 +964,7 @@ async function claimEmailReplay(
       terminal_at: string | null
       recovery_lease_token: string | null
       recovery_claimed_at: string | null
+      staged_ready: boolean
     }>(`
       SELECT
         i.id, i.endpoint_id, i.client_id, i.correlation_id, i.transport,
@@ -937,6 +972,8 @@ async function claimEmailReplay(
         i.safe_evidence, i.staged_object_key, i.staged_expires_at, i.staged_uploaded_at,
         i.attempt_count, i.created_at, i.status, i.terminal_at,
         i.recovery_lease_token, i.recovery_claimed_at,
+        i.staged_expires_at > clock_timestamp()
+          + MAKE_INTERVAL(secs => $3::int) AS staged_ready,
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
         e.ai_extraction_mode, e.allowed_sender_domains
@@ -949,7 +986,7 @@ async function claimEmailReplay(
        AND tm.is_active = TRUE
       WHERE i.id = $1
       FOR UPDATE OF i SKIP LOCKED
-    `, [ingestionId, actorId])
+    `, [ingestionId, actorId, MIN_CANONICAL_WINDOW_SECONDS])
     const claim = selected.rows[0]
     if (
       !claim
@@ -966,7 +1003,7 @@ async function claimEmailReplay(
     else if (claim.attempt_count >= 5) reason = 'attempts_exhausted'
     else if (
       !claim.staged_expires_at
-      || new Date(claim.staged_expires_at).getTime() <= Date.now()
+      || !claim.staged_ready
     ) reason = 'evidence_expired'
     else if (!claim.staged_object_key) reason = 'missing_evidence'
     if (reason) {
@@ -997,8 +1034,16 @@ async function claimEmailReplay(
           OR recovery_claimed_at <= NOW() - MAKE_INTERVAL(secs => $4::int)
         )
         AND attempt_count < 5
+        AND staged_expires_at > clock_timestamp()
+          + MAKE_INTERVAL(secs => $5::int)
       RETURNING id
-    `, [claim.id, claim.client_id, leaseToken, RECOVERY_LEASE_SECONDS])
+    `, [
+      claim.id,
+      claim.client_id,
+      leaseToken,
+      RECOVERY_LEASE_SECONDS,
+      MIN_CANONICAL_WINDOW_SECONDS
+    ])
     if (!updated.rows[0]) return { outcome: 'rejected', reason: 'lease_lost' }
     await db.query(`
       INSERT INTO lead_email_ingestion_audits (

@@ -117,8 +117,23 @@ describe('email recovery claims', () => {
     expect(sql).toMatch(/recovery_claimed_at = NOW\(\)/)
     expect(sql).toMatch(/next_attempt_at = NOW\(\) \+ MAKE_INTERVAL/)
     expect(sql).toMatch(/recovery_claimed_at <= NOW\(\) - MAKE_INTERVAL/)
+    expect(sql).toMatch(
+      /staged_expires_at > clock_timestamp\(\)\s*\+\s*MAKE_INTERVAL\(secs => \$3::int\)/
+    )
     expect(sql).not.toMatch(/staged_uploaded_at IS NOT NULL/)
-    expect(params).toEqual([LEASE_TOKEN, 300])
+    expect(params).toEqual([LEASE_TOKEN, 300, 30])
+  })
+
+  it('does not install a recovery lease with less than the canonical safety window remaining', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [] })
+
+    await expect(claimNextEmailRecovery(LEASE_TOKEN)).resolves.toBeNull()
+
+    const [sql, params] = mocks.query.mock.calls[0]!
+    expect(sql).toMatch(
+      /staged_expires_at > clock_timestamp\(\)\s*\+\s*MAKE_INTERVAL\(secs => \$3::int\)/
+    )
+    expect(params).toEqual([LEASE_TOKEN, 300, 30])
   })
 
   it('reschedules missing unconfirmed evidence without consuming a canonical attempt', async () => {
@@ -174,6 +189,7 @@ describe('email recovery claims', () => {
     const [sql] = mocks.query.mock.calls[0]!
     expect(sql).toMatch(/FOR UPDATE OF i SKIP LOCKED/)
     expect(sql).toMatch(/i\.attempt_count >= 5/)
+    expect(sql).toMatch(/i\.staged_expires_at IS NULL/)
     expect(sql).toMatch(/i\.staged_expires_at <= NOW\(\)/)
     expect(sql).not.toMatch(/i\.next_attempt_at <= NOW\(\)/)
     expect(sql).toMatch(/recovery_claimed_at <= NOW\(\) - MAKE_INTERVAL/)
@@ -354,6 +370,59 @@ describe('email recovery processing', () => {
       .filter(event => event.action === 'recovery_completed')
     expect(completions).toHaveLength(1)
     expect(harness.repository.releaseTerminalLease).not.toHaveBeenCalled()
+  })
+
+  it('atomically releases an owned in-progress claim for immediate terminal reconciliation', async () => {
+    const commitTransition = vi.fn(async () => true)
+    const harness = recoveryHarness({
+      repository: {
+        ...recoveryHarness().repository,
+        commitTransition
+      }
+    })
+    harness.acceptEnvelope.mockResolvedValueOnce({ status: 'in_progress' })
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      claimedRow,
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'rescheduled' })
+
+    expect(commitTransition).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'reschedule',
+      ingestionId: INGESTION_ID,
+      leaseToken: LEASE_TOKEN,
+      delaySeconds: 0,
+      reason: 'evidence_expired',
+      audit: expect.objectContaining({
+        action: 'recovery_rescheduled',
+        outcome: 'rescheduled',
+        reason: 'evidence_expired'
+      })
+    }))
+    expect(harness.bucket.delete).not.toHaveBeenCalled()
+  })
+
+  it('cannot release an in-progress claim after ownership was lost', async () => {
+    const commitTransition = vi.fn(async () => false)
+    const harness = recoveryHarness({
+      repository: {
+        ...recoveryHarness().repository,
+        commitTransition
+      }
+    })
+    harness.acceptEnvelope.mockResolvedValueOnce({ status: 'in_progress' })
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      claimedRow,
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'quarantined', reason: 'lease_lost' })
+
+    expect(commitTransition).toHaveBeenCalledOnce()
+    expect(harness.bucket.delete).not.toHaveBeenCalled()
   })
 
   it('rolls back the transient recovery state when its audit insert fails', async () => {
@@ -669,6 +738,81 @@ describe('email recovery processing', () => {
     expect(harness.acceptEnvelope).not.toHaveBeenCalled()
   })
 
+  it('does not install a manual replay lease inside the canonical safety window', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime('2026-07-29T01:00:00.000Z')
+    try {
+      const harness = recoveryHarness()
+      mocks.query.mockResolvedValueOnce({
+        rows: [{
+          ...claimedRow,
+          status: 'quarantined',
+          terminal_at: '2026-07-29T00:30:00.000Z',
+          recovery_lease_token: null,
+          recovery_claimed_at: null,
+          staged_expires_at: '2026-07-29T01:00:20.000Z',
+          staged_ready: false
+        }]
+      }).mockResolvedValueOnce({ rows: [] })
+
+      await expect(replayEmailIngestion(
+        {} as never,
+        INGESTION_ID,
+        '88888888-8888-4888-8888-888888888888',
+        { ...harness.dependencies, randomUUID: () => LEASE_TOKEN }
+      )).rejects.toMatchObject({
+        statusCode: 409,
+        statusMessage: 'email_replay_evidence_expired'
+      })
+
+      expect(mocks.query.mock.calls.some(([sql]) => (
+        String(sql).includes('SET status = \'failed\'')
+      ))).toBe(false)
+      expect(mocks.query.mock.calls[0]?.[0]).toMatch(
+        /staged_expires_at > clock_timestamp\(\)[\s\S]*MAKE_INTERVAL\(secs => \$3::int\) AS staged_ready/
+      )
+      expect(harness.bucket.get).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cannot install a manual lease when the database safety-window CAS loses the race', async () => {
+    const harness = recoveryHarness()
+    mocks.query.mockResolvedValueOnce({
+      rows: [{
+        ...claimedRow,
+        status: 'quarantined',
+        terminal_at: '2026-07-29T00:30:00.000Z',
+        recovery_lease_token: null,
+        recovery_claimed_at: null,
+        staged_ready: true
+      }]
+    }).mockResolvedValueOnce({ rows: [] })
+
+    await expect(replayEmailIngestion(
+      {} as never,
+      INGESTION_ID,
+      '88888888-8888-4888-8888-888888888888',
+      { ...harness.dependencies, randomUUID: () => LEASE_TOKEN }
+    )).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'email_replay_in_progress'
+    })
+
+    expect(mocks.query.mock.calls[1]?.[0]).toMatch(
+      /staged_expires_at > clock_timestamp\(\)[\s\S]*MAKE_INTERVAL\(secs => \$5::int\)/
+    )
+    expect(mocks.query.mock.calls[1]?.[1]).toEqual([
+      INGESTION_ID,
+      CLIENT_ID,
+      LEASE_TOKEN,
+      300,
+      30
+    ])
+    expect(harness.bucket.get).not.toHaveBeenCalled()
+  })
+
   it('trusts route-level ADMIN permission while requiring an active replay actor', async () => {
     const harness = recoveryHarness()
     mocks.query.mockResolvedValueOnce({ rows: [] })
@@ -691,7 +835,7 @@ describe('email recovery processing', () => {
     ],
     [
       'expired evidence',
-      { staged_expires_at: '2026-07-28T00:00:00.000Z' },
+      { staged_expires_at: '2026-07-28T00:00:00.000Z', staged_ready: false },
       'email_replay_evidence_expired'
     ],
     [
@@ -706,7 +850,13 @@ describe('email recovery processing', () => {
   ) => {
     const harness = recoveryHarness()
     mocks.query.mockResolvedValueOnce({
-      rows: [{ ...claimedRow, status: 'quarantined', terminal_at: '2026-07-29T00:30:00.000Z', ...overrides }]
+      rows: [{
+        ...claimedRow,
+        status: 'quarantined',
+        terminal_at: '2026-07-29T00:30:00.000Z',
+        staged_ready: true,
+        ...overrides
+      }]
     }).mockResolvedValueOnce({ rows: [] })
 
     await expect(replayEmailIngestion(
