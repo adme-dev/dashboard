@@ -12,8 +12,10 @@ import {
 import { parseEmailLead, sha256Hex } from '../../../shared/leads/email/parser'
 import {
   deleteEncryptedRawEmail,
-  secretsAreEqual,
-  storeEncryptedRawEmail
+  encryptedRawEmailPutOptions,
+  encryptRawEmail,
+  putEncryptedRawEmail,
+  secretsAreEqual
 } from './quarantine'
 import { createSignedHeaders, sha256HexBytes } from './signing'
 import {
@@ -46,6 +48,17 @@ export interface EmailIntakeDependencies {
 export type EmailIntakeOutcome =
   | { status: 'accepted' | 'duplicate' | 'quarantined' | 'failed' | 'in_progress', correlationId: string }
   | { status: 'rejected' }
+
+export class RetryableEmailIntakeError extends Error {
+  override readonly name = 'RetryableEmailIntakeError'
+
+  constructor(
+    readonly correlationId: string,
+    cause?: unknown
+  ) {
+    super('Email intake must be retried', { cause })
+  }
+}
 
 const defaultDependencies: EmailIntakeDependencies = {
   fetch: (input, init) => fetch(input, init),
@@ -136,6 +149,30 @@ async function signedRequest(
   return null
 }
 
+function retryable(correlationId: string, cause?: unknown): never {
+  throw new RetryableEmailIntakeError(correlationId, cause)
+}
+
+async function putEncryptedRawEmailWithRetry(
+  bucket: R2Bucket,
+  objectKey: string,
+  encrypted: Uint8Array,
+  options: R2PutOptions,
+  correlationId: string,
+  dependencies: EmailIntakeDependencies
+): Promise<void> {
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      await putEncryptedRawEmail(bucket, objectKey, encrypted, options)
+      return
+    }
+    catch (error) {
+      if (attempt === RETRY_DELAYS_MS.length) retryable(correlationId, error)
+    }
+    await dependencies.sleep(RETRY_DELAYS_MS[attempt]!)
+  }
+}
+
 function safeEvidence(input: {
   text: string | null
   html: string | null
@@ -177,10 +214,22 @@ export async function handleEmailMessage(
     env,
     dependencies
   )
-  if (!policyResponse) return { status: 'failed', correlationId }
-  if (!policyResponse.ok) return reject(message, 'Lead intake policy denied')
-  const policyParsed = EmailEndpointPolicySchema.safeParse(await readBoundedJson(policyResponse))
-  if (!policyParsed.success) return reject(message, 'Lead intake policy denied')
+  if (!policyResponse) retryable(correlationId)
+  if (!policyResponse.ok) {
+    if (policyResponse.status === 404 || policyResponse.status === 409) {
+      return reject(message, 'Lead intake policy denied')
+    }
+    retryable(correlationId)
+  }
+  let policyPayload: unknown
+  try {
+    policyPayload = await readBoundedJson(policyResponse)
+  }
+  catch (error) {
+    retryable(correlationId, error)
+  }
+  const policyParsed = EmailEndpointPolicySchema.safeParse(policyPayload)
+  if (!policyParsed.success) retryable(correlationId, policyParsed.error)
   const policy = policyParsed.data
 
   const envelopeSenderDomain = mailboxDomain(message.from)
@@ -231,23 +280,34 @@ export async function handleEmailMessage(
     env,
     dependencies
   )
-  if (!stageResponse?.ok) return { status: 'failed', correlationId }
-  const staged = EmailStageResponseSchema.safeParse(await readBoundedJson(stageResponse))
-  if (!staged.success) return { status: 'failed', correlationId }
+  if (!stageResponse?.ok) retryable(correlationId)
+  let stagePayload: unknown
+  try {
+    stagePayload = await readBoundedJson(stageResponse)
+  }
+  catch (error) {
+    retryable(correlationId, error)
+  }
+  const staged = EmailStageResponseSchema.safeParse(stagePayload)
+  if (!staged.success) retryable(correlationId, staged.error)
   if (staged.data.outcome === 'duplicate') return { status: 'duplicate', correlationId }
 
+  const authoritativeCorrelationId = staged.data.correlationId
   const objectKey = staged.data.encryptedObjectKey
-  await storeEncryptedRawEmail(
+  const encrypted = await encryptRawEmail(raw, env.EMAIL_QUARANTINE_ENCRYPTION_SECRET)
+  const putOptions = encryptedRawEmailPutOptions(expiresAt, authoritativeCorrelationId)
+  await putEncryptedRawEmailWithRetry(
     env.EMAIL_QUARANTINE_BUCKET,
     objectKey,
-    raw,
-    env.EMAIL_QUARANTINE_ENCRYPTION_SECRET,
-    expiresAt
+    encrypted,
+    putOptions,
+    authoritativeCorrelationId,
+    dependencies
   )
 
   const envelope: EmailIngestEnvelope = EmailIngestEnvelopeSchema.parse({
     schemaVersion: 1,
-    correlationId,
+    correlationId: authoritativeCorrelationId,
     ingestionId: staged.data.ingestionId,
     transport: 'cloudflare_email_routing',
     recipientToken,
@@ -274,28 +334,34 @@ export async function handleEmailMessage(
     env,
     dependencies
   )
-  if (!ingestResponse?.ok) return { status: 'failed', correlationId }
+  if (!ingestResponse?.ok) return { status: 'failed', correlationId: authoritativeCorrelationId }
   const ingested = IngestResponseSchema.safeParse(await readBoundedJson(ingestResponse))
-  if (!ingested.success) return { status: 'failed', correlationId }
+  if (!ingested.success) return { status: 'failed', correlationId: authoritativeCorrelationId }
   if (ingested.data.status === 'accepted' || ingested.data.status === 'duplicate') {
     await deleteEncryptedRawEmail(env.EMAIL_QUARANTINE_BUCKET, objectKey)
   }
-  return { status: ingested.data.status, correlationId }
+  return { status: ingested.data.status, correlationId: authoritativeCorrelationId }
 }
 
 export default {
   async email(message: ForwardableEmailMessage, env: Env, _ctx: ExecutionContext): Promise<void> {
-    let outcome: EmailIntakeOutcome
     try {
-      outcome = await handleEmailMessage(message, env)
+      const outcome = await handleEmailMessage(message, env)
+      console.log(JSON.stringify({
+        event: 'email_lead_intake_outcome',
+        status: outcome.status,
+        correlationId: 'correlationId' in outcome ? outcome.correlationId : undefined
+      }))
     }
-    catch {
-      outcome = { status: 'failed', correlationId: crypto.randomUUID() }
+    catch (error) {
+      console.log(JSON.stringify({
+        event: 'email_lead_intake_outcome',
+        status: error instanceof RetryableEmailIntakeError ? 'retryable_error' : 'error',
+        correlationId: error instanceof RetryableEmailIntakeError
+          ? error.correlationId
+          : crypto.randomUUID()
+      }))
+      throw error
     }
-    console.log(JSON.stringify({
-      event: 'email_lead_intake_outcome',
-      status: outcome.status,
-      correlationId: 'correlationId' in outcome ? outcome.correlationId : undefined
-    }))
   }
 } satisfies ExportedHandler<Env>

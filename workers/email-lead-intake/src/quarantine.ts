@@ -59,18 +59,23 @@ export async function decryptRawEmail(encrypted: Uint8Array, secret: string): Pr
   ))
 }
 
-export async function storeEncryptedRawEmail(
+export function encryptedRawEmailPutOptions(
+  expiresAt: string,
+  correlationId: string
+): R2PutOptions {
+  return {
+    httpMetadata: { contentType: 'application/octet-stream' },
+    customMetadata: { schemaVersion: '1', expiresAt, correlationId }
+  }
+}
+
+export async function putEncryptedRawEmail(
   bucket: R2Bucket,
   objectKey: string,
-  raw: Uint8Array,
-  secret: string,
-  expiresAt: string
+  encrypted: Uint8Array,
+  options: R2PutOptions
 ): Promise<void> {
-  const encrypted = await encryptRawEmail(raw, secret)
-  await bucket.put(objectKey, encrypted, {
-    httpMetadata: { contentType: 'application/octet-stream' },
-    customMetadata: { schemaVersion: '1', expiresAt }
-  })
+  await bucket.put(objectKey, encrypted, options)
 }
 
 export async function deleteEncryptedRawEmail(bucket: R2Bucket, objectKey: string): Promise<void> {

@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { decryptRawEmail, encryptRawEmail } from '../../workers/email-lead-intake/src/quarantine'
 import { createSignedHeaders } from '../../workers/email-lead-intake/src/signing'
-import { handleEmailMessage } from '../../workers/email-lead-intake/src/index'
+import worker, { handleEmailMessage } from '../../workers/email-lead-intake/src/index'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const TOKEN = '0123456789'
 const CORRELATION_ID = '11111111-1111-4111-8111-111111111111'
+const STORED_CORRELATION_ID = '99999999-9999-4999-8999-999999999999'
 const INGESTION_ID = '22222222-2222-4222-8222-222222222222'
 const OBJECT_KEY = 'email-ingestions/abcdefghijklmnop'
 const RAW_TEXT = [
@@ -26,10 +27,18 @@ const RAW = encoder.encode(RAW_TEXT)
 class MemoryBucket {
   readonly objects = new Map<string, Uint8Array>()
   readonly puts: string[] = []
+  readonly putAttempts: Array<{ key: string, value: Uint8Array, options: unknown }> = []
   readonly deletes: string[] = []
+  private failuresRemaining: number
 
-  async put(key: string, value: Uint8Array) {
+  constructor(failures = 0) {
+    this.failuresRemaining = failures
+  }
+
+  async put(key: string, value: Uint8Array, options?: unknown) {
     this.puts.push(key)
+    this.putAttempts.push({ key, value: new Uint8Array(value), options: structuredClone(options) })
+    if (this.failuresRemaining-- > 0) throw new Error('R2 unavailable')
     this.objects.set(key, new Uint8Array(value))
     return {}
   }
@@ -100,7 +109,13 @@ function successfulFetch() {
     const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url).pathname
     if (path.endsWith('/email-policy')) return responseJson(policy)
     if (path.endsWith('/email-stage')) {
-      return responseJson({ schemaVersion: 1, outcome: 'reserved', ingestionId: INGESTION_ID, encryptedObjectKey: OBJECT_KEY })
+      return responseJson({
+        schemaVersion: 1,
+        outcome: 'reserved',
+        correlationId: CORRELATION_ID,
+        ingestionId: INGESTION_ID,
+        encryptedObjectKey: OBJECT_KEY
+      })
     }
     return responseJson({ status: 'accepted', leadId: '33333333-3333-4333-8333-333333333333' })
   })
@@ -190,7 +205,68 @@ describe('email lead intake Worker', () => {
     await expect(handleEmailMessage(incoming.value, env, dependencies(fetchImpl))).resolves.toMatchObject({ status: 'rejected' })
 
     expect(incoming.pulls()).toBe(0)
+    expect(incoming.rejected()).toMatch(/policy/i)
     expect(env.bucket.puts).toEqual([])
+  })
+
+  it.each([
+    ['network exhaustion', () => Promise.reject(new Error('network unavailable'))],
+    ['retryable status exhaustion', () => Promise.resolve(responseJson({ error: 'temporary' }, 503))]
+  ])('propagates retryable policy %s without reading raw or permanently rejecting SMTP', async (_label, reply) => {
+    const incoming = message()
+    const fetchImpl = vi.fn(reply)
+    const deps = dependencies(fetchImpl)
+
+    await expect(handleEmailMessage(incoming.value, environment(), deps)).rejects.toMatchObject({
+      name: 'RetryableEmailIntakeError',
+      correlationId: CORRELATION_ID
+    })
+
+    expect(fetchImpl).toHaveBeenCalledTimes(3)
+    expect(deps.sleep).toHaveBeenNthCalledWith(1, 100)
+    expect(deps.sleep).toHaveBeenNthCalledWith(2, 200)
+    expect(incoming.pulls()).toBe(0)
+    expect(incoming.rejected()).toBeNull()
+  })
+
+  it('propagates a malformed successful policy response through the module handler with safe logging', async () => {
+    const incoming = message()
+    const fetchImpl = vi.fn(async () => new Response('{not-json', { status: 200 }))
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.stubGlobal('fetch', fetchImpl)
+    try {
+      const pending = worker.email(incoming.value, environment(), {} as ExecutionContext)
+      await expect(pending).rejects.toMatchObject({ name: 'RetryableEmailIntakeError' })
+      expect(incoming.pulls()).toBe(0)
+      expect(incoming.rejected()).toBeNull()
+      expect(log).toHaveBeenCalledOnce()
+      const serializedLog = String(log.mock.calls[0]?.[0])
+      expect(serializedLog).toContain('retryable_error')
+      expect(serializedLog).not.toContain(TOKEN)
+      expect(serializedLog).not.toContain(`carsales-${TOKEN}`)
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('propagates retryable policy exhaustion from the module handler instead of marking the message handled', async () => {
+    const incoming = message()
+    const fetchImpl = vi.fn(async () => responseJson({ error: 'temporary' }, 503))
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.stubGlobal('fetch', fetchImpl)
+    try {
+      await expect(worker.email(incoming.value, environment(), {} as ExecutionContext)).rejects.toMatchObject({
+        name: 'RetryableEmailIntakeError'
+      })
+      expect(fetchImpl).toHaveBeenCalledTimes(3)
+      expect(incoming.pulls()).toBe(0)
+      expect(incoming.rejected()).toBeNull()
+      expect(String(log.mock.calls[0]?.[0])).toContain('retryable_error')
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('denies an unapproved envelope sender before raw read', async () => {
@@ -277,6 +353,132 @@ describe('email lead intake Worker', () => {
     expect(new Set(nonces).size).toBe(calls.length)
   })
 
+  it('retries a lost committed stage response with the exact same body and uses the returned reservation identity', async () => {
+    const stageBodies: string[] = []
+    let stageAttempts = 0
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      if (path.endsWith('/email-stage')) {
+        stageBodies.push(String(init?.body))
+        stageAttempts++
+        if (stageAttempts === 1) throw new Error('response lost after commit')
+        return responseJson({
+          schemaVersion: 1,
+          outcome: 'reserved',
+          correlationId: STORED_CORRELATION_ID,
+          ingestionId: INGESTION_ID,
+          encryptedObjectKey: OBJECT_KEY
+        })
+      }
+      const ingest = bodyOf(init)
+      expect(ingest.correlationId).toBe(STORED_CORRELATION_ID)
+      return responseJson({ status: 'accepted', leadId: '33333333-3333-4333-8333-333333333333' })
+    })
+
+    await expect(handleEmailMessage(message().value, environment(), dependencies(fetchImpl))).resolves.toEqual({
+      status: 'accepted',
+      correlationId: STORED_CORRELATION_ID
+    })
+    expect(stageBodies).toHaveLength(2)
+    expect(new Set(stageBodies).size).toBe(1)
+  })
+
+  it('uses a reused reservation correlation for R2 metadata and canonical ingestion on fresh redelivery', async () => {
+    const env = environment()
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      if (path.endsWith('/email-stage')) {
+        expect(bodyOf(init).correlationId).toBe(CORRELATION_ID)
+        return responseJson({
+          schemaVersion: 1,
+          outcome: 'reserved',
+          correlationId: STORED_CORRELATION_ID,
+          ingestionId: INGESTION_ID,
+          encryptedObjectKey: OBJECT_KEY
+        })
+      }
+      expect(bodyOf(init).correlationId).toBe(STORED_CORRELATION_ID)
+      return responseJson({ status: 'accepted', leadId: '33333333-3333-4333-8333-333333333333' })
+    })
+
+    await expect(handleEmailMessage(message().value, env, dependencies(fetchImpl))).resolves.toEqual({
+      status: 'accepted',
+      correlationId: STORED_CORRELATION_ID
+    })
+    expect(env.bucket.putAttempts[0]?.options).toMatchObject({
+      customMetadata: { correlationId: STORED_CORRELATION_ID }
+    })
+  })
+
+  it('logs the authoritative reservation correlation after a successful redelivery', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      if (path.endsWith('/email-stage')) {
+        return responseJson({
+          schemaVersion: 1,
+          outcome: 'reserved',
+          correlationId: STORED_CORRELATION_ID,
+          ingestionId: INGESTION_ID,
+          encryptedObjectKey: OBJECT_KEY
+        })
+      }
+      expect(bodyOf(init).correlationId).toBe(STORED_CORRELATION_ID)
+      return responseJson({ status: 'accepted', leadId: '33333333-3333-4333-8333-333333333333' })
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.stubGlobal('fetch', fetchImpl)
+    try {
+      await worker.email(message().value, environment(), {} as ExecutionContext)
+      const serializedLog = String(log.mock.calls[0]?.[0])
+      expect(serializedLog).toContain(STORED_CORRELATION_ID)
+      expect(serializedLog).not.toContain(CORRELATION_ID)
+      expect(serializedLog).not.toContain(TOKEN)
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('retries R2 writes with the identical key, ciphertext, and metadata', async () => {
+    const bucket = new MemoryBucket(2)
+    const env = environment(bucket)
+    const deps = dependencies()
+
+    await expect(handleEmailMessage(message().value, env, deps)).resolves.toEqual({
+      status: 'accepted',
+      correlationId: CORRELATION_ID
+    })
+
+    expect(bucket.putAttempts).toHaveLength(3)
+    expect(bucket.putAttempts.map(attempt => attempt.key)).toEqual([OBJECT_KEY, OBJECT_KEY, OBJECT_KEY])
+    expect(bucket.putAttempts[1]?.value).toEqual(bucket.putAttempts[0]?.value)
+    expect(bucket.putAttempts[2]?.value).toEqual(bucket.putAttempts[0]?.value)
+    expect(bucket.putAttempts[1]?.options).toEqual(bucket.putAttempts[0]?.options)
+    expect(bucket.putAttempts[2]?.options).toEqual(bucket.putAttempts[0]?.options)
+    expect(deps.sleep).toHaveBeenNthCalledWith(1, 100)
+    expect(deps.sleep).toHaveBeenNthCalledWith(2, 200)
+  })
+
+  it('propagates exhausted R2 writes without a post-stage permanent rejection', async () => {
+    const bucket = new MemoryBucket(3)
+    const env = environment(bucket)
+    const incoming = message()
+    const deps = dependencies()
+
+    await expect(handleEmailMessage(incoming.value, env, deps)).rejects.toMatchObject({
+      name: 'RetryableEmailIntakeError',
+      correlationId: CORRELATION_ID
+    })
+
+    expect(bucket.putAttempts).toHaveLength(3)
+    expect(bucket.objects.has(OBJECT_KEY)).toBe(false)
+    expect(incoming.rejected()).toBeNull()
+    expect(deps.fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
   it('uses authenticated encryption with separate secret material', async () => {
     const encrypted = await encryptRawEmail(RAW, 'encryption-secret-that-is-separate')
     expect(decoder.decode(encrypted)).not.toContain('alex@example.test')
@@ -294,7 +496,13 @@ describe('email lead intake Worker', () => {
       const path = new URL(String(input)).pathname
       if (path.endsWith('/email-policy')) return responseJson(policy)
       if (path.endsWith('/email-stage')) {
-        return responseJson({ schemaVersion: 1, outcome: 'reserved', ingestionId: INGESTION_ID, encryptedObjectKey: OBJECT_KEY })
+        return responseJson({
+          schemaVersion: 1,
+          outcome: 'reserved',
+          correlationId: CORRELATION_ID,
+          ingestionId: INGESTION_ID,
+          encryptedObjectKey: OBJECT_KEY
+        })
       }
       ingestBodies.push(String(init?.body))
       ingestAttempts++
@@ -320,7 +528,13 @@ describe('email lead intake Worker', () => {
   it('retains encrypted MIME for quarantined and exhausted retry outcomes without SMTP rejection', async () => {
     const quarantineFetch = successfulFetch()
     quarantineFetch.mockImplementationOnce(async () => responseJson(policy))
-      .mockImplementationOnce(async () => responseJson({ schemaVersion: 1, outcome: 'reserved', ingestionId: INGESTION_ID, encryptedObjectKey: OBJECT_KEY }))
+      .mockImplementationOnce(async () => responseJson({
+        schemaVersion: 1,
+        outcome: 'reserved',
+        correlationId: CORRELATION_ID,
+        ingestionId: INGESTION_ID,
+        encryptedObjectKey: OBJECT_KEY
+      }))
       .mockImplementationOnce(async () => responseJson({ status: 'quarantined' }))
     const quarantinedMessage = message()
     const quarantinedEnv = environment()
@@ -334,7 +548,13 @@ describe('email lead intake Worker', () => {
       const path = new URL(String(input)).pathname
       if (path.endsWith('/email-policy')) return responseJson(policy)
       if (path.endsWith('/email-stage')) {
-        return responseJson({ schemaVersion: 1, outcome: 'reserved', ingestionId: INGESTION_ID, encryptedObjectKey: OBJECT_KEY })
+        return responseJson({
+          schemaVersion: 1,
+          outcome: 'reserved',
+          correlationId: CORRELATION_ID,
+          ingestionId: INGESTION_ID,
+          encryptedObjectKey: OBJECT_KEY
+        })
       }
       return responseJson({ error: 'temporary' }, 503)
     })

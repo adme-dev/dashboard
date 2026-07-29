@@ -11,6 +11,7 @@ vi.mock('~~/server/utils/db', () => ({ queryOne: vi.fn(), transaction }))
 import { reserveEmailIngestionStage } from '../../../../server/utils/leads/emailIngestion'
 
 const HASH = 'a'.repeat(64)
+const CORRELATION_ID = '33333333-3333-4333-8333-333333333333'
 const endpoint = {
   id: '11111111-1111-4111-8111-111111111111', client_id: '22222222-2222-4222-8222-222222222222',
   form_id: 'email_endpoint:11111111-1111-4111-8111-111111111111', form_name: 'Carsales', enabled: true, retired_at: null,
@@ -20,7 +21,7 @@ const endpoint = {
 
 function request() {
   return {
-    schemaVersion: 1 as const, correlationId: '33333333-3333-4333-8333-333333333333',
+    schemaVersion: 1 as const, correlationId: CORRELATION_ID,
     transport: 'cloudflare_email_routing' as const, recipientToken: '0123456789', externalIdHash: HASH,
     messageIdHash: HASH, provider: 'carsales', receivedAt: '2026-07-29T00:00:00.000Z', rawSize: 128,
     envelopeSenderDomain: 'notify.carsales.com.au', headerFromDomain: 'carsales.com.au',
@@ -38,14 +39,24 @@ describe('email stage reservation', () => {
 
   it('persists only safe hashes and reuses a non-terminal reservation key on retry', async () => {
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: '44444444-4444-4444-8444-444444444444' }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '44444444-4444-4444-8444-444444444444',
+        correlation_id: CORRELATION_ID
+      }] })
     const first = await reserveEmailIngestionStage(request())
-    expect(first).toMatchObject({ outcome: 'reserved', ingestionId: '44444444-4444-4444-8444-444444444444' })
+    expect(first).toMatchObject({
+      outcome: 'reserved',
+      correlationId: CORRELATION_ID,
+      ingestionId: '44444444-4444-4444-8444-444444444444'
+    })
     expect(first.encryptedObjectKey).toMatch(/^email-ingestions\/[A-Za-z0-9_-]{16,}$/)
     expect(JSON.stringify(query.mock.calls[2]?.[1])).not.toContain('Jane Example')
 
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
-      id: first.ingestionId, terminal_at: null, staged_object_key: first.encryptedObjectKey
+      id: first.ingestionId,
+      correlation_id: CORRELATION_ID,
+      terminal_at: null,
+      staged_object_key: first.encryptedObjectKey
     }] })
     await expect(reserveEmailIngestionStage(request())).resolves.toEqual(first)
   })
@@ -80,9 +91,15 @@ describe('email stage reservation', () => {
   it('scopes the same external identity to different endpoint IDs', async () => {
     const endpointTwo = { ...endpoint, id: '55555555-5555-4555-8555-555555555555', address_token: 'abcdefghjk' }
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: '44444444-4444-4444-8444-444444444444' }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '44444444-4444-4444-8444-444444444444',
+        correlation_id: CORRELATION_ID
+      }] })
       .mockResolvedValueOnce({ rows: [endpointTwo] }).mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: '66666666-6666-4666-8666-666666666666' }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '66666666-6666-4666-8666-666666666666',
+        correlation_id: '77777777-7777-4777-8777-777777777777'
+      }] })
 
     const first = await reserveEmailIngestionStage(request())
     const second = await reserveEmailIngestionStage({ ...request(), recipientToken: 'abcdefghjk', correlationId: '77777777-7777-4777-8777-777777777777' })
@@ -102,6 +119,7 @@ describe('email stage reservation', () => {
     }
     const existing = {
       id: '44444444-4444-4444-8444-444444444444',
+      correlation_id: CORRELATION_ID,
       endpoint_id: endpoint.id,
       external_id_hash: HASH,
       terminal_at: null,
@@ -112,6 +130,7 @@ describe('email stage reservation', () => {
     await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
       schemaVersion: 1,
       outcome: 'reserved',
+      correlationId: CORRELATION_ID,
       ingestionId: existing.id,
       encryptedObjectKey: existing.staged_object_key
     })
@@ -123,13 +142,17 @@ describe('email stage reservation', () => {
   ])('uses the endpoint-scoped external hash for %s idempotency', async (_label, externalIdHash) => {
     const retryRow = {
       id: '44444444-4444-4444-8444-444444444444',
+      correlation_id: CORRELATION_ID,
       endpoint_id: endpoint.id,
       external_id_hash: externalIdHash,
       terminal_at: null,
       staged_object_key: ''
     }
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: '44444444-4444-4444-8444-444444444444' }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: '44444444-4444-4444-8444-444444444444',
+        correlation_id: CORRELATION_ID
+      }] })
       .mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [retryRow] })
     const first = await reserveEmailIngestionStage({ ...request(), externalIdHash })
     retryRow.staged_object_key = first.encryptedObjectKey!
@@ -138,6 +161,32 @@ describe('email stage reservation', () => {
     expect(retry).toEqual(first)
     expect(query.mock.calls[1]?.[1]).toEqual([endpoint.id, externalIdHash])
     expect(query.mock.calls[4]?.[1]).toEqual([endpoint.id, externalIdHash])
+  })
+
+  it('returns the persisted reservation correlation on a fresh redelivery', async () => {
+    const storedCorrelation = '88888888-8888-4888-8888-888888888888'
+    const existing = {
+      id: '44444444-4444-4444-8444-444444444444',
+      correlation_id: storedCorrelation,
+      endpoint_id: endpoint.id,
+      external_id_hash: HASH,
+      terminal_at: null,
+      staged_object_key: 'email-ingestions/reused-opaque-reservation'
+    }
+    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [existing] })
+
+    await expect(reserveEmailIngestionStage({
+      ...request(),
+      correlationId: '99999999-9999-4999-8999-999999999999'
+    })).resolves.toEqual({
+      schemaVersion: 1,
+      outcome: 'reserved',
+      correlationId: storedCorrelation,
+      ingestionId: existing.id,
+      encryptedObjectKey: existing.staged_object_key
+    })
+    expect(existing.terminal_at).toBeNull()
+    expect(query).toHaveBeenCalledTimes(2)
   })
 
   it.each(['expired previous token', 'disabled endpoint', 'retired endpoint'])(

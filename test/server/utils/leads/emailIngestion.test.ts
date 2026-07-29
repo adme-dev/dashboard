@@ -107,6 +107,7 @@ describe('email ingestion contracts', () => {
     expect(EmailStageResponseSchema.safeParse({
       schemaVersion: 1,
       outcome: 'reserved',
+      correlationId: UUID,
       ingestionId: '22222222-2222-4222-8222-222222222222',
       encryptedObjectKey: OPAQUE_OBJECT_KEY
     }).success).toBe(true)
@@ -182,6 +183,7 @@ describe('email ingestion contracts', () => {
     expect(EmailStageResponseSchema.safeParse({
       schemaVersion: 1,
       outcome: 'reserved',
+      correlationId: UUID,
       ingestionId: UUID,
       encryptedObjectKey: 'client-acme/raw-message.eml'
     }).success).toBe(false)
@@ -284,8 +286,15 @@ describe('email ingestion contracts', () => {
     expect(EmailStageResponseSchema.safeParse({
       schemaVersion: 1,
       outcome: 'reserved',
+      correlationId: UUID,
       ingestionId: UUID,
       encryptedObjectKey: null
+    }).success).toBe(false)
+    expect(EmailStageResponseSchema.safeParse({
+      schemaVersion: 1,
+      outcome: 'reserved',
+      ingestionId: UUID,
+      encryptedObjectKey: OPAQUE_OBJECT_KEY
     }).success).toBe(false)
     expect(EmailStageResponseSchema.safeParse({
       schemaVersion: 1,

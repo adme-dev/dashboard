@@ -90,6 +90,23 @@ describe('email canonical ingress', () => {
     expect(mocks.acceptLead).not.toHaveBeenCalled()
   })
 
+  it('accepts the stored reservation correlation after a fresh transport redelivery proposed another value', async () => {
+    const storedCorrelation = '88888888-8888-4888-8888-888888888888'
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({ correlation_id: storedCorrelation })]
+    }).mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope({ correlationId: storedCorrelation })
+    )).resolves.toEqual({
+      status: 'accepted',
+      leadId: '55555555-5555-4555-8555-555555555555'
+    })
+    expect(mocks.acceptLead).toHaveBeenCalledOnce()
+  })
+
   it('returns duplicate for an already-terminal reservation', async () => {
     mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [ingestion({ terminal_at: '2026-07-29T00:01:00.000Z', status: 'accepted' })] })
     await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).resolves.toEqual({ status: 'duplicate' })

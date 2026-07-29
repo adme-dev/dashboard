@@ -123,6 +123,7 @@ export const EmailStageResponseSchema = z.discriminatedUnion('outcome', [
   z.object({
     schemaVersion: z.literal(1),
     outcome: z.literal('reserved'),
+    correlationId: UuidSchema,
     ingestionId: UuidSchema,
     encryptedObjectKey: EncryptedObjectKeySchema
   }).strict(),

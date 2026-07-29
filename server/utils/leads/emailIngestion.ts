@@ -189,7 +189,13 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
     if (found) {
       if (found.terminal_at) return { schemaVersion: 1, outcome: 'duplicate', ingestionId: found.id, encryptedObjectKey: null }
       if (!found.staged_object_key) failure(409, 'email_stage_reservation_invalid')
-      return { schemaVersion: 1, outcome: 'reserved', ingestionId: found.id, encryptedObjectKey: found.staged_object_key }
+      return {
+        schemaVersion: 1,
+        outcome: 'reserved',
+        correlationId: found.correlation_id,
+        ingestionId: found.id,
+        encryptedObjectKey: found.staged_object_key
+      }
     }
     const key = opaqueObjectKey()
     const inserted = await db.query(`
@@ -197,12 +203,18 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
         endpoint_id, client_id, correlation_id, transport, external_id_hash, message_id_hash,
         provider, status, safe_evidence, staged_object_key, staged_expires_at, next_attempt_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'received', $8::jsonb, $9, $10::timestamptz, NOW())
-      RETURNING id
+      RETURNING id, correlation_id
     `, [endpoint.id, endpoint.client_id, input.correlationId, input.transport, input.externalIdHash,
       input.messageIdHash, input.provider, JSON.stringify(input.safeEvidence), key, input.quarantineExpiresAt])
-    const row = inserted.rows?.[0] as { id?: string } | undefined
-    if (!row?.id) failure(409, 'email_stage_reservation_conflict')
-    return { schemaVersion: 1, outcome: 'reserved', ingestionId: row.id, encryptedObjectKey: key }
+    const row = inserted.rows?.[0] as { id?: string, correlation_id?: string } | undefined
+    if (!row?.id || !row.correlation_id) failure(409, 'email_stage_reservation_conflict')
+    return {
+      schemaVersion: 1,
+      outcome: 'reserved',
+      correlationId: row.correlation_id,
+      ingestionId: row.id,
+      encryptedObjectKey: key
+    }
   }) as Promise<EmailStageResponse>
 }
 
