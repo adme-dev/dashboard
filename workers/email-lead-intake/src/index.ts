@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   EmailEndpointPolicySchema,
   EmailIngestEnvelopeSchema,
+  EmailStageConfirmationSchema,
   EmailStageRequestSchema,
   EmailStageResponseSchema,
   type EmailEndpointPolicy,
@@ -15,7 +16,7 @@ import { createWorkerEmailAiRuntime } from './aiRuntime'
 import {
   deleteEncryptedRawEmail,
   encryptedRawEmailPutOptions,
-  encryptRawEmail,
+  encryptStagedEmail,
   putEncryptedRawEmail,
   secretsAreEqual
 } from './quarantine'
@@ -341,7 +342,11 @@ export async function handleEmailMessage(
   const authoritativeCorrelationId = staged.data.correlationId
   const objectKey = staged.data.encryptedObjectKey
   const canonicalExtraction = extraction?.needsReview ? null : extraction
-  const encrypted = await encryptRawEmail(raw, env.EMAIL_QUARANTINE_ENCRYPTION_SECRET)
+  const encrypted = await encryptStagedEmail(
+    raw,
+    normalized.envelopeSender,
+    env.EMAIL_QUARANTINE_ENCRYPTION_SECRET
+  )
   const putOptions = encryptedRawEmailPutOptions(expiresAt, authoritativeCorrelationId)
   await putEncryptedRawEmailWithRetry(
     env.EMAIL_QUARANTINE_BUCKET,
@@ -351,6 +356,19 @@ export async function handleEmailMessage(
     authoritativeCorrelationId,
     dependencies
   )
+  const confirmationBody = JSON.stringify(EmailStageConfirmationSchema.parse({
+    schemaVersion: 1,
+    ingestionId: staged.data.ingestionId,
+    correlationId: authoritativeCorrelationId,
+    encryptedObjectKey: objectKey
+  }))
+  const confirmationResponse = await signedRequest(
+    '/api/internal/leads/email-stage-confirm',
+    confirmationBody,
+    env,
+    dependencies
+  )
+  if (!confirmationResponse?.ok) retryable(authoritativeCorrelationId)
 
   const envelope: EmailIngestEnvelope = EmailIngestEnvelopeSchema.parse({
     schemaVersion: 1,

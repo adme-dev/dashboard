@@ -3,6 +3,7 @@ const MAGIC = new Uint8Array([0x58, 0x45, 0x4c, 0x31])
 const SALT_BYTES = 16
 const IV_BYTES = 12
 const HEADER_BYTES = MAGIC.byteLength + SALT_BYTES + IV_BYTES
+const STAGED_MAGIC = new Uint8Array([0x58, 0x45, 0x53, 0x31])
 
 async function deriveKey(secret: string, salt: Uint8Array): Promise<CryptoKey> {
   if (secret.length < 16 || secret.length > 4096) {
@@ -60,6 +61,21 @@ export async function encryptRawEmail(raw: Uint8Array, secret: string): Promise<
   return encrypted
 }
 
+export async function encryptStagedEmail(
+  raw: Uint8Array,
+  envelopeSender: string | null,
+  secret: string
+): Promise<Uint8Array> {
+  const sender = encoder.encode(envelopeSender ?? '')
+  if (sender.byteLength > 4096) throw new Error('Envelope sender exceeds limit')
+  const plaintext = new Uint8Array(STAGED_MAGIC.byteLength + 4 + sender.byteLength + raw.byteLength)
+  plaintext.set(STAGED_MAGIC)
+  new DataView(plaintext.buffer).setUint32(STAGED_MAGIC.byteLength, sender.byteLength)
+  plaintext.set(sender, STAGED_MAGIC.byteLength + 4)
+  plaintext.set(raw, STAGED_MAGIC.byteLength + 4 + sender.byteLength)
+  return encryptRawEmail(plaintext, secret)
+}
+
 export async function decryptRawEmail(encrypted: Uint8Array, secret: string): Promise<Uint8Array> {
   if (encrypted.byteLength <= HEADER_BYTES + 16) throw new Error('Invalid encrypted email')
   for (let index = 0; index < MAGIC.byteLength; index++) {
@@ -73,4 +89,23 @@ export async function decryptRawEmail(encrypted: Uint8Array, secret: string): Pr
     key,
     encrypted.slice(HEADER_BYTES)
   ))
+}
+
+export async function decryptStagedEmail(
+  encrypted: Uint8Array,
+  secret: string
+): Promise<{ raw: Uint8Array, envelopeSender: string | null }> {
+  const plaintext = await decryptRawEmail(encrypted, secret)
+  const isStaged = STAGED_MAGIC.every((byte, index) => plaintext[index] === byte)
+  if (!isStaged) return { raw: plaintext, envelopeSender: null }
+  if (plaintext.byteLength < STAGED_MAGIC.byteLength + 4) throw new Error('Invalid staged email')
+  const senderBytes = new DataView(
+    plaintext.buffer,
+    plaintext.byteOffset + STAGED_MAGIC.byteLength,
+    4
+  ).getUint32(0)
+  const rawOffset = STAGED_MAGIC.byteLength + 4 + senderBytes
+  if (rawOffset > plaintext.byteLength) throw new Error('Invalid staged email')
+  const sender = new TextDecoder().decode(plaintext.slice(STAGED_MAGIC.byteLength + 4, rawOffset))
+  return { raw: plaintext.slice(rawOffset), envelopeSender: sender || null }
 }

@@ -181,6 +181,8 @@ describe('email endpoint service', () => {
     }
     expect(historySql).toContain('replay_available')
     expect(historySql).toContain('replay_unavailable_reason')
+    expect(historySql).toContain('recovery_claimed_at')
+    expect(historySql).toContain('Replay is already in progress')
     expect(historySql).toContain('replay_endpoint.client_id = i.client_id')
   })
 

@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createOpaqueEmailObjectKey,
+  decryptStagedEmail,
   decryptRawEmail,
-  encryptRawEmail
+  encryptRawEmail,
+  encryptStagedEmail
 } from '../../workers/email-lead-intake/src/quarantine'
 import { createSignedHeaders } from '../../workers/email-lead-intake/src/signing'
 import worker, { handleEmailMessage } from '../../workers/email-lead-intake/src/index'
@@ -421,7 +423,15 @@ describe('email lead intake Worker', () => {
     expect(env.bucket.deletes).toEqual([OBJECT_KEY])
     const calls = deps.fetchImpl.mock.calls
     const stage = bodyOf(calls[1]?.[1])
-    const ingest = bodyOf(calls[2]?.[1])
+    const confirmation = bodyOf(calls[2]?.[1])
+    expect(confirmation).toEqual({
+      schemaVersion: 1,
+      ingestionId: INGESTION_ID,
+      correlationId: CORRELATION_ID,
+      encryptedObjectKey: OBJECT_KEY
+    })
+    expect(env.bucket.puts).toEqual([OBJECT_KEY])
+    const ingest = bodyOf(calls[3]?.[1])
     expect(ingest.correlationId).toBe(CORRELATION_ID)
     expect(ingest.externalIdHash).toBe(stage.externalIdHash)
     expect(ingest).toMatchObject({
@@ -548,6 +558,31 @@ describe('email lead intake Worker', () => {
     expect(bucket.putAttempts[2]?.options).toEqual(bucket.putAttempts[0]?.options)
     expect(deps.sleep).toHaveBeenNthCalledWith(1, 100)
     expect(deps.sleep).toHaveBeenNthCalledWith(2, 200)
+  })
+
+  it('retains the exact staged object when upload confirmation is lost after R2 put', async () => {
+    const env = environment()
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname
+      if (path.endsWith('/email-policy')) return responseJson(policy)
+      if (path.endsWith('/email-stage')) {
+        return responseJson({
+          schemaVersion: 1,
+          outcome: 'reserved',
+          correlationId: CORRELATION_ID,
+          ingestionId: INGESTION_ID,
+          encryptedObjectKey: OBJECT_KEY
+        })
+      }
+      if (path.endsWith('/email-stage-confirm')) throw new Error('response lost')
+      throw new Error('canonical ingest must not run')
+    })
+
+    await expect(handleEmailMessage(message().value, env, dependencies(fetchImpl)))
+      .rejects.toMatchObject({ name: 'RetryableEmailIntakeError', correlationId: CORRELATION_ID })
+    expect(env.bucket.puts).toEqual([OBJECT_KEY])
+    expect(env.bucket.objects.has(OBJECT_KEY)).toBe(true)
+    expect(env.bucket.deletes).toEqual([])
   })
 
   it('propagates exhausted R2 writes without a post-stage permanent rejection', async () => {
@@ -756,6 +791,24 @@ describe('email lead intake Worker', () => {
     await expect(decryptRawEmail(encrypted, 'different-secret')).rejects.toThrow()
   })
 
+  it('seals the exact envelope sender for direct-customer recovery without plaintext leakage', async () => {
+    const encrypted = await encryptStagedEmail(
+      RAW,
+      'alex.customer@example.test',
+      'encryption-secret-that-is-separate'
+    )
+    expect(decoder.decode(encrypted)).not.toContain('alex.customer@example.test')
+    await expect(decryptStagedEmail(encrypted, 'encryption-secret-that-is-separate')).resolves.toEqual({
+      raw: RAW,
+      envelopeSender: 'alex.customer@example.test'
+    })
+    const legacy = await encryptRawEmail(RAW, 'encryption-secret-that-is-separate')
+    await expect(decryptStagedEmail(legacy, 'encryption-secret-that-is-separate')).resolves.toEqual({
+      raw: RAW,
+      envelopeSender: null
+    })
+  })
+
   it('retries retryable canonical failures with bounded deterministic backoff and stable identity', async () => {
     const ingestBodies: string[] = []
     let ingestAttempts = 0
@@ -771,6 +824,7 @@ describe('email lead intake Worker', () => {
           encryptedObjectKey: OBJECT_KEY
         })
       }
+      if (path.endsWith('/email-stage-confirm')) return responseJson({ status: 'confirmed' })
       ingestBodies.push(String(init?.body))
       ingestAttempts++
       return ingestAttempts < 3
@@ -802,6 +856,7 @@ describe('email lead intake Worker', () => {
         ingestionId: INGESTION_ID,
         encryptedObjectKey: OBJECT_KEY
       }))
+      .mockImplementationOnce(async () => responseJson({ status: 'confirmed' }))
       .mockImplementationOnce(async () => responseJson({ status: 'quarantined' }))
     const quarantinedMessage = message()
     const quarantinedEnv = environment()
@@ -823,6 +878,7 @@ describe('email lead intake Worker', () => {
           encryptedObjectKey: OBJECT_KEY
         })
       }
+      if (path.endsWith('/email-stage-confirm')) return responseJson({ status: 'confirmed' })
       return responseJson({ error: 'temporary' }, 503)
     })
     const failedMessage = message()

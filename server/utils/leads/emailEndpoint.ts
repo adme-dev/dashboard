@@ -377,6 +377,10 @@ export async function listEmailEndpointIngestions(
           AND i.staged_object_key IS NOT NULL
           AND i.staged_expires_at > NOW()
           AND i.attempt_count < 5
+          AND (
+            i.recovery_lease_token IS NULL
+            OR i.recovery_claimed_at <= NOW() - INTERVAL '5 minutes'
+          )
           AND EXISTS (
             SELECT 1
             FROM lead_email_endpoints replay_endpoint
@@ -389,6 +393,9 @@ export async function listEmailEndpointIngestions(
         CASE
           WHEN i.status NOT IN ('quarantined', 'failed') THEN 'Already processed'
           WHEN i.attempt_count >= 5 THEN 'Maximum recovery attempts reached'
+          WHEN i.recovery_lease_token IS NOT NULL
+            AND i.recovery_claimed_at > NOW() - INTERVAL '5 minutes'
+            THEN 'Replay is already in progress'
           WHEN i.staged_object_key IS NULL THEN 'Retained evidence is unavailable'
           WHEN i.staged_expires_at IS NULL OR i.staged_expires_at <= NOW() THEN 'Retained evidence has expired'
           WHEN NOT EXISTS (

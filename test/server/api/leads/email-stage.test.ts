@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { query, transaction } = vi.hoisted(() => ({
+const { query, queryOne, transaction } = vi.hoisted(() => ({
   query: vi.fn(),
+  queryOne: vi.fn(),
   transaction: vi.fn()
 }))
 
 transaction.mockImplementation(async (callback: (db: { query: typeof query }) => Promise<unknown>) => callback({ query }))
 
-vi.mock('~~/server/utils/db', () => ({ queryOne: vi.fn(), transaction }))
-import { reserveEmailIngestionStage } from '../../../../server/utils/leads/emailIngestion'
+vi.mock('~~/server/utils/db', () => ({ queryOne, transaction }))
+import {
+  confirmEmailIngestionStage,
+  reserveEmailIngestionStage
+} from '../../../../server/utils/leads/emailIngestion'
 
 const HASH = 'a'.repeat(64)
 const CORRELATION_ID = '33333333-3333-4333-8333-333333333333'
@@ -31,7 +35,7 @@ function request() {
 }
 
 describe('email stage reservation', () => {
-  beforeEach(() => { query.mockReset(); transaction.mockClear() })
+  beforeEach(() => { query.mockReset(); queryOne.mockReset(); transaction.mockClear() })
 
   it('issues a random opaque key only for a non-terminal endpoint-scoped reservation', async () => {
     await expect(reserveEmailIngestionStage({} as never)).rejects.toMatchObject({ statusCode: 400 })
@@ -52,6 +56,7 @@ describe('email stage reservation', () => {
     expect(first.encryptedObjectKey).toMatch(/^email-ingestions\/[a-f0-9]{64}$/)
     expect(JSON.stringify(query.mock.calls[2]?.[1])).not.toContain('Jane Example')
     expect(query.mock.calls[2]?.[0]).toContain('sender_domain')
+    expect(query.mock.calls[2]?.[0]).toMatch(/staged_expires_at, next_attempt_at[\s\S]*\$11::timestamptz,[\s\S]*MAKE_INTERVAL/)
     expect(query.mock.calls[2]?.[1]).toContain('notify.carsales.com.au')
 
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
@@ -67,6 +72,7 @@ describe('email stage reservation', () => {
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
       id: '44444444-4444-4444-8444-444444444444',
       correlation_id: CORRELATION_ID,
+      status: 'accepted',
       terminal_at: '2026-07-29T01:00:00.000Z',
       staged_object_key: 'email-ingestions/previous-reservation-key'
     }] })
@@ -77,6 +83,33 @@ describe('email stage reservation', () => {
       ingestionId: '44444444-4444-4444-8444-444444444444',
       cleanupObjectKey: 'email-ingestions/previous-reservation-key'
     })
+  })
+
+  it('retains quarantined evidence instead of asking a redelivery to delete it', async () => {
+    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
+      id: '44444444-4444-4444-8444-444444444444',
+      correlation_id: CORRELATION_ID,
+      status: 'quarantined',
+      terminal_at: '2026-07-29T01:00:00.000Z',
+      staged_object_key: 'email-ingestions/retained-quarantine'
+    }] })
+    await expect(reserveEmailIngestionStage(request())).resolves.toMatchObject({
+      outcome: 'duplicate',
+      cleanupObjectKey: null
+    })
+  })
+
+  it('makes a reservation recoverable only after the exact R2 upload is confirmed', async () => {
+    queryOne.mockResolvedValueOnce({ id: '44444444-4444-4444-8444-444444444444' })
+    await expect(confirmEmailIngestionStage({
+      schemaVersion: 1,
+      ingestionId: '44444444-4444-4444-8444-444444444444',
+      correlationId: CORRELATION_ID,
+      encryptedObjectKey: 'email-ingestions/opaque-key-123456'
+    })).resolves.toEqual({ schemaVersion: 1, status: 'confirmed' })
+    expect(queryOne.mock.calls[0]?.[0]).toMatch(/staged_uploaded_at = COALESCE\(staged_uploaded_at, NOW\(\)\)/)
+    expect(queryOne.mock.calls[0]?.[0]).toMatch(/next_attempt_at = NOW\(\)/)
+    expect(queryOne.mock.calls[0]?.[0]).toMatch(/correlation_id = \$2[\s\S]*staged_object_key = \$3/)
   })
 
   it('rechecks sender restrictions on the locked endpoint before reserving storage', async () => {

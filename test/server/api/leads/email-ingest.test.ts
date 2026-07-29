@@ -67,8 +67,9 @@ function envelope(overrides: Record<string, unknown> = {}) {
 
 describe('email canonical ingress', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    for (const mock of Object.values(mocks)) mock.mockReset()
     mocks.transaction.mockImplementation(async (callback: (db: { query: typeof mocks.query }) => Promise<unknown>) => callback({ query: mocks.query }))
+    mocks.queryOne.mockResolvedValue({ id: INGESTION_ID })
     mocks.resolveLeadCaptureMode.mockResolvedValue('full_crm')
     mocks.acceptLead.mockResolvedValue({ status: 'created', leadId: '55555555-5555-4555-8555-555555555555' })
     mocks.duplicateSignal.mockResolvedValue(null)
@@ -209,16 +210,50 @@ describe('email canonical ingress', () => {
     expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/attempt_count = CASE[\s\S]*THEN 5/)
   })
 
-  it('leaves a failed fifth canonical handoff terminally failed', async () => {
+  it('terminally quarantines the exact fifth canonical failure without a sixth attempt', async () => {
     mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [ingestion({ attempt_count: 4 })] })
       .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
     mocks.acceptLead.mockRejectedValueOnce(new TypeError('canonical handoff failed'))
 
-    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope())).rejects.toThrow('canonical handoff failed')
+    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope()))
+      .resolves.toEqual({ status: 'quarantined' })
     expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(
-      /status = 'failed'[\s\S]*attempt_count = CASE[\s\S]*error_class = 'final_attempt_leased'[\s\S]*THEN 5[\s\S]*terminal_at = CASE WHEN \$3 THEN NOW\(\) ELSE NULL END/
+      /status = 'quarantined'[\s\S]*attempt_count = 5[\s\S]*error_class = 'attempts_exhausted'[\s\S]*terminal_at = NOW\(\)/
     )
-    expect(mocks.queryOne.mock.calls[0]?.[1]).toEqual([INGESTION_ID, 'TypeError', true])
+  })
+
+  it('atomically audits the exact fifth recovery failure as attempts exhausted', async () => {
+    const recoveryLeaseToken = '66666666-6666-4666-8666-666666666666'
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({ attempt_count: 4, recovery_lease_token: recoveryLeaseToken })]
+    }).mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+    mocks.acceptLead.mockRejectedValueOnce(new Error('canonical handoff failed'))
+    const recoveryQueries = vi.fn(async (sql: string) => ({
+      rows: sql.includes('UPDATE lead_email_ingestions') ? [{ id: INGESTION_ID }] : []
+    }))
+    mocks.transaction
+      .mockImplementationOnce(async callback => callback({ query: mocks.query }))
+      .mockImplementationOnce(async callback => callback({ query: recoveryQueries }))
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope(),
+      {
+        recoveryLeaseToken,
+        recoveryAudit: {
+          actorId: null,
+          actorType: 'cron',
+          action: 'recovery_completed'
+        }
+      }
+    )).resolves.toEqual({ status: 'quarantined' })
+    expect(recoveryQueries.mock.calls[0]?.[0]).toMatch(
+      /status = 'quarantined'[\s\S]*attempt_count = 5[\s\S]*attempts_exhausted/
+    )
+    expect(recoveryQueries.mock.calls[1]?.[0]).toMatch(
+      /lead_email_ingestion_audits[\s\S]*attempts_exhausted/
+    )
   })
 
   it('does not start a sixth canonical handoff after the fifth claim is terminal', async () => {
@@ -237,6 +272,7 @@ describe('email canonical ingress', () => {
 
   it('calls the canonical full-CRM boundary with rules enabled and keeps similarity failure advisory', async () => {
     mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [ingestion()] })
+      .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
       .mockResolvedValueOnce({ rows: [] })
     mocks.duplicateSignal.mockRejectedValueOnce(new Error('similarity unavailable'))
 
@@ -257,17 +293,14 @@ describe('email canonical ingress', () => {
   })
 
   it('leases a claim so a concurrent retry cannot call canonical acceptance twice', async () => {
-    let leased = false
     let releaseAcceptance!: (value: { status: 'created', leadId: string }) => void
     mocks.acceptLead.mockImplementationOnce(() => new Promise(resolve => { releaseAcceptance = resolve }))
-    mocks.query.mockImplementation(async (sql: string) => {
-      if (sql.includes('FROM lead_email_endpoints')) return { rows: [endpoint] }
-      if (sql.includes('FROM lead_email_ingestions')) {
-        return { rows: [ingestion({ next_attempt_at: leased ? '2099-01-01T00:00:00.000Z' : null })] }
-      }
-      if (sql.includes('attempt_count = attempt_count + 1')) leased = true
-      return { rows: [] }
-    })
+    mocks.query
+      .mockResolvedValueOnce({ rows: [endpoint] })
+      .mockResolvedValueOnce({ rows: [ingestion()] })
+      .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+      .mockResolvedValueOnce({ rows: [endpoint] })
+      .mockResolvedValueOnce({ rows: [ingestion({ next_attempt_at: '2099-01-01T00:00:00.000Z' })] })
 
     const first = acceptEmailEnvelope({} as never, INGESTION_ID, envelope())
     await vi.waitFor(() => expect(mocks.acceptLead).toHaveBeenCalledOnce())
@@ -350,5 +383,60 @@ describe('email canonical ingress', () => {
     )).resolves.toEqual({ status: 'in_progress' })
 
     expect(mocks.acceptLead).not.toHaveBeenCalled()
+  })
+
+  it('does not report acceptance when a delayed owner loses the terminal compare-and-set', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] })
+      .mockResolvedValueOnce({ rows: [ingestion()] })
+      .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+    mocks.queryOne.mockResolvedValueOnce(null)
+
+    await expect(acceptEmailEnvelope({} as never, INGESTION_ID, envelope()))
+      .resolves.toEqual({ status: 'in_progress' })
+
+    expect(mocks.acceptLead).toHaveBeenCalledOnce()
+  })
+
+  it('rolls back a recovery terminal state when its audit insert fails', async () => {
+    const recoveryLeaseToken = '66666666-6666-4666-8666-666666666666'
+    let persistedStatus = 'received'
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({ recovery_lease_token: recoveryLeaseToken })]
+    }).mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+    mocks.transaction
+      .mockImplementationOnce(async callback => callback({ query: mocks.query }))
+      .mockImplementationOnce(async callback => callback({ query: mocks.query }))
+      .mockImplementationOnce(async (callback) => {
+        const before = persistedStatus
+        try {
+          return await callback({
+            query: vi.fn(async (sql: string) => {
+              if (sql.includes('UPDATE lead_email_ingestions')) {
+                persistedStatus = 'accepted'
+                return { rows: [{ id: INGESTION_ID }] }
+              }
+              throw new Error('audit unavailable')
+            })
+          })
+        } catch (error) {
+          persistedStatus = before
+          throw error
+        }
+      })
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope(),
+      {
+        recoveryLeaseToken,
+        recoveryAudit: {
+          actorId: null,
+          actorType: 'cron',
+          action: 'recovery_completed'
+        }
+      }
+    )).rejects.toThrow('audit unavailable')
+    expect(persistedStatus).toBe('received')
   })
 })

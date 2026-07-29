@@ -141,6 +141,13 @@ export const EmailStageResponseSchema = z.discriminatedUnion('outcome', [
   }).strict()
 ])
 
+export const EmailStageConfirmationSchema = z.object({
+  schemaVersion: z.literal(1),
+  ingestionId: UuidSchema,
+  correlationId: UuidSchema,
+  encryptedObjectKey: EncryptedObjectKeySchema
+}).strict()
+
 export const EmailIngestEnvelopeSchema = z.object({
   schemaVersion: z.literal(1),
   correlationId: UuidSchema,
@@ -177,6 +184,7 @@ export type EmailIngestionStatus = z.infer<typeof EmailIngestionStatusSchema>
 export type EmailIngressTransport = z.infer<typeof EmailIngressTransportSchema>
 export type EmailSafeEvidence = z.infer<typeof EmailSafeEvidenceSchema>
 export type EmailEndpointPolicy = z.infer<typeof EmailEndpointPolicySchema>
+export type EmailStageConfirmation = z.infer<typeof EmailStageConfirmationSchema>
 export type ExtractedEmailField = z.infer<typeof EmailExtractedFieldSchema>
 export type EmailLeadExtraction = z.infer<typeof EmailLeadExtractionSchema>
 export type EmailIngestEnvelope = z.infer<typeof EmailIngestEnvelopeSchema>

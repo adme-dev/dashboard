@@ -9,7 +9,7 @@ import {
 import { extractEmailLeadWithAi, needsAiExtractionFallback } from '~~/shared/leads/email/ai'
 import { parseMimeContent } from '~~/shared/leads/email/mime'
 import { parseEmailLead, sha256Hex } from '~~/shared/leads/email/parser'
-import { decryptRawEmail } from '~~/shared/leads/email/quarantine'
+import { decryptStagedEmail } from '~~/shared/leads/email/quarantine'
 import type { NormalizedInboundEmail } from '~~/shared/leads/email/types'
 import { createNitroEmailAiRuntime } from '~~/server/utils/leads/emailAiRuntime'
 import { getCachedObjectBinding } from '~~/server/utils/email'
@@ -34,6 +34,7 @@ export interface EmailRecoveryClaim {
   }
   staged_object_key: string | null
   staged_expires_at: string | null
+  staged_uploaded_at: string | null
   attempt_count: number
   created_at: string
   endpoint_enabled: boolean
@@ -84,6 +85,15 @@ interface EmailRecoveryAuditEvent {
 }
 
 export interface EmailRecoveryRepository {
+  commitTransition?(input: {
+    kind: 'quarantine' | 'reschedule' | 'clear_terminal' | 'release_terminal'
+    ingestionId: string
+    leaseToken: string
+    reason?: EmailRecoveryReason
+    delaySeconds?: number
+    clearObjectKey?: boolean
+    audit: EmailRecoveryAuditEvent
+  }): Promise<boolean>
   quarantine(
     ingestionId: string,
     leaseToken: string,
@@ -113,7 +123,14 @@ type AcceptEnvelope = (
   event: H3Event,
   ingestionId: string,
   envelope: EmailIngestEnvelope,
-  options: { recoveryLeaseToken: string }
+  options: {
+    recoveryLeaseToken: string
+    recoveryAudit?: {
+      actorId: string | null
+      actorType: 'cron' | 'team_member'
+      action: 'recovery_completed' | 'manual_replay_completed'
+    }
+  }
 ) => Promise<{ status: 'accepted', leadId: string } | { status: 'duplicate' | 'quarantined' | 'in_progress' }>
 
 export interface ProcessEmailRecoveryDependencies {
@@ -167,13 +184,21 @@ export async function claimNextEmailRecovery(
       RETURNING
         i.id, i.endpoint_id, i.client_id, i.correlation_id, i.transport,
         i.external_id_hash, i.message_id_hash, i.provider, i.sender_domain,
-        i.safe_evidence, i.staged_object_key, i.staged_expires_at,
+        i.safe_evidence, i.staged_object_key, i.staged_expires_at, i.staged_uploaded_at,
         i.attempt_count, i.created_at,
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
         e.ai_extraction_mode, e.allowed_sender_domains
     `, [leaseToken, RECOVERY_LEASE_SECONDS])
-    return result.rows[0] ?? null
+    const claim = result.rows[0] ?? null
+    if (claim) {
+      await db.query(`
+        INSERT INTO lead_email_ingestion_audits (
+          ingestion_id, endpoint_id, client_id, actor_type, action, outcome
+        ) VALUES ($1, $2, $3, 'cron', 'recovery_claimed', 'claimed')
+      `, [claim.id, claim.endpoint_id, claim.client_id])
+    }
+    return claim
   })
 }
 
@@ -219,13 +244,21 @@ export async function claimNextEmailTerminalReconciliation(
       RETURNING
         i.id, i.endpoint_id, i.client_id, i.correlation_id, i.transport,
         i.external_id_hash, i.message_id_hash, i.provider, i.sender_domain,
-        i.safe_evidence, i.staged_object_key, i.staged_expires_at,
+        i.safe_evidence, i.staged_object_key, i.staged_expires_at, i.staged_uploaded_at,
         i.attempt_count, i.created_at,
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
         e.ai_extraction_mode, e.allowed_sender_domains
     `, [leaseToken, RECOVERY_LEASE_SECONDS])
-    return result.rows[0] ?? null
+    const claim = result.rows[0] ?? null
+    if (claim) {
+      await db.query(`
+        INSERT INTO lead_email_ingestion_audits (
+          ingestion_id, endpoint_id, client_id, actor_type, action, outcome
+        ) VALUES ($1, $2, $3, 'cron', 'recovery_claimed', 'claimed')
+      `, [claim.id, claim.endpoint_id, claim.client_id])
+    }
+    return claim
   })
 }
 
@@ -267,22 +300,6 @@ function retryDelaySeconds(priorAttempts: number): number {
   return Math.min(60 * (2 ** priorAttempts), 60 * 60)
 }
 
-async function audit(
-  claim: EmailRecoveryClaim,
-  repository: EmailRecoveryRepository,
-  event: Omit<EmailRecoveryAuditEvent, 'ingestionId' | 'endpointId' | 'clientId' | 'actorId' | 'actorType'>,
-  actor?: ProcessEmailRecoveryDependencies['auditActor']
-) {
-  await repository.audit({
-    ingestionId: claim.id,
-    endpointId: claim.endpoint_id,
-    clientId: claim.client_id,
-    actorId: actor?.actorId ?? null,
-    actorType: actor?.actorType ?? 'cron',
-    ...event
-  })
-}
-
 async function quarantine(
   claim: EmailRecoveryClaim,
   leaseToken: string,
@@ -290,18 +307,24 @@ async function quarantine(
   reason: EmailRecoveryReason,
   clearObjectKey: boolean
 ) {
-  const updated = await dependencies.repository.quarantine(
-    claim.id,
-    leaseToken,
-    reason,
-    clearObjectKey
-  )
-  if (!updated) return { status: 'quarantined' as const, reason: 'lease_lost' as const }
-  await audit(claim, dependencies.repository, {
+  const auditEvent: EmailRecoveryAuditEvent = {
+    ingestionId: claim.id,
+    endpointId: claim.endpoint_id,
+    clientId: claim.client_id,
+    actorId: dependencies.auditActor?.actorId ?? null,
+    actorType: dependencies.auditActor?.actorType ?? 'cron',
     action: dependencies.auditActor ? 'manual_replay_rejected' : 'recovery_quarantined',
     outcome: 'quarantined',
     reason
-  }, dependencies.auditActor)
+  }
+  const updated = dependencies.repository.commitTransition
+    ? await dependencies.repository.commitTransition({
+        kind: 'quarantine', ingestionId: claim.id, leaseToken, reason,
+        clearObjectKey, audit: auditEvent
+      })
+    : await dependencies.repository.quarantine(claim.id, leaseToken, reason, clearObjectKey)
+  if (!updated) return { status: 'quarantined' as const, reason: 'lease_lost' as const }
+  if (!dependencies.repository.commitTransition) await dependencies.repository.audit(auditEvent)
   return { status: 'quarantined' as const, reason }
 }
 
@@ -331,15 +354,36 @@ export async function processEmailRecoveryClaim(
     return quarantine(claim, leaseToken, dependencies, 'missing_evidence', true)
   }
   const object = await dependencies.bucket.get(claim.staged_object_key)
+  if (!object && !claim.staged_uploaded_at) {
+    const auditEvent: EmailRecoveryAuditEvent = {
+      ingestionId: claim.id, endpointId: claim.endpoint_id, clientId: claim.client_id,
+      actorId: dependencies.auditActor?.actorId ?? null,
+      actorType: dependencies.auditActor?.actorType ?? 'cron',
+      action: dependencies.auditActor ? 'manual_replay_completed' : 'recovery_rescheduled',
+      outcome: 'rescheduled', reason: 'missing_evidence'
+    }
+    const updated = dependencies.repository.commitTransition
+      ? await dependencies.repository.commitTransition({
+          kind: 'reschedule', ingestionId: claim.id, leaseToken,
+          delaySeconds: RECOVERY_LEASE_SECONDS, reason: 'missing_evidence', audit: auditEvent
+        })
+      : await dependencies.repository.reschedule(claim.id, leaseToken, RECOVERY_LEASE_SECONDS, 'missing_evidence')
+    if (!updated) return { status: 'quarantined', reason: 'lease_lost' }
+    if (!dependencies.repository.commitTransition) await dependencies.repository.audit(auditEvent)
+    return { status: 'rescheduled' }
+  }
   if (!object) return quarantine(claim, leaseToken, dependencies, 'missing_evidence', true)
 
   let raw: Uint8Array
+  let originalEnvelopeSender: string | null
   let parsed: Awaited<ReturnType<typeof parseMimeContent>>
   try {
-    raw = await decryptRawEmail(
+    const staged = await decryptStagedEmail(
       new Uint8Array(await object.arrayBuffer()),
       dependencies.encryptionSecret
     )
+    raw = staged.raw
+    originalEnvelopeSender = staged.envelopeSender
     parsed = await parseMimeContent(raw)
   } catch {
     return quarantine(claim, leaseToken, dependencies, 'corrupt_evidence', false)
@@ -356,7 +400,7 @@ export async function processEmailRecoveryClaim(
   const normalized: NormalizedInboundEmail = {
     transport: claim.transport,
     envelopeRecipient: claim.email_address,
-    envelopeSender: claim.sender_domain ? `recovery@${claim.sender_domain}` : null,
+    envelopeSender: originalEnvelopeSender,
     headerFrom: parsed.headerFrom,
     subject: parsed.subject,
     text: parsed.text ?? parsed.htmlText,
@@ -411,42 +455,73 @@ export async function processEmailRecoveryClaim(
       event,
       claim.id,
       envelope,
-      { recoveryLeaseToken: leaseToken }
+      {
+        recoveryLeaseToken: leaseToken,
+        recoveryAudit: {
+          actorId: dependencies.auditActor?.actorId ?? null,
+          actorType: dependencies.auditActor?.actorType ?? 'cron',
+          action: dependencies.auditActor ? 'manual_replay_completed' : 'recovery_completed'
+        }
+      }
     )
   } catch {
     const delay = retryDelaySeconds(claim.attempt_count)
-    const updated = await dependencies.repository.reschedule(
-      claim.id,
-      leaseToken,
-      delay,
-      'canonical_transient'
-    )
+    const auditEvent: EmailRecoveryAuditEvent = {
+      ingestionId: claim.id, endpointId: claim.endpoint_id, clientId: claim.client_id,
+      actorId: dependencies.auditActor?.actorId ?? null,
+      actorType: dependencies.auditActor?.actorType ?? 'cron',
+      action: dependencies.auditActor ? 'manual_replay_completed' : 'recovery_rescheduled',
+      outcome: 'rescheduled', reason: 'canonical_transient'
+    }
+    const updated = dependencies.repository.commitTransition
+      ? await dependencies.repository.commitTransition({
+          kind: 'reschedule', ingestionId: claim.id, leaseToken,
+          delaySeconds: delay, reason: 'canonical_transient', audit: auditEvent
+        })
+      : await dependencies.repository.reschedule(claim.id, leaseToken, delay, 'canonical_transient')
     if (!updated) {
       return { status: 'quarantined', reason: 'lease_lost' }
     }
-    await audit(claim, dependencies.repository, {
-      action: dependencies.auditActor ? 'manual_replay_completed' : 'recovery_rescheduled',
-      outcome: 'rescheduled',
-      reason: 'canonical_transient'
-    }, dependencies.auditActor)
+    if (!dependencies.repository.commitTransition) await dependencies.repository.audit(auditEvent)
     return { status: 'rescheduled' }
   }
 
   if (result.status === 'accepted' || result.status === 'duplicate') {
     await dependencies.bucket.delete(claim.staged_object_key)
-    const cleared = await dependencies.repository.clearTerminalObject(claim.id, leaseToken)
+    const auditEvent: EmailRecoveryAuditEvent = {
+      ingestionId: claim.id, endpointId: claim.endpoint_id, clientId: claim.client_id,
+      actorId: dependencies.auditActor?.actorId ?? null,
+      actorType: dependencies.auditActor?.actorType ?? 'cron',
+      action: 'terminal_cleanup',
+      outcome: 'deleted'
+    }
+    const cleared = dependencies.repository.commitTransition
+      ? await dependencies.repository.commitTransition({
+          kind: 'clear_terminal', ingestionId: claim.id, leaseToken, audit: auditEvent
+        })
+      : await dependencies.repository.clearTerminalObject(claim.id, leaseToken)
     if (!cleared) throw new Error('Email recovery lease lost')
-    await audit(claim, dependencies.repository, {
-      action: dependencies.auditActor ? 'manual_replay_completed' : 'recovery_completed',
-      outcome: result.status
-    }, dependencies.auditActor)
+    if (!dependencies.repository.commitTransition) await dependencies.repository.audit(auditEvent)
     return { status: result.status }
   }
-  await dependencies.repository.releaseTerminalLease(claim.id, leaseToken)
-  await audit(claim, dependencies.repository, {
+  if (result.status === 'in_progress') {
+    return { status: 'quarantined', reason: 'lease_lost' }
+  }
+  const auditEvent: EmailRecoveryAuditEvent = {
+    ingestionId: claim.id, endpointId: claim.endpoint_id, clientId: claim.client_id,
+    actorId: dependencies.auditActor?.actorId ?? null,
+    actorType: dependencies.auditActor?.actorType ?? 'cron',
     action: dependencies.auditActor ? 'manual_replay_completed' : 'recovery_completed',
     outcome: 'quarantined'
-  }, dependencies.auditActor)
+  }
+  if (dependencies.repository.commitTransition) {
+    await dependencies.repository.commitTransition({
+      kind: 'release_terminal', ingestionId: claim.id, leaseToken, audit: auditEvent
+    })
+  } else {
+    await dependencies.repository.releaseTerminalLease(claim.id, leaseToken)
+    await dependencies.repository.audit(auditEvent)
+  }
   return { status: 'quarantined', reason: 'lease_lost' }
 }
 
@@ -464,7 +539,14 @@ export async function claimNextTerminalEmailObject(
         SELECT id
         FROM lead_email_ingestions
         WHERE terminal_at IS NOT NULL
-          AND status IN ('accepted', 'duplicate')
+          AND (
+            status IN ('accepted', 'duplicate')
+            OR (
+              status IN ('quarantined', 'failed')
+              AND staged_expires_at IS NOT NULL
+              AND staged_expires_at <= NOW()
+            )
+          )
           AND staged_object_key IS NOT NULL
           AND (
             recovery_lease_token IS NULL
@@ -487,6 +569,10 @@ export async function claimNextTerminalEmailObject(
 }
 
 interface TerminalCleanupRepository {
+  clearTerminalObjectWithAudit?(
+    ingestionId: string,
+    leaseToken: string
+  ): Promise<boolean>
   claimTerminalObject(leaseToken: string): Promise<TerminalCleanupCandidate | null>
   clearTerminalObject(ingestionId: string, leaseToken: string): Promise<boolean>
   audit(event: {
@@ -510,20 +596,82 @@ export async function cleanupTerminalEmailEvidence(input: {
     const candidate = await input.repository.claimTerminalObject(leaseToken)
     if (!candidate) break
     await input.bucket.delete(candidate.staged_object_key)
-    const cleared = await input.repository.clearTerminalObject(candidate.id, leaseToken)
+    const cleared = input.repository.clearTerminalObjectWithAudit
+      ? await input.repository.clearTerminalObjectWithAudit(candidate.id, leaseToken)
+      : await input.repository.clearTerminalObject(candidate.id, leaseToken)
     if (!cleared) throw new Error('Email recovery lease lost')
-    await input.repository.audit({
-      ingestionId: candidate.id,
-      actorType: 'cron',
-      action: 'terminal_cleanup',
-      outcome: 'deleted'
-    })
+    if (!input.repository.clearTerminalObjectWithAudit) {
+      await input.repository.audit({
+        ingestionId: candidate.id,
+        actorType: 'cron',
+        action: 'terminal_cleanup',
+        outcome: 'deleted'
+      })
+    }
     cleaned++
   }
   return { cleaned }
 }
 
 const defaultRepository: EmailRecoveryRepository = {
+  async commitTransition(input) {
+    return transaction(async (db) => {
+      let result
+      if (input.kind === 'quarantine') {
+        result = await db.query(`
+          UPDATE lead_email_ingestions
+          SET status = 'quarantined', error_class = $3, terminal_at = NOW(),
+            next_attempt_at = NULL,
+            staged_object_key = CASE WHEN $4 THEN NULL ELSE staged_object_key END,
+            recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
+          WHERE id = $1 AND recovery_lease_token = $2::uuid
+          RETURNING id
+        `, [input.ingestionId, input.leaseToken, input.reason, input.clearObjectKey ?? false])
+      } else if (input.kind === 'reschedule') {
+        result = await db.query(`
+          UPDATE lead_email_ingestions
+          SET status = 'failed', error_class = $4, terminal_at = NULL,
+            next_attempt_at = NOW() + MAKE_INTERVAL(secs => $3::int),
+            recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
+          WHERE id = $1 AND recovery_lease_token = $2::uuid
+            AND terminal_at IS NULL AND attempt_count < 5
+          RETURNING id
+        `, [input.ingestionId, input.leaseToken, input.delaySeconds, input.reason])
+      } else if (input.kind === 'clear_terminal') {
+        result = await db.query(`
+          UPDATE lead_email_ingestions
+          SET staged_object_key = NULL, recovery_lease_token = NULL,
+            recovery_claimed_at = NULL, updated_at = NOW()
+          WHERE id = $1 AND recovery_lease_token = $2::uuid
+            AND terminal_at IS NOT NULL
+            AND (
+              status IN ('accepted', 'duplicate')
+              OR (status IN ('quarantined', 'failed') AND staged_expires_at <= NOW())
+            )
+          RETURNING id
+        `, [input.ingestionId, input.leaseToken])
+      } else {
+        result = await db.query(`
+          UPDATE lead_email_ingestions
+          SET recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
+          WHERE id = $1 AND recovery_lease_token = $2::uuid AND terminal_at IS NOT NULL
+          RETURNING id
+        `, [input.ingestionId, input.leaseToken])
+      }
+      if (!result.rows?.[0]) return false
+      const event = input.audit
+      await db.query(`
+        INSERT INTO lead_email_ingestion_audits (
+          ingestion_id, endpoint_id, client_id, actor_id, actor_type,
+          action, outcome, reason
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        event.ingestionId, event.endpointId, event.clientId, event.actorId,
+        event.actorType, event.action, event.outcome, event.reason ?? null
+      ])
+      return true
+    })
+  },
   async quarantine(ingestionId, leaseToken, reason, clearObjectKey) {
     const row = await queryOne<{ id: string }>(`
       UPDATE lead_email_ingestions
@@ -569,7 +717,14 @@ const defaultRepository: EmailRecoveryRepository = {
       WHERE id = $1
         AND recovery_lease_token = $2::uuid
         AND terminal_at IS NOT NULL
-        AND status IN ('accepted', 'duplicate')
+        AND (
+          status IN ('accepted', 'duplicate')
+          OR (
+            status IN ('quarantined', 'failed')
+            AND staged_expires_at IS NOT NULL
+            AND staged_expires_at <= NOW()
+          )
+        )
       RETURNING id
     `, [ingestionId, leaseToken])
     return Boolean(row)
@@ -613,6 +768,34 @@ const defaultTerminalCleanupRepository: TerminalCleanupRepository = {
   },
   async clearTerminalObject(ingestionId, leaseToken) {
     return defaultRepository.clearTerminalObject(ingestionId, leaseToken)
+  },
+  async clearTerminalObjectWithAudit(ingestionId, leaseToken) {
+    return transaction(async (db) => {
+      const cleared = await db.query(`
+        UPDATE lead_email_ingestions
+        SET staged_object_key = NULL, recovery_lease_token = NULL,
+          recovery_claimed_at = NULL, updated_at = NOW()
+        WHERE id = $1 AND recovery_lease_token = $2::uuid
+          AND terminal_at IS NOT NULL
+          AND (
+            status IN ('accepted', 'duplicate')
+            OR (status IN ('quarantined', 'failed') AND staged_expires_at <= NOW())
+          )
+        RETURNING id, endpoint_id, client_id
+      `, [ingestionId, leaseToken])
+      const row = cleared.rows?.[0] as {
+        id: string
+        endpoint_id: string
+        client_id: string
+      } | undefined
+      if (!row) return false
+      await db.query(`
+        INSERT INTO lead_email_ingestion_audits (
+          ingestion_id, endpoint_id, client_id, actor_type, action, outcome
+        ) VALUES ($1, $2, $3, 'cron', 'terminal_cleanup', 'deleted')
+      `, [row.id, row.endpoint_id, row.client_id])
+      return true
+    })
   },
   async audit(event) {
     await queryOne(`
@@ -697,15 +880,6 @@ export async function recoverEmailIngestions(
       const claim = await claimNext(leaseToken)
       if (!claim) break
       try {
-        await repository.audit({
-          ingestionId: claim.id,
-          endpointId: claim.endpoint_id,
-          clientId: claim.client_id,
-          actorId: null,
-          actorType: 'cron',
-          action: 'recovery_claimed',
-          outcome: 'claimed'
-        })
         const outcome = await processEmailRecoveryClaim(event, claim, leaseToken, {
           bucket: runtime.bucket,
           encryptionSecret: runtime.encryptionSecret,
@@ -759,13 +933,14 @@ async function claimEmailReplay(
       status: string
       terminal_at: string | null
       recovery_lease_token: string | null
+      recovery_claimed_at: string | null
     }>(`
       SELECT
         i.id, i.endpoint_id, i.client_id, i.correlation_id, i.transport,
         i.external_id_hash, i.message_id_hash, i.provider, i.sender_domain,
-        i.safe_evidence, i.staged_object_key, i.staged_expires_at,
+        i.safe_evidence, i.staged_object_key, i.staged_expires_at, i.staged_uploaded_at,
         i.attempt_count, i.created_at, i.status, i.terminal_at,
-        i.recovery_lease_token,
+        i.recovery_lease_token, i.recovery_claimed_at,
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
         e.ai_extraction_mode, e.allowed_sender_domains
@@ -776,12 +951,18 @@ async function claimEmailReplay(
       JOIN team_members tm
         ON tm.id = $2
        AND tm.is_active = TRUE
-       AND tm.user_role IN ('owner', 'admin')
       WHERE i.id = $1
       FOR UPDATE OF i SKIP LOCKED
     `, [ingestionId, actorId])
     const claim = selected.rows[0]
-    if (!claim || claim.recovery_lease_token) {
+    if (
+      !claim
+      || (
+        claim.recovery_lease_token
+        && claim.recovery_claimed_at
+        && new Date(claim.recovery_claimed_at).getTime() > Date.now() - RECOVERY_LEASE_SECONDS * 1000
+      )
+    ) {
       return { outcome: 'rejected', reason: 'lease_lost' }
     }
     let reason: EmailRecoveryReason | null = null
@@ -815,7 +996,10 @@ async function claimEmailReplay(
         updated_at = NOW()
       WHERE id = $1
         AND client_id = $2
-        AND recovery_lease_token IS NULL
+        AND (
+          recovery_lease_token IS NULL
+          OR recovery_claimed_at <= NOW() - MAKE_INTERVAL(secs => $4::int)
+        )
         AND attempt_count < 5
       RETURNING id
     `, [claim.id, claim.client_id, leaseToken, RECOVERY_LEASE_SECONDS])

@@ -1,6 +1,8 @@
 export {
   createOpaqueEmailObjectKey,
+  decryptStagedEmail,
   decryptRawEmail,
+  encryptStagedEmail,
   encryptRawEmail,
   secretsAreEqual
 } from '../../../shared/leads/email/quarantine'

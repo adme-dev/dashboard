@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { encryptRawEmail } from '../../../../workers/email-lead-intake/src/quarantine'
+import {
+  encryptRawEmail,
+  encryptStagedEmail
+} from '../../../../workers/email-lead-intake/src/quarantine'
 
 const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
@@ -47,6 +50,7 @@ const claimedRow = {
   safe_evidence: { hasText: true, hasHtml: false, hasAdf: false, fieldKeys: ['email'] },
   staged_object_key: 'email-ingestions/opaque-random-key',
   staged_expires_at: '2026-08-05T00:00:00.000Z',
+  staged_uploaded_at: '2026-07-29T00:00:01.000Z',
   attempt_count: 0,
   created_at: '2026-07-29T00:00:00.000Z',
   endpoint_enabled: true,
@@ -110,7 +114,27 @@ describe('email recovery claims', () => {
     expect(sql).toMatch(/recovery_claimed_at = NOW\(\)/)
     expect(sql).toMatch(/next_attempt_at = NOW\(\) \+ MAKE_INTERVAL/)
     expect(sql).toMatch(/recovery_claimed_at <= NOW\(\) - MAKE_INTERVAL/)
+    expect(sql).not.toMatch(/staged_uploaded_at IS NOT NULL/)
     expect(params).toEqual([LEASE_TOKEN, 300])
+  })
+
+  it('reschedules missing unconfirmed evidence without consuming a canonical attempt', async () => {
+    const harness = recoveryHarness()
+    harness.bucket.get.mockResolvedValueOnce(null)
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      { ...claimedRow, staged_uploaded_at: null, attempt_count: 0 },
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'rescheduled' })
+    expect(harness.repository.reschedule).toHaveBeenCalledWith(
+      claimedRow.id,
+      LEASE_TOKEN,
+      300,
+      'missing_evidence'
+    )
+    expect(harness.repository.quarantine).not.toHaveBeenCalled()
+    expect(harness.acceptEnvelope).not.toHaveBeenCalled()
   })
 
   it('returns a row to only one of two concurrent claimers', async () => {
@@ -167,6 +191,7 @@ describe('email recovery claims', () => {
 
     const [sql, params] = mocks.query.mock.calls[0]!
     expect(sql).toMatch(/status IN \('accepted', 'duplicate'\)/)
+    expect(sql).toMatch(/status IN \('quarantined', 'failed'\)[\s\S]*staged_expires_at <= NOW\(\)/)
     expect(sql).toMatch(/recovery_claimed_at <= NOW\(\) - MAKE_INTERVAL/)
     expect(sql).toMatch(/FOR UPDATE SKIP LOCKED/)
     expect(params).toEqual([LEASE_TOKEN, 300])
@@ -217,14 +242,62 @@ describe('email recovery processing', () => {
         externalIdHash: claimedRow.external_id_hash
       }
     })
-    expect(harness.acceptEnvelope.mock.calls[0]?.[3]).toEqual({
-      recoveryLeaseToken: LEASE_TOKEN
+    expect(harness.acceptEnvelope.mock.calls[0]?.[3]).toMatchObject({
+      recoveryLeaseToken: LEASE_TOKEN,
+      recoveryAudit: {
+        actorId: null,
+        actorType: 'cron',
+        action: 'recovery_completed'
+      }
     })
     expect(harness.bucket.delete).toHaveBeenCalledWith(claimedRow.staged_object_key)
     expect(harness.repository.clearTerminalObject).toHaveBeenCalledWith(
       INGESTION_ID,
       LEASE_TOKEN
     )
+  })
+
+  it('preserves an unlabelled direct-customer envelope sender through recovery', async () => {
+    const directRaw = new TextEncoder().encode([
+      'From: Alex Example <alex@example.test>',
+      'Subject: Website enquiry',
+      'Message-ID: <direct-42@example.test>',
+      '',
+      'Hello, I am Alex Example. Phone: +61 400 123 456. I am interested in stock STK-7.',
+      'Kind regards,',
+      'Alex Example'
+    ].join('\r\n'))
+    const harness = recoveryHarness()
+    harness.bucket.get.mockResolvedValueOnce({
+      arrayBuffer: async () => (
+        await encryptStagedEmail(
+          directRaw,
+          'alex@example.test',
+          SECRET
+        )
+      ).buffer
+    })
+
+    await processEmailRecoveryClaim(
+      {} as never,
+      {
+        ...claimedRow,
+        provider: 'generic',
+        expected_provider: null,
+        sender_domain: 'example.test',
+        allowed_sender_domains: []
+      },
+      LEASE_TOKEN,
+      harness.dependencies
+    )
+
+    expect(harness.acceptEnvelope.mock.calls[0]?.[2]).toMatchObject({
+      extraction: {
+        fields: {
+          email: { value: 'alex@example.test' }
+        }
+      }
+    })
   })
 
   it('uses bounded exponential backoff after a transient canonical failure', async () => {
@@ -454,6 +527,20 @@ describe('email recovery processing', () => {
 
     expect(harness.bucket.get).not.toHaveBeenCalled()
     expect(harness.acceptEnvelope).not.toHaveBeenCalled()
+  })
+
+  it('trusts route-level ADMIN permission while requiring an active replay actor', async () => {
+    const harness = recoveryHarness()
+    mocks.query.mockResolvedValueOnce({ rows: [] })
+    await expect(replayEmailIngestion(
+      {} as never,
+      INGESTION_ID,
+      '88888888-8888-4888-8888-888888888888',
+      { ...harness.dependencies, randomUUID: () => LEASE_TOKEN }
+    )).rejects.toMatchObject({ statusCode: 409 })
+    const sql = mocks.query.mock.calls[0]?.[0] as string
+    expect(sql).toMatch(/tm\.is_active = TRUE/)
+    expect(sql).not.toMatch(/tm\.user_role IN/)
   })
 
   it.each([
