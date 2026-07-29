@@ -149,11 +149,14 @@ export async function loadFormMetadata(
 
 export async function loadRuleForForm(
   source: Exclude<LeadSource, 'manual'>,
-  form_id: string
+  form_id: string,
+  client_id: string | null
 ): Promise<{ rule: LeadFormRule, destinations: LeadRuleDestination[] } | null> {
+  if (!client_id) return null
   const rule = await queryOne<LeadFormRule>(
-    `SELECT * FROM lead_form_rules WHERE source = $1 AND form_id = $2`,
-    [source, form_id]
+    `SELECT * FROM lead_form_rules
+     WHERE source = $1 AND form_id = $2 AND client_id = $3`,
+    [source, form_id, client_id]
   )
   if (!rule) return null
   const destinations = await queryRows<LeadRuleDestination>(

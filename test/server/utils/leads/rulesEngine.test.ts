@@ -92,7 +92,7 @@ describe('evaluateLead', () => {
       ]
     })
     const out = await evaluateLead('L1')
-    expect(db.loadRuleForForm).toHaveBeenCalledWith('webhook', 'website-test-drive')
+    expect(db.loadRuleForForm).toHaveBeenCalledWith('webhook', 'website-test-drive', 'C1')
     expect(out.deliveries.map(d => d.destination_id)).toEqual(['D-A'])
   })
 
@@ -105,7 +105,7 @@ describe('evaluateLead', () => {
       ]
     })
     const out = await evaluateLead('L1')
-    expect(db.loadRuleForForm).toHaveBeenCalledWith('csv', 'meta-lead-center-export')
+    expect(db.loadRuleForForm).toHaveBeenCalledWith('csv', 'meta-lead-center-export', 'C1')
     expect(out.deliveries.map(d => d.destination_id)).toEqual(['D-A'])
   })
 
@@ -114,6 +114,33 @@ describe('evaluateLead', () => {
     loadRuleForForm.mockResolvedValueOnce(null)
     const out = await evaluateLead('L1')
     expect(out.deliveries).toEqual([])
+    expect(db.insertCancelledPlaceholder).toHaveBeenCalledWith('L1', 'no_rule_configured')
+  })
+
+  it('does not plan another client rule destinations for an email lead', async () => {
+    loadLead.mockResolvedValueOnce({
+      ...lead,
+      client_id: 'C1',
+      source: 'email',
+      form_id: 'email_endpoint:E1'
+    })
+    loadRuleForForm.mockResolvedValueOnce({
+      rule: {
+        ...rule(true),
+        client_id: 'C2',
+        source: 'email',
+        form_id: 'email_endpoint:E1'
+      },
+      destinations: [
+        destination({ id: 'CLIENT-B-DESTINATION', destination_type: 'webhook' })
+      ]
+    })
+
+    const out = await evaluateLead('L1')
+
+    expect(db.loadRuleForForm).toHaveBeenCalledWith('email', 'email_endpoint:E1', 'C1')
+    expect(out.deliveries).toEqual([])
+    expect(db.insertDelivery).not.toHaveBeenCalled()
     expect(db.insertCancelledPlaceholder).toHaveBeenCalledWith('L1', 'no_rule_configured')
   })
 
