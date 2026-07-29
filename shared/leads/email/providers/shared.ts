@@ -6,6 +6,15 @@ import type { EmailProviderAdapter, ProviderMatch } from './types'
 const PLACEHOLDER_HASH = '0'.repeat(64)
 const control = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g
 
+function parsedMailbox(value: string | null): string | null {
+  if (!value) return null
+  const candidate = value.match(/<\s*([^<>\s]+)\s*>/)?.[1] ?? value.trim()
+  const match = candidate.match(/^([^\s@<>]+)@([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+)$/)
+  return match ? `${match[1]}@${match[2]!.toLowerCase()}` : null
+}
+
+function mailboxDomain(value: string | null): string | null { return parsedMailbox(value)?.split('@')[1] ?? null }
+
 export interface ProviderDefinition {
   id: string
   priority: number
@@ -39,8 +48,8 @@ const labelPatterns: Array<[string, RegExp]> = [
   ['stock_number', /(?:^|\n)\s*(?:stock(?:\s*(?:number|no\.?))?|stock_number)\s*[:#\-]?\s*([^\n]+)/i]
 ]
 
-function strippedMessage(value: string): string {
-  return value.split(/\n(?:On .+ wrote:|From:.+|--\s*$)/im)[0]!.trim()
+export function strippedMessage(value: string): string {
+  return value.split(/\n(?:On .+ wrote:|From:.+|--\s*$|(?:Kind regards|Regards|Thanks|Thank you|Cheers|Sincerely)[,!]?\s*$)/im)[0]!.trim()
 }
 
 export function labelledFields(input: NormalizedInboundEmail): Record<string, ExtractedEmailField> {
@@ -63,8 +72,19 @@ export function labelledFields(input: NormalizedInboundEmail): Record<string, Ex
 
 export function extractionFor(definition: ProviderDefinition, input: NormalizedInboundEmail): EmailLeadExtraction | null {
   const fields = labelledFields(input)
+  const body = strippedMessage(emailBody(input))
+  const headerMailbox = parsedMailbox(input.headerFrom)
+  const envelopeMailbox = parsedMailbox(input.envelopeSender)
+  const directCustomer = definition.id === 'generic' && headerMailbox && envelopeMailbox && headerMailbox === envelopeMailbox
+  if (directCustomer) {
+    if (!fields.email) fields.email = field(headerMailbox, 0.9)
+    if (!fields.full_name) {
+      const name = body.match(/\b(?:my\s+name\s+is|i\s+am)\s+([\p{L}][\p{L}'’-]*(?:\s+[\p{L}][\p{L}'’-]*){1,3})/iu)?.[1]
+      if (name) fields.full_name = field(name, 0.76)
+    }
+  }
   if (!Object.keys(fields).length) return null
-  const message = fields.message
+  const message = fields.message ?? (directCustomer && body ? field(body, 0.7) : undefined)
   delete fields.message
   const vehicle = {
     year: fields.year,
@@ -97,8 +117,8 @@ export function createProviderAdapter(definition: ProviderDefinition): EmailProv
       const evidence: string[] = []
       if (definition.markers.test(body)) evidence.push('body:provider-marker')
       if (definition.markers.test(input.subject)) evidence.push('subject:provider-marker')
-      const sender = `${input.envelopeSender ?? ''} ${input.headerFrom ?? ''}`.toLowerCase()
-      if (definition.senderDomains.some(domain => sender.includes(`@${domain}`) || sender.includes(domain))) evidence.push('sender:provider-domain')
+      const senderDomain = mailboxDomain(input.envelopeSender) ?? mailboxDomain(input.headerFrom)
+      if (senderDomain && definition.senderDomains.some(domain => senderDomain === domain)) evidence.push('sender:provider-domain')
       if (expectedProvider === definition.id) evidence.push('expected:provider-hint')
       // A hint describes configuration, never constitutes evidence on its own.
       return { matched: evidence.some(item => !item.startsWith('expected:')), evidence }

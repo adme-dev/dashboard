@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 
 import { parseAdfXml, parseEmailLead, sha256Hex } from '../../shared/leads/email/parser'
 import type { EmailEndpointPolicy } from '../../shared/leads/email/contracts'
@@ -22,6 +23,19 @@ describe('deterministic email lead parser', () => {
     expect(() => parseAdfXml('<!DOCTYPE x [<!ENTITY boom "x">]><adf>&boom;</adf>', 'adf')).toThrow(/DTD|entity/i)
   })
 
+  it('accepts valid namespaced/uppercase ADF and numeric entities while rejecting malformed XML', () => {
+    const namespaced = `<ADF:ADF xmlns:ADF="urn:adf"><ADF:PROSPECT><ADF:ID>provider-42</ADF:ID><ADF:CUSTOMER><ADF:CONTACT><ADF:EMAIL>alex@example.test</ADF:EMAIL><ADF:PHONE>&#x2b;61400123456</ADF:PHONE></ADF:CONTACT></ADF:CUSTOMER></ADF:PROSPECT></ADF:ADF>`
+    expect(parseAdfXml(namespaced, 'adf')?.fields.phone?.value).toBe('+61400123456')
+    expect(parseAdfXml(readFileSync('test/fixtures/email-leads/carsales-adf-body.xml', 'utf8'), 'adf')?.provider).toBe('carsales')
+    expect(() => parseAdfXml('<adf><prospect></adf>', 'adf')).toThrow(/Malformed XML/i)
+    expect(() => parseAdfXml(readFileSync('test/fixtures/email-leads/entity-expansion.xml', 'utf8'), 'adf')).toThrow(/DTD|entity/i)
+  })
+
+  it('handles repeated ADF collection nodes deterministically', () => {
+    const repeated = '<adf><prospect><customer><contact><email>first@example.test</email><phone>+61400123456</phone></contact></customer></prospect><prospect><customer><contact><email>second@example.test</email><phone>+61400987654</phone></contact></customer></prospect></adf>'
+    expect(parseAdfXml(repeated, 'adf')?.fields.email?.value).toBe('first@example.test')
+  })
+
   it('extracts generic labelled and phone-only leads, strips reply/signature text, and never treats relay sender as customer email', () => {
     const extraction = parseEmailLead({ ...base, text: `${base.text}\n\nOn yesterday, Support wrote:\nold message\n-- \nSignature` }, policy)
     expect(extraction?.provider).toBe('carsales')
@@ -41,11 +55,39 @@ describe('deterministic email lead parser', () => {
     expect(parseEmailLead({ ...base, messageId: null, text: base.text }, policy)?.externalIdHash).toBe(fingerprint?.externalIdHash)
   })
 
+  it('canonicalizes a syntactically equivalent Message-ID and includes vehicle fields in fingerprint identity', () => {
+    const canonical = parseEmailLead({ ...base, text: base.text, messageId: '<message-42@EXAMPLE.TEST>' }, policy)
+    const spaced = parseEmailLead({ ...base, text: base.text, messageId: '< message-42@example.test >' }, policy)
+    expect(canonical?.externalIdHash).toBe(spaced?.externalIdHash)
+    const firstVehicle = parseEmailLead({ ...base, messageId: null, text: `${base.text}\nMake: Example` }, policy)
+    const secondVehicle = parseEmailLead({ ...base, messageId: null, text: `${base.text}\nMake: Different` }, policy)
+    expect(firstVehicle?.externalIdHash).not.toBe(secondVehicle?.externalIdHash)
+  })
+
+  it('uses a matching direct sender address only for a direct-customer email and removes signature text', () => {
+    const direct = parseEmailLead({ ...base, envelopeSender: 'alex@example.test', headerFrom: 'Alex Example <alex@example.test>', text: `${readFileSync('test/fixtures/email-leads/direct-customer.txt', 'utf8')}\nKind regards,\nAlex Example` }, { ...policy, expectedProvider: null })
+    expect(direct?.provider).toBe('generic')
+    expect(direct?.fields.email?.value).toBe('alex@example.test')
+    expect(direct?.fields.full_name?.value).toBe('Alex Example')
+    expect(direct?.message?.value).not.toMatch(/kind regards|signature/i)
+    const relay = parseEmailLead({ ...base, envelopeSender: 'relay@carsales.example', headerFrom: 'Alex Example <alex@example.test>', text: readFileSync('test/fixtures/email-leads/relay-without-customer-contact.txt', 'utf8') }, { ...policy, expectedProvider: null })
+    expect(relay?.fields.email).toBeUndefined()
+  })
+
   it.each([
-    ['carsales', 'Carsales'], ['autotrader', 'AutoTrader'], ['carsguide', 'CarsGuide'], ['drive', 'Drive'], ['gumtree', 'Gumtree'],
-    ['meta', 'New Facebook Lead'], ['instagram', 'New Instagram Lead'], ['tiktok', 'New TikTok Lead'], ['google', 'New Google Ads Lead']
-  ])('classifies %s from deterministic body evidence', (expected, marker) => {
-    expect(parseEmailLead({ ...base, text: `${marker}\nName: Alex Example\nPhone: +61 400 123 456` }, { ...policy, expectedProvider: null })?.provider).toBe(expected)
+    ['carsales', 'Carsales', 'carsales-adf-body.xml'], ['autotrader', 'AutoTrader', 'autotrader.txt'], ['carsguide', 'CarsGuide', 'carsguide.txt'], ['drive', 'Drive', 'drive.txt'], ['gumtree', 'Gumtree', 'gumtree.txt'],
+    ['meta', 'New Facebook Lead', 'meta.txt'], ['instagram', 'New Instagram Lead', 'instagram.txt'], ['tiktok', 'New TikTok Lead', 'tiktok.txt'], ['google', 'New Google Ads Lead', 'google.txt']
+  ])('classifies %s from deterministic body evidence and fixture %s', (expected, marker, fixture) => {
+    const text = fixture.endsWith('.xml') ? `${marker}\nName: Alex Example\nPhone: +61 400 123 456` : readFileSync(`test/fixtures/email-leads/${fixture}`, 'utf8')
+    expect(parseEmailLead({ ...base, text }, { ...policy, expectedProvider: null })?.provider).toBe(expected)
+  })
+
+  it('uses generic, HTML, forwarded, phone-only, and ADF attachment fixtures', () => {
+    expect(parseEmailLead({ ...base, envelopeSender: 'relay@generic.example', headerFrom: 'relay@generic.example', text: readFileSync('test/fixtures/email-leads/generic-labelled.txt', 'utf8') }, policy)?.provider).toBe('generic')
+    expect(parseEmailLead({ ...base, text: null, html: readFileSync('test/fixtures/email-leads/html-only.html', 'utf8') }, { ...policy, expectedProvider: null })?.fields.phone?.value).toContain('400')
+    expect(parseEmailLead({ ...base, text: readFileSync('test/fixtures/email-leads/forwarded-replied.txt', 'utf8') }, { ...policy, expectedProvider: null })?.message?.value).toBe('Please call.')
+    expect(parseEmailLead({ ...base, text: readFileSync('test/fixtures/email-leads/phone-only.txt', 'utf8') }, { ...policy, expectedProvider: null })?.fields.phone).toBeDefined()
+    expect(parseEmailLead({ ...base, text: 'fallback', attachments: [{ filename: 'lead.adf', contentType: 'application/xml', content: new TextEncoder().encode(readFileSync('test/fixtures/email-leads/carsales-adf-attachment.xml', 'utf8')) }] }, policy)?.parser).toBe('adf')
   })
 
   it('uses a known SHA-256 vector before returning an externally safe identity hash', () => {

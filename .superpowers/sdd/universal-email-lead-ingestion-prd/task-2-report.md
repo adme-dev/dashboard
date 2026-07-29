@@ -108,3 +108,61 @@ known 39 failures / 3 errors.
 - The parser is deliberately isolated from endpoint policy resolution,
   transport normalisation, signing, raw storage, and persistence; those belong
   to later tasks and were not started here.
+
+## Correction round 1 — adversarial review remediation
+
+### RED → GREEN
+
+Added regression tests before changing production code. The first correction
+run failed five targeted assertions, proving the reported defects: encoded
+active HTML remained in output, numeric XML entities were rejected,
+Message-ID spellings hashed differently, direct-customer sender email was not
+available, and a provider sender suffix spoof classified as Carsales.
+
+After remediation, the focused suite passed twice consecutively under Node
+24.18.0:
+
+```text
+Test Files  3 passed (3)
+Tests       40 passed (40)
+```
+
+`pnpm run typecheck` and `git diff --check` completed successfully. The final
+full Vitest run retained the documented 39-failure / 3-error baseline (20
+failed / 1,224 passed test files; 39 failed / 6,985 passed tests / 6 skipped).
+The passing-test total increased only with the new Task 2 regressions; no Task
+2 tests failed.
+
+### Fixes
+
+- Replaced regex HTML stripping with a Worker-compatible inert tokenizer. It
+  decodes known entities before tokenization and suppresses active/resource
+  element content, including encoded and unclosed script markup. No DOM or
+  browser globals are used.
+- Added `XMLValidator` well-formedness validation, namespace removal and
+  local-name normalization for ADF. Namespaced/uppercase roots, repeated nodes,
+  and numeric character references are supported; DTDs and custom entities
+  remain rejected before parsing.
+- Replaced provider sender substring matching with RFC addr-spec extraction and
+  exact normalized-domain comparison. Display names and suffix domains no
+  longer classify a provider.
+- Added direct-customer detection only when parsed envelope and header mailbox
+  addresses exactly agree, after provider matching has failed. It extracts
+  sender email only in that mode, derives a prose name, preserves the customer
+  message, and removes reply/signature tails.
+- Canonicalized bracketed Message-ID syntax with a lower-cased domain before
+  hashing. Stable fallback fingerprints now include all normalized vehicle
+  fields.
+- Wired all nineteen sanitised fixtures into parser/MIME tests and extended
+  conformance coverage for post-extract immutability, no fetch calls, sender
+  spoofing, and ADF protection from lower-priority overwrites.
+
+### Attachment allocation bound
+
+Postal-mime exposes attachment encoding plus header/nesting limits but no
+per-attachment streaming abort hook. Its attachment content is consequently
+decoded before the parser can apply the 256 KiB extraction cap. The strict 2
+MiB raw pre-parse limit is therefore the allocation ceiling; the parser then
+explicitly rejects decoded XML/ADF attachments over 256 KiB. A focused test
+documents and exercises that post-decode rejection. No ineffective guard was
+added.

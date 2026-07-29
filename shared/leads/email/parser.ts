@@ -1,4 +1,4 @@
-import { XMLParser } from 'fast-xml-parser'
+import { XMLParser, XMLValidator } from 'fast-xml-parser'
 
 import type { EmailEndpointPolicy, EmailLeadExtraction, ExtractedEmailField } from './contracts'
 import { MAX_ADF_ATTACHMENT_BYTES, htmlToText } from './mime'
@@ -65,14 +65,22 @@ function safeXmlLex(xml: string): void {
     if (xml[index] === '&') {
       const end = xml.indexOf(';', index + 1)
       const entity = end < 0 ? '' : xml.slice(index + 1, end)
-      if (!['amp', 'lt', 'gt', 'apos', 'quot'].includes(entity)) throw new Error('XML entity references are not permitted')
+      if (!['amp', 'lt', 'gt', 'apos', 'quot'].includes(entity) && !/^#(?:x[0-9a-f]+|\d+)$/i.test(entity)) throw new Error('XML entity references are not permitted')
       index = end
     }
   }
 }
 
 type AdfLead = EmailLeadExtraction & { providerId: string | null }
-const adfField = (value: string, provenance: 'adf' | 'attachment'): ExtractedEmailField => ({ value: value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').slice(0, 4_000), confidence: 0.96, provenance })
+function decodeSafeXmlEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|apos|quot);/gi, (_match, entity: string) => {
+    const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', apos: "'", quot: '"' }
+    if (!entity.startsWith('#')) return named[entity.toLowerCase()]!
+    const point = entity[1]!.toLowerCase() === 'x' ? Number.parseInt(entity.slice(2), 16) : Number.parseInt(entity.slice(1), 10)
+    return Number.isSafeInteger(point) && point >= 0 && point <= 0x10ffff ? String.fromCodePoint(point) : ''
+  })
+}
+const adfField = (value: string, provenance: 'adf' | 'attachment'): ExtractedEmailField => ({ value: decodeSafeXmlEntities(value).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').slice(0, 4_000), confidence: 0.96, provenance })
 
 function flattenXml(value: unknown, name = '', into = new Map<string, string[]>(), part?: string): Map<string, string[]> {
   if (Array.isArray(value)) { value.forEach(item => flattenXml(item, name, into, part)); return into }
@@ -100,7 +108,19 @@ function firstValue(values: Map<string, string[]>, names: string[]): string | nu
 /** Parses ADF only after a stateful XML safety scan and an entity-disabled XML parse. */
 export function parseAdfXml(xml: string, provenance: 'adf' | 'attachment'): AdfLead | null {
   safeXmlLex(xml)
-  const parsed = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', textNodeName: '#text', trimValues: true, processEntities: false, ignoreDeclaration: true, ignorePiTags: true }).parse(xml)
+  const validation = XMLValidator.validate(xml)
+  if (validation !== true) throw new Error(`Malformed XML: ${validation.err.msg}`)
+  const parsed = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    textNodeName: '#text',
+    trimValues: true,
+    processEntities: false,
+    ignoreDeclaration: true,
+    ignorePiTags: true,
+    removeNSPrefix: true,
+    transformTagName: tagName => tagName.toLowerCase()
+  }).parse(xml)
   if (!parsed || typeof parsed !== 'object' || !Object.prototype.hasOwnProperty.call(parsed, 'adf')) return null
   const values = flattenXml(parsed)
   const first = firstValue(values, ['name:first', 'firstname', 'first_name'])
@@ -148,11 +168,18 @@ function adfFromEmail(input: NormalizedInboundEmail, maxBytes: number): AdfLead 
 
 function fingerprint(input: NormalizedInboundEmail, extraction: EmailLeadExtraction): string {
   const entries = Object.entries(extraction.fields).filter(([key]) => key !== 'lead_id').sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value.value.trim().toLowerCase()}`)
-  return `${extraction.provider}\n${input.subject.trim().toLowerCase()}\n${entries.join('\n')}\n${extraction.message?.value.trim().toLowerCase() ?? ''}`
+  const vehicle = Object.entries(extraction.vehicle ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value?.value.trim().toLowerCase() ?? ''}`)
+  return `${extraction.provider}\n${input.subject.trim().toLowerCase()}\n${entries.join('\n')}\n${vehicle.join('\n')}\n${extraction.message?.value.trim().toLowerCase() ?? ''}`
+}
+
+function canonicalMessageId(value: string | null): string | null {
+  if (!value) return null
+  const match = value.trim().match(/^<\s*([^<>\s@]+)@([^<>\s@]+)\s*>$/)
+  return match ? `${match[1]}@${match[2]!.toLowerCase()}` : null
 }
 
 function withIdentity(input: NormalizedInboundEmail, extraction: EmailLeadExtraction, providerId: string | null): EmailLeadExtraction {
-  const rawIdentity = providerId?.trim() || input.messageId?.trim() || fingerprint(input, extraction)
+  const rawIdentity = providerId?.trim() || canonicalMessageId(input.messageId) || fingerprint(input, extraction)
   const fields = { ...extraction.fields }
   delete fields.lead_id
   return { ...extraction, fields, externalIdHash: sha256Hex(rawIdentity) }

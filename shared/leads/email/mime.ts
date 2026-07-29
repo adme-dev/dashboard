@@ -13,21 +13,60 @@ function cleanText(value: string): string {
   return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').replace(/\r\n?/g, '\n').trim()
 }
 
-/** Converts markup without a DOM, executing nothing and following no URL. */
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#\d+|nbsp|amp|lt|gt|quot|apos);/gi, (_match, entity: string) => {
+    const named: Record<string, string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+    if (!entity.startsWith('#')) return named[entity.toLowerCase()]!
+    const point = entity[1]!.toLowerCase() === 'x' ? Number.parseInt(entity.slice(2), 16) : Number.parseInt(entity.slice(1), 10)
+    return Number.isSafeInteger(point) && point >= 0 && point <= 0x10ffff ? String.fromCodePoint(point) : ' '
+  })
+}
+
+function htmlTagAt(value: string, start: number): { end: number, name: string, closing: boolean } | null {
+  if (value.startsWith('<!--', start)) {
+    const end = value.indexOf('-->', start + 4)
+    return { end: end < 0 ? value.length : end + 3, name: '#comment', closing: false }
+  }
+  let cursor = start + 1
+  while (/\s/.test(value[cursor] ?? '')) cursor++
+  const closing = value[cursor] === '/'
+  if (closing) cursor++
+  while (/\s/.test(value[cursor] ?? '')) cursor++
+  const nameStart = cursor
+  while (/[A-Za-z0-9:-]/.test(value[cursor] ?? '')) cursor++
+  if (cursor === nameStart) return null
+  const name = value.slice(nameStart, cursor).toLowerCase()
+  let quote = ''
+  while (cursor < value.length) {
+    const char = value[cursor]!
+    if (quote) { if (char === quote) quote = ''; cursor++; continue }
+    if (char === '"' || char === "'") { quote = char; cursor++; continue }
+    if (char === '>') return { end: cursor + 1, name, closing }
+    cursor++
+  }
+  return { end: value.length, name, closing }
+}
+
+/** Inert streaming tokenizer: decodes entities first, drops active/resource nodes, and never invokes a DOM. */
 export function htmlToText(html: string): string {
-  const inert = html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style|iframe|object|embed|svg|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ')
-    .replace(/<(script|style|iframe|object|embed|svg|template)\b[^>]*\/?\s*>/gi, ' ')
-    .replace(/<\s*br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li|tr|h[1-6])\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&(nbsp|amp|lt|gt|quot|apos);/gi, (_match, name: string) => ({ nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" })[name.toLowerCase()]!)
-    .replace(/&#(x[0-9a-f]+|\d+);/gi, (_match, code: string) => {
-      const point = code[0].toLowerCase() === 'x' ? Number.parseInt(code.slice(1), 16) : Number.parseInt(code, 10)
-      return Number.isSafeInteger(point) && point >= 0 && point <= 0x10ffff ? String.fromCodePoint(point) : ' '
-    })
-  return cleanText(inert.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' '))
+  const value = decodeHtmlEntities(html)
+  const activeElements = new Set(['script', 'style', 'iframe', 'object', 'embed', 'svg', 'template', 'noscript'])
+  const resourceElements = new Set(['img', 'source', 'link', 'video', 'audio', 'track', 'frame'])
+  const breaks = new Set(['br', 'p', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+  let output = ''
+  let suppressed: string | null = null
+  for (let index = 0; index < value.length;) {
+    if (value[index] !== '<') { if (!suppressed) output += value[index]; index++; continue }
+    const tag = htmlTagAt(value, index)
+    if (!tag) { if (!suppressed) output += value[index]; index++; continue }
+    index = tag.end
+    if (tag.name === '#comment') continue
+    if (suppressed) { if (tag.closing && tag.name === suppressed) suppressed = null; continue }
+    if (!tag.closing && activeElements.has(tag.name)) { suppressed = tag.name; continue }
+    if (resourceElements.has(tag.name)) continue
+    if (breaks.has(tag.name)) output += '\n'
+  }
+  return cleanText(output.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' '))
 }
 
 function isXmlAttachment(filename: string, contentType: string, content: Uint8Array): boolean {

