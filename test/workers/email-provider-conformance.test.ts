@@ -13,23 +13,24 @@ const email: NormalizedInboundEmail = {
 describe('email provider adapter conformance', () => {
   it.each([...allEmailProviderAdapters, genericAdapter])('%s is deterministic, bounded, and does not mutate input', (adapter) => {
     const before = structuredClone(email)
-    const first = adapter.matches(email, adapter.id)
-    const second = adapter.matches(email, adapter.id)
-    expect(adapter.id).toMatch(/^[a-z][a-z0-9_-]+$/)
-    expect(adapter.priority).toBeGreaterThan(0)
-    expect(first).toEqual(second)
-    const extraction = adapter.extract(email)
-    expect(email).toEqual(before)
     const rejectedFetch = vi.fn(async () => { throw new Error('network access is forbidden') })
     vi.stubGlobal('fetch', rejectedFetch)
+    let first: ReturnType<typeof adapter.matches>
+    let second: ReturnType<typeof adapter.matches>
+    let extraction: ReturnType<typeof adapter.extract>
     try {
-      adapter.matches(email, adapter.id)
-      adapter.extract(email)
+      first = adapter.matches(email, adapter.id)
+      second = adapter.matches(email, adapter.id)
+      extraction = adapter.extract(email)
       expect(rejectedFetch).not.toHaveBeenCalled()
     }
     finally {
       vi.unstubAllGlobals()
     }
+    expect(adapter.id).toMatch(/^[a-z][a-z0-9_-]+$/)
+    expect(adapter.priority).toBeGreaterThan(0)
+    expect(first).toEqual(second)
+    expect(email).toEqual(before)
     if (extraction) {
       expect(extraction.overallConfidence).toBeGreaterThanOrEqual(0)
       expect(extraction.overallConfidence).toBeLessThanOrEqual(1)

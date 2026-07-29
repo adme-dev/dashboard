@@ -179,7 +179,7 @@ function canonicalMessageId(value: string | null): string | null {
     ? trimmed.match(/^<\s*([^<>\s]+)\s*>$/)?.[1]
     : trimmed
   if (!candidate) return null
-  const match = candidate.match(/^([^<>\s@,]+)@([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)$/)
+  const match = candidate.match(/^([A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*)@([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)$/)
   return match ? `${match[1]}@${match[2]!.toLowerCase()}` : null
 }
 

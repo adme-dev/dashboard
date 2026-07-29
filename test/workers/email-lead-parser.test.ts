@@ -62,7 +62,7 @@ describe('deterministic email lead parser', () => {
     expect(canonical?.externalIdHash).toBe(spaced?.externalIdHash)
     expect(canonical?.externalIdHash).toBe(unbracketed?.externalIdHash)
     const fingerprint = parseEmailLead({ ...base, text: base.text, messageId: null }, policy)
-    for (const malformed of ['message-42@example.test other@example.test', '<message-42@example.test><other@example.test>', '<message-42@example.test', 'message-42@@example.test']) {
+    for (const malformed of ['message-42@example.test other@example.test', '<message-42@example.test><other@example.test>', '<message-42@example.test', 'message-42@@example.test', '.bad@example.test', 'bad..id@example.test', 'bad.@example.test']) {
       expect(parseEmailLead({ ...base, text: base.text, messageId: malformed }, policy)?.externalIdHash).toBe(fingerprint?.externalIdHash)
     }
     const firstVehicle = parseEmailLead({ ...base, messageId: null, text: `${base.text}\nMake: Example` }, policy)
@@ -114,6 +114,14 @@ describe('deterministic email lead parser', () => {
       text: 'Name: Alex Example\nPhone: +61 400 123 456\nI am Alex Example and I would like to inspect the vehicle.'
     }, { ...policy, expectedProvider: null })
     expect(labelledRelay?.fields.email).toBeUndefined()
+
+    const nonCustomerInstruction = parseEmailLead({
+      ...base,
+      envelopeSender: 'updates@example.test',
+      headerFrom: 'Updates <updates@example.test>',
+      text: 'Please contact the customer about this enquiry.'
+    }, { ...policy, expectedProvider: null })
+    expect(nonCustomerInstruction?.fields.email).toBeUndefined()
   })
 
   it.each([

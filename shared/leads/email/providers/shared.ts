@@ -57,8 +57,8 @@ function hasLabelledTemplate(body: string): boolean {
   return (body.match(structuredLabelSignal) ?? []).length >= 2
 }
 
-function hasHumanFirstPersonIntent(body: string): boolean {
-  return /\b(?:i\s+(?:am|would|want|need|can|could|have)|i['’]m|my\s+name\s+is|please)\b/i.test(body)
+function hasFirstPersonEnquiryOrContactIntent(body: string): boolean {
+  return /\b(?:i\s+(?:would\s+like|want|need|am\s+(?:interested|looking)|can|could)|i['’]m\s+(?:interested|looking)|(?:can|could)\s+you|please\s+(?:contact|call|email)\s+me)\b/i.test(body)
 }
 
 function isPersonalMailbox(mailbox: string): boolean {
@@ -98,17 +98,18 @@ export function extractionFor(definition: ProviderDefinition, input: NormalizedI
   const body = strippedMessage(emailBody(input))
   const headerMailbox = parsedMailbox(input.headerFrom)
   const envelopeMailbox = parsedMailbox(input.envelopeSender)
+  const directName = directCustomerName(body)
   const directCustomer = definition.id === 'generic'
     && Boolean(headerMailbox && envelopeMailbox && headerMailbox === envelopeMailbox
       && isPersonalMailbox(headerMailbox)
-      && hasHumanFirstPersonIntent(body)
+      && directName
+      && hasFirstPersonEnquiryOrContactIntent(body)
       && !hasLabelledTemplate(body)
       && !automationBodySignal.test(body))
   if (directCustomer) {
     if (!fields.email) fields.email = field(headerMailbox!, 0.9, 'header')
     if (!fields.full_name) {
-      const name = directCustomerName(body)
-      if (name) fields.full_name = field(name, 0.76)
+      if (directName) fields.full_name = field(directName, 0.76)
     }
   }
   if (!Object.keys(fields).length) return null

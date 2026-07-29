@@ -47,15 +47,15 @@ function htmlTagAt(value: string, start: number): { end: number, name: string, c
   return { end: value.length, name, closing }
 }
 
-/** Inert streaming tokenizer: decodes entities first, drops active/resource nodes, and never invokes a DOM. */
-export function htmlToText(html: string): string {
-  const value = decodeHtmlEntities(html)
-  const activeElements = new Set(['script', 'style', 'iframe', 'object', 'embed', 'svg', 'template', 'noscript'])
-  const resourceElements = new Set(['img', 'source', 'link', 'video', 'audio', 'track', 'frame'])
-  const voidResourceElements = new Set(['img', 'source', 'link', 'track', 'frame'])
-  const breaks = new Set(['br', 'p', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-  let output = ''
+const activeElements = new Set(['script', 'style', 'iframe', 'object', 'embed', 'svg', 'template', 'noscript'])
+const resourceElements = new Set(['img', 'source', 'link', 'video', 'audio', 'track', 'frame'])
+const voidResourceElements = new Set(['img', 'source', 'link', 'track', 'frame'])
+const breaks = new Set(['br', 'p', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+
+function inertDecodedTextChunk(chunk: string): string {
+  const value = decodeHtmlEntities(chunk)
   const suppressedElements: string[] = []
+  let output = ''
   for (let index = 0; index < value.length;) {
     if (value[index] !== '<') { if (!suppressedElements.length) output += value[index]; index++; continue }
     const tag = htmlTagAt(value, index)
@@ -72,6 +72,34 @@ export function htmlToText(html: string): string {
     if (resourceElements.has(tag.name)) continue
     if (breaks.has(tag.name)) output += '\n'
   }
+  return output
+}
+
+/** Inert streaming tokenizer: literal tags control nesting; decoded text is isolated before parsing. */
+export function htmlToText(html: string): string {
+  const value = html
+  let output = ''
+  const suppressedElements: string[] = []
+  let textStart = 0
+  for (let index = 0; index < value.length;) {
+    if (value[index] !== '<') { index++; continue }
+    const tag = htmlTagAt(value, index)
+    if (!tag) { index++; continue }
+    if (!suppressedElements.length) output += inertDecodedTextChunk(value.slice(textStart, index))
+    index = tag.end
+    textStart = index
+    if (tag.name === '#comment') continue
+    const suppressesContent = activeElements.has(tag.name) || resourceElements.has(tag.name)
+    if (suppressedElements.length) {
+      if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) suppressedElements.push(tag.name)
+      else if (tag.closing && tag.name === suppressedElements.at(-1)) suppressedElements.pop()
+      continue
+    }
+    if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) { suppressedElements.push(tag.name); continue }
+    if (resourceElements.has(tag.name)) continue
+    if (breaks.has(tag.name)) output += '\n'
+  }
+  if (!suppressedElements.length) output += inertDecodedTextChunk(value.slice(textStart))
   return cleanText(output.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' '))
 }
 

@@ -214,6 +214,53 @@ completed successfully.
   mock and restore globals in `finally`, so any accidental network call fails
   deterministically.
 
+## Correction round 3 — literal markup and identity hardening
+
+### RED → GREEN
+
+The new regressions failed before implementation: an entity-decoded closing tag
+could pop a literal active HTML stack and expose hostile text; invalid local
+dot-atoms were used as Message-ID identities; and an aligned mailbox with the
+instruction “Please contact the customer” was promoted as a customer email.
+
+After remediation, the focused suite passed under Node 24.18.0:
+
+```text
+Test Files  4 passed (4)
+Tests       55 passed | 1 skipped (56)
+```
+
+The full Vitest run retained the established baseline exactly:
+
+```text
+Test Files  20 failed | 1224 passed | 3 skipped (1247)
+Tests       39 failed | 6988 passed | 6 skipped (7033)
+Errors      3 errors
+```
+
+No Task 2 test failed, and the established 39-failure / 3-error baseline did
+not change. `git diff --check` and `tsc --noEmit --pretty false -p tsconfig.json`
+completed successfully.
+
+### Fixes
+
+- Literal HTML tags now exclusively control the outer active/resource stack.
+  Text chunks are entity-decoded and inert-tokenized independently, so encoded
+  tags are suppressed but cannot close or otherwise mutate literal nesting.
+  Regressions cover template/script, nested same/different tags, fully encoded
+  markup, literal-plus-encoded markup, and malformed input.
+- Direct customer promotion now default-denies unless it has a bounded
+  first-person name/identity plus a distinct first-person enquiry or explicit
+  “contact/call/email me” intent. Automation, role, relay, and labelled-template
+  exclusions still apply.
+- Message-ID local parts must be valid dot-atoms. Leading, trailing, and
+  consecutive dots, whitespace, and multiple IDs now fall back to the stable
+  fingerprint; one valid bracketed or unbracketed addr-spec still canonicalizes
+  its domain.
+- The rejecting fetch mock now wraps every adapter `matches` and `extract`
+  call, including the first extraction used for the immutability comparison,
+  with restoration guaranteed by `finally`.
+
 ### Correction round 2 full-suite delta
 
 The controller reran the complete Vitest suite after the correction commit

