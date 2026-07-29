@@ -21,7 +21,7 @@ const ProviderAdapterIdSchema = z.string()
   .min(1)
   .max(64)
   .regex(/^[a-z][a-z0-9_-]*$/, 'Expected a registered provider adapter identifier')
-const PhoneLikeSequenceSchema = /(?:\+?\d[\d\s().-]{5,}\d)/g
+const PhoneLikeSequenceSchema = /\+?\p{Nd}(?:[\p{Nd}\s().-]*\p{Nd})?/gu
 const SafeSourceNameSchema = SafeTextSchema
   .trim()
   .min(1)
@@ -29,7 +29,7 @@ const SafeSourceNameSchema = SafeTextSchema
   .regex(/^[\p{L}\p{N}][\p{L}\p{N} .&'’()/_-]*$/u, 'Expected a safe source display name')
   .refine((value) => {
     const candidates = value.match(PhoneLikeSequenceSchema) ?? []
-    return candidates.every(candidate => candidate.replace(/\D/g, '').length < 8)
+    return candidates.every(candidate => (candidate.match(/\p{Nd}/gu)?.length ?? 0) < 7)
   }, 'Source display name resembles a phone identifier')
 const SafeFieldKeySchema = z.string()
   .min(1)
