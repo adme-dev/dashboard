@@ -17,6 +17,7 @@ import {
   parseEmailLead,
   sha256Hex
 } from '../../../shared/leads/email/parser'
+import { isStrongEmailSecret } from '../../../shared/leads/email/secretPolicy'
 import {
   emitEmailIngestionEvent,
   type EmailIngestionTelemetryInput
@@ -42,8 +43,6 @@ const RETRY_DELAYS_MS = [100, 200] as const
 const RESPONSE_LIMIT_BYTES = 64 * 1024
 const QUARANTINE_RETENTION_MS = 7 * 24 * 60 * 60_000
 const MAX_TELEMETRY_EVENTS = 20
-const MIN_CONFIG_SECRET_LENGTH = 16
-const MAX_CONFIG_SECRET_LENGTH = 4096
 
 const IngestResponseSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('accepted'), leadId: z.string().uuid() }).strict(),
@@ -219,12 +218,6 @@ function retryable(correlationId: string, cause?: unknown): never {
   throw new RetryableEmailIntakeError(correlationId, cause)
 }
 
-function configuredSecret(value: unknown): value is string {
-  return typeof value === 'string'
-    && value.length >= MIN_CONFIG_SECRET_LENGTH
-    && value.length <= MAX_CONFIG_SECRET_LENGTH
-}
-
 function configuredBucket(value: unknown): value is R2Bucket {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<R2Bucket>
@@ -238,8 +231,8 @@ async function validateEmailIntakeConfiguration(
   try {
     applicationOrigin(env.APPLICATION_ORIGIN)
     if (
-      !configuredSecret(env.EMAIL_INGEST_HMAC_SECRET)
-      || !configuredSecret(env.EMAIL_QUARANTINE_ENCRYPTION_SECRET)
+      !isStrongEmailSecret(env.EMAIL_INGEST_HMAC_SECRET)
+      || !isStrongEmailSecret(env.EMAIL_QUARANTINE_ENCRYPTION_SECRET)
       || !configuredBucket(env.EMAIL_QUARANTINE_BUCKET)
       || await secretsAreEqual(
         env.EMAIL_INGEST_HMAC_SECRET,

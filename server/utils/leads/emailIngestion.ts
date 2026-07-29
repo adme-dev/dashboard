@@ -20,6 +20,7 @@ import {
   resolveEmailEndpointToken
 } from '~~/server/utils/leads/emailEndpoint'
 import { createOpaqueEmailObjectKey } from '~~/shared/leads/email/quarantine'
+import { isStrongEmailSecret } from '~~/shared/leads/email/secretPolicy'
 import { emitEmailIngestionEvent } from '~~/shared/leads/email/telemetry'
 
 const TIMESTAMP_TOLERANCE_MS = 5 * 60_000
@@ -103,7 +104,7 @@ function header(request: EmailSignatureRequest, name: string): string | null {
 
 function signingSecret(request: EmailSignatureRequest): string {
   const secret = request.secret ?? process.env.EMAIL_INGEST_HMAC_SECRET
-  if (!secret || secret.length > 4096) failure(503, 'email_ingest_unavailable')
+  if (!isStrongEmailSecret(secret)) failure(503, 'email_ingest_unavailable')
   return secret
 }
 
@@ -245,6 +246,13 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
     ) | undefined
     if (found) {
       if (found.terminal_at) {
+        if (found.status === 'accepted' || found.status === 'duplicate') {
+          await updateEndpointHealthForTerminal(db, {
+            id: found.id,
+            endpoint_id: endpoint.id,
+            client_id: endpoint.client_id
+          }, 'duplicate')
+        }
         return {
           schemaVersion: 1,
           outcome: 'duplicate',

@@ -20,6 +20,8 @@ const HASH = 'a'.repeat(64)
 const CANONICAL_HASH = 'b'.repeat(64)
 const CORRELATION_ID = '11111111-1111-4111-8111-111111111111'
 const INGESTION_ID = '22222222-2222-4222-8222-222222222222'
+const HMAC_SECRET = 'f2713ba16b143c940d34cc43aa1059a9e786b5072eaf0776255ad11ee490fd6f'
+const ENCRYPTION_SECRET = '4945a9bf0618d4ea7d38d28cfaec79917961dcd3efcd10e3352c560825f58fc6'
 const encoder = new TextEncoder()
 
 const email: NormalizedInboundEmail = {
@@ -456,8 +458,8 @@ describe('Worker AI mode gating', () => {
       workerMessage('Customer Alex Example wants the vehicle.').value,
       {
         APPLICATION_ORIGIN: 'https://app.example.test',
-        EMAIL_INGEST_HMAC_SECRET: 'separate-hmac-secret',
-        EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'separate-encryption-secret',
+        EMAIL_INGEST_HMAC_SECRET: HMAC_SECRET,
+        EMAIL_QUARANTINE_ENCRYPTION_SECRET: ENCRYPTION_SECRET,
         EMAIL_QUARANTINE_BUCKET: bucket,
         AI: ai
       } as never,
@@ -473,8 +475,8 @@ describe('Worker AI mode gating', () => {
       workerMessage('Customer Alex Example wants the vehicle.').value,
       {
         APPLICATION_ORIGIN: 'https://app.example.test',
-        EMAIL_INGEST_HMAC_SECRET: 'separate-hmac-secret',
-        EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'separate-encryption-secret',
+        EMAIL_INGEST_HMAC_SECRET: HMAC_SECRET,
+        EMAIL_QUARANTINE_ENCRYPTION_SECRET: ENCRYPTION_SECRET,
         EMAIL_QUARANTINE_BUCKET: bucket,
         AI: ai
       } as never,
@@ -490,8 +492,8 @@ describe('Worker AI mode gating', () => {
       workerMessage('Name: Alex Example\nPhone: +61 400 123 456').value,
       {
         APPLICATION_ORIGIN: 'https://app.example.test',
-        EMAIL_INGEST_HMAC_SECRET: 'separate-hmac-secret',
-        EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'separate-encryption-secret',
+        EMAIL_INGEST_HMAC_SECRET: HMAC_SECRET,
+        EMAIL_QUARANTINE_ENCRYPTION_SECRET: ENCRYPTION_SECRET,
         EMAIL_QUARANTINE_BUCKET: bucket,
         AI: ai
       } as never,
@@ -552,8 +554,8 @@ describe('Worker AI mode gating', () => {
       workerMessage('Name: Alex Example\nForwarded contact: Jordan Other').value,
       {
         APPLICATION_ORIGIN: 'https://app.example.test',
-        EMAIL_INGEST_HMAC_SECRET: 'separate-hmac-secret',
-        EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'separate-encryption-secret',
+        EMAIL_INGEST_HMAC_SECRET: HMAC_SECRET,
+        EMAIL_QUARANTINE_ENCRYPTION_SECRET: ENCRYPTION_SECRET,
         EMAIL_QUARANTINE_BUCKET: bucket,
         AI: ai
       } as never,
@@ -626,8 +628,8 @@ describe('Worker AI mode gating', () => {
 
       await handleEmailMessage(incoming.value, {
         APPLICATION_ORIGIN: 'https://app.example.test',
-        EMAIL_INGEST_HMAC_SECRET: 'separate-hmac-secret',
-        EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'separate-encryption-secret',
+        EMAIL_INGEST_HMAC_SECRET: HMAC_SECRET,
+        EMAIL_QUARANTINE_ENCRYPTION_SECRET: ENCRYPTION_SECRET,
         EMAIL_QUARANTINE_BUCKET: new MemoryBucket(),
         AI: ai
       } as never, dependencies)
@@ -653,8 +655,8 @@ describe('Worker AI mode gating', () => {
       let stage: Record<string, unknown> | undefined
       await handleEmailMessage(incoming.value, {
         APPLICATION_ORIGIN: 'https://app.example.test',
-        EMAIL_INGEST_HMAC_SECRET: 'separate-hmac-secret',
-        EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'separate-encryption-secret',
+        EMAIL_INGEST_HMAC_SECRET: HMAC_SECRET,
+        EMAIL_QUARANTINE_ENCRYPTION_SECRET: ENCRYPTION_SECRET,
         EMAIL_QUARANTINE_BUCKET: new MemoryBucket(),
         AI: { run: vi.fn(async () => { throw new DOMException('timed out', 'TimeoutError') }) }
       } as never, identityDependencies('fallback', {

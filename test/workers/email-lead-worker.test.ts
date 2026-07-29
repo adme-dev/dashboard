@@ -21,6 +21,8 @@ const OBJECT_KEY = 'email-ingestions/abcdefghijklmnop'
 const EXTERNAL_ID_HASH = 'dcb3450e3d753d1a0f98277376b9343c271610515ece8298d421e42b95a49371'
 const MESSAGE_ID_HASH = 'c554a336f571d0d9e9cdc3715c80e3544a9832bb2a1bcb755816387462ec5326'
 const RAW_CONTENT_HASH = '9e1754126fd6a723f2a3ce4b3b06a124bcf6e9378c545cd86bed370923cdc5b7'
+const HMAC_SECRET = 'f2713ba16b143c940d34cc43aa1059a9e786b5072eaf0776255ad11ee490fd6f'
+const ENCRYPTION_SECRET = '4945a9bf0618d4ea7d38d28cfaec79917961dcd3efcd10e3352c560825f58fc6'
 const RAW_TEXT = [
   'From: Carsales <relay@carsales.example>',
   'Subject: New Carsales enquiry',
@@ -123,8 +125,8 @@ function messageWithRaw(rawText: string) {
 function environment(bucket = new MemoryBucket()) {
   return {
     APPLICATION_ORIGIN: 'https://app.example.test',
-    EMAIL_INGEST_HMAC_SECRET: 'hmac-secret-that-is-not-the-encryption-key',
-    EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'encryption-secret-that-is-separate',
+    EMAIL_INGEST_HMAC_SECRET: HMAC_SECRET,
+    EMAIL_QUARANTINE_ENCRYPTION_SECRET: ENCRYPTION_SECRET,
     EMAIL_QUARANTINE_BUCKET: bucket,
     AI: {},
     bucket
@@ -227,11 +229,14 @@ describe('email lead intake Worker', () => {
   it.each([
     ['missing HMAC secret', { EMAIL_INGEST_HMAC_SECRET: undefined }],
     ['short HMAC secret', { EMAIL_INGEST_HMAC_SECRET: 'too-short' }],
+    ['repeated HMAC secret', { EMAIL_INGEST_HMAC_SECRET: 'a'.repeat(64) }],
+    ['placeholder HMAC secret', { EMAIL_INGEST_HMAC_SECRET: Buffer.from('replace-this-placeholder-secret-now').toString('base64') }],
     ['missing encryption secret', { EMAIL_QUARANTINE_ENCRYPTION_SECRET: undefined }],
     ['short encryption secret', { EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'too-short' }],
+    ['low-diversity encryption secret', { EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'abcd'.repeat(16) }],
     ['shared secret material', {
-      EMAIL_INGEST_HMAC_SECRET: 'same-secret-material-that-is-at-least-32-bytes',
-      EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'same-secret-material-that-is-at-least-32-bytes'
+      EMAIL_INGEST_HMAC_SECRET: HMAC_SECRET,
+      EMAIL_QUARANTINE_ENCRYPTION_SECRET: HMAC_SECRET
     }],
     ['insecure application origin', { APPLICATION_ORIGIN: 'http://app.example.test' }],
     ['missing quarantine bucket', { EMAIL_QUARANTINE_BUCKET: undefined }]

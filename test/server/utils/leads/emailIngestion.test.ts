@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   EmailEndpointPolicySchema,
   EmailIngestEnvelopeSchema,
@@ -347,7 +347,7 @@ describe('email ingestion contracts', () => {
 })
 
 describe('signed email ingestion boundary', () => {
-  const SECRET = 'email-ingest-test-secret'
+  const SECRET = 'ec6cbf06d4527f20e1d1af8a1ed40ea67982028211319b9d6033095f44e3986a'
   const nonce = '11111111-1111-4111-8111-111111111111'
 
   function signed(rawBody: string, overrides: Record<string, string> = {}) {
@@ -374,6 +374,38 @@ describe('signed email ingestion boundary', () => {
     await expect(verifyEmailIngestSignature(signed(body))).resolves.toBeUndefined()
   })
 
+  it.each([
+    ['repeated encoded material', 'a'.repeat(64)],
+    ['low-diversity encoded material', 'abcd'.repeat(16)],
+    ['encoded placeholder text', Buffer.from('replace-this-placeholder-secret-now').toString('base64')]
+  ])('rejects %s before reserving a nonce', async (_label, secret) => {
+    const request = signed('{"recipientToken":"0123456789"}')
+    const reserveNonce = vi.fn(async () => true)
+    request.secret = secret
+    request.reserveNonce = reserveNonce
+
+    await expect(verifyEmailIngestSignature(request)).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'email_ingest_unavailable'
+    })
+    expect(reserveNonce).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['hex', SECRET],
+    ['base64', Buffer.from(SECRET, 'hex').toString('base64')],
+    ['base64url', Buffer.from(SECRET, 'hex').toString('base64url')]
+  ])('accepts securely random-looking %s encoded material', async (_label, secret) => {
+    const request = signed('{"recipientToken":"0123456789"}')
+    request.secret = secret
+    const timestamp = request.headers['x-xeroflow-email-timestamp'] as string
+    request.headers['x-xeroflow-email-signature'] = `v1=${createHmac('sha256', secret)
+      .update(`v1\n${timestamp}\n${nonce}\n${awaitableSha256(request.rawBody)}`)
+      .digest('hex')}`
+
+    await expect(verifyEmailIngestSignature(request)).resolves.toBeUndefined()
+  })
+
   it('rejects a changed body even when the remaining headers are valid', async () => {
     const request = signed('{"recipientToken":"0123456789"}')
     request.rawBody = '{"recipientToken":"012345678a"}'
@@ -397,7 +429,7 @@ describe('signed email ingestion boundary', () => {
     await expect(verifyEmailIngestSignature(stale)).rejects.toMatchObject({ statusCode: 401 })
 
     const wrongSecret = signed(body)
-    wrongSecret.secret = 'not-the-signing-secret'
+    wrongSecret.secret = 'f2713ba16b143c940d34cc43aa1059a9e786b5072eaf0776255ad11ee490fd6f'
     await expect(verifyEmailIngestSignature(wrongSecret)).rejects.toMatchObject({ statusCode: 401 })
 
     const reused = signed(body)

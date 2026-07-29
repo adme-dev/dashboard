@@ -21,7 +21,12 @@ vi.mock('~~/server/utils/leads/emailDuplicateSignal', () => ({
   findEmailLeadDuplicateSignal: mocks.duplicateSignal
 }))
 
-import { acceptEmailEnvelope } from '../../../../server/utils/leads/emailIngestion'
+// Test module mocks must be installed before the production import.
+// eslint-disable-next-line import/first
+import {
+  acceptEmailEnvelope,
+  reserveEmailIngestionStage
+} from '../../../../server/utils/leads/emailIngestion'
 
 const ENDPOINT_ID = '11111111-1111-4111-8111-111111111111'
 const CLIENT_ID = '22222222-2222-4222-8222-222222222222'
@@ -354,7 +359,7 @@ describe('email canonical ingress', () => {
     ))).toBe(true)
   })
 
-  it('counts terminal quarantines once per message and resets on a processed duplicate', async () => {
+  it('counts terminal quarantines once per message and resets on a transport duplicate', async () => {
     let consecutiveFailures = 0
     const transactionGroups: string[][] = []
     const correlationByIngestion = new Map<string, string>()
@@ -427,21 +432,60 @@ describe('email canonical ingress', () => {
     ))).toHaveLength(5)
 
     const successId = '33333333-3333-4333-8333-000000000006'
-    mocks.acceptLead.mockResolvedValueOnce({ status: 'duplicate' })
-    await expect(acceptEmailEnvelope(
-      {} as never,
-      successId,
-      envelope({
-        ingestionId: successId,
-        correlationId: correlationByIngestion.get(successId)
-      })
-    )).resolves.toEqual({ status: 'duplicate' })
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (/FROM lead_email_endpoints/.test(sql)) return { rows: [endpoint] }
+      if (/FROM lead_email_ingestions/.test(sql)) {
+        return {
+          rows: [ingestion({
+            id: successId,
+            correlation_id: correlationByIngestion.get(successId),
+            status: 'accepted',
+            terminal_at: '2026-07-29T01:00:00.000Z',
+            staged_object_key: 'email-ingestions/previous-reservation-key'
+          })]
+        }
+      }
+      if (/UPDATE lead_email_endpoints/.test(sql)) {
+        if (/consecutive_failures = 0/.test(sql)) consecutiveFailures = 0
+        return { rows: [{ id: ENDPOINT_ID }] }
+      }
+      return { rows: [] }
+    })
+    await expect(reserveEmailIngestionStage({
+      schemaVersion: 1,
+      correlationId: '77777777-7777-4777-8777-777777777777',
+      transport: 'cloudflare_email_routing',
+      recipientToken: '0123456789',
+      externalIdHash: HASH,
+      legacyExternalIdHash: 'b'.repeat(64),
+      messageIdHash: HASH,
+      rawContentHashVersion: 1,
+      rawContentHash: 'c'.repeat(64),
+      provider: 'carsales',
+      envelopeSenderDomain: 'notify.carsales.com.au',
+      headerFromDomain: 'carsales.com.au',
+      receivedAt: '2026-07-29T00:00:00.000Z',
+      rawSize: 1024,
+      safeEvidence: {
+        hasText: true,
+        hasHtml: false,
+        hasAdf: false,
+        fieldKeys: ['email']
+      },
+      quarantineExpiresAt: '2099-08-05T00:00:00.000Z'
+    })).resolves.toMatchObject({
+      outcome: 'duplicate',
+      correlationId: correlationByIngestion.get(successId),
+      ingestionId: successId
+    })
 
     expect(consecutiveFailures).toBe(0)
     expect(transactionGroups.some(group => (
-      group.some(sql => /status = \$2/.test(sql))
+      group.some(sql => /FROM lead_email_ingestions[\s\S]*FOR UPDATE/.test(sql))
       && group.some(sql => /consecutive_failures = 0/.test(sql))
     ))).toBe(true)
+    const resetCall = mocks.query.mock.calls.find(([sql]) => /consecutive_failures = 0/.test(sql as string))
+    expect(resetCall?.[1]).toEqual([ENDPOINT_ID, CLIENT_ID, 'duplicate'])
   })
 
   it('does not count a transient canonical retry as another endpoint failure', async () => {

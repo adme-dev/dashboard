@@ -101,7 +101,7 @@ describe('email stage reservation', () => {
       status: 'accepted',
       terminal_at: '2026-07-29T01:00:00.000Z',
       staged_object_key: 'email-ingestions/previous-reservation-key'
-    }] })
+    }] }).mockResolvedValueOnce({ rows: [{ id: endpoint.id }] })
     await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
       schemaVersion: 1,
       outcome: 'duplicate',

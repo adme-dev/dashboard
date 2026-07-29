@@ -181,8 +181,8 @@ describe('email ingestion privacy telemetry', () => {
         setReject: vi.fn()
       } as never, {
         APPLICATION_ORIGIN: 'https://app.example.test',
-        EMAIL_INGEST_HMAC_SECRET: 'privacy-hmac-secret-1234',
-        EMAIL_QUARANTINE_ENCRYPTION_SECRET: 'privacy-encryption-secret-5678',
+        EMAIL_INGEST_HMAC_SECRET: 'f2713ba16b143c940d34cc43aa1059a9e786b5072eaf0776255ad11ee490fd6f',
+        EMAIL_QUARANTINE_ENCRYPTION_SECRET: '4945a9bf0618d4ea7d38d28cfaec79917961dcd3efcd10e3352c560825f58fc6',
         EMAIL_QUARANTINE_BUCKET: bucket,
         AI: {}
       } as never, {} as never)
