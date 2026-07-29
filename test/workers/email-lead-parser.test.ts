@@ -124,6 +124,31 @@ describe('deterministic email lead parser', () => {
     expect(nonCustomerInstruction?.fields.email).toBeUndefined()
   })
 
+  it('requires a bounded first-person identity and a concrete enquiry or contact action for direct customers', () => {
+    const directInput = {
+      ...base,
+      envelopeSender: 'alex@example.test',
+      headerFrom: 'Alex Example <alex@example.test>'
+    }
+    const direct = parseEmailLead({
+      ...directInput,
+      text: 'Hello, I am Alex Example. I would like to inspect the vehicle.'
+    }, { ...policy, expectedProvider: null })
+    expect(direct?.fields.email).toMatchObject({ value: 'alex@example.test', provenance: 'header' })
+
+    for (const text of [
+      'I am Alex Example. I can confirm this is your daily report.',
+      'I am Alex Example. I want an update.',
+      'I am Alex Example. I want to inspect the daily report.',
+      'I am Alex Example. I need confirmation.',
+      'I am Alex Example. I need to arrange the daily report.',
+      'I am Alex Example. I am interested in the daily report.',
+      'I am Alex Example. Could you confirm the report?'
+    ]) {
+      expect(parseEmailLead({ ...directInput, text }, { ...policy, expectedProvider: null })?.fields.email).toBeUndefined()
+    }
+  })
+
   it.each([
     ['carsales', 'Carsales', 'carsales-adf-body.xml'], ['autotrader', 'AutoTrader', 'autotrader.txt'], ['carsguide', 'CarsGuide', 'carsguide.txt'], ['drive', 'Drive', 'drive.txt'], ['gumtree', 'Gumtree', 'gumtree.txt'],
     ['meta', 'New Facebook Lead', 'meta.txt'], ['instagram', 'New Instagram Lead', 'instagram.txt'], ['tiktok', 'New TikTok Lead', 'tiktok.txt'], ['google', 'New Google Ads Lead', 'google.txt']

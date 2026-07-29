@@ -52,23 +52,22 @@ const resourceElements = new Set(['img', 'source', 'link', 'video', 'audio', 'tr
 const voidResourceElements = new Set(['img', 'source', 'link', 'track', 'frame'])
 const breaks = new Set(['br', 'p', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
 
-function inertDecodedTextChunk(chunk: string): string {
+function inertDecodedTextChunk(chunk: string, encodedSuppressedElements: string[]): string {
   const value = decodeHtmlEntities(chunk)
-  const suppressedElements: string[] = []
   let output = ''
   for (let index = 0; index < value.length;) {
-    if (value[index] !== '<') { if (!suppressedElements.length) output += value[index]; index++; continue }
+    if (value[index] !== '<') { if (!encodedSuppressedElements.length) output += value[index]; index++; continue }
     const tag = htmlTagAt(value, index)
-    if (!tag) { if (!suppressedElements.length) output += value[index]; index++; continue }
+    if (!tag) { if (!encodedSuppressedElements.length) output += value[index]; index++; continue }
     index = tag.end
     if (tag.name === '#comment') continue
     const suppressesContent = activeElements.has(tag.name) || resourceElements.has(tag.name)
-    if (suppressedElements.length) {
-      if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) suppressedElements.push(tag.name)
-      else if (tag.closing && tag.name === suppressedElements.at(-1)) suppressedElements.pop()
+    if (encodedSuppressedElements.length) {
+      if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) encodedSuppressedElements.push(tag.name)
+      else if (tag.closing && tag.name === encodedSuppressedElements.at(-1)) encodedSuppressedElements.pop()
       continue
     }
-    if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) { suppressedElements.push(tag.name); continue }
+    if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) { encodedSuppressedElements.push(tag.name); continue }
     if (resourceElements.has(tag.name)) continue
     if (breaks.has(tag.name)) output += '\n'
   }
@@ -79,27 +78,30 @@ function inertDecodedTextChunk(chunk: string): string {
 export function htmlToText(html: string): string {
   const value = html
   let output = ''
-  const suppressedElements: string[] = []
+  const literalSuppressedElements: string[] = []
+  const encodedSuppressedElements: string[] = []
   let textStart = 0
   for (let index = 0; index < value.length;) {
     if (value[index] !== '<') { index++; continue }
     const tag = htmlTagAt(value, index)
     if (!tag) { index++; continue }
-    if (!suppressedElements.length) output += inertDecodedTextChunk(value.slice(textStart, index))
+    const decodedText = inertDecodedTextChunk(value.slice(textStart, index), encodedSuppressedElements)
+    if (!literalSuppressedElements.length) output += decodedText
     index = tag.end
     textStart = index
     if (tag.name === '#comment') continue
     const suppressesContent = activeElements.has(tag.name) || resourceElements.has(tag.name)
-    if (suppressedElements.length) {
-      if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) suppressedElements.push(tag.name)
-      else if (tag.closing && tag.name === suppressedElements.at(-1)) suppressedElements.pop()
+    if (literalSuppressedElements.length) {
+      if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) literalSuppressedElements.push(tag.name)
+      else if (tag.closing && tag.name === literalSuppressedElements.at(-1)) literalSuppressedElements.pop()
       continue
     }
-    if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) { suppressedElements.push(tag.name); continue }
+    if (!tag.closing && suppressesContent && !voidResourceElements.has(tag.name)) { literalSuppressedElements.push(tag.name); continue }
     if (resourceElements.has(tag.name)) continue
-    if (breaks.has(tag.name)) output += '\n'
+    if (!encodedSuppressedElements.length && breaks.has(tag.name)) output += '\n'
   }
-  if (!suppressedElements.length) output += inertDecodedTextChunk(value.slice(textStart))
+  const decodedText = inertDecodedTextChunk(value.slice(textStart), encodedSuppressedElements)
+  if (!literalSuppressedElements.length) output += decodedText
   return cleanText(output.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' '))
 }
 

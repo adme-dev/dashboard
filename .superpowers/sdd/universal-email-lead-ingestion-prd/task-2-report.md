@@ -214,6 +214,21 @@ completed successfully.
   mock and restore globals in `finally`, so any accidental network call fails
   deterministically.
 
+### Correction round 2 full-suite delta
+
+The controller reran the complete Vitest suite after the correction commit
+because the implementation report did not yet contain repository-wide evidence:
+
+```text
+Test Files  20 failed | 1224 passed | 3 skipped (1247)
+Tests       39 failed | 6987 passed | 6 skipped (7032)
+Errors      3 errors
+Duration    34.80s
+```
+
+The failure/error baseline remains exactly 39/3. The passing-count increase is
+the new Task 2 regression coverage.
+
 ## Correction round 3 — literal markup and identity hardening
 
 ### RED → GREEN
@@ -261,17 +276,46 @@ completed successfully.
   call, including the first extraction used for the immutability comparison,
   with restoration guaranteed by `finally`.
 
-### Correction round 2 full-suite delta
+## Correction round 4 — encoded chunk continuity and direct-intent hardening
 
-The controller reran the complete Vitest suite after the correction commit
-because the implementation report did not yet contain repository-wide evidence:
+### RED → GREEN
+
+The tests were added before the implementation change. The first focused run
+failed the two new regressions: decoded active markup leaked across benign
+literal tag boundaries, and aligned personal mailboxes were promoted for
+non-enquiry `can`/`want`/`need`/`could` prose.
+
+After remediation, the focused suite passed twice consecutively under explicit
+Node 24.18.0:
+
+```text
+Test Files  3 passed (3)
+Tests       45 passed (45)
+```
+
+### Fixes
+
+- HTML sanitisation now maintains independent literal and decoded-markup
+  suppression stacks. A literal tag cannot clear decoded active state, and
+  decoded tags cannot close or mutate literal nesting. Regression coverage
+  includes split encoded tags, multiple benign literal tags, nested encoded
+  elements, unclosed input, and safe text after a valid decoded close.
+- Direct-customer promotion now requires both a bounded first-person identity
+  and a concrete enquiry/contact action. Generic status/report language no
+  longer promotes aligned sender addresses; legitimate vehicle-inspection
+  enquiries remain accepted.
+
+### Verification
+
+`tsc --noEmit --pretty false -p tsconfig.json` and `git diff --check`
+completed successfully. The complete Vitest suite retained the established
+failure/error baseline exactly:
 
 ```text
 Test Files  20 failed | 1224 passed | 3 skipped (1247)
-Tests       39 failed | 6987 passed | 6 skipped (7032)
+Tests       39 failed | 6990 passed | 6 skipped (7035)
 Errors      3 errors
-Duration    34.80s
 ```
 
-The failure/error baseline remains exactly 39/3. The passing-count increase is
-the new Task 2 regression coverage.
+No Task 2 tests failed; the two additional passing tests are this correction
+round's regressions.

@@ -58,7 +58,16 @@ function hasLabelledTemplate(body: string): boolean {
 }
 
 function hasFirstPersonEnquiryOrContactIntent(body: string): boolean {
-  return /\b(?:i\s+(?:would\s+like|want|need|am\s+(?:interested|looking)|can|could)|i['’]m\s+(?:interested|looking)|(?:can|could)\s+you|please\s+(?:contact|call|email)\s+me)\b/i.test(body)
+  const firstPerson = 'i\\s+(?:would\\s+like|want|need)'
+  const vehicleObject = '(?:(?:about|regarding)\\s+)?(?:(?:the|a|an|this|that|your)\\s+(?:vehicle|car|ute|suv|truck|van|motorcycle|bike)|stock\\s+(?:number\\s+)?[A-Za-z0-9-]+)'
+  return [
+    /\b(?:can|could)\s+you\s+(?:please\s+)?(?:contact|call|email)\s+me\b/i,
+    /\bplease\s+(?:contact|call|email)\s+me\b/i,
+    new RegExp(`\\b${firstPerson}\\s+to\\s+(?:enquire|inquire)\\b`, 'i'),
+    new RegExp(`\\b${firstPerson}\\s+to\\s+(?:inspect|view|test[-\\s]?drive|discuss|ask|learn|arrange|book|schedule)\\s+${vehicleObject}\\b`, 'i'),
+    new RegExp(`\\b${firstPerson}\\s+(?:more\\s+)?(?:information|details)\\s+(?:about|on|regarding)\\s+${vehicleObject}\\b`, 'i'),
+    new RegExp(`\\bi(?:\\s+am|['’]m)\\s+(?:interested|looking)\\s+(?:in|at|for)\\s+${vehicleObject}\\b`, 'i')
+  ].some(pattern => pattern.test(body))
 }
 
 function isPersonalMailbox(mailbox: string): boolean {
