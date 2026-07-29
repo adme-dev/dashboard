@@ -213,3 +213,18 @@ completed successfully.
 - Made adapter conformance temporarily replace `global.fetch` with a rejecting
   mock and restore globals in `finally`, so any accidental network call fails
   deterministically.
+
+### Correction round 2 full-suite delta
+
+The controller reran the complete Vitest suite after the correction commit
+because the implementation report did not yet contain repository-wide evidence:
+
+```text
+Test Files  20 failed | 1224 passed | 3 skipped (1247)
+Tests       39 failed | 6987 passed | 6 skipped (7032)
+Errors      3 errors
+Duration    34.80s
+```
+
+The failure/error baseline remains exactly 39/3. The passing-count increase is
+the new Task 2 regression coverage.
