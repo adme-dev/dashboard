@@ -22,7 +22,7 @@ const ProviderAdapterIdSchema = z.string()
   .max(64)
   .regex(/^[a-z][a-z0-9_-]*$/, 'Expected a registered provider adapter identifier')
 const MIN_PHONE_LIKE_DIGITS = 7
-const PhoneLikeSequenceSchema = /\+?\p{Nd}(?:[\p{Nd}\s().-]*\p{Nd})?/gu
+const PhoneLikeSequenceSchema = /\p{Nd}(?:[^\p{L}\p{N}]*\p{Nd})*/gu
 const SafeSourceNameSchema = SafeTextSchema
   .trim()
   .min(1)
