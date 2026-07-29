@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { createError, type H3Event } from 'h3'
 import {
   EmailIngestEnvelopeSchema,
@@ -14,6 +14,7 @@ import { queryOne, transaction } from '~~/server/utils/db'
 import type { InsertLeadInput, LeadIngestionTerminalStatus, LeadTransactionClient } from '~~/server/utils/leads/db'
 import { findEmailLeadDuplicateSignal, type PossibleDuplicateSignal } from '~~/server/utils/leads/emailDuplicateSignal'
 import { resolveEmailEndpointToken } from '~~/server/utils/leads/emailEndpoint'
+import { createOpaqueEmailObjectKey } from '~~/shared/leads/email/quarantine'
 
 const TIMESTAMP_TOLERANCE_MS = 5 * 60_000
 const NONCE_TTL_SECONDS = 10 * 60
@@ -49,6 +50,7 @@ type Ingestion = {
   terminal_at: string | null
   next_attempt_at: string | null
   attempt_count: number
+  recovery_lease_token: string | null
 }
 
 export interface EmailSignatureRequest {
@@ -59,9 +61,9 @@ export interface EmailSignatureRequest {
   reserveNonce?: (nonce: string) => Promise<boolean>
 }
 
-export type EmailIngestResult =
-  | { status: 'accepted', leadId: string }
-  | { status: 'duplicate' | 'quarantined' | 'in_progress' }
+export type EmailIngestResult
+  = | { status: 'accepted', leadId: string }
+    | { status: 'duplicate' | 'quarantined' | 'in_progress' }
 
 function failure(statusCode: number, statusMessage: string): never {
   throw createError({ statusCode, statusMessage })
@@ -158,10 +160,6 @@ export async function resolveEmailEndpointPolicy(request: { recipientToken: stri
   return asPolicy(endpoint)
 }
 
-function opaqueObjectKey(): string {
-  return `email-ingestions/${randomBytes(32).toString('base64url')}`
-}
-
 function parseStage(request: unknown): EmailStageRequest {
   const parsed = EmailStageRequestSchema.safeParse(request)
   if (!parsed.success) failure(400, 'invalid_email_stage_request')
@@ -209,15 +207,16 @@ export async function reserveEmailIngestionStage(request: EmailStageRequest): Pr
         encryptedObjectKey: found.staged_object_key
       }
     }
-    const key = opaqueObjectKey()
+    const key = createOpaqueEmailObjectKey()
     const inserted = await db.query(`
       INSERT INTO lead_email_ingestions (
         endpoint_id, client_id, correlation_id, transport, external_id_hash, message_id_hash,
-        provider, status, safe_evidence, staged_object_key, staged_expires_at, next_attempt_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'received', $8::jsonb, $9, $10::timestamptz, NOW())
+        provider, sender_domain, status, safe_evidence, staged_object_key, staged_expires_at, next_attempt_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'received', $9::jsonb, $10, $11::timestamptz, NOW())
       RETURNING id, correlation_id
     `, [endpoint.id, endpoint.client_id, input.correlationId, input.transport, input.externalIdHash,
-      input.messageIdHash, input.provider, JSON.stringify(input.safeEvidence), key, input.quarantineExpiresAt])
+      input.messageIdHash, input.provider, input.envelopeSenderDomain,
+      JSON.stringify(input.safeEvidence), key, input.quarantineExpiresAt])
     const row = inserted.rows?.[0] as { id?: string, correlation_id?: string } | undefined
     if (!row?.id || !row.correlation_id) failure(409, 'email_stage_reservation_conflict')
     return {
@@ -313,8 +312,12 @@ function senderAllowed(endpoint: Endpoint, envelope: EmailIngestEnvelope): boole
 async function terminal(
   ingestionId: string,
   status: LeadIngestionTerminalStatus,
-  values: { leadId?: string | null, duplicate?: PossibleDuplicateSignal | null, parser?: string | null, confidence?: number | null, senderDomain?: string | null } = {}
+  values: { leadId?: string | null, duplicate?: PossibleDuplicateSignal | null, parser?: string | null, confidence?: number | null, senderDomain?: string | null } = {},
+  recoveryLeaseToken?: string
 ) {
+  const leaseCondition = recoveryLeaseToken
+    ? 'AND recovery_lease_token = $11::uuid'
+    : 'AND recovery_lease_token IS NULL'
   await queryOne(`
     UPDATE lead_email_ingestions
     SET status = $2, lead_id = $3, parser = $4, confidence = $5, sender_domain = $6,
@@ -326,18 +329,25 @@ async function terminal(
       END,
       error_class = NULL, terminal_at = NOW(), next_attempt_at = NULL, updated_at = NOW()
     WHERE id = $1 AND terminal_at IS NULL
+      ${leaseCondition}
     RETURNING id
   `, [ingestionId, status, values.leadId ?? null, values.parser ?? null, values.confidence ?? null, values.senderDomain ?? null,
     values.duplicate?.possibleDuplicateOfLeadId ?? null, values.duplicate?.matchBasis ?? null,
-    values.duplicate?.confidence ?? null, values.duplicate?.windowHours ?? null])
+    values.duplicate?.confidence ?? null, values.duplicate?.windowHours ?? null,
+    ...(recoveryLeaseToken ? [recoveryLeaseToken] : [])])
 }
 
-async function claimEmailIngestion(ingestionId: string, envelope: EmailIngestEnvelope): Promise<{ ingestion: Ingestion, endpoint: Endpoint } | EmailIngestResult> {
+async function claimEmailIngestion(
+  ingestionId: string,
+  envelope: EmailIngestEnvelope,
+  recoveryLeaseToken?: string
+): Promise<{ ingestion: Ingestion, endpoint: Endpoint } | EmailIngestResult> {
   return transaction(async (db) => {
     const endpoint = await endpointForToken(db, envelope.recipientToken, true)
     if (!endpoint) failure(404, 'email_endpoint_unavailable')
     const result = await db.query(`
-      SELECT id, endpoint_id, client_id, correlation_id, external_id_hash, message_id_hash, status, terminal_at, next_attempt_at, attempt_count
+      SELECT id, endpoint_id, client_id, correlation_id, external_id_hash, message_id_hash,
+        status, terminal_at, next_attempt_at, attempt_count, recovery_lease_token
       FROM lead_email_ingestions WHERE id = $1 FOR UPDATE
     `, [ingestionId])
     const ingestion = result.rows?.[0] as Ingestion | undefined
@@ -346,58 +356,102 @@ async function claimEmailIngestion(ingestionId: string, envelope: EmailIngestEnv
       failure(409, 'email_ingestion_mismatch')
     }
     if (ingestion.terminal_at) return { status: 'duplicate' as const }
-    if (ingestion.next_attempt_at && new Date(ingestion.next_attempt_at).getTime() > Date.now() + 1_000) return { status: 'in_progress' as const }
+    if (
+      ingestion.recovery_lease_token
+      && ingestion.recovery_lease_token !== recoveryLeaseToken
+    ) {
+      return { status: 'in_progress' as const }
+    }
+    if (recoveryLeaseToken && ingestion.recovery_lease_token !== recoveryLeaseToken) {
+      return { status: 'in_progress' as const }
+    }
+    if (
+      !recoveryLeaseToken
+      && ingestion.next_attempt_at
+      && new Date(ingestion.next_attempt_at).getTime() > Date.now() + 1_000
+    ) {
+      return { status: 'in_progress' as const }
+    }
     const nextAttempt = ingestion.attempt_count + 1
     if (nextAttempt > MAX_ATTEMPTS) {
+      const ownershipCondition = recoveryLeaseToken
+        ? 'AND recovery_lease_token = $2::uuid'
+        : 'AND recovery_lease_token IS NULL'
       await db.query(`
         UPDATE lead_email_ingestions
         SET status = 'failed', error_class = 'attempts_exhausted',
           terminal_at = NOW(), next_attempt_at = NULL, updated_at = NOW()
         WHERE id = $1 AND terminal_at IS NULL
-      `, [ingestion.id])
+          ${ownershipCondition}
+      `, [ingestion.id, ...(recoveryLeaseToken ? [recoveryLeaseToken] : [])])
       return { status: 'quarantined' as const }
     }
     if (nextAttempt === MAX_ATTEMPTS) {
+      const ownershipCondition = recoveryLeaseToken
+        ? 'AND recovery_lease_token = $3::uuid'
+        : 'AND recovery_lease_token IS NULL'
       await db.query(`
         UPDATE lead_email_ingestions
         SET status = 'failed', error_class = 'final_attempt_leased',
           next_attempt_at = NOW() + MAKE_INTERVAL(secs => $2::int), updated_at = NOW()
         WHERE id = $1 AND terminal_at IS NULL AND attempt_count = 4
-      `, [ingestion.id, CLAIM_LEASE_SECONDS])
+          ${ownershipCondition}
+      `, [
+        ingestion.id,
+        CLAIM_LEASE_SECONDS,
+        ...(recoveryLeaseToken ? [recoveryLeaseToken] : [])
+      ])
       return { ingestion: { ...ingestion, attempt_count: nextAttempt }, endpoint }
     }
-    await db.query(`
-      UPDATE lead_email_ingestions
-      SET attempt_count = attempt_count + 1, next_attempt_at = NOW() + MAKE_INTERVAL(secs => $2::int), updated_at = NOW()
-      WHERE id = $1
-    `, [ingestion.id, CLAIM_LEASE_SECONDS])
+    if (recoveryLeaseToken) {
+      await db.query(`
+        UPDATE lead_email_ingestions
+        SET attempt_count = attempt_count + 1,
+          next_attempt_at = NOW() + MAKE_INTERVAL(secs => $2::int),
+          updated_at = NOW()
+        WHERE id = $1
+          AND recovery_lease_token = $3::uuid
+      `, [ingestion.id, CLAIM_LEASE_SECONDS, recoveryLeaseToken])
+    } else {
+      await db.query(`
+        UPDATE lead_email_ingestions
+        SET attempt_count = attempt_count + 1, next_attempt_at = NOW() + MAKE_INTERVAL(secs => $2::int), updated_at = NOW()
+        WHERE id = $1
+          AND recovery_lease_token IS NULL
+      `, [ingestion.id, CLAIM_LEASE_SECONDS])
+    }
     return { ingestion: { ...ingestion, attempt_count: nextAttempt }, endpoint }
   }) as Promise<{ ingestion: Ingestion, endpoint: Endpoint } | EmailIngestResult>
 }
 
-export async function acceptEmailEnvelope(event: H3Event, ingestionId: string, input: EmailIngestEnvelope): Promise<EmailIngestResult> {
+export async function acceptEmailEnvelope(
+  event: H3Event,
+  ingestionId: string,
+  input: EmailIngestEnvelope,
+  options: { recoveryLeaseToken?: string } = {}
+): Promise<EmailIngestResult> {
   if (!UUID_PATTERN.test(ingestionId)) failure(400, 'invalid_email_ingestion_id')
   const parsed = EmailIngestEnvelopeSchema.safeParse(input)
   if (!parsed.success || parsed.data.ingestionId !== ingestionId) failure(400, 'invalid_email_ingest_envelope')
   const envelope = parsed.data
-  const claim = await claimEmailIngestion(ingestionId, envelope)
+  const claim = await claimEmailIngestion(ingestionId, envelope, options.recoveryLeaseToken)
   if ('status' in claim) return claim
   const { ingestion, endpoint } = claim
   if (!senderAllowed(endpoint, envelope)) {
-    await terminal(ingestionId, 'quarantined', { senderDomain: envelope.envelopeSenderDomain })
+    await terminal(ingestionId, 'quarantined', { senderDomain: envelope.envelopeSenderDomain }, options.recoveryLeaseToken)
     return { status: 'quarantined' }
   }
   if (!envelope.extraction) {
-    await terminal(ingestionId, 'quarantined', { senderDomain: envelope.envelopeSenderDomain })
+    await terminal(ingestionId, 'quarantined', { senderDomain: envelope.envelopeSenderDomain }, options.recoveryLeaseToken)
     return { status: 'quarantined' }
   }
   if (endpoint.expected_provider && endpoint.expected_provider !== envelope.extraction.provider) {
-    await terminal(ingestionId, 'quarantined', { senderDomain: envelope.envelopeSenderDomain })
+    await terminal(ingestionId, 'quarantined', { senderDomain: envelope.envelopeSenderDomain }, options.recoveryLeaseToken)
     return { status: 'quarantined' }
   }
   const lead = mapEmailExtractionToLeadInput({ endpoint, externalIdHash: envelope.externalIdHash, receivedAt: envelope.receivedAt, extraction: envelope.extraction })
   if (!hasTruthfulContact(lead.field_data)) {
-    await terminal(ingestionId, 'quarantined', { parser: envelope.extraction.parser, confidence: envelope.extraction.overallConfidence, senderDomain: envelope.envelopeSenderDomain })
+    await terminal(ingestionId, 'quarantined', { parser: envelope.extraction.parser, confidence: envelope.extraction.overallConfidence, senderDomain: envelope.envelopeSenderDomain }, options.recoveryLeaseToken)
     return { status: 'quarantined' }
   }
   try {
@@ -408,7 +462,7 @@ export async function acceptEmailEnvelope(event: H3Event, ingestionId: string, i
     const leadCaptureMode = await resolveLeadCaptureMode(endpoint.client_id)
     const accepted = await acceptLead(event, { lead, leadCaptureMode, consentDecision: 'unknown' })
     if (accepted.status !== 'created') {
-      await terminal(ingestionId, 'duplicate', { parser: envelope.extraction.parser, confidence: envelope.extraction.overallConfidence, senderDomain: envelope.envelopeSenderDomain })
+      await terminal(ingestionId, 'duplicate', { parser: envelope.extraction.parser, confidence: envelope.extraction.overallConfidence, senderDomain: envelope.envelopeSenderDomain }, options.recoveryLeaseToken)
       return { status: 'duplicate' }
     }
     let duplicate: PossibleDuplicateSignal | null = null
@@ -422,11 +476,14 @@ export async function acceptEmailEnvelope(event: H3Event, ingestionId: string, i
     await terminal(ingestionId, 'accepted', {
       leadId: accepted.leadId, duplicate, parser: envelope.extraction.parser,
       confidence: envelope.extraction.overallConfidence, senderDomain: envelope.envelopeSenderDomain
-    })
+    }, options.recoveryLeaseToken)
     await queryOne(`UPDATE lead_email_endpoints SET last_received_at = NOW(), last_accepted_at = NOW(), consecutive_failures = 0, updated_at = NOW() WHERE id = $1`, [endpoint.id])
     return { status: 'accepted', leadId: accepted.leadId }
   } catch (error) {
     const terminalFailure = ingestion.attempt_count >= MAX_ATTEMPTS
+    const recoveryCondition = options.recoveryLeaseToken
+      ? 'AND recovery_lease_token = $4::uuid'
+      : 'AND recovery_lease_token IS NULL'
     await queryOne(`
       UPDATE lead_email_ingestions
       SET status = 'failed',
@@ -437,7 +494,13 @@ export async function acceptEmailEnvelope(event: H3Event, ingestionId: string, i
         error_class = $2, terminal_at = CASE WHEN $3 THEN NOW() ELSE NULL END,
         next_attempt_at = CASE WHEN $3 THEN NULL ELSE NOW() + INTERVAL '5 minutes' END, updated_at = NOW()
       WHERE id = $1 AND terminal_at IS NULL
-    `, [ingestionId, error instanceof Error ? error.name.slice(0, 120) : 'unknown', terminalFailure])
+        ${recoveryCondition}
+    `, [
+      ingestionId,
+      error instanceof Error ? error.name.slice(0, 120) : 'unknown',
+      terminalFailure,
+      ...(options.recoveryLeaseToken ? [options.recoveryLeaseToken] : [])
+    ])
     await queryOne(`UPDATE lead_email_endpoints SET last_failure_at = NOW(), consecutive_failures = consecutive_failures + 1, updated_at = NOW() WHERE id = $1`, [endpoint.id])
     throw error
   }

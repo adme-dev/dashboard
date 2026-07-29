@@ -349,7 +349,7 @@ export interface ListEmailEndpointIngestionsOptions {
 export async function listEmailEndpointIngestions(
   id: string,
   actorId: string,
-  options: ListEmailEndpointIngestionsOptions = {},
+  options: ListEmailEndpointIngestionsOptions = {}
 ) {
   const limit = options.limit ?? HISTORY_DEFAULT_LIMIT
   if (!Number.isInteger(limit) || limit < 1 || limit > HISTORY_MAX_LIMIT) {
@@ -360,13 +360,51 @@ export async function listEmailEndpointIngestions(
     if (!endpoint.rows[0]) throw createError({ statusCode: 404, statusMessage: 'email_endpoint_not_found' })
     await assertActorCanManageClient(db, endpoint.rows[0].client_id, actorId)
     const rows = await db.query(`
-      SELECT id, endpoint_id, client_id, lead_id, correlation_id, transport, provider, parser, status,
-        confidence, sender_domain, safe_evidence, error_class, processing_ms, attempt_count,
-        next_attempt_at, terminal_at, created_at, updated_at
-      FROM lead_email_ingestions
-      WHERE endpoint_id = $1 AND client_id = $2
-        AND ($3::timestamptz IS NULL OR (created_at, id) < ($3::timestamptz, $4::uuid))
-      ORDER BY created_at DESC, id DESC
+      SELECT i.id, i.status, i.attempt_count, i.next_attempt_at, i.terminal_at,
+        i.created_at, i.updated_at,
+        CASE i.error_class
+          WHEN 'missing_evidence' THEN 'Retained evidence is unavailable'
+          WHEN 'corrupt_evidence' THEN 'Evidence could not be decrypted'
+          WHEN 'endpoint_unavailable' THEN 'Email address is disabled or retired'
+          WHEN 'sender_policy_denied' THEN 'Sender policy no longer allows this message'
+          WHEN 'attempts_exhausted' THEN 'Maximum recovery attempts reached'
+          WHEN 'evidence_expired' THEN 'Retained evidence has expired'
+          WHEN 'canonical_transient' THEN 'Lead creation is temporarily unavailable'
+          ELSE NULL
+        END AS reason,
+        (
+          i.status IN ('quarantined', 'failed')
+          AND i.staged_object_key IS NOT NULL
+          AND i.staged_expires_at > NOW()
+          AND i.attempt_count < 5
+          AND EXISTS (
+            SELECT 1
+            FROM lead_email_endpoints replay_endpoint
+            WHERE replay_endpoint.id = i.endpoint_id
+              AND replay_endpoint.client_id = i.client_id
+              AND replay_endpoint.enabled = TRUE
+              AND replay_endpoint.retired_at IS NULL
+          )
+        ) AS replay_available,
+        CASE
+          WHEN i.status NOT IN ('quarantined', 'failed') THEN 'Already processed'
+          WHEN i.attempt_count >= 5 THEN 'Maximum recovery attempts reached'
+          WHEN i.staged_object_key IS NULL THEN 'Retained evidence is unavailable'
+          WHEN i.staged_expires_at IS NULL OR i.staged_expires_at <= NOW() THEN 'Retained evidence has expired'
+          WHEN NOT EXISTS (
+            SELECT 1
+            FROM lead_email_endpoints replay_endpoint
+            WHERE replay_endpoint.id = i.endpoint_id
+              AND replay_endpoint.client_id = i.client_id
+              AND replay_endpoint.enabled = TRUE
+              AND replay_endpoint.retired_at IS NULL
+          ) THEN 'Email address is disabled or retired'
+          ELSE NULL
+        END AS replay_unavailable_reason
+      FROM lead_email_ingestions i
+      WHERE i.endpoint_id = $1 AND i.client_id = $2
+        AND ($3::timestamptz IS NULL OR (i.created_at, i.id) < ($3::timestamptz, $4::uuid))
+      ORDER BY i.created_at DESC, i.id DESC
       LIMIT $5
     `, [id, endpoint.rows[0].client_id, options.cursor?.createdAt ?? null, options.cursor?.id ?? null, limit])
     const items = rows.rows

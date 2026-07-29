@@ -42,6 +42,7 @@ function ingestion(overrides: Record<string, unknown> = {}) {
     id: INGESTION_ID, endpoint_id: ENDPOINT_ID, client_id: CLIENT_ID,
     correlation_id: CORRELATION_ID, external_id_hash: HASH, message_id_hash: HASH,
     status: 'received', terminal_at: null, next_attempt_at: null, attempt_count: 0,
+    recovery_lease_token: null,
     ...overrides
   }
 }
@@ -274,5 +275,80 @@ describe('email canonical ingress', () => {
     releaseAcceptance({ status: 'created', leadId: '55555555-5555-4555-8555-555555555555' })
     await expect(first).resolves.toEqual({ status: 'accepted', leadId: '55555555-5555-4555-8555-555555555555' })
     expect(mocks.acceptLead).toHaveBeenCalledOnce()
+  })
+
+  it('allows only the matching recovery owner through a live recovery lease', async () => {
+    const recoveryLeaseToken = '66666666-6666-4666-8666-666666666666'
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        recovery_lease_token: recoveryLeaseToken,
+        next_attempt_at: '2099-01-01T00:00:00.000Z'
+      })]
+    }).mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope(),
+      { recoveryLeaseToken }
+    )).resolves.toEqual({
+      status: 'accepted',
+      leadId: '55555555-5555-4555-8555-555555555555'
+    })
+
+    expect(mocks.acceptLead).toHaveBeenCalledOnce()
+    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/recovery_lease_token = \$3::uuid/)
+    expect(mocks.query.mock.calls[2]?.[1]).toEqual([
+      INGESTION_ID,
+      expect.any(Number),
+      recoveryLeaseToken
+    ])
+    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(/recovery_lease_token = \$11::uuid/)
+  })
+
+  it('requires the matching recovery owner when reserving the fifth attempt', async () => {
+    const recoveryLeaseToken = '66666666-6666-4666-8666-666666666666'
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        attempt_count: 4,
+        recovery_lease_token: recoveryLeaseToken,
+        next_attempt_at: '2099-01-01T00:00:00.000Z'
+      })]
+    }).mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope(),
+      { recoveryLeaseToken }
+    )).resolves.toEqual({
+      status: 'accepted',
+      leadId: '55555555-5555-4555-8555-555555555555'
+    })
+
+    expect(mocks.query.mock.calls[2]?.[0]).toMatch(/recovery_lease_token = \$3::uuid/)
+    expect(mocks.query.mock.calls[2]?.[1]).toEqual([
+      INGESTION_ID,
+      expect.any(Number),
+      recoveryLeaseToken
+    ])
+  })
+
+  it('does not let a stale recovery owner cross another live lease', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        recovery_lease_token: '77777777-7777-4777-8777-777777777777',
+        next_attempt_at: '2099-01-01T00:00:00.000Z'
+      })]
+    })
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope(),
+      { recoveryLeaseToken: '66666666-6666-4666-8666-666666666666' }
+    )).resolves.toEqual({ status: 'in_progress' })
+
+    expect(mocks.acceptLead).not.toHaveBeenCalled()
   })
 })

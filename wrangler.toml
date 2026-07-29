@@ -86,6 +86,14 @@ queue = "asset-intelligence"
 binding = "MEDIA_BUCKET"
 bucket_name = "agency-files"
 
+# Private encrypted raw-email recovery evidence. This bucket has no public URL.
+# EMAIL_QUARANTINE_ENCRYPTION_SECRET must be configured as a Pages secret in
+# each deployed environment and must match the Email Routing Worker secret.
+[[r2_buckets]]
+binding = "EMAIL_QUARANTINE_BUCKET"
+bucket_name = "email-lead-quarantine"
+preview_bucket_name = "email-lead-quarantine-preview"
+
 # AI — Workers AI for embeddings and edge inference
 [ai]
 binding = "AI"

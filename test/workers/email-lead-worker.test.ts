@@ -1,7 +1,11 @@
 import { createHash, createHmac } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { decryptRawEmail, encryptRawEmail } from '../../workers/email-lead-intake/src/quarantine'
+import {
+  createOpaqueEmailObjectKey,
+  decryptRawEmail,
+  encryptRawEmail
+} from '../../workers/email-lead-intake/src/quarantine'
 import { createSignedHeaders } from '../../workers/email-lead-intake/src/signing'
 import worker, { handleEmailMessage } from '../../workers/email-lead-intake/src/index'
 
@@ -737,7 +741,14 @@ describe('email lead intake Worker', () => {
 
   it('uses authenticated encryption with separate secret material', async () => {
     const encrypted = await encryptRawEmail(RAW, 'encryption-secret-that-is-separate')
+    const independentlyEncrypted = await encryptRawEmail(RAW, 'encryption-secret-that-is-separate')
     expect(decoder.decode(encrypted)).not.toContain('alex@example.test')
+    expect(independentlyEncrypted).not.toEqual(encrypted)
+    const firstKey = createOpaqueEmailObjectKey()
+    const secondKey = createOpaqueEmailObjectKey()
+    expect(firstKey).toMatch(/^email-ingestions\/[a-f0-9]{64}$/)
+    expect(secondKey).not.toBe(firstKey)
+    expect(firstKey).not.toContain(TOKEN)
     await expect(decryptRawEmail(encrypted, 'encryption-secret-that-is-separate')).resolves.toEqual(RAW)
     const tampered = new Uint8Array(encrypted)
     tampered[tampered.length - 1] ^= 1

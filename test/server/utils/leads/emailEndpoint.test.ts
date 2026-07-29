@@ -154,6 +154,36 @@ describe('email endpoint service', () => {
     expect(transaction).not.toHaveBeenCalled()
   })
 
+  it('projects only safe recovery status and replay eligibility into ingestion history', async () => {
+    const { listEmailEndpointIngestions } = await import('~~/server/utils/leads/emailEndpoint')
+    query.mockResolvedValueOnce(result([{ client_id: clientId }]))
+      .mockResolvedValueOnce(result([{ allowed: true }]))
+      .mockResolvedValueOnce(result([{
+        id: '44444444-4444-4444-8444-444444444444',
+        status: 'quarantined',
+        replay_available: true,
+        replay_unavailable_reason: null
+      }]))
+
+    await expect(listEmailEndpointIngestions(
+      '33333333-3333-4333-8333-333333333333',
+      actorId
+    )).resolves.toMatchObject({
+      items: [{ status: 'quarantined', replay_available: true }]
+    })
+
+    const historySql = query.mock.calls[2][0] as string
+    for (const unsafe of [
+      'correlation_id', 'sender_domain', 'safe_evidence', 'parser',
+      'confidence', 'processing_ms'
+    ]) {
+      expect(historySql).not.toContain(unsafe)
+    }
+    expect(historySql).toContain('replay_available')
+    expect(historySql).toContain('replay_unavailable_reason')
+    expect(historySql).toContain('replay_endpoint.client_id = i.client_id')
+  })
+
   it('removes both raw token fields from serialized endpoint responses', async () => {
     const { toSafeEmailEndpoint } = await import('~~/server/utils/leads/emailEndpoint')
 

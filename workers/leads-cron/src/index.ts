@@ -8,30 +8,48 @@ interface Env {
   INTERNAL_CRON_TOKEN: string
 }
 
-const ROUTES: Record<string, string> = {
-  '*/5 * * * *': '/api/leads/_internal/recover-stuck-claims',
-  '10 3 * * *': '/api/leads/_internal/purge-ingestion-errors',
-  '30 3 * * *': '/api/leads/_internal/purge-retention',
+const ROUTES: Record<string, string[]> = {
+  '*/5 * * * *': [
+    '/api/leads/_internal/recover-stuck-claims',
+    '/api/leads/_internal/recover-email-ingestions'
+  ],
+  '10 3 * * *': ['/api/leads/_internal/purge-ingestion-errors'],
+  '30 3 * * *': ['/api/leads/_internal/purge-retention']
 }
 
 export default {
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext) {
-    const path = ROUTES[controller.cron]
-    if (!path) {
+    const paths = ROUTES[controller.cron]
+    if (!paths) {
       console.warn('unknown cron', controller.cron)
       return
     }
-    const url = `${env.APP_BASE_URL}${path}`
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${env.INTERNAL_CRON_TOKEN}` },
-    })
-    const text = await resp.text()
-    console.log('cron.run', {
-      cron: controller.cron,
-      path,
-      status: resp.status,
-      body: text.slice(0, 200),
-    })
-  },
+    await Promise.all(paths.map(async (path) => {
+      try {
+        const resp = await fetch(`${env.APP_BASE_URL}${path}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${env.INTERNAL_CRON_TOKEN}` }
+        })
+        if (!resp.ok) {
+          console.error('cron.run.failed', {
+            cron: controller.cron,
+            path,
+            status: resp.status
+          })
+          return
+        }
+        console.log('cron.run.completed', {
+          cron: controller.cron,
+          path,
+          status: resp.status
+        })
+      } catch {
+        console.error('cron.run.failed', {
+          cron: controller.cron,
+          path,
+          status: 'request_error'
+        })
+      }
+    }))
+  }
 }

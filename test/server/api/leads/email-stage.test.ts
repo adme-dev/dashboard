@@ -49,8 +49,10 @@ describe('email stage reservation', () => {
       correlationId: CORRELATION_ID,
       ingestionId: '44444444-4444-4444-8444-444444444444'
     })
-    expect(first.encryptedObjectKey).toMatch(/^email-ingestions\/[A-Za-z0-9_-]{16,}$/)
+    expect(first.encryptedObjectKey).toMatch(/^email-ingestions\/[a-f0-9]{64}$/)
     expect(JSON.stringify(query.mock.calls[2]?.[1])).not.toContain('Jane Example')
+    expect(query.mock.calls[2]?.[0]).toContain('sender_domain')
+    expect(query.mock.calls[2]?.[1]).toContain('notify.carsales.com.au')
 
     query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
       id: first.ingestionId,

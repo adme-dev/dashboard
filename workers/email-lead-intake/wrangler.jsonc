@@ -18,7 +18,8 @@
   "r2_buckets": [
     {
       "binding": "EMAIL_QUARANTINE_BUCKET",
-      "bucket_name": "email-lead-quarantine"
+      "bucket_name": "email-lead-quarantine",
+      "preview_bucket_name": "email-lead-quarantine-preview"
     }
   ],
   "ai": {

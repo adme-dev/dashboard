@@ -16,7 +16,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  saved: [endpoint: SafeEmailLeadEndpoint]
+  'saved': [endpoint: SafeEmailLeadEndpoint]
   'open-rule': []
 }>()
 
@@ -108,6 +108,11 @@ const {
             </dl>
           </template>
         </UCollapsible>
+
+        <LeadsEmailIngestionHistory
+          v-if="isEditing && endpoint"
+          :endpoint-id="endpoint.id"
+        />
       </form>
     </template>
 
