@@ -3,18 +3,31 @@ definePageMeta({ layout: 'agency' })
 
 useHead({ title: 'Leads — XeroFlow Agency' })
 
-const tab = ref<'inbox' | 'rules'>('inbox')
+const tab = ref<'inbox' | 'rules' | 'email'>('inbox')
 const showSetupGuide = ref(false)
 
 const tabs = [
   { value: 'inbox', label: 'Inbox', icon: 'i-lucide-inbox' },
-  { value: 'rules', label: 'Form rules', icon: 'i-lucide-list-checks' }
-] satisfies Array<{ value: 'inbox' | 'rules'; label: string; icon: string }>
+  { value: 'rules', label: 'Form rules', icon: 'i-lucide-list-checks' },
+  { value: 'email', label: 'Email addresses', icon: 'i-lucide-mail' }
+] satisfies Array<{ value: 'inbox' | 'rules' | 'email'; label: string; icon: string }>
+
+function openSetupGuide() {
+  showSetupGuide.value = true
+}
+
+function selectTab(value: 'inbox' | 'rules' | 'email') {
+  tab.value = value
+}
+
+function openRules() {
+  tab.value = 'rules'
+}
 </script>
 
 <template>
   <div class="h-[calc(100vh-4rem)] flex flex-col">
-    <header class="px-6 py-4 border-b border-default flex items-center justify-between">
+    <header class="flex flex-col gap-3 border-b border-default px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
       <div>
         <h1 class="text-xl font-semibold">
           Leads
@@ -23,13 +36,13 @@ const tabs = [
           Route Google, Meta, webhook, and CSV leads without rebuilding Zaps.
         </p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <UButton
           variant="ghost"
           color="neutral"
           icon="i-lucide-help-circle"
           label="Setup guide"
-          @click="showSetupGuide = true"
+          @click="openSetupGuide"
         />
         <div role="tablist" aria-label="Lead sections" class="flex rounded-md bg-elevated p-1">
           <UButton
@@ -42,7 +55,7 @@ const tabs = [
             role="tab"
             :aria-selected="tab === item.value"
             size="sm"
-            @click="tab = item.value"
+            @click="selectTab(item.value)"
           />
         </div>
       </div>
@@ -51,10 +64,17 @@ const tabs = [
     <div class="flex-1 min-h-0">
       <LeadsInbox
         v-if="tab === 'inbox'"
-        @show-help="showSetupGuide = true"
-        @show-rules="tab = 'rules'"
+        @show-help="openSetupGuide"
+        @show-rules="openRules"
       />
-      <LeadsFormRulesTab v-else @open-setup-guide="showSetupGuide = true" />
+      <LeadsFormRulesTab
+        v-else-if="tab === 'rules'"
+        @open-setup-guide="openSetupGuide"
+      />
+      <LeadsEmailEndpointsTab
+        v-else
+        @open-rules="openRules"
+      />
     </div>
 
     <LeadsSetupGuide v-model:open="showSetupGuide" />
