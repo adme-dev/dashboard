@@ -39,7 +39,13 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
     vi.clearAllMocks()
     process.env.INTERNAL_CRON_TOKEN = 'fixed-length-internal-cron-token'
     mocks.runtime.mockReturnValue({ bucket: {}, encryptionSecret: 'secret' })
-    mocks.health.mockResolvedValue({ endpoints: 1, active: 0, notified: 0 })
+    mocks.health.mockResolvedValue({
+      status: 'succeeded',
+      endpoints: 1,
+      failedEndpoints: 0,
+      active: 0,
+      notified: 0
+    })
     mocks.recover.mockResolvedValue({
       recovered: 2,
       rescheduled: 1,
@@ -66,6 +72,22 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
 
     await expect(handler(event as never)).resolves.toEqual({
       ok: true,
+      recovery: {
+        ok: true,
+        recovered: 2,
+        rescheduled: 1,
+        quarantined: 1,
+        cleaned: 1,
+        failed: 0
+      },
+      health: {
+        ok: true,
+        status: 'succeeded',
+        endpoints: 1,
+        failedEndpoints: 0,
+        active: 0,
+        notified: 0
+      },
       recovered: 2,
       rescheduled: 1,
       quarantined: 1,
@@ -91,5 +113,38 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
 
     expect(mocks.recover).not.toHaveBeenCalled()
     expect(mocks.health).not.toHaveBeenCalled()
+  })
+
+  it('reports a whole health-scan failure without undoing successful recovery', async () => {
+    mocks.health.mockRejectedValueOnce(new Error('alert query unavailable'))
+
+    await expect(handler({
+      authorization: 'Bearer fixed-length-internal-cron-token',
+      context: {}
+    } as never)).resolves.toEqual({
+      ok: false,
+      recovery: {
+        ok: true,
+        recovered: 2,
+        rescheduled: 1,
+        quarantined: 1,
+        cleaned: 1,
+        failed: 0
+      },
+      health: {
+        ok: false,
+        status: 'failed',
+        endpoints: 0,
+        failedEndpoints: 0,
+        active: 0,
+        notified: 0,
+        errorClass: 'email_health_scan_failed'
+      },
+      recovered: 2,
+      rescheduled: 1,
+      quarantined: 1,
+      cleaned: 1,
+      failed: 0
+    })
   })
 })

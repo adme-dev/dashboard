@@ -81,8 +81,17 @@ describe('email ingestion privacy telemetry', () => {
     })).not.toThrow()
   })
 
-  it.each(['content_mismatch', 'identity_mismatch', 'legacy_unbound_evidence'])(
-    'preserves the bounded recovery error class %s',
+  it.each([
+    'content_mismatch',
+    'identity_mismatch',
+    'legacy_unbound_evidence',
+    'email_health_endpoint_failed',
+    'email_health_query_failed',
+    'email_health_global_failed',
+    'email_health_state_failed',
+    'email_health_scan_failed'
+  ])(
+    'preserves the bounded operational error class %s',
     (errorClass) => {
       const write = vi.fn()
       emitEmailIngestionEvent({

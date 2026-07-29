@@ -5,6 +5,7 @@ import {
   cleanupTerminalEmailEvidenceWithDefaultRepository,
   resolveEmailRecoveryRuntime
 } from '~~/server/utils/leads/emailRecovery'
+import { emitEmailIngestionEvent } from '~~/shared/leads/email/telemetry'
 
 export type EmailHealthStatus = 'received' | 'accepted' | 'duplicate' | 'quarantined' | 'failed'
 
@@ -34,6 +35,87 @@ export interface EmailHealthRuntimeConfig {
   signatureFailureThreshold: number | null
   r2FailureThreshold: number | null
   aiRejectionThreshold: number | null
+}
+
+export type EmailHealthScanStatus = 'succeeded' | 'partial'
+
+export interface EmailHealthScanResult {
+  status: EmailHealthScanStatus
+  endpoints: number
+  failedEndpoints: number
+  active: number
+  notified: number
+}
+
+type EmailHealthScanErrorClass
+  = | 'email_health_endpoint_failed'
+    | 'email_health_query_failed'
+    | 'email_health_global_failed'
+    | 'email_health_state_failed'
+
+async function persistEmailHealthScanState(input: {
+  scanToken: string
+  status: 'running' | 'succeeded' | 'partial' | 'failed'
+  endpoints: number
+  failedEndpoints: number
+  active: number
+  notified: number
+  errorClass: EmailHealthScanErrorClass | null
+}): Promise<void> {
+  const params = [
+    input.status,
+    input.endpoints,
+    input.failedEndpoints,
+    input.active,
+    input.notified,
+    input.errorClass,
+    input.scanToken
+  ]
+  if (input.status === 'running') {
+    await execute(`
+      INSERT INTO lead_email_health_scan_state (
+        id, status, run_token, started_at, completed_at, endpoints_scanned,
+        endpoints_failed, active_alerts, notifications_sent, error_class, updated_at
+      ) VALUES (1, $1, $7::uuid, NOW(), NULL, $2, $3, $4, $5, $6, NOW())
+      ON CONFLICT (id) DO UPDATE
+      SET status = EXCLUDED.status,
+        run_token = EXCLUDED.run_token,
+        started_at = NOW(),
+        completed_at = NULL,
+        endpoints_scanned = EXCLUDED.endpoints_scanned,
+        endpoints_failed = EXCLUDED.endpoints_failed,
+        active_alerts = EXCLUDED.active_alerts,
+        notifications_sent = EXCLUDED.notifications_sent,
+        error_class = EXCLUDED.error_class,
+        updated_at = NOW()
+    `, params)
+    return
+  }
+  await execute(`
+    UPDATE lead_email_health_scan_state
+    SET status = $1,
+      completed_at = NOW(),
+      endpoints_scanned = $2,
+      endpoints_failed = $3,
+      active_alerts = $4,
+      notifications_sent = $5,
+      error_class = $6,
+      updated_at = NOW()
+    WHERE id = 1 AND run_token = $7::uuid
+  `, params)
+}
+
+function emitEmailHealthScanFailure(
+  errorClass: EmailHealthScanErrorClass,
+  identity: { endpointId?: string, clientId?: string } = {}
+): void {
+  emitEmailIngestionEvent({
+    event: 'email_ingestion_failure',
+    endpointId: identity.endpointId,
+    clientId: identity.clientId,
+    status: 'failed',
+    errorClass
+  })
 }
 
 type EmailHealthEnvKey
@@ -683,12 +765,25 @@ async function processGlobalEmailTransportAlerts(
 export async function processEmailIngestionHealthAlerts(
   event: H3Event,
   runtimeConfig = resolveEmailHealthRuntimeConfig(event)
-): Promise<{
-  endpoints: number
-  active: number
-  notified: number
-}> {
-  const rows = await queryRows<EmailEndpointAlertRow>(`
+): Promise<EmailHealthScanResult> {
+  const scanToken = crypto.randomUUID()
+  let phase: 'state' | 'query' | 'endpoint' | 'global' = 'state'
+  let endpointCount = 0
+  let failedEndpoints = 0
+  let active = 0
+  let notified = 0
+  try {
+    await persistEmailHealthScanState({
+      scanToken,
+      status: 'running',
+      endpoints: 0,
+      failedEndpoints: 0,
+      active: 0,
+      notified: 0,
+      errorClass: null
+    })
+    phase = 'query'
+    const rows = await queryRows<EmailEndpointAlertRow>(`
     SELECT e.id AS endpoint_id, e.client_id, e.consecutive_failures,
       e.expected_max_silence_hours, e.first_response_sla_minutes,
       e.created_at, e.last_received_at, e.last_accepted_at,
@@ -752,52 +847,91 @@ export async function processEmailIngestionHealthAlerts(
         AND created_at >= NOW() - INTERVAL '15 minutes'
     ) transport ON TRUE
     WHERE e.enabled = TRUE AND e.retired_at IS NULL
-  `)
-  let active = 0
-  let notified = 0
-  for (const row of rows) {
-    try {
-      const codes = deriveEmailEndpointAlertCodes({
-        consecutiveFailures: Number(row.consecutive_failures),
-        wasHealthy: row.last_accepted_at !== null,
-        messages15m: Number(row.messages_15m),
-        failures15m: Number(row.failures_15m),
-        expectedMaxSilenceHours: row.expected_max_silence_hours === null
-          ? null
-          : Number(row.expected_max_silence_hours),
-        activatedAtMs: new Date(row.created_at).getTime(),
-        lastReceivedAtMs: row.last_received_at ? new Date(row.last_received_at).getTime() : null,
-        unassignedAccepted: Number(row.unassigned_accepted),
-        assignmentAlertThreshold: row.assignment_expected ? 1 : null,
-        beyondFirstResponseSla: Number(row.beyond_first_response_sla),
-        firstResponseSlaMinutes: row.first_response_sla_minutes === null
-          ? null
-          : Number(row.first_response_sla_minutes),
-        signatureFailureCount: Number(row.signature_failures),
-        signatureFailureThreshold: runtimeConfig.signatureFailureThreshold,
-        r2FailureCount: Number(row.r2_failures),
-        r2FailureThreshold: runtimeConfig.r2FailureThreshold,
-        aiSchemaRejectionCount: Number(row.ai_schema_rejections),
-        aiSchemaRejectionThreshold: runtimeConfig.aiRejectionThreshold
-      })
-      active += codes.length
-      const delivery = await deliverEmailEndpointAlerts({
-        event,
-        endpointId: row.endpoint_id,
-        clientId: row.client_id,
-        activeCodes: codes,
-        runtimeConfig
-      })
-      notified += delivery.notified
-    } catch {
-      // One tenant's state or notification failure must not block other
-      // endpoints or the global transport-security scan.
+    `)
+    endpointCount = rows.length
+    phase = 'endpoint'
+    for (const row of rows) {
+      try {
+        const codes = deriveEmailEndpointAlertCodes({
+          consecutiveFailures: Number(row.consecutive_failures),
+          wasHealthy: row.last_accepted_at !== null,
+          messages15m: Number(row.messages_15m),
+          failures15m: Number(row.failures_15m),
+          expectedMaxSilenceHours: row.expected_max_silence_hours === null
+            ? null
+            : Number(row.expected_max_silence_hours),
+          activatedAtMs: new Date(row.created_at).getTime(),
+          lastReceivedAtMs: row.last_received_at ? new Date(row.last_received_at).getTime() : null,
+          unassignedAccepted: Number(row.unassigned_accepted),
+          assignmentAlertThreshold: row.assignment_expected ? 1 : null,
+          beyondFirstResponseSla: Number(row.beyond_first_response_sla),
+          firstResponseSlaMinutes: row.first_response_sla_minutes === null
+            ? null
+            : Number(row.first_response_sla_minutes),
+          signatureFailureCount: Number(row.signature_failures),
+          signatureFailureThreshold: runtimeConfig.signatureFailureThreshold,
+          r2FailureCount: Number(row.r2_failures),
+          r2FailureThreshold: runtimeConfig.r2FailureThreshold,
+          aiSchemaRejectionCount: Number(row.ai_schema_rejections),
+          aiSchemaRejectionThreshold: runtimeConfig.aiRejectionThreshold
+        })
+        active += codes.length
+        const delivery = await deliverEmailEndpointAlerts({
+          event,
+          endpointId: row.endpoint_id,
+          clientId: row.client_id,
+          activeCodes: codes,
+          runtimeConfig
+        })
+        notified += delivery.notified
+      } catch {
+        failedEndpoints++
+        emitEmailHealthScanFailure('email_health_endpoint_failed', {
+          endpointId: row.endpoint_id,
+          clientId: row.client_id
+        })
+      }
     }
+    phase = 'global'
+    const global = await processGlobalEmailTransportAlerts(event, runtimeConfig)
+    active += global.active
+    notified += global.notified
+    const status = failedEndpoints > 0 ? 'partial' : 'succeeded'
+    phase = 'state'
+    await persistEmailHealthScanState({
+      scanToken,
+      status,
+      endpoints: endpointCount,
+      failedEndpoints,
+      active,
+      notified,
+      errorClass: failedEndpoints > 0 ? 'email_health_endpoint_failed' : null
+    })
+    return { status, endpoints: endpointCount, failedEndpoints, active, notified }
+  } catch (error) {
+    const errorClass: EmailHealthScanErrorClass = phase === 'query'
+      ? 'email_health_query_failed'
+      : phase === 'global'
+        ? 'email_health_global_failed'
+        : 'email_health_state_failed'
+    emitEmailHealthScanFailure(errorClass)
+    if (phase !== 'state') {
+      try {
+        await persistEmailHealthScanState({
+          scanToken,
+          status: 'failed',
+          endpoints: endpointCount,
+          failedEndpoints,
+          active,
+          notified,
+          errorClass
+        })
+      } catch {
+        emitEmailHealthScanFailure('email_health_state_failed')
+      }
+    }
+    throw error
   }
-  const global = await processGlobalEmailTransportAlerts(event, runtimeConfig)
-  active += global.active
-  notified += global.notified
-  return { endpoints: rows.length, active, notified }
 }
 
 export async function getEmailIngestionHealth(input: {

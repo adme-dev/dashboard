@@ -96,4 +96,39 @@ ALTER TABLE lead_email_endpoints
     )
   );
 
+CREATE TABLE IF NOT EXISTS lead_email_health_scan_state (
+  id SMALLINT PRIMARY KEY CHECK (id = 1),
+  status TEXT NOT NULL DEFAULT 'never' CHECK (
+    status IN ('never', 'running', 'succeeded', 'partial', 'failed')
+  ),
+  run_token UUID,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  endpoints_scanned INTEGER NOT NULL DEFAULT 0 CHECK (endpoints_scanned >= 0),
+  endpoints_failed INTEGER NOT NULL DEFAULT 0 CHECK (endpoints_failed >= 0),
+  active_alerts INTEGER NOT NULL DEFAULT 0 CHECK (active_alerts >= 0),
+  notifications_sent INTEGER NOT NULL DEFAULT 0 CHECK (notifications_sent >= 0),
+  error_class TEXT CHECK (
+    error_class IS NULL OR error_class IN (
+      'email_health_endpoint_failed',
+      'email_health_query_failed',
+      'email_health_global_failed',
+      'email_health_state_failed'
+    )
+  ),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (
+    (status = 'never' AND run_token IS NULL AND started_at IS NULL)
+    OR (status <> 'never' AND run_token IS NOT NULL AND started_at IS NOT NULL)
+  ),
+  CHECK (
+    (status IN ('never', 'running') AND completed_at IS NULL)
+    OR (status IN ('succeeded', 'partial', 'failed') AND completed_at IS NOT NULL)
+  )
+);
+
+INSERT INTO lead_email_health_scan_state (id, status)
+VALUES (1, 'never')
+ON CONFLICT (id) DO NOTHING;
+
 COMMIT;

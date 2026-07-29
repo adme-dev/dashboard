@@ -31,11 +31,32 @@ export default defineEventHandler(async (event) => {
   }
 
   const result = await recoverEmailIngestions(event, resolveEmailRecoveryRuntime(event))
+  const recovery = { ok: result.failed === 0, ...result }
+  let health
   try {
-    await processEmailIngestionHealthAlerts(event, resolveEmailHealthRuntimeConfig(event))
+    const scan = await processEmailIngestionHealthAlerts(
+      event,
+      resolveEmailHealthRuntimeConfig(event)
+    )
+    health = {
+      ok: scan.status === 'succeeded',
+      ...scan
+    }
   } catch {
-    // Alerting is operationally important but must not misreport successful
-    // recovery work or cause canonical recovery to be replayed.
+    health = {
+      ok: false,
+      status: 'failed' as const,
+      endpoints: 0,
+      failedEndpoints: 0,
+      active: 0,
+      notified: 0,
+      errorClass: 'email_health_scan_failed' as const
+    }
   }
-  return { ok: true, ...result }
+  return {
+    ok: recovery.ok && health.ok,
+    recovery,
+    health,
+    ...result
+  }
 })

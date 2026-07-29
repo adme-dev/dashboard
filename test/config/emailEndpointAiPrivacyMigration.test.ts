@@ -40,4 +40,15 @@ describe('email endpoint AI privacy approval migration', () => {
     expect(migration).toContain('DROP CONSTRAINT IF EXISTS lead_email_endpoints_ai_privacy_approval_check')
     expect(migration).toContain('DROP CONSTRAINT IF EXISTS lead_email_ingestions_bound_content_identity_check')
   })
+
+  it('persists a content-free singleton health-scan outcome for operator monitoring', () => {
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS lead_email_health_scan_state')
+    expect(migration).toMatch(
+      /status TEXT NOT NULL[\s\S]*'running'[\s\S]*'succeeded'[\s\S]*'partial'[\s\S]*'failed'/
+    )
+    expect(migration).toContain('run_token UUID')
+    expect(migration).toContain('endpoints_failed INTEGER NOT NULL')
+    expect(migration).toContain('error_class TEXT')
+    expect(migration).not.toContain('error_message')
+  })
 })

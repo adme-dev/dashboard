@@ -38,7 +38,9 @@ const ERROR_CLASSES = new Set([
   'corrupt_evidence', 'endpoint_unavailable', 'sender_policy_denied',
   'canonical_transient', 'canonical_window_elapsed', 'lease_lost',
   'legacy_evidence', 'legacy_unbound_evidence', 'content_mismatch',
-  'identity_mismatch'
+  'identity_mismatch', 'email_health_endpoint_failed',
+  'email_health_query_failed', 'email_health_global_failed',
+  'email_health_state_failed', 'email_health_scan_failed'
 ])
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
