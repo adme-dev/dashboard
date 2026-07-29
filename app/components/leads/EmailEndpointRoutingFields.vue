@@ -50,7 +50,7 @@ const teamOptions = computed(() => [
       description="Routing customisation state is not supplied by the safe endpoint API, so preset changes are unavailable here."
     />
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
       <UFormField label="Routing preset" :help="isEditing ? 'Open the form rule to make routing changes.' : 'Optional.'">
         <USelectMenu
           v-model="draft.routingPreset"

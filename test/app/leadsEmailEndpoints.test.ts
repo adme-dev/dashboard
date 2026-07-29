@@ -13,6 +13,7 @@ import {
   type SafeEmailLeadEndpoint
 } from '~~/app/utils/emailEndpointUi'
 import EmailEndpointsTab from '~~/app/components/leads/EmailEndpointsTab.vue'
+import { useEmailEndpointsManager } from '~~/app/composables/useEmailEndpointsManager'
 
 const pageSource = readFileSync('app/pages/agency/leads/index.vue', 'utf8')
 const tabSource = readFileSync('app/components/leads/EmailEndpointsTab.vue', 'utf8')
@@ -92,7 +93,11 @@ describe('agency leads email addresses composition', () => {
     ]) {
       expect(formSource).toMatch(new RegExp(`<UFormField[\\s\\S]{0,120}label="${label}"`))
     }
-    expect(formSource).toContain('grid grid-cols-1 gap-4 sm:grid-cols-2')
+    expect(slideoverSource).toContain('<form class="@container space-y-6"')
+    expect(formSource).toContain('grid grid-cols-1 gap-4 @lg:grid-cols-2')
+    expect(formSource).toContain('@lg:col-span-2')
+    expect(formSource).not.toContain('sm:grid-cols-2')
+    expect(formSource).not.toContain('sm:col-span-2')
     expect(formSource).toContain('<UInputTags')
     expect(formSource).toContain('class="w-full"')
   })
@@ -346,6 +351,178 @@ describe('email endpoint component DOM smoke', () => {
     expect(mounted.host.textContent).toContain(expectedText)
     expect(mounted.consoleError).not.toHaveBeenCalled()
     expect(mounted.consoleWarn).not.toHaveBeenCalled()
+    mounted.cleanup()
+  })
+})
+
+type Deferred<T> = {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason: unknown) => void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+function mountEmailEndpointsManager(fetchMock: ReturnType<typeof vi.fn>) {
+  Object.assign(globalThis, {
+    $fetch: fetchMock,
+    useToast: () => ({ add: vi.fn() })
+  })
+  let manager!: ReturnType<typeof useEmailEndpointsManager>
+  const host = document.createElement('div')
+  const app = createApp({
+    setup() {
+      manager = useEmailEndpointsManager(vi.fn())
+      return () => h('div')
+    }
+  })
+  app.mount(host)
+  return {
+    manager,
+    cleanup: () => app.unmount()
+  }
+}
+
+async function flushPromises() {
+  for (let index = 0; index < 4; index += 1) {
+    await Promise.resolve()
+    await nextTick()
+  }
+}
+
+const newerEndpoint: SafeEmailLeadEndpoint = {
+  ...endpoint,
+  id: '44444444-4444-4444-8444-444444444444',
+  client_id: '22222222-2222-4222-8222-222222222222',
+  label: 'newer snapshot',
+  email_address: 'newer-0123456789@leads.xeroflow.io'
+}
+
+describe('email endpoint refresh ordering', () => {
+  it('keeps a fast second success when the first success resolves later', async () => {
+    const firstClients = deferred<Array<{ id: string, name: string }>>()
+    const firstTeam = deferred<{ members: Array<{ id: string, name: string }> }>()
+    let clientCalls = 0
+    let teamCalls = 0
+    const fetchMock = vi.fn((request: string, options?: { query?: { client_id?: string } }) => {
+      if (request === '/api/agency/clients') {
+        clientCalls += 1
+        return clientCalls === 1
+          ? firstClients.promise
+          : Promise.resolve([{ id: newerEndpoint.client_id, name: 'New client' }])
+      }
+      if (request === '/api/agency/team-members') {
+        teamCalls += 1
+        return teamCalls === 1
+          ? firstTeam.promise
+          : Promise.resolve({ members: [{ id: 'new-user', name: 'New user' }] })
+      }
+      if (request === '/api/leads/email-endpoints' && options?.query?.client_id === newerEndpoint.client_id) {
+        return Promise.resolve({ items: [newerEndpoint] })
+      }
+      if (request === '/api/leads/email-endpoints') return Promise.resolve({ items: [endpoint] })
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    const mounted = mountEmailEndpointsManager(fetchMock)
+    const secondRefresh = mounted.manager.refresh()
+    await secondRefresh
+    firstClients.resolve([{ id: endpoint.client_id, name: 'Old client' }])
+    firstTeam.resolve({ members: [{ id: 'old-user', name: 'Old user' }] })
+    await flushPromises()
+
+    expect(mounted.manager.clients.value).toEqual([{ id: newerEndpoint.client_id, name: 'New client' }])
+    expect(mounted.manager.team.value).toEqual([{ id: 'new-user', name: 'New user' }])
+    expect(mounted.manager.filteredEndpoints.value).toEqual([newerEndpoint])
+    mounted.cleanup()
+  })
+
+  it('ignores an old 403 that arrives after a newer success', async () => {
+    const firstClients = deferred<Array<{ id: string, name: string }>>()
+    let clientCalls = 0
+    const fetchMock = vi.fn((request: string) => {
+      if (request === '/api/agency/clients') {
+        clientCalls += 1
+        return clientCalls === 1
+          ? firstClients.promise
+          : Promise.resolve([{ id: newerEndpoint.client_id, name: 'New client' }])
+      }
+      if (request === '/api/agency/team-members') return Promise.resolve({ members: [] })
+      if (request === '/api/leads/email-endpoints') return Promise.resolve({ items: [newerEndpoint] })
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    const mounted = mountEmailEndpointsManager(fetchMock)
+    await mounted.manager.refresh()
+    firstClients.reject({ statusCode: 403 })
+    await flushPromises()
+
+    expect(mounted.manager.forbidden.value).toBe(false)
+    expect(mounted.manager.loadError.value).toBeNull()
+    expect(mounted.manager.filteredEndpoints.value).toEqual([newerEndpoint])
+    mounted.cleanup()
+  })
+
+  it('keeps a newer error when an old success resolves afterwards', async () => {
+    const firstClients = deferred<Array<{ id: string, name: string }>>()
+    const firstTeam = deferred<{ members: Array<{ id: string, name: string }> }>()
+    let clientCalls = 0
+    let teamCalls = 0
+    const fetchMock = vi.fn((request: string) => {
+      if (request === '/api/agency/clients') {
+        clientCalls += 1
+        return clientCalls === 1
+          ? firstClients.promise
+          : Promise.reject(new Error('new request failed'))
+      }
+      if (request === '/api/agency/team-members') {
+        teamCalls += 1
+        return teamCalls === 1 ? firstTeam.promise : Promise.resolve({ members: [] })
+      }
+      if (request === '/api/leads/email-endpoints') return Promise.resolve({ items: [endpoint] })
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    const mounted = mountEmailEndpointsManager(fetchMock)
+    await mounted.manager.refresh()
+    firstClients.resolve([{ id: endpoint.client_id, name: 'Old client' }])
+    firstTeam.resolve({ members: [{ id: 'old-user', name: 'Old user' }] })
+    await flushPromises()
+
+    expect(mounted.manager.loadError.value).toBe('new request failed')
+    expect(mounted.manager.clients.value).toEqual([])
+    expect(mounted.manager.team.value).toEqual([])
+    expect(mounted.manager.filteredEndpoints.value).toEqual([])
+    mounted.cleanup()
+  })
+
+  it('keeps pending tied to the current request when an older request finishes first', async () => {
+    const firstClients = deferred<Array<{ id: string, name: string }>>()
+    const secondClients = deferred<Array<{ id: string, name: string }>>()
+    let clientCalls = 0
+    const fetchMock = vi.fn((request: string) => {
+      if (request === '/api/agency/clients') {
+        clientCalls += 1
+        return clientCalls === 1 ? firstClients.promise : secondClients.promise
+      }
+      if (request === '/api/agency/team-members') return Promise.resolve({ members: [] })
+      if (request === '/api/leads/email-endpoints') return Promise.resolve({ items: [] })
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    const mounted = mountEmailEndpointsManager(fetchMock)
+    const secondRefresh = mounted.manager.refresh()
+    firstClients.resolve([{ id: endpoint.client_id, name: 'Old client' }])
+    await flushPromises()
+    expect(mounted.manager.pending.value).toBe(true)
+
+    secondClients.resolve([{ id: newerEndpoint.client_id, name: 'New client' }])
+    await secondRefresh
+    expect(mounted.manager.pending.value).toBe(false)
     mounted.cleanup()
   })
 })

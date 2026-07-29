@@ -27,6 +27,7 @@ export function useEmailEndpointsManager(onOpenRules: () => void) {
   const retirementTarget = ref<SafeEmailLeadEndpoint | null>(null)
   const showRotationModal = ref(false)
   const showRetirementModal = ref(false)
+  let refreshEpoch = 0
 
   const clientOptions = computed(() => [
     { value: 'all', label: 'All clients' },
@@ -73,6 +74,7 @@ export function useEmailEndpointsManager(onOpenRules: () => void) {
   }
 
   async function refresh() {
+    const epoch = ++refreshEpoch
     pending.value = true
     loadError.value = null
     forbidden.value = false
@@ -81,16 +83,18 @@ export function useEmailEndpointsManager(onOpenRules: () => void) {
         apiFetch<EmailEndpointClientOption[]>('/api/agency/clients'),
         apiFetch<{ members: EmailEndpointTeamOption[] }>('/api/agency/team-members')
       ])
+      if (epoch !== refreshEpoch) return
       clients.value = clientRows
       team.value = teamRows.members ?? []
       const results = await Promise.allSettled(
-        clients.value.map(client =>
+        clientRows.map(client =>
           apiFetch<{ items: SafeEmailLeadEndpoint[] }>('/api/leads/email-endpoints', {
             method: 'GET',
             query: { client_id: client.id }
           })
         )
       )
+      if (epoch !== refreshEpoch) return
       const rejected = results.find(result => result.status === 'rejected') as PromiseRejectedResult | undefined
       if (rejected) {
         if (errorStatus(rejected.reason) === 403) forbidden.value = true
@@ -102,11 +106,12 @@ export function useEmailEndpointsManager(onOpenRules: () => void) {
         result.status === 'fulfilled' ? result.value.items : []
       )
     } catch (error) {
+      if (epoch !== refreshEpoch) return
       if (errorStatus(error) === 403) forbidden.value = true
       else loadError.value = errorMessage(error)
       endpoints.value = []
     } finally {
-      pending.value = false
+      if (epoch === refreshEpoch) pending.value = false
     }
   }
 

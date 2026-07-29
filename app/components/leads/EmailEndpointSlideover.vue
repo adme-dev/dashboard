@@ -53,7 +53,7 @@ const {
     @update:open="emit('update:open', $event)"
   >
     <template #body>
-      <form class="space-y-6" @submit.prevent="requestSave">
+      <form class="@container space-y-6" @submit.prevent="requestSave">
         <LeadsEmailEndpointDetailsFields
           v-model="draft"
           :endpoint="endpoint"
@@ -88,7 +88,7 @@ const {
             :trailing-icon="showAdvanced ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
           />
           <template #content>
-            <dl class="mt-3 grid grid-cols-1 gap-3 rounded-md border border-default p-3 text-sm sm:grid-cols-2">
+            <dl class="mt-3 grid grid-cols-1 gap-3 rounded-md border border-default p-3 text-sm @lg:grid-cols-2">
               <div>
                 <dt class="text-muted">
                   Form ID

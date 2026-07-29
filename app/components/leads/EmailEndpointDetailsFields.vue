@@ -49,7 +49,7 @@ function updateAddressPrefix(value: string | number) {
       </p>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
       <UFormField label="Client" required>
         <USelectMenu
           v-model="draft.clientId"
@@ -91,7 +91,7 @@ function updateAddressPrefix(value: string | number) {
         />
       </UFormField>
 
-      <UFormField label="Form name" required class="sm:col-span-2">
+      <UFormField label="Form name" required class="@lg:col-span-2">
         <UInput
           v-model="draft.formName"
           class="w-full"

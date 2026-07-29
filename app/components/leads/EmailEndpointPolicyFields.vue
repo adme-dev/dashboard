@@ -35,7 +35,7 @@ const cadenceOptions = [
       </p>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
       <UFormField label="Parser mode" required>
         <USelectMenu
           v-model="draft.parserMode"
@@ -61,7 +61,7 @@ const cadenceOptions = [
       <UFormField
         label="Allowed sender domains"
         help="Press Enter after each domain. Leave empty to accept any sender domain."
-        class="sm:col-span-2"
+        class="@lg:col-span-2"
       >
         <UInputTags
           v-model="draft.allowedSenderDomains"
@@ -82,7 +82,7 @@ const cadenceOptions = [
       </p>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
       <UFormField label="Expected cadence">
         <USelectMenu
           v-model="draft.cadence"
@@ -109,7 +109,7 @@ const cadenceOptions = [
       <UFormField
         label="First-response SLA"
         help="Optional target in minutes."
-        :class="{ 'sm:col-span-2': draft.cadence === 'custom' }"
+        :class="{ '@lg:col-span-2': draft.cadence === 'custom' }"
       >
         <UInput
           v-model.number="draft.firstResponseSlaMinutes"
