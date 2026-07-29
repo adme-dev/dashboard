@@ -39,7 +39,8 @@ describe('email signature telemetry gate', () => {
     mocks.record.mockResolvedValue(1)
   })
 
-  it('uses the Cloudflare runtime signing secret when process.env is unavailable', async () => {
+  it('uses the Cloudflare runtime signing secret ahead of a stale process fallback', async () => {
+    process.env.EMAIL_INGEST_HMAC_SECRET = 'stale-local-email-ingest-secret'
     mocks.verify.mockResolvedValue(undefined)
     const event = {
       context: {

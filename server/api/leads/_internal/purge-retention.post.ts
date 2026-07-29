@@ -5,27 +5,11 @@
 // "Terminal states" = won, lost, spam_suspected. New / contacted / qualified
 // stay forever (or until soft-delete triggers retention).
 
-import { createHash, timingSafeEqual } from 'node:crypto'
 import { execute, queryOne } from '~~/server/utils/db'
-
-function tokenMatches(provided: string, expected: string): boolean {
-  const providedDigest = createHash('sha256').update(provided).digest()
-  const expectedDigest = createHash('sha256').update(expected).digest()
-  return timingSafeEqual(providedDigest, expectedDigest)
-}
+import { isInternalCronAuthorized } from '~~/server/utils/leads/internalCronAuth'
 
 export default defineEventHandler(async (event) => {
-  const runtimeToken = (event.context as {
-    cloudflare?: { env?: Record<string, unknown> }
-  }).cloudflare?.env?.INTERNAL_CRON_TOKEN
-  const expected = typeof runtimeToken === 'string'
-    ? runtimeToken
-    : process.env.INTERNAL_CRON_TOKEN
-  const authorization = getHeader(event, 'authorization')
-  const provided = authorization?.startsWith('Bearer ')
-    ? authorization.slice('Bearer '.length)
-    : ''
-  if (!expected || !provided || !tokenMatches(provided, expected)) {
+  if (!isInternalCronAuthorized(event, getHeader(event, 'authorization'))) {
     throw createError({ statusCode: 401, statusMessage: 'unauthorized' })
   }
   const runtimeRetentionMonths = (event.context as {
