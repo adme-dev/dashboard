@@ -1,14 +1,16 @@
 <script setup lang="ts">
+type CrmRecord = Record<string, unknown> & { id: string }
+
 const props = defineProps<{
   open: boolean
   objectType: 'person' | 'company'
   clientId: string
-  record: Record<string, any> | null
+  record: CrmRecord | null
 }>()
 const emit = defineEmits<{ 'update:open': [boolean], 'save': [Record<string, unknown>] }>()
 
 const title = computed(() =>
-  (props.record ? 'Edit ' : 'New ') + (props.objectType === 'person' ? 'person' : 'company'),
+  (props.record ? 'Edit ' : 'New ') + (props.objectType === 'person' ? 'person' : 'company')
 )
 </script>
 
@@ -16,6 +18,7 @@ const title = computed(() =>
   <USlideover
     :open="open"
     :title="title"
+    :ui="{ content: 'sm:max-w-xl' }"
     @update:open="emit('update:open', $event)"
   >
     <template #body>
@@ -43,7 +46,9 @@ const title = computed(() =>
         <USeparator class="my-4" />
         <CrmDocuments :client-id="clientId" :target-type="objectType" :target-id="record.id" />
         <USeparator class="my-4" />
-        <h3 class="text-sm font-medium text-muted mb-3">Communications &amp; activity</h3>
+        <h3 class="text-sm font-medium text-muted mb-3">
+          Communications &amp; activity
+        </h3>
         <CrmCommTimeline :client-id="clientId" :target-type="objectType" :target-id="record.id" />
         <USeparator class="my-4" />
         <CrmAuditHistory :client-id="clientId" :entity-type="objectType" :entity-id="record.id" />

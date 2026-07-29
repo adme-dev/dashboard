@@ -1,10 +1,20 @@
 <script setup lang="ts">
 // F10 — contact-preference toggles for a person. Saves each change immediately via
 // the people PATCH (which audits the change). Surfaces a visible do-not-contact flag.
-const props = defineProps<{ clientId: string, record: Record<string, any> }>()
+type ContactRecord = Record<string, unknown> & {
+  id: string
+  do_not_contact?: boolean
+  do_not_email?: boolean
+  do_not_call?: boolean
+  do_not_sms?: boolean
+  preferred_channel?: string | null
+  best_time?: string | null
+}
+
+const props = defineProps<{ clientId: string, record: ContactRecord }>()
 const base = inject<string>('crmApiBase', '/api/crm')
 const toast = useToast()
-const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
 const state = reactive({
   do_not_contact: !!props.record.do_not_contact,
@@ -12,13 +22,13 @@ const state = reactive({
   do_not_call: !!props.record.do_not_call,
   do_not_sms: !!props.record.do_not_sms,
   preferred_channel: (props.record.preferred_channel ?? 'none') as string,
-  best_time: (props.record.best_time ?? '') as string,
+  best_time: (props.record.best_time ?? '') as string
 })
 
 const channelOptions = [
   { label: 'No preference', value: 'none' },
   { label: 'Email', value: 'email' }, { label: 'Phone', value: 'call' },
-  { label: 'SMS', value: 'sms' }, { label: 'In person', value: 'meeting' },
+  { label: 'SMS', value: 'sms' }, { label: 'In person', value: 'meeting' }
 ]
 
 const saving = ref(false)
@@ -26,8 +36,13 @@ async function patch(body: Record<string, unknown>) {
   saving.value = true
   try {
     await apiFetch(`${base}/people/${props.record.id}`, { method: 'PATCH', body: { ...body, client_id: props.clientId } })
-  } catch (e: any) {
-    toast.add({ title: 'Could not save preference', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } catch (error: unknown) {
+    const failure = error as { data?: { statusMessage?: string }, message?: string }
+    toast.add({
+      title: 'Could not save preference',
+      description: failure.data?.statusMessage || failure.message,
+      color: 'error'
+    })
   } finally {
     saving.value = false
   }
@@ -36,15 +51,30 @@ function setFlag(key: 'do_not_contact' | 'do_not_email' | 'do_not_call' | 'do_no
   state[key] = val
   patch({ [key]: val })
 }
-function setChannel(val: string) { state.preferred_channel = val; patch({ preferred_channel: val === 'none' ? null : val }) }
-function saveBestTime() { patch({ best_time: state.best_time.trim() || null }) }
+function setChannel(val: string) {
+  state.preferred_channel = val
+  patch({ preferred_channel: val === 'none' ? null : val })
+}
+function saveBestTime() {
+  patch({ best_time: state.best_time.trim() || null })
+}
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="@container space-y-4">
     <div class="flex items-center justify-between">
-      <h3 class="text-sm font-medium text-muted">Contact preferences</h3>
-      <UBadge v-if="state.do_not_contact" color="error" variant="subtle" size="sm" icon="i-lucide-ban">Do not contact</UBadge>
+      <h3 class="text-sm font-medium text-muted">
+        Contact preferences
+      </h3>
+      <UBadge
+        v-if="state.do_not_contact"
+        color="error"
+        variant="subtle"
+        size="sm"
+        icon="i-lucide-ban"
+      >
+        Do not contact
+      </UBadge>
     </div>
 
     <div class="rounded-lg border border-default divide-y divide-default">
@@ -66,12 +96,25 @@ function saveBestTime() { patch({ best_time: state.best_time.trim() || null }) }
       </label>
     </div>
 
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-1 gap-4 @md:grid-cols-2">
       <UFormField label="Preferred channel">
-        <USelect :model-value="state.preferred_channel" :items="channelOptions" value-key="value" size="sm" @update:model-value="(v: string) => setChannel(v)" />
+        <USelect
+          :model-value="state.preferred_channel"
+          class="w-full"
+          :items="channelOptions"
+          value-key="value"
+          size="sm"
+          @update:model-value="(v: string) => setChannel(v)"
+        />
       </UFormField>
       <UFormField label="Best time">
-        <UInput v-model="state.best_time" placeholder="e.g. mornings" size="sm" @blur="saveBestTime" />
+        <UInput
+          v-model="state.best_time"
+          class="w-full"
+          placeholder="e.g. mornings"
+          size="sm"
+          @blur="saveBestTime"
+        />
       </UFormField>
     </div>
   </div>
