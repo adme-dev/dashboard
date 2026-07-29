@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   deriveEmailEndpointAlertCodes,
   reconcileEmailHealthRows,
+  resolveEmailHealthRuntimeConfig,
   type EmailHealthRow
 } from '../../../../server/utils/leads/emailHealth'
 
@@ -69,6 +70,32 @@ describe('email ingestion health reconciliation', () => {
 })
 
 describe('email endpoint alert policy', () => {
+  it('prefers Cloudflare runtime bindings when process.env is absent or conflicting', () => {
+    process.env.EMAIL_INGESTION_NOTIFY_ALLOWLIST = 'process@example.test'
+    process.env.EMAIL_INGESTION_SIGNATURE_FAILURE_THRESHOLD = '99'
+    try {
+      const config = resolveEmailHealthRuntimeConfig({
+        context: {
+          cloudflare: {
+            env: {
+              EMAIL_INGESTION_NOTIFY_ALLOWLIST: 'runtime@example.test',
+              EMAIL_INGESTION_SIGNATURE_FAILURE_THRESHOLD: '4',
+              EMAIL_INGESTION_R2_FAILURE_THRESHOLD: '3'
+            }
+          }
+        }
+      } as never)
+      expect(config).toMatchObject({
+        notificationAllowlist: 'runtime@example.test',
+        signatureFailureThreshold: 4,
+        r2FailureThreshold: 3
+      })
+    } finally {
+      delete process.env.EMAIL_INGESTION_NOTIFY_ALLOWLIST
+      delete process.env.EMAIL_INGESTION_SIGNATURE_FAILURE_THRESHOLD
+    }
+  })
+
   it('alerts at five failures only after a previously healthy transition', () => {
     expect(deriveEmailEndpointAlertCodes({
       consecutiveFailures: 5,

@@ -36,8 +36,13 @@ describe('POST /api/leads/_internal/purge-ingestion-errors retention', () => {
   it('runs bounded nonce, error, metadata, and residual-object cleanup', async () => {
     const event = {
       authorization: 'Bearer fixed-length-internal-cron-token',
-      context: {}
+      context: {
+        cloudflare: {
+          env: { INTERNAL_CRON_TOKEN: 'fixed-length-internal-cron-token' }
+        }
+      }
     }
+    delete process.env.INTERNAL_CRON_TOKEN
     await expect(handler(event as never)).resolves.toEqual({
       ok: true,
       ingestionErrors: 4,

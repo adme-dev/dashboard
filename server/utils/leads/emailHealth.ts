@@ -28,6 +28,54 @@ export interface EmailTransportCounters {
   policyDenied: number
 }
 
+export interface EmailHealthRuntimeConfig {
+  notificationAllowlist: string | null
+  unknownRecipientThreshold: number | null
+  signatureFailureThreshold: number | null
+  r2FailureThreshold: number | null
+  aiRejectionThreshold: number | null
+}
+
+type EmailHealthEnvKey
+  = | 'EMAIL_INGESTION_NOTIFY_ALLOWLIST'
+    | 'ANOMALY_NOTIFY_ALLOWLIST'
+    | 'EMAIL_INGESTION_UNKNOWN_RECIPIENT_THRESHOLD'
+    | 'EMAIL_INGESTION_SIGNATURE_FAILURE_THRESHOLD'
+    | 'EMAIL_INGESTION_R2_FAILURE_THRESHOLD'
+    | 'EMAIL_INGESTION_AI_REJECTION_THRESHOLD'
+
+function runtimeValue(event: H3Event, name: EmailHealthEnvKey): string | undefined {
+  const value = (event.context as {
+    cloudflare?: { env?: Record<string, unknown> }
+  }).cloudflare?.env?.[name]
+  return typeof value === 'string' ? value : process.env[name]
+}
+
+function configuredThreshold(value: string | undefined): number | null {
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, 10_000) : null
+}
+
+export function resolveEmailHealthRuntimeConfig(event: H3Event): EmailHealthRuntimeConfig {
+  return {
+    notificationAllowlist: runtimeValue(event, 'EMAIL_INGESTION_NOTIFY_ALLOWLIST')
+      ?? runtimeValue(event, 'ANOMALY_NOTIFY_ALLOWLIST')
+      ?? null,
+    unknownRecipientThreshold: configuredThreshold(
+      runtimeValue(event, 'EMAIL_INGESTION_UNKNOWN_RECIPIENT_THRESHOLD')
+    ),
+    signatureFailureThreshold: configuredThreshold(
+      runtimeValue(event, 'EMAIL_INGESTION_SIGNATURE_FAILURE_THRESHOLD')
+    ),
+    r2FailureThreshold: configuredThreshold(
+      runtimeValue(event, 'EMAIL_INGESTION_R2_FAILURE_THRESHOLD')
+    ),
+    aiRejectionThreshold: configuredThreshold(
+      runtimeValue(event, 'EMAIL_INGESTION_AI_REJECTION_THRESHOLD')
+    )
+  }
+}
+
 export interface EmailHealthSnapshot {
   reservedTotal: number
   accepted: number
@@ -366,9 +414,7 @@ export async function completeEmailEndpointAlertClaim(input: {
   return Boolean(rows[0])
 }
 
-function notificationAllowlist(): Set<string> | null {
-  const raw = process.env.EMAIL_INGESTION_NOTIFY_ALLOWLIST
-    ?? process.env.ANOMALY_NOTIFY_ALLOWLIST
+function notificationAllowlist(raw: string | null): Set<string> | null {
   if (!raw?.trim()) return null
   const values = raw.split(',').map(value => value.trim().toLowerCase()).filter(Boolean)
   return values.length ? new Set(values) : null
@@ -379,11 +425,16 @@ function notificationAllowlist(): Set<string> | null {
  * path. No endpoint label, customer content, or caught error is included.
  */
 export async function deliverEmailEndpointAlerts(input: {
+  event?: H3Event
   endpointId: string
   clientId: string
   activeCodes: EmailEndpointAlertCode[]
   claimToken?: string
+  runtimeConfig?: EmailHealthRuntimeConfig
 }): Promise<{ claimed: number, notified: number }> {
+  const runtimeConfig = input.runtimeConfig ?? resolveEmailHealthRuntimeConfig(
+    input.event ?? ({ context: {} } as H3Event)
+  )
   const claimToken = input.claimToken ?? crypto.randomUUID()
   const claimed = await claimEmailEndpointAlerts({
     endpointId: input.endpointId,
@@ -402,7 +453,7 @@ export async function deliverEmailEndpointAlerts(input: {
       AND tm.is_active = TRUE
       AND tm.email IS NOT NULL AND tm.email <> ''
   `, [input.clientId])
-  const allowlist = notificationAllowlist()
+  const allowlist = notificationAllowlist(runtimeConfig.notificationAllowlist)
   const userIds = members
     .filter(member => !allowlist || allowlist.has(member.email.toLowerCase()))
     .map(member => member.id)
@@ -474,12 +525,10 @@ interface EmailEndpointAlertRow {
   ai_schema_rejections: number | string
 }
 
-function configuredThreshold(name: string): number | null {
-  const value = Number(process.env[name])
-  return Number.isSafeInteger(value) && value > 0 ? Math.min(value, 10_000) : null
-}
-
-async function processGlobalEmailTransportAlerts(): Promise<{ active: number, notified: number }> {
+async function processGlobalEmailTransportAlerts(
+  event: H3Event,
+  runtimeConfig: EmailHealthRuntimeConfig
+): Promise<{ active: number, notified: number }> {
   const counts = await queryRows<{ event_class: EmailTransportEventClass, count: number | string }>(`
     SELECT event_class, COUNT(*)::int AS count
     FROM lead_email_transport_events
@@ -492,8 +541,8 @@ async function processGlobalEmailTransportAlerts(): Promise<{ active: number, no
     counts.find(row => row.event_class === eventClass)?.count ?? 0
   )
   const activeCodes: EmailEndpointAlertCode[] = []
-  const unknownThreshold = configuredThreshold('EMAIL_INGESTION_UNKNOWN_RECIPIENT_THRESHOLD')
-  const signatureThreshold = configuredThreshold('EMAIL_INGESTION_SIGNATURE_FAILURE_THRESHOLD')
+  const unknownThreshold = runtimeConfig.unknownRecipientThreshold
+  const signatureThreshold = runtimeConfig.signatureFailureThreshold
   if (unknownThreshold !== null && value('unknown_recipient') >= unknownThreshold) {
     activeCodes.push('unknown_recipient_spike')
   }
@@ -545,7 +594,7 @@ async function processGlobalEmailTransportAlerts(): Promise<{ active: number, no
     return result
   })
   if (!claimed.length) return { active: activeCodes.length, notified: 0 }
-  const allowlist = notificationAllowlist()
+  const allowlist = notificationAllowlist(runtimeConfig.notificationAllowlist)
   const members = await queryRows<{
     id: string
     email: string
@@ -563,7 +612,7 @@ async function processGlobalEmailTransportAlerts(): Promise<{ active: number, no
   for (const member of members) {
     try {
       const permissions = await resolveUserPermissions(
-        null as never,
+        event,
         member.id,
         member.role,
         member.custom_role_id
@@ -625,7 +674,10 @@ async function processGlobalEmailTransportAlerts(): Promise<{ active: number, no
   return { active: activeCodes.length, notified }
 }
 
-export async function processEmailIngestionHealthAlerts(): Promise<{
+export async function processEmailIngestionHealthAlerts(
+  event: H3Event,
+  runtimeConfig = resolveEmailHealthRuntimeConfig(event)
+): Promise<{
   endpoints: number
   active: number
   notified: number
@@ -716,17 +768,19 @@ export async function processEmailIngestionHealthAlerts(): Promise<{
           ? null
           : Number(row.first_response_sla_minutes),
         signatureFailureCount: Number(row.signature_failures),
-        signatureFailureThreshold: configuredThreshold('EMAIL_INGESTION_SIGNATURE_FAILURE_THRESHOLD'),
+        signatureFailureThreshold: runtimeConfig.signatureFailureThreshold,
         r2FailureCount: Number(row.r2_failures),
-        r2FailureThreshold: configuredThreshold('EMAIL_INGESTION_R2_FAILURE_THRESHOLD'),
+        r2FailureThreshold: runtimeConfig.r2FailureThreshold,
         aiSchemaRejectionCount: Number(row.ai_schema_rejections),
-        aiSchemaRejectionThreshold: configuredThreshold('EMAIL_INGESTION_AI_REJECTION_THRESHOLD')
+        aiSchemaRejectionThreshold: runtimeConfig.aiRejectionThreshold
       })
       active += codes.length
       const delivery = await deliverEmailEndpointAlerts({
+        event,
         endpointId: row.endpoint_id,
         clientId: row.client_id,
-        activeCodes: codes
+        activeCodes: codes,
+        runtimeConfig
       })
       notified += delivery.notified
     } catch {
@@ -734,7 +788,7 @@ export async function processEmailIngestionHealthAlerts(): Promise<{
       // endpoints or the global transport-security scan.
     }
   }
-  const global = await processGlobalEmailTransportAlerts()
+  const global = await processGlobalEmailTransportAlerts(event, runtimeConfig)
   active += global.active
   notified += global.notified
   return { endpoints: rows.length, active, notified }

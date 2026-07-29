@@ -14,7 +14,15 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('~~/server/utils/leads/emailHealth', () => ({
-  processEmailIngestionHealthAlerts: mocks.health
+  processEmailIngestionHealthAlerts: mocks.health,
+  resolveEmailHealthRuntimeConfig: (event: {
+    context?: { cloudflare?: { env?: Record<string, string> } }
+  }) => ({
+    notificationAllowlist: event.context?.cloudflare?.env?.EMAIL_INGESTION_NOTIFY_ALLOWLIST ?? null,
+    signatureFailureThreshold: Number(
+      event.context?.cloudflare?.env?.EMAIL_INGESTION_SIGNATURE_FAILURE_THRESHOLD
+    ) || null
+  })
 }))
 
 vi.mock('~~/server/utils/leads/emailRecovery', () => ({
@@ -44,8 +52,17 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
   it('runs recovery with cron authentication and returns content-free counts', async () => {
     const event = {
       authorization: 'Bearer fixed-length-internal-cron-token',
-      context: {}
+      context: {
+        cloudflare: {
+          env: {
+            INTERNAL_CRON_TOKEN: 'fixed-length-internal-cron-token',
+            EMAIL_INGESTION_NOTIFY_ALLOWLIST: 'runtime@example.test',
+            EMAIL_INGESTION_SIGNATURE_FAILURE_THRESHOLD: '4'
+          }
+        }
+      }
     }
+    delete process.env.INTERNAL_CRON_TOKEN
 
     await expect(handler(event as never)).resolves.toEqual({
       ok: true,
@@ -57,7 +74,10 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
     })
 
     expect(mocks.recover).toHaveBeenCalledWith(event, expect.anything())
-    expect(mocks.health).toHaveBeenCalledOnce()
+    expect(mocks.health).toHaveBeenCalledWith(event, expect.objectContaining({
+      notificationAllowlist: 'runtime@example.test',
+      signatureFailureThreshold: 4
+    }))
   })
 
   it('rejects a wrong token without invoking recovery', async () => {

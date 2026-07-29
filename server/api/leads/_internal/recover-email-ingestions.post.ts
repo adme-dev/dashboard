@@ -3,7 +3,10 @@ import {
   recoverEmailIngestions,
   resolveEmailRecoveryRuntime
 } from '~~/server/utils/leads/emailRecovery'
-import { processEmailIngestionHealthAlerts } from '~~/server/utils/leads/emailHealth'
+import {
+  processEmailIngestionHealthAlerts,
+  resolveEmailHealthRuntimeConfig
+} from '~~/server/utils/leads/emailHealth'
 
 function tokenMatches(provided: string, expected: string): boolean {
   const providedDigest = createHash('sha256').update(provided).digest()
@@ -29,7 +32,7 @@ export default defineEventHandler(async (event) => {
 
   const result = await recoverEmailIngestions(event, resolveEmailRecoveryRuntime(event))
   try {
-    await processEmailIngestionHealthAlerts()
+    await processEmailIngestionHealthAlerts(event, resolveEmailHealthRuntimeConfig(event))
   } catch {
     // Alerting is operationally important but must not misreport successful
     // recovery work or cause canonical recovery to be replayed.
