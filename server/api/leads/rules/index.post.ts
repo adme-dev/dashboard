@@ -5,7 +5,7 @@ import { queryOne } from '~~/server/utils/db'
 
 const Body = z.object({
   client_id: z.string().uuid(),
-  source: z.enum(['meta', 'google', 'webhook', 'csv']),
+  source: z.enum(['meta', 'google', 'webhook', 'csv', 'email']),
   form_id: z.string().min(1),
   form_name: z.string().nullable().optional()
 })

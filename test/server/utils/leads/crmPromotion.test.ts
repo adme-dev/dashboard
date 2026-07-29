@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createCrmLeadPromotionService } from '../../../../server/utils/leads/crmPromotion'
+import {
+  createCrmLeadPromotionService,
+  crmSourceCopy
+} from '../../../../server/utils/leads/crmPromotion'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const LEAD_ID = '22222222-2222-4222-8222-222222222222'
@@ -42,12 +45,13 @@ function createDb(options: {
   existingLink?: boolean
   people?: Array<Record<string, unknown>>
   stage?: boolean
+  lead?: Record<string, unknown>
 } = {}) {
   const statements: Array<{ sql: string, params: unknown[] }> = []
   const db = {
     query: vi.fn(async (sql: string, params: unknown[] = []) => {
       statements.push({ sql, params })
-      if (/FROM leads[\s\S]*FOR UPDATE/.test(sql)) return { rows: [lead()] }
+      if (/FROM leads[\s\S]*FOR UPDATE/.test(sql)) return { rows: [lead(options.lead)] }
       if (/FROM lead_crm_links/.test(sql)) {
         return { rows: options.existingLink ? [{ id: LINK_ID, person_id: PERSON_ID, opportunity_id: OPPORTUNITY_ID }] : [] }
       }
@@ -65,6 +69,25 @@ function createDb(options: {
 }
 
 describe('CRM lead promotion', () => {
+  it.each([
+    ['google', 'ignored', 'Google lead received', 'Google enquiry'],
+    ['meta', 'ignored', 'Meta lead received', 'Meta enquiry'],
+    ['webhook', 'podium', 'Podium lead received', 'Podium enquiry'],
+    ['webhook', '<unsafe-provider>', 'Website lead received', 'Website enquiry']
+  ])('uses source-aware bounded copy for %s / %s', (source, provider, activity, fallback) => {
+    expect(crmSourceCopy({
+      source,
+      field_data: { lead_provider: provider }
+    })).toMatchObject({
+      personActivityTitle: activity,
+      opportunityFallback: fallback
+    })
+    expect(JSON.stringify(crmSourceCopy({
+      source,
+      field_data: { lead_provider: provider }
+    }))).not.toContain('<unsafe-provider>')
+  })
+
   it('atomically creates a CRM person, vehicle opportunity and durable lead link', async () => {
     const { db, statements } = createDb()
     const transaction = vi.fn(async callback => callback(db))
@@ -211,5 +234,76 @@ describe('CRM lead promotion', () => {
       status: 'insufficient_identity',
       missing: ['email_or_phone']
     })
+  })
+
+  it.each([
+    {
+      provider: 'carsales',
+      expectedPersonTitle: 'Carsales email lead received',
+      expectedOpportunityTitle: 'Created from Carsales email lead',
+      expectedFallback: 'Carsales email enquiry — Jane Citizen'
+    },
+    {
+      provider: '<unsafe-provider>',
+      expectedPersonTitle: 'Email lead received',
+      expectedOpportunityTitle: 'Created from email lead',
+      expectedFallback: 'Email enquiry — Jane Citizen'
+    }
+  ])('uses bounded provider-aware CRM copy for $provider email leads', async ({
+    provider,
+    expectedPersonTitle,
+    expectedOpportunityTitle,
+    expectedFallback
+  }) => {
+    const { db, statements } = createDb({
+      lead: {
+        source: 'email',
+        field_data: {
+          ...lead().field_data,
+          lead_provider: provider,
+          vehicle_year: '',
+          vehicle_make: '',
+          vehicle_model: ''
+        }
+      }
+    })
+    const service = createCrmLeadPromotionService({
+      transaction: (async callback => callback(db)) as never
+    })
+
+    await expect(service.promote(LEAD_ID)).resolves.toMatchObject({ status: 'promoted' })
+
+    const opportunity = statements.find(s => /INSERT INTO crm_opportunities/.test(s.sql))
+    const activities = statements.filter(s => /INSERT INTO crm_activities/.test(s.sql))
+    expect(opportunity?.params).toContain(expectedFallback)
+    expect(activities[0]?.params).toContain(expectedPersonTitle)
+    expect(activities[1]?.params).toContain(expectedOpportunityTitle)
+    expect(JSON.stringify({ opportunity, activities })).not.toContain('<unsafe-provider>')
+    expect(JSON.stringify({ opportunity, activities })).not.toContain('Website')
+    expect(JSON.stringify({ opportunity, activities })).not.toContain('website')
+  })
+
+  it('preserves the existing website CRM wording for webhook leads', async () => {
+    const { db, statements } = createDb({
+      lead: {
+        field_data: {
+          ...lead().field_data,
+          vehicle_year: '',
+          vehicle_make: '',
+          vehicle_model: ''
+        }
+      }
+    })
+    const service = createCrmLeadPromotionService({
+      transaction: (async callback => callback(db)) as never
+    })
+
+    await service.promote(LEAD_ID)
+
+    const opportunity = statements.find(s => /INSERT INTO crm_opportunities/.test(s.sql))
+    const activities = statements.filter(s => /INSERT INTO crm_activities/.test(s.sql))
+    expect(opportunity?.params).toContain('Website enquiry — Jane Citizen')
+    expect(activities[0]?.params).toContain('Website lead received')
+    expect(activities[1]?.params).toContain('Created from website lead')
   })
 })

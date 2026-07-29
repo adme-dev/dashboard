@@ -3,8 +3,12 @@ definePageMeta({ layout: 'agency' })
 
 useHead({ title: 'Leads — XeroFlow Agency' })
 
+const route = useRoute()
 const tab = ref<'inbox' | 'rules' | 'email'>('inbox')
 const showSetupGuide = ref(false)
+const routedLeadId = computed(() =>
+  typeof route.query.leadId === 'string' ? route.query.leadId : null
+)
 
 const tabs = [
   { value: 'inbox', label: 'Inbox', icon: 'i-lucide-inbox' },
@@ -33,7 +37,7 @@ function openRules() {
           Leads
         </h1>
         <p class="text-sm text-muted">
-          Route Google, Meta, webhook, and CSV leads without rebuilding Zaps.
+          Route Google, Meta, email, webhook, and CSV leads without rebuilding Zaps.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -64,6 +68,7 @@ function openRules() {
     <div class="flex-1 min-h-0">
       <LeadsInbox
         v-if="tab === 'inbox'"
+        :lead-id="routedLeadId"
         @show-help="openSetupGuide"
         @show-rules="openRules"
       />

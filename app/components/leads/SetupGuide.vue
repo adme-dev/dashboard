@@ -18,6 +18,11 @@ const sections = [
     slot: 'meta'
   },
   {
+    label: 'Set up inbound lead email',
+    icon: 'i-lucide-mail',
+    slot: 'email'
+  },
+  {
     label: 'Other sources — Zapier, Make, n8n, custom webhooks',
     icon: 'i-lucide-webhook',
     slot: 'generic'
@@ -462,6 +467,40 @@ watch(endpointItems, (items) => {
                 icon="i-lucide-info"
                 title="When Meta App Review approves leads_retrieval"
                 description="Auto-ingestion is wired and waiting. After approval: (1) reconnect each Meta account in Settings → Social → Meta to pick up the expanded scope, (2) ask admin to POST /api/leads/_internal/meta-backfill with the cron token to replay events archived during the wait period, (3) verify in the inbox. No code changes needed."
+              />
+            </div>
+          </template>
+
+          <template #email>
+            <div class="space-y-4 text-sm leading-relaxed">
+              <p class="text-muted">
+                Use a client-scoped forwarding address when a marketplace or website delivers
+                enquiries by email instead of webhook.
+              </p>
+              <ol class="list-decimal list-inside space-y-2">
+                <li>
+                  Open the <strong>Email addresses</strong> tab and create or select the client endpoint.
+                </li>
+                <li>
+                  Copy its forwarding address into the lead provider’s notification settings.
+                  Keep that address within the authorised operations team.
+                </li>
+                <li>
+                  In <strong>Form rules</strong>, create an <strong>Inbound email</strong> rule using
+                  the form ID shown beside the endpoint, then add the normal portal, notification,
+                  webhook, or assignment destinations.
+                </li>
+                <li>
+                  Send a provider test lead and confirm the provider and endpoint label appear in
+                  the inbox. A possible-duplicate badge is advisory and never blocks delivery.
+                </li>
+              </ol>
+              <UAlert
+                color="info"
+                variant="subtle"
+                icon="i-lucide-shield-check"
+                title="Safe inbox metadata"
+                description="Inbox and portal views show only provider and endpoint labels. Forwarding tokens, raw email evidence, storage keys, and identity hashes are never exposed."
               />
             </div>
           </template>

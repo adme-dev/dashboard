@@ -15,7 +15,7 @@ useHead({ title: 'Leads — Client Portal' })
             Leads
           </h1>
           <p class="text-sm text-muted">
-            Inquiries your agency has shared from connected Google, Meta, webhook, and CSV forms.
+            Inquiries your agency has shared from connected Google, Meta, email, webhook, and CSV forms.
           </p>
         </div>
         <UBadge variant="soft" color="primary" class="shrink-0">

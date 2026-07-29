@@ -139,22 +139,101 @@ function numericPrice(value: string | null): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
 
-function opportunityName(fields: Record<string, string>, fullName: string): string {
+interface CrmSourceCopy {
+  provider: string
+  personActivityTitle: string
+  opportunityActivityTitle: string
+  opportunityFallback: string
+}
+
+const EMAIL_PROVIDER_LABELS: Record<string, string> = {
+  carsales: 'Carsales',
+  autotrader: 'Autotrader',
+  carsguide: 'CarsGuide',
+  drive: 'Drive',
+  gumtree: 'Gumtree',
+  podium: 'Podium',
+  google: 'Google',
+  meta: 'Meta'
+}
+
+export function crmSourceCopy(lead: Pick<PromotionLeadRow, 'source' | 'field_data'>): CrmSourceCopy {
+  const providerKey = textField(lead.field_data ?? {}, 'lead_provider')?.toLowerCase() ?? ''
+  if (lead.source !== 'email') {
+    if (lead.source === 'google' || lead.source === 'meta') {
+      const label = lead.source === 'google' ? 'Google' : 'Meta'
+      return {
+        provider: lead.source,
+        personActivityTitle: `${label} lead received`,
+        opportunityActivityTitle: `Created from ${label} lead`,
+        opportunityFallback: `${label} enquiry`
+      }
+    }
+    if (lead.source === 'manual') {
+      return {
+        provider: 'manual',
+        personActivityTitle: 'Manual lead created',
+        opportunityActivityTitle: 'Created from manual lead',
+        opportunityFallback: 'Manual enquiry'
+      }
+    }
+    if (lead.source === 'csv') {
+      return {
+        provider: 'csv',
+        personActivityTitle: 'Imported lead received',
+        opportunityActivityTitle: 'Created from imported lead',
+        opportunityFallback: 'Imported enquiry'
+      }
+    }
+    if (providerKey === 'podium') {
+      return {
+        provider: 'podium',
+        personActivityTitle: 'Podium lead received',
+        opportunityActivityTitle: 'Created from Podium lead',
+        opportunityFallback: 'Podium enquiry'
+      }
+    }
+    return {
+      provider: ['dealer_studio', 'generic', 'website'].includes(providerKey) ? providerKey : 'webhook',
+      personActivityTitle: 'Website lead received',
+      opportunityActivityTitle: 'Created from website lead',
+      opportunityFallback: 'Website enquiry'
+    }
+  }
+
+  if (providerKey === 'website') {
+    return {
+      provider: 'website',
+      personActivityTitle: 'Website lead received',
+      opportunityActivityTitle: 'Created from website lead',
+      opportunityFallback: 'Website enquiry'
+    }
+  }
+  const label = EMAIL_PROVIDER_LABELS[providerKey]
+  return {
+    provider: label ? providerKey : 'email',
+    personActivityTitle: label ? `${label} email lead received` : 'Email lead received',
+    opportunityActivityTitle: label ? `Created from ${label} email lead` : 'Created from email lead',
+    opportunityFallback: label ? `${label} email enquiry` : 'Email enquiry'
+  }
+}
+
+function opportunityName(fields: Record<string, string>, fullName: string, fallback: string): string {
   const vehicle = [
     textField(fields, 'vehicle_year'),
     textField(fields, 'vehicle_make'),
     textField(fields, 'vehicle_model'),
     textField(fields, 'vehicle_variant')
   ].filter(Boolean).join(' ')
-  return `${vehicle || 'Website enquiry'} — ${fullName}`.slice(0, 500)
+  return `${vehicle || fallback} — ${fullName}`.slice(0, 500)
 }
 
-function opportunityFields(lead: PromotionLeadRow): Record<string, string> {
+function opportunityFields(lead: PromotionLeadRow, provider: string): Record<string, string> {
   const fields = lead.field_data ?? {}
   const result: Record<string, string> = {
     lead_id: lead.id,
     source_lead_id: lead.source_lead_id,
-    lead_provider: textField(fields, 'lead_provider') ?? lead.source
+    lead_provider: provider
   }
   for (const [key, value] of Object.entries(fields)) {
     if (key.startsWith('vehicle_') && value) result[key] = value
@@ -207,6 +286,7 @@ export function createCrmLeadPromotionService(
           return { status: 'insufficient_identity', missing: extracted.missing }
         }
         const identity = extracted.identity
+        const sourceCopy = crmSourceCopy(lead)
 
         const stageResult = await db.query(
           `SELECT id, probability
@@ -281,14 +361,14 @@ export function createCrmLeadPromotionService(
               identity.email,
               identity.mobile,
               lead.assigned_to,
-              JSON.stringify({ first_lead_id: lead.id, lead_provider: textField(lead.field_data ?? {}, 'lead_provider') ?? lead.source })
+              JSON.stringify({ first_lead_id: lead.id, lead_provider: sourceCopy.provider })
             ]
           )
           personId = (inserted.rows?.[0] as { id: string }).id
           personCreated = true
         }
 
-        const provider = textField(lead.field_data ?? {}, 'lead_provider') ?? lead.source
+        const provider = sourceCopy.provider
         const opportunityResult = await db.query(
           `INSERT INTO crm_opportunities (
              client_id, name, person_id, stage_id, owner_id, assigned_to,
@@ -297,14 +377,14 @@ export function createCrmLeadPromotionService(
            RETURNING id`,
           [
             lead.client_id,
-            opportunityName(lead.field_data ?? {}, identity.fullName),
+            opportunityName(lead.field_data ?? {}, identity.fullName, sourceCopy.opportunityFallback),
             personId,
             stage.id,
             lead.assigned_to,
             numericPrice(textField(lead.field_data ?? {}, 'vehicle_price')),
             stage.probability,
             provider,
-            JSON.stringify(opportunityFields(lead))
+            JSON.stringify(opportunityFields(lead, provider))
           ]
         )
         const opportunityId = (opportunityResult.rows?.[0] as { id: string }).id
@@ -329,14 +409,14 @@ export function createCrmLeadPromotionService(
         await db.query(
           `INSERT INTO crm_activities (
              client_id, target_type, target_id, type, title, metadata
-           ) VALUES ($1, 'person', $2, 'system', 'Website lead received', $3::jsonb)`,
-          [lead.client_id, personId, activityMetadata]
+           ) VALUES ($1, 'person', $2, 'system', $3, $4::jsonb)`,
+          [lead.client_id, personId, sourceCopy.personActivityTitle, activityMetadata]
         )
         await db.query(
           `INSERT INTO crm_activities (
              client_id, target_type, target_id, type, title, metadata
-           ) VALUES ($1, 'opportunity', $2, 'system', 'Created from website lead', $3::jsonb)`,
-          [lead.client_id, opportunityId, activityMetadata]
+           ) VALUES ($1, 'opportunity', $2, 'system', $3, $4::jsonb)`,
+          [lead.client_id, opportunityId, sourceCopy.opportunityActivityTitle, activityMetadata]
         )
 
         return {

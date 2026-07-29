@@ -5,6 +5,7 @@
 
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryRows, queryCount } from '~~/server/utils/db'
+import { safeEmailLeadPresentationSelect } from '~~/server/utils/leads/leadPresentation'
 
 const PORTAL_VISIBLE_EXISTS = `EXISTS (
   SELECT 1 FROM lead_form_rules r
@@ -16,7 +17,18 @@ const PORTAL_VISIBLE_EXISTS = `EXISTS (
 )`
 
 const STATUSES = new Set(['new', 'contacted', 'qualified', 'won', 'lost', 'spam_suspected'])
-const SOURCES = new Set(['meta', 'google', 'webhook', 'csv'])
+const SOURCES = new Set(['meta', 'google', 'webhook', 'csv', 'email'])
+
+const DUPLICATE_PORTAL_VISIBLE = `EXISTS (
+  SELECT 1 FROM lead_form_rules duplicate_rule
+  JOIN lead_rule_destinations duplicate_destination ON duplicate_destination.rule_id = duplicate_rule.id
+  WHERE duplicate_rule.source = duplicate_lead.source
+    AND duplicate_rule.form_id = duplicate_lead.form_id
+    AND duplicate_rule.client_id = duplicate_lead.client_id
+    AND duplicate_rule.enabled = TRUE
+    AND duplicate_destination.destination_type = 'portal'
+    AND duplicate_destination.enabled = TRUE
+)`
 
 export default defineEventHandler(async (event) => {
   const client = await requireClientAuth(event)
@@ -73,7 +85,8 @@ export default defineEventHandler(async (event) => {
   const offset = (page - 1) * ps
   const items = await queryRows(
     `SELECT l.id, l.source, l.form_name, l.submitted_at, l.field_data,
-            l.status, l.contacted_at, l.campaign_name, l.ad_name
+            l.status, l.contacted_at, l.campaign_name, l.ad_name,
+            ${safeEmailLeadPresentationSelect('l', DUPLICATE_PORTAL_VISIBLE)}
      FROM leads l WHERE ${conds.join(' AND ')}
      ORDER BY l.submitted_at DESC
      LIMIT ${ps} OFFSET ${offset}`,

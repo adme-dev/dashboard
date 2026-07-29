@@ -1546,6 +1546,9 @@ export interface Lead {
   created_by: string | null
   deleted_at: string | null
   created_at: string
+  email_provider?: string | null
+  email_endpoint_label?: string | null
+  possible_duplicate_lead_id?: string | null
 }
 
 export type LeadFilterOp =

@@ -29,6 +29,16 @@ const formSource = `${slideoverSource}\n${detailsSource}\n${policySource}\n${rou
 const tableFeatureSource = `${tabSource}\n${tableSource}\n${confirmationSource}\n${managerSource}`
 const confirmationFeatureSource = `${confirmationSource}\n${presetConfirmationSource}`
 const badgeSource = readFileSync('app/components/leads/EmailIngestionStatusBadge.vue', 'utf8')
+const rulesSource = readFileSync('app/components/leads/FormRulesTab.vue', 'utf8')
+const filtersSource = readFileSync('app/components/leads/InboxFilters.vue', 'utf8')
+const sourceIconSource = readFileSync('app/components/leads/SourceIcon.vue', 'utf8')
+const leadDetailSource = readFileSync('app/components/leads/LeadDetailSlideover.vue', 'utf8')
+const portalInboxSource = readFileSync('app/components/portal/LeadsInbox.vue', 'utf8')
+const portalListApiSource = readFileSync('server/api/client-portal/leads/list.get.ts', 'utf8')
+const portalDetailApiSource = readFileSync('server/api/client-portal/leads/[id].get.ts', 'utf8')
+const portalExportApiSource = readFileSync('server/api/client-portal/leads/export.get.ts', 'utf8')
+const agencyListApiSource = readFileSync('server/api/leads/list.get.ts', 'utf8')
+const ruleCreateApiSource = readFileSync('server/api/leads/rules/index.post.ts', 'utf8')
 
 const endpoint: SafeEmailLeadEndpoint = {
   id: '33333333-3333-4333-8333-333333333333',
@@ -222,6 +232,39 @@ describe('email endpoint UI contract mapping', () => {
     }, [{ id: '22222222-2222-4222-8222-222222222222', name: 'Avery Smith' }])).toEqual([
       'Assign user · Avery Smith'
     ])
+  })
+})
+
+describe('email source integration contracts', () => {
+  it('supports creating and filtering email form rules without remote icons', () => {
+    expect(rulesSource).toContain(`{ value: 'email', label: 'Inbound email'`)
+    expect(ruleCreateApiSource).toMatch(/z\.enum\(\[[^\]]*'email'/)
+    expect(filtersSource).toContain(`{ value: 'email', label: 'Email' }`)
+    expect(agencyListApiSource).toMatch(/z\.enum\(\[[^\]]*'email'/)
+    expect(sourceIconSource).toContain(`email: 'i-lucide-mail'`)
+    expect(sourceIconSource).not.toMatch(/https?:\/\//)
+  })
+
+  it('renders only safe email metadata and an advisory duplicate action', () => {
+    for (const source of [leadDetailSource, portalInboxSource]) {
+      expect(source).toContain('email_provider')
+      expect(source).toContain('email_endpoint_label')
+      expect(source).toContain('possible_duplicate_lead_id')
+      expect(source).not.toMatch(/recipient_token|address_token|sender_domain|r2_|identity_hash|message_id_hash|safe_evidence/)
+    }
+    expect(leadDetailSource).toContain('Possible duplicate')
+    expect(pageSource).toContain(':lead-id="routedLeadId"')
+    expect(portalInboxSource).toContain('View possible duplicate')
+  })
+
+  it('allows email portal filtering and rechecks candidate portal visibility', () => {
+    expect(portalListApiSource).toContain(`'email'`)
+    expect(portalExportApiSource).toContain(`'email'`)
+    for (const source of [portalListApiSource, portalDetailApiSource]) {
+      expect(source).toContain('duplicate_lead.client_id')
+      expect(source).toContain('duplicate_destination.destination_type')
+      expect(source).toContain(`'portal'`)
+    }
   })
 })
 

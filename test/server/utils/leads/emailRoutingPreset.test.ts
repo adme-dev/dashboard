@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const query = vi.fn()
+const execute = vi.fn()
 const transaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => callback({ query }))
-vi.mock('~~/server/utils/db', () => ({ transaction: (...args: unknown[]) => transaction(...args) }))
+vi.mock('~~/server/utils/db', () => ({
+  transaction: (...args: unknown[]) => transaction(...args),
+  execute: (...args: unknown[]) => execute(...args)
+}))
 
 const clientId = '11111111-1111-4111-8111-111111111111'
 const actorId = '22222222-2222-4222-8222-222222222222'
@@ -10,7 +14,7 @@ const formId = 'email_endpoint:33333333-3333-4333-8333-333333333333'
 const result = (rows: unknown[] = []) => ({ rows })
 
 describe('email routing presets', () => {
-  beforeEach(() => { query.mockReset(); transaction.mockClear() })
+  beforeEach(() => { query.mockReset(); execute.mockReset(); transaction.mockClear() })
 
   it('does not create a rule when no preset was selected', async () => {
     const { applyEmailRoutingPreset } = await import('~~/server/utils/leads/emailRoutingPreset')
@@ -81,5 +85,22 @@ describe('email routing presets', () => {
     expect(statement).toContain('preset_key')
     expect(statement).toContain('ON CONFLICT (rule_id, preset_key)')
     expect(statement).not.toMatch(/SET\s+(filter|delay_minutes|enabled|sort_order)\s*=/)
+  })
+
+  it('assigns the canonical lead record rather than mutating email endpoint ownership', async () => {
+    const { default: adapter } = await import('~~/server/utils/leads/destinations/assignUser')
+    execute.mockResolvedValueOnce(1)
+
+    await expect(adapter.dispatch(
+      {} as never,
+      { id: 'lead-1' } as never,
+      { user_id: actorId }
+    )).resolves.toMatchObject({ status: 'delivered' })
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.stringMatching(/UPDATE leads SET assigned_to/),
+      ['lead-1', actorId]
+    )
+    expect(String(execute.mock.calls[0]?.[0])).not.toContain('lead_email_endpoints')
   })
 })

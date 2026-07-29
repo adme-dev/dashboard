@@ -6,6 +6,7 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { z } from 'zod'
+import { redactLeadFieldSampleValue } from '~~/server/utils/leads/leadPresentation'
 
 const QuerySchema = z.object({
   source: z.string().min(1).max(20),
@@ -14,7 +15,7 @@ const QuerySchema = z.object({
 
 interface FieldEntry {
   key: string
-  sample_value?: string
+  sample_value?: unknown
   first_seen_at?: string
 }
 
@@ -34,7 +35,7 @@ export default defineEventHandler(async (event) => {
   const formFields = (meta?.fields ?? []).map((f) => ({
     token: `{{ field.${f.key} }}`,
     label: f.key,
-    sample: f.sample_value ?? '',
+    sample: redactLeadFieldSampleValue(f.sample_value ?? '', f.key),
     group: 'form' as const,
   }))
 

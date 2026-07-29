@@ -11,7 +11,7 @@ const PORTAL_VISIBLE_EXISTS = `EXISTS (
 )`
 
 const STATUSES = new Set(['new', 'contacted', 'qualified', 'won', 'lost', 'spam_suspected'])
-const SOURCES = new Set(['meta', 'google', 'webhook', 'csv'])
+const SOURCES = new Set(['meta', 'google', 'webhook', 'csv', 'email'])
 
 function esc(v: unknown): string {
   if (v == null) return ''
