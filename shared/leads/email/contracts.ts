@@ -17,7 +17,16 @@ const SafeMessageSchema = z.string()
 const HashSchema = z.string().regex(/^[a-f0-9]{64}$/, 'Expected a SHA-256 hash')
 const UuidSchema = z.string().uuid()
 const IsoTimestampSchema = z.string().datetime({ offset: true })
-const SafeIdentifierSchema = SafeTextSchema.trim().min(1).max(255)
+const ProviderAdapterIdSchema = z.string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z][a-z0-9_-]*$/, 'Expected a registered provider adapter identifier')
+const SafeSourceNameSchema = SafeTextSchema
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(/^[\p{L}\p{N}][\p{L}\p{N} .&'’()/_-]*$/u, 'Expected a safe source display name')
+  .refine(value => !/\d{7,}/.test(value), 'Source display name resembles a raw identifier')
 const SafeFieldKeySchema = z.string()
   .min(1)
   .max(255)
@@ -54,9 +63,9 @@ const EmailMessageFieldSchema = EmailExtractedFieldSchema.extend({
 }).strict()
 
 export const EmailLeadExtractionSchema = z.object({
-  provider: SafeIdentifierSchema,
+  provider: ProviderAdapterIdSchema,
   externalIdHash: HashSchema,
-  sourceName: SafeIdentifierSchema,
+  sourceName: SafeSourceNameSchema,
   medium: z.enum(['classifieds', 'paid-social', 'cpc', 'lead_ingest']),
   parser: EmailParserKindSchema,
   fields: z.record(SafeFieldKeySchema, EmailExtractedFieldSchema).refine(
@@ -79,7 +88,7 @@ export const EmailEndpointPolicySchema = z.object({
   schemaVersion: z.literal(1),
   parserMode: z.enum(['auto', 'adf', 'generic']),
   aiExtractionMode: z.enum(['disabled', 'fallback']),
-  expectedProvider: SafeIdentifierSchema.nullable(),
+  expectedProvider: ProviderAdapterIdSchema.nullable(),
   allowedSenderDomains: z.array(SafeDomainSchema).max(100),
   maxRawBytes: z.number().int().positive().max(MAX_RAW_EMAIL_BYTES),
   maxAdfAttachmentBytes: z.number().int().positive().max(MAX_ADF_ATTACHMENT_BYTES)
@@ -92,7 +101,7 @@ export const EmailStageRequestSchema = z.object({
   recipientToken: RecipientTokenSchema,
   externalIdHash: HashSchema,
   messageIdHash: HashSchema.nullable(),
-  provider: SafeIdentifierSchema,
+  provider: ProviderAdapterIdSchema,
   receivedAt: IsoTimestampSchema,
   rawSize: z.number().int().nonnegative().max(MAX_RAW_EMAIL_BYTES),
   safeEvidence: EmailSafeEvidenceSchema,

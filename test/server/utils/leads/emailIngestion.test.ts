@@ -158,6 +158,37 @@ describe('email ingestion contracts', () => {
     }).success).toBe(false)
   })
 
+  it('accepts adapter identifiers and safe source labels while rejecting PII-like identifiers', () => {
+    for (const provider of ['carsales', 'auto_trader', 'facebook-marketplace', 'drive', 'generic']) {
+      expect(EmailStageRequestSchema.safeParse(stageRequest({ provider })).success).toBe(true)
+      expect(EmailEndpointPolicySchema.safeParse({
+        schemaVersion: 1,
+        parserMode: 'auto',
+        aiExtractionMode: 'disabled',
+        expectedProvider: provider,
+        allowedSenderDomains: [],
+        maxRawBytes: 1024,
+        maxAdfAttachmentBytes: 1024
+      }).success).toBe(true)
+    }
+    for (const sourceName of ['Carsales', 'AutoTrader', 'Facebook Marketplace', 'Drive.com.au', 'Generic lead email']) {
+      expect(EmailLeadExtractionSchema.safeParse(extraction({ sourceName })).success).toBe(true)
+    }
+    for (const pii of ['person@example.com', '0412345678']) {
+      expect(EmailStageRequestSchema.safeParse(stageRequest({ provider: pii })).success).toBe(false)
+      expect(EmailLeadExtractionSchema.safeParse(extraction({ sourceName: pii })).success).toBe(false)
+      expect(EmailEndpointPolicySchema.safeParse({
+        schemaVersion: 1,
+        parserMode: 'auto',
+        aiExtractionMode: 'disabled',
+        expectedProvider: pii,
+        allowedSenderDomains: [],
+        maxRawBytes: 1024,
+        maxAdfAttachmentBytes: 1024
+      }).success).toBe(false)
+    }
+  })
+
   it('ties stage outcomes to the presence of an encrypted object key', () => {
     expect(EmailStageResponseSchema.safeParse({
       schemaVersion: 1,
@@ -231,6 +262,10 @@ describePostgres('universal email ingestion Postgres behavior', () => {
     new URL('../../../../server/database/migrations/316_universal_email_lead_ingestion_integrity.sql', import.meta.url),
     'utf8'
   )
+  const migration317 = readFileSync(
+    new URL('../../../../server/database/migrations/317_universal_email_lead_ingestion_integrity_round_2.sql', import.meta.url),
+    'utf8'
+  )
 
   function postgresEnvironment(databaseUrl: string, schema?: string): NodeJS.ProcessEnv {
     const parsed = new URL(databaseUrl)
@@ -280,17 +315,16 @@ describePostgres('universal email ingestion Postgres behavior', () => {
           CONSTRAINT lead_form_rules_source_check CHECK (source IN ('meta', 'google', 'webhook', 'csv', 'future_source'))
         );
         ${migration315}
-        ${migration316}
-        ${migration316}
-        SET search_path TO ${schema}, public;
+        ALTER TABLE lead_email_ingestions
+          DROP CONSTRAINT lead_email_ingestions_lifecycle_check;
+        ALTER TABLE leads DROP CONSTRAINT leads_source_check;
+        ALTER TABLE leads ADD CONSTRAINT leads_source_check
+          CHECK (source IN ('meta', 'google', 'manual', 'webhook', 'csv', 'future_source'));
+        ALTER TABLE lead_form_rules DROP CONSTRAINT lead_form_rules_source_check;
+        ALTER TABLE lead_form_rules ADD CONSTRAINT lead_form_rules_source_check
+          CHECK (source IN ('meta', 'google', 'webhook', 'csv', 'future_source'));
 
         INSERT INTO agency_clients(id) VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
-        INSERT INTO leads(id, source) VALUES
-          ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'future_source'),
-          ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'email');
-        INSERT INTO lead_form_rules(id, source) VALUES
-          ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'future_source'),
-          ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'email');
         INSERT INTO lead_email_endpoints(
           id, client_id, label, address_prefix, address_token, email_address, form_id, form_name
         ) VALUES (
@@ -309,8 +343,28 @@ describePostgres('universal email ingestion Postgres behavior', () => {
           'cloudflare_email_routing', repeat('a', 64), 'carsales',
           'provider', 'received',
           '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":["full_name"]}'::jsonb,
-          NOW()
+          NULL
         );
+        ${migration316}
+        ${migration316}
+        ${migration317}
+        ${migration317}
+        SET search_path TO ${schema}, public;
+
+        INSERT INTO leads(id, source) VALUES
+          ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'future_source'),
+          ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'email');
+        INSERT INTO lead_form_rules(id, source) VALUES
+          ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'future_source'),
+          ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'email');
+        DO $backfill$
+        BEGIN
+          IF (SELECT next_attempt_at IS NULL FROM lead_email_ingestions
+              WHERE id = '22222222-2222-4222-8222-222222222222') THEN
+            RAISE EXCEPTION 'base-315 received row was not backfilled';
+          END IF;
+        END
+        $backfill$;
 
         DO $assertions$
         BEGIN
@@ -323,6 +377,35 @@ describePostgres('universal email ingestion Postgres behavior', () => {
               '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":[]}'::jsonb
             );
             RAISE EXCEPTION 'received row without retry schedule was accepted';
+          EXCEPTION WHEN check_violation THEN NULL;
+          END;
+
+          BEGIN
+            INSERT INTO lead_email_ingestions(
+              endpoint_id, correlation_id, transport, external_id_hash, provider,
+              status, safe_evidence, next_attempt_at
+            ) VALUES (
+              '11111111-1111-4111-8111-111111111111', gen_random_uuid(),
+              'cloudflare_email_routing', repeat('f', 64), 'carsales', 'received',
+              '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":["person@example.com",1]}'::jsonb,
+              NOW()
+            );
+            RAISE EXCEPTION 'unsafe fieldKeys elements were accepted';
+          EXCEPTION WHEN check_violation THEN NULL;
+          END;
+
+          BEGIN
+            INSERT INTO lead_email_ingestions(
+              endpoint_id, correlation_id, transport, external_id_hash, provider,
+              status, safe_evidence, terminal_at, duplicate_match_basis,
+              duplicate_confidence, duplicate_window_hours
+            ) VALUES (
+              '11111111-1111-4111-8111-111111111111', gen_random_uuid(),
+              'cloudflare_email_routing', repeat('0', 64), 'carsales', 'accepted',
+              '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":[]}'::jsonb,
+              NOW(), 'email_hmac', 0.9, 24
+            );
+            RAISE EXCEPTION 'duplicate metadata without a referenced lead was accepted';
           EXCEPTION WHEN check_violation THEN NULL;
           END;
 

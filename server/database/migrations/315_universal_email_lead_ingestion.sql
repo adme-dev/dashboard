@@ -97,6 +97,10 @@ CREATE TABLE IF NOT EXISTS lead_email_ingestions (
         AND jsonb_typeof(safe_evidence->'hasAdf') = 'boolean'
         AND jsonb_typeof(safe_evidence->'fieldKeys') = 'array'
       THEN jsonb_array_length(safe_evidence->'fieldKeys') <= 100
+        AND jsonb_array_length(jsonb_path_query_array(
+          safe_evidence,
+          '$.fieldKeys[*] ? (@.type() == "string" && @ like_regex "^[A-Za-z][A-Za-z0-9_.-]{0,254}$")'
+        )) = jsonb_array_length(safe_evidence->'fieldKeys')
       ELSE FALSE
     END
   ),
@@ -111,6 +115,7 @@ CREATE TABLE IF NOT EXISTS lead_email_ingestions (
       duplicate_match_basis IS NOT NULL
       AND duplicate_confidence IS NOT NULL
       AND duplicate_window_hours IS NOT NULL
+      AND possible_duplicate_of_lead_id IS NOT NULL
     )
   ),
   CONSTRAINT lead_email_ingestions_replay_self_check
