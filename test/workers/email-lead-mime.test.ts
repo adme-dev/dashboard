@@ -99,6 +99,22 @@ describe('bounded MIME parsing', () => {
     expect(htmlToText(nestedEncodedAcrossLiteralTags)).toContain('safe after nested close')
   })
 
+  it('does not let literal-suppressed content mutate decoded active-markup state', () => {
+    const encodedStackBeforeLiteral = '&lt;script&gt;hidden<template>&lt;/script&gt;</template>fetch("https://evil.test/literal-pop")&lt;/script&gt;safe after encoded close'
+    const encodedOpenInsideLiteral = '<script>&lt;template&gt;</script>safe after literal close'
+    const encodedOpenInsideNestedLiteral = '<template><script>&lt;template&gt;</script></template>safe after literal close'
+    const nestedLiteralWithEncodedClose = '&lt;script&gt;hidden<template><script>&lt;/script&gt;</script></template>fetch("https://evil.test/nested")&lt;/script&gt;safe after nested close'
+
+    for (const hostile of [encodedStackBeforeLiteral, nestedLiteralWithEncodedClose]) {
+      const text = htmlToText(hostile)
+      expect(text).not.toMatch(/hidden|fetch|evil\.test/i)
+    }
+    expect(htmlToText(encodedStackBeforeLiteral)).toContain('safe after encoded close')
+    expect(htmlToText(nestedLiteralWithEncodedClose)).toContain('safe after nested close')
+    expect(htmlToText(encodedOpenInsideLiteral)).toContain('safe after literal close')
+    expect(htmlToText(encodedOpenInsideNestedLiteral)).toContain('safe after literal close')
+  })
+
   it('rejects XML/ADF attachments after decode; the 2 MiB raw bound remains the raw-input ceiling', async () => {
     const oversized = 'x'.repeat((256 * 1024) + 1)
     const parsed = await parseMimeContent(raw([

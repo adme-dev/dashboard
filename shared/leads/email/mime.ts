@@ -85,8 +85,7 @@ export function htmlToText(html: string): string {
     if (value[index] !== '<') { index++; continue }
     const tag = htmlTagAt(value, index)
     if (!tag) { index++; continue }
-    const decodedText = inertDecodedTextChunk(value.slice(textStart, index), encodedSuppressedElements)
-    if (!literalSuppressedElements.length) output += decodedText
+    if (!literalSuppressedElements.length) output += inertDecodedTextChunk(value.slice(textStart, index), encodedSuppressedElements)
     index = tag.end
     textStart = index
     if (tag.name === '#comment') continue
@@ -100,8 +99,7 @@ export function htmlToText(html: string): string {
     if (resourceElements.has(tag.name)) continue
     if (!encodedSuppressedElements.length && breaks.has(tag.name)) output += '\n'
   }
-  const decodedText = inertDecodedTextChunk(value.slice(textStart), encodedSuppressedElements)
-  if (!literalSuppressedElements.length) output += decodedText
+  if (!literalSuppressedElements.length) output += inertDecodedTextChunk(value.slice(textStart), encodedSuppressedElements)
   return cleanText(output.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' '))
 }
 

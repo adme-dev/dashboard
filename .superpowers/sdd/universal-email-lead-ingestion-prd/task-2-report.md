@@ -319,3 +319,44 @@ Errors      3 errors
 
 No Task 2 tests failed; the two additional passing tests are this correction
 round's regressions.
+
+## Correction round 5 — literal-suppression state isolation
+
+### RED → GREEN
+
+The regression was added before the implementation change. Its RED run exposed
+that an entity-decoded closing tag inside literal-suppressed `<template>`
+content could pop a pre-existing decoded `<script>` stack and leak the later
+URL. The same flaw let an encoded opening tag inside a literal `<script>` hide
+safe text after the literal close.
+
+After remediation, the focused suite passed twice under explicit Node 24.18.0:
+
+```text
+Test Files  3 passed (3)
+Tests       46 passed (46)
+```
+
+### Fix
+
+- `htmlToText` now does not call the decoded-tokenizer while literal active
+  content is being suppressed. The encoded stack is therefore left unchanged
+  across literal-suppressed regions; encoded tags inside literal content cannot
+  pop an existing outer stack or open a stack that hides later safe text.
+  Regressions cover the exact split script/template sequence, nested literal
+  suppression, and encoded open/close input within literal markup.
+
+### Verification
+
+`tsc --noEmit --pretty false -p tsconfig.json` and `git diff --check`
+completed successfully. The complete Vitest suite retained the established
+failure/error baseline exactly:
+
+```text
+Test Files  20 failed | 1224 passed | 3 skipped (1247)
+Tests       39 failed | 6991 passed | 6 skipped (7036)
+Errors      3 errors
+```
+
+No Task 2 test failed; the one additional passing test is this correction
+round's regression coverage.
