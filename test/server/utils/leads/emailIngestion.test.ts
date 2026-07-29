@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
@@ -9,6 +9,10 @@ import {
   EmailStageRequestSchema,
   EmailStageResponseSchema
 } from '../../../../shared/leads/email/contracts'
+import {
+  mapEmailExtractionToLeadInput,
+  verifyEmailIngestSignature
+} from '../../../../server/utils/leads/emailIngestion'
 
 const UUID = '11111111-1111-4111-8111-111111111111'
 const HASH = 'a'.repeat(64)
@@ -283,6 +287,93 @@ describe('email ingestion contracts', () => {
     }).success).toBe(true)
   })
 })
+
+describe('signed email ingestion boundary', () => {
+  const SECRET = 'email-ingest-test-secret'
+  const nonce = '11111111-1111-4111-8111-111111111111'
+
+  function signed(rawBody: string, overrides: Record<string, string> = {}) {
+    const timestamp = String(Math.floor(Date.now() / 1000))
+    const digest = createHmac('sha256', SECRET)
+      .update(`v1\n${timestamp}\n${nonce}\n${awaitableSha256(rawBody)}`)
+      .digest('hex')
+    return {
+      rawBody,
+      secret: SECRET,
+      headers: {
+        'content-type': 'application/json',
+        'x-xeroflow-email-timestamp': timestamp,
+        'x-xeroflow-email-nonce': nonce,
+        'x-xeroflow-email-signature': `v1=${digest}`,
+        ...overrides
+      },
+      reserveNonce: async () => true
+    }
+  }
+
+  it('accepts an exact signed body and reserves its nonce before endpoint work', async () => {
+    const body = '{"recipientToken":"0123456789"}'
+    await expect(verifyEmailIngestSignature(signed(body))).resolves.toBeUndefined()
+  })
+
+  it('rejects a changed body even when the remaining headers are valid', async () => {
+    const request = signed('{"recipientToken":"0123456789"}')
+    request.rawBody = '{"recipientToken":"012345678a"}'
+    await expect(verifyEmailIngestSignature(request)).rejects.toMatchObject({ statusCode: 401 })
+  })
+
+  it('rejects stale, wrong-secret, reused, and incomplete signing attempts before any endpoint resolution', async () => {
+    const body = '{"recipientToken":"0123456789"}'
+    const stale = signed(body)
+    stale.headers['x-xeroflow-email-timestamp'] = '1'
+    await expect(verifyEmailIngestSignature(stale)).rejects.toMatchObject({ statusCode: 401 })
+
+    const wrongSecret = signed(body)
+    wrongSecret.secret = 'not-the-signing-secret'
+    await expect(verifyEmailIngestSignature(wrongSecret)).rejects.toMatchObject({ statusCode: 401 })
+
+    const reused = signed(body)
+    reused.reserveNonce = async () => false
+    await expect(verifyEmailIngestSignature(reused)).rejects.toMatchObject({ statusCode: 409 })
+
+    const incomplete = signed(body)
+    delete incomplete.headers['x-xeroflow-email-signature']
+    await expect(verifyEmailIngestSignature(incomplete)).rejects.toMatchObject({ statusCode: 401 })
+  })
+
+  it('maps only extracted customer fields to the endpoint-authoritative email lead identity', () => {
+    const lead = mapEmailExtractionToLeadInput({
+      endpoint: {
+        id: '22222222-2222-4222-8222-222222222222', client_id: UUID,
+        form_id: 'email_endpoint:22222222-2222-4222-8222-222222222222', form_name: 'Carsales leads'
+      },
+      externalIdHash: HASH,
+      receivedAt: RECEIVED_AT,
+      extraction: extraction({
+        fields: {
+          full_name: extractedField('Jane Example'),
+          phone: extractedField('0412 345 678'),
+          relay_email: extractedField('relay@carsales.test')
+        },
+        vehicle: { make: extractedField('Toyota'), model: extractedField('RAV4') },
+        message: extractedField('Please call me')
+      })
+    })
+
+    expect(lead).toMatchObject({
+      source: 'email',
+      source_lead_id: `email:22222222-2222-4222-8222-222222222222:${HASH}`,
+      form_id: 'email_endpoint:22222222-2222-4222-8222-222222222222',
+      field_data: expect.objectContaining({ full_name: 'Jane Example', phone: '0412 345 678', message: 'Please call me', vehicle_make: 'Toyota' })
+    })
+    expect(lead.field_data).not.toHaveProperty('relay_email')
+  })
+})
+
+function awaitableSha256(value: string): string {
+  // Deliberately independent of the production digest implementation.
+  return createHash('sha256').update(value).digest('hex')
+}
 
 describe('universal email ingestion migration', () => {
   const migration = readFileSync(

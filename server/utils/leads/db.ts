@@ -35,6 +35,9 @@ export interface LeadTransactionClient {
   query(sql: string, params?: unknown[]): Promise<{ rows?: unknown[] }>
 }
 
+/** Terminal states shared by private lead-ingestion adapters. */
+export type LeadIngestionTerminalStatus = 'accepted' | 'duplicate' | 'quarantined'
+
 /** INSERT … ON CONFLICT DO NOTHING RETURNING id. Returns null if duplicate. */
 export async function insertLeadWithDedup(
   input: InsertLeadInput,
