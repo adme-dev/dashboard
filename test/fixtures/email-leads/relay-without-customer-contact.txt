@@ -1,0 +1,3 @@
+Carsales enquiry
+Vehicle: Example Roadster
+Stock Number: STK-7

@@ -1,0 +1,1 @@
+<adf><prospect><id>carsales-synthetic-42</id><customer><contact><name part="first">Alex</name><name part="last">Example</name><email>alex@example.test</email><phone>+61400123456</phone></contact><comments>Synthetic enquiry</comments></customer><provider><name>Carsales</name></provider></prospect></adf>

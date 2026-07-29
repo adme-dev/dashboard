@@ -1,0 +1,4 @@
+AutoTrader lead
+Name: Alex Example
+Phone: +61 400 123 456
+Lead ID: autotrader-synthetic-42
