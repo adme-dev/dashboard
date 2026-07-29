@@ -603,8 +603,9 @@ describe('Worker AI mode gating', () => {
         })
       }
     ]
+    const fingerprint = 'generic\nvehicle enquiry\nfull_name=alex example\n\n'
     const expectedHash = createHash('sha256')
-      .update('generic\nvehicle enquiry\nfull_name=alex example\n\n')
+      .update(`fingerprint:v1:${fingerprint}`)
       .digest('hex')
     const observedHashes: string[] = []
 
@@ -645,7 +646,10 @@ describe('Worker AI mode gating', () => {
         messageId: null,
         trace
       })
-      const expectedHash = createHash('sha256').update(incoming.raw).digest('hex')
+      const rawContentHash = createHash('sha256').update(incoming.raw).digest('hex')
+      const expectedHash = createHash('sha256')
+        .update(`raw-fallback:v1:${rawContentHash}`)
+        .digest('hex')
       let stage: Record<string, unknown> | undefined
       await handleEmailMessage(incoming.value, {
         APPLICATION_ORIGIN: 'https://app.example.test',
