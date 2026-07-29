@@ -153,52 +153,16 @@ CREATE TABLE IF NOT EXISTS lead_email_ingest_nonces (
 CREATE INDEX IF NOT EXISTS idx_lead_email_ingest_nonces_expiry
   ON lead_email_ingest_nonces(expires_at);
 
-DO $$
-DECLARE
-  existing_expression TEXT;
-BEGIN
-  SELECT pg_get_expr(conbin, conrelid)
-    INTO existing_expression
-    FROM pg_constraint
-   WHERE conrelid = 'leads'::regclass
-     AND conname = 'leads_source_check';
+ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_source_check;
+ALTER TABLE leads ADD CONSTRAINT leads_source_check CHECK (
+  source IN ('meta', 'google', 'manual', 'webhook', 'csv', 'email')
+  OR source ~ '^future_[a-z][a-z0-9_]{0,23}$'
+);
 
-  IF existing_expression IS NULL THEN
-    ALTER TABLE leads ADD CONSTRAINT leads_source_check
-      CHECK (source IN ('meta', 'google', 'manual', 'webhook', 'csv', 'email'));
-  ELSIF position('''email''' IN existing_expression) = 0 THEN
-    ALTER TABLE leads DROP CONSTRAINT leads_source_check;
-    EXECUTE format(
-      'ALTER TABLE leads ADD CONSTRAINT leads_source_check CHECK ((%s) OR source = %L)',
-      existing_expression,
-      'email'
-    );
-  END IF;
-END
-$$;
-
-DO $$
-DECLARE
-  existing_expression TEXT;
-BEGIN
-  SELECT pg_get_expr(conbin, conrelid)
-    INTO existing_expression
-    FROM pg_constraint
-   WHERE conrelid = 'lead_form_rules'::regclass
-     AND conname = 'lead_form_rules_source_check';
-
-  IF existing_expression IS NULL THEN
-    ALTER TABLE lead_form_rules ADD CONSTRAINT lead_form_rules_source_check
-      CHECK (source IN ('meta', 'google', 'webhook', 'csv', 'email'));
-  ELSIF position('''email''' IN existing_expression) = 0 THEN
-    ALTER TABLE lead_form_rules DROP CONSTRAINT lead_form_rules_source_check;
-    EXECUTE format(
-      'ALTER TABLE lead_form_rules ADD CONSTRAINT lead_form_rules_source_check CHECK ((%s) OR source = %L)',
-      existing_expression,
-      'email'
-    );
-  END IF;
-END
-$$;
+ALTER TABLE lead_form_rules DROP CONSTRAINT IF EXISTS lead_form_rules_source_check;
+ALTER TABLE lead_form_rules ADD CONSTRAINT lead_form_rules_source_check CHECK (
+  source IN ('meta', 'google', 'webhook', 'csv', 'email')
+  OR source ~ '^future_[a-z][a-z0-9_]{0,23}$'
+);
 
 COMMIT;

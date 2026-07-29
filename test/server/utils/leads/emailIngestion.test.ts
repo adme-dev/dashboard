@@ -14,6 +14,14 @@ const UUID = '11111111-1111-4111-8111-111111111111'
 const HASH = 'a'.repeat(64)
 const RECEIVED_AT = '2026-07-29T00:00:00.000Z'
 const OPAQUE_OBJECT_KEY = 'email-ingestions/opaque-object-key'
+const HISTORICAL_315_SOURCE_CONSTRAINTS = `
+  ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_source_check;
+  ALTER TABLE leads ADD CONSTRAINT leads_source_check
+    CHECK (source IN ('meta', 'google', 'manual', 'webhook', 'csv', 'email'));
+  ALTER TABLE lead_form_rules DROP CONSTRAINT IF EXISTS lead_form_rules_source_check;
+  ALTER TABLE lead_form_rules ADD CONSTRAINT lead_form_rules_source_check
+    CHECK (source IN ('meta', 'google', 'webhook', 'csv', 'email'));
+`
 
 function extractedField(value = 'Jane Example') {
   return { value, confidence: 0.9, provenance: 'body' as const }
@@ -189,6 +197,21 @@ describe('email ingestion contracts', () => {
     }
   })
 
+  it('rejects formatted phone PII in source labels while allowing small year and model numbers', () => {
+    for (const sourceName of [
+      '0412 345 678',
+      'Jane 0412 345 678',
+      '+61 412 345 678',
+      'Jane (03) 9123 4567',
+      '+1 (415) 555-2671'
+    ]) {
+      expect(EmailLeadExtractionSchema.safeParse(extraction({ sourceName })).success).toBe(false)
+    }
+    for (const sourceName of ['Carsales 2025', 'Toyota GR86 2024', 'Drive Model 3']) {
+      expect(EmailLeadExtractionSchema.safeParse(extraction({ sourceName })).success).toBe(true)
+    }
+  })
+
   it('ties stage outcomes to the presence of an encrypted object key', () => {
     expect(EmailStageResponseSchema.safeParse({
       schemaVersion: 1,
@@ -266,6 +289,10 @@ describePostgres('universal email ingestion Postgres behavior', () => {
     new URL('../../../../server/database/migrations/317_universal_email_lead_ingestion_integrity_round_2.sql', import.meta.url),
     'utf8'
   )
+  const migration318 = readFileSync(
+    new URL('../../../../server/database/migrations/318_universal_email_lead_source_policy.sql', import.meta.url),
+    'utf8'
+  )
 
   function postgresEnvironment(databaseUrl: string, schema?: string): NodeJS.ProcessEnv {
     const parsed = new URL(databaseUrl)
@@ -288,7 +315,8 @@ describePostgres('universal email ingestion Postgres behavior', () => {
     const result = spawnSync('psql', ['-X', '-qAt', '-v', 'ON_ERROR_STOP=1'], {
       env: postgresEnvironment(integrationDatabaseUrl!, schema),
       input: sql,
-      encoding: 'utf8'
+      encoding: 'utf8',
+      timeout: 25_000
     })
     if (result.status !== 0) {
       throw new Error(`Postgres integration command failed: ${result.stderr.trim()}`)
@@ -349,6 +377,9 @@ describePostgres('universal email ingestion Postgres behavior', () => {
         ${migration316}
         ${migration317}
         ${migration317}
+        ${HISTORICAL_315_SOURCE_CONSTRAINTS}
+        ${migration318}
+        ${migration318}
         SET search_path TO ${schema}, public;
 
         INSERT INTO leads(id, source) VALUES
@@ -365,6 +396,23 @@ describePostgres('universal email ingestion Postgres behavior', () => {
           END IF;
         END
         $backfill$;
+
+        DO $source_policy$
+        BEGIN
+          BEGIN
+            INSERT INTO leads(id, source)
+            VALUES (gen_random_uuid(), 'not a source');
+            RAISE EXCEPTION 'malformed lead source was accepted';
+          EXCEPTION WHEN check_violation THEN NULL;
+          END;
+          BEGIN
+            INSERT INTO lead_form_rules(id, source)
+            VALUES (gen_random_uuid(), 'arbitrary');
+            RAISE EXCEPTION 'arbitrary rule source was accepted';
+          EXCEPTION WHEN check_violation THEN NULL;
+          END;
+        END
+        $source_policy$;
 
         DO $assertions$
         BEGIN
@@ -475,5 +523,5 @@ describePostgres('universal email ingestion Postgres behavior', () => {
     } finally {
       runSql(`DROP SCHEMA IF EXISTS ${schema} CASCADE;`)
     }
-  }, 30_000)
+  }, 60_000)
 })
