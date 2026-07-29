@@ -369,6 +369,7 @@ export async function listEmailEndpointIngestions(
           WHEN 'sender_policy_denied' THEN 'Sender policy no longer allows this message'
           WHEN 'attempts_exhausted' THEN 'Maximum recovery attempts reached'
           WHEN 'evidence_expired' THEN 'Retained evidence has expired'
+          WHEN 'legacy_evidence' THEN 'Pre-sealed evidence requires manual review'
           WHEN 'canonical_transient' THEN 'Lead creation is temporarily unavailable'
           ELSE NULL
         END AS reason,

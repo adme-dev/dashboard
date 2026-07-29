@@ -99,6 +99,30 @@ describe('email stage reservation', () => {
     })
   })
 
+  it('terminalizes an expired reservation instead of allowing late redelivery to reupload it', async () => {
+    query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [{
+      id: '44444444-4444-4444-8444-444444444444',
+      endpoint_id: endpoint.id,
+      client_id: endpoint.client_id,
+      correlation_id: CORRELATION_ID,
+      external_id_hash: HASH,
+      message_id_hash: HASH,
+      status: 'received',
+      terminal_at: null,
+      staged_expires_at: '2026-07-28T00:00:00.000Z',
+      staged_expired: true,
+      staged_object_key: 'email-ingestions/expired-reservation-key'
+    }] }).mockResolvedValueOnce({ rows: [{ id: '44444444-4444-4444-8444-444444444444' }] })
+
+    await expect(reserveEmailIngestionStage(request())).resolves.toMatchObject({
+      outcome: 'duplicate',
+      cleanupObjectKey: null
+    })
+    expect(query.mock.calls[2]?.[0]).toMatch(
+      /status = 'quarantined'[\s\S]*error_class = 'evidence_expired'[\s\S]*terminal_at = NOW\(\)/
+    )
+  })
+
   it('makes a reservation recoverable only after the exact R2 upload is confirmed', async () => {
     queryOne.mockResolvedValueOnce({ id: '44444444-4444-4444-8444-444444444444' })
     await expect(confirmEmailIngestionStage({
@@ -110,6 +134,17 @@ describe('email stage reservation', () => {
     expect(queryOne.mock.calls[0]?.[0]).toMatch(/staged_uploaded_at = COALESCE\(staged_uploaded_at, NOW\(\)\)/)
     expect(queryOne.mock.calls[0]?.[0]).toMatch(/next_attempt_at = NOW\(\)/)
     expect(queryOne.mock.calls[0]?.[0]).toMatch(/correlation_id = \$2[\s\S]*staged_object_key = \$3/)
+  })
+
+  it('rejects upload confirmation after the fixed evidence expiry', async () => {
+    queryOne.mockResolvedValueOnce(null)
+    await expect(confirmEmailIngestionStage({
+      schemaVersion: 1,
+      ingestionId: '44444444-4444-4444-8444-444444444444',
+      correlationId: CORRELATION_ID,
+      encryptedObjectKey: 'email-ingestions/opaque-key-123456'
+    })).rejects.toMatchObject({ statusCode: 409 })
+    expect(queryOne.mock.calls[0]?.[0]).toMatch(/staged_expires_at > NOW\(\)/)
   })
 
   it('rechecks sender restrictions on the locked endpoint before reserving storage', async () => {

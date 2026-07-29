@@ -799,11 +799,13 @@ describe('email lead intake Worker', () => {
     )
     expect(decoder.decode(encrypted)).not.toContain('alex.customer@example.test')
     await expect(decryptStagedEmail(encrypted, 'encryption-secret-that-is-separate')).resolves.toEqual({
+      format: 'sealed',
       raw: RAW,
       envelopeSender: 'alex.customer@example.test'
     })
     const legacy = await encryptRawEmail(RAW, 'encryption-secret-that-is-separate')
     await expect(decryptStagedEmail(legacy, 'encryption-secret-that-is-separate')).resolves.toEqual({
+      format: 'legacy',
       raw: RAW,
       envelopeSender: null
     })

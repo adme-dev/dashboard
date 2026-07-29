@@ -54,6 +54,7 @@ export type EmailRecoveryReason
     | 'sender_policy_denied'
     | 'attempts_exhausted'
     | 'evidence_expired'
+    | 'legacy_evidence'
     | 'canonical_transient'
     | 'lease_lost'
 
@@ -382,6 +383,9 @@ export async function processEmailRecoveryClaim(
       new Uint8Array(await object.arrayBuffer()),
       dependencies.encryptionSecret
     )
+    if (staged.format === 'legacy') {
+      return quarantine(claim, leaseToken, dependencies, 'legacy_evidence', false)
+    }
     raw = staged.raw
     originalEnvelopeSender = staged.envelopeSender
     parsed = await parseMimeContent(raw)
@@ -464,7 +468,8 @@ export async function processEmailRecoveryClaim(
         }
       }
     )
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === 'EmailTerminalTransitionError') throw error
     const delay = retryDelaySeconds(claim.attempt_count)
     const auditEvent: EmailRecoveryAuditEvent = {
       ingestionId: claim.id, endpointId: claim.endpoint_id, clientId: claim.client_id,
@@ -507,21 +512,8 @@ export async function processEmailRecoveryClaim(
   if (result.status === 'in_progress') {
     return { status: 'quarantined', reason: 'lease_lost' }
   }
-  const auditEvent: EmailRecoveryAuditEvent = {
-    ingestionId: claim.id, endpointId: claim.endpoint_id, clientId: claim.client_id,
-    actorId: dependencies.auditActor?.actorId ?? null,
-    actorType: dependencies.auditActor?.actorType ?? 'cron',
-    action: dependencies.auditActor ? 'manual_replay_completed' : 'recovery_completed',
-    outcome: 'quarantined'
-  }
-  if (dependencies.repository.commitTransition) {
-    await dependencies.repository.commitTransition({
-      kind: 'release_terminal', ingestionId: claim.id, leaseToken, audit: auditEvent
-    })
-  } else {
-    await dependencies.repository.releaseTerminalLease(claim.id, leaseToken)
-    await dependencies.repository.audit(auditEvent)
-  }
+  // Canonical terminalization owns the completion audit and clears the recovery
+  // lease for quarantined outcomes. A second release audit would be misleading.
   return { status: 'quarantined', reason: 'lease_lost' }
 }
 

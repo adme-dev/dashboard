@@ -19,6 +19,7 @@ import {
   claimNextEmailTerminalReconciliation,
   cleanupTerminalEmailEvidence,
   processEmailRecoveryClaim,
+  recoverEmailIngestions,
   replayEmailIngestion
 } from '../../../../server/utils/leads/emailRecovery'
 
@@ -66,7 +67,9 @@ const claimedRow = {
 function recoveryHarness(overrides: Record<string, unknown> = {}) {
   const bucket = {
     get: vi.fn(async () => ({
-      arrayBuffer: async () => (await encryptRawEmail(RAW, SECRET)).buffer
+      arrayBuffer: async () => (
+        await encryptStagedEmail(RAW, 'relay@carsales.com.au', SECRET)
+      ).buffer
     })),
     delete: vi.fn(async () => {})
   }
@@ -300,6 +303,102 @@ describe('email recovery processing', () => {
     })
   })
 
+  it('fails legacy raw-only ciphertext closed for deterministic review', async () => {
+    const harness = recoveryHarness()
+    harness.bucket.get.mockResolvedValueOnce({
+      arrayBuffer: async () => (await encryptRawEmail(RAW, SECRET)).buffer
+    })
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      claimedRow,
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'quarantined', reason: 'legacy_evidence' })
+    expect(harness.acceptEnvelope).not.toHaveBeenCalled()
+    expect(harness.bucket.delete).not.toHaveBeenCalled()
+    expect(harness.repository.quarantine).toHaveBeenCalledWith(
+      INGESTION_ID,
+      LEASE_TOKEN,
+      'legacy_evidence',
+      false
+    )
+  })
+
+  it('records exactly one canonical completion audit for a quarantined attempt', async () => {
+    const harness = recoveryHarness()
+    harness.acceptEnvelope.mockImplementationOnce(async () => {
+      await harness.repository.audit({
+        ingestionId: INGESTION_ID,
+        endpointId: ENDPOINT_ID,
+        clientId: CLIENT_ID,
+        actorId: null,
+        actorType: 'cron',
+        action: 'recovery_completed',
+        outcome: 'quarantined'
+      })
+      return { status: 'quarantined' }
+    })
+
+    await processEmailRecoveryClaim(
+      {} as never,
+      claimedRow,
+      LEASE_TOKEN,
+      harness.dependencies
+    )
+
+    const completions = harness.repository.audit.mock.calls
+      .map(([event]) => event)
+      .filter(event => event.action === 'recovery_completed')
+    expect(completions).toHaveLength(1)
+    expect(harness.repository.releaseTerminalLease).not.toHaveBeenCalled()
+  })
+
+  it('rolls back the transient recovery state when its audit insert fails', async () => {
+    const harness = recoveryHarness()
+    harness.acceptEnvelope.mockRejectedValueOnce(new Error('canonical unavailable'))
+    let persistedStatus = 'received'
+    const before = persistedStatus
+    mocks.transaction.mockImplementationOnce(async (callback) => {
+      try {
+        return await callback({
+          query: vi.fn(async (sql: string) => {
+            if (sql.includes('UPDATE lead_email_ingestions')) {
+              persistedStatus = 'failed'
+              return { rows: [{ id: INGESTION_ID }] }
+            }
+            throw new Error('audit unavailable')
+          })
+        })
+      } catch (error) {
+        persistedStatus = before
+        throw error
+      }
+    })
+    const terminalRepository = {
+      claimTerminalObject: vi.fn(async () => null),
+      clearTerminalObject: vi.fn(async () => false),
+      audit: vi.fn(async () => {})
+    }
+
+    await expect(recoverEmailIngestions(
+      {} as never,
+      { bucket: harness.bucket, encryptionSecret: SECRET, ai: null },
+      {
+        limit: 1,
+        claimTerminal: vi.fn(async () => null),
+        claimRecovery: vi.fn()
+          .mockResolvedValueOnce(claimedRow)
+          .mockResolvedValueOnce(null),
+        acceptEnvelope: harness.acceptEnvelope,
+        terminalRepository,
+        randomUUID: () => LEASE_TOKEN,
+        nowMs: harness.dependencies.nowMs
+      }
+    )).resolves.toMatchObject({ failed: 1 })
+    expect(persistedStatus).toBe('received')
+  })
+
   it('uses bounded exponential backoff after a transient canonical failure', async () => {
     const harness = recoveryHarness()
     harness.acceptEnvelope.mockRejectedValueOnce(new Error('Nitro unavailable'))
@@ -394,7 +493,9 @@ describe('email recovery processing', () => {
       new TextDecoder().decode(RAW).replace('relay@carsales.com.au', 'relay@evil.example')
     )
     harness.bucket.get.mockResolvedValueOnce({
-      arrayBuffer: async () => (await encryptRawEmail(deniedRaw, SECRET)).buffer
+      arrayBuffer: async () => (
+        await encryptStagedEmail(deniedRaw, 'relay@carsales.com.au', SECRET)
+      ).buffer
     })
 
     await expect(processEmailRecoveryClaim(
@@ -587,7 +688,9 @@ describe('email recovery processing', () => {
       new TextDecoder().decode(RAW).replace('relay@carsales.com.au', 'relay@evil.example')
     )
     harness.bucket.get.mockResolvedValueOnce({
-      arrayBuffer: async () => (await encryptRawEmail(deniedRaw, SECRET)).buffer
+      arrayBuffer: async () => (
+        await encryptStagedEmail(deniedRaw, 'relay@carsales.com.au', SECRET)
+      ).buffer
     })
     const claimReplay = vi.fn(async () => ({
       outcome: 'claimed' as const,

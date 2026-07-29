@@ -94,10 +94,14 @@ export async function decryptRawEmail(encrypted: Uint8Array, secret: string): Pr
 export async function decryptStagedEmail(
   encrypted: Uint8Array,
   secret: string
-): Promise<{ raw: Uint8Array, envelopeSender: string | null }> {
+): Promise<{
+  format: 'sealed' | 'legacy'
+  raw: Uint8Array
+  envelopeSender: string | null
+}> {
   const plaintext = await decryptRawEmail(encrypted, secret)
   const isStaged = STAGED_MAGIC.every((byte, index) => plaintext[index] === byte)
-  if (!isStaged) return { raw: plaintext, envelopeSender: null }
+  if (!isStaged) return { format: 'legacy', raw: plaintext, envelopeSender: null }
   if (plaintext.byteLength < STAGED_MAGIC.byteLength + 4) throw new Error('Invalid staged email')
   const senderBytes = new DataView(
     plaintext.buffer,
@@ -107,5 +111,9 @@ export async function decryptStagedEmail(
   const rawOffset = STAGED_MAGIC.byteLength + 4 + senderBytes
   if (rawOffset > plaintext.byteLength) throw new Error('Invalid staged email')
   const sender = new TextDecoder().decode(plaintext.slice(STAGED_MAGIC.byteLength + 4, rawOffset))
-  return { raw: plaintext.slice(rawOffset), envelopeSender: sender || null }
+  return {
+    format: 'sealed',
+    raw: plaintext.slice(rawOffset),
+    envelopeSender: sender || null
+  }
 }

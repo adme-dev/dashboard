@@ -42,6 +42,7 @@ function ingestion(overrides: Record<string, unknown> = {}) {
     id: INGESTION_ID, endpoint_id: ENDPOINT_ID, client_id: CLIENT_ID,
     correlation_id: CORRELATION_ID, external_id_hash: HASH, message_id_hash: HASH,
     status: 'received', terminal_at: null, next_attempt_at: null, attempt_count: 0,
+    staged_expires_at: '2099-08-05T00:00:00.000Z',
     recovery_lease_token: null,
     ...overrides
   }
@@ -438,5 +439,61 @@ describe('email canonical ingress', () => {
       }
     )).rejects.toThrow('audit unavailable')
     expect(persistedStatus).toBe('received')
+    expect(mocks.queryOne).not.toHaveBeenCalled()
+  })
+
+  it('expires a late canonical claim before lead acceptance in the same recovery audit transaction', async () => {
+    const recoveryLeaseToken = '66666666-6666-4666-8666-666666666666'
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        recovery_lease_token: recoveryLeaseToken,
+        staged_expires_at: '2026-07-28T00:00:00.000Z',
+        staged_expired: true
+      })]
+    })
+    const expiryQueries = vi.fn(async (sql: string) => ({
+      rows: sql.includes('UPDATE lead_email_ingestions') ? [{ id: INGESTION_ID }] : []
+    }))
+    mocks.transaction
+      .mockImplementationOnce(async callback => callback({ query: mocks.query }))
+      .mockImplementationOnce(async callback => callback({ query: expiryQueries }))
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope(),
+      {
+        recoveryLeaseToken,
+        recoveryAudit: {
+          actorId: null,
+          actorType: 'cron',
+          action: 'recovery_completed'
+        }
+      }
+    )).resolves.toEqual({ status: 'quarantined' })
+    expect(mocks.acceptLead).not.toHaveBeenCalled()
+    expect(expiryQueries.mock.calls[0]?.[0]).toMatch(/evidence_expired/)
+    expect(expiryQueries.mock.calls[1]?.[0]).toMatch(/lead_email_ingestion_audits/)
+  })
+
+  it('expires a late normal-transport claim without crossing a recovery lease', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({
+        staged_expires_at: null,
+        staged_expired: true
+      })]
+    })
+
+    await expect(acceptEmailEnvelope(
+      {} as never,
+      INGESTION_ID,
+      envelope()
+    )).resolves.toEqual({ status: 'quarantined' })
+
+    expect(mocks.acceptLead).not.toHaveBeenCalled()
+    expect(mocks.queryOne.mock.calls[0]?.[0]).toMatch(
+      /staged_expires_at IS NULL[\s\S]*recovery_lease_token IS NULL/
+    )
+    expect(mocks.queryOne.mock.calls[0]?.[1]).toEqual([INGESTION_ID])
   })
 })
