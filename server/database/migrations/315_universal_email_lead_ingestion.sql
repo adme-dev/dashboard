@@ -51,19 +51,28 @@ CREATE TABLE IF NOT EXISTS lead_email_ingestions (
   correlation_id UUID NOT NULL UNIQUE,
   transport TEXT NOT NULL
     CHECK (transport IN ('cloudflare_email_routing')),
-  external_id_hash TEXT NOT NULL,
+  external_id_hash TEXT NOT NULL
+    CONSTRAINT lead_email_ingestions_external_id_hash_check
+    CHECK (external_id_hash ~ '^[a-f0-9]{64}$'),
   provider TEXT NOT NULL,
-  parser TEXT,
+  parser TEXT
+    CONSTRAINT lead_email_ingestions_parser_check
+    CHECK (parser IS NULL OR parser IN ('adf', 'provider', 'generic', 'ai_fallback')),
   status TEXT NOT NULL
     CHECK (status IN ('received', 'accepted', 'duplicate', 'quarantined', 'failed')),
   confidence NUMERIC(5,4) CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
   sender_domain TEXT,
-  message_id_hash TEXT,
-  safe_evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+  message_id_hash TEXT
+    CONSTRAINT lead_email_ingestions_message_id_hash_check
+    CHECK (message_id_hash IS NULL OR message_id_hash ~ '^[a-f0-9]{64}$'),
+  safe_evidence JSONB NOT NULL
+    DEFAULT '{"hasText":false,"hasHtml":false,"hasAdf":false,"fieldKeys":[]}'::jsonb,
   staged_object_key TEXT,
   staged_expires_at TIMESTAMPTZ,
   error_class TEXT,
-  processing_ms INTEGER,
+  processing_ms INTEGER
+    CONSTRAINT lead_email_ingestions_processing_ms_check
+    CHECK (processing_ms IS NULL OR processing_ms >= 0),
   attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
   next_attempt_at TIMESTAMPTZ,
   terminal_at TIMESTAMPTZ,
@@ -71,16 +80,46 @@ CREATE TABLE IF NOT EXISTS lead_email_ingestions (
   duplicate_match_basis TEXT
     CHECK (duplicate_match_basis IS NULL OR duplicate_match_basis IN ('email_hmac', 'phone_hmac', 'email_phone_hmac')),
   duplicate_confidence NUMERIC(5,4) CHECK (duplicate_confidence IS NULL OR duplicate_confidence BETWEEN 0 AND 1),
-  duplicate_window_hours INTEGER,
+  duplicate_window_hours INTEGER
+    CONSTRAINT lead_email_ingestions_duplicate_window_hours_check
+    CHECK (duplicate_window_hours IS NULL OR duplicate_window_hours BETWEEN 1 AND 8760),
   replayed_from UUID REFERENCES lead_email_ingestions(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(endpoint_id, external_id_hash),
-  CHECK (
+  CONSTRAINT lead_email_ingestions_safe_evidence_check CHECK (
+    CASE
+      WHEN jsonb_typeof(safe_evidence) = 'object'
+        AND safe_evidence ?& ARRAY['hasText', 'hasHtml', 'hasAdf', 'fieldKeys']
+        AND (safe_evidence - ARRAY['hasText', 'hasHtml', 'hasAdf', 'fieldKeys']) = '{}'::jsonb
+        AND jsonb_typeof(safe_evidence->'hasText') = 'boolean'
+        AND jsonb_typeof(safe_evidence->'hasHtml') = 'boolean'
+        AND jsonb_typeof(safe_evidence->'hasAdf') = 'boolean'
+        AND jsonb_typeof(safe_evidence->'fieldKeys') = 'array'
+      THEN jsonb_array_length(safe_evidence->'fieldKeys') <= 100
+      ELSE FALSE
+    END
+  ),
+  CONSTRAINT lead_email_ingestions_duplicate_signal_check CHECK (
+    (
+      duplicate_match_basis IS NULL
+      AND duplicate_confidence IS NULL
+      AND duplicate_window_hours IS NULL
+      AND possible_duplicate_of_lead_id IS NULL
+    )
+    OR (
+      duplicate_match_basis IS NOT NULL
+      AND duplicate_confidence IS NOT NULL
+      AND duplicate_window_hours IS NOT NULL
+    )
+  ),
+  CONSTRAINT lead_email_ingestions_replay_self_check
+    CHECK (replayed_from IS NULL OR replayed_from <> id),
+  CONSTRAINT lead_email_ingestions_lifecycle_check CHECK (
     (status IN ('accepted', 'duplicate', 'quarantined') AND terminal_at IS NOT NULL AND next_attempt_at IS NULL)
-    OR (status = 'received' AND terminal_at IS NULL)
+    OR (status = 'received' AND terminal_at IS NULL AND next_attempt_at IS NOT NULL AND attempt_count < 5)
     OR (status = 'failed' AND (
-      terminal_at IS NOT NULL
+      (terminal_at IS NOT NULL AND next_attempt_at IS NULL)
       OR (terminal_at IS NULL AND next_attempt_at IS NOT NULL AND attempt_count < 5)
     ))
   )
@@ -109,12 +148,52 @@ CREATE TABLE IF NOT EXISTS lead_email_ingest_nonces (
 CREATE INDEX IF NOT EXISTS idx_lead_email_ingest_nonces_expiry
   ON lead_email_ingest_nonces(expires_at);
 
-ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_source_check;
-ALTER TABLE leads ADD CONSTRAINT leads_source_check
-  CHECK (source IN ('meta', 'google', 'manual', 'webhook', 'csv', 'email'));
+DO $$
+DECLARE
+  existing_expression TEXT;
+BEGIN
+  SELECT pg_get_expr(conbin, conrelid)
+    INTO existing_expression
+    FROM pg_constraint
+   WHERE conrelid = 'leads'::regclass
+     AND conname = 'leads_source_check';
 
-ALTER TABLE lead_form_rules DROP CONSTRAINT IF EXISTS lead_form_rules_source_check;
-ALTER TABLE lead_form_rules ADD CONSTRAINT lead_form_rules_source_check
-  CHECK (source IN ('meta', 'google', 'webhook', 'csv', 'email'));
+  IF existing_expression IS NULL THEN
+    ALTER TABLE leads ADD CONSTRAINT leads_source_check
+      CHECK (source IN ('meta', 'google', 'manual', 'webhook', 'csv', 'email'));
+  ELSIF position('''email''' IN existing_expression) = 0 THEN
+    ALTER TABLE leads DROP CONSTRAINT leads_source_check;
+    EXECUTE format(
+      'ALTER TABLE leads ADD CONSTRAINT leads_source_check CHECK ((%s) OR source = %L)',
+      existing_expression,
+      'email'
+    );
+  END IF;
+END
+$$;
+
+DO $$
+DECLARE
+  existing_expression TEXT;
+BEGIN
+  SELECT pg_get_expr(conbin, conrelid)
+    INTO existing_expression
+    FROM pg_constraint
+   WHERE conrelid = 'lead_form_rules'::regclass
+     AND conname = 'lead_form_rules_source_check';
+
+  IF existing_expression IS NULL THEN
+    ALTER TABLE lead_form_rules ADD CONSTRAINT lead_form_rules_source_check
+      CHECK (source IN ('meta', 'google', 'webhook', 'csv', 'email'));
+  ELSIF position('''email''' IN existing_expression) = 0 THEN
+    ALTER TABLE lead_form_rules DROP CONSTRAINT lead_form_rules_source_check;
+    EXECUTE format(
+      'ALTER TABLE lead_form_rules ADD CONSTRAINT lead_form_rules_source_check CHECK ((%s) OR source = %L)',
+      existing_expression,
+      'email'
+    );
+  END IF;
+END
+$$;
 
 COMMIT;

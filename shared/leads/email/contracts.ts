@@ -17,7 +17,15 @@ const SafeMessageSchema = z.string()
 const HashSchema = z.string().regex(/^[a-f0-9]{64}$/, 'Expected a SHA-256 hash')
 const UuidSchema = z.string().uuid()
 const IsoTimestampSchema = z.string().datetime({ offset: true })
-const SafeIdentifierSchema = z.string().trim().min(1).max(255)
+const SafeIdentifierSchema = SafeTextSchema.trim().min(1).max(255)
+const SafeFieldKeySchema = z.string()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z][A-Za-z0-9_.-]*$/, 'Expected a safe field identifier')
+const RecipientTokenSchema = z.string()
+  .regex(/^lead_[A-Za-z0-9_-]{24,128}$/, 'Expected an opaque email endpoint token')
+const EncryptedObjectKeySchema = z.string()
+  .regex(/^email-ingestions\/[A-Za-z0-9_-]{16,200}$/, 'Expected an opaque email-ingestion object key')
 const SafeDomainSchema = z.string()
   .trim()
   .min(1)
@@ -28,11 +36,11 @@ export const EmailParserKindSchema = z.enum(['adf', 'provider', 'generic', 'ai_f
 export const EmailIngestionStatusSchema = z.enum(['received', 'accepted', 'duplicate', 'quarantined', 'failed'])
 export const EmailIngressTransportSchema = z.literal('cloudflare_email_routing')
 
-const EmailSafeEvidenceSchema = z.object({
+export const EmailSafeEvidenceSchema = z.object({
   hasText: z.boolean(),
   hasHtml: z.boolean(),
   hasAdf: z.boolean(),
-  fieldKeys: z.array(SafeIdentifierSchema).max(MAX_EXTRACTED_FIELDS)
+  fieldKeys: z.array(SafeFieldKeySchema).max(MAX_EXTRACTED_FIELDS)
 }).strict()
 
 const EmailExtractedFieldSchema = z.object({
@@ -51,7 +59,7 @@ export const EmailLeadExtractionSchema = z.object({
   sourceName: SafeIdentifierSchema,
   medium: z.enum(['classifieds', 'paid-social', 'cpc', 'lead_ingest']),
   parser: EmailParserKindSchema,
-  fields: z.record(SafeIdentifierSchema, EmailExtractedFieldSchema).refine(
+  fields: z.record(SafeFieldKeySchema, EmailExtractedFieldSchema).refine(
     fields => Object.keys(fields).length <= MAX_EXTRACTED_FIELDS,
     `At most ${MAX_EXTRACTED_FIELDS} extracted fields are allowed`
   ),
@@ -81,7 +89,7 @@ export const EmailStageRequestSchema = z.object({
   schemaVersion: z.literal(1),
   correlationId: UuidSchema,
   transport: EmailIngressTransportSchema,
-  recipientToken: SafeIdentifierSchema,
+  recipientToken: RecipientTokenSchema,
   externalIdHash: HashSchema,
   messageIdHash: HashSchema.nullable(),
   provider: SafeIdentifierSchema,
@@ -91,19 +99,27 @@ export const EmailStageRequestSchema = z.object({
   quarantineExpiresAt: IsoTimestampSchema
 }).strict()
 
-export const EmailStageResponseSchema = z.object({
-  schemaVersion: z.literal(1),
-  outcome: z.enum(['reserved', 'duplicate']),
-  ingestionId: UuidSchema,
-  encryptedObjectKey: z.string().trim().min(1).max(1024).nullable()
-}).strict()
+export const EmailStageResponseSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    schemaVersion: z.literal(1),
+    outcome: z.literal('reserved'),
+    ingestionId: UuidSchema,
+    encryptedObjectKey: EncryptedObjectKeySchema
+  }).strict(),
+  z.object({
+    schemaVersion: z.literal(1),
+    outcome: z.literal('duplicate'),
+    ingestionId: UuidSchema,
+    encryptedObjectKey: z.null()
+  }).strict()
+])
 
 export const EmailIngestEnvelopeSchema = z.object({
   schemaVersion: z.literal(1),
   correlationId: UuidSchema,
   ingestionId: UuidSchema,
   transport: EmailIngressTransportSchema,
-  recipientToken: SafeIdentifierSchema,
+  recipientToken: RecipientTokenSchema,
   recipientAddressHash: HashSchema,
   envelopeSenderDomain: SafeDomainSchema.nullable(),
   headerFromDomain: SafeDomainSchema.nullable(),
@@ -116,7 +132,7 @@ export const EmailIngestEnvelopeSchema = z.object({
   safeEvidence: EmailSafeEvidenceSchema,
   quarantine: z.object({
     reason: SafeTextSchema.max(500),
-    encryptedObjectKey: z.string().trim().min(1).max(1024),
+    encryptedObjectKey: EncryptedObjectKeySchema,
     expiresAt: IsoTimestampSchema
   }).strict().optional()
 }).strict().superRefine((envelope, context) => {
@@ -132,6 +148,7 @@ export const EmailIngestEnvelopeSchema = z.object({
 export type EmailParserKind = z.infer<typeof EmailParserKindSchema>
 export type EmailIngestionStatus = z.infer<typeof EmailIngestionStatusSchema>
 export type EmailIngressTransport = z.infer<typeof EmailIngressTransportSchema>
+export type EmailSafeEvidence = z.infer<typeof EmailSafeEvidenceSchema>
 export type EmailEndpointPolicy = z.infer<typeof EmailEndpointPolicySchema>
 export type ExtractedEmailField = z.infer<typeof EmailExtractedFieldSchema>
 export type EmailLeadExtraction = z.infer<typeof EmailLeadExtractionSchema>

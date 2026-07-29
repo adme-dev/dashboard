@@ -1,4 +1,5 @@
 import type { AvatarProps } from '@nuxt/ui'
+import type { EmailSafeEvidence } from '../../shared/leads/email/contracts'
 
 // ============================================
 // User Types
@@ -1673,7 +1674,7 @@ export interface EmailLeadIngestion {
   confidence: number | null
   sender_domain: string | null
   message_id_hash: string | null
-  safe_evidence: Record<string, unknown>
+  safe_evidence: EmailSafeEvidence
   staged_object_key: string | null
   staged_expires_at: string | null
   error_class: string | null

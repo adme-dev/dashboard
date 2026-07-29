@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
@@ -11,6 +13,7 @@ import {
 const UUID = '11111111-1111-4111-8111-111111111111'
 const HASH = 'a'.repeat(64)
 const RECEIVED_AT = '2026-07-29T00:00:00.000Z'
+const OPAQUE_OBJECT_KEY = 'email-ingestions/opaque-object-key'
 
 function extractedField(value = 'Jane Example') {
   return { value, confidence: 0.9, provenance: 'body' as const }
@@ -91,7 +94,7 @@ describe('email ingestion contracts', () => {
       schemaVersion: 1,
       outcome: 'reserved',
       ingestionId: '22222222-2222-4222-8222-222222222222',
-      encryptedObjectKey: 'email-ingestions/opaque-object-key'
+      encryptedObjectKey: OPAQUE_OBJECT_KEY
     }).success).toBe(true)
     expect(EmailIngestEnvelopeSchema.safeParse(ingestEnvelope()).success).toBe(true)
   })
@@ -136,6 +139,45 @@ describe('email ingestion contracts', () => {
       attachmentBytes: 'base64 raw MIME is forbidden'
     })).success).toBe(false)
   })
+
+  it('requires opaque routing tokens and object keys without control characters', () => {
+    expect(EmailStageRequestSchema.safeParse(stageRequest({
+      recipientToken: 'leads@client.example'
+    })).success).toBe(false)
+    expect(EmailIngestEnvelopeSchema.safeParse(ingestEnvelope({
+      recipientToken: 'client-acme'
+    })).success).toBe(false)
+    expect(EmailStageRequestSchema.safeParse(stageRequest({
+      provider: 'carsales\u0000raw'
+    })).success).toBe(false)
+    expect(EmailStageResponseSchema.safeParse({
+      schemaVersion: 1,
+      outcome: 'reserved',
+      ingestionId: UUID,
+      encryptedObjectKey: 'client-acme/raw-message.eml'
+    }).success).toBe(false)
+  })
+
+  it('ties stage outcomes to the presence of an encrypted object key', () => {
+    expect(EmailStageResponseSchema.safeParse({
+      schemaVersion: 1,
+      outcome: 'reserved',
+      ingestionId: UUID,
+      encryptedObjectKey: null
+    }).success).toBe(false)
+    expect(EmailStageResponseSchema.safeParse({
+      schemaVersion: 1,
+      outcome: 'duplicate',
+      ingestionId: UUID,
+      encryptedObjectKey: OPAQUE_OBJECT_KEY
+    }).success).toBe(false)
+    expect(EmailStageResponseSchema.safeParse({
+      schemaVersion: 1,
+      outcome: 'duplicate',
+      ingestionId: UUID,
+      encryptedObjectKey: null
+    }).success).toBe(true)
+  })
 })
 
 describe('universal email ingestion migration', () => {
@@ -167,4 +209,188 @@ describe('universal email ingestion migration', () => {
     expect(migration).toContain("source IN ('meta', 'google', 'manual', 'webhook', 'csv', 'email')")
     expect(migration).toContain("source IN ('meta', 'google', 'webhook', 'csv', 'email')")
   })
+
+  it('keeps the exhaustive source icon contract aligned with LeadSource', () => {
+    const sourceIcon = readFileSync(
+      new URL('../../../../app/components/leads/SourceIcon.vue', import.meta.url),
+      'utf8'
+    )
+    expect(sourceIcon.match(/\bemail:\s*'[^']+'/g)).toHaveLength(2)
+  })
+})
+
+const integrationDatabaseUrl = process.env.EMAIL_INGESTION_TEST_DATABASE_URL
+const describePostgres = integrationDatabaseUrl ? describe : describe.skip
+
+describePostgres('universal email ingestion Postgres behavior', () => {
+  const migration315 = readFileSync(
+    new URL('../../../../server/database/migrations/315_universal_email_lead_ingestion.sql', import.meta.url),
+    'utf8'
+  )
+  const migration316 = readFileSync(
+    new URL('../../../../server/database/migrations/316_universal_email_lead_ingestion_integrity.sql', import.meta.url),
+    'utf8'
+  )
+
+  function postgresEnvironment(databaseUrl: string, schema?: string): NodeJS.ProcessEnv {
+    const parsed = new URL(databaseUrl)
+    return {
+      ...process.env,
+      // A session-level search_path is required for isolation. Neon transaction
+      // poolers reject that startup option, so integration checks use the same
+      // database's direct hostname.
+      PGHOST: schema ? parsed.hostname.replace('-pooler.', '.') : parsed.hostname,
+      PGPORT: parsed.port || '5432',
+      PGUSER: decodeURIComponent(parsed.username),
+      PGPASSWORD: decodeURIComponent(parsed.password),
+      PGDATABASE: parsed.pathname.slice(1),
+      PGSSLMODE: parsed.searchParams.get('sslmode') || 'require',
+      ...(schema ? { PGOPTIONS: `-c search_path=${schema},public` } : {})
+    }
+  }
+
+  function runSql(sql: string, schema?: string) {
+    const result = spawnSync('psql', ['-X', '-qAt', '-v', 'ON_ERROR_STOP=1'], {
+      env: postgresEnvironment(integrationDatabaseUrl!, schema),
+      input: sql,
+      encoding: 'utf8'
+    })
+    if (result.status !== 0) {
+      throw new Error(`Postgres integration command failed: ${result.stderr.trim()}`)
+    }
+    return result
+  }
+
+  it('applies twice and enforces privacy, lifecycle, duplicate, replay, and source-drift invariants', () => {
+    const schema = `email_ingestion_${randomUUID().replaceAll('-', '')}`
+    try {
+      const result = runSql(`
+        CREATE SCHEMA ${schema};
+        SET search_path TO ${schema}, public;
+        CREATE TABLE agency_clients (id UUID PRIMARY KEY);
+        CREATE TABLE team_members (id UUID PRIMARY KEY);
+        CREATE TABLE leads (
+          id UUID PRIMARY KEY,
+          source TEXT NOT NULL,
+          CONSTRAINT leads_source_check CHECK (source IN ('meta', 'google', 'manual', 'webhook', 'csv', 'future_source'))
+        );
+        CREATE TABLE lead_form_rules (
+          id UUID PRIMARY KEY,
+          source TEXT NOT NULL,
+          CONSTRAINT lead_form_rules_source_check CHECK (source IN ('meta', 'google', 'webhook', 'csv', 'future_source'))
+        );
+        ${migration315}
+        ${migration316}
+        ${migration316}
+        SET search_path TO ${schema}, public;
+
+        INSERT INTO agency_clients(id) VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        INSERT INTO leads(id, source) VALUES
+          ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'future_source'),
+          ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'email');
+        INSERT INTO lead_form_rules(id, source) VALUES
+          ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'future_source'),
+          ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'email');
+        INSERT INTO lead_email_endpoints(
+          id, client_id, label, address_prefix, address_token, email_address, form_id, form_name
+        ) VALUES (
+          '11111111-1111-4111-8111-111111111111',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          'Test', 'leads', 'lead_3F1qP6jY9mK2vN5xR8cT4wZ7bD0hL',
+          'opaque@example.invalid', 'form', 'Form'
+        );
+        INSERT INTO lead_email_ingestions(
+          id, endpoint_id, correlation_id, transport, external_id_hash, provider,
+          parser, status, safe_evidence, next_attempt_at
+        ) VALUES (
+          '22222222-2222-4222-8222-222222222222',
+          '11111111-1111-4111-8111-111111111111',
+          '33333333-3333-4333-8333-333333333333',
+          'cloudflare_email_routing', repeat('a', 64), 'carsales',
+          'provider', 'received',
+          '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":["full_name"]}'::jsonb,
+          NOW()
+        );
+
+        DO $assertions$
+        BEGIN
+          BEGIN
+            INSERT INTO lead_email_ingestions(
+              endpoint_id, correlation_id, transport, external_id_hash, provider, status, safe_evidence
+            ) VALUES (
+              '11111111-1111-4111-8111-111111111111', gen_random_uuid(),
+              'cloudflare_email_routing', repeat('b', 64), 'carsales', 'received',
+              '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":[]}'::jsonb
+            );
+            RAISE EXCEPTION 'received row without retry schedule was accepted';
+          EXCEPTION WHEN check_violation THEN NULL;
+          END;
+
+          BEGIN
+            INSERT INTO lead_email_ingestions(
+              endpoint_id, correlation_id, transport, external_id_hash, provider,
+              status, safe_evidence, terminal_at, next_attempt_at
+            ) VALUES (
+              '11111111-1111-4111-8111-111111111111', gen_random_uuid(),
+              'cloudflare_email_routing', repeat('c', 64), 'carsales', 'failed',
+              '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":[]}'::jsonb,
+              NOW(), NOW()
+            );
+            RAISE EXCEPTION 'terminal failed row with retry schedule was accepted';
+          EXCEPTION WHEN check_violation THEN NULL;
+          END;
+
+          BEGIN
+            INSERT INTO lead_email_ingestions(
+              endpoint_id, correlation_id, transport, external_id_hash, provider,
+              parser, status, safe_evidence, next_attempt_at
+            ) VALUES (
+              '11111111-1111-4111-8111-111111111111', gen_random_uuid(),
+              'cloudflare_email_routing', 'raw@example.invalid', 'carsales',
+              'unknown', 'received',
+              '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":[]}'::jsonb,
+              NOW()
+            );
+            RAISE EXCEPTION 'raw identifier or unknown parser was accepted';
+          EXCEPTION WHEN check_violation THEN NULL;
+          END;
+
+          BEGIN
+            INSERT INTO lead_email_ingestions(
+              endpoint_id, correlation_id, transport, external_id_hash, provider,
+              status, safe_evidence, terminal_at, possible_duplicate_of_lead_id
+            ) VALUES (
+              '11111111-1111-4111-8111-111111111111', gen_random_uuid(),
+              'cloudflare_email_routing', repeat('d', 64), 'carsales', 'accepted',
+              '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":[]}'::jsonb,
+              NOW(), 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+            );
+            RAISE EXCEPTION 'partial duplicate signal was accepted';
+          EXCEPTION WHEN check_violation THEN NULL;
+          END;
+
+          BEGIN
+            INSERT INTO lead_email_ingestions(
+              id, endpoint_id, correlation_id, transport, external_id_hash, provider,
+              status, safe_evidence, terminal_at, replayed_from
+            ) VALUES (
+              '44444444-4444-4444-8444-444444444444',
+              '11111111-1111-4111-8111-111111111111', gen_random_uuid(),
+              'cloudflare_email_routing', repeat('e', 64), 'carsales', 'accepted',
+              '{"hasText":true,"hasHtml":false,"hasAdf":false,"fieldKeys":[]}'::jsonb,
+              NOW(), '44444444-4444-4444-8444-444444444444'
+            );
+            RAISE EXCEPTION 'self replay was accepted';
+          EXCEPTION WHEN check_violation THEN NULL;
+          END;
+        END
+        $assertions$;
+
+        SELECT 'verified';
+      `, schema)
+      expect(result.stdout.trim().split('\n').at(-1)).toBe('verified')
+    } finally {
+      runSql(`DROP SCHEMA IF EXISTS ${schema} CASCADE;`)
+    }
+  }, 30_000)
 })
