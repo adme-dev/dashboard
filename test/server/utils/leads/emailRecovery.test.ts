@@ -72,6 +72,7 @@ const claimedRow = {
   ai_privacy_approval_version: null,
   ai_privacy_approved_at: null,
   ai_privacy_approved_by: null,
+  lead_capture_mode: 'full_crm',
   allowed_sender_domains: ['carsales.com.au']
 }
 
@@ -156,6 +157,8 @@ describe('email recovery claims', () => {
     )
     expect(sql).not.toMatch(/staged_uploaded_at IS NOT NULL/)
     expect(params).toEqual([LEASE_TOKEN, 300, 30])
+    expect(sql).toMatch(/JOIN agency_clients/)
+    expect(sql).toMatch(/lead_capture_mode/)
   })
 
   it('does not install a recovery lease with less than the canonical safety window remaining', async () => {
@@ -506,7 +509,9 @@ describe('email recovery processing', () => {
             status: 'quarantined',
             error_class: 'attempts_exhausted'
           }]
-        : []
+        : sql.includes('UPDATE lead_email_endpoints')
+          ? [{ id: ENDPOINT_ID }]
+          : []
     }))
     mocks.transaction.mockImplementationOnce(async callback => callback({
       query: lifecycleQueries
@@ -537,8 +542,11 @@ describe('email recovery processing', () => {
       /status = CASE[\s\S]*attempt_count >= 5 THEN 'quarantined'[\s\S]*terminal_at = CASE[\s\S]*next_attempt_at = CASE[\s\S]*recovery_lease_token = NULL/
     )
     expect(lifecycleQueries.mock.calls[0]?.[0]).toMatch(/attempt_count >= 5/)
-    expect(lifecycleQueries.mock.calls[1]?.[0]).toMatch(/lead_email_ingestion_audits/)
-    expect(lifecycleQueries.mock.calls[1]?.[1]).toEqual([
+    expect(lifecycleQueries.mock.calls[1]?.[0]).toMatch(
+      /lead_email_endpoints[\s\S]*consecutive_failures = consecutive_failures \+ 1/
+    )
+    expect(lifecycleQueries.mock.calls[2]?.[0]).toMatch(/lead_email_ingestion_audits/)
+    expect(lifecycleQueries.mock.calls[2]?.[1]).toEqual([
       INGESTION_ID,
       ENDPOINT_ID,
       CLIENT_ID,
@@ -549,6 +557,48 @@ describe('email recovery processing', () => {
       'attempts_exhausted'
     ])
     expect(harness.bucket.delete).not.toHaveBeenCalled()
+  })
+
+  it('atomically increments endpoint health for a recovery quarantine', async () => {
+    const harness = recoveryHarness()
+    harness.bucket.get.mockResolvedValueOnce(null)
+    const transitionQueries = vi.fn(async (sql: string) => ({
+      rows: sql.includes('UPDATE lead_email_ingestions')
+        ? [{ id: INGESTION_ID, endpoint_id: ENDPOINT_ID, client_id: CLIENT_ID }]
+        : sql.includes('UPDATE lead_email_endpoints')
+          ? [{ id: ENDPOINT_ID }]
+          : []
+    }))
+    mocks.transaction.mockImplementationOnce(async callback => callback({
+      query: transitionQueries
+    }))
+    const terminalRepository = {
+      claimTerminalObject: vi.fn(async () => null),
+      clearTerminalObject: vi.fn(async () => false),
+      audit: vi.fn(async () => {})
+    }
+
+    await expect(recoverEmailIngestions(
+      {} as never,
+      { bucket: harness.bucket, encryptionSecret: SECRET, ai: null },
+      {
+        limit: 1,
+        claimTerminal: vi.fn(async () => null),
+        claimRecovery: vi.fn()
+          .mockResolvedValueOnce(claimedRow)
+          .mockResolvedValueOnce(null),
+        acceptEnvelope: harness.acceptEnvelope,
+        terminalRepository,
+        randomUUID: () => LEASE_TOKEN,
+        nowMs: harness.dependencies.nowMs
+      }
+    )).resolves.toMatchObject({ quarantined: 1, failed: 0 })
+
+    expect(transitionQueries.mock.calls[0]?.[0]).toMatch(/UPDATE lead_email_ingestions/)
+    expect(transitionQueries.mock.calls[1]?.[0]).toMatch(
+      /UPDATE lead_email_endpoints[\s\S]*consecutive_failures = consecutive_failures \+ 1/
+    )
+    expect(transitionQueries.mock.calls[2]?.[0]).toMatch(/lead_email_ingestion_audits/)
   })
 
   it('atomically reschedules when notReady occurred before the database count reached five', async () => {
@@ -706,6 +756,28 @@ describe('email recovery processing', () => {
       INGESTION_ID,
       LEASE_TOKEN,
       'endpoint_unavailable',
+      false
+    )
+  })
+
+  it('quarantines analytics-only recovery before reading staged evidence', async () => {
+    const harness = recoveryHarness()
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      { ...claimedRow, lead_capture_mode: 'analytics_only' },
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({
+      status: 'quarantined',
+      reason: 'capture_mode_ineligible'
+    })
+
+    expect(harness.bucket.get).not.toHaveBeenCalled()
+    expect(harness.repository.quarantine).toHaveBeenCalledWith(
+      INGESTION_ID,
+      LEASE_TOKEN,
+      'capture_mode_ineligible',
       false
     )
   })
@@ -1263,6 +1335,11 @@ describe('email recovery processing', () => {
       'disabled endpoint',
       { endpoint_enabled: false },
       'email_replay_endpoint_unavailable'
+    ],
+    [
+      'analytics-only client',
+      { lead_capture_mode: 'analytics_only' },
+      'email_replay_capture_mode_ineligible'
     ],
     [
       'expired evidence',

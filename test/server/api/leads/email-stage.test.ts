@@ -22,7 +22,8 @@ const endpoint = {
   id: '11111111-1111-4111-8111-111111111111', client_id: '22222222-2222-4222-8222-222222222222',
   form_id: 'email_endpoint:11111111-1111-4111-8111-111111111111', form_name: 'Carsales', enabled: true, retired_at: null,
   address_token: '0123456789', previous_address_token: null, previous_token_grace_until: null,
-  expected_provider: 'carsales', parser_mode: 'auto', ai_extraction_mode: 'disabled', allowed_sender_domains: []
+  expected_provider: 'carsales', parser_mode: 'auto', ai_extraction_mode: 'disabled',
+  allowed_sender_domains: [], lead_capture_mode: 'full_crm'
 }
 
 function request() {
@@ -190,6 +191,20 @@ describe('email stage reservation', () => {
       code: 'email_endpoint_unavailable'
     })
     expect(query).toHaveBeenCalledOnce()
+  })
+
+  it('denies storage reservation when the client has become analytics-only', async () => {
+    query.mockResolvedValueOnce({
+      rows: [{ ...endpoint, lead_capture_mode: 'analytics_only' }]
+    })
+
+    await expect(reserveEmailIngestionStage(request())).resolves.toEqual({
+      schemaVersion: 1,
+      outcome: 'denied',
+      code: 'email_endpoint_unavailable'
+    })
+    expect(query).toHaveBeenCalledOnce()
+    expect(query.mock.calls[0]?.[0]).toMatch(/agency_clients/)
   })
 
   it('durably reserves a provider mismatch so canonical policy can quarantine its evidence', async () => {

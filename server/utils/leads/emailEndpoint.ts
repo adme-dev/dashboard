@@ -512,9 +512,19 @@ export async function rotateEmailEndpoint(id: string, actorId: string): Promise<
 export async function resolveEmailEndpointToken(token: string): Promise<EmailLeadEndpoint | null> {
   if (!/^[0123456789abcdefghjkmnpqrstvwxyz]{10}$/.test(token)) return null
   return queryOne<EmailLeadEndpoint>(`
-    SELECT * FROM lead_email_endpoints
-    WHERE enabled = TRUE AND retired_at IS NULL
-      AND (address_token = $1 OR (previous_address_token = $1 AND previous_token_grace_until > NOW()))
+    SELECT endpoint.*
+    FROM lead_email_endpoints endpoint
+    JOIN agency_clients client ON client.id = endpoint.client_id
+    WHERE endpoint.enabled = TRUE
+      AND endpoint.retired_at IS NULL
+      AND COALESCE(client.lead_capture_mode, 'capture_only') <> 'analytics_only'
+      AND (
+        endpoint.address_token = $1
+        OR (
+          endpoint.previous_address_token = $1
+          AND endpoint.previous_token_grace_until > NOW()
+        )
+      )
     LIMIT 1
   `, [token])
 }
@@ -662,6 +672,7 @@ export async function listEmailEndpointIngestions(
           WHEN 'missing_evidence' THEN 'Retained evidence is unavailable'
           WHEN 'corrupt_evidence' THEN 'Evidence could not be decrypted'
           WHEN 'endpoint_unavailable' THEN 'Email address is disabled or retired'
+          WHEN 'capture_mode_ineligible' THEN 'Lead capture is disabled'
           WHEN 'sender_policy_denied' THEN 'Sender policy no longer allows this message'
           WHEN 'attempts_exhausted' THEN 'Maximum recovery attempts reached'
           WHEN 'evidence_expired' THEN 'Retained evidence has expired'
@@ -682,10 +693,13 @@ export async function listEmailEndpointIngestions(
           AND EXISTS (
             SELECT 1
             FROM lead_email_endpoints replay_endpoint
+            JOIN agency_clients replay_client
+              ON replay_client.id = replay_endpoint.client_id
             WHERE replay_endpoint.id = i.endpoint_id
               AND replay_endpoint.client_id = i.client_id
               AND replay_endpoint.enabled = TRUE
               AND replay_endpoint.retired_at IS NULL
+              AND COALESCE(replay_client.lead_capture_mode, 'capture_only') <> 'analytics_only'
           )
         ) AS replay_available,
         CASE
@@ -694,6 +708,12 @@ export async function listEmailEndpointIngestions(
           WHEN i.recovery_lease_token IS NOT NULL
             AND i.recovery_claimed_at > NOW() - INTERVAL '5 minutes'
             THEN 'Replay is already in progress'
+          WHEN EXISTS (
+            SELECT 1
+            FROM agency_clients replay_client
+            WHERE replay_client.id = i.client_id
+              AND replay_client.lead_capture_mode = 'analytics_only'
+          ) THEN 'Lead capture is disabled'
           WHEN i.staged_object_key IS NULL THEN 'Retained evidence is unavailable'
           WHEN i.staged_expires_at IS NULL OR i.staged_expires_at <= NOW() THEN 'Retained evidence has expired'
           WHEN NOT EXISTS (

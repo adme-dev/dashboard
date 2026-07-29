@@ -2,10 +2,11 @@ import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const query = vi.fn()
+const queryOne = vi.fn()
 const transaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => callback({ query }))
 
 vi.mock('~~/server/utils/db', () => ({
-  queryOne: vi.fn(), queryRows: vi.fn(), transaction: (...args: unknown[]) => transaction(...args)
+  queryOne, queryRows: vi.fn(), transaction: (...args: unknown[]) => transaction(...args)
 }))
 vi.mock('~~/server/utils/leads/emailRoutingPreset', () => ({ applyEmailRoutingPreset: vi.fn() }))
 
@@ -44,7 +45,21 @@ function endpoint(overrides: Record<string, unknown> = {}) {
 describe('email endpoint service', () => {
   beforeEach(() => {
     query.mockReset()
+    queryOne.mockReset()
     transaction.mockClear()
+  })
+
+  it('fails policy resolution closed for analytics-only clients', async () => {
+    const { resolveEmailEndpointToken } = await import('~~/server/utils/leads/emailEndpoint')
+    queryOne.mockResolvedValueOnce(endpoint())
+
+    await expect(resolveEmailEndpointToken('0123456789')).resolves.toMatchObject({
+      id: '33333333-3333-4333-8333-333333333333'
+    })
+
+    expect(queryOne.mock.calls[0]?.[0]).toMatch(
+      /JOIN agency_clients[\s\S]*lead_capture_mode[\s\S]*<> 'analytics_only'/
+    )
   })
 
   it('creates a client-authorized endpoint and immutable endpoint-scoped form metadata in one transaction', async () => {
@@ -442,6 +457,10 @@ describe('email endpoint service', () => {
     expect(historySql).toContain('recovery_claimed_at')
     expect(historySql).toContain('Replay is already in progress')
     expect(historySql).toContain('replay_endpoint.client_id = i.client_id')
+    expect(historySql).toMatch(
+      /JOIN agency_clients replay_client[\s\S]*COALESCE\(replay_client\.lead_capture_mode, 'capture_only'\) <> 'analytics_only'/
+    )
+    expect(historySql).toContain('Lead capture is disabled')
   })
 
   it('removes both raw token fields from serialized endpoint responses', async () => {

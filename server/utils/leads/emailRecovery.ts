@@ -24,6 +24,7 @@ import { emitEmailIngestionEvent } from '~~/shared/leads/email/telemetry'
 
 const RECOVERY_LEASE_SECONDS = 5 * 60
 const MIN_CANONICAL_WINDOW_SECONDS = 30
+type RecoveryDbClient = Parameters<typeof transaction>[0] extends (client: infer Client) => Promise<unknown> ? Client : never
 
 export interface EmailRecoveryClaim {
   id: string
@@ -60,6 +61,7 @@ export interface EmailRecoveryClaim {
   ai_privacy_approval_version: number | null
   ai_privacy_approved_at: string | null
   ai_privacy_approved_by: string | null
+  lead_capture_mode: string | null
   allowed_sender_domains: string[] | string
 }
 
@@ -70,6 +72,7 @@ export type EmailRecoveryReason
     | 'identity_mismatch'
     | 'parse_failed'
     | 'endpoint_unavailable'
+    | 'capture_mode_ineligible'
     | 'sender_policy_denied'
     | 'attempts_exhausted'
     | 'evidence_expired'
@@ -188,9 +191,10 @@ export async function claimNextEmailRecovery(
   return transaction(async (db) => {
     const result = await db.query<EmailRecoveryClaim>(`
       WITH candidate AS (
-        SELECT i.id
+        SELECT i.id, client.lead_capture_mode
         FROM lead_email_ingestions i
         JOIN lead_email_endpoints e ON e.id = i.endpoint_id
+        JOIN agency_clients client ON client.id = e.client_id
         WHERE i.terminal_at IS NULL
           AND i.status IN ('received', 'failed')
           AND i.next_attempt_at <= NOW()
@@ -225,7 +229,8 @@ export async function claimNextEmailRecovery(
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
         e.ai_extraction_mode, e.ai_privacy_approval_version,
-        e.ai_privacy_approved_at, e.ai_privacy_approved_by, e.allowed_sender_domains
+        e.ai_privacy_approved_at, e.ai_privacy_approved_by, e.allowed_sender_domains,
+        c.lead_capture_mode
     `, [leaseToken, RECOVERY_LEASE_SECONDS, MIN_CANONICAL_WINDOW_SECONDS])
     const claim = result.rows[0] ?? null
     if (claim) {
@@ -249,11 +254,12 @@ export async function claimNextEmailTerminalReconciliation(
   return transaction(async (db) => {
     const result = await db.query<EmailRecoveryClaim>(`
       WITH candidate AS (
-        SELECT i.id
+        SELECT i.id, client.lead_capture_mode
         FROM lead_email_ingestions i
         JOIN lead_email_endpoints e
           ON e.id = i.endpoint_id
          AND e.client_id = i.client_id
+        JOIN agency_clients client ON client.id = e.client_id
         WHERE i.terminal_at IS NULL
           AND i.status IN ('received', 'failed')
           AND (
@@ -287,7 +293,8 @@ export async function claimNextEmailTerminalReconciliation(
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
         e.ai_extraction_mode, e.ai_privacy_approval_version,
-        e.ai_privacy_approved_at, e.ai_privacy_approved_by, e.allowed_sender_domains
+        e.ai_privacy_approved_at, e.ai_privacy_approved_by, e.allowed_sender_domains,
+        c.lead_capture_mode
     `, [leaseToken, RECOVERY_LEASE_SECONDS])
     const claim = result.rows[0] ?? null
     if (claim) {
@@ -383,6 +390,9 @@ export async function processEmailRecoveryClaim(
 > {
   if (!claim.endpoint_enabled || claim.endpoint_retired_at) {
     return quarantine(claim, leaseToken, dependencies, 'endpoint_unavailable', false)
+  }
+  if (claim.lead_capture_mode === 'analytics_only') {
+    return quarantine(claim, leaseToken, dependencies, 'capture_mode_ineligible', false)
   }
   if (claim.attempt_count >= 5) {
     return quarantine(claim, leaseToken, dependencies, 'attempts_exhausted', false)
@@ -708,6 +718,21 @@ export async function cleanupTerminalEmailEvidence(input: {
   return { cleaned }
 }
 
+async function incrementEndpointFailureForTerminal(
+  db: RecoveryDbClient,
+  row: { endpoint_id: string, client_id: string }
+): Promise<void> {
+  const updated = await db.query(`
+    UPDATE lead_email_endpoints
+    SET last_failure_at = NOW(),
+      consecutive_failures = consecutive_failures + 1,
+      updated_at = NOW()
+    WHERE id = $1 AND client_id = $2
+    RETURNING id
+  `, [row.endpoint_id, row.client_id])
+  if (!updated.rows?.[0]) throw new Error('Email endpoint health transition failed')
+}
+
 const defaultRepository: EmailRecoveryRepository = {
   async releaseCanonicalWindow(input) {
     return transaction(async (db) => {
@@ -737,6 +762,7 @@ const defaultRepository: EmailRecoveryRepository = {
       } | undefined
       if (!row) return null
       const exhausted = row.status === 'quarantined'
+      if (exhausted) await incrementEndpointFailureForTerminal(db, row)
       await db.query(`
         INSERT INTO lead_email_ingestion_audits (
           ingestion_id, endpoint_id, client_id, actor_id, actor_type,
@@ -766,7 +792,7 @@ const defaultRepository: EmailRecoveryRepository = {
             staged_object_key = CASE WHEN $4 THEN NULL ELSE staged_object_key END,
             recovery_lease_token = NULL, recovery_claimed_at = NULL, updated_at = NOW()
           WHERE id = $1 AND recovery_lease_token = $2::uuid
-          RETURNING id
+          RETURNING id, endpoint_id, client_id
         `, [input.ingestionId, input.leaseToken, input.reason, input.clearObjectKey ?? false])
       } else if (input.kind === 'reschedule') {
         result = await db.query(`
@@ -802,7 +828,20 @@ const defaultRepository: EmailRecoveryRepository = {
           RETURNING id
         `, [input.ingestionId, input.leaseToken])
       }
-      if (!result.rows?.[0]) return false
+      const row = result.rows?.[0] as (
+        | { id: string, endpoint_id: string, client_id: string }
+        | { id: string, endpoint_id?: never, client_id?: never }
+      ) | undefined
+      if (!row) return false
+      if (input.kind === 'quarantine') {
+        if (!row.endpoint_id || !row.client_id) {
+          throw new Error('Email recovery terminal transition missing endpoint identity')
+        }
+        await incrementEndpointFailureForTerminal(db, {
+          endpoint_id: row.endpoint_id,
+          client_id: row.client_id
+        })
+      }
       const event = input.audit
       await db.query(`
         INSERT INTO lead_email_ingestion_audits (
@@ -1138,11 +1177,13 @@ async function claimEmailReplay(
         e.enabled AS endpoint_enabled, e.retired_at AS endpoint_retired_at,
         e.address_token, e.email_address, e.expected_provider, e.parser_mode,
         e.ai_extraction_mode, e.ai_privacy_approval_version,
-        e.ai_privacy_approved_at, e.ai_privacy_approved_by, e.allowed_sender_domains
+        e.ai_privacy_approved_at, e.ai_privacy_approved_by, e.allowed_sender_domains,
+        client.lead_capture_mode
       FROM lead_email_ingestions i
       JOIN lead_email_endpoints e
         ON e.id = i.endpoint_id
        AND e.client_id = i.client_id
+      JOIN agency_clients client ON client.id = e.client_id
       JOIN team_members tm
         ON tm.id = $2
        AND tm.is_active = TRUE
@@ -1162,6 +1203,7 @@ async function claimEmailReplay(
     }
     let reason: EmailRecoveryReason | null = null
     if (!claim.endpoint_enabled || claim.endpoint_retired_at) reason = 'endpoint_unavailable'
+    else if (claim.lead_capture_mode === 'analytics_only') reason = 'capture_mode_ineligible'
     else if (claim.attempt_count >= 5) reason = 'attempts_exhausted'
     else if (
       !claim.staged_expires_at
