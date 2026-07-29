@@ -272,15 +272,21 @@ export async function handleEmailMessage(
     return reject(message, 'Lead intake message is invalid')
   }
   let extraction = parseEmailLead(normalized, policy)
+  const messageIdHash = normalized.messageId ? sha256Hex(normalized.messageId) : null
+  const canonicalExternalIdHash = extraction?.externalIdHash
+    ?? messageIdHash
+    ?? await sha256HexBytes(raw)
   if (policy.aiExtractionMode === 'fallback' && needsAiExtractionFallback(extraction)) {
     extraction = await extractEmailLeadWithAi(
-      normalized,
+      {
+        email: normalized,
+        canonicalExternalIdHash
+      },
       extraction,
       createWorkerEmailAiRuntime(env.AI)
     )
   }
-  const messageIdHash = normalized.messageId ? sha256Hex(normalized.messageId) : null
-  const externalIdHash = extraction?.externalIdHash ?? messageIdHash ?? await sha256HexBytes(raw)
+  const externalIdHash = canonicalExternalIdHash
   const headerFromDomain = mailboxDomain(normalized.headerFrom)
   const evidence = safeEvidence(normalized, Object.keys(extraction?.fields ?? {}))
   const expiresAt = new Date(dependencies.nowMs() + QUARANTINE_RETENTION_MS).toISOString()
