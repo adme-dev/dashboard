@@ -213,7 +213,14 @@ describe('email ingestion contracts', () => {
     ]) {
       expect(EmailLeadExtractionSchema.safeParse(extraction({ sourceName })).success).toBe(false)
     }
-    for (const sourceName of ['Carsales 2025', 'Toyota GR86 2024', 'Drive Model 3']) {
+    for (const sourceName of [
+      'Carsales 2025',
+      'Toyota GR86 2024',
+      'Drive Model 3',
+      'Peugeot 308 2025',
+      'BMW 320 2025',
+      'Mazda 323 2025'
+    ]) {
       expect(EmailLeadExtractionSchema.safeParse(extraction({ sourceName })).success).toBe(true)
     }
   })
