@@ -114,6 +114,22 @@ const confirmingRotate = ref(false)
 const rotating = ref(false)
 const rotatedClientId = ref<string | null>(null)
 
+function closeGuide() {
+  open.value = false
+}
+
+function toggleKeyVisibility() {
+  revealed.value = !revealed.value
+}
+
+function requestKeyRotation() {
+  confirmingRotate.value = true
+}
+
+function cancelKeyRotation() {
+  confirmingRotate.value = false
+}
+
 async function copyText(value: string, label: string) {
   if (!value) return
   if (import.meta.client) await navigator.clipboard.writeText(value)
@@ -162,10 +178,15 @@ watch(endpointItems, (items) => {
               Leads engine setup guide
             </h2>
             <p class="text-sm text-muted mt-1">
-              How to capture, route, and follow up on Meta + Google ad inquiries.
+              How to capture and route Google, Meta, inbound email, webhook, CSV, and manual leads.
             </p>
           </div>
-          <UButton variant="ghost" icon="i-lucide-x" @click="open = false" />
+          <UButton
+            variant="ghost"
+            icon="i-lucide-x"
+            aria-label="Close setup guide"
+            @click="closeGuide"
+          />
         </div>
 
         <!-- Live webhook credentials — the single place to get a client's URL + key -->
@@ -248,7 +269,7 @@ watch(endpointItems, (items) => {
                       size="sm"
                       variant="ghost"
                       :aria-label="revealed ? 'Hide key' : 'Reveal key'"
-                      @click="revealed = !revealed"
+                      @click="toggleKeyVisibility"
                     />
                     <UButton
                       icon="i-lucide-copy"
@@ -263,7 +284,7 @@ watch(endpointItems, (items) => {
                       variant="ghost"
                       color="warning"
                       aria-label="Rotate webhook key"
-                      @click="confirmingRotate = true"
+                      @click="requestKeyRotation"
                     />
                   </div>
                 </UFormField>
@@ -278,7 +299,7 @@ watch(endpointItems, (items) => {
                     stops — update {{ selectedEndpoint.client_name }}'s form tool before then.
                   </p>
                   <div class="flex justify-end gap-2">
-                    <UButton size="xs" variant="ghost" label="Cancel" @click="confirmingRotate = false" />
+                    <UButton size="xs" variant="ghost" label="Cancel" @click="cancelKeyRotation" />
                     <UButton size="xs" color="warning" label="Rotate key" :loading="rotating" @click="confirmRotate" />
                   </div>
                 </div>
@@ -332,8 +353,8 @@ watch(endpointItems, (items) => {
                 color="info"
                 variant="subtle"
                 icon="i-lucide-info"
-                title="No setup needed for crons"
-                description="Stuck-delivery recovery and old-lead cleanup run automatically. You don't configure these — they're operational."
+                title="Operations must enable the scheduler"
+                description="Recovery and health run every five minutes, with retention cleanup daily, after an administrator deploys leads-cron and configures the matching runtime token."
               />
             </div>
           </template>
@@ -425,8 +446,9 @@ watch(endpointItems, (items) => {
                 </h4>
                 <p class="text-muted">
                   In <strong>Lead Center → Settings → Email notifications</strong>, add the agency
-                  inbox so a copy of every lead also lands in email. Useful as a sanity check that
-                  nothing's been missed between CSV imports.
+                  inbox for a human-only backup, or copy the relevant client-scoped address from
+                  <strong>Email addresses</strong> if the notification should enter XeroFlow's
+                  canonical lead pipeline. Never use one client's address for another client.
                 </p>
               </div>
 
@@ -436,8 +458,9 @@ watch(endpointItems, (items) => {
                 </h4>
                 <p class="text-muted">
                   The verify endpoint is wired up so Meta App Review can be submitted. Once the
-                  permission is granted, no UI changes — auto-ingestion will start working from
-                  any Meta lead form pointed at our webhook URL.
+                  permission is granted, reconnect each Meta account for the expanded scope, check
+                  its webhook subscription, and complete a live test before treating ingestion as
+                  active.
                 </p>
                 <ol class="list-decimal list-inside space-y-2 mt-2 text-xs text-muted">
                   <li>
@@ -466,7 +489,7 @@ watch(endpointItems, (items) => {
                 variant="subtle"
                 icon="i-lucide-info"
                 title="When Meta App Review approves leads_retrieval"
-                description="Auto-ingestion is wired and waiting. After approval: (1) reconnect each Meta account in Settings → Social → Meta to pick up the expanded scope, (2) ask admin to POST /api/leads/_internal/meta-backfill with the cron token to replay events archived during the wait period, (3) verify in the inbox. No code changes needed."
+                description="Approval alone does not activate delivery. Reconnect each Meta account in Settings → Social → Meta to obtain the expanded scope, confirm the webhook subscription, then send a live test and verify it in the inbox."
               />
             </div>
           </template>
@@ -474,16 +497,19 @@ watch(endpointItems, (items) => {
           <template #email>
             <div class="space-y-4 text-sm leading-relaxed">
               <p class="text-muted">
-                Use a client-scoped forwarding address when a marketplace or website delivers
-                enquiries by email instead of webhook.
+                Use the dedicated client-scoped address already shown in the
+                <strong>Email addresses</strong> tab when a marketplace or website delivers
+                enquiries by email instead of webhook. Copy the complete address; never reconstruct
+                or share its token separately.
               </p>
               <ol class="list-decimal list-inside space-y-2">
                 <li>
-                  Open the <strong>Email addresses</strong> tab and create or select the client endpoint.
+                  Open <strong>Email addresses</strong>, create or select the client endpoint, then
+                  use <strong>Copy address</strong>.
                 </li>
                 <li>
-                  Copy its forwarding address into the lead provider’s notification settings.
-                  Keep that address within the authorised operations team.
+                  Add that address to the provider's notification recipients. Keep the incumbent
+                  recipient active during pilot and never reuse the address across clients.
                 </li>
                 <li>
                   In <strong>Form rules</strong>, create an <strong>Inbound email</strong> rule using
@@ -491,10 +517,23 @@ watch(endpointItems, (items) => {
                   webhook, or assignment destinations.
                 </li>
                 <li>
-                  Send a provider test lead and confirm the provider and endpoint label appear in
-                  the inbox. A possible-duplicate badge is advisory and never blocks delivery.
+                  Set expected cadence only when the provider has a real delivery schedule. The
+                  first-response SLA is your team's contact target, not a promise that leads arrive
+                  on a universal interval.
+                </li>
+                <li>
+                  Send a provider test lead, enable <strong>Show test leads</strong> if needed, and
+                  confirm the provider, endpoint label, routing destinations, and CRM result.
                 </li>
               </ol>
+              <p class="text-muted">
+                ADF and recognised provider layouts are parsed deterministically. Optional structured
+                AI extraction is a privacy-approved fallback capability, not a customer reply or
+                message-writing feature. Every accepted email still enters the same canonical lead,
+                form-rule, CRM, notification, measurement, and portal pipeline as other sources.
+                Future authenticated transports must reuse that boundary rather than create another
+                CRM path.
+              </p>
               <UAlert
                 color="info"
                 variant="subtle"
@@ -812,19 +851,22 @@ watch(endpointItems, (items) => {
           <template #ops>
             <div class="space-y-3 text-sm leading-relaxed">
               <p class="text-muted">
-                The dashboard runs three background jobs automatically. You don't configure these —
-                they exist to keep the system healthy.
+                An administrator must deploy <strong>leads-cron</strong> and configure the same
+                internal token on the scheduler and Pages runtime. The jobs below are then automatic.
               </p>
               <table class="w-full text-xs border border-default rounded">
+                <caption class="sr-only">
+                  Lead recovery, health, and retention jobs managed by the leads-cron Worker
+                </caption>
                 <thead class="bg-elevated text-left">
                   <tr>
-                    <th class="px-2 py-1.5 font-medium">
+                    <th scope="col" class="px-2 py-1.5 font-medium">
                       Job
                     </th>
-                    <th class="px-2 py-1.5 font-medium">
+                    <th scope="col" class="px-2 py-1.5 font-medium">
                       Schedule
                     </th>
-                    <th class="px-2 py-1.5 font-medium">
+                    <th scope="col" class="px-2 py-1.5 font-medium">
                       Purpose
                     </th>
                   </tr>
@@ -838,7 +880,8 @@ watch(endpointItems, (items) => {
                       Every 5 minutes
                     </td>
                     <td class="px-2 py-1.5 text-muted">
-                      Resets deliveries that started but didn't finish — usually means a worker crashed mid-flight.
+                      Recovers stuck rule deliveries and separately claims staged email evidence.
+                      The email pass also evaluates endpoint health and alert state.
                     </td>
                   </tr>
                   <tr>
@@ -849,7 +892,8 @@ watch(endpointItems, (items) => {
                       Daily at 03:10 UTC
                     </td>
                     <td class="px-2 py-1.5 text-muted">
-                      Deletes raw-payload error rows older than 30 days.
+                      Deletes ingestion errors older than 30 days, expired signature nonces, and
+                      bounded residual staged-email evidence.
                     </td>
                   </tr>
                   <tr>
@@ -888,7 +932,7 @@ watch(endpointItems, (items) => {
                 <ul class="list-disc list-inside text-muted space-y-1 ml-2">
                   <li>Check the URL and key are pasted exactly (no trailing whitespace).</li>
                   <li>If you rotated the key, Google Ads still has the old one — paste the new one.</li>
-                  <li>Open the Inbox and clear filters — the lead may have arrived but be hidden.</li>
+                  <li>Open the Inbox, clear filters, and enable <strong>Show test leads</strong>.</li>
                 </ul>
               </div>
               <div>

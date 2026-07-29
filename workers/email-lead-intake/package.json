@@ -6,7 +6,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "test": "vitest run ../../test/workers/email-lead-worker.test.ts ../../test/workers/email-transport-conformance.test.ts",
+    "test": "cd ../.. && vitest run --root . test/workers/email-lead-mime.test.ts test/workers/email-lead-parser.test.ts test/workers/email-provider-conformance.test.ts test/workers/email-lead-worker.test.ts test/workers/email-transport-conformance.test.ts",
     "types": "wrangler types --config wrangler.jsonc --include-runtime=false",
     "types:check": "wrangler types --config wrangler.jsonc --include-runtime=false --check",
     "typecheck": "tsc --noEmit",
