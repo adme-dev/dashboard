@@ -7,9 +7,9 @@ export interface EmailProviderRegistry {
 }
 
 function evidenceStrength(evidence: readonly string[]): number {
-  if (evidence.some(item => item.startsWith('body:'))) return 4
+  if (evidence.some(item => item.startsWith('sender:'))) return 4
   if (evidence.some(item => item.startsWith('subject:'))) return 3
-  if (evidence.some(item => item.startsWith('sender:'))) return 2
+  if (evidence.some(item => item.startsWith('body:'))) return 1
   return 0
 }
 
@@ -33,7 +33,10 @@ export function registerProviderAdapters(adapters: EmailProviderAdapter[]): Emai
     match(input: NormalizedInboundEmail, expectedProvider: string | null) {
       const candidates = ordered.map(adapter => ({ adapter, match: adapter.matches(input, expectedProvider) }))
         .filter(candidate => candidate.match.matched)
-        .sort((a, b) => evidenceStrength(b.match.evidence) - evidenceStrength(a.match.evidence) || isExpected(b.match.evidence) - isExpected(a.match.evidence) || a.adapter.priority - b.adapter.priority || a.adapter.id.localeCompare(b.adapter.id))
+      if (expectedProvider) {
+        return candidates.find(candidate => candidate.adapter.id === expectedProvider) ?? null
+      }
+      candidates.sort((a, b) => evidenceStrength(b.match.evidence) - evidenceStrength(a.match.evidence) || isExpected(b.match.evidence) - isExpected(a.match.evidence) || a.adapter.priority - b.adapter.priority || a.adapter.id.localeCompare(b.adapter.id))
       return candidates[0] ?? null
     }
   })

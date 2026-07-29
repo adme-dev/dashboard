@@ -74,6 +74,7 @@ const EmailMessageFieldSchema = EmailExtractedFieldSchema.extend({
 export const EmailLeadExtractionSchema = z.object({
   provider: ProviderAdapterIdSchema,
   externalIdHash: HashSchema,
+  legacyExternalIdHash: HashSchema.optional(),
   sourceName: SafeSourceNameSchema,
   medium: z.enum(['classifieds', 'paid-social', 'cpc', 'lead_ingest']),
   parser: EmailParserKindSchema,

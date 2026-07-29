@@ -50,9 +50,37 @@ describe('deterministic email lead parser', () => {
     const provider = parseEmailLead({ ...base, text: `${base.text}\nLead ID: provider-42` }, policy)
     const message = parseEmailLead({ ...base, text: base.text }, policy)
     const fingerprint = parseEmailLead({ ...base, messageId: null, text: base.text }, policy)
+    expect(provider?.externalIdHash).toBe('dcb3450e3d753d1a0f98277376b9343c271610515ece8298d421e42b95a49371')
+    expect(provider?.legacyExternalIdHash).toBe('9bfd2694f76bf7e7eac89ebf8fbd001adfc2f586c1a2ef8af8d78e35fb6a1f7a')
+    expect(message?.externalIdHash).toBe('2d7f8a29eac29a0635b8f7c6707ea8e1bbe842197e9a49732e464a64cb8ae21a')
+    expect(message?.legacyExternalIdHash).toBe('6f07f2f2a8ab165cff4acd0ff13d7ef3c897ef1b54018c45b2705154a07bd103')
     expect(provider?.externalIdHash).not.toBe(message?.externalIdHash)
     expect(message?.externalIdHash).not.toBe(fingerprint?.externalIdHash)
     expect(parseEmailLead({ ...base, messageId: null, text: base.text }, policy)?.externalIdHash).toBe(fingerprint?.externalIdHash)
+  })
+
+  it('domain-separates equal provider IDs across providers and identity kinds', () => {
+    const carsales = parseEmailLead({
+      ...base,
+      text: `${base.text}\nLead ID: same@example.test`
+    }, policy)
+    const meta = parseEmailLead({
+      ...base,
+      envelopeSender: 'lead@meta.example',
+      headerFrom: 'Meta <lead@meta.example>',
+      subject: 'New Facebook Lead',
+      text: 'New Facebook Lead\nName: Alex Example\nPhone: +61 400 123 456\nLead ID: same@example.test'
+    }, { ...policy, expectedProvider: 'meta' })
+    const message = parseEmailLead({
+      ...base,
+      text: base.text,
+      messageId: '<same@example.test>'
+    }, policy)
+
+    expect(carsales?.externalIdHash).toBe('eacbd3632efb349e8eb40aff114a9dcf9c4c638fdd49720f5a0b9079faddf4e6')
+    expect(message?.externalIdHash).toBe('905de3ff57d678043eb8032a183b47646828fc85329dd282af35be99cabe397b')
+    expect(message?.externalIdHash).not.toBe(carsales?.externalIdHash)
+    expect(meta?.externalIdHash).not.toBe(carsales?.externalIdHash)
   })
 
   it('canonicalizes a syntactically equivalent Message-ID and includes vehicle fields in fingerprint identity', () => {
@@ -154,7 +182,12 @@ describe('deterministic email lead parser', () => {
     ['meta', 'New Facebook Lead', 'meta.txt'], ['instagram', 'New Instagram Lead', 'instagram.txt'], ['tiktok', 'New TikTok Lead', 'tiktok.txt'], ['google', 'New Google Ads Lead', 'google.txt']
   ])('classifies %s from deterministic body evidence and fixture %s', (expected, marker, fixture) => {
     const text = fixture.endsWith('.xml') ? `${marker}\nName: Alex Example\nPhone: +61 400 123 456` : readFileSync(`test/fixtures/email-leads/${fixture}`, 'utf8')
-    expect(parseEmailLead({ ...base, text }, { ...policy, expectedProvider: null })?.provider).toBe(expected)
+    expect(parseEmailLead({
+      ...base,
+      envelopeSender: 'relay@example.test',
+      headerFrom: 'Relay <relay@example.test>',
+      text
+    }, { ...policy, expectedProvider: null })?.provider).toBe(expected)
   })
 
   it('uses generic, HTML, forwarded, phone-only, and ADF attachment fixtures', () => {

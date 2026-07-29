@@ -68,13 +68,13 @@ describe('email provider adapter conformance', () => {
     expect(registry.match(email, null)).toBeNull()
   })
 
-  it('does not let an expected-provider hint or sender spoof outrank stronger body evidence', () => {
+  it('keeps configured provider and exact sender evidence authoritative over customer body markers', () => {
     const registry = registerProviderAdapters(allEmailProviderAdapters)
     const conflicted = { ...email, envelopeSender: 'no-reply@carsales.example', subject: 'Carsales enquiry', text: 'New Facebook Lead\nName: Alex Example\nLead ID: meta-42' }
-    expect(registry.match(conflicted, 'carsales')?.adapter.id).toBe('meta')
+    expect(registry.match(conflicted, 'carsales')?.adapter.id).toBe('carsales')
   })
 
-  it('uses an expected-provider hint only as a deterministic tie-breaker for equally strong evidence', () => {
+  it('uses an expected provider as the classification constraint when body markers conflict', () => {
     const registry = registerProviderAdapters(allEmailProviderAdapters)
     const ambiguous = { ...email, text: 'Carsales AutoTrader lead\nName: Alex Example\nPhone: +61 400 123 456' }
     expect(registry.match(ambiguous, null)?.adapter.id).toBe('carsales')

@@ -194,10 +194,22 @@ function canonicalMessageId(value: string | null): string | null {
 }
 
 function withIdentity(input: NormalizedInboundEmail, extraction: EmailLeadExtraction, providerId: string | null): EmailLeadExtraction {
-  const rawIdentity = providerId?.trim() || canonicalMessageId(input.messageId) || fingerprint(input, extraction)
+  const normalizedProviderId = providerId?.trim()
+  const normalizedMessageId = canonicalMessageId(input.messageId)
+  const rawIdentity = normalizedProviderId || normalizedMessageId || fingerprint(input, extraction)
+  const typedIdentity = normalizedProviderId
+    ? `provider-id:v1:${extraction.provider}:${normalizedProviderId}`
+    : normalizedMessageId
+      ? `message-id:v1:${normalizedMessageId}`
+      : `fingerprint:v1:${rawIdentity}`
   const fields = { ...extraction.fields }
   delete fields.lead_id
-  return { ...extraction, fields, externalIdHash: sha256Hex(rawIdentity) }
+  return {
+    ...extraction,
+    fields,
+    externalIdHash: sha256Hex(typedIdentity),
+    legacyExternalIdHash: sha256Hex(rawIdentity)
+  }
 }
 
 const registry = registerProviderAdapters([...allEmailProviderAdapters])
