@@ -23,6 +23,7 @@ import {
 import { normalizeMetaPayload } from '~~/server/utils/leads/normalizer'
 import { getMetaLeadgen } from '~~/server/utils/metaClient'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
+import { isInternalCronAuthorized } from '~~/server/utils/leads/internalCronAuth'
 
 interface ArchiveRow {
   id: string
@@ -47,11 +48,7 @@ interface BackfillResult {
 
 export default defineEventHandler(async (event) => {
   // Bearer-token auth (matches recover-stuck-claims, purge-* endpoints)
-  const auth = getHeader(event, 'authorization') ?? ''
-  const expected = process.env.INTERNAL_CRON_TOKEN ||
-    (event.context as any).cloudflare?.env?.INTERNAL_CRON_TOKEN ||
-    ''
-  if (!expected || auth !== `Bearer ${expected}`) {
+  if (!isInternalCronAuthorized(event, getHeader(event, 'authorization'))) {
     throw createError({ statusCode: 401, statusMessage: 'unauthorized' })
   }
 

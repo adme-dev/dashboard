@@ -1,4 +1,5 @@
 import type { AvatarProps } from '@nuxt/ui'
+import type { EmailSafeEvidence } from '../../shared/leads/email/contracts'
 
 // ============================================
 // User Types
@@ -1508,7 +1509,7 @@ export interface ClientRequestMessage {
 // Leads engine — see docs/superpowers/specs/2026-04-30-leads-engine-design.md
 // ============================================================================
 
-export type LeadSource = 'meta' | 'google' | 'manual' | 'webhook' | 'csv'
+export type LeadSource = 'meta' | 'google' | 'manual' | 'webhook' | 'csv' | 'email'
 export type LeadStatus =
   | 'new' | 'contacted' | 'qualified' | 'won' | 'lost' | 'spam_suspected'
 export type LeadDeliveryStatus =
@@ -1545,6 +1546,9 @@ export interface Lead {
   created_by: string | null
   deleted_at: string | null
   created_at: string
+  email_provider?: string | null
+  email_endpoint_label?: string | null
+  possible_duplicate_lead_id?: string | null
 }
 
 export type LeadFilterOp =
@@ -1629,6 +1633,68 @@ export interface LeadWebhookEndpoint {
   secret_key_grace_until: string | null
   rotated_at: string | null
   created_at: string
+}
+
+export interface EmailLeadEndpoint {
+  id: string
+  client_id: string
+  label: string
+  address_prefix: string
+  address_token: string
+  email_address: string
+  expected_provider: string | null
+  parser_mode: 'auto' | 'adf' | 'generic'
+  ai_extraction_mode: 'disabled' | 'fallback'
+  ai_privacy_approval_version: number | null
+  ai_privacy_approved_at: string | null
+  ai_privacy_approved_by: string | null
+  allowed_sender_domains: string[]
+  expected_max_silence_hours: number | null
+  first_response_sla_minutes: number | null
+  form_id: string
+  form_name: string
+  enabled: boolean
+  previous_address_token: string | null
+  previous_token_grace_until: string | null
+  last_received_at: string | null
+  last_accepted_at: string | null
+  last_failure_at: string | null
+  consecutive_failures: number
+  created_by: string | null
+  retired_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface EmailLeadIngestion {
+  id: string
+  endpoint_id: string
+  client_id: string | null
+  lead_id: string | null
+  correlation_id: string
+  transport: 'cloudflare_email_routing'
+  external_id_hash: string
+  provider: string
+  parser: 'adf' | 'provider' | 'generic' | 'ai_fallback' | null
+  status: 'received' | 'accepted' | 'duplicate' | 'quarantined' | 'failed'
+  confidence: number | null
+  sender_domain: string | null
+  message_id_hash: string | null
+  safe_evidence: EmailSafeEvidence
+  staged_object_key: string | null
+  staged_expires_at: string | null
+  error_class: string | null
+  processing_ms: number | null
+  attempt_count: number
+  next_attempt_at: string | null
+  terminal_at: string | null
+  possible_duplicate_of_lead_id: string | null
+  duplicate_match_basis: 'email_hmac' | 'phone_hmac' | 'email_phone_hmac' | null
+  duplicate_confidence: number | null
+  duplicate_window_hours: number | null
+  replayed_from: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type DispatchResult =

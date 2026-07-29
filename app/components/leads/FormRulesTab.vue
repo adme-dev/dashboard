@@ -81,7 +81,7 @@ const pickerPendingItem = ref<RuleListItem | null>(null)
 const showNewRule = ref(false)
 const newRule = ref({
   client_id: null as string | null,
-  source: 'google' as 'google' | 'meta' | 'webhook' | 'csv',
+  source: 'google' as 'google' | 'meta' | 'webhook' | 'csv' | 'email',
   form_id: '',
   form_name: ''
 })
@@ -91,6 +91,7 @@ const SOURCE_OPTIONS = [
   { value: 'google', label: 'Google Ads', description: 'Native Google lead forms' },
   { value: 'meta', label: 'Meta', description: 'Facebook or Instagram lead forms' },
   { value: 'webhook', label: 'Webhook', description: 'Replace a Zapier catch hook, Make, n8n, or custom form' },
+  { value: 'email', label: 'Inbound email', description: 'Route leads received through a client email endpoint' },
   { value: 'csv', label: 'CSV import', description: 'Route imported lead exports through the same destinations' }
 ]
 const SOURCES_WITH_DISCOVERY = new Set(['google', 'meta'])
@@ -121,6 +122,12 @@ const sourceHelp = computed(() => {
         body: 'Use this when the team imports Lead Center or partner exports. The same form ID must be entered in the CSV import modal when running rules.',
         icon: 'i-lucide-file-spreadsheet'
       }
+    case 'email':
+      return {
+        title: 'Inbound email endpoint',
+        body: 'Use the form ID shown on the client’s Email addresses tab. Forward marketplace or website lead emails to that endpoint.',
+        icon: 'i-lucide-mail'
+      }
     default:
       return {
         title: 'Lead source',
@@ -130,15 +137,21 @@ const sourceHelp = computed(() => {
   }
 })
 
-const formIdLabel = computed(() => newRule.value.source === 'csv' ? 'Import form key' : 'Form ID')
+const formIdLabel = computed(() => {
+  if (newRule.value.source === 'csv') return 'Import form key'
+  if (newRule.value.source === 'email') return 'Email endpoint form ID'
+  return 'Form ID'
+})
 const formIdHint = computed(() => {
   if (newRule.value.source === 'webhook') return 'Use a stable key from the old Zap or form tool, such as dealer-test-drive or website-finance.'
   if (newRule.value.source === 'csv') return 'Use a stable import key, then reuse it in the CSV import modal when Run routing rules is enabled.'
+  if (newRule.value.source === 'email') return 'Copy the form ID from the client’s Email addresses tab. Do not paste the forwarding address or delivery token here.'
   return 'Find in the platform lead-form URL, such as ?formId=12345 for Google or /forms/67890 for Meta.'
 })
 const formIdPlaceholder = computed(() => {
   if (newRule.value.source === 'webhook') return 'e.g. website-test-drive'
   if (newRule.value.source === 'csv') return 'e.g. meta-lead-center-export'
+  if (newRule.value.source === 'email') return 'e.g. carsales-enquiries'
   return 'e.g. 12345 or AW-67890'
 })
 
@@ -271,6 +284,7 @@ const SOURCE_LABELS: Record<string, string> = {
   google: 'Google Ads',
   webhook: 'Website / custom',
   csv: 'CSV import',
+  email: 'Inbound email',
   manual: 'Manual entry'
 }
 function sourceLabel(source: string): string {

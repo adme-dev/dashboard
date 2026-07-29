@@ -35,11 +35,86 @@ export interface LeadTransactionClient {
   query(sql: string, params?: unknown[]): Promise<{ rows?: unknown[] }>
 }
 
+export interface EmailEvidenceGuard {
+  ingestionId: string
+  leaseToken: string
+}
+
+export type GuardedLeadInsertResult
+  = | { status: 'created', leadId: string }
+    | { status: 'duplicate' | 'evidence_expired' }
+
+/** Terminal states shared by private lead-ingestion adapters. */
+export type LeadIngestionTerminalStatus = 'accepted' | 'duplicate' | 'quarantined'
+
 /** INSERT … ON CONFLICT DO NOTHING RETURNING id. Returns null if duplicate. */
+export function insertLeadWithDedup(
+  input: InsertLeadInput,
+  db?: LeadTransactionClient,
+  emailEvidenceGuard?: undefined
+): Promise<string | null>
+export function insertLeadWithDedup(
+  input: InsertLeadInput,
+  db: LeadTransactionClient,
+  emailEvidenceGuard: EmailEvidenceGuard
+): Promise<GuardedLeadInsertResult>
 export async function insertLeadWithDedup(
   input: InsertLeadInput,
-  db?: LeadTransactionClient
-): Promise<string | null> {
+  db?: LeadTransactionClient,
+  emailEvidenceGuard?: EmailEvidenceGuard
+): Promise<string | null | GuardedLeadInsertResult> {
+  const params = [
+    input.client_id, input.source, input.source_lead_id, input.form_id, input.form_name,
+    input.ad_id, input.ad_name, input.campaign_id, input.campaign_name, input.page_id,
+    input.submitted_at,
+    JSON.stringify(input.field_data),
+    input.attribution ? JSON.stringify(input.attribution) : null,
+    input.assigned_to, input.created_by, Boolean(input.is_test)
+  ]
+  if (emailEvidenceGuard) {
+    if (!db) throw new Error('Email evidence guard requires a lead transaction')
+    const guardedSql = `
+      WITH evidence_guard AS (
+        SELECT EXISTS (
+          SELECT 1
+          FROM lead_email_ingestions
+          WHERE id = $17
+            AND recovery_lease_token = $18::uuid
+            AND terminal_at IS NULL
+            AND staged_expires_at > clock_timestamp()
+        ) AS valid
+      ), inserted AS (
+        INSERT INTO leads (
+          client_id, source, source_lead_id, form_id, form_name,
+          ad_id, ad_name, campaign_id, campaign_name, page_id,
+          submitted_at, field_data, attribution, assigned_to, created_by, is_test
+        )
+        SELECT
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+          $12::jsonb, $13::jsonb, $14, $15, $16
+        FROM evidence_guard
+        WHERE valid
+        ON CONFLICT (source, source_lead_id) WHERE deleted_at IS NULL
+        DO NOTHING
+        RETURNING id
+      )
+      SELECT id, 'created'::text AS outcome
+      FROM inserted
+      UNION ALL
+      SELECT NULL::uuid,
+        CASE WHEN valid THEN 'duplicate' ELSE 'evidence_expired' END
+      FROM evidence_guard
+      WHERE NOT EXISTS (SELECT 1 FROM inserted)
+      LIMIT 1
+    `
+    const row = (await db.query(guardedSql, [
+      ...params,
+      emailEvidenceGuard.ingestionId,
+      emailEvidenceGuard.leaseToken
+    ])).rows?.[0] as { id: string | null, outcome: GuardedLeadInsertResult['status'] } | undefined
+    if (row?.outcome === 'created' && row.id) return { status: 'created', leadId: row.id }
+    return { status: row?.outcome === 'duplicate' ? 'duplicate' : 'evidence_expired' }
+  }
   const sql = `
     INSERT INTO leads (
       client_id, source, source_lead_id, form_id, form_name,
@@ -52,14 +127,6 @@ export async function insertLeadWithDedup(
     DO NOTHING
     RETURNING id
   `
-  const params = [
-    input.client_id, input.source, input.source_lead_id, input.form_id, input.form_name,
-    input.ad_id, input.ad_name, input.campaign_id, input.campaign_name, input.page_id,
-    input.submitted_at,
-    JSON.stringify(input.field_data),
-    input.attribution ? JSON.stringify(input.attribution) : null,
-    input.assigned_to, input.created_by, Boolean(input.is_test)
-  ]
   const row = db
     ? (await db.query(sql, params)).rows?.[0] as { id: string } | undefined
     : await queryOne<{ id: string }>(sql, params)
@@ -146,11 +213,14 @@ export async function loadFormMetadata(
 
 export async function loadRuleForForm(
   source: Exclude<LeadSource, 'manual'>,
-  form_id: string
+  form_id: string,
+  client_id: string | null
 ): Promise<{ rule: LeadFormRule, destinations: LeadRuleDestination[] } | null> {
+  if (!client_id) return null
   const rule = await queryOne<LeadFormRule>(
-    `SELECT * FROM lead_form_rules WHERE source = $1 AND form_id = $2`,
-    [source, form_id]
+    `SELECT * FROM lead_form_rules
+     WHERE source = $1 AND form_id = $2 AND client_id = $3`,
+    [source, form_id, client_id]
   )
   if (!rule) return null
   const destinations = await queryRows<LeadRuleDestination>(

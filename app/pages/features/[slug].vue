@@ -925,11 +925,11 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Real-time inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Per-form rules fan leads out to Slack, email, your CRM, Sheets, and the client portal.',
+    description: 'One inbox for Google Ads, Meta, dedicated inbound email, Zapier/Make/n8n, CSV imports, and manual entry. Per-form rules fan leads out to Slack, email, your CRM, Sheets, and the client portal.',
     details: [
       {
-        title: 'Five ways in, one inbox',
-        content: "Google Ads native webhooks (per-client URL + key, paste into the lead form's webhook integration). Meta lead form CRM integration (live verify endpoint; Webhooks API ingestion activates the moment Meta App Review approves leads_retrieval). A generic webhook endpoint that Zapier, Make, n8n, partner CRMs, embedded forms, and mobile apps can POST to — same auth model as Google. CSV importer for Meta Lead Center exports with column auto-mapping. Manual entry for walk-ins and phone calls.",
+        title: 'Six ways in, one inbox',
+        content: 'Google Ads native webhooks (per-client URL + key, paste into the lead form\'s webhook integration). Meta lead form CRM integration (live verify endpoint; after Meta approves leads_retrieval, each account must reconnect for the expanded scope before ingestion is verified). Dedicated client-scoped inbound email addresses for marketplaces and websites, with deterministic ADF/provider parsing and optional privacy-approved structured AI fallback. A generic webhook endpoint for Zapier, Make, n8n, partner CRMs, embedded forms, and mobile apps. CSV import for Meta Lead Center exports with column auto-mapping. Manual entry for walk-ins and phone calls. Every source enters the same canonical routing and CRM pipeline; inbound email does not reply to customers.'
       },
       {
         title: 'Real-time, not polled',

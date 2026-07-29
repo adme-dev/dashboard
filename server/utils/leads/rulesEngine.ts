@@ -25,8 +25,12 @@ export async function evaluateLead(
     return { leadId, deliveries: [] }
   }
 
-  const bundle = await loadRuleForForm(lead.source as Exclude<LeadSource, 'manual'>, lead.form_id)
-  if (!bundle) {
+  const bundle = await loadRuleForForm(
+    lead.source as Exclude<LeadSource, 'manual'>,
+    lead.form_id,
+    lead.client_id
+  )
+  if (!bundle || bundle.rule.client_id !== lead.client_id) {
     await insertCancelledPlaceholder(leadId, 'no_rule_configured')
     return { leadId, deliveries: [] }
   }

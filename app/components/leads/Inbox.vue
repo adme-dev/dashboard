@@ -2,6 +2,7 @@
 import { format } from 'date-fns'
 import type { Lead } from '~/types'
 
+const props = defineProps<{ leadId?: string | null }>()
 const { filters, page, pageSize, data, pending, refresh } = useLeads()
 const { events: liveEvents } = useLeadsStream()
 
@@ -10,8 +11,8 @@ const { events: liveEvents } = useLeadsStream()
 const debouncedRefresh = useDebounceFn(() => refresh(), 500)
 watch(liveEvents, () => debouncedRefresh(), { deep: true })
 
-const selectedLead = ref<Lead | null>(null)
-const showSlideover = ref(false)
+const selectedLeadId = ref<string | null>(props.leadId ?? null)
+const showSlideover = ref(Boolean(props.leadId))
 const showManualModal = ref(false)
 const showImportModal = ref(false)
 
@@ -62,9 +63,15 @@ function summarize(lead: Lead): string {
 }
 
 function openLead(lead: Lead) {
-  selectedLead.value = lead
+  selectedLeadId.value = lead.id
   showSlideover.value = true
 }
+
+watch(() => props.leadId, (leadId) => {
+  if (!leadId) return
+  selectedLeadId.value = leadId
+  showSlideover.value = true
+})
 
 async function exportCsv() {
   const q = new URLSearchParams()
@@ -154,12 +161,12 @@ defineEmits<{ 'show-help': [], 'show-rules': [] }>()
         }"
       >
         <template #submitted_at-cell="{ row }">
-          <button class="text-left text-sm whitespace-nowrap" @click="openLead(row.original)">
+          <UButton color="neutral" variant="link" class="p-0 text-left text-sm whitespace-nowrap" @click="openLead(row.original)">
             {{ format(new Date(row.original.submitted_at), 'MMM d, HH:mm') }}
-          </button>
+          </UButton>
         </template>
         <template #client_id-cell="{ row }">
-          <button class="text-left" @click="openLead(row.original)">
+          <UButton color="neutral" variant="link" class="p-0 text-left" @click="openLead(row.original)">
             <span v-if="row.original.client_id" class="text-sm">
               {{ clientNameById.get(row.original.client_id) ?? row.original.client_id.slice(0, 8) + '…' }}
             </span>
@@ -171,10 +178,10 @@ defineEmits<{ 'show-help': [], 'show-rules': [] }>()
             >
               Unmapped
             </UBadge>
-          </button>
+          </UButton>
         </template>
         <template #source-cell="{ row }">
-          <button class="flex items-center gap-1.5" :aria-label="`Open ${row.original.source} lead`" @click="openLead(row.original)">
+          <UButton color="neutral" variant="link" class="p-0 flex items-center gap-1.5" :aria-label="`Open ${row.original.source} lead`" @click="openLead(row.original)">
             <LeadsSourceIcon :source="row.original.source" />
             <UBadge
               v-if="row.original.is_test"
@@ -185,30 +192,30 @@ defineEmits<{ 'show-help': [], 'show-rules': [] }>()
             >
               TEST
             </UBadge>
-          </button>
+          </UButton>
         </template>
         <template #form_name-cell="{ row }">
-          <button class="text-left text-sm" @click="openLead(row.original)">
+          <UButton color="neutral" variant="link" class="p-0 text-left text-sm" @click="openLead(row.original)">
             {{ row.original.form_name || row.original.form_id || '—' }}
-          </button>
+          </UButton>
         </template>
         <template #summary-cell="{ row }">
-          <button class="text-left text-sm font-medium" @click="openLead(row.original)">
+          <UButton color="neutral" variant="link" class="p-0 text-left text-sm font-medium" @click="openLead(row.original)">
             {{ summarize(row.original) || '—' }}
-          </button>
+          </UButton>
         </template>
         <template #status-cell="{ row }">
-          <button @click="openLead(row.original)">
+          <UButton color="neutral" variant="link" class="p-0" @click="openLead(row.original)">
             <LeadsStatusBadge :status="row.original.status" />
-          </button>
+          </UButton>
         </template>
         <template #assigned_to-cell="{ row }">
-          <button class="text-left" @click="openLead(row.original)">
+          <UButton color="neutral" variant="link" class="p-0 text-left" @click="openLead(row.original)">
             <span v-if="row.original.assigned_to" class="text-xs">
               {{ userNameById.get(row.original.assigned_to) ?? row.original.assigned_to.slice(0, 8) + '…' }}
             </span>
             <span v-else class="text-xs text-muted">—</span>
-          </button>
+          </UButton>
         </template>
         <template #actions-cell="{ row }">
           <div @click.stop>
@@ -267,7 +274,7 @@ defineEmits<{ 'show-help': [], 'show-rules': [] }>()
 
     <LeadsLeadDetailSlideover
       v-model:open="showSlideover"
-      :lead-id="selectedLead?.id ?? null"
+      :lead-id="selectedLeadId"
       @changed="refresh()"
     />
     <LeadsManualLeadModal

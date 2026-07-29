@@ -3,6 +3,8 @@ import {
   insertLeadWithDedup as defaultInsertLead
 } from '~~/server/utils/leads/db'
 import type {
+  EmailEvidenceGuard,
+  GuardedLeadInsertResult,
   InsertLeadInput,
   LeadTransactionClient
 } from '~~/server/utils/leads/db'
@@ -33,8 +35,9 @@ type Transaction = <T>(
 
 type InsertLead = (
   input: InsertLeadInput,
-  db: LeadTransactionClient
-) => Promise<string | null>
+  db: LeadTransactionClient,
+  emailEvidenceGuard?: EmailEvidenceGuard
+) => Promise<string | null | GuardedLeadInsertResult>
 
 export interface LeadIntakeServiceDeps {
   transaction: Transaction
@@ -56,10 +59,12 @@ export interface IngestLeadInput {
     intentId: string
     reservationToken: string
   }
+  emailEvidenceGuard?: EmailEvidenceGuard
 }
 
 export type IngestLeadResult
   = { status: 'duplicate' }
+    | { status: 'evidence_expired' }
     | {
       status: 'created'
       leadId: string
@@ -69,7 +74,9 @@ export type IngestLeadResult
 
 const defaultDeps: LeadIntakeServiceDeps = {
   transaction: defaultTransaction as unknown as Transaction,
-  insertLead: defaultInsertLead,
+  insertLead: (input, db, emailEvidenceGuard) => emailEvidenceGuard
+    ? defaultInsertLead(input, db, emailEvidenceGuard)
+    : defaultInsertLead(input, db),
   appendOutbox: defaultAppendOutbox,
   appendBrowserConfirmation: appendConfirmedBrowserLeadEvent,
   retryBrowserConfirmation: appendConfirmedBrowserLeadEventForStoredFormSubmission,
@@ -99,8 +106,40 @@ function canonicalAttribution(lead: InsertLeadInput) {
     gclid: optionalAttribution(lead.attribution, 'gclid', 512),
     gbraid: optionalAttribution(lead.attribution, 'gbraid', 512),
     wbraid: optionalAttribution(lead.attribution, 'wbraid', 512),
-    gaClientId: null
+    gaClientId: null,
+    ...(lead.source === 'email'
+      ? boundedEmailAttribution(lead.attribution)
+      : {})
   }
+}
+
+function boundedEmailAttribution(
+  attribution: Record<string, string> | null
+): Record<string, string> {
+  const output: Record<string, string> = {}
+  const utmSource = optionalAttribution(attribution, 'utm_source', 64)
+  const provider = optionalAttribution(attribution, 'provider', 64)
+  const endpointId = optionalAttribution(attribution, 'email_endpoint_id', 36)
+  const utmMedium = optionalAttribution(attribution, 'utm_medium', 32)
+  const parser = optionalAttribution(attribution, 'parser', 32)
+  const confidenceBand = optionalAttribution(attribution, 'confidence_band', 16)
+  const transport = optionalAttribution(attribution, 'transport', 16)
+  if (utmSource && /^[a-z][a-z0-9_-]*$/.test(utmSource)) output.utm_source = utmSource
+  if (provider && /^[a-z][a-z0-9_-]*$/.test(provider)) output.provider = provider
+  if (endpointId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(endpointId)) {
+    output.email_endpoint_id = endpointId
+  }
+  if (utmMedium && ['classifieds', 'paid-social', 'cpc', 'lead_ingest'].includes(utmMedium)) {
+    output.utm_medium = utmMedium
+  }
+  if (parser && ['adf', 'provider', 'generic', 'ai_fallback'].includes(parser)) {
+    output.parser = parser
+  }
+  if (confidenceBand && ['high', 'medium', 'low'].includes(confidenceBand)) {
+    output.confidence_band = confidenceBand
+  }
+  if (transport === 'email') output.transport = transport
+  return output
 }
 
 async function sourceEventId(lead: InsertLeadInput): Promise<string> {
@@ -128,7 +167,18 @@ export function createLeadIntakeService(
   return {
     async ingest(input: IngestLeadInput): Promise<IngestLeadResult> {
       return deps.transaction(async (db) => {
-        const leadId = await deps.insertLead(input.lead, db)
+        const inserted = input.emailEvidenceGuard
+          ? await deps.insertLead(input.lead, db, input.emailEvidenceGuard)
+          : await deps.insertLead(input.lead, db)
+        if (
+          typeof inserted === 'object'
+          && inserted?.status === 'evidence_expired'
+        ) {
+          return { status: 'evidence_expired' as const }
+        }
+        const leadId = typeof inserted === 'object'
+          ? inserted?.status === 'created' ? inserted.leadId : null
+          : inserted
         if (!leadId) {
           const browserEventId = optionalAttribution(input.lead.attribution, 'browserEventId', 128)
           if (browserEventId) {

@@ -14,6 +14,9 @@ interface PortalLead {
   ad_name: string | null
   score?: number | null
   score_reasons?: unknown
+  email_provider?: string | null
+  email_endpoint_label?: string | null
+  possible_duplicate_lead_id?: string | null
 }
 
 interface LeadsResponse {
@@ -125,6 +128,7 @@ const SOURCE_OPTIONS = [
   { value: 'google', label: 'Google' },
   { value: 'meta', label: 'Meta' },
   { value: 'webhook', label: 'Webhook' },
+  { value: 'email', label: 'Email' },
   { value: 'csv', label: 'CSV' }
 ]
 const toast = useToast()
@@ -160,6 +164,7 @@ function sourceIcon(s: string) {
   if (s === 'google') return 'i-lucide-chrome'
   if (s === 'meta') return 'i-lucide-badge'
   if (s === 'webhook') return 'i-lucide-webhook'
+  if (s === 'email') return 'i-lucide-mail'
   if (s === 'csv') return 'i-lucide-file-spreadsheet'
   return 'i-lucide-inbox'
 }
@@ -175,6 +180,10 @@ function statusColor(s: string) {
 
 function openLead(l: PortalLead) {
   selectedLeadId.value = l.id
+}
+
+function selectSource(value: string) {
+  source.value = value
 }
 
 function formatFieldLabel(key: string) {
@@ -412,25 +421,27 @@ watch(
 
     <div v-if="sourceBreakdown.length" class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-default bg-default">
       <span class="text-xs font-medium text-muted">Source mix</span>
-      <button
+      <UButton
         v-for="item in sourceBreakdown"
         :key="item.source"
-        type="button"
+        color="neutral"
+        variant="outline"
+        size="xs"
         class="inline-flex items-center gap-1.5 rounded-md border border-default px-2 py-1 text-xs transition-colors hover:bg-elevated"
         :class="source === item.source ? 'bg-elevated text-primary' : 'bg-default'"
-        @click="source = item.source"
+        @click="selectSource(item.source)"
       >
         <UIcon :name="sourceIcon(item.source)" class="size-3.5 text-muted" />
         <span class="capitalize">{{ item.source }}</span>
         <span class="font-semibold">{{ item.count }}</span>
-      </button>
+      </UButton>
       <UButton
         v-if="source !== 'all'"
         size="xs"
         variant="ghost"
         color="neutral"
         icon="i-lucide-x"
-        @click="source = 'all'"
+        @click="selectSource('all')"
       >
         All sources
       </UButton>
@@ -451,13 +462,14 @@ watch(
           <span class="text-sm">{{ row.original.form_name || '-' }}</span>
         </template>
         <template #summary-cell="{ row }">
-          <button
-            type="button"
-            class="text-sm text-left hover:text-primary"
+          <UButton
+            color="neutral"
+            variant="link"
+            class="p-0 text-sm text-left hover:text-primary"
             @click="openLead(row.original)"
           >
             {{ summarize(row.original) || 'Open lead' }}
-          </button>
+          </UButton>
         </template>
         <template #campaign_name-cell="{ row }">
           <div class="max-w-56">
@@ -576,6 +588,26 @@ watch(
               </p>
             </div>
           </div>
+
+          <UAlert
+            v-if="selectedLead.source === 'email'"
+            icon="i-lucide-mail"
+            color="neutral"
+            variant="subtle"
+            title="Received by email"
+            :description="[selectedLead.email_provider, selectedLead.email_endpoint_label].filter(Boolean).join(' · ') || 'Inbound email endpoint'"
+          >
+            <template v-if="selectedLead.possible_duplicate_lead_id" #actions>
+              <UButton
+                :to="{ path: '/portal/leads', query: { leadId: selectedLead.possible_duplicate_lead_id } }"
+                label="View possible duplicate"
+                icon="i-lucide-copy"
+                color="warning"
+                variant="soft"
+                size="xs"
+              />
+            </template>
+          </UAlert>
 
           <div>
             <h3 class="text-sm font-semibold">

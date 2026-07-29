@@ -1,0 +1,27 @@
+{
+  "name": "email-lead-intake",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "test": "cd ../.. && vitest run --root . test/workers/email-lead-mime.test.ts test/workers/email-lead-parser.test.ts test/workers/email-provider-conformance.test.ts test/workers/email-lead-worker.test.ts test/workers/email-transport-conformance.test.ts",
+    "types": "wrangler types --config wrangler.jsonc --include-runtime=false",
+    "types:check": "wrangler types --config wrangler.jsonc --include-runtime=false --check",
+    "typecheck": "tsc --noEmit",
+    "deploy:dry-run": "WRANGLER_WRITE_LOGS=false wrangler deploy --config wrangler.jsonc --dry-run",
+    "deploy": "wrangler deploy --config wrangler.jsonc"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.10.1",
+    "postal-mime": "^2.7.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260625.1",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.10",
+    "wrangler": "^4.110.0"
+  }
+}

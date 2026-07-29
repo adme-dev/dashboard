@@ -96,6 +96,87 @@ describe('first-party lead intake', () => {
     expect(appendOutbox).not.toHaveBeenCalled()
   })
 
+  it('carries bounded email trace attribution into measurement without contact data', async () => {
+    const appendOutbox = vi.fn(async () => ({ status: 'profile_not_found' as const }))
+    const service = createLeadIntakeService({
+      transaction: async callback => callback(db),
+      insertLead: vi.fn(async () => LEAD_ID),
+      appendOutbox: appendOutbox as never,
+      appendBrowserConfirmation: vi.fn(async () => false),
+      completeIntentMatch: vi.fn(),
+      linkIdentity: vi.fn(),
+      captureProductInterest: vi.fn(),
+      recordPersonaEvidence: vi.fn()
+    })
+    const emailInput = {
+      ...input(),
+      lead: {
+        ...input().lead,
+        source: 'email' as const,
+        source_lead_id: 'email:22222222-2222-4222-8222-222222222222:hash',
+        attribution: {
+          utm_source: 'carsales',
+          utm_medium: 'classifieds',
+          provider: 'carsales',
+          email_endpoint_id: '22222222-2222-4222-8222-222222222222',
+          parser: 'provider',
+          confidence_band: 'high',
+          transport: 'email',
+          email: 'must-not-enter-measurement@example.com'
+        }
+      }
+    }
+
+    await service.ingest(emailInput)
+
+    expect(appendOutbox).toHaveBeenCalledWith(db, expect.objectContaining({
+      attribution: expect.objectContaining({
+        utm_source: 'carsales',
+        utm_medium: 'classifieds',
+        provider: 'carsales',
+        email_endpoint_id: '22222222-2222-4222-8222-222222222222',
+        parser: 'provider',
+        confidence_band: 'high',
+        transport: 'email'
+      })
+    }))
+    expect(JSON.stringify(appendOutbox.mock.calls)).not.toContain('must-not-enter-measurement')
+  })
+
+  it('returns evidence expiry without outbox or enrichment when the guarded insert is fenced', async () => {
+    const appendOutbox = vi.fn()
+    const linkIdentity = vi.fn()
+    const appendBrowserConfirmation = vi.fn(async () => false)
+    const completeIntentMatch = vi.fn()
+    const captureProductInterest = vi.fn()
+    const recordPersonaEvidence = vi.fn()
+    const service = createLeadIntakeService({
+      transaction: async callback => callback(db),
+      insertLead: vi.fn(async () => ({ status: 'evidence_expired' as const })),
+      appendOutbox: appendOutbox as never,
+      appendBrowserConfirmation,
+      completeIntentMatch,
+      linkIdentity,
+      captureProductInterest,
+      recordPersonaEvidence
+    })
+    const guarded = {
+      ...input(),
+      emailEvidenceGuard: {
+        ingestionId: '33333333-3333-4333-8333-333333333333',
+        leaseToken: '44444444-4444-4444-8444-444444444444'
+      }
+    }
+
+    await expect(service.ingest(guarded)).resolves.toEqual({ status: 'evidence_expired' })
+    expect(appendOutbox).not.toHaveBeenCalled()
+    expect(appendBrowserConfirmation).not.toHaveBeenCalled()
+    expect(completeIntentMatch).not.toHaveBeenCalled()
+    expect(linkIdentity).not.toHaveBeenCalled()
+    expect(captureProductInterest).not.toHaveBeenCalled()
+    expect(recordPersonaEvidence).not.toHaveBeenCalled()
+  })
+
   it('retries browser confirmation when a provider retries an already accepted lead', async () => {
     const retryBrowserConfirmation = vi.fn(async () => true)
     const service = createLeadIntakeService({

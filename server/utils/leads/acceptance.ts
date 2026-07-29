@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import { queryOne } from '~~/server/utils/db'
-import type { InsertLeadInput } from '~~/server/utils/leads/db'
+import type { EmailEvidenceGuard, InsertLeadInput } from '~~/server/utils/leads/db'
 import { loadLead } from '~~/server/utils/leads/db'
 import { leadIntakeService } from '~~/server/utils/leads/intake'
 import { enqueueLeadJob } from '~~/server/utils/leads/queue'
@@ -30,7 +30,7 @@ export async function resolveLeadCaptureMode(clientId: string): Promise<LeadCapt
 
 export type AcceptLeadResult
   = { status: 'mode_skipped' }
-    | { status: 'duplicate' }
+    | { status: 'duplicate' | 'evidence_expired' }
     | { status: 'created', leadId: string }
 
 export async function acceptLead(event: H3Event, input: {
@@ -38,6 +38,7 @@ export async function acceptLead(event: H3Event, input: {
   leadCaptureMode: LeadCaptureMode
   consentDecision?: CanonicalConsentDecision
   runRules?: boolean
+  emailEvidenceGuard?: EmailEvidenceGuard
 }): Promise<AcceptLeadResult> {
   if (input.leadCaptureMode === 'analytics_only') {
     return { status: 'mode_skipped' }
@@ -77,13 +78,14 @@ export async function acceptLead(event: H3Event, input: {
             intentId: reservation.intentId,
             reservationToken: reservation.reservationToken
           }
-        : undefined
+        : undefined,
+      emailEvidenceGuard: input.emailEvidenceGuard
     })
   } catch (error) {
     if (reservation) await releaseSubmissionIntentReservation(reservation)
     throw error
   }
-  if (intake.status === 'duplicate') {
+  if (intake.status === 'duplicate' || intake.status === 'evidence_expired') {
     if (reservation) await releaseSubmissionIntentReservation(reservation)
     return intake
   }

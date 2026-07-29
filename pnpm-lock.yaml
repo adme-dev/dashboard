@@ -131,6 +131,9 @@ importers:
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
+      fast-xml-parser:
+        specifier: ^5.10.1
+        version: 5.10.1
       dompurify:
         specifier: ^3.4.12
         version: 3.4.12
@@ -161,6 +164,9 @@ importers:
       ofetch:
         specifier: ^1.5.1
         version: 1.5.1
+      postal-mime:
+        specifier: ^2.7.4
+        version: 2.7.4
       pg:
         specifier: ^8.22.0
         version: 8.22.0

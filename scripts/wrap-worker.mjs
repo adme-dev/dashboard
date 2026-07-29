@@ -14,6 +14,7 @@ import { gzipSync } from 'node:zlib'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { compactWorkerModule } from './compact-worker-module.mjs'
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const distDir = path.join(projectRoot, 'dist', '_worker.js')
@@ -24,6 +25,7 @@ const nitroJsMap = path.join(distDir, '_nitro.js.map')
 const wsJs = path.join(distDir, '_ws.js')
 const wsSrc = path.join(projectRoot, 'worker-ws', 'index.ts')
 const precomputedManifest = path.join(distDir, 'chunks', 'build', 'client.precomputed.mjs')
+const nitroRuntime = path.join(distDir, 'chunks', 'nitro', 'nitro.mjs')
 
 async function exists(p) {
   try { await fs.access(p); return true } catch { return false }
@@ -111,6 +113,21 @@ export default async function loadPrecomputedManifest() {
     console.log(
       `[wrap-worker] compacted Nuxt client manifest ${source.length} → ${compactSource.length} bytes`,
     )
+  }
+}
+
+// Nitro's stable runtime chunk is emitted readable and is the single largest
+// deployed module. Compact only that generated boundary, preserve function
+// names for framework introspection, and mark it so repeated wrapper runs are
+// byte-stable.
+if (await exists(nitroRuntime)) {
+  const compacted = await compactWorkerModule(nitroRuntime)
+  if (compacted.changed) {
+    console.log(
+      `[wrap-worker] compacted Nitro runtime ${compacted.beforeBytes} → ${compacted.afterBytes} bytes`
+    )
+  } else {
+    console.log('[wrap-worker] Nitro runtime already compact or smaller as emitted')
   }
 }
 

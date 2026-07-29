@@ -127,14 +127,16 @@ onBeforeUnmount(() => {
             </div>
             <div class="flex items-center gap-1">
               <UDropdownMenu :items="statusMenuItems" :content="{ align: 'end' }">
-                <button
-                  class="flex items-center gap-1 hover:opacity-80 transition-opacity"
-                  type="button"
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  class="flex items-center gap-1"
                   aria-label="Change lead status"
                 >
                   <LeadsStatusBadge :status="lead.status" />
                   <UIcon name="i-lucide-chevron-down" class="size-3 text-muted" />
-                </button>
+                </UButton>
               </UDropdownMenu>
               <UButton
                 icon="i-lucide-x"
@@ -148,6 +150,23 @@ onBeforeUnmount(() => {
           <p class="text-xs text-muted mt-1">
             {{ format(new Date(lead.submitted_at), 'PPpp') }} · {{ lead.source }} · {{ lead.id.slice(0, 8) }}
           </p>
+          <div v-if="lead.source === 'email'" class="mt-2 flex flex-wrap items-center gap-2">
+            <UBadge v-if="lead.email_provider" color="neutral" variant="soft">
+              {{ lead.email_provider }}
+            </UBadge>
+            <span v-if="lead.email_endpoint_label" class="text-xs text-muted">
+              {{ lead.email_endpoint_label }}
+            </span>
+            <UButton
+              v-if="lead.possible_duplicate_lead_id"
+              :to="{ path: '/agency/leads', query: { leadId: lead.possible_duplicate_lead_id } }"
+              label="Possible duplicate"
+              icon="i-lucide-copy"
+              color="warning"
+              variant="soft"
+              size="xs"
+            />
+          </div>
         </header>
 
         <div class="flex-1 overflow-auto p-6 space-y-6">

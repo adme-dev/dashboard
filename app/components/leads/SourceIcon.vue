@@ -9,6 +9,7 @@ const ICONS: Record<LeadSource, string> = {
   manual: 'i-lucide-pencil',
   webhook: 'i-lucide-webhook',
   csv: 'i-lucide-file-spreadsheet',
+  email: 'i-lucide-mail',
 }
 const TITLES: Record<LeadSource, string> = {
   meta: 'Meta Lead Ads',
@@ -16,6 +17,7 @@ const TITLES: Record<LeadSource, string> = {
   manual: 'Manual entry',
   webhook: 'Webhook (Zapier / Make / custom)',
   csv: 'CSV import',
+  email: 'Email ingestion',
 }
 </script>
 

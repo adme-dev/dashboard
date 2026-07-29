@@ -99,11 +99,21 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
     await markSkipped(deliveryId, 'destination_disabled')
     return
   }
-  if (lead.form_id) {
-    const bundle = lead.source === 'manual'
-      ? null
-      : await loadRuleForForm(lead.source as Exclude<LeadSource, 'manual'>, lead.form_id)
-    if (bundle && !bundle.rule.enabled) {
+  if (lead.form_id && lead.source !== 'manual') {
+    const bundle = await loadRuleForForm(
+      lead.source as Exclude<LeadSource, 'manual'>,
+      lead.form_id,
+      lead.client_id
+    )
+    if (
+      !bundle
+      || bundle.rule.client_id !== lead.client_id
+      || dest.rule_id !== bundle.rule.id
+    ) {
+      await markSkipped(deliveryId, 'rule_not_authorized')
+      return
+    }
+    if (!bundle.rule.enabled) {
       await markSkipped(deliveryId, 'rule_disabled')
       return
     }
@@ -132,7 +142,7 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
   const final = next >= BACKOFF_MS.length
   await markFailed(deliveryId, result.error, next, final)
   if (final) return
-  const delaySeconds = Math.ceil((result.retry_after_ms ?? BACKOFF_MS[next]) / 1000)
+  const delaySeconds = Math.ceil((result.retry_after_ms ?? BACKOFF_MS[next]!) / 1000)
   const { enqueueLeadJob } = await import('./queue')
   await enqueueLeadJob({
     type: 'delivery.dispatch',

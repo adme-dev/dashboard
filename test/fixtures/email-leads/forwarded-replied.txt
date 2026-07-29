@@ -1,0 +1,8 @@
+Name: Alex Example
+Phone: +61 400 123 456
+Message: Please call.
+
+On yesterday, Support wrote:
+Old synthetic message
+--
+Synthetic signature

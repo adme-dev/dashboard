@@ -1,0 +1,39 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "email-lead-intake",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-29",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "APPLICATION_ORIGIN": "https://agency-dashboard-6cm.pages.dev"
+  },
+  "secrets": {
+    "required": [
+      "EMAIL_INGEST_HMAC_SECRET",
+      "EMAIL_QUARANTINE_ENCRYPTION_SECRET"
+    ]
+  },
+  "r2_buckets": [
+    {
+      "binding": "EMAIL_QUARANTINE_BUCKET",
+      "bucket_name": "email-lead-quarantine",
+      "preview_bucket_name": "email-lead-quarantine-preview"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  }
+}

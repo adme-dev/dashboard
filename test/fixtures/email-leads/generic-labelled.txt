@@ -1,0 +1,4 @@
+Name: Alex Example
+Email: alex@example.test
+Phone: +61 400 123 456
+Message: Synthetic generic enquiry

@@ -1,0 +1,21 @@
+-- Fail raw-only pre-sealed email evidence closed while retaining it for review.
+
+BEGIN;
+
+ALTER TABLE lead_email_ingestion_audits
+  DROP CONSTRAINT IF EXISTS lead_email_ingestion_audits_reason_check,
+  ADD CONSTRAINT lead_email_ingestion_audits_reason_check CHECK (
+    reason IS NULL OR reason IN (
+      'missing_evidence',
+      'corrupt_evidence',
+      'endpoint_unavailable',
+      'sender_policy_denied',
+      'attempts_exhausted',
+      'evidence_expired',
+      'legacy_evidence',
+      'canonical_transient',
+      'lease_lost'
+    )
+  );
+
+COMMIT;

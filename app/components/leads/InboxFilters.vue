@@ -31,6 +31,7 @@ const SOURCE_OPTIONS = [
   { value: 'meta', label: 'Meta' },
   { value: 'google', label: 'Google' },
   { value: 'webhook', label: 'Webhook' },
+  { value: 'email', label: 'Email' },
   { value: 'csv', label: 'CSV import' },
   { value: 'manual', label: 'Manual' }
 ]
@@ -191,6 +192,11 @@ function clearAll() {
   model.value.to = ''
   model.value.include_test = false
 }
+
+function clearCampaign() {
+  model.value.campaign_name = null
+  model.value.campaign_id = null
+}
 </script>
 
 <template>
@@ -294,14 +300,15 @@ function clearAll() {
     <div v-if="model.campaign_name || model.campaign_id" class="inline-flex items-center gap-1.5 rounded-md border border-default bg-default px-2 py-1 text-xs">
       <UIcon name="i-lucide-megaphone" class="size-3.5 text-muted" />
       <span class="max-w-56 truncate">{{ model.campaign_name || model.campaign_id }}</span>
-      <button
-        type="button"
-        class="text-muted hover:text-default"
+      <UButton
+        icon="i-lucide-x"
+        color="neutral"
+        variant="link"
+        size="xs"
+        class="p-0 text-muted hover:text-default"
         aria-label="Clear campaign filter"
-        @click="model.campaign_name = null; model.campaign_id = null"
-      >
-        <UIcon name="i-lucide-x" class="size-3" />
-      </button>
+        @click="clearCampaign"
+      />
     </div>
   </div>
 </template>

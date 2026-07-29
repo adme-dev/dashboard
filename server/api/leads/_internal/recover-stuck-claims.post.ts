@@ -3,11 +3,10 @@
 // Hit by a cron in plan 1c. In dev, can be invoked manually for testing.
 
 import { recoverStuckClaims } from '~~/server/utils/leads/db'
+import { isInternalCronAuthorized } from '~~/server/utils/leads/internalCronAuth'
 
 export default defineEventHandler(async (event) => {
-  const auth = getHeader(event, 'authorization')
-  const expected = `Bearer ${process.env.INTERNAL_CRON_TOKEN ?? ''}`
-  if (!process.env.INTERNAL_CRON_TOKEN || auth !== expected) {
+  if (!isInternalCronAuthorized(event, getHeader(event, 'authorization'))) {
     throw createError({ statusCode: 401, statusMessage: 'unauthorized' })
   }
   const reset = await recoverStuckClaims(5)
