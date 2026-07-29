@@ -9,7 +9,9 @@ import {
   type EmailIngestEnvelope,
   type EmailStageRequest
 } from '../../../shared/leads/email/contracts'
+import { extractEmailLeadWithAi, needsAiExtractionFallback } from '../../../shared/leads/email/ai'
 import { parseEmailLead, sha256Hex } from '../../../shared/leads/email/parser'
+import { createWorkerEmailAiRuntime } from './aiRuntime'
 import {
   deleteEncryptedRawEmail,
   encryptedRawEmailPutOptions,
@@ -269,7 +271,14 @@ export async function handleEmailMessage(
   catch {
     return reject(message, 'Lead intake message is invalid')
   }
-  const extraction = parseEmailLead(normalized, policy)
+  let extraction = parseEmailLead(normalized, policy)
+  if (policy.aiExtractionMode === 'fallback' && needsAiExtractionFallback(extraction)) {
+    extraction = await extractEmailLeadWithAi(
+      normalized,
+      extraction,
+      createWorkerEmailAiRuntime(env.AI)
+    )
+  }
   const messageIdHash = normalized.messageId ? sha256Hex(normalized.messageId) : null
   const externalIdHash = extraction?.externalIdHash ?? messageIdHash ?? await sha256HexBytes(raw)
   const headerFromDomain = mailboxDomain(normalized.headerFrom)
@@ -325,6 +334,7 @@ export async function handleEmailMessage(
 
   const authoritativeCorrelationId = staged.data.correlationId
   const objectKey = staged.data.encryptedObjectKey
+  const canonicalExtraction = extraction?.needsReview ? null : extraction
   const encrypted = await encryptRawEmail(raw, env.EMAIL_QUARANTINE_ENCRYPTION_SECRET)
   const putOptions = encryptedRawEmailPutOptions(expiresAt, authoritativeCorrelationId)
   await putEncryptedRawEmailWithRetry(
@@ -350,10 +360,10 @@ export async function handleEmailMessage(
     receivedAt,
     rawSize: normalized.rawSize,
     attachmentCount: normalized.attachments.length,
-    extraction,
+    extraction: canonicalExtraction,
     safeEvidence: evidence,
-    quarantine: extraction ? undefined : {
-      reason: 'No deterministic customer contact extracted',
+    quarantine: canonicalExtraction ? undefined : {
+      reason: 'Extraction requires review',
       encryptedObjectKey: objectKey,
       expiresAt
     }
