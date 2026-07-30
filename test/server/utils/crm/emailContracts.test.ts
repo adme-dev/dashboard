@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CRM_EMAIL_DELIVERY_STATES,
   projectEmailDeliveryState,
-  type CrmEmailEnvelope,
+  type CrmEmailEnvelope
 } from '~~/server/utils/crm/emailContracts'
 
 describe('CRM email delivery contracts', () => {
@@ -18,7 +18,7 @@ describe('CRM email delivery contracts', () => {
       'failed',
       'rejected',
       'complained',
-      'cancelled',
+      'cancelled'
     ])
   })
 
@@ -75,7 +75,7 @@ describe('CRM email delivery contracts', () => {
       internetMessageId: '<message@example.com>',
       inReplyTo: null,
       references: [],
-      occurredAt: '2026-07-30T00:00:00.000Z',
+      occurredAt: '2026-07-30T00:00:00.000Z'
     }
 
     expect(envelope.to[0]?.address).toBe('customer@example.net')

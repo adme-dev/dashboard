@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 const migrationPath = new URL(
   '../../server/database/migrations/288-crm-conversations-email-foundation.sql',
-  import.meta.url,
+  import.meta.url
 )
 
 describe('CRM conversations email foundation migration 288', () => {
@@ -21,12 +21,12 @@ describe('CRM conversations email foundation migration 288', () => {
       'crm_message_attachments',
       'crm_email_routes',
       'crm_email_sender_identities',
-      'crm_email_credentials',
+      'crm_email_credentials'
     ]) {
       expect(sql).toContain(`CREATE TABLE IF NOT EXISTS ${table}`)
     }
 
-    expect(sql).toContain("CHECK (delivery_status IN ('draft','queued','sending','sent','delivered','deferred','bounced','failed','rejected','complained','cancelled'))")
+    expect(sql).toContain('CHECK (delivery_status IN (\'draft\',\'queued\',\'sending\',\'sent\',\'delivered\',\'deferred\',\'bounced\',\'failed\',\'rejected\',\'complained\',\'cancelled\'))')
     expect(sql).toMatch(/FOREIGN KEY \(client_id, conversation_id\)[\s\S]*REFERENCES crm_conversations \(client_id, id\)/)
     expect(sql).toMatch(/FOREIGN KEY \(client_id, message_id\)[\s\S]*REFERENCES crm_messages \(client_id, id\)/)
     expect(sql).toMatch(/CREATE UNIQUE INDEX[\s\S]*\(client_id, provider, provider_message_id\)/i)

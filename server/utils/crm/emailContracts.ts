@@ -9,7 +9,7 @@ export const CRM_EMAIL_DELIVERY_STATES = [
   'failed',
   'rejected',
   'complained',
-  'cancelled',
+  'cancelled'
 ] as const
 
 export type CrmEmailDeliveryState = typeof CRM_EMAIL_DELIVERY_STATES[number]
@@ -45,7 +45,7 @@ const TERMINAL_DELIVERY_STATES: ReadonlySet<CrmEmailDeliveryState> = new Set([
   'failed',
   'rejected',
   'complained',
-  'cancelled',
+  'cancelled'
 ])
 
 const DELIVERY_STATE_RANK: Record<CrmEmailDeliveryState, number> = {
@@ -59,7 +59,7 @@ const DELIVERY_STATE_RANK: Record<CrmEmailDeliveryState, number> = {
   failed: 6,
   rejected: 6,
   complained: 6,
-  cancelled: 6,
+  cancelled: 6
 }
 
 /**
@@ -69,7 +69,7 @@ const DELIVERY_STATE_RANK: Record<CrmEmailDeliveryState, number> = {
  */
 export function projectEmailDeliveryState(
   current: CrmEmailDeliveryState,
-  incoming: CrmEmailDeliveryState,
+  incoming: CrmEmailDeliveryState
 ): CrmEmailDeliveryProjection {
   if (current === incoming || TERMINAL_DELIVERY_STATES.has(current)) {
     return { state: current, changed: false }
