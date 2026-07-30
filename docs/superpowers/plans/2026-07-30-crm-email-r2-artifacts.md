@@ -66,18 +66,18 @@ References:
 - Produces:
   `deleteCrmInboundEmailArtifacts(bucket, manifest): Promise<void>`
 
-- [ ] Write failing tests for the 30-day default, invalid values, a valid
+- [x] Write failing tests for the 30-day default, invalid values, a valid
       shorter retention, and clamping above 30 days.
-- [ ] Write failing storage tests asserting opaque date-prefixed keys, raw MIME
+- [x] Write failing storage tests asserting opaque date-prefixed keys, raw MIME
       and attachment content types, SHA-256 integrity, safe custom metadata,
       and a returned manifest without bytes or sensitive envelope data.
-- [ ] Write failing rollback tests proving the first write is deleted when a
+- [x] Write failing rollback tests proving the first write is deleted when a
       later write fails and cleanup deletes all manifest keys.
-- [ ] Run the focused test and observe the missing-module failure.
-- [ ] Implement awaited R2 `put`/`delete` operations using a dependency-injected
+- [x] Run the focused test and observe the missing-module failure.
+- [x] Implement awaited R2 `put`/`delete` operations using a dependency-injected
       clock and UUID generator.
-- [ ] Run focused tests and ESLint.
-- [ ] Re-read the changed files and commit:
+- [x] Run focused tests and ESLint.
+- [x] Re-read the changed files and commit:
       `feat(email-worker): store guarded CRM email artifacts`.
 
 ### Task 2: Extend the authenticated manifest contract

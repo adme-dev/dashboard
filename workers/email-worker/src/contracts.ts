@@ -2,6 +2,8 @@ export interface ParsedInboundAttachment {
   filename: string | null
   mimeType: string
   size: number
+  content?: ArrayBuffer
+  contentId?: string | null
 }
 
 export interface ParsedInboundEmail {
