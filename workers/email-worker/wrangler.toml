@@ -7,3 +7,18 @@ API_URL = "https://agency-dashboard-6cm.pages.dev"
 
 # INTERNAL_API_KEY should be set as a secret:
 # wrangler secret put INTERNAL_API_KEY
+
+# CRM email remains fail-closed until all of these are configured:
+# - CRM_EMAIL_INBOUND_ENABLED=true
+# - CRM_EMAIL_WORKER_SECRET secret
+# - CRM_EMAIL_BUCKET private R2 binding with a <=30-day lifecycle rule
+# - matching CRM_EMAIL_INBOUND_QUEUE producer binding on agency-dashboard
+#
+# The dedicated Queue must exist before deployment. Messages exhaust three
+# Worker retries before moving to the dedicated DLQ for explicit replay.
+[[queues.consumers]]
+queue = "crm-email-inbound-queue"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "crm-email-inbound-dlq"

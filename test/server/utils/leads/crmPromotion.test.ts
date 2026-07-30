@@ -135,6 +135,49 @@ describe('CRM lead promotion', () => {
     ]))
   })
 
+  it('labels email-originated opportunities as email enquiries', async () => {
+    const { db, statements } = createDb()
+    db.query.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      statements.push({ sql, params })
+      if (/FROM leads[\s\S]*FOR UPDATE/.test(sql)) {
+        return {
+          rows: [lead({
+            source: 'email',
+            field_data: {
+              full_name: 'Jane Citizen',
+              email: 'jane@example.com',
+              lead_provider: 'email'
+            }
+          })]
+        }
+      }
+      if (/FROM lead_crm_links/.test(sql)) return { rows: [] }
+      if (/FROM crm_people/.test(sql)) return { rows: [] }
+      if (/INSERT INTO crm_people/.test(sql)) return { rows: [{ id: PERSON_ID }] }
+      if (/FROM crm_stages/.test(sql)) return { rows: [{ id: STAGE_ID, probability: 10 }] }
+      if (/INSERT INTO crm_opportunities/.test(sql)) return { rows: [{ id: OPPORTUNITY_ID }] }
+      if (/INSERT INTO lead_crm_links/.test(sql)) return { rows: [{ id: LINK_ID }] }
+      return { rows: [] }
+    })
+    const service = createCrmLeadPromotionService({
+      transaction: (async callback => callback(db)) as never
+    })
+
+    await service.promote(LEAD_ID)
+
+    const opportunityInsert = statements.find(statement =>
+      /INSERT INTO crm_opportunities/.test(statement.sql)
+    )
+    expect(opportunityInsert?.params[1]).toBe('Email enquiry — Jane Citizen')
+    const activityInserts = statements.filter(statement =>
+      /INSERT INTO crm_activities/.test(statement.sql)
+    )
+    expect(activityInserts.map(statement => statement.params[2])).toEqual([
+      'Email lead received',
+      'Created from email lead'
+    ])
+  })
+
   it('reuses one tenant-scoped identity match without overwriting populated CRM fields', async () => {
     const { db, statements } = createDb({
       people: [{
