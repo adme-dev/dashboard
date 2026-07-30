@@ -1,8 +1,8 @@
 # CRM Inbound Email Route Onboarding Design
 
-**Date:** 2026-07-31  
-**Status:** Approved design, ready for implementation planning  
-**Parent PRD:** `docs/prd/crm-conversations-email-gateway-prd.md`  
+**Date:** 2026-07-31
+**Status:** Approved design, ready for implementation planning
+**Parent PRD:** `docs/prd/crm-conversations-email-gateway-prd.md`
 **Scope:** Phase E5 agency configuration and health, and Phase E6 portal permissions and onboarding
 
 ## 1. Outcome
