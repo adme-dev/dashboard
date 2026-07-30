@@ -41,14 +41,14 @@ and conversation timestamp are durable.
 - Create: `test/server/utils/crm/emailCommunicationProjection.test.ts`
 - Create: `server/utils/crm/emailCommunicationProjection.ts`
 
-- [ ] Write failing tests for tenant-scoped insert-select, stable external ID,
+- [x] Write failing tests for tenant-scoped insert-select, stable external ID,
       linked-target requirement, safe metadata, plain-text body, and duplicate
       conflict handling.
-- [ ] Run the test and observe the expected missing-module failure.
-- [ ] Implement the transaction-client projection helper and canonical row
+- [x] Run the test and observe the expected missing-module failure.
+- [x] Implement the transaction-client projection helper and canonical row
       mapping.
-- [ ] Run focused tests and ESLint.
-- [ ] Commit as `feat(crm): project email messages to timeline`.
+- [x] Run focused tests and ESLint.
+- [x] Commit as `feat(crm): project email messages to timeline`.
 
 ### Task 2: Atomic repository integration
 
@@ -57,18 +57,18 @@ and conversation timestamp are durable.
 - Modify: `test/server/utils/crm/emailRepository.test.ts`
 - Modify: `server/utils/crm/emailRepository.ts`
 
-- [ ] Write a failing repository assertion that a newly-created message
+- [x] Write a failing repository assertion that a newly-created message
       projects inside the same transaction after the conversation timestamp
       update.
-- [ ] Confirm duplicate and provider-race recovery paths do not emit another
+- [x] Confirm duplicate and provider-race recovery paths do not emit another
       projection.
-- [ ] Invoke the projection helper only for a successfully inserted canonical
+- [x] Invoke the projection helper only for a successfully inserted canonical
       message.
-- [ ] Run repository, projection, token, contract, migration, and legacy
+- [x] Run repository, projection, token, contract, migration, and legacy
       communication tests.
-- [ ] Re-read all changed files, run focused ESLint, typecheck, and
+- [x] Re-read all changed files, run focused ESLint, typecheck, and
       `git diff --check`.
-- [ ] Commit as `feat(crm): atomically bridge email activity`.
+- [x] Commit as `feat(crm): atomically bridge email activity`.
 
 ### Task 3: Live rollback proof and ledger
 
@@ -78,10 +78,25 @@ and conversation timestamp are durable.
 - Modify:
   `docs/superpowers/plans/2026-07-30-crm-email-communication-projection.md`
 
-- [ ] Run a rollback-only Neon transaction with a linked CRM person or company.
-- [ ] Prove one canonical message creates one `email_bridge` communication,
+- [x] Run a rollback-only Neon transaction with a linked CRM person or company.
+- [x] Prove one canonical message creates one `email_bridge` communication,
       a retry creates none, IDs/tenant/content map correctly, and rollback
       leaves zero rows.
-- [ ] Run final focused verification and typecheck.
-- [ ] Check off A5 and record commands, counts, commits, and live evidence.
-- [ ] Commit as `docs(crm): record timeline projection verification`.
+- [x] Run final focused verification and typecheck.
+- [x] Check off A5 and record commands, counts, commits, and live evidence.
+- [x] Commit as `docs(crm): record timeline projection verification`.
+
+## Verification record
+
+- Implementation commits: `2f901623`, `a3325dcb`.
+- Focused verification: 7 test files, 41 tests passed.
+- Static verification: focused ESLint and `git diff --check` passed; Nuxt
+  typecheck completed without reported errors.
+- Live Neon transaction: one linked canonical inbound email produced one
+  `email_bridge` communication with the expected tenant, person, channel,
+  direction, subject, plain-text body, external ID, and canonical-only
+  metadata.
+- Idempotency: message retry returned `existing`; explicit projection retry
+  returned `unchanged`; the communication count remained one.
+- Rollback proof: post-transaction counts were zero conversations, zero
+  messages, and zero communications for the smoke identifiers.

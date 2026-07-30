@@ -399,7 +399,7 @@ pnpm deploy:production
 - [x] A2. Add provider-neutral TypeScript contracts and delivery-state rules.
 - [x] A3. Add secure reply-token generation and validation with key versioning.
 - [x] A4. Add tenant-scoped repositories and idempotent message/event writes.
-- [ ] A5. Project canonical messages into `crm_communications` without
+- [x] A5. Project canonical messages into `crm_communications` without
       duplicating existing bridge rows.
 
 ### Phase B — Inbound email
@@ -531,3 +531,21 @@ pnpm deploy:production
   the first tenant's conversation was rejected by PostgreSQL with a foreign-key
   violation. A separate post-rollback query confirmed zero retained
   conversations, messages, or events for the smoke identifiers.
+- A5 projects each newly-created canonical email into the existing
+  `crm_communications` timeline inside the same transaction when its
+  conversation is linked to a CRM person or company. The bridge uses
+  `source = 'email_bridge'`, a stable `crm_message:<uuid>` external ID, plain
+  text only, and canonical-ID-only metadata. Projection and atomic repository
+  integration were committed as `2f901623` and `a3325dcb`.
+- A5 followed a failing-then-passing test cycle: the projection helper first
+  failed module resolution, then repository integration failed on the missing
+  fourth in-transaction query. Final focused verification passed 7 files and
+  41 tests; focused ESLint and `git diff --check` passed; Nuxt typecheck
+  completed without reported errors.
+- A rollback-only live Neon A5 smoke used an existing CRM person. One canonical
+  inbound message created exactly one correctly tenant/person-mapped
+  `email_bridge` row; both message retry and explicit projection retry were
+  idempotent; the legacy body contained plain text rather than HTML; and
+  metadata contained only canonical type, message ID, and conversation ID.
+  Post-rollback counts confirmed zero retained conversations, messages, or
+  communications.
