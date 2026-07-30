@@ -145,6 +145,11 @@ EMAIL_FROM = "notification@adme.net.au"
 # CRM_EMAIL_WORKER_SECRET authenticates the standalone email Worker, while
 # CRM_EMAIL_REPLY_SECRETS is the versioned JSON signing-secret map.
 CRM_EMAIL_CONVERSATIONS_ENABLED = "false"
+# New CRM inbox routes are signed with this explicit keyring version and
+# accepted only for this server-owned recipient domain. The keyring remains a
+# Cloudflare secret and must never be committed as a plaintext [vars] value.
+CRM_EMAIL_REPLY_CURRENT_VERSION = "1"
+CRM_EMAIL_LEAD_ROUTE_DOMAIN = "xeroflow.io"
 # Provider audience writes remain additionally gated by client mapping,
 # current marketing consent, minimum cohort size and two-person approval.
 PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED = "true"

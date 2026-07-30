@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { parseCrmEmailReplySecrets } from '~~/server/utils/crm/emailInboundConfig'
+import {
+  parseCrmEmailReplySecrets,
+  parseCrmEmailRouteIssuanceConfig
+} from '~~/server/utils/crm/emailInboundConfig'
 
 const SECRET_ONE = 'one-secret-that-is-at-least-32-bytes-long'
 const SECRET_TWO = 'two-secret-that-is-at-least-32-bytes-long'
@@ -34,5 +37,25 @@ describe('CRM inbound email reply-secret configuration', () => {
       2: SECRET_TWO
     })
     expect(Object.isFrozen(secrets)).toBe(true)
+  })
+
+  it('selects the explicitly configured key version and canonicalizes its domain', () => {
+    expect(parseCrmEmailRouteIssuanceConfig({
+      secrets: JSON.stringify({ 1: 'a'.repeat(32), 2: 'b'.repeat(32) }),
+      currentVersion: '2',
+      domain: 'XeroFlow.io.'
+    })).toEqual({
+      currentVersion: 2,
+      domain: 'xeroflow.io',
+      secret: 'b'.repeat(32)
+    })
+  })
+
+  it('fails closed when the explicit version is absent from the keyring', () => {
+    expect(() => parseCrmEmailRouteIssuanceConfig({
+      secrets: JSON.stringify({ 1: 'a'.repeat(32) }),
+      currentVersion: '2',
+      domain: 'xeroflow.io'
+    })).toThrow('CRM email route issuance is not configured safely')
   })
 })
