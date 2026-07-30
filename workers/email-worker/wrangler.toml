@@ -3,6 +3,13 @@ main = "src/index.ts"
 compatibility_date = "2025-12-01"
 compatibility_flags = ["global_fetch_strictly_public", "nodejs_compat"]
 
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+invocation_logs = false
+
 [alias]
 "~~/server/utils/db" = "./src/db.ts"
 "~~/server/utils/crm/emailRepository" = "../../server/utils/crm/emailRepository.ts"
@@ -28,7 +35,7 @@ compatibility_flags = ["global_fetch_strictly_public", "nodejs_compat"]
 
 [vars]
 API_URL = "https://app.xeroflow.io"
-CRM_EMAIL_INBOUND_ENABLED = "false"
+CRM_EMAIL_INBOUND_ENABLED = "true"
 CRM_EMAIL_RETENTION_DAYS = "30"
 
 [[hyperdrive]]
@@ -40,8 +47,9 @@ id = "900b4b74ec41462cbbabebd0aa8775aa"
 
 # CRM email remains fail-closed unless all of these are configured:
 # - CRM_EMAIL_WORKER_SECRET secret
+# - CRM_EMAIL_REPLY_SECRETS versioned signing-secret map
 # - CRM_EMAIL_BUCKET private R2 binding with a <=30-day lifecycle rule
-# - matching CRM_EMAIL_INBOUND_QUEUE producer binding on agency-dashboard
+# - CRM_EMAIL_RETAINED_QUEUE producer binding on this Worker
 #
 # The dedicated Queue must exist before deployment. Messages exhaust three
 # Worker retries before moving to the dedicated DLQ for explicit replay.

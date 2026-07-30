@@ -9,6 +9,7 @@ import type {
   CrmEmailRetainedArtifactJob
 } from '../../../server/utils/crm/emailInboundProcessingContracts'
 import type {
+  CrmInboundEmailProcessorStage,
   ProcessCrmInboundEmailResult
 } from '../../../server/utils/crm/emailInboundProcessor'
 import type {
@@ -26,6 +27,18 @@ import type {
 import { parseInboundEmail } from './mime'
 
 const MAX_RAW_MIME_BYTES = 10 * 1024 * 1024
+
+export type CrmInboundQueueProcessingStage
+  = | 'configuration'
+    | 'validate_job'
+    | 'resolve_route'
+    | 'read_artifact'
+    | 'verify_artifact'
+    | 'parse_mime'
+    | 'classify_automation'
+    | 'canonical_process'
+    | `canonical_${CrmInboundEmailProcessorStage}`
+    | 'cleanup_artifacts'
 
 interface InboundQueueDependencies {
   fetch?: FetchLike
@@ -48,6 +61,7 @@ interface InboundQueueDependencies {
     routeTokenHash: string,
     providerMessageId: string
   ) => Promise<string>
+  onStage?: (stage: CrmInboundQueueProcessingStage) => void
 }
 
 export type ProcessCrmInboundQueueJobResult
@@ -134,6 +148,7 @@ export async function processCrmInboundQueueJob(
   env: InboundEmailWorkerEnv,
   dependencies: InboundQueueDependencies = {}
 ): Promise<ProcessCrmInboundQueueJobResult> {
+  dependencies.onStage?.('configuration')
   const bucket = env.CRM_EMAIL_BUCKET
   if (
     env.CRM_EMAIL_INBOUND_ENABLED !== 'true'
@@ -144,6 +159,7 @@ export async function processCrmInboundQueueJob(
     throw new Error('CRM email inbound Queue is not configured')
   }
 
+  dependencies.onStage?.('validate_job')
   const resolvedJob = CrmEmailInboundQueueJobSchema.safeParse(rawJob)
   let job: CrmEmailInboundQueueJob
   if (resolvedJob.success) {
@@ -158,12 +174,14 @@ export async function processCrmInboundQueueJob(
       throw new Error('Invalid CRM email inbound Queue job')
     }
     const retained = retainedJob.data
+    dependencies.onStage?.('resolve_route')
     const route = await dependencies.resolveRoute({
       routeKind: retained.routeKind,
       routeToken: retained.routeToken,
       recipientDomain: retained.recipientDomain
     })
     if (!route || route.routeKind !== retained.routeKind) {
+      dependencies.onStage?.('cleanup_artifacts')
       await bucket.delete(retainedArtifactKeys(retained))
       return { status: 'route_unavailable' }
     }
@@ -188,6 +206,7 @@ export async function processCrmInboundQueueJob(
     })
   }
 
+  dependencies.onStage?.('read_artifact')
   const object = await bucket.get(job.rawMimeR2Key)
   if (!object) {
     throw new Error('CRM email raw MIME object is unavailable')
@@ -200,16 +219,20 @@ export async function processCrmInboundQueueJob(
   if (raw.byteLength !== object.size) {
     throw new Error('CRM email raw MIME object has invalid size')
   }
+  dependencies.onStage?.('verify_artifact')
   const digest = await crypto.subtle.digest('SHA-256', raw)
   const checksum = bytesToHex(new Uint8Array(digest))
   if (!safeEqual(checksum, job.rawMimeSha256)) {
     throw new Error('CRM email raw MIME checksum mismatch')
   }
 
+  dependencies.onStage?.('parse_mime')
   const parse = dependencies.parse ?? parseInboundEmail
   const parsedEmail = await parse(raw)
+  dependencies.onStage?.('classify_automation')
   const classification = classifyCrmInboundEmail(parsedEmail)
   if (classification.kind === 'suppressed') {
+    dependencies.onStage?.('cleanup_artifacts')
     await bucket.delete(retainedArtifactKeys(job))
     return {
       status: 'suppressed',
@@ -218,6 +241,7 @@ export async function processCrmInboundQueueJob(
   }
   const email = normalizeMimeEnvelope(parsedEmail)
   const request = CrmEmailInboundProcessingRequestSchema.parse({ job, email })
+  dependencies.onStage?.('canonical_process')
   let result: ProcessCrmInboundEmailResult
   if (dependencies.process) {
     result = await dependencies.process(request)
@@ -246,10 +270,12 @@ export async function processCrmInboundQueueJob(
     result = { status: body.duplicate ? 'duplicate' : 'created' }
   }
   if (result.status === 'route_unavailable') {
+    dependencies.onStage?.('cleanup_artifacts')
     await bucket.delete(retainedArtifactKeys(job))
     return { status: 'route_unavailable' }
   }
   if (result.status === 'duplicate') {
+    dependencies.onStage?.('cleanup_artifacts')
     await bucket.delete(retainedArtifactKeys(job))
   }
   return { status: 'processed', duplicate: result.status === 'duplicate' }

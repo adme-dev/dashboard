@@ -23,27 +23,40 @@ priority literal base addresses `lead@xeroflow.io` and `reply@xeroflow.io`
 are assigned to `email-to-board-worker`, while the signed token remains in the
 full recipient delivered to the Worker.
 
-## Current blocker
+## Current status
 
-Inbound remains disabled. Live proof on 2026-07-30 showed that Email Routing
-reaches the Worker and completes MIME parsing, classification, validation, and
-R2 persistence, but the Worker cannot hand off to the Pages runtime through
-global `fetch()`. The default Pages origin, custom domain, cross-zone custom
-domain, and `global_fetch_strictly_public` compatibility flag all failed at the
-same controlled `handoff_pages` stage.
+The HTTP handoff blocker was removed in PR #338. Email Routing now stores the
+retained MIME in R2 and enqueues a provider-neutral job. The dedicated Queue
+consumer verifies the signed route and retained object, parses the message, and
+performs canonical tenant-scoped Neon writes through Hyperdrive.
 
-Do not enable the two feature flags or routing rules until the HTTP dependency
-is removed. The recommended replacement is for the Email Worker to enqueue a
-provider-neutral job directly and for a dedicated Queue consumer to perform
-route verification and canonical Neon writes through Hyperdrive.
+Production proof on 2026-07-31 completed the entire inbound path for the
+allowlisted South Morang client. One controlled message created one canonical
+lead, conversation, message, received event, and compatibility communication.
+The route-use timestamp advanced and the Queue invocation completed without a
+retry. The smoke route was then revoked and all temporary routing gates were
+returned to fail-closed state.
+
+The proof also caught a dependency-composition defect that mocked database
+tests had hidden. `createLeadIntakeService()` treated a partial dependency
+override as the complete adapter set, leaving the default browser-confirmation
+adapter undefined in the live Queue consumer. The factory now merges partial
+overrides over its defaults, and privacy-safe stage names identify future
+failures without logging recipients, tokens, content, or exception text.
+
+South Morang already has three enabled permanent lead-email endpoints in the
+agency Leads screen. Do not create a duplicate hidden route. The Queue-backed
+conversation path should be enabled only after the repaired Worker is deployed;
+client-visible route issuance remains part of the portal onboarding work.
 
 ## Required secrets
 
 Configure these without writing values to source control or command history:
 
 - Pages and `email-to-board-worker`: identical `CRM_EMAIL_WORKER_SECRET`
-- Pages only: `CRM_EMAIL_REPLY_SECRETS`, a JSON object mapping positive integer
-  versions to at least 32 bytes of secret material, for example version `1`
+- Pages and `email-to-board-worker`: identical `CRM_EMAIL_REPLY_SECRETS`, a
+  JSON object mapping positive integer versions to at least 32 bytes of secret
+  material, for example version `1`
 
 Do not replace or remove the Worker's existing `INTERNAL_API_KEY`; board email
 ingestion depends on it.
@@ -51,19 +64,36 @@ ingestion depends on it.
 ## Activation order
 
 1. Verify migration 288 and confirm there are no unintended active routes.
-2. Create the Queue, DLQ, private R2 bucket, and lifecycle rules.
-3. Configure the two secrets while both feature gates remain absent.
+2. Verify the Queue, DLQ, private R2 bucket, Hyperdrive binding, and lifecycle
+   rules.
+3. Configure matching versioned reply secrets on Pages and the Worker while
+   both feature gates remain disabled.
 4. Merge and deploy Pages using `pnpm deploy:production`.
 5. Deploy the standalone Worker using its checked-in Wrangler configuration.
-6. Verify the Pages producer and Worker consumer/R2 bindings.
+6. Verify the Worker consumer, Hyperdrive, Queue, and R2 bindings.
 7. Create one 24-hour `lead_inbox` smoke route for an allowlisted client.
 8. Enable Email Routing subaddressing and the `lead@xeroflow.io` and
    `reply@xeroflow.io` base rules assigned to `email-to-board-worker`. Do not
    alter the catch-all.
-9. Send a controlled message, then verify the route timestamp, canonical CRM
+9. Wait at least 60 seconds for Email Routing configuration propagation. A
+   message sent immediately after enabling can still match the previous
+   catch-all configuration.
+10. Send a controlled message, then verify the route timestamp, canonical CRM
    message, compatibility communication, Queue metrics, and R2 cleanup policy.
-10. Revoke the smoke route and disable/delete its literal routing rule after
+11. Revoke the smoke route and disable its base routing rule after
     proof is captured.
+
+## Safe diagnostics
+
+- Workers Observability is enabled for custom logs on the standalone Worker,
+  but automatic invocation logs are disabled because Email invocations include
+  the full recipient and therefore the signed route token.
+- Queue failures log only the last bounded processing stage, for example
+  `canonical_ingest_lead_append_browser_confirmation`.
+- Never add a raw exception, recipient, subject, route token, body, attachment,
+  or R2 object key to these logs.
+- Inspect retained DLQ jobs read-only before deciding whether to replay them.
+  Never purge the Queue or DLQ merely to make backlog metrics look healthy.
 
 ## Rollback
 

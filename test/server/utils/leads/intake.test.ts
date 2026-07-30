@@ -35,6 +35,56 @@ function input() {
 }
 
 describe('first-party lead intake', () => {
+  it('keeps default intake adapters when only core database dependencies are overridden', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const service = createLeadIntakeService({
+      transaction: async callback => callback(db),
+      insertLead: vi.fn(async () => LEAD_ID),
+      appendOutbox: vi.fn(async () => ({
+        status: 'profile_not_found' as const
+      })) as never
+    })
+    const emailInput = {
+      ...input(),
+      lead: {
+        ...input().lead,
+        source: 'email' as const,
+        attribution: null
+      }
+    }
+
+    await expect(service.ingest(emailInput)).resolves.toMatchObject({
+      status: 'created',
+      leadId: LEAD_ID,
+      browserConfirmationStored: false
+    })
+
+    warn.mockRestore()
+  })
+
+  it('reports the safe intake stage before an outbox failure', async () => {
+    const stages: string[] = []
+    const service = createLeadIntakeService({
+      transaction: async callback => callback(db),
+      insertLead: vi.fn(async () => LEAD_ID),
+      appendOutbox: vi.fn().mockRejectedValue(
+        new Error('sensitive outbox detail')
+      ) as never,
+      appendBrowserConfirmation: vi.fn(async () => false),
+      completeIntentMatch: vi.fn(),
+      linkIdentity: vi.fn(),
+      captureProductInterest: vi.fn(),
+      recordPersonaEvidence: vi.fn(),
+      onStage: stage => stages.push(stage)
+    })
+
+    await expect(service.ingest(input())).rejects.toThrow(
+      'sensitive outbox detail'
+    )
+
+    expect(stages.at(-1)).toBe('append_outbox')
+  })
+
   it('inserts the lead and appends one PII-minimised lead_created event on the same transaction', async () => {
     const insertLead = vi.fn(async () => LEAD_ID)
     const appendOutbox = vi.fn(async () => ({
@@ -86,6 +136,7 @@ describe('first-party lead intake', () => {
       insertLead: vi.fn(async () => null),
       appendOutbox: appendOutbox as never,
       appendBrowserConfirmation: vi.fn(async () => false),
+      retryBrowserConfirmation: vi.fn(async () => false),
       completeIntentMatch: vi.fn(),
       linkIdentity: vi.fn(),
       captureProductInterest: vi.fn(),
