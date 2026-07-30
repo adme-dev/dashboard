@@ -8,6 +8,8 @@ const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const ROUTE_ID = '22222222-2222-4222-8222-222222222222'
 const ADDRESS = 'lead+one-time-token@leads.xeroflow.io'
 const toastAdd = vi.fn()
+const dataSourcesSource = readFileSync('app/components/crm/DataSources.vue', 'utf8')
+const portalCrmSource = readFileSync('app/pages/portal/crm.vue', 'utf8')
 
 const route = {
   id: ROUTE_ID,
@@ -71,7 +73,7 @@ async function flushUi() {
 
 function mountPanel(fetchMock: ReturnType<typeof vi.fn>) {
   Object.assign(globalThis, { $fetch: fetchMock, useToast: () => ({ add: toastAdd }) })
-  const state = reactive({ apiBase: '/api/crm', clientId: CLIENT_ID as string | undefined, canManage: true })
+  const state = reactive({ apiBase: '/api/crm/email-routes', clientId: CLIENT_ID as string | undefined, canManage: true })
   const host = document.createElement('div')
   document.body.appendChild(host)
   const app = createApp({ render: () => h(InboundEmailOnboarding, state) })
@@ -108,7 +110,7 @@ describe('useCrmInboundEmailRoute', () => {
     const fetchMock = vi.fn().mockResolvedValue({ items: [route] })
     vi.stubGlobal('$fetch', fetchMock)
     const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
-    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm/email-routes', clientId: CLIENT_ID })
 
     await manager.refresh()
 
@@ -128,7 +130,7 @@ describe('useCrmInboundEmailRoute', () => {
       .mockResolvedValueOnce({ route: { ...route, status: 'revoked', canRotate: false, canRevoke: false } })
     vi.stubGlobal('$fetch', fetchMock)
     const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
-    const agency = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+    const agency = useCrmInboundEmailRoute({ apiBase: '/api/crm/email-routes', clientId: CLIENT_ID })
 
     await expect(agency.create('CRM inbox')).resolves.toMatchObject({ issuedAddress: ADDRESS })
     await expect(agency.rotate(route)).resolves.toMatchObject({ issuedAddress: ADDRESS })
@@ -141,7 +143,7 @@ describe('useCrmInboundEmailRoute', () => {
 
     const portalFetch = vi.fn().mockResolvedValue({ route, issuedAddress: ADDRESS, addressShownOnce: true })
     vi.stubGlobal('$fetch', portalFetch)
-    const portal = useCrmInboundEmailRoute({ apiBase: '/api/client-portal/crm' })
+    const portal = useCrmInboundEmailRoute({ apiBase: '/api/client-portal/crm/email-routes' })
     await portal.create('Portal inbox')
     expect(portalFetch).toHaveBeenCalledWith('/api/client-portal/crm/email-routes', {
       method: 'POST', body: { label: 'Portal inbox' }
@@ -155,7 +157,7 @@ describe('useCrmInboundEmailRoute', () => {
       .mockResolvedValueOnce({ route: { ...replacementRoute, status: 'revoked', canRotate: false, canRevoke: false } })
     vi.stubGlobal('$fetch', fetchMock)
     const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
-    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm/email-routes', clientId: CLIENT_ID })
 
     await manager.refresh()
     await manager.rotate(route)
@@ -177,7 +179,7 @@ describe('useCrmInboundEmailRoute', () => {
     })
     vi.stubGlobal('$fetch', fetchMock)
     const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
-    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm/email-routes', clientId: CLIENT_ID })
 
     const refresh = manager.refresh()
     await manager.create('Rotated CRM inbox')
@@ -194,7 +196,7 @@ describe('useCrmInboundEmailRoute', () => {
       .mockRejectedValueOnce({ data: { statusMessage: 'Service unavailable' } })
     vi.stubGlobal('$fetch', fetchMock)
     const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
-    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm/email-routes', clientId: CLIENT_ID })
 
     await manager.refresh()
     await manager.refresh()
@@ -208,7 +210,7 @@ describe('useCrmInboundEmailRoute', () => {
     vi.stubGlobal('navigator', { clipboard: { writeText: clipboard } })
     vi.stubGlobal('$fetch', vi.fn())
     const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
-    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm/email-routes', clientId: CLIENT_ID })
     const issuedAddress = ref(ADDRESS)
 
     await expect(manager.copyAddress(issuedAddress.value)).resolves.toBe(true)
@@ -251,7 +253,7 @@ describe('CRM inbound email onboarding mounted behavior', () => {
     await flushUi()
     expect((mounted.host.querySelector('input') as HTMLInputElement | null)?.value).toBe(ADDRESS)
 
-    mounted.state.apiBase = '/api/client-portal/crm'
+    mounted.state.apiBase = '/api/client-portal/crm/email-routes'
     mounted.state.clientId = undefined
     await flushUi()
 
@@ -316,5 +318,27 @@ describe('CRM inbound email onboarding panel composition', () => {
     expect(icons.length).toBeGreaterThan(0)
     expect(icons.every(icon => icon.startsWith('i-lucide-'))).toBe(true)
     expect(panel).toContain('The current address stops working as soon as rotation completes.')
+  })
+})
+
+describe('CRM inbound email onboarding placement and portal access', () => {
+  it('places inbound email onboarding before inventory data sources', () => {
+    expect(dataSourcesSource.indexOf('<CrmInboundEmailOnboarding')).toBeLessThan(
+      dataSourcesSource.indexOf('<div class="grid gap-4 xl:grid-cols-3">')
+    )
+  })
+
+  it('uses the dedicated portal route API without passing portal tenancy to it', () => {
+    expect(dataSourcesSource).toMatch(/<CrmInboundEmailOnboarding\s+v-if="isPortalDataSources"[\s\S]{0,240}api-base="\/api\/client-portal\/crm\/email-routes"/)
+    expect(dataSourcesSource).toMatch(/<CrmInboundEmailOnboarding\s+v-if="isPortalDataSources"[\s\S]{0,240}:key="`inbound-email-\$\{clientId\}`"/)
+    const portalPanel = dataSourcesSource.split('<CrmInboundEmailOnboarding')[1]
+    expect(portalPanel).not.toContain(':client-id=')
+  })
+
+  it('allows CRM administrators or the primary contact to manage, while viewers retain safe status', () => {
+    expect(portalCrmSource).toContain('user.value?.isPrimaryContact || user.value?.permissions?.canAdminCrm')
+    expect(portalCrmSource).not.toContain('canInviteUsers')
+    expect(dataSourcesSource).toContain(':can-manage="canManage"')
+    expect(dataSourcesSource).toContain('api-base="/api/client-portal/crm/email-routes"')
   })
 })

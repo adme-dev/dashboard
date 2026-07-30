@@ -23,7 +23,7 @@ const { data: personaData } = useFetch<{ enabled: boolean }>(
   { key: 'portal-crm-personas-status' }
 )
 const canManageDataSources = computed(() =>
-  Boolean(user.value?.isPrimaryContact || user.value?.permissions?.canInviteUsers)
+  Boolean(user.value?.isPrimaryContact || user.value?.permissions?.canAdminCrm)
 )
 
 // Config objects defined for this client (read-only in portal — no designer tab).

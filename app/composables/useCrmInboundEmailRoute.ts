@@ -62,7 +62,7 @@ export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions)
   }
 
   function routeUrl(context: RequestContext, path = ''): string {
-    return `${context.apiBase}/email-routes${path}`
+    return `${context.apiBase}${path}`
   }
 
   function mutationBody(context: RequestContext, body: Record<string, unknown> = {}): Record<string, unknown> {

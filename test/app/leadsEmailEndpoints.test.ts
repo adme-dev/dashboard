@@ -91,6 +91,14 @@ const draft: EmailEndpointDraft = {
 }
 
 describe('agency leads email addresses composition', () => {
+  it('places CRM inbound email onboarding above general email endpoints for the selected client', () => {
+    expect(tabSource.indexOf('<CrmInboundEmailOnboarding')).toBeLessThan(
+      tabSource.indexOf('<LeadsEmailEndpointsTable')
+    )
+    expect(tabSource).toContain(':client-id="selectedClient"')
+    expect(tabSource).toContain('api-base="/api/crm/email-routes"')
+  })
+
   it('adds Email addresses without replacing Inbox or Form rules', () => {
     expect(pageSource).toContain(`{ value: 'inbox', label: 'Inbox'`)
     expect(pageSource).toContain(`{ value: 'rules', label: 'Form rules'`)
@@ -143,7 +151,7 @@ describe('agency leads email addresses composition', () => {
   })
 
   it('uses local Lucide icons and exposes all table states and agency actions', () => {
-    const iconValues = [...`${pageSource}\n${tableFeatureSource}\n${formSource}\n${confirmationFeatureSource}\n${badgeSource}`.matchAll(/i-[a-z0-9-]+/g)]
+    const iconValues = [...`${pageSource}\n${tableFeatureSource}\n${formSource}\n${confirmationFeatureSource}\n${badgeSource}`.matchAll(/\bi-[a-z0-9-]+/g)]
       .map(match => match[0])
     expect(iconValues.length).toBeGreaterThan(0)
     expect(iconValues.every(icon => icon.startsWith('i-lucide-'))).toBe(true)
@@ -401,6 +409,7 @@ function mountEmailEndpoints(fetchMock: ReturnType<typeof vi.fn>) {
   })
   app.component('LeadsEmailEndpointConfirmationModals', { template: '<div data-confirmations />' })
   app.component('LeadsEmailIngestionStatusBadge', { template: '<span data-health />' })
+  app.component('CrmInboundEmailOnboarding', { template: '<div data-crm-inbound-email />' })
   app.mount(host)
   return {
     host,

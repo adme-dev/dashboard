@@ -76,6 +76,23 @@ const {
       </UFormField>
     </div>
 
+    <div class="border-b border-default px-4 py-4">
+      <CrmInboundEmailOnboarding
+        v-if="selectedClient !== 'all'"
+        :client-id="selectedClient"
+        api-base="/api/crm/email-routes"
+        :can-manage="!forbidden"
+      />
+      <UAlert
+        v-else
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-building-2"
+        title="Select a client to set up inbound CRM email"
+        description="Choose a client above to create and manage its dedicated CRM inbox address."
+      />
+    </div>
+
     <div class="min-h-0 flex-1 overflow-auto">
       <div
         v-if="pending"

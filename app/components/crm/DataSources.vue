@@ -55,6 +55,10 @@ const sourceIcons: Record<string, string> = {
   feed: 'i-lucide-rss'
 }
 
+const isPortalDataSources = computed(() =>
+  props.apiBase === '/api/client-portal/crm/data-sources'
+)
+
 async function refresh() {
   loading.value = true
   try {
@@ -213,6 +217,20 @@ async function sync(sourceId: string) {
         <UButton label="Connect" icon="i-lucide-plug" :loading="saving" @click="saveConnector" />
       </div>
     </div>
+
+    <CrmInboundEmailOnboarding
+      v-if="isPortalDataSources"
+      :key="`inbound-email-${clientId}`"
+      api-base="/api/client-portal/crm/email-routes"
+      :can-manage="canManage"
+    />
+    <CrmInboundEmailOnboarding
+      v-else
+      :key="`inbound-email-${clientId}`"
+      :client-id="clientId"
+      api-base="/api/crm/email-routes"
+      :can-manage="canManage"
+    />
 
     <div class="grid gap-4 xl:grid-cols-3">
       <article class="rounded-xl border border-default bg-elevated/20 p-5">
