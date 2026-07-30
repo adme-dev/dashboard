@@ -1,3 +1,5 @@
+import type { MaybeRefOrGetter } from 'vue'
+
 export type CrmInboundEmailRouteStatus = 'active' | 'never_used' | 'revoked' | 'expired'
 
 /**
@@ -35,6 +37,6 @@ export interface CrmInboundEmailRouteRevokeResponse {
 }
 
 export interface UseCrmInboundEmailRouteOptions {
-  apiBase: string
-  clientId?: string
+  apiBase: MaybeRefOrGetter<string>
+  clientId?: MaybeRefOrGetter<string | undefined>
 }

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { createApp, h, nextTick, reactive, ref } from 'vue'
+import InboundEmailOnboarding from '~~/app/components/crm/InboundEmailOnboarding.vue'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const ROUTE_ID = '22222222-2222-4222-8222-222222222222'
@@ -22,6 +23,73 @@ const route = {
   canRotate: true,
   canRevoke: true,
   addressAvailable: false as const
+}
+
+const replacementRoute = {
+  ...route,
+  id: '33333333-3333-4333-8333-333333333333',
+  label: 'Rotated CRM inbox',
+  createdAt: '2026-07-31T01:00:00.000Z'
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
+const panelStubs = {
+  UAlert: { template: '<div><slot /><slot name="actions" /></div>' },
+  UBadge: { template: '<span><slot /></span>' },
+  UFormField: { template: '<label><slot /></label>' },
+  UIcon: { template: '<i />' },
+  UInput: {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">'
+  },
+  UButton: {
+    props: ['disabled', 'loading'],
+    emits: ['click'],
+    template: '<button type="button" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>'
+  },
+  UModal: {
+    props: ['open'],
+    emits: ['update:open'],
+    template: '<div v-if="open" data-modal><slot name="content" /></div>'
+  }
+}
+
+async function flushUi() {
+  for (let index = 0; index < 5; index += 1) {
+    await Promise.resolve()
+    await nextTick()
+  }
+}
+
+function mountPanel(fetchMock: ReturnType<typeof vi.fn>) {
+  Object.assign(globalThis, { $fetch: fetchMock, useToast: () => ({ add: toastAdd }) })
+  const state = reactive({ apiBase: '/api/crm', clientId: CLIENT_ID as string | undefined, canManage: true })
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const app = createApp({ render: () => h(InboundEmailOnboarding, state) })
+  Object.entries(panelStubs).forEach(([name, component]) => app.component(name, component))
+  app.mount(host)
+  return { app, host, state }
+}
+
+function button(host: Element, label: string): HTMLButtonElement {
+  const target = [...host.querySelectorAll('button')].find(item => item.textContent?.trim() === label)
+  if (!target) throw new Error(`Button not found: ${label}`)
+  return target as HTMLButtonElement
+}
+
+function modalButton(host: Element, label: string): HTMLButtonElement {
+  const modal = host.querySelector('[data-modal]')
+  if (!modal) throw new Error('Modal not found')
+  return button(modal, label)
 }
 
 describe('useCrmInboundEmailRoute', () => {
@@ -80,6 +148,45 @@ describe('useCrmInboundEmailRoute', () => {
     })
   })
 
+  it('reconciles rotation before revocation so a stale route cannot remain active', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ items: [route] })
+      .mockResolvedValueOnce({ route: replacementRoute, issuedAddress: ADDRESS, addressShownOnce: true })
+      .mockResolvedValueOnce({ route: { ...replacementRoute, status: 'revoked', canRotate: false, canRevoke: false } })
+    vi.stubGlobal('$fetch', fetchMock)
+    const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+
+    await manager.refresh()
+    await manager.rotate(route)
+    expect(manager.routes.value).toEqual([replacementRoute])
+
+    await manager.revoke(replacementRoute)
+    expect(fetchMock.mock.calls[2]).toEqual([
+      `/api/crm/email-routes/${replacementRoute.id}`,
+      { method: 'DELETE', body: { client_id: CLIENT_ID } }
+    ])
+    expect(manager.routes.value).toEqual([expect.objectContaining({ id: replacementRoute.id, status: 'revoked' })])
+  })
+
+  it('does not let an older refresh overwrite a completed mutation', async () => {
+    const list = deferred<{ items: typeof route[] }>()
+    const fetchMock = vi.fn((request: string, options?: { method?: string }) => {
+      if (request === '/api/crm/email-routes' && options?.method === 'GET') return list.promise
+      return Promise.resolve({ route: replacementRoute, issuedAddress: ADDRESS, addressShownOnce: true })
+    })
+    vi.stubGlobal('$fetch', fetchMock)
+    const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+
+    const refresh = manager.refresh()
+    await manager.create('Rotated CRM inbox')
+    list.resolve({ items: [route] })
+    await refresh
+
+    expect(manager.routes.value).toEqual([replacementRoute])
+  })
+
   it('surfaces a load failure and keeps the existing safe list available', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ items: [route] })
@@ -114,6 +221,62 @@ describe('useCrmInboundEmailRoute', () => {
   })
 })
 
+describe('CRM inbound email onboarding mounted behavior', () => {
+  beforeEach(() => {
+    toastAdd.mockReset()
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  it('uses the new API/client context and clears an issued address when props change', async () => {
+    const fetchMock = vi.fn((request: string) => {
+      if (request === '/api/crm/email-routes') return Promise.resolve({ items: [route] })
+      if (request === `/api/crm/email-routes/${route.id}/rotate`) {
+        return Promise.resolve({ route: replacementRoute, issuedAddress: ADDRESS, addressShownOnce: true })
+      }
+      if (request === '/api/client-portal/crm/email-routes') return Promise.resolve({ items: [] })
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    const mounted = mountPanel(fetchMock)
+    await flushUi()
+
+    button(mounted.host, 'Rotate address').click()
+    await flushUi()
+    modalButton(mounted.host, 'Rotate address').click()
+    await flushUi()
+    expect((mounted.host.querySelector('input') as HTMLInputElement | null)?.value).toBe(ADDRESS)
+
+    mounted.state.apiBase = '/api/client-portal/crm'
+    mounted.state.clientId = undefined
+    await flushUi()
+
+    expect((mounted.host.querySelector('input') as HTMLInputElement | null)?.value).not.toBe(ADDRESS)
+    expect(mounted.host.querySelector('[data-modal]')).toBeNull()
+    expect(fetchMock).toHaveBeenCalledWith('/api/client-portal/crm/email-routes', { method: 'GET' })
+    mounted.app.unmount()
+  })
+
+  it('closes a confirmation and prevents the mutation if permission is lost', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ items: [route] })
+    const mounted = mountPanel(fetchMock)
+    await flushUi()
+
+    button(mounted.host, 'Rotate address').click()
+    await flushUi()
+    expect(mounted.host.querySelector('[data-modal]')).not.toBeNull()
+
+    mounted.state.canManage = false
+    await flushUi()
+    expect(mounted.host.querySelector('[data-modal]')).toBeNull()
+    expect([...fetchMock.mock.calls].filter(([request]) => String(request).includes('/rotate'))).toHaveLength(0)
+    mounted.app.unmount()
+  })
+})
+
 describe('CRM inbound email onboarding panel composition', () => {
   const source = () => readFileSync('app/components/crm/InboundEmailOnboarding.vue', 'utf8')
 
@@ -136,7 +299,7 @@ describe('CRM inbound email onboarding panel composition', () => {
     ]) expect(panel).toContain(state)
     expect(panel).toContain('const issuedAddress = ref<string | null>(null)')
     expect(panel).toContain('function dismissIssuedAddress()')
-    expect(panel).toMatch(/async function refresh\(\) \{\s*dismissIssuedAddress\(\)/)
+    expect(panel).toMatch(/async function refresh\(\) \{\s*clearTransientState\(\)/)
     expect(panel).not.toContain('useState')
     expect(panel).not.toContain('localStorage')
     expect(panel).not.toContain('sessionStorage')

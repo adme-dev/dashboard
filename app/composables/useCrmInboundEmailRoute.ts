@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref, toValue, watch } from 'vue'
 import type {
   CrmInboundEmailRoute,
   CrmInboundEmailRouteIssuedResponse,
@@ -35,18 +35,37 @@ function errorMessage(error: unknown): string {
 export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions) {
   const toast = useToast()
   const apiFetch = $fetch as ApiFetch
+  const apiBase = computed(() => toValue(options.apiBase))
+  const clientId = computed(() => toValue(options.clientId))
   const routes = ref<CrmInboundEmailRoute[]>([])
   const pending = ref(false)
   const mutationPendingId = ref<string | null>(null)
   const loadError = ref<string | null>(null)
   let refreshEpoch = 0
+  let contextEpoch = 0
 
-  function routeUrl(path = ''): string {
-    return `${options.apiBase}/email-routes${path}`
+  interface RequestContext {
+    apiBase: string
+    clientId?: string
+    contextEpoch: number
   }
 
-  function mutationBody(body: Record<string, unknown> = {}): Record<string, unknown> {
-    return options.clientId ? { client_id: options.clientId, ...body } : body
+  function currentContext(): RequestContext {
+    return { apiBase: apiBase.value, clientId: clientId.value, contextEpoch }
+  }
+
+  function matchesCurrentContext(context: RequestContext): boolean {
+    return context.contextEpoch === contextEpoch
+      && context.apiBase === apiBase.value
+      && context.clientId === clientId.value
+  }
+
+  function routeUrl(context: RequestContext, path = ''): string {
+    return `${context.apiBase}/email-routes${path}`
+  }
+
+  function mutationBody(context: RequestContext, body: Record<string, unknown> = {}): Record<string, unknown> {
+    return context.clientId ? { client_id: context.clientId, ...body } : body
   }
 
   function replaceRoute(route: CrmInboundEmailRoute) {
@@ -55,71 +74,99 @@ export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions)
     else routes.value[index] = route
   }
 
+  function reset(): void {
+    contextEpoch += 1
+    refreshEpoch += 1
+    routes.value = []
+    pending.value = false
+    mutationPendingId.value = null
+    loadError.value = null
+  }
+
+  watch([apiBase, clientId], reset)
+
   async function refresh(): Promise<void> {
+    const context = currentContext()
     const epoch = ++refreshEpoch
     pending.value = true
     loadError.value = null
     try {
-      const response = await apiFetch<CrmInboundEmailRouteListResponse>(routeUrl(), {
+      const response = await apiFetch<CrmInboundEmailRouteListResponse>(routeUrl(context), {
         method: 'GET',
-        ...(options.clientId ? { query: { client_id: options.clientId } } : {})
+        ...(context.clientId ? { query: { client_id: context.clientId } } : {})
       })
-      if (epoch === refreshEpoch) routes.value = response.items ?? []
+      if (epoch === refreshEpoch && matchesCurrentContext(context)) routes.value = response.items ?? []
     } catch (error) {
-      if (epoch === refreshEpoch) loadError.value = errorMessage(error)
+      if (epoch === refreshEpoch && matchesCurrentContext(context)) loadError.value = errorMessage(error)
     } finally {
-      if (epoch === refreshEpoch) pending.value = false
+      if (epoch === refreshEpoch && matchesCurrentContext(context)) pending.value = false
     }
   }
 
   async function create(label: string): Promise<CrmInboundEmailRouteIssuedResponse | null> {
     if (mutationPendingId.value) return null
+    const context = currentContext()
+    refreshEpoch += 1
     mutationPendingId.value = 'create'
     try {
-      const response = await apiFetch<CrmInboundEmailRouteIssuedResponse>(routeUrl(), {
-        method: 'POST', body: mutationBody({ label })
+      const response = await apiFetch<CrmInboundEmailRouteIssuedResponse>(routeUrl(context), {
+        method: 'POST', body: mutationBody(context, { label })
       })
+      if (!matchesCurrentContext(context)) return null
       replaceRoute(response.route)
       return response
     } catch (error) {
-      toast.add({ title: 'Could not create inbox address', description: errorMessage(error), color: 'error' })
+      if (matchesCurrentContext(context)) {
+        toast.add({ title: 'Could not create inbox address', description: errorMessage(error), color: 'error' })
+      }
       return null
     } finally {
-      mutationPendingId.value = null
+      if (matchesCurrentContext(context)) mutationPendingId.value = null
     }
   }
 
   async function rotate(route: CrmInboundEmailRoute): Promise<CrmInboundEmailRouteIssuedResponse | null> {
     if (mutationPendingId.value) return null
+    const context = currentContext()
+    refreshEpoch += 1
     mutationPendingId.value = route.id
     try {
-      const response = await apiFetch<CrmInboundEmailRouteIssuedResponse>(routeUrl(`/${route.id}/rotate`), {
-        method: 'POST', body: mutationBody()
+      const response = await apiFetch<CrmInboundEmailRouteIssuedResponse>(routeUrl(context, `/${route.id}/rotate`), {
+        method: 'POST', body: mutationBody(context)
       })
+      if (!matchesCurrentContext(context)) return null
+      routes.value = routes.value.filter(item => item.id !== route.id)
       replaceRoute(response.route)
       return response
     } catch (error) {
-      toast.add({ title: 'Could not rotate inbox address', description: errorMessage(error), color: 'error' })
+      if (matchesCurrentContext(context)) {
+        toast.add({ title: 'Could not rotate inbox address', description: errorMessage(error), color: 'error' })
+      }
       return null
     } finally {
-      mutationPendingId.value = null
+      if (matchesCurrentContext(context)) mutationPendingId.value = null
     }
   }
 
   async function revoke(route: CrmInboundEmailRoute): Promise<CrmInboundEmailRouteRevokeResponse | null> {
     if (mutationPendingId.value) return null
+    const context = currentContext()
+    refreshEpoch += 1
     mutationPendingId.value = route.id
     try {
-      const response = await apiFetch<CrmInboundEmailRouteRevokeResponse>(routeUrl(`/${route.id}`), {
-        method: 'DELETE', body: mutationBody()
+      const response = await apiFetch<CrmInboundEmailRouteRevokeResponse>(routeUrl(context, `/${route.id}`), {
+        method: 'DELETE', body: mutationBody(context)
       })
+      if (!matchesCurrentContext(context)) return null
       replaceRoute(response.route)
       return response
     } catch (error) {
-      toast.add({ title: 'Could not revoke inbox address', description: errorMessage(error), color: 'error' })
+      if (matchesCurrentContext(context)) {
+        toast.add({ title: 'Could not revoke inbox address', description: errorMessage(error), color: 'error' })
+      }
       return null
     } finally {
-      mutationPendingId.value = null
+      if (matchesCurrentContext(context)) mutationPendingId.value = null
     }
   }
 
@@ -140,6 +187,7 @@ export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions)
     pending,
     mutationPendingId,
     loadError,
+    reset,
     refresh,
     create,
     rotate,

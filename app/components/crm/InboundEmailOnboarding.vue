@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Design intent: this is a security hand-off for agency operators, so the
 // one-time address is a calm, selectable receipt rather than another dashboard card.
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, toRef, watch } from 'vue'
 import { useCrmInboundEmailRoute } from '~/composables/useCrmInboundEmailRoute'
 import type { CrmInboundEmailRoute, CrmInboundEmailRouteIssuedResponse } from '~/types/crmEmailRoute'
 
@@ -11,7 +11,10 @@ const props = defineProps<{
   canManage: boolean
 }>()
 
-const manager = useCrmInboundEmailRoute({ apiBase: props.apiBase, clientId: props.clientId })
+const manager = useCrmInboundEmailRoute({
+  apiBase: toRef(props, 'apiBase'),
+  clientId: toRef(props, 'clientId')
+})
 const inboxLabel = ref('CRM inbox')
 const issuedAddress = ref<string | null>(null)
 const rotationTarget = ref<CrmInboundEmailRoute | null>(null)
@@ -27,26 +30,36 @@ function dismissIssuedAddress() {
   issuedAddress.value = null
 }
 
+function clearTransientState() {
+  dismissIssuedAddress()
+  rotationTarget.value = null
+  revocationTarget.value = null
+  showRotationModal.value = false
+  showRevocationModal.value = false
+}
+
 function revealIssuedAddress(issued: CrmInboundEmailRouteIssuedResponse | null) {
   if (issued?.addressShownOnce) issuedAddress.value = issued.issuedAddress
 }
 
 async function refresh() {
-  dismissIssuedAddress()
+  clearTransientState()
   await manager.refresh()
 }
 
 async function createAddress() {
+  if (!props.canManage) return
   revealIssuedAddress(await manager.create(inboxLabel.value))
 }
 
 function requestRotation(route: CrmInboundEmailRoute) {
+  if (!props.canManage || !route.canRotate) return
   rotationTarget.value = route
   showRotationModal.value = true
 }
 
 async function rotateAddress() {
-  if (!rotationTarget.value) return
+  if (!props.canManage || !rotationTarget.value || !rotationTarget.value.canRotate) return
   const issued = await manager.rotate(rotationTarget.value)
   if (issued) {
     showRotationModal.value = false
@@ -55,12 +68,13 @@ async function rotateAddress() {
 }
 
 function requestRevocation(route: CrmInboundEmailRoute) {
+  if (!props.canManage || !route.canRevoke) return
   revocationTarget.value = route
   showRevocationModal.value = true
 }
 
 async function revokeAddress() {
-  if (!revocationTarget.value) return
+  if (!props.canManage || !revocationTarget.value || !revocationTarget.value.canRevoke) return
   const revoked = await manager.revoke(revocationTarget.value)
   if (revoked) {
     showRevocationModal.value = false
@@ -71,6 +85,16 @@ async function revokeAddress() {
 async function copyIssuedAddress() {
   if (issuedAddress.value) await manager.copyAddress(issuedAddress.value)
 }
+
+watch([() => props.apiBase, () => props.clientId], () => {
+  clearTransientState()
+  manager.reset()
+  void manager.refresh()
+})
+
+watch(() => props.canManage, (canManage) => {
+  if (!canManage) clearTransientState()
+})
 
 onMounted(refresh)
 </script>
@@ -181,6 +205,7 @@ onMounted(refresh)
             color="neutral"
             variant="soft"
             icon="i-lucide-refresh-cw"
+            :disabled="!activeRoute.canRotate"
             @click="requestRotation(activeRoute)"
           >
             Rotate address
@@ -189,6 +214,7 @@ onMounted(refresh)
             color="error"
             variant="ghost"
             icon="i-lucide-ban"
+            :disabled="!activeRoute.canRevoke"
             @click="requestRevocation(activeRoute)"
           >
             Revoke address
@@ -255,7 +281,12 @@ onMounted(refresh)
             <UButton color="neutral" variant="ghost" @click="showRotationModal = false">
               Cancel
             </UButton>
-            <UButton icon="i-lucide-refresh-cw" :loading="manager.mutationPendingId.value === rotationTarget?.id" @click="rotateAddress">
+            <UButton
+              icon="i-lucide-refresh-cw"
+              :disabled="!canManage || !rotationTarget?.canRotate"
+              :loading="manager.mutationPendingId.value === rotationTarget?.id"
+              @click="rotateAddress"
+            >
               Rotate address
             </UButton>
           </div>
@@ -281,6 +312,7 @@ onMounted(refresh)
             <UButton
               color="error"
               icon="i-lucide-ban"
+              :disabled="!canManage || !revocationTarget?.canRevoke"
               :loading="manager.mutationPendingId.value === revocationTarget?.id"
               @click="revokeAddress"
             >
