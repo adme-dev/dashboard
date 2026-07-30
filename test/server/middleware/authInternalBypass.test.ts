@@ -63,10 +63,18 @@ describe('auth middleware internal bearer endpoints', () => {
     '/api/internal/email-to-board',
     '/api/internal/sync-spend',
     '/api/internal/chat-archive',
+    '/api/internal/leads/email-policy',
     '/api/internal/workflows/social-publishing/publish'
   ])('lets %s reach its inline secret guard', async (pathname) => {
     await expect(handler(fakeEvent(pathname))).resolves.toBeUndefined()
     expect(validateSession).not.toHaveBeenCalled()
+  })
+
+  it('does not broaden the signed lead bypass to sibling internal routes', async () => {
+    await expect(handler(fakeEvent('/api/internal/leads-private/admin'))).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'Authentication required'
+    })
   })
 
   it('lets public lead intent reach its site-key guard', async () => {

@@ -48,6 +48,8 @@ const publicRoutes = [
   '/api/internal/platform-agents/',
   '/api/internal/sync-spend',
   '/api/internal/workflows/',
+  // Email intake Worker routes verify the signed request body and nonce inline.
+  '/api/internal/leads/',
   // agency-jobs queue bridge — workers/jobs-consumer POSTs each queue message
   // here; verifies x-cron-secret inline (no session cookie from the Worker).
   '/api/internal/process-job',

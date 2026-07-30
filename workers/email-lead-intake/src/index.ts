@@ -68,7 +68,8 @@ export class RetryableEmailIntakeError extends Error {
 
   constructor(
     readonly correlationId: string,
-    cause?: unknown
+    cause?: unknown,
+    readonly errorClass: 'unexpected' | 'internal_upstream_network' | 'internal_upstream_401' | 'internal_upstream_409' | 'internal_upstream_4xx' | 'internal_upstream_5xx' = 'unexpected'
   ) {
     super('Email intake must be retried', { cause })
   }
@@ -127,7 +128,13 @@ async function persistTransportTelemetry(
       batchId: dependencies.randomUUID(),
       events: transportEvents
     })
-    await signedRequest('/api/internal/leads/email-telemetry', body, env, dependencies)
+    await signedRequest(
+      '/api/internal/leads/email-telemetry',
+      body,
+      env,
+      dependencies,
+      transportEvents[0]?.correlationId ?? dependencies.randomUUID()
+    )
   } catch {
     // Durable telemetry is best-effort at the ingestion boundary and must not
     // change mail acceptance. Missing batches are visible as a telemetry gap.
@@ -157,6 +164,12 @@ function senderAllowed(domain: string | null, policy: EmailEndpointPolicy): bool
 
 function isRetryableStatus(status: number): boolean {
   return [408, 425, 429, 500, 502, 503, 504].includes(status)
+}
+
+function upstreamErrorClass(status: number): RetryableEmailIntakeError['errorClass'] {
+  if (status === 401) return 'internal_upstream_401'
+  if (status === 409) return 'internal_upstream_409'
+  return status >= 500 ? 'internal_upstream_5xx' : 'internal_upstream_4xx'
 }
 
 async function readBoundedJson(response: Response): Promise<unknown> {
@@ -191,8 +204,9 @@ async function signedRequest(
   path: string,
   body: string,
   env: Env,
-  dependencies: EmailIntakeDependencies
-): Promise<Response | null> {
+  dependencies: EmailIntakeDependencies,
+  correlationId: string
+): Promise<Response> {
   const origin = applicationOrigin(env.APPLICATION_ORIGIN)
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     const headers = await createSignedHeaders(body, env.EMAIL_INGEST_HMAC_SECRET, {
@@ -206,16 +220,23 @@ async function signedRequest(
         body
       })
       if (response.ok || !isRetryableStatus(response.status)) return response
-    } catch {
-      if (attempt === RETRY_DELAYS_MS.length) return null
+      if (attempt === RETRY_DELAYS_MS.length) return response
+    } catch (error) {
+      if (attempt === RETRY_DELAYS_MS.length) {
+        retryable(correlationId, error, 'internal_upstream_network')
+      }
     }
     if (attempt < RETRY_DELAYS_MS.length) await dependencies.sleep(RETRY_DELAYS_MS[attempt]!)
   }
-  return null
+  retryable(correlationId, undefined, 'internal_upstream_network')
 }
 
-function retryable(correlationId: string, cause?: unknown): never {
-  throw new RetryableEmailIntakeError(correlationId, cause)
+function retryable(
+  correlationId: string,
+  cause?: unknown,
+  errorClass?: RetryableEmailIntakeError['errorClass']
+): never {
+  throw new RetryableEmailIntakeError(correlationId, cause, errorClass)
 }
 
 function configuredBucket(value: unknown): value is R2Bucket {
@@ -351,9 +372,9 @@ export async function handleEmailMessage(
     '/api/internal/leads/email-policy',
     policyBody,
     env,
-    dependencies
+    dependencies,
+    correlationId
   )
-  if (!policyResponse) retryable(correlationId)
   if (!policyResponse.ok) {
     if (policyResponse.status === 404 || policyResponse.status === 409) {
       emit(dependencies, {
@@ -364,7 +385,11 @@ export async function handleEmailMessage(
       })
       return reject(message, 'Lead intake policy denied')
     }
-    retryable(correlationId)
+    retryable(
+      correlationId,
+      undefined,
+      upstreamErrorClass(policyResponse.status)
+    )
   }
   let policyPayload: unknown
   try {
@@ -472,9 +497,16 @@ export async function handleEmailMessage(
     '/api/internal/leads/email-stage',
     stageBody,
     env,
-    dependencies
+    dependencies,
+    correlationId
   )
-  if (!stageResponse?.ok) retryable(correlationId)
+  if (!stageResponse.ok) {
+    retryable(
+      correlationId,
+      undefined,
+      upstreamErrorClass(stageResponse.status)
+    )
+  }
   let stagePayload: unknown
   try {
     stagePayload = await readBoundedJson(stageResponse)
@@ -568,9 +600,16 @@ export async function handleEmailMessage(
     '/api/internal/leads/email-stage-confirm',
     confirmationBody,
     env,
-    dependencies
+    dependencies,
+    authoritativeCorrelationId
   )
-  if (!confirmationResponse?.ok) retryable(authoritativeCorrelationId)
+  if (!confirmationResponse.ok) {
+    retryable(
+      authoritativeCorrelationId,
+      undefined,
+      upstreamErrorClass(confirmationResponse.status)
+    )
+  }
 
   const envelope: EmailIngestEnvelope = EmailIngestEnvelopeSchema.parse({
     schemaVersion: 1,
@@ -603,7 +642,8 @@ export async function handleEmailMessage(
     '/api/internal/leads/email-ingest',
     ingestBody,
     env,
-    dependencies
+    dependencies,
+    authoritativeCorrelationId
   )
   if (!ingestResponse?.ok) return { status: 'failed', correlationId: authoritativeCorrelationId }
   const ingested = IngestResponseSchema.safeParse(await readBoundedJson(ingestResponse))
@@ -665,7 +705,9 @@ export default {
         correlationId: error instanceof RetryableEmailIntakeError
           ? error.correlationId
           : crypto.randomUUID(),
-        errorClass: 'unexpected'
+        errorClass: error instanceof RetryableEmailIntakeError
+          ? error.errorClass
+          : 'unexpected'
       }, event => events.push(event))
       const correlationId = error instanceof RetryableEmailIntakeError
         ? error.correlationId
