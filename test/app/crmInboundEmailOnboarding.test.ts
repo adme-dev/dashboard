@@ -1,0 +1,156 @@
+// @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
+
+const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
+const ROUTE_ID = '22222222-2222-4222-8222-222222222222'
+const ADDRESS = 'lead+one-time-token@leads.xeroflow.io'
+const toastAdd = vi.fn()
+
+const route = {
+  id: ROUTE_ID,
+  label: 'CRM inbox',
+  kind: 'lead_inbox' as const,
+  clientId: CLIENT_ID,
+  recipientDomain: 'leads.xeroflow.io',
+  status: 'never_used' as const,
+  createdAt: '2026-07-31T00:00:00.000Z',
+  expiresAt: null,
+  lastUsedAt: null,
+  revokedAt: null,
+  canRotate: true,
+  canRevoke: true,
+  addressAvailable: false as const
+}
+
+describe('useCrmInboundEmailRoute', () => {
+  beforeEach(() => {
+    toastAdd.mockReset()
+    vi.stubGlobal('useToast', () => ({ add: toastAdd }))
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  it('loads the safe list without ever receiving a reusable address', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ items: [route] })
+    vi.stubGlobal('$fetch', fetchMock)
+    const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+
+    await manager.refresh()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/crm/email-routes', {
+      method: 'GET', query: { client_id: CLIENT_ID }
+    })
+    expect(manager.routes.value).toEqual([route])
+    expect(JSON.stringify(manager.routes.value)).not.toContain('lead+')
+    expect(manager.loadError.value).toBeNull()
+    expect(manager.pending.value).toBe(false)
+  })
+
+  it('creates, rotates, and revokes with the correct agency and portal request shapes', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ route, issuedAddress: ADDRESS, addressShownOnce: true })
+      .mockResolvedValueOnce({ route: { ...route, label: 'Rotated inbox' }, issuedAddress: ADDRESS, addressShownOnce: true })
+      .mockResolvedValueOnce({ route: { ...route, status: 'revoked', canRotate: false, canRevoke: false } })
+    vi.stubGlobal('$fetch', fetchMock)
+    const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
+    const agency = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+
+    await expect(agency.create('CRM inbox')).resolves.toMatchObject({ issuedAddress: ADDRESS })
+    await expect(agency.rotate(route)).resolves.toMatchObject({ issuedAddress: ADDRESS })
+    await expect(agency.revoke(route)).resolves.toMatchObject({ route: { status: 'revoked' } })
+    expect(fetchMock.mock.calls).toEqual([
+      ['/api/crm/email-routes', { method: 'POST', body: { client_id: CLIENT_ID, label: 'CRM inbox' } }],
+      [`/api/crm/email-routes/${ROUTE_ID}/rotate`, { method: 'POST', body: { client_id: CLIENT_ID } }],
+      [`/api/crm/email-routes/${ROUTE_ID}`, { method: 'DELETE', body: { client_id: CLIENT_ID } }]
+    ])
+
+    const portalFetch = vi.fn().mockResolvedValue({ route, issuedAddress: ADDRESS, addressShownOnce: true })
+    vi.stubGlobal('$fetch', portalFetch)
+    const portal = useCrmInboundEmailRoute({ apiBase: '/api/client-portal/crm' })
+    await portal.create('Portal inbox')
+    expect(portalFetch).toHaveBeenCalledWith('/api/client-portal/crm/email-routes', {
+      method: 'POST', body: { label: 'Portal inbox' }
+    })
+  })
+
+  it('surfaces a load failure and keeps the existing safe list available', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ items: [route] })
+      .mockRejectedValueOnce({ data: { statusMessage: 'Service unavailable' } })
+    vi.stubGlobal('$fetch', fetchMock)
+    const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+
+    await manager.refresh()
+    await manager.refresh()
+
+    expect(manager.routes.value).toEqual([route])
+    expect(manager.loadError.value).toBe('Service unavailable')
+  })
+
+  it('copies the revealed address and reports clipboard failures without clearing it', async () => {
+    const clipboard = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText: clipboard } })
+    vi.stubGlobal('$fetch', vi.fn())
+    const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
+    const manager = useCrmInboundEmailRoute({ apiBase: '/api/crm', clientId: CLIENT_ID })
+    const issuedAddress = ref(ADDRESS)
+
+    await expect(manager.copyAddress(issuedAddress.value)).resolves.toBe(true)
+    expect(clipboard).toHaveBeenCalledWith(ADDRESS)
+    expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ title: 'Address copied', color: 'success' }))
+
+    clipboard.mockRejectedValueOnce(new Error('Clipboard blocked'))
+    await expect(manager.copyAddress(issuedAddress.value)).resolves.toBe(false)
+    expect(issuedAddress.value).toBe(ADDRESS)
+    expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ title: 'Copy failed', color: 'error' }))
+  })
+})
+
+describe('CRM inbound email onboarding panel composition', () => {
+  const source = () => readFileSync('app/components/crm/InboundEmailOnboarding.vue', 'utf8')
+
+  it('uses Nuxt UI controls, labelled reveal fields, confirmations, and a container-safe form', () => {
+    const panel = source()
+    expect(panel).toContain('<UFormField label="Inbox label"')
+    expect(panel).toContain('<UInput')
+    expect(panel).toContain('<UModal')
+    expect(panel).toMatch(/<form[^>]*class="@container/)
+    expect(panel).toContain('grid grid-cols-1 gap-4 @lg:grid-cols-2')
+    expect(panel).not.toContain('grid grid-cols-2')
+    expect(panel).not.toMatch(/<(?:input|select|button|dialog)\b/i)
+  })
+
+  it('covers empty, issued, awaiting, ready, revoked, and error states without persisting an address', () => {
+    const panel = source()
+    for (const state of [
+      'No CRM inbox address yet', 'Copy this address now. For security, XeroFlow cannot show it again.',
+      'Awaiting first message', 'Ready for inbound CRM email', 'Revoked', 'Email routes could not be loaded'
+    ]) expect(panel).toContain(state)
+    expect(panel).toContain('const issuedAddress = ref<string | null>(null)')
+    expect(panel).toContain('function dismissIssuedAddress()')
+    expect(panel).toMatch(/async function refresh\(\) \{\s*dismissIssuedAddress\(\)/)
+    expect(panel).not.toContain('useState')
+    expect(panel).not.toContain('localStorage')
+    expect(panel).not.toContain('sessionStorage')
+    expect(panel).not.toContain('analytics')
+  })
+
+  it('keeps the address row usable at 320px and uses local Lucide icons with an accessible copy action', () => {
+    const panel = source()
+    expect(panel).toContain('min-w-0')
+    expect(panel).toContain('shrink-0')
+    expect(panel).toContain('aria-label="Copy inbound email address"')
+    const icons = [...panel.matchAll(/i-[a-z0-9-]+/g)].map(match => match[0])
+    expect(icons.length).toBeGreaterThan(0)
+    expect(icons.every(icon => icon.startsWith('i-lucide-'))).toBe(true)
+    expect(panel).toContain('The current address stops working as soon as rotation completes.')
+  })
+})
