@@ -23,6 +23,15 @@ describe('deterministic email lead parser', () => {
     expect(() => parseAdfXml('<!DOCTYPE x [<!ENTITY boom "x">]><adf>&boom;</adf>', 'adf')).toThrow(/DTD|entity/i)
   })
 
+  it('uses the raw ADF provider ID for hashing without carrying it into the safe extraction', () => {
+    const adf = '<adf><prospect><id>provider-42</id><customer><contact><email>alex@example.test</email></contact></customer><provider><name>Carsales</name></provider></prospect></adf>'
+    const extracted = parseEmailLead({ ...base, text: adf }, policy)
+
+    expect(extracted?.externalIdHash).toMatch(/^[a-f0-9]{64}$/)
+    expect(extracted).not.toHaveProperty('providerId')
+    expect(JSON.stringify(extracted)).not.toContain('provider-42')
+  })
+
   it('accepts valid namespaced/uppercase ADF and numeric entities while rejecting malformed XML', () => {
     const namespaced = `<ADF:ADF xmlns:ADF="urn:adf"><ADF:PROSPECT><ADF:ID>provider-42</ADF:ID><ADF:CUSTOMER><ADF:CONTACT><ADF:EMAIL>alex@example.test</ADF:EMAIL><ADF:PHONE>&#x2b;61400123456</ADF:PHONE></ADF:CONTACT></ADF:CUSTOMER></ADF:PROSPECT></ADF:ADF>`
     expect(parseAdfXml(namespaced, 'adf')?.fields.phone?.value).toBe('+61400123456')
