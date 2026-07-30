@@ -86,7 +86,9 @@ function createHarness(options: {
   routeAvailable?: boolean
   intakeStatus?: 'created' | 'duplicate'
   promotion?: Record<string, unknown>
+  promotionError?: Error
   messageStatus?: 'created' | 'existing'
+  onStage?: (stage: string) => void
 } = {}) {
   const statements: Array<{ sql: string, params: unknown[] }> = []
   const db = {
@@ -140,20 +142,23 @@ function createHarness(options: {
           outbox: { status: 'profile_not_found' }
         }
   )
-  const promoteLead = vi.fn().mockResolvedValue(
-    options.promotion ?? {
-      status: 'promoted',
-      personId: PERSON_ID,
-      opportunityId: OPPORTUNITY_ID,
-      linkId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      personCreated: true
-    }
-  )
+  const promoteLead = options.promotionError
+    ? vi.fn().mockRejectedValue(options.promotionError)
+    : vi.fn().mockResolvedValue(
+        options.promotion ?? {
+          status: 'promoted',
+          personId: PERSON_ID,
+          opportunityId: OPPORTUNITY_ID,
+          linkId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          personCreated: true
+        }
+      )
   const processor = createCrmInboundEmailProcessor({
     transaction: async callback => callback(db),
     repositoryFor: () => repository as never,
     ingestLead: ingestLead as never,
-    promoteLead: promoteLead as never
+    promoteLead: promoteLead as never,
+    onStage: options.onStage
   })
 
   return {
@@ -166,6 +171,20 @@ function createHarness(options: {
 }
 
 describe('CRM inbound email processor', () => {
+  it('reports the safe processor stage before a promotion failure', async () => {
+    const stages: string[] = []
+    const harness = createHarness({
+      promotionError: new Error('sensitive promotion detail'),
+      onStage: stage => stages.push(stage)
+    })
+
+    await expect(harness.processor.process(input())).rejects.toThrow(
+      'sensitive promotion detail'
+    )
+
+    expect(stages.at(-1)).toBe('promote_lead')
+  })
+
   it('returns an existing message before route or conversation mutation', async () => {
     const harness = createHarness({ existingMessage: true })
 

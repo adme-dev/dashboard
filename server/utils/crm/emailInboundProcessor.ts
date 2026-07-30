@@ -19,7 +19,8 @@ import type {
 } from '~~/server/utils/crm/emailInboundProcessingContracts'
 import type {
   IngestLeadInput,
-  IngestLeadResult
+  IngestLeadResult,
+  LeadIntakeStage
 } from '~~/server/utils/leads/intake'
 import type {
   CrmLeadPromotionResult
@@ -40,6 +41,20 @@ type Transaction = <T>(
 
 type CrmEmailRepository = ReturnType<typeof createPostgresCrmEmailRepository>
 
+export type CrmInboundEmailProcessorStage
+  = | 'acquire_locks'
+    | 'deduplicate_message'
+    | 'validate_route'
+    | 'resolve_assignment'
+    | 'ingest_lead'
+    | `ingest_lead_${LeadIntakeStage}`
+    | 'recover_lead'
+    | 'promote_lead'
+    | 'create_conversation'
+    | 'create_message'
+    | 'append_received_event'
+    | 'mark_route_used'
+
 interface CrmInboundEmailProcessorDeps {
   transaction: Transaction
   repositoryFor(database: TransactionClient): CrmEmailRepository
@@ -51,6 +66,7 @@ interface CrmInboundEmailProcessorDeps {
     database: TransactionClient,
     leadId: string
   ): Promise<CrmLeadPromotionResult>
+  onStage?(stage: CrmInboundEmailProcessorStage): void
 }
 
 export type ProcessCrmInboundEmailResult
@@ -82,13 +98,15 @@ function defaultRepositoryFor(
 
 async function defaultIngestLead(
   database: TransactionClient,
-  input: IngestLeadInput
+  input: IngestLeadInput,
+  onStage?: (stage: LeadIntakeStage) => void
 ): Promise<IngestLeadResult> {
   const service = createLeadIntakeService({
     transaction: async callback => callback(database),
     insertLead: (lead, transactionDatabase) =>
       insertLeadWithDedup(lead, transactionDatabase),
-    appendOutbox: appendCanonicalConversionEvent
+    appendOutbox: appendCanonicalConversionEvent,
+    onStage
   })
   return service.ingest(input)
 }
@@ -149,6 +167,7 @@ function leadFieldData(
 export function createCrmInboundEmailProcessor(
   overrides: Partial<CrmInboundEmailProcessorDeps> = {}
 ) {
+  const usesDefaultIngestLead = !overrides.ingestLead
   const deps: CrmInboundEmailProcessorDeps = {
     ...defaultDependencies,
     ...overrides
@@ -159,6 +178,7 @@ export function createCrmInboundEmailProcessor(
     ): Promise<ProcessCrmInboundEmailResult> {
       return deps.transaction(async (database) => {
         const { job, email } = input
+        deps.onStage?.('acquire_locks')
         for (const lockKey of [
           job.idempotencyKey,
           `${job.clientId}\n${job.provider}\n${job.providerMessageId}`
@@ -169,6 +189,7 @@ export function createCrmInboundEmailProcessor(
           )
         }
 
+        deps.onStage?.('deduplicate_message')
         const existingResult = await database.query(`
           SELECT id
           FROM crm_messages
@@ -191,6 +212,7 @@ export function createCrmInboundEmailProcessor(
           = existingResult.rows?.[0] as ExistingMessageRow | undefined
         if (existing) return { status: 'duplicate' }
 
+        deps.onStage?.('validate_route')
         const routeResult = await database.query(`
           SELECT route.id
           FROM crm_email_routes AS route
@@ -224,6 +246,7 @@ export function createCrmInboundEmailProcessor(
         let conversationId = job.conversationId
 
         if (job.routeKind === 'lead_inbox') {
+          deps.onStage?.('resolve_assignment')
           const assignmentResult = await database.query(`
             SELECT team_member_id
             FROM client_team_assignments
@@ -236,7 +259,8 @@ export function createCrmInboundEmailProcessor(
             assignmentResult.rows?.[0] as AssignmentRow | undefined
           )?.team_member_id ?? null
 
-          const intake = await deps.ingestLead(database, {
+          deps.onStage?.('ingest_lead')
+          const leadInput: IngestLeadInput = {
             lead: {
               client_id: job.clientId,
               source: 'email',
@@ -256,12 +280,20 @@ export function createCrmInboundEmailProcessor(
               is_test: false
             },
             consentDecision: 'unknown'
-          })
+          }
+          const intake = usesDefaultIngestLead
+            ? await defaultIngestLead(
+                database,
+                leadInput,
+                stage => deps.onStage?.(`ingest_lead_${stage}`)
+              )
+            : await deps.ingestLead(database, leadInput)
 
           let leadId: string
           if (intake.status === 'created') {
             leadId = intake.leadId
           } else {
+            deps.onStage?.('recover_lead')
             const leadResult = await database.query(`
               SELECT id
               FROM leads
@@ -280,8 +312,10 @@ export function createCrmInboundEmailProcessor(
             leadId = recoveredLeadId
           }
 
+          deps.onStage?.('promote_lead')
           const promotion = await deps.promoteLead(database, leadId)
           const links = promotionLinks(promotion)
+          deps.onStage?.('create_conversation')
           const conversation = await repository.createConversation({
             clientId: job.clientId,
             subject: email.subject,
@@ -299,6 +333,7 @@ export function createCrmInboundEmailProcessor(
           throw new Error('CRM email conversation was not resolved')
         }
 
+        deps.onStage?.('create_message')
         const messageResult = await repository.createMessage({
           clientId: job.clientId,
           conversationId,
@@ -330,6 +365,7 @@ export function createCrmInboundEmailProcessor(
           throw new Error('Concurrent CRM email duplicate must be retried')
         }
 
+        deps.onStage?.('append_received_event')
         const eventResult = await repository.appendMessageEvent({
           clientId: job.clientId,
           messageId: messageResult.message.id,
@@ -346,6 +382,7 @@ export function createCrmInboundEmailProcessor(
           throw new Error('CRM email received event was not appended')
         }
 
+        deps.onStage?.('mark_route_used')
         const routeUpdate = await database.query(`
           UPDATE crm_email_routes
           SET last_used_at = GREATEST(

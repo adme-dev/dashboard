@@ -1,7 +1,10 @@
 import { deliverBoardEmail } from './boardAdapter'
 import { queryOne, transaction } from './db'
 import { classifyCrmInboundEmail } from './inboundClassification'
-import { processCrmInboundQueueJob } from './inboundQueue'
+import {
+  type CrmInboundQueueProcessingStage,
+  processCrmInboundQueueJob
+} from './inboundQueue'
 import { parseInboundEmail } from './mime'
 import { classifyInboundEmailRoute } from './routing'
 import {
@@ -201,6 +204,7 @@ export function createInboundEmailWorker(
       _context: ExecutionContext
     ): Promise<void> {
       for (const message of batch.messages) {
+        let processingStage: CrmInboundQueueProcessingStage = 'configuration'
         try {
           if (env.HYPERDRIVE?.connectionString) {
             ;(globalThis as { __HYPERDRIVE_CS?: string }).__HYPERDRIVE_CS
@@ -208,7 +212,12 @@ export function createInboundEmailWorker(
           }
           if (env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL
           const processor = env.HYPERDRIVE?.connectionString || env.DATABASE_URL
-            ? createCrmInboundEmailProcessor({ transaction })
+            ? createCrmInboundEmailProcessor({
+                transaction,
+                onStage: (stage) => {
+                  processingStage = `canonical_${stage}`
+                }
+              })
             : undefined
           const result = await processCrmInboundQueueJob(message.body, env, {
             parse,
@@ -218,7 +227,10 @@ export function createInboundEmailWorker(
               ...input,
               secrets: parseCrmEmailReplySecrets(env.CRM_EMAIL_REPLY_SECRETS)
             }, { queryOne }),
-            createIdempotencyKey
+            createIdempotencyKey,
+            onStage: (stage) => {
+              processingStage = stage
+            }
           })
           if (result.status === 'suppressed') {
             console.info('CRM email inbound suppressed', {
@@ -227,7 +239,9 @@ export function createInboundEmailWorker(
           }
           message.ack()
         } catch {
-          console.error('CRM email inbound Queue processing failed')
+          console.error('CRM email inbound Queue processing failed', {
+            stage: processingStage
+          })
           message.retry({ delaySeconds: 30 })
         }
       }

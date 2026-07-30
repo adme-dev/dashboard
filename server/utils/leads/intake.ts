@@ -39,6 +39,16 @@ type InsertLead = (
   emailEvidenceGuard?: EmailEvidenceGuard
 ) => Promise<string | null | GuardedLeadInsertResult>
 
+export type LeadIntakeStage
+  = | 'insert_lead'
+    | 'complete_intent_match'
+    | 'enrich_identity'
+    | 'enrich_product_interest'
+    | 'enrich_persona_identity'
+    | 'enrich_signal_ledger'
+    | 'append_outbox'
+    | 'append_browser_confirmation'
+
 export interface LeadIntakeServiceDeps {
   transaction: Transaction
   insertLead: InsertLead
@@ -50,6 +60,7 @@ export interface LeadIntakeServiceDeps {
   captureProductInterest: typeof defaultCaptureProductInterest
   recordPersonaEvidence: typeof defaultRecordPersonaEvidence
   connectLeadSignalContext?: typeof defaultConnectLeadSignalContext
+  onStage?(stage: LeadIntakeStage): void
 }
 
 export interface IngestLeadInput {
@@ -162,11 +173,16 @@ async function sourceEventId(lead: InsertLeadInput): Promise<string> {
 }
 
 export function createLeadIntakeService(
-  deps: LeadIntakeServiceDeps = defaultDeps
+  overrides: Partial<LeadIntakeServiceDeps> = {}
 ) {
+  const deps: LeadIntakeServiceDeps = {
+    ...defaultDeps,
+    ...overrides
+  }
   return {
     async ingest(input: IngestLeadInput): Promise<IngestLeadResult> {
       return deps.transaction(async (db) => {
+        deps.onStage?.('insert_lead')
         const inserted = input.emailEvidenceGuard
           ? await deps.insertLead(input.lead, db, input.emailEvidenceGuard)
           : await deps.insertLead(input.lead, db)
@@ -191,6 +207,7 @@ export function createLeadIntakeService(
         }
 
         if (input.reconciliation) {
+          deps.onStage?.('complete_intent_match')
           await deps.completeIntentMatch(db, {
             ...input.reconciliation,
             leadId
@@ -231,6 +248,7 @@ export function createLeadIntakeService(
           })]
         ] as const) {
           try {
+            deps.onStage?.(`enrich_${enrichment}`)
             await operation()
           } catch (error) {
             console.warn({
@@ -243,6 +261,7 @@ export function createLeadIntakeService(
           }
         }
 
+        deps.onStage?.('append_outbox')
         const outbox = await deps.appendOutbox(db, {
           clientId: input.lead.client_id,
           eventName: 'lead_created',
@@ -255,6 +274,7 @@ export function createLeadIntakeService(
           attribution: canonicalAttribution(input.lead)
         })
 
+        deps.onStage?.('append_browser_confirmation')
         const browserConfirmationStored = await deps.appendBrowserConfirmation(db, {
           clientId: input.lead.client_id,
           leadId,

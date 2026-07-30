@@ -11,6 +11,12 @@ interface PagesConfig {
 
 interface WorkerConfig {
   compatibility_flags?: string[]
+  observability?: {
+    enabled?: boolean
+    logs?: {
+      invocation_logs?: boolean
+    }
+  }
   vars?: Record<string, string>
   r2_buckets?: Array<{ binding: string, bucket_name: string }>
   queues?: {
@@ -40,7 +46,9 @@ describe('CRM inbound email production wiring', () => {
 
     expect(config.vars?.API_URL).toBe('https://app.xeroflow.io')
     expect(config.compatibility_flags).toContain('global_fetch_strictly_public')
-    expect(config.vars?.CRM_EMAIL_INBOUND_ENABLED).toBe('false')
+    expect(config.vars?.CRM_EMAIL_INBOUND_ENABLED).toBe('true')
+    expect(config.observability?.enabled).toBe(true)
+    expect(config.observability?.logs?.invocation_logs).toBe(false)
     expect(config.vars?.CRM_EMAIL_RETENTION_DAYS).toBe('30')
     expect(config.r2_buckets).toContainEqual({
       binding: 'CRM_EMAIL_BUCKET',

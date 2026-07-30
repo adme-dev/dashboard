@@ -468,6 +468,10 @@ describe('CRM email inbound Queue processor', () => {
     expect(first.retry).not.toHaveBeenCalled()
     expect(second.ack).not.toHaveBeenCalled()
     expect(second.retry).toHaveBeenCalledWith({ delaySeconds: 30 })
+    expect(error).toHaveBeenCalledWith(
+      'CRM email inbound Queue processing failed',
+      { stage: 'canonical_process' }
+    )
     expect(JSON.stringify(error.mock.calls)).not.toContain(
       'customer@example.com'
     )

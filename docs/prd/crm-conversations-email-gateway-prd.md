@@ -3,7 +3,7 @@
 Status: Approved for incremental implementation
 Owner: XeroFlow Agency
 Created: 2026-07-30
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 Implementation ledger: This document
 
 ## 1. Objective
@@ -717,3 +717,46 @@ pnpm deploy:production
   Email Worker should enqueue a provider-neutral retained-artifact job
   directly; a dedicated Queue consumer should verify the signed route and
   perform canonical tenant-scoped Neon writes through Hyperdrive.
+
+### 2026-07-31
+
+- PR #338 replaced the failed Worker-to-Pages HTTP handoff with a retained-MIME
+  Queue job and a dedicated Hyperdrive-backed consumer. The production Queue,
+  DLQ, private R2 bucket, lifecycle policy, and Hyperdrive binding are
+  provisioned.
+- Email Routing activity and Queue metrics proved that signed `lead+` messages
+  reached the CRM Queue. Read-only DLQ inspection confirmed retained jobs and
+  R2 objects were intact, which isolated the failure to canonical processing
+  rather than routing, MIME retention, or Queue delivery.
+- Privacy-safe stage instrumentation narrowed the live rollback to
+  `canonical_ingest_lead_append_browser_confirmation` without logging any
+  recipient, token, subject, body, object key, or exception message.
+- Automatic Worker invocation logs remain disabled because Email invocation
+  metadata contains the full recipient, including the signed route token.
+  Custom bounded stage logs remain enabled.
+- Root cause: `createLeadIntakeService()` accepted a dependency object as the
+  entire adapter set. The Queue consumer intentionally overrode only its
+  transaction, lead insert, and outbox functions, so default enrichment
+  adapters were undefined. Enrichment failures were caught, but the undefined
+  browser-confirmation adapter threw and rolled back the transaction.
+- The intake factory now accepts partial overrides and merges them over the
+  complete default adapter set. A regression test exercises the same partial
+  override used by the Queue consumer; processor and Queue tests also assert
+  privacy-safe failure stages.
+- A fresh production message, sent after a 60-second Email Routing propagation
+  window, completed without retry and created the expected lead, promoted CRM
+  context, conversation, canonical message, received event, compatibility
+  communication, and route-use timestamp. The smoke route was revoked and all
+  temporary feature/routing gates were returned to false after proof.
+- The exact synthetic message, communication, conversation, lead, opportunity,
+  and newly-created person were then soft-deleted so the proof does not pollute
+  the client's live CRM views. The revoked route and retained operational
+  evidence remain available for audit.
+- South Morang already has three enabled permanent agency-managed inbound lead
+  email endpoints, including one used within the preceding day. No duplicate
+  hidden address was created. Client-visible route issuance and lifecycle
+  management remain tracked under E5 and E6.
+- Email Routing configuration is eventually propagated. The activation runbook
+  now requires a 60-second wait after enabling base rules/subaddressing before
+  sending a proof message; an earlier three-second test matched the old
+  catch-all configuration.
