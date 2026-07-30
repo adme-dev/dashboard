@@ -702,3 +702,18 @@ pnpm deploy:production
   and abandons incomplete multipart uploads after one day.
 - The inbound runbook is recorded at
   `docs/runbooks/crm-email-inbound.md`. Outbound sending remains disabled.
+- Live activation proved Email Routing, signed subaddress matching, MIME
+  parsing, classification, attachment validation, private R2 persistence, and
+  cleanup. It also exposed an architectural blocker: Email Routing Workers
+  cannot reliably hand off to this Pages runtime with global `fetch()`.
+  Default Pages, custom-domain, cross-zone, and public-fetch compatibility
+  variants all failed at the same controlled `handoff_pages` stage.
+- Activation was rolled back fail-closed: CRM routing rules are disabled,
+  subaddressing is off, the smoke route is revoked, both feature flags are
+  false, Queue/DLQ backlogs and R2 artifacts are empty, and no smoke lead,
+  conversation, or CRM message was retained. The existing universal
+  `email-lead-intake` catch-all and board secret remain unchanged.
+- Recommended next architecture: remove Worker-to-Pages HTTP entirely. The
+  Email Worker should enqueue a provider-neutral retained-artifact job
+  directly; a dedicated Queue consumer should verify the signed route and
+  perform canonical tenant-scoped Neon writes through Hyperdrive.

@@ -140,10 +140,11 @@ service = "agency-workflows"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 EMAIL_FROM = "notification@adme.net.au"
-# Inbound-only CRM email activation. Secrets remain managed by Cloudflare:
+# Inbound-only CRM email wiring remains fail-closed during the Queue-consumer
+# redesign. Secrets remain managed by Cloudflare:
 # CRM_EMAIL_WORKER_SECRET authenticates the standalone email Worker, while
 # CRM_EMAIL_REPLY_SECRETS is the versioned JSON signing-secret map.
-CRM_EMAIL_CONVERSATIONS_ENABLED = "true"
+CRM_EMAIL_CONVERSATIONS_ENABLED = "false"
 # Provider audience writes remain additionally gated by client mapping,
 # current marketing consent, minimum cohort size and two-person approval.
 PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED = "true"

@@ -26,7 +26,7 @@ describe('CRM inbound email production wiring', () => {
   it('enables the Pages feature gate and dedicated queue producer', () => {
     const config = parse(readFileSync('wrangler.toml', 'utf8')) as PagesConfig
 
-    expect(config.vars?.CRM_EMAIL_CONVERSATIONS_ENABLED).toBe('true')
+    expect(config.vars?.CRM_EMAIL_CONVERSATIONS_ENABLED).toBe('false')
     expect(config.queues?.producers).toContainEqual({
       binding: 'CRM_EMAIL_INBOUND_QUEUE',
       queue: 'crm-email-inbound-queue'
@@ -40,7 +40,7 @@ describe('CRM inbound email production wiring', () => {
 
     expect(config.vars?.API_URL).toBe('https://app.xeroflow.io')
     expect(config.compatibility_flags).toContain('global_fetch_strictly_public')
-    expect(config.vars?.CRM_EMAIL_INBOUND_ENABLED).toBe('true')
+    expect(config.vars?.CRM_EMAIL_INBOUND_ENABLED).toBe('false')
     expect(config.vars?.CRM_EMAIL_RETENTION_DAYS).toBe('30')
     expect(config.r2_buckets).toContainEqual({
       binding: 'CRM_EMAIL_BUCKET',
