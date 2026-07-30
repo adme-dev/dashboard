@@ -205,7 +205,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Automatic Touchpoint Capture',
-        content: 'Logged emails, notes, stage changes, and completed tasks all post to the record\'s activity timeline automatically. Reps spend their time selling rather than maintaining the CRM, and the history stays trustworthy because it is captured as work happens, not reconstructed afterwards.'
+        content: 'Logged emails, notes, stage changes, and completed tasks all post to the record\'s activity timeline automatically. Dedicated inbound email securely captures each client\'s CRM conversation, so the history stays trustworthy because it is captured as work happens, not reconstructed afterwards.'
+      },
+      {
+        title: 'A Secure CRM Inbox for Every Client',
+        content: 'Agency operators and authorised client CRM administrators can create, rotate, or revoke a client-scoped CRM inbox address from the existing CRM surfaces. The address is shown once when created or rotated, then XeroFlow retains only the data needed to route mail safely; it is never available again from a list or status screen.'
       }
     ]
   },
@@ -925,11 +929,11 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'One inbox for Google Ads, Meta, dedicated inbound email, Zapier/Make/n8n, CSV imports, and manual entry. Per-form rules fan leads out to Slack, email, your CRM, Sheets, and the client portal.',
+    description: 'One inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Dedicated inbound email securely captures each client\'s CRM conversation, with the address shown only once at creation or rotation.',
     details: [
       {
         title: 'Six ways in, one inbox',
-        content: 'Google Ads native webhooks (per-client URL + key, paste into the lead form\'s webhook integration). Meta lead form CRM integration (live verify endpoint; after Meta approves leads_retrieval, each account must reconnect for the expanded scope before ingestion is verified). Dedicated client-scoped inbound email addresses for marketplaces and websites, with deterministic ADF/provider parsing and optional privacy-approved structured AI fallback. A generic webhook endpoint for Zapier, Make, n8n, partner CRMs, embedded forms, and mobile apps. CSV import for Meta Lead Center exports with column auto-mapping. Manual entry for walk-ins and phone calls. Every source enters the same canonical routing and CRM pipeline; inbound email does not reply to customers.'
+        content: 'Google Ads native webhooks (per-client URL + key, paste into the lead form\'s webhook integration). Meta lead form CRM integration (live verify endpoint; after Meta approves leads_retrieval, each account must reconnect for the expanded scope before ingestion is verified). Dedicated inbound email securely captures each client\'s CRM conversation for marketplaces and websites, with deterministic ADF/provider parsing and optional privacy-approved structured AI fallback. The CRM inbox address is shown once when created or rotated, then cannot be retrieved later. A generic webhook endpoint for Zapier, Make, n8n, partner CRMs, embedded forms, and mobile apps. CSV import for Meta Lead Center exports with column auto-mapping. Manual entry for walk-ins and phone calls. Every source enters the same canonical routing and CRM pipeline; inbound email does not reply to customers.'
       },
       {
         title: 'Real-time, not polled',

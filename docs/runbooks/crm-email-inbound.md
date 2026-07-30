@@ -46,8 +46,9 @@ failures without logging recipients, tokens, content, or exception text.
 
 South Morang already has three enabled permanent lead-email endpoints in the
 agency Leads screen. Do not create a duplicate hidden route. The Queue-backed
-conversation path should be enabled only after the repaired Worker is deployed;
-client-visible route issuance remains part of the portal onboarding work.
+conversation path should be enabled only after the repaired Worker is deployed.
+Agency and portal CRM inbox onboarding are available through the guarded route
+management APIs described below.
 
 ## Required secrets
 
@@ -56,32 +57,123 @@ Configure these without writing values to source control or command history:
 - Pages and `email-to-board-worker`: identical `CRM_EMAIL_WORKER_SECRET`
 - Pages and `email-to-board-worker`: identical `CRM_EMAIL_REPLY_SECRETS`, a
   JSON object mapping positive integer versions to at least 32 bytes of secret
-  material, for example version `1`
+  material
+- Pages: `CRM_EMAIL_REPLY_CURRENT_VERSION`, a positive integer that already
+  exists in `CRM_EMAIL_REPLY_SECRETS`; this explicit value is the signing
+  version for new CRM inbox addresses and must never be inferred from the
+  highest keyring version. Worker verifies each signed route's embedded version
+  against its keyring and does not consume this issuance setting.
+- Pages: `CRM_EMAIL_LEAD_ROUTE_DOMAIN`, the server-owned recipient domain for
+  newly issued CRM inbox addresses
 
 Do not replace or remove the Worker's existing `INTERNAL_API_KEY`; board email
 ingestion depends on it.
 
+## CRM inbox lifecycle
+
+Use the **CRM inbox** panel in Agency Leads → Email addresses for agency work,
+or Portal CRM → Data Sources for a client-managed setup. The portal lets all
+CRM viewers read safe status and guidance, but only the primary contact or a
+user with `canAdminCrm` can create, rotate, or revoke. These actions use the
+same tenant-scoped route-management service; portal requests derive client
+scope from the authenticated session.
+
+### Create and copy once
+
+1. Confirm CRM email conversations are enabled for the client and no active
+   CRM inbox is already present.
+2. Create the route with a meaningful label. The service signs it with the
+   explicit current version, stores only a route-token hash, and records a
+   safe lifecycle audit event.
+3. Copy the complete address immediately from the creation result. It is shown
+   once and cannot be retrieved later from the route list, audits, logs, or
+   database views.
+4. Place the address only in the approved website, marketplace, or forwarding
+   integration. Never put it in tickets, support chat, screenshots, or
+   operational logs.
+
+### Rotate or revoke
+
+- **Rotate:** confirm every forwarding source can be changed now. Rotation
+  creates the replacement, revokes the old route in the same transaction, and
+  shows the replacement address once. There is no grace period: the old
+  address stops accepting mail as soon as rotation commits.
+- **Revoke:** use the route's revoke control when the address is no longer
+  needed or may have been exposed. Revocation is a soft lifecycle change with
+  a safe audit record; it does not reveal an address, route token, hash, or
+  signing version.
+
+## Signing-key rollover
+
+1. Generate and configure a new secret under a new positive key version in
+   `CRM_EMAIL_REPLY_SECRETS` on both Pages and `email-to-board-worker`; retain
+   the existing versions.
+2. Deploy and verify both runtimes can read the same expanded keyring.
+3. Set `CRM_EMAIL_REPLY_CURRENT_VERSION` on Pages to the new existing key
+   version and deploy Pages again. The Worker continues to verify the version
+   embedded in each signed route against the expanded keyring.
+4. Create or rotate routes so new addresses use the new explicit version.
+5. Keep prior versions available until every route signed with each prior
+   version has been revoked or retired and the inbound Queue has drained. Only
+   then remove those versions from both keyrings.
+
+Never remove an old version before retiring its routes and draining the inbound
+Queue: it would turn their delivery into a configuration failure instead of an
+auditable revocation.
+
 ## Activation order
 
-1. Verify migration 288 and confirm there are no unintended active routes.
+1. Verify migration 288, then apply and verify the route-management migration
+   before deploying:
+   `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/326_crm_email_route_management.sql`.
+   Confirm the migration is present and there are no unintended active routes.
 2. Verify the Queue, DLQ, private R2 bucket, Hyperdrive binding, and lifecycle
    rules.
 3. Configure matching versioned reply secrets on Pages and the Worker while
-   both feature gates remain disabled.
+   both live feature gates remain disabled. The checked-in Worker configuration
+   sets `CRM_EMAIL_INBOUND_ENABLED="true"`, so do not deploy that Worker yet:
+   its deployment is the explicit inbound-activation step below.
 4. Merge and deploy Pages using `pnpm deploy:production`.
-5. Deploy the standalone Worker using its checked-in Wrangler configuration.
-6. Verify the Worker consumer, Hyperdrive, Queue, and R2 bindings.
-7. Create one 24-hour `lead_inbox` smoke route for an allowlisted client.
-8. Enable Email Routing subaddressing and the `lead@xeroflow.io` and
+5. Set `CRM_EMAIL_CONVERSATIONS_ENABLED=true` on Pages and redeploy Pages.
+   Confirm list access remains safe before provisioning any route.
+6. Deploy the standalone Worker using its checked-in Wrangler configuration.
+   This deployment changes the live Worker gate to
+   `CRM_EMAIL_INBOUND_ENABLED=true`; do not run it before steps 1–5 pass.
+7. Verify the Worker consumer, Hyperdrive, Queue, R2 bindings, and bounded
+   custom logs are healthy before accepting mail.
+8. Create one clearly labelled `lead_inbox` smoke route for an allowlisted
+   client. It does not expire automatically; explicitly revoke it after the
+   verification and approved synthetic-record cleanup are complete.
+9. Enable Email Routing subaddressing and the `lead@xeroflow.io` and
    `reply@xeroflow.io` base rules assigned to `email-to-board-worker`. Do not
    alter the catch-all.
-9. Wait at least 60 seconds for Email Routing configuration propagation. A
+10. Wait at least 60 seconds for Email Routing configuration propagation. A
    message sent immediately after enabling can still match the previous
    catch-all configuration.
-10. Send a controlled message, then verify the route timestamp, canonical CRM
+11. Send a controlled message, then verify the route timestamp, canonical CRM
    message, compatibility communication, Queue metrics, and R2 cleanup policy.
-11. Revoke the smoke route and disable its base routing rule after
+12. Revoke the smoke route and disable its base routing rule after
     proof is captured.
+
+## Production smoke for route onboarding
+
+Run this only for an allowlisted test client after the activation prerequisites
+above are healthy:
+
+1. Create a labelled CRM inbox route and copy its address from the one-time
+   result. Confirm a subsequent list/status request exposes no address,
+   token, hash, secret, or signing version.
+2. Send one controlled, non-sensitive test message after the 60-second routing
+   propagation window.
+3. Verify exactly one tenant-scoped lead/conversation/message path and route
+   last-used timestamp, plus healthy Queue/DLQ metrics. Inspect only safe
+   lifecycle metadata and bounded stage logs.
+4. Revoke the smoke route, verify a new route can be created if needed, and
+   soft-delete the synthetic CRM records under the approved cleanup procedure.
+   The smoke route does not expire automatically.
+
+Do not record the issued address, message content, recipient, route token,
+route hash, signing secret, or R2 key in the smoke evidence.
 
 ## Safe diagnostics
 
@@ -97,16 +189,16 @@ ingestion depends on it.
 
 ## Rollback
 
-1. Disable the literal CRM Email Routing rule. This stops new delivery without
+1. Immediately set `CRM_EMAIL_CONVERSATIONS_ENABLED` to `false` and redeploy
+   Pages; set `CRM_EMAIL_INBOUND_ENABLED` to `false` and redeploy the
+   standalone Worker if a broader stop is required.
+2. Disable the literal CRM Email Routing rule. This stops new delivery without
    affecting XeroFlow's existing catch-all or board routes.
-2. Set `CRM_EMAIL_INBOUND_ENABLED` to `false` and redeploy the standalone
-   Worker if a broader stop is required.
-3. Set `CRM_EMAIL_CONVERSATIONS_ENABLED` to `false` and redeploy Pages to stop
-   enqueueing.
+3. Revoke the affected CRM inbox routes through the management service (or,
+   when the service is unavailable, perform the approved audited soft revoke).
+   Do not leave a bearer address active while investigating exposure.
 4. Leave the Queue, DLQ, database migration, and private R2 bucket in place for
    incident analysis. Their existence does not enable traffic.
-5. Revoke affected database routes by setting `is_active = FALSE` and
-   `revoked_at = NOW()`.
 
 Never purge the Queue, DLQ, or R2 evidence during an incident unless the
 incident owner explicitly approves destructive cleanup.

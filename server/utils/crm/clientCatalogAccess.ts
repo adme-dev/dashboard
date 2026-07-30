@@ -7,7 +7,7 @@ export async function requireClientCatalogAccess(event: H3Event, manage = false)
   if (client.leadCaptureMode !== 'full_crm') {
     throw createError({ statusCode: 403, statusMessage: 'Full CRM is not enabled for this client' })
   }
-  if (manage && !client.isPrimaryContact && !client.permissions.canInviteUsers) {
+  if (manage && !client.isPrimaryContact && !client.permissions.canAdminCrm) {
     throw createError({ statusCode: 403, statusMessage: 'Client administrator access is required' })
   }
   return client

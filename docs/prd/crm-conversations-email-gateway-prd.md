@@ -267,6 +267,8 @@ Feature flags default off:
 Required production configuration will include:
 
 - a versioned HMAC reply-routing secret,
+- an explicit `CRM_EMAIL_REPLY_CURRENT_VERSION` that is present in the
+  versioned keyring and is the only version used for new inbound addresses;
 - Worker-to-Nitro authentication,
 - a Cloudflare Queue binding,
 - a `send_email` binding,
@@ -274,6 +276,24 @@ Required production configuration will include:
 - per-environment sending and reply domains.
 
 No secret is committed or returned by a read endpoint.
+
+### 7.1 CRM inbound-route issuance and rollover
+
+Agency CRM operators and authorised portal CRM administrators can create,
+rotate, and revoke a client `lead_inbox` route. The complete address is a
+bearer capability: it is returned only by the create or rotate response and is
+never stored or returned by list, status, audit, or read endpoints. Neon keeps
+only the route-token hash and safe lifecycle metadata.
+
+New routes use the explicit `CRM_EMAIL_REPLY_CURRENT_VERSION`; the service
+fails closed if that positive integer is absent from
+`CRM_EMAIL_REPLY_SECRETS` or the server-owned recipient domain is unsafe. It
+must never select the highest keyring version implicitly. To roll keys, add a
+new version to the shared Pages/Worker keyring, deploy it to both runtimes,
+make that version current, then issue or rotate routes. Keep the old version
+available until every route signed with it has been revoked or retired and the
+inbound Queue has drained; only then remove it from both keyrings. This keeps
+in-flight mail signed with the prior version verifiable during rollover.
 
 ## 8. User experience
 
@@ -466,8 +486,13 @@ pnpm deploy:production
 - [ ] E3. Add threaded message cards, delivery badges, failure details, and
       reply actions.
 - [ ] E4. Add attachment scan/download UI.
-- [ ] E5. Add agency configuration and health screens.
-- [ ] E6. Add client portal permissions and onboarding guidance.
+- [x] E5. Add agency configuration and health screens. Agency lead Data
+      Sources exposes a CRM inbox panel with safe lifecycle status and
+      create/rotate/revoke controls; the address is shown only in the mutation
+      result.
+- [x] E6. Add client portal permissions and onboarding guidance. The portal
+      CRM Data Sources panel shows safe status to viewers and grants lifecycle
+      changes only to the primary contact or `canAdminCrm` users.
 - [ ] E7. Update feature and marketing pages when the feature becomes
       customer-visible.
 
@@ -530,7 +555,7 @@ pnpm deploy:production
   reported failures are outside the files changed by this slice and include
   existing component harness, role-permission, Groq mock, social-spend, and
   deployment-contract failures. No CRM email foundation test failed.
-- Versioned reply tokens now use a 192-bit opaque route key, domain-bound
+- Versioned reply tokens now use a 128-bit opaque route key, domain-bound
   HMAC-SHA256, a 256-bit minimum secret, constant-time signature comparison,
   and a SHA-256 lookup hash. No tenant or CRM record identifier appears in the
   token or verification result.
