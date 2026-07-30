@@ -339,8 +339,7 @@ describe('email lead intake Worker', () => {
       expect(serializedLog).toContain('retryable_error')
       expect(serializedLog).not.toContain(TOKEN)
       expect(serializedLog).not.toContain(`carsales-${TOKEN}`)
-    }
-    finally {
+    } finally {
       vi.unstubAllGlobals()
     }
   })
@@ -358,8 +357,28 @@ describe('email lead intake Worker', () => {
       expect(incoming.pulls()).toBe(0)
       expect(incoming.rejected()).toBeNull()
       expect(String(log.mock.calls[0]?.[0])).toContain('retryable_error')
+      expect(String(log.mock.calls[0]?.[0])).toContain('"errorClass":"internal_upstream_5xx"')
+    } finally {
+      vi.unstubAllGlobals()
     }
-    finally {
+  })
+
+  it('reports a bounded network failure class without logging the upstream error', async () => {
+    const incoming = message()
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('private upstream detail')
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.stubGlobal('fetch', fetchImpl)
+    try {
+      await expect(worker.email(incoming.value, environment(), {} as ExecutionContext)).rejects.toMatchObject({
+        name: 'RetryableEmailIntakeError'
+      })
+      const serializedLog = String(log.mock.calls[0]?.[0])
+      expect(serializedLog).toContain('"errorClass":"internal_upstream_network"')
+      expect(serializedLog).not.toContain('private upstream detail')
+      expect(serializedLog).not.toContain(TOKEN)
+    } finally {
       vi.unstubAllGlobals()
     }
   })
