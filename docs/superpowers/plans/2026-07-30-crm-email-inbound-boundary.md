@@ -84,15 +84,15 @@ consume that job to match the sender and write the canonical CRM message.
 - Produces:
   `enqueueCrmInboundEmail(event, job): Promise<void>`
 
-- [ ] Write failing tests proving the same route hash/provider message ID
+- [x] Write failing tests proving the same route hash/provider message ID
       produces the same opaque key, different inputs produce different keys,
       the dedicated binding is required, and the exact versioned job is sent
       with JSON content type.
-- [ ] Run the test and observe the missing-module failure.
-- [ ] Implement a SHA-256-based idempotency key and strict dedicated Queue
+- [x] Run the test and observe the missing-module failure.
+- [x] Implement a SHA-256-based idempotency key and strict dedicated Queue
       lookup from `event.context.cloudflare.env.CRM_EMAIL_INBOUND_QUEUE`.
-- [ ] Run focused tests and ESLint.
-- [ ] Re-read the two files and commit:
+- [x] Run focused tests and ESLint.
+- [x] Re-read the two files and commit:
       `feat(crm-email): enqueue deterministic inbound jobs`.
 
 ### Task 3: Authenticated internal endpoint
