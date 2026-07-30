@@ -1,7 +1,8 @@
 import { Readable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { createEvent, type EventHandler } from 'h3'
+import { createEvent, type EventHandler, type H3Event } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readBoundedEmailInternalJson } from '../../../../server/utils/leads/emailInternalBody'
 
 const mocks = vi.hoisted(() => ({
   verify: vi.fn(async () => {}),
@@ -70,6 +71,35 @@ function jsonLargerThan(bytes: number): string {
 
 describe('signed email internal route body limits', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('reads the Cloudflare Web request stream without using the Node async iterator', async () => {
+    const rawBody = JSON.stringify({ recipientToken: '0123456789' })
+    const bytes = new TextEncoder().encode(rawBody)
+    const nodeRequest = {
+      headers: { 'content-type': 'application/json' },
+      [Symbol.asyncIterator]() {
+        throw new Error('Readable.asyncIterator is not implemented yet!')
+      }
+    }
+    const event = {
+      method: 'POST',
+      node: { req: nodeRequest },
+      web: {
+        request: {
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(bytes.subarray(0, 8))
+              controller.enqueue(bytes.subarray(8))
+              controller.close()
+            }
+          })
+        }
+      }
+    } as unknown as H3Event
+
+    await expect(readBoundedEmailInternalJson(event, 1_024, 'invalid_email_policy_request'))
+      .resolves.toBe(rawBody)
+  })
 
   it.each([
     ['policy', policyHandler, 1_024],

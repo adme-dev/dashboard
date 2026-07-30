@@ -1,4 +1,4 @@
-import { createError, getHeader, type H3Event } from 'h3'
+import { createError, getHeader, getRequestWebStream, type H3Event } from 'h3'
 
 export const EMAIL_INTERNAL_JSON_LIMITS = {
   policy: 1_024,
@@ -38,22 +38,26 @@ export async function readBoundedEmailInternalJson(
     fail(413, statusMessage)
   }
 
-  const request = event.node.req as AsyncIterable<unknown>
-  if (
-    !request
-    || typeof request[Symbol.asyncIterator] !== 'function'
-  ) {
-    fail(400, statusMessage)
-  }
-
+  const stream = getRequestWebStream(event)
+  if (!stream) fail(400, statusMessage)
+  const reader = stream.getReader()
   const chunks: Uint8Array[] = []
   let totalBytes = 0
-  for await (const value of request) {
-    const chunk = bytesOf(value)
-    if (!chunk) fail(400, statusMessage)
-    totalBytes += chunk.byteLength
-    if (totalBytes > maxBytes) fail(413, statusMessage)
-    chunks.push(chunk)
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const chunk = bytesOf(value)
+      if (!chunk) fail(400, statusMessage)
+      totalBytes += chunk.byteLength
+      if (totalBytes > maxBytes) {
+        await reader.cancel('Email internal request body exceeds limit')
+        fail(413, statusMessage)
+      }
+      chunks.push(chunk)
+    }
+  } finally {
+    reader.releaseLock()
   }
 
   const body = new Uint8Array(totalBytes)
