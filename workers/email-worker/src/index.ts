@@ -1,56 +1,99 @@
 import PostalMime from 'postal-mime'
+import { deliverBoardEmail } from './boardAdapter'
+import { classifyInboundEmailRoute } from './routing'
+import {
+  resolveInboundEmailLimits,
+  validateInboundAttachments,
+  validateInboundEmailSize
+} from './safety'
+import type {
+  FetchLike,
+  InboundEmailMessage,
+  InboundEmailWorkerEnv,
+  ParsedInboundEmail
+} from './contracts'
 
-interface Env {
-  API_URL: string
-  INTERNAL_API_KEY: string
+interface InboundEmailWorkerDependencies {
+  fetch?: FetchLike
+  parse?: (raw: ArrayBuffer) => Promise<ParsedInboundEmail>
 }
 
-export default {
-  async email(message: ForwardableEmailMessage, env: Env) {
-    try {
-      const to = message.to
-      // Extract token from address: board-{token}@mail.domain.com
-      const localPart = to.split('@')[0]
-      if (!localPart.startsWith('board-')) {
-        message.setReject('Invalid board address')
+async function parseWithPostalMime(raw: ArrayBuffer): Promise<ParsedInboundEmail> {
+  const parser = new PostalMime()
+  const email = await parser.parse(raw)
+
+  return {
+    subject: email.subject ?? null,
+    text: email.text ?? null,
+    html: email.html ?? null,
+    attachments: (email.attachments ?? []).map(attachment => ({
+      filename: attachment.filename ?? null,
+      mimeType: attachment.mimeType,
+      size: attachment.content?.byteLength ?? 0
+    }))
+  }
+}
+
+export function createInboundEmailWorker(
+  dependencies: InboundEmailWorkerDependencies = {}
+) {
+  const fetchImpl = dependencies.fetch ?? fetch
+  const parse = dependencies.parse ?? parseWithPostalMime
+
+  return {
+    async email(
+      message: InboundEmailMessage,
+      env: InboundEmailWorkerEnv
+    ): Promise<void> {
+      const route = classifyInboundEmailRoute(message.to)
+      if (route.kind === 'invalid') {
+        message.setReject('Invalid email route')
         return
       }
-      const token = localPart.replace('board-', '')
-
-      // Parse email content
-      const rawEmail = await new Response(message.raw).arrayBuffer()
-      const parser = new PostalMime()
-      const email = await parser.parse(rawEmail)
-
-      // Call internal API to create task from email
-      const response = await fetch(`${env.API_URL}/api/internal/email-to-board`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.INTERNAL_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          boardToken: token,
-          from: message.from,
-          subject: email.subject || '(No Subject)',
-          textBody: email.text || '',
-          htmlBody: email.html || '',
-          attachments: (email.attachments || []).map(a => ({
-            filename: a.filename,
-            contentType: a.mimeType,
-            size: a.content?.byteLength || 0
-          }))
-        })
-      })
-
-      if (!response.ok) {
-        const error = await response.text()
-        console.error('API error:', error)
-        message.setReject(`Failed to process email: ${response.status}`)
+      if (route.kind !== 'board') {
+        message.setReject('Email route not enabled')
+        return
       }
-    } catch (error) {
-      console.error('Email worker error:', error)
-      message.setReject('Internal error processing email')
+
+      const limits = resolveInboundEmailLimits(env.MAX_INBOUND_EMAIL_BYTES)
+      const sizeSafety = validateInboundEmailSize(message.rawSize, limits)
+      if (!sizeSafety.safe) {
+        message.setReject('Email exceeds size limit')
+        return
+      }
+
+      try {
+        const raw = await new Response(message.raw).arrayBuffer()
+        const email = await parse(raw)
+        const attachmentSafety = validateInboundAttachments(
+          email.attachments,
+          limits
+        )
+        if (!attachmentSafety.safe) {
+          message.setReject('Unsafe email attachments')
+          return
+        }
+
+        const result = await deliverBoardEmail({
+          token: route.token,
+          from: message.from,
+          email,
+          apiUrl: env.API_URL,
+          internalApiKey: env.INTERNAL_API_KEY
+        }, { fetch: fetchImpl })
+
+        if (!result.accepted) {
+          console.error('Email-to-board request failed', {
+            status: result.status
+          })
+          message.setReject(`Failed to process email: ${result.status}`)
+        }
+      } catch {
+        console.error('Email worker processing failed')
+        message.setReject('Internal error processing email')
+      }
     }
   }
-} satisfies ExportedHandler<Env>
+}
+
+export default createInboundEmailWorker() satisfies ExportedHandler<InboundEmailWorkerEnv>

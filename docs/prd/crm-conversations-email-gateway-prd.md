@@ -406,7 +406,7 @@ pnpm deploy:production
 
 - [ ] B1. Refactor the existing Email Routing Worker into board, lead, and CRM
       reply adapters without changing existing board ingestion.
-- [ ] B2. Reject invalid routes and enforce MIME/attachment size limits.
+- [x] B2. Reject invalid routes and enforce MIME/attachment size limits.
 - [ ] B3. Store raw MIME and attachment objects in R2 with retention metadata.
 - [ ] B4. Add the authenticated inbound boundary and idempotent Queue workflow.
 - [ ] B5. Match inbound senders to CRM people and promote lead context safely.
@@ -479,8 +479,9 @@ pnpm deploy:production
 
 - Cloudflare SMTP, Email Routing, Email Sending, event subscription, limits,
   threading-header, logging, and subdomain guidance reviewed.
-- Existing XeroFlow lead email adapter, CRM communication log, contact
-  preferences, Resend marketing boundary, and Email Worker inspected.
+- Existing email-to-board Worker, CRM communication log, contact preferences,
+  Resend marketing boundary, and lead-ingestion paths inspected. No deployed
+  lead-email adapter existed; that remains part of Phase B.
 - Architecture approved: Email Routing inbound, Workers binding outbound,
   XeroFlow-owned tenant compatibility gateway, Neon canonical store.
 - Isolated implementation branch created from `b932c302`.
@@ -549,3 +550,23 @@ pnpm deploy:production
   metadata contained only canonical type, message ID, and conversation ID.
   Post-rollback counts confirmed zero retained conversations, messages, or
   communications.
+- Current Cloudflare Email Worker API, inbound limits, and subaddressing
+  documentation were rechecked before starting Phase B. Cloudflare exposes
+  `rawSize` before stream consumption and rejects inbound messages above
+  25 MiB; XeroFlow now applies a lower 10 MiB default ceiling before reading
+  MIME, with a hard 25 MiB configuration cap.
+- B2 is complete. Pure guards recognise existing `board-` routes and future
+  signed `lead+` / `reply+` routes, reject malformed or disabled routes before
+  reading the stream, and enforce 10-attachment, 5 MiB-per-file, and
+  8 MiB-combined parsed attachment limits.
+- B1 is partially complete only: the board delivery path was extracted without
+  changing its Nitro request contract, while lead and CRM reply routes remain
+  deliberately disabled. B1 stays unchecked until B4 provides the
+  authenticated, idempotent inbound boundary and both adapters reach it.
+- Route/safety and board-adapter checkpoints were committed as `f11d0bec` and
+  `6d0a356c`. The guarded handler followed an eight-failure TDD cycle. Final
+  Worker-focused verification passed 3 files and 26 tests. The final combined
+  Worker/CRM verification passed 10 files and 67 tests; focused ESLint,
+  `git diff --check`, and Nuxt typecheck passed. A Wrangler dry-run
+  successfully bundled the Worker at 112.45 KiB (27.06 KiB gzip) without
+  deploying it.
