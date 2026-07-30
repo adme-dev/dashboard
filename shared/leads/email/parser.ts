@@ -217,8 +217,10 @@ function withIdentity(input: NormalizedInboundEmail, extraction: EmailLeadExtrac
       : `fingerprint:v1:${rawIdentity}`
   const fields = { ...extraction.fields }
   delete fields.lead_id
+  const safeExtraction = { ...extraction } as EmailLeadExtraction & { providerId?: unknown }
+  delete safeExtraction.providerId
   return {
-    ...extraction,
+    ...safeExtraction,
     fields,
     externalIdHash: sha256Hex(typedIdentity),
     legacyExternalIdHash: sha256Hex(rawIdentity)
