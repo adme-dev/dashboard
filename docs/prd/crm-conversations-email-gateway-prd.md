@@ -1,9 +1,9 @@
 # CRM Conversations and Email Gateway PRD
 
-Status: Approved for incremental implementation  
-Owner: XeroFlow Agency  
-Created: 2026-07-30  
-Last updated: 2026-07-30  
+Status: Approved for incremental implementation
+Owner: XeroFlow Agency
+Created: 2026-07-30
+Last updated: 2026-07-30
 Implementation ledger: This document
 
 ## 1. Objective
