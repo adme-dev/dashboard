@@ -69,7 +69,7 @@ export class RetryableEmailIntakeError extends Error {
   constructor(
     readonly correlationId: string,
     cause?: unknown,
-    readonly errorClass: 'unexpected' | 'internal_upstream_network' | 'internal_upstream_4xx' | 'internal_upstream_5xx' = 'unexpected'
+    readonly errorClass: 'unexpected' | 'internal_upstream_network' | 'internal_upstream_401' | 'internal_upstream_409' | 'internal_upstream_4xx' | 'internal_upstream_5xx' = 'unexpected'
   ) {
     super('Email intake must be retried', { cause })
   }
@@ -164,6 +164,12 @@ function senderAllowed(domain: string | null, policy: EmailEndpointPolicy): bool
 
 function isRetryableStatus(status: number): boolean {
   return [408, 425, 429, 500, 502, 503, 504].includes(status)
+}
+
+function upstreamErrorClass(status: number): RetryableEmailIntakeError['errorClass'] {
+  if (status === 401) return 'internal_upstream_401'
+  if (status === 409) return 'internal_upstream_409'
+  return status >= 500 ? 'internal_upstream_5xx' : 'internal_upstream_4xx'
 }
 
 async function readBoundedJson(response: Response): Promise<unknown> {
@@ -382,7 +388,7 @@ export async function handleEmailMessage(
     retryable(
       correlationId,
       undefined,
-      policyResponse.status >= 500 ? 'internal_upstream_5xx' : 'internal_upstream_4xx'
+      upstreamErrorClass(policyResponse.status)
     )
   }
   let policyPayload: unknown
@@ -498,7 +504,7 @@ export async function handleEmailMessage(
     retryable(
       correlationId,
       undefined,
-      stageResponse.status >= 500 ? 'internal_upstream_5xx' : 'internal_upstream_4xx'
+      upstreamErrorClass(stageResponse.status)
     )
   }
   let stagePayload: unknown
@@ -601,7 +607,7 @@ export async function handleEmailMessage(
     retryable(
       authoritativeCorrelationId,
       undefined,
-      confirmationResponse.status >= 500 ? 'internal_upstream_5xx' : 'internal_upstream_4xx'
+      upstreamErrorClass(confirmationResponse.status)
     )
   }
 

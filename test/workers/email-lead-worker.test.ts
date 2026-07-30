@@ -383,6 +383,24 @@ describe('email lead intake Worker', () => {
     }
   })
 
+  it('reports an exact bounded authentication status for a rejected policy signature', async () => {
+    const incoming = message()
+    const fetchImpl = vi.fn(async () => responseJson({ error: 'unauthorized detail' }, 401))
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.stubGlobal('fetch', fetchImpl)
+    try {
+      await expect(worker.email(incoming.value, environment(), {} as ExecutionContext)).rejects.toMatchObject({
+        name: 'RetryableEmailIntakeError'
+      })
+      const serializedLog = String(log.mock.calls[0]?.[0])
+      expect(serializedLog).toContain('"errorClass":"internal_upstream_401"')
+      expect(serializedLog).not.toContain('unauthorized detail')
+      expect(serializedLog).not.toContain(TOKEN)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('denies an unapproved envelope sender before raw read', async () => {
     const incoming = message({ from: 'attacker@evil.example' })
     const fetchImpl = vi.fn(async () => responseJson(policy))
