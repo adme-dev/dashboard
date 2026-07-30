@@ -33,6 +33,7 @@ export interface IssuedCrmEmailRoute {
 export interface ListCrmLeadInboxRoutesInput {
   clientId: string
   includeClientId?: boolean
+  actor?: { id: string, type: 'team_member' }
 }
 
 export interface CreateCrmLeadInboxRouteInput {
@@ -70,6 +71,7 @@ interface CrmEmailRouteRow {
 
 interface CrmEmailRouteListDependencies {
   queryRows<T>(sql: string, params?: unknown[]): Promise<T[]>
+  transaction?<T>(callback: (db: DbClient) => Promise<T>): Promise<T>
 }
 
 type DbClient = Parameters<typeof defaultTransaction>[0] extends (client: infer Client) => Promise<unknown>
@@ -89,7 +91,8 @@ interface CrmEmailRouteCreateDependencies {
 type CrmEmailRouteManagementDependencies = CrmEmailRouteListDependencies & CrmEmailRouteCreateDependencies
 
 const defaultDependencies: CrmEmailRouteListDependencies = {
-  queryRows: defaultQueryRows
+  queryRows: defaultQueryRows,
+  transaction: defaultTransaction
 }
 
 const defaultCreateDependencies: CrmEmailRouteManagementDependencies = {
@@ -137,7 +140,10 @@ export async function listCrmLeadInboxRoutes(
   input: ListCrmLeadInboxRoutesInput,
   dependencies: CrmEmailRouteListDependencies = defaultDependencies
 ): Promise<CrmEmailRouteSummary[]> {
-  const routes = await dependencies.queryRows<CrmEmailRouteRow>(`
+  const listRoutes = async (
+    query: (sql: string, params?: unknown[]) => Promise<CrmEmailRouteRow[]>
+  ): Promise<CrmEmailRouteSummary[]> => {
+    const routes = await query(`
     SELECT
       id, client_id, label, route_kind, recipient_domain,
       expires_at, last_used_at, is_active, created_at, revoked_at
@@ -147,9 +153,22 @@ export async function listCrmLeadInboxRoutes(
     ORDER BY created_at DESC, id DESC
   `, [input.clientId])
 
-  return routes.map(route => toCrmEmailRouteSummary(route, {
-    includeClientId: input.includeClientId ?? true
-  }))
+    return routes.map(route => toCrmEmailRouteSummary(route, {
+      includeClientId: input.includeClientId ?? true
+    }))
+  }
+
+  const actor = input.actor
+  if (!actor) return listRoutes(dependencies.queryRows)
+
+  const transaction = dependencies.transaction ?? defaultTransaction
+  return transaction(async (db) => {
+    await lockAndAuthorizeCrmClient(db, { clientId: input.clientId, actor })
+    return listRoutes(async (sql: string, params?: unknown[]) => {
+      const result = await db.query<CrmEmailRouteRow>(sql, params)
+      return result.rows
+    })
+  })
 }
 
 function postgresErrorCode(error: unknown): string | undefined {

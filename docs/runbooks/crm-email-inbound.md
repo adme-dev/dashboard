@@ -58,11 +58,11 @@ Configure these without writing values to source control or command history:
 - Pages and `email-to-board-worker`: identical `CRM_EMAIL_REPLY_SECRETS`, a
   JSON object mapping positive integer versions to at least 32 bytes of secret
   material
-- Pages and `email-to-board-worker`: identical
-  `CRM_EMAIL_REPLY_CURRENT_VERSION`, a positive integer that already exists in
-  `CRM_EMAIL_REPLY_SECRETS`; this explicit value is the signing version for
-  new CRM inbox addresses and must never be inferred from the highest keyring
-  version
+- Pages: `CRM_EMAIL_REPLY_CURRENT_VERSION`, a positive integer that already
+  exists in `CRM_EMAIL_REPLY_SECRETS`; this explicit value is the signing
+  version for new CRM inbox addresses and must never be inferred from the
+  highest keyring version. Worker verifies each signed route's embedded version
+  against its keyring and does not consume this issuance setting.
 - Pages: `CRM_EMAIL_LEAD_ROUTE_DOMAIN`, the server-owned recipient domain for
   newly issued CRM inbox addresses
 
@@ -109,8 +109,9 @@ scope from the authenticated session.
    `CRM_EMAIL_REPLY_SECRETS` on both Pages and `email-to-board-worker`; retain
    the existing versions.
 2. Deploy and verify both runtimes can read the same expanded keyring.
-3. Set `CRM_EMAIL_REPLY_CURRENT_VERSION` to the new existing key version on
-   both runtimes and deploy again.
+3. Set `CRM_EMAIL_REPLY_CURRENT_VERSION` on Pages to the new existing key
+   version and deploy Pages again. The Worker continues to verify the version
+   embedded in each signed route against the expanded keyring.
 4. Create or rotate routes so new addresses use the new explicit version.
 5. Keep prior versions available until every route signed with each prior
    version has been revoked or retired and the inbound Queue has drained. Only
@@ -122,7 +123,10 @@ auditable revocation.
 
 ## Activation order
 
-1. Verify migration 288 and confirm there are no unintended active routes.
+1. Verify migration 288, then apply and verify the route-management migration
+   before deploying:
+   `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/326_crm_email_route_management.sql`.
+   Confirm the migration is present and there are no unintended active routes.
 2. Verify the Queue, DLQ, private R2 bucket, Hyperdrive binding, and lifecycle
    rules.
 3. Configure matching versioned reply secrets on Pages and the Worker while
@@ -130,18 +134,23 @@ auditable revocation.
 4. Merge and deploy Pages using `pnpm deploy:production`.
 5. Deploy the standalone Worker using its checked-in Wrangler configuration.
 6. Verify the Worker consumer, Hyperdrive, Queue, and R2 bindings.
-7. Create one clearly labelled `lead_inbox` smoke route for an allowlisted
+7. Set `CRM_EMAIL_CONVERSATIONS_ENABLED=true` on Pages and redeploy Pages.
+   Confirm list access remains safe before provisioning any route.
+8. Set `CRM_EMAIL_INBOUND_ENABLED=true` on the standalone Worker and deploy it.
+   Confirm the consumer and bounded custom logs are healthy before accepting
+   mail.
+9. Create one clearly labelled `lead_inbox` smoke route for an allowlisted
    client. It does not expire automatically; explicitly revoke it after the
    verification and approved synthetic-record cleanup are complete.
-8. Enable Email Routing subaddressing and the `lead@xeroflow.io` and
+10. Enable Email Routing subaddressing and the `lead@xeroflow.io` and
    `reply@xeroflow.io` base rules assigned to `email-to-board-worker`. Do not
    alter the catch-all.
-9. Wait at least 60 seconds for Email Routing configuration propagation. A
+11. Wait at least 60 seconds for Email Routing configuration propagation. A
    message sent immediately after enabling can still match the previous
    catch-all configuration.
-10. Send a controlled message, then verify the route timestamp, canonical CRM
+12. Send a controlled message, then verify the route timestamp, canonical CRM
    message, compatibility communication, Queue metrics, and R2 cleanup policy.
-11. Revoke the smoke route and disable its base routing rule after
+13. Revoke the smoke route and disable its base routing rule after
     proof is captured.
 
 ## Production smoke for route onboarding

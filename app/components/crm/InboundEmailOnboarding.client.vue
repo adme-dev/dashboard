@@ -22,6 +22,7 @@ const rotationTarget = ref<CrmInboundEmailRoute | null>(null)
 const revocationTarget = ref<CrmInboundEmailRoute | null>(null)
 const showRotationModal = ref(false)
 const showRevocationModal = ref(false)
+let revealEpoch = 0
 
 const activeRoute = computed(() => manager.routes.value.find(route => route.status !== 'revoked') ?? null)
 const latestRevokedRoute = computed(() => manager.routes.value.find(route => route.status === 'revoked') ?? null)
@@ -40,6 +41,7 @@ function dismissIssuedAddress() {
 }
 
 function clearTransientState() {
+  revealEpoch += 1
   dismissIssuedAddress()
   rotationTarget.value = null
   revocationTarget.value = null
@@ -58,7 +60,10 @@ async function refresh() {
 
 async function createAddress() {
   if (!props.canManage) return
-  revealIssuedAddress(await manager.create(inboxLabel.value))
+  const operationEpoch = revealEpoch
+  const issued = await manager.create(inboxLabel.value)
+  if (!props.canManage || operationEpoch !== revealEpoch) return
+  revealIssuedAddress(issued)
 }
 
 function requestRotation(route: CrmInboundEmailRoute) {
@@ -69,11 +74,11 @@ function requestRotation(route: CrmInboundEmailRoute) {
 
 async function rotateAddress() {
   if (!props.canManage || !rotationTarget.value || !rotationTarget.value.canRotate) return
+  const operationEpoch = revealEpoch
   const issued = await manager.rotate(rotationTarget.value)
-  if (issued) {
-    showRotationModal.value = false
-    revealIssuedAddress(issued)
-  }
+  if (!issued || !props.canManage || operationEpoch !== revealEpoch) return
+  showRotationModal.value = false
+  revealIssuedAddress(issued)
 }
 
 function requestRevocation(route: CrmInboundEmailRoute) {
@@ -314,7 +319,7 @@ onMounted(refresh)
       />
     </template>
 
-    <div v-if="issuedAddress" class="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4" aria-live="polite">
+    <div v-if="issuedAddress" class="@container space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4" aria-live="polite">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0 space-y-1">
           <p class="text-sm font-semibold text-highlighted">
@@ -335,17 +340,32 @@ onMounted(refresh)
       </div>
       <UFormField label="Inbound email address">
         <div class="flex min-w-0 items-center gap-2">
-          <UInput :model-value="issuedAddress" readonly class="min-w-0 flex-1" />
+          <UInput :model-value="issuedAddress" readonly class="min-w-0 flex-1 font-mono" />
           <UButton
             class="shrink-0"
+            color="neutral"
+            variant="ghost"
+            size="sm"
             icon="i-lucide-copy"
-            aria-label="Copy inbound email address"
+            aria-label="Copy CRM inbox address"
             @click="copyIssuedAddress"
-          >
-            Copy
-          </UButton>
+          />
         </div>
       </UFormField>
+      <ol class="grid grid-cols-1 gap-2 border-t border-primary/20 pt-3 text-sm text-muted @lg:grid-cols-3">
+        <li class="flex gap-2">
+          <span class="font-mono text-xs font-semibold text-primary">1</span>
+          <span>Copy the address now.</span>
+        </li>
+        <li class="flex gap-2">
+          <span class="font-mono text-xs font-semibold text-primary">2</span>
+          <span>Add it as the forwarding destination in your approved form, mailbox, or marketplace.</span>
+        </li>
+        <li class="flex gap-2">
+          <span class="font-mono text-xs font-semibold text-primary">3</span>
+          <span>Send a non-sensitive test message and confirm it appears in CRM.</span>
+        </li>
+      </ol>
     </div>
 
     <UModal v-model:open="showRotationModal">

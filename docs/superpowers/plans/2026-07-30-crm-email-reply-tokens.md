@@ -4,14 +4,14 @@
 
 **Goal:** Generate and verify opaque, domain-bound CRM reply tokens without exposing tenant or record identifiers.
 
-**Architecture:** Web Crypto generates a 192-bit opaque route key and signs a canonical version/key/domain payload with HMAC-SHA256. Neon stores only the SHA-256 route-key hash. Verification supports explicit secret versions for rotation and returns only the version and lookup hash.
+**Architecture:** Web Crypto generates a 128-bit opaque route key and signs a canonical version/key/domain payload with HMAC-SHA256. Neon stores only the SHA-256 route-key hash. Verification supports explicit secret versions for rotation and returns only the version and lookup hash.
 
 **Tech Stack:** TypeScript, Web Crypto API, Vitest, Cloudflare Workers-compatible runtime APIs
 
 ## Global constraints
 
 - Tokens contain no client, person, lead, opportunity, conversation, or database IDs.
-- Route keys contain 192 bits of cryptographic randomness.
+- Route keys contain 128 bits of cryptographic randomness.
 - HMAC secrets contain at least 256 bits of UTF-8 material.
 - Domains are canonical lower-case ASCII hostnames and are part of the signature.
 - Signature comparison is constant-time for valid-length byte arrays.

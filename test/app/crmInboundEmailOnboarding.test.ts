@@ -14,6 +14,7 @@ const featureIndexSource = readFileSync('app/pages/features/index.vue', 'utf8')
 const featureDetailSource = readFileSync('app/pages/features/[slug].vue', 'utf8')
 const crmEmailPrdSource = readFileSync('docs/prd/crm-conversations-email-gateway-prd.md', 'utf8')
 const crmEmailRunbookSource = readFileSync('docs/runbooks/crm-email-inbound.md', 'utf8')
+const crmEmailReplyTokenPlanSource = readFileSync('docs/superpowers/plans/2026-07-30-crm-email-reply-tokens.md', 'utf8')
 
 function sourceSlice(source: string, start: string, end: string): string {
   const startIndex = source.indexOf(start)
@@ -317,6 +318,54 @@ describe('CRM inbound email onboarding mounted behavior', () => {
     mounted.app.unmount()
   })
 
+  it('does not reveal a created bearer address when management permission is lost in flight', async () => {
+    const creation = deferred<{ route: typeof route, issuedAddress: string, addressShownOnce: true }>()
+    const fetchMock = vi.fn((request: string, options?: { method?: string }) => {
+      if (options?.method === 'GET') return Promise.resolve({ items: [] })
+      if (options?.method === 'POST' && request === '/api/crm/email-routes') return creation.promise
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    const mounted = mountPanel(fetchMock)
+    await flushUi()
+
+    button(mounted.host, 'Create inbox address').click()
+    await flushUi()
+    mounted.state.canManage = false
+    await flushUi()
+    creation.resolve({ route, issuedAddress: ADDRESS, addressShownOnce: true })
+    await flushUi()
+
+    expect(mounted.host.textContent).toContain(route.label)
+    expect(mounted.host.textContent).not.toContain(ADDRESS)
+    expect([...mounted.host.querySelectorAll('input')].some(input => input.value === ADDRESS)).toBe(false)
+    mounted.app.unmount()
+  })
+
+  it('does not reveal a rotated bearer address when management permission is lost in flight', async () => {
+    const rotation = deferred<{ route: typeof replacementRoute, issuedAddress: string, addressShownOnce: true }>()
+    const fetchMock = vi.fn((request: string, options?: { method?: string }) => {
+      if (options?.method === 'GET') return Promise.resolve({ items: [route] })
+      if (request === `/api/crm/email-routes/${route.id}/rotate`) return rotation.promise
+      throw new Error(`Unexpected request: ${request}`)
+    })
+    const mounted = mountPanel(fetchMock)
+    await flushUi()
+
+    button(mounted.host, 'Rotate address').click()
+    await flushUi()
+    modalButton(mounted.host, 'Rotate address').click()
+    await flushUi()
+    mounted.state.canManage = false
+    await flushUi()
+    rotation.resolve({ route: replacementRoute, issuedAddress: ADDRESS, addressShownOnce: true })
+    await flushUi()
+
+    expect(mounted.host.textContent).toContain(replacementRoute.label)
+    expect(mounted.host.textContent).not.toContain(ADDRESS)
+    expect([...mounted.host.querySelectorAll('input')].some(input => input.value === ADDRESS)).toBe(false)
+    mounted.app.unmount()
+  })
+
   it('renders safe lifecycle timestamps and distinguishes an expired route from a ready route', async () => {
     const lastUsedAt = '2026-07-31T01:30:00.000Z'
     const expiredRoute = {
@@ -450,7 +499,11 @@ describe('CRM inbound email onboarding panel composition', () => {
     const panel = source()
     expect(panel).toContain('min-w-0')
     expect(panel).toContain('shrink-0')
-    expect(panel).toContain('aria-label="Copy inbound email address"')
+    expect(panel).toContain('readonly class="min-w-0 flex-1 font-mono"')
+    expect(panel).toContain('variant="ghost"')
+    expect(panel).toContain('aria-label="Copy CRM inbox address"')
+    expect(panel).toContain('Add it as the forwarding destination in your approved form, mailbox, or marketplace.')
+    expect(panel).toContain('Send a non-sensitive test message and confirm it appears in CRM.')
     const icons = [...panel.matchAll(/i-[a-z0-9-]+/g)].map(match => match[0])
     expect(icons.length).toBeGreaterThan(0)
     expect(icons.every(icon => icon.startsWith('i-lucide-'))).toBe(true)
@@ -499,5 +552,36 @@ describe('CRM inbound email operational documentation', () => {
     expect(crmEmailRunbookSource).toContain('clearly labelled `lead_inbox` smoke route')
     expect(crmEmailRunbookSource).toContain('does not expire automatically')
     expect(crmEmailRunbookSource).not.toContain('24-hour `lead_inbox` smoke route')
+  })
+
+  it('applies migration 326 before deploy and enables fail-closed gates before route provisioning', () => {
+    const migration = crmEmailRunbookSource.indexOf('326_crm_email_route_management.sql')
+    const pagesDeploy = crmEmailRunbookSource.indexOf('pnpm deploy:production', migration)
+    const pagesGate = crmEmailRunbookSource.indexOf('CRM_EMAIL_CONVERSATIONS_ENABLED', pagesDeploy)
+    const workerGate = crmEmailRunbookSource.indexOf('CRM_EMAIL_INBOUND_ENABLED', pagesDeploy)
+    const provision = crmEmailRunbookSource.indexOf('Create one clearly labelled `lead_inbox` smoke route', pagesDeploy)
+
+    expect(migration).toBeGreaterThan(-1)
+    expect(pagesDeploy).toBeGreaterThan(migration)
+    expect(pagesGate).toBeGreaterThan(pagesDeploy)
+    expect(workerGate).toBeGreaterThan(pagesDeploy)
+    expect(provision).toBeGreaterThan(pagesGate)
+    expect(provision).toBeGreaterThan(workerGate)
+  })
+
+  it('documents the Pages issuance version separately from the Worker verification keyring', () => {
+    const requiredSecrets = sourceSlice(crmEmailRunbookSource, '## Required secrets', '## CRM inbox lifecycle')
+    expect(requiredSecrets).toContain('Pages: `CRM_EMAIL_REPLY_CURRENT_VERSION`')
+    expect(requiredSecrets).not.toContain('Pages and `email-to-board-worker`: identical\n  `CRM_EMAIL_REPLY_CURRENT_VERSION`')
+    expect(requiredSecrets).toContain('Worker verifies each signed route\'s embedded version')
+  })
+
+  it('describes the implemented route key as 128-bit everywhere in tracked CRM docs', () => {
+    expect(crmEmailPrdSource).toContain('128-bit opaque route key')
+    expect(crmEmailReplyTokenPlanSource).toContain('128-bit opaque route key')
+    expect(crmEmailReplyTokenPlanSource).toContain('128 bits of cryptographic randomness')
+    expect(crmEmailPrdSource).not.toContain('192-bit opaque route key')
+    expect(crmEmailReplyTokenPlanSource).not.toContain('192-bit opaque route key')
+    expect(crmEmailReplyTokenPlanSource).not.toContain('192 bits of cryptographic randomness')
   })
 })

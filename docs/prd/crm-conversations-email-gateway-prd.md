@@ -555,7 +555,7 @@ pnpm deploy:production
   reported failures are outside the files changed by this slice and include
   existing component harness, role-permission, Groq mock, social-spend, and
   deployment-contract failures. No CRM email foundation test failed.
-- Versioned reply tokens now use a 192-bit opaque route key, domain-bound
+- Versioned reply tokens now use a 128-bit opaque route key, domain-bound
   HMAC-SHA256, a 256-bit minimum secret, constant-time signature comparison,
   and a SHA-256 lookup hash. No tenant or CRM record identifier appears in the
   token or verification result.

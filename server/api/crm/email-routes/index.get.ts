@@ -11,8 +11,13 @@ export default defineEventHandler(async (event) => {
   if ((event.context as { clientPortalUser?: unknown }).clientPortalUser) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
   }
-  await requireRole(event, PERMISSIONS.CLIENTS)
+  const actor = await requireRole(event, PERMISSIONS.CLIENTS)
   const query = Query.parse(getQuery(event))
 
-  return { items: await listCrmLeadInboxRoutes({ clientId: query.client_id }) }
+  return {
+    items: await listCrmLeadInboxRoutes({
+      clientId: query.client_id,
+      actor: { id: actor.id, type: 'team_member' }
+    })
+  }
 })

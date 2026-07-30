@@ -271,6 +271,53 @@ describe('CRM lead inbox route management', () => {
     expect(params).toEqual([CLIENT_ID])
   })
 
+  it('transactionally rejects an unassigned team member before listing route metadata', async () => {
+    const db = {
+      query: vi.fn(async (sql: string) => {
+        if (/FROM agency_clients/.test(sql)) {
+          return { rows: [{ lead_capture_mode: 'full_crm' }] }
+        }
+        if (/FROM team_members/.test(sql)) return { rows: [{ allowed: false }] }
+        throw new Error(`Unexpected SQL: ${sql}`)
+      })
+    }
+    const transaction = vi.fn(async (callback: (client: typeof db) => Promise<unknown>) => callback(db))
+
+    await expect(listCrmLeadInboxRoutes(
+      {
+        clientId: CLIENT_ID,
+        actor: { id: ACTOR_ID, type: 'team_member' }
+      },
+      { queryRows: vi.fn(), transaction } as never
+    )).rejects.toMatchObject({ statusCode: 403 })
+
+    expect(transaction).toHaveBeenCalledOnce()
+    expect(db.query).toHaveBeenCalledTimes(2)
+    expect(db.query.mock.calls.some(([sql]) => /FROM crm_email_routes/.test(sql))).toBe(false)
+  })
+
+  it('transactionally returns 404 for a missing client before listing route metadata', async () => {
+    const db = {
+      query: vi.fn(async (sql: string) => {
+        if (/FROM agency_clients/.test(sql)) return { rows: [] }
+        throw new Error(`Unexpected SQL: ${sql}`)
+      })
+    }
+    const transaction = vi.fn(async (callback: (client: typeof db) => Promise<unknown>) => callback(db))
+
+    await expect(listCrmLeadInboxRoutes(
+      {
+        clientId: CLIENT_ID,
+        actor: { id: ACTOR_ID, type: 'team_member' }
+      },
+      { queryRows: vi.fn(), transaction } as never
+    )).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
+
+    expect(transaction).toHaveBeenCalledOnce()
+    expect(db.query).toHaveBeenCalledOnce()
+    expect(db.query.mock.calls.some(([sql]) => /FROM crm_email_routes/.test(sql))).toBe(false)
+  })
+
   it('creates one CRM inbox route under a locked, CRM-enabled client with a safe audit record', async () => {
     const { calls, transaction, createToken, dependencies } = createDependencies()
     const issuedAddress = `lead+${ISSUED_TOKEN}@inbound.xeroflow.io`

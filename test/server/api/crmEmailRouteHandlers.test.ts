@@ -133,6 +133,17 @@ describe('agency CRM email route handlers', () => {
     expect(listCrmLeadInboxRoutes).not.toHaveBeenCalled()
   })
 
+  it('passes the authenticated team member into the tenant-scoped list service', async () => {
+    const handler = (await import('~~/server/api/crm/email-routes/index.get')).default
+
+    await handler({ context: {}, query: { client_id: clientId } } as never)
+
+    expect(listCrmLeadInboxRoutes).toHaveBeenCalledWith({
+      clientId,
+      actor: { id: actorId, type: 'team_member' }
+    })
+  })
+
   it('uses only server-owned issuance bindings for create and keeps the response private', async () => {
     const handler = (await import('~~/server/api/crm/email-routes/index.post')).default
     const event = {
