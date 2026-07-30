@@ -54,7 +54,10 @@ function deferred<T>() {
 }
 
 const panelStubs = {
-  UAlert: { template: '<div><slot /><slot name="actions" /></div>' },
+  UAlert: {
+    props: ['title', 'description'],
+    template: '<div>{{ title }} {{ description }}<slot /><slot name="actions" /></div>'
+  },
   UBadge: { template: '<span><slot /></span>' },
   UFormField: { template: '<label><slot /></label>' },
   UIcon: { template: '<i />' },
@@ -82,9 +85,9 @@ async function flushUi() {
   }
 }
 
-function mountPanel(fetchMock: ReturnType<typeof vi.fn>) {
+function mountPanel(fetchMock: ReturnType<typeof vi.fn>, canManage = true) {
   Object.assign(globalThis, { $fetch: fetchMock, useToast: () => ({ add: toastAdd }) })
-  const state = reactive({ apiBase: '/api/crm/email-routes', clientId: CLIENT_ID as string | undefined, canManage: true })
+  const state = reactive({ apiBase: '/api/crm/email-routes', clientId: CLIENT_ID as string | undefined, canManage })
   const host = document.createElement('div')
   document.body.appendChild(host)
   const app = createApp({ render: () => h(InboundEmailOnboarding, state) })
@@ -332,6 +335,60 @@ describe('CRM inbound email onboarding mounted behavior', () => {
     expect(mounted.host.textContent).toContain('Last received')
     expect(mounted.host.textContent).toContain(new Date(lastUsedAt).toLocaleString())
     expect(mounted.host.textContent).not.toContain('Ready for inbound CRM email')
+    mounted.app.unmount()
+  })
+
+  it('retains safe revoked lifecycle metadata and guides managers to create a new inbox', async () => {
+    const lastUsedAt = '2026-07-31T01:30:00.000Z'
+    const revokedAt = '2026-07-31T02:15:00.000Z'
+    const revokedRoute = {
+      ...route,
+      status: 'revoked',
+      lastUsedAt,
+      revokedAt,
+      canRotate: false,
+      canRevoke: false
+    }
+    const fetchMock = vi.fn().mockResolvedValue({ items: [revokedRoute] })
+    const mounted = mountPanel(fetchMock)
+    await flushUi()
+
+    expect(mounted.host.textContent).toContain('Revoked')
+    expect(mounted.host.textContent).toContain('Created')
+    expect(mounted.host.textContent).toContain(new Date(route.createdAt).toLocaleString())
+    expect(mounted.host.textContent).toContain('Last received')
+    expect(mounted.host.textContent).toContain(new Date(lastUsedAt).toLocaleString())
+    expect(mounted.host.textContent).toContain('Revoked on')
+    expect(mounted.host.textContent).toContain(new Date(revokedAt).toLocaleString())
+    expect(mounted.host.textContent).toContain('Create a new inbox address')
+    expect(button(mounted.host, 'Create inbox address')).toBeTruthy()
+    expect(mounted.host.textContent).not.toContain(revokedRoute.recipientDomain)
+    expect(mounted.host.textContent).not.toContain('lead+')
+    mounted.app.unmount()
+  })
+
+  it('retains revoked lifecycle metadata and directs non-managers to a CRM administrator', async () => {
+    const lastUsedAt = '2026-07-31T01:30:00.000Z'
+    const revokedAt = '2026-07-31T02:15:00.000Z'
+    const revokedRoute = {
+      ...route,
+      status: 'revoked',
+      lastUsedAt,
+      revokedAt,
+      canRotate: false,
+      canRevoke: false
+    }
+    const fetchMock = vi.fn().mockResolvedValue({ items: [revokedRoute] })
+    const mounted = mountPanel(fetchMock, false)
+    await flushUi()
+
+    expect(mounted.host.textContent).toContain(new Date(route.createdAt).toLocaleString())
+    expect(mounted.host.textContent).toContain(new Date(lastUsedAt).toLocaleString())
+    expect(mounted.host.textContent).toContain(new Date(revokedAt).toLocaleString())
+    expect(mounted.host.textContent).toContain('Ask a CRM administrator to create a new inbound address.')
+    expect([...mounted.host.querySelectorAll('button')].some(item => item.textContent?.trim() === 'Create inbox address')).toBe(false)
+    expect(mounted.host.textContent).not.toContain(revokedRoute.recipientDomain)
+    expect(mounted.host.textContent).not.toContain('lead+')
     mounted.app.unmount()
   })
 })

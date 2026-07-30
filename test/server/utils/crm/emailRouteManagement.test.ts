@@ -223,10 +223,27 @@ describe('CRM lead inbox route management', () => {
       expected: { status: 'expired', canRotate: true, canRevoke: true }
     },
     {
+      caseName: 'expired and never used',
+      row: routeRow({
+        expires_at: '2000-01-01T00:00:00.000Z',
+        last_used_at: null
+      }),
+      expected: { status: 'expired', canRotate: true, canRevoke: true }
+    },
+    {
       caseName: 'revoked',
       row: routeRow({
         is_active: false,
         revoked_at: '2026-07-31T02:00:00.000Z'
+      }),
+      expected: { status: 'revoked', canRotate: false, canRevoke: false }
+    },
+    {
+      caseName: 'revoked and expired',
+      row: routeRow({
+        is_active: false,
+        revoked_at: '2026-07-31T02:00:00.000Z',
+        expires_at: '2000-01-01T00:00:00.000Z'
       }),
       expected: { status: 'revoked', canRotate: false, canRevoke: false }
     },

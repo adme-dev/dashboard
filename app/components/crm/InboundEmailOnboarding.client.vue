@@ -24,6 +24,7 @@ const showRotationModal = ref(false)
 const showRevocationModal = ref(false)
 
 const activeRoute = computed(() => manager.routes.value.find(route => route.status !== 'revoked') ?? null)
+const latestRevokedRoute = computed(() => manager.routes.value.find(route => route.status === 'revoked') ?? null)
 const awaitingRoute = computed(() => activeRoute.value?.status === 'never_used')
 const readyRoute = computed(() => activeRoute.value?.status === 'active')
 const expiredRoute = computed(() => activeRoute.value?.status === 'expired')
@@ -150,13 +151,63 @@ onMounted(refresh)
     </div>
 
     <template v-else>
+      <div
+        v-if="!activeRoute && latestRevokedRoute"
+        class="space-y-4 rounded-xl border border-default bg-elevated/20 p-4"
+      >
+        <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0 space-y-1">
+            <p class="text-sm font-medium text-highlighted">
+              {{ latestRevokedRoute.label }}
+            </p>
+            <p class="text-sm text-muted">
+              This inbox address no longer accepts inbound CRM email.
+            </p>
+          </div>
+          <UBadge color="neutral" variant="subtle" class="shrink-0">
+            Revoked
+          </UBadge>
+        </div>
+        <p class="text-xs text-muted">
+          The address itself is never shown again after its one-time reveal.
+        </p>
+        <dl class="grid grid-cols-1 gap-3 border-t border-default pt-4 sm:grid-cols-3">
+          <div>
+            <dt class="text-xs text-muted">
+              Created
+            </dt>
+            <dd class="mt-1 text-sm text-highlighted">
+              {{ formatRouteTimestamp(latestRevokedRoute.createdAt) }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-muted">
+              Last received
+            </dt>
+            <dd class="mt-1 text-sm text-highlighted">
+              {{ formatRouteTimestamp(latestRevokedRoute.lastUsedAt) }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-muted">
+              Revoked on
+            </dt>
+            <dd class="mt-1 text-sm text-highlighted">
+              {{ formatRouteTimestamp(latestRevokedRoute.revokedAt) }}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
       <form v-if="!activeRoute && canManage" class="@container space-y-4 rounded-xl border border-default bg-elevated/30 p-4" @submit.prevent="createAddress">
         <div class="space-y-1">
           <p class="text-sm font-medium text-highlighted">
-            No CRM inbox address yet
+            {{ latestRevokedRoute ? 'Create a new inbox address' : 'No CRM inbox address yet' }}
           </p>
           <p class="text-sm text-muted">
-            Create one when you are ready to copy it into the sending system.
+            {{ latestRevokedRoute
+              ? 'Create a replacement when you are ready to copy it into the sending system.'
+              : 'Create one when you are ready to copy it into the sending system.' }}
           </p>
         </div>
         <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
@@ -181,8 +232,10 @@ onMounted(refresh)
         color="neutral"
         variant="soft"
         icon="i-lucide-mail"
-        title="No CRM inbox address yet"
-        description="Ask a CRM administrator to create an inbound address."
+        :title="latestRevokedRoute ? 'CRM inbox address revoked' : 'No CRM inbox address yet'"
+        :description="latestRevokedRoute
+          ? 'Ask a CRM administrator to create a new inbound address.'
+          : 'Ask a CRM administrator to create an inbound address.'"
       />
 
       <div v-else class="space-y-4 rounded-xl border border-default bg-elevated/20 p-4">
@@ -252,7 +305,7 @@ onMounted(refresh)
       </div>
 
       <UAlert
-        v-if="manager.routes.value.some(route => route.status === 'revoked')"
+        v-if="activeRoute && manager.routes.value.some(route => route.status === 'revoked')"
         color="neutral"
         variant="soft"
         icon="i-lucide-circle-off"
