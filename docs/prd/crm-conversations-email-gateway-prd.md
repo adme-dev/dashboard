@@ -408,7 +408,11 @@ pnpm deploy:production
       reply adapters without changing existing board ingestion.
 - [x] B2. Reject invalid routes and enforce MIME/attachment size limits.
 - [ ] B3. Store raw MIME and attachment objects in R2 with retention metadata.
-- [ ] B4. Add the authenticated inbound boundary and idempotent Queue workflow.
+- [x] B4. Add the authenticated inbound boundary and idempotent Queue workflow.
+      The fail-closed Nitro endpoint verifies Worker authentication and
+      domain-bound route tokens, resolves tenant ownership from Postgres, and
+      emits a minimal deterministic job to a dedicated Queue. The B5 consumer
+      remains intentionally unimplemented.
 - [ ] B5. Match inbound senders to CRM people and promote lead context safely.
 - [ ] B6. Detect auto-replies, bounces, mailing lists, and mail loops.
 

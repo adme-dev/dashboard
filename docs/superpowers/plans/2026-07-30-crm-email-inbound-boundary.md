@@ -119,27 +119,41 @@ consume that job to match the sender and write the canonical CRM message.
 }
 ```
 
-- [ ] Write failing endpoint tests for missing configuration, wrong secret,
+- [x] Write failing endpoint tests for missing configuration, wrong secret,
       disabled flag, malformed payload, invalid token, missing route, missing
       Queue binding, successful `202` handoff, and duplicate calls producing
       the same queued idempotency key.
-- [ ] Assert failures never enqueue and responses/logs never contain the route
+- [x] Assert failures never enqueue and responses/logs never contain the route
       token or resolved tenant identifiers.
-- [ ] Run the endpoint test and observe the missing-module failure.
-- [ ] Implement authentication before body parsing, then flag/configuration
+- [x] Run the endpoint test and observe the missing-module failure.
+- [x] Implement authentication before body parsing, then flag/configuration
       validation, Zod parsing, route resolution, deterministic job creation,
       and Queue handoff.
-- [ ] Add only `/api/internal/crm-email/` to the middleware's public-route list;
+- [x] Add only `/api/internal/crm-email/` to the middleware's public-route list;
       the endpoint still enforces its own shared secret.
-- [ ] Return `202 { accepted: true }` without returning routing or tenant
+- [x] Return `202 { accepted: true }` without returning routing or tenant
       details.
-- [ ] Run all CRM email and email Worker focused tests, focused ESLint,
+- [x] Run all CRM email and email Worker focused tests, focused ESLint,
       `git diff --check`, and `pnpm run typecheck`.
-- [ ] Re-read every modified/new file. Mark B4 complete, while leaving B1
+- [x] Re-read every modified/new file. Mark B4 complete, while leaving B1
       partial and Worker lead/reply delivery disabled pending B3 R2 storage and
       the B5 consumer.
-- [ ] Commit:
+- [x] Commit:
       `feat(crm-email): add authenticated inbound boundary`.
+
+## Verification Record
+
+- TDD evidence: two missing-module suite failures for configuration/route
+  resolution, one for the Queue handoff, and one for the internal endpoint.
+- Focused regression verification: 12 files, 80 tests passed.
+- Focused ESLint and `git diff --check` passed.
+- Nuxt typecheck still reports 805 repository-wide baseline errors, but the
+  captured output contains no errors in any file created or changed by this
+  slice.
+- B4 status: complete. The endpoint and deterministic Queue handoff exist but
+  remain disabled and unconfigured.
+- B1 status: partial. Worker lead/reply delivery remains deliberately disabled
+  pending B3 R2 persistence and the B5 consumer.
 
 ## Live/Deployment Gate
 

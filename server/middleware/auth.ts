@@ -44,6 +44,9 @@ const publicRoutes = [
   '/api/internal/ai-agent/',
   '/api/internal/ai-orchestrator/',
   '/api/internal/chat-archive',
+  // CRM Email Routing Worker bridge; verifies x-crm-email-secret inline and
+  // remains feature-flagged off until the guarded inbound pipeline is ready.
+  '/api/internal/crm-email/',
   '/api/internal/email-to-board',
   '/api/internal/platform-agents/',
   '/api/internal/sync-spend',

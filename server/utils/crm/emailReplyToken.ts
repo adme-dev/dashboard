@@ -49,12 +49,12 @@ function validateVersion(version: number): void {
   }
 }
 
-function validateSecret(secret: string): Uint8Array {
+function validateSecret(secret: string): ArrayBuffer {
   const bytes = textEncoder.encode(secret)
   if (bytes.byteLength < 32) {
     throw new Error('Reply-token secret must contain at least 32 bytes')
   }
-  return bytes
+  return bytes.slice().buffer
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
