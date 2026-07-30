@@ -55,7 +55,7 @@ Neon Postgres, Zod, Vitest.
 - Modify: `app/types/index.ts`
 - Modify: `server/utils/leads/crmPromotion.ts`
 - Test:
-  `test/server/database/crmEmailLeadSourceMigration.test.ts`
+  `test/config/crmEmailLeadSourceMigration.test.ts`
 - Test: `test/server/utils/leads/crmPromotion.test.ts`
 
 1. Write a failing migration contract test proving `email` is accepted by the
@@ -76,7 +76,7 @@ Neon Postgres, Zod, Vitest.
    ```bash
    git add server/database/migrations/289-crm-email-lead-source.sql \
      app/types/index.ts server/utils/leads/crmPromotion.ts \
-     test/server/database/crmEmailLeadSourceMigration.test.ts \
+     test/config/crmEmailLeadSourceMigration.test.ts \
      test/server/utils/leads/crmPromotion.test.ts
    git commit -m "feat(crm-email): add canonical email lead source"
    ```
