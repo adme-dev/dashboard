@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// This authenticated management surface is intentionally client-only.
 // Design intent: this is a security hand-off for agency operators, so the
 // one-time address is a calm, selectable receipt rather than another dashboard card.
 import { computed, onMounted, ref, toRef, watch } from 'vue'
@@ -25,6 +26,13 @@ const showRevocationModal = ref(false)
 const activeRoute = computed(() => manager.routes.value.find(route => route.status !== 'revoked') ?? null)
 const awaitingRoute = computed(() => activeRoute.value?.status === 'never_used')
 const readyRoute = computed(() => activeRoute.value?.status === 'active')
+const expiredRoute = computed(() => activeRoute.value?.status === 'expired')
+
+function formatRouteTimestamp(value: string | null): string {
+  if (!value) return 'No messages received yet'
+  const timestamp = new Date(value)
+  return Number.isNaN(timestamp.getTime()) ? 'Unavailable' : timestamp.toLocaleString()
+}
 
 function dismissIssuedAddress() {
   issuedAddress.value = null
@@ -189,17 +197,38 @@ onMounted(refresh)
             <p v-else-if="readyRoute" class="mt-1 text-sm text-muted">
               Ready for inbound CRM email
             </p>
+            <p v-else-if="expiredRoute" class="mt-1 text-sm text-muted">
+              Inbox address expired
+            </p>
             <p v-else class="mt-1 text-sm text-muted">
               Active inbox address
             </p>
           </div>
-          <UBadge :color="awaitingRoute ? 'warning' : 'success'" variant="subtle" class="shrink-0">
-            {{ awaitingRoute ? 'Awaiting message' : 'Ready' }}
+          <UBadge :color="expiredRoute ? 'neutral' : awaitingRoute ? 'warning' : 'success'" variant="subtle" class="shrink-0">
+            {{ expiredRoute ? 'Expired' : awaitingRoute ? 'Awaiting message' : 'Ready' }}
           </UBadge>
         </div>
         <p class="text-xs text-muted">
           The address itself is never shown again after its one-time reveal.
         </p>
+        <dl class="grid grid-cols-1 gap-3 border-t border-default pt-4 sm:grid-cols-2">
+          <div>
+            <dt class="text-xs text-muted">
+              Created
+            </dt>
+            <dd class="mt-1 text-sm text-highlighted">
+              {{ formatRouteTimestamp(activeRoute.createdAt) }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-muted">
+              Last received
+            </dt>
+            <dd class="mt-1 text-sm text-highlighted">
+              {{ formatRouteTimestamp(activeRoute.lastUsedAt) }}
+            </dd>
+          </div>
+        </dl>
         <div v-if="canManage" class="flex flex-wrap gap-2 border-t border-default pt-4">
           <UButton
             color="neutral"

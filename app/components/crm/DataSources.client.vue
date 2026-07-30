@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// This authenticated management surface is intentionally client-only.
 const props = withDefaults(defineProps<{
   clientId: string
   apiBase?: string

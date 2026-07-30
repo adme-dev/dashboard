@@ -2,13 +2,13 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, reactive, ref } from 'vue'
-import InboundEmailOnboarding from '~~/app/components/crm/InboundEmailOnboarding.vue'
+import InboundEmailOnboarding from '~~/app/components/crm/InboundEmailOnboarding.client.vue'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const ROUTE_ID = '22222222-2222-4222-8222-222222222222'
 const ADDRESS = 'lead+one-time-token@leads.xeroflow.io'
 const toastAdd = vi.fn()
-const dataSourcesSource = readFileSync('app/components/crm/DataSources.vue', 'utf8')
+const dataSourcesSource = readFileSync('app/components/crm/DataSources.client.vue', 'utf8')
 const portalCrmSource = readFileSync('app/pages/portal/crm.vue', 'utf8')
 const featureIndexSource = readFileSync('app/pages/features/index.vue', 'utf8')
 const featureDetailSource = readFileSync('app/pages/features/[slug].vue', 'utf8')
@@ -313,10 +313,31 @@ describe('CRM inbound email onboarding mounted behavior', () => {
     expect([...fetchMock.mock.calls].filter(([request]) => String(request).includes('/rotate'))).toHaveLength(0)
     mounted.app.unmount()
   })
+
+  it('renders safe lifecycle timestamps and distinguishes an expired route from a ready route', async () => {
+    const lastUsedAt = '2026-07-31T01:30:00.000Z'
+    const expiredRoute = {
+      ...route,
+      status: 'expired',
+      expiresAt: '2026-07-31T02:00:00.000Z',
+      lastUsedAt
+    }
+    const fetchMock = vi.fn().mockResolvedValue({ items: [expiredRoute] })
+    const mounted = mountPanel(fetchMock)
+    await flushUi()
+
+    expect(mounted.host.textContent).toContain('Expired')
+    expect(mounted.host.textContent).toContain('Created')
+    expect(mounted.host.textContent).toContain(new Date(route.createdAt).toLocaleString())
+    expect(mounted.host.textContent).toContain('Last received')
+    expect(mounted.host.textContent).toContain(new Date(lastUsedAt).toLocaleString())
+    expect(mounted.host.textContent).not.toContain('Ready for inbound CRM email')
+    mounted.app.unmount()
+  })
 })
 
 describe('CRM inbound email onboarding panel composition', () => {
-  const source = () => readFileSync('app/components/crm/InboundEmailOnboarding.vue', 'utf8')
+  const source = () => readFileSync('app/components/crm/InboundEmailOnboarding.client.vue', 'utf8')
 
   it('uses Nuxt UI controls, labelled reveal fields, confirmations, and a container-safe form', () => {
     const panel = source()
@@ -384,7 +405,7 @@ describe('CRM inbound email public feature copy', () => {
     const crmActivitiesDetail = sourceSlice(featureDetailSource, '\'crm-activities\': {', '\'crm-scoring\': {')
     const leadCaptureDetail = sourceSlice(featureDetailSource, '\'lead-capture-routing\': {', '\'xero-integration\': {')
 
-    expect(leadCaptureIndex).toContain('Dedicated inbound email securely captures each client\\\'s CRM conversation')
+    expect(leadCaptureIndex).toContain('dedicated inbound email that securely captures each client\\\'s CRM conversation')
     expect(crmActivitiesDetail).toContain('Dedicated inbound email securely captures each client\\\'s CRM conversation')
     expect(leadCaptureDetail).toContain('shown once when created or rotated')
   })

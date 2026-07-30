@@ -208,6 +208,37 @@ describe('CRM lead inbox route management', () => {
     expect(JSON.stringify(summary)).not.toContain(row.route_token_hash)
   })
 
+  it.each([
+    {
+      caseName: 'active',
+      row: routeRow({ last_used_at: '2026-07-31T01:00:00.000Z' }),
+      expected: { status: 'active', canRotate: true, canRevoke: true }
+    },
+    {
+      caseName: 'expired',
+      row: routeRow({
+        expires_at: '2000-01-01T00:00:00.000Z',
+        last_used_at: '2026-07-31T01:00:00.000Z'
+      }),
+      expected: { status: 'expired', canRotate: true, canRevoke: true }
+    },
+    {
+      caseName: 'revoked',
+      row: routeRow({
+        is_active: false,
+        revoked_at: '2026-07-31T02:00:00.000Z'
+      }),
+      expected: { status: 'revoked', canRotate: false, canRevoke: false }
+    },
+    {
+      caseName: 'inactive without a revocation timestamp',
+      row: routeRow({ is_active: false }),
+      expected: { status: 'revoked', canRotate: false, canRevoke: false }
+    }
+  ])('projects $caseName lifecycle state and management flags', ({ row, expected }) => {
+    expect(toCrmEmailRouteSummary(row, { includeClientId: false })).toMatchObject(expected)
+  })
+
   it('lists only lead inbox routes belonging to the requested client', async () => {
     const queryRows = vi.fn().mockResolvedValue([routeRow()])
 
@@ -216,7 +247,7 @@ describe('CRM lead inbox route management', () => {
 
     expect(queryRows).toHaveBeenCalledOnce()
     const [sql, params] = queryRows.mock.calls[0]!
-    expect(sql).toContain("route_kind = 'lead_inbox'")
+    expect(sql).toContain('route_kind = \'lead_inbox\'')
     expect(sql).toContain('client_id = $1')
     expect(sql).not.toContain('route_token_hash')
     expect(sql).not.toContain('token_version')
@@ -235,7 +266,7 @@ describe('CRM lead inbox route management', () => {
     expect(calls[1]?.sql).toContain('FROM team_members')
     expect(calls[1]?.sql).toContain('client_team_assignments')
     expect(calls[2]?.sql).toContain('FROM crm_email_routes')
-    expect(calls[2]?.sql).toContain("route_kind = 'lead_inbox'")
+    expect(calls[2]?.sql).toContain('route_kind = \'lead_inbox\'')
     expect(calls[2]?.sql).toContain('FOR UPDATE')
     expect(createToken).toHaveBeenCalledWith({
       version: 7,
@@ -325,7 +356,7 @@ describe('CRM lead inbox route management', () => {
     const auditIndex = calls.findIndex(call => /INSERT INTO crm_email_route_audits/.test(call.sql))
     const lockedRoute = calls[lockedRouteIndex]!
 
-    expect(lockedRoute.sql).toContain("route_kind = 'lead_inbox'")
+    expect(lockedRoute.sql).toContain('route_kind = \'lead_inbox\'')
     expect(lockedRoute.sql).toContain('client_id = $2')
     expect(lockedRoute.sql).toContain('is_active = TRUE')
     expect(lockedRoute.sql).toContain('revoked_at IS NULL')
@@ -350,7 +381,7 @@ describe('CRM lead inbox route management', () => {
     expect(oldRouteRevoke.sql).toContain('revoked_at = NOW()')
     expect(oldRouteRevoke.sql).toContain('revoked_by = $1')
     expect(oldRouteRevoke.sql).toContain('revoked_actor_type = $2')
-    expect(oldRouteRevoke.sql).toContain("revoked_reason = 'rotated'")
+    expect(oldRouteRevoke.sql).toContain('revoked_reason = \'rotated\'')
     expect(oldRouteRevoke.sql).toContain('replaced_by_route_id = $3')
     expect(oldRouteRevoke.sql).toContain('updated_at = NOW()')
     expect(oldRouteRevoke.params).toEqual([ACTOR_ID, 'team_member', REPLACEMENT_ROUTE_ID, ROUTE_ID, CLIENT_ID])
@@ -407,7 +438,7 @@ describe('CRM lead inbox route management', () => {
     const revoke = calls[revokeIndex]!
     const audit = calls[auditIndex]!
 
-    expect(lockedRoute.sql).toContain("route_kind = 'lead_inbox'")
+    expect(lockedRoute.sql).toContain('route_kind = \'lead_inbox\'')
     expect(lockedRoute.sql).toContain('client_id = $2')
     expect(lockedRoute.sql).toContain('FOR UPDATE')
     expect(lockedRoute.params).toEqual([ROUTE_ID, CLIENT_ID])
@@ -417,7 +448,7 @@ describe('CRM lead inbox route management', () => {
     expect(revoke.sql).toContain('revoked_at = NOW()')
     expect(revoke.sql).toContain('revoked_by = $1')
     expect(revoke.sql).toContain('revoked_actor_type = $2')
-    expect(revoke.sql).toContain("revoked_reason = 'revoked'")
+    expect(revoke.sql).toContain('revoked_reason = \'revoked\'')
     expect(revoke.sql).toContain('updated_at = NOW()')
     expect(revoke.params).toEqual([ACTOR_ID, 'team_member', ROUTE_ID, CLIENT_ID])
     expect(audit.sql).toContain('route_id, client_id, actor_id, actor_type, action')
