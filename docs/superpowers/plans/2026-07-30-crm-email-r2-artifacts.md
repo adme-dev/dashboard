@@ -127,24 +127,39 @@ attachments: Array<{
 - Modify:
   `docs/superpowers/plans/2026-07-30-crm-email-r2-artifacts.md`
 
-- [ ] Write failing adapter tests proving the B4 URL, dedicated shared-secret
+- [x] Write failing adapter tests proving the B4 URL, dedicated shared-secret
       header, route/domain mapping, provider ID fallback to raw SHA-256,
       received timestamp, and exact artifact manifest.
-- [ ] Write failing handler tests proving lead/reply remain unread while the
+- [x] Write failing handler tests proving lead/reply remain unread while the
       Worker flag is off or required bindings are absent.
-- [ ] Write failing enabled-path tests proving one read/parse/store/deliver
+- [x] Write failing enabled-path tests proving one read/parse/store/deliver
       sequence, unsafe attachments never store, and rejected Nitro handoffs
       delete every stored object.
-- [ ] Run focused tests and observe failures against the disabled route branch.
-- [ ] Parse PostalMime attachments as array buffers, retaining content only
+- [x] Run focused tests and observe failures against the disabled route branch.
+- [x] Parse PostalMime attachments as array buffers, retaining content only
       inside the Worker until R2 persistence completes.
-- [ ] Implement the flag-gated CRM adapter without changing the board branch.
-- [ ] Run all Worker/CRM focused tests, focused ESLint, Wrangler dry-run,
+- [x] Implement the flag-gated CRM adapter without changing the board branch.
+- [x] Run all Worker/CRM focused tests, focused ESLint, Wrangler dry-run,
       `git diff --check`, and typecheck baseline comparison.
-- [ ] Re-read every changed/new file. Mark B3 and B1 complete; keep production
+- [x] Re-read every changed/new file. Mark B3 and B1 complete; keep production
       flags, bindings, Queue consumer, and deployment disabled.
-- [ ] Commit:
+- [x] Commit:
       `feat(email-worker): stage CRM inbound email in R2`.
+
+## Verification Record
+
+- TDD evidence: the CRM adapter first failed as a missing module; four enabled
+  handler paths then failed against the deliberately disabled route branch.
+- Focused regression verification: 14 files, 100 tests passed.
+- A real multipart MIME fixture proved PostalMime decoded attachment bytes,
+  R2 received those bytes, and the Nitro payload contained metadata only.
+- Focused ESLint and `git diff --check` passed.
+- Wrangler dry-run succeeded at 121.60 KiB upload / 29.24 KiB gzip; no
+  deployment occurred.
+- Nuxt typecheck returned to the 805-error unrelated repository baseline with
+  no error in a file changed by this slice.
+- B1, B2, B3, and B4 are complete in code. All new CRM routes remain disabled
+  and unconfigured until B5 provides the idempotent Queue consumer.
 
 ## Live/Deployment Gate
 

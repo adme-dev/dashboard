@@ -16,10 +16,15 @@ const parsedEmail: ParsedInboundEmail = {
   subject: 'Website update',
   text: 'Please update the website.',
   html: '<p>Please update the website.</p>',
+  messageId: '<provider-message@example.net>',
   attachments: []
 }
 
-function createMessage(to: string, rawSize = 1024) {
+function createMessage(
+  to: string,
+  rawSize = 1024,
+  rawContent = 'raw mime'
+) {
   let rawAccesses = 0
   const rejections: string[] = []
   const message = {
@@ -30,7 +35,7 @@ function createMessage(to: string, rawSize = 1024) {
       rawAccesses += 1
       return new ReadableStream<Uint8Array>({
         start(controller) {
-          controller.enqueue(new TextEncoder().encode('raw mime'))
+          controller.enqueue(new TextEncoder().encode(rawContent))
           controller.close()
         }
       })
@@ -83,6 +88,25 @@ describe('guarded inbound email Worker', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('rejects enabled CRM routes before MIME access when bindings are incomplete', async () => {
+    const parse = vi.fn().mockResolvedValue(parsedEmail)
+    const fetch = vi.fn()
+    const state = createMessage(
+      `lead+${SIGNED_TOKEN}@mail.xeroflow.io`
+    )
+    const worker = createInboundEmailWorker({ parse, fetch })
+
+    await worker.email(state.message, {
+      ...env,
+      CRM_EMAIL_INBOUND_ENABLED: 'true'
+    })
+
+    expect(state.rejections).toEqual(['Email route not configured'])
+    expect(state.rawAccesses()).toBe(0)
+    expect(parse).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('reads and parses a valid board message once before delivery', async () => {
     const parse = vi.fn().mockResolvedValue(parsedEmail)
     const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
@@ -114,6 +138,213 @@ describe('guarded inbound email Worker', () => {
 
     expect(state.rejections).toEqual(['Unsafe email attachments'])
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('stores and hands off an enabled CRM lead exactly once', async () => {
+    const content = new TextEncoder().encode('attachment bytes').buffer
+    const parse = vi.fn().mockResolvedValue({
+      ...parsedEmail,
+      attachments: [{
+        filename: 'details.txt',
+        mimeType: 'text/plain',
+        size: content.byteLength,
+        content,
+        contentId: null
+      }]
+    })
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(null, { status: 202 })
+    )
+    const put = vi.fn().mockResolvedValue({ key: 'stored' })
+    const deleteObjects = vi.fn().mockResolvedValue(undefined)
+    const state = createMessage(
+      `lead+${SIGNED_TOKEN}@mail.xeroflow.io`
+    )
+    const worker = createInboundEmailWorker({
+      parse,
+      fetch,
+      now: () => new Date('2026-07-30T05:30:00.000Z'),
+      randomUUID: () => '11111111-1111-4111-8111-111111111111'
+    })
+
+    await worker.email(state.message, {
+      ...env,
+      CRM_EMAIL_INBOUND_ENABLED: 'true',
+      CRM_EMAIL_WORKER_SECRET: 'worker-secret',
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects }
+    })
+
+    expect(state.rejections).toEqual([])
+    expect(state.rawAccesses()).toBe(1)
+    expect(parse).toHaveBeenCalledTimes(1)
+    expect(put).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const requestBody = JSON.parse(fetch.mock.calls[0]![1].body)
+    expect(requestBody).toMatchObject({
+      routeKind: 'lead_inbox',
+      routeToken: SIGNED_TOKEN,
+      recipientDomain: 'mail.xeroflow.io',
+      providerMessageId: '<provider-message@example.net>',
+      rawMimeR2Key:
+        'crm-email/inbound/2026/07/30/11111111-1111-4111-8111-111111111111/message.eml',
+      attachments: [{
+        r2ObjectKey:
+          'crm-email/inbound/2026/07/30/11111111-1111-4111-8111-111111111111/attachments/01.bin',
+        filename: 'details.txt',
+        contentType: 'text/plain',
+        byteSize: content.byteLength
+      }]
+    })
+    expect(requestBody.attachments[0]).not.toHaveProperty('content')
+    expect(deleteObjects).not.toHaveBeenCalled()
+  })
+
+  it('does not store CRM artifacts when parsed attachments are unsafe', async () => {
+    const content = new ArrayBuffer(5 * MiB + 1)
+    const parse = vi.fn().mockResolvedValue({
+      ...parsedEmail,
+      attachments: [{
+        filename: 'oversized.pdf',
+        mimeType: 'application/pdf',
+        size: content.byteLength,
+        content
+      }]
+    })
+    const fetch = vi.fn()
+    const put = vi.fn()
+    const state = createMessage(
+      `reply+${SIGNED_TOKEN}@reply.xeroflow.io`
+    )
+    const worker = createInboundEmailWorker({ parse, fetch })
+
+    await worker.email(state.message, {
+      ...env,
+      CRM_EMAIL_INBOUND_ENABLED: 'true',
+      CRM_EMAIL_WORKER_SECRET: 'worker-secret',
+      CRM_EMAIL_BUCKET: { put, delete: vi.fn() }
+    })
+
+    expect(state.rejections).toEqual(['Unsafe email attachments'])
+    expect(put).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('deletes CRM artifacts when Nitro rejects the route', async () => {
+    const parse = vi.fn().mockResolvedValue(parsedEmail)
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(null, { status: 404 })
+    )
+    const put = vi.fn().mockResolvedValue({ key: 'stored' })
+    const deleteObjects = vi.fn().mockResolvedValue(undefined)
+    const state = createMessage(
+      `reply+${SIGNED_TOKEN}@reply.xeroflow.io`
+    )
+    const worker = createInboundEmailWorker({
+      parse,
+      fetch,
+      now: () => new Date('2026-07-30T05:30:00.000Z'),
+      randomUUID: () => '11111111-1111-4111-8111-111111111111'
+    })
+
+    await worker.email(state.message, {
+      ...env,
+      CRM_EMAIL_INBOUND_ENABLED: 'true',
+      CRM_EMAIL_WORKER_SECRET: 'worker-secret',
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects }
+    })
+
+    expect(state.rejections).toEqual(['Failed to process email: 404'])
+    expect(deleteObjects).toHaveBeenCalledWith([
+      'crm-email/inbound/2026/07/30/11111111-1111-4111-8111-111111111111/message.eml'
+    ])
+  })
+
+  it('deletes CRM artifacts when the Nitro handoff throws', async () => {
+    const parse = vi.fn().mockResolvedValue(parsedEmail)
+    const fetch = vi.fn().mockRejectedValue(new Error('network unavailable'))
+    const put = vi.fn().mockResolvedValue({ key: 'stored' })
+    const deleteObjects = vi.fn().mockResolvedValue(undefined)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const state = createMessage(
+      `lead+${SIGNED_TOKEN}@mail.xeroflow.io`
+    )
+    const worker = createInboundEmailWorker({
+      parse,
+      fetch,
+      now: () => new Date('2026-07-30T05:30:00.000Z'),
+      randomUUID: () => '11111111-1111-4111-8111-111111111111'
+    })
+
+    await worker.email(state.message, {
+      ...env,
+      CRM_EMAIL_INBOUND_ENABLED: 'true',
+      CRM_EMAIL_WORKER_SECRET: 'worker-secret',
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects }
+    })
+
+    expect(state.rejections).toEqual(['Internal error processing email'])
+    expect(deleteObjects).toHaveBeenCalledWith([
+      'crm-email/inbound/2026/07/30/11111111-1111-4111-8111-111111111111/message.eml'
+    ])
+    expect(JSON.stringify(error.mock.calls)).not.toContain(SIGNED_TOKEN)
+    expect(JSON.stringify(error.mock.calls)).not.toContain('network unavailable')
+    error.mockRestore()
+  })
+
+  it('retains PostalMime attachment bytes until the R2 write completes', async () => {
+    const rawMime = [
+      'From: Customer <customer@example.com>',
+      `To: lead+${SIGNED_TOKEN}@mail.xeroflow.io`,
+      'Subject: Website enquiry',
+      'Message-ID: <mime-message@example.com>',
+      'MIME-Version: 1.0',
+      'Content-Type: multipart/mixed; boundary="boundary"',
+      '',
+      '--boundary',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      'Please contact me.',
+      '--boundary',
+      'Content-Type: text/plain',
+      'Content-Disposition: attachment; filename="details.txt"',
+      'Content-Transfer-Encoding: base64',
+      '',
+      'SGVsbG8=',
+      '--boundary--',
+      ''
+    ].join('\r\n')
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(null, { status: 202 })
+    )
+    const put = vi.fn().mockResolvedValue({ key: 'stored' })
+    const state = createMessage(
+      `lead+${SIGNED_TOKEN}@mail.xeroflow.io`,
+      new TextEncoder().encode(rawMime).byteLength,
+      rawMime
+    )
+    const worker = createInboundEmailWorker({
+      fetch,
+      now: () => new Date('2026-07-30T05:30:00.000Z'),
+      randomUUID: () => '11111111-1111-4111-8111-111111111111'
+    })
+
+    await worker.email(state.message, {
+      ...env,
+      CRM_EMAIL_INBOUND_ENABLED: 'true',
+      CRM_EMAIL_WORKER_SECRET: 'worker-secret',
+      CRM_EMAIL_BUCKET: { put, delete: vi.fn() }
+    })
+
+    expect(state.rejections).toEqual([])
+    expect(put).toHaveBeenCalledTimes(2)
+    const attachmentBytes = new Uint8Array(put.mock.calls[1]![1])
+    expect(new TextDecoder().decode(attachmentBytes)).toBe('Hello')
+    const requestBody = JSON.parse(fetch.mock.calls[0]![1].body)
+    expect(requestBody.providerMessageId).toBe('<mime-message@example.com>')
+    expect(requestBody.attachments[0]).toMatchObject({
+      filename: 'details.txt',
+      byteSize: 5
+    })
   })
 
   it('fails closed without logging message content when MIME parsing fails', async () => {

@@ -10,13 +10,34 @@ export interface ParsedInboundEmail {
   subject: string | null
   text: string | null
   html: string | null
+  messageId?: string | null
   attachments: ParsedInboundAttachment[]
+}
+
+export interface CrmEmailBucketBinding {
+  put(
+    key: string,
+    value: ArrayBuffer,
+    options: {
+      httpMetadata: {
+        contentType: string
+        cacheControl: string
+      }
+      customMetadata: Record<string, string>
+      sha256: ArrayBuffer
+    }
+  ): Promise<unknown>
+  delete(keys: string[]): Promise<void>
 }
 
 export interface InboundEmailWorkerEnv {
   API_URL: string
   INTERNAL_API_KEY: string
   MAX_INBOUND_EMAIL_BYTES?: string
+  CRM_EMAIL_INBOUND_ENABLED?: string
+  CRM_EMAIL_WORKER_SECRET?: string
+  CRM_EMAIL_RETENTION_DAYS?: string
+  CRM_EMAIL_BUCKET?: CrmEmailBucketBinding
 }
 
 export interface InboundEmailMessage {

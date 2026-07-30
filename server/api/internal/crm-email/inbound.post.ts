@@ -194,7 +194,10 @@ export default defineEventHandler(async (event) => {
       rawMimeR2Key: payload.rawMimeR2Key,
       rawMimeSha256: payload.rawMimeSha256,
       rawMimeExpiresAt: payload.rawMimeExpiresAt,
-      attachments: payload.attachments,
+      attachments: payload.attachments.map(attachment => ({
+        ...attachment,
+        contentId: attachment.contentId ?? null
+      })),
       receivedAt: payload.receivedAt
     })
   } catch {

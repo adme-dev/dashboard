@@ -1,36 +1,80 @@
 import PostalMime from 'postal-mime'
 import { deliverBoardEmail } from './boardAdapter'
+import { deliverCrmInboundEmail } from './crmAdapter'
 import { classifyInboundEmailRoute } from './routing'
+import {
+  deleteCrmInboundEmailArtifacts,
+  resolveCrmEmailRetentionDays,
+  storeCrmInboundEmailArtifacts
+} from './r2Artifacts'
 import {
   resolveInboundEmailLimits,
   validateInboundAttachments,
   validateInboundEmailSize
 } from './safety'
 import type {
+  CrmEmailBucketBinding,
   FetchLike,
   InboundEmailMessage,
   InboundEmailWorkerEnv,
   ParsedInboundEmail
 } from './contracts'
+import type { CrmInboundArtifactManifest } from './r2Artifacts'
 
 interface InboundEmailWorkerDependencies {
   fetch?: FetchLike
   parse?: (raw: ArrayBuffer) => Promise<ParsedInboundEmail>
+  now?: () => Date
+  randomUUID?: () => string
+}
+
+function attachmentContentToArrayBuffer(content: unknown): ArrayBuffer {
+  if (content instanceof ArrayBuffer) return content
+  if (ArrayBuffer.isView(content)) {
+    const copy = new Uint8Array(content.byteLength)
+    copy.set(new Uint8Array(
+      content.buffer,
+      content.byteOffset,
+      content.byteLength
+    ))
+    return copy.buffer
+  }
+  if (typeof content === 'string') {
+    return new TextEncoder().encode(content).buffer
+  }
+  throw new Error('Unsupported inbound attachment content')
 }
 
 async function parseWithPostalMime(raw: ArrayBuffer): Promise<ParsedInboundEmail> {
-  const parser = new PostalMime()
+  const parser = new PostalMime({ attachmentEncoding: 'arraybuffer' })
   const email = await parser.parse(raw)
 
   return {
     subject: email.subject ?? null,
     text: email.text ?? null,
     html: email.html ?? null,
-    attachments: (email.attachments ?? []).map(attachment => ({
-      filename: attachment.filename ?? null,
-      mimeType: attachment.mimeType,
-      size: attachment.content?.byteLength ?? 0
-    }))
+    messageId: email.messageId ?? null,
+    attachments: (email.attachments ?? []).map((attachment) => {
+      const content = attachmentContentToArrayBuffer(attachment.content)
+      return {
+        filename: attachment.filename ?? null,
+        mimeType: attachment.mimeType,
+        content,
+        size: content.byteLength,
+        contentId: attachment.contentId ?? null
+      }
+    })
+  }
+}
+
+async function cleanupCrmArtifacts(
+  bucket: CrmEmailBucketBinding,
+  manifest: CrmInboundArtifactManifest
+): Promise<void> {
+  try {
+    await deleteCrmInboundEmailArtifacts(bucket, manifest)
+  } catch {
+    console.error('CRM email artifact cleanup failed')
   }
 }
 
@@ -50,8 +94,22 @@ export function createInboundEmailWorker(
         message.setReject('Invalid email route')
         return
       }
-      if (route.kind !== 'board') {
+      const isCrmRoute = route.kind === 'lead' || route.kind === 'crm_reply'
+      if (
+        isCrmRoute
+        && env.CRM_EMAIL_INBOUND_ENABLED !== 'true'
+      ) {
         message.setReject('Email route not enabled')
+        return
+      }
+      if (
+        isCrmRoute
+        && (
+          !env.CRM_EMAIL_WORKER_SECRET?.trim()
+          || !env.CRM_EMAIL_BUCKET
+        )
+      ) {
+        message.setReject('Email route not configured')
         return
       }
 
@@ -74,16 +132,56 @@ export function createInboundEmailWorker(
           return
         }
 
-        const result = await deliverBoardEmail({
-          token: route.token,
-          from: message.from,
-          email,
-          apiUrl: env.API_URL,
-          internalApiKey: env.INTERNAL_API_KEY
-        }, { fetch: fetchImpl })
+        if (route.kind === 'board') {
+          const result = await deliverBoardEmail({
+            token: route.token,
+            from: message.from,
+            email,
+            apiUrl: env.API_URL,
+            internalApiKey: env.INTERNAL_API_KEY
+          }, { fetch: fetchImpl })
+
+          if (!result.accepted) {
+            console.error('Email-to-board request failed', {
+              status: result.status
+            })
+            message.setReject(`Failed to process email: ${result.status}`)
+          }
+          return
+        }
+
+        const receivedDate = dependencies.now?.() ?? new Date()
+        const receivedAt = receivedDate.toISOString()
+        const manifest = await storeCrmInboundEmailArtifacts({
+          bucket: env.CRM_EMAIL_BUCKET!,
+          raw,
+          attachments: email.attachments,
+          retentionDays: resolveCrmEmailRetentionDays(
+            env.CRM_EMAIL_RETENTION_DAYS
+          )
+        }, {
+          now: () => receivedDate,
+          randomUUID: dependencies.randomUUID
+        })
+        let result
+        try {
+          result = await deliverCrmInboundEmail({
+            route,
+            recipient: message.to,
+            messageId: email.messageId ?? null,
+            manifest,
+            receivedAt,
+            apiUrl: env.API_URL,
+            workerSecret: env.CRM_EMAIL_WORKER_SECRET!
+          }, { fetch: fetchImpl })
+        } catch (error) {
+          await cleanupCrmArtifacts(env.CRM_EMAIL_BUCKET!, manifest)
+          throw error
+        }
 
         if (!result.accepted) {
-          console.error('Email-to-board request failed', {
+          await cleanupCrmArtifacts(env.CRM_EMAIL_BUCKET!, manifest)
+          console.error('CRM email inbound request failed', {
             status: result.status
           })
           message.setReject(`Failed to process email: ${result.status}`)

@@ -404,10 +404,13 @@ pnpm deploy:production
 
 ### Phase B — Inbound email
 
-- [ ] B1. Refactor the existing Email Routing Worker into board, lead, and CRM
+- [x] B1. Refactor the existing Email Routing Worker into board, lead, and CRM
       reply adapters without changing existing board ingestion.
 - [x] B2. Reject invalid routes and enforce MIME/attachment size limits.
-- [ ] B3. Store raw MIME and attachment objects in R2 with retention metadata.
+- [x] B3. Store raw MIME and attachment objects in R2 with retention metadata.
+      Writes are awaited, checksummed, private/no-store, scan-pending, and
+      rolled back on partial storage or rejected Nitro handoff. Production
+      binding and lifecycle activation remain gated.
 - [x] B4. Add the authenticated inbound boundary and idempotent Queue workflow.
       The fail-closed Nitro endpoint verifies Worker authentication and
       domain-bound route tokens, resolves tenant ownership from Postgres, and

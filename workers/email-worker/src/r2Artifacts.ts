@@ -1,4 +1,7 @@
-import type { ParsedInboundAttachment } from './contracts'
+import type {
+  CrmEmailBucketBinding,
+  ParsedInboundAttachment
+} from './contracts'
 
 const DEFAULT_RETENTION_DAYS = 30
 const MAX_RETENTION_DAYS = 30
@@ -6,23 +9,7 @@ const MAX_ATTACHMENTS = 10
 const UUID_PATTERN
   = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-interface R2PutOptionsLike {
-  httpMetadata: {
-    contentType: string
-    cacheControl: string
-  }
-  customMetadata: Record<string, string>
-  sha256: ArrayBuffer
-}
-
-export interface CrmEmailR2Bucket {
-  put(
-    key: string,
-    value: ArrayBuffer,
-    options: R2PutOptionsLike
-  ): Promise<unknown>
-  delete(keys: string[]): Promise<void>
-}
+export type CrmEmailR2Bucket = CrmEmailBucketBinding
 
 export interface CrmInboundArtifactAttachment {
   r2ObjectKey: string
