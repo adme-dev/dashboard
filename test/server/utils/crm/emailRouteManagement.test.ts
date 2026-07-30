@@ -2,11 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createCrmLeadInboxRoute,
   listCrmLeadInboxRoutes,
+  revokeCrmLeadInboxRoute,
+  rotateCrmLeadInboxRoute,
   toCrmEmailRouteSummary
 } from '~~/server/utils/crm/emailRouteManagement'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
+const OTHER_CLIENT_ID = '99999999-9999-4999-8999-999999999999'
 const ROUTE_ID = '22222222-2222-4222-8222-222222222222'
+const REPLACEMENT_ROUTE_ID = '44444444-4444-4444-8444-444444444444'
 const ACTOR_ID = '33333333-3333-4333-8333-333333333333'
 const ISSUED_TOKEN = 'v7.AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAA'
 const ROUTE_TOKEN_HASH = 'b'.repeat(64)
@@ -38,6 +42,96 @@ function createInput() {
       currentVersion: 7,
       domain: 'inbound.xeroflow.io',
       secret: 'a-secret-longer-than-thirty-two-bytes'
+    }
+  }
+}
+
+function lifecycleInput() {
+  return {
+    clientId: CLIENT_ID,
+    routeId: ROUTE_ID,
+    actor: { id: ACTOR_ID, type: 'team_member' as const },
+    issuance: {
+      currentVersion: 7,
+      domain: 'inbound.xeroflow.io',
+      secret: 'a-secret-longer-than-thirty-two-bytes'
+    }
+  }
+}
+
+function lifecycleDependencies(options: {
+  route?: Record<string, unknown> | null
+  replacementInsertError?: Error
+  revokeUpdateError?: Error
+  auditError?: Error
+} = {}) {
+  const calls: Array<{ sql: string, params: unknown[] }> = []
+  let rolledBack = false
+  const route = options.route === undefined ? routeRow() : options.route
+  const replacement = routeRow({
+    id: REPLACEMENT_ROUTE_ID,
+    label: 'Website enquiries',
+    is_active: false
+  })
+  const db = {
+    query: vi.fn(async (sql: string, params: unknown[] = []) => {
+      calls.push({ sql, params })
+      if (/FROM agency_clients/.test(sql)) {
+        return { rows: [{ lead_capture_mode: 'full_crm' }] }
+      }
+      if (/FROM team_members/.test(sql)) return { rows: [{ allowed: true }] }
+      if (/SELECT[\s\S]*FROM crm_email_routes/.test(sql)) {
+        return {
+          rows: route === null || route.client_id !== params[1]
+            ? []
+            : [route]
+        }
+      }
+      if (/INSERT INTO crm_email_routes/.test(sql)) {
+        if (options.replacementInsertError) throw options.replacementInsertError
+        return { rows: [replacement] }
+      }
+      if (/UPDATE crm_email_routes[\s\S]*replaced_by_route_id/.test(sql)) {
+        if (options.revokeUpdateError) throw options.revokeUpdateError
+        return { rows: [] }
+      }
+      if (/UPDATE crm_email_routes[\s\S]*is_active = TRUE/.test(sql)) {
+        return { rows: [routeRow({ id: REPLACEMENT_ROUTE_ID })] }
+      }
+      if (/UPDATE crm_email_routes/.test(sql)) {
+        if (options.revokeUpdateError) throw options.revokeUpdateError
+        return { rows: [routeRow({ is_active: false, revoked_at: '2026-07-31T01:00:00.000Z' })] }
+      }
+      if (/INSERT INTO crm_email_route_audits/.test(sql)) {
+        if (options.auditError) throw options.auditError
+        return { rows: [] }
+      }
+      throw new Error(`Unexpected SQL: ${sql}`)
+    })
+  }
+  const transaction = vi.fn(async (callback: (client: typeof db) => Promise<unknown>) => {
+    try {
+      return await callback(db)
+    } catch (error) {
+      rolledBack = true
+      throw error
+    }
+  })
+  const createToken = vi.fn().mockResolvedValue({
+    token: ISSUED_TOKEN,
+    routeTokenHash: ROUTE_TOKEN_HASH
+  })
+
+  return {
+    calls,
+    transaction,
+    createToken,
+    get rolledBack() { return rolledBack },
+    dependencies: {
+      queryRows: vi.fn(),
+      transaction,
+      createToken,
+      emailConversationsEnabled: () => true
     }
   }
 }
@@ -215,5 +309,151 @@ describe('CRM lead inbox route management', () => {
 
     await expect(createCrmLeadInboxRoute(createInput(), dependencies as never))
       .rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('rotates a locked tenant-scoped active route atomically and only reveals its replacement once', async () => {
+    const { calls, transaction, createToken, dependencies } = lifecycleDependencies()
+    const issuedAddress = `lead+${ISSUED_TOKEN}@inbound.xeroflow.io`
+
+    const result = await rotateCrmLeadInboxRoute(lifecycleInput(), dependencies)
+
+    expect(transaction).toHaveBeenCalledOnce()
+    const lockedRouteIndex = calls.findIndex(call => /FROM crm_email_routes/.test(call.sql))
+    const replacementInsertIndex = calls.findIndex(call => /INSERT INTO crm_email_routes/.test(call.sql))
+    const oldRouteRevokeIndex = calls.findIndex(call => /UPDATE crm_email_routes[\s\S]*replaced_by_route_id/.test(call.sql))
+    const replacementActivateIndex = calls.findIndex(call => /UPDATE crm_email_routes[\s\S]*is_active = TRUE/.test(call.sql))
+    const auditIndex = calls.findIndex(call => /INSERT INTO crm_email_route_audits/.test(call.sql))
+    const lockedRoute = calls[lockedRouteIndex]!
+
+    expect(lockedRoute.sql).toContain("route_kind = 'lead_inbox'")
+    expect(lockedRoute.sql).toContain('client_id = $2')
+    expect(lockedRoute.sql).toContain('is_active = TRUE')
+    expect(lockedRoute.sql).toContain('revoked_at IS NULL')
+    expect(lockedRoute.sql).toContain('FOR UPDATE')
+    expect(lockedRoute.params).toEqual([ROUTE_ID, CLIENT_ID])
+    expect(replacementInsertIndex).toBeGreaterThan(lockedRouteIndex)
+    expect(oldRouteRevokeIndex).toBeGreaterThan(replacementInsertIndex)
+    expect(replacementActivateIndex).toBeGreaterThan(oldRouteRevokeIndex)
+    expect(auditIndex).toBeGreaterThan(replacementActivateIndex)
+    expect(createToken).toHaveBeenCalledWith({
+      version: 7,
+      domain: 'inbound.xeroflow.io',
+      secret: 'a-secret-longer-than-thirty-two-bytes'
+    })
+
+    const replacementInsert = calls[replacementInsertIndex]!
+    expect(replacementInsert.params).toContain(ROUTE_TOKEN_HASH)
+    expect(replacementInsert.params).not.toContain(ISSUED_TOKEN)
+
+    const oldRouteRevoke = calls[oldRouteRevokeIndex]!
+    expect(oldRouteRevoke.sql).toContain('is_active = FALSE')
+    expect(oldRouteRevoke.sql).toContain('revoked_at = NOW()')
+    expect(oldRouteRevoke.sql).toContain('revoked_by = $1')
+    expect(oldRouteRevoke.sql).toContain('revoked_actor_type = $2')
+    expect(oldRouteRevoke.sql).toContain("revoked_reason = 'rotated'")
+    expect(oldRouteRevoke.sql).toContain('replaced_by_route_id = $3')
+    expect(oldRouteRevoke.sql).toContain('updated_at = NOW()')
+    expect(oldRouteRevoke.params).toEqual([ACTOR_ID, 'team_member', REPLACEMENT_ROUTE_ID, ROUTE_ID, CLIENT_ID])
+
+    const audit = calls[auditIndex]!
+    expect(audit.sql).toContain('route_id, client_id, actor_id, actor_type, action')
+    expect(audit.sql).not.toContain('metadata')
+    expect(audit.params).toEqual([ROUTE_ID, CLIENT_ID, ACTOR_ID, 'team_member'])
+    expect(JSON.stringify(calls)).not.toContain(issuedAddress)
+    expect(result).toMatchObject({
+      route: expect.objectContaining({ id: REPLACEMENT_ROUTE_ID, addressAvailable: false }),
+      issuedAddress,
+      addressShownOnce: true
+    })
+    expect(JSON.stringify(result).split(issuedAddress)).toHaveLength(2)
+  })
+
+  it.each([
+    ['absent route', null],
+    ['cross-tenant route', routeRow({ client_id: OTHER_CLIENT_ID })]
+  ])('returns the same 404 for a rotation of a %s', async (_caseName, route) => {
+    const { createToken, dependencies } = lifecycleDependencies({ route })
+
+    await expect(rotateCrmLeadInboxRoute(lifecycleInput(), dependencies))
+      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'CRM inbox route not found' })
+
+    expect(createToken).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['replacement insert', { replacementInsertError: new Error('insert failed') }],
+    ['old route revocation', { revokeUpdateError: new Error('update failed') }],
+    ['rotation audit', { auditError: new Error('audit failed') }]
+  ])('rolls back the rotation when the %s write fails', async (_write, options) => {
+    const dependencies = lifecycleDependencies(options)
+
+    await expect(rotateCrmLeadInboxRoute(lifecycleInput(), dependencies.dependencies))
+      .rejects.toThrow(/failed/)
+
+    expect(dependencies.rolledBack).toBe(true)
+  })
+
+  it('soft-revokes a locked tenant-scoped route with a safe audit row', async () => {
+    const { calls, transaction, dependencies } = lifecycleDependencies()
+    const { issuance: _issuance, ...input } = lifecycleInput()
+
+    const result = await revokeCrmLeadInboxRoute(input, dependencies)
+
+    expect(transaction).toHaveBeenCalledOnce()
+    const lockedRouteIndex = calls.findIndex(call => /FROM crm_email_routes/.test(call.sql))
+    const revokeIndex = calls.findIndex(call => /UPDATE crm_email_routes/.test(call.sql))
+    const auditIndex = calls.findIndex(call => /INSERT INTO crm_email_route_audits/.test(call.sql))
+    const lockedRoute = calls[lockedRouteIndex]!
+    const revoke = calls[revokeIndex]!
+    const audit = calls[auditIndex]!
+
+    expect(lockedRoute.sql).toContain("route_kind = 'lead_inbox'")
+    expect(lockedRoute.sql).toContain('client_id = $2')
+    expect(lockedRoute.sql).toContain('FOR UPDATE')
+    expect(lockedRoute.params).toEqual([ROUTE_ID, CLIENT_ID])
+    expect(revokeIndex).toBeGreaterThan(lockedRouteIndex)
+    expect(auditIndex).toBeGreaterThan(revokeIndex)
+    expect(revoke.sql).toContain('is_active = FALSE')
+    expect(revoke.sql).toContain('revoked_at = NOW()')
+    expect(revoke.sql).toContain('revoked_by = $1')
+    expect(revoke.sql).toContain('revoked_actor_type = $2')
+    expect(revoke.sql).toContain("revoked_reason = 'revoked'")
+    expect(revoke.sql).toContain('updated_at = NOW()')
+    expect(revoke.params).toEqual([ACTOR_ID, 'team_member', ROUTE_ID, CLIENT_ID])
+    expect(audit.sql).toContain('route_id, client_id, actor_id, actor_type, action')
+    expect(audit.sql).not.toContain('metadata')
+    expect(audit.params).toEqual([ROUTE_ID, CLIENT_ID, ACTOR_ID, 'team_member'])
+    expect(result).toEqual({
+      route: expect.objectContaining({
+        id: ROUTE_ID,
+        status: 'revoked',
+        addressAvailable: false
+      })
+    })
+  })
+
+  it('returns an already revoked same-tenant route without another mutation or audit', async () => {
+    const { calls, dependencies } = lifecycleDependencies({
+      route: routeRow({ is_active: false, revoked_at: '2026-07-31T01:00:00.000Z' })
+    })
+    const { issuance: _issuance, ...input } = lifecycleInput()
+
+    await expect(revokeCrmLeadInboxRoute(input, dependencies)).resolves.toEqual({
+      route: expect.objectContaining({ id: ROUTE_ID, status: 'revoked' })
+    })
+
+    expect(calls.some(call => /UPDATE crm_email_routes/.test(call.sql))).toBe(false)
+    expect(calls.some(call => /INSERT INTO crm_email_route_audits/.test(call.sql))).toBe(false)
+  })
+
+  it.each([
+    ['absent route', null],
+    ['cross-tenant route', routeRow({ client_id: OTHER_CLIENT_ID })]
+  ])('returns the same 404 when revoking a %s', async (_caseName, route) => {
+    const { dependencies } = lifecycleDependencies({ route })
+    const { issuance: _issuance, ...input } = lifecycleInput()
+
+    await expect(revokeCrmLeadInboxRoute(input, dependencies))
+      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'CRM inbox route not found' })
   })
 })

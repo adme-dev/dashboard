@@ -42,6 +42,19 @@ export interface CreateCrmLeadInboxRouteInput {
   issuance: CrmEmailRouteIssuanceConfig
 }
 
+export interface RotateCrmLeadInboxRouteInput {
+  clientId: string
+  routeId: string
+  actor: { id: string, type: 'team_member' | 'client_user' }
+  issuance: CrmEmailRouteIssuanceConfig
+}
+
+export interface RevokeCrmLeadInboxRouteInput {
+  clientId: string
+  routeId: string
+  actor: { id: string, type: 'team_member' | 'client_user' }
+}
+
 interface CrmEmailRouteRow {
   id: string
   client_id: string
@@ -182,29 +195,12 @@ export async function createCrmLeadInboxRoute(
   input: CreateCrmLeadInboxRouteInput,
   dependencies: CrmEmailRouteManagementDependencies = defaultCreateDependencies
 ): Promise<IssuedCrmEmailRoute> {
-  if (!dependencies.emailConversationsEnabled()) {
-    throw createError({ statusCode: 403, statusMessage: 'CRM email conversations are disabled' })
-  }
+  assertCrmEmailConversationsEnabled(dependencies)
   const label = assertValidLabel(input.label)
 
   try {
     const issued = await dependencies.transaction(async (db) => {
-      const client = await db.query<{ lead_capture_mode: string }>(`
-        SELECT lead_capture_mode
-        FROM agency_clients
-        WHERE id = $1
-        FOR UPDATE
-      `, [input.clientId])
-      const clientRow = client.rows[0]
-      if (!clientRow) {
-        throw createError({ statusCode: 404, statusMessage: 'Client not found' })
-      }
-      if (!['lightweight_crm', 'full_crm'].includes(clientRow.lead_capture_mode)) {
-        throw createError({ statusCode: 403, statusMessage: 'Client CRM is not enabled' })
-      }
-      if (input.actor.type === 'team_member') {
-        await assertTeamMemberCanManageClient(db, input.clientId, input.actor.id)
-      }
+      await lockAndAuthorizeCrmClient(db, input)
 
       const activeRoute = await db.query<{ id: string }>(`
         SELECT id
@@ -267,4 +263,194 @@ export async function createCrmLeadInboxRoute(
     }
     throw error
   }
+}
+
+function assertCrmEmailConversationsEnabled(
+  dependencies: CrmEmailRouteManagementDependencies
+): void {
+  if (!dependencies.emailConversationsEnabled()) {
+    throw createError({ statusCode: 403, statusMessage: 'CRM email conversations are disabled' })
+  }
+}
+
+async function lockAndAuthorizeCrmClient(
+  db: DbClient,
+  input: {
+    clientId: string
+    actor: { id: string, type: 'team_member' | 'client_user' }
+  }
+): Promise<void> {
+  const client = await db.query<{ lead_capture_mode: string }>(`
+    SELECT lead_capture_mode
+    FROM agency_clients
+    WHERE id = $1
+    FOR UPDATE
+  `, [input.clientId])
+  const clientRow = client.rows[0]
+  if (!clientRow) {
+    throw createError({ statusCode: 404, statusMessage: 'Client not found' })
+  }
+  if (!['lightweight_crm', 'full_crm'].includes(clientRow.lead_capture_mode)) {
+    throw createError({ statusCode: 403, statusMessage: 'Client CRM is not enabled' })
+  }
+  if (input.actor.type === 'team_member') {
+    await assertTeamMemberCanManageClient(db, input.clientId, input.actor.id)
+  }
+}
+
+function routeNotFound(): ReturnType<typeof createError> {
+  return createError({ statusCode: 404, statusMessage: 'CRM inbox route not found' })
+}
+
+export async function rotateCrmLeadInboxRoute(
+  input: RotateCrmLeadInboxRouteInput,
+  dependencies: CrmEmailRouteManagementDependencies = defaultCreateDependencies
+): Promise<IssuedCrmEmailRoute> {
+  assertCrmEmailConversationsEnabled(dependencies)
+
+  const issued = await dependencies.transaction(async (db) => {
+    await lockAndAuthorizeCrmClient(db, input)
+
+    const lockedRoute = await db.query<CrmEmailRouteRow>(`
+      SELECT
+        id, client_id, label, route_kind, recipient_domain,
+        expires_at, last_used_at, is_active, created_at, revoked_at
+      FROM crm_email_routes
+      WHERE id = $1
+        AND client_id = $2
+        AND route_kind = 'lead_inbox'
+        AND is_active = TRUE
+        AND revoked_at IS NULL
+      FOR UPDATE
+    `, [input.routeId, input.clientId])
+    const oldRoute = lockedRoute.rows[0]
+    if (!oldRoute) throw routeNotFound()
+
+    const token = await dependencies.createToken({
+      version: input.issuance.currentVersion,
+      domain: input.issuance.domain,
+      secret: input.issuance.secret
+    })
+    // The partial unique index permits the replacement to be inserted before
+    // revoking the old route only while the replacement remains inactive.
+    const replacementInsert = await db.query<CrmEmailRouteRow>(`
+      INSERT INTO crm_email_routes (
+        client_id, conversation_id, route_kind, token_version,
+        route_token_hash, recipient_domain, label, is_active, created_by
+      ) VALUES ($1, NULL, 'lead_inbox', $2, $3, $4, $5, FALSE, $6)
+      RETURNING
+        id, client_id, label, route_kind, recipient_domain,
+        expires_at, last_used_at, is_active, created_at, revoked_at
+    `, [
+      input.clientId,
+      input.issuance.currentVersion,
+      token.routeTokenHash,
+      input.issuance.domain,
+      oldRoute.label,
+      input.actor.id
+    ])
+    const replacement = replacementInsert.rows[0]
+    if (!replacement) {
+      throw createError({ statusCode: 409, statusMessage: 'CRM inbox route could not be rotated' })
+    }
+
+    await db.query(`
+      UPDATE crm_email_routes
+      SET
+        is_active = FALSE,
+        revoked_at = NOW(),
+        revoked_by = $1,
+        revoked_actor_type = $2,
+        revoked_reason = 'rotated',
+        replaced_by_route_id = $3,
+        updated_at = NOW()
+      WHERE id = $4
+        AND client_id = $5
+        AND route_kind = 'lead_inbox'
+    `, [input.actor.id, input.actor.type, replacement.id, input.routeId, input.clientId])
+
+    const activated = await db.query<CrmEmailRouteRow>(`
+      UPDATE crm_email_routes
+      SET is_active = TRUE, updated_at = NOW()
+      WHERE id = $1
+        AND client_id = $2
+        AND route_kind = 'lead_inbox'
+      RETURNING
+        id, client_id, label, route_kind, recipient_domain,
+        expires_at, last_used_at, is_active, created_at, revoked_at
+    `, [replacement.id, input.clientId])
+    const route = activated.rows[0]
+    if (!route) {
+      throw createError({ statusCode: 409, statusMessage: 'CRM inbox route could not be rotated' })
+    }
+
+    await db.query(`
+      INSERT INTO crm_email_route_audits (
+        route_id, client_id, actor_id, actor_type, action
+      ) VALUES ($1, $2, $3, $4, 'rotated')
+    `, [input.routeId, input.clientId, input.actor.id, input.actor.type])
+
+    return { route: toCrmEmailRouteSummary(route, { includeClientId: true }), token: token.token }
+  })
+
+  return {
+    route: issued.route,
+    issuedAddress: `lead+${issued.token}@${input.issuance.domain}`,
+    addressShownOnce: true
+  }
+}
+
+export async function revokeCrmLeadInboxRoute(
+  input: RevokeCrmLeadInboxRouteInput,
+  dependencies: CrmEmailRouteManagementDependencies = defaultCreateDependencies
+): Promise<{ route: CrmEmailRouteSummary }> {
+  assertCrmEmailConversationsEnabled(dependencies)
+
+  return dependencies.transaction(async (db) => {
+    await lockAndAuthorizeCrmClient(db, input)
+
+    const lockedRoute = await db.query<CrmEmailRouteRow>(`
+      SELECT
+        id, client_id, label, route_kind, recipient_domain,
+        expires_at, last_used_at, is_active, created_at, revoked_at
+      FROM crm_email_routes
+      WHERE id = $1
+        AND client_id = $2
+        AND route_kind = 'lead_inbox'
+      FOR UPDATE
+    `, [input.routeId, input.clientId])
+    const existingRoute = lockedRoute.rows[0]
+    if (!existingRoute) throw routeNotFound()
+
+    if (!existingRoute.is_active || existingRoute.revoked_at !== null) {
+      return { route: toCrmEmailRouteSummary(existingRoute, { includeClientId: true }) }
+    }
+
+    const revoked = await db.query<CrmEmailRouteRow>(`
+      UPDATE crm_email_routes
+      SET
+        is_active = FALSE,
+        revoked_at = NOW(),
+        revoked_by = $1,
+        revoked_actor_type = $2,
+        revoked_reason = 'revoked',
+        updated_at = NOW()
+      WHERE id = $3
+        AND client_id = $4
+        AND route_kind = 'lead_inbox'
+      RETURNING
+        id, client_id, label, route_kind, recipient_domain,
+        expires_at, last_used_at, is_active, created_at, revoked_at
+    `, [input.actor.id, input.actor.type, input.routeId, input.clientId])
+    const route = revoked.rows[0]
+    if (!route) throw routeNotFound()
+
+    await db.query(`
+      INSERT INTO crm_email_route_audits (
+        route_id, client_id, actor_id, actor_type, action
+      ) VALUES ($1, $2, $3, $4, 'revoked')
+    `, [input.routeId, input.clientId, input.actor.id, input.actor.type])
+
+    return { route: toCrmEmailRouteSummary(route, { includeClientId: true }) }
+  })
 }
