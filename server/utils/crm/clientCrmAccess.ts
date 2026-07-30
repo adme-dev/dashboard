@@ -20,6 +20,7 @@ const ADMIN_MUTATION_PATHS = new Set([
   `${CRM_API_PREFIX}/bulk`,
   `${CRM_API_PREFIX}/custom-fields`,
   `${CRM_API_PREFIX}/data-sources`,
+  `${CRM_API_PREFIX}/email-routes`,
   `${CRM_API_PREFIX}/people/import`
 ])
 

@@ -9,6 +9,7 @@ const subject = (
     canViewCrm: boolean
     canEditCrm: boolean
     canAdminCrm: boolean
+    canInviteUsers: boolean
   }>,
   isPrimaryContact = false
 ) => ({
@@ -19,7 +20,7 @@ const subject = (
     canAdminCrm: false,
     ...permissions
   }
-}) as any
+}) as unknown as Parameters<typeof hasClientCrmPermission>[0]
 
 describe('client CRM access', () => {
   it('uses hierarchical CRM permissions', () => {
@@ -36,6 +37,14 @@ describe('client CRM access', () => {
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/people/import', 'POST')).toBe('admin')
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/export', 'GET')).toBe('admin')
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/audit', 'GET')).toBe('admin')
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/email-routes', 'POST')).toBe('admin')
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/email-routes/123/rotate', 'POST')).toBe('admin')
+  })
+
+  it('allows CRM administrators and primary contacts, but not invitation-only users, to manage inbox routes', () => {
+    expect(hasClientCrmPermission(subject({ canAdminCrm: true }), 'admin')).toBe(true)
+    expect(hasClientCrmPermission(subject({}, true), 'admin')).toBe(true)
+    expect(hasClientCrmPermission(subject({ canInviteUsers: true }), 'admin')).toBe(false)
   })
 
   it('uses view for reads and edit for ordinary mutations', () => {
