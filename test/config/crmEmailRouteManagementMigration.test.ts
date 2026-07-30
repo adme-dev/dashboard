@@ -29,6 +29,26 @@ describe('CRM email route management migration', () => {
     expect(sql).toContain('crm_email_route_audits is append-only')
   })
 
+  it('removes free-form audit payload storage so nested and alternate leakage fields cannot persist', () => {
+    const sql = readFileSync(migrationPath, 'utf8')
+    const auditTable = sql.match(/CREATE TABLE IF NOT EXISTS crm_email_route_audits \([\s\S]*?\n\);/)
+    const auditColumns = auditTable?.[0].match(/^  ([a-z_]+)\s+/gm)
+      ?.map(column => column.trim().split(/\s+/)[0]) ?? []
+    const unsafePayloads = [
+      { context: { address: 'lead+capability@xeroflow.io' } },
+      { recipient: 'lead+capability@xeroflow.io' }
+    ]
+
+    expect(auditTable).not.toBeNull()
+    expect(sql).toContain('ALTER TABLE crm_email_route_audits')
+    expect(sql).toContain('DROP COLUMN IF EXISTS metadata')
+    expect(auditTable?.[0]).not.toMatch(/\bJSONB\b/)
+    expect(auditColumns).not.toContain('metadata')
+    for (const payload of unsafePayloads) {
+      expect(Object.keys(payload).some(key => auditColumns.includes(key))).toBe(false)
+    }
+  })
+
   it('keeps plaintext bearer capabilities out of the schema', () => {
     const sql = readFileSync(migrationPath, 'utf8')
 

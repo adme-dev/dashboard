@@ -77,29 +77,11 @@ CREATE TABLE IF NOT EXISTS crm_email_route_audits (
     CHECK (actor_type IN ('team_member', 'client_user', 'system')),
   action TEXT NOT NULL
     CHECK (action IN ('created', 'rotated', 'revoked')),
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb
-    CHECK (jsonb_typeof(metadata) = 'object'),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conname = 'crm_email_route_audits_metadata_safe_check'
-      AND conrelid = 'crm_email_route_audits'::regclass
-  ) THEN
-    ALTER TABLE crm_email_route_audits
-      ADD CONSTRAINT crm_email_route_audits_metadata_safe_check
-      CHECK (NOT (metadata ?| ARRAY[
-        'address', 'email_address', 'issued_address', 'token', 'route_token',
-        'route_token_hash', 'secret', 'signing_secret', 'raw_email',
-        'object_storage_key'
-      ]));
-  END IF;
-END;
-$$;
+ALTER TABLE crm_email_route_audits
+  DROP COLUMN IF EXISTS metadata;
 
 CREATE INDEX IF NOT EXISTS idx_crm_email_route_audits_route_created
   ON crm_email_route_audits (route_id, created_at DESC, id DESC);

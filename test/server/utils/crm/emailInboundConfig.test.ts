@@ -58,4 +58,18 @@ describe('CRM inbound email reply-secret configuration', () => {
       domain: 'xeroflow.io'
     })).toThrow('CRM email route issuance is not configured safely')
   })
+
+  it.each([
+    ['missing current version', undefined, JSON.stringify({ 1: 'a'.repeat(32) }), 'xeroflow.io'],
+    ['malformed current version', '01', JSON.stringify({ 1: 'a'.repeat(32) }), 'xeroflow.io'],
+    ['malformed keyring', '1', 'not-json', 'xeroflow.io'],
+    ['missing domain', '1', JSON.stringify({ 1: 'a'.repeat(32) }), undefined],
+    ['invalid domain', '1', JSON.stringify({ 1: 'a'.repeat(32) }), 'localhost']
+  ])('fails closed for %s', (_case, currentVersion, secrets, domain) => {
+    expect(() => parseCrmEmailRouteIssuanceConfig({
+      currentVersion,
+      secrets,
+      domain
+    })).toThrow('CRM email route issuance is not configured safely')
+  })
 })
