@@ -209,6 +209,56 @@ describe('CRM email repository conversation and message writes', () => {
     expect(query).toHaveBeenCalledTimes(1)
   })
 
+  it('stores retained MIME metadata and pending attachment manifests only for a newly-created message', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [messageRow], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+    const repository = repositoryWith(query)
+    const rawMimeR2Key
+      = 'crm-email/inbound/2026/07/30/55555555-5555-4555-8555-555555555555/message.eml'
+
+    await repository.createMessage({
+      ...messageInput,
+      rawMimeR2Key,
+      rawMimeExpiresAt: '2026-08-29T00:00:00.000Z',
+      attachments: [{
+        r2ObjectKey:
+          'crm-email/inbound/2026/07/30/55555555-5555-4555-8555-555555555555/attachments/01.bin',
+        filename: 'details.pdf',
+        contentType: 'application/pdf',
+        byteSize: 1024,
+        sha256: 'a'.repeat(64),
+        contentId: null
+      }]
+    })
+
+    const [insertSql, insertParams] = query.mock.calls[1]!
+    expect(insertSql).toContain('raw_mime_r2_key')
+    expect(insertSql).toContain('raw_mime_expires_at')
+    expect(insertParams).toContain(rawMimeR2Key)
+    expect(insertParams).toContain('2026-08-29T00:00:00.000Z')
+
+    const [attachmentSql, attachmentParams] = query.mock.calls[4]!
+    expect(attachmentSql).toContain('INSERT INTO crm_message_attachments')
+    expect(attachmentSql).toContain('\'pending\'')
+    expect(attachmentSql).toContain('ON CONFLICT DO NOTHING')
+    expect(attachmentParams[0]).toBe(CLIENT_ID)
+    expect(attachmentParams[1]).toBe(MESSAGE_ID)
+    expect(JSON.parse(attachmentParams[2])).toEqual([{
+      r2_object_key:
+        'crm-email/inbound/2026/07/30/55555555-5555-4555-8555-555555555555/attachments/01.bin',
+      filename: 'details.pdf',
+      content_type: 'application/pdf',
+      byte_size: 1024,
+      sha256: 'a'.repeat(64),
+      content_id: null
+    }])
+    expect(query).toHaveBeenCalledTimes(5)
+  })
+
   it('recovers the canonical message after a provider-message uniqueness race', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })

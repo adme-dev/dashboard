@@ -414,9 +414,13 @@ pnpm deploy:production
 - [x] B4. Add the authenticated inbound boundary and idempotent Queue workflow.
       The fail-closed Nitro endpoint verifies Worker authentication and
       domain-bound route tokens, resolves tenant ownership from Postgres, and
-      emits a minimal deterministic job to a dedicated Queue. The B5 consumer
-      remains intentionally unimplemented.
-- [ ] B5. Match inbound senders to CRM people and promote lead context safely.
+      emits a minimal deterministic job to the dedicated B5 Queue consumer.
+- [x] B5. Match inbound senders to CRM people and promote lead context safely.
+      The dedicated Queue consumer verifies retained MIME integrity, passes a
+      bounded plain-text envelope to Nitro, then transactionally creates or
+      recovers the lead, CRM promotion, conversation, message, attachment
+      manifests, received event, compatibility communication, and route-use
+      timestamp. Production bindings and feature flags remain disabled.
 - [ ] B6. Detect auto-replies, bounces, mailing lists, and mail loops.
 
 ### Phase C — Outbound transactional email
@@ -577,3 +581,33 @@ pnpm deploy:production
   `git diff --check`, and Nuxt typecheck passed. A Wrangler dry-run
   successfully bundled the Worker at 112.45 KiB (27.06 KiB gzip) without
   deploying it.
+- Migration 289 added `email` to the canonical lead and lead-rule source
+  constraints. It was applied to the configured Neon database, both live
+  constraints were read back successfully, and its rollback-only smoke
+  retained zero rows.
+- B5 is complete behind disabled production bindings and flags. The Email
+  Worker Queue consumer reads the exact retained MIME object, enforces the
+  10 MiB ceiling, verifies its SHA-256 digest, parses with PostalMime, and
+  sends only a strict bounded plain-text envelope to the authenticated Nitro
+  processing endpoint. HTML, raw MIME bytes, and attachment bytes never cross
+  that boundary.
+- The Nitro processor revalidates the route and tenant under a row lock, uses
+  transaction-scoped advisory locks for message idempotency, ingests an
+  `email` lead, invokes the existing CRM promotion policy, and atomically
+  persists the canonical conversation, message, pending attachment manifests,
+  received event, compatibility communication, and monotonic route-use time.
+  Reply routes attach directly to their pre-authorised conversation.
+- Final B5 verification passed 13 focused files and 99 tests, scoped ESLint,
+  and `git diff --check`. Repository-wide Nuxt typecheck still reports its
+  existing broad baseline (807 diagnostics in the current checkout), but none
+  reference a B5 file. A Wrangler dry-run bundled the Worker at 682.26 KiB
+  (112.44 KiB gzip) without deploying it and reported only the existing
+  `API_URL` binding.
+- A rollback-only live Neon B5 smoke created exactly one lead, CRM link,
+  conversation, message, received event, pending attachment, and compatibility
+  communication; repeated delivery returned `duplicate`; cross-tenant and
+  revoked routes returned `route_unavailable`; and route use was recorded.
+  A post-rollback query confirmed zero retained smoke rows.
+- The production Queue, DLQ, Queue producer, private R2 binding and lifecycle,
+  Worker secret, feature flags, and deployment remain deliberately
+  unconfigured. B6 loop/bounce/auto-reply policy is the next inbound slice.

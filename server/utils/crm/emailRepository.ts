@@ -5,6 +5,9 @@ import type {
   CrmEmailDeliveryState,
   CrmEmailEnvelope
 } from '~~/server/utils/crm/emailContracts'
+import type {
+  CrmEmailInboundQueueAttachment
+} from '~~/server/utils/crm/emailInboundProcessingContracts'
 
 export type CrmEmailActorType = 'team_member' | 'client_user' | 'system' | 'integration'
 
@@ -53,6 +56,8 @@ export interface CrmEmailMessageRecord {
   deliveryStatusAt: string
   failureCode: string | null
   failureReason: string | null
+  rawMimeR2Key: string | null
+  rawMimeExpiresAt: string | null
   occurredAt: string
   createdAt: string
   updatedAt: string
@@ -79,6 +84,9 @@ export interface CreateCrmEmailMessageInput {
   actor: CrmEmailActor
   envelope: CrmEmailEnvelope
   replyToAddress?: string | null
+  rawMimeR2Key?: string | null
+  rawMimeExpiresAt?: string | null
+  attachments?: CrmEmailInboundQueueAttachment[]
 }
 
 export type CreateCrmEmailMessageResult = {
@@ -197,6 +205,8 @@ interface MessageRow {
   delivery_status_at: string | Date
   failure_code: string | null
   failure_reason: string | null
+  raw_mime_r2_key: string | null
+  raw_mime_expires_at: string | Date | null
   occurred_at: string | Date
   created_at: string | Date
   updated_at: string | Date
@@ -227,8 +237,8 @@ const MESSAGE_COLUMNS = `
   idempotency_key, internet_message_id, in_reply_to, threading_references,
   from_address, from_name, to_addresses, cc_addresses, bcc_addresses,
   reply_to_address, subject, body_text, body_html, delivery_status,
-  delivery_status_at, failure_code, failure_reason, occurred_at, created_at,
-  updated_at
+  delivery_status_at, failure_code, failure_reason, raw_mime_r2_key,
+  raw_mime_expires_at, occurred_at, created_at, updated_at
 `
 
 const MESSAGE_EVENT_COLUMNS = `
@@ -296,6 +306,8 @@ function mapMessage(row: MessageRow): CrmEmailMessageRecord {
     deliveryStatusAt: toIsoString(row.delivery_status_at),
     failureCode: row.failure_code,
     failureReason: row.failure_reason,
+    rawMimeR2Key: row.raw_mime_r2_key ?? null,
+    rawMimeExpiresAt: toNullableIsoString(row.raw_mime_expires_at ?? null),
     occurredAt: toIsoString(row.occurred_at),
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at)
@@ -397,15 +409,16 @@ export function createPostgresCrmEmailRepository(
             in_reply_to, threading_references, from_address, from_name,
             to_addresses, cc_addresses, bcc_addresses, reply_to_address,
             subject, body_text, body_html, delivery_status, delivery_status_at,
-            provider_metadata, occurred_at, delivered_at, created_by_type,
-            created_by_id
+            raw_mime_r2_key, raw_mime_expires_at, provider_metadata,
+            occurred_at, delivered_at, created_by_type, created_by_id
           )
           VALUES (
             $1, $2, 'email', $3, $4, $5, $6, $7, $8, $9::text[], $10, $11,
             $12::jsonb, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19,
-            $20::timestamptz, '{}'::jsonb, $21::timestamptz,
-            CASE WHEN $19 = 'delivered' THEN $21::timestamptz ELSE NULL END,
-            $22, $23
+            $20::timestamptz, $21, $22::timestamptz, '{}'::jsonb,
+            $23::timestamptz,
+            CASE WHEN $19 = 'delivered' THEN $23::timestamptz ELSE NULL END,
+            $24, $25
           )
           ON CONFLICT DO NOTHING
           RETURNING ${MESSAGE_COLUMNS}
@@ -430,6 +443,8 @@ export function createPostgresCrmEmailRepository(
           envelope.html,
           input.deliveryStatus,
           envelope.occurredAt,
+          input.rawMimeR2Key ?? null,
+          input.rawMimeExpiresAt ?? null,
           envelope.occurredAt,
           input.actor.type,
           input.actor.id
@@ -458,6 +473,46 @@ export function createPostgresCrmEmailRepository(
             clientId: input.clientId,
             messageId: inserted.id
           })
+
+          const attachments = input.attachments ?? []
+          if (attachments.length > 0) {
+            await database.query(`
+              INSERT INTO crm_message_attachments (
+                client_id, message_id, filename, content_type, content_id,
+                byte_size, sha256, r2_object_key, scan_status
+              )
+              SELECT
+                $1,
+                $2,
+                attachment.filename,
+                attachment.content_type,
+                attachment.content_id,
+                attachment.byte_size,
+                attachment.sha256,
+                attachment.r2_object_key,
+                'pending'
+              FROM jsonb_to_recordset($3::jsonb) AS attachment(
+                filename TEXT,
+                content_type TEXT,
+                content_id TEXT,
+                byte_size BIGINT,
+                sha256 TEXT,
+                r2_object_key TEXT
+              )
+              ON CONFLICT DO NOTHING
+            `, [
+              input.clientId,
+              inserted.id,
+              JSON.stringify(attachments.map(attachment => ({
+                filename: attachment.filename,
+                content_type: attachment.contentType,
+                content_id: attachment.contentId,
+                byte_size: attachment.byteSize,
+                sha256: attachment.sha256,
+                r2_object_key: attachment.r2ObjectKey
+              })))
+            ])
+          }
 
           return { status: 'created', message: mapMessage(inserted) }
         }

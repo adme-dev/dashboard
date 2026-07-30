@@ -1,5 +1,6 @@
 import { deliverBoardEmail } from './boardAdapter'
 import { deliverCrmInboundEmail } from './crmAdapter'
+import { processCrmInboundQueueJob } from './inboundQueue'
 import { parseInboundEmail } from './mime'
 import { classifyInboundEmailRoute } from './routing'
 import {
@@ -20,6 +21,9 @@ import type {
   ParsedInboundEmail
 } from './contracts'
 import type { CrmInboundArtifactManifest } from './r2Artifacts'
+import type {
+  CrmEmailInboundQueueJob
+} from '../../../server/utils/crm/emailInboundProcessingContracts'
 
 interface InboundEmailWorkerDependencies {
   fetch?: FetchLike
@@ -150,6 +154,25 @@ export function createInboundEmailWorker(
       } catch {
         console.error('Email worker processing failed')
         message.setReject('Internal error processing email')
+      }
+    },
+
+    async queue(
+      batch: MessageBatch<CrmEmailInboundQueueJob>,
+      env: InboundEmailWorkerEnv,
+      _context: ExecutionContext
+    ): Promise<void> {
+      for (const message of batch.messages) {
+        try {
+          await processCrmInboundQueueJob(message.body, env, {
+            fetch: fetchImpl,
+            parse
+          })
+          message.ack()
+        } catch {
+          console.error('CRM email inbound Queue processing failed')
+          message.retry({ delaySeconds: 30 })
+        }
       }
     }
   }

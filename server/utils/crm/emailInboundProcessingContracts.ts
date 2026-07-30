@@ -7,6 +7,7 @@ const contentTypePattern
   = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/
 const emailAddressPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
 const idempotencyKeyPattern = /^crm-inbound:[a-f0-9]{64}$/
+const MAX_RETENTION_MILLISECONDS = 30 * 24 * 60 * 60 * 1000
 
 const noControlCharacters = (value: string) =>
   ![...value].some((character) => {
@@ -77,6 +78,16 @@ export const CrmEmailInboundQueueJobSchema = z.object({
       code: 'custom',
       path: ['attachments'],
       message: 'Combined attachment bytes exceed the inbound limit'
+    })
+  }
+
+  const retention
+    = Date.parse(job.rawMimeExpiresAt) - Date.parse(job.receivedAt)
+  if (retention <= 0 || retention > MAX_RETENTION_MILLISECONDS) {
+    context.addIssue({
+      code: 'custom',
+      path: ['rawMimeExpiresAt'],
+      message: 'Raw MIME retention is outside the approved policy'
     })
   }
 })

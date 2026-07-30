@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   processCrmInboundQueueJob
 } from '../../workers/email-worker/src/inboundQueue'
+import {
+  createInboundEmailWorker
+} from '../../workers/email-worker/src/index'
 import type {
   CrmEmailInboundQueueJob
 } from '../../server/utils/crm/emailInboundProcessingContracts'
@@ -278,5 +281,50 @@ describe('CRM email inbound Queue processor', () => {
     )).rejects.toThrow('Invalid CRM email inbound Queue job')
 
     expect(inputEnv.CRM_EMAIL_BUCKET?.get).not.toHaveBeenCalled()
+  })
+
+  it('acknowledges successes and retries failures independently', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          accepted: true,
+          duplicate: false
+        }), { status: 200 })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+    const worker = createInboundEmailWorker({
+      fetch,
+      parse: vi.fn().mockResolvedValue(parsed())
+    })
+    const first = {
+      body: job(),
+      ack: vi.fn(),
+      retry: vi.fn()
+    }
+    const second = {
+      body: job({
+        idempotencyKey: `crm-inbound:${'d'.repeat(64)}`,
+        providerMessageId: '<second@example.net>'
+      }),
+      ack: vi.fn(),
+      retry: vi.fn()
+    }
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await worker.queue(
+      { messages: [first, second] } as never,
+      env(),
+      {} as ExecutionContext
+    )
+
+    expect(first.ack).toHaveBeenCalledOnce()
+    expect(first.retry).not.toHaveBeenCalled()
+    expect(second.ack).not.toHaveBeenCalled()
+    expect(second.retry).toHaveBeenCalledWith({ delaySeconds: 30 })
+    expect(JSON.stringify(error.mock.calls)).not.toContain(
+      'customer@example.com'
+    )
+    expect(JSON.stringify(error.mock.calls)).not.toContain(RAW_MIME_KEY)
+    error.mockRestore()
   })
 })
