@@ -397,7 +397,7 @@ pnpm deploy:production
 - [x] A1. Add additive conversation, message, message-event, attachment, route,
       sender-identity, and compatibility-credential tables.
 - [x] A2. Add provider-neutral TypeScript contracts and delivery-state rules.
-- [ ] A3. Add secure reply-token generation and validation with key versioning.
+- [x] A3. Add secure reply-token generation and validation with key versioning.
 - [ ] A4. Add tenant-scoped repositories and idempotent message/event writes.
 - [ ] A5. Project canonical messages into `crm_communications` without
       duplicating existing bridge rows.
@@ -502,3 +502,14 @@ pnpm deploy:production
   reported failures are outside the files changed by this slice and include
   existing component harness, role-permission, Groq mock, social-spend, and
   deployment-contract failures. No CRM email foundation test failed.
+- Versioned reply tokens now use a 192-bit opaque route key, domain-bound
+  HMAC-SHA256, a 256-bit minimum secret, constant-time signature comparison,
+  and a SHA-256 lookup hash. No tenant or CRM record identifier appears in the
+  token or verification result.
+- Reply-token tests cover rotation, domain binding, tampering, malformed input,
+  fresh randomness, and canonical base64url encoding. The canonical-encoding
+  test caught and closed an alternate-padding representation edge case before
+  commit `0f8e0bc6`.
+- Final focused verification for A1-A3 passed: 4 files and 18 tests. All five
+  changed TypeScript/test files also pass the repository ESLint rules; lint-only
+  alignment was committed as `c994fe93`.

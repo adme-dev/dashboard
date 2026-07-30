@@ -33,15 +33,15 @@
 - `verifyCrmEmailReplyToken(input)` returns
   `Promise<{ valid: true, version: number, routeTokenHash: string } | { valid: false }>`
 
-- [ ] Write tests proving round-trip validation, 64-character hash output,
+- [x] Write tests proving round-trip validation, 64-character hash output,
       key-version rotation, domain binding, tamper rejection, and malformed
       input fail-closed behavior.
-- [ ] Run the test and observe module-resolution failure.
-- [ ] Implement the minimal Web Crypto token module.
-- [ ] Run the token test and existing email-contract test.
-- [ ] Re-read both files, check for identifiers/secrets in returned values, and
+- [x] Run the test and observe module-resolution failure.
+- [x] Implement the minimal Web Crypto token module.
+- [x] Run the token test and existing email-contract test.
+- [x] Re-read both files, check for identifiers/secrets in returned values, and
       run `git diff --check`.
-- [ ] Commit as `feat(crm): add secure email reply tokens`.
+- [x] Commit as `feat(crm): add secure email reply tokens`.
 
 ### Task 2: Ledger update
 
@@ -50,7 +50,6 @@
 - Modify: `docs/prd/crm-conversations-email-gateway-prd.md`
 - Modify: `docs/superpowers/plans/2026-07-30-crm-email-reply-tokens.md`
 
-- [ ] Check off A3 only after the red/green evidence passes.
-- [ ] Record test counts and commit hash.
-- [ ] Commit as `docs(crm): record reply token verification`.
-
+- [x] Check off A3 only after the red/green evidence passes.
+- [x] Record test counts and commit hash.
+- [x] Commit as `docs(crm): record reply token verification`.
