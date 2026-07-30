@@ -210,6 +210,9 @@ Terminal negative states are `bounced`, `failed`, `rejected`, `complained`, and
 backward from a terminal state. Every provider event is retained in
 `crm_message_events`, even when it does not change the projection.
 
+`delivered` rejects stale deferral, bounce, or transport-failure events, but a
+later recipient complaint supersedes delivery and triggers suppression.
+
 ### 5.6 Attachments and content safety
 
 - Attachment bytes live in R2; Postgres stores metadata and object keys.
@@ -391,9 +394,9 @@ pnpm deploy:production
 
 ### Phase A — Foundation
 
-- [ ] A1. Add additive conversation, message, message-event, attachment, route,
+- [x] A1. Add additive conversation, message, message-event, attachment, route,
       sender-identity, and compatibility-credential tables.
-- [ ] A2. Add provider-neutral TypeScript contracts and delivery-state rules.
+- [x] A2. Add provider-neutral TypeScript contracts and delivery-state rules.
 - [ ] A3. Add secure reply-token generation and validation with key versioning.
 - [ ] A4. Add tenant-scoped repositories and idempotent message/event writes.
 - [ ] A5. Project canonical messages into `crm_communications` without
@@ -481,4 +484,21 @@ pnpm deploy:production
 - Architecture approved: Email Routing inbound, Workers binding outbound,
   XeroFlow-owned tenant compatibility gateway, Neon canonical store.
 - Isolated implementation branch created from `b932c302`.
-
+- PRD, approved design, and first-slice implementation plan committed as
+  `542fa3d8`.
+- Migration 288 followed a failing-then-passing three-test contract cycle and
+  was committed as `da38c3c5`.
+- Migration 288 executed successfully twice against the configured Neon
+  database. Live catalog proof confirmed all seven tables, tenant/provider
+  message and event idempotency indexes, and
+  `crm_messages_delivery_status_check` in the `public` schema.
+- Provider-neutral envelope and delivery projection followed a
+  failing-then-passing test cycle and were committed as `2bfcb8e8`.
+- Lifecycle review added explicit proof that `delivered` cannot regress on a
+  stale deferral or bounce, while a later complaint supersedes delivery.
+- Focused slice verification passed: 3 files and 13 tests.
+- The broader repository suite completed with 1,115 files and 6,300 tests
+  passing, 2 files and 4 tests skipped, and 17 files / 36 tests failing. All
+  reported failures are outside the files changed by this slice and include
+  existing component harness, role-permission, Groq mock, social-spend, and
+  deployment-contract failures. No CRM email foundation test failed.

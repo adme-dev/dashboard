@@ -46,7 +46,7 @@
   `(client_id, provider, provider_event_id)` where external identifiers are
   present.
 
-- [ ] **Step 1: Write the failing migration contract test**
+- [x] **Step 1: Write the failing migration contract test**
 
 Create a Vitest test that reads the exact migration path and asserts:
 
@@ -63,7 +63,7 @@ expect(sql).toMatch(/CHECK \(delivery_status IN \('draft','queued','sending','se
 expect(sql).not.toMatch(/api[_ ]?token|cloudflare[_ ]?token/i)
 ```
 
-- [ ] **Step 2: Run the test and observe the expected failure**
+- [x] **Step 2: Run the test and observe the expected failure**
 
 Run:
 
@@ -73,7 +73,7 @@ pnpm exec vitest run test/config/crmConversationsEmailMigration.test.ts
 
 Expected: failure because the migration file does not exist.
 
-- [ ] **Step 3: Implement the additive migration**
+- [x] **Step 3: Implement the additive migration**
 
 Define UUID primary keys, `client_id` foreign keys to `agency_clients(id)`,
 timestamps, checks, and indexes. Store email address arrays as JSONB, threading
@@ -82,7 +82,7 @@ secret material only through `token_hash` or `secret_hash`. Use
 `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and guarded
 constraints so execution is repeatable.
 
-- [ ] **Step 4: Run the focused test**
+- [x] **Step 4: Run the focused test**
 
 Run:
 
@@ -92,7 +92,7 @@ pnpm exec vitest run test/config/crmConversationsEmailMigration.test.ts
 
 Expected: all assertions pass.
 
-- [ ] **Step 5: Inspect and apply the migration**
+- [x] **Step 5: Inspect and apply the migration**
 
 Read the full SQL file, then run:
 
@@ -104,12 +104,12 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/288-crm-co
 
 Expected: both executions succeed.
 
-- [ ] **Step 6: Verify live catalog constraints**
+- [x] **Step 6: Verify live catalog constraints**
 
 Run a read-only catalog query proving all seven tables, the delivery constraint,
 and tenant/provider idempotency indexes exist.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add test/config/crmConversationsEmailMigration.test.ts server/database/migrations/288-crm-conversations-email-foundation.sql
@@ -128,10 +128,11 @@ git commit -m "feat(crm): add conversation email data foundation"
 - Produces `CRM_EMAIL_DELIVERY_STATES`, `CrmEmailDeliveryState`,
   `CrmEmailDirection`, `CrmEmailParticipant`, `CrmEmailEnvelope`, and
   `projectEmailDeliveryState(current, incoming)`.
-- `projectEmailDeliveryState` returns `{ state, changed }` and never regresses a
-  terminal negative state or `delivered`.
+- `projectEmailDeliveryState` returns `{ state, changed }`, never regresses a
+  terminal negative state, and allows only a later complaint to supersede
+  `delivered`.
 
-- [ ] **Step 1: Write failing delivery-contract tests**
+- [x] **Step 1: Write failing delivery-contract tests**
 
 Cover:
 
@@ -145,7 +146,7 @@ expect(projectEmailDeliveryState('failed', 'failed')).toEqual({ state: 'failed',
 
 Also prove the exported state list exactly matches the SQL check values.
 
-- [ ] **Step 2: Run the test and observe the expected failure**
+- [x] **Step 2: Run the test and observe the expected failure**
 
 Run:
 
@@ -155,13 +156,14 @@ pnpm exec vitest run test/server/utils/crm/emailContracts.test.ts
 
 Expected: module resolution failure because `emailContracts.ts` does not exist.
 
-- [ ] **Step 3: Implement the minimal contracts**
+- [x] **Step 3: Implement the minimal contracts**
 
 Use an `as const` state tuple and an explicit state-rank record. Treat
-`delivered`, `bounced`, `failed`, `rejected`, `complained`, and `cancelled` as
-terminal. Do not add provider-specific fields.
+`bounced`, `failed`, `rejected`, `complained`, and `cancelled` as terminal.
+Keep `delivered` stable against stale transport events while allowing a later
+complaint to supersede it. Do not add provider-specific fields.
 
-- [ ] **Step 4: Run focused and existing CRM tests**
+- [x] **Step 4: Run focused and existing CRM tests**
 
 Run:
 
@@ -171,7 +173,7 @@ pnpm exec vitest run test/server/utils/crm/emailContracts.test.ts test/crm/comms
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add test/server/utils/crm/emailContracts.test.ts server/utils/crm/emailContracts.ts
@@ -191,7 +193,7 @@ git commit -m "feat(crm): define canonical email delivery contracts"
 - Consumes the exact verification evidence from Tasks 1 and 2.
 - Produces the resumable implementation state for the next session.
 
-- [ ] **Step 1: Perform the pre-commit deep-dive review**
+- [x] **Step 1: Perform the pre-commit deep-dive review**
 
 Re-read every changed file. Verify:
 
@@ -203,7 +205,7 @@ Re-read every changed file. Verify:
 - provider payload JSON is not treated as canonical data,
 - migration syntax and constraints match TypeScript states.
 
-- [ ] **Step 2: Run focused verification**
+- [x] **Step 2: Run focused verification**
 
 ```bash
 pnpm exec vitest run test/config/crmConversationsEmailMigration.test.ts test/server/utils/crm/emailContracts.test.ts test/crm/comms.test.ts
@@ -212,13 +214,13 @@ git diff --check
 
 Expected: all tests pass and no whitespace errors are reported.
 
-- [ ] **Step 3: Update the PRD ledger**
+- [x] **Step 3: Update the PRD ledger**
 
 Check off A1 and A2 only after their database and test evidence is complete.
 Append the migration executions, live catalog proof, test totals, commit hashes,
 and any baseline limitation to the progress log.
 
-- [ ] **Step 4: Commit documentation**
+- [x] **Step 4: Commit documentation**
 
 ```bash
 git add docs/prd/crm-conversations-email-gateway-prd.md docs/superpowers/specs/2026-07-30-crm-conversations-email-gateway-design.md docs/superpowers/plans/2026-07-30-crm-conversations-email-foundation.md
@@ -234,4 +236,3 @@ git commit -m "docs(crm): add conversations email implementation ledger"
   states and the same provider/idempotency terminology.
 - Rollback: the migration is additive; rollback is disabling future feature
   flags and leaving unused tables in place until an explicitly reviewed cleanup.
-
