@@ -113,11 +113,12 @@ scope from the authenticated session.
    both runtimes and deploy again.
 4. Create or rotate routes so new addresses use the new explicit version.
 5. Keep prior versions available until every route signed with each prior
-   version has been revoked or retired. Only then remove those versions from
-   both keyrings.
+   version has been revoked or retired and the inbound Queue has drained. Only
+   then remove those versions from both keyrings.
 
-Never remove an old version before retiring its routes: it would turn their
-delivery into a configuration failure instead of an auditable revocation.
+Never remove an old version before retiring its routes and draining the inbound
+Queue: it would turn their delivery into a configuration failure instead of an
+auditable revocation.
 
 ## Activation order
 
@@ -129,7 +130,9 @@ delivery into a configuration failure instead of an auditable revocation.
 4. Merge and deploy Pages using `pnpm deploy:production`.
 5. Deploy the standalone Worker using its checked-in Wrangler configuration.
 6. Verify the Worker consumer, Hyperdrive, Queue, and R2 bindings.
-7. Create one 24-hour `lead_inbox` smoke route for an allowlisted client.
+7. Create one clearly labelled `lead_inbox` smoke route for an allowlisted
+   client. It does not expire automatically; explicitly revoke it after the
+   verification and approved synthetic-record cleanup are complete.
 8. Enable Email Routing subaddressing and the `lead@xeroflow.io` and
    `reply@xeroflow.io` base rules assigned to `email-to-board-worker`. Do not
    alter the catch-all.
@@ -156,6 +159,7 @@ above are healthy:
    lifecycle metadata and bounded stage logs.
 4. Revoke the smoke route, verify a new route can be created if needed, and
    soft-delete the synthetic CRM records under the approved cleanup procedure.
+   The smoke route does not expire automatically.
 
 Do not record the issued address, message content, recipient, route token,
 route hash, signing secret, or R2 key in the smoke evidence.

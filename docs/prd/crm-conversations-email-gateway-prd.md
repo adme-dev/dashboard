@@ -291,8 +291,9 @@ fails closed if that positive integer is absent from
 must never select the highest keyring version implicitly. To roll keys, add a
 new version to the shared Pages/Worker keyring, deploy it to both runtimes,
 make that version current, then issue or rotate routes. Keep the old version
-available until every route signed with it has been revoked or retired; only
-then remove it from both keyrings.
+available until every route signed with it has been revoked or retired and the
+inbound Queue has drained; only then remove it from both keyrings. This keeps
+in-flight mail signed with the prior version verifiable during rollover.
 
 ## 8. User experience
 

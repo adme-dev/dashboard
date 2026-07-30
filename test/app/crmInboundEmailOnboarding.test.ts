@@ -12,6 +12,15 @@ const dataSourcesSource = readFileSync('app/components/crm/DataSources.vue', 'ut
 const portalCrmSource = readFileSync('app/pages/portal/crm.vue', 'utf8')
 const featureIndexSource = readFileSync('app/pages/features/index.vue', 'utf8')
 const featureDetailSource = readFileSync('app/pages/features/[slug].vue', 'utf8')
+const crmEmailPrdSource = readFileSync('docs/prd/crm-conversations-email-gateway-prd.md', 'utf8')
+const crmEmailRunbookSource = readFileSync('docs/runbooks/crm-email-inbound.md', 'utf8')
+
+function sourceSlice(source: string, start: string, end: string): string {
+  const startIndex = source.indexOf(start)
+  const endIndex = source.indexOf(end, startIndex)
+  if (startIndex === -1 || endIndex === -1) throw new Error(`Expected source range: ${start} … ${end}`)
+  return source.slice(startIndex, endIndex)
+}
 
 const route = {
   id: ROUTE_ID,
@@ -371,8 +380,22 @@ describe('CRM inbound email onboarding placement and portal access', () => {
 
 describe('CRM inbound email public feature copy', () => {
   it('explains dedicated inbound email, client-scoped conversation capture, and one-time secure issuance', () => {
-    expect(featureIndexSource).toContain('Dedicated inbound email securely captures each client\\\'s CRM conversation')
-    expect(featureDetailSource).toContain('Dedicated inbound email securely captures each client\\\'s CRM conversation')
-    expect(featureDetailSource).toContain('shown once when created or rotated')
+    const leadCaptureIndex = sourceSlice(featureIndexSource, '{ title: \'Lead Capture & Routing\'', '{ title: \'Xero Integration\'')
+    const crmActivitiesDetail = sourceSlice(featureDetailSource, '\'crm-activities\': {', '\'crm-scoring\': {')
+    const leadCaptureDetail = sourceSlice(featureDetailSource, '\'lead-capture-routing\': {', '\'xero-integration\': {')
+
+    expect(leadCaptureIndex).toContain('Dedicated inbound email securely captures each client\\\'s CRM conversation')
+    expect(crmActivitiesDetail).toContain('Dedicated inbound email securely captures each client\\\'s CRM conversation')
+    expect(leadCaptureDetail).toContain('shown once when created or rotated')
+  })
+})
+
+describe('CRM inbound email operational documentation', () => {
+  it('retains old signing keys through queue drain and uses an explicitly revoked smoke route', () => {
+    expect(crmEmailPrdSource).toContain('inbound Queue has drained')
+    expect(crmEmailRunbookSource).toContain('inbound Queue has drained')
+    expect(crmEmailRunbookSource).toContain('clearly labelled `lead_inbox` smoke route')
+    expect(crmEmailRunbookSource).toContain('does not expire automatically')
+    expect(crmEmailRunbookSource).not.toContain('24-hour `lead_inbox` smoke route')
   })
 })
