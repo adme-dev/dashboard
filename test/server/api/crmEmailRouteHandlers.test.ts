@@ -298,6 +298,18 @@ describe('portal CRM email route handlers', () => {
   })
 
   it.each([
+    ['rotate', '~~/server/api/client-portal/crm/email-routes/[id]/rotate.post', rotateCrmLeadInboxRoute],
+    ['revoke', '~~/server/api/client-portal/crm/email-routes/[id].delete', revokeCrmLeadInboxRoute]
+  ])('accepts a bodyless portal $name mutation', async (_name, path, service) => {
+    const handler = (await import(path)).default as (event: unknown) => Promise<unknown>
+    const event = { context: {}, params: { id: routeId } }
+
+    await handler(event as never)
+
+    expect(service).toHaveBeenCalledWith(expect.objectContaining({ clientId, routeId }))
+  })
+
+  it.each([
     ['create client override', '~~/server/api/client-portal/crm/email-routes/index.post', { client_id: clientId, label: 'Portal inbox' }],
     ['create actor override', '~~/server/api/client-portal/crm/email-routes/index.post', { actor: actorId, label: 'Portal inbox' }],
     ['rotate client override', '~~/server/api/client-portal/crm/email-routes/[id]/rotate.post', { client_id: clientId }],

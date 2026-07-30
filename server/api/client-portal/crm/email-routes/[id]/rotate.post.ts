@@ -5,7 +5,7 @@ import { parseCrmEmailRouteIssuanceConfig } from '~~/server/utils/crm/emailInbou
 import { rotateCrmLeadInboxRoute } from '~~/server/utils/crm/emailRouteManagement'
 
 const Params = z.object({ id: z.string().uuid() }).strict()
-const Body = z.object({}).strict()
+const Body = z.object({}).strict().optional()
 
 function stringBinding(event: H3Event, name: string): string | undefined {
   const eventValue = (event.context as {

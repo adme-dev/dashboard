@@ -23,6 +23,19 @@ const ADMIN_MUTATION_PATHS = new Set([
   `${CRM_API_PREFIX}/email-routes`,
   `${CRM_API_PREFIX}/people/import`
 ])
+const CRM_ACCESS_CACHE = Symbol('client-crm-access-cache')
+
+type ClientCrmAccessCache = Map<ClientCrmAccessLevel, ServerClientUser>
+
+function accessCache(event: H3Event): ClientCrmAccessCache {
+  const context = event.context as typeof event.context & {
+    [CRM_ACCESS_CACHE]?: ClientCrmAccessCache
+  }
+  if (!context[CRM_ACCESS_CACHE]) {
+    context[CRM_ACCESS_CACHE] = new Map()
+  }
+  return context[CRM_ACCESS_CACHE]
+}
 
 function isPathOrChild(pathname: string, candidate: string) {
   return pathname === candidate || pathname.startsWith(`${candidate}/`)
@@ -95,6 +108,9 @@ export async function requireClientCrmAccess(
   event: H3Event,
   required: ClientCrmAccessLevel = 'view'
 ): Promise<ServerClientUser> {
+  const cachedClient = accessCache(event).get(required)
+  if (cachedClient) return cachedClient
+
   const client = await requireClientAuth(event)
 
   if (!INTERNAL_CRM_MODES.has(client.leadCaptureMode)) {
@@ -129,5 +145,6 @@ export async function requireClientCrmAccess(
     await recordAccessDecision(event, client, required, 'allowed', null)
   }
 
+  accessCache(event).set(required, client)
   return client
 }

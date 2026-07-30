@@ -1,8 +1,54 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   hasClientCrmPermission,
+  requireClientCrmAccess,
   resolveClientCrmAccessLevel
 } from '../../../../server/utils/crm/clientCrmAccess'
+
+const {
+  requireClientAuth,
+  requireClientEntitlement,
+  execute,
+  revokeCrmLeadInboxRoute
+} = vi.hoisted(() => ({
+  requireClientAuth: vi.fn(),
+  requireClientEntitlement: vi.fn(),
+  execute: vi.fn(),
+  revokeCrmLeadInboxRoute: vi.fn()
+}))
+
+vi.mock('~~/server/utils/clientAuth', () => ({
+  requireClientAuth: (...args: unknown[]) => requireClientAuth(...args)
+}))
+vi.mock('~~/server/utils/billing/entitlements', () => ({
+  requireClientEntitlement: (...args: unknown[]) => requireClientEntitlement(...args)
+}))
+vi.mock('~~/server/utils/db', () => ({
+  execute: (...args: unknown[]) => execute(...args)
+}))
+vi.mock('~~/server/utils/crm/emailRouteManagement', () => ({
+  revokeCrmLeadInboxRoute: (...args: unknown[]) => revokeCrmLeadInboxRoute(...args)
+}))
+vi.mock('h3', async (importOriginal) => {
+  const h3 = await importOriginal<typeof import('h3')>()
+  return {
+    ...h3,
+    getRequestURL: (event: { path: string }) => new URL(event.path, 'https://portal.example.test')
+  }
+})
+
+const globals = globalThis as typeof globalThis & {
+  defineEventHandler: <T>(handler: T) => T
+  getRequestURL: (event: { path: string }) => URL
+  getRouterParam: (event: { params?: Record<string, string> }, key: string) => string | undefined
+  readBody: (event: { body?: unknown }) => Promise<unknown>
+  setResponseHeader: ReturnType<typeof vi.fn>
+}
+globals.defineEventHandler = handler => handler
+globals.getRequestURL = event => new URL(event.path, 'https://portal.example.test')
+globals.getRouterParam = (event, key) => event.params?.[key]
+globals.readBody = async event => event.body
+globals.setResponseHeader = vi.fn()
 
 const subject = (
   permissions: Partial<{
@@ -23,6 +69,24 @@ const subject = (
 }) as unknown as Parameters<typeof hasClientCrmPermission>[0]
 
 describe('client CRM access', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    requireClientAuth.mockResolvedValue({
+      id: '33333333-3333-4333-8333-333333333333',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      leadCaptureMode: 'full_crm',
+      isPrimaryContact: true,
+      permissions: {
+        canViewCrm: false,
+        canEditCrm: false,
+        canAdminCrm: false
+      }
+    })
+    requireClientEntitlement.mockResolvedValue(undefined)
+    execute.mockResolvedValue(undefined)
+    revokeCrmLeadInboxRoute.mockResolvedValue({ route: { id: '22222222-2222-4222-8222-222222222222' } })
+  })
+
   it('uses hierarchical CRM permissions', () => {
     expect(hasClientCrmPermission(subject({ canViewCrm: true }), 'view')).toBe(true)
     expect(hasClientCrmPermission(subject({ canViewCrm: true }), 'edit')).toBe(false)
@@ -51,5 +115,41 @@ describe('client CRM access', () => {
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/people', 'GET')).toBe('view')
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/people', 'POST')).toBe('edit')
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/tasks/123', 'PATCH')).toBe('edit')
+  })
+
+  it('caches an exact successful access level for middleware and an explicit mutation handler', async () => {
+    const middleware = (await import('../../../../server/middleware/04-client-crm-access')).default
+    const handler = (await import('../../../../server/api/client-portal/crm/email-routes/[id].delete')).default
+    const event = {
+      path: '/api/client-portal/crm/email-routes/22222222-2222-4222-8222-222222222222',
+      method: 'DELETE',
+      context: {},
+      params: { id: '22222222-2222-4222-8222-222222222222' }
+    }
+
+    await middleware(event as never)
+    await handler(event as never)
+
+    expect(requireClientAuth).toHaveBeenCalledOnce()
+    expect(requireClientEntitlement).toHaveBeenCalledOnce()
+    expect(execute).toHaveBeenCalledOnce()
+    expect(execute).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO crm_security_audit_log'),
+      expect.arrayContaining(['admin', 'DELETE', 'allowed'])
+    )
+  })
+
+  it('does not let a cached view decision satisfy an admin request', async () => {
+    const event = {
+      path: '/api/client-portal/crm/email-routes',
+      method: 'POST',
+      context: {}
+    }
+
+    await requireClientCrmAccess(event as never, 'view')
+    await requireClientCrmAccess(event as never, 'admin')
+
+    expect(requireClientAuth).toHaveBeenCalledTimes(2)
+    expect(requireClientEntitlement).toHaveBeenCalledTimes(2)
   })
 })

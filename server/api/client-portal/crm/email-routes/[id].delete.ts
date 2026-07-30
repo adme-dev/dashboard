@@ -3,7 +3,7 @@ import { requireClientCrmAccess } from '~~/server/utils/crm/clientCrmAccess'
 import { revokeCrmLeadInboxRoute } from '~~/server/utils/crm/emailRouteManagement'
 
 const Params = z.object({ id: z.string().uuid() }).strict()
-const Body = z.object({}).strict()
+const Body = z.object({}).strict().optional()
 
 export default defineEventHandler(async (event) => {
   const client = await requireClientCrmAccess(event, 'admin')
