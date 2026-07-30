@@ -10,6 +10,8 @@ const ADDRESS = 'lead+one-time-token@leads.xeroflow.io'
 const toastAdd = vi.fn()
 const dataSourcesSource = readFileSync('app/components/crm/DataSources.vue', 'utf8')
 const portalCrmSource = readFileSync('app/pages/portal/crm.vue', 'utf8')
+const featureIndexSource = readFileSync('app/pages/features/index.vue', 'utf8')
+const featureDetailSource = readFileSync('app/pages/features/[slug].vue', 'utf8')
 
 const route = {
   id: ROUTE_ID,
@@ -364,5 +366,13 @@ describe('CRM inbound email onboarding placement and portal access', () => {
     expect(portalCrmSource).not.toContain('canInviteUsers')
     expect(dataSourcesSource).toContain(':can-manage="canManage"')
     expect(dataSourcesSource).toContain('api-base="/api/client-portal/crm/email-routes"')
+  })
+})
+
+describe('CRM inbound email public feature copy', () => {
+  it('explains dedicated inbound email, client-scoped conversation capture, and one-time secure issuance', () => {
+    expect(featureIndexSource).toContain('Dedicated inbound email securely captures each client\\\'s CRM conversation')
+    expect(featureDetailSource).toContain('Dedicated inbound email securely captures each client\\\'s CRM conversation')
+    expect(featureDetailSource).toContain('shown once when created or rotated')
   })
 })
