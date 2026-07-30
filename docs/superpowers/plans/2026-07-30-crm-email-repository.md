@@ -26,15 +26,15 @@
 - Create: `test/server/utils/crm/emailRepository.test.ts`
 - Create: `server/utils/crm/emailRepository.ts`
 
-- [ ] Write failing tests for tenant-scoped conversation insertion, new message
+- [x] Write failing tests for tenant-scoped conversation insertion, new message
       insertion, duplicate idempotency recovery, provider-message race
       recovery, and conversation timestamp update.
-- [ ] Run the test and observe module-resolution failure.
-- [ ] Implement `createConversation()` and `createMessage()` using injected
+- [x] Run the test and observe module-resolution failure.
+- [x] Implement `createConversation()` and `createMessage()` using injected
       transactions and canonical row mapping.
-- [ ] Run the repository and existing email-contract tests.
-- [ ] Re-read implementation/tests and run focused ESLint.
-- [ ] Commit as `feat(crm): persist idempotent email messages`.
+- [x] Run the repository and existing email-contract tests.
+- [x] Re-read implementation/tests and run focused ESLint.
+- [x] Commit as `feat(crm): persist idempotent email messages`.
 
 ### Task 2: Idempotent event append and state projection
 
@@ -43,16 +43,16 @@
 - Modify: `test/server/utils/crm/emailRepository.test.ts`
 - Modify: `server/utils/crm/emailRepository.ts`
 
-- [ ] Write failing tests for appended, duplicate, event-conflict, message
+- [x] Write failing tests for appended, duplicate, event-conflict, message
       not-found, delivery advance, stale event, and delivered-to-complained
       behavior.
-- [ ] Run the tests and observe the expected assertion failures.
-- [ ] Implement `appendMessageEvent()` with `FOR UPDATE`, event conflict
+- [x] Run the tests and observe the expected assertion failures.
+- [x] Implement `appendMessageEvent()` with `FOR UPDATE`, event conflict
       recovery, and canonical delivery projection in one transaction.
-- [ ] Run focused repository, token, contract, migration, and legacy
+- [x] Run focused repository, token, contract, migration, and legacy
       communication tests.
-- [ ] Run focused ESLint and `git diff --check`.
-- [ ] Commit as `feat(crm): project idempotent email events`.
+- [x] Run focused ESLint and `git diff --check`.
+- [x] Commit as `feat(crm): project idempotent email events`.
 
 ### Task 3: Live transaction smoke and ledger
 
@@ -61,10 +61,21 @@
 - Modify: `docs/prd/crm-conversations-email-gateway-prd.md`
 - Modify: `docs/superpowers/plans/2026-07-30-crm-email-repository.md`
 
-- [ ] Execute a rollback-only live Postgres transaction that creates a
+- [x] Execute a rollback-only live Postgres transaction that creates a
       conversation/message/event, repeats both idempotency keys, proves tenant
       mismatch rejection, projects delivery, and leaves no rows behind.
-- [ ] Run final focused tests and lint.
-- [ ] Check off A4 and record commands, counts, commits, and live evidence.
-- [ ] Commit as `docs(crm): record email repository verification`.
+- [x] Run final focused tests and lint.
+- [x] Check off A4 and record commands, counts, commits, and live evidence.
+- [x] Commit as `docs(crm): record email repository verification`.
 
+## Verification record
+
+- Repository implementation commits: `4d22421a`, `ce07bd73`.
+- Focused verification: 5 test files, 29 tests passed.
+- Static verification: focused ESLint and `git diff --check` passed;
+  `pnpm run typecheck` completed without reported errors.
+- Live Neon transaction: one canonical conversation, message, and event inside
+  the transaction; message retry `existing`; event retry `duplicate`; delivery
+  projected to `sent`; real cross-tenant reference rejected.
+- Rollback proof: post-transaction counts were zero conversations, zero
+  messages, and zero events for the smoke identifiers.

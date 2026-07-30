@@ -398,7 +398,7 @@ pnpm deploy:production
       sender-identity, and compatibility-credential tables.
 - [x] A2. Add provider-neutral TypeScript contracts and delivery-state rules.
 - [x] A3. Add secure reply-token generation and validation with key versioning.
-- [ ] A4. Add tenant-scoped repositories and idempotent message/event writes.
+- [x] A4. Add tenant-scoped repositories and idempotent message/event writes.
 - [ ] A5. Project canonical messages into `crm_communications` without
       duplicating existing bridge rows.
 
@@ -513,3 +513,21 @@ pnpm deploy:production
 - Final focused verification for A1-A3 passed: 4 files and 18 tests. All five
   changed TypeScript/test files also pass the repository ESLint rules; lint-only
   alignment was committed as `c994fe93`.
+- A4 added a dependency-injected Postgres repository with tenant scope on every
+  lookup and mutation. Conversation/message creation, idempotency-key recovery,
+  provider-identifier race recovery, locked event append, cross-message event
+  conflict reporting, and monotonic delivery projection were implemented in
+  commits `4d22421a` and `ce07bd73`.
+- A4 followed failing-then-passing test cycles: the repository initially failed
+  module resolution, then seven event cases failed because
+  `appendMessageEvent()` did not exist. The final focused repository, token,
+  contract, migration, and legacy CRM communications run passed 5 files and 29
+  tests; focused ESLint and `git diff --check` passed; `pnpm run typecheck`
+  completed with no reported errors.
+- A rollback-only live Neon smoke used two existing tenant records and the
+  production repository code. It created exactly one conversation, message,
+  and event; repeated keys returned `existing` and `duplicate`; delivery
+  advanced from `queued` to `sent`; and a second tenant's attempt to reference
+  the first tenant's conversation was rejected by PostgreSQL with a foreign-key
+  violation. A separate post-rollback query confirmed zero retained
+  conversations, messages, or events for the smoke identifiers.
