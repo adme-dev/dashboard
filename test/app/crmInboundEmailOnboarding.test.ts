@@ -150,6 +150,30 @@ describe('useCrmInboundEmailRoute', () => {
     })
   })
 
+  it('keeps every portal request session-scoped without a client_id query or body', async () => {
+    const portalFetch = vi.fn()
+      .mockResolvedValueOnce({ items: [route] })
+      .mockResolvedValueOnce({ route, issuedAddress: ADDRESS, addressShownOnce: true })
+      .mockResolvedValueOnce({ route: replacementRoute, issuedAddress: ADDRESS, addressShownOnce: true })
+      .mockResolvedValueOnce({ route: { ...replacementRoute, status: 'revoked', canRotate: false, canRevoke: false } })
+    vi.stubGlobal('$fetch', portalFetch)
+    const { useCrmInboundEmailRoute } = await import('~~/app/composables/useCrmInboundEmailRoute')
+    const portal = useCrmInboundEmailRoute({ apiBase: '/api/client-portal/crm/email-routes' })
+
+    await portal.refresh()
+    await portal.create('Portal inbox')
+    await portal.rotate(route)
+    await portal.revoke(replacementRoute)
+
+    expect(portalFetch.mock.calls).toEqual([
+      ['/api/client-portal/crm/email-routes', { method: 'GET' }],
+      ['/api/client-portal/crm/email-routes', { method: 'POST', body: { label: 'Portal inbox' } }],
+      [`/api/client-portal/crm/email-routes/${ROUTE_ID}/rotate`, { method: 'POST', body: {} }],
+      [`/api/client-portal/crm/email-routes/${replacementRoute.id}`, { method: 'DELETE', body: {} }]
+    ])
+    expect(JSON.stringify(portalFetch.mock.calls)).not.toContain('client_id')
+  })
+
   it('reconciles rotation before revocation so a stale route cannot remain active', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ items: [route] })
