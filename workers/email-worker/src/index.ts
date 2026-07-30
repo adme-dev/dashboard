@@ -195,4 +195,7 @@ export function createInboundEmailWorker(
   }
 }
 
-export default createInboundEmailWorker() satisfies ExportedHandler<InboundEmailWorkerEnv>
+export default createInboundEmailWorker() satisfies ExportedHandler<
+  InboundEmailWorkerEnv,
+  CrmEmailInboundQueueJob
+>

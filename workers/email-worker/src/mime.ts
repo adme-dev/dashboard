@@ -52,7 +52,7 @@ function attachmentContentToArrayBuffer(content: unknown): ArrayBuffer {
 function flattenAddresses(addresses?: Address[]): ParsedInboundAddress[] {
   if (!addresses) return []
   return addresses.flatMap((entry) => {
-    if ('group' in entry) {
+    if (entry.group) {
       return entry.group.map(mailbox => ({
         name: mailbox.name,
         address: mailbox.address

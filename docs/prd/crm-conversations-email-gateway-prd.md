@@ -429,8 +429,13 @@ pnpm deploy:production
 
 ### Phase C — Outbound transactional email
 
-- [ ] C1. Add a provider-neutral transactional email interface.
-- [ ] C2. Implement the Cloudflare `send_email` binding adapter.
+- [x] C1. Add a provider-neutral transactional email interface.
+      Canonical prepared-message, attachment, provider, and controlled outcome
+      contracts do not depend on Cloudflare and accept future SMTP/providers.
+- [x] C2. Implement the Cloudflare `send_email` binding adapter.
+      The dormant Worker adapter uses official Cloudflare types and maps
+      documented failures without exposing provider diagnostics. No sending
+      domain or deployable binding is configured.
 - [ ] C3. Add sender identity, recipient, permission, preference, suppression,
       and rate-limit policy.
 - [ ] C4. Add the Queue-backed outbound service and durable audit transition.
@@ -636,3 +641,26 @@ pnpm deploy:production
 - Production remains disabled and unconfigured. C5 must emit the
   `X-XeroFlow-Origin: crm-email-gateway` header on future outbound MIME so the
   B6 loop marker becomes active end to end.
+- Cloudflare Email Service Workers API, send-binding restrictions, supported
+  headers, limits, and error contracts were rechecked from current official
+  documentation before Phase C. The read-only account prerequisite check
+  returned `No sending subdomains found in this account`.
+- C1 is complete. `PreparedCrmTransactionalEmail` models participants,
+  threading/loop headers, required plain text, optional HTML, and
+  inline/regular attachments without Cloudflare naming. Provider outcomes are
+  canonical `accepted`, `retryable`, or `permanent_failure`, and the provider
+  identifier remains open for tenant SMTP and future adapters.
+- C2 is code-complete but dormant. The Cloudflare adapter uses the official
+  `SendEmail` overload-derived builder, translates named/unnamed participants
+  and attachments without mutation, preserves exact bounded message IDs, maps
+  documented retryable/permanent `E_*` codes, and reduces unknown failures to
+  a controlled retryable class without logging provider messages.
+- The new strict Email Worker TypeScript configuration passes. Adding it also
+  closed two latent strictness gaps in the existing Worker: the Queue message
+  generic is now explicit and PostalMime group narrowing is null-safe.
+- C1–C2 verification passed 5 focused files and 70 tests, scoped ESLint,
+  strict Worker typecheck, and `git diff --check`. A Wrangler dry-run bundled
+  at 685.75 KiB (113.34 KiB gzip), reported only `API_URL`, and did not deploy.
+- No `send_email` binding, sender address, domain, credential, Queue producer,
+  feature flag, or public/marketing surface was added. C3–C6 remain the
+  activation-blocking outbound policy, dispatch, threading, and scan work.

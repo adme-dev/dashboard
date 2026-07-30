@@ -43,6 +43,12 @@ Service `send_email` binding, Vitest, Wrangler dry-run.
 - Produces:
 
 ```ts
+export const CRM_TRANSACTIONAL_EMAIL_OUTCOMES = [
+  'accepted',
+  'retryable',
+  'permanent_failure'
+] as const
+
 export interface CrmTransactionalEmailAddress {
   address: string
   name: string | null
@@ -79,7 +85,7 @@ export interface PreparedCrmTransactionalEmail {
 
 export type CrmTransactionalEmailSendResult = {
   outcome: 'accepted' | 'retryable' | 'permanent_failure'
-  provider: 'cloudflare_email'
+  provider: string
   providerMessageId: string | null
   errorClass: string | null
 }
@@ -91,7 +97,7 @@ export interface CrmTransactionalEmailProvider {
 }
 ```
 
-- [ ] **Step 1: Write the failing contract test**
+- [x] **Step 1: Write the failing contract test**
 
 Create a fake provider implementing `CrmTransactionalEmailProvider`, send a
 message with named and unnamed participants, plain text, optional HTML,
@@ -99,7 +105,7 @@ threading/loop headers, and an inline attachment. Assert the result contains
 only the canonical provider outcome fields and the request contains no
 `reply_to`, Cloudflare binding, API token, tenant ID, or Queue field.
 
-- [ ] **Step 2: Run the test and verify the red state**
+- [x] **Step 2: Run the test and verify the red state**
 
 Run:
 
@@ -109,12 +115,12 @@ pnpm vitest run test/server/utils/crm/transactionalEmail.test.ts
 
 Expected: FAIL because the contract module does not exist.
 
-- [ ] **Step 3: Add the minimal provider-neutral types**
+- [x] **Step 3: Add the minimal provider-neutral types**
 
 Create the exact interfaces above. Do not add runtime sending, policy, storage,
 or Cloudflare imports.
 
-- [ ] **Step 4: Run the contract test**
+- [x] **Step 4: Run the contract test**
 
 Run the Task 1 command again.
 
@@ -139,7 +145,7 @@ export function createCloudflareTransactionalEmailProvider(
 ): CrmTransactionalEmailProvider
 ```
 
-- [ ] **Step 1: Write the failing translation test**
+- [x] **Step 1: Write the failing translation test**
 
 Use a typed fake binding. Assert translation to:
 
@@ -168,10 +174,11 @@ Use a typed fake binding. Assert translation to:
 }
 ```
 
-Assert `messageId` is trimmed and bounded to 500 characters in the accepted
-canonical result.
+Assert `messageId` is trimmed in the accepted canonical result. A blank or
+greater-than-500-character identifier is an invalid retryable response rather
+than a truncated identifier, preserving exact event correlation.
 
-- [ ] **Step 2: Write the failing error decision table**
+- [x] **Step 2: Write the failing error decision table**
 
 Assert:
 
@@ -182,7 +189,7 @@ Assert:
 - an unknown error or malformed success result → `retryable`.
 - no provider exception message appears in the returned result or logs.
 
-- [ ] **Step 3: Run the adapter test and verify failure**
+- [x] **Step 3: Run the adapter test and verify failure**
 
 Run:
 
@@ -192,7 +199,7 @@ pnpm vitest run test/workers/emailWorkerCloudflareTransactionalEmail.test.ts
 
 Expected: FAIL because the adapter does not exist.
 
-- [ ] **Step 4: Add the official Worker type configuration**
+- [x] **Step 4: Add the official Worker type configuration**
 
 Create:
 
@@ -212,7 +219,7 @@ Create:
 
 Do not add a `send_email` Wrangler binding.
 
-- [ ] **Step 5: Implement translation and controlled error mapping**
+- [x] **Step 5: Implement translation and controlled error mapping**
 
 Translate a participant with a non-empty name to `{ email, name }`; otherwise
 send the address string. Copy recipient arrays, headers, text/HTML, and
@@ -221,7 +228,7 @@ string-valued `code`, and map it through explicit retryable/permanent sets.
 Use `cloudflare_email_unknown` for unrecognised exceptions and
 `cloudflare_email_invalid_response` when `messageId` is absent or blank.
 
-- [ ] **Step 6: Run the adapter tests**
+- [x] **Step 6: Run the adapter tests**
 
 Run the Task 2 command again.
 
@@ -238,7 +245,7 @@ Expected: PASS.
 - Produces: checked C1–C2 ledger entries that explicitly distinguish code
   readiness from domain/binding activation.
 
-- [ ] **Step 1: Run the focused CRM email contract/Worker suite**
+- [x] **Step 1: Run the focused CRM email contract/Worker suite**
 
 Run:
 
@@ -253,7 +260,7 @@ pnpm vitest run \
 
 Expected: all pass.
 
-- [ ] **Step 2: Run strict Worker typecheck**
+- [x] **Step 2: Run strict Worker typecheck**
 
 Run:
 
@@ -263,11 +270,11 @@ pnpm exec tsc --noEmit -p workers/email-worker/tsconfig.json
 
 Expected: PASS using the official Cloudflare types.
 
-- [ ] **Step 3: Run scoped ESLint and `git diff --check`**
+- [x] **Step 3: Run scoped ESLint and `git diff --check`**
 
 Expected: PASS.
 
-- [ ] **Step 4: Run the Worker dry-run**
+- [x] **Step 4: Run the Worker dry-run**
 
 Run:
 
@@ -279,14 +286,14 @@ WRANGLER_LOG_PATH=/tmp/crm-email-c2-wrangler.log \
 Expected: bundle succeeds, no deployment occurs, and only `API_URL` appears;
 no `send_email` binding is present.
 
-- [ ] **Step 5: Perform the mandatory deep-dive review**
+- [x] **Step 5: Perform the mandatory deep-dive review**
 
 Re-read every changed file. Check provider-neutral naming, official type use,
 recipient and attachment translation, no mutation, controlled error mapping,
 no error-message leakage, no committed sender/domain/secret/binding, and no
 changes to Resend marketing.
 
-- [ ] **Step 6: Update the PRD and commit**
+- [x] **Step 6: Update the PRD and commit**
 
 Record the live prerequisite result (“No sending subdomains found in this
 account”), check C1–C2 as code-complete/dormant, record exact verification
@@ -302,4 +309,3 @@ git add docs/prd/crm-conversations-email-gateway-prd.md \
   test/workers/emailWorkerCloudflareTransactionalEmail.test.ts
 git commit -m "feat(crm-email): add Cloudflare send adapter"
 ```
-
