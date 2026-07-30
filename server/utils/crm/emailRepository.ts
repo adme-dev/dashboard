@@ -1,5 +1,6 @@
 import { transaction as defaultTransaction } from '~~/server/utils/db'
 import { projectEmailDeliveryState } from '~~/server/utils/crm/emailContracts'
+import { projectCrmEmailMessageToCommunication } from '~~/server/utils/crm/emailCommunicationProjection'
 import type {
   CrmEmailDeliveryState,
   CrmEmailEnvelope
@@ -452,6 +453,11 @@ export function createPostgresCrmEmailRepository(
           if (conversationResult.rowCount !== 1) {
             throw new Error('CRM conversation was not found for this tenant')
           }
+
+          await projectCrmEmailMessageToCommunication(database, {
+            clientId: input.clientId,
+            messageId: inserted.id
+          })
 
           return { status: 'created', message: mapMessage(inserted) }
         }

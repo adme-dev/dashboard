@@ -169,6 +169,7 @@ describe('CRM email repository conversation and message writes', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [messageRow], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
     const repository = repositoryWith(query)
 
     await expect(repository.createMessage(messageInput)).resolves.toMatchObject({
@@ -191,6 +192,10 @@ describe('CRM email repository conversation and message writes', () => {
     expect(updateSql).toContain('UPDATE crm_conversations')
     expect(updateSql).toContain('WHERE client_id = $1')
     expect(updateParams).toEqual([CLIENT_ID, CONVERSATION_ID, messageInput.envelope.occurredAt])
+    const [projectionSql, projectionParams] = query.mock.calls[3]!
+    expect(projectionSql).toContain('INSERT INTO crm_communications')
+    expect(projectionParams).toEqual([CLIENT_ID, MESSAGE_ID])
+    expect(query).toHaveBeenCalledTimes(4)
   })
 
   it('returns an existing message for a repeated tenant idempotency key', async () => {
