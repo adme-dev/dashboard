@@ -130,27 +130,29 @@ auditable revocation.
 2. Verify the Queue, DLQ, private R2 bucket, Hyperdrive binding, and lifecycle
    rules.
 3. Configure matching versioned reply secrets on Pages and the Worker while
-   both feature gates remain disabled.
+   both live feature gates remain disabled. The checked-in Worker configuration
+   sets `CRM_EMAIL_INBOUND_ENABLED="true"`, so do not deploy that Worker yet:
+   its deployment is the explicit inbound-activation step below.
 4. Merge and deploy Pages using `pnpm deploy:production`.
-5. Deploy the standalone Worker using its checked-in Wrangler configuration.
-6. Verify the Worker consumer, Hyperdrive, Queue, and R2 bindings.
-7. Set `CRM_EMAIL_CONVERSATIONS_ENABLED=true` on Pages and redeploy Pages.
+5. Set `CRM_EMAIL_CONVERSATIONS_ENABLED=true` on Pages and redeploy Pages.
    Confirm list access remains safe before provisioning any route.
-8. Set `CRM_EMAIL_INBOUND_ENABLED=true` on the standalone Worker and deploy it.
-   Confirm the consumer and bounded custom logs are healthy before accepting
-   mail.
-9. Create one clearly labelled `lead_inbox` smoke route for an allowlisted
+6. Deploy the standalone Worker using its checked-in Wrangler configuration.
+   This deployment changes the live Worker gate to
+   `CRM_EMAIL_INBOUND_ENABLED=true`; do not run it before steps 1–5 pass.
+7. Verify the Worker consumer, Hyperdrive, Queue, R2 bindings, and bounded
+   custom logs are healthy before accepting mail.
+8. Create one clearly labelled `lead_inbox` smoke route for an allowlisted
    client. It does not expire automatically; explicitly revoke it after the
    verification and approved synthetic-record cleanup are complete.
-10. Enable Email Routing subaddressing and the `lead@xeroflow.io` and
+9. Enable Email Routing subaddressing and the `lead@xeroflow.io` and
    `reply@xeroflow.io` base rules assigned to `email-to-board-worker`. Do not
    alter the catch-all.
-11. Wait at least 60 seconds for Email Routing configuration propagation. A
+10. Wait at least 60 seconds for Email Routing configuration propagation. A
    message sent immediately after enabling can still match the previous
    catch-all configuration.
-12. Send a controlled message, then verify the route timestamp, canonical CRM
+11. Send a controlled message, then verify the route timestamp, canonical CRM
    message, compatibility communication, Queue metrics, and R2 cleanup policy.
-13. Revoke the smoke route and disable its base routing rule after
+12. Revoke the smoke route and disable its base routing rule after
     proof is captured.
 
 ## Production smoke for route onboarding
