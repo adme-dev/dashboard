@@ -57,16 +57,16 @@ consume that job to match the sender and write the canonical CRM message.
   `resolveCrmInboundEmailRoute(input, dependencies):
   Promise<CrmInboundEmailRoute | null>`
 
-- [ ] Write failing configuration tests for missing JSON, arrays, invalid
+- [x] Write failing configuration tests for missing JSON, arrays, invalid
       versions, short secrets, and a valid multi-version keyring.
-- [ ] Write failing resolver tests proving HMAC verification happens before
+- [x] Write failing resolver tests proving HMAC verification happens before
       Postgres, all route dimensions are queried, invalid tokens do not query,
       and absent/expired/revoked routes return `null`.
-- [ ] Run the two focused tests and observe missing-module failures.
-- [ ] Implement strict keyring parsing and a dependency-injected route
+- [x] Run the two focused tests and observe missing-module failures.
+- [x] Implement strict keyring parsing and a dependency-injected route
       resolver using `verifyCrmEmailReplyToken`.
-- [ ] Run focused tests and ESLint.
-- [ ] Re-read the four files and commit:
+- [x] Run focused tests and ESLint.
+- [x] Re-read the four files and commit:
       `feat(crm-email): resolve signed inbound routes`.
 
 ### Task 2: Deterministic dedicated Queue handoff

@@ -25,7 +25,7 @@ export type VerifiedCrmEmailReplyToken
   = | { valid: true, version: number, routeTokenHash: string }
     | { valid: false }
 
-function canonicalizeDomain(value: string): string {
+export function canonicalizeCrmEmailDomain(value: string): string {
   const domain = value.trim().toLowerCase().replace(/\.$/, '')
   if (domain.length < 3 || domain.length > 253) {
     throw new Error('Invalid reply domain')
@@ -129,7 +129,7 @@ export async function createCrmEmailReplyToken(
   input: CreateCrmEmailReplyTokenInput
 ): Promise<CreatedCrmEmailReplyToken> {
   validateVersion(input.version)
-  const domain = canonicalizeDomain(input.domain)
+  const domain = canonicalizeCrmEmailDomain(input.domain)
   const routeKeyBytes = crypto.getRandomValues(new Uint8Array(ROUTE_KEY_BYTES))
   const routeKey = bytesToBase64Url(routeKeyBytes)
   const signature = await signPayload(
@@ -169,7 +169,7 @@ export async function verifyCrmEmailReplyToken(
     const secret = input.secrets[version]
     if (!secret) return { valid: false }
 
-    const domain = canonicalizeDomain(input.domain)
+    const domain = canonicalizeCrmEmailDomain(input.domain)
     const expectedSignature = await signPayload(
       signaturePayload(version, routeKey, domain),
       secret
