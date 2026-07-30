@@ -131,12 +131,12 @@ importers:
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
-      fast-xml-parser:
-        specifier: ^5.10.1
-        version: 5.10.1
       dompurify:
         specifier: ^3.4.12
         version: 3.4.12
+      fast-xml-parser:
+        specifier: ^5.10.1
+        version: 5.10.1
       fuse.js:
         specifier: ^6.6.2
         version: 6.6.2
@@ -164,15 +164,15 @@ importers:
       ofetch:
         specifier: ^1.5.1
         version: 1.5.1
-      postal-mime:
-        specifier: ^2.7.4
-        version: 2.7.4
       pg:
         specifier: ^8.22.0
         version: 8.22.0
       pngjs:
         specifier: ^7.0.0
         version: 7.0.0
+      postal-mime:
+        specifier: ^2.7.4
+        version: 2.7.4
       resend:
         specifier: ^6.17.2
         version: 6.17.2
@@ -225,6 +225,9 @@ importers:
       concurrently:
         specifier: ^10.0.3
         version: 10.0.3
+      es-module-lexer:
+        specifier: 2.3.0
+        version: 2.3.0
       eslint:
         specifier: ^9.39.5
         version: 9.39.5(jiti@2.7.0)

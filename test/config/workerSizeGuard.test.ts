@@ -1,0 +1,32 @@
+import { execFile } from 'node:child_process'
+import { mkdir, mkdtemp, rm, truncate, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { promisify } from 'node:util'
+import { afterEach, expect, it } from 'vitest'
+
+const execFileAsync = promisify(execFile)
+const temporaryDirectories: string[] = []
+const sizeGuard = path.resolve('scripts/check-worker-size.mjs')
+
+afterEach(async () => {
+  await Promise.all(temporaryDirectories.splice(0).map(directory =>
+    rm(directory, { recursive: true, force: true })
+  ))
+})
+
+it('rejects a Worker that exceeds Cloudflare’s decimal 25 MB request limit', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'worker-size-guard-'))
+  temporaryDirectories.push(directory)
+  const workerDirectory = path.join(directory, 'dist', '_worker.js')
+  await mkdir(workerDirectory, { recursive: true })
+  const workerModule = path.join(workerDirectory, 'worker.mjs')
+  await writeFile(workerModule, '')
+  await truncate(workerModule, 25_000_001)
+
+  await expect(execFileAsync(process.execPath, [sizeGuard], {
+    cwd: directory
+  })).rejects.toMatchObject({
+    code: 1
+  })
+})

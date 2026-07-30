@@ -3,7 +3,11 @@ import path from 'node:path'
 
 const MIB = 1024 * 1024
 const workerDir = path.resolve('dist/_worker.js')
-const maxBytes = Number(process.env.WORKER_SIZE_BUDGET_BYTES || 24.5 * MIB)
+const CLOUDFLARE_WORKER_MAX_BYTES = 25_000_000
+const DEFAULT_RELEASE_BUDGET_BYTES = CLOUDFLARE_WORKER_MAX_BYTES - 250_000
+const maxBytes = Number(
+  process.env.WORKER_SIZE_BUDGET_BYTES || DEFAULT_RELEASE_BUDGET_BYTES
+)
 
 async function deployedBytes(directory) {
   let total = 0
@@ -30,7 +34,7 @@ console.log(`[worker-size] ${format(bytes)} / ${format(maxBytes)} (${format(rema
 
 if (remaining < 0) {
   throw new Error(
-    `Worker exceeds the ${format(maxBytes)} release budget by ${format(Math.abs(remaining))}. ` +
-    'Move server functionality to a standalone Worker before deploying Pages.'
+    `Worker exceeds the ${format(maxBytes)} release budget by ${format(Math.abs(remaining))}. `
+    + 'Move server functionality to a standalone Worker before deploying Pages.'
   )
 }

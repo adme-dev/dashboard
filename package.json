@@ -125,6 +125,7 @@
     "@vitejs/plugin-vue": "^6.0.7",
     "@vitest/coverage-v8": "4.1.10",
     "concurrently": "^10.0.3",
+    "es-module-lexer": "2.3.0",
     "eslint": "^9.39.5",
     "happy-dom": "^20.10.6",
     "playwright": "1.60.0",
