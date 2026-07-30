@@ -391,6 +391,30 @@ describe('CRM inbound email onboarding mounted behavior', () => {
     expect(mounted.host.textContent).not.toContain('lead+')
     mounted.app.unmount()
   })
+
+  it('uses a truthful fallback when an inactive route has no revocation timestamp', async () => {
+    const lastUsedAt = '2026-07-31T01:30:00.000Z'
+    const inactiveRoute = {
+      ...route,
+      status: 'revoked',
+      lastUsedAt,
+      revokedAt: null,
+      canRotate: false,
+      canRevoke: false
+    }
+    const fetchMock = vi.fn().mockResolvedValue({ items: [inactiveRoute] })
+    const mounted = mountPanel(fetchMock)
+    await flushUi()
+    const copy = mounted.host.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+
+    expect(copy).toContain('Last received')
+    expect(copy).toContain(new Date(lastUsedAt).toLocaleString())
+    expect(copy).toContain('Revoked on Unavailable')
+    expect(copy).not.toContain('Revoked on No messages received yet')
+    expect(copy).not.toContain(inactiveRoute.recipientDomain)
+    expect(copy).not.toContain('lead+')
+    mounted.app.unmount()
+  })
 })
 
 describe('CRM inbound email onboarding panel composition', () => {

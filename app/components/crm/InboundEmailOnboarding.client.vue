@@ -29,8 +29,8 @@ const awaitingRoute = computed(() => activeRoute.value?.status === 'never_used')
 const readyRoute = computed(() => activeRoute.value?.status === 'active')
 const expiredRoute = computed(() => activeRoute.value?.status === 'expired')
 
-function formatRouteTimestamp(value: string | null): string {
-  if (!value) return 'No messages received yet'
+function formatRouteTimestamp(value: string | null, unavailableCopy = 'No messages received yet'): string {
+  if (!value) return unavailableCopy
   const timestamp = new Date(value)
   return Number.isNaN(timestamp.getTime()) ? 'Unavailable' : timestamp.toLocaleString()
 }
@@ -193,7 +193,7 @@ onMounted(refresh)
               Revoked on
             </dt>
             <dd class="mt-1 text-sm text-highlighted">
-              {{ formatRouteTimestamp(latestRevokedRoute.revokedAt) }}
+              {{ formatRouteTimestamp(latestRevokedRoute.revokedAt, 'Unavailable') }}
             </dd>
           </div>
         </dl>
