@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { requireClientCatalogAccess } from '../../../../../server/utils/crm/clientCatalogAccess'
+import { requireClientCatalogAccess } from '~~/server/utils/crm/clientCatalogAccess'
 
 const { requireClientAuth } = vi.hoisted(() => ({
   requireClientAuth: vi.fn()
