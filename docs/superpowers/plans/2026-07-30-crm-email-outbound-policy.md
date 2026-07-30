@@ -47,7 +47,7 @@ Vitest.
 - Create: `server/utils/crm/emailOutboundPolicy.ts`
 - Create: `test/server/utils/crm/emailOutboundPolicy.test.ts`
 
-- [ ] **Step 1: Write the failing contract and decision-table tests**
+- [x] **Step 1: Write the failing contract and decision-table tests**
 
 Cover:
 
@@ -65,7 +65,7 @@ Cover:
 - results never include suppression reasons, database errors, or unrelated
   tenant data.
 
-- [ ] **Step 2: Run the test and verify the red state**
+- [x] **Step 2: Run the test and verify the red state**
 
 ```bash
 pnpm vitest run test/server/utils/crm/emailOutboundPolicy.test.ts
@@ -73,7 +73,7 @@ pnpm vitest run test/server/utils/crm/emailOutboundPolicy.test.ts
 
 Expected: FAIL because the policy module does not exist.
 
-- [ ] **Step 3: Add the minimal contract and evaluator**
+- [x] **Step 3: Add the minimal contract and evaluator**
 
 Expose:
 
@@ -99,7 +99,7 @@ address, sender identity ID/address/display name, and controlled rate reset.
 Denied results contain only `allowed: false`, `code`, and (only for rate
 limits) a reset timestamp.
 
-- [ ] **Step 4: Run the contract tests**
+- [x] **Step 4: Run the contract tests**
 
 Expected: PASS.
 
@@ -109,7 +109,7 @@ Expected: PASS.
 - Modify: `server/utils/crm/emailOutboundPolicy.ts`
 - Create: `test/server/utils/crm/emailOutboundPolicyRepository.test.ts`
 
-- [ ] **Step 1: Write failing repository SQL tests**
+- [x] **Step 1: Write failing repository SQL tests**
 
 Assert:
 
@@ -122,13 +122,13 @@ Assert:
   never increments beyond its limit, and uses parameterised window/limit;
 - no raw actor ID appears in the rate key.
 
-- [ ] **Step 2: Implement the Postgres repository**
+- [x] **Step 2: Implement the Postgres repository**
 
 Use `queryOne()` for all reads and atomic bucket consumption. The default
 limits are 30 messages per actor/client minute and 500 per actor/client day.
 Limits remain injectable for deterministic tests and later tenant policy.
 
-- [ ] **Step 3: Run both policy test files**
+- [x] **Step 3: Run both policy test files**
 
 ```bash
 pnpm vitest run \
@@ -145,7 +145,7 @@ Expected: PASS.
 - Modify: this plan
 - Verify: all Task 1–2 files
 
-- [ ] **Step 1: Run the focused CRM email suite**
+- [x] **Step 1: Run the focused CRM email suite**
 
 ```bash
 pnpm vitest run \
@@ -156,7 +156,7 @@ pnpm vitest run \
   test/server/utils/crm/emailRepository.test.ts
 ```
 
-- [ ] **Step 2: Run quality gates**
+- [x] **Step 2: Run quality gates**
 
 ```bash
 pnpm exec eslint \
@@ -167,14 +167,14 @@ pnpm exec tsc --noEmit -p workers/email-worker/tsconfig.json
 git diff --check
 ```
 
-- [ ] **Step 3: Perform the mandatory deep-dive review**
+- [x] **Step 3: Perform the mandatory deep-dive review**
 
 Re-read every changed file end-to-end. Confirm server imports use `~~/`,
 queries are parameterised and tenant-scoped, address comparisons are
 canonical, rate limits fail closed, no PII is logged, and no deployment
 configuration or production activation was introduced.
 
-- [ ] **Step 4: Update PRD C3 and progress evidence**
+- [x] **Step 4: Update PRD C3 and progress evidence**
 
 Mark C3 complete only after all focused tests and quality gates pass. State
 that C4 remains required before any outbound request can be queued.
@@ -190,4 +190,3 @@ git add \
   test/server/utils/crm/emailOutboundPolicyRepository.test.ts
 git commit -m "feat(crm-email): enforce outbound policy"
 ```
-

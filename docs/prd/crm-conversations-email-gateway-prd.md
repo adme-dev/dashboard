@@ -436,8 +436,12 @@ pnpm deploy:production
       The dormant Worker adapter uses official Cloudflare types and maps
       documented failures without exposing provider diagnostics. No sending
       domain or deployable binding is configured.
-- [ ] C3. Add sender identity, recipient, permission, preference, suppression,
-      and rate-limit policy.
+- [x] C3. Add sender identity, recipient, permission, preference, suppression,
+      and rate-limit policy. The provider-neutral, fail-closed boundary accepts
+      only server-derived actor authority, resolves canonical tenant-owned
+      people and ready tenant sender identities, enforces contact preferences
+      and global suppressions, and atomically consumes hashed per-actor
+      minute/day Postgres buckets before granting dispatch.
 - [ ] C4. Add the Queue-backed outbound service and durable audit transition.
 - [ ] C5. Generate MIME with persistent threading, secure reply headers, and
       the `X-XeroFlow-Origin: crm-email-gateway` loop marker consumed by B6.
@@ -662,5 +666,24 @@ pnpm deploy:production
   strict Worker typecheck, and `git diff --check`. A Wrangler dry-run bundled
   at 685.75 KiB (113.34 KiB gzip), reported only `API_URL`, and did not deploy.
 - No `send_email` binding, sender address, domain, credential, Queue producer,
-  feature flag, or public/marketing surface was added. C3–C6 remain the
-  activation-blocking outbound policy, dispatch, threading, and scan work.
+  feature flag, or public/marketing surface was added.
+- C3 is complete. Outbound policy accepts only a server-derived `canSend`
+  decision and a person/address pair, then resolves the non-deleted person and
+  ready sender inside the same client. Missing and cross-tenant resources use
+  indistinguishable controlled denials. `do_not_contact`, `do_not_email`, and
+  every canonical suppression reason block before rate consumption.
+- C3 rate limits are fail-closed and atomically capped at 30 messages per
+  actor/client minute and 500 per actor/client day. Bucket keys namespace and
+  hash the client/actor tuple rather than storing actor IDs in operational
+  keys. Repository errors are reduced to `policy_unavailable` without logging
+  contact or database diagnostics.
+- C3 verification passed 5 focused files and 59 tests, scoped ESLint, strict
+  Worker typecheck, and `git diff --check`. Repository-wide Nuxt typecheck
+  remains at the existing 807-diagnostic baseline with no C3 file referenced.
+  A Wrangler dry-run remained 685.75 KiB (113.34 KiB gzip), reported only
+  `API_URL`, and did not deploy.
+- A rollback-only live Neon proof verified the atomic limiter: the first slot
+  was allowed, the second was denied at the limit without incrementing beyond
+  one, and rollback retained zero rows.
+- C4–C6 remain the activation-blocking durable dispatch, MIME/threading, and
+  attachment-scan work. C3 adds no endpoint or path capable of sending email.
