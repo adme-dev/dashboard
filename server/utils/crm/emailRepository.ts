@@ -1,4 +1,5 @@
 import { transaction as defaultTransaction } from '~~/server/utils/db'
+import { projectEmailDeliveryState } from '~~/server/utils/crm/emailContracts'
 import type {
   CrmEmailDeliveryState,
   CrmEmailEnvelope
@@ -84,6 +85,64 @@ export type CreateCrmEmailMessageResult = {
   message: CrmEmailMessageRecord
 }
 
+export type CrmEmailMessageEventType
+  = | 'drafted'
+    | 'queued'
+    | 'sending'
+    | 'sent'
+    | 'delivered'
+    | 'deferred'
+    | 'bounced'
+    | 'failed'
+    | 'rejected'
+    | 'complained'
+    | 'cancelled'
+    | 'received'
+    | 'deduplicated'
+
+export interface CrmEmailMessageEventRecord {
+  id: string
+  clientId: string
+  messageId: string
+  provider: string
+  providerEventId: string | null
+  eventType: CrmEmailMessageEventType
+  deliveryStatus: CrmEmailDeliveryState | null
+  occurredAt: string
+  smtpCode: string | null
+  reason: string | null
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+export interface AppendCrmEmailMessageEventInput {
+  clientId: string
+  messageId: string
+  provider: string
+  providerEventId: string | null
+  eventType: CrmEmailMessageEventType
+  deliveryStatus: CrmEmailDeliveryState | null
+  occurredAt: string
+  smtpCode: string | null
+  reason: string | null
+  metadata: Record<string, unknown>
+}
+
+export type AppendCrmEmailMessageEventResult
+  = | {
+    status: 'appended' | 'duplicate'
+    event: CrmEmailMessageEventRecord
+    message: CrmEmailMessageRecord
+  }
+  | {
+    status: 'event_conflict'
+    event: CrmEmailMessageEventRecord
+    existingMessageId: string
+  }
+  | {
+    status: 'not_found'
+  }
+
 interface QueryResult {
   rows: unknown[]
   rowCount?: number | null
@@ -142,6 +201,21 @@ interface MessageRow {
   updated_at: string | Date
 }
 
+interface MessageEventRow {
+  id: string
+  client_id: string
+  message_id: string
+  provider: string
+  provider_event_id: string | null
+  event_type: CrmEmailMessageEventType
+  delivery_status: CrmEmailDeliveryState | null
+  occurred_at: string | Date
+  smtp_code: string | null
+  reason: string | null
+  sanitized_metadata: Record<string, unknown>
+  created_at: string | Date
+}
+
 const CONVERSATION_COLUMNS = `
   id, client_id, primary_channel, status, subject, person_id, company_id,
   lead_id, opportunity_id, assigned_to, last_message_at, created_at, updated_at
@@ -155,6 +229,20 @@ const MESSAGE_COLUMNS = `
   delivery_status_at, failure_code, failure_reason, occurred_at, created_at,
   updated_at
 `
+
+const MESSAGE_EVENT_COLUMNS = `
+  id, client_id, message_id, provider, provider_event_id, event_type,
+  delivery_status, occurred_at, smtp_code, reason, sanitized_metadata,
+  created_at
+`
+
+const FAILURE_STATES: ReadonlySet<CrmEmailDeliveryState> = new Set([
+  'bounced',
+  'failed',
+  'rejected',
+  'complained',
+  'cancelled'
+])
 
 function toIsoString(value: string | Date): string {
   return value instanceof Date ? value.toISOString() : value
@@ -211,6 +299,35 @@ function mapMessage(row: MessageRow): CrmEmailMessageRecord {
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at)
   }
+}
+
+function mapMessageEvent(row: MessageEventRow): CrmEmailMessageEventRecord {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    messageId: row.message_id,
+    provider: row.provider,
+    providerEventId: row.provider_event_id,
+    eventType: row.event_type,
+    deliveryStatus: row.delivery_status,
+    occurredAt: toIsoString(row.occurred_at),
+    smtpCode: row.smtp_code,
+    reason: row.reason,
+    metadata: row.sanitized_metadata,
+    createdAt: toIsoString(row.created_at)
+  }
+}
+
+function failureCodeForEvent(input: AppendCrmEmailMessageEventInput): string | null {
+  if (input.deliveryStatus === 'complained') {
+    return input.smtpCode ?? 'complaint'
+  }
+
+  if (input.deliveryStatus && FAILURE_STATES.has(input.deliveryStatus)) {
+    return input.smtpCode ?? input.eventType
+  }
+
+  return null
 }
 
 export function createPostgresCrmEmailRepository(
@@ -365,6 +482,175 @@ export function createPostgresCrmEmailRepository(
         }
 
         return { status: 'existing', message: mapMessage(recovered) }
+      })
+    },
+
+    async appendMessageEvent(
+      input: AppendCrmEmailMessageEventInput
+    ): Promise<AppendCrmEmailMessageEventResult> {
+      return runTransaction(async (database) => {
+        const existingResult = await database.query(`
+          SELECT ${MESSAGE_EVENT_COLUMNS}
+          FROM crm_message_events
+          WHERE client_id = $1
+            AND provider = $2
+            AND provider_event_id = $3
+            AND $3 IS NOT NULL
+          LIMIT 1
+        `, [input.clientId, input.provider, input.providerEventId])
+        const existingEvent = existingResult.rows[0] as MessageEventRow | undefined
+
+        if (existingEvent) {
+          const event = mapMessageEvent(existingEvent)
+          if (existingEvent.message_id !== input.messageId) {
+            return {
+              status: 'event_conflict',
+              event,
+              existingMessageId: existingEvent.message_id
+            }
+          }
+
+          const duplicateMessageResult = await database.query(`
+            SELECT ${MESSAGE_COLUMNS}
+            FROM crm_messages
+            WHERE client_id = $1
+              AND id = $2
+              AND deleted_at IS NULL
+            LIMIT 1
+          `, [input.clientId, input.messageId])
+          const duplicateMessage = duplicateMessageResult.rows[0] as MessageRow | undefined
+
+          if (!duplicateMessage) {
+            return { status: 'not_found' }
+          }
+
+          return {
+            status: 'duplicate',
+            event,
+            message: mapMessage(duplicateMessage)
+          }
+        }
+
+        const lockedMessageResult = await database.query(`
+          SELECT ${MESSAGE_COLUMNS}
+          FROM crm_messages
+          WHERE client_id = $1
+            AND id = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `, [input.clientId, input.messageId])
+        const lockedMessage = lockedMessageResult.rows[0] as MessageRow | undefined
+
+        if (!lockedMessage) {
+          return { status: 'not_found' }
+        }
+
+        const insertResult = await database.query(`
+          INSERT INTO crm_message_events (
+            client_id, message_id, provider, provider_event_id, event_type,
+            delivery_status, occurred_at, smtp_code, reason,
+            sanitized_metadata
+          )
+          VALUES (
+            $1, $2, $3, $4, $5, $6, $7::timestamptz, $8, $9, $10::jsonb
+          )
+          ON CONFLICT DO NOTHING
+          RETURNING ${MESSAGE_EVENT_COLUMNS}
+        `, [
+          input.clientId,
+          input.messageId,
+          input.provider,
+          input.providerEventId,
+          input.eventType,
+          input.deliveryStatus,
+          input.occurredAt,
+          input.smtpCode,
+          input.reason,
+          JSON.stringify(input.metadata)
+        ])
+        const insertedEvent = insertResult.rows[0] as MessageEventRow | undefined
+
+        if (!insertedEvent) {
+          const recoveryResult = await database.query(`
+            SELECT ${MESSAGE_EVENT_COLUMNS}
+            FROM crm_message_events
+            WHERE client_id = $1
+              AND provider = $2
+              AND provider_event_id = $3
+              AND $3 IS NOT NULL
+            LIMIT 1
+          `, [input.clientId, input.provider, input.providerEventId])
+          const recoveredEvent = recoveryResult.rows[0] as MessageEventRow | undefined
+
+          if (!recoveredEvent) {
+            throw new Error('Failed to append or recover CRM email message event')
+          }
+
+          const event = mapMessageEvent(recoveredEvent)
+          if (recoveredEvent.message_id !== input.messageId) {
+            return {
+              status: 'event_conflict',
+              event,
+              existingMessageId: recoveredEvent.message_id
+            }
+          }
+
+          return {
+            status: 'duplicate',
+            event,
+            message: mapMessage(lockedMessage)
+          }
+        }
+
+        let canonicalMessage = lockedMessage
+        if (input.deliveryStatus) {
+          const projection = projectEmailDeliveryState(
+            lockedMessage.delivery_status,
+            input.deliveryStatus
+          )
+
+          if (projection.changed) {
+            const failureCode = failureCodeForEvent(input)
+            const updateResult = await database.query(`
+              UPDATE crm_messages
+              SET
+                delivery_status = $3,
+                delivery_status_at = $4::timestamptz,
+                failure_code = $5,
+                failure_reason = $6,
+                delivered_at = CASE
+                  WHEN $3 = 'delivered' THEN $4::timestamptz
+                  ELSE delivered_at
+                END,
+                updated_at = NOW()
+              WHERE client_id = $1
+                AND id = $2
+                AND deleted_at IS NULL
+              RETURNING ${MESSAGE_COLUMNS}
+            `, [
+              input.clientId,
+              input.messageId,
+              projection.state,
+              input.occurredAt,
+              failureCode,
+              FAILURE_STATES.has(projection.state) ? input.reason : null
+            ])
+            const updatedMessage = updateResult.rows[0] as MessageRow | undefined
+
+            if (!updatedMessage) {
+              throw new Error('Failed to project CRM email delivery state')
+            }
+
+            canonicalMessage = updatedMessage
+          }
+        }
+
+        return {
+          status: 'appended',
+          event: mapMessageEvent(insertedEvent),
+          message: mapMessage(canonicalMessage)
+        }
       })
     }
   }
