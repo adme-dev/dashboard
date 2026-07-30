@@ -479,7 +479,9 @@ describe('guarded inbound email Worker', () => {
     await worker.email(state.message, env)
 
     expect(state.rejections).toEqual(['Internal error processing email'])
-    expect(error).toHaveBeenCalledWith('Email worker processing failed')
+    expect(error).toHaveBeenCalledWith('Email worker processing failed', {
+      stage: 'parse_mime'
+    })
     expect(JSON.stringify(error.mock.calls)).not.toContain(sensitiveBody)
     expect(JSON.stringify(error.mock.calls)).not.toContain(BOARD_TOKEN)
     error.mockRestore()

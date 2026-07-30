@@ -86,11 +86,14 @@ export function createInboundEmailWorker(
         return
       }
 
+      let processingStage = 'read_raw'
       try {
         const raw = await new Response(message.raw).arrayBuffer()
+        processingStage = 'parse_mime'
         const email = await parse(raw)
 
         if (isCrmRoute) {
+          processingStage = 'classify_automation'
           const classification = classifyCrmInboundEmail(email)
           if (classification.kind === 'suppressed') {
             console.info('CRM email inbound suppressed', {
@@ -100,6 +103,7 @@ export function createInboundEmailWorker(
           }
         }
 
+        processingStage = 'validate_attachments'
         const attachmentSafety = validateInboundAttachments(
           email.attachments,
           limits
@@ -110,6 +114,7 @@ export function createInboundEmailWorker(
         }
 
         if (route.kind === 'board') {
+          processingStage = 'handoff_board'
           const result = await deliverBoardEmail({
             token: route.token,
             from: message.from,
@@ -129,6 +134,7 @@ export function createInboundEmailWorker(
 
         const receivedDate = dependencies.now?.() ?? new Date()
         const receivedAt = receivedDate.toISOString()
+        processingStage = 'store_r2'
         const manifest = await storeCrmInboundEmailArtifacts({
           bucket: env.CRM_EMAIL_BUCKET!,
           raw,
@@ -142,6 +148,7 @@ export function createInboundEmailWorker(
         })
         let result
         try {
+          processingStage = 'handoff_pages'
           result = await deliverCrmInboundEmail({
             route,
             recipient: message.to,
@@ -164,7 +171,9 @@ export function createInboundEmailWorker(
           message.setReject(`Failed to process email: ${result.status}`)
         }
       } catch {
-        console.error('Email worker processing failed')
+        console.error('Email worker processing failed', {
+          stage: processingStage
+        })
         message.setReject('Internal error processing email')
       }
     },
