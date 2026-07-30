@@ -1,12 +1,39 @@
 name = "email-to-board-worker"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
-compatibility_flags = ["global_fetch_strictly_public"]
+compatibility_date = "2025-12-01"
+compatibility_flags = ["global_fetch_strictly_public", "nodejs_compat"]
+
+[alias]
+"~~/server/utils/db" = "./src/db.ts"
+"~~/server/utils/crm/emailRepository" = "../../server/utils/crm/emailRepository.ts"
+"~~/server/utils/crm/emailReplyToken" = "../../server/utils/crm/emailReplyToken.ts"
+"~~/server/utils/crm/emailInboundConfig" = "../../server/utils/crm/emailInboundConfig.ts"
+"~~/server/utils/crm/emailContracts" = "../../server/utils/crm/emailContracts.ts"
+"~~/server/utils/crm/emailCommunicationProjection" = "../../server/utils/crm/emailCommunicationProjection.ts"
+"~~/server/utils/leads/intake" = "../../server/utils/leads/intake.ts"
+"~~/server/utils/leads/db" = "../../server/utils/leads/db.ts"
+"~~/server/utils/leads/crmPromotion" = "../../server/utils/leads/crmPromotion.ts"
+"~~/server/utils/leads/browserConfirmation" = "../../server/utils/leads/browserConfirmation.ts"
+"~~/server/utils/leads/submissionIntent" = "../../server/utils/leads/submissionIntent.ts"
+"~~/server/utils/tracking/normalize" = "../../server/utils/tracking/normalize.ts"
+"~~/server/utils/leads/leadIdentity" = "../../server/utils/leads/leadIdentity.ts"
+"~~/server/utils/leads/leadProductInterest" = "../../server/utils/leads/leadProductInterest.ts"
+"~~/server/utils/persona/identity" = "../../server/utils/persona/identity.ts"
+"~~/server/utils/persona/signalLedger" = "../../server/utils/persona/signalLedger.ts"
+"~~/server/utils/persona/feature" = "../../server/utils/persona/feature.ts"
+"~~/server/utils/measurement/outbox" = "../../server/utils/measurement/outbox.ts"
+"~~/server/utils/measurement/contracts" = "../../server/utils/measurement/contracts.ts"
+"~~/shared/utils/measurementProviderCredential" = "../../shared/utils/measurementProviderCredential.ts"
+"~~/shared/utils/measurementPlatform" = "../../shared/utils/measurementPlatform.ts"
 
 [vars]
 API_URL = "https://app.xeroflow.io"
 CRM_EMAIL_INBOUND_ENABLED = "false"
 CRM_EMAIL_RETENTION_DAYS = "30"
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
 
 # INTERNAL_API_KEY should be set as a secret:
 # wrangler secret put INTERNAL_API_KEY
@@ -28,3 +55,7 @@ max_batch_size = 5
 max_batch_timeout = 5
 max_retries = 3
 dead_letter_queue = "crm-email-inbound-dlq"
+
+[[queues.producers]]
+binding = "CRM_EMAIL_RETAINED_QUEUE"
+queue = "crm-email-inbound-queue"

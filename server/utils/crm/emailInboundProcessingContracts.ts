@@ -7,6 +7,9 @@ const contentTypePattern
   = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/
 const emailAddressPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
 const idempotencyKeyPattern = /^crm-inbound:[a-f0-9]{64}$/
+const routeTokenPattern
+  = /^v[1-9]\d{0,5}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{27}$/
+const providerPattern = /^[a-z][a-z0-9_-]{1,63}$/
 const MAX_RETENTION_MILLISECONDS = 30 * 24 * 60 * 60 * 1000
 
 const noControlCharacters = (value: string) =>
@@ -29,33 +32,23 @@ export const CrmEmailInboundQueueAttachmentSchema = z.object({
   contentId: z.string().max(998).refine(noControlCharacters).nullable()
 }).strict()
 
-export const CrmEmailInboundQueueJobSchema = z.object({
-  version: z.literal(1),
-  type: z.literal('crm.email.inbound'),
-  idempotencyKey: z.string().regex(idempotencyKeyPattern),
-  routeId: z.string().uuid(),
-  clientId: z.string().uuid(),
-  conversationId: z.string().uuid().nullable(),
-  routeKind: z.enum(['lead_inbox', 'conversation_reply']),
-  provider: z.literal('cloudflare_email'),
-  providerMessageId: z.string().trim().min(1).max(500),
+const retainedArtifactFields = {
   rawMimeR2Key: z.string().min(20).max(1024).regex(rawMimeKeyPattern),
   rawMimeSha256: z.string().regex(sha256Pattern),
   rawMimeExpiresAt: z.string().datetime({ offset: true }),
   attachments: z.array(CrmEmailInboundQueueAttachmentSchema).max(10),
   receivedAt: z.string().datetime({ offset: true })
-}).strict().superRefine((job, context) => {
-  if (
-    (job.routeKind === 'lead_inbox' && job.conversationId !== null)
-    || (job.routeKind === 'conversation_reply' && job.conversationId === null)
-  ) {
-    context.addIssue({
-      code: 'custom',
-      path: ['conversationId'],
-      message: 'Conversation ownership does not match the route kind'
-    })
-  }
+}
 
+function validateRetainedArtifacts(
+  job: {
+    rawMimeR2Key: string
+    rawMimeExpiresAt: string
+    receivedAt: string
+    attachments: Array<{ r2ObjectKey: string, byteSize: number }>
+  },
+  context: z.RefinementCtx
+): void {
   const prefix = job.rawMimeR2Key.slice(0, -'/message.eml'.length)
   const combinedBytes = job.attachments.reduce(
     (total, attachment, index) => {
@@ -90,6 +83,42 @@ export const CrmEmailInboundQueueJobSchema = z.object({
       message: 'Raw MIME retention is outside the approved policy'
     })
   }
+}
+
+export const CrmEmailRetainedArtifactJobSchema = z.object({
+  version: z.literal(1),
+  type: z.literal('crm.email.retained'),
+  routeKind: z.enum(['lead_inbox', 'conversation_reply']),
+  routeToken: z.string().max(128).regex(routeTokenPattern),
+  recipientDomain: z.string().trim().toLowerCase().min(3).max(253),
+  provider: z.string().regex(providerPattern),
+  providerMessageId: z.string().trim().min(1).max(500),
+  ...retainedArtifactFields
+}).strict().superRefine(validateRetainedArtifacts)
+
+export const CrmEmailInboundQueueJobSchema = z.object({
+  version: z.literal(1),
+  type: z.literal('crm.email.inbound'),
+  idempotencyKey: z.string().regex(idempotencyKeyPattern),
+  routeId: z.string().uuid(),
+  clientId: z.string().uuid(),
+  conversationId: z.string().uuid().nullable(),
+  routeKind: z.enum(['lead_inbox', 'conversation_reply']),
+  provider: z.string().regex(providerPattern),
+  providerMessageId: z.string().trim().min(1).max(500),
+  ...retainedArtifactFields
+}).strict().superRefine((job, context) => {
+  if (
+    (job.routeKind === 'lead_inbox' && job.conversationId !== null)
+    || (job.routeKind === 'conversation_reply' && job.conversationId === null)
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['conversationId'],
+      message: 'Conversation ownership does not match the route kind'
+    })
+  }
+  validateRetainedArtifacts(job, context)
 })
 
 const messageHeaderSchema = z.string()
@@ -132,6 +161,9 @@ export const CrmEmailInboundProcessingRequestSchema = z.object({
 
 export type CrmEmailInboundQueueAttachment = z.infer<
   typeof CrmEmailInboundQueueAttachmentSchema
+>
+export type CrmEmailRetainedArtifactJob = z.infer<
+  typeof CrmEmailRetainedArtifactJobSchema
 >
 export type CrmEmailInboundQueueJob = z.infer<
   typeof CrmEmailInboundQueueJobSchema

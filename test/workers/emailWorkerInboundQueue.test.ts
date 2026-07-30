@@ -6,7 +6,8 @@ import {
   createInboundEmailWorker
 } from '../../workers/email-worker/src/index'
 import type {
-  CrmEmailInboundQueueJob
+  CrmEmailInboundQueueJob,
+  CrmEmailRetainedArtifactJob
 } from '../../server/utils/crm/emailInboundProcessingContracts'
 import type {
   InboundEmailWorkerEnv,
@@ -29,6 +30,26 @@ function job(
     clientId: '33333333-3333-4333-8333-333333333333',
     conversationId: null,
     routeKind: 'lead_inbox',
+    provider: 'cloudflare_email',
+    providerMessageId: '<provider-message@example.net>',
+    rawMimeR2Key: RAW_MIME_KEY,
+    rawMimeSha256: RAW_SHA256,
+    rawMimeExpiresAt: '2026-08-29T05:30:00.000Z',
+    attachments: [],
+    receivedAt: '2026-07-30T05:30:00.000Z',
+    ...overrides
+  }
+}
+
+function retainedJob(
+  overrides: Partial<CrmEmailRetainedArtifactJob> = {}
+): CrmEmailRetainedArtifactJob {
+  return {
+    version: 1,
+    type: 'crm.email.retained',
+    routeKind: 'lead_inbox',
+    routeToken: `v1.${'A'.repeat(22)}.${'B'.repeat(27)}`,
+    recipientDomain: 'mail.xeroflow.io',
     provider: 'cloudflare_email',
     providerMessageId: '<provider-message@example.net>',
     rawMimeR2Key: RAW_MIME_KEY,
@@ -103,6 +124,89 @@ function env(
 }
 
 describe('CRM email inbound Queue processor', () => {
+  it('resolves a signed retained-artifact job before canonical processing', async () => {
+    const process = vi.fn().mockResolvedValue({ status: 'created' })
+    const resolveRoute = vi.fn().mockResolvedValue({
+      id: '22222222-2222-4222-8222-222222222222',
+      clientId: '33333333-3333-4333-8333-333333333333',
+      conversationId: null,
+      routeKind: 'lead_inbox',
+      tokenVersion: 1,
+      recipientDomain: 'mail.xeroflow.io',
+      routeTokenHash: 'c'.repeat(64)
+    })
+    const createIdempotencyKey = vi.fn().mockResolvedValue(
+      `crm-inbound:${'d'.repeat(64)}`
+    )
+
+    await expect(processCrmInboundQueueJob(
+      retainedJob() as never,
+      env(),
+      {
+        parse: vi.fn().mockResolvedValue(parsed()),
+        process,
+        resolveRoute,
+        createIdempotencyKey
+      }
+    )).resolves.toEqual({ status: 'processed', duplicate: false })
+
+    expect(resolveRoute).toHaveBeenCalledWith({
+      routeKind: 'lead_inbox',
+      routeToken: retainedJob().routeToken,
+      recipientDomain: 'mail.xeroflow.io'
+    })
+    expect(createIdempotencyKey).toHaveBeenCalledWith(
+      'c'.repeat(64),
+      '<provider-message@example.net>'
+    )
+    expect(process).toHaveBeenCalledWith(expect.objectContaining({
+      job: expect.objectContaining({
+        type: 'crm.email.inbound',
+        idempotencyKey: `crm-inbound:${'d'.repeat(64)}`,
+        routeId: '22222222-2222-4222-8222-222222222222',
+        clientId: '33333333-3333-4333-8333-333333333333'
+      })
+    }))
+  })
+
+  it('acknowledges an unavailable signed route only after exact artifact cleanup', async () => {
+    const inputEnv = env()
+    const process = vi.fn()
+
+    await expect(processCrmInboundQueueJob(
+      retainedJob(),
+      inputEnv,
+      {
+        parse: vi.fn(),
+        process,
+        resolveRoute: vi.fn().mockResolvedValue(null),
+        createIdempotencyKey: vi.fn()
+      }
+    )).resolves.toEqual({ status: 'route_unavailable' })
+
+    expect(inputEnv.CRM_EMAIL_BUCKET?.delete).toHaveBeenCalledWith([
+      RAW_MIME_KEY
+    ])
+    expect(process).not.toHaveBeenCalled()
+  })
+
+  it('deletes only the redundant retained artifacts after duplicate processing', async () => {
+    const inputEnv = env()
+
+    await expect(processCrmInboundQueueJob(
+      job(),
+      inputEnv,
+      {
+        parse: vi.fn().mockResolvedValue(parsed()),
+        process: vi.fn().mockResolvedValue({ status: 'duplicate' })
+      }
+    )).resolves.toEqual({ status: 'processed', duplicate: true })
+
+    expect(inputEnv.CRM_EMAIL_BUCKET?.delete).toHaveBeenCalledWith([
+      RAW_MIME_KEY
+    ])
+  })
+
   it.each([
     ['disabled', { CRM_EMAIL_INBOUND_ENABLED: 'false' }],
     ['missing secret', { CRM_EMAIL_WORKER_SECRET: undefined }],
@@ -126,39 +230,25 @@ describe('CRM email inbound Queue processor', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('verifies the exact retained MIME object and sends only a bounded plain-text envelope', async () => {
+  it('verifies retained MIME and invokes direct processing without global HTTP', async () => {
     const inputEnv = env()
     const parse = vi.fn().mockResolvedValue(parsed())
-    const fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ accepted: true, duplicate: false }), {
-        status: 200
-      })
-    )
+    const fetch = vi.fn()
+    const process = vi.fn().mockResolvedValue({ status: 'created' })
 
     await expect(processCrmInboundQueueJob(
       job(),
       inputEnv,
-      { fetch, parse }
+      { fetch, parse, process }
     )).resolves.toEqual({ status: 'processed', duplicate: false })
 
     expect(inputEnv.CRM_EMAIL_BUCKET?.get).toHaveBeenCalledWith(RAW_MIME_KEY)
     expect(parse).toHaveBeenCalledWith(
       expect.objectContaining({ byteLength: 5 })
     )
-    expect(fetch).toHaveBeenCalledOnce()
-    const [url, init] = fetch.mock.calls[0]!
-    expect(url).toBe(
-      'https://app.xeroflow.io/api/internal/crm-email/process-inbound'
-    )
-    expect(init).toMatchObject({
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-crm-email-secret': 'worker-secret'
-      }
-    })
-    const body = JSON.parse(init.body)
-    expect(body).toEqual({
+    expect(fetch).not.toHaveBeenCalled()
+    expect(process).toHaveBeenCalledOnce()
+    expect(process).toHaveBeenCalledWith({
       job: job(),
       email: {
         from: {
@@ -184,6 +274,7 @@ describe('CRM email inbound Queue processor', () => {
         ]
       }
     })
+    const body = process.mock.calls[0]![0]
     expect(JSON.stringify(body)).not.toContain('<script>')
     expect(body.email).not.toHaveProperty('html')
     expect(body.email).not.toHaveProperty('raw')
