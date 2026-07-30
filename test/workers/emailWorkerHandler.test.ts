@@ -7,7 +7,7 @@ import type {
 
 const MiB = 1024 * 1024
 const BOARD_TOKEN = '0123456789abcdef'
-const SIGNED_TOKEN = `v2.${'A'.repeat(32)}.${'B'.repeat(43)}`
+const SIGNED_TOKEN = `v2.${'A'.repeat(22)}.${'B'.repeat(27)}`
 const env = {
   API_URL: 'https://app.xeroflow.io',
   INTERNAL_API_KEY: 'internal-secret'

@@ -398,6 +398,8 @@ pnpm deploy:production
       sender-identity, and compatibility-credential tables.
 - [x] A2. Add provider-neutral TypeScript contracts and delivery-state rules.
 - [x] A3. Add secure reply-token generation and validation with key versioning.
+      Route tokens use a 128-bit opaque key and 160-bit truncated HMAC so both
+      `lead+` and `reply+` local parts remain within SMTP's 64-octet limit.
 - [x] A4. Add tenant-scoped repositories and idempotent message/event writes.
 - [x] A5. Project canonical messages into `crm_communications` without
       duplicating existing bridge rows.
@@ -687,3 +689,16 @@ pnpm deploy:production
   one, and rollback retained zero rows.
 - C4–C6 remain the activation-blocking durable dispatch, MIME/threading, and
   attachment-scan work. C3 adds no endpoint or path capable of sending email.
+- Inbound activation inventory confirmed migration 288 is live with zero
+  routes, while the existing XeroFlow catch-all remains owned by
+  `email-lead-intake`. The legacy `email-to-board-worker` secret and board path
+  remain intact.
+- Pre-activation review caught an SMTP interoperability defect: the original
+  signed route produced 84–85 character local parts. The contract now uses a
+  128-bit route key and 160-bit truncated HMAC, producing 58–59 character
+  local parts, with shared Worker/Nitro validation and regression coverage.
+- Dedicated `crm-email-inbound-queue`, `crm-email-inbound-dlq`, and private
+  `crm-email-inbound` R2 resources were created. R2 deletes objects at 30 days
+  and abandons incomplete multipart uploads after one day.
+- The inbound runbook is recorded at
+  `docs/runbooks/crm-email-inbound.md`. Outbound sending remains disabled.

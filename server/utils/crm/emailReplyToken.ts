@@ -1,6 +1,10 @@
-const ROUTE_KEY_BYTES = 24
-const ROUTE_KEY_PATTERN = /^[A-Za-z0-9_-]{32}$/
-const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/
+// Keep prefix + signed token within SMTP's 64-octet local-part limit.
+// A 128-bit opaque route key and 160-bit truncated HMAC both remain
+// computationally infeasible to guess or forge.
+const ROUTE_KEY_BYTES = 16
+const SIGNATURE_BYTES = 20
+const ROUTE_KEY_PATTERN = /^[A-Za-z0-9_-]{22}$/
+const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{27}$/
 const MAX_SECRET_VERSION = 999_999
 const textEncoder = new TextEncoder()
 
@@ -132,10 +136,10 @@ export async function createCrmEmailReplyToken(
   const domain = canonicalizeCrmEmailDomain(input.domain)
   const routeKeyBytes = crypto.getRandomValues(new Uint8Array(ROUTE_KEY_BYTES))
   const routeKey = bytesToBase64Url(routeKeyBytes)
-  const signature = await signPayload(
+  const signature = (await signPayload(
     signaturePayload(input.version, routeKey, domain),
     input.secret
-  )
+  )).slice(0, SIGNATURE_BYTES)
 
   return {
     token: `v${input.version}.${routeKey}.${bytesToBase64Url(signature)}`,
@@ -170,10 +174,10 @@ export async function verifyCrmEmailReplyToken(
     if (!secret) return { valid: false }
 
     const domain = canonicalizeCrmEmailDomain(input.domain)
-    const expectedSignature = await signPayload(
+    const expectedSignature = (await signPayload(
       signaturePayload(version, routeKey, domain),
       secret
-    )
+    )).slice(0, SIGNATURE_BYTES)
     const signatureBytes = base64UrlToBytes(suppliedSignature)
     if (!constantTimeEqual(expectedSignature, signatureBytes)) {
       return { valid: false }

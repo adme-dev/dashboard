@@ -13,7 +13,7 @@ interface TestEvent {
 
 const SECRET = 'worker-shared-secret'
 const REPLY_SECRET = 'reply-secret-that-is-at-least-thirty-two-bytes'
-const ROUTE_TOKEN = `v1.${'A'.repeat(32)}.${'B'.repeat(43)}`
+const ROUTE_TOKEN = `v1.${'A'.repeat(22)}.${'B'.repeat(27)}`
 const ROUTE_HASH = 'c'.repeat(64)
 const ROUTE_ID = '11111111-1111-4111-8111-111111111111'
 const CLIENT_ID = '22222222-2222-4222-8222-222222222222'
