@@ -1,5 +1,5 @@
 import { deliverBoardEmail } from './boardAdapter'
-import { deliverCrmInboundEmail } from './crmAdapter'
+import { queryOne, transaction } from './db'
 import { classifyCrmInboundEmail } from './inboundClassification'
 import { processCrmInboundQueueJob } from './inboundQueue'
 import { parseInboundEmail } from './mime'
@@ -25,12 +25,28 @@ import type { CrmInboundArtifactManifest } from './r2Artifacts'
 import type {
   CrmEmailInboundQueueJob
 } from '../../../server/utils/crm/emailInboundProcessingContracts'
+import { createCrmInboundEmailProcessor } from '../../../server/utils/crm/emailInboundProcessor'
+import { resolveCrmInboundEmailRoute } from '../../../server/utils/crm/emailRouteRepository'
+import { parseCrmEmailReplySecrets } from '../../../server/utils/crm/emailInboundConfig'
+import {
+  CrmEmailRetainedArtifactJobSchema
+} from '../../../server/utils/crm/emailInboundProcessingContracts'
 
 interface InboundEmailWorkerDependencies {
   fetch?: FetchLike
   parse?: (raw: ArrayBuffer) => Promise<ParsedInboundEmail>
   now?: () => Date
   randomUUID?: () => string
+}
+
+const createIdempotencyKey = async (
+  routeTokenHash: string,
+  providerMessageId: string
+): Promise<string> => {
+  const input = new TextEncoder().encode(`${routeTokenHash}\u0000${providerMessageId}`)
+  const digest = await crypto.subtle.digest('SHA-256', input)
+  const bytes = new Uint8Array(digest)
+  return `crm-inbound:${[...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('')}`
 }
 
 async function cleanupCrmArtifacts(
@@ -71,8 +87,8 @@ export function createInboundEmailWorker(
       if (
         isCrmRoute
         && (
-          !env.CRM_EMAIL_WORKER_SECRET?.trim()
-          || !env.CRM_EMAIL_BUCKET
+          !env.CRM_EMAIL_BUCKET
+          || !env.CRM_EMAIL_RETAINED_QUEUE
         )
       ) {
         message.setReject('Email route not configured')
@@ -146,29 +162,30 @@ export function createInboundEmailWorker(
           now: () => receivedDate,
           randomUUID: dependencies.randomUUID
         })
-        let result
         try {
-          processingStage = 'handoff_pages'
-          result = await deliverCrmInboundEmail({
-            route,
-            recipient: message.to,
-            messageId: email.messageId ?? null,
-            manifest,
-            receivedAt,
-            apiUrl: env.API_URL,
-            workerSecret: env.CRM_EMAIL_WORKER_SECRET!
-          }, { fetch: fetchImpl })
+          processingStage = 'enqueue_retained'
+          const recipientDomain = message.to.split('@')[1]?.toLowerCase()
+          if (!recipientDomain) {
+            throw new Error('Invalid CRM email recipient')
+          }
+          const retainedJob = CrmEmailRetainedArtifactJobSchema.parse({
+            version: 1,
+            type: 'crm.email.retained',
+            routeKind: route.kind === 'lead'
+              ? 'lead_inbox'
+              : 'conversation_reply',
+            routeToken: route.token,
+            recipientDomain,
+            provider: 'cloudflare_email',
+            providerMessageId: email.messageId?.trim()
+              || `sha256:${manifest.rawMimeSha256}`,
+            ...manifest,
+            receivedAt
+          })
+          await env.CRM_EMAIL_RETAINED_QUEUE!.send(retainedJob)
         } catch (error) {
           await cleanupCrmArtifacts(env.CRM_EMAIL_BUCKET!, manifest)
           throw error
-        }
-
-        if (!result.accepted) {
-          await cleanupCrmArtifacts(env.CRM_EMAIL_BUCKET!, manifest)
-          console.error('CRM email inbound request failed', {
-            status: result.status
-          })
-          message.setReject(`Failed to process email: ${result.status}`)
         }
       } catch {
         console.error('Email worker processing failed', {
@@ -185,9 +202,23 @@ export function createInboundEmailWorker(
     ): Promise<void> {
       for (const message of batch.messages) {
         try {
+          if (env.HYPERDRIVE?.connectionString) {
+            ;(globalThis as { __HYPERDRIVE_CS?: string }).__HYPERDRIVE_CS
+              = env.HYPERDRIVE.connectionString
+          }
+          if (env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL
+          const processor = env.HYPERDRIVE?.connectionString || env.DATABASE_URL
+            ? createCrmInboundEmailProcessor({ transaction })
+            : undefined
           const result = await processCrmInboundQueueJob(message.body, env, {
+            parse,
             fetch: fetchImpl,
-            parse
+            process: processor?.process,
+            resolveRoute: input => resolveCrmInboundEmailRoute({
+              ...input,
+              secrets: parseCrmEmailReplySecrets(env.CRM_EMAIL_REPLY_SECRETS)
+            }, { queryOne }),
+            createIdempotencyKey
           })
           if (result.status === 'suppressed') {
             console.info('CRM email inbound suppressed', {

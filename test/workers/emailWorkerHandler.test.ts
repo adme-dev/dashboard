@@ -148,7 +148,7 @@ describe('guarded inbound email Worker', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('stores and hands off an enabled CRM lead exactly once', async () => {
+  it('stores and enqueues an enabled CRM lead without a global HTTP handoff', async () => {
     const content = new TextEncoder().encode('attachment bytes').buffer
     const parse = vi.fn().mockResolvedValue({
       ...parsedEmail,
@@ -160,9 +160,8 @@ describe('guarded inbound email Worker', () => {
         contentId: null
       }]
     })
-    const fetch = vi.fn().mockResolvedValue(
-      new Response(null, { status: 202 })
-    )
+    const fetch = vi.fn()
+    const send = vi.fn().mockResolvedValue(undefined)
     const put = vi.fn().mockResolvedValue({ key: 'stored' })
     const deleteObjects = vi.fn().mockResolvedValue(undefined)
     const state = createMessage(
@@ -179,31 +178,35 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() }
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() },
+      CRM_EMAIL_RETAINED_QUEUE: { send }
     })
 
     expect(state.rejections).toEqual([])
     expect(state.rawAccesses()).toBe(1)
     expect(parse).toHaveBeenCalledTimes(1)
     expect(put).toHaveBeenCalledTimes(2)
-    expect(fetch).toHaveBeenCalledTimes(1)
-    const requestBody = JSON.parse(fetch.mock.calls[0]![1].body)
-    expect(requestBody).toMatchObject({
+    expect(fetch).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      version: 1,
+      type: 'crm.email.retained',
       routeKind: 'lead_inbox',
       routeToken: SIGNED_TOKEN,
       recipientDomain: 'mail.xeroflow.io',
+      provider: 'cloudflare_email',
       providerMessageId: '<provider-message@example.net>',
       rawMimeR2Key:
         'crm-email/inbound/2026/07/30/11111111-1111-4111-8111-111111111111/message.eml',
-      attachments: [{
+      attachments: [expect.objectContaining({
         r2ObjectKey:
           'crm-email/inbound/2026/07/30/11111111-1111-4111-8111-111111111111/attachments/01.bin',
         filename: 'details.txt',
         contentType: 'text/plain',
         byteSize: content.byteLength
-      }]
-    })
-    expect(requestBody.attachments[0]).not.toHaveProperty('content')
+      })]
+    }))
+    expect(send.mock.calls[0]![0].attachments[0]).not.toHaveProperty('content')
     expect(deleteObjects).not.toHaveBeenCalled()
   })
 
@@ -244,7 +247,8 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() }
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() },
+      CRM_EMAIL_RETAINED_QUEUE: { send: vi.fn() }
     })
 
     expect(state.rejections).toEqual([])
@@ -307,7 +311,8 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: vi.fn(), get: vi.fn() }
+      CRM_EMAIL_BUCKET: { put, delete: vi.fn(), get: vi.fn() },
+      CRM_EMAIL_RETAINED_QUEUE: { send: vi.fn() }
     })
 
     expect(state.rejections).toEqual([])
@@ -342,7 +347,8 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: vi.fn(), get: vi.fn() }
+      CRM_EMAIL_BUCKET: { put, delete: vi.fn(), get: vi.fn() },
+      CRM_EMAIL_RETAINED_QUEUE: { send: vi.fn() }
     })
 
     expect(state.rejections).toEqual(['Unsafe email attachments'])
@@ -350,11 +356,10 @@ describe('guarded inbound email Worker', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('deletes CRM artifacts when Nitro rejects the route', async () => {
+  it('deletes CRM artifacts when Queue enqueue fails', async () => {
     const parse = vi.fn().mockResolvedValue(parsedEmail)
-    const fetch = vi.fn().mockResolvedValue(
-      new Response(null, { status: 404 })
-    )
+    const fetch = vi.fn()
+    const send = vi.fn().mockRejectedValue(new Error('queue unavailable'))
     const put = vi.fn().mockResolvedValue({ key: 'stored' })
     const deleteObjects = vi.fn().mockResolvedValue(undefined)
     const state = createMessage(
@@ -371,18 +376,21 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() }
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() },
+      CRM_EMAIL_RETAINED_QUEUE: { send }
     })
 
-    expect(state.rejections).toEqual(['Failed to process email: 404'])
+    expect(state.rejections).toEqual(['Internal error processing email'])
+    expect(fetch).not.toHaveBeenCalled()
     expect(deleteObjects).toHaveBeenCalledWith([
       'crm-email/inbound/2026/07/30/11111111-1111-4111-8111-111111111111/message.eml'
     ])
   })
 
-  it('deletes CRM artifacts when the Nitro handoff throws', async () => {
+  it('does not log Queue error details or signed routes', async () => {
     const parse = vi.fn().mockResolvedValue(parsedEmail)
-    const fetch = vi.fn().mockRejectedValue(new Error('network unavailable'))
+    const fetch = vi.fn()
+    const send = vi.fn().mockRejectedValue(new Error('queue-secret-detail'))
     const put = vi.fn().mockResolvedValue({ key: 'stored' })
     const deleteObjects = vi.fn().mockResolvedValue(undefined)
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -400,7 +408,8 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() }
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() },
+      CRM_EMAIL_RETAINED_QUEUE: { send }
     })
 
     expect(state.rejections).toEqual(['Internal error processing email'])
@@ -408,7 +417,7 @@ describe('guarded inbound email Worker', () => {
       'crm-email/inbound/2026/07/30/11111111-1111-4111-8111-111111111111/message.eml'
     ])
     expect(JSON.stringify(error.mock.calls)).not.toContain(SIGNED_TOKEN)
-    expect(JSON.stringify(error.mock.calls)).not.toContain('network unavailable')
+    expect(JSON.stringify(error.mock.calls)).not.toContain('queue-secret-detail')
     error.mockRestore()
   })
 
@@ -434,9 +443,8 @@ describe('guarded inbound email Worker', () => {
       '--boundary--',
       ''
     ].join('\r\n')
-    const fetch = vi.fn().mockResolvedValue(
-      new Response(null, { status: 202 })
-    )
+    const fetch = vi.fn()
+    const send = vi.fn().mockResolvedValue(undefined)
     const put = vi.fn().mockResolvedValue({ key: 'stored' })
     const state = createMessage(
       `lead+${SIGNED_TOKEN}@mail.xeroflow.io`,
@@ -453,16 +461,18 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: vi.fn(), get: vi.fn() }
+      CRM_EMAIL_BUCKET: { put, delete: vi.fn(), get: vi.fn() },
+      CRM_EMAIL_RETAINED_QUEUE: { send }
     })
 
     expect(state.rejections).toEqual([])
     expect(put).toHaveBeenCalledTimes(2)
     const attachmentBytes = new Uint8Array(put.mock.calls[1]![1])
     expect(new TextDecoder().decode(attachmentBytes)).toBe('Hello')
-    const requestBody = JSON.parse(fetch.mock.calls[0]![1].body)
-    expect(requestBody.providerMessageId).toBe('<mime-message@example.com>')
-    expect(requestBody.attachments[0]).toMatchObject({
+    expect(fetch).not.toHaveBeenCalled()
+    const retainedJob = send.mock.calls[0]![0]
+    expect(retainedJob.providerMessageId).toBe('<mime-message@example.com>')
+    expect(retainedJob.attachments[0]).toMatchObject({
       filename: 'details.txt',
       byteSize: 5
     })

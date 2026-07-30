@@ -1,10 +1,16 @@
 import {
   CrmEmailInboundProcessingRequestSchema,
-  CrmEmailInboundQueueJobSchema
+  CrmEmailInboundQueueJobSchema,
+  CrmEmailRetainedArtifactJobSchema
 } from '../../../server/utils/crm/emailInboundProcessingContracts'
 import type {
-  CrmEmailInboundQueueJob
+  CrmEmailInboundProcessingRequest,
+  CrmEmailInboundQueueJob,
+  CrmEmailRetainedArtifactJob
 } from '../../../server/utils/crm/emailInboundProcessingContracts'
+import type {
+  ProcessCrmInboundEmailResult
+} from '../../../server/utils/crm/emailInboundProcessor'
 import type {
   FetchLike,
   InboundEmailWorkerEnv,
@@ -24,14 +30,42 @@ const MAX_RAW_MIME_BYTES = 10 * 1024 * 1024
 interface InboundQueueDependencies {
   fetch?: FetchLike
   parse?: (raw: ArrayBuffer) => Promise<ParsedInboundEmail>
+  process?: (
+    request: CrmEmailInboundProcessingRequest
+  ) => Promise<ProcessCrmInboundEmailResult>
+  resolveRoute?: (input: {
+    routeKind: CrmEmailRetainedArtifactJob['routeKind']
+    routeToken: string
+    recipientDomain: string
+  }) => Promise<{
+    id: string
+    clientId: string
+    conversationId: string | null
+    routeKind: CrmEmailInboundQueueJob['routeKind']
+    routeTokenHash: string
+  } | null>
+  createIdempotencyKey?: (
+    routeTokenHash: string,
+    providerMessageId: string
+  ) => Promise<string>
 }
 
 export type ProcessCrmInboundQueueJobResult
   = | { status: 'processed', duplicate: boolean }
+    | { status: 'route_unavailable' }
     | {
       status: 'suppressed'
       reason: CrmInboundEmailSuppressionReason
     }
+
+function retainedArtifactKeys(
+  job: Pick<CrmEmailRetainedArtifactJob, 'rawMimeR2Key' | 'attachments'>
+): string[] {
+  return [
+    job.rawMimeR2Key,
+    ...job.attachments.map(attachment => attachment.r2ObjectKey)
+  ]
+}
 
 function bytesToHex(bytes: Uint8Array): string {
   return [...bytes]
@@ -96,28 +130,63 @@ function normalizeMimeEnvelope(email: ParsedInboundEmail) {
 }
 
 export async function processCrmInboundQueueJob(
-  rawJob: CrmEmailInboundQueueJob,
+  rawJob: CrmEmailInboundQueueJob | CrmEmailRetainedArtifactJob,
   env: InboundEmailWorkerEnv,
   dependencies: InboundQueueDependencies = {}
 ): Promise<ProcessCrmInboundQueueJobResult> {
   const bucket = env.CRM_EMAIL_BUCKET
-  const workerSecret = env.CRM_EMAIL_WORKER_SECRET?.trim()
-  const apiUrl = env.API_URL?.trim()
   if (
     env.CRM_EMAIL_INBOUND_ENABLED !== 'true'
-    || !workerSecret
-    || !apiUrl
     || !bucket
     || typeof bucket.get !== 'function'
+    || (!dependencies.process && (!env.API_URL || !env.CRM_EMAIL_WORKER_SECRET))
   ) {
     throw new Error('CRM email inbound Queue is not configured')
   }
 
-  const jobResult = CrmEmailInboundQueueJobSchema.safeParse(rawJob)
-  if (!jobResult.success) {
-    throw new Error('Invalid CRM email inbound Queue job')
+  const resolvedJob = CrmEmailInboundQueueJobSchema.safeParse(rawJob)
+  let job: CrmEmailInboundQueueJob
+  if (resolvedJob.success) {
+    job = resolvedJob.data
+  } else {
+    const retainedJob = CrmEmailRetainedArtifactJobSchema.safeParse(rawJob)
+    if (
+      !retainedJob.success
+      || !dependencies.resolveRoute
+      || !dependencies.createIdempotencyKey
+    ) {
+      throw new Error('Invalid CRM email inbound Queue job')
+    }
+    const retained = retainedJob.data
+    const route = await dependencies.resolveRoute({
+      routeKind: retained.routeKind,
+      routeToken: retained.routeToken,
+      recipientDomain: retained.recipientDomain
+    })
+    if (!route || route.routeKind !== retained.routeKind) {
+      await bucket.delete(retainedArtifactKeys(retained))
+      return { status: 'route_unavailable' }
+    }
+    job = CrmEmailInboundQueueJobSchema.parse({
+      version: 1,
+      type: 'crm.email.inbound',
+      idempotencyKey: await dependencies.createIdempotencyKey(
+        route.routeTokenHash,
+        retained.providerMessageId
+      ),
+      routeId: route.id,
+      clientId: route.clientId,
+      conversationId: route.conversationId,
+      routeKind: route.routeKind,
+      provider: retained.provider,
+      providerMessageId: retained.providerMessageId,
+      rawMimeR2Key: retained.rawMimeR2Key,
+      rawMimeSha256: retained.rawMimeSha256,
+      rawMimeExpiresAt: retained.rawMimeExpiresAt,
+      attachments: retained.attachments,
+      receivedAt: retained.receivedAt
+    })
   }
-  const job = jobResult.data
 
   const object = await bucket.get(job.rawMimeR2Key)
   if (!object) {
@@ -141,10 +210,7 @@ export async function processCrmInboundQueueJob(
   const parsedEmail = await parse(raw)
   const classification = classifyCrmInboundEmail(parsedEmail)
   if (classification.kind === 'suppressed') {
-    await bucket.delete([
-      job.rawMimeR2Key,
-      ...job.attachments.map(attachment => attachment.r2ObjectKey)
-    ])
+    await bucket.delete(retainedArtifactKeys(job))
     return {
       status: 'suppressed',
       reason: classification.reason
@@ -152,28 +218,39 @@ export async function processCrmInboundQueueJob(
   }
   const email = normalizeMimeEnvelope(parsedEmail)
   const request = CrmEmailInboundProcessingRequestSchema.parse({ job, email })
-  const fetchImpl = dependencies.fetch ?? fetch
-  const response = await fetchImpl(
-    `${apiUrl.replace(/\/+$/, '')}/api/internal/crm-email/process-inbound`,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-crm-email-secret': workerSecret
-      },
-      body: JSON.stringify(request)
+  let result: ProcessCrmInboundEmailResult
+  if (dependencies.process) {
+    result = await dependencies.process(request)
+  } else {
+    // Kept as a compatibility seam for existing unit tests and local callers.
+    // The deployed Worker always supplies `process`, so production never uses
+    // the Worker-to-Pages handoff that the direct Queue design replaces.
+    if (!dependencies.fetch || !env.API_URL || !env.CRM_EMAIL_WORKER_SECRET) {
+      throw new Error('CRM email inbound processing is not configured')
     }
-  )
-  if (!response.ok) {
-    throw new Error(`CRM email inbound processing failed: ${response.status}`)
+    const response = await dependencies.fetch(
+      `${env.API_URL.replace(/\/$/, '')}/api/internal/crm-email/inbound`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-crm-email-secret': env.CRM_EMAIL_WORKER_SECRET
+        },
+        body: JSON.stringify(request)
+      }
+    )
+    if (!response.ok) {
+      throw new Error(`CRM email inbound processing failed: ${response.status}`)
+    }
+    const body = await response.json() as { duplicate?: boolean }
+    result = { status: body.duplicate ? 'duplicate' : 'created' }
   }
-
-  const result = await response.json() as {
-    accepted?: unknown
-    duplicate?: unknown
+  if (result.status === 'route_unavailable') {
+    await bucket.delete(retainedArtifactKeys(job))
+    return { status: 'route_unavailable' }
   }
-  if (result.accepted !== true || typeof result.duplicate !== 'boolean') {
-    throw new Error('Invalid CRM email inbound processing response')
+  if (result.status === 'duplicate') {
+    await bucket.delete(retainedArtifactKeys(job))
   }
-  return { status: 'processed', duplicate: result.duplicate }
+  return { status: 'processed', duplicate: result.status === 'duplicate' }
 }

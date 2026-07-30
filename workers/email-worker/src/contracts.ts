@@ -57,14 +57,22 @@ export interface CrmEmailBucketBinding {
   delete(keys: string[]): Promise<void>
 }
 
+export interface CrmEmailQueueBinding<T = unknown> {
+  send(message: T): Promise<unknown>
+}
+
 export interface InboundEmailWorkerEnv {
   API_URL: string
-  INTERNAL_API_KEY: string
+  INTERNAL_API_KEY?: string
+  HYPERDRIVE?: { connectionString: string }
+  DATABASE_URL?: string
   MAX_INBOUND_EMAIL_BYTES?: string
   CRM_EMAIL_INBOUND_ENABLED?: string
   CRM_EMAIL_WORKER_SECRET?: string
+  CRM_EMAIL_REPLY_SECRETS?: string
   CRM_EMAIL_RETENTION_DAYS?: string
   CRM_EMAIL_BUCKET?: CrmEmailBucketBinding
+  CRM_EMAIL_RETAINED_QUEUE?: CrmEmailQueueBinding
 }
 
 export interface InboundEmailMessage {
