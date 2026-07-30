@@ -6,7 +6,7 @@ export type InboundEmailRoute
 
 const BOARD_ROUTE_PATTERN = /^board-([A-Za-z0-9_-]{8,32})$/
 const SIGNED_ROUTE_PATTERN
-  = /^v[1-9]\d{0,5}\.[A-Za-z0-9_-]{32}\.[A-Za-z0-9_-]{43}$/
+  = /^v[1-9]\d{0,5}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{27}$/
 
 export function classifyInboundEmailRoute(recipient: string): InboundEmailRoute {
   if (
@@ -21,7 +21,7 @@ export function classifyInboundEmailRoute(recipient: string): InboundEmailRoute 
   const parts = recipient.split('@')
   if (parts.length !== 2) return { kind: 'invalid' }
   const [localPart, domain] = parts
-  if (!localPart || localPart.length > 128 || !domain || domain.length > 253) {
+  if (!localPart || localPart.length > 64 || !domain || domain.length > 253) {
     return { kind: 'invalid' }
   }
 

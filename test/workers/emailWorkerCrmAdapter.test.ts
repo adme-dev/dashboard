@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { deliverCrmInboundEmail } from '../../workers/email-worker/src/crmAdapter'
 import type { CrmInboundArtifactManifest } from '../../workers/email-worker/src/r2Artifacts'
 
-const SIGNED_TOKEN = `v2.${'A'.repeat(32)}.${'B'.repeat(43)}`
+const SIGNED_TOKEN = `v2.${'A'.repeat(22)}.${'B'.repeat(27)}`
 const manifest: CrmInboundArtifactManifest = {
   rawMimeR2Key:
     'crm-email/inbound/2026/07/30/11111111-1111-4111-8111-111111111111/message.eml',

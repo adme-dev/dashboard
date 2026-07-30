@@ -8,9 +8,14 @@ import {
 
 const MiB = 1024 * 1024
 const BOARD_TOKEN = '0123456789abcdef'
-const SIGNED_TOKEN = `v2.${'A'.repeat(32)}.${'B'.repeat(43)}`
+const SIGNED_TOKEN = `v2.${'A'.repeat(22)}.${'B'.repeat(27)}`
 
 describe('inbound email route classification', () => {
+  it('keeps every signed local part within the SMTP 64-octet limit', () => {
+    expect(`lead+${SIGNED_TOKEN}`).toHaveLength(58)
+    expect(`reply+${SIGNED_TOKEN}`).toHaveLength(59)
+  })
+
   it.each([
     [
       `board-${BOARD_TOKEN}@mail.xeroflow.io`,

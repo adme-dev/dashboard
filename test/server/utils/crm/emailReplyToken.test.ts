@@ -15,7 +15,8 @@ describe('CRM email reply tokens', () => {
       secret: VERSION_TWO_SECRET
     })
 
-    expect(created.token).toMatch(/^v2\.[A-Za-z0-9_-]{32}\.[A-Za-z0-9_-]{43}$/)
+    expect(created.token).toMatch(/^v2\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{27}$/)
+    expect(`reply+${created.token}`.length).toBeLessThanOrEqual(64)
     expect(created.routeTokenHash).toMatch(/^[a-f0-9]{64}$/)
 
     const verified = await verifyCrmEmailReplyToken({
@@ -103,10 +104,10 @@ describe('CRM email reply tokens', () => {
     for (const token of [
       '',
       'v0.route.signature',
-      'v3.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      'v3.AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAA',
       'v1..',
-      'v1.invalid!.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-      'v1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.invalid!',
+      'v1.invalid!.AAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      'v1.AAAAAAAAAAAAAAAAAAAAAA.invalid!',
       `v1.${'A'.repeat(5000)}.signature`
     ]) {
       await expect(verifyCrmEmailReplyToken({

@@ -29,6 +29,12 @@ queue = "agency-jobs"
 binding = "LEADS_DELIVERY_QUEUE"
 queue = "leads-delivery-queue"
 
+# Validated inbound CRM messages are enqueued by Pages after route-token
+# verification. The standalone email Worker consumes this queue.
+[[queues.producers]]
+binding = "CRM_EMAIL_INBOUND_QUEUE"
+queue = "crm-email-inbound-queue"
+
 # Minimal conversion identity messages only. The standalone measurement delivery
 # Worker consumes this queue; canonical event and destination data stay in Neon.
 [[queues.producers]]
@@ -134,6 +140,10 @@ service = "agency-workflows"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 EMAIL_FROM = "notification@adme.net.au"
+# Inbound-only CRM email activation. Secrets remain managed by Cloudflare:
+# CRM_EMAIL_WORKER_SECRET authenticates the standalone email Worker, while
+# CRM_EMAIL_REPLY_SECRETS is the versioned JSON signing-secret map.
+CRM_EMAIL_CONVERSATIONS_ENABLED = "true"
 # Provider audience writes remain additionally gated by client mapping,
 # current marketing consent, minimum cohort size and two-person approval.
 PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED = "true"
