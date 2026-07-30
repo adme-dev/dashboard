@@ -17,6 +17,14 @@ const parsedEmail: ParsedInboundEmail = {
   text: 'Please update the website.',
   html: '<p>Please update the website.</p>',
   messageId: '<provider-message@example.net>',
+  automationSignals: {
+    autoSubmitted: null,
+    contentType: 'text/plain',
+    listId: null,
+    precedence: null,
+    xXeroFlowOrigin: null,
+    returnPath: 'customer@example.com'
+  },
   attachments: []
 }
 
@@ -197,6 +205,119 @@ describe('guarded inbound email Worker', () => {
     })
     expect(requestBody.attachments[0]).not.toHaveProperty('content')
     expect(deleteObjects).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['xeroflow_loop', {
+      xXeroFlowOrigin: 'crm-email-gateway'
+    }],
+    ['delivery_status', {
+      contentType: 'multipart/report; report-type=delivery-status'
+    }],
+    ['auto_submitted', {
+      autoSubmitted: 'auto-replied'
+    }],
+    ['mailing_list', {
+      listId: 'Updates <updates.example.net>'
+    }]
+  ])('silently suppresses CRM %s mail before R2 storage', async (
+    reason,
+    automationSignals
+  ) => {
+    const parse = vi.fn().mockResolvedValue({
+      ...parsedEmail,
+      automationSignals: {
+        ...parsedEmail.automationSignals,
+        ...automationSignals
+      }
+    })
+    const fetch = vi.fn()
+    const put = vi.fn()
+    const deleteObjects = vi.fn()
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const state = createMessage(
+      `lead+${SIGNED_TOKEN}@mail.xeroflow.io`
+    )
+    const worker = createInboundEmailWorker({ parse, fetch })
+
+    await worker.email(state.message, {
+      ...env,
+      CRM_EMAIL_INBOUND_ENABLED: 'true',
+      CRM_EMAIL_WORKER_SECRET: 'worker-secret',
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() }
+    })
+
+    expect(state.rejections).toEqual([])
+    expect(state.rawAccesses()).toBe(1)
+    expect(parse).toHaveBeenCalledOnce()
+    expect(put).not.toHaveBeenCalled()
+    expect(deleteObjects).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(info).toHaveBeenCalledWith(
+      'CRM email inbound suppressed',
+      { reason }
+    )
+    expect(JSON.stringify(info.mock.calls)).not.toContain(
+      'customer@example.com'
+    )
+    expect(JSON.stringify(info.mock.calls)).not.toContain(SIGNED_TOKEN)
+    info.mockRestore()
+  })
+
+  it('leaves existing board ingestion unchanged for automatic mail', async () => {
+    const parse = vi.fn().mockResolvedValue({
+      ...parsedEmail,
+      automationSignals: {
+        ...parsedEmail.automationSignals,
+        autoSubmitted: 'auto-replied'
+      }
+    })
+    const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    const state = createMessage(`board-${BOARD_TOKEN}@mail.xeroflow.io`)
+    const worker = createInboundEmailWorker({ parse, fetch })
+
+    await worker.email(state.message, env)
+
+    expect(state.rejections).toEqual([])
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it('suppresses automatic CRM mail before unsafe attachment rejection', async () => {
+    const parse = vi.fn().mockResolvedValue({
+      ...parsedEmail,
+      automationSignals: {
+        ...parsedEmail.automationSignals,
+        autoSubmitted: 'auto-replied'
+      },
+      attachments: [{
+        filename: 'oversized.pdf',
+        mimeType: 'application/pdf',
+        size: 5 * MiB + 1
+      }]
+    })
+    const fetch = vi.fn()
+    const put = vi.fn()
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const state = createMessage(
+      `lead+${SIGNED_TOKEN}@mail.xeroflow.io`
+    )
+    const worker = createInboundEmailWorker({ parse, fetch })
+
+    await worker.email(state.message, {
+      ...env,
+      CRM_EMAIL_INBOUND_ENABLED: 'true',
+      CRM_EMAIL_WORKER_SECRET: 'worker-secret',
+      CRM_EMAIL_BUCKET: { put, delete: vi.fn(), get: vi.fn() }
+    })
+
+    expect(state.rejections).toEqual([])
+    expect(put).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(info).toHaveBeenCalledWith(
+      'CRM email inbound suppressed',
+      { reason: 'auto_submitted' }
+    )
+    info.mockRestore()
   })
 
   it('does not store CRM artifacts when parsed attachments are unsafe', async () => {

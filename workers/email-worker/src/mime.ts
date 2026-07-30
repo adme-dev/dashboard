@@ -2,8 +2,35 @@ import PostalMime from 'postal-mime'
 import type { Address } from 'postal-mime'
 import type {
   ParsedInboundAddress,
+  ParsedInboundAutomationSignals,
   ParsedInboundEmail
 } from './contracts'
+
+const MAX_CLASSIFICATION_HEADER_LENGTH = 998
+
+function boundedHeaderValue(value: string | null | undefined): string | null {
+  const normalized = value?.trim()
+  return normalized
+    ? normalized.slice(0, MAX_CLASSIFICATION_HEADER_LENGTH)
+    : null
+}
+
+function automationSignals(
+  headers: Array<{ key: string, value: string }>,
+  returnPath: string | undefined
+): ParsedInboundAutomationSignals {
+  const first = (key: string) => boundedHeaderValue(
+    headers.find(header => header.key === key)?.value
+  )
+  return {
+    autoSubmitted: first('auto-submitted'),
+    contentType: first('content-type'),
+    listId: first('list-id'),
+    precedence: first('precedence'),
+    xXeroFlowOrigin: first('x-xeroflow-origin'),
+    returnPath: boundedHeaderValue(returnPath) ?? first('return-path')
+  }
+}
 
 function attachmentContentToArrayBuffer(content: unknown): ArrayBuffer {
   if (content instanceof ArrayBuffer) return content
@@ -61,6 +88,7 @@ export async function parseInboundEmail(
     messageId: email.messageId ?? null,
     inReplyTo: email.inReplyTo ?? null,
     references: email.references ?? null,
+    automationSignals: automationSignals(email.headers, email.returnPath),
     attachments: (email.attachments ?? []).map((attachment) => {
       const content = attachmentContentToArrayBuffer(attachment.content)
       return {

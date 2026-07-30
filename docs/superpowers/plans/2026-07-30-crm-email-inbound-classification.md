@@ -45,7 +45,7 @@ delivery-status MIME.
   `contentType`, `listId`, `precedence`, `xXeroFlowOrigin`, and `returnPath`.
 - Extends: `ParsedInboundEmail.automationSignals`.
 
-- [ ] **Step 1: Write the failing parser test**
+- [x] **Step 1: Write the failing parser test**
 
 Create a raw MIME fixture containing:
 
@@ -61,7 +61,7 @@ Return-Path: <>
 Assert `parseInboundEmail()` returns lower-name, trimmed, maximum-998-character
 signal values and does not expose the complete PostalMime header array.
 
-- [ ] **Step 2: Run the test and verify the red state**
+- [x] **Step 2: Run the test and verify the red state**
 
 Run:
 
@@ -71,7 +71,7 @@ pnpm vitest run test/workers/emailWorkerMime.test.ts
 
 Expected: FAIL because `automationSignals` does not exist.
 
-- [ ] **Step 3: Implement the bounded extraction**
+- [x] **Step 3: Implement the bounded extraction**
 
 Add:
 
@@ -90,7 +90,7 @@ Use PostalMime's lowercase `headers` array, take the first matching header,
 trim it, and cap each value at 998 characters. Map `email.returnPath` through
 the same helper. Do not return `headers` or `headerLines`.
 
-- [ ] **Step 4: Run the parser test**
+- [x] **Step 4: Run the parser test**
 
 Run:
 
@@ -127,7 +127,7 @@ export function classifyCrmInboundEmail(
 ): CrmInboundEmailClassification
 ```
 
-- [ ] **Step 1: Write the failing decision-table tests**
+- [x] **Step 1: Write the failing decision-table tests**
 
 Cover this exact precedence:
 
@@ -143,7 +143,7 @@ Cover this exact precedence:
 Also prove the loop result wins when every signal is present and ordinary
 subjects such as “automatic reply” do not classify the message.
 
-- [ ] **Step 2: Run the classifier test and verify failure**
+- [x] **Step 2: Run the classifier test and verify failure**
 
 Run:
 
@@ -153,14 +153,14 @@ pnpm vitest run test/workers/emailWorkerInboundClassification.test.ts
 
 Expected: FAIL because the classifier module does not exist.
 
-- [ ] **Step 3: Implement the pure classifier**
+- [x] **Step 3: Implement the pure classifier**
 
 Normalise only with `trim().toLowerCase()`. Parse the `Auto-Submitted` first
 token before `;`, parse content type case-insensitively, and examine the
 already-parsed sender address only for the null-return-path DSN fallback.
 Return controlled reason codes only.
 
-- [ ] **Step 4: Run the decision table**
+- [x] **Step 4: Run the decision table**
 
 Run:
 
@@ -194,7 +194,7 @@ export type ProcessCrmInboundQueueJobResult =
     }
 ```
 
-- [ ] **Step 1: Write failing email-handler tests**
+- [x] **Step 1: Write failing email-handler tests**
 
 For every suppression reason, assert an enabled CRM route:
 
@@ -207,13 +207,13 @@ For every suppression reason, assert an enabled CRM route:
 Add a board-route regression proving an automatic response still follows the
 unchanged board adapter path.
 
-- [ ] **Step 2: Write failing Queue defence tests**
+- [x] **Step 2: Write failing Queue defence tests**
 
 Assert an already-enqueued automatic response returns
 `{ status: 'suppressed', reason: 'auto_submitted' }`, does not call Nitro, and
 is acknowledged by `worker.queue()`. Keep the existing non-2xx retry proof.
 
-- [ ] **Step 3: Run the Worker tests and verify failure**
+- [x] **Step 3: Run the Worker tests and verify failure**
 
 Run:
 
@@ -225,16 +225,19 @@ pnpm vitest run \
 
 Expected: FAIL because both paths still hand non-human mail downstream.
 
-- [ ] **Step 4: Implement both suppression gates**
+- [x] **Step 4: Implement both suppression gates**
 
-In `email()`, classify only CRM routes after parsing and attachment validation
-but before `storeCrmInboundEmailArtifacts()`. Return normally for suppression.
+In `email()`, classify only CRM routes after parsing but before attachment
+rejection and `storeCrmInboundEmailArtifacts()`. This ordering prevents an
+oversized automated response from receiving an SMTP rejection that could
+generate another automated response. Return normally for suppression.
 In `processCrmInboundQueueJob()`, classify immediately after retained-MIME
-parsing and before envelope normalisation or fetch. Return the discriminated
-suppression result. The Queue handler treats either result as success and
-acknowledges it.
+parsing and before envelope normalisation or fetch. Delete the exact raw and
+attachment R2 keys before returning the discriminated suppression result; an
+R2 deletion failure must throw for Queue retry. The Queue handler treats a
+completed suppression as success and acknowledges it.
 
-- [ ] **Step 5: Run the Worker tests**
+- [x] **Step 5: Run the Worker tests**
 
 Run the Task 3 command again.
 
@@ -250,7 +253,7 @@ Expected: PASS.
 - Produces: a checked B6 ledger entry and an evidence-backed progress-log
   checkpoint.
 
-- [ ] **Step 1: Run the focused B1–B6 suite**
+- [x] **Step 1: Run the focused B1–B6 suite**
 
 Run:
 
@@ -269,12 +272,12 @@ pnpm vitest run \
 
 Expected: all pass.
 
-- [ ] **Step 2: Run scoped ESLint, `git diff --check`, and typecheck comparison**
+- [x] **Step 2: Run scoped ESLint, `git diff --check`, and typecheck comparison**
 
 Confirm no changed B6 file appears in typecheck output. Record the repository
 baseline separately if the full command remains red.
 
-- [ ] **Step 3: Run the Worker dry-run**
+- [x] **Step 3: Run the Worker dry-run**
 
 Run:
 
@@ -286,14 +289,14 @@ WRANGLER_LOG_PATH=/tmp/crm-email-b6-wrangler.log \
 Expected: bundle succeeds, no deployment occurs, and no production R2/Queue
 producer binding is introduced.
 
-- [ ] **Step 4: Perform the mandatory deep-dive review**
+- [x] **Step 4: Perform the mandatory deep-dive review**
 
 Re-read every changed file end-to-end. Check classification precedence,
 case-insensitive parsing, board-route isolation, retry/ack behaviour, log
 redaction, absence of raw headers at the Nitro boundary, and disabled
 production configuration.
 
-- [ ] **Step 5: Update the PRD and commit**
+- [x] **Step 5: Update the PRD and commit**
 
 Check B6, append exact test/lint/typecheck/dry-run evidence, and state that
 production remains disabled. Then:
@@ -304,4 +307,3 @@ git add docs/prd/crm-conversations-email-gateway-prd.md \
   workers/email-worker/src test/workers
 git commit -m "feat(crm-email): suppress non-human inbound mail"
 ```
-

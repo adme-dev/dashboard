@@ -6,6 +6,14 @@ const parsedEmail: ParsedInboundEmail = {
   subject: 'Website update',
   text: 'Please update the website.',
   html: '<p>Please update the website.</p>',
+  automationSignals: {
+    autoSubmitted: null,
+    contentType: 'text/plain',
+    listId: null,
+    precedence: null,
+    xXeroFlowOrigin: null,
+    returnPath: 'customer@example.com'
+  },
   attachments: [
     {
       filename: 'brief.pdf',
@@ -63,6 +71,14 @@ describe('email-to-board delivery adapter', () => {
         subject: null,
         text: null,
         html: null,
+        automationSignals: {
+          autoSubmitted: null,
+          contentType: null,
+          listId: null,
+          precedence: null,
+          xXeroFlowOrigin: null,
+          returnPath: null
+        },
         attachments: []
       },
       apiUrl: 'https://app.xeroflow.io',

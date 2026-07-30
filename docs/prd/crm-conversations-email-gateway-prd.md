@@ -421,7 +421,11 @@ pnpm deploy:production
       recovers the lead, CRM promotion, conversation, message, attachment
       manifests, received event, compatibility communication, and route-use
       timestamp. Production bindings and feature flags remain disabled.
-- [ ] B6. Detect auto-replies, bounces, mailing lists, and mail loops.
+- [x] B6. Detect auto-replies, bounces, mailing lists, and mail loops.
+      The Email Worker applies RFC-based, bounded-header classification before
+      R2 storage and repeats it at Queue consumption. Non-human CRM mail is
+      silently acknowledged without creating leads or messages, preventing
+      rejection-driven response loops.
 
 ### Phase C — Outbound transactional email
 
@@ -430,7 +434,8 @@ pnpm deploy:production
 - [ ] C3. Add sender identity, recipient, permission, preference, suppression,
       and rate-limit policy.
 - [ ] C4. Add the Queue-backed outbound service and durable audit transition.
-- [ ] C5. Generate MIME with persistent threading and secure reply headers.
+- [ ] C5. Generate MIME with persistent threading, secure reply headers, and
+      the `X-XeroFlow-Origin: crm-email-gateway` loop marker consumed by B6.
 - [ ] C6. Add attachment scan gating.
 
 ### Phase D — Delivery lifecycle
@@ -610,4 +615,24 @@ pnpm deploy:production
   A post-rollback query confirmed zero retained smoke rows.
 - The production Queue, DLQ, Queue producer, private R2 binding and lifecycle,
   Worker secret, feature flags, and deployment remain deliberately
-  unconfigured. B6 loop/bounce/auto-reply policy is the next inbound slice.
+  unconfigured. No production activation occurred during B5.
+- B6 is complete. PostalMime now exposes only six bounded classification
+  signals rather than forwarding the complete header set. The pure decision
+  table prioritises XeroFlow-origin loops, then RFC 3464 delivery-status MIME,
+  RFC 3834 `Auto-Submitted`, and RFC 2919 `List-Id` with legacy
+  `Precedence: list|bulk|junk` fallback.
+- Automatic responses, delivery reports, mailing-list traffic, and marked
+  XeroFlow loops on CRM routes are silently acknowledged before attachment
+  rejection or R2 storage, so the Worker does not generate rejection-driven
+  response loops. Existing board ingestion is unchanged. The Queue repeats
+  classification for already-retained jobs, acknowledges deterministic
+  suppressions only after deleting their exact R2 objects, retries deletion
+  failures, and logs only controlled reason codes.
+- B6 verification passed 10 focused files and 96 tests, scoped ESLint, and
+  `git diff --check`. Repository-wide Nuxt typecheck remains at the same
+  807-diagnostic baseline with no B6 file referenced. A Wrangler dry-run
+  bundled the Worker at 685.75 KiB (113.35 KiB gzip), reported only the
+  existing `API_URL` binding, and did not deploy.
+- Production remains disabled and unconfigured. C5 must emit the
+  `X-XeroFlow-Origin: crm-email-gateway` header on future outbound MIME so the
+  B6 loop marker becomes active end to end.

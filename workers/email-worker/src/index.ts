@@ -1,5 +1,6 @@
 import { deliverBoardEmail } from './boardAdapter'
 import { deliverCrmInboundEmail } from './crmAdapter'
+import { classifyCrmInboundEmail } from './inboundClassification'
 import { processCrmInboundQueueJob } from './inboundQueue'
 import { parseInboundEmail } from './mime'
 import { classifyInboundEmailRoute } from './routing'
@@ -88,6 +89,17 @@ export function createInboundEmailWorker(
       try {
         const raw = await new Response(message.raw).arrayBuffer()
         const email = await parse(raw)
+
+        if (isCrmRoute) {
+          const classification = classifyCrmInboundEmail(email)
+          if (classification.kind === 'suppressed') {
+            console.info('CRM email inbound suppressed', {
+              reason: classification.reason
+            })
+            return
+          }
+        }
+
         const attachmentSafety = validateInboundAttachments(
           email.attachments,
           limits
@@ -164,10 +176,15 @@ export function createInboundEmailWorker(
     ): Promise<void> {
       for (const message of batch.messages) {
         try {
-          await processCrmInboundQueueJob(message.body, env, {
+          const result = await processCrmInboundQueueJob(message.body, env, {
             fetch: fetchImpl,
             parse
           })
+          if (result.status === 'suppressed') {
+            console.info('CRM email inbound suppressed', {
+              reason: result.reason
+            })
+          }
           message.ack()
         } catch {
           console.error('CRM email inbound Queue processing failed')

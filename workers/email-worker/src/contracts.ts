@@ -11,6 +11,15 @@ export interface ParsedInboundAddress {
   address: string
 }
 
+export interface ParsedInboundAutomationSignals {
+  autoSubmitted: string | null
+  contentType: string | null
+  listId: string | null
+  precedence: string | null
+  xXeroFlowOrigin: string | null
+  returnPath: string | null
+}
+
 export interface ParsedInboundEmail {
   from?: ParsedInboundAddress | null
   to?: ParsedInboundAddress[]
@@ -22,6 +31,7 @@ export interface ParsedInboundEmail {
   messageId?: string | null
   inReplyTo?: string | null
   references?: string | null
+  automationSignals: ParsedInboundAutomationSignals
   attachments: ParsedInboundAttachment[]
 }
 

@@ -11,6 +11,12 @@ import type {
   ParsedInboundAddress,
   ParsedInboundEmail
 } from './contracts'
+import {
+  classifyCrmInboundEmail
+} from './inboundClassification'
+import type {
+  CrmInboundEmailSuppressionReason
+} from './inboundClassification'
 import { parseInboundEmail } from './mime'
 
 const MAX_RAW_MIME_BYTES = 10 * 1024 * 1024
@@ -19,6 +25,13 @@ interface InboundQueueDependencies {
   fetch?: FetchLike
   parse?: (raw: ArrayBuffer) => Promise<ParsedInboundEmail>
 }
+
+export type ProcessCrmInboundQueueJobResult
+  = | { status: 'processed', duplicate: boolean }
+    | {
+      status: 'suppressed'
+      reason: CrmInboundEmailSuppressionReason
+    }
 
 function bytesToHex(bytes: Uint8Array): string {
   return [...bytes]
@@ -86,7 +99,7 @@ export async function processCrmInboundQueueJob(
   rawJob: CrmEmailInboundQueueJob,
   env: InboundEmailWorkerEnv,
   dependencies: InboundQueueDependencies = {}
-): Promise<{ duplicate: boolean }> {
+): Promise<ProcessCrmInboundQueueJobResult> {
   const bucket = env.CRM_EMAIL_BUCKET
   const workerSecret = env.CRM_EMAIL_WORKER_SECRET?.trim()
   const apiUrl = env.API_URL?.trim()
@@ -125,7 +138,19 @@ export async function processCrmInboundQueueJob(
   }
 
   const parse = dependencies.parse ?? parseInboundEmail
-  const email = normalizeMimeEnvelope(await parse(raw))
+  const parsedEmail = await parse(raw)
+  const classification = classifyCrmInboundEmail(parsedEmail)
+  if (classification.kind === 'suppressed') {
+    await bucket.delete([
+      job.rawMimeR2Key,
+      ...job.attachments.map(attachment => attachment.r2ObjectKey)
+    ])
+    return {
+      status: 'suppressed',
+      reason: classification.reason
+    }
+  }
+  const email = normalizeMimeEnvelope(parsedEmail)
   const request = CrmEmailInboundProcessingRequestSchema.parse({ job, email })
   const fetchImpl = dependencies.fetch ?? fetch
   const response = await fetchImpl(
@@ -150,5 +175,5 @@ export async function processCrmInboundQueueJob(
   if (result.accepted !== true || typeof result.duplicate !== 'boolean') {
     throw new Error('Invalid CRM email inbound processing response')
   }
-  return { duplicate: result.duplicate }
+  return { status: 'processed', duplicate: result.duplicate }
 }

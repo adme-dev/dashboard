@@ -63,6 +63,14 @@ function parsed(
     messageId: '<provider-message@example.net>',
     inReplyTo: '<previous@example.net>',
     references: '<root@example.net> <previous@example.net>',
+    automationSignals: {
+      autoSubmitted: null,
+      contentType: 'text/plain',
+      listId: null,
+      precedence: null,
+      xXeroFlowOrigin: null,
+      returnPath: 'jane@example.com'
+    },
     attachments: [],
     ...overrides
   }
@@ -131,7 +139,7 @@ describe('CRM email inbound Queue processor', () => {
       job(),
       inputEnv,
       { fetch, parse }
-    )).resolves.toEqual({ duplicate: false })
+    )).resolves.toEqual({ status: 'processed', duplicate: false })
 
     expect(inputEnv.CRM_EMAIL_BUCKET?.get).toHaveBeenCalledWith(RAW_MIME_KEY)
     expect(parse).toHaveBeenCalledWith(
@@ -271,6 +279,54 @@ describe('CRM email inbound Queue processor', () => {
     )).rejects.toThrow('CRM email inbound processing failed: 503')
   })
 
+  it('suppresses an already-queued automatic response before Nitro', async () => {
+    const fetch = vi.fn()
+    const inputEnv = env()
+
+    await expect(processCrmInboundQueueJob(
+      job(),
+      inputEnv,
+      {
+        fetch,
+        parse: vi.fn().mockResolvedValue(parsed({
+          automationSignals: {
+            ...parsed().automationSignals,
+            autoSubmitted: 'auto-replied'
+          }
+        }))
+      }
+    )).resolves.toEqual({
+      status: 'suppressed',
+      reason: 'auto_submitted'
+    })
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(inputEnv.CRM_EMAIL_BUCKET?.delete).toHaveBeenCalledWith([
+      RAW_MIME_KEY
+    ])
+  })
+
+  it('retries suppression when retained artifact deletion fails', async () => {
+    const inputEnv = env()
+    vi.mocked(inputEnv.CRM_EMAIL_BUCKET!.delete).mockRejectedValue(
+      new Error('R2 unavailable')
+    )
+
+    await expect(processCrmInboundQueueJob(
+      job(),
+      inputEnv,
+      {
+        fetch: vi.fn(),
+        parse: vi.fn().mockResolvedValue(parsed({
+          automationSignals: {
+            ...parsed().automationSignals,
+            autoSubmitted: 'auto-replied'
+          }
+        }))
+      }
+    )).rejects.toThrow('R2 unavailable')
+  })
+
   it('rejects a malformed Queue job before any R2 access', async () => {
     const inputEnv = env()
 
@@ -326,5 +382,38 @@ describe('CRM email inbound Queue processor', () => {
     )
     expect(JSON.stringify(error.mock.calls)).not.toContain(RAW_MIME_KEY)
     error.mockRestore()
+  })
+
+  it('acknowledges a deterministic Queue suppression without retrying', async () => {
+    const worker = createInboundEmailWorker({
+      fetch: vi.fn(),
+      parse: vi.fn().mockResolvedValue(parsed({
+        automationSignals: {
+          ...parsed().automationSignals,
+          listId: 'Updates <updates.example.net>'
+        }
+      }))
+    })
+    const message = {
+      body: job(),
+      ack: vi.fn(),
+      retry: vi.fn()
+    }
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await worker.queue(
+      { messages: [message] } as never,
+      env(),
+      {} as ExecutionContext
+    )
+
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+    expect(info).toHaveBeenCalledWith(
+      'CRM email inbound suppressed',
+      { reason: 'mailing_list' }
+    )
+    expect(JSON.stringify(info.mock.calls)).not.toContain(RAW_MIME_KEY)
+    info.mockRestore()
   })
 })
