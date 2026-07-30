@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   createCrmEmailInboundIdempotencyKey,
-  enqueueCrmInboundEmail,
-  type CrmEmailInboundQueueJob
+  enqueueCrmInboundEmail
 } from '~~/server/utils/crm/emailInboundQueue'
+import type {
+  CrmEmailInboundQueueJob
+} from '~~/server/utils/crm/emailInboundProcessingContracts'
 
 const ROUTE_HASH = 'a'.repeat(64)
 

@@ -6,12 +6,28 @@ export interface ParsedInboundAttachment {
   contentId?: string | null
 }
 
+export interface ParsedInboundAddress {
+  name: string | null
+  address: string
+}
+
 export interface ParsedInboundEmail {
+  from?: ParsedInboundAddress | null
+  to?: ParsedInboundAddress[]
+  cc?: ParsedInboundAddress[]
+  replyTo?: ParsedInboundAddress[]
   subject: string | null
   text: string | null
   html: string | null
   messageId?: string | null
+  inReplyTo?: string | null
+  references?: string | null
   attachments: ParsedInboundAttachment[]
+}
+
+export interface CrmEmailR2ObjectBody {
+  size: number
+  arrayBuffer(): Promise<ArrayBuffer>
 }
 
 export interface CrmEmailBucketBinding {
@@ -27,6 +43,7 @@ export interface CrmEmailBucketBinding {
       sha256: ArrayBuffer
     }
   ): Promise<unknown>
+  get(key: string): Promise<CrmEmailR2ObjectBody | null>
   delete(keys: string[]): Promise<void>
 }
 

@@ -171,7 +171,7 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: deleteObjects }
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() }
     })
 
     expect(state.rejections).toEqual([])
@@ -221,7 +221,7 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: vi.fn() }
+      CRM_EMAIL_BUCKET: { put, delete: vi.fn(), get: vi.fn() }
     })
 
     expect(state.rejections).toEqual(['Unsafe email attachments'])
@@ -250,7 +250,7 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: deleteObjects }
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() }
     })
 
     expect(state.rejections).toEqual(['Failed to process email: 404'])
@@ -279,7 +279,7 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: deleteObjects }
+      CRM_EMAIL_BUCKET: { put, delete: deleteObjects, get: vi.fn() }
     })
 
     expect(state.rejections).toEqual(['Internal error processing email'])
@@ -332,7 +332,7 @@ describe('guarded inbound email Worker', () => {
       ...env,
       CRM_EMAIL_INBOUND_ENABLED: 'true',
       CRM_EMAIL_WORKER_SECRET: 'worker-secret',
-      CRM_EMAIL_BUCKET: { put, delete: vi.fn() }
+      CRM_EMAIL_BUCKET: { put, delete: vi.fn(), get: vi.fn() }
     })
 
     expect(state.rejections).toEqual([])

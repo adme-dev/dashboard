@@ -1,6 +1,6 @@
-import PostalMime from 'postal-mime'
 import { deliverBoardEmail } from './boardAdapter'
 import { deliverCrmInboundEmail } from './crmAdapter'
+import { parseInboundEmail } from './mime'
 import { classifyInboundEmailRoute } from './routing'
 import {
   deleteCrmInboundEmailArtifacts,
@@ -28,45 +28,6 @@ interface InboundEmailWorkerDependencies {
   randomUUID?: () => string
 }
 
-function attachmentContentToArrayBuffer(content: unknown): ArrayBuffer {
-  if (content instanceof ArrayBuffer) return content
-  if (ArrayBuffer.isView(content)) {
-    const copy = new Uint8Array(content.byteLength)
-    copy.set(new Uint8Array(
-      content.buffer,
-      content.byteOffset,
-      content.byteLength
-    ))
-    return copy.buffer
-  }
-  if (typeof content === 'string') {
-    return new TextEncoder().encode(content).buffer
-  }
-  throw new Error('Unsupported inbound attachment content')
-}
-
-async function parseWithPostalMime(raw: ArrayBuffer): Promise<ParsedInboundEmail> {
-  const parser = new PostalMime({ attachmentEncoding: 'arraybuffer' })
-  const email = await parser.parse(raw)
-
-  return {
-    subject: email.subject ?? null,
-    text: email.text ?? null,
-    html: email.html ?? null,
-    messageId: email.messageId ?? null,
-    attachments: (email.attachments ?? []).map((attachment) => {
-      const content = attachmentContentToArrayBuffer(attachment.content)
-      return {
-        filename: attachment.filename ?? null,
-        mimeType: attachment.mimeType,
-        content,
-        size: content.byteLength,
-        contentId: attachment.contentId ?? null
-      }
-    })
-  }
-}
-
 async function cleanupCrmArtifacts(
   bucket: CrmEmailBucketBinding,
   manifest: CrmInboundArtifactManifest
@@ -82,7 +43,7 @@ export function createInboundEmailWorker(
   dependencies: InboundEmailWorkerDependencies = {}
 ) {
   const fetchImpl = dependencies.fetch ?? fetch
-  const parse = dependencies.parse ?? parseWithPostalMime
+  const parse = dependencies.parse ?? parseInboundEmail
 
   return {
     async email(

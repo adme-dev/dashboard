@@ -1,33 +1,9 @@
 import type { H3Event } from 'h3'
-import type { CrmInboundEmailRouteKind } from '~~/server/utils/crm/emailRouteRepository'
+import type {
+  CrmEmailInboundQueueJob
+} from '~~/server/utils/crm/emailInboundProcessingContracts'
 
 const textEncoder = new TextEncoder()
-
-export interface CrmEmailInboundQueueJob {
-  version: 1
-  type: 'crm.email.inbound'
-  idempotencyKey: string
-  routeId: string
-  clientId: string
-  conversationId: string | null
-  routeKind: CrmInboundEmailRouteKind
-  provider: 'cloudflare_email'
-  providerMessageId: string
-  rawMimeR2Key: string
-  rawMimeSha256: string
-  rawMimeExpiresAt: string
-  attachments: CrmEmailInboundQueueAttachment[]
-  receivedAt: string
-}
-
-export interface CrmEmailInboundQueueAttachment {
-  r2ObjectKey: string
-  filename: string
-  contentType: string
-  byteSize: number
-  sha256: string
-  contentId: string | null
-}
 
 interface QueueProducer {
   send(
