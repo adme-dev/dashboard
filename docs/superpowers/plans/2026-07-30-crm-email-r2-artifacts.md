@@ -92,6 +92,8 @@ References:
 **Contract addition:**
 
 ```ts
+rawMimeSha256: string
+rawMimeExpiresAt: string
 attachments: Array<{
   r2ObjectKey: string
   filename: string
@@ -102,14 +104,14 @@ attachments: Array<{
 }>
 ```
 
-- [ ] Add failing endpoint cases for path traversal, foreign prefixes, invalid
+- [x] Add failing endpoint cases for path traversal, foreign prefixes, invalid
       hashes/sizes, too many attachments, and unknown fields.
-- [ ] Add a failing success case proving safe attachment metadata reaches the
+- [x] Add a failing success case proving safe attachment metadata reaches the
       versioned Queue job without bytes.
-- [ ] Run the focused tests and observe the contract failures.
-- [ ] Extend the strict Zod boundary and Queue job type with the safe manifest.
-- [ ] Run focused tests, ESLint, and `git diff --check`.
-- [ ] Re-read the changed files and commit:
+- [x] Run the focused tests and observe the contract failures.
+- [x] Extend the strict Zod boundary and Queue job type with the safe manifest.
+- [x] Run focused tests, ESLint, and `git diff --check`.
+- [x] Re-read the changed files and commit:
       `feat(crm-email): accept safe R2 artifact manifests`.
 
 ### Task 3: Flag-gated lead/reply adapter

@@ -17,7 +17,19 @@ const job: CrmEmailInboundQueueJob = {
   routeKind: 'conversation_reply',
   provider: 'cloudflare_email',
   providerMessageId: '<provider-message@example.net>',
-  rawMimeR2Key: 'crm-email/inbound/2026/07/30/message.eml',
+  rawMimeR2Key:
+    'crm-email/inbound/2026/07/30/44444444-4444-4444-8444-444444444444/message.eml',
+  rawMimeSha256: 'c'.repeat(64),
+  rawMimeExpiresAt: '2026-08-29T05:30:00.000Z',
+  attachments: [{
+    r2ObjectKey:
+      'crm-email/inbound/2026/07/30/44444444-4444-4444-8444-444444444444/attachments/01.bin',
+    filename: 'Customer Contract.pdf',
+    contentType: 'application/pdf',
+    byteSize: 1024,
+    sha256: 'd'.repeat(64),
+    contentId: null
+  }],
   receivedAt: '2026-07-30T05:30:00.000Z'
 }
 

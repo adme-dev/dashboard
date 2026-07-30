@@ -14,7 +14,19 @@ export interface CrmEmailInboundQueueJob {
   provider: 'cloudflare_email'
   providerMessageId: string
   rawMimeR2Key: string
+  rawMimeSha256: string
+  rawMimeExpiresAt: string
+  attachments: CrmEmailInboundQueueAttachment[]
   receivedAt: string
+}
+
+export interface CrmEmailInboundQueueAttachment {
+  r2ObjectKey: string
+  filename: string
+  contentType: string
+  byteSize: number
+  sha256: string
+  contentId: string | null
 }
 
 interface QueueProducer {

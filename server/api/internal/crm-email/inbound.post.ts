@@ -17,7 +17,40 @@ import { resolveCrmInboundEmailRoute } from '~~/server/utils/crm/emailRouteRepos
 const routeTokenPattern
   = /^v[1-9]\d{0,5}\.[A-Za-z0-9_-]{32}\.[A-Za-z0-9_-]{43}$/
 const rawMimeKeyPattern
-  = /^crm-email\/inbound\/[A-Za-z0-9][A-Za-z0-9/_=.-]*$/
+  = /^crm-email\/inbound\/\d{4}\/\d{2}\/\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/message\.eml$/i
+const sha256Pattern = /^[a-f0-9]{64}$/
+const contentTypePattern
+  = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+const MAX_COMBINED_ATTACHMENT_BYTES = 8 * 1024 * 1024
+const MAX_RETENTION_MILLISECONDS = 30 * 24 * 60 * 60 * 1000
+
+function containsControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 32 || code === 127
+  })
+}
+
+const inboundAttachmentSchema = z.object({
+  r2ObjectKey: z.string().min(1).max(1024),
+  filename: z.string()
+    .trim()
+    .min(1)
+    .max(500)
+    .refine(value =>
+      !value.includes('/')
+      && !value.includes('\\')
+      && !containsControlCharacter(value)
+    ),
+  contentType: z.string().max(255).regex(contentTypePattern),
+  byteSize: z.number().int().min(0).max(MAX_ATTACHMENT_BYTES),
+  sha256: z.string().regex(sha256Pattern),
+  contentId: z.string()
+    .max(998)
+    .refine(value => !containsControlCharacter(value))
+    .nullable()
+}).strict()
 
 const inboundPayloadSchema = z.object({
   routeKind: z.enum(['lead_inbox', 'conversation_reply']),
@@ -27,10 +60,47 @@ const inboundPayloadSchema = z.object({
   rawMimeR2Key: z.string()
     .min(20)
     .max(1024)
-    .regex(rawMimeKeyPattern)
-    .refine(value => !value.includes('..')),
+    .regex(rawMimeKeyPattern),
+  rawMimeSha256: z.string().regex(sha256Pattern),
+  rawMimeExpiresAt: z.string().datetime({ offset: true }),
+  attachments: z.array(inboundAttachmentSchema).max(10),
   receivedAt: z.string().datetime({ offset: true })
-}).strict()
+}).strict().superRefine((payload, context) => {
+  const prefix = payload.rawMimeR2Key.slice(0, -'/message.eml'.length)
+  let combinedBytes = 0
+
+  for (const [offset, attachment] of payload.attachments.entries()) {
+    const expectedKey
+      = `${prefix}/attachments/${String(offset + 1).padStart(2, '0')}.bin`
+    if (attachment.r2ObjectKey !== expectedKey) {
+      context.addIssue({
+        code: 'custom',
+        path: ['attachments', offset, 'r2ObjectKey'],
+        message: 'Attachment R2 key does not match the raw MIME object'
+      })
+    }
+    combinedBytes += attachment.byteSize
+  }
+
+  if (combinedBytes > MAX_COMBINED_ATTACHMENT_BYTES) {
+    context.addIssue({
+      code: 'custom',
+      path: ['attachments'],
+      message: 'Combined attachment bytes exceed the inbound limit'
+    })
+  }
+
+  const receivedAt = Date.parse(payload.receivedAt)
+  const expiresAt = Date.parse(payload.rawMimeExpiresAt)
+  const retention = expiresAt - receivedAt
+  if (retention <= 0 || retention > MAX_RETENTION_MILLISECONDS) {
+    context.addIssue({
+      code: 'custom',
+      path: ['rawMimeExpiresAt'],
+      message: 'Raw MIME retention is outside the approved policy'
+    })
+  }
+})
 
 function stringBinding(event: H3Event, name: string): string | undefined {
   const eventValue = (event.context as {
@@ -122,6 +192,9 @@ export default defineEventHandler(async (event) => {
       provider: 'cloudflare_email',
       providerMessageId: payload.providerMessageId,
       rawMimeR2Key: payload.rawMimeR2Key,
+      rawMimeSha256: payload.rawMimeSha256,
+      rawMimeExpiresAt: payload.rawMimeExpiresAt,
+      attachments: payload.attachments,
       receivedAt: payload.receivedAt
     })
   } catch {

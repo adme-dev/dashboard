@@ -18,6 +18,9 @@ const ROUTE_HASH = 'c'.repeat(64)
 const ROUTE_ID = '11111111-1111-4111-8111-111111111111'
 const CLIENT_ID = '22222222-2222-4222-8222-222222222222'
 const CONVERSATION_ID = '33333333-3333-4333-8333-333333333333'
+const R2_MESSAGE_ID = '44444444-4444-4444-8444-444444444444'
+const R2_PREFIX
+  = `crm-email/inbound/2026/07/30/${R2_MESSAGE_ID}`
 
 const mockReadBody = vi.fn(async (event: TestEvent) => event.body)
 const mockResolveRoute = vi.fn()
@@ -58,7 +61,17 @@ function validBody() {
     routeToken: ROUTE_TOKEN,
     recipientDomain: 'reply.xeroflow.io',
     providerMessageId: '<provider-message@example.net>',
-    rawMimeR2Key: 'crm-email/inbound/2026/07/30/message.eml',
+    rawMimeR2Key: `${R2_PREFIX}/message.eml`,
+    rawMimeSha256: 'd'.repeat(64),
+    rawMimeExpiresAt: '2026-08-29T05:30:00.000Z',
+    attachments: [{
+      r2ObjectKey: `${R2_PREFIX}/attachments/01.bin`,
+      filename: 'Customer Contract.pdf',
+      contentType: 'application/pdf',
+      byteSize: 1024,
+      sha256: 'e'.repeat(64),
+      contentId: '<contract@example.net>'
+    }],
     receivedAt: '2026-07-30T05:30:00.000Z'
   }
 }
@@ -166,6 +179,60 @@ describe('CRM email inbound internal endpoint', () => {
     expect(mockEnqueue).not.toHaveBeenCalled()
   })
 
+  it.each([
+    [
+      'a foreign attachment prefix',
+      {
+        attachments: [{
+          ...validBody().attachments[0],
+          r2ObjectKey:
+            'crm-email/inbound/2026/07/30/55555555-5555-4555-8555-555555555555/attachments/01.bin'
+        }]
+      }
+    ],
+    [
+      'an invalid raw MIME hash',
+      { rawMimeSha256: 'not-a-hash' }
+    ],
+    [
+      'an oversized attachment',
+      {
+        attachments: [{
+          ...validBody().attachments[0],
+          byteSize: 5 * 1024 * 1024 + 1
+        }]
+      }
+    ],
+    [
+      'more than ten attachments',
+      {
+        attachments: Array.from({ length: 11 }, (_, index) => ({
+          ...validBody().attachments[0],
+          r2ObjectKey:
+            `${R2_PREFIX}/attachments/${String(index + 1).padStart(2, '0')}.bin`
+        }))
+      }
+    ],
+    [
+      'attachment bytes in the boundary payload',
+      {
+        attachments: [{
+          ...validBody().attachments[0],
+          content: 'must-not-cross-the-boundary'
+        }]
+      }
+    ]
+  ])('rejects %s', async (_label, override) => {
+    const request = event({ ...validBody(), ...override })
+
+    await expect(inboundEndpoint(request)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Invalid CRM email inbound payload'
+    })
+    expect(mockResolveRoute).not.toHaveBeenCalled()
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
   it('uses the same generic not-found response for invalid or absent routes', async () => {
     mockResolveRoute.mockResolvedValue(null)
     const request = event()
@@ -213,7 +280,17 @@ describe('CRM email inbound internal endpoint', () => {
       routeKind: 'conversation_reply',
       provider: 'cloudflare_email',
       providerMessageId: '<provider-message@example.net>',
-      rawMimeR2Key: 'crm-email/inbound/2026/07/30/message.eml',
+      rawMimeR2Key: `${R2_PREFIX}/message.eml`,
+      rawMimeSha256: 'd'.repeat(64),
+      rawMimeExpiresAt: '2026-08-29T05:30:00.000Z',
+      attachments: [{
+        r2ObjectKey: `${R2_PREFIX}/attachments/01.bin`,
+        filename: 'Customer Contract.pdf',
+        contentType: 'application/pdf',
+        byteSize: 1024,
+        sha256: 'e'.repeat(64),
+        contentId: '<contract@example.net>'
+      }],
       receivedAt: '2026-07-30T05:30:00.000Z'
     })
     expect(JSON.stringify(response)).not.toContain(CLIENT_ID)
