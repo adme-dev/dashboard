@@ -14,7 +14,10 @@ import { gzipSync } from 'node:zlib'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { compactWorkerModule } from './compact-worker-module.mjs'
+import {
+  compactDeployedWorkerModules,
+  compactWorkerModule
+} from './compact-worker-module.mjs'
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const distDir = path.join(projectRoot, 'dist', '_worker.js')
@@ -28,7 +31,12 @@ const precomputedManifest = path.join(distDir, 'chunks', 'build', 'client.precom
 const nitroRuntime = path.join(distDir, 'chunks', 'nitro', 'nitro.mjs')
 
 async function exists(p) {
-  try { await fs.access(p); return true } catch { return false }
+  try {
+    await fs.access(p)
+    return true
+  } catch {
+    return false
+  }
 }
 
 const distExists = await exists(indexJs)
@@ -56,7 +64,7 @@ if (!isAlreadyWrapped) {
     await fs.writeFile(
       nitroJs,
       nitroSrc.replace(/sourceMappingURL=index\.js\.map\b/g, 'sourceMappingURL=_nitro.js.map'),
-      'utf8',
+      'utf8'
     )
   }
   console.log('[wrap-worker] moved Nitro entry → _nitro.js')
@@ -80,7 +88,7 @@ await build({
   conditions: ['workerd', 'worker', 'browser'],
   mainFields: ['module', 'main'],
   legalComments: 'none',
-  logLevel: 'warning',
+  logLevel: 'warning'
 })
 console.log('[wrap-worker] bundled worker-ws → _ws.js')
 
@@ -111,7 +119,7 @@ export default async function loadPrecomputedManifest() {
 `
     await fs.writeFile(precomputedManifest, compactSource, 'utf8')
     console.log(
-      `[wrap-worker] compacted Nuxt client manifest ${source.length} → ${compactSource.length} bytes`,
+      `[wrap-worker] compacted Nuxt client manifest ${source.length} → ${compactSource.length} bytes`
     )
   }
 }
@@ -130,6 +138,18 @@ if (await exists(nitroRuntime)) {
     console.log('[wrap-worker] Nitro runtime already compact or smaller as emitted')
   }
 }
+
+// Rollup repeats side-effect-only imports for Cloudflare and Node compatibility
+// modules in every split route chunk. Those platform modules are already loaded
+// by the Nitro runtime, and the repeated specifiers count toward Cloudflare's
+// raw Worker limit. Remove only bare platform imports; value-bearing imports are
+// preserved. Source-map references are also omitted from deployed modules
+// because Wrangler does not upload the adjacent generated map files.
+const deployedModuleCompaction = await compactDeployedWorkerModules(distDir)
+console.log(
+  `[wrap-worker] compacted ${deployedModuleCompaction.changedFiles} split modules, `
+  + `saved ${deployedModuleCompaction.savedBytes} bytes`
+)
 
 // Write the dispatcher entry. Routes WebSocket upgrades on the three known
 // paths to the WS handler; everything else delegates to Nitro unchanged.

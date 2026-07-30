@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   WORKER_MODULE_COMPACTION_MARKER,
+  compactDeployedWorkerModules,
+  compactPlatformImports,
   compactWorkerModule
 } from '../../scripts/compact-worker-module.mjs'
 
@@ -20,6 +22,70 @@ afterEach(async () => {
 })
 
 describe('Pages Worker postbuild compaction', () => {
+  it('removes redundant bare platform imports without touching value imports', () => {
+    const source = [
+      'import "node:crypto";',
+      'import"cloudflare:workers";',
+      'import "side-effect-package";',
+      'import { createHash } from "node:crypto";',
+      'import worker from "cloudflare:workers";',
+      'const lazy = import("node:buffer");'
+    ].join('\n')
+
+    expect(compactPlatformImports(source)).toBe([
+      '',
+      '',
+      'import "side-effect-package";',
+      'import { createHash } from "node:crypto";',
+      'import worker from "cloudflare:workers";',
+      'const lazy = import("node:buffer");'
+    ].join('\n'))
+    expect(
+      compactPlatformImports(
+        'import{createHash}from"node:crypto";'
+        + 'import"node:buffer";import"node:crypto";export{createHash};'
+      )
+    ).toBe('import{createHash}from"node:crypto";export{createHash};')
+
+    const documentationSnippet = 'const example = `platform setup:\nimport "node:crypto";\n`;\n'
+    expect(compactPlatformImports!(documentationSnippet)).toBe(documentationSnippet)
+  })
+
+  it('compacts every generated module recursively and is idempotent', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-platform-imports-'))
+    temporaryDirectories.push(directory)
+    const nestedDirectory = path.join(directory, 'chunks', 'routes')
+    await mkdir(nestedDirectory, { recursive: true })
+    const firstModule = path.join(directory, 'index.mjs')
+    const nestedModule = path.join(nestedDirectory, 'route.mjs')
+    const sourceMap = `${nestedModule}.map`
+    await writeFile(firstModule, 'import"node:crypto";export const value=1;\n', 'utf8')
+    await writeFile(
+      nestedModule,
+      [
+        'import{Buffer}from"node:buffer";import"node:buffer";export{Buffer};',
+        '//# sourceMappingURL=route.mjs.map',
+        ''
+      ].join('\n'),
+      'utf8'
+    )
+    await writeFile(sourceMap, '{"version":3}', 'utf8')
+
+    await expect(compactDeployedWorkerModules(directory)).resolves.toEqual({
+      changedFiles: 2,
+      savedBytes: 75
+    })
+    await expect(readFile(firstModule, 'utf8')).resolves.toBe('export const value=1;\n')
+    await expect(readFile(nestedModule, 'utf8')).resolves.toBe(
+      'import{Buffer}from"node:buffer";export{Buffer};\n'
+    )
+    await expect(readFile(sourceMap, 'utf8')).resolves.toBe('{"version":3}')
+    await expect(compactDeployedWorkerModules(directory)).resolves.toEqual({
+      changedFiles: 0,
+      savedBytes: 0
+    })
+  })
+
   it('minifies a generated module once while preserving exported function names', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'worker-compaction-'))
     temporaryDirectories.push(directory)
