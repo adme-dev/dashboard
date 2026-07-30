@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
 [vars]
-API_URL = "https://agency-dashboard-6cm.pages.dev"
+API_URL = "https://app.xeroflow.io"
 CRM_EMAIL_INBOUND_ENABLED = "true"
 CRM_EMAIL_RETENTION_DAYS = "30"
 

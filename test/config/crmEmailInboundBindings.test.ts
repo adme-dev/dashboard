@@ -37,6 +37,7 @@ describe('CRM inbound email production wiring', () => {
       readFileSync('workers/email-worker/wrangler.toml', 'utf8')
     ) as WorkerConfig
 
+    expect(config.vars?.API_URL).toBe('https://app.xeroflow.io')
     expect(config.vars?.CRM_EMAIL_INBOUND_ENABLED).toBe('true')
     expect(config.vars?.CRM_EMAIL_RETENTION_DAYS).toBe('30')
     expect(config.r2_buckets).toContainEqual({
