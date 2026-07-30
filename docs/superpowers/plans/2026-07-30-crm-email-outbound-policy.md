@@ -179,7 +179,7 @@ configuration or production activation was introduced.
 Mark C3 complete only after all focused tests and quality gates pass. State
 that C4 remains required before any outbound request can be queued.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add \
