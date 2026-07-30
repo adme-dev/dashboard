@@ -497,7 +497,7 @@ pnpm deploy:production
 - Lifecycle review added explicit proof that `delivered` cannot regress on a
   stale deferral or bounce, while a later complaint supersedes delivery.
 - Focused slice verification passed: 3 files and 13 tests.
-- The broader repository suite completed with 1,115 files and 6,300 tests
+- The final broader repository suite completed with 1,116 files and 6,305 tests
   passing, 2 files and 4 tests skipped, and 17 files / 36 tests failing. All
   reported failures are outside the files changed by this slice and include
   existing component harness, role-permission, Groq mock, social-spend, and
