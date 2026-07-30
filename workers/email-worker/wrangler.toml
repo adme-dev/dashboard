@@ -5,7 +5,7 @@ compatibility_flags = ["global_fetch_strictly_public"]
 
 [vars]
 API_URL = "https://app.xeroflow.io"
-CRM_EMAIL_INBOUND_ENABLED = "true"
+CRM_EMAIL_INBOUND_ENABLED = "false"
 CRM_EMAIL_RETENTION_DAYS = "30"
 
 # INTERNAL_API_KEY should be set as a secret:

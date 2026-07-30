@@ -18,8 +18,24 @@ autonomous AI replies.
 - Recipient domain: `xeroflow.io`
 
 The existing XeroFlow universal lead-intake catch-all must remain assigned to
-`email-lead-intake`. CRM routes are higher-priority literal-address rules
-assigned to `email-to-board-worker`.
+`email-lead-intake`. CRM routes use Cloudflare subaddressing: the higher
+priority literal base addresses `lead@xeroflow.io` and `reply@xeroflow.io`
+are assigned to `email-to-board-worker`, while the signed token remains in the
+full recipient delivered to the Worker.
+
+## Current blocker
+
+Inbound remains disabled. Live proof on 2026-07-30 showed that Email Routing
+reaches the Worker and completes MIME parsing, classification, validation, and
+R2 persistence, but the Worker cannot hand off to the Pages runtime through
+global `fetch()`. The default Pages origin, custom domain, cross-zone custom
+domain, and `global_fetch_strictly_public` compatibility flag all failed at the
+same controlled `handoff_pages` stage.
+
+Do not enable the two feature flags or routing rules until the HTTP dependency
+is removed. The recommended replacement is for the Email Worker to enqueue a
+provider-neutral job directly and for a dedicated Queue consumer to perform
+route verification and canonical Neon writes through Hyperdrive.
 
 ## Required secrets
 
@@ -41,8 +57,9 @@ ingestion depends on it.
 5. Deploy the standalone Worker using its checked-in Wrangler configuration.
 6. Verify the Pages producer and Worker consumer/R2 bindings.
 7. Create one 24-hour `lead_inbox` smoke route for an allowlisted client.
-8. Add one enabled, literal Email Routing rule for that exact address and the
-   `email-to-board-worker` action. Do not alter the catch-all.
+8. Enable Email Routing subaddressing and the `lead@xeroflow.io` and
+   `reply@xeroflow.io` base rules assigned to `email-to-board-worker`. Do not
+   alter the catch-all.
 9. Send a controlled message, then verify the route timestamp, canonical CRM
    message, compatibility communication, Queue metrics, and R2 cleanup policy.
 10. Revoke the smoke route and disable/delete its literal routing rule after
