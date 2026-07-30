@@ -42,6 +42,7 @@ export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions)
   const mutationPendingId = ref<string | null>(null)
   const loadError = ref<string | null>(null)
   let refreshEpoch = 0
+  let pendingRefreshEpoch: number | null = null
   let contextEpoch = 0
 
   interface RequestContext {
@@ -77,6 +78,7 @@ export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions)
   function reset(): void {
     contextEpoch += 1
     refreshEpoch += 1
+    pendingRefreshEpoch = null
     routes.value = []
     pending.value = false
     mutationPendingId.value = null
@@ -85,9 +87,18 @@ export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions)
 
   watch([apiBase, clientId], reset)
 
+  function supersedeRefresh(): void {
+    refreshEpoch += 1
+    if (pendingRefreshEpoch !== null) {
+      pendingRefreshEpoch = null
+      pending.value = false
+    }
+  }
+
   async function refresh(): Promise<void> {
     const context = currentContext()
     const epoch = ++refreshEpoch
+    pendingRefreshEpoch = epoch
     pending.value = true
     loadError.value = null
     try {
@@ -99,14 +110,17 @@ export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions)
     } catch (error) {
       if (epoch === refreshEpoch && matchesCurrentContext(context)) loadError.value = errorMessage(error)
     } finally {
-      if (epoch === refreshEpoch && matchesCurrentContext(context)) pending.value = false
+      if (pendingRefreshEpoch === epoch) {
+        pendingRefreshEpoch = null
+        pending.value = false
+      }
     }
   }
 
   async function create(label: string): Promise<CrmInboundEmailRouteIssuedResponse | null> {
     if (mutationPendingId.value) return null
     const context = currentContext()
-    refreshEpoch += 1
+    supersedeRefresh()
     mutationPendingId.value = 'create'
     try {
       const response = await apiFetch<CrmInboundEmailRouteIssuedResponse>(routeUrl(context), {
@@ -128,7 +142,7 @@ export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions)
   async function rotate(route: CrmInboundEmailRoute): Promise<CrmInboundEmailRouteIssuedResponse | null> {
     if (mutationPendingId.value) return null
     const context = currentContext()
-    refreshEpoch += 1
+    supersedeRefresh()
     mutationPendingId.value = route.id
     try {
       const response = await apiFetch<CrmInboundEmailRouteIssuedResponse>(routeUrl(context, `/${route.id}/rotate`), {
@@ -151,7 +165,7 @@ export function useCrmInboundEmailRoute(options: UseCrmInboundEmailRouteOptions)
   async function revoke(route: CrmInboundEmailRoute): Promise<CrmInboundEmailRouteRevokeResponse | null> {
     if (mutationPendingId.value) return null
     const context = currentContext()
-    refreshEpoch += 1
+    supersedeRefresh()
     mutationPendingId.value = route.id
     try {
       const response = await apiFetch<CrmInboundEmailRouteRevokeResponse>(routeUrl(context, `/${route.id}`), {

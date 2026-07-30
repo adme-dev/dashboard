@@ -185,6 +185,7 @@ describe('useCrmInboundEmailRoute', () => {
     await refresh
 
     expect(manager.routes.value).toEqual([replacementRoute])
+    expect(manager.pending.value).toBe(false)
   })
 
   it('surfaces a load failure and keeps the existing safe list available', async () => {
