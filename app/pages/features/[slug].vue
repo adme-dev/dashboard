@@ -132,6 +132,34 @@ interface Feature {
 }
 
 const features: Record<string, Feature> = {
+  'search-authority-ai-trust': {
+    title: 'Search Authority & AI Trust',
+    slug: 'search-authority-ai-trust',
+    icon: 'i-lucide-search-check',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50 dark:bg-cyan-500/10',
+    categoryIconColor: 'text-cyan-600 dark:text-cyan-400',
+    description: 'Build durable search authority from verified provider evidence, explainable opportunities, governed delivery, and honest measurement.',
+    details: [
+      {
+        title: 'Search Evidence',
+        content: 'Connect Google Search Console with least-privilege access, preserve provider completeness and provisional states, and compare clicks, impressions, click-through rate, and average position without inventing an AI visibility metric.'
+      },
+      {
+        title: 'Technical Trust',
+        content: 'Prioritise bounded URL Inspection for important and changing pages, retain Google’s indexed-version verdicts, and surface data health clearly so crawl and indexing evidence is never confused with a live page test.'
+      },
+      {
+        title: 'Governed Content Workflow',
+        content: 'Deterministic rules turn material evidence into explainable opportunities. Agency staff review, accept, dismiss, and explicitly create normal XeroFlow tasks; nothing is published or actioned autonomously.'
+      },
+      {
+        title: 'Transparent Measurement',
+        content: 'Agency and client views show measured search movement, evidence freshness, approved actions, and provider caveats. Private queries, scoring weights, credentials, and cross-client comparisons remain protected.'
+      }
+    ]
+  },
   // ─── Sales & CRM ──────────────────────────────────────────────
   'crm-contacts': {
     title: 'Contacts & Companies',

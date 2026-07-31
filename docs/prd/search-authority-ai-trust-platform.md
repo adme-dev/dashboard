@@ -1087,6 +1087,26 @@ documented field. Otherwise report:
 
 This PRD defines product sequence, not the file-by-file implementation plan.
 
+### Implementation status — 31 July 2026
+
+Phase 0–1 is implemented behind global and client entitlement gates:
+
+- site readiness, Search Console OAuth and verified-property mapping;
+- encrypted, purpose-bound credential reuse;
+- initial 90-day and trailing scheduled ingestion with provider completeness;
+- bounded indexed-version URL Inspection;
+- deterministic, explainable opportunity scoring and lifecycle;
+- explicit manual task creation and atomic task linking;
+- agency evidence workspace and privacy-reduced client portal summary.
+
+Still deferred and not represented as complete:
+
+- the Phase 2 technical crawler and browser-rendered trust monitor;
+- edge content publishing, custom hostnames, sitemap submission and rollback;
+- the GTM Menu Agent or any dealer-menu modification;
+- Google Business Profile performance ingestion or publishing;
+- autonomous content creation, task creation, website changes or publishing.
+
 ### Phase 0 — Pilot readiness
 
 - Confirm Knox client and site mapping.

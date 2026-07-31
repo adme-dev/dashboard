@@ -4,6 +4,7 @@ import { portalSocialNavItems } from '~/utils/portalSocialNavigation'
 
 const { user, stats, logout } = usePortalAuth()
 const route = useRoute()
+const config = useRuntimeConfig()
 const open = ref(false)
 
 const close = () => {
@@ -106,7 +107,14 @@ const mainNav = computed(() => ([
               label: 'Identity Reconciliation',
               to: '/portal/analytics/identity',
               onSelect: close
-            }
+            },
+            ...(config.public.searchAuthorityEnabled === true
+              ? [{
+                  label: 'Search Authority',
+                  to: '/portal/search-authority',
+                  onSelect: close
+                }]
+              : [])
           ]
         }
       ]
