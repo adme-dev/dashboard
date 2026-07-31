@@ -170,6 +170,10 @@ export default defineNuxtConfig({
     googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || '/api/agency/social/google/callback',
     ga4RedirectUri: process.env.GA4_REDIRECT_URI || '/api/agency/social/ga4/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
+    // Search Authority is a separate, fail-closed product entitlement. This
+    // private gate is the server authorization boundary; do not mirror it to
+    // public runtime config until an entitled UI route needs presentation gating.
+    searchAuthorityEnabled: process.env.SEARCH_AUTHORITY_ENABLED === 'true',
     // Manager (MCC) account id sent as login-customer-id when querying client
     // ad accounts accessed via a manager link. Without it the Google Ads API
     // returns 403 USER_PERMISSION_DENIED for child accounts.
