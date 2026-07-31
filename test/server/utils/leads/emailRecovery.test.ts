@@ -315,6 +315,91 @@ describe('email recovery processing', () => {
     )
   })
 
+  it('normalizes Postgres Date timestamps before validating a recovered envelope', async () => {
+    const harness = recoveryHarness()
+    const dateBackedClaim = {
+      ...claimedRow,
+      created_at: new Date(claimedRow.created_at),
+      staged_expires_at: new Date(claimedRow.staged_expires_at),
+      staged_uploaded_at: new Date(claimedRow.staged_uploaded_at)
+    }
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      dateBackedClaim,
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'accepted' })
+
+    expect(harness.acceptEnvelope.mock.calls[0]?.[2]).toMatchObject({
+      receivedAt: claimedRow.created_at
+    })
+  })
+
+  it('normalizes a Postgres Date expiry on a needs-review recovered envelope', async () => {
+    const harness = recoveryHarness()
+    const reviewRaw = new TextEncoder().encode([
+      'From: Carsales <relay@carsales.com.au>',
+      'Subject: New Carsales lead',
+      'Message-ID: <lead-42@example.test>',
+      '',
+      'Lead ID: provider-42',
+      'A customer submitted an enquiry.'
+    ].join('\r\n'))
+    const reviewClaim = {
+      ...claimedRow,
+      raw_content_hash: hashBytes(reviewRaw),
+      raw_size: reviewRaw.byteLength,
+      staged_expires_at: new Date(claimedRow.staged_expires_at)
+    }
+    harness.bucket.get.mockResolvedValueOnce({
+      arrayBuffer: async () => (
+        await encryptStagedEmail(
+          reviewRaw,
+          'relay@carsales.com.au',
+          SECRET,
+          manifestFor(reviewClaim)
+        )
+      ).buffer
+    })
+
+    await processEmailRecoveryClaim(
+      {} as never,
+      reviewClaim,
+      LEASE_TOKEN,
+      harness.dependencies
+    )
+
+    expect(harness.acceptEnvelope.mock.calls[0]?.[2]).toMatchObject({
+      extraction: null,
+      quarantine: {
+        expiresAt: claimedRow.staged_expires_at
+      }
+    })
+  })
+
+  it.each([
+    ['invalid timestamp string', 'not-a-timestamp'],
+    ['invalid Date object', new Date(Number.NaN)]
+  ])('terminalizes an envelope with an %s instead of leaving its lease stuck', async (_case, createdAt) => {
+    const harness = recoveryHarness()
+
+    await expect(processEmailRecoveryClaim(
+      {} as never,
+      { ...claimedRow, created_at: createdAt },
+      LEASE_TOKEN,
+      harness.dependencies
+    )).resolves.toEqual({ status: 'quarantined', reason: 'parse_failed' })
+
+    expect(harness.repository.quarantine).toHaveBeenCalledWith(
+      INGESTION_ID,
+      LEASE_TOKEN,
+      'parse_failed',
+      false
+    )
+    expect(harness.acceptEnvelope).not.toHaveBeenCalled()
+  })
+
   it('preserves an unlabelled direct-customer envelope sender through recovery', async () => {
     const directRaw = new TextEncoder().encode([
       'From: Alex Example <alex@example.test>',

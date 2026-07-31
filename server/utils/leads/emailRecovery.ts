@@ -47,10 +47,10 @@ export interface EmailRecoveryClaim {
     fieldKeys: string[]
   }
   staged_object_key: string | null
-  staged_expires_at: string | null
-  staged_uploaded_at: string | null
+  staged_expires_at: string | Date | null
+  staged_uploaded_at: string | Date | null
   attempt_count: number
-  created_at: string
+  created_at: string | Date
   endpoint_enabled: boolean
   endpoint_retired_at: string | null
   address_token: string
@@ -200,6 +200,11 @@ function markRecoveryStage(
   stage: EmailRecoveryStage
 ): void {
   dependencies.onStage?.(stage)
+}
+
+function normalizeDatabaseTimestamp(value: string | Date): string {
+  if (!(value instanceof Date)) return value
+  return Number.isNaN(value.getTime()) ? '' : value.toISOString()
 }
 
 /**
@@ -506,7 +511,7 @@ export async function processEmailRecoveryClaim(
     html: parsed.html,
     messageId: parsed.messageId,
     attachments: parsed.attachments,
-    receivedAt: claim.created_at,
+    receivedAt: normalizeDatabaseTimestamp(claim.created_at),
     rawSize: parsed.rawSize
   }
   let extraction: ReturnType<typeof parseEmailLead>
@@ -536,32 +541,37 @@ export async function processEmailRecoveryClaim(
   }
   const canonicalExtraction = extraction?.needsReview ? null : extraction
   markRecoveryStage(dependencies, 'envelope')
-  const envelope = EmailIngestEnvelopeSchema.parse({
-    schemaVersion: 1,
-    correlationId: claim.correlation_id,
-    ingestionId: claim.id,
-    transport: claim.transport,
-    recipientToken: claim.address_token,
-    recipientAddressHash: sha256Hex(claim.email_address),
-    envelopeSenderDomain: claim.sender_domain,
-    headerFromDomain,
-    messageIdHash: claim.message_id_hash,
-    externalIdHash: claim.external_id_hash,
-    rawContentHashVersion: claim.raw_content_hash_version,
-    rawContentHash: claim.raw_content_hash,
-    receivedAt: claim.created_at,
-    rawSize: parsed.rawSize,
-    attachmentCount: parsed.attachments.length,
-    extraction: canonicalExtraction,
-    safeEvidence: claim.safe_evidence,
-    quarantine: canonicalExtraction
-      ? undefined
-      : {
-          reason: 'Extraction requires review',
-          encryptedObjectKey: claim.staged_object_key,
-          expiresAt: claim.staged_expires_at
-        }
-  })
+  let envelope: EmailIngestEnvelope
+  try {
+    envelope = EmailIngestEnvelopeSchema.parse({
+      schemaVersion: 1,
+      correlationId: claim.correlation_id,
+      ingestionId: claim.id,
+      transport: claim.transport,
+      recipientToken: claim.address_token,
+      recipientAddressHash: sha256Hex(claim.email_address),
+      envelopeSenderDomain: claim.sender_domain,
+      headerFromDomain,
+      messageIdHash: claim.message_id_hash,
+      externalIdHash: claim.external_id_hash,
+      rawContentHashVersion: claim.raw_content_hash_version,
+      rawContentHash: claim.raw_content_hash,
+      receivedAt: normalizeDatabaseTimestamp(claim.created_at),
+      rawSize: parsed.rawSize,
+      attachmentCount: parsed.attachments.length,
+      extraction: canonicalExtraction,
+      safeEvidence: claim.safe_evidence,
+      quarantine: canonicalExtraction
+        ? undefined
+        : {
+            reason: 'Extraction requires review',
+            encryptedObjectKey: claim.staged_object_key,
+            expiresAt: normalizeDatabaseTimestamp(claim.staged_expires_at)
+          }
+    })
+  } catch {
+    return quarantine(claim, leaseToken, dependencies, 'parse_failed', false)
+  }
 
   let result: Awaited<ReturnType<AcceptEnvelope>>
   try {
@@ -1125,7 +1135,7 @@ export async function recoverEmailIngestions(
           repository,
           acceptEnvelope,
           nowMs,
-          onStage: stage => {
+          onStage: (stage) => {
             failureStage = stage
           }
         })
