@@ -81,6 +81,7 @@ jobs:
         timeout-minutes: 20
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
+          SEARCH_AUTHORITY_ENABLED: 'true'
 
       - name: Verify Pages deployment target
         run: pnpm run deploy:check
