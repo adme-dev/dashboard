@@ -29,7 +29,8 @@ The pilot deliberately avoids Dealer Studio or dealership CMS integration.
 XeroFlow will own the content workflow, publishing runtime, page templates,
 structured metadata, sitemap, monitoring and reporting. The existing Google Tag
 Manager container will only bootstrap a versioned XeroFlow Menu Agent that adds
-a link to the published content hub after the existing Next.js site hydrates.
+a link to the published content hub using a lifecycle that remains safe across
+the existing Next.js hydration and rerendering behavior.
 
 The first release is advisory and approval-gated. Deterministic rules identify
 opportunities and health problems. AI may explain evidence, transcribe or
@@ -51,9 +52,10 @@ change: create a CNAME record for `learn`. The existing `www` site remains on
 Vercel and does not move behind another reverse proxy.
 
 The existing GTM container loads a small XeroFlow Menu Agent. The agent inserts
-an accessible `Buying Guides` link into both desktop and mobile navigation after
-React hydration. It never creates content pages, changes canonical metadata or
-rewrites vehicle data.
+an accessible `Buying Guides` link into both desktop and mobile navigation
+without assuming a private Next.js hydration event. It is idempotent across
+initial load, hydration and later rerenders. It never creates content pages,
+changes canonical metadata or rewrites vehicle data.
 
 ### 2.2 Why the pilot will not publish under `www/...`
 
@@ -226,6 +228,8 @@ systems.
 - Moving the existing `www` site behind Cloudflare.
 - Publishing under a `www/...` path without explicit origin cooperation.
 - Automatically changing website vehicle listings.
+- Repairing Dealer Studio templates, main-site vehicle schema, canonical tags or
+  main-site sitemaps without explicit origin access.
 - Automatically changing Google Ads campaigns, budgets or asset groups.
 - Automatically creating tasks from every detected opportunity.
 - Autonomous content or GBP publishing.
@@ -482,12 +486,36 @@ Suggested logical tables:
 - `gsc_daily_query_page`;
 - `gsc_daily_page`;
 - `gsc_daily_property`;
+- `gsc_url_inspections`;
 - `gsc_sync_status`.
 
 Exact physical schemas belong in the implementation plan. Raw access tokens
 must never be stored in these tables.
 
-### 11.4 Search and AI reporting honesty
+### 11.4 Bounded URL Inspection
+
+Search Analytics measures visibility but does not prove that a priority URL is
+currently indexed. For a small, tenant-configured set of important pages,
+XeroFlow uses the Search Console URL Inspection API with the same read-only
+scope.
+
+The initial inspection set includes:
+
+- newly published XeroFlow guides;
+- the homepage and priority inventory/search pages;
+- a rotating sample of vehicle detail pages;
+- pages with material crawl, canonical or visibility findings.
+
+The result may store Google's indexed verdict, coverage state, robots state,
+indexing state, fetch state, last crawl time, selected and declared canonicals,
+and known sitemap references. It represents the version in Google's index; it
+is not a live indexability test and must be labelled accordingly.
+
+Inspections are scheduled and deduplicated, not run for every URL on every
+sync. The scheduler respects provider per-site and per-project quotas,
+prioritises new or changed pages, and backs off on quota errors.
+
+### 11.5 Search and AI reporting honesty
 
 Google may expose new search-appearance filters or generative-AI reporting over
 time. XeroFlow may ingest a provider field only when the API returns it with a
@@ -577,7 +605,8 @@ The first crawler is bounded, tenant-configured and automotive-aware. It checks:
 - visible-content parity for price, mileage, availability and vehicle identity;
 - broken internal links on monitored pages;
 - image URL accessibility, dimensions, alt text and naming;
-- image sitemap coverage where configured;
+- image sitemap coverage where configured, while distinguishing the XeroFlow
+  content-host sitemap from an origin-controlled main-site sitemap;
 - mobile PageSpeed/Lighthouse results;
 - Core Web Vitals from CrUX APIs when sufficient field data exists;
 - content-hostname, certificate, menu and publication health.
@@ -639,6 +668,23 @@ Escalate to Cloudflare Browser Rendering only when:
 Browser checks must have separate quotas, concurrency limits and cache policy.
 The finding must identify whether its evidence came from the raw response or
 the rendered DOM.
+
+### 13.6 Remediation ownership
+
+Every finding is classified by the system that can resolve it:
+
+- `xeroflow_publisher` — XeroFlow can correct and republish after approval;
+- `xeroflow_configuration` — an authorized XeroFlow operator can correct it;
+- `gtm_menu_agent` — XeroFlow can release or disable its own script;
+- `dealer_origin` — Dealer Studio, the website owner or another origin operator
+  must make the change;
+- `external_provider` — Google, DNS or another provider controls the condition.
+
+For `dealer_origin` findings, XeroFlow supplies evidence, recommended
+remediation and a task/export workflow. It does not inject a replacement
+canonical, schema block, image sitemap or vehicle value through GTM and does
+not mark the issue resolved until a subsequent check verifies the origin
+change.
 
 ## 14. Content workflow and governance
 
@@ -777,7 +823,8 @@ The tag must:
 
 The Menu Agent:
 
-- waits until the existing Next.js page has hydrated;
+- starts after the configured page-load condition and rechecks idempotently
+  through hydration and supported rerenders;
 - resolves an approved hostname configuration;
 - finds configured desktop and mobile navigation anchors;
 - inserts one accessible `<a href>` link using a normal crawlable URL;
@@ -1047,6 +1094,8 @@ This PRD defines product sequence, not the file-by-file implementation plan.
 - Confirm GA4 and Google Ads mappings.
 - Confirm GTM publish access.
 - Confirm DNS administrator and ability to create `learn` CNAME/TXT records.
+- Check existing CAA records and certificate-validation compatibility before
+  custom-hostname activation.
 - Confirm GBP API approval/quota status.
 - Record live baseline and current known inconsistencies.
 - Create tenant feature flags and kill switches.
@@ -1055,6 +1104,7 @@ This PRD defines product sequence, not the file-by-file implementation plan.
 
 - Add least-privilege GSC connection and property selection.
 - Build 90-day backfill and scheduled refresh.
+- Add bounded URL Inspection for priority, newly published and changed pages.
 - Add query/page warehouse and data-health UI.
 - Implement deterministic opportunity candidates.
 - Add review, dedupe, lifecycle and manual `Create task`.
@@ -1105,6 +1155,8 @@ This PRD defines product sequence, not the file-by-file implementation plan.
 - Daily refresh is idempotent.
 - The UI displays data-through and provisional dates.
 - Revoked access is not shown as zero traffic.
+- Priority URL inspections expose the indexed-version timestamp and verdict
+  without presenting them as a live indexability test.
 
 ### 24.2 Opportunities
 
@@ -1123,6 +1175,8 @@ This PRD defines product sequence, not the file-by-file implementation plan.
 - It reports insufficient field data honestly.
 - Repeated unchanged failures update one finding.
 - The current Knox schema/value mismatch class is detectable.
+- Findings identify whether XeroFlow, the dealer origin or an external provider
+  owns the remediation.
 
 ### 24.4 Publishing
 
@@ -1186,7 +1240,8 @@ market conditions.
 - Search Console property access.
 - Knox/ADME authorization for GA4, Ads and site reporting.
 - GTM container publish access.
-- DNS access for the custom hostname and validation records.
+- DNS access for the custom hostname and validation records, including any CAA
+  compatibility change required by the selected certificate authority.
 - Cloudflare for SaaS configuration under a XeroFlow-controlled zone.
 - GBP API approval and non-zero quota before GBP activation.
 - Sales Manager availability and permission to use supplied knowledge.
@@ -1242,6 +1297,8 @@ on 2026-07-31:
 - [Google crawlable-link guidance](https://developers.google.com/search/docs/crawling-indexing/links-crawlable)
 - [Google sitemap guidance](https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview)
 - [Google Search Console Search Analytics API](https://developers.google.com/webmaster-tools/v1/searchanalytics/query)
+- [Google Search Console URL Inspection API](https://developers.google.com/webmaster-tools/v1/urlInspection.index/inspect)
+- [Google Search Console API usage limits](https://developers.google.com/webmaster-tools/limits)
 - [Google Business Profile Performance API](https://developers.google.com/my-business/reference/performance/rest)
 - [Google structured-data guidelines](https://developers.google.com/search/docs/appearance/structured-data/sd-policies)
 - [Google generative-AI search guidance](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide)
