@@ -18,7 +18,9 @@ export default eventHandler(async (event) => {
   }
 
   // Independent, user-bound attempts support concurrent agency login flows.
-  const { attemptId, state } = await createGoogleOAuthAttempt(user.id)
+  const { attemptId, state } = await createGoogleOAuthAttempt(user.id, {
+    purpose: 'google_ads'
+  })
 
   // Always derive the redirect URI from the incoming request host so it
   // matches the current environment (localhost, preview, production). If the
