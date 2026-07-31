@@ -53,10 +53,12 @@ export default defineEventHandler(async (event) => {
       errorClass: 'email_health_scan_failed' as const
     }
   }
-  return {
+  const response = {
     ok: recovery.ok && health.ok,
     recovery,
     health,
     ...result
   }
+  if (!response.ok) setResponseStatus(event, 503)
+  return response
 })

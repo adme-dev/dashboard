@@ -179,6 +179,24 @@ export interface ProcessEmailRecoveryDependencies {
     actorId: string
     actorType: 'team_member'
   }
+  onStage?: (stage: EmailRecoveryStage) => void
+}
+
+type EmailRecoveryStage
+  = | 'policy'
+    | 'r2_read'
+    | 'decode'
+    | 'ai'
+    | 'envelope'
+    | 'canonical'
+    | 'transition'
+    | 'r2_delete'
+
+function markRecoveryStage(
+  dependencies: ProcessEmailRecoveryDependencies,
+  stage: EmailRecoveryStage
+): void {
+  dependencies.onStage?.(stage)
 }
 
 /**
@@ -358,6 +376,7 @@ async function quarantine(
   reason: EmailRecoveryReason,
   clearObjectKey: boolean
 ) {
+  markRecoveryStage(dependencies, 'transition')
   const auditEvent: EmailRecoveryAuditEvent = {
     ingestionId: claim.id,
     endpointId: claim.endpoint_id,
@@ -388,6 +407,7 @@ export async function processEmailRecoveryClaim(
   | { status: 'accepted' | 'duplicate' | 'rescheduled' }
   | { status: 'quarantined', reason: EmailRecoveryReason }
 > {
+  markRecoveryStage(dependencies, 'policy')
   if (!claim.endpoint_enabled || claim.endpoint_retired_at) {
     return quarantine(claim, leaseToken, dependencies, 'endpoint_unavailable', false)
   }
@@ -407,6 +427,7 @@ export async function processEmailRecoveryClaim(
   if (!claim.staged_object_key) {
     return quarantine(claim, leaseToken, dependencies, 'missing_evidence', true)
   }
+  markRecoveryStage(dependencies, 'r2_read')
   const object = await dependencies.bucket.get(claim.staged_object_key)
   if (!object && !claim.staged_uploaded_at) {
     const auditEvent: EmailRecoveryAuditEvent = {
@@ -432,6 +453,7 @@ export async function processEmailRecoveryClaim(
   let originalEnvelopeSender: string | null
   let parsed: Awaited<ReturnType<typeof parseMimeContent>>
   try {
+    markRecoveryStage(dependencies, 'decode')
     const expectedManifest = EmailStagedManifestSchema.parse({
       schemaVersion: 1,
       ingestionId: claim.id,
@@ -495,6 +517,7 @@ export async function processEmailRecoveryClaim(
     && dependencies.ai
     && needsAiExtractionFallback(extraction)
   ) {
+    markRecoveryStage(dependencies, 'ai')
     extraction = await extractEmailLeadWithAi(
       { email: normalized, canonicalExternalIdHash: claim.external_id_hash },
       extraction,
@@ -509,6 +532,7 @@ export async function processEmailRecoveryClaim(
     return quarantine(claim, leaseToken, dependencies, 'identity_mismatch', false)
   }
   const canonicalExtraction = extraction?.needsReview ? null : extraction
+  markRecoveryStage(dependencies, 'envelope')
   const envelope = EmailIngestEnvelopeSchema.parse({
     schemaVersion: 1,
     correlationId: claim.correlation_id,
@@ -538,6 +562,7 @@ export async function processEmailRecoveryClaim(
 
   let result: Awaited<ReturnType<AcceptEnvelope>>
   try {
+    markRecoveryStage(dependencies, 'canonical')
     result = await dependencies.acceptEnvelope(
       event,
       claim.id,
@@ -561,6 +586,7 @@ export async function processEmailRecoveryClaim(
       action: dependencies.auditActor ? 'manual_replay_completed' : 'recovery_rescheduled',
       outcome: 'rescheduled', reason: 'canonical_transient'
     }
+    markRecoveryStage(dependencies, 'transition')
     const updated = dependencies.repository.commitTransition
       ? await dependencies.repository.commitTransition({
           kind: 'reschedule', ingestionId: claim.id, leaseToken,
@@ -575,6 +601,7 @@ export async function processEmailRecoveryClaim(
   }
 
   if (result.status === 'accepted' || result.status === 'duplicate') {
+    markRecoveryStage(dependencies, 'r2_delete')
     await dependencies.bucket.delete(claim.staged_object_key)
     const auditEvent: EmailRecoveryAuditEvent = {
       ingestionId: claim.id, endpointId: claim.endpoint_id, clientId: claim.client_id,
@@ -583,6 +610,7 @@ export async function processEmailRecoveryClaim(
       action: 'terminal_cleanup',
       outcome: 'deleted'
     }
+    markRecoveryStage(dependencies, 'transition')
     const cleared = dependencies.repository.commitTransition
       ? await dependencies.repository.commitTransition({
           kind: 'clear_terminal', ingestionId: claim.id, leaseToken, audit: auditEvent
@@ -593,6 +621,7 @@ export async function processEmailRecoveryClaim(
     return { status: result.status }
   }
   if (result.status === 'in_progress') {
+    markRecoveryStage(dependencies, 'transition')
     const outcome = await dependencies.repository.releaseCanonicalWindow({
       ingestionId: claim.id,
       leaseToken,
@@ -1084,6 +1113,7 @@ export async function recoverEmailIngestions(
         status: 'claimed',
         attemptCount: claim.attempt_count
       })
+      let failureStage: EmailRecoveryStage = 'policy'
       try {
         const outcome = await processEmailRecoveryClaim(event, claim, leaseToken, {
           bucket: runtime.bucket,
@@ -1091,7 +1121,10 @@ export async function recoverEmailIngestions(
           ai: runtime.ai,
           repository,
           acceptEnvelope,
-          nowMs
+          nowMs,
+          onStage: stage => {
+            failureStage = stage
+          }
         })
         if (outcome.status === 'accepted' || outcome.status === 'duplicate') result.recovered++
         else if (outcome.status === 'rescheduled') result.rescheduled++
@@ -1116,7 +1149,7 @@ export async function recoverEmailIngestions(
           clientId: claim.client_id,
           provider: claim.provider,
           status: 'failed',
-          errorClass: 'unexpected',
+          errorClass: `recovery_${failureStage}_failed`,
           attemptCount: claim.attempt_count
         })
       }

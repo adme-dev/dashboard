@@ -36,4 +36,35 @@ describe('leads cron email recovery fan-out', () => {
     expect(log.mock.calls.flat().join(' ')).not.toContain('must not be logged')
     expect(error).toHaveBeenCalled()
   })
+
+  it('treats a 200 recovery payload with ok false as a failed cron run', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname
+      return Response.json(path.endsWith('/recover-email-ingestions')
+        ? { ok: false, recovery: { failed: 1 } }
+        : { ok: true })
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      await worker.scheduled(
+        { cron: '*/5 * * * *' } as ScheduledController,
+        {
+          APP_BASE_URL: 'https://app.example.test',
+          INTERNAL_CRON_TOKEN: 'cron-secret'
+        },
+        {} as ExecutionContext
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    expect(error).toHaveBeenCalledWith('cron.run.failed', {
+      cron: '*/5 * * * *',
+      path: '/api/leads/_internal/recover-email-ingestions',
+      status: 200
+    })
+    expect(log).toHaveBeenCalledTimes(1)
+  })
 })

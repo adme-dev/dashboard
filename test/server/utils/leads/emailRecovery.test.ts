@@ -680,6 +680,7 @@ describe('email recovery processing', () => {
   it('rolls back the transient recovery state when its audit insert fails', async () => {
     const harness = recoveryHarness()
     harness.acceptEnvelope.mockRejectedValueOnce(new Error('canonical unavailable'))
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     let persistedStatus = 'received'
     const before = persistedStatus
     mocks.transaction.mockImplementationOnce(async (callback) => {
@@ -720,6 +721,9 @@ describe('email recovery processing', () => {
       }
     )).resolves.toMatchObject({ failed: 1 })
     expect(persistedStatus).toBe('received')
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(
+      '"errorClass":"recovery_transition_failed"'
+    ))
   })
 
   it('uses bounded exponential backoff after a transient canonical failure', async () => {

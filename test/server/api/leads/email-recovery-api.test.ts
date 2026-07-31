@@ -3,9 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const globals = globalThis as typeof globalThis & {
   defineEventHandler: <T>(handler: T) => T
   getHeader: (event: { authorization?: string }, name: string) => string | undefined
+  setResponseStatus: (
+    event: { responseStatus?: number },
+    status: number
+  ) => void
 }
 globals.defineEventHandler = handler => handler
 globals.getHeader = event => event.authorization
+globals.setResponseStatus = (event, status) => {
+  event.responseStatus = status
+}
 
 const mocks = vi.hoisted(() => ({
   recover: vi.fn(),
@@ -118,10 +125,12 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
   it('reports a whole health-scan failure without undoing successful recovery', async () => {
     mocks.health.mockRejectedValueOnce(new Error('alert query unavailable'))
 
-    await expect(handler({
+    const event = {
       authorization: 'Bearer fixed-length-internal-cron-token',
       context: {}
-    } as never)).resolves.toEqual({
+    }
+
+    await expect(handler(event as never)).resolves.toEqual({
       ok: false,
       recovery: {
         ok: true,
@@ -146,5 +155,26 @@ describe('POST /api/leads/_internal/recover-email-ingestions', () => {
       cleaned: 1,
       failed: 0
     })
+    expect(event.responseStatus).toBe(503)
+  })
+
+  it('returns a non-success status when any claimed recovery fails', async () => {
+    mocks.recover.mockResolvedValueOnce({
+      recovered: 0,
+      rescheduled: 0,
+      quarantined: 0,
+      cleaned: 0,
+      failed: 1
+    })
+    const event = {
+      authorization: 'Bearer fixed-length-internal-cron-token',
+      context: {}
+    }
+
+    await expect(handler(event as never)).resolves.toMatchObject({
+      ok: false,
+      recovery: { ok: false, failed: 1 }
+    })
+    expect(event.responseStatus).toBe(503)
   })
 })
