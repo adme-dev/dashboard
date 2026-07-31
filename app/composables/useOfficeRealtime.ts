@@ -1,20 +1,32 @@
 import type { Ref } from 'vue'
-import type { OfficeMediaSession } from '~~/app/types/office'
+import type { OfficeMediaSession, OfficeRemoteTrackCapability } from '~~/app/types/office'
 
 export type OfficeRealtimeState = 'idle' | 'connecting' | 'connected' | 'failed' | 'closed'
 
-type RealtimeTrackPayload = {
-  location: 'local'
-  mid?: string
-  trackName?: string
-  kind?: 'audio' | 'video'
-}
+type RealtimeTrackPayload
+  = | {
+    location: 'local'
+    mid?: string
+    trackName?: string
+    kind?: 'audio' | 'video'
+  }
+  | {
+    location: 'remote'
+    sessionId: string
+    trackName: string
+    kind: 'audio' | 'video'
+    capability: string
+  }
 
 type RealtimeTracksResponse = {
   sessionDescription?: RTCSessionDescriptionInit
   requiresImmediateRenegotiation?: boolean
   tracks?: Array<{
     mid?: string
+    location?: 'local' | 'remote'
+    sessionId?: string
+    trackName?: string
+    kind?: 'audio' | 'video'
     status?: 'active' | 'inactive' | 'waiting'
     errorDescription?: string
   }>
@@ -33,6 +45,11 @@ type UseOfficeRealtimeOptions = {
   zoneId: Ref<string>
   mediaSession: Ref<OfficeMediaSession | null | undefined>
   occupantCount?: Ref<number>
+  remoteTracks?: Ref<OfficeRemoteTrackCapability[]>
+  announcePublishedTracks?: (
+    sessionId: string,
+    tracks: Array<{ trackName: string, kind: 'audio' | 'video' }>
+  ) => void
   getStreams: () => MediaStream[]
 }
 
@@ -67,7 +84,9 @@ function waitForIceGatheringComplete(pc: RTCPeerConnection) {
   })
 }
 
-function transceiverTrackPayloads(pc: RTCPeerConnection): RealtimeTrackPayload[] {
+function transceiverTrackPayloads(
+  pc: RTCPeerConnection
+): Array<Extract<RealtimeTrackPayload, { location: 'local' }>> {
   return pc.getTransceivers()
     .filter(transceiver => transceiver.sender.track)
     .map((transceiver, index) => {
@@ -96,7 +115,12 @@ function removeInactiveRemoteStreams(streams: MediaStream[]) {
 export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
   const apiFetch = $fetch as <T = unknown>(
     request: string,
-    options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+    options?: {
+      method?: string
+      body?: unknown
+      query?: Record<string, unknown>
+      headers?: Record<string, string>
+    }
   ) => Promise<T>
   const state = ref<OfficeRealtimeState>('idle')
   const error = ref<string | null>(null)
@@ -106,33 +130,44 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
   const waitingTrackCount = ref(0)
 
   let pc: RTCPeerConnection | null = null
+  let activeMediaSession: OfficeMediaSession | null = null
+  let activeZoneId = ''
   let publishRun = 0
-  let lastOccupantRefresh = 0
-  let publishedTrackMids: string[] = []
+  let publishInProgress = false
+  let sessionTrackMids: string[] = []
+  const pulledTrackKeys = new Set<string>()
+  let remotePullQueue = Promise.resolve()
   let sessionStateTimer: number | null = null
 
-  function currentPublishedTrackMids(currentPc: RTCPeerConnection | null) {
-    const mids = currentPc
-      ? currentPc.getTransceivers()
-          .map(transceiver => transceiver.mid)
-          .filter((mid): mid is string => Boolean(mid))
-      : []
-    return mids.length ? mids : publishedTrackMids
+  function authorizationHeaders(session: OfficeMediaSession) {
+    return { Authorization: `Bearer ${session.grant}` }
   }
 
-  async function closePublishedTracks(force = true) {
-    const session = options.mediaSession.value
-    const officeId = options.officeId.value
-    const mids = currentPublishedTrackMids(pc)
-    if (!session || !officeId || mids.length === 0) return
+  function remoteTrackKey(track: Pick<OfficeRemoteTrackCapability, 'publisherSessionId' | 'trackName' | 'kind'>) {
+    return `${track.publisherSessionId}:${track.kind}:${track.trackName}`
+  }
 
-    publishedTrackMids = []
+  async function closeSessionTracks(force = true) {
+    const currentSession = options.mediaSession.value
+    const session = currentSession?.sessionId === activeMediaSession?.sessionId
+      ? currentSession
+      : activeMediaSession ?? currentSession
+    const officeId = options.officeId.value
+    const zoneId = activeZoneId || options.zoneId.value
+    const mids = [...sessionTrackMids]
+    if (!session || !officeId) return
+
+    sessionTrackMids = []
+    pulledTrackKeys.clear()
+    options.announcePublishedTracks?.(session.sessionId, [])
+    if (mids.length === 0) return
     await apiFetch(
       `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}/tracks/close`,
       {
         method: 'PUT',
+        headers: authorizationHeaders(session),
         body: {
-          zone_id: options.zoneId.value,
+          zone_id: zoneId,
           tracks: mids.map(mid => ({ mid })),
           force
         }
@@ -151,7 +186,8 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
     activeSessionId.value = null
     activeTrackCount.value = 0
     waitingTrackCount.value = 0
-    publishedTrackMids = []
+    sessionTrackMids = []
+    pulledTrackKeys.clear()
     if (state.value !== 'failed') state.value = nextState
   }
 
@@ -164,6 +200,7 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
       const response = await apiFetch<RealtimeSessionStateResponse>(
         `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}`,
         {
+          headers: authorizationHeaders(session),
           query: {
             zone_id: options.zoneId.value
           }
@@ -191,115 +228,184 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
     sessionStateTimer = null
   }
 
+  function configurePeerConnection(nextPc: RTCPeerConnection, run: number) {
+    nextPc.ontrack = (event) => {
+      const streams = event.streams.length ? event.streams : [new MediaStream([event.track])]
+      for (const stream of streams) {
+        remoteStreams.value = upsertRemoteStream(remoteStreams.value, stream)
+        for (const track of stream.getTracks()) {
+          track.addEventListener('ended', () => {
+            remoteStreams.value = removeInactiveRemoteStreams(remoteStreams.value)
+          })
+        }
+      }
+    }
+    nextPc.onconnectionstatechange = () => {
+      if (run !== publishRun) return
+      if (nextPc.connectionState === 'connected') state.value = 'connected'
+      if (nextPc.connectionState === 'failed' || nextPc.connectionState === 'disconnected') {
+        state.value = 'failed'
+        error.value = 'Realtime media connection dropped.'
+      }
+    }
+  }
+
+  async function applyNegotiation(
+    response: RealtimeTracksResponse,
+    nextPc: RTCPeerConnection,
+    session: OfficeMediaSession,
+    officeId: string,
+    zoneId: string
+  ) {
+    if (!response.sessionDescription) return
+    await nextPc.setRemoteDescription(response.sessionDescription)
+    if (response.sessionDescription.type !== 'offer') return
+
+    const answer = await nextPc.createAnswer()
+    await nextPc.setLocalDescription(answer)
+    await waitForIceGatheringComplete(nextPc)
+    const answerDescription = nextPc.localDescription
+    if (!answerDescription) throw new Error('Could not create Realtime answer.')
+
+    await apiFetch(
+      `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}/renegotiate`,
+      {
+        method: 'PUT',
+        headers: authorizationHeaders(session),
+        body: {
+          zone_id: zoneId,
+          sessionDescription: {
+            type: answerDescription.type,
+            sdp: answerDescription.sdp
+          }
+        }
+      }
+    )
+  }
+
+  async function pullRemoteTracks(
+    nextPc: RTCPeerConnection,
+    run: number,
+    session: OfficeMediaSession,
+    officeId: string,
+    zoneId: string
+  ) {
+    const now = Date.now()
+    const remoteTracks = (options.remoteTracks?.value ?? [])
+      .filter(track => track.expiresAt > now && !pulledTrackKeys.has(remoteTrackKey(track)))
+    if (!remoteTracks.length) return
+
+    const response = await apiFetch<RealtimeTracksResponse>(
+      `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}/tracks`,
+      {
+        method: 'POST',
+        headers: authorizationHeaders(session),
+        body: {
+          zone_id: zoneId,
+          tracks: remoteTracks.map(track => ({
+            location: 'remote' as const,
+            sessionId: track.publisherSessionId,
+            trackName: track.trackName,
+            kind: track.kind,
+            capability: track.capability
+          }))
+        }
+      }
+    )
+    if (run !== publishRun || pc !== nextPc) return
+
+    await applyNegotiation(response, nextPc, session, officeId, zoneId)
+    for (const track of remoteTracks) pulledTrackKeys.add(remoteTrackKey(track))
+    sessionTrackMids.push(
+      ...(response.tracks ?? [])
+        .map(track => track.mid)
+        .filter((mid): mid is string => Boolean(mid) && !sessionTrackMids.includes(mid))
+    )
+  }
+
   async function publish() {
     const run = ++publishRun
     const session = options.mediaSession.value
     const officeId = options.officeId.value
     const zoneId = options.zoneId.value
     const tracks = liveMediaTracks(options.getStreams())
+    const hasRemoteTracks = Boolean(options.remoteTracks?.value.some(track => track.expiresAt > Date.now()))
 
-    await closePublishedTracks(true).catch(() => {})
-    closePeerConnection(tracks.length ? 'connecting' : 'idle')
-    error.value = null
-
-    if (!session || !officeId || !zoneId || tracks.length === 0) {
-      state.value = session ? 'idle' : 'closed'
-      return
-    }
-
+    publishInProgress = true
     try {
+      await closeSessionTracks(true).catch(() => {})
+      closePeerConnection(tracks.length || hasRemoteTracks ? 'connecting' : 'idle')
+      error.value = null
+
+      if (!session || !officeId || !zoneId || (!tracks.length && !hasRemoteTracks)) {
+        activeMediaSession = session ?? null
+        activeZoneId = zoneId
+        state.value = session ? 'idle' : 'closed'
+        return
+      }
+
+      activeMediaSession = session
+      activeZoneId = zoneId
       const nextPc = new RTCPeerConnection()
       pc = nextPc
       activeSessionId.value = session.sessionId
       state.value = 'connecting'
+      configurePeerConnection(nextPc, run)
 
-      nextPc.ontrack = (event) => {
-        const streams = event.streams.length ? event.streams : [new MediaStream([event.track])]
-        for (const stream of streams) {
-          remoteStreams.value = upsertRemoteStream(remoteStreams.value, stream)
-          for (const track of stream.getTracks()) {
-            track.addEventListener('ended', () => {
-              remoteStreams.value = removeInactiveRemoteStreams(remoteStreams.value)
-            })
-          }
+      if (tracks.length) {
+        for (const { stream, track } of tracks) {
+          nextPc.addTrack(track, stream)
         }
-      }
-      nextPc.onconnectionstatechange = () => {
-        if (run !== publishRun) return
-        if (nextPc.connectionState === 'connected') state.value = 'connected'
-        if (nextPc.connectionState === 'failed' || nextPc.connectionState === 'disconnected') {
-          state.value = 'failed'
-          error.value = 'Realtime media connection dropped.'
-        }
-      }
-
-      for (const { stream, track } of tracks) {
-        nextPc.addTrack(track, stream)
-      }
-
-      const offer = await nextPc.createOffer()
-      await nextPc.setLocalDescription(offer)
-      await waitForIceGatheringComplete(nextPc)
-
-      const localDescription = nextPc.localDescription
-      if (!localDescription) throw new Error('Could not create Realtime offer.')
-
-      const response = await apiFetch<RealtimeTracksResponse>(
-        `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}/tracks`,
-        {
-          method: 'POST',
-          body: {
-            zone_id: zoneId,
-            sessionDescription: {
-              type: localDescription.type,
-              sdp: localDescription.sdp
-            },
-            tracks: transceiverTrackPayloads(nextPc),
-            autoDiscover: true
-          }
-        }
-      )
-
-      if (run !== publishRun) {
-        nextPc.close()
-        return
-      }
-
-      publishedTrackMids = (response.tracks ?? [])
-        .map(track => track.mid)
-        .filter((mid): mid is string => Boolean(mid))
-      if (!publishedTrackMids.length) {
-        publishedTrackMids = transceiverTrackPayloads(nextPc)
-          .map(track => track.mid)
-          .filter((mid): mid is string => Boolean(mid))
-      }
-
-      if (response.sessionDescription) {
-        await nextPc.setRemoteDescription(response.sessionDescription)
-        if (response.sessionDescription.type === 'offer') {
-          const answer = await nextPc.createAnswer()
-          await nextPc.setLocalDescription(answer)
-          await waitForIceGatheringComplete(nextPc)
-
-          const answerDescription = nextPc.localDescription
-          if (!answerDescription) throw new Error('Could not create Realtime answer.')
-
-          await apiFetch(
-            `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}/renegotiate`,
-            {
-              method: 'PUT',
-              body: {
-                zone_id: zoneId,
-                sessionDescription: {
-                  type: answerDescription.type,
-                  sdp: answerDescription.sdp
-                }
-              }
+        const offer = await nextPc.createOffer()
+        await nextPc.setLocalDescription(offer)
+        await waitForIceGatheringComplete(nextPc)
+        const localDescription = nextPc.localDescription
+        if (!localDescription) throw new Error('Could not create Realtime offer.')
+        const localPayloads = transceiverTrackPayloads(nextPc)
+        const response = await apiFetch<RealtimeTracksResponse>(
+          `/api/office/${encodeURIComponent(officeId)}/realtime/${encodeURIComponent(session.sessionId)}/tracks`,
+          {
+            method: 'POST',
+            headers: authorizationHeaders(session),
+            body: {
+              zone_id: zoneId,
+              sessionDescription: {
+                type: localDescription.type,
+                sdp: localDescription.sdp
+              },
+              tracks: localPayloads,
+              autoDiscover: true
             }
-          )
+          }
+        )
+        if (run !== publishRun) {
+          nextPc.close()
+          return
         }
+
+        const responseTracks = response.tracks ?? []
+        sessionTrackMids.push(
+          ...responseTracks
+            .map(track => track.mid)
+            .filter((mid): mid is string => Boolean(mid))
+        )
+        if (!sessionTrackMids.length) {
+          sessionTrackMids = localPayloads
+            .map(track => track.mid)
+            .filter((mid): mid is string => Boolean(mid))
+        }
+        const announced = responseTracks.map((track, index) => ({
+          trackName: track.trackName ?? localPayloads[index]?.trackName,
+          kind: track.kind ?? localPayloads[index]?.kind
+        })).filter(
+          (track): track is { trackName: string, kind: 'audio' | 'video' } =>
+            Boolean(track.trackName) && (track.kind === 'audio' || track.kind === 'video')
+        )
+        options.announcePublishedTracks?.(session.sessionId, announced)
+        await applyNegotiation(response, nextPc, session, officeId, zoneId)
       }
 
+      await pullRemoteTracks(nextPc, run, session, officeId, zoneId)
       state.value = nextPc.connectionState === 'connected' ? 'connected' : 'connecting'
       startSessionStatePolling()
     } catch (err) {
@@ -307,13 +413,17 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
       closePeerConnection('failed')
       state.value = 'failed'
       error.value = err instanceof Error ? err.message : 'Realtime media failed.'
+    } finally {
+      publishInProgress = false
     }
   }
 
   function disconnect() {
     publishRun++
     error.value = null
-    void closePublishedTracks(true).catch(() => {})
+    void closeSessionTracks(true).catch(() => {})
+    activeMediaSession = null
+    activeZoneId = ''
     stopSessionStatePolling()
     closePeerConnection('closed')
   }
@@ -326,14 +436,32 @@ export function useOfficeRealtime(options: UseOfficeRealtimeOptions) {
     }
   })
 
-  if (options.occupantCount) {
-    watch(options.occupantCount, (next, previous) => {
-      if (!options.mediaSession.value || !pc || next === previous) return
-
-      const now = Date.now()
-      if (now - lastOccupantRefresh < 2000) return
-      lastOccupantRefresh = now
-      void publish()
+  if (options.remoteTracks) {
+    watch(options.remoteTracks, (tracks) => {
+      if (!options.mediaSession.value || !pc || publishInProgress) return
+      const activeKeys = new Set(
+        tracks
+          .filter(track => track.expiresAt > Date.now())
+          .map(remoteTrackKey)
+      )
+      const removed = [...pulledTrackKeys].some(key => !activeKeys.has(key))
+      if (removed) {
+        void publish()
+        return
+      }
+      const currentPc = pc
+      const currentRun = publishRun
+      const currentSession = options.mediaSession.value
+      remotePullQueue = remotePullQueue.then(() => pullRemoteTracks(
+        currentPc,
+        currentRun,
+        currentSession,
+        options.officeId.value,
+        options.zoneId.value
+      )).catch((err) => {
+        state.value = 'failed'
+        error.value = err instanceof Error ? err.message : 'Remote media failed.'
+      })
     })
   }
 

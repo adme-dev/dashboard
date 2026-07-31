@@ -1,4 +1,5 @@
-import type { ActorHandle } from '../../../app/types/office'
+import type { ActorHandle, OfficeMediaSession } from '../../../app/types/office'
+import { signOfficeMediaGrant } from './jwt'
 
 const DEFAULT_REALTIME_BASE_URL = 'https://rtc.live.cloudflare.com/v1'
 
@@ -22,6 +23,9 @@ export type RealtimeTrack = {
 export type RealtimeEnv = {
   REALTIME_APP_ID?: string
   REALTIME_APP_SECRET?: string
+  OFFICE_SYNC_SECRET?: string
+  OFFICE_GUEST_REALTIME_MEDIA_ENABLED?: string
+  OFFICE_GUEST_REALTIME_PILOT_OFFICE_IDS?: string
 }
 
 export type WorkerRealtimeInput = {
@@ -40,6 +44,15 @@ export type CreateZoneSessionInput = WorkerRealtimeInput & {
 export type CreateZoneSessionResult = {
   sessionId: string
   sessionDescription?: RealtimeSessionDescription
+}
+
+export type CreateZoneMediaSessionInput = CreateZoneSessionInput & {
+  isGuest: boolean
+  guestBadgeId: string | null
+}
+
+export type RefreshZoneMediaGrantInput = Omit<CreateZoneMediaSessionInput, 'sessionDescription'> & {
+  media: OfficeMediaSession
 }
 
 export type ZoneTracksInput = WorkerRealtimeInput & {
@@ -142,6 +155,75 @@ export async function createZoneRealtimeSession(
     input.sessionDescription ? { sessionDescription: input.sessionDescription } : {},
     { correlationId: zoneCorrelationId(input) }
   )
+}
+
+export async function createZoneRealtimeMediaSession(
+  input: CreateZoneMediaSessionInput
+): Promise<OfficeMediaSession> {
+  if (!input.env.OFFICE_SYNC_SECRET) {
+    throw new Error('OFFICE_SYNC_SECRET not bound on this worker')
+  }
+  requireGuestRealtimeRollout(input)
+  const session = await createZoneRealtimeSession(input)
+  return await issueZoneRealtimeMediaGrant(input, {
+    provider: 'cloudflare-realtime',
+    sessionId: session.sessionId,
+    correlationId: buildZoneCorrelationId(input),
+    grant: '',
+    grantExpiresAt: 0,
+    createdAt: Date.now()
+  })
+}
+
+function requireGuestRealtimeRollout(input: Pick<CreateZoneMediaSessionInput, 'env' | 'isGuest' | 'officeId'>) {
+  if (input.isGuest) {
+    if (input.env.OFFICE_GUEST_REALTIME_MEDIA_ENABLED?.trim().toLowerCase() !== 'true') {
+      throw new Error('Guest Realtime media is disabled')
+    }
+    const pilotOfficeIds = new Set(
+      (input.env.OFFICE_GUEST_REALTIME_PILOT_OFFICE_IDS ?? '')
+        .split(',')
+        .map(officeId => officeId.trim())
+        .filter(Boolean)
+    )
+    if (!pilotOfficeIds.has(input.officeId)) {
+      throw new Error('Guest Realtime media is not enabled for this Office')
+    }
+  }
+}
+
+async function issueZoneRealtimeMediaGrant(
+  input: Pick<CreateZoneMediaSessionInput, 'env' | 'officeId' | 'zoneId' | 'handle' | 'isGuest' | 'guestBadgeId'>,
+  media: OfficeMediaSession
+): Promise<OfficeMediaSession> {
+  if (!input.env.OFFICE_SYNC_SECRET) {
+    throw new Error('OFFICE_SYNC_SECRET not bound on this worker')
+  }
+  const grantExpiresAt = Date.now() + 5 * 60_000
+  const grant = await signOfficeMediaGrant({
+    purpose: 'office-media',
+    officeId: input.officeId,
+    zoneId: input.zoneId,
+    handle: input.handle,
+    sessionId: media.sessionId,
+    isGuest: input.isGuest,
+    guestBadgeId: input.guestBadgeId,
+    scopes: ['state', 'publish', 'pull', 'renegotiate', 'close'],
+    exp: Math.floor(grantExpiresAt / 1000)
+  }, input.env.OFFICE_SYNC_SECRET)
+
+  return {
+    ...media,
+    grant,
+    grantExpiresAt
+  }
+}
+
+export async function refreshZoneRealtimeMediaGrant(
+  input: RefreshZoneMediaGrantInput
+): Promise<OfficeMediaSession> {
+  requireGuestRealtimeRollout(input)
+  return await issueZoneRealtimeMediaGrant(input, input.media)
 }
 
 export async function addZoneRealtimeTracks(input: ZoneTracksInput): Promise<ZoneTracksResult> {

@@ -31,16 +31,15 @@ testGlobal.createError = (opts) => {
   return error
 }
 
-const mockRequireAuth = vi.fn()
-const mockQueryOne = vi.fn()
+const mockRequireOfficeRealtimeAccess = vi.fn()
+const mockRequireOfficeRemoteTrackAccess = vi.fn()
+const mockRequireOfficeRealtimeZone = vi.fn()
 const mockAddRealtimeTracks = vi.fn()
 
-vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
-}))
-
-vi.mock('~~/server/utils/db', () => ({
-  queryOne: (...args: unknown[]) => mockQueryOne(...args)
+vi.mock('~~/server/utils/officeRealtimeAccess', () => ({
+  requireOfficeRealtimeAccess: (...args: unknown[]) => mockRequireOfficeRealtimeAccess(...args),
+  requireOfficeRemoteTrackAccess: (...args: unknown[]) => mockRequireOfficeRemoteTrackAccess(...args),
+  requireOfficeRealtimeZone: (...args: unknown[]) => mockRequireOfficeRealtimeZone(...args)
 }))
 
 vi.mock('~~/server/utils/officeRealtime', () => ({
@@ -48,7 +47,7 @@ vi.mock('~~/server/utils/officeRealtime', () => ({
 }))
 
 const { default: handler } = await import(
-  '../../../../../server/api/office/[officeId]/realtime/[sessionId]/tracks.post'
+  '../../../server/api/office/[officeId]/realtime/[sessionId]/tracks.post'
 )
 
 function fakeEvent(overrides: Partial<TestEvent> = {}) {
@@ -73,17 +72,128 @@ function fakeEvent(overrides: Partial<TestEvent> = {}) {
 
 describe('POST /api/office/:officeId/realtime/:sessionId/tracks', () => {
   beforeEach(() => {
-    mockRequireAuth.mockReset()
-    mockQueryOne.mockReset()
+    mockRequireOfficeRealtimeAccess.mockReset()
+    mockRequireOfficeRemoteTrackAccess.mockReset()
+    mockRequireOfficeRealtimeZone.mockReset()
     mockAddRealtimeTracks.mockReset()
-    mockRequireAuth.mockResolvedValue({ id: 'user-1' })
-    mockQueryOne
-      .mockResolvedValueOnce({ id: 'member-1', role: 'member' })
-      .mockResolvedValueOnce({ id: '575d4c24-9032-400b-984b-9c9525e621b5' })
+    mockRequireOfficeRealtimeAccess.mockResolvedValue({
+      officeId: 'office-1',
+      sessionId: 'session-1',
+      appId: 'app-1',
+      appSecret: 'secret-1'
+    })
+    mockRequireOfficeRealtimeZone.mockResolvedValue({
+      id: '575d4c24-9032-400b-984b-9c9525e621b5'
+    })
     mockAddRealtimeTracks.mockResolvedValue({
       sessionDescription: { type: 'answer', sdp: 'v=0 answer' },
       tracks: [{ mid: '0', status: 'active' }]
     })
+  })
+
+  it('requires and strips an exact capability before pulling a remote track', async () => {
+    const event = fakeEvent({
+      context: {
+        body: {
+          zone_id: '575d4c24-9032-400b-984b-9c9525e621b5',
+          tracks: [{
+            location: 'remote',
+            sessionId: 'publisher-session-1',
+            trackName: 'camera-track-1',
+            kind: 'video',
+            capability: 'signed-track-capability'
+          }]
+        }
+      }
+    })
+
+    await handler(event)
+
+    expect(mockRequireOfficeRealtimeAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        scope: 'pull',
+        zoneId: '575d4c24-9032-400b-984b-9c9525e621b5'
+      }
+    )
+    expect(mockRequireOfficeRemoteTrackAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        officeId: 'office-1',
+        zoneId: '575d4c24-9032-400b-984b-9c9525e621b5',
+        publisherSessionId: 'publisher-session-1',
+        trackName: 'camera-track-1',
+        kind: 'video',
+        capability: 'signed-track-capability'
+      }
+    )
+    expect(mockAddRealtimeTracks).toHaveBeenCalledWith({
+      appId: 'app-1',
+      appSecret: 'secret-1',
+      sessionId: 'session-1',
+      sessionDescription: undefined,
+      tracks: [{
+        location: 'remote',
+        sessionId: 'publisher-session-1',
+        trackName: 'camera-track-1',
+        kind: 'video'
+      }],
+      autoDiscover: undefined
+    })
+  })
+
+  it('does not call Cloudflare when a remote-track capability is denied', async () => {
+    mockRequireOfficeRemoteTrackAccess.mockRejectedValueOnce(
+      testGlobal.createError({
+        statusCode: 403,
+        statusMessage: 'Remote track capability scope mismatch'
+      })
+    )
+
+    await expect(handler(fakeEvent({
+      context: {
+        body: {
+          zone_id: '575d4c24-9032-400b-984b-9c9525e621b5',
+          tracks: [{
+            location: 'remote',
+            sessionId: 'publisher-session-1',
+            trackName: 'camera-track-1',
+            kind: 'video',
+            capability: 'substituted-track-capability'
+          }]
+        }
+      }
+    }))).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'Remote track capability scope mismatch'
+    })
+    expect(mockAddRealtimeTracks).not.toHaveBeenCalled()
+  })
+
+  it('rejects mixed local and remote track operations', async () => {
+    await expect(handler(fakeEvent({
+      context: {
+        body: {
+          zone_id: '575d4c24-9032-400b-984b-9c9525e621b5',
+          sessionDescription: { type: 'offer', sdp: 'v=0' },
+          tracks: [
+            { location: 'local', mid: '0', trackName: 'camera', kind: 'video' },
+            {
+              location: 'remote',
+              sessionId: 'publisher-session-1',
+              trackName: 'camera-track-1',
+              kind: 'video',
+              capability: 'signed-track-capability'
+            }
+          ]
+        }
+      }
+    }))).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Local publishing and remote pulling must use separate requests'
+    })
+    expect(mockRequireOfficeRealtimeAccess).not.toHaveBeenCalled()
+    expect(mockAddRealtimeTracks).not.toHaveBeenCalled()
   })
 
   it('proxies track negotiation with server-side Realtime credentials', async () => {
@@ -101,27 +211,27 @@ describe('POST /api/office/:officeId/realtime/:sessionId/tracks', () => {
       tracks: [{ location: 'local', mid: '0', trackName: 'camera', kind: 'video' }],
       autoDiscover: undefined
     })
+    expect(mockRequireOfficeRealtimeAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        scope: 'publish',
+        zoneId: '575d4c24-9032-400b-984b-9c9525e621b5'
+      }
+    )
   })
 
-  it('requires office membership', async () => {
-    mockQueryOne.mockReset()
-    mockQueryOne.mockResolvedValueOnce(null)
+  it('does not call Cloudflare when media authorization is denied', async () => {
+    mockRequireOfficeRealtimeAccess.mockRejectedValueOnce(
+      testGlobal.createError({
+        statusCode: 403,
+        statusMessage: 'Office media grant scope mismatch'
+      })
+    )
 
     await expect(handler(fakeEvent())).rejects.toMatchObject({
       statusCode: 403,
-      statusMessage: 'Not a member of this office'
+      statusMessage: 'Office media grant scope mismatch'
     })
     expect(mockAddRealtimeTracks).not.toHaveBeenCalled()
-  })
-
-  it('fails closed when Realtime credentials are missing', async () => {
-    await expect(handler(fakeEvent({
-      context: {
-        cloudflare: { env: {} }
-      }
-    }))).rejects.toMatchObject({
-      statusCode: 503,
-      statusMessage: 'Realtime media is not configured'
-    })
   })
 })

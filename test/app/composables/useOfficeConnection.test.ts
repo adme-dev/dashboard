@@ -129,4 +129,74 @@ describe('useOfficeConnection', () => {
     })
     expect(connection.lastError.value).toBe('Room removed')
   })
+
+  it('tracks same-zone remote capabilities and announces published tracks', async () => {
+    const { useOfficeConnection } = await import('~~/app/composables/useOfficeConnection')
+    const connection = useOfficeConnection({ officeId: ref('office-1') })
+    await flushConnection()
+    sockets[0]!.readyState = FakeWebSocket.OPEN
+    sockets[0]!.receive({ type: 'zone:entered', zoneId: zone.id })
+    sockets[0]!.receive({
+      type: 'zone:media-tracks',
+      zoneId: zone.id,
+      tracks: [{
+        publisherHandle: 'user:publisher-1',
+        publisherSessionId: 'publisher-session-1',
+        trackName: 'camera-track-1',
+        kind: 'video',
+        capability: 'signed-capability',
+        expiresAt: Date.now() + 60_000
+      }]
+    })
+
+    expect(connection.remoteTrackCapabilities.value).toHaveLength(1)
+    expect(connection.remoteTrackCapabilities.value[0]).toMatchObject({
+      publisherSessionId: 'publisher-session-1',
+      trackName: 'camera-track-1'
+    })
+
+    connection.announcePublishedTracks('subscriber-session-1', [{
+      trackName: 'microphone-track-1',
+      kind: 'audio'
+    }])
+    expect(JSON.parse(sockets[0]!.sent.at(-1)!)).toEqual({
+      type: 'media:tracks-published',
+      sessionId: 'subscriber-session-1',
+      tracks: [{ trackName: 'microphone-track-1', kind: 'audio' }]
+    })
+
+    connection.leaveZone()
+    expect(connection.remoteTrackCapabilities.value).toEqual([])
+  })
+
+  it('requests a fresh media grant before the current grant expires', async () => {
+    vi.useFakeTimers()
+    const { useOfficeConnection } = await import('~~/app/composables/useOfficeConnection')
+    const connection = useOfficeConnection({ officeId: ref('office-1') })
+    await vi.runAllTicks()
+    await Promise.resolve()
+    sockets[0]!.readyState = FakeWebSocket.OPEN
+    sockets[0]!.receive({ type: 'zone:entered', zoneId: zone.id })
+    sockets[0]!.receive({
+      type: 'zone:media-session',
+      zoneId: zone.id,
+      media: {
+        provider: 'cloudflare-realtime',
+        sessionId: 'session-1',
+        correlationId: 'office:office-1:zone:zone-1:actor:user:u1',
+        grant: 'signed-media-grant',
+        grantExpiresAt: Date.now() + 60_500,
+        createdAt: Date.now()
+      }
+    })
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(sockets[0]!.sent.map(message => JSON.parse(message))).toContainEqual({
+      type: 'media:grant-refresh',
+      sessionId: 'session-1'
+    })
+    connection.disconnect()
+    vi.useRealTimers()
+  })
 })

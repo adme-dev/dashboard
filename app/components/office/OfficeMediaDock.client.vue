@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import type { OfficeMediaSession } from '~~/app/types/office'
+import type { OfficeMediaSession, OfficeRemoteTrackCapability } from '~~/app/types/office'
 
 const props = defineProps<{
   officeId: string
   zoneId: string
   occupantCount: number
   mediaSession?: OfficeMediaSession | null
+  remoteTracks?: OfficeRemoteTrackCapability[]
+  announcePublishedTracks?: (
+    sessionId: string,
+    tracks: Array<{ trackName: string, kind: 'audio' | 'video' }>
+  ) => void
   mediaUnavailableMessage?: string | null
   canUseLiveNotes?: boolean
   liveNotesDisabledMessage?: string | null
@@ -46,6 +51,8 @@ const realtime = useOfficeRealtime({
   zoneId: toRef(props, 'zoneId'),
   mediaSession: toRef(props, 'mediaSession'),
   occupantCount: toRef(props, 'occupantCount'),
+  remoteTracks: toRef(props, 'remoteTracks'),
+  announcePublishedTracks: props.announcePublishedTracks,
   getStreams: () => [localStream.value, screenStream.value].filter((stream): stream is MediaStream => Boolean(stream))
 })
 const apiFetch = $fetch as <T = unknown>(

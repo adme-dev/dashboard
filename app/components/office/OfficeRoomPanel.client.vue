@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import type { ActorHandle, OfficeMediaSession, OfficeParticipant, OfficePresenceEventKind, OfficeZoneRow } from '~~/app/types/office'
+import type {
+  ActorHandle,
+  OfficeMediaSession,
+  OfficeParticipant,
+  OfficePresenceEventKind,
+  OfficeRemoteTrackCapability,
+  OfficeZoneRow
+} from '~~/app/types/office'
 
 type RoomPresenceEvent = {
   id: string
@@ -21,6 +28,11 @@ const props = defineProps<{
   lockingRoom?: boolean
   joinFailureMessage?: string | null
   mediaSession?: OfficeMediaSession | null
+  remoteTracks?: OfficeRemoteTrackCapability[]
+  announcePublishedTracks?: (
+    sessionId: string,
+    tracks: Array<{ trackName: string, kind: 'audio' | 'video' }>
+  ) => void
   mediaUnavailableMessage?: string | null
 }>()
 
@@ -435,6 +447,8 @@ async function saveRoomNotes() {
       :zone-id="zone.id"
       :occupant-count="occupants.length"
       :media-session="mediaSession"
+      :remote-tracks="remoteTracks"
+      :announce-published-tracks="announcePublishedTracks"
       :media-unavailable-message="mediaUnavailableMessage"
       :can-use-live-notes="isCurrentZone"
       live-notes-disabled-message="Enter this room before starting live AI notes."
