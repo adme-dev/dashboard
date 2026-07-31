@@ -34,7 +34,6 @@ export type RealtimeApiInput = {
 }
 
 export type CreateRealtimeSessionInput = RealtimeApiInput & {
-  sessionDescription?: RealtimeSessionDescription
   correlationId?: string
 }
 
@@ -111,13 +110,14 @@ async function realtimeFetch<T>(
 ) {
   const fetcher = input.fetcher ?? fetch
   const url = realtimeUrl(input, path, params)
+  const serializedBody = body === undefined ? undefined : JSON.stringify(body)
   const response = await fetcher(url, {
     method,
     headers: {
       'Authorization': `Bearer ${input.appSecret}`,
-      'Content-Type': 'application/json'
+      ...(serializedBody === undefined ? {} : { 'Content-Type': 'application/json' })
     },
-    body: body === undefined ? undefined : JSON.stringify(body)
+    body: serializedBody
   })
   return readRealtimeJson<T>(response, method, url)
 }
@@ -129,7 +129,7 @@ export async function createRealtimeSession(
     input,
     'POST',
     '/sessions/new',
-    input.sessionDescription ? { sessionDescription: input.sessionDescription } : {},
+    undefined,
     { correlationId: input.correlationId }
   )
 }
