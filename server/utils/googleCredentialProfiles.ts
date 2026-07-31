@@ -23,10 +23,12 @@ export type GoogleOAuthPurpose = 'google_ads' | 'search_console'
 
 interface CreateAttemptDeps {
   purpose?: GoogleOAuthPurpose
+  context?: Record<string, string>
   randomState?: () => string
   insertAttempt?: (input: {
     userId: string
     purpose: GoogleOAuthPurpose
+    context?: Record<string, string>
     stateDigest: string
     expiresAt: Date
   }) => Promise<{ id: string } | null>
@@ -43,12 +45,26 @@ export async function createGoogleOAuthAttempt(
   const stateDigest = await hashGoogleOAuthState(state)
   const expiresAt = new Date(Date.now() + OAUTH_ATTEMPT_TTL_MS)
   const insertAttempt = deps.insertAttempt || (async input => queryOne<{ id: string }>(
-    `INSERT INTO google_oauth_attempts (state_digest, initiated_by, purpose, expires_at)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO google_oauth_attempts (
+       state_digest, initiated_by, purpose, context, expires_at
+     )
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING id`,
-    [input.stateDigest, input.userId, input.purpose, input.expiresAt]
+    [
+      input.stateDigest,
+      input.userId,
+      input.purpose,
+      JSON.stringify(input.context ?? {}),
+      input.expiresAt
+    ]
   ))
-  const attempt = await insertAttempt({ userId, purpose, stateDigest, expiresAt })
+  const attempt = await insertAttempt({
+    userId,
+    purpose,
+    ...(deps.context ? { context: deps.context } : {}),
+    stateDigest,
+    expiresAt
+  })
   if (!attempt) throw new Error('Unable to create Google OAuth attempt')
   return { attemptId: attempt.id, state }
 }
@@ -59,18 +75,21 @@ interface ConsumeAttemptDeps {
     userId: string
     purpose: GoogleOAuthPurpose
     stateDigest: string
-  }) => Promise<{ id: string } | null>
+  }) => Promise<{ id: string, context?: Record<string, string> } | null>
 }
 
 export async function consumeGoogleOAuthAttempt(
   state: string,
   userId: string,
   deps: ConsumeAttemptDeps = {}
-): Promise<{ id: string } | null> {
+): Promise<{ id: string, context?: Record<string, string> } | null> {
   if (!STATE_PATTERN.test(state)) return null
   const purpose = deps.purpose ?? 'google_ads'
   const stateDigest = await hashGoogleOAuthState(state)
-  const consumeAttempt = deps.consumeAttempt || (async input => queryOne<{ id: string }>(
+  const consumeAttempt = deps.consumeAttempt || (async input => queryOne<{
+    id: string
+    context: Record<string, string>
+  }>(
     `UPDATE google_oauth_attempts
      SET consumed_at = NOW()
      WHERE state_digest = $1
@@ -78,7 +97,7 @@ export async function consumeGoogleOAuthAttempt(
        AND purpose = $3
        AND consumed_at IS NULL
        AND expires_at > NOW()
-     RETURNING id`,
+     RETURNING id, context`,
     [input.stateDigest, input.userId, input.purpose]
   ))
   return consumeAttempt({ userId, purpose, stateDigest })

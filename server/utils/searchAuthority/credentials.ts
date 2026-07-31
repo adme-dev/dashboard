@@ -82,6 +82,9 @@ export async function storeSearchConsoleCredentialProfile(
     const refreshTokenIv = encryptedRefresh?.iv
       ?? previousCredential?.refresh_token_iv
       ?? null
+    if (!refreshTokenCiphertext || !refreshTokenIv) {
+      throw new Error('Search Console connection has no offline refresh token')
+    }
 
     const profileResult = await db.query(
       `INSERT INTO google_credential_profiles (
@@ -200,13 +203,14 @@ export async function resolveSearchConsoleCredential(
           AND profile.status = 'active'
           AND profile.metadata->>'purpose' = 'search_console'
          WHERE connection.id = $1
-           AND connection.status = 'active'
          LIMIT 1`,
       [id]
     ))
 
   const row = await loadConnection(connectionId)
-  if (!row) throw new Error('Search Console connection is unavailable')
+  if (!row || !['active', 'degraded'].includes(row.status)) {
+    throw new Error('Search Console connection is unavailable')
+  }
 
   const resolved = await resolveGoogleCredential(row, {
     decrypt: dependencies.decrypt ?? decryptToken

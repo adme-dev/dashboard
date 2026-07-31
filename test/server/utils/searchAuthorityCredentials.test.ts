@@ -167,6 +167,61 @@ describe('Search Console credential persistence', () => {
     expect(profileParams[4]).toBe(previousIv)
   })
 
+  it('rejects a first connection when Google omits the offline refresh token', async () => {
+    const credentials = await loadCredentials()
+    expect(credentials).not.toBeNull()
+
+    const db = {
+      query: vi.fn(async () => ({ rows: [] }))
+    }
+    await expect(credentials!.storeSearchConsoleCredentialProfile({
+      clientId: '11111111-1111-4111-8111-111111111111',
+      userId: '22222222-2222-4222-8222-222222222222',
+      googleSub: 'google-subject',
+      email: 'buyer@example.com',
+      tokens: {
+        accessToken: 'new-access',
+        refreshToken: null,
+        expiresAt: new Date('2026-08-01T00:00:00.000Z'),
+        scopes: ['https://www.googleapis.com/auth/webmasters.readonly']
+      }
+    }, {
+      encrypt: async () => ({
+        ciphertext: new Uint8Array([1]),
+        iv: new Uint8Array([2])
+      }),
+      runTransaction: async callback => callback(db)
+    })).rejects.toThrow('offline refresh token')
+  })
+
+  it('never decrypts a disconnected connection', async () => {
+    const credentials = await loadCredentials()
+    expect(credentials).not.toBeNull()
+
+    const decrypt = vi.fn(async () => 'must-not-decrypt')
+    await expect(credentials!.resolveSearchConsoleCredential('connection-1', {
+      loadConnection: async () => ({
+        id: 'connection-1',
+        client_id: '11111111-1111-4111-8111-111111111111',
+        google_subject: 'google-subject',
+        google_email: 'buyer@example.com',
+        scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+        status: 'disconnected',
+        access_token: null,
+        refresh_token: null,
+        token_expires_at: null,
+        google_credential_profile_id: 'profile-2',
+        profile_access_token_encrypted: new Uint8Array([1]),
+        profile_access_token_iv: new Uint8Array([9]),
+        profile_refresh_token_encrypted: new Uint8Array([2]),
+        profile_refresh_token_iv: new Uint8Array([9]),
+        profile_token_expires_at: '2026-08-01T00:00:00.000Z'
+      }),
+      decrypt
+    })).rejects.toThrow('unavailable')
+    expect(decrypt).not.toHaveBeenCalled()
+  })
+
   it('refreshes through Google and persists the new access token to the encrypted profile', async () => {
     const credentials = await loadCredentials()
     expect(credentials).not.toBeNull()

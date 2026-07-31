@@ -58,6 +58,37 @@ describe('Google OAuth attempts', () => {
     })).resolves.toBeNull()
   })
 
+  it('round-trips client context only through the server-side OAuth attempt', async () => {
+    const insertAttempt = vi.fn().mockResolvedValue({ id: 'attempt-2' })
+    const context = {
+      clientId: '11111111-1111-4111-8111-111111111111'
+    }
+
+    await createGoogleOAuthAttempt('user-1', {
+      purpose: 'search_console',
+      context,
+      randomState: () => 'e'.repeat(43),
+      insertAttempt
+    })
+
+    expect(insertAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      purpose: 'search_console',
+      context
+    }))
+
+    const consumeAttempt = vi.fn().mockResolvedValue({
+      id: 'attempt-2',
+      context
+    })
+    await expect(consumeGoogleOAuthAttempt('e'.repeat(43), 'user-1', {
+      purpose: 'search_console',
+      consumeAttempt
+    })).resolves.toEqual({
+      id: 'attempt-2',
+      context
+    })
+  })
+
   it.each(['', 'short', 'contains spaces', 'x'.repeat(200)])('rejects malformed state before querying: %j', async (state) => {
     const consumeAttempt = vi.fn()
     await expect(consumeGoogleOAuthAttempt(state, 'user-1', { consumeAttempt })).resolves.toBeNull()

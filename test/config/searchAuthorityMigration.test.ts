@@ -39,6 +39,7 @@ describe('Search Authority migration 329', () => {
 
   it('purpose-binds Google OAuth attempts', () => {
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS purpose TEXT')
+    expect(sql).toContain(`ADD COLUMN IF NOT EXISTS context JSONB NOT NULL DEFAULT '{}'::jsonb`)
     expect(sql).toContain('idx_google_oauth_attempts_pending_purpose')
   })
 

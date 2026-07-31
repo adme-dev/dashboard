@@ -10,6 +10,9 @@ BEGIN;
 ALTER TABLE google_oauth_attempts
   ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'google_ads';
 
+ALTER TABLE google_oauth_attempts
+  ADD COLUMN IF NOT EXISTS context JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 DO $$ BEGIN
   ALTER TABLE google_oauth_attempts
     ADD CONSTRAINT google_oauth_attempts_purpose_check
