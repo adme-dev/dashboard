@@ -140,11 +140,11 @@ service = "agency-workflows"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 EMAIL_FROM = "notification@adme.net.au"
-# Inbound-only CRM email wiring remains fail-closed during the Queue-consumer
-# redesign. Secrets remain managed by Cloudflare:
+# Inbound-only CRM email wiring is active after the Queue-consumer production
+# proof and route-onboarding release. Secrets remain managed by Cloudflare:
 # CRM_EMAIL_WORKER_SECRET authenticates the standalone email Worker, while
 # CRM_EMAIL_REPLY_SECRETS is the versioned JSON signing-secret map.
-CRM_EMAIL_CONVERSATIONS_ENABLED = "false"
+CRM_EMAIL_CONVERSATIONS_ENABLED = "true"
 # New CRM inbox routes are signed with this explicit keyring version and
 # accepted only for this server-owned recipient domain. The keyring remains a
 # Cloudflare secret and must never be committed as a plaintext [vars] value.
