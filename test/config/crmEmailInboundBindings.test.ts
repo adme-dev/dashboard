@@ -32,7 +32,7 @@ describe('CRM inbound email production wiring', () => {
   it('enables the Pages feature gate and dedicated queue producer', () => {
     const config = parse(readFileSync('wrangler.toml', 'utf8')) as PagesConfig
 
-    expect(config.vars?.CRM_EMAIL_CONVERSATIONS_ENABLED).toBe('false')
+    expect(config.vars?.CRM_EMAIL_CONVERSATIONS_ENABLED).toBe('true')
     expect(config.queues?.producers).toContainEqual({
       binding: 'CRM_EMAIL_INBOUND_QUEUE',
       queue: 'crm-email-inbound-queue'
