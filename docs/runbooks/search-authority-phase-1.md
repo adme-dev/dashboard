@@ -21,6 +21,20 @@ Phase 1 is read-only provider ingestion plus human-reviewed task handoff.
 The global flag is the kill switch. The client entitlement is the tenant
 boundary. Both must pass.
 
+## Production pilot record
+
+- Activated: 31 July 2026.
+- Owner: XeroFlow operations.
+- Initial cohort: Knox GWM Haval only.
+- Canonical hostname: `www.knoxgwmhaval.com.au`.
+- Content hostname: unset for Phase 1.
+- First review: after the initial baseline completes, then weekly during the
+  pilot.
+- Roll back immediately for cross-client exposure, provider writes outside the
+  selected property, data-integrity failures, or a material increase in
+  production error rate. Use the kill-switch procedure below; leave additive
+  evidence tables in place.
+
 ## Pilot activation
 
 1. Open **Agency → Search Authority → Connections**.
@@ -83,7 +97,10 @@ connection identifiers, credentials, or cross-client benchmarks.
 
 ## Kill switch and rollback
 
-1. Set `SEARCH_AUTHORITY_ENABLED=false`.
+1. Set `SEARCH_AUTHORITY_ENABLED=false` in `wrangler.toml` and remove or set
+   the matching production Build environment value in `.github/workflows/ci.yml`
+   to `false`. The first change closes the server gate; the second hides the
+   presentation-only client bundle mirror.
 2. Redeploy through the guarded `pnpm deploy:*` command only after
    `pnpm deploy:check` passes.
 3. Remove or disable the `15 2 * * *` trigger in

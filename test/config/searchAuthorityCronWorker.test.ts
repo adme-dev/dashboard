@@ -27,15 +27,17 @@ describe('Search Authority cron worker registration', () => {
     )
   })
 
-  it('declares the daily trigger while keeping the Pages feature dormant', () => {
+  it('declares the daily trigger with the Knox production pilot globally armed', () => {
     const cronConfig = parse(
       readFileSync('workers/pages-cron/wrangler.toml', 'utf8')
     ) as { triggers?: { crons?: string[] } }
     const pagesConfig = parse(readFileSync('wrangler.toml', 'utf8')) as {
       vars?: Record<string, string>
     }
+    const productionWorkflow = readFileSync('.github/workflows/ci.yml', 'utf8')
 
     expect(cronConfig.triggers?.crons).toContain('15 2 * * *')
-    expect(pagesConfig.vars?.SEARCH_AUTHORITY_ENABLED).toBe('false')
+    expect(pagesConfig.vars?.SEARCH_AUTHORITY_ENABLED).toBe('true')
+    expect(productionWorkflow).toContain('SEARCH_AUTHORITY_ENABLED: \'true\'')
   })
 })
