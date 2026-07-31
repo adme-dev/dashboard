@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   listSearchConsoleDates,
+  searchConsoleOpportunityWindow,
   searchConsoleSyncWindow
 } from '~~/server/utils/searchAuthority/dates'
 
@@ -23,6 +24,15 @@ describe('Search Console sync dates', () => {
       startDate: '2026-07-30',
       endDate: '2026-08-01',
       mode: 'refresh'
+    })
+  })
+
+  it('builds a complete 28-day opportunity window in provider time', () => {
+    expect(searchConsoleOpportunityWindow(
+      new Date('2026-08-01T05:30:00.000Z')
+    )).toEqual({
+      startDate: '2026-07-04',
+      endDate: '2026-07-31'
     })
   })
 

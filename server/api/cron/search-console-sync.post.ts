@@ -1,6 +1,8 @@
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { searchConsoleOpportunityWindow } from '~~/server/utils/searchAuthority/dates'
 import { listSearchAuthorityClientIds } from '~~/server/utils/searchAuthority/feature'
 import { inspectPriorityUrls } from '~~/server/utils/searchAuthority/inspection'
+import { generateSearchAuthorityOpportunities } from '~~/server/utils/searchAuthority/opportunities'
 import { syncSearchConsoleClient } from '~~/server/utils/searchAuthority/sync'
 
 export default defineEventHandler(async (event) => {
@@ -16,6 +18,10 @@ export default defineEventHandler(async (event) => {
       clientId,
       triggerType: 'scheduled'
     })
+    await generateSearchAuthorityOpportunities(
+      clientId,
+      searchConsoleOpportunityWindow()
+    )
     return inspectPriorityUrls(clientId, 50)
   }))
   runAfterResponse(event, work, 'search-console-daily-sync')

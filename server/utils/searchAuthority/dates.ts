@@ -50,6 +50,17 @@ export function searchConsoleProviderDate(now = new Date()): string {
   return `${value('year')}-${value('month')}-${value('day')}`
 }
 
+export function searchConsoleOpportunityWindow(now = new Date()): {
+  startDate: string
+  endDate: string
+} {
+  const endDate = searchConsoleProviderDate(now)
+  return {
+    startDate: addDays(endDate, -27),
+    endDate
+  }
+}
+
 export function searchConsoleSyncWindow(
   input: SearchConsoleWindowInput = {}
 ): SearchConsoleWindow {

@@ -4,7 +4,9 @@ const mocks = vi.hoisted(() => ({
   clientIds: ['client-entitled'] as string[],
   listClientIds: vi.fn(),
   syncClient: vi.fn(),
+  generateOpportunities: vi.fn(),
   inspect: vi.fn(),
+  opportunityWindow: vi.fn(),
   runAfterResponse: vi.fn()
 }))
 
@@ -13,6 +15,12 @@ vi.mock('~~/server/utils/searchAuthority/feature', () => ({
 }))
 vi.mock('~~/server/utils/searchAuthority/sync', () => ({
   syncSearchConsoleClient: mocks.syncClient
+}))
+vi.mock('~~/server/utils/searchAuthority/opportunities', () => ({
+  generateSearchAuthorityOpportunities: mocks.generateOpportunities
+}))
+vi.mock('~~/server/utils/searchAuthority/dates', () => ({
+  searchConsoleOpportunityWindow: mocks.opportunityWindow
 }))
 vi.mock('~~/server/utils/searchAuthority/inspection', () => ({
   inspectPriorityUrls: mocks.inspect
@@ -32,7 +40,15 @@ describe('Search Console daily cron', () => {
     process.env.CRON_SECRET = 'cron-secret'
     mocks.listClientIds.mockResolvedValue(mocks.clientIds)
     mocks.syncClient.mockResolvedValue([])
+    mocks.generateOpportunities.mockResolvedValue({
+      generated: 2,
+      fingerprints: ['one', 'two']
+    })
     mocks.inspect.mockResolvedValue({ inspected: 1, failed: 0, errors: [] })
+    mocks.opportunityWindow.mockReturnValue({
+      startDate: '2026-07-04',
+      endDate: '2026-07-31'
+    })
     mocks.runAfterResponse.mockImplementation((_event, promise) => promise)
   })
 
@@ -63,6 +79,16 @@ describe('Search Console daily cron', () => {
       clientId: 'client-entitled',
       triggerType: 'scheduled'
     })
+    expect(mocks.generateOpportunities).toHaveBeenCalledWith(
+      'client-entitled',
+      { startDate: '2026-07-04', endDate: '2026-07-31' }
+    )
     expect(mocks.inspect).toHaveBeenCalledWith('client-entitled', 50)
+    expect(mocks.syncClient.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.generateOpportunities.mock.invocationCallOrder[0]!
+    )
+    expect(mocks.generateOpportunities.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.inspect.mock.invocationCallOrder[0]!
+    )
   })
 })
