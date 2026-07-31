@@ -1,6 +1,6 @@
 # XeroFlow Search Authority and AI Trust Platform PRD
 
-Status: Approved design — written review required before implementation planning
+Status: Ready for stakeholder review — no implementation authorized
 
 Owner: XeroFlow Product and Engineering
 
@@ -1310,9 +1310,10 @@ on 2026-07-31:
 
 ## 30. Written-spec review gate
 
-This PRD is the approved umbrella product design expressed as a written
-implementation contract. Detailed file-level tasks, migrations, tests and
-rollout commands must not be planned until the user reviews this document.
+This PRD is the proposed umbrella product design expressed as a written
+implementation contract. This pull request is the stakeholder review gate.
+Detailed file-level tasks, migrations, tests and rollout commands must not be
+planned until the PRD is approved.
 
 The product is intentionally decomposed. It must not become one monolithic
 implementation plan. After approval, the next artifacts are:
